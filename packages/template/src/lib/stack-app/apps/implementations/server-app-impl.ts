@@ -24,6 +24,7 @@ import { GetUserOptions, HandlerUrls, OAuthScopesOnSignIn, TokenStoreInit } from
 import { OAuthConnection } from "../../connected-accounts";
 import { ServerContactChannel, ServerContactChannelCreateOptions, ServerContactChannelUpdateOptions, serverContactChannelCreateOptionsToCrud, serverContactChannelUpdateOptionsToCrud } from "../../contact-channels";
 import { InlineOffer, ServerItem } from "../../customers";
+import { DataVaultStore } from "../../data-vault";
 import { SendEmailOptions } from "../../email";
 import { NotificationCategory } from "../../notification-categories";
 import { AdminProjectPermissionDefinition, AdminTeamPermission, AdminTeamPermissionDefinition } from "../../permissions";
@@ -31,11 +32,9 @@ import { EditableTeamMemberProfile, ServerListUsersOptions, ServerTeam, ServerTe
 import { ProjectCurrentServerUser, ServerUser, ServerUserCreateOptions, ServerUserUpdateOptions, serverUserCreateOptionsToCrud, serverUserUpdateOptionsToCrud } from "../../users";
 import { StackServerAppConstructorOptions } from "../interfaces/server-app";
 import { _StackClientAppImplIncomplete } from "./client-app-impl";
-import { clientVersion, createCache, createCacheBySession, getBaseUrl, getDefaultProjectId, getDefaultPublishableClientKey, getDefaultSecretServerKey } from "./common";
+import { clientVersion, createCache, createCacheBySession, getBaseUrl, getDefaultExtraRequestHeaders, getDefaultProjectId, getDefaultPublishableClientKey, getDefaultSecretServerKey } from "./common";
 
-// IF_PLATFORM react-like
-import { useAsyncCache } from "./common";
-// END_PLATFORM
+import { useAsyncCache } from "./common"; // THIS_LINE_PLATFORM react-like
 
 export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, ProjectId extends string> extends _StackClientAppImplIncomplete<HasTokenStore, ProjectId> {
   declare protected _interface: StackServerInterface;
@@ -130,6 +129,9 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
       return await this._interface.listServerNotificationCategories(userId);
     }
   );
+  private readonly _serverDataVaultStoreValueCache = createCache<[string, string, string], string | null>(async ([storeId, key, secret]) => {
+    return await this._interface.getDataVaultStoreValue(secret, storeId, key);
+  });
 
   private readonly _serverUserApiKeysCache = createCache<[string], UserApiKeysCrud['Server']['Read'][]>(
     async ([userId]) => {
@@ -264,7 +266,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
       interface: new StackServerInterface({
         getBaseUrl: () => getBaseUrl(options.baseUrl),
         projectId: options.projectId ?? getDefaultProjectId(),
-        extraRequestHeaders: options.extraRequestHeaders ?? {},
+        extraRequestHeaders: options.extraRequestHeaders ?? getDefaultExtraRequestHeaders(),
         clientVersion,
         publishableClientKey: options.publishableClientKey ?? getDefaultPublishableClientKey(),
         secretServerKey: options.secretServerKey ?? getDefaultSecretServerKey(),
@@ -577,7 +579,8 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
         await app._serverUserApiKeysCache.refresh([crud.id]);
         return app._serverApiKeyFromCrud(result);
       },
-      async createCheckoutUrl(offerIdOrInline: string | InlineOffer) {
+      async createCheckoutUrl(options: { offerId: string } | { offer: InlineOffer }) {
+        const offerIdOrInline = "offerId" in options ? options.offerId : options.offer;
         return await app._interface.createCheckoutUrl("user", crud.id, offerIdOrInline, null);
       },
       async getItem(itemId: string) {
@@ -715,7 +718,8 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
         return useMemo(() => app._serverItemFromCrud({ type: "team", id: crud.id }, result), [result]);
       },
       // END_PLATFORM
-      async createCheckoutUrl(offerIdOrInline: string | InlineOffer) {
+      async createCheckoutUrl(options: { offerId: string } | { offer: InlineOffer }) {
+        const offerIdOrInline = "offerId" in options ? options.offerId : options.offer;
         return await app._interface.createCheckoutUrl("team", crud.id, offerIdOrInline, null);
       },
     };
@@ -1079,8 +1083,41 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
   }
   // END_PLATFORM
 
-  async sendEmail(options: SendEmailOptions): Promise<Result<void, KnownErrors["RequiresCustomEmailServer"] | KnownErrors["SchemaError"] | KnownErrors["UserIdDoesNotExist"]>> {
-    return await this._interface.sendEmail(options);
+  protected _createServerDataVaultStore(id: string): DataVaultStore {
+    const validateOptions = (options: { secret: string }) => {
+      if (typeof options.secret !== "string") throw new Error("secret must be a string, got " + typeof options.secret);
+    };
+    return {
+      id,
+      setValue: async (key, value, options) => {
+        validateOptions(options);
+        await this._interface.setDataVaultStoreValue(options.secret, id, key, value);
+      },
+      getValue: async (key, options) => {
+        validateOptions(options);
+        return Result.orThrow(await this._serverDataVaultStoreValueCache.getOrWait([id, key, options.secret], "write-only"));
+      },
+      // IF_PLATFORM react-like
+      useValue: (key, options) => {
+        validateOptions(options);
+        return useAsyncCache(this._serverDataVaultStoreValueCache, [id, key, options.secret] as const, `app.useDataVaultStoreValue()`);
+      },
+      // END_PLATFORM
+    };
+  }
+
+  async getDataVaultStore(id: string): Promise<DataVaultStore> {
+    return this._createServerDataVaultStore(id);
+  }
+
+  // IF_PLATFORM react-like
+  useDataVaultStore(id: string): DataVaultStore {
+    return useMemo(() => this._createServerDataVaultStore(id), [id]);
+  }
+  // END_PLATFORM
+
+  async sendEmail(options: SendEmailOptions): Promise<void> {
+    await this._interface.sendEmail(options);
   }
 
   protected override async _refreshSession(session: InternalSession) {

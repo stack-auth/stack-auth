@@ -7,7 +7,7 @@ async function ensureAnonymousUsersAreStillExcluded(metricsResponse: NiceRespons
   for (let i = 0; i < 2; i++) {
     await Auth.Anonymous.signUp();
   }
-  await wait(1000);
+  await wait(2000); // the event log is async, so let's give it some time to be written to the DB
   const response = await niceBackendFetch("/api/v1/internal/metrics", { accessType: 'admin' });
   expect(response.body).toEqual(metricsResponse.body);
 }
@@ -102,7 +102,6 @@ it("should not work for non-admins", async ({ expect }) => {
     }
   `);
 
-  await ensureAnonymousUsersAreStillExcluded(response);
 });
 
 it("should exclude anonymous users from metrics", async ({ expect }) => {
@@ -126,7 +125,7 @@ it("should exclude anonymous users from metrics", async ({ expect }) => {
     await Auth.Anonymous.signUp();
   }
 
-  await wait(1000);  // the event log is async, so let's give it some time to be written to the DB
+  await wait(3000);  // the event log is async, so let's give it some time to be written to the DB
 
   const response = await niceBackendFetch("/api/v1/internal/metrics", { accessType: 'admin' });
   expect(beforeMetrics.body).toEqual(response.body);

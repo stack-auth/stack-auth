@@ -15,7 +15,7 @@ import { InternalApiKey, InternalApiKeyBase, InternalApiKeyBaseCrudRead, Interna
 import { AdminProjectPermission, AdminProjectPermissionDefinition, AdminProjectPermissionDefinitionCreateOptions, AdminProjectPermissionDefinitionUpdateOptions, AdminTeamPermission, AdminTeamPermissionDefinition, AdminTeamPermissionDefinitionCreateOptions, AdminTeamPermissionDefinitionUpdateOptions, adminProjectPermissionDefinitionCreateOptionsToCrud, adminProjectPermissionDefinitionUpdateOptionsToCrud, adminTeamPermissionDefinitionCreateOptionsToCrud, adminTeamPermissionDefinitionUpdateOptionsToCrud } from "../../permissions";
 import { AdminOwnedProject, AdminProject, AdminProjectUpdateOptions, adminProjectUpdateOptionsToCrud } from "../../projects";
 import { StackAdminApp, StackAdminAppConstructorOptions } from "../interfaces/admin-app";
-import { clientVersion, createCache, getBaseUrl, getDefaultProjectId, getDefaultPublishableClientKey, getDefaultSecretServerKey, getDefaultSuperSecretAdminKey } from "./common";
+import { clientVersion, createCache, getBaseUrl, getDefaultExtraRequestHeaders, getDefaultProjectId, getDefaultPublishableClientKey, getDefaultSecretServerKey, getDefaultSuperSecretAdminKey } from "./common";
 import { _StackServerAppImplIncomplete } from "./server-app-impl";
 
 import { CompleteConfig, EnvironmentConfigOverrideOverride } from "@stackframe/stack-shared/dist/config/schema";
@@ -51,8 +51,8 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
   private readonly _svixTokenCache = createCache(async () => {
     return await this._interface.getSvixToken();
   });
-  private readonly _metricsCache = createCache(async () => {
-    return await this._interface.getMetrics();
+  private readonly _metricsCache = createCache(async ([includeAnonymous]: [boolean]) => {
+    return await this._interface.getMetrics(includeAnonymous);
   });
   private readonly _emailPreviewCache = createCache(async ([themeId, themeTsxSource, templateId, templateTsxSource]: [string | null | false | undefined, string | undefined, string | undefined, string | undefined]) => {
     return await this._interface.renderEmailPreview({ themeId, themeTsxSource, templateId, templateTsxSource });
@@ -60,13 +60,23 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
   private readonly _configOverridesCache = createCache(async () => {
     return await this._interface.getConfig();
   });
+  private readonly _stripeAccountInfoCache = createCache(async () => {
+    try {
+      return await this._interface.getStripeAccountInfo();
+    } catch (error: any) {
+      if (error?.status === 404) {
+        return null;
+      }
+      throw error;
+    }
+  });
 
   constructor(options: StackAdminAppConstructorOptions<HasTokenStore, ProjectId>) {
     super({
       interface: new StackAdminInterface({
         getBaseUrl: () => getBaseUrl(options.baseUrl),
         projectId: options.projectId ?? getDefaultProjectId(),
-        extraRequestHeaders: options.extraRequestHeaders ?? {},
+        extraRequestHeaders: options.extraRequestHeaders ?? getDefaultExtraRequestHeaders(),
         clientVersion,
         ..."projectOwnerSession" in options ? {
           projectOwnerSession: options.projectOwnerSession,
@@ -405,8 +415,8 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
     return {
       ...super[stackAppInternalsSymbol],
       // IF_PLATFORM react-like
-      useMetrics: (): any => {
-        return useAsyncCache(this._metricsCache, [], "useMetrics()");
+      useMetrics: (includeAnonymous: boolean = false): any => {
+        return useAsyncCache(this._metricsCache, [includeAnonymous] as const, "useMetrics()");
       }
       // END_PLATFORM
     };
@@ -527,7 +537,18 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
     );
   }
 
-  async testModePurchase(options: { priceId: string, fullCode: string }): Promise<void> {
-    await this._interface.testModePurchase({ price_id: options.priceId, full_code: options.fullCode });
+  async testModePurchase(options: { priceId: string, fullCode: string, quantity?: number }): Promise<void> {
+    await this._interface.testModePurchase({ price_id: options.priceId, full_code: options.fullCode, quantity: options.quantity });
   }
+
+  async getStripeAccountInfo(): Promise<null | { account_id: string, charges_enabled: boolean, details_submitted: boolean, payouts_enabled: boolean }> {
+    return await this._interface.getStripeAccountInfo();
+  }
+
+  // IF_PLATFORM react-like
+  useStripeAccountInfo(): { account_id: string, charges_enabled: boolean, details_submitted: boolean, payouts_enabled: boolean } | null {
+    const data = useAsyncCache(this._stripeAccountInfoCache, [], "useStripeAccountInfo()");
+    return data;
+  }
+  // END_PLATFORM
 }

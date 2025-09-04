@@ -125,8 +125,8 @@ export class StackClientInterface {
 
     // try to diagnose the error for the user
     if (retriedResult.status === "error") {
-      if (globalVar.navigator && !globalVar.navigator.onLine) {
-        throw new Error("You are offline. Please check your internet connection and try again. (window.navigator.onLine is falsy)", { cause: retriedResult.error });
+      if (globalVar.navigator && globalVar.navigator.onLine === false) {
+        throw new Error("You are offline. Please check your internet connection and try again. (window.navigator.onLine is false)", { cause: retriedResult.error });
       }
       throw await this._createNetworkError(retriedResult.error, session, requestType);
     }

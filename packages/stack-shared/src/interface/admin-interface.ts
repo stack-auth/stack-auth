@@ -1,4 +1,6 @@
-import { InternalSession } from "../sessions";
+import { KnownErrors } from "../known-errors";
+import { AccessToken, InternalSession, RefreshToken } from "../sessions";
+import { Result } from "../utils/results";
 import { ConfigCrud, ConfigOverrideCrud } from "./crud/config";
 import { InternalEmailsCrud } from "./crud/emails";
 import { InternalApiKeysCrud } from "./crud/internal-api-keys";
@@ -54,6 +56,32 @@ export class StackAdminInterface extends StackServerInterface {
       session,
       requestType,
     );
+  }
+
+  protected async sendAdminRequestAndCatchKnownError<E extends typeof KnownErrors[keyof KnownErrors]>(
+    path: string,
+    requestOptions: RequestInit,
+    tokenStoreOrNull: InternalSession | null,
+    errorsToCatch: readonly E[],
+  ): Promise<Result<
+    Response & {
+      usedTokens: {
+        accessToken: AccessToken,
+        refreshToken: RefreshToken | null,
+      } | null,
+    },
+    InstanceType<E>
+  >> {
+    try {
+      return Result.ok(await this.sendAdminRequest(path, requestOptions, tokenStoreOrNull));
+    } catch (e) {
+      for (const errorType of errorsToCatch) {
+        if (errorType.isInstance(e)) {
+          return Result.error(e as InstanceType<E>);
+        }
+      }
+      throw e;
+    }
   }
 
   async getProject(): Promise<ProjectsCrud["Admin"]["Read"]> {
@@ -269,9 +297,14 @@ export class StackAdminInterface extends StackServerInterface {
     );
   }
 
-  async getMetrics(): Promise<any> {
+  async getMetrics(includeAnonymous: boolean = false): Promise<any> {
+    const params = new URLSearchParams();
+    if (includeAnonymous) {
+      params.append('include_anonymous', 'true');
+    }
+    const queryString = params.toString();
     const response = await this.sendAdminRequest(
-      "/internal/metrics",
+      `/internal/metrics${queryString ? `?${queryString}` : ''}`,
       {
         method: "GET",
       },
@@ -501,6 +534,19 @@ export class StackAdminInterface extends StackServerInterface {
     return await response.json();
   }
 
+  async getStripeAccountInfo(): Promise<null | { account_id: string, charges_enabled: boolean, details_submitted: boolean, payouts_enabled: boolean }> {
+    const response = await this.sendAdminRequestAndCatchKnownError(
+      "/internal/payments/stripe/account-info",
+      {},
+      null,
+      [KnownErrors.StripeAccountInfoNotFound],
+    );
+    if (response.status === "error") {
+      return null;
+    }
+    return await response.data.json();
+  }
+
   async createStripeWidgetAccountSession(): Promise<{ client_secret: string }> {
     const response = await this.sendAdminRequest(
       "/internal/payments/stripe-widgets/account-session",
@@ -516,7 +562,7 @@ export class StackAdminInterface extends StackServerInterface {
     return await response.json();
   }
 
-  async testModePurchase(options: { price_id: string, full_code: string }): Promise<void> {
+  async testModePurchase(options: { price_id: string, full_code: string, quantity?: number }): Promise<void> {
     await this.sendAdminRequest(
       "/internal/payments/test-mode-purchase-session",
       {

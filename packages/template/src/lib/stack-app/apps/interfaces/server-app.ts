@@ -1,7 +1,6 @@
-import { KnownErrors } from "@stackframe/stack-shared";
-import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { AsyncStoreProperty, GetUserOptions } from "../../common";
 import { ServerItem } from "../../customers";
+import { DataVaultStore } from "../../data-vault";
 import { SendEmailOptions } from "../../email";
 import { ServerListUsersOptions, ServerTeam, ServerTeamCreateOptions } from "../../teams";
 import { ProjectCurrentServerUser, ServerUser, ServerUserCreateOptions } from "../../users";
@@ -50,11 +49,12 @@ export type StackServerApp<HasTokenStore extends boolean = boolean, ProjectId ex
 
     useUsers(options?: ServerListUsersOptions): ServerUser[] & { nextCursor: string | null }, // THIS_LINE_PLATFORM react-like
     listUsers(options?: ServerListUsersOptions): Promise<ServerUser[] & { nextCursor: string | null }>,
-    sendEmail(options: SendEmailOptions): Promise<Result<void, KnownErrors["RequiresCustomEmailServer"] | KnownErrors["SchemaError"] | KnownErrors["UserIdDoesNotExist"]>>,
+    sendEmail(options: SendEmailOptions): Promise<void>,
   }
   & AsyncStoreProperty<"user", [id: string], ServerUser | null, false>
   & Omit<AsyncStoreProperty<"users", [], ServerUser[], true>, "listUsers" | "useUsers">
   & AsyncStoreProperty<"teams", [], ServerTeam[], true>
+  & AsyncStoreProperty<"dataVaultStore", [id: string], DataVaultStore, false>
   & AsyncStoreProperty<
     "item",
     [{ itemId: string, userId: string } | { itemId: string, teamId: string } | { itemId: string, customCustomerId: string }],
