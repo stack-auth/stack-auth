@@ -108,12 +108,17 @@ export async function niceBackendFetch(url: string | URL, options?: Omit<NiceReq
   accessType?: null | "client" | "server" | "admin",
   body?: unknown,
   headers?: Record<string, string | undefined>,
+  userAuth?: {
+    accessToken?: string,
+    refreshToken?: string,
+  },
 }): Promise<NiceResponse> {
-  const { body, headers, accessType, ...otherOptions } = options ?? {};
+  const { body, headers, accessType, userAuth: userAuthOverride, ...otherOptions } = options ?? {};
   if (typeof body === "object") {
     expectSnakeCase(body, "req.body");
   }
-  const { projectKeys, userAuth } = backendContext.value;
+  const projectKeys = backendContext.value.projectKeys;
+  const userAuth = userAuthOverride ?? backendContext.value.userAuth;
   const fullUrl = new URL(url, STACK_BACKEND_BASE_URL);
   if (fullUrl.origin !== new URL(STACK_BACKEND_BASE_URL).origin) throw new StackAssertionError(`Invalid niceBackendFetch origin: ${fullUrl.origin}`);
   if (fullUrl.protocol !== new URL(STACK_BACKEND_BASE_URL).protocol) throw new StackAssertionError(`Invalid niceBackendFetch protocol: ${fullUrl.protocol}`);
@@ -201,6 +206,27 @@ export namespace Auth {
         "branchId": "main",
       });
     }
+  }
+
+  export async function refreshAccessToken() {
+    const response = await niceBackendFetch("/api/v1/auth/sessions/current/refresh", {
+      method: "POST",
+      accessType: "client",
+      userAuth: {
+        refreshToken: backendContext.value.userAuth?.refreshToken,
+      },
+    });
+    expect(response).toMatchInlineSnapshot(`
+      NiceResponse {
+        "status": 200,
+        "body": { "access_token": <stripped field 'access_token'> },
+        "headers": Headers { <some fields may have been hidden> },
+      }
+    `);
+    backendContext.set({ userAuth: { accessToken: response.body.access_token, refreshToken: response.body.refresh_token } });
+    return {
+      refreshAccessTokenResponse: response,
+    };
   }
 
   /**

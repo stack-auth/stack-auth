@@ -64,6 +64,7 @@
     "@sentry/nextjs": "^8.40.0",
     "@simplewebauthn/server": "^11.0.0",
     "@stackframe/stack-shared": "workspace:*",
+    "@upstash/qstash": "^2.8.2",
     "@vercel/functions": "^2.0.0",
     "@vercel/otel": "^1.10.4",
     "ai": "^4.3.17",
