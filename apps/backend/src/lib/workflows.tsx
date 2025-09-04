@@ -7,16 +7,15 @@ import { encodeBase64 } from "@stackframe/stack-shared/dist/utils/bytes";
 import { generateSecureRandomString, hash } from "@stackframe/stack-shared/dist/utils/crypto";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { StackAssertionError, captureError, errorToNiceString, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
-import { bundleJavaScript } from "@stackframe/stack-shared/dist/utils/esbuild";
+import { bundleJavaScript, initializeEsbuild } from "@stackframe/stack-shared/dist/utils/esbuild";
 import { runAsynchronously, timeout, wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
 import { Freestyle } from "./freestyle";
 import { Tenancy } from "./tenancies";
+import { upstash } from "./upstash";
 
-const externalPackages = {
-  '@stackframe/stack': 'latest',
-};
+const externalPackages: Record<string, string> = {};
 
 type WorkflowRegisteredTriggerType = "sign-up";
 
@@ -55,7 +54,9 @@ export async function compileWorkflowSource(source: string): Promise<Result<stri
   const bundleResult = await bundleJavaScript({
     "/source.tsx": source,
     "/entry.js": `
-      import { StackServerApp } from '@stackframe/stack';
+      import { StackServerApp } from 'https://esm.sh/@stackframe/js@2.8.36?target=es2021&standalone';
+
+      globalThis.navigator.onLine = true;
 
       export default async () => {
         globalThis.stackApp = new StackServerApp({
@@ -82,7 +83,7 @@ export async function compileWorkflowSource(source: string): Promise<Result<stri
           if (!callbackFunc) {
             throw new Error(\`Callback \${callbackId} not found. Was it maybe deleted from the workflow?\`);
           }
-          return callbackFunc(JSON.parse(data.dataJson));
+          return callbackFunc(data);
         });
         let scheduledCallback = undefined;
         globalThis.scheduleCallback = ({ callbackId, data, scheduleAt }) => {
@@ -124,6 +125,7 @@ export async function compileWorkflowSource(source: string): Promise<Result<stri
   }, {
     format: 'esm',
     keepAsImports: Object.keys(externalPackages),
+    allowHttpImports: true,
   });
   if (bundleResult.status === "error") {
     return Result.error(bundleResult.error);
@@ -138,10 +140,13 @@ async function compileWorkflow(tenancy: Tenancy, workflowId: string): Promise<Re
     }
     const workflow = tenancy.config.workflows.availableWorkflows[workflowId];
     const res = await timeout(async () => {
+      console.log(`Compiling workflow ${workflowId}...`);
       const compiledCodeResult = await compileWorkflowSource(workflow.tsSource);
       if (compiledCodeResult.status === "error") {
         return Result.error({ compileError: `Failed to compile workflow: ${compiledCodeResult.error}` });
       }
+
+      console.log(`Compiled workflow source for ${workflowId}, running compilation trigger...`, { compiledCodeLength: compiledCodeResult.data.length });
 
       const compileTriggerResult = await triggerWorkflowRaw(tenancy, compiledCodeResult.data, {
         type: "compile",
@@ -149,6 +154,9 @@ async function compileWorkflow(tenancy: Tenancy, workflowId: string): Promise<Re
       if (compileTriggerResult.status === "error") {
         return Result.error({ compileError: `Failed to initialize workflow: ${compileTriggerResult.error}` });
       }
+
+      console.log(`Compilation trigger completed!`);
+
       const compileTriggerOutputResult = compileTriggerResult.data;
       if (typeof compileTriggerOutputResult !== "object" || !compileTriggerOutputResult || !("triggerOutput" in compileTriggerOutputResult)) {
         captureError("workflows-compile-trigger-output", new StackAssertionError(`Failed to parse compile trigger output`, { compileTriggerOutputResult }));
@@ -160,13 +168,16 @@ async function compileWorkflow(tenancy: Tenancy, workflowId: string): Promise<Re
         return Result.error({ compileError: `Failed to parse compile trigger output, should be array of strings` });
       }
 
+      console.log(`Workflow ${workflowId} compiled successfully, returning result...`, { registeredTriggers });
+
       return Result.ok({
         compiledCode: compiledCodeResult.data,
         registeredTriggers: registeredTriggers,
       });
-    }, 10_000);
+    }, 30_000);
 
     if (res.status === "error") {
+      console.warn(`Timed out compiling workflow ${workflowId} after ${res.error.ms}ms`, { res });
       return Result.error({ compileError: `Timed out compiling workflow ${workflowId} after ${res.error.ms}ms` });
     }
     return res.data;
@@ -229,6 +240,9 @@ import.meta.vitest?.test("compileWorkflow", async ({ expect }) => {
 });
 
 async function compileAndGetEnabledWorkflows(tenancy: Tenancy): Promise<Map<string, CompiledWorkflow>> {
+  // initialize ESBuild early so it doesn't count towards the 10s compilation timeout later
+  await initializeEsbuild();
+
   const compilationVersion = 1;
   const enabledWorkflows = new Map(await Promise.all(Object.entries(tenancy.config.workflows.availableWorkflows)
     .filter(([_, workflow]) => workflow.enabled)
@@ -333,7 +347,6 @@ async function compileAndGetEnabledWorkflows(tenancy: Tenancy): Promise<Map<stri
             },
           },
         });
-        console.log(`Compiled workflow ${workflowId}`);
       } finally {
         await prisma.currentlyCompilingWorkflow.delete({
           where: {
@@ -351,11 +364,11 @@ async function compileAndGetEnabledWorkflows(tenancy: Tenancy): Promise<Map<stri
     const { count } = await prisma.currentlyCompilingWorkflow.deleteMany({
       where: {
         tenancyId: tenancy.id,
-        startedCompilingAt: { lt: new Date(Date.now() - 20_000) },
+        startedCompilingAt: { lt: new Date(Date.now() - 40_000) },
       },
     });
     if (count > 0) {
-      captureError("workflows-compile-timeout", new StackAssertionError(`Deleted ${count} currently compiling workflows that were compiling for more than 20 seconds; this probably indicates a bug in the workflow compilation code`));
+      captureError("workflows-compile-timeout", new StackAssertionError(`Deleted ${count} currently compiling workflows that were compiling for more than 40 seconds; this probably indicates a bug in the workflow compilation code (as they should time out after 30 seconds)`));
     }
 
     await wait(1000);
@@ -365,46 +378,56 @@ async function compileAndGetEnabledWorkflows(tenancy: Tenancy): Promise<Map<stri
 }
 
 async function triggerWorkflowRaw(tenancy: Tenancy, compiledWorkflowCode: string, trigger: WorkflowTrigger): Promise<Result<unknown, string>> {
-  const workflowToken = generateSecureRandomString();
-  const workflowTriggerToken = await globalPrismaClient.workflowTriggerToken.create({
-    data: {
-      expiresAt: new Date(Date.now() + 1000 * 35),
-      tenancyId: tenancy.id,
-      tokenHash: await hashWorkflowTriggerToken(workflowToken),
-    },
-  });
-
-  const tokenRefreshInterval = setInterval(() => {
-    runAsynchronously(async () => {
-      await globalPrismaClient.workflowTriggerToken.update({
-        where: {
-          tenancyId_id: {
-            tenancyId: tenancy.id,
-            id: workflowTriggerToken.id,
-          },
-        },
-        data: { expiresAt: new Date(Date.now() + 1000 * 35) },
-      });
-    });
-  }, 10_000);
-
-  try {
-    const freestyle = new Freestyle();
-    const freestyleRes = await freestyle.executeScript(compiledWorkflowCode, {
-      envVars: {
-        STACK_WORKFLOW_TRIGGER_DATA: JSON.stringify(trigger),
-        NEXT_PUBLIC_STACK_PROJECT_ID: tenancy.project.id,
-        NEXT_PUBLIC_STACK_API_URL: getEnvVariable("NEXT_PUBLIC_STACK_API_URL").replace("http://localhost", "http://host.docker.internal"),  // the replace is a hardcoded hack for the Freestyle mock server
-        NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY: "<placeholder publishable client key; the actual auth happens with the workflow token>",
-        STACK_SECRET_SERVER_KEY: "<placeholder secret server key; the actual auth happens with the workflow token>",
-        STACK_WORKFLOW_TOKEN_SECRET: workflowToken,
+  return await traceSpan({ description: `triggerWorkflowRaw ${trigger.type}` }, async () => {
+    const workflowToken = generateSecureRandomString();
+    const workflowTriggerToken = await globalPrismaClient.workflowTriggerToken.create({
+      data: {
+        expiresAt: new Date(Date.now() + 1000 * 35),
+        tenancyId: tenancy.id,
+        tokenHash: await hashWorkflowTriggerToken(workflowToken),
       },
-      nodeModules: Object.fromEntries(Object.entries(externalPackages).map(([packageName, version]) => [packageName, version])),
     });
-    return Result.map(freestyleRes, (data) => data.result);
-  } finally {
-    clearInterval(tokenRefreshInterval);
-  }
+
+    const tokenRefreshInterval = setInterval(() => {
+      runAsynchronously(async () => {
+        await globalPrismaClient.workflowTriggerToken.update({
+          where: {
+            tenancyId_id: {
+              tenancyId: tenancy.id,
+              id: workflowTriggerToken.id,
+            },
+          },
+          data: { expiresAt: new Date(Date.now() + 1000 * 35) },
+        });
+      });
+    }, 10_000);
+
+    try {
+      const freestyle = new Freestyle();
+      const apiUrl = new URL("/", getEnvVariable("NEXT_PUBLIC_STACK_API_URL").replace("http://localhost", "http://host.docker.internal"));
+      const freestyleRes = await freestyle.executeScript(compiledWorkflowCode, {
+        envVars: {
+          STACK_WORKFLOW_TRIGGER_DATA: JSON.stringify(trigger),
+          NEXT_PUBLIC_STACK_PROJECT_ID: tenancy.project.id,
+          NEXT_PUBLIC_STACK_API_URL: apiUrl.toString(),
+          NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY: "<placeholder publishable client key; the actual auth happens with the workflow token>",
+          STACK_SECRET_SERVER_KEY: "<placeholder secret server key; the actual auth happens with the workflow token>",
+          STACK_WORKFLOW_TOKEN_SECRET: workflowToken,
+        },
+        nodeModules: Object.fromEntries(Object.entries(externalPackages).map(([packageName, version]) => [packageName, version])),
+        networkPermissions: [
+          {
+            action: "allow",
+            behavior: "exact",
+            query: apiUrl.host,
+          },
+        ],
+      });
+      return Result.map(freestyleRes, (data) => data.result);
+    } finally {
+      clearInterval(tokenRefreshInterval);
+    }
+  });
 }
 
 async function createScheduledTrigger(tenancy: Tenancy, workflowId: string, trigger: WorkflowTrigger, scheduledAt: Date) {
@@ -431,74 +454,119 @@ async function createScheduledTrigger(tenancy: Tenancy, workflowId: string, trig
       },
     },
   });
+
+  await upstash.publishJSON({
+    url: new URL(`/api/v1/internal/trigger/run-scheduled`, getEnvVariable("NEXT_PUBLIC_STACK_API_URL").replace("http://localhost", "http://host.docker.internal")).toString(),
+    body: {
+      tenancyId: tenancy.id,
+    },
+    notBefore: Math.floor(scheduledAt.getTime() / 1000),
+  });
+
   return dbTrigger;
 }
 
-async function triggerWorkflow(tenancy: Tenancy, compiledWorkflow: CompiledWorkflow, triggerId: string): Promise<Result<void, string>> {
-  if (compiledWorkflow.compiledCode === null) {
-    return Result.error(`Workflow ${compiledWorkflow.id} failed to compile: ${compiledWorkflow.compileError}`);
-  }
-
+export async function triggerScheduledWorkflows(tenancy: Tenancy) {
   const prisma = await getPrismaClientForTenancy(tenancy);
-  const trigger = await prisma.workflowTrigger.update({
-    where: {
-      tenancyId_id: {
-        tenancyId: tenancy.id,
-        id: triggerId,
-      },
-    },
-    data: {
-      compiledWorkflowId: compiledWorkflow.id,
-      scheduledAt: null,
-      output: Prisma.DbNull,
-      error: Prisma.DbNull,
-    },
-  });
+  const compiledWorkflows = await compileAndGetEnabledWorkflows(tenancy);
 
-  const res = await triggerWorkflowRaw(tenancy, compiledWorkflow.compiledCode, trigger.triggerData as WorkflowTrigger);
-  if (res.status === "error") {
-    console.log(`Compiled workflow failed to process trigger: ${res.error}`, { trigger, compiledWorkflowId: compiledWorkflow.id, res });
-  } else {
-    if (res.data && typeof res.data === "object" && "scheduledCallback" in res.data && res.data.scheduledCallback && typeof res.data.scheduledCallback === "object") {
-      const scheduledCallback: any = res.data.scheduledCallback;
-      const callbackId = `${scheduledCallback.callbackId}`;
-      const scheduleAt = new Date(scheduledCallback.scheduleAtMillis);
-      const callbackData = scheduledCallback.data;
-      await createScheduledTrigger(
-        tenancy,
-        compiledWorkflow.id,
-        {
-          type: "callback",
-          callbackId,
-          data: callbackData,
-          scheduledAtMillis: scheduleAt.getTime(),
-          callerTriggerId: triggerId,
-          executionId: trigger.executionId,
+  const toTrigger = await retryTransaction(prisma, async (tx) => {
+    const triggers = await tx.workflowTrigger.findMany({
+      where: {
+        tenancyId: tenancy.id,
+        scheduledAt: { lt: new Date(Date.now() + 5_000) },
+      },
+      include: {
+        execution: true,
+      },
+      orderBy: {
+        scheduledAt: "asc",
+      },
+      // let's take multiple triggers so we can catch up on the backlog, in case some triggers never went through (eg. if the queue was down)
+      // however, to prevent deadlocks as we are doing multiple writes in this transaction, we randomize it (so there's
+      // a chance that we only take one trigger, which would never deadlock)
+      take: Math.floor(1 + Math.random() * 3),
+    });
+    const toTrigger = [];
+    for (const trigger of triggers) {
+      const compiledWorkflow = compiledWorkflows.get(trigger.execution.workflowId);
+      const updatedTrigger = await tx.workflowTrigger.update({
+        where: {
+          tenancyId_id: {
+            tenancyId: tenancy.id,
+            id: trigger.id,
+          },
         },
-        scheduleAt
-      );
+        data: {
+          scheduledAt: null,
+          compiledWorkflowId: compiledWorkflow?.id ?? null,
+          output: Prisma.DbNull,
+          error: Prisma.DbNull,
+        },
+        include: {
+          execution: true,
+        },
+      });
+
+      if (compiledWorkflow) {
+        toTrigger.push(updatedTrigger);
+      } else {
+        // the workflow was deleted; we don't run the trigger, but we still mark it in the DB
+      }
     }
-  }
-  await prisma.workflowTrigger.update({
-    where: {
-      tenancyId_id: {
-        tenancyId: tenancy.id,
-        id: triggerId,
-      },
-    },
-    data: {
-      ...res.status === "ok" ? {
-        output: res.data as any,
-      } : {
-        error: res.error,
-      },
-    },
-  });
-  return Result.ok(undefined);
-}
+    return toTrigger;
+  }, { level: "serializable" });
 
-export async function triggerScheduledCallbacks(tenancy: Tenancy) {
+  await allPromisesAndWaitUntilEach(toTrigger.map(async (trigger) => {
+    const compiledWorkflow = compiledWorkflows.get(trigger.execution.workflowId) ?? throwErr(`Compiled workflow ${trigger.execution.workflowId} not found in trigger execution; this should not happen because we should've already checked for this in the transaction!`);
+    if (compiledWorkflow.compiledCode === null) {
+      return Result.error(`Workflow ${compiledWorkflow.id} failed to compile: ${compiledWorkflow.compileError}`);
+    }
 
+    const res = await triggerWorkflowRaw(tenancy, compiledWorkflow.compiledCode, trigger.triggerData as WorkflowTrigger);
+    if (res.status === "error") {
+      // This is probably fine and just a user error, but let's log it regardless
+      console.log(`Compiled workflow failed to process trigger: ${res.error}`, { trigger, compiledWorkflowId: compiledWorkflow.id, res });
+    } else {
+      if (res.data && typeof res.data === "object" && "scheduledCallback" in res.data && res.data.scheduledCallback && typeof res.data.scheduledCallback === "object") {
+        const scheduledCallback: any = res.data.scheduledCallback;
+        const callbackId = `${scheduledCallback.callbackId}`;
+        const scheduleAt = new Date(scheduledCallback.scheduleAtMillis);
+        const callbackData = scheduledCallback.data;
+        await createScheduledTrigger(
+          tenancy,
+          compiledWorkflow.id,
+          {
+            type: "callback",
+            callbackId,
+            data: callbackData,
+            scheduledAtMillis: scheduleAt.getTime(),
+            callerTriggerId: trigger.id,
+            executionId: trigger.executionId,
+          },
+          scheduleAt
+        );
+      }
+    }
+
+    const prisma = await getPrismaClientForTenancy(tenancy);
+    await prisma.workflowTrigger.update({
+      where: {
+        tenancyId_id: {
+          tenancyId: tenancy.id,
+          id: trigger.id,
+        },
+      },
+      data: {
+        ...res.status === "ok" ? {
+          output: res.data as any,
+        } : {
+          error: res.error,
+        },
+      },
+    });
+    return Result.ok(undefined);
+  }));
 }
 
 export async function triggerWorkflows(tenancy: Tenancy, trigger: WorkflowTrigger & { type: WorkflowRegisteredTriggerType }) {
@@ -507,9 +575,8 @@ export async function triggerWorkflows(tenancy: Tenancy, trigger: WorkflowTrigge
     const promises = [...compiledWorkflows]
       .filter(([_, compiledWorkflow]) => compiledWorkflow.registeredTriggers.includes(trigger.type))
       .map(async ([workflowId, compiledWorkflow]) => {
-        const dbTrigger = await createScheduledTrigger(tenancy, workflowId, trigger, new Date());
-        await triggerWorkflow(tenancy, compiledWorkflow, dbTrigger.id);
+        await createScheduledTrigger(tenancy, workflowId, trigger, new Date());
       });
-    await Promise.all(promises);
+    await allPromisesAndWaitUntilEach(promises);
   });
 }

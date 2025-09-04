@@ -125,6 +125,16 @@ export async function retryTransaction<T>(client: PrismaClient, fn: (tx: PrismaC
   // serializable transactions are currently off by default, later we may turn them on
   const enableSerializable = options.level === "serializable";
 
+  const isRetryablePrismaError = (e: unknown) => {
+    if (e instanceof Prisma.PrismaClientKnownRequestError) {
+      return [
+        "P2028", // Serializable/repeatable read conflict
+        "P2034", // Transaction already closed (eg. timeout)
+      ];
+    }
+    return false;
+  };
+
   return await traceSpan('Prisma transaction', async (span) => {
     const res = await Result.retry(async (attemptIndex) => {
       return await traceSpan(`transaction attempt #${attemptIndex}`, async (attemptSpan) => {
@@ -140,7 +150,7 @@ export async function retryTransaction<T>(client: PrismaClient, fn: (tx: PrismaC
                 // to other (nested) transactions failing
                 // however, we make an exception for "Transaction already closed", as those are (annoyingly) thrown on
                 // the actual query, not the $transaction function itself
-                if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2028") { // Transaction already closed
+                if (isRetryablePrismaError(e)) {
                   throw new TransactionErrorThatShouldBeRetried(e);
                 }
                 throw new TransactionErrorThatShouldNotBeRetried(e);
@@ -165,11 +175,7 @@ export async function retryTransaction<T>(client: PrismaClient, fn: (tx: PrismaC
             if (e instanceof TransactionErrorThatShouldNotBeRetried) {
               throw e.cause;
             }
-            if ([
-              "Transaction failed due to a write conflict or a deadlock. Please retry your transaction",
-              "Transaction already closed: A commit cannot be executed on an expired transaction. The timeout for this transaction",
-            ].some(s => e instanceof Prisma.PrismaClientKnownRequestError && e.message.includes(s))) {
-              // transaction timeout, retry
+            if (isRetryablePrismaError(e)) {
               return Result.error(e);
             }
             throw e;

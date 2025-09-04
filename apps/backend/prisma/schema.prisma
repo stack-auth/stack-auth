@@ -810,6 +810,7 @@ model WorkflowTrigger {
 
   // the following fields determine the state of the trigger:
   // - scheduledAt && !compiledWorkflowId && !output && !error: the trigger is scheduled to be executed
+  // - !scheduledAt && !compiledWorkflowId: the trigger was scheduled, but its workflow subsequently deleted. The trigger never ran
   // - !scheduledAt && compiledWorkflowId && !output && !error: the trigger is currently executing
   // - !scheduledAt && compiledWorkflowId && output && !error: the trigger has successfully completed execution
   // - !scheduledAt && compiledWorkflowId && !output && error: the trigger has failed execution

@@ -22,6 +22,7 @@ export default function WorkflowDetailPage() {
   const workflow = workflowId in availableWorkflows ? availableWorkflows[workflowId] : undefined;
   const [workflowContent, setWorkflowContent] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [isToggling, setIsToggling] = useState(false);
 
   useEffect(() => {
     if (workflow && workflow.tsSource) {
@@ -47,6 +48,21 @@ export default function WorkflowDetailPage() {
     router.push(`/projects/${projectId}/workflows`);
   };
 
+  const handleToggleEnabled = async () => {
+    if (!workflow) return;
+    setIsToggling(true);
+    try {
+      await project.updateConfig({
+        [`workflows.availableWorkflows.${workflowId}.enabled`]: !workflow.enabled,
+      });
+      toast({ title: workflow.enabled ? "Workflow disabled" : "Workflow enabled" });
+    } catch (error) {
+      toast({ title: "Failed to toggle workflow", variant: "destructive" });
+    } finally {
+      setIsToggling(false);
+    }
+  };
+
   if (workflow === undefined) {
     return (
       <PageLayout title="Workflow Not Found">
@@ -69,6 +85,9 @@ export default function WorkflowDetailPage() {
           <Button onClick={handleBack} variant="outline" size="sm">
             <ArrowLeft className="h-4 w-4 mr-2" />
             Back
+          </Button>
+          <Button onClick={handleToggleEnabled} size="sm" variant={workflow.enabled ? "outline" : "default"} disabled={isToggling}>
+            {workflow.enabled ? "Disable" : "Enable"}
           </Button>
           <Button onClick={handleSave} size="sm" disabled={isLoading}>
             <Save className="h-4 w-4 mr-2" />
