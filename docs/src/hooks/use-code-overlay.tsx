@@ -20,16 +20,14 @@ export function CodeOverlayProvider({ children }: { children: ReactNode }) {
   const [code, setCode] = useState('');
   const [language, setLanguage] = useState('tsx');
   const [title, setTitle] = useState('Code Example');
-  const [currentPage, setCurrentPage] = useState('');
+  const [, setCurrentPage] = useState('');
   const pathname = usePathname();
 
   // Close overlay when navigating to a different page
   useEffect(() => {
-    if (pathname !== currentPage && currentPage !== '') {
       setIsOpen(false);
-    }
     setCurrentPage(pathname);
-  }, [pathname, currentPage]);
+  }, [pathname]);
 
   const openOverlay = (newCode: string, newLanguage = 'tsx', newTitle = 'Code Example') => {
     setCode(newCode);
