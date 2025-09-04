@@ -1,5 +1,6 @@
 'use client';
 
+import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
 import { useEffect, useState } from "react";
 import { codeToHtml } from "shiki";
 import { useCodeOverlay } from "../../hooks/use-code-overlay";
@@ -24,7 +25,9 @@ export function DynamicCodeblock({ code, language = 'tsx', title, useOverlay = t
   // Handle window resize for responsive positioning
   useEffect(() => {
     const updateWindowWidth = () => {
-      setWindowWidth(window.innerWidth);
+      if (typeof window !== 'undefined') {
+        setWindowWidth(window.innerWidth);
+      }
     };
 
     // Set initial width
@@ -39,7 +42,9 @@ export function DynamicCodeblock({ code, language = 'tsx', title, useOverlay = t
   // Handle scroll to fade button when near bottom
   useEffect(() => {
     const handleScroll = () => {
-      const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+      if (typeof window === 'undefined') return;
+
+      const scrollTop = window.scrollY || document.documentElement.scrollTop;
       const windowHeight = window.innerHeight;
       const documentHeight = document.documentElement.scrollHeight;
 
@@ -110,10 +115,8 @@ export function DynamicCodeblock({ code, language = 'tsx', title, useOverlay = t
 
     // Only highlight code if not using overlay (for fallback)
     if (!useOverlay) {
-      // eslint-disable-next-line no-restricted-syntax
-      updateHighlightedCode().catch(error => {
-        console.error('Error updating highlighted code:', error);
-      });
+      // Run async function - all errors are handled within the function
+      runAsynchronously(updateHighlightedCode());
     }
   }, [code, language, useOverlay]);
 
