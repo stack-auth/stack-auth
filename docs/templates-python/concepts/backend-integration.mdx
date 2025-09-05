@@ -300,6 +300,9 @@ stack_project_id = os.getenv("STACK_PROJECT_ID")
 stack_publishable_client_key = os.getenv("STACK_PUBLISHABLE_CLIENT_KEY")
 stack_secret_server_key = os.getenv("STACK_SECRET_SERVER_KEY")
 
+if not stack_project_id:
+    raise RuntimeError("STACK_PROJECT_ID is not set")
+
 def stack_auth_request(method, endpoint, **kwargs):
     res = requests.request(
         method,
@@ -317,9 +320,6 @@ def stack_auth_request(method, endpoint, **kwargs):
     if res.status_code >= 400:
         raise Exception(f"Stack Auth API request failed with {res.status_code}: {res.text}")
     return res.json()
-
-    if not stack_project_id:
-        raise RuntimeError("STACK_PROJECT_ID is not set")
 
 # JWT verification setup
 jwks_client = PyJWKClient(f"https://api.stack-auth.com/api/v1/projects/{stack_project_id}/.well-known/jwks.json")
