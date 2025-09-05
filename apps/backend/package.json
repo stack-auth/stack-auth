@@ -63,6 +63,7 @@
     "@prisma/instrumentation": "^6.12.0",
     "@sentry/nextjs": "^8.40.0",
     "@simplewebauthn/server": "^11.0.0",
+    "@stackframe/stack": "workspace:*",
     "@stackframe/stack-shared": "workspace:*",
     "@vercel/functions": "^2.0.0",
     "@vercel/otel": "^1.10.4",
