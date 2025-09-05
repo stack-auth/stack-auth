@@ -58,7 +58,8 @@ def verify_jwt_token(access_token):
             access_token,
             signing_key.key,
             algorithms=["ES256"],
-            audience="<your-project-id>"
+            audience="<your-project-id>",
+            
         )
         
         return {
@@ -245,6 +246,7 @@ And ensure you have the `stack_auth_request` helper function available from the 
 
 ```python
 from enum import Enum
+from django.http import JsonResponse
 
 class AuthError(Enum):
     MISSING_TOKEN = "Access token required"
@@ -309,11 +311,15 @@ def stack_auth_request(method, endpoint, **kwargs):
             'x-stack-secret-server-key': stack_secret_server_key,
             **kwargs.pop('headers', {}),
         },
+        timeout=10,
         **kwargs,
     )
     if res.status_code >= 400:
         raise Exception(f"Stack Auth API request failed with {res.status_code}: {res.text}")
     return res.json()
+
+    if not stack_project_id:
+        raise RuntimeError("STACK_PROJECT_ID is not set")
 
 # JWT verification setup
 jwks_client = PyJWKClient(f"https://api.stack-auth.com/api/v1/projects/{stack_project_id}/.well-known/jwks.json")
