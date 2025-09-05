@@ -43,7 +43,7 @@ export async function bundleJavaScript(sourceFiles: Record<string, string> & { '
   const externalPackagesMap = new Map(Object.entries(options.externalPackages ?? {}));
   const keepAsImports = options.keepAsImports ?? [];
 
-  const httpImportCache = new Map<string, { contents: string; loader: esbuild.Loader; resolveDir: string }>();
+  const httpImportCache = new Map<string, { contents: string, loader: esbuild.Loader, resolveDir: string }>();
 
   const extToLoader: Map<string, esbuild.Loader> = new Map([
     ['tsx', 'tsx'],
@@ -74,22 +74,22 @@ export async function bundleJavaScript(sourceFiles: Record<string, string> & { '
               // Only touch absolute http(s) specifiers or children of our own namespace
               const isHttp = args.path.startsWith("http://") || args.path.startsWith("https://");
               const fromEsmNs = args.namespace === "esm-sh";
-      
+
               if (!isHttp && !fromEsmNs) return null; // Let other plugins handle bare/relative/local
-      
+
               // Resolve relative URLs inside esm.sh-fetched modules
               const url = new URL(args.path, fromEsmNs ? args.importer : undefined);
-      
+
               if (url.protocol !== "https:" || url.host !== "esm.sh") {
                 throw new Error(`Blocked non-esm.sh URL import: ${url.href}`);
               }
-      
+
               return { path: url.href, namespace: "esm-sh" };
             });
-      
+
             build.onLoad({ filter: /.*/, namespace: "esm-sh" }, async (args) => {
               if (httpImportCache.has(args.path)) return httpImportCache.get(args.path)!;
-      
+
               const res = await fetch(args.path, { redirect: "follow" });
               if (!res.ok) throw new Error(`Fetch ${res.status} ${res.statusText} for ${args.path}`);
               const finalUrl = new URL(res.url);
@@ -97,7 +97,7 @@ export async function bundleJavaScript(sourceFiles: Record<string, string> & { '
               if (finalUrl.host !== "esm.sh") {
                 throw new Error(`Redirect escaped esm.sh: ${finalUrl.href}`);
               }
-      
+
               const ct = (res.headers.get("content-type") || "").toLowerCase();
               let loader: esbuild.Loader =
                 ct.includes("css") ? "css" :
@@ -105,8 +105,8 @@ export async function bundleJavaScript(sourceFiles: Record<string, string> & { '
                 ct.includes("typescript") ? "ts" :
                 ct.includes("jsx") ? "jsx" :
                 ct.includes("tsx") ? "tsx" :
-                "js";
-      
+                  "js";
+
               // Fallback by extension (esm.sh sometimes omits CT)
               const p = finalUrl.pathname;
               if (p.endsWith(".css")) loader = "css";
@@ -114,7 +114,7 @@ export async function bundleJavaScript(sourceFiles: Record<string, string> & { '
               else if (p.endsWith(".ts")) loader = "ts";
               else if (p.endsWith(".tsx")) loader = "tsx";
               else if (p.endsWith(".jsx")) loader = "jsx";
-      
+
               const contents = await res.text();
               const result = {
                 contents,

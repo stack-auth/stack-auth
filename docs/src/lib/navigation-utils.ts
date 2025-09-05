@@ -1,4 +1,4 @@
-import { BookOpen, FlaskConical, Hammer, Puzzle, type LucideIcon } from 'lucide-react';
+import { Book, Code, Layers, Zap, type LucideIcon } from 'lucide-react';
 import { getSmartPlatformRedirect } from './platform-navigation';
 import type { Platform } from './platform-utils';
 
@@ -67,33 +67,25 @@ export function generateNavLinks(platform: Platform): NavLink[] {
   const baseLinks = [
     {
       href: `/docs/${platform}/overview`,
-      label: "Documentation",
-      icon: BookOpen
+      label: "Guides",
+      icon: Book
     },
+    ...platformSupportsSDK(platform) ? [{
+      href: `/docs/${platform}/sdk`,
+      label: "SDK",
+      icon: Code
+    }] : [],
+    ...platformSupportsComponents(platform) ? [{
+      href: `/docs/${platform}/components`,
+      label: "Components",
+      icon: Layers
+    }] : [],
     {
       href: "/api/overview",
       label: "API Reference",
-      icon: FlaskConical
+      icon: Zap
     }
   ];
-
-  // Add Components link only for platforms that support React components
-  if (platformSupportsComponents(platform)) {
-    baseLinks.push({
-      href: `/docs/${platform}/components`,
-      label: "Components",
-      icon: Puzzle
-    });
-  }
-
-  // Add SDK link only for platforms that support SDK
-  if (platformSupportsSDK(platform)) {
-    baseLinks.push({
-      href: `/docs/${platform}/sdk`,
-      label: "SDK",
-      icon: Hammer
-    });
-  }
 
   return baseLinks;
 }
