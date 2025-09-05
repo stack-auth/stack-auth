@@ -207,7 +207,7 @@ export const getUsersLastActiveAtMillis = async (projectId: string, branchId: st
   const tenancy = await getSoleTenancyFromProjectBranch(projectId, branchId);
 
   const prisma = await getPrismaClientForTenancy(tenancy);
-  const schema = getPrismaSchemaForTenancy(tenancy);
+  const schema = await getPrismaSchemaForTenancy(tenancy);
   const events = await prisma.$queryRaw<Array<{ userId: string, lastActiveAt: Date }>>`
     SELECT data->>'userId' as "userId", MAX("eventStartedAt") as "lastActiveAt"
     FROM ${sqlQuoteIdent(schema)}."Event"
@@ -402,7 +402,7 @@ export async function getUser(options: { userId: string } & ({ projectId: string
 
   const environmentConfig = await rawQuery(globalPrismaClient, getRenderedEnvironmentConfigQuery({ projectId, branchId }));
   const prisma = await getPrismaClientForSourceOfTruth(environmentConfig.sourceOfTruth, branchId);
-  const schema = getPrismaSchemaForSourceOfTruth(environmentConfig.sourceOfTruth, branchId);
+  const schema = await getPrismaSchemaForSourceOfTruth(environmentConfig.sourceOfTruth, branchId);
   const result = await rawQuery(prisma, getUserQuery(projectId, branchId, options.userId, schema));
   return result;
 }

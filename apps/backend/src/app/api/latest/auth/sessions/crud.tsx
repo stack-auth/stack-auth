@@ -18,7 +18,7 @@ export const sessionsCrudHandlers = createLazyProxy(() => createCrudHandlers(ses
   }).defined(),
   onList: async ({ auth, query }) => {
     const prisma = await getPrismaClientForTenancy(auth.tenancy);
-    const schema = getPrismaSchemaForTenancy(auth.tenancy);
+    const schema = await getPrismaSchemaForTenancy(auth.tenancy);
     const listImpersonations = auth.type === 'admin';
 
     if (auth.type === 'client') {
