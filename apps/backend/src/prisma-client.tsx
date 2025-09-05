@@ -34,8 +34,6 @@ export const globalPrismaClient = prismaClientsStore.global;
 const dbString = getEnvVariable("STACK_DIRECT_DATABASE_CONNECTION_STRING", "");
 export const globalPrismaSchema = dbString === "" ? "public" : getSchemaFromConnectionString(dbString);
 
-const vaultUuidToConnectionString = new Map<string, string>();
-const vaultUuidToSchema = new Map<string, string>();
 
 function getNeonPrismaClient(connectionString: string) {
   let neonPrismaClient = prismaClientsStore.neon.get(connectionString);
@@ -60,7 +58,6 @@ async function resolveNeonConnectionString(entry: string): Promise<string> {
   const secret = getEnvVariable('STACK_SERVER_SECRET');
   const value = await store.getValue(entry, { secret });
   if (!value) throw new Error('No Neon connection string found for UUID');
-  vaultUuidToSchema.set(entry, getSchemaFromConnectionString(value));
   return value;
 }
 
