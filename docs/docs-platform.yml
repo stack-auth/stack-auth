@@ -285,8 +285,5 @@ pages:
   - path: concepts/teams-management.mdx
     platforms: ["python"] # python only
 
-  - path: concepts/backend-integration.mdx
-    platforms: ["python"] # python only
-
   
 
