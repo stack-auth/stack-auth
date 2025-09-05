@@ -240,10 +240,10 @@ button:not(.chat-gradient-active)::before {
 
 /* Only break URLs and very long unbreakable strings */
 .prose a[href*="://"] {
-  word-break: break-all;
+  overflow-wrap: anywhere;
 }
 
 /* Break very long strings that have no spaces (like tokens, hashes, etc.) */
 .prose code:not(pre code) {
-  word-break: break-all;
+  overflow-wrap: anywhere;
 }

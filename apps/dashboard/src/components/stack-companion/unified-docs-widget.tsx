@@ -3,6 +3,7 @@
 import { ArrowLeft, BookOpen, ExternalLink, Loader2, Menu } from 'lucide-react';
 import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
+import { getPublicEnvVar } from '../../lib/env';
 
 type UnifiedDocsWidgetProps = {
   isActive: boolean,
@@ -24,13 +25,32 @@ const PLATFORM_OPTIONS = [
   { value: 'python', label: 'Python', color: 'rgb(168, 85, 247)' },
 ];
 
+// Get the docs base URL from environment variable with fallback
+const getDocsBaseUrl = (): string => {
+  // Use centralized environment variable system
+  const docsBaseUrl = getPublicEnvVar('NEXT_PUBLIC_STACK_DOCS_BASE_URL');
+  if (docsBaseUrl) {
+    return docsBaseUrl;
+  }
+  
+  // Fallback logic for when env var is not set
+  if (process.env.NODE_ENV === 'development' || window.location.hostname === 'localhost') {
+    return 'http://localhost:8104';
+  }
+  
+  // Production fallback
+  return 'https://docs.stack-auth.com';
+};
+
 // Function to toggle sidebar in embedded docs via postMessage
 const toggleEmbeddedSidebar = (iframe: HTMLIFrameElement, visible: boolean) => {
   try {
-    iframe.contentWindow?.postMessage({
-      type: 'TOGGLE_SIDEBAR',
-      visible: visible
-    }, '*');
+    const src = iframe.getAttribute("src") ?? "";
+    const targetOrigin = new URL(src, window.location.origin).origin;
+    iframe.contentWindow?.postMessage(
+      { type: "TOGGLE_SIDEBAR", visible },
+      targetOrigin
+    )
   } catch (error) {
     console.warn('Failed to communicate with embedded docs:', error);
   }
@@ -96,19 +116,19 @@ const getDocContentForPath = (path: string, docType: DocType, platform: string =
       };
 
       const docMapping = dashboardToDocsMap[page];
-      const url = `http://localhost:8104/docs-embed/${docMapping.path}`;
+      const url = `${getDocsBaseUrl()}/docs-embed/${docMapping.path}`;
       const title = docMapping.title;
       return { title, url, type: 'dashboard' };
     }
     case 'docs': {
       // Default to getting started for main docs
-      const url = `http://localhost:8104/docs-embed/${platform}/getting-started/setup`;
+      const url = `${getDocsBaseUrl()}/docs-embed/${platform}/getting-started/setup`;
       const title = 'Stack Auth Documentation';
       return { title, url, type: 'docs' };
     }
     case 'api': {
       // Default to overview for API docs
-      const url = `http://localhost:8104/api-embed/overview`;
+      const url = `${getDocsBaseUrl()}/api-embed/overview`;
       const title = 'API Reference';
       return { title, url, type: 'api' };
     }
@@ -131,15 +151,16 @@ export function UnifiedDocsWidget({ isActive }: UnifiedDocsWidgetProps) {
   const [canGoBack, setCanGoBack] = useState(false);
   const [iframeRef, setIframeRef] = useState<HTMLIFrameElement | null>(null);
   const [isSidebarVisible, setIsSidebarVisible] = useState(false);
+  const [platformChangeSource, setPlatformChangeSource] = useState<'manual' | 'iframe'>('manual');
 
   // Load documentation when the component becomes active, doc type changes, platform changes, or pathname changes
   useEffect(() => {
     if (isActive) {
       const newPageDoc = getDashboardPage(pathname);
 
-      // If this is the first time opening, doc type changed, or platform changed
+      // If this is the first time opening, doc type changed, or platform changed manually (not from iframe)
       if (!docContent || docContent.type !== selectedDocType ||
-          (selectedDocType !== 'api' && !docContent.url.includes(`/${selectedPlatform}/`))) {
+          (selectedDocType !== 'api' && !docContent.url.includes(`/${selectedPlatform}/`) && platformChangeSource === 'manual')) {
         setLoading(true);
         setError(null);
         setIframeLoaded(false);
@@ -167,9 +188,9 @@ export function UnifiedDocsWidget({ isActive }: UnifiedDocsWidgetProps) {
         setShowSwitchPrompt(true);
       }
     }
-  }, [isActive, pathname, selectedDocType, selectedPlatform, docContent, currentPageDoc]);
+  }, [isActive, pathname, selectedDocType, selectedPlatform, docContent, currentPageDoc, platformChangeSource]);
 
-  // Monitor iframe for back button capability
+  // Monitor iframe for back button capability and platform detection
   useEffect(() => {
     // Simple heuristic: assume we can go back after the iframe has been loaded for a while
     // and user has had time to navigate
@@ -181,6 +202,48 @@ export function UnifiedDocsWidget({ isActive }: UnifiedDocsWidgetProps) {
       return () => clearTimeout(timer);
     }
   }, [iframeLoaded]);
+
+  // Listen for platform changes from embedded docs via postMessage
+  useEffect(() => {
+    const handleMessage = (event: MessageEvent) => {
+      // Verify origin for security - allow localhost in dev and configured docs URL
+      const isLocalhost = event.origin.includes('localhost') || event.origin.includes('127.0.0.1');
+      const expectedDocsOrigin = new URL(getDocsBaseUrl()).origin;
+      const isValidDocsOrigin = event.origin === expectedDocsOrigin;
+      
+      if (!isLocalhost && !isValidDocsOrigin) return;
+
+      if (event.data?.type === 'PLATFORM_CHANGE') {
+        const detectedPlatform = event.data.platform;
+        const validPlatforms = PLATFORM_OPTIONS.map(p => p.value);
+        
+        if (validPlatforms.includes(detectedPlatform) && detectedPlatform !== selectedPlatform) {
+          console.log('Received platform change from iframe:', detectedPlatform);
+          
+          // Mark this as an iframe-driven platform change
+          setPlatformChangeSource('iframe');
+          
+          // Update the platform selector but also update the docContent URL to reflect the current iframe URL
+          setSelectedPlatform(detectedPlatform);
+          
+          // Update docContent to reflect the new URL without reloading the iframe
+          if (docContent && event.data.pathname) {
+            const newUrl = `${getDocsBaseUrl()}${event.data.pathname}`;
+            setDocContent({
+              ...docContent,
+              url: newUrl
+            });
+          }
+          
+          // Reset the platform change source after a short delay
+          setTimeout(() => setPlatformChangeSource('manual'), 100);
+        }
+      }
+    };
+
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, [selectedPlatform, docContent]);
 
   // Handle iframe load events
   const handleIframeLoad = (event: React.SyntheticEvent<HTMLIFrameElement>) => {
@@ -232,6 +295,7 @@ export function UnifiedDocsWidget({ isActive }: UnifiedDocsWidgetProps) {
   // Handle platform selection
   const handlePlatformChange = (platform: string) => {
     if (platform !== selectedPlatform) {
+      setPlatformChangeSource('manual');
       setSelectedPlatform(platform);
       // Sidebar will automatically update to show new platform content
     }

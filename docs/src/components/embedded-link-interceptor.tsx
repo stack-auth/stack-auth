@@ -1,99 +1,89 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 
 // Map regular doc routes to embedded routes and resolve relative paths
 const getEmbeddedUrl = (href: string, currentPath: string): string => {
-  // Remove .md or .mdx extensions from the original href if present
-  let cleanHref = href;
-  if (cleanHref.endsWith('.md')) {
-    cleanHref = cleanHref.slice(0, -3);
-  } else if (cleanHref.endsWith('.mdx')) {
-    cleanHref = cleanHref.slice(0, -4);
+  // Ignore absolute-URL schemes (http:, https:, mailto:, tel:, javascript:, etc.)
+  if (/^[a-zA-Z][a-zA-Z+\-.]*:/.test(href)) return href;
+
+  // Preserve query/hash
+  const [pathAndQuery, hash = ''] = href.split('#', 2);
+  const [rawPath, query = ''] = pathAndQuery.split('?', 2);
+  let cleanPath = rawPath;
+
+  // Strip .md/.mdx
+  if (cleanPath.endsWith('.md')) cleanPath = cleanPath.slice(0, -3);
+  else if (cleanPath.endsWith('.mdx')) cleanPath = cleanPath.slice(0, -4);
+
+  // Remove leading ./ (relative indicator)
+  if (cleanPath.startsWith('./')) cleanPath = cleanPath.slice(2);
+
+  // Already an embedded URL?
+  if (
+    cleanPath.startsWith('/docs-embed') ||
+    cleanPath.startsWith('/api-embed') ||
+    cleanPath.startsWith('/dashboard-embed')
+  ) {
+    return withSuffix(cleanPath);
   }
 
-  // Remove leading ./ if present (relative path indicator)
-  if (cleanHref.startsWith('./')) {
-    cleanHref = cleanHref.slice(2);
+  // Absolute roots -> embedded roots
+  if (cleanPath === '/docs' || cleanPath.startsWith('/docs/')) {
+    return withSuffix(cleanPath.replace(/^\/docs(?=\/|$)/, '/docs-embed'));
+  }
+  if (cleanPath === '/api' || cleanPath.startsWith('/api/')) {
+    return withSuffix(cleanPath.replace(/^\/api(?=\/|$)/, '/api-embed'));
+  }
+  if (cleanPath === '/dashboard' || cleanPath.startsWith('/dashboard/')) {
+    return withSuffix(cleanPath.replace(/^\/dashboard(?=\/|$)/, '/dashboard-embed'));
   }
 
-  // If it's already an embedded URL, return as-is
-  if (cleanHref.includes('-embed/')) {
-    return cleanHref;
-  }
-
-  // Handle absolute paths that start with known doc routes
-  if (cleanHref.startsWith('/docs/')) {
-    return cleanHref.replace('/docs/', '/docs-embed/');
-  }
-  if (cleanHref.startsWith('/api/')) {
-    return cleanHref.replace('/api/', '/api-embed/');
-  }
-  if (cleanHref.startsWith('/dashboard/')) {
-    return cleanHref.replace('/dashboard/', '/dashboard-embed/');
-  }
-
-  // Handle relative paths - resolve against current path
-  if (!cleanHref.startsWith('/') && !cleanHref.startsWith('http') && !cleanHref.startsWith('#')) {
-    // Extract the base path from current URL
-    // e.g., from '/docs-embed/next/overview' get '/docs-embed/next/'
-    const pathParts = currentPath.split('/').filter(part => part);
-
-    if (pathParts.length >= 2 && pathParts[0].endsWith('-embed')) {
-      // We're in an embedded doc section
-      const embedType = pathParts[0]; // e.g., 'docs-embed'
-      const section = pathParts[1]; // e.g., 'next'
-
-      // Build the full embedded path
-      return `/${embedType}/${section}/${cleanHref}`;
+  // Relative paths -> resolve against current embedded section (if present)
+  if (!cleanPath.startsWith('/') && !cleanPath.startsWith('#')) {
+    const parts = currentPath.split('/').filter(Boolean);
+    if (parts.length >= 1 && parts[0].endsWith('-embed')) {
+      const embedType = parts[0];
+      const section = parts[1] ?? '';
+      const base = section ? `/${embedType}/${section}/` : `/${embedType}/`;
+      return withSuffix(normalizePath(base + cleanPath));
     }
   }
 
-  // Handle other absolute paths that should be treated as relative to current section
-  if (cleanHref.startsWith('/') && currentPath.includes('-embed/')) {
-    const pathParts = currentPath.split('/').filter(part => part);
-    if (pathParts.length >= 2 && pathParts[0].endsWith('-embed')) {
-      const embedType = pathParts[0]; // e.g., 'docs-embed'
-      const section = pathParts[1]; // e.g., 'next'
-
-      // Remove leading slash and build embedded path
-      const cleanPath = cleanHref.startsWith('/') ? cleanHref.slice(1) : cleanHref;
-      return `/${embedType}/${section}/${cleanPath}`;
+  // Other absolute paths -> treat as relative to current embedded section
+  if (cleanPath.startsWith('/')) {
+    const parts = currentPath.split('/').filter(Boolean);
+    if (parts.length >= 1 && parts[0].endsWith('-embed')) {
+      const embedType = parts[0];
+      const section = parts[1] ?? '';
+      const base = section ? `/${embedType}/${section}/` : `/${embedType}/`;
+      return withSuffix(normalizePath(base + (cleanPath.startsWith('/') ? cleanPath.slice(1) : cleanPath)));
     }
   }
 
-  // Return unchanged for external links or unrecognized patterns
-  return cleanHref;
-};
+  return withSuffix(cleanPath);
 
-type DebugEntry = {
-  timestamp: string,
-  originalHref: string,
-  embeddedHref: string,
-  action: 'navigated' | 'ignored' | 'error',
-  error?: string,
+  function withSuffix(p: string) {
+    const q = query ? `?${query}` : '';
+    const h = hash ? `#${hash}` : '';
+    return `${p}${q}${h}`;
+  }
+  function normalizePath(p: string) {
+    const segs = p.split('/').filter(Boolean);
+    const out: string[] = [];
+    for (const s of segs) {
+      if (s === '.') continue;
+      if (s === '..') {
+        out.pop();
+        continue;
+      }
+      out.push(s);
+    }
+    return '/' + out.join('/');
+  }
 };
 
 export function EmbeddedLinkInterceptor() {
-  const [debugEntries, setDebugEntries] = useState<DebugEntry[]>([]);
-  const [showDebug, setShowDebug] = useState(false);
-  const [, setNavigationHistory] = useState<string[]>([]);
-
-  // Initialize navigation history with current URL
-  useEffect(() => {
-    setNavigationHistory([window.location.pathname]);
-  }, []);
-
-  const addDebugEntry = (originalHref: string, embeddedHref: string, action: 'navigated' | 'ignored' | 'error', error?: string) => {
-    const entry: DebugEntry = {
-      timestamp: new Date().toLocaleTimeString(),
-      originalHref,
-      embeddedHref,
-      action,
-      error
-    };
-    setDebugEntries(prev => [entry, ...prev].slice(0, 10)); // Keep last 10 entries
-  };
 
   // Function to check if a URL exists
   const checkUrlExists = async (url: string): Promise<boolean> => {
@@ -107,6 +97,10 @@ export function EmbeddedLinkInterceptor() {
 
   useEffect(() => {
     const handleClick = (event: MouseEvent) => {
+      if (event.defaultPrevented || event.button !==0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
+        return;
+      }
+
       const target = event.target as HTMLElement;
 
       // Find the closest anchor tag
@@ -116,43 +110,31 @@ export function EmbeddedLinkInterceptor() {
       const href = anchor.getAttribute('href');
       if (!href) return;
 
+      if (anchor.target === "_blank" || anchor.hasAttribute('download')) {
+        return;
+      }
+
+      if (href.startsWith('javascript:') || href.startsWith('data:') || href.startsWith('blob:')) {
+        return;
+      }
+
       // Intercept internal links that need to be rewritten OR relative links
       if (href.startsWith('/docs/') || href.startsWith('/api/') || href.startsWith('/dashboard/') ||
-          (!href.startsWith('http') && !href.startsWith('#') && !href.startsWith('mailto:') && !href.startsWith('tel:'))) {
++          (!/^[a-zA-Z][a-zA-Z+\-.]*:/.test(href) && !href.startsWith('#'))) {
         event.preventDefault();
 
         const currentPath = window.location.pathname;
         const embeddedHref = getEmbeddedUrl(href, currentPath);
 
-        // Debug logging
-        console.log('Link Debug:', {
-          originalHref: href,
-          currentPath,
-          resolvedHref: embeddedHref
-        });
-
         // Check if the URL exists before navigating (async operation)
         checkUrlExists(embeddedHref).then((urlExists) => {
           if (urlExists) {
-            // Add to debug log
-            addDebugEntry(href, embeddedHref, 'navigated');
-
-            // Add to navigation history
-            setNavigationHistory(prev => [...prev, embeddedHref]);
-
             // Navigate to the embedded version
             window.location.href = embeddedHref;
-          } else {
-            // URL doesn't exist, log error but don't navigate
-            addDebugEntry(href, embeddedHref, 'error', 'Page not found (404)');
           }
         }).catch(() => {
-          // Network error or other issue
-          addDebugEntry(href, embeddedHref, 'error', 'Network error or unable to check URL');
+          // Network error or other issue - silently ignore
         });
-      } else {
-        // Log ignored links for debugging
-        addDebugEntry(href, href, 'ignored');
       }
     };
 
@@ -165,96 +147,5 @@ export function EmbeddedLinkInterceptor() {
     };
   }, []);
 
-  return (
-    <>
-
-      {/* Debug Toggle Button */}
-      <div className="fixed top-4 right-4 z-50">
-        <button
-          onClick={() => setShowDebug(!showDebug)}
-          className="px-3 py-2 bg-gray-800 hover:bg-gray-700 text-white text-xs font-medium rounded-md shadow-lg transition-colors"
-          title="Toggle debug window"
-        >
-          Debug {showDebug ? '▼' : '▲'}
-        </button>
-      </div>
-
-      {/* Debug Window */}
-      {showDebug && (
-        <div className="fixed top-16 right-4 w-96 max-h-96 bg-gray-900 text-white text-xs rounded-lg shadow-2xl z-50 overflow-hidden">
-          <div className="bg-gray-800 px-3 py-2 border-b border-gray-700">
-            <div className="flex items-center justify-between">
-              <span className="font-medium">Link Debug Log</span>
-              <button
-                onClick={() => setDebugEntries([])}
-                className="text-gray-400 hover:text-white transition-colors"
-                title="Clear log"
-              >
-                Clear
-              </button>
-            </div>
-          </div>
-          <div className="overflow-y-auto max-h-80 p-3 space-y-2">
-            {debugEntries.length === 0 ? (
-              <div className="text-gray-400 text-center py-4">No links clicked yet</div>
-            ) : (
-              debugEntries.map((entry, index) => (
-                <div
-                  key={index}
-                  className={`p-2 rounded border-l-2 ${
-                    entry.action === 'navigated'
-                      ? 'bg-green-900/20 border-green-500'
-                      : entry.action === 'error'
-                      ? 'bg-red-900/20 border-red-500'
-                      : 'bg-yellow-900/20 border-yellow-500'
-                  }`}
-                >
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="text-gray-400">{entry.timestamp}</span>
-                    <span
-                      className={`px-1.5 py-0.5 rounded text-xs font-medium ${
-                        entry.action === 'navigated'
-                          ? 'bg-green-600 text-white'
-                          : entry.action === 'error'
-                          ? 'bg-red-600 text-white'
-                          : 'bg-yellow-600 text-white'
-                      }`}
-                    >
-                      {entry.action}
-                    </span>
-                  </div>
-                  <div className="space-y-1">
-                    <div>
-                      <span className="text-gray-400">Original:</span>
-                      <span className="ml-2 font-mono">{entry.originalHref}</span>
-                    </div>
-                    {entry.action === 'navigated' && entry.originalHref !== entry.embeddedHref && (
-                      <div>
-                        <span className="text-gray-400">Rewritten:</span>
-                        <span className="ml-2 font-mono text-green-400">{entry.embeddedHref}</span>
-                      </div>
-                    )}
-                    {entry.action === 'error' && (
-                      <>
-                        <div>
-                          <span className="text-gray-400">Attempted:</span>
-                          <span className="ml-2 font-mono text-red-400">{entry.embeddedHref}</span>
-                        </div>
-                        {entry.error && (
-                          <div>
-                            <span className="text-gray-400">Error:</span>
-                            <span className="ml-2 text-red-400">{entry.error}</span>
-                          </div>
-                        )}
-                      </>
-                    )}
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-        </div>
-      )}
-    </>
-  );
+  return null;
 }

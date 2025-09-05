@@ -6,9 +6,9 @@ import { redirect } from 'next/navigation';
 export default async function DocsEmbedPage({
   params,
 }: {
-  params: Promise<{ slug?: string[] }>,
+  params: { slug?: string[] },
 }) {
-  const { slug } = await params;
+  const { slug } = params;
 
   // If no slug provided, redirect to overview
   if (!slug || slug.length === 0) {
@@ -27,7 +27,6 @@ export default async function DocsEmbedPage({
   return (
     <EmbeddedDocsWithSidebar
       pageTree={source.pageTree}
-      currentSlug={slug}
     >
       <div className="p-6 prose prose-neutral dark:prose-invert max-w-none overflow-x-hidden">
         <div className="w-full">

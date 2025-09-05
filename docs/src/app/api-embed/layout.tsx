@@ -6,8 +6,8 @@ export default function ApiEmbedLayout({ children }: { children: React.ReactNode
     <div className="min-h-screen bg-fd-background">
       <EmbeddedLinkInterceptor />
       {/* Main content area - no header, no padding, prevent horizontal overflow */}
-      <main className="h-screen overflow-hidden">
-        <div className="h-full overflow-y-auto overflow-x-hidden scrollbar-hide">
+      <main className="overflow-hidden">
+        <div className="flex-1 overflow-y-auto overflow-x-hidden scrollbar-hide">
           {children}
         </div>
       </main>
