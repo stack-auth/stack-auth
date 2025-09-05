@@ -262,12 +262,12 @@ it("can provision with a Neon connection string when provided via env (optional)
     },
   });
 
-  const r = await niceBackendFetch(`/api/latest/internal/config`, {
+  const configResponse = await niceBackendFetch(`/api/latest/internal/config`, {
     accessType: "admin",
   });
   expect(response.status).toBe(200);
-  expect(r.body.config_string).toBeDefined();
-  const sourceOfTruth = JSON.parse(r.body.config_string).sourceOfTruth;
+  expect(configResponse.body.config_string).toBeDefined();
+  const sourceOfTruth = JSON.parse(configResponse.body.config_string).sourceOfTruth;
   expect(sourceOfTruth).toMatchInlineSnapshot(`
     {
       "connectionStrings": { "main": "<stripped UUID>" },
