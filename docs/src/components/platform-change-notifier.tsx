@@ -15,12 +15,13 @@ export function PlatformChangeNotifier() {
     };
 
     const platform = extractPlatform(pathname);
-    
     if (platform) {
       // Send platform change message to parent window
       try {
-        // In development, send to any origin. In production, be more specific if needed
-        const targetOrigin = process.env.NODE_ENV === 'development' ? '*' : '*';
+        // Use specific dashboard origins for security
+        const targetOrigin = process.env.NODE_ENV === 'development' 
+          ? 'http://localhost:8101' 
+          : 'https://app.stack-auth.com';
         
         window.parent.postMessage(
           { 
