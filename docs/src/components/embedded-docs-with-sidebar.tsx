@@ -17,19 +17,41 @@ export function EmbeddedDocsWithSidebar({ pageTree, children }: EmbeddedDocsWith
   const [isSidebarVisible, setIsSidebarVisible] = useState(false);
   const pathname = usePathname();
 
-  // Get current platform from the pathname - adapt for embedded docs
-  const currentPlatform = getCurrentPlatform(pathname.replace('/docs-embed/', '/docs/'));
+  // Normalize embedded path to /docs/* once (anchor to start to avoid mid-path replacements)
+  const docsPath = pathname.replace(/^\/docs-embed(\/|$)/, '/docs$1');
+  const currentPlatform = getCurrentPlatform(docsPath);
 
   // Listen for postMessage from parent widget
   useEffect(() => {
+    const allowedOrigins = process.env.NODE_ENV === 'development' 
+      ? ['http://localhost:8101']
+      : ['https://app.stack-auth.com'];
+
+    const isAllowedOrigin = (origin: string) => allowedOrigins.includes(origin);
+
     const handleMessage = (event: MessageEvent) => {
-      if (event.data?.type === 'TOGGLE_SIDEBAR') {
-        setIsSidebarVisible(event.data.visible);
+      // Only accept from immediate parent and from allowed origins
+      if (event.source !== window.parent) return;
+      if (!isAllowedOrigin(event.origin)) return;
+
+      const data = event.data as { type?: unknown; visible?: unknown };
+      if (data && typeof data === 'object'
+        && (data as any).type === 'TOGGLE_SIDEBAR'
+        && typeof (data as any).visible === 'boolean') {
+        setIsSidebarVisible((data as any).visible);
       }
     };
 
+    const handleKeydown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setIsSidebarVisible(false);
+    };
+
     window.addEventListener('message', handleMessage);
-    return () => window.removeEventListener('message', handleMessage);
+    window.addEventListener('keydown', handleKeydown);
+    return () => {
+      window.removeEventListener('message', handleMessage);
+      window.removeEventListener('keydown', handleKeydown);
+    };
   }, []);
 
   return (
@@ -75,7 +97,7 @@ export function EmbeddedDocsWithSidebar({ pageTree, children }: EmbeddedDocsWith
                     {/* Scrollable Content */}
                     <div className="flex-1 overflow-y-auto">
                       <div className="p-4">
-                        {renderSidebarContent(pageTree, pathname.replace('/docs-embed/', '/docs/'))}
+                        {renderSidebarContent(pageTree, docsPath)}
                       </div>
                     </div>
                   </div>
