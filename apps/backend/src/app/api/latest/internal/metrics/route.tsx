@@ -27,7 +27,7 @@ async function loadUsersByCountry(tenancy: Tenancy, includeAnonymous: boolean = 
         ON "Event"."endUserIpInfoGuessId" = eip.id
       WHERE '$user-activity' = ANY("systemEventTypeIds"::text[])
         AND "data"->>'projectId' = ${tenancy.project.id}
-        AND (${includeAnonymous} OR NOT "data"->>'isAnonymous' = 'true')
+        AND (${includeAnonymous} OR COALESCE("data"->>'isAnonymous', 'false') != 'true')
         AND COALESCE("data"->>'branchId', 'main') = ${tenancy.branchId}
         AND "countryCode" IS NOT NULL
       ORDER BY "userId", "eventStartedAt" DESC
@@ -87,7 +87,7 @@ async function loadDailyActiveUsers(tenancy: Tenancy, now: Date, includeAnonymou
     daily_users AS (
       SELECT
         DATE_TRUNC('day', "eventStartedAt") AS "day",
-        COUNT(DISTINCT CASE WHEN (${includeAnonymous} OR "data"->>'isAnonymous' = 'false') THEN "data"->'userId' ELSE NULL END) AS "dau"
+        COUNT(DISTINCT CASE WHEN (${includeAnonymous} OR COALESCE("data"->>'isAnonymous', 'false') != 'true') THEN "data"->'userId' ELSE NULL END) AS "dau"
       FROM "Event"
       WHERE "eventStartedAt" >= ${now}::date - INTERVAL '30 days'
         AND '$user-activity' = ANY("systemEventTypeIds"::text[])
@@ -146,7 +146,7 @@ async function loadRecentlyActiveUsers(tenancy: Tenancy, includeAnonymous: boole
         ) as rn
       FROM "Event"
       WHERE "data"->>'projectId' = ${tenancy.project.id}
-        AND (${includeAnonymous} OR NOT "data"->>'isAnonymous' = 'true')
+        AND (${includeAnonymous} OR COALESCE("data"->>'isAnonymous', 'false') != 'true')
         AND COALESCE("data"->>'branchId', 'main') = ${tenancy.branchId}
         AND '$user-activity' = ANY("systemEventTypeIds"::text[])
     )
