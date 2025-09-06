@@ -882,7 +882,7 @@ function UserTeamsSection({ user }: UserTeamsSectionProps) {
                         {
                           item: "View Team",
                           onClick: () => {
-                            window.open(`/projects/${stackAdminApp.projectId}/teams/${team.id}`, '_blank');
+                            window.open(`/projects/${stackAdminApp.projectId}/teams/${team.id}`, '_blank', 'noopener');
                           },
                         },
                       ]}
