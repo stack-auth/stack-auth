@@ -824,6 +824,80 @@ function ContactChannelsSection({ user }: ContactChannelsSectionProps) {
   );
 }
 
+type UserTeamsSectionProps = {
+  user: ServerUser,
+};
+
+function UserTeamsSection({ user }: UserTeamsSectionProps) {
+  const stackAdminApp = useAdminApp();
+  const teams = user.useTeams();
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-lg font-semibold">Teams</h2>
+          <p className="text-sm text-muted-foreground">Teams this user belongs to</p>
+        </div>
+      </div>
+
+      {teams.length === 0 ? (
+        <div className="flex flex-col items-center gap-2 p-4 border rounded-md bg-muted/10">
+          <p className='text-sm text-gray-500 text-center'>
+            No teams found
+          </p>
+        </div>
+      ) : (
+        <div className='border rounded-md'>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Team ID</TableHead>
+                <TableHead>Display Name</TableHead>
+                <TableHead>Created At</TableHead>
+                <TableHead className="w-[80px]"></TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {teams.map((team) => (
+                <TableRow key={team.id}>
+                  <TableCell>
+                    <div className="font-mono text-xs bg-muted px-2 py-1 rounded max-w-[120px] truncate">
+                      {team.id}
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <div className="font-medium">
+                      {team.displayName || '-'}
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <div className="text-sm text-muted-foreground">
+                      {team.createdAt.toLocaleDateString()}
+                    </div>
+                  </TableCell>
+                  <TableCell align="right">
+                    <ActionCell
+                      items={[
+                        {
+                          item: "View Team",
+                          onClick: () => {
+                            window.open(`/projects/${stackAdminApp.projectId}/teams/${team.id}`, '_blank');
+                          },
+                        },
+                      ]}
+                    />
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      )}
+    </div>
+  );
+}
+
 type MetadataSectionProps = {
   user: ServerUser,
 };
@@ -873,6 +947,7 @@ function UserPage({ user }: { user: ServerUser }) {
         <UserDetails user={user} />
         <Separator />
         <ContactChannelsSection user={user} />
+        <UserTeamsSection user={user} />
         <MetadataSection user={user} />
       </div>
     </PageLayout>
