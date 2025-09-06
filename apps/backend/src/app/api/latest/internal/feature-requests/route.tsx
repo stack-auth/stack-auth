@@ -73,8 +73,8 @@ export const GET = createSmartRouteHandler({
     const posts = data.results || [];
 
     // Filter out posts that have been merged into other posts or are completed
-    const activePosts = posts.filter((post: any) => 
-      !post.mergedToSubmissionId && 
+    const activePosts = posts.filter((post: any) =>
+      !post.mergedToSubmissionId &&
       post.postStatus?.type !== 'completed'
     );
 
