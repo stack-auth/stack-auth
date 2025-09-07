@@ -234,14 +234,19 @@ async function main(): Promise<void> {
   // Install dependencies
   console.log();
   console.log(colorize.bold`Installing dependencies...`);
-  const installCommandMap: Record<string, string> = {
-    npm: "npm install",
-    yarn: "yarn add",
-    pnpm: "pnpm add",
-    bun: "bun add",
-  };
-  const installCommand = installCommandMap[packageManager] ?? `${packageManager} install`;
-  await shellNicelyFormatted(`${installCommand} ${packagesToInstall.join(' ')}`, {
+  const installCommandMap = new Map<string, string>([
+    ["npm", "npm install"],
+    ["yarn", "yarn add"],
+    ["pnpm", "pnpm add"],
+    ["bun", "bun add"],
+  ]);
+  const installCommand = installCommandMap.get(packageManager) ?? `${packageManager} install`;
+  // Quote each package name to avoid shell interpretation of env-overridden values.
+  const safePackages = packagesToInstall.map((p) => JSON.stringify(p));
+  await shellNicelyFormatted(`${installCommand} ${safePackages.join(' ')}`, {
+    shell: true,
+    cwd: projectPath,
+  });
     shell: true,
     cwd: projectPath,
   });
