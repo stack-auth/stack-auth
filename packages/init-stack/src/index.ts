@@ -234,7 +234,13 @@ async function main(): Promise<void> {
   // Install dependencies
   console.log();
   console.log(colorize.bold`Installing dependencies...`);
-  const installCommand = packageManager === "yarn" ? "yarn add" : `${packageManager} install`;
+  const installCommandMap: Record<string, string> = {
+    npm: "npm install",
+    yarn: "yarn add",
+    pnpm: "pnpm add",
+    bun: "bun add",
+  };
+  const installCommand = installCommandMap[packageManager] ?? `${packageManager} install`;
   await shellNicelyFormatted(`${installCommand} ${packagesToInstall.join(' ')}`, {
     shell: true,
     cwd: projectPath,
