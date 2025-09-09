@@ -140,6 +140,10 @@ export async function generateAccessToken(options: {
       branchId: options.tenancy.branchId,
       refreshTokenId: options.refreshTokenId,
       role: user.is_anonymous ? 'anon' : 'authenticated',
+      displayName: user.display_name,
+      primaryEmail: user.primary_email,
+      primaryEmailVerified: user.primary_email_verified,
+      selectedTeamId: user.selected_team_id,
     },
     expirationTime: getEnvVariable("STACK_ACCESS_TOKEN_EXPIRATION_TIME", "10min"),
   });
