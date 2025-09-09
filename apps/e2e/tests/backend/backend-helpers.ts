@@ -200,7 +200,7 @@ export namespace Auth {
         "iat": expect.any(Number),
         "iss": expectedIssuer,
         "refreshTokenId": expect.any(String),
-        "aud": expect.any(String),
+        "aud": backendContext.value.projectKeys === "no-project" ? expect.any(String) : backendContext.value.projectKeys.projectId,
         "sub": expect.any(String),
         "role": "authenticated",
         "branchId": "main",
@@ -408,23 +408,6 @@ export namespace Auth {
           user_id: expect.any(String),
         },
         headers: expect.anything(),
-      });
-
-      const accessToken = response.body.access_token;
-      const decodedAccessToken = jose.decodeJwt(accessToken);
-      expect(decodedAccessToken).toEqual({
-        "exp": expect.any(Number),
-        "iat": expect.any(Number),
-        "iss": `http://localhost:8102/api/v1/projects/${projectKeys.projectId}`,
-        "refreshTokenId": expect.any(String),
-        "aud": expect.any(String),
-        "sub": expect.any(String),
-        "role": "authenticated",
-        "branchId": "main",
-        "displayName": expect.toSatisfy(() => true),
-        "primaryEmail": backendContext.value.mailbox.emailAddress,
-        "primaryEmailVerified": true,
-        "selectedTeamId": expect.toSatisfy(() => true),
       });
 
       backendContext.set({
