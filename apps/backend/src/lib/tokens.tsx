@@ -5,7 +5,7 @@ import { KnownErrors } from '@stackframe/stack-shared';
 import { yupBoolean, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { generateSecureRandomString } from '@stackframe/stack-shared/dist/utils/crypto';
 import { getEnvVariable } from '@stackframe/stack-shared/dist/utils/env';
-import { throwErr } from '@stackframe/stack-shared/dist/utils/errors';
+import { StackAssertionError, throwErr } from '@stackframe/stack-shared/dist/utils/errors';
 import { getPrivateJwks, getPublicJwkSet, signJWT, verifyJWT } from '@stackframe/stack-shared/dist/utils/jwt';
 import { Result } from '@stackframe/stack-shared/dist/utils/results';
 import { traceSpan } from '@stackframe/stack-shared/dist/utils/telemetry';
@@ -116,10 +116,23 @@ export async function generateAccessToken(options: {
   userId: string,
   refreshTokenId: string,
 }) {
-  const user = await usersCrudHandlers.adminRead({
-    tenancy: options.tenancy,
-    user_id: options.userId,
-  });
+  let user;
+  try {
+    user = await usersCrudHandlers.adminRead({
+      tenancy: options.tenancy,
+      user_id: options.userId,
+      allowedErrorTypes: [KnownErrors.UserNotFound],
+    });
+  } catch (error) {
+    if (error instanceof KnownErrors.UserNotFound) {
+      throw new StackAssertionError(`User not found in generateAccessToken. Was the user's account deleted?`, {
+        userId: options.userId,
+        refreshTokenId: options.refreshTokenId,
+        tenancy: options.tenancy,
+      });
+    }
+    throw error;
+  }
 
   await logEvent(
     [SystemEventTypes.SessionActivity],
