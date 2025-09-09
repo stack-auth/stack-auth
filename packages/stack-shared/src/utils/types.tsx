@@ -15,20 +15,22 @@ export type NullishCoalesce<T, U> = T extends null | undefined ? U : T;
 
 export type LastUnionElement<U> = UnionToIntersection<U extends any ? (x: U) => 0 : never> extends (x: infer L) => 0 ? L & U : never;
 
+type primitive = string | number | boolean | bigint | symbol | null | undefined;
+
 /**
  * Makes a type prettier by recursively expanding all object types. For example, `Omit<{ a: 1 }, "a">` becomes just `{}`.
  */
 export type Expand<T> = T extends (...args: infer A) => infer R
-  ? (
-    ((...args: A) => R) extends T
-      ? (...args: Expand<A>) => Expand<R>
-      : ((...args: Expand<A>) => Expand<R>) & { [K in keyof T]: Expand<T[K]> }
-  )
-  : (
-    T extends object
-      ? { [K in keyof T]: Expand<T[K]> }
-      : T
-  );
+  ? ((...args: A) => R) extends T
+    ? (...args: Expand<A>) => Expand<R>
+    : ((...args: Expand<A>) => Expand<R>) & { [K in keyof T]: Expand<T[K]> }
+  : T extends object
+    ? T extends primitive
+      ? T
+      : T extends infer O
+        ? { [K in keyof O]: Expand<O[K]> }
+        : never
+    : T;
 
 
 /**
@@ -57,6 +59,14 @@ export type OptionalKeys<T> = {
 export type RequiredKeys<T> = {
   [K in keyof T]: {} extends Pick<T, K> ? never : K;
 }[keyof T];
+
+/**
+ * Returns a type whose keys are the intersection of the keys of T and U, deeply.
+ */
+export type KeyIntersect<T, U> =
+  | { [K in keyof T & keyof U]?: T[K] & U[K] }
+  | { [K in RequiredKeys<T> & keyof U]: T[K] & U[K] }
+  | { [K in RequiredKeys<U> & keyof T]: U[K] & T[K] }
 
 /**
  * Returns ALL keys of all union elements.

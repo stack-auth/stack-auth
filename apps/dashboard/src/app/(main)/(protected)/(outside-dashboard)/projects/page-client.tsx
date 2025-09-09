@@ -10,7 +10,7 @@ import { strictEmailSchema, yupObject } from "@stackframe/stack-shared/dist/sche
 import { groupBy } from "@stackframe/stack-shared/dist/utils/arrays";
 import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
-import { Button, Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue, toast, Typography } from "@stackframe/stack-ui";
+import { Button, Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue, Typography, toast } from "@stackframe/stack-ui";
 import { UserPlus } from "lucide-react";
 import { Suspense, useEffect, useMemo, useState } from "react";
 import * as yup from "yup";
@@ -49,7 +49,15 @@ export default function PageClient(props: { inviteUser: (origin: string, teamId:
     };
 
     const grouped = groupBy(newProjects, (project) => project.ownerTeamId);
-    return Array.from(grouped.entries()).map(([teamId, projects]) => {
+    return [...grouped.entries()].sort((a, b) => {
+      if (a[0] === null) return -1;
+      if (b[0] === null) return 1;
+      if (sort === "recency") {
+        return a[1][0].createdAt > b[1][0].createdAt ? -1 : 1;
+      } else {
+        return stringCompare(a[1][0].displayName, b[1][0].displayName);
+      }
+    }).map(([teamId, projects]) => {
       return {
         teamId,
         projects: projects.sort(projectSort),
@@ -125,7 +133,9 @@ function TeamAddUserDialog(props: {
 
   const onSubmit = async (values: yup.InferType<typeof inviteFormSchema>) => {
     if (users.length + 1 > quantity) {
-      toast({ variant: "destructive", title: "You have reached the maximum number of dashboard admins. Please upgrade your plan to add more admins." });
+      alert("You have reached the maximum number of dashboard admins. Please upgrade your plan to add more admins.");
+      const checkoutUrl = await props.team.createCheckoutUrl({ offerId: "team" });
+      window.open(checkoutUrl, "_blank", "noopener");
       return "prevent-close-and-prevent-reset";
     }
     await props.onSubmit(values.email);

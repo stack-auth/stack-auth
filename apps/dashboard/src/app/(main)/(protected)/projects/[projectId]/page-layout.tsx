@@ -12,9 +12,9 @@ export function PageLayout(props: {
   width?: number,
 })) {
   return (
-    <div className="py-4 px-4 md:px-6 flex justify-center">
+    <div className="py-4 px-4 md:px-6 flex justify-center flex-1">
       <div
-        className={"min-w-0"}
+        className={"min-w-0 flex flex-col"}
         style={{
           maxWidth: props.fillWidth ? undefined : (props.width ?? 1250),
           width: props.fillWidth ? '100%' : (props.width ?? 1250),
@@ -33,7 +33,7 @@ export function PageLayout(props: {
           </div>
           {props.actions}
         </div>
-        <div className="mt-4 flex flex-col gap-4">
+        <div className="mt-4 flex flex-col gap-4 flex-1">
           {props.children}
         </div>
       </div>
