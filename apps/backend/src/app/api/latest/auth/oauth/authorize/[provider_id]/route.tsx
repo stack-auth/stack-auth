@@ -64,15 +64,21 @@ export const GET = createSmartRouteHandler({
       throw new KnownErrors.InvalidPublishableClientKey(tenancy.project.id);
     }
 
-    const provider = tenancy.config.oauth_providers.find((p) => p.id === params.provider_id);
-    if (!provider) {
+    const providerRaw = Object.entries(tenancy.config.auth.oauth.providers).find(([providerId, _]) => providerId === params.provider_id);
+    if (!providerRaw) {
       throw new KnownErrors.OAuthProviderNotFoundOrNotEnabled();
     }
 
-    // If the authorization token is present, we are adding new scopes to the user instead of sign-in/sign-up
+    const provider = { id: providerRaw[0], ...providerRaw[1] };
+
+    if (query.type === "link" && !query.token) {
+      throw new StatusError(StatusError.BadRequest, "?token= query parameter is required for link type");
+    }
+
+    // If a token is provided, store it in the outer info so we can use it to link another user to the account, or to upgrade an anonymous user
     let projectUserId: string | undefined;
-    if (query.type === "link") {
-      const result = await decodeAccessToken(query.token);
+    if (query.token) {
+      const result = await decodeAccessToken(query.token, { allowAnonymous: true });
       if (result.status === "error") {
         throw result.error;
       }
@@ -85,7 +91,7 @@ export const GET = createSmartRouteHandler({
         throw new StatusError(StatusError.Forbidden, "The access token is not valid for this branch");
       }
 
-      if (query.provider_scope && provider.type === "shared") {
+      if (query.provider_scope && provider.isShared) {
         throw new KnownErrors.OAuthExtraScopeNotAvailableWithSharedOAuthKeys();
       }
       projectUserId = userId;

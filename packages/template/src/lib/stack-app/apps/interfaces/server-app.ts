@@ -1,6 +1,9 @@
 import { KnownErrors } from "@stackframe/stack-shared";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { AsyncStoreProperty, GetUserOptions } from "../../common";
+import { ServerItem } from "../../customers";
+import { DataVaultStore } from "../../data-vault";
+import { SendEmailOptions } from "../../email";
 import { ServerListUsersOptions, ServerTeam, ServerTeamCreateOptions } from "../../teams";
 import { ProjectCurrentServerUser, ServerOAuthProvider, ServerUser, ServerUserCreateOptions } from "../../users";
 import { _StackServerAppImpl } from "../implementations";
@@ -57,10 +60,19 @@ export type StackServerApp<HasTokenStore extends boolean = boolean, ProjectId ex
       allowSignIn: boolean,
       allowConnectedAccounts: boolean,
     }): Promise<Result<ServerOAuthProvider, InstanceType<typeof KnownErrors.OAuthProviderAccountIdAlreadyUsedForSignIn>>>,
+
+    sendEmail(options: SendEmailOptions): Promise<void>,
   }
   & AsyncStoreProperty<"user", [id: string], ServerUser | null, false>
   & Omit<AsyncStoreProperty<"users", [], ServerUser[], true>, "listUsers" | "useUsers">
   & AsyncStoreProperty<"teams", [], ServerTeam[], true>
+  & AsyncStoreProperty<"dataVaultStore", [id: string], DataVaultStore, false>
+  & AsyncStoreProperty<
+    "item",
+    [{ itemId: string, userId: string } | { itemId: string, teamId: string } | { itemId: string, customCustomerId: string }],
+    ServerItem,
+    false
+  >
   & StackClientApp<HasTokenStore, ProjectId>
 );
 export type StackServerAppConstructor = {

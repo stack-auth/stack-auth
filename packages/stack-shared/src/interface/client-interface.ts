@@ -2,6 +2,7 @@ import * as oauth from 'oauth4webapi';
 
 import * as yup from 'yup';
 import { KnownError, KnownErrors } from '../known-errors';
+import { inlineOfferSchema } from '../schema-fields';
 import { AccessToken, InternalSession, RefreshToken } from '../sessions';
 import { generateSecureRandomString } from '../utils/crypto';
 import { StackAssertionError, throwErr } from '../utils/errors';
@@ -13,9 +14,11 @@ import { AuthenticationResponseJSON, PublicKeyCredentialCreationOptionsJSON, Pub
 import { wait } from '../utils/promises';
 import { Result } from "../utils/results";
 import { deindent } from '../utils/strings';
+import { urlString } from '../utils/urls';
 import { ConnectedAccountAccessTokenCrud } from './crud/connected-accounts';
 import { ContactChannelsCrud } from './crud/contact-channels';
 import { CurrentUserCrud } from './crud/current-user';
+import { ItemCrud } from './crud/items';
 import { NotificationPreferenceCrud } from './crud/notification-preferences';
 import { OAuthProviderCrud } from './crud/oauth-providers';
 import { TeamApiKeysCrud, UserApiKeysCrud, teamApiKeysCreateInputSchema, teamApiKeysCreateOutputSchema, userApiKeysCreateInputSchema, userApiKeysCreateOutputSchema } from './crud/project-api-keys';
@@ -123,8 +126,8 @@ export class StackClientInterface {
 
     // try to diagnose the error for the user
     if (retriedResult.status === "error") {
-      if (globalVar.navigator && !globalVar.navigator.onLine) {
-        throw new Error("You are offline. Please check your internet connection and try again. (window.navigator.onLine is falsy)", { cause: retriedResult.error });
+      if (globalVar.navigator && globalVar.navigator.onLine === false) {
+        throw new Error("You are offline. Please check your internet connection and try again. (window.navigator.onLine is false)", { cause: retriedResult.error });
       }
       throw await this._createNetworkError(retriedResult.error, session, requestType);
     }
@@ -291,6 +294,7 @@ export class StackClientInterface {
         ...(tokenObj?.refreshToken ? {
           "X-Stack-Refresh-Token": tokenObj.refreshToken.token,
         } : {}),
+        "X-Stack-Allow-Anonymous-User": "true",
         ...('publishableClientKey' in this.options ? {
           "X-Stack-Publishable-Client-Key": this.options.publishableClientKey,
         } : {}),
@@ -850,7 +854,7 @@ export class StackClientInterface {
     });
   }
 
-  async signInWithMagicLink(code: string): Promise<Result<{ newUser: boolean, accessToken: string, refreshToken: string }, KnownErrors["VerificationCodeError"]>> {
+  async signInWithMagicLink(code: string, session: InternalSession): Promise<Result<{ newUser: boolean, accessToken: string, refreshToken: string }, KnownErrors["VerificationCodeError"]>> {
     const res = await this.sendClientRequestAndCatchKnownError(
       "/auth/otp/sign-in",
       {
@@ -862,7 +866,7 @@ export class StackClientInterface {
           code,
         }),
       },
-      null,
+      session,
       [KnownErrors.VerificationCodeError]
     );
 
@@ -878,7 +882,7 @@ export class StackClientInterface {
     });
   }
 
-  async signInWithMfa(totp: string, code: string): Promise<Result<{ newUser: boolean, accessToken: string, refreshToken: string }, KnownErrors["VerificationCodeError"]>> {
+  async signInWithMfa(totp: string, code: string, session: InternalSession): Promise<Result<{ newUser: boolean, accessToken: string, refreshToken: string }, KnownErrors["VerificationCodeError"]>> {
     const res = await this.sendClientRequestAndCatchKnownError(
       "/auth/mfa/sign-in",
       {
@@ -892,7 +896,7 @@ export class StackClientInterface {
           code,
         }),
       },
-      null,
+      session,
       [KnownErrors.VerificationCodeError]
     );
 
@@ -908,7 +912,7 @@ export class StackClientInterface {
     });
   }
 
-  async signInWithPasskey(body: { authentication_response: AuthenticationResponseJSON, code: string }): Promise<Result<{accessToken: string, refreshToken: string }, KnownErrors["PasskeyAuthenticationFailed"]>> {
+  async signInWithPasskey(body: { authentication_response: AuthenticationResponseJSON, code: string }, session: InternalSession): Promise<Result<{accessToken: string, refreshToken: string }, KnownErrors["PasskeyAuthenticationFailed"]>> {
     const res = await this.sendClientRequestAndCatchKnownError(
       "/auth/passkey/sign-in",
       {
@@ -918,7 +922,7 @@ export class StackClientInterface {
         },
         body: JSON.stringify(body),
       },
-      null,
+      session,
       [KnownErrors.PasskeyAuthenticationFailed]
     );
 
@@ -943,7 +947,8 @@ export class StackClientInterface {
       state: string,
       type: "authenticate" | "link",
       providerScope?: string,
-    } & ({ type: "authenticate" } | { type: "link", session: InternalSession })
+      session: InternalSession,
+    }
   ): Promise<string> {
     const updatedRedirectUrl = new URL(options.redirectUrl);
     for (const key of ["code", "state"]) {
@@ -970,14 +975,16 @@ export class StackClientInterface {
     url.searchParams.set("type", options.type);
     url.searchParams.set("error_redirect_url", options.errorRedirectUrl);
 
+    const tokens = await options.session.getOrFetchLikelyValidTokens(20_000);
+    if (tokens) {
+      url.searchParams.set("token", tokens.accessToken.token);
+    }
+
     if (options.afterCallbackRedirectUrl) {
       url.searchParams.set("after_callback_redirect_url", options.afterCallbackRedirectUrl);
     }
 
     if (options.type === "link") {
-      const tokens = await options.session.getOrFetchLikelyValidTokens(20_000);
-      url.searchParams.set("token", tokens?.accessToken.token || "");
-
       if (options.providerScope) {
         url.searchParams.set("provider_scope", options.providerScope);
       }
@@ -1737,6 +1744,61 @@ export class StackClientInterface {
       session,
     );
     return await response.json();
+  }
+
+  async getItem(
+    options: (
+      { itemId: string, userId: string } |
+      { itemId: string, teamId: string } |
+      { itemId: string, customCustomerId: string }
+    ),
+    session: InternalSession | null,
+  ): Promise<ItemCrud['Client']['Read']> {
+    let customerType: "user" | "team" | "custom";
+    let customerId: string;
+    if ("userId" in options) {
+      customerType = "user";
+      customerId = options.userId;
+    } else if ("teamId" in options) {
+      customerType = "team";
+      customerId = options.teamId;
+    } else if ("customCustomerId" in options) {
+      customerType = "custom";
+      customerId = options.customCustomerId;
+    } else {
+      throw new StackAssertionError("getItem requires one of userId, teamId, or customCustomerId");
+    }
+
+    const response = await this.sendClientRequest(
+      urlString`/payments/items/${customerType}/${customerId}/${options.itemId}`,
+      {},
+      session,
+    );
+    return await response.json();
+  }
+
+  async createCheckoutUrl(
+    customer_type: "user" | "team" | "custom",
+    customer_id: string,
+    offerIdOrInline: string | yup.InferType<typeof inlineOfferSchema>,
+    session: InternalSession | null,
+  ): Promise<string> {
+    const offerBody = typeof offerIdOrInline === "string" ?
+      { offer_id: offerIdOrInline } :
+      { inline_offer: offerIdOrInline };
+    const response = await this.sendClientRequest(
+      "/payments/purchases/create-purchase-url",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ customer_type, customer_id, ...offerBody }),
+      },
+      session
+    );
+    const { url } = await response.json() as { url: string };
+    return url;
   }
 }
 

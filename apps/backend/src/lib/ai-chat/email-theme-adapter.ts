@@ -1,21 +1,8 @@
-import { overrideEnvironmentConfigOverride } from "@/lib/config";
-import { renderEmailWithTheme } from "@/lib/email-themes";
-import { globalPrismaClient } from "@/prisma-client";
-import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
+
 import { tool } from "ai";
 import { z } from "zod";
 import { ChatAdapterContext } from "./adapter-registry";
 
-const previewEmailHtml = deindent`
-<div>
-  <h2 className="mb-4 text-2xl font-bold">
-    Header text
-  </h2>
-  <p className="mb-4">
-    Body text content with some additional information.
-  </p>
-</div>
-`;
 
 export const emailThemeAdapter = (context: ChatAdapterContext) => ({
   systemPrompt: `You are a helpful assistant that can help with email theme development.`,
@@ -26,27 +13,12 @@ export const emailThemeAdapter = (context: ChatAdapterContext) => ({
       parameters: z.object({
         content: z.string().describe("The content of the email theme"),
       }),
-      execute: async (args) => {
-        const result = await renderEmailWithTheme(previewEmailHtml, args.content);
-        if ("error" in result) {
-          return { success: false, error: result.error };
-        }
-        await overrideEnvironmentConfigOverride({
-          tx: globalPrismaClient,
-          projectId: context.tenancy.project.id,
-          branchId: context.tenancy.branchId,
-          environmentConfigOverrideOverride: {
-            [`emails.themeList.${context.threadId}.tsxSource`]: args.content,
-          },
-        });
-        return { success: true, html: result.html };
-      },
     }),
   },
 });
 
 const CREATE_EMAIL_THEME_TOOL_DESCRIPTION = (context: ChatAdapterContext) => {
-  const currentEmailTheme = context.tenancy.completeConfig.emails.themeList[context.threadId].tsxSource || "";
+  const currentEmailTheme = context.tenancy.config.emails.themes[context.threadId].tsxSource || "";
 
   return `
 Create a new email theme.

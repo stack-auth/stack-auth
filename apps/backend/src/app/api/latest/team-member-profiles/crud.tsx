@@ -1,6 +1,7 @@
 import { ensureTeamExists, ensureTeamMembershipExists, ensureUserExists, ensureUserTeamPermissionExists } from "@/lib/request-checks";
 import { getPrismaClientForTenancy, retryTransaction } from "@/prisma-client";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
+import { uploadAndGetUrl } from "@/s3";
 import { Prisma } from "@prisma/client";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { teamMemberProfilesCrud } from "@stackframe/stack-shared/dist/interface/crud/team-member-profiles";
@@ -31,7 +32,8 @@ export const teamMemberProfilesCrudHandlers = createLazyProxy(() => createCrudHa
     user_id: userIdOrMeSchema.defined(),
   }),
   onList: async ({ auth, query }) => {
-    return await retryTransaction(getPrismaClientForTenancy(auth.tenancy), async (tx) => {
+    const prisma = await getPrismaClientForTenancy(auth.tenancy);
+    return await retryTransaction(prisma, async (tx) => {
       if (auth.type === 'client') {
         // Client can only:
         // - list users in their own team if they have the $read_members permission
@@ -85,7 +87,8 @@ export const teamMemberProfilesCrudHandlers = createLazyProxy(() => createCrudHa
     });
   },
   onRead: async ({ auth, params }) => {
-    return await retryTransaction(getPrismaClientForTenancy(auth.tenancy), async (tx) => {
+    const prisma = await getPrismaClientForTenancy(auth.tenancy);
+    return await retryTransaction(prisma, async (tx) => {
       if (auth.type === 'client') {
         const currentUserId = auth.user?.id ?? throwErr(new KnownErrors.CannotGetOwnUserWithoutUser());
         if (params.user_id !== currentUserId) {
@@ -122,7 +125,8 @@ export const teamMemberProfilesCrudHandlers = createLazyProxy(() => createCrudHa
     });
   },
   onUpdate: async ({ auth, data, params }) => {
-    return await retryTransaction(getPrismaClientForTenancy(auth.tenancy), async (tx) => {
+    const prisma = await getPrismaClientForTenancy(auth.tenancy);
+    return await retryTransaction(prisma, async (tx) => {
       if (auth.type === 'client') {
         const currentUserId = auth.user?.id ?? throwErr(new KnownErrors.CannotGetOwnUserWithoutUser());
         if (params.user_id !== currentUserId) {
@@ -146,7 +150,7 @@ export const teamMemberProfilesCrudHandlers = createLazyProxy(() => createCrudHa
         },
         data: {
           displayName: data.display_name,
-          profileImageUrl: data.profile_image_url,
+          profileImageUrl: await uploadAndGetUrl(data.profile_image_url, "team-member-profile-images")
         },
         include: fullInclude,
       });

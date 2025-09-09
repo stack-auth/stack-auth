@@ -13,7 +13,7 @@ export type TokenSet = {
 
 function processTokenSet(providerName: string, tokenSet: OIDCTokenSet, defaultAccessTokenExpiresInMillis?: number): TokenSet {
   if (!tokenSet.access_token) {
-    throw new StackAssertionError("No access token received", { tokenSet });
+    throw new StackAssertionError(`No access token received from ${providerName}.`, { tokenSet, providerName });
   }
 
   // if expires_in or expires_at provided, use that

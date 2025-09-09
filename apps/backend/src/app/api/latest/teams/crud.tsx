@@ -2,6 +2,7 @@ import { ensureTeamExists, ensureTeamMembershipExists, ensureUserExists, ensureU
 import { sendTeamCreatedWebhook, sendTeamDeletedWebhook, sendTeamUpdatedWebhook } from "@/lib/webhooks";
 import { getPrismaClientForTenancy, retryTransaction } from "@/prisma-client";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
+import { uploadAndGetUrl } from "@/s3";
 import { runAsynchronouslyAndWaitUntil } from "@/utils/vercel";
 import { Prisma } from "@prisma/client";
 import { KnownErrors } from "@stackframe/stack-shared";
@@ -46,7 +47,7 @@ export const teamsCrudHandlers = createLazyProxy(() => createCrudHandlers(teamsC
         throw new KnownErrors.UserAuthenticationRequired;
       }
 
-      if (!auth.tenancy.config.client_team_creation_enabled) {
+      if (!auth.tenancy.config.teams.allowClientTeamCreation) {
         throw new StatusError(StatusError.Forbidden, 'Client team creation is disabled for this project');
       }
 
@@ -68,17 +69,19 @@ export const teamsCrudHandlers = createLazyProxy(() => createCrudHandlers(teamsC
       addUserId = auth.user.id;
     }
 
-    const db = await retryTransaction(getPrismaClientForTenancy(auth.tenancy), async (tx) => {
+    const prisma = await getPrismaClientForTenancy(auth.tenancy);
+
+    const db = await retryTransaction(prisma, async (tx) => {
       const db = await tx.team.create({
         data: {
           displayName: data.display_name,
           mirroredProjectId: auth.project.id,
           mirroredBranchId: auth.branchId,
           tenancyId: auth.tenancy.id,
-          profileImageUrl: data.profile_image_url,
           clientMetadata: data.client_metadata === null ? Prisma.JsonNull : data.client_metadata,
           clientReadOnlyMetadata: data.client_read_only_metadata === null ? Prisma.JsonNull : data.client_read_only_metadata,
           serverMetadata: data.server_metadata === null ? Prisma.JsonNull : data.server_metadata,
+          profileImageUrl: await uploadAndGetUrl(data.profile_image_url, "team-profile-images")
         },
       });
 
@@ -105,15 +108,17 @@ export const teamsCrudHandlers = createLazyProxy(() => createCrudHandlers(teamsC
     return result;
   },
   onRead: async ({ params, auth }) => {
+    const prisma = await getPrismaClientForTenancy(auth.tenancy);
+
     if (auth.type === 'client') {
-      await ensureTeamMembershipExists(getPrismaClientForTenancy(auth.tenancy), {
+      await ensureTeamMembershipExists(prisma, {
         tenancyId: auth.tenancy.id,
         teamId: params.team_id,
         userId: auth.user?.id ?? throwErr(new KnownErrors.UserAuthenticationRequired),
       });
     }
 
-    const db = await getPrismaClientForTenancy(auth.tenancy).team.findUnique({
+    const db = await prisma.team.findUnique({
       where: {
         tenancyId_teamId: {
           tenancyId: auth.tenancy.id,
@@ -129,7 +134,8 @@ export const teamsCrudHandlers = createLazyProxy(() => createCrudHandlers(teamsC
     return teamPrismaToCrud(db);
   },
   onUpdate: async ({ params, auth, data }) => {
-    const db = await retryTransaction(getPrismaClientForTenancy(auth.tenancy), async (tx) => {
+    const prisma = await getPrismaClientForTenancy(auth.tenancy);
+    const db = await retryTransaction(prisma, async (tx) => {
       if (auth.type === 'client' && data.profile_image_url && !validateBase64Image(data.profile_image_url)) {
         throw new StatusError(400, "Invalid profile image URL");
       }
@@ -156,10 +162,10 @@ export const teamsCrudHandlers = createLazyProxy(() => createCrudHandlers(teamsC
         },
         data: {
           displayName: data.display_name,
-          profileImageUrl: data.profile_image_url,
           clientMetadata: data.client_metadata === null ? Prisma.JsonNull : data.client_metadata,
           clientReadOnlyMetadata: data.client_read_only_metadata === null ? Prisma.JsonNull : data.client_read_only_metadata,
           serverMetadata: data.server_metadata === null ? Prisma.JsonNull : data.server_metadata,
+          profileImageUrl: await uploadAndGetUrl(data.profile_image_url, "team-profile-images")
         },
       });
     });
@@ -174,7 +180,8 @@ export const teamsCrudHandlers = createLazyProxy(() => createCrudHandlers(teamsC
     return result;
   },
   onDelete: async ({ params, auth }) => {
-    await retryTransaction(getPrismaClientForTenancy(auth.tenancy), async (tx) => {
+    const prisma = await getPrismaClientForTenancy(auth.tenancy);
+    await retryTransaction(prisma, async (tx) => {
       if (auth.type === 'client') {
         await ensureUserTeamPermissionExists(tx, {
           tenancy: auth.tenancy,
@@ -213,7 +220,8 @@ export const teamsCrudHandlers = createLazyProxy(() => createCrudHandlers(teamsC
       }
     }
 
-    const db = await getPrismaClientForTenancy(auth.tenancy).team.findMany({
+    const prisma = await getPrismaClientForTenancy(auth.tenancy);
+    const db = await prisma.team.findMany({
       where: {
         tenancyId: auth.tenancy.id,
         ...query.user_id ? {

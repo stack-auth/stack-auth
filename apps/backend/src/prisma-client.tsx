@@ -1,16 +1,17 @@
 import { PrismaNeon } from "@prisma/adapter-neon";
 import { PrismaPg } from '@prisma/adapter-pg';
 import { Prisma, PrismaClient } from "@prisma/client";
-import { OrganizationRenderedConfig } from "@stackframe/stack-shared/dist/config/schema";
-import { getNodeEnvironment } from '@stackframe/stack-shared/dist/utils/env';
+import { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
+import { getEnvVariable, getNodeEnvironment } from '@stackframe/stack-shared/dist/utils/env';
 import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { globalVar } from "@stackframe/stack-shared/dist/utils/globals";
 import { deepPlainEquals, filterUndefined, typedFromEntries, typedKeys } from "@stackframe/stack-shared/dist/utils/objects";
-import { ignoreUnhandledRejection } from "@stackframe/stack-shared/dist/utils/promises";
+import { concatStacktracesIfRejected, ignoreUnhandledRejection } from "@stackframe/stack-shared/dist/utils/promises";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
+import { traceSpan } from "@stackframe/stack-shared/dist/utils/telemetry";
 import { isPromise } from "util/types";
+import { runMigrationNeeded } from "./auto-migrations";
 import { Tenancy } from "./lib/tenancies";
-import { traceSpan } from "./utils/telemetry";
 
 export type PrismaClientTransaction = PrismaClient | Parameters<Parameters<PrismaClient['$transaction']>[0]>[0];
 
@@ -28,67 +29,79 @@ if (getNodeEnvironment().includes('development')) {
 }
 
 export const globalPrismaClient = prismaClientsStore.global;
+const dbString = getEnvVariable("STACK_DIRECT_DATABASE_CONNECTION_STRING", "");
+export const globalPrismaSchema = dbString === "" ? "public" : getSchemaFromConnectionString(dbString);
 
 function getNeonPrismaClient(connectionString: string) {
   let neonPrismaClient = prismaClientsStore.neon.get(connectionString);
   if (!neonPrismaClient) {
-    const adapter = new PrismaNeon({ connectionString });
+    const schema = getSchemaFromConnectionString(connectionString);
+    const adapter = new PrismaNeon({ connectionString }, { schema });
     neonPrismaClient = new PrismaClient({ adapter });
     prismaClientsStore.neon.set(connectionString, neonPrismaClient);
   }
+
   return neonPrismaClient;
 }
 
-export function getPrismaClientForTenancy(tenancy: Tenancy) {
-  return getPrismaClientForSourceOfTruth(tenancy.completeConfig.sourceOfTruth, tenancy.branchId);
+function getSchemaFromConnectionString(connectionString: string) {
+  return (new URL(connectionString)).searchParams.get('schema') ?? "public";
+}
+
+export async function getPrismaClientForTenancy(tenancy: Tenancy) {
+  return await getPrismaClientForSourceOfTruth(tenancy.config.sourceOfTruth, tenancy.branchId);
 }
 
 export function getPrismaSchemaForTenancy(tenancy: Tenancy) {
-  return getPrismaSchemaForSourceOfTruth(tenancy.completeConfig.sourceOfTruth, tenancy.branchId);
+  return getPrismaSchemaForSourceOfTruth(tenancy.config.sourceOfTruth, tenancy.branchId);
 }
 
 function getPostgresPrismaClient(connectionString: string) {
   let postgresPrismaClient = prismaClientsStore.postgres.get(connectionString);
   if (!postgresPrismaClient) {
-    const schema = (new URL(connectionString)).searchParams.get('schema');
+    const schema = getSchemaFromConnectionString(connectionString);
     const adapter = new PrismaPg({ connectionString }, schema ? { schema } : undefined);
     postgresPrismaClient = {
       client: new PrismaClient({ adapter }),
-      schema: schema ?? null,
+      schema,
     };
     prismaClientsStore.postgres.set(connectionString, postgresPrismaClient);
   }
   return postgresPrismaClient;
 }
 
-export function getPrismaClientForSourceOfTruth(sourceOfTruth: OrganizationRenderedConfig["sourceOfTruth"], branchId: string) {
+export async function getPrismaClientForSourceOfTruth(sourceOfTruth: CompleteConfig["sourceOfTruth"], branchId: string) {
   switch (sourceOfTruth.type) {
     case 'neon': {
       if (!(branchId in sourceOfTruth.connectionStrings)) {
         throw new Error(`No connection string provided for Neon source of truth for branch ${branchId}`);
       }
-      return getNeonPrismaClient(sourceOfTruth.connectionStrings[branchId]);
+      const connectionString = sourceOfTruth.connectionStrings[branchId];
+      const neonPrismaClient = getNeonPrismaClient(connectionString);
+      await runMigrationNeeded({ prismaClient: neonPrismaClient, schema: getSchemaFromConnectionString(connectionString) });
+      return neonPrismaClient;
     }
     case 'postgres': {
-      return getPostgresPrismaClient(sourceOfTruth.connectionString).client;
+      const postgresPrismaClient = getPostgresPrismaClient(sourceOfTruth.connectionString);
+      await runMigrationNeeded({ prismaClient: postgresPrismaClient.client, schema: getSchemaFromConnectionString(sourceOfTruth.connectionString) });
+      return postgresPrismaClient.client;
     }
     case 'hosted': {
       return globalPrismaClient;
     }
-    default: {
-      // @ts-expect-error sourceOfTruth should be never, otherwise we're missing a switch-case
-      throw new StackAssertionError(`Unknown source of truth type: ${sourceOfTruth.type}`);
-    }
   }
 }
 
-export function getPrismaSchemaForSourceOfTruth(sourceOfTruth: OrganizationRenderedConfig["sourceOfTruth"], branchId: string) {
+export function getPrismaSchemaForSourceOfTruth(sourceOfTruth: CompleteConfig["sourceOfTruth"], branchId: string) {
   switch (sourceOfTruth.type) {
     case 'postgres': {
-      return getPostgresPrismaClient(sourceOfTruth.connectionString).schema ?? 'public';
+      return getSchemaFromConnectionString(sourceOfTruth.connectionString);
     }
-    default: {
-      return 'public';
+    case 'neon': {
+      return getSchemaFromConnectionString(sourceOfTruth.connectionStrings[branchId]);
+    }
+    case 'hosted': {
+      return globalPrismaSchema;
     }
   }
 }
@@ -108,15 +121,26 @@ class TransactionErrorThatShouldNotBeRetried extends Error {
   }
 }
 
-export async function retryTransaction<T>(client: PrismaClient, fn: (tx: PrismaClientTransaction) => Promise<T>): Promise<T> {
-  // disable serializable transactions for now, later we may re-add them
-  const enableSerializable = false as boolean;
+export async function retryTransaction<T>(client: PrismaClient, fn: (tx: PrismaClientTransaction) => Promise<T>, options: { level?: "default" | "serializable" } = {}): Promise<T> {
+  // serializable transactions are currently off by default, later we may turn them on
+  const enableSerializable = options.level === "serializable";
+
+  const isRetryablePrismaError = (e: unknown) => {
+    if (e instanceof Prisma.PrismaClientKnownRequestError) {
+      return [
+        "P2028", // Serializable/repeatable read conflict
+        "P2034", // Transaction already closed (eg. timeout)
+      ];
+    }
+    return false;
+  };
 
   return await traceSpan('Prisma transaction', async (span) => {
     const res = await Result.retry(async (attemptIndex) => {
       return await traceSpan(`transaction attempt #${attemptIndex}`, async (attemptSpan) => {
         const attemptRes = await (async () => {
           try {
+            // eslint-disable-next-line no-restricted-syntax
             return Result.ok(await client.$transaction(async (tx, ...args) => {
               let res;
               try {
@@ -126,7 +150,7 @@ export async function retryTransaction<T>(client: PrismaClient, fn: (tx: PrismaC
                 // to other (nested) transactions failing
                 // however, we make an exception for "Transaction already closed", as those are (annoyingly) thrown on
                 // the actual query, not the $transaction function itself
-                if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2028") { // Transaction already closed
+                if (isRetryablePrismaError(e)) {
                   throw new TransactionErrorThatShouldBeRetried(e);
                 }
                 throw new TransactionErrorThatShouldNotBeRetried(e);
@@ -140,7 +164,7 @@ export async function retryTransaction<T>(client: PrismaClient, fn: (tx: PrismaC
               }
               return res;
             }, {
-              isolationLevel: enableSerializable && attemptIndex < 4 ? Prisma.TransactionIsolationLevel.Serializable : undefined,
+              isolationLevel: enableSerializable ? Prisma.TransactionIsolationLevel.Serializable : undefined,
             }));
           } catch (e) {
             // we don't want to retry too aggressively here, because the error may have been thrown after the transaction was already committed
@@ -151,11 +175,7 @@ export async function retryTransaction<T>(client: PrismaClient, fn: (tx: PrismaC
             if (e instanceof TransactionErrorThatShouldNotBeRetried) {
               throw e.cause;
             }
-            if ([
-              "Transaction failed due to a write conflict or a deadlock. Please retry your transaction",
-              "Transaction already closed: A commit cannot be executed on an expired transaction. The timeout for this transaction",
-            ].some(s => e instanceof Prisma.PrismaClientKnownRequestError && e.message.includes(s))) {
-              // transaction timeout, retry
+            if (isRetryablePrismaError(e)) {
               return Result.error(e);
             }
             throw e;
@@ -280,20 +300,23 @@ async function rawQueryArray<Q extends RawQuery<any>[]>(tx: PrismaClientTransact
 
     // Prisma does a query for every rawQuery call by default, even if we batch them with transactions
     // So, instead we combine all queries into one, and then return them as a single JSON result
-    const combinedQuery = RawQuery.all(queries);
+    const combinedQuery = RawQuery.all([...queries]);
 
     // TODO: check that combinedQuery supports the prisma client that created tx
 
     // Supabase's index advisor only analyzes rows that start with "SELECT" (for some reason)
     // Since ours starts with "WITH", we prepend a SELECT to it
     const sqlQuery = Prisma.sql`SELECT * FROM (${combinedQuery.sql}) AS _`;
+
     const rawResult = await tx.$queryRaw(sqlQuery);
 
     const postProcessed = combinedQuery.postProcess(rawResult as any);
     // If the postProcess is async, postProcessed is a Promise. If that Promise is rejected, it will cause an unhandled promise rejection.
     // We don't want that, because Vercel crashes on unhandled promise rejections.
+    // We also want to concat the current stack trace to the error, so we can see where the rawQuery function was called
     if (isPromise(postProcessed)) {
       ignoreUnhandledRejection(postProcessed);
+      concatStacktracesIfRejected(postProcessed);
     }
 
     return postProcessed;

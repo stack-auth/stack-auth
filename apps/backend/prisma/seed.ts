@@ -1,8 +1,10 @@
 /* eslint-disable no-restricted-syntax */
 import { usersCrudHandlers } from '@/app/api/latest/users/crud';
-import { createOrUpdateProject, getProject } from '@/lib/projects';
+import { overrideEnvironmentConfigOverride } from '@/lib/config';
+import { grantTeamPermission, updatePermissionDefinition } from '@/lib/permissions';
+import { createOrUpdateProjectWithLegacyConfig, getProject } from '@/lib/projects';
 import { DEFAULT_BRANCH_ID, getSoleTenancyFromProjectBranch } from '@/lib/tenancies';
-import { getPrismaClientForTenancy } from '@/prisma-client';
+import { getPrismaClientForTenancy, globalPrismaClient } from '@/prisma-client';
 import { PrismaClient } from '@prisma/client';
 import { errorToNiceString, throwErr } from '@stackframe/stack-shared/dist/utils/errors';
 
@@ -29,16 +31,19 @@ async function seed() {
 
   const apiKeyId = '3142e763-b230-44b5-8636-aa62f7489c26';
   const defaultUserId = '33e7c043-d2d1-4187-acd3-f91b5ed64b46';
+  const internalTeamId = 'a23e1b7f-ab18-41fc-9ee6-7a9ca9fa543c';
   const emulatorAdminUserId = '63abbc96-5329-454a-ba56-e0460173c6c1';
+  const emulatorAdminTeamId = '5a0c858b-d9e9-49d4-9943-8ce385d86428';
 
   let internalProject = await getProject('internal');
 
   if (!internalProject) {
-    internalProject = await createOrUpdateProject({
+    internalProject = await createOrUpdateProjectWithLegacyConfig({
       type: 'create',
       projectId: 'internal',
       data: {
         display_name: 'Stack Dashboard',
+        owner_team_id: internalTeamId,
         description: 'Stack\'s admin dashboard',
         is_production_mode: false,
         config: {
@@ -58,24 +63,184 @@ async function seed() {
   }
 
   const internalTenancy = await getSoleTenancyFromProjectBranch("internal", DEFAULT_BRANCH_ID);
-  const internalPrisma = getPrismaClientForTenancy(internalTenancy);
+  const internalPrisma = await getPrismaClientForTenancy(internalTenancy);
 
-  internalProject = await createOrUpdateProject({
+  internalProject = await createOrUpdateProjectWithLegacyConfig({
     projectId: 'internal',
     branchId: DEFAULT_BRANCH_ID,
     type: 'update',
     data: {
       config: {
+        create_team_on_sign_up: true,
         sign_up_enabled: signUpEnabled,
         magic_link_enabled: otpEnabled,
         allow_localhost: allowLocalhost,
+        client_team_creation_enabled: true,
         domains: [
           ...(dashboardDomain && new URL(dashboardDomain).hostname !== 'localhost' ? [{ domain: dashboardDomain, handler_path: '/handler' }] : []),
-          ...internalTenancy.config.domains.filter((d) => d.domain !== dashboardDomain),
-        ]
+          ...Object.values(internalTenancy.config.domains.trustedDomains)
+            .filter((d) => d.baseUrl !== dashboardDomain && d.baseUrl)
+            .map((d) => ({ domain: d.baseUrl || throwErr('Domain base URL is required'), handler_path: d.handlerPath })),
+        ],
       },
     },
   });
+
+  await overrideEnvironmentConfigOverride({
+    projectId: 'internal',
+    branchId: DEFAULT_BRANCH_ID,
+    environmentConfigOverrideOverride: {
+      payments: {
+        groups: {
+          plans: {
+            displayName: "Plans",
+          }
+        },
+        offers: {
+          team: {
+            groupId: "plans",
+            displayName: "Team",
+            customerType: "team",
+            serverOnly: false,
+            stackable: false,
+            prices: {
+              monthly: {
+                USD: "49",
+                interval: [1, "month"] as any,
+                serverOnly: false
+              }
+            },
+            includedItems: {
+              dashboard_admins: {
+                quantity: 3,
+                repeat: "never",
+                expires: "when-purchase-expires"
+              }
+            }
+          },
+          growth: {
+            groupId: "plans",
+            displayName: "Growth",
+            customerType: "team",
+            serverOnly: false,
+            stackable: false,
+            prices: {
+              monthly: {
+                USD: "299",
+                interval: [1, "month"] as any,
+                serverOnly: false
+              }
+            },
+            includedItems: {
+              dashboard_admins: {
+                quantity: 5,
+                repeat: "never",
+                expires: "when-purchase-expires"
+              }
+            }
+          },
+          free: {
+            groupId: "plans",
+            displayName: "Free",
+            customerType: "team",
+            serverOnly: false,
+            stackable: false,
+            prices: "include-by-default",
+            includedItems: {
+              dashboard_admins: {
+                quantity: 1,
+                repeat: "never",
+                expires: "when-purchase-expires"
+              }
+            }
+          },
+          "extra-admins": {
+            groupId: "plans",
+            displayName: "Extra Admins",
+            customerType: "team",
+            serverOnly: false,
+            stackable: true,
+            prices: {
+              monthly: {
+                USD: "49",
+                interval: [1, "month"] as any,
+                serverOnly: false
+              }
+            },
+            includedItems: {
+              dashboard_admins: {
+                quantity: 1,
+                repeat: "never",
+                expires: "when-purchase-expires"
+              }
+            },
+            isAddOnTo: {
+              team: true,
+              growth: true,
+            }
+          }
+        },
+        items: {
+          dashboard_admins: {
+            displayName: "Dashboard Admins",
+            customerType: "team"
+          }
+        },
+      }
+    }
+  });
+
+  await updatePermissionDefinition(
+    globalPrismaClient,
+    internalPrisma,
+    {
+      oldId: "team_member",
+      scope: "team",
+      tenancy: internalTenancy,
+      data: {
+        id: "team_member",
+        description: "1",
+        contained_permission_ids: ["$read_members"],
+      }
+    }
+  );
+  const updatedInternalTenancy = await getSoleTenancyFromProjectBranch("internal", DEFAULT_BRANCH_ID);
+  await updatePermissionDefinition(
+    globalPrismaClient,
+    internalPrisma,
+    {
+      oldId: "team_admin",
+      scope: "team",
+      tenancy: updatedInternalTenancy,
+      data: {
+        id: "team_admin",
+        description: "2",
+        contained_permission_ids: ["$read_members", "$remove_members", "$update_team"],
+      }
+    }
+  );
+
+
+  const internalTeam = await internalPrisma.team.findUnique({
+    where: {
+      tenancyId_teamId: {
+        tenancyId: internalTenancy.id,
+        teamId: internalTeamId,
+      },
+    },
+  });
+  if (!internalTeam) {
+    await internalPrisma.team.create({
+      data: {
+        tenancyId: internalTenancy.id,
+        teamId: internalTeamId,
+        displayName: 'Internal Team',
+        mirroredProjectId: 'internal',
+        mirroredBranchId: DEFAULT_BRANCH_ID,
+      },
+    });
+    console.log('Internal team created');
+  }
 
   const keySet = {
     publishableClientKey: process.env.STACK_SEED_INTERNAL_PROJECT_PUBLISHABLE_CLIENT_KEY || throwErr('STACK_SEED_INTERNAL_PROJECT_PUBLISHABLE_CLIENT_KEY is not set'),
@@ -112,7 +277,7 @@ async function seed() {
     });
 
     if (oldAdminUser) {
-        console.log(`Admin user already exists, skipping creation`);
+      console.log(`Admin user already exists, skipping creation`);
     } else {
       const newUser = await internalPrisma.projectUser.create({
         data: {
@@ -121,11 +286,18 @@ async function seed() {
           tenancyId: internalTenancy.id,
           mirroredProjectId: 'internal',
           mirroredBranchId: DEFAULT_BRANCH_ID,
-          serverMetadata: adminInternalAccess
-            ? { managedProjectIds: ['internal'] }
-            : undefined,
         }
       });
+
+      if (adminInternalAccess) {
+        await internalPrisma.teamMember.create({
+          data: {
+            tenancyId: internalTenancy.id,
+            teamId: internalTeamId,
+            projectUserId: defaultUserId,
+          },
+        });
+      }
 
       if (adminEmail && adminPassword) {
         await usersCrudHandlers.adminUpdate({
@@ -138,11 +310,11 @@ async function seed() {
           },
         });
 
-          console.log(`Added admin user with email ${adminEmail}`);
+        console.log(`Added admin user with email ${adminEmail}`);
       }
 
       if (adminGithubId) {
-        const githubAccount = await getPrismaClientForTenancy(internalTenancy).projectUserOAuthAccount.findFirst({
+        const githubAccount = await internalPrisma.projectUserOAuthAccount.findFirst({
           where: {
             tenancyId: internalTenancy.id,
             configOAuthProviderId: 'github',
@@ -153,7 +325,7 @@ async function seed() {
         if (githubAccount) {
           console.log(`GitHub account already exists, skipping creation`);
         } else {
-          await getPrismaClientForTenancy(internalTenancy).projectUserOAuthAccount.create({
+          await internalPrisma.projectUserOAuthAccount.create({
             data: {
               tenancyId: internalTenancy.id,
               projectUserId: newUser.projectUserId,
@@ -162,31 +334,57 @@ async function seed() {
             }
           });
 
-            console.log(`Added GitHub account for admin user`);
-        }
-
-        await internalPrisma.authMethod.create({
-          data: {
-            tenancyId: internalTenancy.id,
-            projectUserId: newUser.projectUserId,
-            oauthAuthMethod: {
-              create: {
-                projectUserId: newUser.projectUserId,
-                configOAuthProviderId: 'github',
-                providerAccountId: adminGithubId,
+          await internalPrisma.authMethod.create({
+            data: {
+              tenancyId: internalTenancy.id,
+              projectUserId: newUser.projectUserId,
+              oauthAuthMethod: {
+                create: {
+                  projectUserId: newUser.projectUserId,
+                  configOAuthProviderId: 'github',
+                  providerAccountId: adminGithubId,
+                }
               }
             }
-          }
-        });
+          });
 
           console.log(`Added admin user with GitHub ID ${adminGithubId}`);
+        }
       }
     }
+
+    await grantTeamPermission(internalPrisma, {
+      tenancy: internalTenancy,
+      teamId: internalTeamId,
+      userId: defaultUserId,
+      permissionId: "team_admin",
+    });
   }
 
   if (emulatorEnabled) {
     if (!emulatorProjectId) {
       throw new Error('STACK_EMULATOR_PROJECT_ID is not set');
+    }
+
+    const emulatorTeam = await internalPrisma.team.findUnique({
+      where: {
+        tenancyId_teamId: {
+          tenancyId: internalTenancy.id,
+          teamId: emulatorAdminTeamId,
+        },
+      },
+    });
+    if (!emulatorTeam) {
+      await internalPrisma.team.create({
+        data: {
+          tenancyId: internalTenancy.id,
+          teamId: emulatorAdminTeamId,
+          displayName: 'Emulator Team',
+          mirroredProjectId: "internal",
+          mirroredBranchId: DEFAULT_BRANCH_ID,
+        },
+      });
+      console.log('Created emulator team');
     }
 
     const existingUser = await internalPrisma.projectUser.findFirst({
@@ -198,7 +396,7 @@ async function seed() {
     });
 
     if (existingUser) {
-        console.log('Emulator user already exists, skipping creation');
+      console.log('Emulator user already exists, skipping creation');
     } else {
       const newEmulatorUser = await internalPrisma.projectUser.create({
         data: {
@@ -207,10 +405,15 @@ async function seed() {
           tenancyId: internalTenancy.id,
           mirroredProjectId: 'internal',
           mirroredBranchId: DEFAULT_BRANCH_ID,
-          serverMetadata: {
-            managedProjectIds: [emulatorProjectId],
-          },
         }
+      });
+
+      await internalPrisma.teamMember.create({
+        data: {
+          tenancyId: internalTenancy.id,
+          teamId: emulatorAdminTeamId,
+          projectUserId: newEmulatorUser.projectUserId,
+        },
       });
 
       await usersCrudHandlers.adminUpdate({
@@ -235,11 +438,12 @@ async function seed() {
     if (existingProject) {
       console.log('Emulator project already exists, skipping creation');
     } else {
-      await createOrUpdateProject({
+      await createOrUpdateProjectWithLegacyConfig({
         projectId: emulatorProjectId,
         type: 'create',
         data: {
           display_name: 'Emulator Project',
+          owner_team_id: emulatorAdminTeamId,
           config: {
             allow_localhost: true,
             create_team_on_sign_up: false,
@@ -266,5 +470,5 @@ seed().catch(async (e) => {
   console.error(errorToNiceString(e));
   await globalPrisma.$disconnect();
   process.exit(1);
-// eslint-disable-next-line @typescript-eslint/no-misused-promises
+  // eslint-disable-next-line @typescript-eslint/no-misused-promises
 }).finally(async () => await globalPrisma.$disconnect());

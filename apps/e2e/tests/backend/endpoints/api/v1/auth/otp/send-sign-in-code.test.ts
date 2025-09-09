@@ -3,7 +3,8 @@ import { Auth, Project, backendContext, niceBackendFetch } from "../../../../../
 
 it("should send a sign-in code per e-mail", async ({ expect }) => {
   await Auth.Otp.sendSignInCode();
-  expect(await backendContext.value.mailbox.fetchMessages({ noBody: true })).toMatchInlineSnapshot(`
+  const messages = await backendContext.value.mailbox.fetchMessages({ noBody: true });
+  expect(messages).toMatchInlineSnapshot(`
     [
       MailboxMessage {
         "from": "Stack Dashboard <noreply@example.com>",
@@ -54,7 +55,7 @@ it("should refuse to sign up a new user if magic links are disabled on the proje
   expect(response).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 403,
-      "body": "Magic link is not enabled for this project",
+      "body": "OTP sign-in is not enabled for this project",
       "headers": Headers { <some fields may have been hidden> },
     }
   `);
@@ -99,31 +100,12 @@ it("should send otp code to user", async ({ expect }) => {
   });
 
   const email = (await backendContext.value.mailbox.fetchMessages()).findLast((email) => email.subject.includes("Sign in"));
-  const match = email?.body?.text.match(/^[A-Z0-9]{6}$/sm);
-  expect(match).toHaveLength(1);
-  const code = match?.[0];
+  const match = email?.body?.html.match(/\>([A-Z0-9]{6})\<\/p\>/);
+  expect(match).toHaveLength(2);
+  const code = match?.[1];
   expect(code).toHaveLength(6);
 });
 
-it("should not send otp code to user if client version is older equal to 2.5.37", async ({ expect }) => {
-  await Auth.Otp.sendSignInCode();
-  const mailbox = backendContext.value.mailbox;
-  await niceBackendFetch("/api/v1/auth/otp/send-sign-in-code", {
-    method: "POST",
-    accessType: "client",
-    body: {
-      email: mailbox.emailAddress,
-      callback_url: "http://localhost:12345/some-callback-url",
-    },
-    headers: {
-      "X-Stack-Client-Version": "js @stackframe/stack@2.5.37",
-    },
-  });
-
-  const email = (await backendContext.value.mailbox.fetchMessages()).findLast((email) => email.subject.includes("Sign in"));
-  const match = email?.body?.text.match(/^[A-Z0-9]{6}$/sm);
-  expect(match).toBeNull();
-});
 
 it.todo("should create a team for newly created users if configured as such");
 

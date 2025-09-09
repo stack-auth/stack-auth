@@ -44,6 +44,7 @@ export function Mermaid({ chart }: { chart: string }) {
       }
     }
 
+    // eslint-disable-next-line no-restricted-syntax
     renderChart().catch(error => {
       console.error('Failed to render Mermaid chart:', error);
     });

@@ -11,9 +11,10 @@ import { ApiKeyCreationOptions, UserApiKey, UserApiKeyFirstView } from "../api-k
 import { AsyncStoreProperty } from "../common";
 import { OAuthConnection } from "../connected-accounts";
 import { ContactChannel, ContactChannelCreateOptions, ServerContactChannel, ServerContactChannelCreateOptions } from "../contact-channels";
+import { Customer } from "../customers";
 import { NotificationCategory } from "../notification-categories";
 import { AdminTeamPermission, TeamPermission } from "../permissions";
-import { AdminOwnedProject, AdminProjectUpdateOptions } from "../projects";
+import { AdminOwnedProject, AdminProjectCreateOptions } from "../projects";
 import { EditableTeamMemberProfile, ServerTeam, ServerTeamCreateOptions, Team, TeamCreateOptions } from "../teams";
 
 export type OAuthProvider = {
@@ -263,13 +264,13 @@ export type UserExtra = {
 
 export type InternalUserExtra =
   & {
-    createProject(newProject: AdminProjectUpdateOptions & { displayName: string }): Promise<AdminOwnedProject>,
+    createProject(newProject: AdminProjectCreateOptions): Promise<AdminOwnedProject>,
   }
   & AsyncStoreProperty<"ownedProjects", [], AdminOwnedProject[], true>
 
 export type User = BaseUser;
 
-export type CurrentUser = BaseUser & Auth & UserExtra;
+export type CurrentUser = BaseUser & Auth & UserExtra & Customer;
 
 export type CurrentInternalUser = CurrentUser & InternalUserExtra;
 
@@ -368,7 +369,7 @@ export type ServerBaseUser = {
  * A user including sensitive fields that should only be used on the server, never sent to the client
  * (such as sensitive information and serverMetadata).
  */
-export type ServerUser = ServerBaseUser & BaseUser & UserExtra;
+export type ServerUser = ServerBaseUser & BaseUser & UserExtra & Customer<true>;
 
 export type CurrentServerUser = Auth & ServerUser;
 

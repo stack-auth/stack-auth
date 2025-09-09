@@ -1,0 +1,140 @@
+import { applyMigrations } from "@/auto-migrations";
+import { MIGRATION_FILES_DIR, getMigrationFiles } from "@/auto-migrations/utils";
+import { globalPrismaClient, globalPrismaSchema, sqlQuoteIdent } from "@/prisma-client";
+import { Prisma } from "@prisma/client";
+import { execSync } from "child_process";
+import * as readline from 'readline';
+
+const dropSchema = async () => {
+  await globalPrismaClient.$executeRaw(Prisma.sql`DROP SCHEMA ${sqlQuoteIdent(globalPrismaSchema)} CASCADE`);
+  await globalPrismaClient.$executeRaw(Prisma.sql`CREATE SCHEMA ${sqlQuoteIdent(globalPrismaSchema)}`);
+  await globalPrismaClient.$executeRaw(Prisma.sql`GRANT ALL ON SCHEMA ${sqlQuoteIdent(globalPrismaSchema)} TO postgres`);
+  await globalPrismaClient.$executeRaw(Prisma.sql`GRANT ALL ON SCHEMA ${sqlQuoteIdent(globalPrismaSchema)} TO public`);
+};
+
+const seed = async () => {
+  execSync('pnpm run db-seed-script', { stdio: 'inherit' });
+};
+
+const promptDropDb = async () => {
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout
+  });
+
+  const answer = await new Promise<string>(resolve => {
+    rl.question('Are you sure you want to drop everything in the database? This action cannot be undone. (y/N): ', resolve);
+  });
+  rl.close();
+
+  if (answer.toLowerCase() !== 'y') {
+    console.log('Operation cancelled');
+    process.exit(0);
+  }
+};
+
+const migrate = async () => {
+  const startTime = performance.now();
+  const migrationFiles = getMigrationFiles(MIGRATION_FILES_DIR);
+  const totalMigrations = migrationFiles.length;
+
+  const result = await applyMigrations({
+    prismaClient: globalPrismaClient,
+    migrationFiles,
+    logging: true,
+    schema: globalPrismaSchema,
+  });
+
+  const endTime = performance.now();
+  const duration = ((endTime - startTime) / 1000).toFixed(2);
+
+  // Print summary
+  console.log('\n' + '='.repeat(60));
+  console.log('📊 MIGRATION SUMMARY');
+  console.log('='.repeat(60));
+  console.log(`✅ Migrations completed successfully`);
+  console.log(`⏱️  Duration: ${duration} seconds`);
+  console.log(`📁 Total migrations in folder: ${totalMigrations}`);
+  console.log(`🆕 Newly applied migrations: ${result.newlyAppliedMigrationNames.length}`);
+  console.log(`✓  Already applied migrations: ${totalMigrations - result.newlyAppliedMigrationNames.length}`);
+
+  if (result.newlyAppliedMigrationNames.length > 0) {
+    console.log('\n📝 Newly applied migrations:');
+    result.newlyAppliedMigrationNames.forEach((name, index) => {
+      console.log(`   ${index + 1}. ${name}`);
+    });
+  } else {
+    console.log('\n✨ Database is already up to date!');
+  }
+
+  console.log('='.repeat(60) + '\n');
+
+  return result;
+};
+
+const showHelp = () => {
+  console.log(`Database Migration Script
+
+Usage: pnpm db-migrations <command>
+
+Commands:
+  reset                    Drop all data and recreate the database, then apply migrations and seed
+  generate-migration-file  Generate a new migration file using Prisma, then reset and migrate
+  seed                     [Advanced] Run database seeding only
+  init                     Apply migrations and seed the database
+  migrate                  Apply migrations
+  help                     Show this help message
+`);
+};
+
+const main = async () => {
+  const args = process.argv.slice(2);
+  const command = args[0];
+
+  switch (command) {
+    case 'reset': {
+      await promptDropDb();
+      await dropSchema();
+      await migrate();
+      await seed();
+      break;
+    }
+    case 'generate-migration-file': {
+      await promptDropDb();
+      execSync('pnpm prisma migrate reset --force --skip-seed', { stdio: 'inherit' });
+      execSync('pnpm prisma migrate dev --skip-seed', { stdio: 'inherit' });
+      await dropSchema();
+      await migrate();
+      await seed();
+      break;
+    }
+    case 'seed': {
+      await seed();
+      break;
+    }
+    case 'init': {
+      await migrate();
+      await seed();
+      break;
+    }
+    case 'migrate': {
+      await migrate();
+      break;
+    }
+    case 'help': {
+      showHelp();
+      break;
+    }
+    default: {
+      console.error('Unknown command.');
+      showHelp();
+      process.exit(1);
+    }
+  }
+};
+
+// eslint-disable-next-line no-restricted-syntax
+main().catch((error) => {
+  console.error(error);
+  process.exit(1);
+});

@@ -28,8 +28,10 @@ export const getFailedEmailsByTenancy = async (after: Date) => {
   INNER JOIN "Project" p ON t."projectId" = p.id
   LEFT JOIN "ProjectUser" pu ON pu."mirroredProjectId" = 'internal'
     AND pu."mirroredBranchId" = 'main'
-    AND pu."serverMetadata"->'managedProjectIds' ? t."projectId"
-  INNER JOIN "ContactChannel" cc ON pu."projectUserId" = cc."projectUserId" 
+  INNER JOIN "Team" team ON team."teamId" = p."ownerTeamId"
+  INNER JOIN "TeamMember" tm ON tm."teamId" = team."teamId"
+    AND tm."projectUserId" = pu."projectUserId"
+  INNER JOIN "ContactChannel" cc ON tm."projectUserId" = cc."projectUserId" 
     AND cc."isPrimary" = 'TRUE' 
     AND cc."type" = 'EMAIL'
   WHERE se."error" IS NOT NULL

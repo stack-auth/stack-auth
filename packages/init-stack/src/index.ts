@@ -234,8 +234,16 @@ async function main(): Promise<void> {
   // Install dependencies
   console.log();
   console.log(colorize.bold`Installing dependencies...`);
-  const installCommand = packageManager === "yarn" ? "yarn add" : `${packageManager} install`;
-  await shellNicelyFormatted(`${installCommand} ${packagesToInstall.join(' ')}`, {
+  const installCommandMap = new Map<string, string>([
+    ["npm", "npm install"],
+    ["yarn", "yarn add"],
+    ["pnpm", "pnpm add"],
+    ["bun", "bun add"],
+  ]);
+  const installCommand = installCommandMap.get(packageManager) ?? `${packageManager} install`;
+  // Quote each package name to avoid shell interpretation of env-overridden values.
+  const safePackages = packagesToInstall.map((p) => JSON.stringify(p));
+  await shellNicelyFormatted(`${installCommand} ${safePackages.join(' ')}`, {
     shell: true,
     cwd: projectPath,
   });
@@ -307,40 +315,40 @@ For more information, please visit https://docs.stack-auth.com/getting-started/s
   await ph_client.shutdown();
 }
 
-main()
-  .catch(async (err) => {
-    try {
-      await capture("error", {
-        error: err.message,
-        errorType: err instanceof UserError ? "UserError" : "SystemError",
-        stack: err.stack,
-      });
-    } catch (e) { }
-    if (!(err instanceof UserError)) {
-      console.error(err);
-    }
-    console.error('\n\n\n\n');
-    console.log(colorize.red`===============================================`);
-    console.error();
-    if (err instanceof UserError) {
-      console.error(`${colorize.red`ERROR!`} ${err.message}`);
-    } else {
-      console.error("An error occurred during the initialization process.");
-    }
-    console.error();
-    console.log(colorize.red`===============================================`);
-    console.error();
-    console.error(
-      "If you need assistance, please try installing Stack manually as described in https://docs.stack-auth.com/getting-started/setup or join our Discord where we're happy to help: https://discord.stack-auth.com"
-    );
-    if (!(err instanceof UserError)) {
-      console.error("");
-      console.error(`Error message: ${err.message}`);
-    }
-    console.error();
-    await ph_client.shutdown();
-    process.exit(1);
-  });
+// eslint-disable-next-line no-restricted-syntax
+main().catch(async (err) => {
+  try {
+    await capture("error", {
+      error: err.message,
+      errorType: err instanceof UserError ? "UserError" : "SystemError",
+      stack: err.stack,
+    });
+  } catch (e) { }
+  if (!(err instanceof UserError)) {
+    console.error(err);
+  }
+  console.error('\n\n\n\n');
+  console.log(colorize.red`===============================================`);
+  console.error();
+  if (err instanceof UserError) {
+    console.error(`${colorize.red`ERROR!`} ${err.message}`);
+  } else {
+    console.error("An error occurred during the initialization process.");
+  }
+  console.error();
+  console.log(colorize.red`===============================================`);
+  console.error();
+  console.error(
+    "If you need assistance, please try installing Stack manually as described in https://docs.stack-auth.com/getting-started/setup or join our Discord where we're happy to help: https://discord.stack-auth.com"
+  );
+  if (!(err instanceof UserError)) {
+    console.error("");
+    console.error(`Error message: ${err.message}`);
+  }
+  console.error();
+  await ph_client.shutdown();
+  process.exit(1);
+});
 
 
 type PackageJson = {

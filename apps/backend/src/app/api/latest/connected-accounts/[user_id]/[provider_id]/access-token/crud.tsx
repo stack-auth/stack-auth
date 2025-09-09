@@ -22,12 +22,14 @@ export const connectedAccountAccessTokenCrudHandlers = createLazyProxy(() => cre
       throw new StatusError(StatusError.Forbidden, "Client can only access its own connected accounts");
     }
 
-    const provider = auth.tenancy.config.oauth_providers.find((p) => p.id === params.provider_id);
-    if (!provider) {
+    const providerRaw = Object.entries(auth.tenancy.config.auth.oauth.providers).find(([providerId, _]) => providerId === params.provider_id);
+    if (!providerRaw) {
       throw new KnownErrors.OAuthProviderNotFoundOrNotEnabled();
     }
 
-    if (provider.type === 'shared' && getEnvVariable('STACK_ALLOW_SHARED_OAUTH_ACCESS_TOKENS') !== 'true') {
+    const provider = { id: providerRaw[0], ...providerRaw[1] };
+
+    if (provider.isShared && getEnvVariable('STACK_ALLOW_SHARED_OAUTH_ACCESS_TOKENS') !== 'true') {
       throw new KnownErrors.OAuthAccessTokenNotAvailableWithSharedOAuthKeys();
     }
 
@@ -39,7 +41,7 @@ export const connectedAccountAccessTokenCrudHandlers = createLazyProxy(() => cre
     const providerInstance = await getProvider(provider);
 
     // ====================== retrieve access token if it exists ======================
-    const prisma = getPrismaClientForTenancy(auth.tenancy);
+    const prisma = await getPrismaClientForTenancy(auth.tenancy);
     const accessTokens = await prisma.oAuthAccessToken.findMany({
       where: {
         tenancyId: auth.tenancy.id,
@@ -109,14 +111,14 @@ export const connectedAccountAccessTokenCrudHandlers = createLazyProxy(() => cre
           scope: data.scope,
         });
       } catch (error) {
-        captureError('oauth-access-token-refresh-error', {
+        captureError('oauth-access-token-refresh-error', new StackAssertionError('Error refreshing access token — this might be nothing bad and the refresh token might just be expired, but we should instead of throwing an error check whether this is a legit error or not', {
           error,
           tenancyId: auth.tenancy.id,
           providerId: params.provider_id,
           userId: params.user_id,
           refreshToken: token.refreshToken,
           scope: data.scope,
-        });
+        }));
 
         // mark the token as invalid
         await prisma.oAuthToken.update({

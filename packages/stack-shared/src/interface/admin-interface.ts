@@ -1,5 +1,7 @@
-import { InternalSession } from "../sessions";
-import { EmailTemplateCrud, EmailTemplateType } from "./crud/email-templates";
+import { KnownErrors } from "../known-errors";
+import { AccessToken, InternalSession, RefreshToken } from "../sessions";
+import { Result } from "../utils/results";
+import { ConfigCrud, ConfigOverrideCrud } from "./crud/config";
 import { InternalEmailsCrud } from "./crud/emails";
 import { InternalApiKeysCrud } from "./crud/internal-api-keys";
 import { ProjectPermissionDefinitionsCrud } from "./crud/project-permissions";
@@ -54,6 +56,32 @@ export class StackAdminInterface extends StackServerInterface {
       session,
       requestType,
     );
+  }
+
+  protected async sendAdminRequestAndCatchKnownError<E extends typeof KnownErrors[keyof KnownErrors]>(
+    path: string,
+    requestOptions: RequestInit,
+    tokenStoreOrNull: InternalSession | null,
+    errorsToCatch: readonly E[],
+  ): Promise<Result<
+    Response & {
+      usedTokens: {
+        accessToken: AccessToken,
+        refreshToken: RefreshToken | null,
+      } | null,
+    },
+    InstanceType<E>
+  >> {
+    try {
+      return Result.ok(await this.sendAdminRequest(path, requestOptions, tokenStoreOrNull));
+    } catch (e) {
+      for (const errorType of errorsToCatch) {
+        if (errorType.isInstance(e)) {
+          return Result.error(e as InstanceType<E>);
+        }
+      }
+      throw e;
+    }
   }
 
   async getProject(): Promise<ProjectsCrud["Admin"]["Read"]> {
@@ -125,15 +153,9 @@ export class StackAdminInterface extends StackServerInterface {
     return await response.json();
   }
 
-  async listEmailTemplates(): Promise<EmailTemplateCrud['Admin']['Read'][]> {
-    const response = await this.sendAdminRequest(`/email-templates`, {}, null);
-    const result = await response.json() as EmailTemplateCrud['Admin']['List'];
-    return result.items;
-  }
-
-  async listInternalEmailTemplatesNew(): Promise<{ id: string, subject: string, display_name: string, tsx_source: string }[]> {
+  async listInternalEmailTemplates(): Promise<{ id: string, display_name: string, theme_id?: string, tsx_source: string }[]> {
     const response = await this.sendAdminRequest(`/internal/email-templates`, {}, null);
-    const result = await response.json() as { templates: { id: string, subject: string, display_name: string, tsx_source: string }[] };
+    const result = await response.json() as { templates: { id: string, display_name: string, theme_id?: string, tsx_source: string }[] };
     return result.templates;
   }
 
@@ -143,28 +165,6 @@ export class StackAdminInterface extends StackServerInterface {
     return result.themes;
   }
 
-  async updateEmailTemplate(type: EmailTemplateType, data: EmailTemplateCrud['Admin']['Update']): Promise<EmailTemplateCrud['Admin']['Read']> {
-    const result = await this.sendAdminRequest(
-      `/email-templates/${type}`,
-      {
-        method: "PATCH",
-        headers: {
-          "content-type": "application/json",
-        },
-        body: JSON.stringify(data),
-      },
-      null,
-    );
-    return await result.json();
-  }
-
-  async resetEmailTemplate(type: EmailTemplateType): Promise<void> {
-    await this.sendAdminRequest(
-      `/email-templates/${type}`,
-      { method: "DELETE" },
-      null
-    );
-  }
 
   // Team permission definitions methods
   async listTeamPermissionDefinitions(): Promise<TeamPermissionDefinitionsCrud['Admin']['Read'][]> {
@@ -280,9 +280,31 @@ export class StackAdminInterface extends StackServerInterface {
     );
   }
 
-  async getMetrics(): Promise<any> {
+  async transferProject(session: InternalSession, newTeamId: string): Promise<void> {
+    await this.sendAdminRequest(
+      "/internal/projects/transfer",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          project_id: this.options.projectId,
+          new_team_id: newTeamId,
+        }),
+      },
+      session,
+    );
+  }
+
+  async getMetrics(includeAnonymous: boolean = false): Promise<any> {
+    const params = new URLSearchParams();
+    if (includeAnonymous) {
+      params.append('include_anonymous', 'true');
+    }
+    const queryString = params.toString();
     const response = await this.sendAdminRequest(
-      "/internal/metrics",
+      `/internal/metrics${queryString ? `?${queryString}` : ''}`,
       {
         method: "GET",
       },
@@ -317,21 +339,6 @@ export class StackAdminInterface extends StackServerInterface {
       method: "GET",
     }, null);
     return await response.json();
-  }
-
-  async sendEmail(options: {
-    user_ids: string[],
-    subject: string,
-    html: string,
-    notification_category_name: string,
-  }): Promise<void> {
-    await this.sendAdminRequest("/emails/send-email", {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-      },
-      body: JSON.stringify(options),
-    }, null);
   }
 
   async sendSignInInvitationEmail(
@@ -399,16 +406,17 @@ export class StackAdminInterface extends StackServerInterface {
     return await response.json();
   }
 
-  async renderEmailPreview(themeId: string, content?: string, templateId?: string): Promise<{ html: string }> {
+  async renderEmailPreview(options: { themeId?: string | null | false, themeTsxSource?: string, templateId?: string, templateTsxSource?: string }): Promise<{ html: string }> {
     const response = await this.sendAdminRequest(`/emails/render-email`, {
       method: "POST",
       headers: {
         "content-type": "application/json",
       },
       body: JSON.stringify({
-        theme_id: themeId,
-        preview_html: content,
-        template_id: templateId,
+        theme_id: options.themeId,
+        theme_tsx_source: options.themeTsxSource,
+        template_id: options.templateId,
+        template_tsx_source: options.templateTsxSource,
       }),
     }, null);
     return await response.json();
@@ -440,8 +448,8 @@ export class StackAdminInterface extends StackServerInterface {
     return await response.json();
   }
 
-  async updateEmailTheme(id: string, tsxSource: string, previewHtml: string): Promise<{ display_name: string, rendered_html: string }> {
-    const response = await this.sendAdminRequest(
+  async updateEmailTheme(id: string, tsxSource: string): Promise<void> {
+    await this.sendAdminRequest(
       `/internal/email-themes/${id}`,
       {
         method: "PATCH",
@@ -450,15 +458,13 @@ export class StackAdminInterface extends StackServerInterface {
         },
         body: JSON.stringify({
           tsx_source: tsxSource,
-          preview_html: previewHtml,
         }),
       },
       null,
     );
-    return await response.json();
   }
 
-  async updateNewEmailTemplate(id: string, tsxSource: string): Promise<{ rendered_html: string }> {
+  async updateEmailTemplate(id: string, tsxSource: string, themeId: string | null | false): Promise<{ rendered_html: string }> {
     const response = await this.sendAdminRequest(
       `/internal/email-templates/${id}`,
       {
@@ -466,10 +472,106 @@ export class StackAdminInterface extends StackServerInterface {
         headers: {
           "content-type": "application/json",
         },
-        body: JSON.stringify({ tsx_source: tsxSource }),
+        body: JSON.stringify({ tsx_source: tsxSource, theme_id: themeId }),
       },
       null,
     );
     return await response.json();
   }
+
+  async getConfig(): Promise<ConfigCrud["Admin"]["Read"]> {
+    const response = await this.sendAdminRequest(
+      `/internal/config`,
+      { method: "GET" },
+      null,
+    );
+    return await response.json();
+  }
+
+  async updateConfig(data: { configOverride: any }): Promise<ConfigOverrideCrud["Admin"]["Read"]> {
+    const response = await this.sendAdminRequest(
+      `/internal/config/override`,
+      {
+        method: "PATCH",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ config_override_string: JSON.stringify(data.configOverride) }),
+      },
+      null,
+    );
+    return await response.json();
+  }
+  async createEmailTemplate(displayName: string): Promise<{ id: string }> {
+    const response = await this.sendAdminRequest(
+      `/internal/email-templates`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          display_name: displayName,
+        }),
+      },
+      null,
+    );
+    return await response.json();
+  }
+
+  async setupPayments(): Promise<{ url: string }> {
+    const response = await this.sendAdminRequest(
+      "/internal/payments/setup",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({}),
+      },
+      null,
+    );
+    return await response.json();
+  }
+
+  async getStripeAccountInfo(): Promise<null | { account_id: string, charges_enabled: boolean, details_submitted: boolean, payouts_enabled: boolean }> {
+    const response = await this.sendAdminRequestAndCatchKnownError(
+      "/internal/payments/stripe/account-info",
+      {},
+      null,
+      [KnownErrors.StripeAccountInfoNotFound],
+    );
+    if (response.status === "error") {
+      return null;
+    }
+    return await response.data.json();
+  }
+
+  async createStripeWidgetAccountSession(): Promise<{ client_secret: string }> {
+    const response = await this.sendAdminRequest(
+      "/internal/payments/stripe-widgets/account-session",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({}),
+      },
+      null,
+    );
+    return await response.json();
+  }
+
+  async testModePurchase(options: { price_id: string, full_code: string, quantity?: number }): Promise<void> {
+    await this.sendAdminRequest(
+      "/internal/payments/test-mode-purchase-session",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(options),
+      },
+      null,
+    );
+  }
+
 }

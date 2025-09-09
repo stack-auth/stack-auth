@@ -124,7 +124,7 @@ function EditableInput({
       placeholder={placeholder}
       tabIndex={readOnly ? -1 : undefined}
       className={cn(
-        "w-full px-1 py-0 h-[unset] border-transparent hover:ring-1 hover:ring-ring",
+        "w-full px-1 py-0 h-[unset] border-transparent hover:ring-1 hover:ring-gray-300 dark:hover:ring-gray-500 focus-visible:ring-gray-500 dark:focus-visible:ring-gray-50",
         readOnly && "focus-visible:ring-0 hover:ring-0",
         shiftTextToLeft && "ml-[-7px]",
         inputClassName,
@@ -600,7 +600,7 @@ function SendEmailWithDomainDialog({
           baseUrl = domain.domain;
           handlerPath = domain.handlerPath;
         }
-        const callbackUrl = new URL(handlerPath + endpointPath, baseUrl).toString();
+        const callbackUrl = new URL(handlerPath.replace(/\/?$/, '/') + endpointPath.replace(/^\//, ''), baseUrl).toString();
         await onSubmit(callbackUrl);
       }}
     />

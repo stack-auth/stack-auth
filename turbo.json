@@ -2,6 +2,7 @@
   "$schema": "https://turbo.build/schema.json",
   "globalEnv": [
     "STACK_*",
+    "CRON_SECRET",
     "NEXT_PUBLIC_*",
     "NEXT_PUBLIC_SENTRY_*",
     "SENTRY_*",
@@ -10,7 +11,11 @@
     "POSTHOG_*",
     "NODE_ENV",
     "QUETZAL_*",
-    "OTEL_*"
+    "OTEL_*",
+    "GOOGLE_AI_API_KEY",
+    "DISCORD_WEBHOOK_URL",
+    "DISCORD_CHANNEL_ID",
+    "DISCORD_BOT_TOKEN"
   ],
   "tasks": {
     "build": {
@@ -59,11 +64,6 @@
       ],
       "outputLogs": "new-only"
     },
-    "@stackframe/mcp-server#build": {
-      "dependsOn": [
-        "@stackframe/stack-backend#build"
-      ]
-    },
     "@stackframe/stack-backend#build": {
       "dependsOn": [
         "codegen"
@@ -94,16 +94,25 @@
     "codegen": {
       "cache": false
     },
-    "prisma": {
-      "cache": false
-    },
     "typecheck": {
       "dependsOn": []
     },
-    "generate-openapi": {
+    "generate-keys": {
       "cache": false
     },
-    "generate-keys": {
+    "db:migration-gen": {
+      "cache": false
+    },
+    "db:reset": {
+      "cache": false
+    },
+    "db:seed": {
+      "cache": false
+    },
+    "db:init": {
+      "cache": false
+    },
+    "db:migrate": {
       "cache": false
     }
   }

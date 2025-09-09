@@ -31,7 +31,7 @@ export const POST = createSmartRouteHandler({
     bodyType: yupString().oneOf(["success"]).defined(),
   }),
   async handler({ auth: { tenancy, user }, body: { old_password, new_password }, headers: { "x-stack-refresh-token": refreshToken } }, fullReq) {
-    if (!tenancy.config.credential_enabled) {
+    if (!tenancy.config.auth.password.allowSignIn) {
       throw new KnownErrors.PasswordAuthenticationNotEnabled();
     }
 
@@ -40,7 +40,7 @@ export const POST = createSmartRouteHandler({
       throw passwordError;
     }
 
-    const prisma = getPrismaClientForTenancy(tenancy);
+    const prisma = await getPrismaClientForTenancy(tenancy);
     await retryTransaction(prisma, async (tx) => {
       const authMethods = await tx.passwordAuthMethod.findMany({
         where: {

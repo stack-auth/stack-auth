@@ -1,5 +1,135 @@
 # @stackframe/stack
 
+## 2.8.37
+
+### Patch Changes
+
+- Various changes
+- Updated dependencies
+  - @stackframe/stack-shared@2.8.37
+  - @stackframe/stack-ui@2.8.37
+  - @stackframe/stack-sc@2.8.37
+
+## 2.8.36
+
+### Patch Changes
+
+- Various changes
+- Updated dependencies
+  - @stackframe/stack-shared@2.8.36
+  - @stackframe/stack-sc@2.8.36
+  - @stackframe/stack-ui@2.8.36
+
+## 2.8.35
+
+### Patch Changes
+
+- Various changes
+- Updated dependencies
+  - @stackframe/stack-shared@2.8.35
+  - @stackframe/stack-ui@2.8.35
+  - @stackframe/stack-sc@2.8.35
+
+## 2.8.34
+
+### Patch Changes
+
+- Various changes
+- Updated dependencies
+  - @stackframe/stack-shared@2.8.34
+  - @stackframe/stack-ui@2.8.34
+  - @stackframe/stack-sc@2.8.34
+
+## 2.8.33
+
+### Patch Changes
+
+- Various changes
+- Updated dependencies
+  - @stackframe/stack-shared@2.8.33
+  - @stackframe/stack-sc@2.8.33
+  - @stackframe/stack-ui@2.8.33
+
+## 2.8.32
+
+### Patch Changes
+
+- Various changes
+- Updated dependencies
+  - @stackframe/stack-shared@2.8.32
+  - @stackframe/stack-ui@2.8.32
+  - @stackframe/stack-sc@2.8.32
+
+## 2.8.31
+
+### Patch Changes
+
+- Various changes
+- Updated dependencies
+  - @stackframe/stack-sc@2.8.31
+  - @stackframe/stack-shared@2.8.31
+  - @stackframe/stack-ui@2.8.31
+
+## 2.8.30
+
+### Patch Changes
+
+- Various changes
+- Updated dependencies
+  - @stackframe/stack-shared@2.8.30
+  - @stackframe/stack-ui@2.8.30
+  - @stackframe/stack-sc@2.8.30
+
+## 2.8.29
+
+### Patch Changes
+
+- Various changes
+- Updated dependencies
+  - @stackframe/stack-shared@2.8.29
+  - @stackframe/stack-ui@2.8.29
+  - @stackframe/stack-sc@2.8.29
+
+## 2.8.28
+
+### Patch Changes
+
+- Various changes
+- Updated dependencies
+  - @stackframe/stack-shared@2.8.28
+  - @stackframe/stack-ui@2.8.28
+  - @stackframe/stack-sc@2.8.28
+
+## 2.8.27
+
+### Patch Changes
+
+- Various changes
+- Updated dependencies
+  - @stackframe/stack-shared@2.8.27
+  - @stackframe/stack-ui@2.8.27
+  - @stackframe/stack-sc@2.8.27
+
+## 2.8.26
+
+### Patch Changes
+
+- Various changes
+- Updated dependencies
+  - @stackframe/stack-shared@2.8.26
+  - @stackframe/stack-ui@2.8.26
+  - @stackframe/stack-sc@2.8.26
+
+## 2.8.25
+
+### Patch Changes
+
+- Various changes
+- Updated dependencies
+  - @stackframe/stack-shared@2.8.25
+  - @stackframe/stack-ui@2.8.25
+  - @stackframe/stack-sc@2.8.25
+
 ## 2.8.24
 
 ### Patch Changes

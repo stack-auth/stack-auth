@@ -13,7 +13,7 @@ Stack Auth is a managed user authentication solution. It is developer-friendly a
 
 Stack Auth gets you started in just five minutes, after which you'll be ready to use all of its features as you grow your project. Our managed service is completely optional and you can export your user data and self-host, for free, at any time.
 
-We support Next.js, React, and JavaScript frontends, along with any backend that can use our [REST API](https://docs.stack-auth.com/rest-api/overview). Check out our [setup guide](https://docs.stack-auth.com/getting-started/setup) to get started.
+We support Next.js, React, and JavaScript frontends, along with any backend that can use our [REST API](https://docs.stack-auth.com/api/overview). Check out our [setup guide](https://docs.stack-auth.com/docs/next/getting-started/setup) to get started.
 
 <div align="center">
 <img alt="Stack Auth Setup" src=".github/assets/create-project.gif" width="400" />
@@ -163,10 +163,10 @@ pnpm run prisma studio
 
 ### Database migrations
 
-If you make changes to the Prisma schema, you need to run the following command to create a migration:
+If you make changes to the Prisma schema, you need to run the following command to create a migration file:
 
 ```sh
-pnpm run prisma migrate dev
+pnpm run db:migration-gen
 ```
 
 ### Chat with the codebase

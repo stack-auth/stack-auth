@@ -24,6 +24,7 @@ On a high level, Stack Auth is composed of the following services:
 - **Postgres database**: Used to store all user data. We use [Prisma](https://prisma.io) as the ORM and manage the database schema migrations.
 - **Svix**: Used to send webhooks. Svix is open-source and can be self-hosted, but also offers a cloud hosted solution. More on Svix [here](https://svix.com)
 - **Email server**: We use [Inbucket](https://inbucket.org) as a local email server for development and a separate SMTP server for production. Any email service supporting SMTP will work.
+- **S3 storage**: We use [S3Mock](https://github.com/adobe/S3Mock) as a local S3 storage for development and a separate S3 storage for production. Any S3 storage will work.
 
 ## Run with Docker
 
@@ -34,7 +35,7 @@ Stack Auth provides a [pre-configured Docker](https://hub.docker.com/r/stackauth
   docker run -d --name db -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=password -e POSTGRES_DB=stackframe -p 5432:5432 postgres:latest
   ```
 
-2. Get the [example environment file](https://github.com/stack-auth/stack-auth/tree/main/docker/server/.env.example) and modify it to your needs (for security, you MUST edit at least the `STACK_SERVER_SECRET` value). See the [full template here](https://github.com/stack-auth/stack-auth/blob/dev/docker/server/.env).
+2. Get the [example environment file](https://github.com/stack-auth/stack-auth/tree/main/docker/server/.env.example) and modify it to your needs (for security, you MUST edit at least the `STACK_SERVER_SECRET` value). You must also supply a `STACK_FREESTYLE_API_KEY` in order to send emails with Stack Auth (can be generated on [freestyle](https://freestyle.sh)). See the [full template here](https://github.com/stack-auth/stack-auth/blob/dev/docker/server/.env).
 
 3. Run the Docker container:
   ```sh
@@ -146,13 +147,7 @@ pnpm start:dashboard
 You need to initialize the database with the following command with the backend environment variables set:
 
 ```sh
-pnpm prisma migrate deploy
-```
-
-The database is still empty; you need to create a project with the ID "internal" used by the dashboard to authenticate itself. You can do this with the following command:
-
-```sh
-pnpm prisma db seed
+pnpm db:init
 ```
 
 Now you can go to the dashboard (e.g., https://your-dashboard-url.com) and sign up for an account.

@@ -29,7 +29,7 @@ export const notificationPreferencesCrudHandlers = createLazyProxy(() => createC
         throw new StatusError(StatusError.Forbidden, "You can only manage your own notification preferences");
       }
     }
-    const prismaClient = getPrismaClientForTenancy(auth.tenancy);
+    const prismaClient = await getPrismaClientForTenancy(auth.tenancy);
     await ensureUserExists(prismaClient, { tenancyId: auth.tenancy.id, userId });
 
     const notificationPreference = await prismaClient.userNotificationPreference.upsert({
@@ -72,7 +72,7 @@ export const notificationPreferencesCrudHandlers = createLazyProxy(() => createC
         throw new StatusError(StatusError.Forbidden, "You can only view your own notification preferences");
       }
     }
-    const prismaClient = getPrismaClientForTenancy(auth.tenancy);
+    const prismaClient = await getPrismaClientForTenancy(auth.tenancy);
     await ensureUserExists(prismaClient, { tenancyId: auth.tenancy.id, userId });
 
     const notificationPreferences = await prismaClient.userNotificationPreference.findMany({

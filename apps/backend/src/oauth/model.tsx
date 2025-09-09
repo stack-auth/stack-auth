@@ -14,6 +14,9 @@ import { getProjectBranchFromClientId } from ".";
 declare module "@node-oauth/oauth2-server" {
   // eslint-disable-next-line @typescript-eslint/consistent-type-definitions
   interface Client {}
+
+  // eslint-disable-next-line @typescript-eslint/consistent-type-definitions
+  interface User {}
 }
 
 const enabledScopes = ["legacy"];
@@ -52,11 +55,15 @@ export class OAuthModel implements AuthorizationCodeModel {
 
     let redirectUris: string[] = [];
     try {
-      redirectUris = tenancy.config.domains.map(
-        ({ domain, handler_path }) => new URL(handler_path, domain).toString()
-      );
+      redirectUris = Object.entries(tenancy.config.domains.trustedDomains)
+        // note that this may include wildcard domains, which is fine because we correctly account for them in
+        // model.validateRedirectUri(...)
+        .filter(([_, domain]) => {
+          return domain.baseUrl;
+        })
+        .map(([_, domain]) => new URL(domain.handlerPath, domain.baseUrl).toString());
     } catch (e) {
-      captureError("get redirect uris", {
+      captureError("get-oauth-redirect-urls", {
         error: e,
         projectId: tenancy.project.id,
         domains: tenancy.config.domains,
@@ -64,7 +71,7 @@ export class OAuthModel implements AuthorizationCodeModel {
       throw e;
     }
 
-    if (redirectUris.length === 0 && tenancy.config.allow_localhost) {
+    if (redirectUris.length === 0 && tenancy.config.domains.allowLocalhost) {
       redirectUris.push("http://localhost");
     }
 
@@ -136,7 +143,8 @@ export class OAuthModel implements AuthorizationCodeModel {
   async saveToken(token: Token, client: Client, user: User): Promise<Token | Falsey> {
     if (token.refreshToken) {
       const tenancy = await getSoleTenancyFromProjectBranch(...getProjectBranchFromClientId(client.id));
-      const projectUser = await getPrismaClientForTenancy(tenancy).projectUser.findUniqueOrThrow({
+      const prisma = await getPrismaClientForTenancy(tenancy);
+      const projectUser = await prisma.projectUser.findUniqueOrThrow({
         where: {
           tenancyId_projectUserId: {
             tenancyId: tenancy.id,
@@ -193,7 +201,7 @@ export class OAuthModel implements AuthorizationCodeModel {
   }
 
   async getAccessToken(accessToken: string): Promise<Token | Falsey> {
-    const result = await decodeAccessToken(accessToken);
+    const result = await decodeAccessToken(accessToken, { allowAnonymous: true });
     if (result.status === "error") {
       captureError("getAccessToken", result.error);
       return false;
@@ -266,7 +274,7 @@ export class OAuthModel implements AuthorizationCodeModel {
     assertScopeIsValid(code.scope);
     const tenancy = await getSoleTenancyFromProjectBranch(...getProjectBranchFromClientId(client.id));
 
-    if (!validateRedirectUrl(code.redirectUri, tenancy.config.domains, tenancy.config.allow_localhost)) {
+    if (!validateRedirectUrl(code.redirectUri, tenancy)) {
       throw new KnownErrors.RedirectUrlNotWhitelisted();
     }
 
@@ -352,10 +360,6 @@ export class OAuthModel implements AuthorizationCodeModel {
   async validateRedirectUri(redirect_uri: string, client: Client): Promise<boolean> {
     const tenancy = await getSoleTenancyFromProjectBranch(...getProjectBranchFromClientId(client.id));
 
-    return validateRedirectUrl(
-      redirect_uri,
-      tenancy.config.domains,
-      tenancy.config.allow_localhost,
-    );
+    return validateRedirectUrl(redirect_uri, tenancy);
   }
 }

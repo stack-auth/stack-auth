@@ -28,7 +28,7 @@ export const POST = createSmartRouteHandler({
     }).defined(),
   }),
   async handler({ auth, body }) {
-    if (!validateRedirectUrl(body.callback_url, auth.tenancy.config.domains, auth.tenancy.config.allow_localhost)) {
+    if (!validateRedirectUrl(body.callback_url, auth.tenancy)) {
       throw new KnownErrors.RedirectUrlNotWhitelisted();
     }
 
@@ -39,6 +39,7 @@ export const POST = createSmartRouteHandler({
       templateType: "sign_in_invitation",
       extraVariables: {
         signInInvitationLink: body.callback_url,
+        teamDisplayName: auth.tenancy.project.display_name,
       },
     });
 

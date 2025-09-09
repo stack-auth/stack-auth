@@ -17,7 +17,7 @@ export const sessionsCrudHandlers = createLazyProxy(() => createCrudHandlers(ses
     user_id: userIdOrMeSchema.defined(),
   }).defined(),
   onList: async ({ auth, query }) => {
-    const prisma = getPrismaClientForTenancy(auth.tenancy);
+    const prisma = await getPrismaClientForTenancy(auth.tenancy);
     const schema = getPrismaSchemaForTenancy(auth.tenancy);
     const listImpersonations = auth.type === 'admin';
 
@@ -49,6 +49,9 @@ export const sessionsCrudHandlers = createLazyProxy(() => createCrudHandlers(ses
           ? Prisma.sql`data->>'sessionId' = ANY(${Prisma.sql`ARRAY[${Prisma.join(refreshTokenObjs.map(s => s.id))}]`})`
           : Prisma.sql`FALSE`}
         AND "systemEventTypeIds" @> '{"$session-activity"}'
+        AND data->>'userId' = ${query.user_id}
+        AND data->>'projectId' = ${auth.tenancy.project.id}
+        AND COALESCE(data->>'branchId', 'main') = ${auth.tenancy.branchId}
         GROUP BY data->>'sessionId'
       )
       SELECT e.data->>'sessionId' as "sessionId", 
@@ -59,6 +62,9 @@ export const sessionsCrudHandlers = createLazyProxy(() => createCrudHandlers(ses
       JOIN latest_events le ON e.data->>'sessionId' = le."sessionId" AND e."eventStartedAt" = le."lastActiveAt"
       LEFT JOIN ${sqlQuoteIdent(schema)}."EventIpInfo" geo ON geo.id = e."endUserIpInfoGuessId"
       WHERE e."systemEventTypeIds" @> '{"$session-activity"}'
+      AND e.data->>'userId' = ${query.user_id}
+      AND e.data->>'projectId' = ${auth.tenancy.project.id}
+      AND COALESCE(e.data->>'branchId', 'main') = ${auth.tenancy.branchId}
     `;
 
     const sessionsWithLastActiveAt = refreshTokenObjs.map(s => {
@@ -86,7 +92,7 @@ export const sessionsCrudHandlers = createLazyProxy(() => createCrudHandlers(ses
     return result;
   },
   onDelete: async ({ auth, params }: { auth: SmartRequestAuth, params: { id: string }, query: { user_id?: string } }) => {
-    const prisma = getPrismaClientForTenancy(auth.tenancy);
+    const prisma = await getPrismaClientForTenancy(auth.tenancy);
     const session = await globalPrismaClient.projectUserRefreshToken.findFirst({
       where: {
         tenancyId: auth.tenancy.id,

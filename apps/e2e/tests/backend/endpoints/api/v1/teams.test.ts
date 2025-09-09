@@ -28,6 +28,7 @@ it("lists all the teams in a project with server access", async ({ expect }) => 
 });
 
 it("lists all the teams the current user has on the client", async ({ expect }) => {
+  await Project.createAndSwitch({ config: {  magic_link_enabled: true } });
   const { userId } = await Auth.Otp.signIn();
   const response1 = await niceBackendFetch("/api/v1/teams?user_id=me", { accessType: "client" });
   expect(response1).toMatchInlineSnapshot(`
@@ -55,6 +56,7 @@ it("lists all the teams the current user has on the client", async ({ expect }) 
 });
 
 it("lists all the teams the current user has on the server", async ({ expect }) => {
+  await Project.createAndSwitch({ config: {  magic_link_enabled: true } });
   const { userId } = await Auth.Otp.signIn();
   const response1 = await niceBackendFetch("/api/v1/teams?user_id=me", { accessType: "server" });
   expect(response1).toMatchInlineSnapshot(`
@@ -507,6 +509,7 @@ it("should not update a team without permission on the client", async ({ expect 
 });
 
 it("updates a team on the server", async ({ expect }) => {
+  await Project.createAndSwitch({ config: {  magic_link_enabled: true } });
   await Auth.Otp.signIn();
   const { teamId } = await Team.createWithCurrentAsCreator({ accessType: "server" });
 
@@ -515,7 +518,7 @@ it("updates a team on the server", async ({ expect }) => {
     method: "PATCH",
     body: {
       display_name: "My Updated Team",
-      profile_image_url: "data:image/gif;base64,R0lGODlhAQABAAAAACw=",
+      profile_image_url: "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==",
       server_metadata: {
         "test": "test-value"
       },
@@ -530,7 +533,7 @@ it("updates a team on the server", async ({ expect }) => {
         "created_at_millis": <stripped field 'created_at_millis'>,
         "display_name": "My Updated Team",
         "id": "<stripped UUID>",
-        "profile_image_url": "data:image/gif;base64,R0lGODlhAQABAAAAACw=",
+        "profile_image_url": "http://localhost:8121/stack-storage/team-profile-images/<stripped UUID>.gif",
         "server_metadata": { "test": "test-value" },
       },
       "headers": Headers { <some fields may have been hidden> },
@@ -550,7 +553,7 @@ it("updates a team on the server", async ({ expect }) => {
             "created_at_millis": <stripped field 'created_at_millis'>,
             "display_name": "My Updated Team",
             "id": "<stripped UUID>",
-            "profile_image_url": "data:image/gif;base64,R0lGODlhAQABAAAAACw=",
+            "profile_image_url": "http://localhost:8121/stack-storage/team-profile-images/<stripped UUID>.gif",
             "server_metadata": { "test": "test-value" },
           },
         ],
@@ -670,6 +673,7 @@ it("should not update a team without permission on the client", async ({ expect 
 });
 
 it("deletes a team on the server", async ({ expect }) => {
+  await Project.createAndSwitch({ config: {  magic_link_enabled: true } });
   await Auth.Otp.signIn();
   const { teamId } = await Team.createWithCurrentAsCreator({ accessType: "server" });
 
