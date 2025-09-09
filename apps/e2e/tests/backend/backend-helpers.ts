@@ -204,6 +204,10 @@ export namespace Auth {
         "sub": expect.any(String),
         "role": "authenticated",
         "branchId": "main",
+        "displayName": expect.toSatisfy(() => true),
+        "primaryEmail": expect.toSatisfy(() => true),
+        "primaryEmailVerified": expect.any(Boolean),
+        "selectedTeamId": expect.toSatisfy(() => true),
       });
     }
   }
