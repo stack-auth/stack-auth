@@ -7,6 +7,7 @@ import { getEnvVariable } from "./env";
 import { StackAssertionError } from "./errors";
 import { globalVar } from "./globals";
 import { pick } from "./objects";
+import { Result } from "./results";
 
 function getStackServerSecret() {
   const STACK_SERVER_SECRET = getEnvVariable("STACK_SERVER_SECRET");
@@ -16,6 +17,17 @@ function getStackServerSecret() {
     throw new StackAssertionError("STACK_SERVER_SECRET is not valid. Please use the generateKeys script to generate a new secret.", { cause: e });
   }
   return STACK_SERVER_SECRET;
+}
+
+export async function getJwtInfo(options: {
+  jwt: string,
+}) {
+  try {
+    const decodedJwt = jose.decodeJwt(options.jwt);
+    return Result.ok({ payload: decodedJwt });
+  } catch (e) {
+    return Result.error(e);
+  }
 }
 
 export async function signJWT(options: {
