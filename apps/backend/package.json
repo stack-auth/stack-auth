@@ -61,7 +61,7 @@
     "@prisma/adapter-pg": "^6.12.0",
     "@prisma/client": "^6.12.0",
     "@prisma/instrumentation": "^6.12.0",
-    "@sentry/nextjs": "^8.40.0",
+    "@sentry/nextjs": "^10.11.0",
     "@simplewebauthn/server": "^11.0.0",
     "@stackframe/stack-shared": "workspace:*",
     "@upstash/qstash": "^2.8.2",
