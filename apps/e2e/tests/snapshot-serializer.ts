@@ -36,6 +36,8 @@ const stripFields = [
   "access_token",
   "refresh_token",
   "refreshTokenId",
+  "exp",
+  "iat",
   "date",
   "last_active_at_millis",
   "signed_up_at_millis",
