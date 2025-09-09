@@ -55,7 +55,7 @@ async function resolveNeonConnectionString(entry: string): Promise<string> {
     return entry;
   }
   const store = await stackServerApp.getDataVaultStore('neon-connection-strings');
-  const secret = getEnvVariable('STACK_SERVER_SECRET');
+  const secret = "no client side encryption";
   const value = await store.getValue(entry, { secret });
   if (!value) throw new Error('No Neon connection string found for UUID');
   return value;

@@ -41,7 +41,7 @@ export const POST = createSmartRouteHandler({
 
     if (hasNeonConnections) {
       const store = await stackServerApp.getDataVaultStore('neon-connection-strings');
-      const secret = getEnvVariable('STACK_SERVER_SECRET');
+      const secret = "no client side encryption";
 
       for (const c of req.body.connection_strings!) {
         const uuid = generateUuid();

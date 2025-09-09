@@ -282,12 +282,12 @@ it("can provision with a Neon connection string when provided via env (optional)
     method: "POST",
     accessType: "server",
     body: {
-      hashed_key: await hashKey("23-wuNpik0gIW4mruTz25rbIvhuuvZFrLOLtL7J4tyo", sourceOfTruth.connectionStrings.main),
+      hashed_key: await hashKey("no client side encryption", sourceOfTruth.connectionStrings.main),
     },
   });
   expect(getConnectionResponse.status).toBe(200);
   const connectionString = await decryptValue(
-    "23-wuNpik0gIW4mruTz25rbIvhuuvZFrLOLtL7J4tyo",
+    "no client side encryption",
     sourceOfTruth.connectionStrings.main,
     getConnectionResponse.body.encrypted_value
   );
