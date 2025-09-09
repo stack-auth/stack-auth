@@ -111,14 +111,14 @@ export const connectedAccountAccessTokenCrudHandlers = createLazyProxy(() => cre
           scope: data.scope,
         });
       } catch (error) {
-        captureError('oauth-access-token-refresh-error', {
+        captureError('oauth-access-token-refresh-error', new StackAssertionError('Error refreshing access token — this might be nothing bad and the refresh token might just be expired, but we should instead of throwing an error check whether this is a legit error or not', {
           error,
           tenancyId: auth.tenancy.id,
           providerId: params.provider_id,
           userId: params.user_id,
           refreshToken: token.refreshToken,
           scope: data.scope,
-        });
+        }));
 
         // mark the token as invalid
         await prisma.oAuthToken.update({
