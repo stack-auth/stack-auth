@@ -247,9 +247,6 @@ async function main(): Promise<void> {
     shell: true,
     cwd: projectPath,
   });
-    shell: true,
-    cwd: projectPath,
-  });
 
   await capture(`dependencies-installed`, {
     packageManager,
