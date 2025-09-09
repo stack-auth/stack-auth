@@ -14,16 +14,26 @@ let esbuildInitializePromise: Promise<void> | null = null;
 export function initializeEsbuild(): Promise<void> {
   if (!esbuildInitializePromise) {
     esbuildInitializePromise = withTraceSpan('initializeEsbuild', async () => {
-      await esbuild.initialize(isBrowserLike() ? {
-        wasmURL: esbuildWasmUrl,
-      } : {
-        wasmModule: (
-          await fetch(esbuildWasmUrl)
-            .then(wasm => wasm.arrayBuffer())
-            .then(wasm => new WebAssembly.Module(wasm))
-        ),
-        worker: false,
-      });
+      if (isBrowserLike()) {
+        await esbuild.initialize({
+          wasmURL: esbuildWasmUrl,
+        });
+      } else {
+        const esbuildWasmResponse = await fetch(esbuildWasmUrl);
+        if (!esbuildWasmResponse.ok) {
+          throw new StackAssertionError(`Failed to fetch esbuild.wasm: ${esbuildWasmResponse.status} ${esbuildWasmResponse.statusText}: ${await esbuildWasmResponse.text()}`);
+        }
+        const esbuildWasm = await esbuildWasmResponse.arrayBuffer();
+        const esbuildWasmArray = new Uint8Array(esbuildWasm);
+        if (esbuildWasmArray[0] !== 0x00 || esbuildWasmArray[1] !== 0x61 || esbuildWasmArray[2] !== 0x73 || esbuildWasmArray[3] !== 0x6d) {
+          throw new StackAssertionError(`Invalid esbuild.wasm file: ${new TextDecoder().decode(esbuildWasmArray)}`);
+        }
+        const esbuildWasmModule = new WebAssembly.Module(esbuildWasm);
+        await esbuild.initialize({
+          wasmModule: esbuildWasmModule,
+          worker: false,
+        });
+      }
     })();
   }
 
