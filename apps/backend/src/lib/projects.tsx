@@ -8,7 +8,7 @@ import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { filterUndefined, typedFromEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
-import { getPrismaClientForTenancy, RawQuery, globalPrismaClient, rawQuery, retryTransaction } from "../prisma-client";
+import { RawQuery, getPrismaClientForTenancy, globalPrismaClient, rawQuery, retryTransaction } from "../prisma-client";
 import { overrideEnvironmentConfigOverride, overrideProjectConfigOverride } from "./config";
 import { DEFAULT_BRANCH_ID, getSoleTenancyFromProjectBranch } from "./tenancies";
 
@@ -59,7 +59,9 @@ export function getProjectQuery(projectId: string): RawQuery<Promise<Omit<Projec
         display_name: row.displayName,
         description: row.description,
         logo_url: row.logoUrl,
-        full_logo_url: row.fullLogoUrl,
+        logo_full_url: row.logoFullUrl,
+        logo_dark_mode_url: row.logoDarkModeUrl,
+        logo_full_dark_mode_url: row.logoFullDarkModeUrl,
         created_at_millis: new Date(row.createdAt + "Z").getTime(),
         is_production_mode: row.isProductionMode,
         owner_team_id: row.ownerTeamId,
@@ -88,14 +90,13 @@ export async function createOrUpdateProjectWithLegacyConfig(
     data: ProjectsCrud["Admin"]["Update"],
   })
 ) {
-  let logoUrl: string | null | undefined;
-  if (options.data.logo_url !== undefined) {
-    logoUrl = await uploadAndGetUrl(options.data.logo_url, "project-logos");
-  }
+  const logoFields = ['logo_url', 'full_logo_url', 'logo_dark_mode_url', 'logo_full_dark_mode_url'] as const;
+  const logoUrls: Record<string, string | null | undefined> = {};
 
-  let fullLogoUrl: string | null | undefined;
-  if (options.data.full_logo_url !== undefined) {
-    fullLogoUrl = await uploadAndGetUrl(options.data.full_logo_url, "project-logos");
+  for (const field of logoFields) {
+    if (options.data[field] !== undefined) {
+      logoUrls[field] = await uploadAndGetUrl(options.data[field], "project-logos");
+    }
   }
 
   const [projectId, branchId] = await retryTransaction(globalPrismaClient, async (tx) => {
@@ -110,8 +111,10 @@ export async function createOrUpdateProjectWithLegacyConfig(
           description: options.data.description ?? "",
           isProductionMode: options.data.is_production_mode ?? false,
           ownerTeamId: options.data.owner_team_id,
-          logoUrl,
-          fullLogoUrl,
+          logoUrl: logoUrls.logo_url,
+          logoFullUrl: logoUrls.full_logo_url,
+          logoDarkModeUrl: logoUrls.logo_dark_mode_url,
+          logoFullDarkModeUrl: logoUrls.logo_full_dark_mode_url,
         },
       });
 
@@ -142,8 +145,10 @@ export async function createOrUpdateProjectWithLegacyConfig(
           displayName: options.data.display_name,
           description: options.data.description === null ? "" : options.data.description,
           isProductionMode: options.data.is_production_mode,
-          logoUrl,
-          fullLogoUrl,
+          logoUrl: logoUrls.logo_url,
+          logoFullUrl: logoUrls.full_logo_url,
+          logoDarkModeUrl: logoUrls.logo_dark_mode_url,
+          logoFullDarkModeUrl: logoUrls.logo_full_dark_mode_url,
         },
       });
       branchId = options.branchId;

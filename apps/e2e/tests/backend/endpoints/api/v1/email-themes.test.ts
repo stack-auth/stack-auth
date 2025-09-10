@@ -95,15 +95,15 @@ describe("get email theme", () => {
             import { ThemeProps } from "@stackframe/emails"
             import { ThemeProps } from "@stackframe/emails"
             
-            export function EmailTheme({ children, unsubscribeLink, logoUrl, fullLogoUrl, projectDisplayName }: ThemeProps) {
+            export function EmailTheme({ children, unsubscribeLink, logoUrl, logoFullUrl, projectDisplayName }: ThemeProps) {
               return (
                 <Html>
                   <Head />
                   <Tailwind>
                     <Body className="bg-[#fafbfb] font-sans text-base">
                       <Container className="bg-white p-[45px] rounded-lg">
-                        {fullLogoUrl ? 
-                          <Img src={fullLogoUrl} alt="Full Logo" className="h-16" /> :
+                        {logoFullUrl ? 
+                          <Img src={logoFullUrl} alt="Full Logo" className="h-16" /> :
                           logoUrl ? 
                             <div className="flex gap-2 items-center">
                               <Img src={logoUrl} alt="Logo" className="h-8" />

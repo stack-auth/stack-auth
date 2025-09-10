@@ -95,7 +95,9 @@ export default function CodeEditor({
             unsubscribeLink?: string;
             projectDisplayName?: string;
             logoUrl?: string;
-            fullLogoUrl?: string;
+            logoFullUrl?: string;
+            logoDarkModeUrl?: string;
+            logoFullDarkModeUrl?: string;
           };
         }
       `,

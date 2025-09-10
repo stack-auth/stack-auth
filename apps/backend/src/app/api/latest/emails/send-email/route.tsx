@@ -160,7 +160,9 @@ export const POST = createSmartRouteHandler({
             unsubscribeLink,
             projectDisplayName: auth.tenancy.project.display_name,
             logoUrl: auth.tenancy.project.logo_url ?? undefined,
-            fullLogoUrl: auth.tenancy.project.full_logo_url ?? undefined,
+            logoFullUrl: auth.tenancy.project.logo_full_url ?? undefined,
+            logoDarkModeUrl: auth.tenancy.project.logo_dark_mode_url ?? undefined,
+            logoFullDarkModeUrl: auth.tenancy.project.logo_full_dark_mode_url ?? undefined,
           },
         },
       );
