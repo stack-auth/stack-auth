@@ -31,7 +31,7 @@ export class NetSuiteProvider extends OAuthBaseProvider {
         authorizationEndpoint: `https://${accountId}.app.netsuite.com/app/login/oauth2/authorize.nl`,
         tokenEndpoint: `https://${accountId}.suitetalk.api.netsuite.com/services/rest/auth/oauth2/v1/token`,
         redirectUri: getEnvVariable("NEXT_PUBLIC_STACK_API_URL") + "/api/v1/auth/oauth/callback/netsuite",
-        baseScope: "rest_webservices",
+        baseScope: "email openid",
         tokenEndpointAuthMethod: "client_secret_basic",
         // NetSuite access tokens typically expire in 1 hour
         defaultAccessTokenExpiresInMillis: 1000 * 60 * 60, // 1 hour
@@ -42,7 +42,7 @@ export class NetSuiteProvider extends OAuthBaseProvider {
 
   async postProcessUserInfo(tokenSet: TokenSet): Promise<OAuthUserInfo> {
     // First, get the current user's employee record ID
-    const currentUserRes = await fetch(`https://${this.accountId}.suitetalk.api.netsuite.com/services/rest/record/v1/employee`, {
+    const currentUserRes = await fetch(`https://${this.accountId}.suitetalk.api.netsuite.com/services/rest/auth/oauth2/v1/userinfo`, {
       method: "GET",
       headers: {
         Authorization: `Bearer ${tokenSet.accessToken}`,
