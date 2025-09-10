@@ -90,7 +90,7 @@ export async function createOrUpdateProjectWithLegacyConfig(
     data: ProjectsCrud["Admin"]["Update"],
   })
 ) {
-  const logoFields = ['logo_url', 'full_logo_url', 'logo_dark_mode_url', 'logo_full_dark_mode_url'] as const;
+  const logoFields = ['logo_url', 'logo_full_url', 'logo_dark_mode_url', 'logo_full_dark_mode_url'] as const;
   const logoUrls: Record<string, string | null | undefined> = {};
 
   for (const field of logoFields) {
@@ -111,10 +111,10 @@ export async function createOrUpdateProjectWithLegacyConfig(
           description: options.data.description ?? "",
           isProductionMode: options.data.is_production_mode ?? false,
           ownerTeamId: options.data.owner_team_id,
-          logoUrl: logoUrls.logo_url,
-          logoFullUrl: logoUrls.full_logo_url,
-          logoDarkModeUrl: logoUrls.logo_dark_mode_url,
-          logoFullDarkModeUrl: logoUrls.logo_full_dark_mode_url,
+          logoUrl: logoUrls['logo_url'],
+          logoFullUrl: logoUrls['logo_full_url'],
+          logoDarkModeUrl: logoUrls['logo_dark_mode_url'],
+          logoFullDarkModeUrl: logoUrls['logo_full_dark_mode_url'],
         },
       });
 
@@ -145,10 +145,10 @@ export async function createOrUpdateProjectWithLegacyConfig(
           displayName: options.data.display_name,
           description: options.data.description === null ? "" : options.data.description,
           isProductionMode: options.data.is_production_mode,
-          logoUrl: logoUrls.logo_url,
-          logoFullUrl: logoUrls.full_logo_url,
-          logoDarkModeUrl: logoUrls.logo_dark_mode_url,
-          logoFullDarkModeUrl: logoUrls.logo_full_dark_mode_url,
+          logoUrl: logoUrls['logo_url'],
+          logoFullUrl: logoUrls['logo_full_url'],
+          logoDarkModeUrl: logoUrls['logo_dark_mode_url'],
+          logoFullDarkModeUrl: logoUrls['logo_full_dark_mode_url'],
         },
       });
       branchId = options.branchId;
