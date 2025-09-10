@@ -80,7 +80,7 @@ it("should be able to provision a new project if client details are correct", as
         "created_at_millis": <stripped field 'created_at_millis'>,
         "description": "Project created by an external integration",
         "display_name": "Test project",
-        "full_logo_url": null,
+        "logo_full_url": null,
         "id": "<stripped UUID>",
         "is_production_mode": false,
         "logo_url": null,

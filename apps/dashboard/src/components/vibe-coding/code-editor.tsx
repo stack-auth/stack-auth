@@ -93,6 +93,11 @@ export default function CodeEditor({
           type ThemeProps = {
             children: React.ReactNode;
             unsubscribeLink?: string;
+            projectDisplayName?: string;
+            logoUrl?: string;
+            logoFullUrl?: string;
+            logoDarkModeUrl?: string;
+            logoFullDarkModeUrl?: string;
           };
         }
       `,

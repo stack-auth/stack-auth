@@ -126,7 +126,7 @@ it("lists oauth providers", async ({ expect }) => {
         "created_at_millis": <stripped field 'created_at_millis'>,
         "description": "",
         "display_name": "New Project",
-        "full_logo_url": null,
+        "logo_full_url": null,
         "id": "<stripped UUID>",
         "is_production_mode": false,
         "logo_url": null,

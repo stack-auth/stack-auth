@@ -48,7 +48,14 @@ export async function renderEmailWithTemplate(
     user?: { displayName: string | null },
     project?: { displayName: string },
     variables?: Record<string, any>,
-    unsubscribeLink?: string,
+    themeProps?: {
+      unsubscribeLink?: string,
+      projectDisplayName?: string,
+      logoUrl?: string,
+      logoFullUrl?: string,
+      logoDarkModeUrl?: string,
+      logoFullDarkModeUrl?: string,
+    },
     previewMode?: boolean,
   },
 ): Promise<Result<{ html: string, text: string, subject?: string, notificationCategory?: string }, string>> {
@@ -85,9 +92,12 @@ export async function renderEmailWithTemplate(
         if (variables instanceof type.errors) {
           throw new Error(variables.summary)
         }
-        const unsubscribeLink = ${previewMode ? "EmailTheme.PreviewProps?.unsubscribeLink" : JSON.stringify(options.unsubscribeLink)};
+        const themeProps = {
+          ...${JSON.stringify(options.themeProps || {})},
+          ...${previewMode ? "EmailTheme.PreviewProps" : "{}"},
+        }
         const EmailTemplateWithProps  = <EmailTemplate variables={variables} user={${JSON.stringify(user)}} project={${JSON.stringify(project)}} />;
-        const Email = <EmailTheme unsubscribeLink={unsubscribeLink}>
+        const Email = <EmailTheme {...themeProps}>
           {${previewMode ? "EmailTheme.PreviewProps?.children ?? " : ""} EmailTemplateWithProps}
         </EmailTheme>;
         return {
