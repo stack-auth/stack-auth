@@ -42,6 +42,8 @@ program
   .option("--bun", "Use bun as package manager")
   .option("--client", "Initialize client-side only")
   .option("--server", "Initialize server-side only")
+  .option("--project-id <project-id>", "Project ID to use in setup")
+  .option("--publishable-client-key <publishable-client-key>", "Publishable client key to use in setup")
   .option("--no-browser", "Don't open browser for environment variable setup")
   .addHelpText('after', `
 For more information, please visit https://docs.stack-auth.com/getting-started/setup`);
@@ -58,6 +60,8 @@ const typeFromArgs: string | undefined = options.js ? "js" : options.next ? "nex
 const packageManagerFromArgs: string | undefined = options.npm ? "npm" : options.yarn ? "yarn" : options.pnpm ? "pnpm" : options.bun ? "bun" : undefined;
 const isClient: boolean = options.client || false;
 const isServer: boolean = options.server || false;
+const projectIdFromArgs: string | undefined = options.projectId;
+const publishableClientKeyFromArgs: string | undefined = options.publishableClientKey;
 // Commander negates the boolean options with prefix `--no-`
 // so `--no-browser` becomes `browser: false`
 const noBrowser: boolean = !options.browser;
@@ -195,6 +199,7 @@ async function main(): Promise<void> {
   if (type === "next") {
     const projectInfo = await Steps.getNextProjectInfo({ packageJson: projectPackageJson });
     await Steps.updateNextLayoutFile(projectInfo);
+    await Steps.writeStackAppFile(projectInfo, "client");
     await Steps.writeStackAppFile(projectInfo, "server");
     await Steps.writeNextHandlerFile(projectInfo);
     await Steps.writeNextLoadingFile(projectInfo);
@@ -511,13 +516,13 @@ const Steps = {
           "# 1. Go to https://app.stack-auth.com\n" +
           "# 2. Create a new project\n" +
           "# 3. Copy the keys below\n" +
-          "NEXT_PUBLIC_STACK_PROJECT_ID=\n" +
-          "NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY=\n" +
+          `NEXT_PUBLIC_STACK_PROJECT_ID=${projectIdFromArgs ?? ""}\n` +
+          `NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY=${publishableClientKeyFromArgs ?? ""}\n` +
           "STACK_SECRET_SERVER_KEY=\n"
         : "# Stack Auth keys\n" +
           "# Get these variables by creating a project on https://app.stack-auth.com.\n" +
-          "NEXT_PUBLIC_STACK_PROJECT_ID=\n" +
-          "NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY=\n" +
+          `NEXT_PUBLIC_STACK_PROJECT_ID=${projectIdFromArgs ?? ""}\n` +
+          `NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY=${publishableClientKeyFromArgs ?? ""}\n` +
           "STACK_SECRET_SERVER_KEY=\n";
 
       laterWriteFile(envLocalPath, envContent);
@@ -567,18 +572,14 @@ const Steps = {
     return res;
   },
 
-  async writeStackAppFile({ type, srcPath, defaultExtension, indentation }: StackAppFileOptions, clientOrServer: string): Promise<StackAppFileResult> {
+  async writeStackAppFile({ type, srcPath, defaultExtension, indentation }: StackAppFileOptions, clientOrServer: "server" | "client"): Promise<StackAppFileResult> {
     const packageName = await Steps.getStackPackageName(type);
 
     const clientOrServerCap = {
       client: "Client",
       server: "Server",
-    }[clientOrServer] ?? throwErr("unknown clientOrServer " + clientOrServer);
-
-    const relativeStackAppPath = {
-      js: `stack/${clientOrServer}`,
-      next: "stack",
-    }[type] ?? throwErr("unknown type");
+    }[clientOrServer as string] ?? throwErr("unknown clientOrServer " + clientOrServer);
+    const relativeStackAppPath = `stack/${clientOrServer}`;
 
     const stackAppPathWithoutExtension = path.join(srcPath, relativeStackAppPath);
     const stackAppFileExtension =
@@ -596,6 +597,11 @@ const Steps = {
         `It seems that you already installed Stack in this project.`
       );
     }
+
+    const publishableClientKeyWrite = clientOrServer === "server"
+      ? `process.env.STACK_PUBLISHABLE_CLIENT_KEY ${publishableClientKeyFromArgs ? `|| '${publishableClientKeyFromArgs}'` : ""}`
+      : `'${publishableClientKeyFromArgs ?? 'INSERT_YOUR_PUBLISHABLE_CLIENT_KEY_HERE'}'`;
+
     laterWriteFileIfNotExists(
       stackAppPath,
       `
@@ -606,7 +612,8 @@ import { Stack${clientOrServerCap}App } from ${JSON.stringify(packageName)};
 export const stack${clientOrServerCap}App = new Stack${clientOrServerCap}App({
 ${indentation}tokenStore: ${type === "next" ? '"nextjs-cookie"' : (clientOrServer === "client" ? '"cookie"' : '"memory"')},${
 type === "js" ? `\n\n${indentation}// get your Stack Auth API keys from https://app.stack-auth.com${clientOrServer === "client" ? ` and store them in a safe place (eg. environment variables)` : ""}` : ""}${
-type === "js" ? `\n${indentation}publishableClientKey: ${clientOrServer === "server" ? 'process.env.STACK_PUBLISHABLE_CLIENT_KEY' : 'INSERT_YOUR_PUBLISHABLE_CLIENT_KEY_HERE'},` : ""}${
+type === "js" && projectIdFromArgs ? `\n${indentation}projectId: '${projectIdFromArgs}',` : ""}${
+type === "js" ? `\n${indentation}publishableClientKey: ${publishableClientKeyWrite},` : ""}${
 type === "js" && clientOrServer === "server" ? `\n${indentation}secretServerKey: process.env.STACK_SECRET_SERVER_KEY,` : ""}
 });
       `.trim() + "\n"
@@ -684,7 +691,7 @@ type === "js" && clientOrServer === "server" ? `\n${indentation}secretServerKey:
     }
   },
 
-  async getServerOrClientOrBoth(): Promise<string[]> {
+  async getServerOrClientOrBoth(): Promise<Array<"server" | "client">> {
     if (isClient && isServer) return ["server", "client"];
     if (isServer) return ["server"];
     if (isClient) return ["client"];
