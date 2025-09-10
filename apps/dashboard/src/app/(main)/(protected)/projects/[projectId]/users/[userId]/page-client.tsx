@@ -125,8 +125,8 @@ function EditableInput({
       tabIndex={readOnly ? -1 : undefined}
       className={cn(
         "w-full px-1 py-0 h-[unset] border-transparent",
-        /* Hover */ !readOnly && "hover:ring-1 hover:ring-slate-300 dark:hover:ring-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 hover:cursor-pointer",
-        /* Focus */ !readOnly && "focus:cursor-[unset] focus-visible:ring-slate-500 dark:focus-visible:ring-slate-50 focus-visible:bg-slate-100 dark:focus-visible:bg-slate-800",
+        /* Hover */ !readOnly && "hover:ring-1 hover:ring-slate-300 dark:hover:ring-gray-500 hover:bg-slate-50 dark:hover:bg-gray-800 hover:cursor-pointer",
+        /* Focus */ !readOnly && "focus:cursor-[unset] focus-visible:ring-slate-500 dark:focus-visible:ring-gray-50 focus-visible:bg-slate-100 dark:focus-visible:bg-gray-800",
         readOnly && "focus-visible:ring-0 cursor-default",
         shiftTextToLeft && "ml-[-7px]",
         inputClassName,
