@@ -727,6 +727,7 @@ export const oauthProviderTypeSchema = yupString().oneOf(allProviders).meta({ op
 export const oauthProviderAllowSignInSchema = yupBoolean().meta({ openapiField: { description: 'Whether the user can use this OAuth provider to sign in. Only one OAuth provider per type can have this set to `true`.', exampleValue: true } });
 export const oauthProviderAllowConnectedAccountsSchema = yupBoolean().meta({ openapiField: { description: 'Whether the user can use this OAuth provider as connected account. Multiple OAuth providers per type can have this set to `true`.', exampleValue: true } });
 export const oauthProviderAccountIdSchema = yupString().meta({ openapiField: { description: 'Account ID of the OAuth provider. This uniquely identifies the account on the provider side.', exampleValue: 'google-account-id-12345' } });
+export const oauthProviderProviderConfigIdSchema = yupString().meta({ openapiField: { description: 'Provider config ID of the OAuth provider. This uniquely identifies the provider config on config.json file', exampleValue: 'google' } });
 
 // Headers
 export const basicAuthorizationHeaderSchema = yupString().test('is-basic-authorization-header', 'Authorization header must be in the format "Basic <base64>"', (value) => {
