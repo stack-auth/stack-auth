@@ -5,7 +5,7 @@ import { ServerItem } from "../../customers";
 import { DataVaultStore } from "../../data-vault";
 import { SendEmailOptions } from "../../email";
 import { ServerListUsersOptions, ServerTeam, ServerTeamCreateOptions } from "../../teams";
-import { ProjectCurrentServerUser, ServerUser, ServerUserCreateOptions } from "../../users";
+import { ProjectCurrentServerUser, ServerOAuthProvider, ServerUser, ServerUserCreateOptions } from "../../users";
 import { _StackServerAppImpl } from "../implementations";
 import { StackClientApp, StackClientAppConstructorOptions } from "./client-app";
 
@@ -51,7 +51,17 @@ export type StackServerApp<HasTokenStore extends boolean = boolean, ProjectId ex
 
     useUsers(options?: ServerListUsersOptions): ServerUser[] & { nextCursor: string | null }, // THIS_LINE_PLATFORM react-like
     listUsers(options?: ServerListUsersOptions): Promise<ServerUser[] & { nextCursor: string | null }>,
-    sendEmail(options: SendEmailOptions): Promise<Result<void, KnownErrors["RequiresCustomEmailServer"] | KnownErrors["SchemaError"] | KnownErrors["UserIdDoesNotExist"]>>,
+
+    createOAuthProvider(options: {
+      userId: string,
+      accountId: string,
+      providerConfigId: string,
+      email: string,
+      allowSignIn: boolean,
+      allowConnectedAccounts: boolean,
+    }): Promise<Result<ServerOAuthProvider, InstanceType<typeof KnownErrors.OAuthProviderAccountIdAlreadyUsedForSignIn>>>,
+
+    sendEmail(options: SendEmailOptions): Promise<void>,
   }
   & AsyncStoreProperty<"user", [id: string], ServerUser | null, false>
   & Omit<AsyncStoreProperty<"users", [], ServerUser[], true>, "listUsers" | "useUsers">

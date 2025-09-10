@@ -94,20 +94,12 @@ function SendStage({ draftId }: { draftId: string }) {
   const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
 
   const handleSubmit = async () => {
-    const result = await stackAdminApp.sendEmail(
+    await stackAdminApp.sendEmail(
       scope === "users"
         ? { draftId, userIds: selectedUserIds }
         : { draftId, allUsers: true }
     );
-    if (result.status === "ok") {
-      toast({ title: "Email sent", variant: "success" });
-      return;
-    }
-    if (result.error instanceof KnownErrors.RequiresCustomEmailServer) {
-      toast({ title: "Action requires custom email server", variant: "destructive", description: "Please setup a custom email server and try again." });
-    } else {
-      toast({ title: "Failed to send email", variant: "destructive", description: "Unknown error" });
-    }
+    toast({ title: "Email sent", variant: "success" });
   };
 
   return (

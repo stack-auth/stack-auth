@@ -1,6 +1,5 @@
 import { Freestyle } from '@/lib/freestyle';
 import { emptyEmailTheme } from '@stackframe/stack-shared/dist/helpers/emails';
-import { getEnvVariable } from '@stackframe/stack-shared/dist/utils/env';
 import { StackAssertionError } from '@stackframe/stack-shared/dist/utils/errors';
 import { bundleJavaScript } from '@stackframe/stack-shared/dist/utils/esbuild';
 import { get, has } from '@stackframe/stack-shared/dist/utils/objects';
@@ -53,7 +52,6 @@ export async function renderEmailWithTemplate(
     previewMode?: boolean,
   },
 ): Promise<Result<{ html: string, text: string, subject?: string, notificationCategory?: string }, string>> {
-  const apiKey = getEnvVariable("STACK_FREESTYLE_API_KEY");
   const variables = options.variables ?? {};
   const previewMode = options.previewMode ?? false;
   const user = (previewMode && !options.user) ? { displayName: "John Doe" } : options.user;
@@ -114,18 +112,17 @@ export async function renderEmailWithTemplate(
     return Result.error(result.error);
   }
 
-  const freestyle = new Freestyle({ apiKey });
+  const freestyle = new Freestyle();
   const nodeModules = {
     "react": "19.1.1",
     "@react-email/components": "0.1.1",
     "arktype": "2.1.20",
   };
-  try {
-    const output = await freestyle.executeScript(result.data, { nodeModules });
-    return Result.ok(output.result as { html: string, text: string, subject: string, notificationCategory: string });
-  } catch (error) {
-    return Result.error("Unable to render email");
+  const output = await freestyle.executeScript(result.data, { nodeModules });
+  if (output.status === "error") {
+    return Result.error(`${output.error}`);
   }
+  return Result.ok(output.data.result as { html: string, text: string, subject: string, notificationCategory: string });
 }
 
 const findComponentValueUtil = `import React from 'react';
