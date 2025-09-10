@@ -1,9 +1,9 @@
+import { stackServerApp } from '@/stack';
 import { StackProvider, StackTheme } from '@stackframe/stack';
 import { RootProvider } from 'fumadocs-ui/provider';
 import { Inter } from 'next/font/google';
 import PostHogPageView from '../components/pageview';
 import { CSPostHogProvider } from '../components/posthog-provider';
-import { stackServerApp } from '../stack';
 import './global.css';
 
 const inter = Inter({
