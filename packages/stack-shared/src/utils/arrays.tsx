@@ -221,3 +221,28 @@ import.meta.vitest?.test("getChunks", ({ expect }) => {
   expect(getChunks([1, 2, 3], 0)).toEqual([]);
   expect(getChunks([1, 2, 3], -1)).toEqual([]);
 });
+
+export function isStringArray(arr: unknown): arr is string[] {
+  return Array.isArray(arr) && arr.every((item) => typeof item === "string");
+}
+export function isNumberArray(arr: unknown): arr is number[] {
+  return Array.isArray(arr) && arr.every((item) => typeof item === "number");
+}
+export function isBooleanArray(arr: unknown): arr is boolean[] {
+  return Array.isArray(arr) && arr.every((item) => typeof item === "boolean");
+}
+export function isObjectArray(arr: unknown): arr is object[] {
+  return Array.isArray(arr) && arr.every((item) => typeof item === "object" && item !== null);
+}
+import.meta.vitest?.test("is<Type>Array", ({ expect }) => {
+  expect(isStringArray([])).toBe(true);
+  expect(isNumberArray([1, 2, 3])).toBe(true);
+  expect(isBooleanArray([true, false, true])).toBe(true);
+  expect(isObjectArray([{ a: 1 }, { b: 2 }, { c: 3 }])).toBe(true);
+  expect(isStringArray([1, 2, 3])).toBe(false);
+  expect(isNumberArray(["a", "b", "c"])).toBe(false);
+  expect(isBooleanArray([1, 2, 3])).toBe(false);
+  expect(isObjectArray([1, 2, 3])).toBe(false);
+  expect(isObjectArray([{ a: 1 }, null, { b: 2 }])).toBe(false);
+  expect(isObjectArray([{ a: 1 }, undefined, { b: 2 }])).toBe(false);
+});
