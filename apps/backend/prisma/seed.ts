@@ -90,6 +90,13 @@ async function seed() {
     projectId: 'internal',
     branchId: DEFAULT_BRANCH_ID,
     environmentConfigOverrideOverride: {
+      dataVault: {
+        stores: {
+          'neon-connection-strings': {
+            displayName: 'Neon Connection Strings',
+          }
+        }
+      },
       payments: {
         groups: {
           plans: {

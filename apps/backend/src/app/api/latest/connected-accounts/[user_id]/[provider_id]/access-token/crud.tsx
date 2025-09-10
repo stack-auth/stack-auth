@@ -141,18 +141,18 @@ export const connectedAccountAccessTokenCrudHandlers = createLazyProxy(() => cre
         });
 
         if (tokenSet.refreshToken) {
-          // remove the old token, add the new token to the DB
-          await prisma.oAuthToken.deleteMany({
-            where: {
-              refreshToken: token.refreshToken,
-            },
+          // mark the old token as invalid, add the new token to the DB
+          const oldToken = token;
+          await prisma.oAuthToken.update({
+            where: { id: oldToken.id },
+            data: { isValid: false },
           });
           await prisma.oAuthToken.create({
             data: {
               tenancyId: auth.tenancy.id,
               refreshToken: tokenSet.refreshToken,
-              oauthAccountId: token.projectUserOAuthAccount.id,
-              scopes: token.scopes,
+              oauthAccountId: oldToken.projectUserOAuthAccount.id,
+              scopes: oldToken.scopes,
             }
           });
         }

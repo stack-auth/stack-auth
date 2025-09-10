@@ -200,10 +200,14 @@ export namespace Auth {
         "iat": expect.any(Number),
         "iss": expectedIssuer,
         "refreshTokenId": expect.any(String),
-        "aud": expect.any(String),
+        "aud": backendContext.value.projectKeys === "no-project" ? expect.any(String) : backendContext.value.projectKeys.projectId,
         "sub": expect.any(String),
         "role": "authenticated",
         "branchId": "main",
+        "displayName": expect.toSatisfy(() => true),
+        "primaryEmail": expect.toSatisfy(() => true),
+        "primaryEmailVerified": expect.any(Boolean),
+        "selectedTeamId": expect.toSatisfy(() => true),
       });
     }
   }
@@ -385,6 +389,9 @@ export namespace Auth {
     }
 
     export async function signInWithCode(signInCode: string) {
+      const projectKeys = backendContext.value.projectKeys;
+      if (projectKeys === "no-project") throw new StackAssertionError("Must provide project keys in the backend context before calling signInWithCode");
+
       const response = await niceBackendFetch("/api/v1/auth/otp/sign-in", {
         method: "POST",
         accessType: "client",

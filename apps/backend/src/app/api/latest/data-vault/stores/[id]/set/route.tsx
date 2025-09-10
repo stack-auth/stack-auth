@@ -39,7 +39,6 @@ export const POST = createSmartRouteHandler({
     // note that encryptedValue is encrypted by client-side encryption, while encrypted is encrypted by both client-side
     // and server-side encryption.
     const encrypted = await encryptWithKms(encryptedValue);
-
     // Store or update the entry
     await prisma.dataVaultEntry.upsert({
       where: {
@@ -59,7 +58,6 @@ export const POST = createSmartRouteHandler({
         encrypted,
       },
     });
-
     return {
       statusCode: 200,
       bodyType: "success",

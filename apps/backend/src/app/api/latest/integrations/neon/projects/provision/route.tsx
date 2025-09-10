@@ -2,8 +2,11 @@ import { createApiKeySet } from "@/lib/internal-api-keys";
 import { createOrUpdateProjectWithLegacyConfig } from "@/lib/projects";
 import { getPrismaClientForSourceOfTruth, globalPrismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
+import { stackServerApp } from "@/stack";
 import { neonAuthorizationHeaderSchema, projectDisplayNameSchema, yupArray, yupNumber, yupObject, yupString, yupTuple } from "@stackframe/stack-shared/dist/schema-fields";
+import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { decodeBasicAuthorizationHeader } from "@stackframe/stack-shared/dist/utils/http";
+import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
 
 export const POST = createSmartRouteHandler({
   metadata: {
@@ -32,14 +35,30 @@ export const POST = createSmartRouteHandler({
   handler: async (req) => {
     const [clientId] = decodeBasicAuthorizationHeader(req.headers.authorization[0])!;
 
-    const sourceOfTruth = req.body.connection_strings ? {
-      type: 'neon',
+    const hasNeonConnections = req.body.connection_strings && req.body.connection_strings.length > 0;
+    const realConnectionStrings: Record<string, string> = {};
+    const uuidConnectionStrings: Record<string, string> = {};
+
+    if (hasNeonConnections) {
+      const store = await stackServerApp.getDataVaultStore('neon-connection-strings');
+      const secret = "no client side encryption";
+
+      for (const c of req.body.connection_strings!) {
+        const uuid = generateUuid();
+        await store.setValue(uuid, c.connection_string, { secret });
+        realConnectionStrings[c.branch_id] = c.connection_string;
+        uuidConnectionStrings[c.branch_id] = uuid;
+      }
+    }
+
+    const sourceOfTruthPersisted = hasNeonConnections ? {
+      type: 'neon' as const,
       connectionString: undefined,
-      connectionStrings: Object.fromEntries(req.body.connection_strings.map((c) => [c.branch_id, c.connection_string])),
-    } as const : { type: 'hosted', connectionString: undefined, connectionStrings: undefined } as const;
+      connectionStrings: uuidConnectionStrings,
+    } : { type: 'hosted' as const, connectionString: undefined, connectionStrings: undefined };
 
     const createdProject = await createOrUpdateProjectWithLegacyConfig({
-      sourceOfTruth,
+      sourceOfTruth: sourceOfTruthPersisted,
       type: 'create',
       data: {
         display_name: req.body.display_name,
@@ -63,10 +82,14 @@ export const POST = createSmartRouteHandler({
     });
 
 
-    if (sourceOfTruth.type === 'neon') {
-      // Get the Prisma client for all branches in parallel, as doing so will run migrations
-      const branchIds = Object.keys(sourceOfTruth.connectionStrings);
-      await Promise.all(branchIds.map((branchId) => getPrismaClientForSourceOfTruth(sourceOfTruth, branchId)));
+    if (hasNeonConnections) {
+      // Run migrations using the real connection strings (do not persist them)
+      const branchIds = Object.keys(realConnectionStrings);
+      await Promise.all(branchIds.map((branchId) => getPrismaClientForSourceOfTruth({
+        type: 'neon',
+        connectionString: undefined,
+        connectionStrings: realConnectionStrings,
+      } as const, branchId)));
     }
 
 
@@ -85,6 +108,7 @@ export const POST = createSmartRouteHandler({
       has_secret_server_key: false,
       has_super_secret_admin_key: true,
     });
+
 
     return {
       statusCode: 200,
