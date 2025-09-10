@@ -6,19 +6,24 @@ import {
   GenerateDataKeyCommand,
   KMSClient
 } from "@aws-sdk/client-kms";
+import { awsCredentialsProvider } from '@vercel/functions/oidc';
 import { decodeBase64, encodeBase64 } from "../../utils/bytes";
 import { decrypt, encrypt } from "../../utils/crypto";
 import { getEnvVariable } from "../../utils/env";
 import { Result } from "../../utils/results";
 
+
 function getKmsClient() {
+  const roleArn = getEnvVariable("STACK_AWS_VERCEL_OIDC_ROLE_ARN", "");
   return new KMSClient({
     region: getEnvVariable("STACK_AWS_REGION"),
     endpoint: getEnvVariable("STACK_AWS_KMS_ENDPOINT"),
-    credentials: {
+    credentials: roleArn ? awsCredentialsProvider({
+      roleArn,
+    }) : {
       accessKeyId: getEnvVariable("STACK_AWS_ACCESS_KEY_ID"),
-      secretAccessKey: getEnvVariable("STACK_AWS_SECRET_ACCESS_KEY")
-    }
+      secretAccessKey: getEnvVariable("STACK_AWS_SECRET_ACCESS_KEY"),
+    },
   });
 }
 
