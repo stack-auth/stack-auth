@@ -5,6 +5,7 @@ import { ensureTeamMembershipExists, ensureUserExists } from "@/lib/request-chec
 import { Tenancy, getSoleTenancyFromProjectBranch, getTenancy } from "@/lib/tenancies";
 import { PrismaTransaction } from "@/lib/types";
 import { sendTeamMembershipDeletedWebhook, sendUserCreatedWebhook, sendUserDeletedWebhook, sendUserUpdatedWebhook } from "@/lib/webhooks";
+import { triggerWorkflows } from "@/lib/workflows";
 import { RawQuery, getPrismaClientForSourceOfTruth, getPrismaClientForTenancy, getPrismaSchemaForSourceOfTruth, getPrismaSchemaForTenancy, globalPrismaClient, rawQuery, retryTransaction, sqlQuoteIdent } from "@/prisma-client";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
 import { uploadAndGetUrl } from "@/s3";
@@ -206,7 +207,7 @@ export const getUsersLastActiveAtMillis = async (projectId: string, branchId: st
   const tenancy = await getSoleTenancyFromProjectBranch(projectId, branchId);
 
   const prisma = await getPrismaClientForTenancy(tenancy);
-  const schema = getPrismaSchemaForTenancy(tenancy);
+  const schema = await getPrismaSchemaForTenancy(tenancy);
   const events = await prisma.$queryRaw<Array<{ userId: string, lastActiveAt: Date }>>`
     SELECT data->>'userId' as "userId", MAX("eventStartedAt") as "lastActiveAt"
     FROM ${sqlQuoteIdent(schema)}."Event"
@@ -401,7 +402,7 @@ export async function getUser(options: { userId: string } & ({ projectId: string
 
   const environmentConfig = await rawQuery(globalPrismaClient, getRenderedEnvironmentConfigQuery({ projectId, branchId }));
   const prisma = await getPrismaClientForSourceOfTruth(environmentConfig.sourceOfTruth, branchId);
-  const schema = getPrismaSchemaForSourceOfTruth(environmentConfig.sourceOfTruth, branchId);
+  const schema = await getPrismaSchemaForSourceOfTruth(environmentConfig.sourceOfTruth, branchId);
   const result = await rawQuery(prisma, getUserQuery(projectId, branchId, options.userId, schema));
   return result;
 }
@@ -647,6 +648,14 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
     });
 
     await createPersonalTeamIfEnabled(prisma, auth.tenancy, result);
+
+    // if the user is not an anonymous user, trigger onSignUp workflows
+    if (!result.is_anonymous) {
+      await triggerWorkflows(auth.tenancy, {
+        type: "sign-up",
+        userId: result.id,
+      });
+    }
 
     runAsynchronouslyAndWaitUntil(sendUserCreatedWebhook({
       projectId: auth.project.id,
@@ -948,8 +957,15 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
         }
       }
 
-      // if we went from anonymous to non-anonymous, rename the personal team
+      // if we went from anonymous to non-anonymous:
       if (oldUser.isAnonymous && data.is_anonymous === false) {
+        // trigger onSignUp workflows
+        await triggerWorkflows(auth.tenancy, {
+          type: "sign-up",
+          userId: params.user_id,
+        });
+
+        // rename the personal team
         await tx.team.updateMany({
           where: {
             tenancyId: auth.tenancy.id,

@@ -92,15 +92,15 @@ export function StackContainer({
           <span className={colors.label}>Component Demo</span>
         </div>
 
-        <div className="p-8 flex justify-center">
+        <div className="relative p-6">
           {title && (
-            <h3 className={cn("text-sm font-medium mb-3", colors.title)}>
+            <h3 className={cn("absolute top-4 left-1/2 transform -translate-x-1/2 text-sm font-medium", colors.title)}>
               {title}
             </h3>
           )}
 
-          {/* Content area with subtle background */}
-          <div className="flex justify-center w-full">
+          {/* Component renders naturally - no forced layout */}
+          <div className="relative z-10">
             {children}
           </div>
         </div>

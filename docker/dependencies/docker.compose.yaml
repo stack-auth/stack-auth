@@ -176,8 +176,11 @@ services:
     container_name: freestyle-mock
     ports:
       - "8122:8080"       # POST http://localhost:8119/execute/v1/script
+    extra_hosts:
+      - "host.docker.internal:host-gateway"  # noop on Docker Desktop/Orbstack, enables host.docker.internal on Linux
     environment:
       DENO_DIR: /deno-cache
+      HOST_ON_HOST: host.docker.internal
     volumes:
       - deno-cache:/deno-cache
 
@@ -189,6 +192,18 @@ services:
       - 8123:12111
     environment:
       - STRIPE_API_KEY=sk_test_1234567890
+
+  # ================= QStash =================
+
+  qstash:
+    image: public.ecr.aws/upstash/qstash:latest
+    ports:
+      - 8125:8080
+    command: qstash dev
+    extra_hosts:
+      - "host.docker.internal:host-gateway"  # noop on Docker Desktop/Orbstack, enables host.docker.internal on Linux
+    environment:
+      HOST_ON_HOST: host.docker.internal
 
 
 # ================= volumes =================

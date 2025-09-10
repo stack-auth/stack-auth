@@ -1,0 +1,80 @@
+name: Sync Reviewers and Assignees
+
+on:
+  pull_request_target:
+    types: [review_requested]
+  pull_request_review:
+    types: [submitted]
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Add reviewer as assignee
+        if: ${{ github.event_name == 'pull_request' && github.event.action == 'review_requested' }}
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+            const reviewer = context.payload.requested_reviewer;
+            if (!reviewer || !reviewer.login) {
+              core.info('No individual reviewer in payload (team review or missing). Skipping.');
+              return;
+            }
+            await github.rest.issues.addAssignees({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: pr.number,
+              assignees: [reviewer.login],
+            });
+            core.info(`Assigned ${reviewer.login} to PR #${pr.number}`);
+
+      - name: Remove reviewer from assignees on review submission
+        if: ${{ github.event_name == 'pull_request_review' && github.event.action == 'submitted' }}
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+            const reviewer = context.payload.review?.user;
+            const state = context.payload.review?.state?.toLowerCase();
+            const author = pr.user;
+            if (!reviewer || !reviewer.login) {
+              core.info('No reviewer user found in payload. Skipping.');
+              return;
+            }
+            if (!state) {
+              core.info('No review state provided. Skipping.');
+              return;
+            }
+            if (!['approved', 'changes_requested'].includes(state)) {
+              core.info(`Review state is '${state}' (likely a comment). Not removing assignee.`);
+              return;
+            }
+            if (author && reviewer.login === author.login) {
+              core.info('Reviewer is the PR author. Not removing assignee.');
+              return;
+            }
+            await github.rest.issues.removeAssignees({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: pr.number,
+              assignees: [reviewer.login],
+            });
+            core.info(`Removed ${reviewer.login} from assignees on PR #${pr.number}`);
+
+            if (author?.login) {
+              await github.rest.issues.addAssignees({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: pr.number,
+                assignees: [author.login],
+              });
+              core.info(`Re-assigned PR author ${author.login} to PR #${pr.number}`);
+            } else {
+              core.info('No PR author found to re-assign.');
+            }
