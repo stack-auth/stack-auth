@@ -982,11 +982,8 @@ export class StackClientInterface {
     if (options.afterCallbackRedirectUrl) {
       url.searchParams.set("after_callback_redirect_url", options.afterCallbackRedirectUrl);
     }
-
-    if (options.type === "link") {
-      if (options.providerScope) {
-        url.searchParams.set("provider_scope", options.providerScope);
-      }
+    if (options.providerScope) {
+      url.searchParams.set("provider_scope", options.providerScope);
     }
 
     return url.toString();
