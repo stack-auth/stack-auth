@@ -91,16 +91,25 @@ describe("get email theme", () => {
         "body": {
           "display_name": "Default Light",
           "tsx_source": deindent\`
-            import { Html, Head, Tailwind, Body, Container, Link } from '@react-email/components';
+            import { Html, Head, Tailwind, Body, Container, Link, Img } from '@react-email/components';
+            import { ThemeProps } from "@stackframe/emails"
             import { ThemeProps } from "@stackframe/emails"
             
-            export function EmailTheme({ children, unsubscribeLink }: ThemeProps) {
+            export function EmailTheme({ children, unsubscribeLink, logoUrl, fullLogoUrl, projectDisplayName }: ThemeProps) {
               return (
                 <Html>
                   <Head />
                   <Tailwind>
                     <Body className="bg-[#fafbfb] font-sans text-base">
                       <Container className="bg-white p-[45px] rounded-lg">
+                        {fullLogoUrl ? 
+                          <Img src={fullLogoUrl} alt="Full Logo" className="h-16" /> :
+                          logoUrl ? 
+                            <div className="flex gap-2 items-center">
+                              <Img src={logoUrl} alt="Logo" className="h-8" />
+                              <h2>{projectDisplayName}</h2>
+                            </div>
+                            : null}
                         {children}
                       </Container>
                       {unsubscribeLink && (
@@ -116,7 +125,7 @@ describe("get email theme", () => {
             }
             
             EmailTheme.PreviewProps = {
-              unsubscribeLink: "https://example.com"
+              unsubscribeLink: "https://example.com",
             } satisfies Partial<ThemeProps>
           \` + "\\n",
         },
