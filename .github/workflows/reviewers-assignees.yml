@@ -1,7 +1,7 @@
 name: Sync Reviewers and Assignees
 
 on:
-  pull_request:
+  pull_request_target:
     types: [review_requested]
   pull_request_review:
     types: [submitted]
@@ -41,9 +41,18 @@ jobs:
           script: |
             const pr = context.payload.pull_request;
             const reviewer = context.payload.review?.user;
+            const state = context.payload.review?.state?.toLowerCase();
             const author = pr.user;
             if (!reviewer || !reviewer.login) {
               core.info('No reviewer user found in payload. Skipping.');
+              return;
+            }
+            if (!state) {
+              core.info('No review state provided. Skipping.');
+              return;
+            }
+            if (!['approved', 'changes_requested'].includes(state)) {
+              core.info(`Review state is '${state}' (likely a comment). Not removing assignee.`);
               return;
             }
             if (author && reviewer.login === author.login) {
@@ -58,3 +67,14 @@ jobs:
             });
             core.info(`Removed ${reviewer.login} from assignees on PR #${pr.number}`);
 
+            if (author?.login) {
+              await github.rest.issues.addAssignees({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: pr.number,
+                assignees: [author.login],
+              });
+              core.info(`Re-assigned PR author ${author.login} to PR #${pr.number}`);
+            } else {
+              core.info('No PR author found to re-assign.');
+            }
