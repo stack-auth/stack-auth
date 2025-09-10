@@ -853,8 +853,8 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       >> {
         try {
           await app._interface.updateOAuthProvider(
+            crud.user_id,
             crud.id,
-            crud.provider_config_id,
             {
               allow_sign_in: data.allowSignIn,
               allow_connected_accounts: data.allowConnectedAccounts,
