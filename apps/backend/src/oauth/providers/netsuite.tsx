@@ -27,7 +27,7 @@ export class NetSuiteProvider extends OAuthBaseProvider {
     return new NetSuiteProvider(
       accountId,
       ...await OAuthBaseProvider.createConstructorArgs({
-        issuer: `https://${accountId}.app.netsuite.com`,
+        issuer: `https://system.netsuite.com`,
         authorizationEndpoint: `https://${accountId}.app.netsuite.com/app/login/oauth2/authorize.nl`,
         tokenEndpoint: `https://${accountId}.suitetalk.api.netsuite.com/services/rest/auth/oauth2/v1/token`,
         redirectUri: getEnvVariable("NEXT_PUBLIC_STACK_API_URL") + "/api/v1/auth/oauth/callback/netsuite",
