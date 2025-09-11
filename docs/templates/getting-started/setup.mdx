@@ -107,7 +107,7 @@ We recommend using our **setup wizard** for a seamless installation experience. 
 
       ```tsx title="app/handler/[...stack]/page.tsx"
       import { StackHandler } from "@stackframe/stack";
-      import { stackServerApp } from "@/stack";
+      import { stackServerApp } from "@/stack/server";
 
       export default function Handler(props: unknown) {
         return <StackHandler fullPage app={stackServerApp} routeProps={props} />;
@@ -124,7 +124,7 @@ We recommend using our **setup wizard** for a seamless installation experience. 
       ```tsx title="app/layout.tsx"
       import React from "react";
       import { StackProvider, StackTheme } from "@stackframe/stack";
-      import { stackServerApp } from "@/stack";
+      import { stackServerApp } from "@/stack/server";
 
       export default function RootLayout({ children }: { children: React.ReactNode }) {
         return (
