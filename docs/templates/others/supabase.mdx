@@ -73,7 +73,7 @@ Now let's create a server action that mints a supabase JWT with the Stack Auth u
 ```tsx title="/utils/actions.ts"
 'use server';
 
-import { stackServerApp } from "@/stack";
+import { stackServerApp } from "@/stack/server";
 import * as jose from "jose";
 
 export const getSupabaseJwt = async () => {
