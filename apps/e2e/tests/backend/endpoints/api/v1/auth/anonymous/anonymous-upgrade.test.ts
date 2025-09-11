@@ -322,6 +322,7 @@ it("anonymous user can upgrade via OAuth sign-in if ?token is set on the authori
             "allow_sign_in": true,
             "email": "default-mailbox--<stripped UUID>@stack-generated.example.com",
             "id": "<stripped UUID>",
+            "provider_config_id": "spotify",
             "type": "spotify",
             "user_id": "<stripped UUID>",
           },

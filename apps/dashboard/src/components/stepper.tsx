@@ -51,10 +51,9 @@ export function Stepper({ children, currentStep, onStepChange, className }: Step
   useEffect(() => {
     const updateDimensions = () => {
       if (contentRef.current) {
-        const rect = contentRef.current.getBoundingClientRect();
         setDimensions({
-          width: rect.width,
-          height: rect.height,
+          width: contentRef.current.offsetWidth,
+          height: contentRef.current.offsetHeight,
         });
       }
     };
