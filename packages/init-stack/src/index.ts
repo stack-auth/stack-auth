@@ -637,7 +637,7 @@ type === "js" && clientOrServer === "server" ? `\n${indentation}secretServerKey:
     }
     laterWriteFileIfNotExists(
       handlerPath,
-      `import { StackHandler } from "@stackframe/stack";\nimport { stackServerApp } from "../../../stack";\n\nexport default function Handler(props${
+      `import { StackHandler } from "@stackframe/stack";\nimport { stackServerApp } from "../../../stack/server";\n\nexport default function Handler(props${
         handlerFileExtension.includes("ts") ? ": unknown" : ""
       }) {\n${projectInfo.indentation}return <StackHandler fullPage app={stackServerApp} routeProps={props} />;\n}\n`
     );
@@ -749,7 +749,7 @@ async function getUpdatedLayout(originalLayout: string): Promise<LayoutResult | 
   const importInsertLocationM1 =
     firstImportLocationM1 ?? (hasStringAsFirstLine ? layout.indexOf("\n") : -1);
   const importInsertLocation = importInsertLocationM1 + 1;
-  const importStatement = `import { StackProvider, StackTheme } from "@stackframe/stack";\nimport { stackServerApp } from "../stack";\n`;
+  const importStatement = `import { StackProvider, StackTheme } from "@stackframe/stack";\nimport { stackServerApp } from "../stack/server";\n`;
   layout =
     layout.slice(0, importInsertLocation) +
     importStatement +
