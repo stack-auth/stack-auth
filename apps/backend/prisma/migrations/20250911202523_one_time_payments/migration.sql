@@ -1,18 +1,6 @@
-/*
-  Warnings:
-
-  - Changed the type of `creationSource` on the `Subscription` table. No cast exists, the column would be dropped and recreated, which cannot be done if there is data, since the column is required.
-
-*/
 -- CreateEnum
-CREATE TYPE "PurchaseCreationSource" AS ENUM ('PURCHASE_PAGE', 'TEST_MODE');
+ALTER TYPE "SubscriptionCreationSource" RENAME TO "PurchaseCreationSource";
 
--- AlterTable
-ALTER TABLE "Subscription" DROP COLUMN "creationSource",
-ADD COLUMN     "creationSource" "PurchaseCreationSource" NOT NULL;
-
--- DropEnum
-DROP TYPE "SubscriptionCreationSource";
 
 -- CreateTable
 CREATE TABLE "OneTimePurchase" (
