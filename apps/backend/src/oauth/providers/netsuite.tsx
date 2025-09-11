@@ -27,7 +27,7 @@ export class NetSuiteProvider extends OAuthBaseProvider {
     return new NetSuiteProvider(
       accountId,
       ...await OAuthBaseProvider.createConstructorArgs({
-        issuer: `https://${accountId}.app.netsuite.com`,
+        issuer: `https://system.netsuite.com`,
         authorizationEndpoint: `https://${accountId}.app.netsuite.com/app/login/oauth2/authorize.nl`,
         tokenEndpoint: `https://${accountId}.suitetalk.api.netsuite.com/services/rest/auth/oauth2/v1/token`,
         redirectUri: getEnvVariable("NEXT_PUBLIC_STACK_API_URL") + "/api/v1/auth/oauth/callback/netsuite",
@@ -42,7 +42,7 @@ export class NetSuiteProvider extends OAuthBaseProvider {
 
   async postProcessUserInfo(tokenSet: TokenSet): Promise<OAuthUserInfo> {
     // First, get the current user's employee record ID
-    const currentUserRes = await fetch(`https://${this.accountId}.suitetalk.api.netsuite.com/services/rest/record/v1/employee`, {
+    const currentUserRes = await fetch(`https://${this.accountId}.suitetalk.api.netsuite.com/services/rest/auth/oauth2/v1/userinfo`, {
       method: "GET",
       headers: {
         Authorization: `Bearer ${tokenSet.accessToken}`,
@@ -110,7 +110,7 @@ export class NetSuiteProvider extends OAuthBaseProvider {
 
   async checkAccessTokenValidity(accessToken: string): Promise<boolean> {
     try {
-      const res = await fetch(`https://${this.accountId}.suitetalk.api.netsuite.com/services/rest/record/v1/employee?limit=1`, {
+      const res = await fetch(`https://${this.accountId}.suitetalk.api.netsuite.com/services/rest/auth/oauth2/v1/userinfo`, {
         method: "GET",
         headers: {
           Authorization: `Bearer ${accessToken}`,
