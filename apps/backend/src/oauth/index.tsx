@@ -80,7 +80,7 @@ export async function getProvider(provider: Tenancy['config']['auth']['oauth']['
       clientSecret: provider.clientSecret || throwErr("Client secret is required for standard providers"),
       facebookConfigId: provider.facebookConfigId,
       microsoftTenantId: provider.microsoftTenantId,
-      accountId: provider.netsuiteAccountId,
+      netsuiteAccountId: provider.netsuiteAccountId,
     });
   }
 }
