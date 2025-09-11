@@ -44,7 +44,6 @@ export const emptyEmailTheme = deindent`
 
 export const LightEmailTheme = `import { Html, Head, Tailwind, Body, Container, Link, Img } from '@react-email/components';
 import { ThemeProps } from "@stackframe/emails"
-import { ThemeProps } from "@stackframe/emails"
 
 export function EmailTheme({ children, unsubscribeLink, logoUrl, logoFullUrl, projectDisplayName }: ThemeProps) {
   return (
@@ -82,23 +81,37 @@ EmailTheme.PreviewProps = {
 
 
 const DarkEmailTheme = `import { Html, Head, Tailwind, Body, Container, Link, Img } from '@react-email/components';
-import { ThemeProps } from "@stackframe/emails"
+import { ThemeProps } from "@stackframe/emails";
 
-export function EmailTheme({ children, unsubscribeLink, logoDarkModeUrl, logoFullDarkModeUrl, projectDisplayName }: ThemeProps) {
+function Logo(props: { logoUrl: string; projectDisplayName: string | undefined }) {
+  return (
+    <div className="flex gap-2 items-center">
+      <Img src={props.logoUrl} alt="Logo" className="h-8" />
+      <h2 className="text-white">{props.projectDisplayName}</h2>
+    </div>
+  );  
+}
+
+function FullLogo(props: { logoFullUrl: string }) {
+  return <Img src={props.logoFullUrl} alt="Full Logo" className="h-16" />;
+}
+
+export function EmailTheme({ children, unsubscribeLink, logoUrl, logoFullUrl, logoDarkModeUrl, logoFullDarkModeUrl, projectDisplayName }: ThemeProps) {
   return (
     <Html>
       <Head />
       <Tailwind>
         <Body className="bg-[#323232] font-sans text-white">
           <Container className="bg-black p-[45px] rounded-lg">
-            {logoFullDarkModeUrl ? 
-              <Img src={logoFullDarkModeUrl} alt="Full Logo" className="h-16" /> :
-              logoDarkModeUrl ? 
-                <div className="flex gap-2 items-center">
-                  <Img src={logoDarkModeUrl} alt="Logo" className="h-8" />
-                  <h2 className="text-white">{projectDisplayName}</h2>
-                </div>
-                : null}
+            {logoFullDarkModeUrl ?
+              <FullLogo logoFullUrl={logoFullDarkModeUrl} /> :
+              logoDarkModeUrl ?
+                <Logo logoUrl={logoDarkModeUrl} projectDisplayName={projectDisplayName} /> :
+                  logoFullUrl ?
+                    <FullLogo logoFullUrl={logoFullUrl} /> :
+                      logoUrl ?
+                        <Logo logoUrl={logoUrl} projectDisplayName={projectDisplayName} /> :
+                          null}
             {children}
           </Container>
           {unsubscribeLink && (
