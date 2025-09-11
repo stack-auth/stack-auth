@@ -77,7 +77,10 @@ export class NetSuiteProvider extends OAuthBaseProvider {
     if (userData.items && userData.items.length > 0) {
       // If we get a list of employees, take the first one (current user)
       const employee = userData.items[0];
-      accountId = employee.id?.toString() || employee.entityId?.toString();
+      accountId = employee.id?.toString() || employee.entityId?.toString() || "";
+      if (!accountId) {
+        throw new StackAssertionError("No valid ID found in NetSuite employee record", { employee });
+      }
       displayName = [employee.firstName, employee.lastName].filter(Boolean).join(" ") || employee.entityId;
       email = employee.email;
       emailVerified = !!employee.email; // Assume verified if present
