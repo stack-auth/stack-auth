@@ -87,6 +87,7 @@ describe("invalid requests", () => {
   });
 
   it("should return 400 when using shared email config", async ({ expect }) => {
+    await Project.createAndSwitch();
     const createUserResponse = await niceBackendFetch("/api/v1/users", {
       method: "POST",
       accessType: "server",
@@ -346,6 +347,72 @@ it("should handle user that does not exist", async ({ expect }) => {
   `);
 });
 
+it("should send email using a draft_id and mark draft as sent", async ({ expect }) => {
+  await Project.createAndSwitch({
+    display_name: "Send Draft Project",
+    config: {
+      email_config: {
+        type: "standard",
+        host: "localhost",
+        port: 2500,
+        username: "test",
+        password: "test",
+        sender_name: "Test Project",
+        sender_email: "test@example.com",
+      },
+    },
+  });
+  const user = await User.create();
+
+  const tsxSource = `import { Container } from "@react-email/components";
+import { Subject, NotificationCategory, Props } from "@stackframe/emails";
+export function EmailTemplate({ user, project }: Props) {
+  return (
+    <Container>
+      <Subject value="Draft Based Subject" />
+      <NotificationCategory value="Marketing" />
+      <div>Hello {user.displayName}</div>
+    </Container>
+  );
+}`;
+
+  const createDraftRes = await niceBackendFetch("/api/v1/internal/email-drafts", {
+    method: "POST",
+    accessType: "admin",
+    body: {
+      display_name: "Welcome Draft",
+      theme_id: false,
+      tsx_source: tsxSource,
+    },
+  });
+  expect(createDraftRes.status).toBe(200);
+  const draftId = createDraftRes.body.id as string;
+
+  const sendRes = await niceBackendFetch("/api/v1/emails/send-email", {
+    method: "POST",
+    accessType: "server",
+    body: {
+      user_ids: [user.userId],
+      draft_id: draftId,
+      subject: "Overridden Subject", // still allow explicit subject
+      notification_category_name: "Marketing",
+    },
+  });
+  expect(sendRes.status).toBe(200);
+  expect(sendRes.body.results).toHaveLength(1);
+
+  const messages = await user.mailbox.fetchMessages();
+  const sentEmail = messages.find(m => m.subject === "Overridden Subject");
+  expect(sentEmail).toBeDefined();
+
+  const getDraftRes = await niceBackendFetch(`/api/v1/internal/email-drafts/${draftId}`, {
+    method: "GET",
+    accessType: "admin",
+  });
+  expect(getDraftRes.status).toBe(200);
+  expect(getDraftRes.body.sent_at_millis).toEqual(expect.any(Number));
+});
+
 describe("validation errors", () => {
   it("should return 400 when neither html nor template_id is provided", async ({ expect }) => {
     await Project.createAndSwitch({
@@ -372,8 +439,28 @@ describe("validation errors", () => {
         "status": 400,
         "body": {
           "code": "SCHEMA_ERROR",
-          "details": { "message": "Either html or template_id must be provided" },
-          "error": "Either html or template_id must be provided",
+          "details": {
+            "message": deindent\`
+              Request validation failed on POST /api/v1/emails/send-email:
+                - body is not matched by any of the provided schemas:
+                  Schema 0:
+                    body.html must be defined
+                  Schema 1:
+                    body.template_id must be defined
+                  Schema 2:
+                    body.draft_id must be defined
+            \`,
+          },
+          "error": deindent\`
+            Request validation failed on POST /api/v1/emails/send-email:
+              - body is not matched by any of the provided schemas:
+                Schema 0:
+                  body.html must be defined
+                Schema 1:
+                  body.template_id must be defined
+                Schema 2:
+                  body.draft_id must be defined
+          \`,
         },
         "headers": Headers {
           "x-stack-known-error": "SCHEMA_ERROR",
@@ -413,6 +500,102 @@ describe("validation errors", () => {
   });
 });
 
+describe("all users", () => {
+  it("should return 400 when both user_ids and all_users are provided", async ({ expect }) => {
+    await Project.createAndSwitch({
+      display_name: "Test Both user_ids and all_users",
+      config: {
+        email_config: testEmailConfig,
+      },
+    });
+    const user = await User.create();
+    const response = await niceBackendFetch(
+      "/api/v1/emails/send-email",
+      {
+        method: "POST",
+        accessType: "server",
+        body: {
+          user_ids: [user.userId],
+          all_users: true,
+          html: "<p>Test email</p>",
+          subject: "Test Subject",
+        }
+      }
+    );
+    expect(response).toMatchInlineSnapshot(`
+      NiceResponse {
+        "status": 400,
+        "body": {
+          "code": "SCHEMA_ERROR",
+          "details": { "message": "Exactly one of user_ids or all_users must be provided" },
+          "error": "Exactly one of user_ids or all_users must be provided",
+        },
+        "headers": Headers {
+          "x-stack-known-error": "SCHEMA_ERROR",
+          <some fields may have been hidden>,
+        },
+      }
+    `);
+  });
+
+  it("should send one email per user when all_users is true", async ({ expect }) => {
+    await Project.createAndSwitch({
+      display_name: "Test All Users Email Project",
+      config: {
+        email_config: testEmailConfig,
+      },
+    });
+
+    const userA = await User.create();
+    const userB = await User.create();
+    const userC = await User.create();
+
+    const subject = "Send to All Users Test Subject";
+    const response = await niceBackendFetch(
+      "/api/v1/emails/send-email",
+      {
+        method: "POST",
+        accessType: "server",
+        body: {
+          all_users: true,
+          html: "<p>Broadcast email to all users</p>",
+          subject,
+        }
+      }
+    );
+
+    expect(response).toMatchInlineSnapshot(`
+      NiceResponse {
+        "status": 200,
+        "body": {
+          "results": [
+            {
+              "user_email": "unindexed-mailbox--<stripped UUID>@stack-generated.example.com",
+              "user_id": "<stripped UUID>",
+            },
+            {
+              "user_email": "unindexed-mailbox--<stripped UUID>@stack-generated.example.com",
+              "user_id": "<stripped UUID>",
+            },
+            {
+              "user_email": "unindexed-mailbox--<stripped UUID>@stack-generated.example.com",
+              "user_id": "<stripped UUID>",
+            },
+          ],
+        },
+        "headers": Headers { <some fields may have been hidden> },
+      }
+    `);
+
+    const messagesA = await userA.mailbox.fetchMessages();
+    const messagesB = await userB.mailbox.fetchMessages();
+    const messagesC = await userC.mailbox.fetchMessages();
+    expect(messagesA.find(m => m.subject === subject)).toBeDefined();
+    expect(messagesB.find(m => m.subject === subject)).toBeDefined();
+    expect(messagesC.find(m => m.subject === subject)).toBeDefined();
+  });
+});
+
 describe("template-based emails", () => {
   it("should return 400 when invalid template_id is provided", async ({ expect }) => {
     await Project.createAndSwitch({
@@ -429,7 +612,7 @@ describe("template-based emails", () => {
         accessType: "server",
         body: {
           user_ids: [user.userId],
-          template_id: "non-existent-template",
+          template_id: randomUUID(),
           variables: { name: "Test User" },
           notification_category_name: "Marketing",
         }
@@ -438,7 +621,7 @@ describe("template-based emails", () => {
     expect(response).toMatchInlineSnapshot(`
       NiceResponse {
         "status": 400,
-        "body": "Template not found with given id",
+        "body": "No template found with given template_id",
         "headers": Headers { <some fields may have been hidden> },
       }
     `);
@@ -474,12 +657,36 @@ describe("template-based emails", () => {
           "details": {
             "message": deindent\`
               Request validation failed on POST /api/v1/emails/send-email:
-                - body.theme_id is invalid
+                - body is not matched by any of the provided schemas:
+                  Schema 0:
+                    body.theme_id is invalid
+                  Schema 1:
+                    body.template_id must be defined
+                    body.theme_id is invalid
+                    body contains unknown properties: html
+                    body contains unknown properties: html
+                  Schema 2:
+                    body.draft_id must be defined
+                    body.theme_id is invalid
+                    body contains unknown properties: html
+                    body contains unknown properties: html
             \`,
           },
           "error": deindent\`
             Request validation failed on POST /api/v1/emails/send-email:
-              - body.theme_id is invalid
+              - body is not matched by any of the provided schemas:
+                Schema 0:
+                  body.theme_id is invalid
+                Schema 1:
+                  body.template_id must be defined
+                  body.theme_id is invalid
+                  body contains unknown properties: html
+                  body contains unknown properties: html
+                Schema 2:
+                  body.draft_id must be defined
+                  body.theme_id is invalid
+                  body contains unknown properties: html
+                  body contains unknown properties: html
           \`,
         },
         "headers": Headers {
