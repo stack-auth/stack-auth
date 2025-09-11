@@ -803,10 +803,12 @@ model OneTimePurchase {
   offerId String?
   offer Json
   quantity Int
+  stripePaymentIntentId String?
   createdAt DateTime @default(now())
   creationSource PurchaseCreationSource
 
   @@id([tenancyId, id])
+  @@unique([tenancyId, stripePaymentIntentId])
 }
 
 model DataVaultEntry {
