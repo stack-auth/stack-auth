@@ -76,6 +76,12 @@ typeAssertIs<AllUnionKeys<{ a: string } | { b: number }>, "a" | "b">()();
 
 export type SubtractType<T, U> = T extends object ? { [K in keyof T]: K extends keyof U ? SubtractType<T[K], U[K]> : T[K] } : (T extends U ? never : T); // note: this only works due to the distributive property of conditional types https://www.typescriptlang.org/docs/handbook/2/conditional-types.html#distributive-conditional-types
 
+export type XOR<T extends readonly any[]> = T extends readonly [infer A, infer B, ...infer Rest]
+  ? Rest extends []
+  ? (A & { [K in keyof B]?: never }) | (B & { [K in keyof A]?: never })
+  : XOR<[(A & { [K in keyof B]?: never }) | (B & { [K in keyof A]?: never }), ...Rest]>
+  : T[0];
+
 
 type _AntiIntersectInner<T, U> = T extends object ? (
   & Omit<U, keyof T>

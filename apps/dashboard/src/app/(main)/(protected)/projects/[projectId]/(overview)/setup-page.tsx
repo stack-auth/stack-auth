@@ -427,7 +427,7 @@ export default function SetupPage(props: { toMetrics: () => void }) {
           <X className="w-4 h-4 ml-1 mt-0.5" />
         </Button>
       </div>
-      <div className="flex gap-4 justify-center items-center border rounded-2xl py-4 px-8 backdrop-blur-md bg-white/20 dark:bg-black/20">
+      <div className="flex gap-4 justify-center items-center border rounded-2xl py-4 px-8 backdrop-blur-md bg-slate-200/20 dark:bg-black/20">
         <GlobeIllustration />
 
         <div className="flex flex-col gap-4">

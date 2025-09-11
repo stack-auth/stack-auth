@@ -1815,7 +1815,7 @@ function BigIconButton({ icon, children, ...props }: { icon: React.ReactNode} & 
   return (
     <Button
       variant="outline"
-      className={cn("h-20 w-20 p-1 rounded-full backdrop-blur-md bg-white/20 dark:bg-black/20")}
+      className={cn("h-20 w-20 p-1 rounded-full backdrop-blur-md bg-slate-200/20 dark:bg-black/20")}
       {...props}
     >
       {icon}

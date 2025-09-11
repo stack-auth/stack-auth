@@ -768,13 +768,15 @@ export class StackServerInterface extends StackClientInterface {
   }
 
   async sendEmail(options: {
-    userIds: string[],
+    userIds?: string[],
+    allUsers?: true,
     themeId?: string | null | false,
     html?: string,
     subject?: string,
     notificationCategoryName?: string,
     templateId?: string,
     variables?: Record<string, any>,
+    draftId?: string,
   }): Promise<Result<void, KnownErrors["RequiresCustomEmailServer"] | KnownErrors["SchemaError"] | KnownErrors["UserIdDoesNotExist"]>> {
     const res = await this.sendServerRequest(
       "/emails/send-email",
@@ -785,12 +787,14 @@ export class StackServerInterface extends StackClientInterface {
         },
         body: JSON.stringify({
           user_ids: options.userIds,
+          all_users: options.allUsers,
           theme_id: options.themeId,
           html: options.html,
           subject: options.subject,
           notification_category_name: options.notificationCategoryName,
           template_id: options.templateId,
           variables: options.variables,
+          draft_id: options.draftId,
         }),
       },
       null,

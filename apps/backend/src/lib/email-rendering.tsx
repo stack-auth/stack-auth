@@ -42,7 +42,7 @@ export function createTemplateComponentFromHtml(html: string) {
 }
 
 export async function renderEmailWithTemplate(
-  templateComponent: string,
+  templateOrDraftComponent: string,
   themeComponent: string,
   options: {
     user?: { displayName: string | null },
@@ -66,7 +66,7 @@ export async function renderEmailWithTemplate(
   const result = await bundleJavaScript({
     "/utils.tsx": findComponentValueUtil,
     "/theme.tsx": themeComponent,
-    "/template.tsx": templateComponent,
+    "/template.tsx": templateOrDraftComponent,
     "/render.tsx": deindent`
       import { configure } from "arktype/config"
       configure({ onUndeclaredKey: "delete" })
@@ -78,10 +78,10 @@ export async function renderEmailWithTemplate(
       const { variablesSchema, EmailTemplate } = TemplateModule;
       import { EmailTheme } from "./theme.tsx";
       export const renderAll = async () => {
-        const variables = variablesSchema({
+        const variables = variablesSchema ? variablesSchema({
           ${previewMode ? "...(EmailTemplate.PreviewVariables || {})," : ""}
           ...(${JSON.stringify(variables)}),
-        })
+        }) : {};
         if (variables instanceof type.errors) {
           throw new Error(variables.summary)
         }
@@ -124,7 +124,6 @@ export async function renderEmailWithTemplate(
   }
   return Result.ok(output.data.result as { html: string, text: string, subject: string, notificationCategory: string });
 }
-
 
 const findComponentValueUtil = `import React from 'react';
 export function findComponentValue(element, targetStackComponent) {

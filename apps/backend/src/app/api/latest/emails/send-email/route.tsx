@@ -3,39 +3,50 @@ import { getEmailConfig, sendEmail } from "@/lib/emails";
 import { getNotificationCategoryByName, hasNotificationEnabled } from "@/lib/notification-categories";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { KnownErrors } from "@stackframe/stack-shared";
-import { adaptSchema, serverOrHigherAuthTypeSchema, templateThemeIdSchema, yupArray, yupMixed, yupNumber, yupObject, yupRecord, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+import { adaptSchema, serverOrHigherAuthTypeSchema, templateThemeIdSchema, yupArray, yupBoolean, yupMixed, yupNumber, yupObject, yupRecord, yupString, yupUnion } from "@stackframe/stack-shared/dist/schema-fields";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { StatusError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { unsubscribeLinkVerificationCodeHandler } from "../unsubscribe-link/verification-handler";
+import { KnownErrors } from "@stackframe/stack-shared";
+import { getEmailDraft, themeModeToTemplateThemeId } from "@/lib/email-drafts";
 
 type UserResult = {
   user_id: string,
   user_email?: string,
 };
 
+const bodyBase = yupObject({
+  user_ids: yupArray(yupString().defined()).optional(),
+  all_users: yupBoolean().oneOf([true]).optional(),
+  subject: yupString().optional(),
+  notification_category_name: yupString().optional(),
+  theme_id: templateThemeIdSchema.nullable().meta({
+    openapiField: { description: "The theme to use for the email. If not specified, the default theme will be used." }
+  }),
+});
+
 export const POST = createSmartRouteHandler({
   metadata: {
     summary: "Send email",
-    description: "Send an email to a list of users. The content field should contain either {html, subject, notification_category_name} for HTML emails or {template_id, variables} for template-based emails.",
-    tags: ["Emails"],
+    description: "Send an email to a list of users. The content field should contain either {html} for HTML emails, {template_id, variables} for template-based emails, or {draft_id} for a draft email.",
   },
   request: yupObject({
     auth: yupObject({
       type: serverOrHigherAuthTypeSchema,
       tenancy: adaptSchema.defined(),
     }).defined(),
-    body: yupObject({
-      user_ids: yupArray(yupString().defined()).defined(),
-      theme_id: templateThemeIdSchema.nullable().meta({
-        openapiField: { description: "The theme to use for the email. If not specified, the default theme will be used." }
-      }),
-      html: yupString().optional(),
-      subject: yupString().optional(),
-      notification_category_name: yupString().optional(),
-      template_id: yupString().optional(),
-      variables: yupRecord(yupString(), yupMixed()).optional(),
-    }),
+    body: yupUnion(
+      bodyBase.concat(yupObject({
+        html: yupString().defined(),
+      })),
+      bodyBase.concat(yupObject({
+        template_id: yupString().uuid().defined(),
+        variables: yupRecord(yupString(), yupMixed()).optional(),
+      })),
+      bodyBase.concat(yupObject({
+        draft_id: yupString().defined(),
+      })),
+    ).defined(),
     method: yupString().oneOf(["POST"]).defined(),
   }),
   response: yupObject({
@@ -55,55 +66,61 @@ export const POST = createSmartRouteHandler({
     if (auth.tenancy.config.emails.server.isShared) {
       throw new KnownErrors.RequiresCustomEmailServer();
     }
-    if (!body.html && !body.template_id) {
-      throw new KnownErrors.SchemaError("Either html or template_id must be provided");
+    if ((body.user_ids && body.all_users) || (!body.user_ids && !body.all_users)) {
+      throw new KnownErrors.SchemaError("Exactly one of user_ids or all_users must be provided");
     }
-    if (body.html && (body.template_id || body.variables)) {
-      throw new KnownErrors.SchemaError("If html is provided, cannot provide template_id or variables");
-    }
-    const emailConfig = await getEmailConfig(auth.tenancy);
-    const defaultNotificationCategory = getNotificationCategoryByName(body.notification_category_name ?? "Transactional") ?? throwErr(400, "Notification category not found with given name");
-    const themeSource = getEmailThemeForTemplate(auth.tenancy, body.theme_id);
-    const templates = new Map(Object.entries(auth.tenancy.config.emails.templates));
-    const templateSource = body.template_id
-      ? (templates.get(body.template_id)?.tsxSource ?? throwErr(400, "Template not found with given id"))
-      : createTemplateComponentFromHtml(body.html!);
 
     const prisma = await getPrismaClientForTenancy(auth.tenancy);
+    const emailConfig = await getEmailConfig(auth.tenancy);
+    const defaultNotificationCategory = getNotificationCategoryByName(body.notification_category_name ?? "Transactional") ?? throwErr(400, "Notification category not found with given name");
+    let themeSource = getEmailThemeForTemplate(auth.tenancy, body.theme_id);
+    const variables = "variables" in body ? body.variables : undefined;
+    const templates = new Map(Object.entries(auth.tenancy.config.emails.templates));
+    let templateSource: string;
+    if ("template_id" in body) {
+      templateSource = templates.get(body.template_id)?.tsxSource ?? throwErr(400, "No template found with given template_id");
+    } else if ("html" in body) {
+      templateSource = createTemplateComponentFromHtml(body.html);
+    } else if ("draft_id" in body) {
+      const draft = await getEmailDraft(prisma, auth.tenancy.id, body.draft_id) ?? throwErr(400, "No draft found with given draft_id");
+      const theme_id = themeModeToTemplateThemeId(draft.themeMode, draft.themeId);
+      templateSource = draft.tsxSource;
+      if (body.theme_id === undefined) {
+        themeSource = getEmailThemeForTemplate(auth.tenancy, theme_id);
+      }
+    } else {
+      throw new KnownErrors.SchemaError("Either template_id, html, or draft_id must be provided");
+    }
+
     const users = await prisma.projectUser.findMany({
       where: {
         tenancyId: auth.tenancy.id,
         projectUserId: {
-          in: body.user_ids,
+          in: body.user_ids
         },
       },
       include: {
         contactChannels: true,
       },
     });
-    const missingUserIds = body.user_ids.filter(userId => !users.some(user => user.projectUserId === userId));
-    if (missingUserIds.length > 0) {
+    const missingUserIds = body.user_ids?.filter(userId => !users.some(user => user.projectUserId === userId));
+    if (missingUserIds && missingUserIds.length > 0) {
       throw new KnownErrors.UserIdDoesNotExist(missingUserIds[0]);
     }
     const userMap = new Map(users.map(user => [user.projectUserId, user]));
     const userSendErrors: Map<string, string> = new Map();
     const userPrimaryEmails: Map<string, string> = new Map();
 
-    for (const userId of body.user_ids) {
-      const user = userMap.get(userId);
-      if (!user) {
-        userSendErrors.set(userId, "User not found");
-        continue;
-      }
+    for (const user of userMap.values()) {
       const primaryEmail = user.contactChannels.find((c) => c.isPrimary === "TRUE")?.value;
       if (!primaryEmail) {
-        userSendErrors.set(userId, "User does not have a primary email");
+        userSendErrors.set(user.projectUserId, "User does not have a primary email");
         continue;
       }
-      userPrimaryEmails.set(userId, primaryEmail);
+      userPrimaryEmails.set(user.projectUserId, primaryEmail);
 
       let currentNotificationCategory = defaultNotificationCategory;
-      if (body.template_id) {
+      if (!("html" in body)) {
         // We have to render email twice in this case, first pass is to get the notification category
         const renderedTemplateFirstPass = await renderEmailWithTemplate(
           templateSource,
@@ -111,16 +128,16 @@ export const POST = createSmartRouteHandler({
           {
             user: { displayName: user.displayName },
             project: { displayName: auth.tenancy.project.display_name },
-            variables: body.variables,
+            variables,
           },
         );
         if (renderedTemplateFirstPass.status === "error") {
-          userSendErrors.set(userId, "There was an error rendering the email");
+          userSendErrors.set(user.projectUserId, "There was an error rendering the email");
           continue;
         }
         const notificationCategory = getNotificationCategoryByName(renderedTemplateFirstPass.data.notificationCategory ?? "");
         if (!notificationCategory) {
-          userSendErrors.set(userId, "Notification category not found with given name");
+          userSendErrors.set(user.projectUserId, "Notification category not found with given name");
           continue;
         }
         currentNotificationCategory = notificationCategory;
@@ -128,7 +145,7 @@ export const POST = createSmartRouteHandler({
 
       const isNotificationEnabled = await hasNotificationEnabled(auth.tenancy, user.projectUserId, currentNotificationCategory.id);
       if (!isNotificationEnabled) {
-        userSendErrors.set(userId, "User has disabled notifications for this category");
+        userSendErrors.set(user.projectUserId, "User has disabled notifications for this category");
         continue;
       }
 
@@ -155,12 +172,12 @@ export const POST = createSmartRouteHandler({
         {
           user: { displayName: user.displayName },
           project: { displayName: auth.tenancy.project.display_name },
-          variables: body.variables,
+          variables,
           unsubscribeLink,
         },
       );
       if (renderedEmail.status === "error") {
-        userSendErrors.set(userId, "There was an error rendering the email");
+        userSendErrors.set(user.projectUserId, "There was an error rendering the email");
         continue;
       }
       try {
@@ -173,14 +190,26 @@ export const POST = createSmartRouteHandler({
           text: renderedEmail.data.text,
         });
       } catch {
-        userSendErrors.set(userId, "Failed to send email");
+        userSendErrors.set(user.projectUserId, "Failed to send email");
       }
     }
 
-    const results: UserResult[] = body.user_ids.map((userId) => ({
-      user_id: userId,
-      user_email: userPrimaryEmails.get(userId),
+    const results: UserResult[] = Array.from(userMap.values()).map((user) => ({
+      user_id: user.projectUserId,
+      user_email: userPrimaryEmails.get(user.projectUserId) ?? user.contactChannels.find((c) => c.isPrimary === "TRUE")?.value,
     }));
+
+    if ("draft_id" in body) {
+      await prisma.emailDraft.update({
+        where: {
+          tenancyId_id: {
+            tenancyId: auth.tenancy.id,
+            id: body.draft_id,
+          },
+        },
+        data: { sentAt: new Date() },
+      });
+    }
 
     return {
       statusCode: 200,

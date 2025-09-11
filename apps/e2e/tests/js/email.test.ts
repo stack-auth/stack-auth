@@ -167,5 +167,5 @@ it("should handle html and templateId at the same time", async ({ expect }) => {
     html: "<p>Test Email</p>",
     templateId: DEFAULT_TEMPLATE_IDS.sign_in_invitation,
     subject: "Test Email",
-  })).rejects.toThrow(KnownErrors.SchemaError);
+  } as any)).rejects.toThrow(KnownErrors.SchemaError);
 });
