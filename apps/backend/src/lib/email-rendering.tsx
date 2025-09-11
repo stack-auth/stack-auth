@@ -199,7 +199,11 @@ export async function renderEmailsWithTemplateBatched(
     "@react-email/components": "0.1.1",
     "arktype": "2.1.20",
   };
-  return await freestyle.executeScript(result.data, { nodeModules }) as Result<Array<{ html: string, text: string, subject?: string, notificationCategory?: string }>, string>;
+  const executeResult = await freestyle.executeScript(result.data, { nodeModules });
+  if (executeResult.status === "error") {
+    return Result.error(executeResult.error);
+  }
+  return Result.ok(executeResult.data.result as Array<{ html: string, text: string, subject?: string, notificationCategory?: string }>);
 }
 
 const findComponentValueUtil = `import React from 'react';
