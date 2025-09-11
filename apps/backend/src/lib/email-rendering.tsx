@@ -6,6 +6,7 @@ import { get, has } from '@stackframe/stack-shared/dist/utils/objects';
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
 import { Tenancy } from './tenancies';
+import { getEnvVariable } from '@stackframe/stack-shared/dist/utils/env';
 
 export function getActiveEmailTheme(tenancy: Tenancy) {
   const themeList = tenancy.config.emails.themes;
@@ -198,12 +199,7 @@ export async function renderEmailsWithTemplateBatched(
     "@react-email/components": "0.1.1",
     "arktype": "2.1.20",
   };
-  try {
-    const output = await freestyle.executeScript(result.data, { nodeModules });
-    return Result.ok(output.result as Array<{ html: string, text: string, subject?: string, notificationCategory?: string }>);
-  } catch (error) {
-    return Result.error("Unable to render email");
-  }
+  return await freestyle.executeScript(result.data, { nodeModules }) as Result<Array<{ html: string, text: string, subject?: string, notificationCategory?: string }>, string>;
 }
 
 const findComponentValueUtil = `import React from 'react';

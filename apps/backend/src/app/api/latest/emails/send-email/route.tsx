@@ -252,6 +252,18 @@ export const POST = createSmartRouteHandler({
       }
     })());
 
+    if ("draft_id" in body) {
+      await prisma.emailDraft.update({
+        where: {
+          tenancyId_id: {
+            tenancyId: auth.tenancy.id,
+            id: body.draft_id,
+          },
+        },
+        data: { sentAt: new Date() },
+      });
+    }
+
     return {
       statusCode: 200,
       bodyType: 'json',
