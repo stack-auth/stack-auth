@@ -516,13 +516,13 @@ const Steps = {
           "# 1. Go to https://app.stack-auth.com\n" +
           "# 2. Create a new project\n" +
           "# 3. Copy the keys below\n" +
-          `NEXT_PUBLIC_STACK_PROJECT_ID=${projectIdFromArgs ?? ""}\n` +
-          `NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY=${publishableClientKeyFromArgs ?? ""}\n` +
+          `NEXT_PUBLIC_STACK_PROJECT_ID="${projectIdFromArgs ?? ""}"\n` +
+          `NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY="${publishableClientKeyFromArgs ?? ""}"\n` +
           "STACK_SECRET_SERVER_KEY=\n"
         : "# Stack Auth keys\n" +
           "# Get these variables by creating a project on https://app.stack-auth.com.\n" +
-          `NEXT_PUBLIC_STACK_PROJECT_ID=${projectIdFromArgs ?? ""}\n` +
-          `NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY=${publishableClientKeyFromArgs ?? ""}\n` +
+          `NEXT_PUBLIC_STACK_PROJECT_ID="${projectIdFromArgs ?? ""}"\n` +
+          `NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY="${publishableClientKeyFromArgs ?? ""}"\n` +
           "STACK_SECRET_SERVER_KEY=\n";
 
       laterWriteFile(envLocalPath, envContent);
