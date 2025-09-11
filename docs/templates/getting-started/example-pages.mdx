@@ -7,7 +7,7 @@ This guide demonstrates how to integrate Stack Auth with Vite. The same principl
 
 ### Initialize the app
 
-```typescript title="stack.ts"
+```typescript title="stack/client.ts"
 import { StackClientApp } from "@stackframe/js";
 
 // Add type declaration for Vite's import.meta.env
@@ -76,7 +76,7 @@ export const stackClientApp = new StackClientApp({
   
   <TabsContent value="script">
     ```typescript
-    import { stackClientApp } from "./stack";
+    import { stackClientApp } from "./stack/client";
 
     const updateUIState = (user: any | null) => {
       const authOptions = document.getElementById("authOptions");
@@ -148,7 +148,7 @@ export const stackClientApp = new StackClientApp({
   
   <TabsContent value="script">
     ```typescript
-    import { stackClientApp } from "./stack";
+    import { stackClientApp } from "./stack/client";
 
     // Check if user is already signed in
     stackClientApp.getUser().then((user) => {
@@ -253,7 +253,7 @@ export const stackClientApp = new StackClientApp({
   
   <TabsContent value="script">
     ```typescript
-    import { stackClientApp } from "./stack";
+    import { stackClientApp } from "./stack/client";
 
     // Check if user is already signed in
     stackClientApp.getUser().then((user) => {
@@ -335,7 +335,7 @@ export const stackClientApp = new StackClientApp({
   
   <TabsContent value="script">
     ```typescript
-    import { stackClientApp } from "./stack";
+    import { stackClientApp } from "./stack/client";
 
     // Check if user is already signed in
     stackClientApp.getUser().then((user) => {
@@ -413,7 +413,7 @@ export const stackClientApp = new StackClientApp({
   
   <TabsContent value="script">
     ```typescript
-    import { stackClientApp } from "./stack";
+    import { stackClientApp } from "./stack/client";
 
     // Check if user is already signed in
     stackClientApp.getUser().then((user) => {

@@ -590,7 +590,7 @@ const Steps = {
     if (stackAppContent) {
       if (!stackAppContent.includes("@stackframe/")) {
         throw new UserError(
-          `A file at the path ${stackAppPath} already exists. Stack uses the stack.ts file to initialize the Stack SDK. Please remove the existing file and try again.`
+          `A file at the path ${stackAppPath} already exists. Stack uses the stack/${clientOrServer}.ts file to initialize the Stack SDK. Please remove the existing file and try again.`
         );
       }
       throw new UserError(
@@ -605,7 +605,7 @@ const Steps = {
     laterWriteFileIfNotExists(
       stackAppPath,
       `
-${type === "next" ? `import "server-only";` : ""}
+${type === "next" && clientOrServer === "server" ? `import "server-only";` : ""}
 
 import { Stack${clientOrServerCap}App } from ${JSON.stringify(packageName)};
 
