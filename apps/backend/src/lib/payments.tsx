@@ -161,6 +161,25 @@ export async function getItemQuantityForCustomer(options: {
       expirationTime: c.expiresAt ?? FAR_FUTURE_DATE,
     });
   }
+  const oneTimePurchases = await options.prisma.oneTimePurchase.findMany({
+    where: {
+      tenancyId: options.tenancy.id,
+      customerId: options.customerId,
+      customerType: typedToUppercase(options.customerType),
+    },
+  });
+  for (const p of oneTimePurchases) {
+    const offer = p.offer as yup.InferType<typeof offerSchema>;
+    const inc = getOrUndefined(offer.includedItems, options.itemId);
+    if (!inc) continue;
+    const baseQty = inc.quantity * p.quantity;
+    if (baseQty <= 0) continue;
+    transactions.push({
+      amount: baseQty,
+      grantTime: p.createdAt,
+      expirationTime: FAR_FUTURE_DATE,
+    });
+  }
 
   // Subscriptions → ledger entries
   const subscriptions = await getSubscriptions({

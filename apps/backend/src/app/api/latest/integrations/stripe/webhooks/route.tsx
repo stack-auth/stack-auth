@@ -64,21 +64,6 @@ async function processStripeWebhookEvent(event: Stripe.Event): Promise<void> {
       if (!typedIncludes(["user", "team", "custom"] as const, customerTypeMeta)) {
         throw new StackAssertionError("Invalid customer type for one-time purchase", { event });
       }
-      const includedItems = offer?.includedItems || {};
-      for (const [itemId, inc] of Object.entries(includedItems as Record<string, { quantity: number }>)) {
-        const grant = Math.max(0, Number((inc as any).quantity || 0)) * qty;
-        if (!grant) continue;
-        await prisma.itemQuantityChange.create({
-          data: {
-            tenancyId: tenancy.id,
-            customerId: customerIdMeta,
-            itemId,
-            quantity: grant,
-            description: `ONE_TIME_PURCHASE payment_intent=${object.id}`,
-          },
-        });
-      }
-
       await prisma.oneTimePurchase.create({
         data: {
           tenancyId: tenancy.id,
@@ -87,6 +72,7 @@ async function processStripeWebhookEvent(event: Stripe.Event): Promise<void> {
           offerId: metadata.offerId || null,
           offer,
           quantity: qty,
+          creationSource: "PURCHASE_PAGE",
         },
       });
       return;

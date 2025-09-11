@@ -753,7 +753,7 @@ enum SubscriptionStatus {
   unpaid
 }
 
-enum SubscriptionCreationSource {
+enum PurchaseCreationSource {
   PURCHASE_PAGE
   TEST_MODE
 }
@@ -773,7 +773,7 @@ model Subscription {
   currentPeriodStart   DateTime
   cancelAtPeriodEnd    Boolean
 
-  creationSource SubscriptionCreationSource
+  creationSource PurchaseCreationSource
   createdAt      DateTime                   @default(now())
   updatedAt      DateTime                   @updatedAt
 
@@ -804,6 +804,7 @@ model OneTimePurchase {
   offer Json
   quantity Int
   createdAt DateTime @default(now())
+  creationSource PurchaseCreationSource
 
   @@id([tenancyId, id])
 }

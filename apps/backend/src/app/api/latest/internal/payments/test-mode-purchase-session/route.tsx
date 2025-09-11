@@ -3,11 +3,10 @@ import { validatePurchaseSession } from "@/lib/payments";
 import { getStripeForAccount } from "@/lib/stripe";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { SubscriptionCreationSource, SubscriptionStatus } from "@prisma/client";
+import { SubscriptionStatus } from "@prisma/client";
 import { adaptSchema, adminAuthTypeSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { addInterval } from "@stackframe/stack-shared/dist/utils/dates";
 import { StackAssertionError, StatusError } from "@stackframe/stack-shared/dist/utils/errors";
-import { getOrUndefined, typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import { typedToUppercase } from "@stackframe/stack-shared/dist/utils/strings";
 
 export const POST = createSmartRouteHandler({
@@ -50,22 +49,6 @@ export const POST = createSmartRouteHandler({
     }
 
     if (!selectedPrice.interval) {
-      const includedItems = getOrUndefined(data.offer, "includedItems") || {};
-      const multipliedQuantity = Math.max(1, quantity);
-      for (const [itemId, inc] of typedEntries(includedItems)) {
-        const grant = inc.quantity * multipliedQuantity;
-        if (!grant) continue;
-        await prisma.itemQuantityChange.create({
-          data: {
-            tenancyId: auth.tenancy.id,
-            customerId: data.customerId,
-            itemId,
-            quantity: grant,
-            description: `TEST_MODE_PURCHASE offerId=${data.offerId ?? "inline"}`,
-          },
-        });
-      }
-
       await prisma.oneTimePurchase.create({
         data: {
           tenancyId: auth.tenancy.id,
@@ -73,7 +56,8 @@ export const POST = createSmartRouteHandler({
           customerType: typedToUppercase(data.offer.customerType),
           offerId: data.offerId,
           offer: data.offer,
-          quantity: multipliedQuantity,
+          quantity,
+          creationSource: "TEST_MODE",
         },
       });
     } else {
@@ -108,7 +92,7 @@ export const POST = createSmartRouteHandler({
           currentPeriodStart: new Date(),
           currentPeriodEnd: addInterval(new Date(), selectedPrice.interval!),
           cancelAtPeriodEnd: false,
-          creationSource: SubscriptionCreationSource.TEST_MODE,
+          creationSource: "TEST_MODE",
         },
       });
     }
