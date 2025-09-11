@@ -214,8 +214,8 @@ export function StackCompanion({ className, onExpandedChange }: StackCompanionPr
       {/* Single Expanding Sidebar */}
       <div
         className={cn(
-          "h-screen bg-background border-l shadow-lg flex relative",
-          isExpanded ? "" : "w-12",
+          "h-screen border-l flex relative",
+          isExpanded ? "shadow-lg" : "w-12",
           !isResizing ? "transition-all duration-300 ease-in-out" : ""
         )}
         style={isExpanded ? { width: `${width}px` } : undefined}
