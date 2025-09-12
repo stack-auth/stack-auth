@@ -227,7 +227,7 @@ export class Mailbox {
     this.waitForMessagesWithSubject = async (subject: string) => {
       const maxRetries = 20;
       for (let i = 0; i < maxRetries; i++) {
-        const messages = await this.fetchMessages({ noBody: true });
+        const messages = await this.fetchMessages();
         const withSubject = messages.filter(m => m.subject === subject);
         if (withSubject.length > 0) {
           return withSubject;
