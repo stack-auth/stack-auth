@@ -298,6 +298,11 @@ it("should return 200 and send email successfully", async ({ expect }) => {
   expect(messages).toMatchInlineSnapshot(`
     [
       MailboxMessage {
+        "attachments": [],
+        "body": {
+          "html": "http://localhost:8102/api/v1/emails/unsubscribe-link?code=%3Cstripped+query+param%3E",
+          "text": "http://localhost:8102/api/v1/emails/unsubscribe-link?code=%3Cstripped+query+param%3E",
+        },
         "from": "Test Project <test@example.com>",
         "subject": "Custom Test Email Subject",
         "to": ["<unindexed-mailbox--<stripped UUID>@stack-generated.example.com>"],
