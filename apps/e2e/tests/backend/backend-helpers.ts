@@ -95,7 +95,7 @@ function expectSnakeCase(obj: unknown, path: string): void {
       if (key.match(/[a-z0-9][A-Z][a-z0-9]+/) && !key.includes("_") && !["newUser", "afterCallbackRedirectUrl"].includes(key)) {
         throw new StackAssertionError(`Object has camelCase key (expected snake_case): ${path}.${key}`);
       }
-      if (["client_metadata", "server_metadata", "options_json", "credential", "authentication_response"].includes(key)) continue;
+      if (["client_metadata", "server_metadata", "options_json", "credential", "authentication_response", "metadata"].includes(key)) continue;
       // because email templates
       if (path === "req.body.content.root") continue;
       if (path === "res.body.content.root") continue;

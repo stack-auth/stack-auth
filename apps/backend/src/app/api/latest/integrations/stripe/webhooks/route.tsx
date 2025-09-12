@@ -36,8 +36,7 @@ const isSubscriptionChangedEvent = (event: Stripe.Event): event is Stripe.Event 
 
 async function processStripeWebhookEvent(event: Stripe.Event): Promise<void> {
   if (event.type === "payment_intent.succeeded") {
-    const object = event.data.object as any;
-    const metadata = object?.metadata ?? {};
+    const metadata = event.data.object.metadata;
     if (metadata.purchaseKind === "ONE_TIME") {
       const accountId = event.account;
       if (!accountId) {
@@ -55,27 +54,37 @@ async function processStripeWebhookEvent(event: Stripe.Event): Promise<void> {
       }
       const prisma = await getPrismaClientForTenancy(tenancy);
       const offer = JSON.parse(metadata.offer || "{}");
-      const customerIdMeta: string | undefined = metadata.customerId;
-      const customerTypeMeta: string | undefined = metadata.customerType;
       const qty = Math.max(1, Number(metadata.purchaseQuantity || 1));
-      if (!customerIdMeta || !customerTypeMeta) {
+      const stripePaymentIntentId = event.data.object.id;
+      if (!metadata.customerId || !metadata.customerType) {
         throw new StackAssertionError("Missing customer metadata for one-time purchase", { event });
       }
-      if (!typedIncludes(["user", "team", "custom"] as const, customerTypeMeta)) {
+      if (!typedIncludes(["user", "team", "custom"] as const, metadata.customerType)) {
         throw new StackAssertionError("Invalid customer type for one-time purchase", { event });
       }
-      await prisma.oneTimePurchase.create({
-        data: {
+      await prisma.oneTimePurchase.upsert({
+        where: {
+          tenancyId_stripePaymentIntentId: {
+            tenancyId: tenancy.id,
+            stripePaymentIntentId,
+          },
+        },
+        create: {
           tenancyId: tenancy.id,
-          customerId: customerIdMeta,
-          customerType: typedToUppercase(customerTypeMeta),
+          customerId: metadata.customerId,
+          customerType: typedToUppercase(metadata.customerType),
           offerId: metadata.offerId || null,
+          stripePaymentIntentId,
           offer,
           quantity: qty,
           creationSource: "PURCHASE_PAGE",
         },
+        update: {
+          offerId: metadata.offerId || null,
+          offer,
+          quantity: qty,
+        }
       });
-      return;
     }
   }
 
@@ -89,7 +98,6 @@ async function processStripeWebhookEvent(event: Stripe.Event): Promise<void> {
       throw new StackAssertionError("Stripe webhook bad customer id", { event });
     }
     await syncStripeSubscriptions(accountId, customerId);
-    return;
   }
 }
 
