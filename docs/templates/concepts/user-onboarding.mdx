@@ -78,7 +78,7 @@ Next, we can create a hook/function to check if the user has completed onboardin
   </TabsContent>
   <TabsContent value="server">
     ```jsx title="app/onboarding-functions.ts"
-    import { stackServerApp } from '@/stack';
+    import { stackServerApp } from '@/stack/server';
     import { redirect } from 'next/navigation';
 
     export async function ensureOnboarded() {
@@ -116,7 +116,7 @@ You can then use these functions wherever onboarding is required:
   <TabsContent value="server">
     ```jsx title="app/page.tsx"
     import { ensureOnboarding } from '@/app/onboarding-functions';
-    import { stackServerApp } from '@/stack';
+    import { stackServerApp } from '@/stack/server';
 
     export default async function HomePage() {
       await ensureOnboarding();
