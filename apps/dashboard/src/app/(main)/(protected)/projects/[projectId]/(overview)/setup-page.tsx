@@ -114,10 +114,10 @@ export default function SetupPage(props: { toMetrics: () => void }) {
     },
     {
       step: 4,
-      title: "Create stack.ts file",
+      title: "Create stack/client.ts file",
       content: <>
         <Typography>
-          Create a new file called <InlineCode>stack.ts</InlineCode> and add the following code. Here we use react-router-dom as an example.
+          Create a new file called <InlineCode>stack/client.ts</InlineCode> and add the following code. Here we use react-router-dom as an example.
         </Typography>
         <CodeBlock
           language="tsx"
@@ -135,7 +135,7 @@ export default function SetupPage(props: { toMetrics: () => void }) {
               }
             });
           `}
-          title="stack.ts"
+          title="stack/client.ts"
           icon="code"
         />
       </>
@@ -154,7 +154,7 @@ export default function SetupPage(props: { toMetrics: () => void }) {
             import { StackHandler, StackProvider, StackTheme } from "@stackframe/react";
             import { Suspense } from "react";
             import { BrowserRouter, Route, Routes, useLocation } from "react-router-dom";
-            import { stackClientApp } from "./stack";
+            import { stackClientApp } from "./stack/client";
 
             function HandlerRoutes() {
               const location = useLocation();
