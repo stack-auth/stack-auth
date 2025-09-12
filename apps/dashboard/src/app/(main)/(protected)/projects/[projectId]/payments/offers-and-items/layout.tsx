@@ -11,7 +11,7 @@ import { ConnectNotificationBanner } from "@stripe/react-connect-js";
 import { ArrowRight, BarChart3, Repeat, Shield, Wallet, Webhook } from "lucide-react";
 import { useState } from "react";
 import * as yup from "yup";
-import { useAdminApp } from "../use-admin-app";
+import { useAdminApp } from "../../use-admin-app";
 
 export default function PaymentsLayout({ children }: { children: React.ReactNode }) {
   const [bannerHasItems, setBannerHasItems] = useState(false);
