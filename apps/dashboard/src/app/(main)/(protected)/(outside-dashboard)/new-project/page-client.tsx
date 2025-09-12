@@ -146,7 +146,6 @@ export default function PageClient() {
           </Form>
         </div>
       </div>
-      <Separator orientation="vertical" />
 
       <div className="w-1/2 self-stretch py-4 px-4 lg:px-20 bg-zinc-300 dark:bg-zinc-800 hidden md:flex items-center">
         <div className="w-full">

@@ -57,7 +57,7 @@ To check whether a user has a specific permission, use the `getPermission` metho
   </TabsContent>
   <TabsContent value="server">
     ```tsx title="Check user permission on the server"
-    import { stackServerApp } from "@/stack";
+    import { stackServerApp } from "@/stack/server";
 
     export default async function CheckUserPermission() {
       const user = await stackServerApp.getUser({ or: 'redirect' });
@@ -105,7 +105,7 @@ To get a list of all permissions a user has, use the `listPermissions` method or
   </TabsContent>
   <TabsContent value="server">
     ```tsx title="List user permissions on the server"
-    import { stackServerApp } from "@/stack";
+    import { stackServerApp } from "@/stack/server";
 
     export default async function DisplayUserPermissions() {
       const user = await stackServerApp.getUser({ or: 'redirect' });
@@ -179,7 +179,7 @@ To check whether a user has a specific project permission, use the `getPermissio
   </TabsContent>
   <TabsContent value="server">
     ```tsx title="Check user permission on the server"
-    import { stackServerApp } from "@/stack";
+    import { stackServerApp } from "@/stack/server";
 
     export default async function CheckGlobalPermission() {
       const user = await stackServerApp.getUser({ or: 'redirect' });
@@ -225,7 +225,7 @@ To get a list of all global permissions a user has, use the `listPermissions` me
   </TabsContent>
   <TabsContent value="server">
     ```tsx title="List global permissions on the server"
-    import { stackServerApp } from "@/stack";
+    import { stackServerApp } from "@/stack/server";
 
     export default async function DisplayGlobalPermissions() {
       const user = await stackServerApp.getUser({ or: 'redirect' });

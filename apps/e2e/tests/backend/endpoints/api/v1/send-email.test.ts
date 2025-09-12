@@ -1,3 +1,4 @@
+import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { randomUUID } from "crypto";
 import { describe } from "vitest";
 import { it } from "../../../../helpers";
@@ -293,6 +294,7 @@ it("should return 200 and send email successfully", async ({ expect }) => {
   `);
 
   // Verify the email was actually sent by checking the mailbox
+  await wait(2000);
   const messages = await user.mailbox.fetchMessages();
   const sentEmail = messages.find(msg => msg.subject === "Custom Test Email Subject");
   expect(sentEmail).toBeDefined();
@@ -401,6 +403,7 @@ export function EmailTemplate({ user, project }: Props) {
   expect(sendRes.status).toBe(200);
   expect(sendRes.body.results).toHaveLength(1);
 
+  await wait(3000);
   const messages = await user.mailbox.fetchMessages();
   const sentEmail = messages.find(m => m.subject === "Overridden Subject");
   expect(sentEmail).toBeDefined();
@@ -587,6 +590,7 @@ describe("all users", () => {
       }
     `);
 
+    await wait(2000);
     const messagesA = await userA.mailbox.fetchMessages();
     const messagesB = await userB.mailbox.fetchMessages();
     const messagesC = await userC.mailbox.fetchMessages();
@@ -736,6 +740,7 @@ describe("notification categories", () => {
     `);
 
     // Verify the email was sent
+    await wait(2000);
     const messages = await user.mailbox.fetchMessages();
     const sentEmail = messages.find(msg => msg.subject === "Transactional Test Subject");
     expect(sentEmail).toBeDefined();
@@ -777,6 +782,7 @@ describe("notification categories", () => {
     `);
 
     // Verify the email was sent
+    await wait(2000);
     const messages = await user.mailbox.fetchMessages();
     const sentEmail = messages.find(msg => msg.subject === "Default Category Test Subject");
     expect(sentEmail).toBeDefined();

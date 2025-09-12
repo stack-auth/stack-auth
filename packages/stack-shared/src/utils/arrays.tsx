@@ -202,6 +202,26 @@ import.meta.vitest?.test("unique", ({ expect }) => {
   expect(unique([1, "1", true, 1, "1", true])).toEqual([1, "1", true]);
 });
 
+
+export function getChunks<T>(arr: readonly T[], size: number): T[][] {
+  const result: T[][] = [];
+  if (size <= 0) return result;
+  for (let i = 0; i < arr.length; i += size) {
+    result.push(arr.slice(i, i + size));
+  }
+  return result;
+}
+import.meta.vitest?.test("getChunks", ({ expect }) => {
+  expect(getChunks([], 2)).toEqual([]);
+  expect(getChunks([1], 2)).toEqual([[1]]);
+  expect(getChunks([1, 2], 2)).toEqual([[1, 2]]);
+  expect(getChunks([1, 2, 3], 2)).toEqual([[1, 2], [3]]);
+  expect(getChunks([1, 2, 3, 4, 5], 2)).toEqual([[1, 2], [3, 4], [5]]);
+  expect(getChunks([1, 2, 3, 4], 3)).toEqual([[1, 2, 3], [4]]);
+  expect(getChunks([1, 2, 3], 0)).toEqual([]);
+  expect(getChunks([1, 2, 3], -1)).toEqual([]);
+});
+
 export function isStringArray(arr: unknown): arr is string[] {
   return Array.isArray(arr) && arr.every((item) => typeof item === "string");
 }
