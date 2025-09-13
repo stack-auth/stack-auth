@@ -1,15 +1,5 @@
-import PageClient from "./page-client";
+import { redirect } from "next/navigation";
 
-export const metadata = {
-  title: "Payments",
-};
-
-type Params = {
-  projectId: string,
-};
-
-export default async function Page({ params }: { params: Promise<Params> }) {
-  return (
-    <PageClient />
-  );
+export default function Page() {
+  redirect("./payments/offers-and-items");
 }

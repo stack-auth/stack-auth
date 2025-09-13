@@ -753,7 +753,7 @@ enum SubscriptionStatus {
   unpaid
 }
 
-enum SubscriptionCreationSource {
+enum PurchaseCreationSource {
   PURCHASE_PAGE
   TEST_MODE
 }
@@ -773,7 +773,7 @@ model Subscription {
   currentPeriodStart   DateTime
   cancelAtPeriodEnd    Boolean
 
-  creationSource SubscriptionCreationSource
+  creationSource PurchaseCreationSource
   createdAt      DateTime                   @default(now())
   updatedAt      DateTime                   @updatedAt
 
@@ -793,6 +793,22 @@ model ItemQuantityChange {
 
   @@id([tenancyId, id])
   @@index([tenancyId, customerId, expiresAt])
+}
+
+model OneTimePurchase {
+  id String @default(uuid()) @db.Uuid
+  tenancyId String @db.Uuid
+  customerId String
+  customerType CustomerType
+  offerId String?
+  offer Json
+  quantity Int
+  stripePaymentIntentId String?
+  createdAt DateTime @default(now())
+  creationSource PurchaseCreationSource
+
+  @@id([tenancyId, id])
+  @@unique([tenancyId, stripePaymentIntentId])
 }
 
 model DataVaultEntry {
