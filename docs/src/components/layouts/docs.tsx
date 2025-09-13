@@ -95,7 +95,7 @@ type AccordionContextType = {
 
 const AccordionContext = createContext<AccordionContextType | null>(null);
 
-function AccordionProvider({ children }: { children: ReactNode }) {
+export function AccordionProvider({ children }: { children: ReactNode }) {
   const [accordionState, setAccordionStateInternal] = useState<Record<string, boolean>>({});
 
   const setAccordionState = (key: string, isOpen: boolean) => {
@@ -109,7 +109,7 @@ function AccordionProvider({ children }: { children: ReactNode }) {
   );
 }
 
-function useAccordionState(key: string, defaultValue: boolean) {
+export function useAccordionState(key: string, defaultValue: boolean) {
   const context = useContext(AccordionContext);
   if (!context) {
     throw new Error('useAccordionState must be used within AccordionProvider');
@@ -267,7 +267,7 @@ function ClickableCollapsibleSection({
 }
 
 // Function to find platform-specific content in the page tree
-function findPlatformContent(tree: PageTree.Root, platform: string): PageTree.Node[] {
+export function findPlatformContent(tree: PageTree.Root, platform: string): PageTree.Node[] {
   // Platform folder name mappings
   const platformMappings: Record<string, string[]> = {
     'next': ['next.js', 'nextjs'],
@@ -296,7 +296,7 @@ function findPlatformContent(tree: PageTree.Root, platform: string): PageTree.No
 }
 
 // Recursive component to render page tree items with API styling
-function PageTreeItem({ item, currentPlatform }: { item: PageTree.Node, currentPlatform?: string }) {
+export function PageTreeItem({ item, currentPlatform }: { item: PageTree.Node, currentPlatform?: string }) {
   const pathname = usePathname();
 
   if (item.type === 'separator') {
@@ -345,7 +345,7 @@ function PageTreeItem({ item, currentPlatform }: { item: PageTree.Node, currentP
 }
 
 // Function to render sidebar content based on context
-function renderSidebarContent(tree: PageTree.Root, pathname: string) {
+export function renderSidebarContent(tree: PageTree.Root, pathname: string) {
   const currentPlatform = getCurrentPlatform(pathname) || undefined;
 
   // For API section, don't show anything (API has its own sidebar)
