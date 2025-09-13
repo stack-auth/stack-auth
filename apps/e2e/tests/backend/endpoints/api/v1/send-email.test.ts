@@ -1,3 +1,4 @@
+import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { randomUUID } from "crypto";
 import { describe } from "vitest";
 import { it } from "../../../../helpers";
@@ -293,10 +294,22 @@ it("should return 200 and send email successfully", async ({ expect }) => {
   `);
 
   // Verify the email was actually sent by checking the mailbox
-  const messages = await user.mailbox.fetchMessages();
-  const sentEmail = messages.find(msg => msg.subject === "Custom Test Email Subject");
-  expect(sentEmail).toBeDefined();
-  expect(sentEmail!.body?.html).toMatchInlineSnapshot(`"http://localhost:8102/api/v1/emails/unsubscribe-link?code=%3Cstripped+query+param%3E"`);
+  const messages = await user.mailbox.waitForMessagesWithSubject("Custom Test Email Subject");
+  expect(messages).toMatchInlineSnapshot(`
+    [
+      MailboxMessage {
+        "attachments": [],
+        "body": {
+          "html": "http://localhost:8102/api/v1/emails/unsubscribe-link?code=%3Cstripped+query+param%3E",
+          "text": "http://localhost:8102/api/v1/emails/unsubscribe-link?code=%3Cstripped+query+param%3E",
+        },
+        "from": "Test Project <test@example.com>",
+        "subject": "Custom Test Email Subject",
+        "to": ["<unindexed-mailbox--<stripped UUID>@stack-generated.example.com>"],
+        <some fields may have been hidden>,
+      },
+    ]
+  `);
 });
 
 it("should handle user that does not exist", async ({ expect }) => {
@@ -401,10 +414,7 @@ export function EmailTemplate({ user, project }: Props) {
   expect(sendRes.status).toBe(200);
   expect(sendRes.body.results).toHaveLength(1);
 
-  const messages = await user.mailbox.fetchMessages();
-  const sentEmail = messages.find(m => m.subject === "Overridden Subject");
-  expect(sentEmail).toBeDefined();
-
+  await user.mailbox.waitForMessagesWithSubject("Overridden Subject");
   const getDraftRes = await niceBackendFetch(`/api/v1/internal/email-drafts/${draftId}`, {
     method: "GET",
     accessType: "admin",
@@ -587,12 +597,9 @@ describe("all users", () => {
       }
     `);
 
-    const messagesA = await userA.mailbox.fetchMessages();
-    const messagesB = await userB.mailbox.fetchMessages();
-    const messagesC = await userC.mailbox.fetchMessages();
-    expect(messagesA.find(m => m.subject === subject)).toBeDefined();
-    expect(messagesB.find(m => m.subject === subject)).toBeDefined();
-    expect(messagesC.find(m => m.subject === subject)).toBeDefined();
+    await userA.mailbox.waitForMessagesWithSubject(subject);
+    await userB.mailbox.waitForMessagesWithSubject(subject);
+    await userC.mailbox.waitForMessagesWithSubject(subject);
   });
 });
 
@@ -736,9 +743,7 @@ describe("notification categories", () => {
     `);
 
     // Verify the email was sent
-    const messages = await user.mailbox.fetchMessages();
-    const sentEmail = messages.find(msg => msg.subject === "Transactional Test Subject");
-    expect(sentEmail).toBeDefined();
+    await user.mailbox.waitForMessagesWithSubject("Transactional Test Subject");
   });
 
   it("should default to Transactional category when notification_category_name is not provided", async ({ expect }) => {
@@ -777,8 +782,6 @@ describe("notification categories", () => {
     `);
 
     // Verify the email was sent
-    const messages = await user.mailbox.fetchMessages();
-    const sentEmail = messages.find(msg => msg.subject === "Default Category Test Subject");
-    expect(sentEmail).toBeDefined();
+    await user.mailbox.waitForMessagesWithSubject("Default Category Test Subject");
   });
 });
