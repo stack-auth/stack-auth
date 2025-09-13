@@ -24,6 +24,7 @@ import {
 } from "@stackframe/stack-ui";
 import {
   Book,
+  CreditCard,
   FilePen,
   Globe,
   KeyRound,
@@ -240,18 +241,17 @@ const navigationItems: (Label | Item | Hidden)[] = [
     regex: /^\/projects\/[^\/]+\/email-themes\/[^\/]+$/,
     type: 'hidden',
   },
-  /*
   {
     name: "Payments",
     type: 'label',
   },
   {
-    name: "Payments",
-    href: "/payments",
-    regex: /^\/projects\/[^\/]+\/payments$/,
+    name: "Offers & Items",
+    href: "/payments/offers-and-items",
+    regex: /^\/projects\/[^\/]+\/payments\/offers-and-items$/,
     icon: CreditCard,
     type: 'item',
-  },*/
+  },
   {
     name: "Configuration",
     type: 'label'
