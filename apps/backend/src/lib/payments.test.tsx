@@ -1,6 +1,6 @@
 import type { PrismaClientTransaction } from '@/prisma-client';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { getItemQuantityForCustomer } from './payments';
+import { getItemQuantityForCustomer, validatePurchaseSession } from './payments';
 import type { Tenancy } from './tenancies';
 
 function createMockPrisma(overrides: Partial<PrismaClientTransaction> = {}): PrismaClientTransaction {
@@ -11,6 +11,9 @@ function createMockPrisma(overrides: Partial<PrismaClientTransaction> = {}): Pri
     itemQuantityChange: {
       findMany: async () => [],
       findFirst: async () => null,
+    },
+    oneTimePurchase: {
+      findMany: async () => [],
     },
     projectUser: {
       findUnique: async () => null,
@@ -716,4 +719,217 @@ describe('getItemQuantityForCustomer - subscriptions', () => {
   });
 });
 
+
+describe('getItemQuantityForCustomer - one-time purchases', () => {
+  it('adds included item quantity multiplied by purchase quantity', async () => {
+    const itemId = 'otpItemA';
+    const tenancy = createMockTenancy({
+      items: { [itemId]: { displayName: 'I', customerType: 'custom' } },
+      offers: {},
+      groups: {},
+    });
+
+    const prisma = createMockPrisma({
+      oneTimePurchase: {
+        findMany: async () => [{
+          offerId: 'off-otp',
+          offer: { includedItems: { [itemId]: { quantity: 5 } } },
+          quantity: 2,
+          createdAt: new Date('2025-02-10T00:00:00.000Z'),
+        }],
+      },
+    } as any);
+
+    const qty = await getItemQuantityForCustomer({
+      prisma,
+      tenancy,
+      itemId,
+      customerId: 'custom-1',
+      customerType: 'custom',
+    });
+    expect(qty).toBe(10);
+  });
+
+  it('aggregates multiple one-time purchases across different offers', async () => {
+    const itemId = 'otpItemB';
+    const tenancy = createMockTenancy({
+      items: { [itemId]: { displayName: 'I', customerType: 'custom' } },
+      offers: {},
+      groups: {},
+    });
+
+    const prisma = createMockPrisma({
+      oneTimePurchase: {
+        findMany: async () => [
+          { offerId: 'off-1', offer: { includedItems: { [itemId]: { quantity: 3 } } }, quantity: 1, createdAt: new Date('2025-02-10T00:00:00.000Z') },
+          { offerId: 'off-2', offer: { includedItems: { [itemId]: { quantity: 5 } } }, quantity: 2, createdAt: new Date('2025-02-11T00:00:00.000Z') },
+        ],
+      },
+    } as any);
+
+    const qty = await getItemQuantityForCustomer({
+      prisma,
+      tenancy,
+      itemId,
+      customerId: 'custom-1',
+      customerType: 'custom',
+    });
+    expect(qty).toBe(13);
+  });
+});
+
+
+describe('validatePurchaseSession - one-time purchase rules', () => {
+  it('blocks duplicate one-time purchase for same offerId', async () => {
+    const tenancy = createMockTenancy({ items: {}, offers: {}, groups: {} });
+    const prisma = createMockPrisma({
+      oneTimePurchase: {
+        findMany: async () => [{ offerId: 'offer-dup', offer: { groupId: undefined }, quantity: 1, createdAt: new Date('2025-01-01T00:00:00.000Z') }],
+      },
+      subscription: { findMany: async () => [] },
+    } as any);
+
+    await expect(validatePurchaseSession({
+      prisma,
+      tenancy,
+      codeData: {
+        tenancyId: tenancy.id,
+        customerId: 'cust-1',
+        offerId: 'offer-dup',
+        offer: {
+          displayName: 'X',
+          groupId: undefined,
+          customerType: 'custom',
+          freeTrial: undefined,
+          serverOnly: false,
+          stackable: false,
+          prices: 'include-by-default',
+          includedItems: {},
+          isAddOnTo: false,
+        },
+      },
+      priceId: 'price-any',
+      quantity: 1,
+    })).rejects.toThrowError('Customer already has a one-time purchase for this offer');
+  });
+
+  it('blocks one-time purchase when another one exists in the same group', async () => {
+    const tenancy = createMockTenancy({ items: {}, offers: {}, groups: { g1: { displayName: 'G1' } } });
+    const prisma = createMockPrisma({
+      oneTimePurchase: {
+        findMany: async () => [{ offerId: 'other-offer', offer: { groupId: 'g1' }, quantity: 1, createdAt: new Date('2025-01-01T00:00:00.000Z') }],
+      },
+      subscription: { findMany: async () => [] },
+    } as any);
+
+    await expect(validatePurchaseSession({
+      prisma,
+      tenancy,
+      codeData: {
+        tenancyId: tenancy.id,
+        customerId: 'cust-1',
+        offerId: 'offer-y',
+        offer: {
+          displayName: 'Y',
+          groupId: 'g1',
+          customerType: 'custom',
+          freeTrial: undefined,
+          serverOnly: false,
+          stackable: false,
+          prices: 'include-by-default',
+          includedItems: {},
+          isAddOnTo: false,
+        },
+      },
+      priceId: 'price-any',
+      quantity: 1,
+    })).rejects.toThrowError('Customer already has a one-time purchase in this offer group');
+  });
+
+  it('allows purchase when existing one-time is in a different group', async () => {
+    const tenancy = createMockTenancy({ items: {}, offers: {}, groups: { g1: { displayName: 'G1' }, g2: { displayName: 'G2' } } });
+    const prisma = createMockPrisma({
+      oneTimePurchase: {
+        findMany: async () => [{ offerId: 'other-offer', offer: { groupId: 'g2' }, quantity: 1, createdAt: new Date('2025-01-01T00:00:00.000Z') }],
+      },
+      subscription: { findMany: async () => [] },
+    } as any);
+
+    const res = await validatePurchaseSession({
+      prisma,
+      tenancy,
+      codeData: {
+        tenancyId: tenancy.id,
+        customerId: 'cust-1',
+        offerId: 'offer-z',
+        offer: {
+          displayName: 'Z',
+          groupId: 'g1',
+          customerType: 'custom',
+          freeTrial: undefined,
+          serverOnly: false,
+          stackable: false,
+          prices: 'include-by-default',
+          includedItems: {},
+          isAddOnTo: false,
+        },
+      },
+      priceId: 'price-any',
+      quantity: 1,
+    });
+    expect(res.groupId).toBe('g1');
+    expect(res.conflictingGroupSubscriptions.length).toBe(0);
+  });
+});
+
+describe('combined sources - one-time purchases + manual changes + subscriptions', () => {
+  it('computes correct balance with all sources', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2025-02-15T00:00:00.000Z'));
+
+    const itemId = 'comboItem';
+    const tenancy = createMockTenancy({
+      items: { [itemId]: { displayName: 'Combo', customerType: 'user' } },
+      groups: { g1: { displayName: 'G' } },
+      offers: {
+        offSub: {
+          displayName: 'Sub', groupId: 'g1', customerType: 'user', freeTrial: undefined, serverOnly: false, stackable: false,
+          prices: {},
+          includedItems: { [itemId]: { quantity: 5, repeat: 'never', expires: 'when-purchase-expires' } },
+          isAddOnTo: false,
+        },
+      },
+    });
+
+    const prisma = createMockPrisma({
+      itemQuantityChange: {
+        findMany: async () => [
+          { quantity: 3, createdAt: new Date('2025-02-10T00:00:00.000Z'), expiresAt: null },
+          { quantity: -1, createdAt: new Date('2025-02-12T00:00:00.000Z'), expiresAt: null },
+        ],
+        findFirst: async () => null,
+      },
+      oneTimePurchase: {
+        findMany: async () => [
+          { offerId: 'offA', offer: { includedItems: { [itemId]: { quantity: 4 } } }, quantity: 1, createdAt: new Date('2025-02-09T00:00:00.000Z') },
+          { offerId: 'offB', offer: { includedItems: { [itemId]: { quantity: 2 } } }, quantity: 3, createdAt: new Date('2025-02-11T00:00:00.000Z') },
+        ],
+      },
+      subscription: {
+        findMany: async () => [{
+          offerId: 'offSub',
+          currentPeriodStart: new Date('2025-02-01T00:00:00.000Z'),
+          currentPeriodEnd: new Date('2025-03-01T00:00:00.000Z'),
+          quantity: 2,
+          status: 'active',
+        }],
+      },
+    } as any);
+
+    const qty = await getItemQuantityForCustomer({ prisma, tenancy, itemId, customerId: 'user-1', customerType: 'user' });
+    // OTP: 4 + (2*3)=6 => 10; Manual: +3 -1 => +2; Subscription: 5 * 2 => 10; Total => 22
+    expect(qty).toBe(22);
+    vi.useRealTimers();
+  });
+});
 

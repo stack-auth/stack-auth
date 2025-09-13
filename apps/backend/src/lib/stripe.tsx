@@ -1,8 +1,10 @@
 import { getTenancy, Tenancy } from "@/lib/tenancies";
 import { getPrismaClientForTenancy, globalPrismaClient } from "@/prisma-client";
 import { CustomerType } from "@prisma/client";
+import { typedIncludes } from "@stackframe/stack-shared/dist/utils/arrays";
 import { getEnvVariable, getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
 import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { createStripeProxy, type StripeOverridesMap } from "./stripe-proxy";
 import Stripe from "stripe";
 
 const stripeSecretKey = getEnvVariable("STACK_STRIPE_SECRET_KEY");
@@ -13,9 +15,17 @@ const stripeConfig: Stripe.StripeConfig = useStripeMock ? {
   port: 8123,
 } : {};
 
-export const getStackStripe = () => new Stripe(stripeSecretKey, stripeConfig);
+export const getStackStripe = (overrides?: StripeOverridesMap) => {
+  if (overrides && !useStripeMock) {
+    throw new StackAssertionError("Stripe overrides are not supported in production");
+  }
+  return createStripeProxy(new Stripe(stripeSecretKey, stripeConfig), overrides);
+};
 
-export const getStripeForAccount = async (options: { tenancy?: Tenancy, accountId?: string }) => {
+export const getStripeForAccount = async (options: { tenancy?: Tenancy, accountId?: string }, overrides?: StripeOverridesMap) => {
+  if (overrides && !useStripeMock) {
+    throw new StackAssertionError("Stripe overrides are not supported in production");
+  }
   if (!options.tenancy && !options.accountId) {
     throwErr(400, "Either tenancy or stripeAccountId must be provided");
   }
@@ -33,11 +43,10 @@ export const getStripeForAccount = async (options: { tenancy?: Tenancy, accountI
   if (!accountId) {
     throwErr(400, "Payments are not set up in this Stack Auth project. Please go to the Stack Auth dashboard and complete the Payments onboarding.");
   }
-  return new Stripe(stripeSecretKey, { stripeAccount: accountId, ...stripeConfig });
+  return createStripeProxy(new Stripe(stripeSecretKey, { stripeAccount: accountId, ...stripeConfig }), overrides);
 };
 
-export async function syncStripeSubscriptions(stripeAccountId: string, stripeCustomerId: string) {
-  const stripe = await getStripeForAccount({ accountId: stripeAccountId });
+export async function syncStripeSubscriptions(stripe: Stripe, stripeAccountId: string, stripeCustomerId: string) {
   const account = await stripe.accounts.retrieve(stripeAccountId);
   if (!account.metadata?.tenancyId) {
     throwErr(500, "Stripe account metadata missing tenancyId");
@@ -51,7 +60,7 @@ export async function syncStripeSubscriptions(stripeAccountId: string, stripeCus
   if (!customerId || !customerType) {
     throw new StackAssertionError("Stripe customer metadata missing customerId or customerType");
   }
-  if (customerType !== CustomerType.USER && customerType !== CustomerType.TEAM) {
+  if (!typedIncludes(Object.values(CustomerType), customerType)) {
     throw new StackAssertionError("Stripe customer metadata has invalid customerType");
   }
   const tenancy = await getTenancy(account.metadata.tenancyId);

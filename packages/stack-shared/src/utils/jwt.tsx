@@ -4,10 +4,11 @@ import * as jose from "jose";
 import { JOSEError } from "jose/errors";
 import { encodeBase64Url } from "./bytes";
 import { getEnvVariable } from "./env";
-import { StackAssertionError } from "./errors";
+import { StackAssertionError, errorToNiceString } from "./errors";
 import { globalVar } from "./globals";
 import { pick } from "./objects";
 import { Result } from "./results";
+import { nicify } from "./strings";
 
 function getStackServerSecret() {
   const STACK_SERVER_SECRET = getEnvVariable("STACK_SERVER_SECRET");
@@ -23,10 +24,14 @@ export async function getJwtInfo(options: {
   jwt: string,
 }) {
   try {
+    if (typeof options.jwt !== "string") return Result.error({ error: "JWT input is not a string!", stringifiedInput: nicify(options.jwt) });
+    if (!options.jwt.startsWith("ey")) return Result.error({ error: "Input is a string, but not a JWT!", input: options.jwt });
     const decodedJwt = jose.decodeJwt(options.jwt);
     return Result.ok({ payload: decodedJwt });
   } catch (e) {
-    return Result.error(e);
+    return Result.error({
+      exception: errorToNiceString(e),
+    });
   }
 }
 

@@ -122,16 +122,16 @@ export async function createResponse<T extends SmartResponse>(req: NextRequest |
       headers.set("x-stack-actual-status", [obj.statusCode.toString()]);
     }
 
+    // set all headers from the smart response (considering case insensitivity)
+    for (const [key, values] of Object.entries(obj.headers ?? {})) {
+        headers.set(key.toLowerCase(), values);
+    }
+
     return new Response(
       arrayBufferBody,
       {
         status,
-        headers: [
-          ...Object.entries({
-            ...Object.fromEntries(headers),
-            ...obj.headers ?? {}
-          }).flatMap(([key, values]) => values.map(v => [key.toLowerCase(), v!] as [string, string])),
-        ],
+        headers: [...headers].flatMap(([key, values]) => values.map(v => [key, v] satisfies [string, string])),
       },
     );
   });
