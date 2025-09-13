@@ -46,6 +46,7 @@
     "jose": "^5.2.2",
     "lodash": "^4.17.21",
     "lucide-react": "^0.508.0",
+    "motion": "^12.23.12",
     "next": "15.4.1",
     "next-themes": "^0.2.1",
     "posthog-js": "^1.235.0",
