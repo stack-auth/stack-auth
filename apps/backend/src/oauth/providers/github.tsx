@@ -40,6 +40,7 @@ export class GithubProvider extends OAuthBaseProvider {
     if (!rawUserInfoRes.ok) {
       throw new StackAssertionError("Error fetching user info from GitHub provider: Status code " + rawUserInfoRes.status, {
         rawUserInfoRes,
+        rawUserInfoResText: await rawUserInfoRes.text(),
         hasAccessToken: !!tokenSet.accessToken,
         hasRefreshToken: !!tokenSet.refreshToken,
         accessTokenExpiredAt: tokenSet.accessTokenExpiredAt,
