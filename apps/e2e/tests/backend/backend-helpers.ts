@@ -95,7 +95,7 @@ function expectSnakeCase(obj: unknown, path: string): void {
       if (key.match(/[a-z0-9][A-Z][a-z0-9]+/) && !key.includes("_") && !["newUser", "afterCallbackRedirectUrl"].includes(key)) {
         throw new StackAssertionError(`Object has camelCase key (expected snake_case): ${path}.${key}`);
       }
-      if (["client_metadata", "server_metadata", "options_json", "credential", "authentication_response"].includes(key)) continue;
+      if (["client_metadata", "server_metadata", "options_json", "credential", "authentication_response", "metadata"].includes(key)) continue;
       // because email templates
       if (path === "req.body.content.root") continue;
       if (path === "res.body.content.root") continue;
@@ -108,12 +108,17 @@ export async function niceBackendFetch(url: string | URL, options?: Omit<NiceReq
   accessType?: null | "client" | "server" | "admin",
   body?: unknown,
   headers?: Record<string, string | undefined>,
+  userAuth?: {
+    accessToken?: string,
+    refreshToken?: string,
+  },
 }): Promise<NiceResponse> {
-  const { body, headers, accessType, ...otherOptions } = options ?? {};
+  const { body, headers, accessType, userAuth: userAuthOverride, ...otherOptions } = options ?? {};
   if (typeof body === "object") {
     expectSnakeCase(body, "req.body");
   }
-  const { projectKeys, userAuth } = backendContext.value;
+  const projectKeys = backendContext.value.projectKeys;
+  const userAuth = userAuthOverride ?? backendContext.value.userAuth;
   const fullUrl = new URL(url, STACK_BACKEND_BASE_URL);
   if (fullUrl.origin !== new URL(STACK_BACKEND_BASE_URL).origin) throw new StackAssertionError(`Invalid niceBackendFetch origin: ${fullUrl.origin}`);
   if (fullUrl.protocol !== new URL(STACK_BACKEND_BASE_URL).protocol) throw new StackAssertionError(`Invalid niceBackendFetch protocol: ${fullUrl.protocol}`);
@@ -195,12 +200,37 @@ export namespace Auth {
         "iat": expect.any(Number),
         "iss": expectedIssuer,
         "refreshTokenId": expect.any(String),
-        "aud": expect.any(String),
+        "aud": backendContext.value.projectKeys === "no-project" ? expect.any(String) : backendContext.value.projectKeys.projectId,
         "sub": expect.any(String),
         "role": "authenticated",
         "branchId": "main",
+        "displayName": expect.toSatisfy(() => true),
+        "primaryEmail": expect.toSatisfy(() => true),
+        "primaryEmailVerified": expect.any(Boolean),
+        "selectedTeamId": expect.toSatisfy(() => true),
       });
     }
+  }
+
+  export async function refreshAccessToken() {
+    const response = await niceBackendFetch("/api/v1/auth/sessions/current/refresh", {
+      method: "POST",
+      accessType: "client",
+      userAuth: {
+        refreshToken: backendContext.value.userAuth?.refreshToken,
+      },
+    });
+    expect(response).toMatchInlineSnapshot(`
+      NiceResponse {
+        "status": 200,
+        "body": { "access_token": <stripped field 'access_token'> },
+        "headers": Headers { <some fields may have been hidden> },
+      }
+    `);
+    backendContext.set({ userAuth: { accessToken: response.body.access_token, refreshToken: response.body.refresh_token } });
+    return {
+      refreshAccessTokenResponse: response,
+    };
   }
 
   /**
@@ -359,6 +389,9 @@ export namespace Auth {
     }
 
     export async function signInWithCode(signInCode: string) {
+      const projectKeys = backendContext.value.projectKeys;
+      if (projectKeys === "no-project") throw new StackAssertionError("Must provide project keys in the backend context before calling signInWithCode");
+
       const response = await niceBackendFetch("/api/v1/auth/otp/sign-in", {
         method: "POST",
         accessType: "client",

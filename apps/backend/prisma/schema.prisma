@@ -24,7 +24,7 @@ model Project {
   fullLogoUrl      String?
 
   projectConfigOverride Json?
-  stripeAccountId             String?
+  stripeAccountId       String?
 
   apiKeySets                 ApiKeySet[]
   projectUsers               ProjectUser[]
@@ -673,6 +673,29 @@ model SentEmail {
   @@id([tenancyId, id])
 }
 
+model EmailDraft {
+  tenancyId String @db.Uuid
+
+  id String @default(uuid()) @db.Uuid
+
+  displayName String
+  themeMode   DraftThemeMode @default(PROJECT_DEFAULT)
+  themeId     String?
+  tsxSource   String
+  sentAt      DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@id([tenancyId, id])
+}
+
+enum DraftThemeMode {
+  PROJECT_DEFAULT
+  NONE
+  CUSTOM
+}
+
 model CliAuthAttempt {
   tenancyId String @db.Uuid
 
@@ -730,7 +753,7 @@ enum SubscriptionStatus {
   unpaid
 }
 
-enum SubscriptionCreationSource {
+enum PurchaseCreationSource {
   PURCHASE_PAGE
   TEST_MODE
 }
@@ -750,7 +773,7 @@ model Subscription {
   currentPeriodStart   DateTime
   cancelAtPeriodEnd    Boolean
 
-  creationSource SubscriptionCreationSource
+  creationSource PurchaseCreationSource
   createdAt      DateTime                   @default(now())
   updatedAt      DateTime                   @updatedAt
 
@@ -770,4 +793,129 @@ model ItemQuantityChange {
 
   @@id([tenancyId, id])
   @@index([tenancyId, customerId, expiresAt])
+}
+
+model OneTimePurchase {
+  id String @default(uuid()) @db.Uuid
+  tenancyId String @db.Uuid
+  customerId String
+  customerType CustomerType
+  offerId String?
+  offer Json
+  quantity Int
+  stripePaymentIntentId String?
+  createdAt DateTime @default(now())
+  creationSource PurchaseCreationSource
+
+  @@id([tenancyId, id])
+  @@unique([tenancyId, stripePaymentIntentId])
+}
+
+model DataVaultEntry {
+  id        String   @default(uuid()) @db.Uuid
+  tenancyId String   @db.Uuid
+  storeId   String
+  hashedKey String
+  encrypted Json // Contains { edkBase64, ciphertextBase64 } from encryptWithKms()
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@id([tenancyId, id])
+  @@unique([tenancyId, storeId, hashedKey])
+  @@index([tenancyId, storeId])
+}
+
+model WorkflowTriggerToken {
+  tenancyId String @db.Uuid
+  id        String @default(uuid()) @db.Uuid
+
+  tokenHash String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  expiresAt DateTime
+
+  @@id([tenancyId, id])
+  @@unique([tenancyId, tokenHash])
+}
+
+model WorkflowTrigger {
+  tenancyId   String @db.Uuid
+  id          String @default(uuid()) @db.Uuid
+  executionId String @db.Uuid
+
+  triggerData Json
+
+  // the following fields determine the state of the trigger:
+  // - scheduledAt && !compiledWorkflowId && !output && !error: the trigger is scheduled to be executed
+  // - !scheduledAt && !compiledWorkflowId: the trigger was scheduled, but its workflow subsequently deleted. The trigger never ran
+  // - !scheduledAt && compiledWorkflowId && !output && !error: the trigger is currently executing
+  // - !scheduledAt && compiledWorkflowId && output && !error: the trigger has successfully completed execution
+  // - !scheduledAt && compiledWorkflowId && !output && error: the trigger has failed execution
+  // All other combinations are invalid.
+  scheduledAt        DateTime?
+  output             Json?
+  error              Json?
+  compiledWorkflowId String?           @db.Uuid
+  compiledWorkflow   CompiledWorkflow? @relation(fields: [tenancyId, compiledWorkflowId], references: [tenancyId, id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  execution WorkflowExecution @relation(fields: [tenancyId, executionId], references: [tenancyId, id])
+
+  @@id([tenancyId, id])
+}
+
+model WorkflowExecution {
+  tenancyId String @db.Uuid
+  id        String @default(uuid()) @db.Uuid
+
+  workflowId String
+
+  triggerIds String[]
+  triggers   WorkflowTrigger[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@id([tenancyId, id])
+}
+
+model CurrentlyCompilingWorkflow {
+  tenancyId          String @db.Uuid
+  workflowId         String
+  compilationVersion Int
+  sourceHash         String
+
+  startedCompilingAt DateTime @default(now())
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@id([tenancyId, workflowId, compilationVersion, sourceHash])
+}
+
+model CompiledWorkflow {
+  tenancyId          String @db.Uuid
+  id                 String @default(uuid()) @db.Uuid
+  workflowId         String // note: The workflow with this ID may have been edited or deleted in the meantime, so there may be multiple CompiledWorkflows with the same workflowId
+  compilationVersion Int
+  sourceHash         String
+
+  // exactly one of [compiledCode, compileError] must be set
+  compiledCode String?
+  compileError String?
+
+  compiledAt         DateTime @default(now())
+  registeredTriggers String[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  workflowTriggers WorkflowTrigger[]
+
+  @@id([tenancyId, id])
+  @@unique([tenancyId, workflowId, compilationVersion, sourceHash])
 }

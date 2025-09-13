@@ -9,9 +9,9 @@ import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
 import { Button, Card, CardContent, Checkbox, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, toast } from "@stackframe/stack-ui";
 import { MoreVertical, Plus } from "lucide-react";
 import React, { ReactNode, useEffect, useMemo, useRef, useState } from "react";
-import { IllustratedInfo } from "../../../../../../components/illustrated-info";
-import { PageLayout } from "../page-layout";
-import { useAdminApp } from "../use-admin-app";
+import { IllustratedInfo } from "../../../../../../../components/illustrated-info";
+import { PageLayout } from "../../page-layout";
+import { useAdminApp } from "../../use-admin-app";
 import { DUMMY_PAYMENTS_CONFIG } from "./dummy-data";
 import { ItemDialog } from "./item-dialog";
 import { ListSection } from "./list-section";
@@ -773,7 +773,7 @@ export default function PageClient() {
     innerContent = <WelcomeScreen onCreateOffer={handleCreateOffer} />;
   } else {
     innerContent = (
-      <PageLayout title="Payments" actions={process.env.NODE_ENV === "development" && (
+      <PageLayout title="Offers & Items" actions={process.env.NODE_ENV === "development" && (
         <div className="flex items-center gap-2">
           <Checkbox
             checked={shouldUseDummyData}

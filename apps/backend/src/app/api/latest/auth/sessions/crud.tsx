@@ -18,7 +18,7 @@ export const sessionsCrudHandlers = createLazyProxy(() => createCrudHandlers(ses
   }).defined(),
   onList: async ({ auth, query }) => {
     const prisma = await getPrismaClientForTenancy(auth.tenancy);
-    const schema = getPrismaSchemaForTenancy(auth.tenancy);
+    const schema = await getPrismaSchemaForTenancy(auth.tenancy);
     const listImpersonations = auth.type === 'admin';
 
     if (auth.type === 'client') {
@@ -49,6 +49,9 @@ export const sessionsCrudHandlers = createLazyProxy(() => createCrudHandlers(ses
           ? Prisma.sql`data->>'sessionId' = ANY(${Prisma.sql`ARRAY[${Prisma.join(refreshTokenObjs.map(s => s.id))}]`})`
           : Prisma.sql`FALSE`}
         AND "systemEventTypeIds" @> '{"$session-activity"}'
+        AND data->>'userId' = ${query.user_id}
+        AND data->>'projectId' = ${auth.tenancy.project.id}
+        AND COALESCE(data->>'branchId', 'main') = ${auth.tenancy.branchId}
         GROUP BY data->>'sessionId'
       )
       SELECT e.data->>'sessionId' as "sessionId", 
@@ -59,6 +62,9 @@ export const sessionsCrudHandlers = createLazyProxy(() => createCrudHandlers(ses
       JOIN latest_events le ON e.data->>'sessionId' = le."sessionId" AND e."eventStartedAt" = le."lastActiveAt"
       LEFT JOIN ${sqlQuoteIdent(schema)}."EventIpInfo" geo ON geo.id = e."endUserIpInfoGuessId"
       WHERE e."systemEventTypeIds" @> '{"$session-activity"}'
+      AND e.data->>'userId' = ${query.user_id}
+      AND e.data->>'projectId' = ${auth.tenancy.project.id}
+      AND COALESCE(e.data->>'branchId', 'main') = ${auth.tenancy.branchId}
     `;
 
     const sessionsWithLastActiveAt = refreshTokenObjs.map(s => {

@@ -1,7 +1,7 @@
 import PageClient from "./page-client";
 
 export const metadata = {
-  title: "Offers",
+  title: "Payments",
 };
 
 type Params = {
@@ -13,5 +13,3 @@ export default async function Page({ params }: { params: Promise<Params> }) {
     <PageClient />
   );
 }
-
-

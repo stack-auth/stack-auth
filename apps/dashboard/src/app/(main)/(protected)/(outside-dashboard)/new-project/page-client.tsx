@@ -5,7 +5,7 @@ import { yupResolver } from "@hookform/resolvers/yup";
 import { AuthPage, TeamSwitcher, useUser } from "@stackframe/stack";
 import { allProviders } from "@stackframe/stack-shared/dist/utils/oauth";
 import { runAsynchronouslyWithAlert, wait } from "@stackframe/stack-shared/dist/utils/promises";
-import { BrowserFrame, Button, Form, FormControl, FormField, FormItem, FormMessage, Label, Separator, Typography } from "@stackframe/stack-ui";
+import { BrowserFrame, Button, Form, FormControl, FormField, FormItem, FormMessage, Separator, Typography } from "@stackframe/stack-ui";
 import { useSearchParams } from "next/navigation";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
@@ -47,7 +47,7 @@ export default function PageClient() {
       credentialEnabled: form.watch("signInMethods").includes("credential"),
       magicLinkEnabled: form.watch("signInMethods").includes("magicLink"),
       passkeyEnabled: form.watch("signInMethods").includes("passkey"),
-      oauthProviders: form.watch('signInMethods').filter((method) => ["google", "github", "microsoft", "spotify"].includes(method)).map(provider => ({ id: provider, type: 'shared' })),
+      oauthProviders: form.watch('signInMethods').filter((method) => ["google", "github", "microsoft"].includes(method)).map(provider => ({ id: provider, type: 'shared' })),
     }
   };
 
@@ -133,7 +133,6 @@ export default function PageClient() {
                   { value: "google", label: "Google" },
                   { value: "github", label: "GitHub" },
                   { value: "microsoft", label: "Microsoft" },
-                  { value: "spotify", label: "Spotify" },
                 ]}
                 info="More sign-in methods are available on the dashboard later."
               />
@@ -147,7 +146,6 @@ export default function PageClient() {
           </Form>
         </div>
       </div>
-      <Separator orientation="vertical" />
 
       <div className="w-1/2 self-stretch py-4 px-4 lg:px-20 bg-zinc-300 dark:bg-zinc-800 hidden md:flex items-center">
         <div className="w-full">

@@ -710,6 +710,32 @@ const PasswordAuthenticationNotEnabled = createKnownErrorConstructor(
   () => [] as const,
 );
 
+const DataVaultStoreDoesNotExist = createKnownErrorConstructor(
+  KnownError,
+  "DATA_VAULT_STORE_DOES_NOT_EXIST",
+  (storeId: string) => [
+    400,
+    `Data vault store with ID ${storeId} does not exist.`,
+    {
+      store_id: storeId,
+    },
+  ] as const,
+  (json: any) => [json.store_id] as const,
+);
+
+const DataVaultStoreHashedKeyDoesNotExist = createKnownErrorConstructor(
+  KnownError,
+  "DATA_VAULT_STORE_HASHED_KEY_DOES_NOT_EXIST",
+  (storeId: string, hashedKey: string) => [
+    400,
+    `Data vault store with ID ${storeId} does not contain a key with hash ${hashedKey}.`,
+    {
+      store_id: storeId,
+      hashed_key: hashedKey,
+    },
+  ] as const,
+  (json: any) => [json.store_id, json.hashed_key] as const,
+);
 
 const PasskeyAuthenticationNotEnabled = createKnownErrorConstructor(
   KnownError,
@@ -1521,6 +1547,25 @@ const StripeAccountInfoNotFound = createKnownErrorConstructor(
   () => [] as const,
 );
 
+const WorkflowTokenDoesNotExist = createKnownErrorConstructor(
+  KnownError,
+  "WORKFLOW_TOKEN_DOES_NOT_EXIST",
+  () => [
+    400,
+    "The workflow token you specified does not exist. Make sure the value in x-stack-workflow-token is correct.",
+  ] as const,
+  () => [] as const,
+);
+
+const WorkflowTokenExpired = createKnownErrorConstructor(
+  KnownError,
+  "WORKFLOW_TOKEN_EXPIRED",
+  () => [
+    400,
+    "The workflow token you specified has expired. Make sure the value in x-stack-workflow-token is correct.",
+  ] as const,
+  () => [] as const,
+);
 
 export type KnownErrors = {
   [K in keyof typeof KnownErrors]: InstanceType<typeof KnownErrors[K]>;
@@ -1644,6 +1689,10 @@ export const KnownErrors = {
   OfferCustomerTypeDoesNotMatch,
   ItemQuantityInsufficientAmount,
   StripeAccountInfoNotFound,
+  DataVaultStoreDoesNotExist,
+  DataVaultStoreHashedKeyDoesNotExist,
+  WorkflowTokenDoesNotExist,
+  WorkflowTokenExpired,
 } satisfies Record<string, KnownErrorConstructor<any, any>>;
 
 

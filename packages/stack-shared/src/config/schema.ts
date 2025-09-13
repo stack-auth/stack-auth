@@ -42,7 +42,7 @@ export const projectConfigSchema = yupObject({
     yupObject({
       type: yupString().oneOf(['neon']).defined(),
       connectionStrings: yupRecord(
-        yupString().defined(),
+        userSpecifiedIdSchema("connectionStringId").defined(),
         yupString().defined(),
       ).defined(),
     }),
@@ -140,6 +140,17 @@ const branchDomain = yupObject({
   allowLocalhost: yupBoolean(),
 });
 
+const branchWorkflowsSchema = yupObject({
+  availableWorkflows: yupRecord(
+    userSpecifiedIdSchema("workflowId"),
+    yupObject({
+      displayName: yupString(),
+      tsSource: yupString(),
+      enabled: yupBoolean(),
+    }),
+  ),
+});
+
 export const branchConfigSchema = canNoLongerBeOverridden(projectConfigSchema, ["sourceOfTruth"]).concat(yupObject({
   rbac: branchRbacSchema,
 
@@ -165,6 +176,17 @@ export const branchConfigSchema = canNoLongerBeOverridden(projectConfigSchema, [
   }),
 
   payments: branchPaymentsSchema,
+
+  dataVault: yupObject({
+    stores: yupRecord(
+      userSpecifiedIdSchema("storeId"),
+      yupObject({
+        displayName: yupString(),
+      }),
+    ),
+  }),
+
+  workflows: branchWorkflowsSchema,
 }));
 
 
@@ -190,6 +212,7 @@ export const environmentConfigSchema = branchConfigSchema.concat(yupObject({
   emails: branchConfigSchema.getNested("emails").concat(yupObject({
     server: yupObject({
       isShared: yupBoolean(),
+      provider: yupString().oneOf(['resend', 'smtp']).optional(),
       host: schemaFields.emailHostSchema.optional().nonEmpty(),
       port: schemaFields.emailPortSchema.optional(),
       username: schemaFields.emailUsernameSchema.optional().nonEmpty(),
@@ -427,6 +450,7 @@ const organizationConfigDefaults = {
   emails: {
     server: {
       isShared: true,
+      provider: "smtp",
       host: undefined,
       port: undefined,
       username: undefined,
@@ -474,7 +498,21 @@ const organizationConfigDefaults = {
     items: (key: string) => ({
       displayName: key,
       customerType: "user",
-    } as const),
+    } as const)
+  },
+
+  dataVault: {
+    stores: (key: string) => ({
+      displayName: "Unnamed Vault",
+    }),
+  },
+
+  workflows: {
+    availableWorkflows: (key: string) => ({
+      displayName: "Unnamed Workflow",
+      tsSource: "Error: Workflow config is missing TypeScript source code.",
+      enabled: false,
+    }),
   },
 } as const satisfies DefaultsType<OrganizationRenderedConfigBeforeDefaults, [typeof environmentConfigDefaults, typeof branchConfigDefaults, typeof projectConfigDefaults]>;
 
@@ -840,7 +878,7 @@ export async function getConfigOverrideErrors<T extends yup.AnySchema>(schema: T
 }
 export async function assertNoConfigOverrideErrors<T extends yup.AnySchema>(schema: T, config: unknown, options: { allowPropertiesThatCanNoLongerBeOverridden?: boolean, extraInfo?: any } = {}): Promise<void> {
   const res = await getConfigOverrideErrors(schema, config, options);
-  if (res.status === "error") throw new StackAssertionError(`Config override is invalid — at a place where it should have already been validated! ${res.error}`, { options, config, schema });
+  if (res.status === "error") throw new StackAssertionError(`Config override is invalid — at a place where it should have already been validated! ${res.error}`, { options, config });
 }
 type _ValidatedToHaveNoConfigOverrideErrorsImpl<T> =
   IsUnion<T & object> extends true ? _ValidatedToHaveNoConfigOverrideErrorsImpl<CollapseObjectUnion<T & object> | Exclude<T, object>>

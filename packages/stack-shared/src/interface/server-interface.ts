@@ -1,3 +1,4 @@
+import { decryptValue, encryptValue, hashKey } from "../helpers/vault/client-side";
 import { KnownErrors } from "../known-errors";
 import { AccessToken, InternalSession, RefreshToken } from "../sessions";
 import { StackAssertionError } from "../utils/errors";
@@ -13,6 +14,7 @@ import { ContactChannelsCrud } from "./crud/contact-channels";
 import { CurrentUserCrud } from "./crud/current-user";
 import { ItemCrud } from "./crud/items";
 import { NotificationPreferenceCrud } from "./crud/notification-preferences";
+import { OAuthProviderCrud } from "./crud/oauth-providers";
 import { ProjectPermissionsCrud } from "./crud/project-permissions";
 import { SessionsCrud } from "./crud/sessions";
 import { TeamInvitationCrud } from "./crud/team-invitation";
@@ -700,23 +702,8 @@ export class StackServerInterface extends StackClientInterface {
 
   // OAuth Providers CRUD operations
   async createServerOAuthProvider(
-    data: {
-      user_id: string,
-      provider_config_id: string,
-      account_id: string,
-      email: string,
-      allow_sign_in: boolean,
-      allow_connected_accounts: boolean,
-    },
-  ): Promise<{
-    id: string,
-    type: string,
-    user_id: string,
-    account_id: string,
-    email: string,
-    allow_sign_in: boolean,
-    allow_connected_accounts: boolean,
-  }> {
+    data: OAuthProviderCrud['Server']['Create'],
+  ): Promise<OAuthProviderCrud['Server']['Read']> {
     const response = await this.sendServerRequest(
       "/oauth-providers",
       {
@@ -736,15 +723,7 @@ export class StackServerInterface extends StackClientInterface {
     options: {
       user_id?: string,
     } = {},
-  ): Promise<{
-    id: string,
-    type: string,
-    user_id: string,
-    account_id: string,
-    email: string,
-    allow_sign_in: boolean,
-    allow_connected_accounts: boolean,
-  }[]> {
+  ): Promise<OAuthProviderCrud['Server']['Read'][]> {
     const queryParams = new URLSearchParams(filterUndefined(options));
     const response = await this.sendServerRequest(
       `/oauth-providers${queryParams.toString() ? `?${queryParams.toString()}` : ''}`,
@@ -760,21 +739,8 @@ export class StackServerInterface extends StackClientInterface {
   async updateServerOAuthProvider(
     userId: string,
     providerId: string,
-    data: {
-      account_id?: string,
-      email?: string,
-      allow_sign_in?: boolean,
-      allow_connected_accounts?: boolean,
-    },
-  ): Promise<{
-    id: string,
-    type: string,
-    user_id: string,
-    account_id: string,
-    email: string,
-    allow_sign_in: boolean,
-    allow_connected_accounts: boolean,
-  }> {
+    data: OAuthProviderCrud['Server']['Update'],
+  ): Promise<OAuthProviderCrud['Server']['Read']> {
     const response = await this.sendServerRequest(
       urlString`/oauth-providers/${userId}/${providerId}`,
       {
@@ -792,7 +758,7 @@ export class StackServerInterface extends StackClientInterface {
   async deleteServerOAuthProvider(
     userId: string,
     providerId: string,
-  ): Promise<{ success: boolean }> {
+  ): Promise<void> {
     const response = await this.sendServerRequest(
       urlString`/oauth-providers/${userId}/${providerId}`,
       {
@@ -804,15 +770,17 @@ export class StackServerInterface extends StackClientInterface {
   }
 
   async sendEmail(options: {
-    userIds: string[],
+    userIds?: string[],
+    allUsers?: true,
     themeId?: string | null | false,
     html?: string,
     subject?: string,
     notificationCategoryName?: string,
     templateId?: string,
     variables?: Record<string, any>,
+    draftId?: string,
   }): Promise<Result<void, KnownErrors["RequiresCustomEmailServer"] | KnownErrors["SchemaError"] | KnownErrors["UserIdDoesNotExist"]>> {
-    const res = await this.sendServerRequestAndCatchKnownError(
+    const res = await this.sendServerRequest(
       "/emails/send-email",
       {
         method: "POST",
@@ -821,20 +789,18 @@ export class StackServerInterface extends StackClientInterface {
         },
         body: JSON.stringify({
           user_ids: options.userIds,
+          all_users: options.allUsers,
           theme_id: options.themeId,
           html: options.html,
           subject: options.subject,
           notification_category_name: options.notificationCategoryName,
           template_id: options.templateId,
           variables: options.variables,
+          draft_id: options.draftId,
         }),
       },
       null,
-      [KnownErrors.RequiresCustomEmailServer, KnownErrors.SchemaError, KnownErrors.UserIdDoesNotExist]
     );
-    if (res.status === "error") {
-      return Result.error(res.error);
-    }
     return Result.ok(undefined);
   }
 
@@ -872,6 +838,45 @@ export class StackServerInterface extends StackClientInterface {
         body: JSON.stringify({ delta: data.delta, expires_at: data.expires_at, description: data.description }),
       },
       null
+    );
+  }
+
+  async getDataVaultStoreValue(secret: string, storeId: string, key: string) {
+    const hashedKey = await hashKey(secret, key);
+    const response = await this.sendServerRequestAndCatchKnownError(
+      `/data-vault/stores/${storeId}/get`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ hashed_key: hashedKey }),
+      },
+      null,
+      [KnownErrors.DataVaultStoreHashedKeyDoesNotExist] as const,
+    );
+    if (response.status === "error") {
+      if (KnownErrors.DataVaultStoreHashedKeyDoesNotExist.isInstance(response.error)) {
+        return null;
+      } else {
+        throw new StackAssertionError("Unexpected uncaught error", { cause: response.error });
+      }
+    }
+    const json = await response.data.json();
+    const encryptedValue = json.encrypted_value;
+    if (typeof encryptedValue !== "string") throw new StackAssertionError("encrypted_value is not a string", { type: typeof encryptedValue });
+    return await decryptValue(secret, key, encryptedValue);
+  }
+
+  async setDataVaultStoreValue(secret: string, storeId: string, key: string, value: string) {
+    const hashedKey = await hashKey(secret, key);
+    const encryptedValue = await encryptValue(secret, key, value);
+    await this.sendServerRequest(
+      `/data-vault/stores/${storeId}/set`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ hashed_key: hashedKey, encrypted_value: encryptedValue }),
+      },
+      null,
     );
   }
 }

@@ -1,3 +1,5 @@
+import { XOR } from "@stackframe/stack-shared/dist/utils/types";
+
 export type AdminSentEmail = {
   id: string,
   to: string[],
@@ -7,16 +9,23 @@ export type AdminSentEmail = {
   error?: unknown,
 }
 
-export type SendEmailOptions =
-  & {
-    userIds: string[],
-    themeId?: string | null | false,
-    subject?: string,
-    notificationCategoryName?: string,
-  }
-  & ({
-    html: string,
-  } | {
-    templateId: string,
-    variables?: Record<string, any>,
-  })
+type SendEmailOptionsBase = {
+  themeId?: string | null | false,
+  subject?: string,
+  notificationCategoryName?: string,
+}
+
+
+export type SendEmailOptions = SendEmailOptionsBase
+  & XOR<[
+    { userIds: string[] },
+    { allUsers: true }
+  ]>
+  & XOR<[
+    { html: string },
+    {
+      templateId: string,
+      variables?: Record<string, any>,
+    },
+    { draftId: string }
+  ]>

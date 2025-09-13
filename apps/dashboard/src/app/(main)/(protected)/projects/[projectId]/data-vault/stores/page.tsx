@@ -1,7 +1,8 @@
+import { Metadata } from "next";
 import PageClient from "./page-client";
 
-export const metadata = {
-  title: "Items",
+export const metadata: Metadata = {
+  title: "Data Vault Stores",
 };
 
 type Params = {
@@ -13,5 +14,3 @@ export default async function Page({ params }: { params: Promise<Params> }) {
     <PageClient />
   );
 }
-
-

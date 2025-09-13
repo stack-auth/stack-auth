@@ -6,13 +6,41 @@ import { SettingCard } from "@/components/settings";
 import { DeleteUserDialog, ImpersonateUserDialog } from "@/components/user-dialogs";
 import { useThemeWatcher } from '@/lib/theme';
 import MonacoEditor from '@monaco-editor/react';
-import { ServerContactChannel, ServerUser } from "@stackframe/stack";
+import { ServerContactChannel, ServerOAuthProvider, ServerUser } from "@stackframe/stack";
+import { KnownErrors } from "@stackframe/stack-shared";
 import { useAsyncCallback } from "@stackframe/stack-shared/dist/hooks/use-async-callback";
 import { fromNow } from "@stackframe/stack-shared/dist/utils/dates";
-import { throwErr } from '@stackframe/stack-shared/dist/utils/errors';
+import { StackAssertionError, throwErr } from '@stackframe/stack-shared/dist/utils/errors';
 import { isJsonSerializable } from "@stackframe/stack-shared/dist/utils/json";
 import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger, ActionCell, Avatar, AvatarFallback, AvatarImage, Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, Input, Separator, SimpleTooltip, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, Typography, cn } from "@stackframe/stack-ui";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+  ActionCell,
+  Avatar,
+  AvatarFallback,
+  AvatarImage,
+  Button,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+  Input,
+  Separator,
+  SimpleTooltip,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+  Typography,
+  cn,
+  useToast
+} from "@stackframe/stack-ui";
 import { AtSign, Calendar, Check, Hash, Mail, MoreHorizontal, Shield, SquareAsterisk, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import * as yup from "yup";
@@ -96,8 +124,10 @@ function EditableInput({
       placeholder={placeholder}
       tabIndex={readOnly ? -1 : undefined}
       className={cn(
-        "w-full px-1 py-0 h-[unset] border-transparent hover:ring-1 hover:ring-gray-300 dark:hover:ring-gray-500 focus-visible:ring-gray-500 dark:focus-visible:ring-gray-50",
-        readOnly && "focus-visible:ring-0 hover:ring-0",
+        "w-full px-1 py-0 h-[unset] border-transparent",
+        /* Hover */ !readOnly && "hover:ring-1 hover:ring-slate-300 dark:hover:ring-gray-500 hover:bg-slate-50 dark:hover:bg-gray-800 hover:cursor-pointer",
+        /* Focus */ !readOnly && "focus:cursor-[unset] focus-visible:ring-slate-500 dark:focus-visible:ring-gray-50 focus-visible:bg-slate-100 dark:focus-visible:bg-gray-800",
+        readOnly && "focus-visible:ring-0 cursor-default",
         shiftTextToLeft && "ml-[-7px]",
         inputClassName,
       )}
@@ -824,6 +854,407 @@ function ContactChannelsSection({ user }: ContactChannelsSectionProps) {
   );
 }
 
+type UserTeamsSectionProps = {
+  user: ServerUser,
+};
+
+function UserTeamsSection({ user }: UserTeamsSectionProps) {
+  const stackAdminApp = useAdminApp();
+  const teams = user.useTeams();
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-lg font-semibold">Teams</h2>
+          <p className="text-sm text-muted-foreground">Teams this user belongs to</p>
+        </div>
+      </div>
+
+      {teams.length === 0 ? (
+        <div className="flex flex-col items-center gap-2 p-4 border rounded-md bg-muted/10">
+          <p className='text-sm text-gray-500 text-center'>
+            No teams found
+          </p>
+        </div>
+      ) : (
+        <div className='border rounded-md'>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Team ID</TableHead>
+                <TableHead>Display Name</TableHead>
+                <TableHead>Created At</TableHead>
+                <TableHead className="w-[80px]"></TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {teams.map((team) => (
+                <TableRow key={team.id}>
+                  <TableCell>
+                    <div className="font-mono text-xs bg-muted px-2 py-1 rounded max-w-[120px] truncate">
+                      {team.id}
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <div className="font-medium">
+                      {team.displayName || '-'}
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <div className="text-sm text-muted-foreground">
+                      {team.createdAt.toLocaleDateString()}
+                    </div>
+                  </TableCell>
+                  <TableCell align="right">
+                    <ActionCell
+                      items={[
+                        {
+                          item: "View Team",
+                          onClick: () => {
+                            window.open(`/projects/${stackAdminApp.projectId}/teams/${team.id}`, '_blank', 'noopener');
+                          },
+                        },
+                      ]}
+                    />
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+type OAuthProvidersSectionProps = {
+  user: ServerUser,
+};
+
+type OAuthProviderDialogProps = {
+  user: ServerUser,
+  open: boolean,
+  onOpenChange: (open: boolean) => void,
+} & ({
+  mode: 'create',
+} | {
+  mode: 'edit',
+  provider: ServerOAuthProvider,
+});
+
+function OAuthProviderDialog(props: OAuthProviderDialogProps) {
+  const stackAdminApp = useAdminApp();
+  const project = stackAdminApp.useProject();
+  const { toast } = useToast();
+
+  // Get available OAuth providers from project config
+  const availableProviders = project.config.oauthProviders;
+  const isEditMode = props.mode === 'edit';
+  const provider = isEditMode ? props.provider : null;
+
+  const formSchema = yup.object({
+    providerId: yup.string()
+      .defined("Provider is required")
+      .nonEmpty("Provider is required")
+      .label("OAuth Provider")
+      .meta({
+        stackFormFieldRender: (innerProps: { control: any, name: string, label: string, disabled: boolean }) => (
+          <SelectField
+            control={innerProps.control}
+            name={innerProps.name}
+            label={innerProps.label}
+            disabled={innerProps.disabled || isEditMode} // Disable provider selection in edit mode
+            options={availableProviders.map((p: any) => ({
+              value: p.id,
+              label: p.id.charAt(0).toUpperCase() + p.id.slice(1)
+            }))}
+            placeholder="Select OAuth provider"
+          />
+        ),
+      }),
+    email: yup.string()
+      .email("Please enter a valid e-mail address")
+      .optional()
+      .label("Email")
+      .meta({
+        stackFormFieldPlaceholder: "Enter email address (optional)",
+      }),
+    accountId: yup.string()
+      .defined("Account ID is required")
+      .label("Account ID")
+      .meta({
+        stackFormFieldPlaceholder: "Enter OAuth account ID",
+        description: "The unique account identifier from the OAuth provider",
+        stackFormFieldExtraProps: {
+          disabled: isEditMode, // Disable account ID editing in edit mode
+        },
+      }),
+    allowSignIn: yup.boolean()
+      .default(true)
+      .label("Used for sign-in")
+      .meta({
+        description: "Allow this OAuth provider to be used for authentication"
+      }),
+    allowConnectedAccounts: yup.boolean()
+      .default(true)
+      .label("Used for connected accounts")
+      .meta({
+        description: "Allow this OAuth provider to be used for connected account features"
+      }),
+  });
+
+  // Set default values based on mode
+  const defaultValues = isEditMode && provider ? {
+    providerId: provider.type,
+    email: provider.email,
+    accountId: provider.accountId,
+    allowSignIn: provider.allowSignIn,
+    allowConnectedAccounts: provider.allowConnectedAccounts,
+  } : {
+    providerId: "",
+    email: "",
+    accountId: "",
+    allowSignIn: true,
+    allowConnectedAccounts: true,
+  };
+
+  const handleSubmit = async (values: yup.InferType<typeof formSchema>) => {
+    let result;
+
+    if (isEditMode && provider) {
+      // Update existing provider
+      result = await provider.update({
+        email: values.email?.trim() || provider.email,
+        allowSignIn: values.allowSignIn,
+        allowConnectedAccounts: values.allowConnectedAccounts,
+      });
+    } else {
+      // Create new provider
+      if (!values.accountId.trim()) return;
+
+      const providerConfig = availableProviders.find((p: any) => p.id === values.providerId);
+      if (!providerConfig) {
+        throw new StackAssertionError(`Provider config not found for ${values.providerId}`);
+      }
+
+      result = await stackAdminApp.createOAuthProvider({
+        userId: props.user.id,
+        providerConfigId: providerConfig.id,
+        accountId: values.accountId.trim(),
+        email: values.email?.trim() || "",
+        allowSignIn: values.allowSignIn,
+        allowConnectedAccounts: values.allowConnectedAccounts,
+      });
+    }
+
+    // Handle errors for both create and update operations
+    if (result.status === "error") {
+      const providerType = isEditMode && provider ? provider.type : values.providerId;
+      const accountId = isEditMode && provider ? provider.accountId : values.accountId;
+      const operation = isEditMode ? "updating" : "adding";
+
+      if (KnownErrors.OAuthProviderAccountIdAlreadyUsedForSignIn.isInstance(result.error)) {
+        toast({
+          title: "Account Already Connected",
+          description: `A ${providerType} provider with account ID "${accountId}" already exists (possibly for a different user)`,
+          variant: "destructive",
+        });
+      } else {
+        console.error(result.error);
+        toast({
+          title: "Error",
+          description: `An unexpected error occurred while ${operation} the OAuth provider.`,
+          variant: "destructive",
+        });
+      }
+      return 'prevent-close';
+    }
+  };
+
+  // Update the form schema defaults based on mode
+  const schemaWithDefaults = formSchema.default(defaultValues);
+
+  return (
+    <SmartFormDialog
+      title={isEditMode ? "Edit OAuth Provider" : "Add OAuth Provider"}
+      description={isEditMode ? "Update the OAuth provider settings." : "Connect a new OAuth provider to this user account."}
+      open={props.open}
+      onOpenChange={props.onOpenChange}
+      formSchema={schemaWithDefaults}
+      onSubmit={handleSubmit}
+    />
+  );
+}
+
+function OAuthProvidersSection({ user }: OAuthProvidersSectionProps) {
+  const oauthProviders = user.useOAuthProviders();
+  const [isAddProviderDialogOpen, setIsAddProviderDialogOpen] = useState(false);
+  const [editingProvider, setEditingProvider] = useState<ServerOAuthProvider | null>(null);
+  const { toast } = useToast();
+
+  const handleProviderUpdate = async (provider: ServerOAuthProvider, updates: { allowSignIn?: boolean, allowConnectedAccounts?: boolean }) => {
+    const result = await provider.update(updates);
+    if (result.status === "error") {
+      if (KnownErrors.OAuthProviderAccountIdAlreadyUsedForSignIn.isInstance(result.error)) {
+        toast({
+          title: "Account Already Connected",
+          description: `A ${provider.type} provider with account ID "${provider.accountId}" is already connected for this user.`,
+          variant: "destructive",
+        });
+      } else {
+        const settingType = updates.allowSignIn !== undefined ? "sign-in" : "connected accounts";
+        toast({
+          title: "Error",
+          description: `Failed to update ${settingType} setting.`,
+          variant: "destructive",
+        });
+      }
+    } else {
+      let successMessage = "";
+      if (updates.allowSignIn !== undefined) {
+        successMessage = `Sign-in ${provider.allowSignIn ? 'disabled' : 'enabled'} for ${provider.type} provider.`;
+      } else if (updates.allowConnectedAccounts !== undefined) {
+        successMessage = `Connected accounts ${provider.allowConnectedAccounts ? 'disabled' : 'enabled'} for ${provider.type} provider.`;
+      }
+      toast({
+        title: "Success",
+        description: successMessage,
+        variant: "success",
+      });
+    }
+  };
+
+  const toggleAllowSignIn = async (provider: ServerOAuthProvider) => {
+    await handleProviderUpdate(provider, { allowSignIn: !provider.allowSignIn });
+  };
+
+  const toggleAllowConnectedAccounts = async (provider: ServerOAuthProvider) => {
+    await handleProviderUpdate(provider, { allowConnectedAccounts: !provider.allowConnectedAccounts });
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-lg font-semibold">OAuth Providers</h2>
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => setIsAddProviderDialogOpen(true)}
+        >
+          Add Provider
+        </Button>
+      </div>
+
+      <OAuthProviderDialog
+        user={user}
+        open={isAddProviderDialogOpen}
+        onOpenChange={setIsAddProviderDialogOpen}
+        mode="create"
+      />
+
+      {editingProvider && (
+        <OAuthProviderDialog
+          user={user}
+          open={!!editingProvider}
+          onOpenChange={() => setEditingProvider(null)}
+          mode="edit"
+          provider={editingProvider}
+        />
+      )}
+
+      {oauthProviders.length === 0 ? (
+        <div className="flex flex-col items-center gap-2 p-4 border rounded-md bg-muted/10">
+          <p className='text-sm text-gray-500 text-center'>
+            No OAuth providers connected
+          </p>
+        </div>
+      ) : (
+        <div className='border rounded-md'>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Provider</TableHead>
+                <TableHead>Email</TableHead>
+                <TableHead>Account ID</TableHead>
+                <TableHead className="text-center">Used for sign-in</TableHead>
+                <TableHead className="text-center">Used for connected accounts</TableHead>
+                <TableHead className="w-[80px]"></TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {oauthProviders.map((provider: ServerOAuthProvider) => (
+                <TableRow key={provider.id + '-' + provider.accountId}>
+                  <TableCell>
+                    <div className='flex items-center gap-2'>
+                      <div className="capitalize font-medium">
+                        {provider.type}
+                      </div>
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <div className='flex flex-col md:flex-row gap-2 md:gap-4'>
+                      {provider.email}
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <div className="font-mono text-xs">
+                      {provider.accountId}
+                    </div>
+                  </TableCell>
+                  <TableCell className="text-center">
+                    {provider.allowSignIn ?
+                      <Check className="mx-auto h-4 w-4 text-green-500" /> :
+                      <X className="mx-auto h-4 w-4 text-muted-foreground" />
+                    }
+                  </TableCell>
+                  <TableCell className="text-center">
+                    {provider.allowConnectedAccounts ?
+                      <Check className="mx-auto h-4 w-4 text-green-500" /> :
+                      <X className="mx-auto h-4 w-4 text-muted-foreground" />
+                    }
+                  </TableCell>
+                  <TableCell align="right">
+                    <ActionCell
+                      items={[
+                        {
+                          item: "Edit",
+                          onClick: () => setEditingProvider(provider),
+                        },
+                        {
+                          item: provider.allowSignIn ? "Disable sign-in" : "Enable sign-in",
+                          onClick: async () => {
+                            await toggleAllowSignIn(provider);
+                          },
+                        },
+                        {
+                          item: provider.allowConnectedAccounts ? "Disable connected accounts" : "Enable connected accounts",
+                          onClick: async () => {
+                            await toggleAllowConnectedAccounts(provider);
+                          },
+                        },
+                        {
+                          item: "Delete",
+                          danger: true,
+                          onClick: async () => {
+                            await provider.delete();
+                          },
+                        }
+                      ]}
+                    />
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      )}
+    </div>
+  );
+}
+
 type MetadataSectionProps = {
   user: ServerUser,
 };
@@ -873,6 +1304,8 @@ function UserPage({ user }: { user: ServerUser }) {
         <UserDetails user={user} />
         <Separator />
         <ContactChannelsSection user={user} />
+        <UserTeamsSection user={user} />
+        <OAuthProvidersSection user={user} />
         <MetadataSection user={user} />
       </div>
     </PageLayout>
