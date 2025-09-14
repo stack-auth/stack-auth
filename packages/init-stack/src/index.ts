@@ -56,12 +56,13 @@ const options = program.opts();
 let savedProjectPath: string | undefined = program.args[0] || undefined;
 const isDryRun: boolean = options.dryRun || false;
 const isNeon: boolean = options.neon || false;
-const typeFromArgs: string | undefined = options.js ? "js" : options.next ? "next" : undefined;
+const typeFromArgs: "js" | "next" | undefined = options.js ? "js" : options.next ? "next" : undefined;
 const packageManagerFromArgs: string | undefined = options.npm ? "npm" : options.yarn ? "yarn" : options.pnpm ? "pnpm" : options.bun ? "bun" : undefined;
 const isClient: boolean = options.client || false;
 const isServer: boolean = options.server || false;
 const projectIdFromArgs: string | undefined = options.projectId;
 const publishableClientKeyFromArgs: string | undefined = options.publishableClientKey;
+const disableInteractive = !!process.env.STACK_DISABLE_INTERACTIVE;
 // Commander negates the boolean options with prefix `--no-`
 // so `--no-browser` becomes `browser: false`
 const noBrowser: boolean = !options.browser;
@@ -204,9 +205,9 @@ async function main(): Promise<void> {
     await Steps.writeNextHandlerFile(projectInfo);
     await Steps.writeNextLoadingFile(projectInfo);
     nextSteps.push(`Copy the environment variables from the new API key into your .env.local file`);
-  } else if (type === "js") {
+  } else if (type as string === "js") {
     const defaultExtension = await Steps.guessDefaultFileExtension();
-    const where = await Steps.getServerOrClientOrBoth();
+    const where = await Steps.getServerOrClientOrBoth({ packageJson: projectPackageJson });
     const srcPath = await Steps.guessSrcPath();
     const appFiles: string[] = [];
     for (const w of where) {
@@ -314,7 +315,7 @@ ${colorize.bold`Next steps:`}
 
 For more information, please visit https://docs.stack-auth.com/getting-started/setup
   `.trim());
-  if (!process.env.STACK_DISABLE_INTERACTIVE && !noBrowser) {
+  if (!disableInteractive && !noBrowser) {
     await open(`https://app.stack-auth.com/wizard-congrats?stack-init-id=${encodeURIComponent(distinctId)}`);
   }
   await ph_client.shutdown();
@@ -412,11 +413,12 @@ const Steps = {
     return { packageJson };
   },
 
-  async getProjectType({ packageJson }: { packageJson: PackageJson }): Promise<string> {
+  async getProjectType({ packageJson }: { packageJson: PackageJson }): Promise<"js" | "next"> {
     if (typeFromArgs) return typeFromArgs;
 
     const maybeNextProject = await Steps.maybeGetNextProjectInfo({ packageJson });
     if (!("error" in maybeNextProject)) return "next";
+    if (disableInteractive) return "js";
 
     const { type } = await inquirer.prompt([
       {
@@ -512,18 +514,18 @@ const Steps = {
     if (potentialEnvLocations.every((p) => !fs.existsSync(p))) {
       const envContent = noBrowser
         ? "# Stack Auth keys\n" +
-          "# To get these variables:\n" +
-          "# 1. Go to https://app.stack-auth.com\n" +
-          "# 2. Create a new project\n" +
-          "# 3. Copy the keys below\n" +
-          `NEXT_PUBLIC_STACK_PROJECT_ID="${projectIdFromArgs ?? ""}"\n` +
-          `NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY="${publishableClientKeyFromArgs ?? ""}"\n` +
-          "STACK_SECRET_SERVER_KEY=\n"
+        "# To get these variables:\n" +
+        "# 1. Go to https://app.stack-auth.com\n" +
+        "# 2. Create a new project\n" +
+        "# 3. Copy the keys below\n" +
+        `NEXT_PUBLIC_STACK_PROJECT_ID="${projectIdFromArgs ?? ""}"\n` +
+        `NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY="${publishableClientKeyFromArgs ?? ""}"\n` +
+        "STACK_SECRET_SERVER_KEY=\n"
         : "# Stack Auth keys\n" +
-          "# Get these variables by creating a project on https://app.stack-auth.com.\n" +
-          `NEXT_PUBLIC_STACK_PROJECT_ID="${projectIdFromArgs ?? ""}"\n` +
-          `NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY="${publishableClientKeyFromArgs ?? ""}"\n` +
-          "STACK_SECRET_SERVER_KEY=\n";
+        "# Get these variables by creating a project on https://app.stack-auth.com.\n" +
+        `NEXT_PUBLIC_STACK_PROJECT_ID="${projectIdFromArgs ?? ""}"\n` +
+        `NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY="${publishableClientKeyFromArgs ?? ""}"\n` +
+        "STACK_SECRET_SERVER_KEY=\n";
 
       laterWriteFile(envLocalPath, envContent);
       return true;
@@ -610,11 +612,7 @@ ${type === "next" && clientOrServer === "server" ? `import "server-only";` : ""}
 import { Stack${clientOrServerCap}App } from ${JSON.stringify(packageName)};
 
 export const stack${clientOrServerCap}App = new Stack${clientOrServerCap}App({
-${indentation}tokenStore: ${type === "next" ? '"nextjs-cookie"' : (clientOrServer === "client" ? '"cookie"' : '"memory"')},${
-type === "js" ? `\n\n${indentation}// get your Stack Auth API keys from https://app.stack-auth.com${clientOrServer === "client" ? ` and store them in a safe place (eg. environment variables)` : ""}` : ""}${
-type === "js" && projectIdFromArgs ? `\n${indentation}projectId: '${projectIdFromArgs}',` : ""}${
-type === "js" ? `\n${indentation}publishableClientKey: ${publishableClientKeyWrite},` : ""}${
-type === "js" && clientOrServer === "server" ? `\n${indentation}secretServerKey: process.env.STACK_SECRET_SERVER_KEY,` : ""}
+${indentation}tokenStore: ${type === "next" ? '"nextjs-cookie"' : (clientOrServer === "client" ? '"cookie"' : '"memory"')},${type === "js" ? `\n\n${indentation}// get your Stack Auth API keys from https://app.stack-auth.com${clientOrServer === "client" ? ` and store them in a safe place (eg. environment variables)` : ""}` : ""}${type === "js" && projectIdFromArgs ? `\n${indentation}projectId: '${projectIdFromArgs}',` : ""}${type === "js" ? `\n${indentation}publishableClientKey: ${publishableClientKeyWrite},` : ""}${type === "js" && clientOrServer === "server" ? `\n${indentation}secretServerKey: process.env.STACK_SECRET_SERVER_KEY,` : ""}
 });
       `.trim() + "\n"
     );
@@ -637,8 +635,7 @@ type === "js" && clientOrServer === "server" ? `\n${indentation}secretServerKey:
     }
     laterWriteFileIfNotExists(
       handlerPath,
-      `import { StackHandler } from "@stackframe/stack";\nimport { stackServerApp } from "../../../stack/server";\n\nexport default function Handler(props${
-        handlerFileExtension.includes("ts") ? ": unknown" : ""
+      `import { StackHandler } from "@stackframe/stack";\nimport { stackServerApp } from "../../../stack/server";\n\nexport default function Handler(props${handlerFileExtension.includes("ts") ? ": unknown" : ""
       }) {\n${projectInfo.indentation}return <StackHandler fullPage app={stackServerApp} routeProps={props} />;\n}\n`
     );
   },
@@ -678,7 +675,7 @@ type === "js" && clientOrServer === "server" ? `\n${indentation}secretServerKey:
       js: "JavaScript",
       next: "Next.js"
     }[type] ?? throwErr("unknown type");
-    const isReady = !!process.env.STACK_DISABLE_INTERACTIVE || (await inquirer.prompt([
+    const isReady = disableInteractive || (await inquirer.prompt([
       {
         type: "confirm",
         name: "ready",
@@ -691,10 +688,15 @@ type === "js" && clientOrServer === "server" ? `\n${indentation}secretServerKey:
     }
   },
 
-  async getServerOrClientOrBoth(): Promise<Array<"server" | "client">> {
+  async getServerOrClientOrBoth({ packageJson }: { packageJson: PackageJson }): Promise<Array<"server" | "client">> {
     if (isClient && isServer) return ["server", "client"];
     if (isServer) return ["server"];
     if (isClient) return ["client"];
+
+    if (disableInteractive) {
+      if (packageJson.dependencies?.["next"]) return ["client"];
+      return ["server"];
+    }
 
     return (await inquirer.prompt([{
       type: "list",
@@ -832,6 +834,9 @@ async function getProjectPath(): Promise<string> {
       path.join(savedProjectPath, "package.json")
     );
     if (askForPathModification) {
+      if (disableInteractive) {
+        throw new UserError(`No package.json file found in the project directory ${savedProjectPath}. Please specify the correct project path using the --project-path argument, or create a new project before running the wizard.`);
+      }
       savedProjectPath = (
         await inquirer.prompt([
           {
@@ -1003,13 +1008,6 @@ function laterWriteFileIfNotExists(fullPath: string, content: string): void {
   });
 }
 
-function assertInteractive(): true {
-  if (process.env.STACK_DISABLE_INTERACTIVE) {
-    throw new UserError("STACK_DISABLE_INTERACTIVE is set, but wizard requires interactivity to complete. Make sure you supplied all required command line arguments!");
-  }
-  return true;
-}
-
 function throwErr(message: string): never {
   throw new Error(message);
 }
@@ -1025,20 +1023,20 @@ export function templateIdentity(strings: TemplateStringsArray, ...values: any[]
 async function clearStdin(): Promise<void> {
   await new Promise<void>((resolve) => {
     if (process.stdin.isTTY) {
-        process.stdin.setRawMode(true);
+      process.stdin.setRawMode(true);
     }
-      process.stdin.resume();
-      process.stdin.removeAllListeners('data');
+    process.stdin.resume();
+    process.stdin.removeAllListeners('data');
 
-      const flush = () => {
-        while (process.stdin.read() !== null) {}
-        if (process.stdin.isTTY) {
-            process.stdin.setRawMode(false);
-        }
-          resolve();
-      };
+    const flush = () => {
+      while (process.stdin.read() !== null) { }
+      if (process.stdin.isTTY) {
+        process.stdin.setRawMode(false);
+      }
+      resolve();
+    };
 
-      // Add a small delay to allow any buffered input to clear
-      setTimeout(flush, 10);
+    // Add a small delay to allow any buffered input to clear
+    setTimeout(flush, 10);
   });
 }
