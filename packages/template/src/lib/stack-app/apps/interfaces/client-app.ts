@@ -1,6 +1,7 @@
 import { KnownErrors } from "@stackframe/stack-shared";
 import { CurrentUserCrud } from "@stackframe/stack-shared/dist/interface/crud/current-user";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
+import type { ConvexClient } from "convex/browser";
 import { AsyncStoreProperty, GetUserOptions, HandlerUrls, OAuthScopesOnSignIn, RedirectMethod, RedirectToOptions, TokenStoreInit, stackAppInternalsSymbol } from "../../common";
 import { Item } from "../../customers";
 import { Project } from "../../projects";
@@ -17,6 +18,12 @@ export type StackClientAppConstructorOptions<HasTokenStore extends boolean, Proj
   oauthScopesOnSignIn?: Partial<OAuthScopesOnSignIn>,
   tokenStore: TokenStoreInit<HasTokenStore>,
   redirectMethod?: RedirectMethod,
+
+  integrations?: {
+    convex?: {
+      client: ConvexClient | { setAuth: (jwt: string) => void },
+    },
+  },
 
   /**
    * By default, the Stack app will automatically prefetch some data from Stack's server when this app is first
