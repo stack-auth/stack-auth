@@ -45,6 +45,7 @@ program
   .option("--project-id <project-id>", "Project ID to use in setup")
   .option("--publishable-client-key <publishable-client-key>", "Publishable client key to use in setup")
   .option("--no-browser", "Don't open browser for environment variable setup")
+  .option("--agent-mode", "Run without prompting for any input")
   .addHelpText('after', `
 For more information, please visit https://docs.stack-auth.com/getting-started/setup`);
 
@@ -62,7 +63,7 @@ const isClient: boolean = options.client || false;
 const isServer: boolean = options.server || false;
 const projectIdFromArgs: string | undefined = options.projectId;
 const publishableClientKeyFromArgs: string | undefined = options.publishableClientKey;
-const disableInteractive = !!process.env.STACK_DISABLE_INTERACTIVE;
+const agentMode = !!options.agentMode;
 // Commander negates the boolean options with prefix `--no-`
 // so `--no-browser` becomes `browser: false`
 const noBrowser: boolean = !options.browser;
@@ -205,9 +206,9 @@ async function main(): Promise<void> {
     await Steps.writeNextHandlerFile(projectInfo);
     await Steps.writeNextLoadingFile(projectInfo);
     nextSteps.push(`Copy the environment variables from the new API key into your .env.local file`);
-  } else if (type as string === "js") {
+  } else {
     const defaultExtension = await Steps.guessDefaultFileExtension();
-    const where = await Steps.getServerOrClientOrBoth({ packageJson: projectPackageJson });
+    const where = await Steps.getServerOrClientOrBoth();
     const srcPath = await Steps.guessSrcPath();
     const appFiles: string[] = [];
     for (const w of where) {
@@ -223,8 +224,6 @@ async function main(): Promise<void> {
       `Copy the environment variables from the new API key into your own environment and reference them in ${appFiles.join(" and ")}`,
       `Follow the instructions on how to use Stack Auth's vanilla SDK at http://docs.stack-auth.com/others/js-client`,
     );
-  } else {
-    throw new Error("Unknown type: " + type);
   }
 
   const { packageManager } = await Steps.getPackageManager();
@@ -315,7 +314,7 @@ ${colorize.bold`Next steps:`}
 
 For more information, please visit https://docs.stack-auth.com/getting-started/setup
   `.trim());
-  if (!disableInteractive && !noBrowser) {
+  if (!noBrowser) {
     await open(`https://app.stack-auth.com/wizard-congrats?stack-init-id=${encodeURIComponent(distinctId)}`);
   }
   await ph_client.shutdown();
@@ -418,7 +417,9 @@ const Steps = {
 
     const maybeNextProject = await Steps.maybeGetNextProjectInfo({ packageJson });
     if (!("error" in maybeNextProject)) return "next";
-    if (disableInteractive) return "js";
+    if (agentMode) {
+      return "js";
+    }
 
     const { type } = await inquirer.prompt([
       {
@@ -675,7 +676,7 @@ ${indentation}tokenStore: ${type === "next" ? '"nextjs-cookie"' : (clientOrServe
       js: "JavaScript",
       next: "Next.js"
     }[type] ?? throwErr("unknown type");
-    const isReady = disableInteractive || (await inquirer.prompt([
+    const isReady = agentMode || (await inquirer.prompt([
       {
         type: "confirm",
         name: "ready",
@@ -688,14 +689,13 @@ ${indentation}tokenStore: ${type === "next" ? '"nextjs-cookie"' : (clientOrServe
     }
   },
 
-  async getServerOrClientOrBoth({ packageJson }: { packageJson: PackageJson }): Promise<Array<"server" | "client">> {
+  async getServerOrClientOrBoth(): Promise<Array<"server" | "client">> {
     if (isClient && isServer) return ["server", "client"];
     if (isServer) return ["server"];
     if (isClient) return ["client"];
 
-    if (disableInteractive) {
-      if (packageJson.dependencies?.["next"]) return ["client"];
-      return ["server"];
+    if (agentMode) {
+      throw new UserError("Please specify the installation type using the --server or --client argument.");
     }
 
     return (await inquirer.prompt([{
@@ -834,7 +834,7 @@ async function getProjectPath(): Promise<string> {
       path.join(savedProjectPath, "package.json")
     );
     if (askForPathModification) {
-      if (disableInteractive) {
+      if (agentMode) {
         throw new UserError(`No package.json file found in the project directory ${savedProjectPath}. Please specify the correct project path using the --project-path argument, or create a new project before running the wizard.`);
       }
       savedProjectPath = (
@@ -877,6 +877,10 @@ async function promptPackageManager(): Promise<string> {
     return "npm";
   } else if (!yarnLock && !pnpmLock && !npmLock && bunLock) {
     return "bun";
+  }
+
+  if (agentMode) {
+    throw new UserError("Unable to determine which package manager to use. Please rerun the init command and specify the package manager using exactly one of the following arguments: --npm, --yarn, --pnpm, or --bun.");
   }
 
   const answers = await inquirer.prompt([
