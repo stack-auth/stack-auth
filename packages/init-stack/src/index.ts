@@ -36,6 +36,7 @@ program
   .option("--neon", "Use Neon database")
   .option("--js", "Initialize for JavaScript project")
   .option("--next", "Initialize for Next.js project")
+  .option("--react", "Initialize for React project")
   .option("--npm", "Use npm as package manager")
   .option("--yarn", "Use yarn as package manager")
   .option("--pnpm", "Use pnpm as package manager")
@@ -57,7 +58,7 @@ const options = program.opts();
 let savedProjectPath: string | undefined = program.args[0] || undefined;
 const isDryRun: boolean = options.dryRun || false;
 const isNeon: boolean = options.neon || false;
-const typeFromArgs: "js" | "next" | undefined = options.js ? "js" : options.next ? "next" : undefined;
+const typeFromArgs: "js" | "next" | "react" | undefined = options.js ? "js" : options.next ? "next" : options.react ? "react" : undefined;
 const packageManagerFromArgs: string | undefined = options.npm ? "npm" : options.yarn ? "yarn" : options.pnpm ? "pnpm" : options.bun ? "bun" : undefined;
 const isClient: boolean = options.client || false;
 const isServer: boolean = options.server || false;
@@ -206,6 +207,19 @@ async function main(): Promise<void> {
     await Steps.writeNextHandlerFile(projectInfo);
     await Steps.writeNextLoadingFile(projectInfo);
     nextSteps.push(`Copy the environment variables from the new API key into your .env.local file`);
+  } else if (type === "react") {
+    const defaultExtension = await Steps.guessDefaultFileExtension();
+    const srcPath = await Steps.guessSrcPath();
+    const hasReactRouterDom = !!(projectPackageJson.dependencies?.["react-router-dom"] || projectPackageJson.devDependencies?.["react-router-dom"]);
+    const { fileName } = await Steps.writeReactClientFile({
+      srcPath,
+      defaultExtension,
+      indentation: "  ",
+      hasReactRouterDom,
+    });
+    nextSteps.push(
+      `Copy the environment variables from the new API key into your own environment and reference them in ${fileName}`,
+    );
   } else {
     const defaultExtension = await Steps.guessDefaultFileExtension();
     const where = await Steps.getServerOrClientOrBoth();
@@ -363,7 +377,7 @@ type PackageJson = {
 }
 
 type ProjectInfo = {
-  type: string,
+  type: "js" | "next" | "react",
   srcPath: string,
   appPath: string,
   defaultExtension: string,
@@ -377,7 +391,7 @@ type NextProjectInfoError = {
 type NextProjectInfoResult = ProjectInfo | NextProjectInfoError;
 
 type StackAppFileOptions = {
-  type: string,
+  type: "js" | "next" | "react",
   srcPath: string,
   defaultExtension: string,
   indentation: string,
@@ -412,11 +426,16 @@ const Steps = {
     return { packageJson };
   },
 
-  async getProjectType({ packageJson }: { packageJson: PackageJson }): Promise<"js" | "next"> {
+  async getProjectType({ packageJson }: { packageJson: PackageJson }): Promise<"js" | "next" | "react"> {
     if (typeFromArgs) return typeFromArgs;
 
     const maybeNextProject = await Steps.maybeGetNextProjectInfo({ packageJson });
-    if (!("error" in maybeNextProject)) return "next";
+    if (!("error" in maybeNextProject)) {
+      return "next";
+    }
+    if (packageJson.dependencies?.["react"] || packageJson.dependencies?.["react-dom"]) {
+      return "react";
+    }
     if (agentMode) {
       return "js";
     }
@@ -428,6 +447,7 @@ const Steps = {
         message: "Which integration would you like to install?",
         choices: [
           { name: "None (vanilla JS, Node.js, etc)", value: "js" },
+          { name: "React", value: "react" },
           { name: "Next.js", value: "next" },
         ]
       }
@@ -436,14 +456,16 @@ const Steps = {
     return type;
   },
 
-  async getStackPackageName(type: string, install = false): Promise<string> {
-    return {
-      "js": (install && process.env.STACK_JS_INSTALL_PACKAGE_NAME_OVERRIDE) || "@stackframe/js",
-      "next": (install && process.env.STACK_NEXT_INSTALL_PACKAGE_NAME_OVERRIDE) || "@stackframe/stack",
-    }[type] ?? throwErr("Unknown type in addStackPackage: " + type);
+  async getStackPackageName(type: "js" | "next" | "react", install = false): Promise<string> {
+    const mapping = {
+      js: (install && process.env.STACK_JS_INSTALL_PACKAGE_NAME_OVERRIDE) || "@stackframe/js",
+      next: (install && process.env.STACK_NEXT_INSTALL_PACKAGE_NAME_OVERRIDE) || "@stackframe/stack",
+      react: (install && process.env.STACK_REACT_INSTALL_PACKAGE_NAME_OVERRIDE) || "@stackframe/react",
+    } as const;
+    return mapping[type];
   },
 
-  async addStackPackage(type: string): Promise<void> {
+  async addStackPackage(type: "js" | "next" | "react"): Promise<void> {
     packagesToInstall.push(await Steps.getStackPackageName(type, true));
   },
 
@@ -496,7 +518,7 @@ const Steps = {
     };
   },
 
-  async writeEnvVars(type: string): Promise<boolean> {
+  async writeEnvVars(type: "js" | "next" | "react"): Promise<boolean> {
     const projectPath = await getProjectPath();
 
     // TODO: in non-Next environments, ask the user what method they prefer for envvars
@@ -581,7 +603,7 @@ const Steps = {
     const clientOrServerCap = {
       client: "Client",
       server: "Server",
-    }[clientOrServer as string] ?? throwErr("unknown clientOrServer " + clientOrServer);
+    }[clientOrServer as "client" | "server"];
     const relativeStackAppPath = `stack/${clientOrServer}`;
 
     const stackAppPathWithoutExtension = path.join(srcPath, relativeStackAppPath);
@@ -616,6 +638,38 @@ export const stack${clientOrServerCap}App = new Stack${clientOrServerCap}App({
 ${indentation}tokenStore: ${type === "next" ? '"nextjs-cookie"' : (clientOrServer === "client" ? '"cookie"' : '"memory"')},${type === "js" ? `\n\n${indentation}// get your Stack Auth API keys from https://app.stack-auth.com${clientOrServer === "client" ? ` and store them in a safe place (eg. environment variables)` : ""}` : ""}${type === "js" && projectIdFromArgs ? `\n${indentation}projectId: '${projectIdFromArgs}',` : ""}${type === "js" ? `\n${indentation}publishableClientKey: ${publishableClientKeyWrite},` : ""}${type === "js" && clientOrServer === "server" ? `\n${indentation}secretServerKey: process.env.STACK_SECRET_SERVER_KEY,` : ""}
 });
       `.trim() + "\n"
+    );
+    return { fileName: stackAppPath };
+  },
+
+  async writeReactClientFile({ srcPath, defaultExtension, indentation, hasReactRouterDom }: { srcPath: string, defaultExtension: string, indentation: string, hasReactRouterDom: boolean }): Promise<StackAppFileResult> {
+    const packageName = await Steps.getStackPackageName("react");
+    const relativeStackAppPath = `stack/client`;
+    const stackAppPathWithoutExtension = path.join(srcPath, relativeStackAppPath);
+    const stackAppFileExtension = (await findJsExtension(stackAppPathWithoutExtension)) ?? defaultExtension;
+    const stackAppPath = stackAppPathWithoutExtension + "." + stackAppFileExtension;
+    const stackAppContent = await readFile(stackAppPath);
+    if (stackAppContent) {
+      if (!stackAppContent.includes("@stackframe/")) {
+        throw new UserError(`A file at the path ${stackAppPath} already exists. Stack uses the stack/client.ts file to initialize the Stack SDK. Please remove the existing file and try again.`);
+      }
+      throw new UserError(`It seems that you already installed Stack in this project.`);
+    }
+
+    const publishableClientKeyWrite = `'${publishableClientKeyFromArgs ?? 'INSERT_YOUR_PUBLISHABLE_CLIENT_KEY_HERE'}'`;
+    const projectIdWrite = `'${projectIdFromArgs ?? 'INSERT_PROJECT_ID'}'`;
+
+    const imports = hasReactRouterDom
+      ? `import { StackClientApp } from ${JSON.stringify(packageName)};\nimport { useNavigate } from "react-router-dom";\n\n`
+      : `import { StackClientApp } from ${JSON.stringify(packageName)};\n\n`;
+
+    const redirectMethod = hasReactRouterDom
+      ? `,\n${indentation}redirectMethod: {\n${indentation}${indentation}useNavigate,\n${indentation}}`
+      : "";
+
+    laterWriteFileIfNotExists(
+      stackAppPath,
+      `${imports}export const stackClientApp = new StackClientApp({\n${indentation}tokenStore: "cookie",\n${indentation}projectId: ${projectIdWrite},\n${indentation}publishableClientKey: ${publishableClientKeyWrite}${redirectMethod},\n});\n`
     );
     return { fileName: stackAppPath };
   },
@@ -669,13 +723,15 @@ ${indentation}tokenStore: ${type === "next" ? '"nextjs-cookie"' : (clientOrServe
     return { packageManager };
   },
 
-  async ensureReady(type: string): Promise<void> {
+  async ensureReady(type: "js" | "next" | "react"): Promise<void> {
     const projectPath = await getProjectPath();
 
-    const typeString = {
+    const typeStringMap = {
       js: "JavaScript",
-      next: "Next.js"
-    }[type] ?? throwErr("unknown type");
+      next: "Next.js",
+      react: "React",
+    } as const;
+    const typeString = typeStringMap[type];
     const isReady = agentMode || (await inquirer.prompt([
       {
         type: "confirm",
