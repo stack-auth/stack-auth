@@ -623,6 +623,7 @@ const Steps = {
       );
     }
 
+    const tokenStore = type === "next" ? '"nextjs-cookie"' : (clientOrServer === "client" ? '"cookie"' : '"memory"');
     const publishableClientKeyWrite = clientOrServer === "server"
       ? `process.env.STACK_PUBLISHABLE_CLIENT_KEY ${publishableClientKeyFromArgs ? `|| '${publishableClientKeyFromArgs}'` : ""}`
       : `'${publishableClientKeyFromArgs ?? 'INSERT_YOUR_PUBLISHABLE_CLIENT_KEY_HERE'}'`;
@@ -635,7 +636,7 @@ ${type === "next" && clientOrServer === "server" ? `import "server-only";` : ""}
 import { Stack${clientOrServerCap}App } from ${JSON.stringify(packageName)};
 
 export const stack${clientOrServerCap}App = new Stack${clientOrServerCap}App({
-${indentation}tokenStore: ${type === "next" ? '"nextjs-cookie"' : (clientOrServer === "client" ? '"cookie"' : '"memory"')},${type === "js" ? `\n\n${indentation}// get your Stack Auth API keys from https://app.stack-auth.com${clientOrServer === "client" ? ` and store them in a safe place (eg. environment variables)` : ""}` : ""}${type === "js" && projectIdFromArgs ? `\n${indentation}projectId: '${projectIdFromArgs}',` : ""}${type === "js" ? `\n${indentation}publishableClientKey: ${publishableClientKeyWrite},` : ""}${type === "js" && clientOrServer === "server" ? `\n${indentation}secretServerKey: process.env.STACK_SECRET_SERVER_KEY,` : ""}
+${indentation}tokenStore: ${tokenStore},${type === "js" ? `\n\n${indentation}// get your Stack Auth API keys from https://app.stack-auth.com${clientOrServer === "client" ? ` and store them in a safe place (eg. environment variables)` : ""}` : ""}${type === "js" && projectIdFromArgs ? `\n${indentation}projectId: '${projectIdFromArgs}',` : ""}${type === "js" ? `\n${indentation}publishableClientKey: ${publishableClientKeyWrite},` : ""}${type === "js" && clientOrServer === "server" ? `\n${indentation}secretServerKey: process.env.STACK_SECRET_SERVER_KEY,` : ""}
 });
       `.trim() + "\n"
     );
