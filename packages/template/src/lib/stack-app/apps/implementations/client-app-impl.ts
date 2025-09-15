@@ -28,6 +28,8 @@ import { Store, storeLock } from "@stackframe/stack-shared/dist/utils/stores";
 import { deindent, mergeScopeStrings } from "@stackframe/stack-shared/dist/utils/strings";
 import { getRelativePart, isRelative } from "@stackframe/stack-shared/dist/utils/urls";
 import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
+import type { ConvexClient, ConvexHttpClient } from "convex/browser";
+import type { ConvexReactClient } from "convex/react";
 import * as cookie from "cookie";
 import * as NextNavigationUnscrambled from "next/navigation"; // import the entire module to get around some static compiler warnings emitted by Next.js in some cases | THIS_LINE_PLATFORM next
 import React, { useCallback, useMemo } from "react"; // THIS_LINE_PLATFORM react-like
@@ -85,6 +87,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
   protected readonly _redirectMethod: RedirectMethod | undefined;
   protected readonly _urlOptions: Partial<HandlerUrls>;
   protected readonly _oauthScopesOnSignIn: Partial<OAuthScopesOnSignIn>;
+  readonly _convexClient: ConvexClient | ConvexReactClient | ConvexHttpClient | { setAuth: (auth: string) => void } | { setAuth: (auth: (args: { forceRefreshToken: boolean }) => Promise<string | null>) => void } | undefined;
 
   private __DEMO_ENABLE_SLIGHT_FETCH_DELAY = false;
   private readonly _ownedAdminApps = new DependenciesMap<[InternalSession, string], _StackAdminAppImplIncomplete<false, string>>();
@@ -339,6 +342,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     this._redirectMethod = _options.redirectMethod || "nextjs"; // THIS_LINE_PLATFORM next
     this._urlOptions = _options.urls ?? {};
     this._oauthScopesOnSignIn = _options.oauthScopesOnSignIn ?? {};
+    this._convexClient = _options.integrations?.convex?.client;
 
     if (_options.uniqueIdentifier) {
       this._uniqueIdentifier = _options.uniqueIdentifier;
@@ -566,6 +570,13 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         ...old,
         accessToken: newAccessToken?.token ?? null
       }));
+      if (this._convexClient) {
+        this._convexClient.setAuth(async ({ forceRefreshToken }) => {
+          if (!forceRefreshToken) return newAccessToken?.token;
+          const tokens = await session.fetchNewTokens();
+          return tokens?.accessToken.token ?? null;
+        });
+      }
     });
     session.onInvalidate(() => {
       tokenStore.update((old) => ({
@@ -583,7 +594,8 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
 
   protected async _getSession(overrideTokenStoreInit?: TokenStoreInit): Promise<InternalSession> {
     const tokenStore = this._getOrCreateTokenStore(await this._createCookieHelper(), overrideTokenStoreInit);
-    return this._getSessionFromTokenStore(tokenStore);
+    const session = this._getSessionFromTokenStore(tokenStore);
+    return session;
   }
 
   // IF_PLATFORM react-like

@@ -1,6 +1,8 @@
 import { KnownErrors } from "@stackframe/stack-shared";
 import { CurrentUserCrud } from "@stackframe/stack-shared/dist/interface/crud/current-user";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
+import type { ConvexClient, ConvexHttpClient } from "convex/browser";
+import type { ConvexReactClient } from "convex/react";
 import { AsyncStoreProperty, GetUserOptions, HandlerUrls, OAuthScopesOnSignIn, RedirectMethod, RedirectToOptions, TokenStoreInit, stackAppInternalsSymbol } from "../../common";
 import { Item } from "../../customers";
 import { Project } from "../../projects";
@@ -17,6 +19,17 @@ export type StackClientAppConstructorOptions<HasTokenStore extends boolean, Proj
   oauthScopesOnSignIn?: Partial<OAuthScopesOnSignIn>,
   tokenStore: TokenStoreInit<HasTokenStore>,
   redirectMethod?: RedirectMethod,
+
+  integrations?: {
+    convex?: {
+      client:
+      | ConvexClient
+      | ConvexReactClient
+      | ConvexHttpClient
+      | { setAuth: (auth: string) => void }
+      | { setAuth: (auth: (args: { forceRefreshToken: boolean }) => Promise<string | null>) => void },
+    },
+  },
 
   /**
    * By default, the Stack app will automatically prefetch some data from Stack's server when this app is first
@@ -41,7 +54,7 @@ export type StackClientApp<HasTokenStore extends boolean = boolean, ProjectId ex
     signInWithOAuth(provider: string): Promise<void>,
     signInWithCredential(options: { email: string, password: string, noRedirect?: boolean }): Promise<Result<undefined, KnownErrors["EmailPasswordMismatch"] | KnownErrors["InvalidTotpCode"]>>,
     signUpWithCredential(options: { email: string, password: string, noRedirect?: boolean, verificationCallbackUrl?: string }): Promise<Result<undefined, KnownErrors["UserWithEmailAlreadyExists"] | KnownErrors["PasswordRequirementsNotMet"]>>,
-    signInWithPasskey(): Promise<Result<undefined, KnownErrors["PasskeyAuthenticationFailed"]| KnownErrors["InvalidTotpCode"] | KnownErrors["PasskeyWebAuthnError"]>>,
+    signInWithPasskey(): Promise<Result<undefined, KnownErrors["PasskeyAuthenticationFailed"] | KnownErrors["InvalidTotpCode"] | KnownErrors["PasskeyWebAuthnError"]>>,
     callOAuthCallback(): Promise<boolean>,
     promptCliLogin(options: { appUrl: string, expiresInMillis?: number }): Promise<Result<string, KnownErrors["CliAuthError"] | KnownErrors["CliAuthExpiredError"] | KnownErrors["CliAuthUsedError"]>>,
     sendForgotPasswordEmail(email: string, options?: { callbackUrl?: string }): Promise<Result<undefined, KnownErrors["UserNotFound"]>>,
@@ -91,7 +104,7 @@ export type StackClientAppConstructor = {
     HasTokenStore extends (TokenStoreType extends {} ? true : boolean),
     ProjectId extends string
   >(options: StackClientAppConstructorOptions<HasTokenStore, ProjectId>): StackClientApp<HasTokenStore, ProjectId>,
-  new (options: StackClientAppConstructorOptions<boolean, string>): StackClientApp<boolean, string>,
+  new(options: StackClientAppConstructorOptions<boolean, string>): StackClientApp<boolean, string>,
 
   [stackAppInternalsSymbol]: {
     fromClientJson<HasTokenStore extends boolean, ProjectId extends string>(
