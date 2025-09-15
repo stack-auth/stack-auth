@@ -14,7 +14,7 @@ export type StackServerAppConstructorOptions<HasTokenStore extends boolean, Proj
   secretServerKey?: string,
 };
 
-export type StackServerApp<HasTokenStore extends boolean = boolean, ProjectId extends string = string> = (
+export type StackServerApp<HasTokenStore extends boolean = boolean, ProjectId extends string = string, HasConvex extends boolean = true> = (
   & {
     createTeam(data: ServerTeamCreateOptions): Promise<ServerTeam>,
     /**
@@ -73,7 +73,7 @@ export type StackServerApp<HasTokenStore extends boolean = boolean, ProjectId ex
     ServerItem,
     false
   >
-  & StackClientApp<HasTokenStore, ProjectId>
+  & StackClientApp<HasTokenStore, ProjectId, HasConvex>
 );
 export type StackServerAppConstructor = {
   new <

@@ -26,7 +26,7 @@ export type StackAdminAppConstructorOptions<HasTokenStore extends boolean, Proje
 );
 
 
-export type StackAdminApp<HasTokenStore extends boolean = boolean, ProjectId extends string = string> = (
+export type StackAdminApp<HasTokenStore extends boolean = boolean, ProjectId extends string = string, HasConvex extends boolean = true> = (
   & AsyncStoreProperty<"project", [], AdminProject, false>
   & AsyncStoreProperty<"internalApiKeys", [], InternalApiKey[], true>
   & AsyncStoreProperty<"teamPermissionDefinitions", [], AdminTeamPermissionDefinition[], true>
@@ -84,7 +84,7 @@ export type StackAdminApp<HasTokenStore extends boolean = boolean, ProjectId ext
     )): Promise<void>,
     testModePurchase(options: { priceId: string, fullCode: string, quantity?: number }): Promise<void>,
   }
-  & StackServerApp<HasTokenStore, ProjectId>
+  & StackServerApp<HasTokenStore, ProjectId, HasConvex>
 );
 export type StackAdminAppConstructor = {
   new <
