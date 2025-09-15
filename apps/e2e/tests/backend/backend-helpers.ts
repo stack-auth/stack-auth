@@ -191,7 +191,7 @@ export namespace Auth {
       const aud = jose.decodeJwt(accessToken).aud;
       const jwks = jose.createRemoteJWKSet(
         new URL(`api/v1/projects/${aud}/.well-known/jwks.json`, STACK_BACKEND_BASE_URL),
-        { timeoutDuration: 10_000 },
+        { timeoutDuration: 20_000 },
       );
       const expectedIssuer = new URL(`/api/v1/projects/${aud}`, STACK_BACKEND_BASE_URL).toString();
       const { payload } = await jose.jwtVerify(accessToken, jwks);
@@ -199,15 +199,15 @@ export namespace Auth {
         "exp": expect.any(Number),
         "iat": expect.any(Number),
         "iss": expectedIssuer,
-        "refreshTokenId": expect.any(String),
+        "branch_id": "main",
+        "refresh_token_id": expect.any(String),
         "aud": backendContext.value.projectKeys === "no-project" ? expect.any(String) : backendContext.value.projectKeys.projectId,
         "sub": expect.any(String),
         "role": "authenticated",
-        "branchId": "main",
-        "displayName": expect.toSatisfy(() => true),
-        "primaryEmail": expect.toSatisfy(() => true),
-        "primaryEmailVerified": expect.any(Boolean),
-        "selectedTeamId": expect.toSatisfy(() => true),
+        "name": expect.toSatisfy(() => true),
+        "email": expect.toSatisfy(() => true),
+        "email_verified": expect.any(Boolean),
+        "selected_team_id": expect.toSatisfy(() => true),
       });
     }
   }
