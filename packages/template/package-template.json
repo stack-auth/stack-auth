@@ -94,7 +94,8 @@
     "//": "NEXT_LINE_PLATFORM react-like",
     "tailwindcss-animate": "^1.0.7",
     "tsx": "^4.7.2",
-    "yup": "^1.4.0"
+    "yup": "^1.4.0",
+    "convex": "^1.27.0"
   },
   "//": "IF_PLATFORM react-like",
   "peerDependencies": {

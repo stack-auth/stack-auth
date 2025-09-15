@@ -6,7 +6,7 @@ import type { ConvexReactClient } from "convex/react";
 import { AsyncStoreProperty, GetUserOptions, HandlerUrls, OAuthScopesOnSignIn, RedirectMethod, RedirectToOptions, TokenStoreInit, stackAppInternalsSymbol } from "../../common";
 import { Item } from "../../customers";
 import { Project } from "../../projects";
-import { ProjectCurrentUser } from "../../users";
+import { ProjectCurrentUser, SyncedPartialUser } from "../../users";
 import { _StackClientAppImpl } from "../implementations";
 
 
@@ -45,7 +45,7 @@ export type StackClientAppJson<HasTokenStore extends boolean, ProjectId extends 
   // note: if you add more fields here, make sure to ensure the checkString in the constructor has/doesn't have them
 };
 
-export type StackClientApp<HasTokenStore extends boolean = boolean, ProjectId extends string = string> = (
+export type StackClientApp<HasTokenStore extends boolean = boolean, ProjectId extends string = string, HasConvex extends boolean = true> = (
   & {
     readonly projectId: ProjectId,
 
@@ -81,6 +81,14 @@ export type StackClientApp<HasTokenStore extends boolean = boolean, ProjectId ex
     getUser(options: GetUserOptions<HasTokenStore> & { or: 'throw' }): Promise<ProjectCurrentUser<ProjectId>>,
     getUser(options: GetUserOptions<HasTokenStore> & { or: 'anonymous' }): Promise<ProjectCurrentUser<ProjectId>>,
     getUser(options?: GetUserOptions<HasTokenStore>): Promise<ProjectCurrentUser<ProjectId> | null>,
+
+    // note: we don't special-case 'anonymous' here to return non-null, see GetPartialUserOptions for more details
+    getPartialUser(options: GetPartialUserOptions<HasTokenStore, HasConvex>): Promise<SyncedPartialUser | null>,
+
+    // IF_PLATFORM react-like
+    // note: we don't special-case 'anonymous' here to return non-null, see GetPartialUserOptions for more details
+    usePartialUser(options: GetPartialUserOptions<HasTokenStore, HasConvex>): SyncedPartialUser | null,
+    // END_PLATFORM
 
     useNavigate(): (to: string) => void, // THIS_LINE_PLATFORM react-like
 

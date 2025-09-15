@@ -36,6 +36,18 @@ export type GetUserOptions<HasTokenStore> =
     tokenStore: TokenStoreInit,
   } : {});
 
+export type GetPartialUserOptions<HasTokenStore, HasConvex> =
+  & {
+    from:
+      | 'token'
+      | (HasConvex extends true ? 'convex' : never),
+    or?: 'return-null' | 'anonymous',  // note: unlike normal getUser, 'anonymous' still returns null sometimes (eg. if no token is present)
+    tokenStore?: TokenStoreInit,
+  }
+  & (HasTokenStore extends false ? {
+    tokenStore: TokenStoreInit,
+  } : {});
+
 export type RequestLike = {
   headers: {
     get: (name: string) => string | null,

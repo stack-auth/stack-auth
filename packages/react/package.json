@@ -58,7 +58,8 @@
     "rimraf": "^5.0.5",
     "tailwindcss-animate": "^1.0.7",
     "tsx": "^4.7.2",
-    "yup": "^1.4.0"
+    "yup": "^1.4.0",
+    "convex": "^1.27.0"
   },
   "peerDependencies": {
     "@types/react": ">=18.2 || >=19.0.0-rc.0",
