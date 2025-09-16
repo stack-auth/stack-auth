@@ -627,6 +627,13 @@ const Steps = {
     const publishableClientKeyWrite = clientOrServer === "server"
       ? `process.env.STACK_PUBLISHABLE_CLIENT_KEY ${publishableClientKeyFromArgs ? `|| '${publishableClientKeyFromArgs}'` : ""}`
       : `'${publishableClientKeyFromArgs ?? 'INSERT_YOUR_PUBLISHABLE_CLIENT_KEY_HERE'}'`;
+    const jsOptions = type === "js" ? [
+      `\n\n${indentation}// get your Stack Auth API keys from https://app.stack-auth.com${clientOrServer === "client" ? ` and store them in a safe place (eg. environment variables)` : ""}`,
+      `${projectIdFromArgs ? `${indentation}projectId: '${projectIdFromArgs}',` : ""}`,
+      `${indentation}publishableClientKey: ${publishableClientKeyWrite},`,
+      `${clientOrServer === "server" ? `${indentation}secretServerKey: process.env.STACK_SECRET_SERVER_KEY,` : ""}`,
+    ].filter(Boolean).join("\n") : "";
+
 
     laterWriteFileIfNotExists(
       stackAppPath,
@@ -636,7 +643,7 @@ ${type === "next" && clientOrServer === "server" ? `import "server-only";` : ""}
 import { Stack${clientOrServerCap}App } from ${JSON.stringify(packageName)};
 
 export const stack${clientOrServerCap}App = new Stack${clientOrServerCap}App({
-${indentation}tokenStore: ${tokenStore},${type === "js" ? `\n\n${indentation}// get your Stack Auth API keys from https://app.stack-auth.com${clientOrServer === "client" ? ` and store them in a safe place (eg. environment variables)` : ""}` : ""}${type === "js" && projectIdFromArgs ? `\n${indentation}projectId: '${projectIdFromArgs}',` : ""}${type === "js" ? `\n${indentation}publishableClientKey: ${publishableClientKeyWrite},` : ""}${type === "js" && clientOrServer === "server" ? `\n${indentation}secretServerKey: process.env.STACK_SECRET_SERVER_KEY,` : ""}
+${indentation}tokenStore: ${tokenStore},${jsOptions}
 });
       `.trim() + "\n"
     );
@@ -670,7 +677,7 @@ ${indentation}tokenStore: ${tokenStore},${type === "js" ? `\n\n${indentation}// 
 
     laterWriteFileIfNotExists(
       stackAppPath,
-      `${imports}export const stackClientApp = new StackClientApp({\n${indentation}tokenStore: "cookie",\n${indentation}projectId: ${projectIdWrite},\n${indentation}publishableClientKey: ${publishableClientKeyWrite}${redirectMethod},\n});\n`
+      `${imports}export const stackClientApp = new StackClientApp({ \n${indentation}tokenStore: "cookie", \n${indentation}projectId: ${projectIdWrite}, \n${indentation}publishableClientKey: ${publishableClientKeyWrite}${redirectMethod}, \n}); \n`
     );
     return { fileName: stackAppPath };
   },
@@ -686,13 +693,13 @@ ${indentation}tokenStore: ${tokenStore},${type === "js" ? `\n\n${indentation}// 
     const handlerContent = await readFile(handlerPath);
     if (handlerContent && !handlerContent.includes("@stackframe/")) {
       throw new UserError(
-        `A file at the path ${handlerPath} already exists. Stack uses the /handler path to handle incoming requests. Please remove the existing file and try again.`
+        `A file at the path ${handlerPath} already exists.Stack uses the / handler path to handle incoming requests.Please remove the existing file and try again.`
       );
     }
     laterWriteFileIfNotExists(
       handlerPath,
-      `import { StackHandler } from "@stackframe/stack";\nimport { stackServerApp } from "../../../stack/server";\n\nexport default function Handler(props${handlerFileExtension.includes("ts") ? ": unknown" : ""
-      }) {\n${projectInfo.indentation}return <StackHandler fullPage app={stackServerApp} routeProps={props} />;\n}\n`
+      `import { StackHandler } from "@stackframe/stack"; \nimport { stackServerApp } from "../../../stack/server"; \n\nexport default function Handler(props${handlerFileExtension.includes("ts") ? ": unknown" : ""
+      }) { \n${projectInfo.indentation} return <StackHandler fullPage app = { stackServerApp } routeProps = { props } />; \n } \n`
     );
   },
 
@@ -703,7 +710,8 @@ ${indentation}tokenStore: ${tokenStore},${type === "js" ? `\n\n${indentation}// 
     const loadingPath = loadingPathWithoutExtension + "." + loadingFileExtension;
     laterWriteFileIfNotExists(
       loadingPath,
-      `export default function Loading() {\n${projectInfo.indentation}// Stack uses React Suspense, which will render this page while user data is being fetched.\n${projectInfo.indentation}// See: https://nextjs.org/docs/app/api-reference/file-conventions/loading\n${projectInfo.indentation}return <></>;\n}\n`
+      `export default function Loading() {
+\n${projectInfo.indentation}// Stack uses React Suspense, which will render this page while user data is being fetched.\n${projectInfo.indentation}// See: https://nextjs.org/docs/app/api-reference/file-conventions/loading\n${projectInfo.indentation}return <></>;\n}\n`
     );
   },
 
