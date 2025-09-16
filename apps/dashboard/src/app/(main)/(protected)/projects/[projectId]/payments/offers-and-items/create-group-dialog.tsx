@@ -1,6 +1,6 @@
 "use client";
 
-import { Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, Input, Label, Typography, SimpleTooltip } from "@stackframe/stack-ui";
+import { Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, Input, Label, SimpleTooltip, Typography } from "@stackframe/stack-ui";
 import { useState } from "react";
 
 type CreateGroupDialogProps = {
