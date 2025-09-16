@@ -220,6 +220,7 @@ export function AIChatDrawer() {
         metadata: {
           sessionId: sessionId,
           model: 'gemini-2.0-flash',
+          temperature: 0,
         }
       };
 
