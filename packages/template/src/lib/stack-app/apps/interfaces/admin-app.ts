@@ -1,3 +1,4 @@
+import type { AdminTransaction } from "@stackframe/stack-shared/dist/interface/admin-interface";
 import { ChatContent } from "@stackframe/stack-shared/dist/interface/admin-interface";
 import { InternalSession } from "@stackframe/stack-shared/dist/sessions";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
@@ -83,6 +84,7 @@ export type StackAdminApp<HasTokenStore extends boolean = boolean, ProjectId ext
       { customCustomerId: string, itemId: string, quantity: number, expiresAt?: string, description?: string }
     )): Promise<void>,
     testModePurchase(options: { priceId: string, fullCode: string, quantity?: number }): Promise<void>,
+    listTransactions(params?: { cursor?: string, limit?: number }): Promise<{ purchases: AdminTransaction[], nextCursor: string | null }>,
   }
   & StackServerApp<HasTokenStore, ProjectId>
 );

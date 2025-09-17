@@ -10,6 +10,23 @@ import { SvixTokenCrud } from "./crud/svix-token";
 import { TeamPermissionDefinitionsCrud } from "./crud/team-permissions";
 import { ServerAuthApplicationOptions, StackServerInterface } from "./server-interface";
 
+export type AdminTransaction = {
+  id: string,
+  kind: 'subscription' | 'one_time' | 'item_quantity_change',
+  createdAt: string,
+  customerType: 'user' | 'team' | 'custom',
+  customerId: string,
+  quantity: number,
+  testMode: boolean,
+  offerId: string | null,
+  offerDisplayName: string | null,
+  price: null | { currency: string, unitAmount: number, interval: null | [number, 'day' | 'week' | 'month' | 'year'] },
+  status: string | null,
+  itemId?: string,
+  description?: string | null,
+  expiresAt?: string | null,
+};
+
 export type ChatContent = Array<
   | { type: "text", text: string }
   | { type: "tool-call", toolName: string, toolCallId: string, args: any, argsText: string, result: any }
@@ -592,6 +609,18 @@ export class StackAdminInterface extends StackServerInterface {
         },
         body: JSON.stringify({}),
       },
+      null,
+    );
+    return await response.json();
+  }
+
+  async listTransactions(params?: { cursor?: string, limit?: number }): Promise<{ purchases: AdminTransaction[], nextCursor: string | null }> {
+    const qs = new URLSearchParams();
+    if (params?.cursor) qs.set('cursor', params.cursor);
+    if (typeof params?.limit === 'number') qs.set('limit', String(params.limit));
+    const response = await this.sendAdminRequest(
+      `/internal/payments/transactions${qs.size ? `?${qs.toString()}` : ''}`,
+      { method: 'GET' },
       null,
     );
     return await response.json();

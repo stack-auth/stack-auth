@@ -1,5 +1,6 @@
 import { StackAdminInterface } from "@stackframe/stack-shared";
 import { getProductionModeErrors } from "@stackframe/stack-shared/dist/helpers/production-mode";
+import type { AdminTransaction } from "@stackframe/stack-shared/dist/interface/admin-interface";
 import { InternalApiKeyCreateCrudResponse } from "@stackframe/stack-shared/dist/interface/admin-interface";
 import { EmailTemplateCrud } from "@stackframe/stack-shared/dist/interface/crud/email-templates";
 import { InternalApiKeysCrud } from "@stackframe/stack-shared/dist/interface/crud/internal-api-keys";
@@ -584,6 +585,10 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
 
   async testModePurchase(options: { priceId: string, fullCode: string, quantity?: number }): Promise<void> {
     await this._interface.testModePurchase({ price_id: options.priceId, full_code: options.fullCode, quantity: options.quantity });
+  }
+
+  async listTransactions(params?: { cursor?: string, limit?: number }): Promise<{ purchases: AdminTransaction[], nextCursor: string | null }> {
+    return this._interface.listTransactions(params);
   }
 
   async getStripeAccountInfo(): Promise<null | { account_id: string, charges_enabled: boolean, details_submitted: boolean, payouts_enabled: boolean }> {
