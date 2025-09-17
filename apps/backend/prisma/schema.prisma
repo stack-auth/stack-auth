@@ -764,6 +764,7 @@ model Subscription {
   customerId   String
   customerType CustomerType
   offerId      String?
+  priceId      String?
   offer        Json
   quantity     Int          @default(1)
 
@@ -774,8 +775,8 @@ model Subscription {
   cancelAtPeriodEnd    Boolean
 
   creationSource PurchaseCreationSource
-  createdAt      DateTime                   @default(now())
-  updatedAt      DateTime                   @updatedAt
+  createdAt      DateTime               @default(now())
+  updatedAt      DateTime               @updatedAt
 
   @@id([tenancyId, id])
   @@unique([tenancyId, stripeSubscriptionId])
@@ -796,16 +797,17 @@ model ItemQuantityChange {
 }
 
 model OneTimePurchase {
-  id String @default(uuid()) @db.Uuid
-  tenancyId String @db.Uuid
-  customerId String
-  customerType CustomerType
-  offerId String?
-  offer Json
-  quantity Int
+  id                    String                 @default(uuid()) @db.Uuid
+  tenancyId             String                 @db.Uuid
+  customerId            String
+  customerType          CustomerType
+  offerId               String?
+  priceId               String?
+  offer                 Json
+  quantity              Int
   stripePaymentIntentId String?
-  createdAt DateTime @default(now())
-  creationSource PurchaseCreationSource
+  createdAt             DateTime               @default(now())
+  creationSource        PurchaseCreationSource
 
   @@id([tenancyId, id])
   @@unique([tenancyId, stripePaymentIntentId])
