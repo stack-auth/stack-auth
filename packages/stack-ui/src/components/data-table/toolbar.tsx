@@ -14,6 +14,7 @@ type DataTableToolbarProps<TData> = {
   showDefaultToolbar?: boolean,
   defaultColumnFilters: ColumnFiltersState,
   defaultSorting: SortingState,
+  showResetFilters?: boolean,
 }
 
 export function DataTableToolbar<TData>({
@@ -22,6 +23,7 @@ export function DataTableToolbar<TData>({
   showDefaultToolbar,
   defaultColumnFilters,
   defaultSorting,
+  showResetFilters = true,
 }: DataTableToolbarProps<TData>) {
   const isFiltered = !deepPlainEquals(table.getState().columnFilters, defaultColumnFilters);
   const isSorted = !deepPlainEquals(table.getState().sorting, defaultSorting);
@@ -30,7 +32,7 @@ export function DataTableToolbar<TData>({
     <div className="flex items-center justify-between">
       <div className="flex items-center gap-2 flex-wrap flex-1 stack-scope">
         {toolbarRender?.(table)}
-        {(isFiltered || isSorted) && (
+        {showResetFilters && (isFiltered || isSorted) && (
           <Button
             variant="ghost"
             onClick={() => {

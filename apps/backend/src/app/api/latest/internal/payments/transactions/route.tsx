@@ -1,35 +1,20 @@
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { adaptSchema, adminAuthTypeSchema, yupMixed, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+import { AdminTransaction, adminTransaction } from "@stackframe/stack-shared/dist/interface/crud/transactions";
+import { adaptSchema, adminAuthTypeSchema, yupArray, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { getOrUndefined } from "@stackframe/stack-shared/dist/utils/objects";
-import { typedToLowercase } from "@stackframe/stack-shared/dist/utils/strings";
+import { typedToLowercase, typedToUppercase } from "@stackframe/stack-shared/dist/utils/strings";
 
-type PriceInfo = { currency: string, unit_amount: number, interval: null | [number, 'day' | 'week' | 'month' | 'year'] };
 
-function resolvePriceFromOffer(offer: any, priceId?: string | null): PriceInfo | null {
+function resolveSelectedPriceFromOffer(offer: any, priceId?: string | null): any | null {
   if (!offer) return null;
   if (!priceId) return null;
   const prices = offer.prices;
   if (!prices || prices === "include-by-default") return null;
   const selected = prices[priceId];
   if (!selected) return null;
-  // Prefer USD if present; otherwise pick the first defined currency key
-  if (selected.USD) {
-    return {
-      currency: "usd",
-      unit_amount: Number(selected.USD),
-      interval: selected.interval ?? null,
-    };
-  }
-  const currencyKey = Object.keys(selected).find((k) => k !== "interval" && k !== "freeTrial" && selected[k] != null);
-  if (currencyKey) {
-    return {
-      currency: String(currencyKey).toLowerCase(),
-      unit_amount: Number(selected[currencyKey]),
-      interval: selected.interval ?? null,
-    };
-  }
-  return null;
+  const { serverOnly: _serverOnly, freeTrial: _freeTrial, ...rest } = selected as any;
+  return rest;
 }
 
 export const GET = createSmartRouteHandler({
@@ -45,13 +30,15 @@ export const GET = createSmartRouteHandler({
     query: yupObject({
       cursor: yupString().optional(),
       limit: yupString().optional(), // numbers come in as strings
+      type: yupString().oneOf(['subscription', 'one_time', 'item_quantity_change']).optional(),
+      customer_type: yupString().oneOf(['user', 'team', 'custom']).optional(),
     }).optional(),
   }),
   response: yupObject({
     statusCode: yupNumber().oneOf([200]).defined(),
     bodyType: yupString().oneOf(["json"]).defined(),
     body: yupObject({
-      purchases: yupMixed().defined(),
+      transactions: yupArray(adminTransaction).defined(),
       next_cursor: yupString().nullable().defined(),
     }).defined(),
   }),
@@ -99,65 +86,59 @@ export const GET = createSmartRouteHandler({
 
     const [subs, iqcs, otps] = await Promise.all([
       prisma.subscription.findMany({
-        where: { tenancyId: auth.tenancy.id, ...(subWhere ?? {}) },
+        where: {
+          tenancyId: auth.tenancy.id,
+          ...(subWhere ?? {}),
+          ...(query.customer_type ? { customerType: typedToUppercase(query.customer_type) as any } : {}),
+        },
         orderBy: [{ createdAt: "desc" }, { id: "desc" }],
         take: limit,
       }),
       prisma.itemQuantityChange.findMany({
-        where: { tenancyId: auth.tenancy.id, ...(iqcWhere ?? {}) },
+        where: {
+          tenancyId: auth.tenancy.id,
+          ...(iqcWhere ?? {}),
+          ...(query.customer_type ? { customerType: typedToUppercase(query.customer_type) as any } : {}),
+        },
         orderBy: [{ createdAt: "desc" }, { id: "desc" }],
         take: limit,
       }),
       prisma.oneTimePurchase.findMany({
-        where: { tenancyId: auth.tenancy.id, ...(otpWhere ?? {}) },
+        where: {
+          tenancyId: auth.tenancy.id,
+          ...(otpWhere ?? {}),
+          ...(query.customer_type ? { customerType: typedToUppercase(query.customer_type) as any } : {}),
+        },
         orderBy: [{ createdAt: "desc" }, { id: "desc" }],
         take: limit,
       }),
     ]);
 
-    type AdminPurchase = {
-      id: string,
-      kind: 'subscription' | 'one_time' | 'item_quantity_change',
-      created_at_millis: number,
-      customer_type: 'user' | 'team' | 'custom',
-      customer_id: string,
-      quantity: number,
-      test_mode: boolean,
-      offer_id: string | null,
-      offer_display_name: string | null,
-      price: null | PriceInfo,
-      status: string | null,
-      item_id?: string,
-      description?: string | null,
-      expires_at_millis?: number | null,
-    };
 
-    const subRows: AdminPurchase[] = subs.map((s) => ({
+    const subRows: AdminTransaction[] = subs.map((s) => ({
       id: s.id,
-      kind: 'subscription',
+      type: 'subscription',
       created_at_millis: s.createdAt.getTime(),
       customer_type: typedToLowercase(s.customerType) as 'user' | 'team' | 'custom',
       customer_id: s.customerId,
       quantity: s.quantity,
       test_mode: s.creationSource === 'TEST_MODE',
-      offer_id: s.offerId ?? null,
       offer_display_name: (s.offer as any)?.displayName ?? null,
-      price: resolvePriceFromOffer(s.offer as any, (s as any).priceId),
+      price: resolveSelectedPriceFromOffer(s.offer as any, (s as any).priceId),
       status: s.status,
     }));
 
-    const iqcRows: AdminPurchase[] = iqcs.map((i) => {
+    const iqcRows: AdminTransaction[] = iqcs.map((i) => {
       const itemCfg = getOrUndefined(auth.tenancy.config.payments.items, i.itemId) as { customerType?: 'user' | 'team' | 'custom' } | undefined;
       const customerType = (itemCfg && itemCfg.customerType) ? itemCfg.customerType : 'custom';
       return {
         id: i.id,
-        kind: 'item_quantity_change',
+        type: 'item_quantity_change',
         created_at_millis: i.createdAt.getTime(),
         customer_type: customerType,
         customer_id: i.customerId,
         quantity: i.quantity,
         test_mode: false,
-        offer_id: null,
         offer_display_name: null,
         price: null,
         status: null,
@@ -167,22 +148,26 @@ export const GET = createSmartRouteHandler({
       } as const;
     });
 
-    const otpRows: AdminPurchase[] = otps.map((o) => ({
+    const otpRows: AdminTransaction[] = otps.map((o) => ({
       id: o.id,
-      kind: 'one_time',
+      type: 'one_time',
       created_at_millis: o.createdAt.getTime(),
       customer_type: typedToLowercase(o.customerType) as 'user' | 'team' | 'custom',
       customer_id: o.customerId,
       quantity: o.quantity,
       test_mode: o.creationSource === 'TEST_MODE',
-      offer_id: o.offerId ?? null,
       offer_display_name: (o.offer as any)?.displayName ?? null,
-      price: resolvePriceFromOffer(o.offer as any, o.priceId as any),
+      price: resolveSelectedPriceFromOffer(o.offer as any, o.priceId as any),
       status: null,
     }));
 
-    const merged = [...subRows, ...iqcRows, ...otpRows]
+    let merged = [...subRows, ...iqcRows, ...otpRows]
       .sort((a, b) => (a.created_at_millis === b.created_at_millis ? (a.id < b.id ? 1 : -1) : (a.created_at_millis < b.created_at_millis ? 1 : -1)));
+
+    // Filter by type if provided (applied after merging since we fetch three tables)
+    if (query.type) {
+      merged = merged.filter(t => t.type === query.type);
+    }
 
     const page = merged.slice(0, limit);
 
@@ -190,9 +175,9 @@ export const GET = createSmartRouteHandler({
     let lastIqcId = "";
     let lastOtpId = "";
     for (const r of page) {
-      if (r.kind === 'subscription') lastSubId = r.id;
-      if (r.kind === 'item_quantity_change') lastIqcId = r.id;
-      if (r.kind === 'one_time') lastOtpId = r.id;
+      if (r.type === 'subscription') lastSubId = r.id;
+      if (r.type === 'item_quantity_change') lastIqcId = r.id;
+      if (r.type === 'one_time') lastOtpId = r.id;
     }
 
     const nextCursor = page.length === limit
@@ -203,7 +188,7 @@ export const GET = createSmartRouteHandler({
       statusCode: 200,
       bodyType: "json",
       body: {
-        purchases: page,
+        transactions: page,
         next_cursor: nextCursor,
       },
     };

@@ -1,5 +1,6 @@
-import { expect, it } from "vitest";
-import { niceBackendFetch, Payments as PaymentsHelper, Project, User } from "../../../../backend-helpers";
+import { expect } from "vitest";
+import { it } from "../../../../../helpers";
+import { niceBackendFetch, Payments as PaymentsHelper, Project, User, InternalProjectKeys, backendContext } from "../../../../backend-helpers";
 
 async function setupProjectWithPaymentsConfig() {
   await Project.createAndSwitch();
@@ -64,7 +65,7 @@ it("returns empty list for fresh project", async () => {
         "status": 200,
         "body": {
           "next_cursor": null,
-          "purchases": [],
+          "transactions": [],
         },
         "headers": Headers { <some fields may have been hidden> },
       }
@@ -87,28 +88,28 @@ it("includes TEST_MODE subscription", async () => {
     accessType: "admin",
   });
   expect(response.status).toBe(200);
-  expect(response.body.purchases.find((p: any) => p.kind === "subscription")).toMatchInlineSnapshot(`
+  expect(response.body.transactions).toMatchInlineSnapshot(`
+    [
       {
         "created_at_millis": <stripped field 'created_at_millis'>,
         "customer_id": "<stripped UUID>",
         "customer_type": "user",
         "id": "<stripped UUID>",
-        "kind": "subscription",
         "offer_display_name": "Sub Offer",
-        "offer_id": "sub-offer",
         "price": {
-          "currency": "usd",
+          "USD": "1000",
           "interval": [
             1,
             "month",
           ],
-          "unit_amount": 1000,
         },
         "quantity": 1,
         "status": "active",
         "test_mode": true,
-      }
-    `);
+        "type": "subscription",
+      },
+    ]
+  `);
 });
 
 it("includes TEST_MODE one-time purchase", async () => {
@@ -127,25 +128,22 @@ it("includes TEST_MODE one-time purchase", async () => {
     accessType: "admin",
   });
   expect(response.status).toBe(200);
-  expect(response.body.purchases.find((p: any) => p.kind === "one_time")).toMatchInlineSnapshot(`
+  expect(response.body.transactions).toMatchInlineSnapshot(`
+    [
       {
         "created_at_millis": <stripped field 'created_at_millis'>,
         "customer_id": "<stripped UUID>",
         "customer_type": "user",
         "id": "<stripped UUID>",
-        "kind": "one_time",
         "offer_display_name": "One-Time Offer",
-        "offer_id": "otp-offer",
-        "price": {
-          "currency": "usd",
-          "interval": null,
-          "unit_amount": 5000,
-        },
+        "price": { "USD": "5000" },
         "quantity": 1,
         "status": null,
         "test_mode": true,
-      }
-    `);
+        "type": "one_time",
+      },
+    ]
+  `);
 });
 
 it("includes item quantity change entries", async () => {
@@ -164,7 +162,8 @@ it("includes item quantity change entries", async () => {
     accessType: "admin",
   });
   expect(response.status).toBe(200);
-  expect(response.body.purchases.find((p: any) => p.kind === "item_quantity_change")).toMatchInlineSnapshot(`
+  expect(response.body.transactions).toMatchInlineSnapshot(`
+    [
       {
         "created_at_millis": <stripped field 'created_at_millis'>,
         "customer_id": "<stripped UUID>",
@@ -173,15 +172,15 @@ it("includes item quantity change entries", async () => {
         "expires_at_millis": <stripped field 'expires_at_millis'>,
         "id": "<stripped UUID>",
         "item_id": "credits",
-        "kind": "item_quantity_change",
         "offer_display_name": null,
-        "offer_id": null,
         "price": null,
         "quantity": 5,
         "status": null,
         "test_mode": false,
-      }
-    `);
+        "type": "item_quantity_change",
+      },
+    ]
+  `);
 });
 
 it("supports concatenated cursor pagination", async () => {
@@ -224,7 +223,32 @@ it("supports concatenated cursor pagination", async () => {
     query: { limit: "2", cursor: page1.body.next_cursor },
   });
   expect(page2.status).toBe(200);
-  expect(page2.body).toMatchObject({ purchases: expect.any(Array) });
+  expect(page2.body).toMatchObject({ transactions: expect.any(Array) });
 });
 
 
+it("123", async () => {
+  backendContext.set({ projectKeys: InternalProjectKeys });
+  const userId = "a7ee8f25-0e29-4236-94c8-904c7f144d4c";
+  
+
+  for (let i = 0; i < 5; i++) {
+    const res = await niceBackendFetch(`/api/latest/payments/items/user/${userId}/credits/update-quantity`, {
+      accessType: "admin",
+      method: "POST",
+      query: { allow_negative: "false" },
+      body: { delta: Math.floor(Math.random() * 10), description: "test" },
+    });
+    expect(res.status).toBe(200);
+  }
+
+  // create some random one-time purchases
+  // for (let i = 0; i < 10; i++) {
+  //   const res = await niceBackendFetch(`/api/latest/payments/one-time-purchases/create-purchase-url`, {
+  //     accessType: "admin",
+  //     method: "POST",
+  //     body: { customer_type: "user", customer_id: userId, offer_id: "otp-offer" },
+  //   });
+  //   expect(res.status).toBe(200);
+  // }
+});
