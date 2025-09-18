@@ -610,7 +610,8 @@ export class StackAdminInterface extends StackServerInterface {
       { method: 'GET' },
       null,
     );
-    return await response.json();
+    const json = await response.json() as { transactions: AdminTransaction[], next_cursor: string | null };
+    return { transactions: json.transactions, nextCursor: json.next_cursor };
   }
 
   async testModePurchase(options: { price_id: string, full_code: string, quantity?: number }): Promise<void> {

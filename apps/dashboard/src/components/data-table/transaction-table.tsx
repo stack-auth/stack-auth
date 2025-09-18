@@ -3,7 +3,7 @@
 import { useAdminApp } from '@/app/(main)/(protected)/projects/[projectId]/use-admin-app';
 import type { AdminTransaction } from '@stackframe/stack-shared/dist/interface/crud/transactions';
 import { deepPlainEquals } from '@stackframe/stack-shared/dist/utils/objects';
-import { ActionCell, DataTableColumnHeader, DataTableManualPagination, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, TextCell } from '@stackframe/stack-ui';
+import { DataTableColumnHeader, DataTableManualPagination, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, TextCell } from '@stackframe/stack-ui';
 import type { ColumnDef, ColumnFiltersState, SortingState } from '@tanstack/react-table';
 import React from 'react';
 
@@ -138,7 +138,6 @@ export function TransactionTable() {
       columns={columns}
       data={transactions}
       onUpdate={onUpdate}
-      showResetFilters={false}
       defaultVisibility={{
         // Show only the most important columns by default
         type: true,
