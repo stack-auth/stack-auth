@@ -1,21 +1,33 @@
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
+import { Prisma } from "@prisma/client";
 import { AdminTransaction, adminTransaction } from "@stackframe/stack-shared/dist/interface/crud/transactions";
 import { adaptSchema, adminAuthTypeSchema, yupArray, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { getOrUndefined } from "@stackframe/stack-shared/dist/utils/objects";
 import { typedToLowercase, typedToUppercase } from "@stackframe/stack-shared/dist/utils/strings";
 
 
-function resolveSelectedPriceFromOffer(offer: any, priceId?: string | null): any | null {
+type SelectedPrice = NonNullable<AdminTransaction['price']>;
+type OfferWithPrices = {
+  displayName?: string,
+  prices?: Record<string, SelectedPrice & { serverOnly?: unknown, freeTrial?: unknown }> | "include-by-default",
+} | null | undefined;
+
+function resolveSelectedPriceFromOffer(offer: OfferWithPrices, priceId?: string | null): SelectedPrice | null {
   if (!offer) return null;
   if (!priceId) return null;
   const prices = offer.prices;
   if (!prices || prices === "include-by-default") return null;
-  const selected = prices[priceId];
+  const selected = prices[priceId as keyof typeof prices] as (SelectedPrice & { serverOnly?: unknown, freeTrial?: unknown }) | undefined;
   if (!selected) return null;
   const { serverOnly: _serverOnly, freeTrial: _freeTrial, ...rest } = selected as any;
-  return rest;
+  return rest as SelectedPrice;
 }
+
+function getOfferDisplayName(offer: OfferWithPrices): string | null {
+  return offer?.displayName ?? null;
+}
+
 
 export const GET = createSmartRouteHandler({
   metadata: {
@@ -29,7 +41,7 @@ export const GET = createSmartRouteHandler({
     }).defined(),
     query: yupObject({
       cursor: yupString().optional(),
-      limit: yupString().optional(), // numbers come in as strings
+      limit: yupString().optional(),
       type: yupString().oneOf(['subscription', 'one_time', 'item_quantity_change']).optional(),
       customer_type: yupString().oneOf(['user', 'team', 'custom']).optional(),
     }).optional(),
@@ -45,12 +57,22 @@ export const GET = createSmartRouteHandler({
   handler: async ({ auth, query }) => {
     const prisma = await getPrismaClientForTenancy(auth.tenancy);
 
-    const limit = Math.max(1, Math.min(200, Number(query.limit ?? 50)));
+    const rawLimit = query.limit ?? "50";
+    const parsedLimit = Number.parseInt(rawLimit, 10);
+    const limit = Math.max(1, Math.min(200, Number.isFinite(parsedLimit) ? parsedLimit : 50));
     const cursorStr = query.cursor ?? "";
     const [subCursor, iqcCursor, otpCursor] = (cursorStr.split("|") as [string?, string?, string?]);
 
-    // Helper to build where for pagination by createdAt desc then id desc
-    const paginateWhere = async (table: "subscription" | "itemQuantityChange" | "oneTimePurchase", cursorId?: string) => {
+    const paginateWhere = async <T extends "subscription" | "itemQuantityChange" | "oneTimePurchase">(
+      table: T,
+      cursorId?: string
+    ): Promise<
+      T extends "subscription"
+      ? Prisma.SubscriptionWhereInput | undefined
+      : T extends "itemQuantityChange"
+      ? Prisma.ItemQuantityChangeWhereInput | undefined
+      : Prisma.OneTimePurchaseWhereInput | undefined
+    > => {
       if (!cursorId) return undefined as any;
       let pivot: { createdAt: Date } | null = null;
       if (table === "subscription") {
@@ -75,7 +97,7 @@ export const GET = createSmartRouteHandler({
           { createdAt: { lt: pivot.createdAt } },
           { AND: [{ createdAt: { equals: pivot.createdAt } }, { id: { lt: cursorId } }] },
         ],
-      } as const;
+      } as any;
     };
 
     const [subWhere, iqcWhere, otpWhere] = await Promise.all([
@@ -84,47 +106,39 @@ export const GET = createSmartRouteHandler({
       paginateWhere("oneTimePurchase", otpCursor),
     ]);
 
-    const [subs, iqcs, otps] = await Promise.all([
-      prisma.subscription.findMany({
-        where: {
-          tenancyId: auth.tenancy.id,
-          ...(subWhere ?? {}),
-          ...(query.customer_type ? { customerType: typedToUppercase(query.customer_type) as any } : {}),
-        },
-        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-        take: limit,
-      }),
-      prisma.itemQuantityChange.findMany({
-        where: {
-          tenancyId: auth.tenancy.id,
-          ...(iqcWhere ?? {}),
-          ...(query.customer_type ? { customerType: typedToUppercase(query.customer_type) as any } : {}),
-        },
-        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-        take: limit,
-      }),
-      prisma.oneTimePurchase.findMany({
-        where: {
-          tenancyId: auth.tenancy.id,
-          ...(otpWhere ?? {}),
-          ...(query.customer_type ? { customerType: typedToUppercase(query.customer_type) as any } : {}),
-        },
-        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-        take: limit,
-      }),
-    ]);
+    const baseOrder = [{ createdAt: "desc" as const }, { id: "desc" as const }];
+    const customerTypeFilter = query.customer_type ? { customerType: typedToUppercase(query.customer_type) } : {};
 
+    let merged: AdminTransaction[] = [];
+
+    const [subs, iqcs, otps] = await Promise.all([
+      (query.type === "subscription" || !query.type) ? prisma.subscription.findMany({
+        where: { tenancyId: auth.tenancy.id, ...(subWhere ?? {}), ...customerTypeFilter },
+        orderBy: baseOrder,
+        take: limit,
+      }) : [],
+      (query.type === "item_quantity_change" || !query.type) ? prisma.itemQuantityChange.findMany({
+        where: { tenancyId: auth.tenancy.id, ...(iqcWhere ?? {}), ...customerTypeFilter },
+        orderBy: baseOrder,
+        take: limit,
+      }) : [],
+      (query.type === "one_time" || !query.type) ? prisma.oneTimePurchase.findMany({
+        where: { tenancyId: auth.tenancy.id, ...(otpWhere ?? {}), ...customerTypeFilter },
+        orderBy: baseOrder,
+        take: limit,
+      }) : [],
+    ]);
 
     const subRows: AdminTransaction[] = subs.map((s) => ({
       id: s.id,
       type: 'subscription',
       created_at_millis: s.createdAt.getTime(),
-      customer_type: typedToLowercase(s.customerType) as 'user' | 'team' | 'custom',
+      customer_type: typedToLowercase(s.customerType),
       customer_id: s.customerId,
       quantity: s.quantity,
       test_mode: s.creationSource === 'TEST_MODE',
-      offer_display_name: (s.offer as any)?.displayName ?? null,
-      price: resolveSelectedPriceFromOffer(s.offer as any, (s as any).priceId),
+      offer_display_name: getOfferDisplayName(s.offer as OfferWithPrices),
+      price: resolveSelectedPriceFromOffer(s.offer as OfferWithPrices, s.priceId ?? null),
       status: s.status,
     }));
 
@@ -152,25 +166,19 @@ export const GET = createSmartRouteHandler({
       id: o.id,
       type: 'one_time',
       created_at_millis: o.createdAt.getTime(),
-      customer_type: typedToLowercase(o.customerType) as 'user' | 'team' | 'custom',
+      customer_type: typedToLowercase(o.customerType),
       customer_id: o.customerId,
       quantity: o.quantity,
       test_mode: o.creationSource === 'TEST_MODE',
-      offer_display_name: (o.offer as any)?.displayName ?? null,
-      price: resolveSelectedPriceFromOffer(o.offer as any, o.priceId as any),
+      offer_display_name: getOfferDisplayName(o.offer as OfferWithPrices),
+      price: resolveSelectedPriceFromOffer(o.offer as OfferWithPrices, o.priceId ?? null),
       status: null,
     }));
 
-    let merged = [...subRows, ...iqcRows, ...otpRows]
+    merged = [...subRows, ...iqcRows, ...otpRows]
       .sort((a, b) => (a.created_at_millis === b.created_at_millis ? (a.id < b.id ? 1 : -1) : (a.created_at_millis < b.created_at_millis ? 1 : -1)));
 
-    // Filter by type if provided (applied after merging since we fetch three tables)
-    if (query.type) {
-      merged = merged.filter(t => t.type === query.type);
-    }
-
     const page = merged.slice(0, limit);
-
     let lastSubId = "";
     let lastIqcId = "";
     let lastOtpId = "";

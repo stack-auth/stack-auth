@@ -226,29 +226,3 @@ it("supports concatenated cursor pagination", async () => {
   expect(page2.body).toMatchObject({ transactions: expect.any(Array) });
 });
 
-
-it("123", async () => {
-  backendContext.set({ projectKeys: InternalProjectKeys });
-  const userId = "a7ee8f25-0e29-4236-94c8-904c7f144d4c";
-
-
-  for (let i = 0; i < 5; i++) {
-    const res = await niceBackendFetch(`/api/latest/payments/items/user/${userId}/credits/update-quantity`, {
-      accessType: "admin",
-      method: "POST",
-      query: { allow_negative: "false" },
-      body: { delta: Math.floor(Math.random() * 10), description: "test" },
-    });
-    expect(res.status).toBe(200);
-  }
-
-  // create some random one-time purchases
-  // for (let i = 0; i < 10; i++) {
-  //   const res = await niceBackendFetch(`/api/latest/payments/one-time-purchases/create-purchase-url`, {
-  //     accessType: "admin",
-  //     method: "POST",
-  //     body: { customer_type: "user", customer_id: userId, offer_id: "otp-offer" },
-  //   });
-  //   expect(res.status).toBe(200);
-  // }
-});
