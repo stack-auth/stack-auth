@@ -230,7 +230,7 @@ it("supports concatenated cursor pagination", async () => {
 it("123", async () => {
   backendContext.set({ projectKeys: InternalProjectKeys });
   const userId = "a7ee8f25-0e29-4236-94c8-904c7f144d4c";
-  
+
 
   for (let i = 0; i < 5; i++) {
     const res = await niceBackendFetch(`/api/latest/payments/items/user/${userId}/credits/update-quantity`, {

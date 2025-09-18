@@ -92,8 +92,6 @@ export type StackAdminApp<HasTokenStore extends boolean = boolean, ProjectId ext
       { customCustomerId: string, itemId: string, quantity: number, expiresAt?: string, description?: string }
     )): Promise<void>,
     testModePurchase(options: { priceId: string, fullCode: string, quantity?: number }): Promise<void>,
-    listTransactions(params: { cursor?: string, limit?: number, type?: 'subscription' | 'one_time' | 'item_quantity_change', customerType?: 'user' | 'team' | 'custom' }): Promise<{ transactions: AdminTransaction[], nextCursor: string | null }>,
-    useTransactions(params: { cursor?: string, limit?: number, type?: 'subscription' | 'one_time' | 'item_quantity_change', customerType?: 'user' | 'team' | 'custom' }): { transactions: AdminTransaction[], nextCursor: string | null },
   }
   & StackServerApp<HasTokenStore, ProjectId>
 );

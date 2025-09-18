@@ -44,7 +44,7 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
     return await this._interface.listInternalEmailTemplates();
   });
   private readonly _adminEmailDraftsCache = createCache(async () => {
-    return this._interface.listInternalEmailDrafts();
+    return await this._interface.listInternalEmailDrafts();
   });
   private readonly _adminTeamPermissionDefinitionsCache = createCache(async () => {
     return await this._interface.listTeamPermissionDefinitions();
@@ -75,7 +75,7 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
     }
   });
   private readonly _transactionsCache = createCache(async ([cursor, limit, type, customerType]: [string | undefined, number | undefined, 'subscription' | 'one_time' | 'item_quantity_change' | undefined, 'user' | 'team' | 'custom' | undefined]) => {
-    return this._interface.listTransactions({ cursor, limit, type, customerType });
+    return await this._interface.listTransactions({ cursor, limit, type, customerType });
   });
 
   constructor(options: StackAdminAppConstructorOptions<HasTokenStore, ProjectId>) {
