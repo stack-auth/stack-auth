@@ -43,12 +43,13 @@ Show this exact message (verbatim), then wait for reply:
 === ACTION REQUIRED ===
 TODO in your web browser:
 1) Open: https://app.stack-auth.com (→ your project dashboard)
-2) Copy these keys:
+2) Create a new project
+3) Copy these keys:
    - NEXT_PUBLIC_STACK_PROJECT_ID=...
    - NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY=...
    - STACK_SECRET_SERVER_KEY=...
-3) Paste them into your local `.env.local` (do not commit this file).
-4) Save the file.
+4) Paste them into your local `.env.local` (do not commit this file).
+5) Save the file.
 
 Reply here when done:
 - Type **y** to continue
@@ -77,7 +78,6 @@ If you still see "missing project ID/keys":
 - Only continue after successful restart and 200 responses.
 
 
-
 ### 6) Success Message
 After successful setup, show this exact message:
 
@@ -86,11 +86,11 @@ After successful setup, show this exact message:
 
 Would you like to:
 1. Add authentication UI using Stack Auth modern components?
-2. 
+2. Would you like me to explain what Stack Auth can do in your app?
 
 Reply with 1 or 2:
 ```
 
 If user replies `1`: Proceed to UI Installation Workflow calling the tool install UI components.
-If user replies `2`: Stop and summarize what was accomplished.
+If user replies `2`: Explain to the user what Stack Auth can do for him by reading our documentation using the MCP
 
