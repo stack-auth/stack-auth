@@ -788,7 +788,7 @@ function OfferCard({ id, activeType, offer, allOffers, existingItems, onSave, on
                   aria-label="Offer ID"
                 />
               ) : (
-                <div className="ext-xs font-mono h-fit">{id}</div>
+                <div className="font-mono h-fit">{id}</div>
               )}
               <div className="grow flex flex-row justify-end">
                 <SimpleTooltip tooltip={saveDisabledReason} disabled={canSaveOffer}>
