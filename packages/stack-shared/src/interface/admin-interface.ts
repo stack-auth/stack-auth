@@ -8,7 +8,9 @@ import { ProjectPermissionDefinitionsCrud } from "./crud/project-permissions";
 import { ProjectsCrud } from "./crud/projects";
 import { SvixTokenCrud } from "./crud/svix-token";
 import { TeamPermissionDefinitionsCrud } from "./crud/team-permissions";
+import type { AdminTransaction } from "./crud/transactions";
 import { ServerAuthApplicationOptions, StackServerInterface } from "./server-interface";
+
 
 export type ChatContent = Array<
   | { type: "text", text: string }
@@ -595,6 +597,21 @@ export class StackAdminInterface extends StackServerInterface {
       null,
     );
     return await response.json();
+  }
+
+  async listTransactions(params?: { cursor?: string, limit?: number, type?: 'subscription' | 'one_time' | 'item_quantity_change', customerType?: 'user' | 'team' | 'custom' }): Promise<{ transactions: AdminTransaction[], nextCursor: string | null }> {
+    const qs = new URLSearchParams();
+    if (params?.cursor) qs.set('cursor', params.cursor);
+    if (typeof params?.limit === 'number') qs.set('limit', String(params.limit));
+    if (params?.type) qs.set('type', params.type);
+    if (params?.customerType) qs.set('customer_type', params.customerType);
+    const response = await this.sendAdminRequest(
+      `/internal/payments/transactions${qs.size ? `?${qs.toString()}` : ''}`,
+      { method: 'GET' },
+      null,
+    );
+    const json = await response.json() as { transactions: AdminTransaction[], next_cursor: string | null };
+    return { transactions: json.transactions, nextCursor: json.next_cursor };
   }
 
   async testModePurchase(options: { price_id: string, full_code: string, quantity?: number }): Promise<void> {

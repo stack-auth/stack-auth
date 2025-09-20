@@ -545,7 +545,8 @@ export const emailTemplateListSchema = yupRecord(
 
 // Payments
 export const customerTypeSchema = yupString().oneOf(['user', 'team', 'custom']);
-const validateHasAtLeastOneSupportedCurrency = (value: Record<string, unknown>, context: any) => {
+const validateHasAtLeastOneSupportedCurrency = (value: Record<string, unknown> | null, context: any) => {
+  if (!value) return true;
   const currencies = Object.keys(value).filter(key => SUPPORTED_CURRENCIES.some(c => c.code === key));
   if (currencies.length === 0) {
     return context.createError({ message: "At least one currency is required" });
