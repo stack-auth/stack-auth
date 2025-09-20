@@ -4,6 +4,7 @@ import { InternalApiKeyCreateCrudResponse } from "@stackframe/stack-shared/dist/
 import { EmailTemplateCrud } from "@stackframe/stack-shared/dist/interface/crud/email-templates";
 import { InternalApiKeysCrud } from "@stackframe/stack-shared/dist/interface/crud/internal-api-keys";
 import { ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
+import type { AdminTransaction } from "@stackframe/stack-shared/dist/interface/crud/transactions";
 import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { pick } from "@stackframe/stack-shared/dist/utils/objects";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
@@ -72,6 +73,9 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
       }
       throw error;
     }
+  });
+  private readonly _transactionsCache = createCache(async ([cursor, limit, type, customerType]: [string | undefined, number | undefined, 'subscription' | 'one_time' | 'item_quantity_change' | undefined, 'user' | 'team' | 'custom' | undefined]) => {
+    return await this._interface.listTransactions({ cursor, limit, type, customerType });
   });
 
   constructor(options: StackAdminAppConstructorOptions<HasTokenStore, ProjectId>) {
@@ -585,6 +589,18 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
   async testModePurchase(options: { priceId: string, fullCode: string, quantity?: number }): Promise<void> {
     await this._interface.testModePurchase({ price_id: options.priceId, full_code: options.fullCode, quantity: options.quantity });
   }
+
+  async listTransactions(params: { cursor?: string, limit?: number, type?: 'subscription' | 'one_time' | 'item_quantity_change', customerType?: 'user' | 'team' | 'custom' }): Promise<{ transactions: AdminTransaction[], nextCursor: string | null }> {
+    const crud = Result.orThrow(await this._transactionsCache.getOrWait([params.cursor, params.limit, params.type, params.customerType] as const, "write-only"));
+    return crud;
+  }
+
+  // IF_PLATFORM react-like
+  useTransactions(params: { cursor?: string, limit?: number, type?: 'subscription' | 'one_time' | 'item_quantity_change', customerType?: 'user' | 'team' | 'custom' }): { transactions: AdminTransaction[], nextCursor: string | null } {
+    const data = useAsyncCache(this._transactionsCache, [params.cursor, params.limit, params.type, params.customerType] as const, "useTransactions()");
+    return data;
+  }
+  // END_PLATFORM
 
   async getStripeAccountInfo(): Promise<null | { account_id: string, charges_enabled: boolean, details_submitted: boolean, payouts_enabled: boolean }> {
     return await this._interface.getStripeAccountInfo();
