@@ -1,14 +1,21 @@
 'use client';
 
 import { useUser } from '@stackframe/stack';
+import { runAsynchronously } from '@stackframe/stack-shared/dist/utils/promises';
 import { useCallback, useEffect, useState } from 'react';
 import { cn } from '../../lib/cn';
 
+type DecodedJWT = {
+  header: Record<string, unknown>,
+  payload: Record<string, unknown>,
+  signature: string,
+};
+
 // Simple JWT decoding
-const decodeJWT = (jwt: string) => {
+const decodeJWT = (jwt: string): DecodedJWT => {
   const parts = jwt.split('.');
   if (parts.length !== 3) throw new Error('Invalid JWT format');
-  
+
   return {
     header: JSON.parse(atob(parts[0].replace(/-/g, '+').replace(/_/g, '/'))),
     payload: JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/'))),
@@ -16,17 +23,17 @@ const decodeJWT = (jwt: string) => {
   };
 };
 
-interface JWTViewerProps {
-  defaultToken?: string;
-  className?: string;
-}
+type JWTViewerProps = {
+  defaultToken?: string,
+  className?: string,
+};
 
 export function JWTViewer({ defaultToken = '', className = '' }: JWTViewerProps) {
   const [token, setToken] = useState(defaultToken);
-  const [decoded, setDecoded] = useState<any>(null);
+  const [decoded, setDecoded] = useState<DecodedJWT | null>(null);
   const [error, setError] = useState<string>('');
   const [userTokenLoaded, setUserTokenLoaded] = useState(false);
-  
+
   const user = useUser();
 
   const handleDecode = useCallback((jwtString: string) => {
@@ -61,7 +68,7 @@ export function JWTViewer({ defaultToken = '', className = '' }: JWTViewerProps)
         }
       }
     };
-    loadUserToken();
+    runAsynchronously(loadUserToken());
   }, [user, userTokenLoaded, defaultToken, handleDecode]);
 
   const loadCurrentUserToken = async () => {
@@ -82,27 +89,27 @@ export function JWTViewer({ defaultToken = '', className = '' }: JWTViewerProps)
   const formatTime = (timestamp: number, field: string) => {
     const date = new Date(timestamp * 1000);
     const now = Date.now() / 1000;
-    
+
     // Only check for expiration on 'exp' field
     const isExpired = field === 'exp' && now > timestamp;
     // For 'nbf' (not before), check if it's not yet valid
     const notYetValid = field === 'nbf' && now < timestamp;
-    
+
     return (
       <span className={cn(
         "text-xs",
-        isExpired ? 'text-red-500 dark:text-red-400' : 
-        notYetValid ? 'text-amber-500 dark:text-amber-400' : 
-        'text-fd-muted-foreground'
+        isExpired ? 'text-red-500 dark:text-red-400' :
+          notYetValid ? 'text-amber-500 dark:text-amber-400' :
+            'text-fd-muted-foreground'
       )}>
-        {date.toLocaleString()} 
+        {date.toLocaleString()}
         {isExpired && '(EXPIRED)'}
         {notYetValid && '(NOT YET VALID)'}
       </span>
     );
   };
 
-  const renderValue = (key: string, value: any) => {
+  const renderValue = (key: string, value: unknown) => {
     if (key === 'exp' || key === 'iat' || key === 'nbf') {
       return (
         <div className="space-y-1">
@@ -127,7 +134,7 @@ export function JWTViewer({ defaultToken = '', className = '' }: JWTViewerProps)
           <label className="text-sm font-medium text-fd-foreground">JWT Token</label>
           {user && (
             <button
-              onClick={loadCurrentUserToken}
+              onClick={() => runAsynchronously(loadCurrentUserToken())}
               className={cn(
                 "px-3 py-1.5 text-xs font-medium rounded-md transition-colors",
                 "bg-fd-primary text-fd-primary-foreground hover:bg-fd-primary/90",
@@ -138,7 +145,7 @@ export function JWTViewer({ defaultToken = '', className = '' }: JWTViewerProps)
             </button>
           )}
         </div>
-        
+
         <div className="relative">
           <textarea
             value={token}
