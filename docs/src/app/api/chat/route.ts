@@ -27,7 +27,7 @@ export async function POST(request: Request) {
   try {
     const stackAuthMcp = await createMCPClient({
       transport: new StreamableHTTPClientTransport(
-        new URL('/api/internal/mcp', 'http://localhost:8104/api/internal/mcp')
+        new URL('/api/internal/mcp', 'https://mcp.stack-auth.com/api/internal/mcp')
       ),
     });
     tools = await stackAuthMcp.tools();

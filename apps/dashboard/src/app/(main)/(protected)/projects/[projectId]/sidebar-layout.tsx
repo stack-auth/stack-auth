@@ -24,21 +24,24 @@ import {
 } from "@stackframe/stack-ui";
 import {
   Book,
+  CreditCard,
+  FilePen,
   Globe,
   KeyRound,
+  LayoutTemplate,
   Link as LinkIcon,
   LockKeyhole,
   LucideIcon,
   Mail,
   Menu,
   Palette,
+  Receipt,
   Settings,
   Settings2,
   ShieldEllipsis,
-  SquarePen,
   User,
   Users,
-  Webhook
+  Webhook,
 } from "lucide-react";
 import { useTheme } from "next-themes";
 import { usePathname } from "next/navigation";
@@ -179,10 +182,17 @@ const navigationItems: (Label | Item | Hidden)[] = [
     type: 'item'
   },
   {
+    name: "Drafts",
+    href: "/email-drafts",
+    regex: /^\/projects\/[^\/]+\/email-drafts$/,
+    icon: FilePen,
+    type: 'item',
+  },
+  {
     name: "Templates",
     href: "/email-templates",
     regex: /^\/projects\/[^\/]+\/email-templates$/,
-    icon: SquarePen,
+    icon: LayoutTemplate,
     type: 'item'
   },
   {
@@ -191,6 +201,26 @@ const navigationItems: (Label | Item | Hidden)[] = [
     regex: /^\/projects\/[^\/]+\/email-themes$/,
     icon: Palette,
     type: 'item',
+  },
+  {
+    name: (pathname: string) => {
+      const match = pathname.match(/^\/projects\/[^\/]+\/email-drafts\/([^\/]+)$/);
+      let item;
+      let href;
+      if (match) {
+        item = <DraftBreadcrumbItem key='draft-display-name' draftId={match[1]} />;
+        href = `/email-drafts/${match[1]}`;
+      } else {
+        item = "Draft";
+        href = "";
+      }
+      return [
+        { item: "Drafts", href: "/email-drafts" },
+        { item, href },
+      ];
+    },
+    regex: /^\/projects\/[^\/]+\/email-drafts\/[^\/]+$/,
+    type: 'hidden',
   },
   {
     name: (pathname: string) => {
@@ -212,18 +242,24 @@ const navigationItems: (Label | Item | Hidden)[] = [
     regex: /^\/projects\/[^\/]+\/email-themes\/[^\/]+$/,
     type: 'hidden',
   },
-  /*
   {
     name: "Payments",
     type: 'label',
   },
   {
-    name: "Payments",
-    href: "/payments",
-    regex: /^\/projects\/[^\/]+\/payments$/,
+    name: "Offers & Items",
+    href: "/payments/offers-and-items",
+    regex: /^\/projects\/[^\/]+\/payments\/offers-and-items$/,
     icon: CreditCard,
     type: 'item',
-  },*/
+  },
+  {
+    name: "Transactions",
+    href: "/payments/transactions",
+    regex: /^\/projects\/[^\/]+\/payments\/transactions$/,
+    icon: Receipt,
+    type: 'item',
+  },
   {
     name: "Configuration",
     type: 'label'
@@ -332,6 +368,16 @@ function TemplateBreadcrumbItem(props: { templateId: string }) {
     return null;
   }
   return template.displayName;
+}
+
+function DraftBreadcrumbItem(props: { draftId: string }) {
+  const stackAdminApp = useAdminApp();
+  const drafts = stackAdminApp.useEmailDrafts();
+  const draft = drafts.find((d) => d.id === props.draftId);
+  if (!draft) {
+    return null;
+  }
+  return draft.displayName;
 }
 
 function NavItem({ item, href, onClick }: { item: Item, href: string, onClick?: () => void }) {
@@ -511,14 +557,14 @@ export default function SidebarLayout(props: { projectId: string, children?: Rea
   return (
     <div className="w-full flex">
       {/* Left Sidebar */}
-      <div className="flex-col border-r min-w-[240px] h-screen sticky top-0 hidden md:flex backdrop-blur-md bg-white/20 dark:bg-black/20 z-[10]">
+      <div className="flex-col border-r min-w-[240px] h-screen sticky top-0 hidden md:flex backdrop-blur-md bg-slate-200/20 dark:bg-black/20 z-[10]">
         <SidebarContent projectId={props.projectId} />
       </div>
 
       {/* Main Content Area */}
       <div className="flex flex-col flex-grow w-0">
         {/* Header */}
-        <div className="h-14 border-b flex items-center justify-between sticky top-0 backdrop-blur-md bg-white/20 dark:bg-black/20 z-10 px-4 md:px-6">
+        <div className="h-14 border-b flex items-center justify-between sticky top-0 backdrop-blur-md bg-slate-200/20 dark:bg-black/20 z-10 px-4 md:px-6">
           <div className="hidden md:flex">
             <HeaderBreadcrumb projectId={props.projectId} />
           </div>
@@ -558,7 +604,7 @@ export default function SidebarLayout(props: { projectId: string, children?: Rea
       </div>
 
       {/* Stack Companion - Sticky positioned like left sidebar */}
-      <div className="h-screen sticky top-0 backdrop-blur-md bg-white/20 dark:bg-black/20 z-[10]">
+      <div className="h-screen sticky top-0 backdrop-blur-md bg-slate-200/20 dark:bg-black/20 z-[10]">
         <StackCompanion onExpandedChange={setCompanionExpanded} />
       </div>
     </div>

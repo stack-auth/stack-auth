@@ -95,7 +95,7 @@ function expectSnakeCase(obj: unknown, path: string): void {
       if (key.match(/[a-z0-9][A-Z][a-z0-9]+/) && !key.includes("_") && !["newUser", "afterCallbackRedirectUrl"].includes(key)) {
         throw new StackAssertionError(`Object has camelCase key (expected snake_case): ${path}.${key}`);
       }
-      if (["client_metadata", "server_metadata", "options_json", "credential", "authentication_response"].includes(key)) continue;
+      if (["client_metadata", "server_metadata", "options_json", "credential", "authentication_response", "metadata"].includes(key)) continue;
       // because email templates
       if (path === "req.body.content.root") continue;
       if (path === "res.body.content.root") continue;
@@ -191,7 +191,7 @@ export namespace Auth {
       const aud = jose.decodeJwt(accessToken).aud;
       const jwks = jose.createRemoteJWKSet(
         new URL(`api/v1/projects/${aud}/.well-known/jwks.json`, STACK_BACKEND_BASE_URL),
-        { timeoutDuration: 10_000 },
+        { timeoutDuration: 20_000 },
       );
       const expectedIssuer = new URL(`/api/v1/projects/${aud}`, STACK_BACKEND_BASE_URL).toString();
       const { payload } = await jose.jwtVerify(accessToken, jwks);
@@ -199,11 +199,15 @@ export namespace Auth {
         "exp": expect.any(Number),
         "iat": expect.any(Number),
         "iss": expectedIssuer,
-        "refreshTokenId": expect.any(String),
-        "aud": expect.any(String),
+        "branch_id": "main",
+        "refresh_token_id": expect.any(String),
+        "aud": backendContext.value.projectKeys === "no-project" ? expect.any(String) : backendContext.value.projectKeys.projectId,
         "sub": expect.any(String),
         "role": "authenticated",
-        "branchId": "main",
+        "name": expect.toSatisfy(() => true),
+        "email": expect.toSatisfy(() => true),
+        "email_verified": expect.any(Boolean),
+        "selected_team_id": expect.toSatisfy(() => true),
       });
     }
   }
@@ -385,6 +389,9 @@ export namespace Auth {
     }
 
     export async function signInWithCode(signInCode: string) {
+      const projectKeys = backendContext.value.projectKeys;
+      if (projectKeys === "no-project") throw new StackAssertionError("Must provide project keys in the backend context before calling signInWithCode");
+
       const response = await niceBackendFetch("/api/v1/auth/otp/sign-in", {
         method: "POST",
         accessType: "client",

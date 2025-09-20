@@ -1,6 +1,7 @@
 import { generateSecureRandomString } from "@stackframe/stack-shared/dist/utils/crypto";
 import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { filterUndefined, omit } from "@stackframe/stack-shared/dist/utils/objects";
+import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { Nicifiable } from "@stackframe/stack-shared/dist/utils/strings";
 import { AsyncLocalStorage } from "node:async_hooks";
 // eslint-disable-next-line no-restricted-imports
@@ -129,7 +130,7 @@ export class NiceResponse implements Nicifiable {
     public readonly headers: Headers,
     public readonly body: any,
     public readonly fromRequestInit?: NiceRequestInit,
-  ) {}
+  ) { }
 
   getNicifiableKeys(): string[] {
     // reorder the keys for nicer printing
@@ -198,6 +199,7 @@ export const generatedEmailRegex = /[a-zA-Z0-9_.+\-]+@stack-generated\.example\.
 
 export class Mailbox {
   public readonly fetchMessages: (options?: { noBody?: boolean }) => Promise<MailboxMessage[]>;
+  public readonly waitForMessagesWithSubject: (subject: string) => Promise<MailboxMessage[]>;
 
   constructor(
     disclaimer: "USE_CREATE_MAILBOX_FUNCTION_INSTEAD",
@@ -205,6 +207,7 @@ export class Mailbox {
   ) {
     const mailboxName = emailAddress.split("@")[0];
     const fullMessageCache = new Map<string, any>();
+
     this.fetchMessages = async ({ noBody } = {}) => {
       const res = await niceFetch(new URL(`/api/v1/mailbox/${encodeURIComponent(mailboxName)}`, INBUCKET_API_URL));
       return await Promise.all((res.body as any[]).map(async (message) => {
@@ -219,6 +222,19 @@ export class Mailbox {
         const messagePart = noBody ? omit(fullMessage, ["body", "attachments"]) : fullMessage;
         return new MailboxMessage(messagePart);
       }));
+    };
+
+    this.waitForMessagesWithSubject = async (subject: string) => {
+      const maxRetries = 20;
+      for (let i = 0; i < maxRetries; i++) {
+        const messages = await this.fetchMessages();
+        const withSubject = messages.filter(m => m.subject === subject);
+        if (withSubject.length > 0) {
+          return withSubject;
+        }
+        await wait(500);
+      }
+      throw new Error(`Message with subject ${subject} not found`);
     };
   }
 }

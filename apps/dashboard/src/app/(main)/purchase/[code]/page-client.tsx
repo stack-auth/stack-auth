@@ -73,6 +73,12 @@ export default function PageClient({ code }: { code: string }) {
     return rawAmountCents;
   }, [unitCents, rawAmountCents, isTooLarge, MAX_STRIPE_AMOUNT_CENTS]);
 
+  const elementsMode = useMemo<"subscription" | "payment">(() => {
+    if (!selectedPriceId || !data?.offer?.prices) return "subscription";
+    const price = data.offer.prices[selectedPriceId];
+    return price.interval ? "subscription" : "payment";
+  }, [data, selectedPriceId]);
+
   const shortenedInterval = (interval: [number, string]) => {
     if (interval[0] === 1) {
       return interval[1];
@@ -269,6 +275,7 @@ export default function PageClient({ code }: { code: string }) {
           <StripeElementsProvider
             stripeAccountId={data.stripe_account_id}
             amount={elementsAmountCents}
+            mode={elementsMode}
           >
             <CheckoutForm
               fullCode={code}

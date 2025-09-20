@@ -114,10 +114,10 @@ export default function SetupPage(props: { toMetrics: () => void }) {
     },
     {
       step: 4,
-      title: "Create stack.ts file",
+      title: "Create stack/client.ts file",
       content: <>
         <Typography>
-          Create a new file called <InlineCode>stack.ts</InlineCode> and add the following code. Here we use react-router-dom as an example.
+          Create a new file called <InlineCode>stack/client.ts</InlineCode> and add the following code. Here we use react-router-dom as an example.
         </Typography>
         <CodeBlock
           language="tsx"
@@ -135,7 +135,7 @@ export default function SetupPage(props: { toMetrics: () => void }) {
               }
             });
           `}
-          title="stack.ts"
+          title="stack/client.ts"
           icon="code"
         />
       </>
@@ -154,7 +154,7 @@ export default function SetupPage(props: { toMetrics: () => void }) {
             import { StackHandler, StackProvider, StackTheme } from "@stackframe/react";
             import { Suspense } from "react";
             import { BrowserRouter, Route, Routes, useLocation } from "react-router-dom";
-            import { stackClientApp } from "./stack";
+            import { stackClientApp } from "./stack/client";
 
             function HandlerRoutes() {
               const location = useLocation();
@@ -427,7 +427,7 @@ export default function SetupPage(props: { toMetrics: () => void }) {
           <X className="w-4 h-4 ml-1 mt-0.5" />
         </Button>
       </div>
-      <div className="flex gap-4 justify-center items-center border rounded-2xl py-4 px-8 backdrop-blur-md bg-white/20 dark:bg-black/20">
+      <div className="flex gap-4 justify-center items-center border rounded-2xl py-4 px-8 backdrop-blur-md bg-slate-200/20 dark:bg-black/20">
         <GlobeIllustration />
 
         <div className="flex flex-col gap-4">

@@ -3,6 +3,7 @@ import { CustomSearchDialog } from '@/components/layout/custom-search-dialog';
 import { SearchInputToggle } from '@/components/layout/custom-search-toggle';
 import Waves from '@/components/layouts/api/waves';
 import { type NavLink } from '@/lib/navigation-utils';
+import { UserButton } from '@stackframe/stack';
 import { Key, Menu, Sparkles, TableOfContents, X } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
@@ -342,6 +343,11 @@ export function SharedHeader({
             <AIChatToggleButton />
           </div>
 
+          {/* User Button */}
+          <div className="hidden md:block">
+            <UserButton />
+          </div>
+
           {/* Mobile Hamburger Menu - Shown on mobile */}
           <div className="flex lg:hidden">
             <button
@@ -392,6 +398,14 @@ export function SharedHeader({
                       </Link>
                     );
                   })}
+                </div>
+              </div>
+
+              {/* User Authentication */}
+              <div>
+                <h2 className="text-lg font-semibold text-fd-foreground mb-4">Account</h2>
+                <div className="flex justify-center">
+                  <UserButton />
                 </div>
               </div>
 

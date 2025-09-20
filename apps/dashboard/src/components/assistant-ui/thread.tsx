@@ -78,7 +78,7 @@ const ThreadWelcome: FC = () => {
             How can I help you today?
           </p>
         </div>
-        <ThreadWelcomeSuggestions />
+        {/* <ThreadWelcomeSuggestions /> */}
       </div>
     </ThreadPrimitive.Empty>
   );

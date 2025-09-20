@@ -1,13 +1,12 @@
 import { purchaseUrlVerificationCodeHandler } from "@/app/api/latest/payments/purchases/verification-code-handler";
-import { isActiveSubscription, validatePurchaseSession } from "@/lib/payments";
+import { validatePurchaseSession } from "@/lib/payments";
 import { getStripeForAccount } from "@/lib/stripe";
-import { getPrismaClientForTenancy, retryTransaction } from "@/prisma-client";
+import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { SubscriptionCreationSource, SubscriptionStatus } from "@prisma/client";
+import { SubscriptionStatus } from "@prisma/client";
 import { adaptSchema, adminAuthTypeSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { addInterval } from "@stackframe/stack-shared/dist/utils/dates";
-import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
-import { typedKeys } from "@stackframe/stack-shared/dist/utils/objects";
+import { StackAssertionError, StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 import { typedToUppercase } from "@stackframe/stack-shared/dist/utils/strings";
 
 export const POST = createSmartRouteHandler({
@@ -37,65 +36,51 @@ export const POST = createSmartRouteHandler({
       throw new StatusError(400, "Tenancy id does not match value from code data");
     }
     const prisma = await getPrismaClientForTenancy(auth.tenancy);
-    const { selectedPrice, groupId, subscriptions } = await validatePurchaseSession({
+
+    const { selectedPrice, conflictingGroupSubscriptions } = await validatePurchaseSession({
       prisma,
       tenancy: auth.tenancy,
       codeData: data,
       priceId: price_id,
       quantity,
     });
-    if (groupId) {
-      for (const subscription of subscriptions) {
-        if (
-          subscription.id &&
-          subscription.offerId &&
-          subscription.offer.groupId === groupId &&
-          isActiveSubscription(subscription) &&
-          subscription.offer.prices !== "include-by-default" &&
-          (!data.offer.isAddOnTo || !typedKeys(data.offer.isAddOnTo).includes(subscription.offerId))
-        ) {
-          if (!selectedPrice?.interval) {
-            continue;
-          }
-          if (subscription.stripeSubscriptionId) {
-            const stripe = await getStripeForAccount({ tenancy: auth.tenancy });
-            await stripe.subscriptions.cancel(subscription.stripeSubscriptionId);
-          }
-          await retryTransaction(prisma, async (tx) => {
-            if (!subscription.stripeSubscriptionId && subscription.id) {
-              await tx.subscription.update({
-                where: {
-                  tenancyId_id: {
-                    tenancyId: auth.tenancy.id,
-                    id: subscription.id,
-                  },
-                },
-                data: {
-                  status: SubscriptionStatus.canceled,
-                },
-              });
-            }
-            await tx.subscription.create({
-              data: {
+    if (!selectedPrice) {
+      throw new StackAssertionError("Price not resolved for test mode purchase session");
+    }
+
+    if (!selectedPrice.interval) {
+      await prisma.oneTimePurchase.create({
+        data: {
+          tenancyId: auth.tenancy.id,
+          customerId: data.customerId,
+          customerType: typedToUppercase(data.offer.customerType),
+          offerId: data.offerId,
+          priceId: price_id,
+          offer: data.offer,
+          quantity,
+          creationSource: "TEST_MODE",
+        },
+      });
+    } else {
+      // Cancel conflicting subscriptions for TEST_MODE as well, then create new TEST_MODE subscription
+      if (conflictingGroupSubscriptions.length > 0) {
+        const conflicting = conflictingGroupSubscriptions[0];
+        if (conflicting.stripeSubscriptionId) {
+          const stripe = await getStripeForAccount({ tenancy: auth.tenancy });
+          await stripe.subscriptions.cancel(conflicting.stripeSubscriptionId);
+        } else if (conflicting.id) {
+          await prisma.subscription.update({
+            where: {
+              tenancyId_id: {
                 tenancyId: auth.tenancy.id,
-                customerId: data.customerId,
-                customerType: typedToUppercase(data.offer.customerType),
-                status: SubscriptionStatus.active,
-                offerId: data.offerId,
-                offer: data.offer,
-                quantity,
-                currentPeriodStart: new Date(),
-                currentPeriodEnd: addInterval(new Date(), selectedPrice.interval!),
-                cancelAtPeriodEnd: false,
-                creationSource: SubscriptionCreationSource.TEST_MODE,
+                id: conflicting.id,
               },
-            });
+            },
+            data: { status: SubscriptionStatus.canceled },
           });
         }
       }
-    }
 
-    if (selectedPrice?.interval) {
       await prisma.subscription.create({
         data: {
           tenancyId: auth.tenancy.id,
@@ -103,12 +88,13 @@ export const POST = createSmartRouteHandler({
           customerType: typedToUppercase(data.offer.customerType),
           status: "active",
           offerId: data.offerId,
+          priceId: price_id,
           offer: data.offer,
           quantity,
           currentPeriodStart: new Date(),
-          currentPeriodEnd: addInterval(new Date(), selectedPrice.interval),
+          currentPeriodEnd: addInterval(new Date(), selectedPrice.interval!),
           cancelAtPeriodEnd: false,
-          creationSource: SubscriptionCreationSource.TEST_MODE,
+          creationSource: "TEST_MODE",
         },
       });
     }
