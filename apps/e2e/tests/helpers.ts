@@ -232,7 +232,7 @@ export class Mailbox {
         if (withSubject.length > 0) {
           return withSubject;
         }
-        await wait(200);
+        await wait(500);
       }
       throw new Error(`Message with subject ${subject} not found`);
     };
