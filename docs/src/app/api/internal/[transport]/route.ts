@@ -236,6 +236,42 @@ const handler = createMcpHandler(
         }
       }
     );
+    server.tool(
+      "get_stack_auth_setup_instructions",
+      "Use this tool when the user wants to set up authentication in a new project. It provides step-by-step instructions for installing and configuring Stack Auth authentication.",
+      {},
+      async ({}) => {
+        nodeClient?.capture({
+          event: "get_stack_auth_setup_instructions",
+          properties: {},
+          distinctId: "mcp-handler",
+        });
+
+        try {
+          const instructionsPath = "content/setup-instructions.md";
+          const instructions = await readFile(instructionsPath, "utf-8");
+
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: instructions,
+              },
+            ],
+          };
+        } catch (error) {
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: `Error reading setup instructions: ${error instanceof Error ? error.message : "Unknown error"}`,
+              },
+            ],
+            isError: true,
+          };
+        }
+      }
+    );
   },
   {
     capabilities: {
@@ -256,6 +292,15 @@ const handler = createMcpHandler(
               },
             },
             required: ["id"],
+          },
+        },
+        getStackAuthSetupInstructions: {
+          description:
+            "Use this tool when the user wants to set up Stack Auth in a new project. It provides step-by-step instructions for installing and configuring Stack Auth authentication, including environment setup, file scaffolding, and verification steps.",
+          parameters: {
+            type: "object",
+            properties: {},
+            required: [],
           },
         },
       },
