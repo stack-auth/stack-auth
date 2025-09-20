@@ -134,8 +134,9 @@ function IntervalPopover({
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger>
-        <div className="text-xs px-2 py-0.5 rounded bg-muted text-muted-foreground cursor-pointer select-none">
+        <div className="text-xs px-2 py-0.5 rounded bg-muted text-muted-foreground cursor-pointer select-none flex items-center gap-1">
           {triggerLabel}
+          <ChevronsUpDown className="h-4 w-4" />
         </div>
       </PopoverTrigger>
       <PopoverContent align="start" className="w-60 p-2">
@@ -441,8 +442,9 @@ function OfferItemRow({
         <div className="flex flex-row">
           <Popover open={itemSelectOpen} onOpenChange={setItemSelectOpen}>
             <PopoverTrigger>
-              <div className="text-sm px-2 py-0.5 rounded bg-muted hover:bg-muted/70 cursor-pointer select-none">
+              <div className="text-sm px-2 py-0.5 rounded bg-muted hover:bg-muted/70 cursor-pointer select-none flex items-center gap-1">
                 {itemDisplayName}
+                <ChevronsUpDown className="h-4 w-4" />
               </div>
             </PopoverTrigger>
             <PopoverContent align="start" className="w-72 p-2">
@@ -597,14 +599,15 @@ function OfferItemRow({
             }
           </div >
           <CollapsibleContent>
-            <div className="mt-2 pl-7 space-y-2">
-              <div className="text-xs text-muted-foreground">{item.expires !== 'never' ? `Expires: ${String(item.expires).replace(/-/g, ' ')}` : 'Never expires'}</div>
+            <div className="mt-2 space-y-2">
+              <div className="text-xs pl-7 text-muted-foreground">{item.expires !== 'never' ? `Expires: ${String(item.expires).replace(/-/g, ' ')}` : 'Never expires'}</div>
               <div className="text-xs">
                 <CodeBlock
                   language="typescript"
                   content={`const item = await ${activeType === "user" ? "user" : "team"}.getItemCount("${itemId}");\n`}
                   title="Example"
                   icon="code"
+                  compact
                 />
               </div>
             </div>
@@ -1023,6 +1026,7 @@ function OfferCard({ id, activeType, offer, allOffers, existingItems, onSave, on
             content={`const checkoutUrl = await ${activeType === "user" ? "user" : "team"}.createCheckoutUrl({ offerId: "${id}" });\nwindow.open(checkoutUrl, "_blank");`}
             title="Checkout"
             icon="code"
+            compact
           />
         </div>
       )}
