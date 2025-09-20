@@ -62,7 +62,7 @@ const TabsContent = React.forwardRef<
     {...props}
     className={cn(
       "relative p-3 text-sm bg-fd-background outline-none",
-      "before:absolute before:inset-0 before:opacity-0 before:transition-opacity before:duration-300",
+      "before:absolute before:inset-0 before:opacity-0 before:transition-opacity before:duration-300 before:pointer-events-none",
       "focus-visible:before:opacity-100",
       props.className,
     )}

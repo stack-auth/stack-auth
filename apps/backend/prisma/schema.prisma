@@ -673,6 +673,29 @@ model SentEmail {
   @@id([tenancyId, id])
 }
 
+model EmailDraft {
+  tenancyId String @db.Uuid
+
+  id String @default(uuid()) @db.Uuid
+
+  displayName String
+  themeMode   DraftThemeMode @default(PROJECT_DEFAULT)
+  themeId     String?
+  tsxSource   String
+  sentAt      DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@id([tenancyId, id])
+}
+
+enum DraftThemeMode {
+  PROJECT_DEFAULT
+  NONE
+  CUSTOM
+}
+
 model CliAuthAttempt {
   tenancyId String @db.Uuid
 
@@ -730,7 +753,7 @@ enum SubscriptionStatus {
   unpaid
 }
 
-enum SubscriptionCreationSource {
+enum PurchaseCreationSource {
   PURCHASE_PAGE
   TEST_MODE
 }
@@ -741,6 +764,7 @@ model Subscription {
   customerId   String
   customerType CustomerType
   offerId      String?
+  priceId      String?
   offer        Json
   quantity     Int          @default(1)
 
@@ -750,26 +774,44 @@ model Subscription {
   currentPeriodStart   DateTime
   cancelAtPeriodEnd    Boolean
 
-  creationSource SubscriptionCreationSource
-  createdAt      DateTime                   @default(now())
-  updatedAt      DateTime                   @updatedAt
+  creationSource PurchaseCreationSource
+  createdAt      DateTime               @default(now())
+  updatedAt      DateTime               @updatedAt
 
   @@id([tenancyId, id])
   @@unique([tenancyId, stripeSubscriptionId])
 }
 
 model ItemQuantityChange {
-  id          String    @default(uuid()) @db.Uuid
-  tenancyId   String    @db.Uuid
-  customerId  String
-  itemId      String
-  quantity    Int
-  description String?
-  expiresAt   DateTime?
-  createdAt   DateTime  @default(now())
+  id           String       @default(uuid()) @db.Uuid
+  tenancyId    String       @db.Uuid
+  customerId   String
+  customerType CustomerType
+  itemId       String
+  quantity     Int
+  description  String?
+  expiresAt    DateTime?
+  createdAt    DateTime     @default(now())
 
   @@id([tenancyId, id])
   @@index([tenancyId, customerId, expiresAt])
+}
+
+model OneTimePurchase {
+  id                    String                 @default(uuid()) @db.Uuid
+  tenancyId             String                 @db.Uuid
+  customerId            String
+  customerType          CustomerType
+  offerId               String?
+  priceId               String?
+  offer                 Json
+  quantity              Int
+  stripePaymentIntentId String?
+  createdAt             DateTime               @default(now())
+  creationSource        PurchaseCreationSource
+
+  @@id([tenancyId, id])
+  @@unique([tenancyId, stripePaymentIntentId])
 }
 
 model DataVaultEntry {

@@ -161,6 +161,25 @@ export async function getItemQuantityForCustomer(options: {
       expirationTime: c.expiresAt ?? FAR_FUTURE_DATE,
     });
   }
+  const oneTimePurchases = await options.prisma.oneTimePurchase.findMany({
+    where: {
+      tenancyId: options.tenancy.id,
+      customerId: options.customerId,
+      customerType: typedToUppercase(options.customerType),
+    },
+  });
+  for (const p of oneTimePurchases) {
+    const offer = p.offer as yup.InferType<typeof offerSchema>;
+    const inc = getOrUndefined(offer.includedItems, options.itemId);
+    if (!inc) continue;
+    const baseQty = inc.quantity * p.quantity;
+    if (baseQty <= 0) continue;
+    transactions.push({
+      amount: baseQty,
+      grantTime: p.createdAt,
+      expirationTime: FAR_FUTURE_DATE,
+    });
+  }
 
   // Subscriptions → ledger entries
   const subscriptions = await getSubscriptions({
@@ -361,21 +380,37 @@ export async function validatePurchaseSession(options: {
   conflictingGroupSubscriptions: Subscription[],
 }> {
   const { prisma, tenancy, codeData, priceId, quantity } = options;
-
   const offer = codeData.offer;
+  await ensureCustomerExists({
+    prisma,
+    tenancyId: tenancy.id,
+    customerType: offer.customerType,
+    customerId: codeData.customerId,
+  });
+
   let selectedPrice: SelectedPrice | undefined = undefined;
   if (offer.prices !== "include-by-default") {
     const pricesMap = new Map(typedEntries(offer.prices));
-    selectedPrice = pricesMap.get(priceId) as SelectedPrice | undefined;
+    selectedPrice = pricesMap.get(priceId);
     if (!selectedPrice) {
       throw new StatusError(400, "Price not found on offer associated with this purchase code");
-    }
-    if (!selectedPrice.interval) {
-      throw new StackAssertionError("unimplemented; prices without an interval are currently not supported");
     }
   }
   if (quantity !== 1 && offer.stackable !== true) {
     throw new StatusError(400, "This offer is not stackable; quantity must be 1");
+  }
+
+  // Block based on prior one-time purchases for same customer and customerType
+  const existingOneTimePurchases = await prisma.oneTimePurchase.findMany({
+    where: {
+      tenancyId: tenancy.id,
+      customerId: codeData.customerId,
+      customerType: typedToUppercase(offer.customerType),
+    },
+  });
+
+  if (codeData.offerId && existingOneTimePurchases.some((p) => p.offerId === codeData.offerId)) {
+    throw new StatusError(400, "Customer already has a one-time purchase for this offer");
   }
 
   const subscriptions = await getSubscriptions({
@@ -384,23 +419,37 @@ export async function validatePurchaseSession(options: {
     customerType: offer.customerType,
     customerId: codeData.customerId,
   });
-
   if (subscriptions.find((s) => s.offerId === codeData.offerId) && offer.stackable !== true) {
     throw new StatusError(400, "Customer already has a subscription for this offer; this offer is not stackable");
+  }
+  const addOnOfferIds = offer.isAddOnTo ? typedKeys(offer.isAddOnTo) : [];
+  if (offer.isAddOnTo && !subscriptions.some((s) => s.offerId && addOnOfferIds.includes(s.offerId))) {
+    throw new StatusError(400, "This offer is an add-on to an offer that the customer does not have");
   }
 
   const groups = tenancy.config.payments.groups;
   const groupId = typedKeys(groups).find((g) => offer.groupId === g);
 
+  // Block purchasing any offer in the same group if a one-time purchase exists in that group
+  if (groupId) {
+    const hasOneTimeInGroup = existingOneTimePurchases.some((p) => {
+      const offer = p.offer as yup.InferType<typeof offerSchema>;
+      return offer.groupId === groupId;
+    });
+    if (hasOneTimeInGroup) {
+      throw new StatusError(400, "Customer already has a one-time purchase in this offer group");
+    }
+  }
+
   let conflictingGroupSubscriptions: Subscription[] = [];
-  if (groupId && selectedPrice?.interval) {
+  if (groupId) {
     conflictingGroupSubscriptions = subscriptions.filter((subscription) => (
       subscription.id &&
       subscription.offerId &&
       subscription.offer.groupId === groupId &&
       isActiveSubscription(subscription) &&
       subscription.offer.prices !== "include-by-default" &&
-      (!offer.isAddOnTo || !typedKeys(offer.isAddOnTo).includes(subscription.offerId))
+      (!offer.isAddOnTo || !addOnOfferIds.includes(subscription.offerId))
     ));
   }
 

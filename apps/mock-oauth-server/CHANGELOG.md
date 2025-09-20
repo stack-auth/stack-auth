@@ -1,5 +1,7 @@
 # @stackframe/mock-oauth-server
 
+## 2.8.38
+
 ## 2.8.37
 
 ## 2.8.36

@@ -91,7 +91,7 @@ To avoid showing the authorization page twice, you can already request scopes du
 
 To do this, edit the `oauthScopesOnSignIn` setting of your `stackServerApp`:
 
-```jsx title='stack.ts'
+```jsx title='stack/server.ts'
 export const stackServerApp = new StackServerApp({
   // ...your other settings...
   oauthScopesOnSignIn: {

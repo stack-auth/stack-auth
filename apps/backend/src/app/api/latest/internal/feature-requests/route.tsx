@@ -72,9 +72,15 @@ export const GET = createSmartRouteHandler({
 
     const posts = data.results || [];
 
+    // Filter out posts that have been merged into other posts or are completed
+    const activePosts = posts.filter((post: any) =>
+      !post.mergedToSubmissionId &&
+      post.postStatus?.type !== 'completed'
+    );
+
     // Check upvote status for each post for the current user using Featurebase email
     const postsWithUpvoteStatus = await Promise.all(
-      posts.map(async (post: any) => {
+      activePosts.map(async (post: any) => {
         let userHasUpvoted = false;
 
         const upvoteResponse = await fetch(`https://do.featurebase.app/v2/posts/upvoters?submissionId=${post.id}`, {

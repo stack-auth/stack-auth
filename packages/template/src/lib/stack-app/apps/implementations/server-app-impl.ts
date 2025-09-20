@@ -2,6 +2,7 @@ import { KnownErrors, StackServerInterface } from "@stackframe/stack-shared";
 import { ContactChannelsCrud } from "@stackframe/stack-shared/dist/interface/crud/contact-channels";
 import { ItemCrud } from "@stackframe/stack-shared/dist/interface/crud/items";
 import { NotificationPreferenceCrud } from "@stackframe/stack-shared/dist/interface/crud/notification-preferences";
+import { OAuthProviderCrud } from "@stackframe/stack-shared/dist/interface/crud/oauth-providers";
 import { TeamApiKeysCrud, UserApiKeysCrud, teamApiKeysCreateOutputSchema, userApiKeysCreateOutputSchema } from "@stackframe/stack-shared/dist/interface/crud/project-api-keys";
 import { ProjectPermissionDefinitionsCrud, ProjectPermissionsCrud } from "@stackframe/stack-shared/dist/interface/crud/project-permissions";
 import { TeamInvitationCrud } from "@stackframe/stack-shared/dist/interface/crud/team-invitation";
@@ -29,7 +30,7 @@ import { SendEmailOptions } from "../../email";
 import { NotificationCategory } from "../../notification-categories";
 import { AdminProjectPermissionDefinition, AdminTeamPermission, AdminTeamPermissionDefinition } from "../../permissions";
 import { EditableTeamMemberProfile, ServerListUsersOptions, ServerTeam, ServerTeamCreateOptions, ServerTeamUpdateOptions, ServerTeamUser, Team, TeamInvitation, serverTeamCreateOptionsToCrud, serverTeamUpdateOptionsToCrud } from "../../teams";
-import { ProjectCurrentServerUser, ServerUser, ServerUserCreateOptions, ServerUserUpdateOptions, serverUserCreateOptionsToCrud, serverUserUpdateOptionsToCrud } from "../../users";
+import { ProjectCurrentServerUser, ServerOAuthProvider, ServerUser, ServerUserCreateOptions, ServerUserUpdateOptions, serverUserCreateOptionsToCrud, serverUserUpdateOptionsToCrud } from "../../users";
 import { StackServerAppConstructorOptions } from "../interfaces/server-app";
 import { _StackClientAppImplIncomplete } from "./client-app-impl";
 import { clientVersion, createCache, createCacheBySession, getBaseUrl, getDefaultExtraRequestHeaders, getDefaultProjectId, getDefaultPublishableClientKey, getDefaultSecretServerKey } from "./common";
@@ -161,6 +162,12 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
     return result;
   });
 
+  private readonly _serverOAuthProvidersCache = createCache<[string], OAuthProviderCrud['Server']['Read'][]>(
+    async ([userId]) => {
+      return await this._interface.listServerOAuthProviders({ user_id: userId });
+    }
+  );
+
   private readonly _serverTeamItemsCache = createCache<[string, string], ItemCrud['Client']['Read']>(
     async ([teamId, itemId]) => {
       return await this._interface.getItem({ teamId, itemId }, null);
@@ -244,6 +251,44 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
       async setEnabled(enabled: boolean) {
         await app._interface.setServerNotificationsEnabled(userId, crud.notification_category_id, enabled);
         await app._serverNotificationCategoriesCache.refresh([userId]);
+      },
+    };
+  }
+
+  protected _serverOAuthProviderFromCrud(crud: OAuthProviderCrud['Server']['Read']) {
+    const app = this;
+    return {
+      id: crud.id,
+      type: crud.type,
+      userId: crud.user_id,
+      accountId: crud.account_id,
+      email: crud.email,
+      allowSignIn: crud.allow_sign_in,
+      allowConnectedAccounts: crud.allow_connected_accounts,
+
+      async update(data: { accountId?: string, email?: string, allowSignIn?: boolean, allowConnectedAccounts?: boolean }): Promise<Result<void,
+        InstanceType<typeof KnownErrors.OAuthProviderAccountIdAlreadyUsedForSignIn>
+      >> {
+        try {
+          await app._interface.updateServerOAuthProvider(crud.user_id, crud.id, {
+            account_id: data.accountId,
+            email: data.email,
+            allow_sign_in: data.allowSignIn,
+            allow_connected_accounts: data.allowConnectedAccounts,
+          });
+          await app._serverOAuthProvidersCache.refresh([crud.user_id]);
+          return Result.ok(undefined);
+        } catch (error) {
+          if (KnownErrors.OAuthProviderAccountIdAlreadyUsedForSignIn.isInstance(error)) {
+            return Result.error(error);
+          }
+          throw error;
+        }
+      },
+
+      async delete() {
+        await app._interface.deleteServerOAuthProvider(crud.user_id, crud.id);
+        await app._serverOAuthProvidersCache.refresh([crud.user_id]);
       },
     };
   }
@@ -578,6 +623,28 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
         );
         await app._serverUserApiKeysCache.refresh([crud.id]);
         return app._serverApiKeyFromCrud(result);
+      },
+      // IF_PLATFORM react-like
+      useOAuthProviders() {
+        const results = useAsyncCache(app._serverOAuthProvidersCache, [crud.id] as const, "user.useOAuthProviders()");
+        return useMemo(() => results.map((oauthCrud) => app._serverOAuthProviderFromCrud(oauthCrud)), [results]);
+      },
+      // END_PLATFORM
+
+      async listOAuthProviders() {
+        const results = Result.orThrow(await app._serverOAuthProvidersCache.getOrWait([crud.id], "write-only"));
+        return results.map((oauthCrud) => app._serverOAuthProviderFromCrud(oauthCrud));
+      },
+
+      // IF_PLATFORM react-like
+      useOAuthProvider(id: string) {
+        const providers = this.useOAuthProviders();
+        return useMemo(() => providers.find((p) => p.id === id) ?? null, [providers, id]);
+      },
+      // END_PLATFORM
+      async getOAuthProvider(id: string) {
+        const providers = await this.listOAuthProviders();
+        return providers.find((p) => p.id === id) ?? null;
       },
       async createCheckoutUrl(options: { offerId: string } | { offer: InlineOffer }) {
         const offerIdOrInline = "offerId" in options ? options.offerId : options.offer;
@@ -1133,6 +1200,35 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
       this._serverUserCache.refreshWhere(() => true),
       this._serverUsersCache.refreshWhere(() => true),
       this._serverContactChannelsCache.refreshWhere(() => true),
+      this._serverOAuthProvidersCache.refreshWhere(() => true),
     ]);
+  }
+
+  async createOAuthProvider(options: {
+    userId: string,
+    providerConfigId: string,
+    accountId: string,
+    email: string,
+    allowSignIn: boolean,
+    allowConnectedAccounts: boolean,
+  }): Promise<Result<ServerOAuthProvider, InstanceType<typeof KnownErrors.OAuthProviderAccountIdAlreadyUsedForSignIn>>> {
+    try {
+      const crud = await this._interface.createServerOAuthProvider({
+        user_id: options.userId,
+        provider_config_id: options.providerConfigId,
+        account_id: options.accountId,
+        email: options.email,
+        allow_sign_in: options.allowSignIn,
+        allow_connected_accounts: options.allowConnectedAccounts,
+      });
+
+      await this._serverOAuthProvidersCache.refresh([options.userId]);
+      return Result.ok(this._serverOAuthProviderFromCrud(crud));
+    } catch (error) {
+      if (KnownErrors.OAuthProviderAccountIdAlreadyUsedForSignIn.isInstance(error)) {
+        return Result.error(error);
+      }
+      throw error;
+    }
   }
 }

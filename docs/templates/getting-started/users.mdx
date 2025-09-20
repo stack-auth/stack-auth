@@ -30,10 +30,10 @@ Sometimes, you want to retrieve the user only if they're signed in, and redirect
 
 ## Server Component basics
 
-Since `useUser()` is a stateful hook, you can't use it on server components. Instead, you can import `stackServerApp` from `stack.ts` and call `getUser()`:
+Since `useUser()` is a stateful hook, you can't use it on server components. Instead, you can import `stackServerApp` from `stack/client.ts` and call `getUser()`:
 
 ```tsx title="my-server-component.tsx"
-import { stackServerApp } from "@/stack";
+import { stackServerApp } from "@/stack/server";
 
 export default async function MyServerComponent() {
   const user = await stackServerApp.getUser();  // or: stackServerApp.getUser({ or: "redirect" })
@@ -76,7 +76,7 @@ Middleware can be used whenever it is easy to tell whether a page should be prot
 
   <TabsContent value="server">
     ```tsx title="my-protected-server-component.tsx"
-    import { stackServerApp } from "@/stack";
+    import { stackServerApp } from "@/stack/server";
 
     export default async function MyProtectedServerComponent() {
       await stackServerApp.getUser({ or: 'redirect' });
@@ -164,7 +164,7 @@ You can sign out the user by redirecting them to `/handler/sign-out` or simply b
 
   <TabsContent value="redirect">
     ```tsx title="sign-out-link.tsx"
-    import { stackServerApp } from "@/stack";
+    import { stackServerApp } from "@/stack/server";
 
     export default async function SignOutLink() {
       // stackServerApp.urls.signOut is equal to /handler/sign-out
@@ -216,7 +216,7 @@ Stack automatically creates a user profile on sign-up. Let's build a page that d
 
   <TabsContent value="server">
     ```tsx title="app/profile/page.tsx"
-    import { stackServerApp } from "@/stack";
+    import { stackServerApp } from "@/stack/server";
     import { UserButton } from "@stackframe/stack";
 
     export default async function Page() {

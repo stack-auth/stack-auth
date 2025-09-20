@@ -1,6 +1,6 @@
 {
   "name": "@stackframe/stack-shared",
-  "version": "2.8.37",
+  "version": "2.8.38",
   "scripts": {
     "build": "rimraf dist && tsup-node",
     "typecheck": "tsc --noEmit",
@@ -69,7 +69,7 @@
     "uuid": "^9.0.1"
   },
   "devDependencies": {
-    "@sentry/nextjs": "^8.40.0",
+    "@sentry/nextjs": "^10.11.0",
     "@simplewebauthn/types": "^11.0.0",
     "@types/bcryptjs": "^3.0.0",
     "@types/elliptic": "^6.4.18",

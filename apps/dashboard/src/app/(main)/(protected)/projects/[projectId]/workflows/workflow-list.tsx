@@ -1,10 +1,9 @@
 import { useRouter } from "@/components/router";
 import { cn } from "@/lib/utils";
-import { Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, toast } from "@stackframe/stack-ui";
+import { Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@stackframe/stack-ui";
 import { MoreVertical } from "lucide-react";
 import { useState } from "react";
-import { ListSection } from "../payments/list-section";
-import { useAdminApp } from "../use-admin-app";
+import { ListSection } from "../payments/offers-and-items/list-section";
 
 type Workflow = {
   id: string,

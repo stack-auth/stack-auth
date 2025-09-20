@@ -20,6 +20,7 @@ import { ContactChannelsCrud } from './crud/contact-channels';
 import { CurrentUserCrud } from './crud/current-user';
 import { ItemCrud } from './crud/items';
 import { NotificationPreferenceCrud } from './crud/notification-preferences';
+import { OAuthProviderCrud } from './crud/oauth-providers';
 import { TeamApiKeysCrud, UserApiKeysCrud, teamApiKeysCreateInputSchema, teamApiKeysCreateOutputSchema, userApiKeysCreateInputSchema, userApiKeysCreateOutputSchema } from './crud/project-api-keys';
 import { ProjectPermissionsCrud } from './crud/project-permissions';
 import { AdminUserProjectsCrud, ClientProjectsCrud } from './crud/projects';
@@ -982,11 +983,8 @@ export class StackClientInterface {
     if (options.afterCallbackRedirectUrl) {
       url.searchParams.set("after_callback_redirect_url", options.afterCallbackRedirectUrl);
     }
-
-    if (options.type === "link") {
-      if (options.providerScope) {
-        url.searchParams.set("provider_scope", options.providerScope);
-      }
+    if (options.providerScope) {
+      url.searchParams.set("provider_scope", options.providerScope);
     }
 
     return url.toString();
@@ -1680,53 +1678,51 @@ export class StackClientInterface {
   async getOAuthProvider(
     userId: string,
     providerId: string,
-    session: InternalSession | null,
-    requestType: "client" | "server" | "admin" = "client",
-  ): Promise<{
-    id: string,
-    type: string,
-    user_id: string,
-    account_id?: string,
-    email: string,
-    allow_sign_in: boolean,
-    allow_connected_accounts: boolean,
-  }> {
-    const sendRequest = requestType === "client" ? this.sendClientRequest : (this as any).sendServerRequest;
-    const response = await sendRequest.call(this,
+    session: InternalSession,
+  ): Promise<OAuthProviderCrud['Client']['Read']> {
+    const response = await this.sendClientRequest(
       `/oauth-providers/${userId}/${providerId}`,
       {
         method: "GET",
       },
       session,
-      requestType,
     );
-    return response.json();
+    return await response.json();
+  }
+
+  async updateOAuthProvider(
+    userId: string,
+    providerId: string,
+    data: OAuthProviderCrud['Client']['Update'],
+    session: InternalSession,
+  ): Promise<OAuthProviderCrud['Client']['Read']> {
+    const response = await this.sendClientRequest(
+      `/oauth-providers/${userId}/${providerId}`,
+      {
+        method: "PATCH",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify(data),
+      },
+      session,
+    );
+    return await response.json();
   }
 
   async listOAuthProviders(
     options: {
       user_id?: string,
     } = {},
-    session: InternalSession | null,
-    requestType: "client" | "server" | "admin" = "client",
-  ): Promise<{
-    id: string,
-    type: string,
-    user_id: string,
-    account_id?: string,
-    email: string,
-    allow_sign_in: boolean,
-    allow_connected_accounts: boolean,
-  }[]> {
-    const sendRequest = requestType === "client" ? this.sendClientRequest : (this as any).sendServerRequest;
+    session: InternalSession,
+  ): Promise<OAuthProviderCrud['Client']['Read'][]> {
     const queryParams = new URLSearchParams(filterUndefined(options));
-    const response = await sendRequest.call(this,
+    const response = await this.sendClientRequest(
       `/oauth-providers${queryParams.toString() ? `?${queryParams.toString()}` : ''}`,
       {
         method: "GET",
       },
       session,
-      requestType,
     );
     const result = await response.json();
     return result.items;
@@ -1735,19 +1731,16 @@ export class StackClientInterface {
   async deleteOAuthProvider(
     userId: string,
     providerId: string,
-    session: InternalSession | null,
-    requestType: "client" | "server" | "admin" = "client",
-  ): Promise<{ success: boolean }> {
-    const sendRequest = requestType === "client" ? this.sendClientRequest : (this as any).sendServerRequest;
-    const response = await sendRequest.call(this,
+    session: InternalSession,
+  ): Promise<void> {
+    const response = await this.sendClientRequest(
       `/oauth-providers/${userId}/${providerId}`,
       {
         method: "DELETE",
       },
       session,
-      requestType,
     );
-    return response.json();
+    return await response.json();
   }
 
   async getItem(

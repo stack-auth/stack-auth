@@ -1,6 +1,6 @@
 {
   "name": "@stackframe/stack-dashboard",
-  "version": "2.8.37",
+  "version": "2.8.38",
   "private": true,
   "scripts": {
     "clean": "rimraf .next && rimraf node_modules",
@@ -27,7 +27,7 @@
     "@radix-ui/react-slot": "^1.2.3",
     "@radix-ui/react-tooltip": "^1.1.3",
     "@react-hook/resize-observer": "^2.0.2",
-    "@sentry/nextjs": "^8.40.0",
+    "@sentry/nextjs": "^10.11.0",
     "@stackframe/stack": "workspace:*",
     "@stackframe/stack-shared": "workspace:*",
     "@stackframe/stack-ui": "workspace:*",

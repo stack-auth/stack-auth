@@ -20,8 +20,6 @@ const accessTokenSchema = yupObject({
   projectId: yupString().defined(),
   userId: yupString().defined(),
   branchId: yupString().defined(),
-  // we make it optional to keep backwards compatibility with old tokens for a while
-  // TODO next-release
   refreshTokenId: yupString().optional(),
   exp: yupNumber().defined(),
   isAnonymous: yupBoolean().defined(),
@@ -98,11 +96,17 @@ export async function decodeAccessToken(accessToken: string, { allowAnonymous }:
       return Result.error(new KnownErrors.UnparsableAccessToken());
     }
 
+    const branchId = payload.branch_id ?? payload.branchId;
+    if (branchId !== "main") {
+      // TODO instead, we should check here that the aud is `projectId#branch` instead
+      throw new StackAssertionError("Branch ID !== main not currently supported.");
+    }
+
     const result = await accessTokenSchema.validate({
       projectId: aud.split(":")[0],
       userId: payload.sub,
-      branchId: payload.branchId,
-      refreshTokenId: payload.refreshTokenId,
+      branchId: branchId,
+      refreshTokenId: payload.refresh_token_id ?? payload.refreshTokenId,
       exp: payload.exp,
       isAnonymous: payload.role === 'anon',
     });
@@ -150,9 +154,13 @@ export async function generateAccessToken(options: {
     audience: getAudience(options.tenancy.project.id, user.is_anonymous),
     payload: {
       sub: options.userId,
-      branchId: options.tenancy.branchId,
-      refreshTokenId: options.refreshTokenId,
+      branch_id: options.tenancy.branchId,
+      refresh_token_id: options.refreshTokenId,
       role: user.is_anonymous ? 'anon' : 'authenticated',
+      name: user.display_name,
+      email: user.primary_email,
+      email_verified: user.primary_email_verified,
+      selected_team_id: user.selected_team_id,
     },
     expirationTime: getEnvVariable("STACK_ACCESS_TOKEN_EXPIRATION_TIME", "10min"),
   });

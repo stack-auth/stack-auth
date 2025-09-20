@@ -4,6 +4,7 @@ import { InternalApiKeyCreateCrudResponse } from "@stackframe/stack-shared/dist/
 import { EmailTemplateCrud } from "@stackframe/stack-shared/dist/interface/crud/email-templates";
 import { InternalApiKeysCrud } from "@stackframe/stack-shared/dist/interface/crud/internal-api-keys";
 import { ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
+import type { AdminTransaction } from "@stackframe/stack-shared/dist/interface/crud/transactions";
 import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { pick } from "@stackframe/stack-shared/dist/utils/objects";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
@@ -42,6 +43,9 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
   private readonly _adminEmailTemplatesCache = createCache(async () => {
     return await this._interface.listInternalEmailTemplates();
   });
+  private readonly _adminEmailDraftsCache = createCache(async () => {
+    return await this._interface.listInternalEmailDrafts();
+  });
   private readonly _adminTeamPermissionDefinitionsCache = createCache(async () => {
     return await this._interface.listTeamPermissionDefinitions();
   });
@@ -69,6 +73,9 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
       }
       throw error;
     }
+  });
+  private readonly _transactionsCache = createCache(async ([cursor, limit, type, customerType]: [string | undefined, number | undefined, 'subscription' | 'one_time' | 'item_quantity_change' | undefined, 'user' | 'team' | 'custom' | undefined]) => {
+    return await this._interface.listTransactions({ cursor, limit, type, customerType });
   });
 
   constructor(options: StackAdminAppConstructorOptions<HasTokenStore, ProjectId>) {
@@ -314,6 +321,18 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
       }));
     }, [crud]);
   }
+  useEmailDrafts(): { id: string, displayName: string, themeId: string | undefined | false, tsxSource: string, sentAt: Date | null }[] {
+    const crud = useAsyncCache(this._adminEmailDraftsCache, [], "useEmailDrafts()");
+    return useMemo(() => {
+      return crud.map((draft) => ({
+        id: draft.id,
+        displayName: draft.display_name,
+        themeId: draft.theme_id,
+        tsxSource: draft.tsx_source,
+        sentAt: draft.sent_at_millis ? new Date(draft.sent_at_millis) : null,
+      }));
+    }, [crud]);
+  }
   // END_PLATFORM
   async listEmailThemes(): Promise<{ id: string, displayName: string }[]> {
     const crud = Result.orThrow(await this._adminEmailThemesCache.getOrWait([], "write-only"));
@@ -330,6 +349,17 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
       displayName: template.display_name,
       themeId: template.theme_id,
       tsxSource: template.tsx_source,
+    }));
+  }
+
+  async listEmailDrafts(): Promise<{ id: string, displayName: string, themeId: string | undefined | false, tsxSource: string, sentAt: Date | null }[]> {
+    const crud = Result.orThrow(await this._adminEmailDraftsCache.getOrWait([], "write-only"));
+    return crud.map((draft) => ({
+      id: draft.id,
+      displayName: draft.display_name,
+      themeId: draft.theme_id,
+      tsxSource: draft.tsx_source,
+      sentAt: draft.sent_at_millis ? new Date(draft.sent_at_millis) : null,
     }));
   }
 
@@ -464,9 +494,28 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
     return result;
   }
 
+  async createEmailDraft(options: { displayName: string, themeId?: string | false, tsxSource?: string }): Promise<{ id: string }> {
+    const result = await this._interface.createEmailDraft({
+      display_name: options.displayName,
+      theme_id: options.themeId,
+      tsx_source: options.tsxSource,
+    });
+    await this._adminEmailDraftsCache.refresh([]);
+    return result;
+  }
+
+  async updateEmailDraft(id: string, data: { displayName?: string, themeId?: string | undefined | false, tsxSource?: string }): Promise<void> {
+    await this._interface.updateEmailDraft(id, {
+      display_name: data.displayName,
+      theme_id: data.themeId,
+      tsx_source: data.tsxSource,
+    });
+    await this._adminEmailDraftsCache.refresh([]);
+  }
+
   async sendChatMessage(
     threadId: string,
-    contextType: "email-theme" | "email-template",
+    contextType: "email-theme" | "email-template" | "email-draft",
     messages: Array<{ role: string, content: any }>,
     abortSignal?: AbortSignal,
   ): Promise<{ content: ChatContent }> {
@@ -540,6 +589,18 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
   async testModePurchase(options: { priceId: string, fullCode: string, quantity?: number }): Promise<void> {
     await this._interface.testModePurchase({ price_id: options.priceId, full_code: options.fullCode, quantity: options.quantity });
   }
+
+  async listTransactions(params: { cursor?: string, limit?: number, type?: 'subscription' | 'one_time' | 'item_quantity_change', customerType?: 'user' | 'team' | 'custom' }): Promise<{ transactions: AdminTransaction[], nextCursor: string | null }> {
+    const crud = Result.orThrow(await this._transactionsCache.getOrWait([params.cursor, params.limit, params.type, params.customerType] as const, "write-only"));
+    return crud;
+  }
+
+  // IF_PLATFORM react-like
+  useTransactions(params: { cursor?: string, limit?: number, type?: 'subscription' | 'one_time' | 'item_quantity_change', customerType?: 'user' | 'team' | 'custom' }): { transactions: AdminTransaction[], nextCursor: string | null } {
+    const data = useAsyncCache(this._transactionsCache, [params.cursor, params.limit, params.type, params.customerType] as const, "useTransactions()");
+    return data;
+  }
+  // END_PLATFORM
 
   async getStripeAccountInfo(): Promise<null | { account_id: string, charges_enabled: boolean, details_submitted: boolean, payouts_enabled: boolean }> {
     return await this._interface.getStripeAccountInfo();
