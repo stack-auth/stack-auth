@@ -1,16 +1,25 @@
 "use client";
 
 import { cn } from "@/lib/utils";
+import { CodeBlock } from '@/components/code-block';
 import { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
 import { userSpecifiedIdSchema } from "@stackframe/stack-shared/dist/schema-fields";
 import type { DayInterval } from "@stackframe/stack-shared/dist/utils/dates";
 import { prettyPrintWithMagnitudes } from "@stackframe/stack-shared/dist/utils/numbers";
-import { typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
+import { typedEntries, typedKeys } from "@stackframe/stack-shared/dist/utils/objects";
 import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
 import {
   ActionDialog,
   Button,
   Checkbox,
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
   Input,
   Popover,
   PopoverContent,
@@ -20,11 +29,12 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
+  Separator,
   SimpleTooltip,
   toast
 } from "@stackframe/stack-ui";
-import { Copy, Pencil, Plus, Trash2, X } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { ChevronDown, MoreVertical, Pencil, Plus, Trash2, X, Server, Layers, Puzzle, Check, Gift, ChevronsUpDown } from "lucide-react";
+import { useEffect, useMemo, useRef, useState, Fragment } from "react";
 import { IllustratedInfo } from "../../../../../../../components/illustrated-info";
 import { PageLayout } from "../../page-layout";
 import { useAdminApp } from "../../use-admin-app";
@@ -45,6 +55,29 @@ function intervalLabel(tuple: DayInterval | undefined): string | null {
   }
   const plural = unit + 's';
   return `/ ${count} ${plural}`;
+}
+
+
+function shortIntervalLabel(interval: DayInterval | 'never'): string {
+  if (interval === 'never') return 'once';
+  const [count, unit] = interval;
+  const map: Record<DayInterval[1], string> = { day: 'd', week: 'wk', month: 'mo', year: 'yr' };
+  const suffix = map[unit];
+  return `/${count === 1 ? '' : count}${suffix}`;
+}
+
+function OrSeparator() {
+  return (
+    <div className="flex items-center justify-center stack-scope">
+      <div className="flex-1">
+        <Separator />
+      </div>
+      <div className="mx-2 text-sm text-zinc-500">OR</div>
+      <div className="flex-1">
+        <Separator />
+      </div>
+    </div>
+  );
 }
 
 
@@ -229,7 +262,6 @@ function OfferPriceRow({
   const [amount, setAmount] = useState<string>(price.USD || '0.00');
   const [priceInterval, setPriceInterval] = useState<DayInterval[1] | undefined>(price.interval?.[1]);
   const [intervalCount, setIntervalCount] = useState<number>(price.interval?.[0] || 1);
-  const [localPriceId, setLocalPriceId] = useState<string>(priceId);
   const [intervalSelection, setIntervalSelection] = useState<'one-time' | 'custom' | DayInterval[1]>(
     price.interval ? (price.interval[0] === 1 ? price.interval[1] : 'custom') : 'one-time'
   );
@@ -242,9 +274,6 @@ function OfferPriceRow({
     setIntervalSelection(price.interval ? (price.interval[0] === 1 ? price.interval[1] : 'custom') : 'one-time');
   }, [price, isEditing]);
 
-  useEffect(() => {
-    setLocalPriceId(priceId);
-  }, [priceId]);
 
   useEffect(() => {
     if (!readOnly && startEditing) setIsEditing(true);
@@ -255,13 +284,13 @@ function OfferPriceRow({
   const intervalText = intervalLabel(price.interval);
 
   return (
-    <div className={cn("flex items-center gap-2 rounded-md px-2 py-1")}>
+    <div className={cn("relative flex flex-col items-center gap-2 rounded-md px-2 py-1")}>
       {isEditing ? (
         <>
-          <div className="relative w-20 shrink-0">
-            <span className="pointer-events-none absolute left-1.5 top-1/2 -translate-y-1/2 text-muted-foreground">$</span>
+          <div className="relative w-full">
+            <span className="pointer-events-none font-semibold text-xl text-black absolute left-1.5 top-1/2 -translate-y-1/2 z-20">$</span>
             <Input
-              className="h-8 pl-4 w-full text-sm bg-transparent tabular-nums"
+              className="h-8 !pl-[18px] w-full mr-3 text-xl font-semibold bg-transparent tabular-nums text-center"
               tabIndex={0}
               inputMode="decimal"
               value={amount}
@@ -311,70 +340,44 @@ function OfferPriceRow({
             />
           </div>
 
-          <div className="relative w-24 shrink-0">
-            <Input
-              className="h-8 w-full text-right bg-transparent shadow-none font-mono text-xs"
-              tabIndex={0}
-              value={localPriceId}
-              readOnly={false}
-              placeholder="price-id"
-              aria-label="Price ID"
-              onChange={(e) => {
-                const v = e.target.value;
-                if (!readOnly && (v === '' || userSpecifiedIdSchema('priceId').isValidSync(v))) setLocalPriceId(v);
-              }}
-              onBlur={() => {
-                if (readOnly) return;
-                const trimmed = localPriceId.trim();
-                if (trimmed === '' || trimmed === priceId) {
-                  setLocalPriceId(priceId);
-                  return;
-                }
-                if (existingPriceIds.includes(trimmed)) {
-                  toast({ title: "Price ID already exists" });
-                  setLocalPriceId(priceId);
-                  return;
-                }
-                if (/^[a-z0-9-]+$/.test(trimmed)) {
-                  onSave(trimmed, price);
-                } else {
-                  setLocalPriceId(priceId);
-                }
-              }}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  (e.target as HTMLInputElement).blur();
-                } else if (e.key === 'Escape') {
-                  setLocalPriceId(priceId);
-                  (e.target as HTMLInputElement).blur();
-                }
-              }}
-            />
-          </div>
-
           {onRemove && (
-            <button className="text-destructive ml-1" onClick={onRemove} aria-label="Remove price">
-              <Trash2 className="h-4 w-4" />
+            <button className="absolute right-1 top-1 text-muted-foreground hover:text-foreground" onClick={onRemove} aria-label="Remove price">
+              <X className="h-3.5 w-3.5" />
             </button>
           )}
         </>
       ) : (
         <>
-          <div className="flex items-baseline gap-2">
-            <div className="text-xl font-semibold tabular-nums">${amount || '0.00'}</div>
-            {intervalText && (
-              <div className="text-xs px-2 py-0.5 rounded bg-muted text-muted-foreground">{intervalText}</div>
-            )}
-          </div>
-
-          <div className="ml-auto text-xs text-muted-foreground font-mono">{localPriceId}</div>
+          <div className="text-xl text-center font-semibold tabular-nums">${amount || '0.00'}</div>
+          {intervalText && (
+            <div className="text-xs text-muted-foreground">{intervalText}</div>
+          )}
         </>
       )}
     </div>
   );
 }
 
+const EXPIRES_OPTIONS: Array<{ value: Offer["includedItems"][string]["expires"], label: string, description: string }> = [
+  {
+    value: 'never' as const,
+    label: 'Never expires',
+    description: 'Items granted remain with the customer'
+  },
+  {
+    value: 'when-purchase-expires' as const,
+    label: 'When purchase expires',
+    description: 'items granted are removed when subscription ends'
+  },
+  {
+    value: 'when-repeated' as const,
+    label: 'When repeated',
+    description: 'Items granted expire when they\'re granted again',
+  }
+];
+
 function OfferItemRow({
+  activeType,
   itemId,
   item,
   itemDisplayName,
@@ -387,6 +390,7 @@ function OfferItemRow({
   onChangeItemId,
   onCreateNewItem,
 }: {
+  activeType: 'user' | 'team' | 'custom',
   itemId: string,
   item: Offer['includedItems'][string],
   itemDisplayName: string,
@@ -400,6 +404,7 @@ function OfferItemRow({
   onCreateNewItem: () => void,
 }) {
   const [isEditing, setIsEditing] = useState<boolean>(false);
+  const [isOpen, setIsOpen] = useState<boolean>(false);
   const [quantity, setQuantity] = useState<string>(String(item.quantity));
   const [repeatUnit, setRepeatUnit] = useState<DayInterval[1] | undefined>(item.repeat !== 'never' ? item.repeat[1] : undefined);
   const [repeatCount, setRepeatCount] = useState<number>(item.repeat !== 'never' ? item.repeat[0] : 1);
@@ -428,69 +433,66 @@ function OfferItemRow({
   };
 
   const repeatText = item.repeat === 'never' ? null : intervalLabel(item.repeat);
+  const shortRepeatText = shortIntervalLabel(item.repeat);
 
-  return (
-    <div className="flex items-center justify-center">
-      {isEditing ? (
-        <Popover open={itemSelectOpen} onOpenChange={setItemSelectOpen}>
-          <PopoverTrigger>
-            <div className="text-sm px-2 py-0.5 rounded bg-muted hover:bg-muted/70 cursor-pointer select-none">
-              {itemDisplayName}
-            </div>
-          </PopoverTrigger>
-          <PopoverContent align="start" className="w-72 p-2">
-            <div className="flex flex-col gap-1 max-h-64 overflow-auto">
-              {allItems.map((opt) => {
-                const isSelected = opt.id === itemId;
-                const isUsed = existingIncludedItemIds.includes(opt.id) && !isSelected;
-                return (
-                  <Button
-                    key={opt.id}
-                    variant={isSelected ? 'secondary' : 'ghost'}
-                    size="sm"
-                    className="justify-start"
-                    disabled={isUsed}
-                    onClick={() => {
-                      if (isSelected) {
+  if (isEditing) {
+    return (
+      <div className="flex flex-col gap-1 mb-4">
+        <div className="flex flex-row">
+          <Popover open={itemSelectOpen} onOpenChange={setItemSelectOpen}>
+            <PopoverTrigger>
+              <div className="text-sm px-2 py-0.5 rounded bg-muted hover:bg-muted/70 cursor-pointer select-none">
+                {itemDisplayName}
+              </div>
+            </PopoverTrigger>
+            <PopoverContent align="start" className="w-72 p-2">
+              <div className="flex flex-col gap-1 max-h-64 overflow-auto">
+                {allItems.map((opt) => {
+                  const isSelected = opt.id === itemId;
+                  const isUsed = existingIncludedItemIds.includes(opt.id) && !isSelected;
+                  return (
+                    <Button
+                      key={opt.id}
+                      variant={isSelected ? 'secondary' : 'ghost'}
+                      size="sm"
+                      className="justify-start"
+                      disabled={isUsed}
+                      onClick={() => {
+                        if (isSelected) {
+                          setItemSelectOpen(false);
+                          return;
+                        }
+                        if (isUsed) {
+                          toast({ title: 'Item already included' });
+                          return;
+                        }
+                        onChangeItemId(opt.id);
                         setItemSelectOpen(false);
-                        return;
-                      }
-                      if (isUsed) {
-                        toast({ title: 'Item already included' });
-                        return;
-                      }
-                      onChangeItemId(opt.id);
+                      }}
+                    >
+                      <div className="flex flex-col items-start">
+                        <span>{opt.displayName || opt.id}</span>
+                        <span className="text-xs text-muted-foreground">{opt.customerType.toUpperCase()} • {opt.id}</span>
+                      </div>
+                    </Button>
+                  );
+                })}
+                <div className="pt-1 mt-1 border-t">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="justify-start text-primary"
+                    onClick={() => {
                       setItemSelectOpen(false);
+                      onCreateNewItem();
                     }}
                   >
-                    <div className="flex flex-col items-start">
-                      <span>{opt.displayName || opt.id}</span>
-                      <span className="text-xs text-muted-foreground">{opt.customerType.toUpperCase()} • {opt.id}</span>
-                    </div>
+                    <Plus className="h-4 w-4 mr-2" /> New Item
                   </Button>
-                );
-              })}
-              <div className="pt-1 mt-1 border-t">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="justify-start text-primary"
-                  onClick={() => {
-                    setItemSelectOpen(false);
-                    onCreateNewItem();
-                  }}
-                >
-                  <Plus className="h-4 w-4 mr-2" /> New Item
-                </Button>
+                </div>
               </div>
-            </div>
-          </PopoverContent>
-        </Popover>
-      ) : (
-        <div className="text-sm">{itemDisplayName}</div>
-      )}
-      {isEditing ? (
-        <>
+            </PopoverContent>
+          </Popover>
           <Input
             className="ml-auto w-20 text-right tabular-nums mr-2"
             inputMode="numeric"
@@ -521,45 +523,104 @@ function OfferItemRow({
             }}
           />
           {onRemove && (
-            <button className="text-destructive ml-auto" onClick={onRemove} aria-label="Remove item">
-              <Trash2 className="h-4 w-4" />
+            <button className="ml-auto" onClick={onRemove} aria-label="Remove item">
+              <X className="h-4 w-4" />
             </button>
           )}
-        </>
-      ) : (
-        <>
-          <div className="ml-auto w-16 text-right text-sm text-muted-foreground tabular-nums">{prettyPrintWithMagnitudes(item.quantity)}</div>
-          <div className="ml-2">
-            {repeatText && (
-              <div className="text-xs px-2 py-0.5 rounded bg-muted text-muted-foreground">{repeatText}</div>
-            )}
-          </div>
-          {!readOnly && (
-            <>
-              <button
-                className="ml-2 text-muted-foreground hover:text-foreground"
-                onClick={() => setIsEditing(true)}
-                aria-label="Edit item"
-              >
-                <Pencil className="h-4 w-4" />
+        </div>
+        <div className="flex flex-row items-center gap-2">
+          <span className="text-xs text-muted-foreground">Expires:</span>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <div className="text-xs px-2 py-0.5 w-fit rounded bg-muted text-muted-foreground cursor-pointer select-none flex items-center gap-1">
+                {item.expires === 'never' ? 'Never expires' : `${EXPIRES_OPTIONS.find(o => o.value === item.expires)?.label.toLowerCase()}`}
+                <ChevronsUpDown className="h-4 w-4" />
+              </div>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="p-2">
+              <div className="flex flex-col gap-2">
+                {EXPIRES_OPTIONS.map((option) => (
+                  <DropdownMenuItem key={option.value}>
+                    <Button
+                      key={option.value}
+                      variant="ghost"
+                      size="sm"
+                      className="flex flex-col items-start"
+                      onClick={() => {
+                        onSave(itemId, { ...item, expires: option.value });
+                      }}>
+                      {option.label}
+                      <span className="text-xs text-muted-foreground">{option.description}</span>
+                    </Button>
+                  </DropdownMenuItem>
+                ))}
+              </div>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-row">
+      <div className="flex items-center gap-2 w-full">
+        <Collapsible open={isOpen} onOpenChange={setIsOpen} className="w-full">
+          <div className="flex items-center gap-2 w-full">
+            <CollapsibleTrigger asChild>
+              <button className="h-5 w-5 inline-flex items-center justify-center rounded hover:bg-muted">
+                <ChevronDown className={cn("h-4 w-4 transition-transform", isOpen ? "rotate-0" : "-rotate-90")} />
               </button>
-              {onRemove && (
-                <button className="text-destructive ml-1" onClick={onRemove} aria-label="Remove item">
-                  <Trash2 className="h-4 w-4" />
-                </button>
-              )}
-            </>
-          )}
-        </>
-      )}
-    </div>
+            </CollapsibleTrigger >
+            <div className="text-sm">{itemDisplayName}</div>
+            <div className="ml-auto w-16 text-right text-sm text-muted-foreground tabular-nums">{prettyPrintWithMagnitudes(item.quantity)}</div>
+            <div className="ml-2">
+              <div className="text-xs px-2 py-0.5 rounded bg-muted text-muted-foreground">{shortRepeatText}</div>
+            </div>
+            {
+              !readOnly && (
+                <>
+                  <button
+                    className="ml-2 text-muted-foreground hover:text-foreground"
+                    onClick={() => setIsEditing(true)}
+                    aria-label="Edit item"
+                  >
+                    <Pencil className="h-4 w-4" />
+                  </button>
+                  {onRemove && (
+                    <button className="text-destructive ml-1" onClick={onRemove} aria-label="Remove item">
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  )}
+                </>
+              )
+            }
+          </div >
+          <CollapsibleContent>
+            <div className="mt-2 pl-7 space-y-2">
+              <div className="text-xs text-muted-foreground">{item.expires !== 'never' ? `Expires: ${String(item.expires).replace(/-/g, ' ')}` : 'Never expires'}</div>
+              <div className="text-xs">
+                <CodeBlock
+                  language="typescript"
+                  content={`const item = await ${activeType === "user" ? "user" : "team"}.getItemCount("${itemId}");\n`}
+                  title="Example"
+                  icon="code"
+                />
+              </div>
+            </div>
+          </CollapsibleContent>
+        </Collapsible >
+      </div >
+    </div >
   );
 }
 
 
 type OfferCardProps = {
   id: string,
+  activeType: 'user' | 'team' | 'custom',
   offer: Offer,
+  allOffers: Array<{ id: string, offer: Offer }>,
   existingItems: Array<{ id: string, displayName: string, customerType: string }>,
   onSave: (id: string, offer: Offer) => Promise<void>,
   onDelete: (id: string) => Promise<void>,
@@ -570,17 +631,19 @@ type OfferCardProps = {
   onCancelDraft?: () => void,
 };
 
-function OfferCard({ id, offer, existingItems, onSave, onDelete, onDuplicate, onCreateNewItem, onOpenDetails, isDraft, onCancelDraft }: OfferCardProps) {
+function OfferCard({ id, activeType, offer, allOffers, existingItems, onSave, onDelete, onDuplicate, onCreateNewItem, onOpenDetails, isDraft, onCancelDraft }: OfferCardProps) {
   const [isEditing, setIsEditing] = useState(!!isDraft);
   const [draft, setDraft] = useState<Offer>(offer);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [editingPriceId, setEditingPriceId] = useState<string | undefined>(undefined);
   const cardRef = useRef<HTMLDivElement | null>(null);
   const [hasAutoScrolled, setHasAutoScrolled] = useState(false);
+  const [localOfferId, setLocalOfferId] = useState<string>(id);
 
   useEffect(() => {
     setDraft(offer);
-  }, [offer]);
+    setLocalOfferId(id);
+  }, [offer, id]);
 
   useEffect(() => {
     if (isDraft && !hasAutoScrolled && cardRef.current) {
@@ -625,46 +688,47 @@ function OfferCard({ id, offer, existingItems, onSave, onDelete, onDuplicate, on
   const renderPrimaryPrices = () => {
     if (draft.prices === 'include-by-default') {
       return (
-        <div className="text-2xl font-semibold">Free</div>
+        <div className="text-2xl text-center font-semibold">Free</div>
       );
     }
     const entries = Object.entries(pricesObject);
     if (entries.length === 0) {
-      return (
-        <div className="text-muted-foreground">No prices yet</div>
-      );
+      return null;
     }
     return (
       <div className="space-y-2 shrink-0">
-        {entries.map(([pid, price]) => (
-          <OfferPriceRow
-            key={pid}
-            priceId={pid}
-            price={price}
-            readOnly={!isEditing}
-            startEditing={isEditing}
-            existingPriceIds={entries.map(([k]) => k).filter(k => k !== pid)}
-            onSave={(newId, newPrice) => {
-              const finalId = newId || pid;
-              setDraft(prev => {
-                const prevPrices: PricesObject = typeof prev.prices === 'object' ? prev.prices : {};
-                const nextPrices: PricesObject = { ...prevPrices };
-                if (newId && newId !== pid) {
-                  if (Object.prototype.hasOwnProperty.call(nextPrices, newId)) {
-                    toast({ title: "Price ID already exists" });
-                    return prev; // Do not change state
+        {entries.map(([pid, price], index) => (
+          <Fragment key={pid}>
+            <OfferPriceRow
+              key={pid}
+              priceId={pid}
+              price={price}
+              readOnly={!isEditing}
+              startEditing={isEditing}
+              existingPriceIds={entries.map(([k]) => k).filter(k => k !== pid)}
+              onSave={(newId, newPrice) => {
+                const finalId = newId || pid;
+                setDraft(prev => {
+                  const prevPrices: PricesObject = typeof prev.prices === 'object' ? prev.prices : {};
+                  const nextPrices: PricesObject = { ...prevPrices };
+                  if (newId && newId !== pid) {
+                    if (Object.prototype.hasOwnProperty.call(nextPrices, newId)) {
+                      toast({ title: "Price ID already exists" });
+                      return prev; // Do not change state
+                    }
+                    delete nextPrices[pid];
                   }
-                  delete nextPrices[pid];
+                  nextPrices[finalId] = newPrice;
+                  return { ...prev, prices: nextPrices };
+                });
+                if (editingPriceId && finalId === editingPriceId) {
+                  setEditingPriceId(undefined);
                 }
-                nextPrices[finalId] = newPrice;
-                return { ...prev, prices: nextPrices };
-              });
-              if (editingPriceId && finalId === editingPriceId) {
-                setEditingPriceId(undefined);
-              }
-            }}
-            onRemove={() => handleRemovePrice(pid)}
-          />
+              }}
+              onRemove={() => handleRemovePrice(pid)}
+            />
+            {index < entries.length - 1 && <OrSeparator />}
+          </Fragment>
         ))}
       </div>
     );
@@ -672,126 +736,222 @@ function OfferCard({ id, offer, existingItems, onSave, onDelete, onDuplicate, on
 
   const itemsList = Object.entries(draft.includedItems);
 
+  const OFFER_TOGGLE_OPTIONS = [{
+    key: 'serverOnly' as const,
+    label: 'Server only',
+    description: "Restricts this offer to only be purchased from server-side calls",
+    active: !!draft.serverOnly,
+    icon: <Server size={16} />,
+    onToggle: () => setDraft(prev => ({ ...prev, serverOnly: !prev.serverOnly }))
+  }, {
+    key: 'stackable' as const,
+    label: 'Stackable',
+    description: "Allow customers to purchase this offer multiple times",
+    active: !!draft.stackable,
+    icon: <Layers size={16} />,
+    onToggle: () => setDraft(prev => ({ ...prev, stackable: !prev.stackable }))
+  }, {
+    key: "include-by-default" as const,
+    label: 'Include by default',
+    description: "This offer will be automatically included for all customers at no cost",
+    active: draft.prices === 'include-by-default',
+    icon: <Gift size={16} />,
+    onToggle: () => setDraft(prev => ({ ...prev, prices: prev.prices === 'include-by-default' ? {} : 'include-by-default' }))
+  }, {
+    key: 'addon' as const,
+    label: 'Add-on',
+    description: "Make this offer an add-on. An add-on can be purchased along with the offer(s) it is an add-on to.",
+    active: draft.isAddOnTo !== false,
+    icon: <Puzzle size={16} />,
+    onToggle: () => setDraft(prev => ({ ...prev, isAddOnTo: (prev.isAddOnTo === false ? {} : false) }))
+  }] as const;
+
   return (
     <div ref={cardRef} className={cn(
       "rounded-lg border bg-background w-[320px] flex flex-col relative group shrink-0 pb-4",
       isEditing && "border-foreground/60 dark:border-foreground/40"
     )}>
-      <div className="p-4 flex items-start justify-between">
-        <div>
-          {isEditing ? (
+      <div className="p-4 flex items-start justify-center">
+        {isEditing ? (
+          <div className="flex flex-col gap-2 w-full">
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-muted-foreground">ID:</span>
+              {isDraft ? (
+                <Input
+                  className="h-8 text-xs font-mono"
+                  value={localOfferId}
+                  onChange={(e) => setLocalOfferId(e.target.value)}
+                  placeholder="offer-id"
+                  aria-label="Offer ID"
+                />
+              ) : (
+                <div className="ext-xs font-mono h-fit">{id}</div>
+              )}
+              <div className="grow flex flex-row justify-end">
+                <SimpleTooltip tooltip={saveDisabledReason} disabled={canSaveOffer}>
+                  <Button size="icon" variant="ghost" onClick={async () => {
+                    const trimmed = localOfferId.trim();
+                    const validId = trimmed && /^[a-z0-9-]+$/.test(trimmed) ? trimmed : id;
+                    if (validId !== id) {
+                      await onSave(validId, draft);
+                      await onDelete(id);
+                    } else {
+                      await onSave(id, draft);
+                    }
+                    setIsEditing(false);
+                    setEditingPriceId(undefined);
+                  }} disabled={!canSaveOffer}>
+                    <Check className="text-green-500" />
+                  </Button>
+                </SimpleTooltip>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  onClick={() => {
+                    if (isDraft && onCancelDraft) {
+                      onCancelDraft();
+                      return;
+                    }
+                    setIsEditing(false);
+                    setDraft(offer);
+                    setEditingPriceId(undefined);
+                  }}
+                  aria-label="Cancel edit"
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
             <Input
-              className="h-8 text-sm font-semibold"
+              className="h-8 font-bold text-center w-full"
               value={draft.displayName || ""}
               onChange={(e) => setDraft(prev => ({ ...prev, displayName: e.target.value }))}
               placeholder={id}
             />
-          ) : (
-            <div className="text-sm font-semibold">{offer.displayName || id}</div>
-          )}
-        </div>
-        <div className="flex items-center gap-2 min-w-[124px] justify-end">
-          {isEditing ? (
-            <>
-              <SimpleTooltip tooltip={saveDisabledReason} disabled={canSaveOffer}>
-                <Button size="sm" variant="outline" onClick={async () => {
-                  await onSave(id, draft);
-                  setIsEditing(false);
-                  setEditingPriceId(undefined);
-                }} disabled={!canSaveOffer}>
-                  Save
-                </Button>
-              </SimpleTooltip>
-              <button
-                className="h-7 w-7 inline-flex items-center justify-center rounded hover:bg-muted"
-                onClick={() => {
-                  if (isDraft && onCancelDraft) {
-                    onCancelDraft();
-                    return;
-                  }
-                  setIsEditing(false);
-                  setDraft(offer);
-                  setEditingPriceId(undefined);
-                }}
-                aria-label="Cancel edit"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </>
-          ) : (
-            <div className="h-8" />
-          )}
-        </div>
+          </div>
+        ) : (
+          <div className="flex justify-center flex-col items-center w-full">
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">ID: {id}</div>
+            <div className="text-lg font-bold">{offer.displayName || id}</div>
+          </div>
+        )}
         {!isEditing && (
-          <div className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1">
-            <button
-              className="h-7 w-7 inline-flex items-center justify-center rounded hover:bg-muted"
-              onClick={() => { onDuplicate(offer); }}
-              aria-label="Duplicate"
-            >
-              <Copy className="h-4 w-4" />
-            </button>
-            <button
-              className="h-7 w-7 inline-flex items-center justify-center rounded hover:bg-muted"
-              onClick={() => {
-                setIsEditing(true);
-                setDraft(offer);
-              }}
-              aria-label="Edit"
-            >
-              <Pencil className="h-4 w-4" />
-            </button>
-            <button
-              className="h-7 w-7 inline-flex items-center justify-center rounded hover:bg-muted text-destructive"
-              onClick={() => { setShowDeleteDialog(true); }}
-              aria-label="Delete"
-            >
-              <Trash2 className="h-4 w-4" />
-            </button>
+          <div className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button className="h-7 w-7 inline-flex items-center justify-center rounded hover:bg-muted" aria-label="Open menu">
+                  <MoreVertical className="h-4 w-4" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="min-w-[160px]">
+                <DropdownMenuItem onClick={() => {
+                  setIsEditing(true);
+                  setDraft(offer);
+                }}>
+                  Edit
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => { onDuplicate(offer); }}>
+                  Duplicate
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => { setShowDeleteDialog(true); }}>
+                  Delete
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         )}
       </div>
-      <div className="px-4 pb-2">
-        {renderPrimaryPrices()}
+      {/* Toggles row */}
+      <div className="px-4 pb-2 flex flex-wrap gap-2 justify-center">
+        {OFFER_TOGGLE_OPTIONS.filter(b => isEditing || (b.active && b.key !== "addon")).map((b) => (
+          <SimpleTooltip tooltip={b.description} key={b.key}>
+            <button
+              key={b.key}
+              className={cn("text-xs px-2 py-0.5 flex items-center gap-1 rounded-full",
+                isEditing ? "border bg-muted/40 hover:bg-muted/60" : "bg-transparent",
+                !b.active && "line-through text-muted-foreground",
+              )}
+              onClick={isEditing ? b.onToggle : undefined}
+            >
+              {b.icon}
+              {b.label}
+            </button>
+          </SimpleTooltip>
+        ))}
+        {!isEditing && !!draft.isAddOnTo && Object.keys(draft.isAddOnTo).length > 0 && (
+          <SimpleTooltip tooltip={OFFER_TOGGLE_OPTIONS.find(b => b.key === "addon")?.description}>
+            <button className="text-xs px-2 py-0.5 flex items-center gap-1 rounded-full bg-transparent">
+              {OFFER_TOGGLE_OPTIONS.find(b => b.key === "addon")?.icon}
+              {Object.keys(draft.isAddOnTo).join(", ")}
+            </button>
+          </SimpleTooltip>
+        )}
       </div>
-      {isEditing && (
-        <div className="px-4 pb-2">
-          {Object.keys(pricesObject).length === 0 && (
-            <div className="mb-2 flex items-center gap-2">
-              <Checkbox
-                id={`include-by-default-${id}`}
-                checked={draft.prices === 'include-by-default'}
-                onClick={() => {
-                  setDraft(prev => ({
-                    ...prev,
-                    prices: prev.prices === 'include-by-default' ? {} : 'include-by-default',
-                  }));
-                }}
-              />
-              <label htmlFor={`include-by-default-${id}`} className="text-sm">Include by default</label>
-            </div>
-          )}
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={draft.prices === 'include-by-default'}
-            onClick={() => {
-              const tempId = `price-${Date.now().toString(36).slice(2, 8)}`;
-              const newPrice: Price = { USD: '0.00', serverOnly: false };
-              setDraft(prev => {
-                const nextPrices: PricesObject = {
-                  ...(typeof prev.prices === 'object' ? prev.prices : {}),
-                  [tempId]: newPrice,
-                };
-                return { ...prev, prices: nextPrices };
-              });
-              setEditingPriceId(tempId);
-            }}
-          >
-            + Add Price
-          </Button>
+      {isEditing && !!draft.isAddOnTo && (
+        <div className="p-4">
+          <div className="flex flex-col gap-1 border">
+            <span className="text-xs text-muted-foreground px-2 pt-2">Add-on to</span>
+            {Object.keys(draft.isAddOnTo).map(id => (
+              <div key={id} className="flex items-center gap-1 px-2 justify-between">
+                {id}
+                <Button size="icon" variant="ghost" onClick={() => {
+                  setDraft(prev => ({ ...prev, isAddOnTo: Object.fromEntries(Object.entries(prev.isAddOnTo).filter(([key]) => key !== id)) }));
+                }}>
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+            ))}
+            {allOffers.filter(o => !o.offer.isAddOnTo).length > 0 ? (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" className="border-dashed border m-2">
+                    + Add Add-on
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="min-w-[160px]">
+                  {allOffers.filter(o => !o.offer.isAddOnTo).map(offer => (
+                    <DropdownMenuItem key={offer.id} onClick={() => {
+                      setDraft(prev => ({ ...prev, isAddOnTo: { ...prev.isAddOnTo, [offer.id]: true } }));
+                    }}>
+                      {offer.offer.displayName} ({offer.id})
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            ) : (
+              <div className="text-sm text-muted-foreground p-2 text-center">No applicable offers</div>
+            )}
+          </div>
         </div>
       )}
+      <div className="px-4 py-2 border-y border-border">
+        {renderPrimaryPrices()}
+        {isEditing && draft.prices !== 'include-by-default' && (
+          <>
+            {Object.keys(draft.prices).length > 0 && <OrSeparator />}
+            <Button
+              variant="outline"
+              className="w-full h-20 border-dashed border"
+              onClick={() => {
+                const tempId = `price-${Date.now().toString(36).slice(2, 8)}`;
+                const newPrice: Price = { USD: '0.00', serverOnly: false };
+                setDraft(prev => {
+                  const nextPrices: PricesObject = {
+                    ...(typeof prev.prices === 'object' ? prev.prices : {}),
+                    [tempId]: newPrice,
+                  };
+                  return { ...prev, prices: nextPrices };
+                });
+                setEditingPriceId(tempId);
+              }}
+            >
+              + Add Price
+            </Button>
+          </>
+        )}
+      </div>
+
       <div className="px-4 py-3">
         {itemsList.length === 0 ? (
           <div className="text-sm text-muted-foreground">No items yet</div>
@@ -803,6 +963,7 @@ function OfferCard({ id, offer, existingItems, onSave, onDelete, onDuplicate, on
               return (
                 <OfferItemRow
                   key={itemId}
+                  activeType={activeType}
                   itemId={itemId}
                   item={item}
                   itemDisplayName={itemLabel}
@@ -832,22 +993,37 @@ function OfferCard({ id, offer, existingItems, onSave, onDelete, onDuplicate, on
           </div>
         )}
       </div>
-      {isEditing && (
-        <div className="px-4 pb-4">
-          <Button variant="outline" size="sm" onClick={() => {
-            const available = existingItems.find(i => !Object.prototype.hasOwnProperty.call(draft.includedItems, i.id));
-            const newItemId = available?.id || `__new_item__${Date.now().toString(36).slice(2, 8)}`;
-            const newItem: Offer['includedItems'][string] = { quantity: 1, repeat: 'never', expires: 'never' };
-            setDraft(prev => ({
-              ...prev,
-              includedItems: {
-                ...prev.includedItems,
-                [newItemId]: newItem,
-              }
-            }));
-          }}>
-            + Add Item
-          </Button>
+      {
+        isEditing && (
+          <div className="px-4 pb-4">
+            <Button
+              variant="outline"
+              className="w-full h-14 border-dashed border"
+              onClick={() => {
+                const available = existingItems.find(i => !Object.prototype.hasOwnProperty.call(draft.includedItems, i.id));
+                const newItemId = available?.id || `__new_item__${Date.now().toString(36).slice(2, 8)}`;
+                const newItem: Offer['includedItems'][string] = { quantity: 1, repeat: 'never', expires: 'never' };
+                setDraft(prev => ({
+                  ...prev,
+                  includedItems: {
+                    ...prev.includedItems,
+                    [newItemId]: newItem,
+                  }
+                }));
+              }}>
+              + Add Item
+            </Button>
+          </div>
+        )
+      }
+      {!isEditing && activeType !== "custom" && (
+        <div className="border-t p-4">
+          <CodeBlock
+            language="typescript"
+            content={`const checkoutUrl = await ${activeType === "user" ? "user" : "team"}.createCheckoutUrl({ offerId: "${id}" });\nwindow.open(checkoutUrl, "_blank");`}
+            title="Checkout"
+            icon="code"
+          />
         </div>
       )}
 
@@ -867,7 +1043,7 @@ function OfferCard({ id, offer, existingItems, onSave, onDelete, onDuplicate, on
       >
         Are you sure you want to delete this offer?
       </ActionDialog>
-    </div>
+    </div >
   );
 }
 
@@ -921,8 +1097,9 @@ function CatalogView({ groupedOffers, groups, existingItems, onSaveOffer, onDele
   const usedIds = useMemo(() => {
     const all: string[] = [];
     groupedOffers.forEach(arr => arr.forEach(({ id }) => all.push(id)));
+    drafts.forEach(d => all.push(d.key));
     return new Set(all);
-  }, [groupedOffers]);
+  }, [groupedOffers, drafts]);
 
   const generateOfferId = (base: string) => {
     let id = base;
@@ -942,7 +1119,7 @@ function CatalogView({ groupedOffers, groups, existingItems, onSaveOffer, onDele
 
   return (
     <div className="space-y-10">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-center">
         <div className="inline-flex rounded-md bg-muted p-1">
           {(['user', 'team', 'custom'] as const).map(t => (
             <button
@@ -956,33 +1133,6 @@ function CatalogView({ groupedOffers, groups, existingItems, onSaveOffer, onDele
               {t}
             </button>
           ))}
-        </div>
-        <div className="flex items-center justify-end">
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={!!creatingGroupKey}
-            onClick={() => {
-              const tempKey = `__new_catalog__${Date.now().toString(36).slice(2, 8)}`;
-              setCreatingGroupKey(tempKey);
-              setNewGroupId("");
-              const draftKey = `__draft__${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-              const newOffer: Offer = {
-                displayName: 'New Offer',
-                customerType: activeType,
-                groupId: tempKey,
-                isAddOnTo: false,
-                stackable: false,
-                prices: {},
-                includedItems: {},
-                serverOnly: false,
-                freeTrial: undefined,
-              };
-              setDrafts(prev => [...prev, { key: draftKey, groupId: tempKey, offer: newOffer }]);
-            }}
-          >
-            <Plus className="h-4 w-4 mr-2" /> New Catalog
-          </Button>
         </div>
       </div>
 
@@ -1023,12 +1173,14 @@ function CatalogView({ groupedOffers, groups, existingItems, onSaveOffer, onDele
                     <OfferCard
                       key={id}
                       id={id}
+                      activeType={activeType}
                       offer={offer}
+                      allOffers={offers}
                       existingItems={existingItems}
                       onSave={onSaveOffer}
                       onDelete={onDeleteOffer}
                       onDuplicate={(srcOffer) => {
-                        const key = `__draft__${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+                        const key = generateOfferId("offer");
                         const duplicated: Offer = {
                           ...srcOffer,
                           displayName: `${srcOffer.displayName || id} Copy`,
@@ -1043,7 +1195,9 @@ function CatalogView({ groupedOffers, groups, existingItems, onSaveOffer, onDele
                     <OfferCard
                       key={d.key}
                       id={d.key}
+                      activeType={activeType}
                       offer={d.offer}
+                      allOffers={offers}
                       existingItems={existingItems}
                       isDraft
                       onSave={async (_ignoredId, offer) => {
@@ -1095,27 +1249,32 @@ function CatalogView({ groupedOffers, groups, existingItems, onSaveOffer, onDele
                     />
                   ))}
                   {!isNewGroupPlaceholder && (
-                    <button
-                      className="rounded-full h-9 w-9 flex items-center justify-center absolute right-4 top-1/2 -translate-y-1/2 bg-background border hover:bg-muted"
-                      onClick={() => {
-                        const key = `__draft__${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-                        const newOffer: Offer = {
-                          displayName: 'New Offer',
-                          customerType: activeType,
-                          groupId: groupId || undefined,
-                          isAddOnTo: false,
-                          stackable: false,
-                          prices: {},
-                          includedItems: {},
-                          serverOnly: false,
-                          freeTrial: undefined,
-                        };
-                        setDrafts(prev => [...prev, { key, groupId, offer: newOffer }]);
-                      }}
-                      aria-label="Add offer"
-                    >
-                      <Plus className="h-4 w-4" />
-                    </button>
+                    <div className="border border-dashed rounded-lg w-[320px] flex flex-col items-center justify-center">
+                      <div className="flex flex-col items-center gap-2">
+                        <Button
+                          variant="outline"
+                          className="h-10 w-10 rounded-full p-0"
+                          onClick={() => {
+                            const key = generateOfferId("offer");
+                            const newOffer: Offer = {
+                              displayName: 'New Offer',
+                              customerType: activeType,
+                              groupId: groupId || undefined,
+                              isAddOnTo: false,
+                              stackable: false,
+                              prices: {},
+                              includedItems: {},
+                              serverOnly: false,
+                              freeTrial: undefined,
+                            };
+                            setDrafts(prev => [...prev, { key, groupId, offer: newOffer }]);
+                          }}
+                        >
+                          <Plus className="h-8 w-8" />
+                        </Button>
+                        Create offer
+                      </div>
+                    </div>
                   )}
                 </div>
               </div>
@@ -1123,6 +1282,36 @@ function CatalogView({ groupedOffers, groups, existingItems, onSaveOffer, onDele
           </div>
         );
       })}
+      <div className="w-full h-40 flex items-center justify-center border border-dashed rounded-lg">
+        <div className="flex flex-col items-center gap-2">
+          <Button
+            variant="outline"
+            className="h-10 w-10 rounded-full p-0"
+            disabled={!!creatingGroupKey}
+            onClick={() => {
+              const tempKey = `__new_catalog__${Date.now().toString(36).slice(2, 8)}`;
+              setCreatingGroupKey(tempKey);
+              setNewGroupId("");
+              const draftKey = generateOfferId("offer");
+              const newOffer: Offer = {
+                displayName: 'New Offer',
+                customerType: activeType,
+                groupId: tempKey,
+                isAddOnTo: false,
+                stackable: false,
+                prices: {},
+                includedItems: {},
+                serverOnly: false,
+                freeTrial: undefined,
+              };
+              setDrafts(prev => [...prev, { key: draftKey, groupId: tempKey, offer: newOffer }]);
+            }}
+          >
+            <Plus className="h-8 w-8" />
+          </Button>
+          Create catalog
+        </div>
+      </div>
     </div>
   );
 }
