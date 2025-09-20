@@ -42,7 +42,6 @@ async function processStripeWebhookEvent(event: Stripe.Event): Promise<void> {
     if (!accountId) {
       throw new StackAssertionError("Stripe webhook account id missing", { event });
     }
-    console.log("Processing1", mockData);
     const stripe = getStackStripe(mockData);
     const account = await stripe.accounts.retrieve(accountId);
     const tenancyId = account.metadata?.tenancyId;
@@ -75,6 +74,7 @@ async function processStripeWebhookEvent(event: Stripe.Event): Promise<void> {
         customerId: metadata.customerId,
         customerType: typedToUppercase(metadata.customerType),
         offerId: metadata.offerId || null,
+        priceId: metadata.priceId || null,
         stripePaymentIntentId,
         offer,
         quantity: qty,
@@ -82,6 +82,7 @@ async function processStripeWebhookEvent(event: Stripe.Event): Promise<void> {
       },
       update: {
         offerId: metadata.offerId || null,
+        priceId: metadata.priceId || null,
         offer,
         quantity: qty,
       }

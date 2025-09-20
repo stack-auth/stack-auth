@@ -72,6 +72,7 @@ export const POST = createSmartRouteHandler({
         data: {
           tenancyId: tenancy.id,
           customerId: req.params.customer_id,
+          customerType: typedToUppercase(req.params.customer_type),
           itemId: req.params.item_id,
           quantity: req.body.delta,
           description: req.body.description,
