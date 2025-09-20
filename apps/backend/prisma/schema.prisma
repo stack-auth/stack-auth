@@ -783,14 +783,15 @@ model Subscription {
 }
 
 model ItemQuantityChange {
-  id          String    @default(uuid()) @db.Uuid
-  tenancyId   String    @db.Uuid
-  customerId  String
-  itemId      String
-  quantity    Int
-  description String?
-  expiresAt   DateTime?
-  createdAt   DateTime  @default(now())
+  id           String       @default(uuid()) @db.Uuid
+  tenancyId    String       @db.Uuid
+  customerId   String
+  customerType CustomerType
+  itemId       String
+  quantity     Int
+  description  String?
+  expiresAt    DateTime?
+  createdAt    DateTime     @default(now())
 
   @@id([tenancyId, id])
   @@index([tenancyId, customerId, expiresAt])
