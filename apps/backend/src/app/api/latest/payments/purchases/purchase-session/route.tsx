@@ -73,6 +73,7 @@ export const POST = createSmartRouteHandler({
             metadata: {
               offerId: data.offerId ?? null,
               offer: JSON.stringify(data.offer),
+              priceId: price_id,
             },
           });
           const clientSecretUpdated = getClientSecretFromStripeSubscription(updated);
@@ -114,6 +115,7 @@ export const POST = createSmartRouteHandler({
           purchaseQuantity: String(quantity),
           purchaseKind: "ONE_TIME",
           tenancyId: data.tenancyId,
+          priceId: price_id,
         },
       });
       const clientSecret = paymentIntent.client_secret;
@@ -147,6 +149,7 @@ export const POST = createSmartRouteHandler({
       metadata: {
         offerId: data.offerId ?? null,
         offer: JSON.stringify(data.offer),
+        priceId: price_id,
       },
     });
     const clientSecret = getClientSecretFromStripeSubscription(created);
