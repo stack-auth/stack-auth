@@ -4,8 +4,8 @@ import { CustomerType } from "@prisma/client";
 import { typedIncludes } from "@stackframe/stack-shared/dist/utils/arrays";
 import { getEnvVariable, getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
 import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
-import { createStripeProxy, type StripeOverridesMap } from "./stripe-proxy";
 import Stripe from "stripe";
+import { createStripeProxy, type StripeOverridesMap } from "./stripe-proxy";
 
 const stripeSecretKey = getEnvVariable("STACK_STRIPE_SECRET_KEY");
 const useStripeMock = stripeSecretKey === "sk_test_mockstripekey" && ["development", "test"].includes(getNodeEnvironment());
@@ -79,6 +79,7 @@ export async function syncStripeSubscriptions(stripe: Stripe, stripeAccountId: s
       continue;
     }
     const item = subscription.items.data[0];
+    const priceId = subscription.metadata.priceId as string | undefined;
     await prisma.subscription.upsert({
       where: {
         tenancyId_stripeSubscriptionId: {
@@ -93,12 +94,14 @@ export async function syncStripeSubscriptions(stripe: Stripe, stripeAccountId: s
         currentPeriodEnd: new Date(item.current_period_end * 1000),
         currentPeriodStart: new Date(item.current_period_start * 1000),
         cancelAtPeriodEnd: subscription.cancel_at_period_end,
+        priceId: priceId ?? null,
       },
       create: {
         tenancyId: tenancy.id,
         customerId,
         customerType,
         offerId: subscription.metadata.offerId,
+        priceId: priceId ?? null,
         offer: JSON.parse(subscription.metadata.offer),
         quantity: item.quantity ?? 1,
         stripeSubscriptionId: subscription.id,

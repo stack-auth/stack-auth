@@ -150,6 +150,7 @@ it("deduplicates one-time purchase on payment_intent.succeeded retry", async ({ 
           customerType: "user",
           purchaseQuantity: "1",
           purchaseKind: "ONE_TIME",
+          priceId: "one",
         },
       },
     },
@@ -241,6 +242,7 @@ it("syncs subscriptions from webhook and is idempotent", async ({ expect }) => {
     metadata: {
       offerId,
       offer: JSON.stringify(offer),
+      priceId: "monthly",
     },
     cancel_at_period_end: false,
   };
@@ -353,6 +355,7 @@ it("updates a user's subscriptions via webhook (add then remove)", async ({ expe
     metadata: {
       offerId,
       offer: JSON.stringify(offer),
+      priceId: "monthly",
     },
     cancel_at_period_end: false,
   };
