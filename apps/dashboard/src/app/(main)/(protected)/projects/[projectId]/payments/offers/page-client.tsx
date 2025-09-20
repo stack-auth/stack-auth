@@ -1,21 +1,21 @@
 "use client";
 
-import { cn } from "@/lib/utils";
 import { CodeBlock } from '@/components/code-block';
+import { EditableInput } from "@/components/editable-input";
+import { cn } from "@/lib/utils";
 import { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
-import { userSpecifiedIdSchema } from "@stackframe/stack-shared/dist/schema-fields";
 import type { DayInterval } from "@stackframe/stack-shared/dist/utils/dates";
 import { prettyPrintWithMagnitudes } from "@stackframe/stack-shared/dist/utils/numbers";
-import { typedEntries, typedKeys } from "@stackframe/stack-shared/dist/utils/objects";
+import { typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
 import {
   ActionDialog,
   Button,
-  Checkbox,
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
   DropdownMenu,
+  DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
@@ -33,8 +33,8 @@ import {
   SimpleTooltip,
   toast
 } from "@stackframe/stack-ui";
-import { ChevronDown, MoreVertical, Pencil, Plus, Trash2, X, Server, Layers, Puzzle, Check, Gift, ChevronsUpDown } from "lucide-react";
-import { useEffect, useMemo, useRef, useState, Fragment } from "react";
+import { Check, ChevronDown, ChevronsUpDown, Layers, MoreVertical, Pencil, PencilIcon, Plus, Puzzle, Server, Trash2, X } from "lucide-react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { IllustratedInfo } from "../../../../../../../components/illustrated-info";
 import { PageLayout } from "../../page-layout";
 import { useAdminApp } from "../../use-admin-app";
@@ -68,7 +68,7 @@ function shortIntervalLabel(interval: DayInterval | 'never'): string {
 
 function OrSeparator() {
   return (
-    <div className="flex items-center justify-center stack-scope">
+    <div className="flex items-center justify-center stack-scope mx-2">
       <div className="flex-1">
         <Separator />
       </div>
@@ -267,6 +267,8 @@ function OfferPriceRow({
     price.interval ? (price.interval[0] === 1 ? price.interval[1] : 'custom') : 'one-time'
   );
 
+  const niceAmount = +amount;
+
   useEffect(() => {
     if (isEditing) return;
     setAmount(price.USD || '0.00');
@@ -285,10 +287,10 @@ function OfferPriceRow({
   const intervalText = intervalLabel(price.interval);
 
   return (
-    <div className={cn("relative flex flex-col items-center gap-2 rounded-md px-2 py-1")}>
+    <div className={cn("relative flex flex-col items-center rounded-md px-2 py-1")}>
       {isEditing ? (
         <>
-          <div className="relative w-full">
+          <div className="relative w-full pb-2">
             <span className="pointer-events-none font-semibold text-xl text-black absolute left-1.5 top-1/2 -translate-y-1/2 z-20">$</span>
             <Input
               className="h-8 !pl-[18px] w-full mr-3 text-xl font-semibold bg-transparent tabular-nums text-center"
@@ -349,10 +351,8 @@ function OfferPriceRow({
         </>
       ) : (
         <>
-          <div className="text-xl text-center font-semibold tabular-nums">${amount || '0.00'}</div>
-          {intervalText && (
-            <div className="text-xs text-muted-foreground">{intervalText}</div>
-          )}
+          <div className="text-xl text-center font-semibold tabular-nums">${niceAmount}</div>
+          <div className="text-xs text-muted-foreground">{intervalText ?? 'one-time'}</div>
         </>
       )}
     </div>
@@ -604,7 +604,7 @@ function OfferItemRow({
               <div className="text-xs">
                 <CodeBlock
                   language="typescript"
-                  content={`const item = await ${activeType === "user" ? "user" : "team"}.getItemCount("${itemId}");\n`}
+                  content={`const item = await ${activeType === "user" ? "user" : "team"}.getItem("${itemId}");\nconst count = item.quantity;\n`}
                   title="Example"
                   icon="code"
                   compact
@@ -699,7 +699,7 @@ function OfferCard({ id, activeType, offer, allOffers, existingItems, onSave, on
       return null;
     }
     return (
-      <div className="space-y-2 shrink-0">
+      <div className="space-y-3 shrink-0">
         {entries.map(([pid, price], index) => (
           <Fragment key={pid}>
             <OfferPriceRow
@@ -739,57 +739,73 @@ function OfferCard({ id, activeType, offer, allOffers, existingItems, onSave, on
 
   const itemsList = Object.entries(draft.includedItems);
 
+  const couldBeAddOnTo = allOffers.filter(o => o.offer.groupId === draft.groupId && o.id !== id);
+  const isAddOnTo = allOffers.filter(o => draft.isAddOnTo && o.id in draft.isAddOnTo);
+
   const OFFER_TOGGLE_OPTIONS = [{
     key: 'serverOnly' as const,
     label: 'Server only',
     description: "Restricts this offer to only be purchased from server-side calls",
     active: !!draft.serverOnly,
+    visible: true,
     icon: <Server size={16} />,
-    onToggle: () => setDraft(prev => ({ ...prev, serverOnly: !prev.serverOnly }))
+    onToggle: () => setDraft(prev => ({ ...prev, serverOnly: !prev.serverOnly })),
+    wrapButton: (button: React.ReactNode) => button,
   }, {
     key: 'stackable' as const,
     label: 'Stackable',
     description: "Allow customers to purchase this offer multiple times",
     active: !!draft.stackable,
+    visible: true,
     icon: <Layers size={16} />,
-    onToggle: () => setDraft(prev => ({ ...prev, stackable: !prev.stackable }))
-  }, {
-    key: "include-by-default" as const,
-    label: 'Include by default',
-    description: "This offer will be automatically included for all customers at no cost",
-    active: draft.prices === 'include-by-default',
-    icon: <Gift size={16} />,
-    onToggle: () => setDraft(prev => ({ ...prev, prices: prev.prices === 'include-by-default' ? {} : 'include-by-default' }))
+    onToggle: () => setDraft(prev => ({ ...prev, stackable: !prev.stackable })),
+    wrapButton: (button: React.ReactNode) => button,
   }, {
     key: 'addon' as const,
     label: 'Add-on',
     description: "Make this offer an add-on. An add-on can be purchased along with the offer(s) it is an add-on to.",
+    visible: draft.isAddOnTo !== false || couldBeAddOnTo.length > 0,
     active: draft.isAddOnTo !== false,
     icon: <Puzzle size={16} />,
-    onToggle: () => setDraft(prev => ({ ...prev, isAddOnTo: (prev.isAddOnTo === false ? {} : false) }))
+    onToggle: isAddOnTo.length === 0 && draft.isAddOnTo !== false ? () => setDraft(prev => ({ ...prev, isAddOnTo: false })) : undefined,
+    wrapButton: (button: React.ReactNode) => isAddOnTo.length === 0 && draft.isAddOnTo !== false ? button : (
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          {button}
+        </DropdownMenuTrigger>
+        <DropdownMenuContent>
+          {couldBeAddOnTo.map(offer => (
+            <DropdownMenuCheckboxItem
+              checked={isAddOnTo.some(o => o.id === offer.id)}
+              key={offer.id}
+              onCheckedChange={(checked) => setDraft(prev => {
+                const newIsAddOnTo = { ...prev.isAddOnTo || {} };
+                if (checked) {
+                  newIsAddOnTo[offer.id] = true;
+                } else {
+                  delete newIsAddOnTo[offer.id];
+                }
+                return { ...prev, isAddOnTo: Object.keys(newIsAddOnTo).length > 0 ? newIsAddOnTo : false };
+              })}
+              className="cursor-pointer"
+            >
+              {offer.offer.displayName} ({offer.id})
+            </DropdownMenuCheckboxItem>
+          ))}
+        </DropdownMenuContent>
+      </DropdownMenu>
+    ),
   }] as const;
 
   return (
     <div ref={cardRef} className={cn(
-      "rounded-lg border bg-background w-[320px] flex flex-col relative group shrink-0 pb-4",
+      "rounded-lg border bg-background w-[280px] flex flex-col relative group shrink-0 pb-4",
       isEditing && "border-foreground/60 dark:border-foreground/40"
     )}>
-      <div className="p-4 flex items-start justify-center">
-        {isEditing ? (
+      <div className="pt-4 px-4 flex flex-col items-center justify-center">
+        {isEditing && (
           <div className="flex flex-col gap-2 w-full">
             <div className="flex items-center gap-2">
-              <span className="text-xs text-muted-foreground">ID:</span>
-              {isDraft ? (
-                <Input
-                  className="h-8 text-xs font-mono"
-                  value={localOfferId}
-                  onChange={(e) => setLocalOfferId(e.target.value)}
-                  placeholder="offer-id"
-                  aria-label="Offer ID"
-                />
-              ) : (
-                <div className="font-mono h-fit">{id}</div>
-              )}
               <div className="grow flex flex-row justify-end">
                 <SimpleTooltip tooltip={saveDisabledReason} disabled={canSaveOffer}>
                   <Button size="icon" variant="ghost" onClick={async () => {
@@ -825,21 +841,32 @@ function OfferCard({ id, activeType, offer, allOffers, existingItems, onSave, on
                 </Button>
               </div>
             </div>
-            <Input
-              className="h-8 font-bold text-center w-full"
-              value={draft.displayName || ""}
-              onChange={(e) => setDraft(prev => ({ ...prev, displayName: e.target.value }))}
-              placeholder={id}
-            />
-          </div>
-        ) : (
-          <div className="flex justify-center flex-col items-center w-full">
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">ID: {id}</div>
-            <div className="text-lg font-bold">{offer.displayName || id}</div>
           </div>
         )}
+        <div className="flex justify-center flex-col items-center w-full">
+          <EditableInput
+            value={localOfferId}
+            onUpdate={async (value) => setLocalOfferId(value)}
+            readOnly={!isDraft || !isEditing}
+            placeholder={"Offer ID"}
+            inputClassName="text-xs font-mono text-center text-muted-foreground"
+          />
+          <EditableInput
+            value={offer.displayName || ""}
+            onUpdate={async (value) => setDraft(prev => ({ ...prev, displayName: value }))}
+            readOnly={!isEditing}
+            placeholder={"Offer display name"}
+            inputClassName="text-lg font-bold text-center w-full"
+          />
+        </div>
         {!isEditing && (
           <div className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity">
+            <button className="h-7 w-7 inline-flex items-center justify-center rounded hover:bg-muted" aria-label="Edit offer" onClick={() => {
+              setIsEditing(true);
+              setDraft(offer);
+            }}>
+              <PencilIcon className="h-4 w-4" />
+            </button>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <button className="h-7 w-7 inline-flex items-center justify-center rounded hover:bg-muted" aria-label="Open menu">
@@ -866,69 +893,26 @@ function OfferCard({ id, activeType, offer, allOffers, existingItems, onSave, on
         )}
       </div>
       {/* Toggles row */}
-      <div className="px-4 pb-2 flex flex-wrap gap-2 justify-center">
-        {OFFER_TOGGLE_OPTIONS.filter(b => isEditing || (b.active && b.key !== "addon")).map((b) => (
+      <div className="px-4 pb-3 pt-1 flex flex-wrap gap-2 justify-center text-muted-foreground">
+        {OFFER_TOGGLE_OPTIONS.filter(b => b.visible !== false).filter(b => isEditing || b.active).map((b) => (
           <SimpleTooltip tooltip={b.description} key={b.key}>
-            <button
-              key={b.key}
-              className={cn("text-xs px-2 py-0.5 flex items-center gap-1 rounded-full",
+            {(isEditing ? b.wrapButton : ((x: any) => x))(
+              <button
+                key={b.key}
+                className={cn("text-xs px-2 py-0.5 flex items-center gap-1 rounded-full",
                 isEditing ? "border bg-muted/40 hover:bg-muted/60" : "bg-transparent",
                 !b.active && "line-through text-muted-foreground",
               )}
-              onClick={isEditing ? b.onToggle : undefined}
-            >
-              {b.icon}
-              {b.label}
-            </button>
+                onClick={isEditing ? b.onToggle : undefined}
+              >
+                {b.icon}
+                {b.key === "addon" && isAddOnTo.length > 0 ? `Add-on to ${isAddOnTo.map(o => o.offer.displayName).join(", ")}` : b.label}
+              </button>
+          )}
           </SimpleTooltip>
         ))}
-        {!isEditing && !!draft.isAddOnTo && Object.keys(draft.isAddOnTo).length > 0 && (
-          <SimpleTooltip tooltip={OFFER_TOGGLE_OPTIONS.find(b => b.key === "addon")?.description}>
-            <button className="text-xs px-2 py-0.5 flex items-center gap-1 rounded-full bg-transparent">
-              {OFFER_TOGGLE_OPTIONS.find(b => b.key === "addon")?.icon}
-              {Object.keys(draft.isAddOnTo).join(", ")}
-            </button>
-          </SimpleTooltip>
-        )}
       </div>
-      {isEditing && !!draft.isAddOnTo && (
-        <div className="p-4">
-          <div className="flex flex-col gap-1 border">
-            <span className="text-xs text-muted-foreground px-2 pt-2">Add-on to</span>
-            {Object.keys(draft.isAddOnTo).map(id => (
-              <div key={id} className="flex items-center gap-1 px-2 justify-between">
-                {id}
-                <Button size="icon" variant="ghost" onClick={() => {
-                  setDraft(prev => ({ ...prev, isAddOnTo: Object.fromEntries(Object.entries(prev.isAddOnTo).filter(([key]) => key !== id)) }));
-                }}>
-                  <X className="h-4 w-4" />
-                </Button>
-              </div>
-            ))}
-            {allOffers.filter(o => !o.offer.isAddOnTo).length > 0 ? (
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="outline" className="border-dashed border m-2">
-                    + Add Add-on
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="min-w-[160px]">
-                  {allOffers.filter(o => !o.offer.isAddOnTo).map(offer => (
-                    <DropdownMenuItem key={offer.id} onClick={() => {
-                      setDraft(prev => ({ ...prev, isAddOnTo: { ...prev.isAddOnTo, [offer.id]: true } }));
-                    }}>
-                      {offer.offer.displayName} ({offer.id})
-                    </DropdownMenuItem>
-                  ))}
-                </DropdownMenuContent>
-              </DropdownMenu>
-            ) : (
-              <div className="text-sm text-muted-foreground p-2 text-center">No applicable offers</div>
-            )}
-          </div>
-        </div>
-      )}
-      <div className="px-4 py-2 border-y border-border">
+      <div className="px-4 py-4 border-y border-border">
         {renderPrimaryPrices()}
         {isEditing && draft.prices !== 'include-by-default' && (
           <>
@@ -957,7 +941,7 @@ function OfferCard({ id, activeType, offer, allOffers, existingItems, onSave, on
 
       <div className="px-4 py-3">
         {itemsList.length === 0 ? (
-          <div className="text-sm text-muted-foreground">No items yet</div>
+          <div className="text-sm text-muted-foreground text-center">No items yet</div>
         ) : (
           <div className="space-y-2">
             {itemsList.map(([itemId, item]) => {
@@ -1134,7 +1118,7 @@ function CatalogView({ groupedOffers, groups, existingItems, onSaveOffer, onDele
                 activeType === t ? "bg-background shadow-sm" : "text-muted-foreground hover:text-foreground"
               )}
             >
-              {t}
+              {t} catalogs
             </button>
           ))}
         </div>
@@ -1170,9 +1154,9 @@ function CatalogView({ groupedOffers, groups, existingItems, onSaveOffer, onDele
             ) : (
               <h3 className="text-lg font-semibold mb-3">{groupName}</h3>
             )}
-            <div className="relative rounded-xl bg-muted/70">
+            <div className="relative rounded-xl bg-slate-100 dark:bg-muted border-slate-100 dark:border-muted border-2">
               <div className="flex gap-4 justify-start overflow-x-auto p-4 min-h-20 pr-16">
-                <div className="flex max-w-max mx-auto gap-4">
+                <div className="flex max-w-max gap-4 items-start">
                   {offers.map(({ id, offer }) => (
                     <OfferCard
                       key={id}
@@ -1253,7 +1237,7 @@ function CatalogView({ groupedOffers, groups, existingItems, onSaveOffer, onDele
                     />
                   ))}
                   {!isNewGroupPlaceholder && (
-                    <div className="border border-dashed rounded-lg w-[320px] flex flex-col items-center justify-center">
+                    <div className="self-stretch border border-dashed rounded-lg w-[150px] py-8 flex flex-col items-center justify-center bg-background">
                       <div className="flex flex-col items-center gap-2">
                         <Button
                           variant="outline"
@@ -1286,6 +1270,7 @@ function CatalogView({ groupedOffers, groups, existingItems, onSaveOffer, onDele
           </div>
         );
       })}
+      {/* TODO: Add new catalog is temporarily disabled, uncomment this to enable it
       <div className="w-full h-40 flex items-center justify-center border border-dashed rounded-lg">
         <div className="flex flex-col items-center gap-2">
           <Button
@@ -1316,6 +1301,7 @@ function CatalogView({ groupedOffers, groups, existingItems, onSaveOffer, onDele
           Create catalog
         </div>
       </div>
+      */}
     </div>
   );
 }
@@ -1522,18 +1508,7 @@ export default function PageClient() {
 
   // If no offers and items, show welcome screen instead of everything
   const innerContent = (
-    <PageLayout actions={process.env.NODE_ENV === "development" && (
-      <div className="flex items-center gap-2">
-        <Checkbox
-          checked={shouldUseDummyData}
-          onClick={() => setShouldUseDummyData(s => !s)}
-          id="use-dummy-data"
-        />
-        <label htmlFor="use-dummy-data">
-          [DEV] Use dummy data
-        </label>
-      </div>
-    )}>
+    <PageLayout title='Offer Catalogs'>
       <div className="flex-1">
         <CatalogView
           groupedOffers={groupedOffers}
