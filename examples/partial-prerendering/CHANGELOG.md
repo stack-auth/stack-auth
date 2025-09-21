@@ -1,5 +1,11 @@
 # @stackframe/example-partial-prerendering
 
+## 2.8.39
+
+### Patch Changes
+
+- @stackframe/stack@2.8.39
+
 ## 2.8.38
 
 ### Patch Changes

@@ -205,6 +205,22 @@ services:
     environment:
       HOST_ON_HOST: host.docker.internal
 
+  # ================= MCPJam Inspector =================
+
+  mcpjam-inspector:
+    image: node:20-alpine
+    ports:
+      - "8126:3001"
+    command: >
+      sh -c "echo '{\"mcpServers\":{\"local-stack-auth-docs\":{\"url\":\"http://host.docker.internal:8104/api/internal/mcp\"}}}' > /app/mcp.json && npx -y @mcpjam/inspector@latest --port 3001 --config /app/mcp.json"
+    working_dir: /app
+    volumes:
+      - mcpjam-inspector-data:/root
+    extra_hosts:
+      - "host.docker.internal:host-gateway"  # noop on Docker Desktop/Orbstack, enables host.docker.internal on Linux
+    environment:
+      HOST_ON_HOST: host.docker.internal
+
 
 # ================= volumes =================
 
@@ -216,6 +232,7 @@ volumes:
   s3mock-data:
   deno-cache:
   localstack-data:
+  mcpjam-inspector-data:
 
 # ================= configs =================
 
