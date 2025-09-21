@@ -6,9 +6,9 @@ import { useHover } from "@stackframe/stack-shared/dist/hooks/use-hover";
 import { DayInterval } from "@stackframe/stack-shared/dist/utils/dates";
 import { prettyPrintWithMagnitudes } from "@stackframe/stack-shared/dist/utils/numbers";
 import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
-import { Button, Card, CardContent, Checkbox, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, toast } from "@stackframe/stack-ui";
+import { Button, Card, CardContent, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, Switch, Label, toast } from "@stackframe/stack-ui";
 import { MoreVertical, Plus } from "lucide-react";
-import React, { ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import React, { ReactNode, useEffect, useId, useMemo, useRef, useState } from "react";
 import { IllustratedInfo } from "../../../../../../../components/illustrated-info";
 import { PageLayout } from "../../page-layout";
 import { useAdminApp } from "../../use-admin-app";
@@ -589,7 +589,7 @@ function WelcomeScreen({ onCreateOffer }: { onCreateOffer: () => void }) {
   );
 }
 
-export default function PageClient() {
+export default function PageClient({ onViewChange }: { onViewChange: (view: "list" | "catalogs") => void }) {
   const [activeTab, setActiveTab] = useState<"offers" | "items">("offers");
   const [hoveredOfferId, setHoveredOfferId] = useState<string | null>(null);
   const [hoveredItemId, setHoveredItemId] = useState<string | null>(null);
@@ -601,6 +601,7 @@ export default function PageClient() {
   const project = stackAdminApp.useProject();
   const config = project.useConfig();
   const [shouldUseDummyData, setShouldUseDummyData] = useState(false);
+  const switchId = useId();
 
   const paymentsConfig = shouldUseDummyData ? DUMMY_PAYMENTS_CONFIG : config.payments;
 
@@ -773,53 +774,52 @@ export default function PageClient() {
     innerContent = <WelcomeScreen onCreateOffer={handleCreateOffer} />;
   } else {
     innerContent = (
-      <PageLayout title="Offers & Items" actions={process.env.NODE_ENV === "development" && (
-        <div className="flex items-center gap-2">
-          <Checkbox
-            checked={shouldUseDummyData}
-            onClick={() => setShouldUseDummyData(s => !s)}
-            id="use-dummy-data"
-          />
-          <label htmlFor="use-dummy-data">
-            [DEV] Use dummy data
-          </label>
-        </div>
-      )}>
+      <PageLayout
+        title="Offers"
+        actions={
+          <div className="flex items-center gap-2 self-center">
+            <Label htmlFor={switchId}>Pricing table</Label>
+            <Switch id={switchId} checked={true} onCheckedChange={() => onViewChange("catalogs")} />
+            <Label htmlFor={switchId}>List</Label>
+          </div>
+        }
+      >
         {/* Mobile tabs */}
-        <div className="lg:hidden mb-4">
+        < div className="lg:hidden mb-4" >
           <div className="flex space-x-1 bg-muted p-1 rounded-md">
             <button
               onClick={() => setActiveTab("offers")}
               className={cn(
-              "flex-1 px-3 py-2 rounded-sm text-sm font-medium transition-all",
-              activeTab === "offers"
-                ? "bg-background text-foreground shadow-sm"
-                : "text-muted-foreground hover:text-foreground"
-            )}
+                "flex-1 px-3 py-2 rounded-sm text-sm font-medium transition-all",
+                activeTab === "offers"
+                  ? "bg-background text-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
+              )}
             >
               Offers
             </button>
             <button
               onClick={() => setActiveTab("items")}
               className={cn(
-              "flex-1 px-3 py-2 rounded-sm text-sm font-medium transition-all",
-              activeTab === "items"
-                ? "bg-background text-foreground shadow-sm"
-                : "text-muted-foreground hover:text-foreground"
-            )}
+                "flex-1 px-3 py-2 rounded-sm text-sm font-medium transition-all",
+                activeTab === "items"
+                  ? "bg-background text-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
+              )}
             >
               Items
             </button>
           </div>
-        </div>
+        </div >
 
         {/* Content */}
-        <div className="flex gap-6 flex-1" style={{
+        < div className="flex gap-6 flex-1" style={{
           flexBasis: "0px",
           overflow: "scroll",
-        }}>
+        }
+        }>
           {/* Desktop two-column layout */}
-          <Card className="hidden lg:flex w-full relative" ref={containerRef}>
+          < Card className="hidden lg:flex w-full relative" ref={containerRef} >
             <CardContent className="flex w-full">
               <div className="flex-1">
                 <OffersList
@@ -854,29 +854,33 @@ export default function PageClient() {
             </CardContent>
 
             {/* Connection lines */}
-            {hoveredOfferId && getConnectedItems(hoveredOfferId).map(itemId => (
-              <ConnectionLine
-                key={`${hoveredOfferId}-${itemId}`}
-                fromRef={offerRefs[hoveredOfferId]}
-                toRef={itemRefs[itemId]}
-                containerRef={containerRef}
-                quantity={getItemQuantity(hoveredOfferId, itemId)}
-              />
-            ))}
+            {
+              hoveredOfferId && getConnectedItems(hoveredOfferId).map(itemId => (
+                <ConnectionLine
+                  key={`${hoveredOfferId}-${itemId}`}
+                  fromRef={offerRefs[hoveredOfferId]}
+                  toRef={itemRefs[itemId]}
+                  containerRef={containerRef}
+                  quantity={getItemQuantity(hoveredOfferId, itemId)}
+                />
+              ))
+            }
 
-            {hoveredItemId && getConnectedOffers(hoveredItemId).map(offerId => (
-              <ConnectionLine
-                key={`${offerId}-${hoveredItemId}`}
-                fromRef={offerRefs[offerId]}
-                toRef={itemRefs[hoveredItemId]}
-                containerRef={containerRef}
-                quantity={getItemQuantity(offerId, hoveredItemId)}
-              />
-            ))}
-          </Card>
+            {
+              hoveredItemId && getConnectedOffers(hoveredItemId).map(offerId => (
+                <ConnectionLine
+                  key={`${offerId}-${hoveredItemId}`}
+                  fromRef={offerRefs[offerId]}
+                  toRef={itemRefs[hoveredItemId]}
+                  containerRef={containerRef}
+                  quantity={getItemQuantity(offerId, hoveredItemId)}
+                />
+              ))
+            }
+          </Card >
 
           {/* Mobile single column with tabs */}
-          <div className="lg:hidden w-full">
+          < div className="lg:hidden w-full" >
             {activeTab === "offers" ? (
               <OffersList
                 groupedOffers={groupedOffers}
@@ -901,9 +905,9 @@ export default function PageClient() {
                 setShowItemDialog={setShowItemDialog}
               />
             )}
-          </div>
-        </div>
-      </PageLayout>
+          </div >
+        </div >
+      </PageLayout >
     );
   }
 

@@ -572,7 +572,7 @@ importers:
         specifier: ^1.2.12
         version: 1.2.12(react@18.3.1)(zod@3.25.76)
       '@modelcontextprotocol/sdk':
-        specifier: ^1.12.0
+        specifier: ^1.17.2
         version: 1.17.2
       '@radix-ui/react-collapsible':
         specifier: ^1.1.11
@@ -605,7 +605,7 @@ importers:
         specifier: ^12.6.4
         version: 12.7.0(@types/react@18.3.12)(immer@9.0.21)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       ai:
-        specifier: ^4.3.16
+        specifier: ^4.3.17
         version: 4.3.17(react@18.3.1)(zod@3.25.76)
       class-variance-authority:
         specifier: ^0.7.1

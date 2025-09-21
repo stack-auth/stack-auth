@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
 
 export default function Page() {
-  redirect("./payments/offers-and-items");
+  redirect("./payments/offers");
 }

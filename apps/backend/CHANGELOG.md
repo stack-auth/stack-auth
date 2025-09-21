@@ -1,5 +1,14 @@
 # @stackframe/stack-backend
 
+## 2.8.39
+
+### Patch Changes
+
+- Various changes
+- Updated dependencies
+  - @stackframe/stack-shared@2.8.39
+  - @stackframe/stack@2.8.39
+
 ## 2.8.38
 
 ### Patch Changes
