@@ -1,4 +1,5 @@
 import { getAuthContactChannel } from "@/lib/contact-channel";
+import { normalizeEmail } from "@/lib/emails";
 import { createAuthTokens } from "@/lib/tokens";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
@@ -33,10 +34,12 @@ export const POST = createSmartRouteHandler({
       user_id: yupString().defined(),
     }).defined(),
   }),
-  async handler({ auth: { tenancy }, body: { email, password } }, fullReq) {
+  async handler({ auth: { tenancy }, body: { email: rawEmail, password } }, fullReq) {
     if (!tenancy.config.auth.password.allowSignIn) {
       throw new KnownErrors.PasswordAuthenticationNotEnabled();
     }
+
+    const email = normalizeEmail(rawEmail);
 
     const prisma = await getPrismaClientForTenancy(tenancy);
     const contactChannel = await getAuthContactChannel(
