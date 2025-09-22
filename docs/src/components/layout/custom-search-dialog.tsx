@@ -1,6 +1,6 @@
 'use client';
 
-import { AlignLeft, ChevronDown, ExternalLink, FileText, Hash, Search, X } from 'lucide-react';
+import { AlignLeft, ChevronDown, ExternalLink, FileText, Hash, Search, Webhook, X, Zap } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -48,7 +48,12 @@ function extractPlatformFromUrl(url: string): string {
 }
 
 function extractBasePathFromUrl(url: string): string {
-  // Extract everything after the platform but before any hash
+  // Handle API URLs differently
+  if (url.startsWith('/api/')) {
+    const match = url.match(/\/api\/([^\/]+)/);
+    return match?.[1] || '';
+  }
+  // Extract everything after the platform but before any hash for docs URLs
   const match = url.match(/\/docs\/[^\/]+(.+?)(?:#|$)/);
   return match?.[1] || '';
 }
@@ -60,12 +65,37 @@ function groupResultsByPage(results: SearchResult[]): GroupedResult[] {
   for (const result of results) {
     const platform = extractPlatformFromUrl(result.url);
     const basePath = extractBasePathFromUrl(result.url);
-    const baseUrl = `/docs/${platform}${basePath}`;
+
+    // Create appropriate baseUrl based on whether it's an API or docs URL
+    const baseUrl = platform === 'api' ? `/api/${basePath}` : `/docs/${platform}${basePath}`;
 
     if (!grouped.has(baseUrl)) {
-      // Find the page title from page-type results, fallback to path-based title
-      const pageResult = results.find(r => r.url === baseUrl && r.type === 'page');
-      const title = pageResult?.content || basePath.split('/').pop()?.replace(/-/g, ' ') || 'Unknown';
+      let title = 'Unknown';
+
+      if (platform === 'api') {
+        // For API URLs, create better titles based on the API type
+        switch (basePath) {
+          case 'client': {
+            title = 'Client API';
+            break;
+          }
+          case 'server': {
+            title = 'Server API';
+            break;
+          }
+          case 'webhooks': {
+            title = 'Webhooks';
+            break;
+          }
+          default: {
+            title = `${basePath.charAt(0).toUpperCase()}${basePath.slice(1)} API`;
+          }
+        }
+      } else {
+        // For docs URLs, find the page title from page-type results, fallback to path-based title
+        const pageResult = results.find(r => r.url === baseUrl && r.type === 'page');
+        title = pageResult?.content || basePath.split('/').pop()?.replace(/-/g, ' ') || 'Unknown';
+      }
 
       grouped.set(baseUrl, {
         platform,
@@ -107,7 +137,7 @@ function PlatformBadge({ platform }: { platform: string }) {
   );
 }
 
-function SearchResultIcon({ type }: { type: string }) {
+function SearchResultIcon({ type, url }: { type: string, url?: string }) {
   switch (type) {
     case 'page': {
       return <FileText className="w-4 h-4" />;
@@ -119,7 +149,11 @@ function SearchResultIcon({ type }: { type: string }) {
       return <AlignLeft className="w-4 h-4" />;
     }
     case 'api': {
-      return <ExternalLink className="w-4 h-4" />;
+      // Use different icons based on the API type
+      if (url?.includes('/webhooks/')) {
+        return <Webhook className="w-4 h-4" />;
+      }
+      return <Zap className="w-4 h-4" />;
     }
     default: {
       return <FileText className="w-4 h-4" />;
@@ -443,7 +477,7 @@ export function CustomSearchDialog({ open, onOpenChange }: CustomSearchDialogPro
                       )}
                     >
                       <div className="flex-shrink-0 mt-0.5 text-fd-muted-foreground">
-                        <SearchResultIcon type={result.type} />
+                        <SearchResultIcon type={result.type} url={result.url} />
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className={cn(
