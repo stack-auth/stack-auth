@@ -137,6 +137,11 @@ const handler = createMcpHandler(
 
         // Search through all pages
         for (const page of allPages) {
+          // Skip admin API endpoints
+          if (page.url.startsWith('/api/admin')) {
+            continue;
+          }
+
           let score = 0;
           const title = page.data.title || '';
           const description = page.data.description || '';

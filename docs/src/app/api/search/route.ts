@@ -131,8 +131,11 @@ export async function GET(request: NextRequest) {
 
     console.log(`Found ${results.length} search results from MCP server for "${query}"`);
 
+    // Filter out admin API endpoints as an additional safety measure
+    const filteredResults = results.filter(result => !result.url.startsWith('/api/admin'));
+
     // Sort by platform priority since MCP server already handles relevance
-    const sortedResults = results.sort((a, b) => {
+    const sortedResults = filteredResults.sort((a, b) => {
       return getPlatformPriority(b.url) - getPlatformPriority(a.url);
     });
 
