@@ -208,6 +208,7 @@ export namespace Auth {
         "email": expect.toSatisfy(() => true),
         "email_verified": expect.any(Boolean),
         "selected_team_id": expect.toSatisfy(() => true),
+        "is_anonymous": expect.any(Boolean),
       });
     }
   }

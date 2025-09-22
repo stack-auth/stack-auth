@@ -108,7 +108,7 @@ export async function decodeAccessToken(accessToken: string, { allowAnonymous }:
       branchId: branchId,
       refreshTokenId: payload.refresh_token_id ?? payload.refreshTokenId,
       exp: payload.exp,
-      isAnonymous: payload.role === 'anon',
+      isAnonymous: payload.is_anonymous ?? /* legacy, now we always set role to authenticated, TODO next-release remove */ payload.role === 'anon',
     });
 
     return Result.ok(result);
@@ -141,13 +141,15 @@ export async function generateAccessToken(options: {
     audience: getAudience(options.tenancy.project.id, user.is_anonymous),
     payload: {
       sub: options.userId,
+      project_id: options.tenancy.project.id,
       branch_id: options.tenancy.branchId,
       refresh_token_id: options.refreshTokenId,
-      role: user.is_anonymous ? 'anon' : 'authenticated',
+      role: 'authenticated',
       name: user.display_name,
       email: user.primary_email,
       email_verified: user.primary_email_verified,
       selected_team_id: user.selected_team_id,
+      is_anonymous: user.is_anonymous,
     },
     expirationTime: getEnvVariable("STACK_ACCESS_TOKEN_EXPIRATION_TIME", "10min"),
   });

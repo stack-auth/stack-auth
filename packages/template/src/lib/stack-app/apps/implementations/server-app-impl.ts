@@ -21,7 +21,7 @@ import { useMemo } from "react"; // THIS_LINE_PLATFORM react-like
 import * as yup from "yup";
 import { constructRedirectUrl } from "../../../../utils/url";
 import { ApiKey, ApiKeyCreationOptions, ApiKeyUpdateOptions, apiKeyCreationOptionsToCrud, apiKeyUpdateOptionsToCrud } from "../../api-keys";
-import { GetUserOptions, HandlerUrls, OAuthScopesOnSignIn, TokenStoreInit } from "../../common";
+import { GetCurrentUserOptions, HandlerUrls, OAuthScopesOnSignIn, TokenStoreInit } from "../../common";
 import { OAuthConnection } from "../../connected-accounts";
 import { ServerContactChannel, ServerContactChannelCreateOptions, ServerContactChannelUpdateOptions, serverContactChannelCreateOptionsToCrud, serverContactChannelUpdateOptionsToCrud } from "../../contact-channels";
 import { InlineOffer, ServerItem } from "../../customers";
@@ -903,13 +903,13 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
     return this._serverUserFromCrud(crud);
   }
 
-  async getUser(options: GetUserOptions<HasTokenStore> & { or: 'redirect' }): Promise<ProjectCurrentServerUser<ProjectId>>;
-  async getUser(options: GetUserOptions<HasTokenStore> & { or: 'throw' }): Promise<ProjectCurrentServerUser<ProjectId>>;
-  async getUser(options: GetUserOptions<HasTokenStore> & { or: 'anonymous' }): Promise<ProjectCurrentServerUser<ProjectId>>;
-  async getUser(options?: GetUserOptions<HasTokenStore>): Promise<ProjectCurrentServerUser<ProjectId> | null>;
+  async getUser(options: GetCurrentUserOptions<HasTokenStore> & { or: 'redirect' }): Promise<ProjectCurrentServerUser<ProjectId>>;
+  async getUser(options: GetCurrentUserOptions<HasTokenStore> & { or: 'throw' }): Promise<ProjectCurrentServerUser<ProjectId>>;
+  async getUser(options: GetCurrentUserOptions<HasTokenStore> & { or: 'anonymous' }): Promise<ProjectCurrentServerUser<ProjectId>>;
+  async getUser(options?: GetCurrentUserOptions<HasTokenStore>): Promise<ProjectCurrentServerUser<ProjectId> | null>;
   async getUser(id: string): Promise<ServerUser | null>;
   async getUser(options: { apiKey: string }): Promise<ServerUser | null>;
-  async getUser(options?: string | GetUserOptions<HasTokenStore> | { apiKey: string }): Promise<ProjectCurrentServerUser<ProjectId> | ServerUser | null> {
+  async getUser(options?: string | GetCurrentUserOptions<HasTokenStore> | { apiKey: string }): Promise<ProjectCurrentServerUser<ProjectId> | ServerUser | null> {
     if (typeof options === "string") {
       return await this.getServerUserById(options);
     } else if (typeof options === "object" && "apiKey" in options) {
@@ -959,13 +959,13 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
   }
 
   // IF_PLATFORM react-like
-  useUser(options: GetUserOptions<HasTokenStore> & { or: 'redirect' }): ProjectCurrentServerUser<ProjectId>;
-  useUser(options: GetUserOptions<HasTokenStore> & { or: 'throw' }): ProjectCurrentServerUser<ProjectId>;
-  useUser(options: GetUserOptions<HasTokenStore> & { or: 'anonymous' }): ProjectCurrentServerUser<ProjectId>;
-  useUser(options?: GetUserOptions<HasTokenStore>): ProjectCurrentServerUser<ProjectId> | null;
+  useUser(options: GetCurrentUserOptions<HasTokenStore> & { or: 'redirect' }): ProjectCurrentServerUser<ProjectId>;
+  useUser(options: GetCurrentUserOptions<HasTokenStore> & { or: 'throw' }): ProjectCurrentServerUser<ProjectId>;
+  useUser(options: GetCurrentUserOptions<HasTokenStore> & { or: 'anonymous' }): ProjectCurrentServerUser<ProjectId>;
+  useUser(options?: GetCurrentUserOptions<HasTokenStore>): ProjectCurrentServerUser<ProjectId> | null;
   useUser(id: string): ServerUser | null;
   useUser(options: { apiKey: string }): ServerUser | null;
-  useUser(options?: GetUserOptions<HasTokenStore> | string | { apiKey: string }): ProjectCurrentServerUser<ProjectId> | ServerUser | null {
+  useUser(options?: GetCurrentUserOptions<HasTokenStore> | string | { apiKey: string }): ProjectCurrentServerUser<ProjectId> | ServerUser | null {
     if (typeof options === "string") {
       return this.useUserById(options);
     } else if (typeof options === "object" && "apiKey" in options) {

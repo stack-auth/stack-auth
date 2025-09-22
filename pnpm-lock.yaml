@@ -1115,9 +1115,6 @@ importers:
       color:
         specifier: ^4.2.3
         version: 4.2.3
-      convex:
-        specifier: ^1.27.0
-        version: 1.27.0(react@18.3.1)
       cookie:
         specifier: ^0.6.0
         version: 0.6.0
@@ -1167,6 +1164,9 @@ importers:
       chokidar-cli:
         specifier: ^3.0.0
         version: 3.0.0
+      convex:
+        specifier: ^1.27.0
+        version: 1.27.0(react@18.3.1)
       esbuild:
         specifier: ^0.20.2
         version: 0.20.2
@@ -1221,9 +1221,6 @@ importers:
       color:
         specifier: ^4.2.3
         version: 4.2.3
-      convex:
-        specifier: ^1.27.0
-        version: 1.27.0(react@18.3.1)
       cookie:
         specifier: ^0.6.0
         version: 0.6.0
@@ -1285,6 +1282,9 @@ importers:
       chokidar-cli:
         specifier: ^3.0.0
         version: 3.0.0
+      convex:
+        specifier: ^1.27.0
+        version: 1.27.0(react@18.3.1)
       esbuild:
         specifier: ^0.20.2
         version: 0.20.2
@@ -1348,9 +1348,6 @@ importers:
       color:
         specifier: ^4.2.3
         version: 4.2.3
-      convex:
-        specifier: ^1.27.0
-        version: 1.27.0(react@18.2.0)
       cookie:
         specifier: ^0.6.0
         version: 0.6.0
@@ -1412,6 +1409,9 @@ importers:
       chokidar-cli:
         specifier: ^3.0.0
         version: 3.0.0
+      convex:
+        specifier: ^1.27.0
+        version: 1.27.0(react@18.2.0)
       esbuild:
         specifier: ^0.20.2
         version: 0.20.2
@@ -1730,9 +1730,6 @@ importers:
       color:
         specifier: ^4.2.3
         version: 4.2.3
-      convex:
-        specifier: ^1.27.0
-        version: 1.27.0(react@18.3.1)
       cookie:
         specifier: ^0.6.0
         version: 0.6.0
@@ -1794,6 +1791,9 @@ importers:
       chokidar-cli:
         specifier: ^3.0.0
         version: 3.0.0
+      convex:
+        specifier: ^1.27.0
+        version: 1.27.0(react@18.3.1)
       esbuild:
         specifier: ^0.20.2
         version: 0.20.2

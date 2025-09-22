@@ -113,8 +113,8 @@
     "zustand"
   ],
   "editor.codeActionsOnSave": {
-    "source.fixAll.eslint": "explicit",
-    "source.organizeImports": "explicit"    
+    "source.organizeImports": "explicit",
+    "source.fixAll.eslint": "explicit" 
   },
   "terminal.integrated.wordSeparators": " (){}',\"`─‘’“”|",
   "editor.formatOnSave": false,

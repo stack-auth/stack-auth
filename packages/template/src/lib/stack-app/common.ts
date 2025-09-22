@@ -1,4 +1,5 @@
 import { ProviderType } from "@stackframe/stack-shared/dist/utils/oauth";
+import type { GenericQueryCtx } from "convex/server";
 
 export type RedirectToOptions = {
   replace?: boolean,
@@ -27,11 +28,29 @@ export type RedirectMethod = "window"
   }
 
 
-export type GetUserOptions<HasTokenStore> =
+export type GetCurrentUserOptions<HasTokenStore> =
   & {
     or?: 'redirect' | 'throw' | 'return-null' | 'anonymous' | /** @deprecated */ 'anonymous-if-exists[deprecated]',
     tokenStore?: TokenStoreInit,
   }
+  & (HasTokenStore extends false ? {
+    tokenStore: TokenStoreInit,
+  } : {});
+
+export type GetCurrentPartialUserOptions<HasTokenStore> =
+  & {
+    or?: 'return-null' | 'anonymous',  // note: unlike normal getUser, 'anonymous' still returns null sometimes (eg. if no token is present)
+    tokenStore?: TokenStoreInit,
+  }
+  & (
+    | {
+      from: 'token',
+    }
+    | {
+      from: 'convex',
+      ctx: GenericQueryCtx<any>,
+    }
+  )
   & (HasTokenStore extends false ? {
     tokenStore: TokenStoreInit,
   } : {});
