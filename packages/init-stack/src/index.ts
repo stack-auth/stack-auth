@@ -634,6 +634,16 @@ const Steps = {
       `${clientOrServer === "server" ? `${indentation}secretServerKey: process.env.STACK_SECRET_SERVER_KEY,` : ""}`,
     ].filter(Boolean).join("\n") : "";
 
+    const nextClientOptions = (type === "next" && clientOrServer === "client")
+      ? (() => {
+        const lines = [
+          projectIdFromArgs ? `${indentation}projectId: process.env.NEXT_PUBLIC_STACK_PROJECT_ID ?? '${projectIdFromArgs}',` : "",
+          publishableClientKeyFromArgs ? `${indentation}publishableClientKey: process.env.NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY ?? '${publishableClientKeyFromArgs}',` : "",
+        ].filter(Boolean).join("\n");
+        return lines ? `\n${lines}` : "";
+      })()
+      : "";
+
 
     laterWriteFileIfNotExists(
       stackAppPath,
@@ -643,7 +653,7 @@ ${type === "next" && clientOrServer === "server" ? `import "server-only";` : ""}
 import { Stack${clientOrServerCap}App } from ${JSON.stringify(packageName)};
 
 export const stack${clientOrServerCap}App = new Stack${clientOrServerCap}App({
-${indentation}tokenStore: ${tokenStore},${jsOptions}
+${indentation}tokenStore: ${tokenStore},${jsOptions}${nextClientOptions}
 });
       `.trim() + "\n"
     );
@@ -816,7 +826,7 @@ async function getUpdatedLayout(originalLayout: string): Promise<LayoutResult | 
   const importInsertLocationM1 =
     firstImportLocationM1 ?? (hasStringAsFirstLine ? layout.indexOf("\n") : -1);
   const importInsertLocation = importInsertLocationM1 + 1;
-  const importStatement = `import { StackProvider, StackTheme } from "@stackframe/stack";\nimport { stackServerApp } from "../stack/server";\n`;
+  const importStatement = `import { StackProvider, StackTheme } from "@stackframe/stack";\nimport { stackClientApp } from "../stack/client";\n`;
   layout =
     layout.slice(0, importInsertLocation) +
     importStatement +
@@ -843,7 +853,7 @@ async function getUpdatedLayout(originalLayout: string): Promise<LayoutResult | 
     bodyCloseStartIndex
   );
 
-  const insertOpen = "<StackProvider app={stackServerApp}><StackTheme>";
+  const insertOpen = "<StackProvider app={stackClientApp}><StackTheme>";
   const insertClose = "</StackTheme></StackProvider>";
 
   layout =
@@ -932,7 +942,7 @@ async function promptPackageManager(): Promise<string> {
   const yarnLock = fs.existsSync(path.join(projectPath, "yarn.lock"));
   const pnpmLock = fs.existsSync(path.join(projectPath, "pnpm-lock.yaml"));
   const npmLock = fs.existsSync(path.join(projectPath, "package-lock.json"));
-  const bunLock = fs.existsSync(path.join(projectPath, "bun.lockb"));
+  const bunLock = fs.existsSync(path.join(projectPath, "bun.lockb")) || fs.existsSync(path.join(projectPath, "bun.lock"));
 
   if (yarnLock && !pnpmLock && !npmLock && !bunLock) {
     return "yarn";
