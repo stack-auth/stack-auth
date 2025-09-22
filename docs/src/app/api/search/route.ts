@@ -8,7 +8,7 @@ type SearchResult = {
 };
 
 // Helper function to call MCP server
-async function callMcpServer(query: string): Promise<SearchResult[]> {
+async function callMcpServer(search_query: string): Promise<SearchResult[]> {
   try {
     const response = await fetch('http://localhost:8104/api/internal/mcp', {
       method: 'POST',
@@ -21,7 +21,7 @@ async function callMcpServer(query: string): Promise<SearchResult[]> {
         method: 'tools/call',
         params: {
           name: 'search_docs',
-          arguments: { query, limit: 20 },
+          arguments: { search_query, result_limit: 20 },
         },
         id: Date.now(),
       }),
@@ -117,19 +117,19 @@ function getPlatformPriority(url: string): number {
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
-  const query = searchParams.get('q');
+  const search_query = searchParams.get('q');
 
-  console.log('Search API called with query:', query);
+  console.log('Search API called with query:', search_query);
 
-  if (!query) {
+  if (!search_query) {
     return Response.json([]);
   }
 
   try {
     // Call MCP server for search results
-    const results = await callMcpServer(query);
+    const results = await callMcpServer(search_query);
 
-    console.log(`Found ${results.length} search results from MCP server for "${query}"`);
+    console.log(`Found ${results.length} search results from MCP server for "${search_query}"`);
 
     // Filter out admin API endpoints as an additional safety measure
     const filteredResults = results.filter(result => !result.url.startsWith('/api/admin'));
@@ -139,7 +139,7 @@ export async function GET(request: NextRequest) {
       return getPlatformPriority(b.url) - getPlatformPriority(a.url);
     });
 
-    console.log(`\n=== MCP SEARCH RESULTS FOR "${query}" ===`);
+    console.log(`\n=== MCP SEARCH RESULTS FOR "${search_query}" ===`);
     sortedResults.slice(0, 10).forEach((result, i) => {
       const priority = getPlatformPriority(result.url);
       console.log(`${i + 1}. "${result.content}" (${result.type}) - Priority: ${priority} - URL: ${result.url}`);

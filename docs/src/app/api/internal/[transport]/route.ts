@@ -138,18 +138,18 @@ const handler = createMcpHandler(
       "search_docs",
       "Search through all Stack Auth documentation including API docs, guides, and examples. Returns ranked results with snippets and relevance scores.",
       {
-        query: z.string().describe("The search query to find relevant documentation"),
-        limit: z.number().optional().describe("Maximum number of results to return (default: 10)")
+        search_query: z.string().describe("The search query to find relevant documentation"),
+        result_limit: z.number().optional().describe("Maximum number of results to return (default: 50)")
       },
-      async ({ query, limit = 10 }) => {
+      async ({ search_query, result_limit = 10 }) => {
         nodeClient?.capture({
           event: "search_docs",
-          properties: { query, limit },
+          properties: { search_query, result_limit },
           distinctId: "mcp-handler",
         });
 
         const results = [];
-        const queryLower = query.toLowerCase().trim();
+        const queryLower = search_query.toLowerCase().trim();
 
         // Search through all pages
         for (const page of allPages) {
@@ -246,13 +246,13 @@ const handler = createMcpHandler(
         // Sort by score (highest first) and limit results
         const sortedResults = results
           .sort((a, b) => b.score - a.score)
-          .slice(0, limit);
+          .slice(0, result_limit);
 
         const searchResultText = sortedResults.length > 0
           ? sortedResults.map(result =>
               `Title: ${result.title}\nDescription: ${result.description}\nURL: ${result.url}\nType: ${result.type}\nScore: ${result.score}\nSnippet: ${result.snippet}\n`
             ).join('\n---\n')
-          : `No results found for "${query}"`;
+          : `No results found for "${search_query}"`;
 
         return {
           content: [{ type: "text", text: searchResultText }],
