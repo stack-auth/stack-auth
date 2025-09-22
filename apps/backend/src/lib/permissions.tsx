@@ -350,7 +350,6 @@ export async function ensurePermissionDefinition(
   const existingPermission = options.tenancy.config.rbac.permissions[options.id];
 
   if (existingPermission) {
-    // permission already exists, update it
     return await updatePermissionDefinition(globalTx, sourceOfTruthTx, {
       scope: options.scope,
       tenancy: options.tenancy,
@@ -362,7 +361,6 @@ export async function ensurePermissionDefinition(
       },
     });
   } else {
-    // permission doesn't exist, create it
     return await createPermissionDefinition(globalTx, {
       scope: options.scope,
       tenancy: options.tenancy,
