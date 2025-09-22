@@ -15,6 +15,7 @@ export function DayIntervalSelectorField<F extends FieldValues>(props: {
   label: React.ReactNode,
   required?: boolean,
   includeNever?: boolean,
+  unsetLabel?: string,
 }) {
 
   const convertToDayInterval = (value: string): DayInterval | undefined => {
@@ -40,13 +41,14 @@ export function DayIntervalSelectorField<F extends FieldValues>(props: {
           <FormControl>
             <Select
               defaultValue={formatDayInterval(field.value as DayInterval)}
-              onValueChange={(value) => field.onChange(convertToDayInterval(value))}
+              onValueChange={(value) => field.onChange(value === "__unset__" ? undefined : convertToDayInterval(value))}
             >
               <SelectTrigger className="max-w-lg">
-                <SelectValue />
+                <SelectValue placeholder={props.unsetLabel} />
               </SelectTrigger>
               <SelectContent>
                 <SelectGroup>
+                  {props.unsetLabel && <SelectItem value={"__unset__"}>{props.unsetLabel}</SelectItem>}
                   {props.includeNever && <SelectItem value="never">Never</SelectItem>}
                   {intervalOptions.map(option => (
                     <SelectItem key={option.value} value={option.value}>

@@ -197,3 +197,50 @@ export function subtractInterval(date: Date, interval: Interval): Date {
 export function addInterval(date: Date, interval: Interval): Date {
   return applyInterval(date, 1, interval);
 }
+
+export const FAR_FUTURE_DATE = new Date(8640000000000000); // 13 Sep 275760 00:00:00 UTC
+
+function getMsPerDayIntervalUnit(unit: 'day' | 'week'): number {
+  if (unit === 'day') {
+    return 24 * 60 * 60 * 1000;
+  }
+  return 7 * 24 * 60 * 60 * 1000;
+}
+
+
+export function getIntervalsElapsed(anchor: Date, to: Date, repeat: DayInterval): number {
+  const [amount, unit] = repeat;
+  if (to <= anchor) return 0;
+  if (unit === 'day' || unit === 'week') {
+    const msPerUnit = getMsPerDayIntervalUnit(unit);
+    const diffMs = to.getTime() - anchor.getTime();
+    return Math.floor(diffMs / (msPerUnit * amount));
+  }
+  if (["month", "year"].includes(unit)) {
+    let count = 0;
+    let current = new Date(anchor);
+    for (; ;) {
+      const next = addInterval(new Date(current), [amount, unit]);
+      if (next > to) break;
+      current = next;
+      count += 1;
+    }
+    return count;
+  }
+  return 0;
+}
+
+import.meta.vitest?.test("getIntervalsElapsed", ({ expect }) => {
+  const anchor = new Date('2025-01-01T00:00:00.000Z');
+  const to = new Date('2025-01-15T00:00:00.000Z');
+  expect(getIntervalsElapsed(anchor, to, [1, 'week'])).toBe(2);
+  expect(getIntervalsElapsed(anchor, to, [3, 'day'])).toBe(4);
+
+  const mAnchor = new Date('2023-01-31T00:00:00.000Z');
+  const mTo = new Date('2023-03-01T00:00:00.000Z');
+  expect(getIntervalsElapsed(mAnchor, mTo, [1, 'month'])).toBe(0);
+
+  const yAnchor = new Date('2020-01-01T00:00:00.000Z');
+  const yTo = new Date('2022-06-01T00:00:00.000Z');
+  expect(getIntervalsElapsed(yAnchor, yTo, [1, 'year'])).toBe(2);
+});

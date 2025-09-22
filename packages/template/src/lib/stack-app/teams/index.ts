@@ -3,8 +3,8 @@ import { ReadonlyJson } from "@stackframe/stack-shared/dist/utils/json";
 
 import { ApiKeyCreationOptions, TeamApiKey, TeamApiKeyFirstView } from "../api-keys";
 import { AsyncStoreProperty } from "../common";
-import { ServerUser } from "../users";
 import { Customer } from "../customers";
+import { ServerUser } from "../users";
 
 
 export type TeamMemberProfile = {
@@ -99,6 +99,7 @@ export type ServerListUsersOptions = {
   orderBy?: 'signedUpAt',
   desc?: boolean,
   query?: string,
+  includeAnonymous?: boolean,
 };
 
 export type ServerTeamCreateOptions = TeamCreateOptions & {

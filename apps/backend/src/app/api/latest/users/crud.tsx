@@ -2,19 +2,20 @@ import { getRenderedEnvironmentConfigQuery } from "@/lib/config";
 import { normalizeEmail } from "@/lib/emails";
 import { grantDefaultProjectPermissions } from "@/lib/permissions";
 import { ensureTeamMembershipExists, ensureUserExists } from "@/lib/request-checks";
-import { getSoleTenancyFromProjectBranch, getTenancy } from "@/lib/tenancies";
+import { Tenancy, getSoleTenancyFromProjectBranch, getTenancy } from "@/lib/tenancies";
 import { PrismaTransaction } from "@/lib/types";
 import { sendTeamMembershipDeletedWebhook, sendUserCreatedWebhook, sendUserDeletedWebhook, sendUserUpdatedWebhook } from "@/lib/webhooks";
+import { triggerWorkflows } from "@/lib/workflows";
 import { RawQuery, getPrismaClientForSourceOfTruth, getPrismaClientForTenancy, getPrismaSchemaForSourceOfTruth, getPrismaSchemaForTenancy, globalPrismaClient, rawQuery, retryTransaction, sqlQuoteIdent } from "@/prisma-client";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
 import { uploadAndGetUrl } from "@/s3";
 import { log } from "@/utils/telemetry";
 import { runAsynchronouslyAndWaitUntil } from "@/utils/vercel";
-import { BooleanTrue, Prisma } from "@prisma/client";
+import { BooleanTrue, Prisma, PrismaClient } from "@prisma/client";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { currentUserCrud } from "@stackframe/stack-shared/dist/interface/crud/current-user";
 import { UsersCrud, usersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
-import { userIdOrMeSchema, yupBoolean, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+import { userIdOrMeSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { validateBase64Image } from "@stackframe/stack-shared/dist/utils/base64";
 import { decodeBase64 } from "@stackframe/stack-shared/dist/utils/bytes";
 import { StackAssertionError, StatusError, captureError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
@@ -44,6 +45,44 @@ export const userFullInclude = {
     },
   },
 } satisfies Prisma.ProjectUserInclude;
+
+const getPersonalTeamDisplayName = (userDisplayName: string | null, userPrimaryEmail: string | null) => {
+  if (userDisplayName) {
+    return `${userDisplayName}'s Team`;
+  }
+  if (userPrimaryEmail) {
+    return `${userPrimaryEmail}'s Team`;
+  }
+  return personalTeamDefaultDisplayName;
+};
+
+const personalTeamDefaultDisplayName = "Personal Team";
+
+async function createPersonalTeamIfEnabled(prisma: PrismaClient, tenancy: Tenancy, user: UsersCrud["Admin"]["Read"]) {
+  if (tenancy.config.teams.createPersonalTeamOnSignUp) {
+    const team = await teamsCrudHandlers.adminCreate({
+      data: {
+        display_name: getPersonalTeamDisplayName(user.display_name, user.primary_email),
+        creator_user_id: 'me',
+      },
+      tenancy: tenancy,
+      user,
+    });
+
+    await prisma.teamMember.update({
+      where: {
+        tenancyId_projectUserId_teamId: {
+          tenancyId: tenancy.id,
+          projectUserId: user.id,
+          teamId: team.id,
+        },
+      },
+      data: {
+        isSelected: BooleanTrue.TRUE,
+      },
+    });
+  }
+}
 
 export const userPrismaToCrud = (
   prisma: Prisma.ProjectUserGetPayload<{ include: typeof userFullInclude }>,
@@ -168,11 +207,14 @@ export const getUsersLastActiveAtMillis = async (projectId: string, branchId: st
   const tenancy = await getSoleTenancyFromProjectBranch(projectId, branchId);
 
   const prisma = await getPrismaClientForTenancy(tenancy);
-  const schema = getPrismaSchemaForTenancy(tenancy);
+  const schema = await getPrismaSchemaForTenancy(tenancy);
   const events = await prisma.$queryRaw<Array<{ userId: string, lastActiveAt: Date }>>`
     SELECT data->>'userId' as "userId", MAX("eventStartedAt") as "lastActiveAt"
     FROM ${sqlQuoteIdent(schema)}."Event"
-    WHERE data->>'userId' = ANY(${Prisma.sql`ARRAY[${Prisma.join(userIds)}]`}) AND data->>'projectId' = ${projectId} AND COALESCE("data"->>'branchId', 'main') = ${branchId} AND "systemEventTypeIds" @> '{"$user-activity"}'
+    WHERE data->>'userId' = ANY(${Prisma.sql`ARRAY[${Prisma.join(userIds)}]`})
+      AND data->>'projectId' = ${projectId}
+      AND COALESCE("data"->>'branchId', 'main') = ${branchId}
+      AND "systemEventTypeIds" @> '{"$user-activity"}'
     GROUP BY data->>'userId'
   `;
 
@@ -360,7 +402,7 @@ export async function getUser(options: { userId: string } & ({ projectId: string
 
   const environmentConfig = await rawQuery(globalPrismaClient, getRenderedEnvironmentConfigQuery({ projectId, branchId }));
   const prisma = await getPrismaClientForSourceOfTruth(environmentConfig.sourceOfTruth, branchId);
-  const schema = getPrismaSchemaForSourceOfTruth(environmentConfig.sourceOfTruth, branchId);
+  const schema = await getPrismaSchemaForSourceOfTruth(environmentConfig.sourceOfTruth, branchId);
   const result = await rawQuery(prisma, getUserQuery(projectId, branchId, options.userId, schema));
   return result;
 }
@@ -375,10 +417,11 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
     limit: yupNumber().integer().min(1).optional().meta({ openapiField: { onlyShowInOperations: [ 'List' ], description: "The maximum number of items to return" } }),
     cursor: yupString().uuid().optional().meta({ openapiField: { onlyShowInOperations: [ 'List' ], description: "The cursor to start the result set from." } }),
     order_by: yupString().oneOf(['signed_up_at']).optional().meta({ openapiField: { onlyShowInOperations: [ 'List' ], description: "The field to sort the results by. Defaults to signed_up_at" } }),
-    desc: yupBoolean().optional().meta({ openapiField: { onlyShowInOperations: [ 'List' ], description: "Whether to sort the results in descending order. Defaults to false" } }),
+    desc: yupString().oneOf(["true", "false"]).optional().meta({ openapiField: { onlyShowInOperations: [ 'List' ], description: "Whether to sort the results in descending order. Defaults to false" } }),
     query: yupString().optional().meta({ openapiField: { onlyShowInOperations: [ 'List' ], description: "A search query to filter the results by. This is a free-text search that is applied to the user's id (exact-match only), display name and primary email." } }),
+    include_anonymous: yupString().oneOf(["true", "false"]).optional().meta({ openapiField: { onlyShowInOperations: [ 'List' ], description: "Whether to include anonymous users in the results. Defaults to false" } }),
   }),
-  onRead: async ({ auth, params }) => {
+  onRead: async ({ auth, params, query }) => {
     const user = await getUser({ tenancyId: auth.tenancy.id, userId: params.user_id });
     if (!user) {
       throw new KnownErrors.UserNotFound();
@@ -398,6 +441,10 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
           },
         },
       } : {},
+      ...query.include_anonymous === "true" ? {} : {
+        // Don't return anonymous users unless explicitly requested
+        isAnonymous: false,
+      },
       ...query.query ? {
         OR: [
           ...isUuid(queryWithoutSpecialChars!) ? [{
@@ -431,7 +478,7 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
       orderBy: {
         [({
           signed_up_at: 'createdAt',
-        } as const)[query.order_by ?? 'signed_up_at']]: query.desc ? 'desc' : 'asc',
+        } as const)[query.order_by ?? 'signed_up_at']]: query.desc === 'true' ? 'desc' : 'asc',
       },
       // +1 because we need to know if there is a next page
       take: query.limit ? query.limit + 1 : undefined,
@@ -499,7 +546,6 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
         for (const provider of data.oauth_providers) {
           if (!has(config.auth.oauth.providers, provider.id)) {
             throw new StatusError(StatusError.BadRequest, `OAuth provider ${provider.id} not found`);
-
           }
 
           const authMethod = await tx.authMethod.create({
@@ -601,32 +647,13 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
       return userPrismaToCrud(user, await getUserLastActiveAtMillis(auth.project.id, auth.branchId, user.projectUserId) ?? user.createdAt.getTime());
     });
 
-    // TODO why is this outside the transaction? is there a reason?
-    if (auth.tenancy.config.teams.createPersonalTeamOnSignUp) {
-      const team = await teamsCrudHandlers.adminCreate({
-        data: {
-          display_name: data.display_name ?
-            `${data.display_name}'s Team` :
-            primaryEmail ?
-              `${primaryEmail}'s Team` :
-              "Personal Team",
-          creator_user_id: 'me',
-        },
-        tenancy: auth.tenancy,
-        user: result,
-      });
+    await createPersonalTeamIfEnabled(prisma, auth.tenancy, result);
 
-      await prisma.teamMember.update({
-        where: {
-          tenancyId_projectUserId_teamId: {
-            tenancyId: auth.tenancy.id,
-            projectUserId: result.id,
-            teamId: team.id,
-          },
-        },
-        data: {
-          isSelected: BooleanTrue.TRUE,
-        },
+    // if the user is not an anonymous user, trigger onSignUp workflows
+    if (!result.is_anonymous) {
+      await triggerWorkflows(auth.tenancy, {
+        type: "sign-up",
+        userId: result.id,
       });
     }
 
@@ -641,7 +668,7 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
     const primaryEmail = data.primary_email ? normalizeEmail(data.primary_email) : data.primary_email;
     const passwordHash = await getPasswordHashFromData(data);
     const prisma = await getPrismaClientForTenancy(auth.tenancy);
-    const result = await retryTransaction(prisma, async (tx) => {
+    const { user } = await retryTransaction(prisma, async (tx) => {
       await ensureUserExists(tx, { tenancyId: auth.tenancy.id, userId: params.user_id });
 
       const config = auth.tenancy.config;
@@ -930,6 +957,31 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
         }
       }
 
+      // if we went from anonymous to non-anonymous:
+      if (oldUser.isAnonymous && data.is_anonymous === false) {
+        // trigger onSignUp workflows
+        await triggerWorkflows(auth.tenancy, {
+          type: "sign-up",
+          userId: params.user_id,
+        });
+
+        // rename the personal team
+        await tx.team.updateMany({
+          where: {
+            tenancyId: auth.tenancy.id,
+            teamMembers: {
+              some: {
+                projectUserId: params.user_id,
+              },
+            },
+            displayName: personalTeamDefaultDisplayName,
+          },
+          data: {
+            displayName: getPersonalTeamDisplayName(data.display_name ?? null, data.primary_email ?? null),
+          },
+        });
+      }
+
       const db = await tx.projectUser.update({
         where: {
           tenancyId_projectUserId: {
@@ -950,7 +1002,10 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
         include: userFullInclude,
       });
 
-      return userPrismaToCrud(db, await getUserLastActiveAtMillis(auth.project.id, auth.branchId, params.user_id) ?? db.createdAt.getTime());
+      const user = userPrismaToCrud(db, await getUserLastActiveAtMillis(auth.project.id, auth.branchId, params.user_id) ?? db.createdAt.getTime());
+      return {
+        user,
+      };
     });
 
     // if user password changed, reset all refresh tokens
@@ -966,10 +1021,10 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
 
     runAsynchronouslyAndWaitUntil(sendUserUpdatedWebhook({
       projectId: auth.project.id,
-      data: result,
+      data: user,
     }));
 
-    return result;
+    return user;
   },
   onDelete: async ({ auth, params }) => {
     const prisma = await getPrismaClientForTenancy(auth.tenancy);
@@ -1040,7 +1095,7 @@ export const currentUserCrudHandlers = createLazyProxy(() => createCrudHandlers(
       tenancy: auth.tenancy,
       user_id: auth.user?.id ?? throwErr(new KnownErrors.CannotGetOwnUserWithoutUser()),
       data,
-      allowedErrorTypes: [StatusError],
+      allowedErrorTypes: [Object],
     });
   },
   async onDelete({ auth }) {
@@ -1051,7 +1106,7 @@ export const currentUserCrudHandlers = createLazyProxy(() => createCrudHandlers(
     return await usersCrudHandlers.adminDelete({
       tenancy: auth.tenancy,
       user_id: auth.user?.id ?? throwErr(new KnownErrors.CannotGetOwnUserWithoutUser()),
-      allowedErrorTypes: [StatusError]
+      allowedErrorTypes: [Object],
     });
   },
 }));

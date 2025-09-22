@@ -19,6 +19,7 @@ type Props<F extends FieldValues, SubF extends FieldValues, TValue> = {
   name: Path<F>,
   label: React.ReactNode,
   required?: boolean,
+  disabled?: boolean,
 
   entryLabel: string,
   addButtonLabel: string,
@@ -108,7 +109,7 @@ export function KeyedRecordEditorField<F extends FieldValues, SubF extends Field
             <FormControl>
               <div className="space-y-2">
                 <div className="space-y-2">
-                  {rows.map(row => (
+                  {!props.disabled && rows.map(row => (
                     <Card key={row.uid} className="border">
                       <CardHeader className="flex flex-row items-center justify-between space-y-0 p-2 px-4">
                         <CardTitle className="text-sm font-medium lowercase overflow-x-scroll whitespace-nowrap">
@@ -128,7 +129,7 @@ export function KeyedRecordEditorField<F extends FieldValues, SubF extends Field
                 </div>
 
                 <div className="flex justify-center">
-                  <Button type="button" variant="outline" onClick={startCreate}>
+                  <Button type="button" variant="outline" onClick={startCreate} disabled={props.disabled}>
                     <Plus className="mr-2 h-4 w-4" /> {props.addButtonLabel}
                   </Button>
                 </div>

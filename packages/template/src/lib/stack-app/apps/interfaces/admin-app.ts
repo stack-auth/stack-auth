@@ -1,4 +1,5 @@
 import { ChatContent } from "@stackframe/stack-shared/dist/interface/admin-interface";
+import type { AdminTransaction } from "@stackframe/stack-shared/dist/interface/crud/transactions";
 import { InternalSession } from "@stackframe/stack-shared/dist/sessions";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { AsyncStoreProperty, EmailConfig } from "../../common";
@@ -34,10 +35,17 @@ export type StackAdminApp<HasTokenStore extends boolean = boolean, ProjectId ext
   & AsyncStoreProperty<"emailThemes", [], { id: string, displayName: string }[], true>
   & AsyncStoreProperty<"emailPreview", [{ themeId?: string | null | false, themeTsxSource?: string, templateId?: string, templateTsxSource?: string }], string, false>
   & AsyncStoreProperty<"emailTemplates", [], { id: string, displayName: string, themeId?: string, tsxSource: string }[], true>
+  & AsyncStoreProperty<"emailDrafts", [], { id: string, displayName: string, themeId: string | undefined | false, tsxSource: string, sentAt: Date | null }[], true>
+  & AsyncStoreProperty<"stripeAccountInfo", [], { account_id: string, charges_enabled: boolean, details_submitted: boolean, payouts_enabled: boolean } | null, false>
+  & AsyncStoreProperty<
+    "transactions",
+    [
+      { cursor?: string, limit?: number, type?: 'subscription' | 'one_time' | 'item_quantity_change', customerType?: 'user' | 'team' | 'custom' }
+    ],
+    { transactions: AdminTransaction[], nextCursor: string | null },
+    true
+  >
   & {
-    useEmailTemplates(): { id: string, displayName: string, tsxSource: string }[], // THIS_LINE_PLATFORM react-like
-    listEmailTemplates(): Promise<{ id: string, displayName: string, tsxSource: string }[]>,
-
     createInternalApiKey(options: InternalApiKeyCreateOptions): Promise<InternalApiKeyFirstView>,
 
     createTeamPermissionDefinition(data: AdminTeamPermissionDefinitionCreateOptions): Promise<AdminTeamPermission>,
@@ -65,7 +73,7 @@ export type StackAdminApp<HasTokenStore extends boolean = boolean, ProjectId ext
 
     sendChatMessage(
       threadId: string,
-      contextType: "email-theme" | "email-template",
+      contextType: "email-theme" | "email-template" | "email-draft",
       messages: Array<{ role: string, content: any }>,
       abortSignal?: AbortSignal,
     ): Promise<{ content: ChatContent }>,
@@ -76,8 +84,14 @@ export type StackAdminApp<HasTokenStore extends boolean = boolean, ProjectId ext
 
     setupPayments(): Promise<{ url: string }>,
     createStripeWidgetAccountSession(): Promise<{ client_secret: string }>,
-    createPurchaseUrl(options: { customerId: string, offerId: string }): Promise<string>,
-    createItemQuantityChange(options: { customerId: string, itemId: string, quantity: number, expiresAt?: string, description?: string }): Promise<void>,
+    createEmailDraft(options: { displayName: string, themeId?: string | undefined | false, tsxSource?: string }): Promise<{ id: string }>,
+    updateEmailDraft(id: string, data: { displayName?: string, themeId?: string | undefined | false, tsxSource?: string }): Promise<void>,
+    createItemQuantityChange(options: (
+      { userId: string, itemId: string, quantity: number, expiresAt?: string, description?: string } |
+      { teamId: string, itemId: string, quantity: number, expiresAt?: string, description?: string } |
+      { customCustomerId: string, itemId: string, quantity: number, expiresAt?: string, description?: string }
+    )): Promise<void>,
+    testModePurchase(options: { priceId: string, fullCode: string, quantity?: number }): Promise<void>,
   }
   & StackServerApp<HasTokenStore, ProjectId>
 );

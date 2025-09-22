@@ -2,6 +2,7 @@
   "$schema": "https://turbo.build/schema.json",
   "globalEnv": [
     "STACK_*",
+    "CRON_SECRET",
     "NEXT_PUBLIC_*",
     "NEXT_PUBLIC_SENTRY_*",
     "SENTRY_*",

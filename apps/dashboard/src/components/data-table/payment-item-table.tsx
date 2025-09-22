@@ -1,10 +1,12 @@
 'use client';
 import { useAdminApp } from "@/app/(main)/(protected)/projects/[projectId]/use-admin-app";
 import { SmartFormDialog } from "@/components/form-dialog";
+import { ItemDialog } from "@/components/payments/item-dialog";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { branchPaymentsSchema } from "@stackframe/stack-shared/dist/config/schema";
+import { has } from "@stackframe/stack-shared/dist/utils/objects";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
-import { ActionCell, DataTable, DataTableColumnHeader, TextCell, toast } from "@stackframe/stack-ui";
+import { ActionCell, ActionDialog, DataTable, DataTableColumnHeader, TextCell, toast } from "@stackframe/stack-ui";
 import { ColumnDef } from "@tanstack/react-table";
 import { useState } from "react";
 import * as yup from "yup";
@@ -33,38 +35,12 @@ const columns: ColumnDef<PaymentItem>[] = [
     enableSorting: false,
   },
   {
-    accessorKey: "default.quantity",
-    header: ({ column }) => <DataTableColumnHeader column={column} columnTitle="Default Quantity" />,
-    cell: ({ row }) => <TextCell>{row.original.default.quantity}</TextCell>,
-    enableSorting: false,
-  },
-  {
-    accessorKey: "default.repeat",
-    header: ({ column }) => <DataTableColumnHeader column={column} columnTitle="Default Repeat" />,
-    cell: ({ row }) => <TextCell>
-      {row.original.default.repeat === "never" ? "Never" : row.original.default.repeat?.join(" ") ?? ""}
-    </TextCell>,
-    enableSorting: false,
-  },
-  {
-    accessorKey: "default.expires",
-    header: ({ column }) => <DataTableColumnHeader column={column} columnTitle="Default Expires" />,
-    cell: ({ row }) => <TextCell><span className="capitalize">{row.original.default.expires || "Never"}</span></TextCell>,
-    enableSorting: false,
-  },
-  {
     id: "actions",
-    cell: ({ row }) => <ActionsCell itemId={row.original.id} />,
+    cell: ({ row }) => <ActionsCell item={row.original} />,
   }
 ];
 
-export function PaymentItemTable({
-  items,
-  toolbarRender,
-}: {
-  items: Record<string, yup.InferType<typeof branchPaymentsSchema>["items"][string]>,
-  toolbarRender: () => React.ReactNode,
-}) {
+export function PaymentItemTable({ items }: { items: Record<string, yup.InferType<typeof branchPaymentsSchema>["items"][string]> }) {
   const data: PaymentItem[] = Object.entries(items).map(([id, item]) => ({
     id,
     ...item,
@@ -76,41 +52,92 @@ export function PaymentItemTable({
     defaultColumnFilters={[]}
     defaultSorting={[]}
     showDefaultToolbar={false}
-    toolbarRender={toolbarRender}
   />;
 }
 
-function ActionsCell({ itemId }: { itemId: string }) {
+function ActionsCell({ item }: { item: PaymentItem }) {
   const [open, setOpen] = useState(false);
+  const [isEditOpen, setIsEditOpen] = useState(false);
+  const [isDeleteOpen, setIsDeleteOpen] = useState(false);
+  const stackAdminApp = useAdminApp();
+  const project = stackAdminApp.useProject();
   return (
     <>
       <ActionCell
         items={[
           {
-            item: "New Item Quantity Change",
+            item: "Update Customer Quantity",
             onClick: () => setOpen(true),
           },
           {
+            item: "Edit",
+            onClick: () => setIsEditOpen(true),
+          },
+          '-',
+          {
             item: "Delete",
-            disabled: true,
-            onClick: () => { },
+            onClick: () => setIsDeleteOpen(true),
+            danger: true,
           },
         ]}
       />
       <CreateItemQuantityChangeDialog
         open={open}
         onOpenChange={setOpen}
-        itemId={itemId}
+        itemId={item.id}
+        customerType={item.customerType}
+      />
+      <ItemDialog
+        open={isEditOpen}
+        onOpenChange={setIsEditOpen}
+        project={project}
+        mode="edit"
+        initial={{ id: item.id, value: item }}
+      />
+      <ActionDialog
+        open={isDeleteOpen}
+        onOpenChange={setIsDeleteOpen}
+        title="Delete Item"
+        description="This will delete the item"
+        cancelButton
+        danger
+        okButton={{
+          label: "Delete",
+          onClick: async () => {
+            const config = await project.getConfig();
+            for (const [offerId, offer] of Object.entries(config.payments.offers)) {
+              if (has(offer.includedItems, item.id)) {
+                toast({
+                  title: "Item is included in offer",
+                  description: `Please remove it from the offer "${offerId}" before deleting.`,
+                  variant: "destructive",
+                });
+                return "prevent-close";
+              }
+            }
+            await project.updateConfig({
+              [`payments.items.${item.id}`]: null,
+            });
+            toast({ title: "Item deleted" });
+          }
+        }}
       />
     </>
   );
 }
 
-function CreateItemQuantityChangeDialog({ open, onOpenChange, itemId }: { open: boolean, onOpenChange: (open: boolean) => void, itemId: string }) {
+type CreateItemQuantityChangeDialogProps = {
+  open: boolean,
+  onOpenChange: (open: boolean) => void,
+  itemId: string,
+  customerType: "user" | "team" | "custom" | undefined,
+}
+
+function CreateItemQuantityChangeDialog({ open, onOpenChange, itemId, customerType }: CreateItemQuantityChangeDialogProps) {
   const stackAdminApp = useAdminApp();
 
   const schema = yup.object({
-    customerId: yup.string().uuid().defined().label("Customer ID"),
+    customerId: yup.string().defined().label("Customer ID"),
     quantity: yup.number().defined().label("Quantity"),
     description: yup.string().optional().label("Description"),
     expiresAt: yup.date().optional().label("Expires At"),
@@ -118,7 +145,12 @@ function CreateItemQuantityChangeDialog({ open, onOpenChange, itemId }: { open: 
 
   const submit = async (values: yup.InferType<typeof schema>) => {
     const result = await Result.fromPromise(stackAdminApp.createItemQuantityChange({
-      customerId: values.customerId,
+      ...(customerType === "user" ?
+        { userId: values.customerId } :
+        customerType === "team" ?
+          { teamId: values.customerId } :
+          { customCustomerId: values.customerId }
+      ),
       itemId,
       quantity: values.quantity,
       expiresAt: values.expiresAt ? values.expiresAt.toISOString() : undefined,
@@ -130,10 +162,10 @@ function CreateItemQuantityChangeDialog({ open, onOpenChange, itemId }: { open: 
     }
     if (result.error instanceof KnownErrors.ItemNotFound) {
       toast({ title: "Item not found", variant: "destructive" });
-    } else if (result.error instanceof KnownErrors.ItemCustomerTypeDoesNotMatch) {
-      toast({ title: "Customer type does not match expected type for this item", variant: "destructive" });
-    } else if (result.error instanceof KnownErrors.CustomerDoesNotExist) {
-      toast({ title: "Customer does not exist", variant: "destructive" });
+    } else if (result.error instanceof KnownErrors.UserNotFound) {
+      toast({ title: "No user found with the given ID", variant: "destructive" });
+    } else if (result.error instanceof KnownErrors.TeamNotFound) {
+      toast({ title: "No team found with the given ID", variant: "destructive" });
     } else {
       toast({ title: "An unknown error occurred", variant: "destructive" });
     }

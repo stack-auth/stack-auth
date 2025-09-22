@@ -111,10 +111,19 @@
         4318: OTel collector
       </li>
       <li>
+        8121: S3 mock
+      </li>
+      <li>
         8122: Freestyle mock
       </li>
       <li>
-        8121: S3 mock
+        8124: LocalStack Gateway (AWS mock)
+      </li>
+      <li>
+        8125: QStash mock
+      </li>
+      <li>
+        8150-8199: Reserved for LocalStack (external services)
       </li>
     </ul>
     <noscript>
@@ -286,6 +295,14 @@
           port: 8120,
           description: [
             "React example",
+          ],
+        },
+        {
+          name: "MCPJam Inspector",
+          port: 8126,
+          importance: 1,
+          description: [
+            "MCP tool inspector",
           ],
         },
       ];

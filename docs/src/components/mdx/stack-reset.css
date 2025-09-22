@@ -1,0 +1,58 @@
+/* Stack Component Reset - Isolate Stack components from docs styles */
+
+.stack-reset {
+  /* Reset all typography inheritance */
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif !important;
+  font-size: 14px !important;
+  line-height: 1.5 !important;
+  letter-spacing: normal !important;
+  font-weight: normal !important;
+  
+  /* Reset spacing */
+  margin: 0 !important;
+  padding: 0 !important;
+  
+  /* Ensure proper inheritance for all children */
+  * {
+    font-family: inherit !important;
+    font-size: inherit !important;
+    line-height: inherit !important;
+    letter-spacing: inherit !important;
+  }
+}
+
+/* Specific resets for Stack scoped elements */
+.stack-reset .stack-scope,
+.stack-reset .stack-scope * {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif !important;
+  font-size: 14px !important;
+  line-height: 1.5 !important;
+  letter-spacing: normal !important;
+  font-weight: normal !important;
+}
+
+/* Reset any potential fumadocs typography overrides */
+.stack-reset .fumadocs-content,
+.stack-reset .fumadocs-content * {
+  font-family: inherit !important;
+  font-size: inherit !important;
+  line-height: inherit !important;
+  letter-spacing: inherit !important;
+}
+
+/* Ensure buttons and interactive elements look correct */
+.stack-reset button,
+.stack-reset .stack-scope button {
+  font-family: inherit !important;
+  font-size: inherit !important;
+  line-height: inherit !important;
+}
+
+/* Reset any potential text styling */
+.stack-reset p,
+.stack-reset span,
+.stack-reset div {
+  margin: 0 !important;
+  padding: 0 !important;
+  line-height: inherit !important;
+}

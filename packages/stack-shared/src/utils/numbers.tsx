@@ -1,9 +1,9 @@
 const magnitudes = [
-  [1_000_000_000_000_000, "trln"],
-  [1_000_000_000_000, "bln"],
-  [1_000_000_000, "bn"],
-  [1_000_000, "M"],
   [1_000, "k"],
+  [1_000, "M"],
+  [1_000, "bn"],
+  [1_000, "bln"],
+  [1_000, "trln"],
 ] as const;
 
 export function prettyPrintWithMagnitudes(num: number): string {
@@ -12,17 +12,27 @@ export function prettyPrintWithMagnitudes(num: number): string {
   if (num < 0) return "-" + prettyPrintWithMagnitudes(-num);
   if (!Number.isFinite(num)) return "∞";
 
-  for (const [magnitude, suffix] of magnitudes) {
-    if (num >= magnitude) {
-      return toFixedMax(num / magnitude, 1) + suffix;
+  let current = toFixedMax(num, 1);
+  let lastSuffix = "";
+  for (const [difference, suffix] of magnitudes) {
+    if (+current >= difference) {
+      current = toFixedMax(+current / difference, 1);
+      lastSuffix = suffix;
+    } else {
+      break;
     }
   }
-  return toFixedMax(num, 1); // Handle numbers less than 1,000 without suffix.
+  return current + lastSuffix;
 }
 import.meta.vitest?.test("prettyPrintWithMagnitudes", ({ expect }) => {
   // Test different magnitudes
+  expect(prettyPrintWithMagnitudes(999)).toBe("999");
   expect(prettyPrintWithMagnitudes(1000)).toBe("1k");
   expect(prettyPrintWithMagnitudes(1500)).toBe("1.5k");
+  expect(prettyPrintWithMagnitudes(999499)).toBe("999.5k");
+  expect(prettyPrintWithMagnitudes(999500)).toBe("999.5k");
+  expect(prettyPrintWithMagnitudes(999949)).toBe("999.9k");
+  expect(prettyPrintWithMagnitudes(999950)).toBe("1M");
   expect(prettyPrintWithMagnitudes(1000000)).toBe("1M");
   expect(prettyPrintWithMagnitudes(1500000)).toBe("1.5M");
   expect(prettyPrintWithMagnitudes(1000000000)).toBe("1bn");

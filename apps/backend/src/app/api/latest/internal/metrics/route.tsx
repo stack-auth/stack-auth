@@ -15,7 +15,7 @@ const DataPointsSchema = yupArray(yupObject({
 }).defined()).defined();
 
 
-async function loadUsersByCountry(tenancy: Tenancy): Promise<Record<string, number>> {
+async function loadUsersByCountry(tenancy: Tenancy, includeAnonymous: boolean = false): Promise<Record<string, number>> {
   const a = await globalPrismaClient.$queryRaw<{countryCode: string|null, userCount: bigint}[]>`
     WITH LatestEventWithCountryCode AS (
       SELECT DISTINCT ON ("userId")
@@ -27,6 +27,7 @@ async function loadUsersByCountry(tenancy: Tenancy): Promise<Record<string, numb
         ON "Event"."endUserIpInfoGuessId" = eip.id
       WHERE '$user-activity' = ANY("systemEventTypeIds"::text[])
         AND "data"->>'projectId' = ${tenancy.project.id}
+        AND (${includeAnonymous} OR COALESCE("data"->>'isAnonymous', 'false') != 'true')
         AND COALESCE("data"->>'branchId', 'main') = ${tenancy.branchId}
         AND "countryCode" IS NOT NULL
       ORDER BY "userId", "eventStartedAt" DESC
@@ -44,8 +45,8 @@ async function loadUsersByCountry(tenancy: Tenancy): Promise<Record<string, numb
   return rec;
 }
 
-async function loadTotalUsers(tenancy: Tenancy, now: Date): Promise<DataPoints> {
-  const schema = getPrismaSchemaForTenancy(tenancy);
+async function loadTotalUsers(tenancy: Tenancy, now: Date, includeAnonymous: boolean = false): Promise<DataPoints> {
+  const schema = await getPrismaSchemaForTenancy(tenancy);
   const prisma = await getPrismaClientForTenancy(tenancy);
   return (await prisma.$queryRaw<{date: Date, dailyUsers: bigint, cumUsers: bigint}[]>`
     WITH date_series AS (
@@ -62,7 +63,9 @@ async function loadTotalUsers(tenancy: Tenancy, now: Date): Promise<DataPoints> 
       SUM(COALESCE(COUNT(pu."projectUserId"), 0)) OVER (ORDER BY ds.registration_day) AS "cumUsers"
     FROM date_series ds
     LEFT JOIN ${sqlQuoteIdent(schema)}."ProjectUser" pu
-    ON DATE(pu."createdAt") = ds.registration_day AND pu."tenancyId" = ${tenancy.id}::UUID
+    ON DATE(pu."createdAt") = ds.registration_day 
+      AND pu."tenancyId" = ${tenancy.id}::UUID
+      AND (${includeAnonymous} OR pu."isAnonymous" = false)
     GROUP BY ds.registration_day
     ORDER BY ds.registration_day
   `).map((x) => ({
@@ -71,7 +74,7 @@ async function loadTotalUsers(tenancy: Tenancy, now: Date): Promise<DataPoints> 
   }));
 }
 
-async function loadDailyActiveUsers(tenancy: Tenancy, now: Date) {
+async function loadDailyActiveUsers(tenancy: Tenancy, now: Date, includeAnonymous: boolean = false) {
   const res = await globalPrismaClient.$queryRaw<{day: Date, dau: bigint}[]>`
     WITH date_series AS (
       SELECT GENERATE_SERIES(
@@ -84,7 +87,7 @@ async function loadDailyActiveUsers(tenancy: Tenancy, now: Date) {
     daily_users AS (
       SELECT
         DATE_TRUNC('day', "eventStartedAt") AS "day",
-        COUNT(DISTINCT "data"->'userId') AS "dau"
+        COUNT(DISTINCT CASE WHEN (${includeAnonymous} OR COALESCE("data"->>'isAnonymous', 'false') != 'true') THEN "data"->'userId' ELSE NULL END) AS "dau"
       FROM "Event"
       WHERE "eventStartedAt" >= ${now}::date - INTERVAL '30 days'
         AND '$user-activity' = ANY("systemEventTypeIds"::text[])
@@ -106,7 +109,7 @@ async function loadDailyActiveUsers(tenancy: Tenancy, now: Date) {
 }
 
 async function loadLoginMethods(tenancy: Tenancy): Promise<{method: string, count: number }[]> {
-  const schema = getPrismaSchemaForTenancy(tenancy);
+  const schema = await getPrismaSchemaForTenancy(tenancy);
   const prisma = await getPrismaClientForTenancy(tenancy);
   return await prisma.$queryRaw<{ method: string, count: number }[]>`
     WITH tab AS (
@@ -131,7 +134,7 @@ async function loadLoginMethods(tenancy: Tenancy): Promise<{method: string, coun
   `;
 }
 
-async function loadRecentlyActiveUsers(tenancy: Tenancy): Promise<UsersCrud["Admin"]["Read"][]> {
+async function loadRecentlyActiveUsers(tenancy: Tenancy, includeAnonymous: boolean = false): Promise<UsersCrud["Admin"]["Read"][]> {
   // use the Events table to get the most recent activity
   const events = await globalPrismaClient.$queryRaw<{ data: any, eventStartedAt: Date }[]>`
     WITH RankedEvents AS (
@@ -143,6 +146,7 @@ async function loadRecentlyActiveUsers(tenancy: Tenancy): Promise<UsersCrud["Adm
         ) as rn
       FROM "Event"
       WHERE "data"->>'projectId' = ${tenancy.project.id}
+        AND (${includeAnonymous} OR COALESCE("data"->>'isAnonymous', 'false') != 'true')
         AND COALESCE("data"->>'branchId', 'main') = ${tenancy.branchId}
         AND '$user-activity' = ANY("systemEventTypeIds"::text[])
     )
@@ -184,6 +188,9 @@ export const GET = createSmartRouteHandler({
       type: adminAuthTypeSchema.defined(),
       tenancy: adaptSchema.defined(),
     }),
+    query: yupObject({
+      include_anonymous: yupString().oneOf(["true", "false"]).optional(),
+    }),
   }),
   response: yupObject({
     statusCode: yupNumber().oneOf([200]).defined(),
@@ -201,6 +208,7 @@ export const GET = createSmartRouteHandler({
   }),
   handler: async (req) => {
     const now = new Date();
+    const includeAnonymous = req.query.include_anonymous === "true";
 
     const prisma = await getPrismaClientForTenancy(req.auth.tenancy);
 
@@ -214,23 +222,24 @@ export const GET = createSmartRouteHandler({
       loginMethods
     ] = await Promise.all([
       prisma.projectUser.count({
-        where: { tenancyId: req.auth.tenancy.id, },
+        where: { tenancyId: req.auth.tenancy.id, ...(includeAnonymous ? {} : { isAnonymous: false }) },
       }),
-      loadTotalUsers(req.auth.tenancy, now),
-      loadDailyActiveUsers(req.auth.tenancy, now),
-      loadUsersByCountry(req.auth.tenancy),
-      (await usersCrudHandlers.adminList({
+      loadTotalUsers(req.auth.tenancy, now, includeAnonymous),
+      loadDailyActiveUsers(req.auth.tenancy, now, includeAnonymous),
+      loadUsersByCountry(req.auth.tenancy, includeAnonymous),
+      usersCrudHandlers.adminList({
         tenancy: req.auth.tenancy,
         query: {
           order_by: 'signed_up_at',
-          desc: true,
+          desc: "true",
           limit: 5,
+          include_anonymous: includeAnonymous ? "true" : "false",
         },
         allowedErrorTypes: [
           KnownErrors.UserNotFound,
         ],
-      })).items,
-      loadRecentlyActiveUsers(req.auth.tenancy),
+      }).then(res => res.items),
+      loadRecentlyActiveUsers(req.auth.tenancy, includeAnonymous),
       loadLoginMethods(req.auth.tenancy),
     ] as const);
 

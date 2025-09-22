@@ -1,8 +1,11 @@
 'use client';
-import { ActionCell, Button, DataTable, DataTableColumnHeader, TextCell } from "@stackframe/stack-ui";
-import { ColumnDef } from "@tanstack/react-table";
-import * as yup from "yup";
+import { useAdminApp } from "@/app/(main)/(protected)/projects/[projectId]/use-admin-app";
+import { OfferDialog } from "@/components/payments/offer-dialog";
 import { branchPaymentsSchema } from "@stackframe/stack-shared/dist/config/schema";
+import { ActionCell, ActionDialog, DataTable, DataTableColumnHeader, TextCell, toast } from "@stackframe/stack-ui";
+import { ColumnDef } from "@tanstack/react-table";
+import { useState } from "react";
+import * as yup from "yup";
 
 type PaymentOffer = {
   id: string,
@@ -41,25 +44,11 @@ const columns: ColumnDef<PaymentOffer>[] = [
   },
   {
     id: "actions",
-    cell: ({ row }) => <ActionCell
-      items={[
-        {
-          item: "Delete",
-          disabled: true,
-          onClick: () => { },
-        },
-      ]}
-    />,
+    cell: ({ row }) => <ActionsCell offer={row.original} />,
   }
 ];
 
-export function PaymentOfferTable({
-  offers,
-  toolbarRender,
-}: {
-  offers: Record<string, yup.InferType<typeof branchPaymentsSchema>["offers"][string]>,
-  toolbarRender: () => React.ReactNode,
-}) {
+export function PaymentOfferTable({ offers }: { offers: Record<string, yup.InferType<typeof branchPaymentsSchema>["offers"][string]> }) {
   const data: PaymentOffer[] = Object.entries(offers).map(([id, offer]) => ({
     id,
     ...offer,
@@ -71,6 +60,53 @@ export function PaymentOfferTable({
     defaultColumnFilters={[]}
     defaultSorting={[]}
     showDefaultToolbar={false}
-    toolbarRender={toolbarRender}
   />;
+}
+
+function ActionsCell({ offer }: { offer: PaymentOffer }) {
+  const [isEditOpen, setIsEditOpen] = useState(false);
+  const [isDeleteOpen, setIsDeleteOpen] = useState(false);
+  const stackAdminApp = useAdminApp();
+  const project = stackAdminApp.useProject();
+
+  return (
+    <>
+      <ActionCell
+        items={[
+          {
+            item: "Edit",
+            onClick: () => setIsEditOpen(true),
+          },
+          '-',
+          {
+            item: "Delete",
+            onClick: () => setIsDeleteOpen(true),
+            danger: true,
+          },
+        ]}
+      />
+      <OfferDialog
+        open={isEditOpen}
+        onOpenChange={setIsEditOpen}
+        project={project}
+        mode="edit"
+        initial={{ id: offer.id, value: offer }}
+      />
+      <ActionDialog
+        open={isDeleteOpen}
+        onOpenChange={setIsDeleteOpen}
+        title="Delete Offer"
+        description="This action will permanently delete this offer."
+        cancelButton
+        danger
+        okButton={{
+          label: "Delete",
+          onClick: async () => {
+            await project.updateConfig({ [`payments.offers.${offer.id}`]: null });
+            toast({ title: "Offer deleted" });
+          },
+        }}
+      />
+    </>
+  );
 }

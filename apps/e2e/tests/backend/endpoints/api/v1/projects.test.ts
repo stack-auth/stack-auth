@@ -1477,8 +1477,17 @@ it("has a correctly formatted JWKS endpoint", async ({ expect }) => {
   const response = await niceBackendFetch("/api/v1/projects/internal/.well-known/jwks.json");
   expect(response.status).toBe(200);
   expect(response.headers.get("content-type")).includes("application/json");
+  expect(response.headers.get("cache-control")).toBe("public, max-age=3600");
   expect(response.body).toEqual({
     keys: [
+      {
+        alg: "ES256",
+        crv: "P-256",
+        kid: expect.any(String),
+        kty: "EC",
+        x: expect.toSatisfy(isBase64Url),
+        y: expect.toSatisfy(isBase64Url),
+      },
       {
         alg: "ES256",
         crv: "P-256",

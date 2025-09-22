@@ -95,7 +95,7 @@ function expectSnakeCase(obj: unknown, path: string): void {
       if (key.match(/[a-z0-9][A-Z][a-z0-9]+/) && !key.includes("_") && !["newUser", "afterCallbackRedirectUrl"].includes(key)) {
         throw new StackAssertionError(`Object has camelCase key (expected snake_case): ${path}.${key}`);
       }
-      if (["client_metadata", "server_metadata", "options_json", "credential", "authentication_response"].includes(key)) continue;
+      if (["client_metadata", "server_metadata", "options_json", "credential", "authentication_response", "metadata"].includes(key)) continue;
       // because email templates
       if (path === "req.body.content.root") continue;
       if (path === "res.body.content.root") continue;
@@ -108,12 +108,17 @@ export async function niceBackendFetch(url: string | URL, options?: Omit<NiceReq
   accessType?: null | "client" | "server" | "admin",
   body?: unknown,
   headers?: Record<string, string | undefined>,
+  userAuth?: {
+    accessToken?: string,
+    refreshToken?: string,
+  },
 }): Promise<NiceResponse> {
-  const { body, headers, accessType, ...otherOptions } = options ?? {};
+  const { body, headers, accessType, userAuth: userAuthOverride, ...otherOptions } = options ?? {};
   if (typeof body === "object") {
     expectSnakeCase(body, "req.body");
   }
-  const { projectKeys, userAuth } = backendContext.value;
+  const projectKeys = backendContext.value.projectKeys;
+  const userAuth = userAuthOverride ?? backendContext.value.userAuth;
   const fullUrl = new URL(url, STACK_BACKEND_BASE_URL);
   if (fullUrl.origin !== new URL(STACK_BACKEND_BASE_URL).origin) throw new StackAssertionError(`Invalid niceBackendFetch origin: ${fullUrl.origin}`);
   if (fullUrl.protocol !== new URL(STACK_BACKEND_BASE_URL).protocol) throw new StackAssertionError(`Invalid niceBackendFetch protocol: ${fullUrl.protocol}`);
@@ -133,6 +138,7 @@ export async function niceBackendFetch(url: string | URL, options?: Omit<NiceReq
       "x-stack-branch-id": backendContext.value.currentBranchId ?? undefined,
       "x-stack-access-token": userAuth?.accessToken,
       "x-stack-refresh-token": userAuth?.refreshToken,
+      "x-stack-allow-anonymous-user": "true",
       ...backendContext.value.ipData ? {
         "user-agent": "Mozilla/5.0",  // pretend to be a browser so our IP gets tracked
         "x-forwarded-for": backendContext.value.ipData.ipAddress,
@@ -185,7 +191,7 @@ export namespace Auth {
       const aud = jose.decodeJwt(accessToken).aud;
       const jwks = jose.createRemoteJWKSet(
         new URL(`api/v1/projects/${aud}/.well-known/jwks.json`, STACK_BACKEND_BASE_URL),
-        { timeoutDuration: 10_000 },
+        { timeoutDuration: 20_000 },
       );
       const expectedIssuer = new URL(`/api/v1/projects/${aud}`, STACK_BACKEND_BASE_URL).toString();
       const { payload } = await jose.jwtVerify(accessToken, jwks);
@@ -193,13 +199,38 @@ export namespace Auth {
         "exp": expect.any(Number),
         "iat": expect.any(Number),
         "iss": expectedIssuer,
-        "refreshTokenId": expect.any(String),
-        "aud": expect.any(String),
+        "branch_id": "main",
+        "refresh_token_id": expect.any(String),
+        "aud": backendContext.value.projectKeys === "no-project" ? expect.any(String) : backendContext.value.projectKeys.projectId,
         "sub": expect.any(String),
         "role": "authenticated",
-        "branchId": "main",
+        "name": expect.toSatisfy(() => true),
+        "email": expect.toSatisfy(() => true),
+        "email_verified": expect.any(Boolean),
+        "selected_team_id": expect.toSatisfy(() => true),
       });
     }
+  }
+
+  export async function refreshAccessToken() {
+    const response = await niceBackendFetch("/api/v1/auth/sessions/current/refresh", {
+      method: "POST",
+      accessType: "client",
+      userAuth: {
+        refreshToken: backendContext.value.userAuth?.refreshToken,
+      },
+    });
+    expect(response).toMatchInlineSnapshot(`
+      NiceResponse {
+        "status": 200,
+        "body": { "access_token": <stripped field 'access_token'> },
+        "headers": Headers { <some fields may have been hidden> },
+      }
+    `);
+    backendContext.set({ userAuth: { accessToken: response.body.access_token, refreshToken: response.body.refresh_token } });
+    return {
+      refreshAccessTokenResponse: response,
+    };
   }
 
   /**
@@ -358,6 +389,9 @@ export namespace Auth {
     }
 
     export async function signInWithCode(signInCode: string) {
+      const projectKeys = backendContext.value.projectKeys;
+      if (projectKeys === "no-project") throw new StackAssertionError("Must provide project keys in the backend context before calling signInWithCode");
+
       const response = await niceBackendFetch("/api/v1/auth/otp/sign-in", {
         method: "POST",
         accessType: "client",
@@ -578,8 +612,9 @@ export namespace Auth {
       const projectKeys = backendContext.value.projectKeys;
       if (projectKeys === "no-project") throw new Error("No project keys found in the backend context");
       const branchId = options.forceBranchId ?? backendContext.value.currentBranchId;
+      const userAuth = backendContext.value.userAuth;
 
-      return {
+      return filterUndefined({
         client_id: !branchId ? projectKeys.projectId : `${projectKeys.projectId}#${branchId}`,
         client_secret: projectKeys.publishableClientKey ?? throwErr("No publishable client key found in the backend context"),
         redirect_uri: localRedirectUrl,
@@ -589,7 +624,8 @@ export namespace Auth {
         grant_type: "authorization_code",
         code_challenge: "some-code-challenge",
         code_challenge_method: "plain",
-      };
+        token: userAuth?.accessToken ?? undefined,
+      });
     }
 
     export async function authorize(options: { redirectUrl?: string, errorRedirectUrl?: string, forceBranchId?: string } = {}) {
@@ -830,7 +866,12 @@ export namespace Auth {
           refreshToken: response.body.refresh_token,
         },
       });
-      return { response };
+      return {
+        response,
+        accessToken: response.body.access_token,
+        refreshToken: response.body.refresh_token,
+        userId: response.body.user_id,
+      };
     }
   }
 }
@@ -1391,11 +1432,21 @@ export namespace Webhook {
 }
 
 export namespace Payments {
+  export async function setup() {
+    const response = await niceBackendFetch("/api/latest/internal/payments/setup", {
+      accessType: "admin",
+      method: "POST",
+      body: {},
+    });
+    expect(response.status).toBe(200);
+    return response.body;
+  }
+
   export async function createPurchaseUrlAndGetCode() {
     await Project.createAndSwitch();
+    await Payments.setup();
     await Project.updateConfig({
       payments: {
-        stripeAccountId: "acct_test123",
         offers: {
           "test-offer": {
             displayName: "Test Offer",
@@ -1419,6 +1470,7 @@ export namespace Payments {
       method: "POST",
       accessType: "client",
       body: {
+        customer_type: "user",
         customer_id: userId,
         offer_id: "test-offer",
       },

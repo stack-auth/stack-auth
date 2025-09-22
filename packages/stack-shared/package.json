@@ -1,6 +1,6 @@
 {
   "name": "@stackframe/stack-shared",
-  "version": "2.8.33",
+  "version": "2.8.39",
   "scripts": {
     "build": "rimraf dist && tsup-node",
     "typecheck": "tsc --noEmit",
@@ -53,8 +53,10 @@
     }
   },
   "dependencies": {
+    "@aws-sdk/client-kms": "^3.876.0",
     "@opentelemetry/api": "^1.9.0",
     "@simplewebauthn/browser": "^11.0.0",
+    "@vercel/functions": "^2.0.0",
     "async-mutex": "^0.5.0",
     "bcryptjs": "^3.0.2",
     "crc": "^4.3.2",
@@ -67,7 +69,7 @@
     "uuid": "^9.0.1"
   },
   "devDependencies": {
-    "@sentry/nextjs": "^8.40.0",
+    "@sentry/nextjs": "^10.11.0",
     "@simplewebauthn/types": "^11.0.0",
     "@types/bcryptjs": "^3.0.0",
     "@types/elliptic": "^6.4.18",

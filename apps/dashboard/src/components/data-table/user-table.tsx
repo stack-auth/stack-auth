@@ -6,20 +6,31 @@ import { deepPlainEquals } from '@stackframe/stack-shared/dist/utils/objects';
 import { deindent } from '@stackframe/stack-shared/dist/utils/strings';
 import { ActionCell, AvatarCell, BadgeCell, DataTableColumnHeader, DataTableManualPagination, DateCell, SearchToolbarItem, SimpleTooltip, TextCell } from "@stackframe/stack-ui";
 import { ColumnDef, ColumnFiltersState, Row, SortingState, Table } from "@tanstack/react-table";
-import { useState } from "react";
+import React, { useState } from "react";
 import { Link } from '../link';
-import { DeleteUserDialog, ImpersonateUserDialog } from '../user-dialogs';
 import { CreateCheckoutDialog } from '../payments/create-checkout-dialog';
+import { DeleteUserDialog, ImpersonateUserDialog } from '../user-dialogs';
 
 export type ExtendedServerUser = ServerUser & {
   authTypes: string[],
   emailVerified: 'verified' | 'unverified',
 };
 
-function userToolbarRender<TData>(table: Table<TData>) {
+function userToolbarRender<TData>(table: Table<TData>, showAnonymous: boolean, setShowAnonymous: (value: boolean) => void) {
   return (
     <>
       <SearchToolbarItem table={table} placeholder="Search table" />
+      <div className="flex items-center gap-2 ml-auto mr-4">
+        <label className="flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={showAnonymous}
+            onChange={(e) => setShowAnonymous(e.target.checked)}
+            className="rounded border-gray-300"
+          />
+          Show anonymous users
+        </label>
+      </div>
     </>
   );
 }
@@ -106,7 +117,12 @@ export const getCommonUserColumns = <T extends ExtendedServerUser>() => [
   {
     accessorKey: "displayName",
     header: ({ column }) => <DataTableColumnHeader column={column} columnTitle="Display Name" />,
-    cell: ({ row }) =>  <TextCell size={120}><span className={row.original.displayName === null ? 'text-slate-400' : ''}>{row.original.displayName ?? '–'}</span></TextCell>,
+    cell: ({ row }) =>  <TextCell size={120}>
+      <div className="flex items-center gap-2">
+        <span className={row.original.displayName === null ? 'text-slate-400' : ''}>{row.original.displayName ?? '–'}</span>
+        {row.original.isAnonymous && <span className="px-2 py-0.5 text-xs bg-gray-100 text-gray-600 rounded">Anonymous</span>}
+      </div>
+    </TextCell>,
     enableSorting: false,
   },
   {
@@ -157,7 +173,7 @@ export function extendUsers(users: ServerUser[]): ExtendedServerUser[];
 export function extendUsers(users: ServerUser[] & { nextCursor?: string | null }): ExtendedServerUser[] & { nextCursor: string | null | undefined } {
   const extended = users.map((user) => ({
     ...user,
-    authTypes: [
+    authTypes: user.isAnonymous ? ["anonymous"] : [
       ...user.otpAuthEnabled ? ["otp"] : [],
       ...user.hasPassword ? ["password"] : [],
       ...user.oauthProviders.map(p => p.id),
@@ -170,7 +186,19 @@ export function extendUsers(users: ServerUser[] & { nextCursor?: string | null }
 export function UserTable() {
   const stackAdminApp = useAdminApp();
   const router = useRouter();
-  const [filters, setFilters] = useState<Parameters<typeof stackAdminApp.listUsers>[0]>({ limit: 10, orderBy: "signedUpAt", desc: true });
+  const [showAnonymous, setShowAnonymous] = useState(false);
+  const [filters, setFilters] = useState<Parameters<typeof stackAdminApp.listUsers>[0]>({
+    limit: 10,
+    orderBy: "signedUpAt",
+    desc: true,
+    includeAnonymous: false,
+  });
+
+  // Update filters when showAnonymous changes
+  React.useEffect(() => {
+    setFilters(prev => ({ ...prev, includeAnonymous: showAnonymous }));
+  }, [showAnonymous]);
+
   const users = extendUsers(stackAdminApp.useUsers(filters));
 
   const onUpdate = async (options: {
@@ -207,7 +235,7 @@ export function UserTable() {
   return <DataTableManualPagination
     columns={columns}
     data={users}
-    toolbarRender={userToolbarRender}
+    toolbarRender={(table) => userToolbarRender(table, showAnonymous, setShowAnonymous)}
     onUpdate={onUpdate}
     defaultVisibility={{ emailVerified: false }}
     defaultColumnFilters={[]}

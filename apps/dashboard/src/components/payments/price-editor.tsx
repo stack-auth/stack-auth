@@ -20,6 +20,7 @@ export function PriceEditorField<F extends FieldValues>(props: {
   name: Path<F>,
   label: React.ReactNode,
   required?: boolean,
+  disabled?: boolean,
 }) {
   return (
     <KeyedRecordEditorField
@@ -27,6 +28,7 @@ export function PriceEditorField<F extends FieldValues>(props: {
       name={props.name}
       label={props.label}
       required={props.required}
+      disabled={props.disabled}
       entryLabel="Price ID"
       addButtonLabel="Add Price"
       renderSummary={(id, price) => {
@@ -53,7 +55,7 @@ export function PriceEditorField<F extends FieldValues>(props: {
           USD: yup.string().defined().label("Price (USD)"),
           interval: dayIntervalSchema.optional().label("Interval"),
         }),
-        toFormValue: (id: string, value: OfferPrice) => ({
+        toFormValue: (id: string, value: OfferPrice) => typeof value === "string" ? value : ({
           id,
           USD: value.USD,
           interval: value.interval,
@@ -67,9 +69,9 @@ export function PriceEditorField<F extends FieldValues>(props: {
         }),
         render: (sub, entryLabel) => (
           <div className="space-y-3">
-            <InputField control={sub.control} name={"id"} label={entryLabel} required />
+            <InputField control={sub.control} name={"id"} label={entryLabel} placeholder="standard" required />
             <InputField control={sub.control} name={"USD"} label="Price (USD)" type="number" />
-            <DayIntervalSelectorField control={sub.control} name={"interval"} label="Interval" />
+            <DayIntervalSelectorField control={sub.control} name={"interval"} label="Interval" unsetLabel="One time" />
           </div>
         ),
       }}

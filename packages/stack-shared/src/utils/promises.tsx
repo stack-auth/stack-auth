@@ -387,7 +387,8 @@ class TimeoutError extends Error {
   }
 }
 
-export async function timeout<T>(promise: Promise<T>, ms: number): Promise<Result<T, TimeoutError>> {
+export async function timeout<T>(promiseOrFunc: Promise<T> | (() => Promise<T>), ms: number): Promise<Result<T, TimeoutError>> {
+  const promise = typeof promiseOrFunc === "function" ? promiseOrFunc() : promiseOrFunc;
   return await Promise.race([
     promise.then(value => Result.ok(value)),
     wait(ms).then(() => Result.error(new TimeoutError(ms))),

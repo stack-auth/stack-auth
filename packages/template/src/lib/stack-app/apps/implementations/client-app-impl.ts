@@ -2,7 +2,9 @@ import { WebAuthnError, startAuthentication, startRegistration } from "@simplewe
 import { KnownErrors, StackClientInterface } from "@stackframe/stack-shared";
 import { ContactChannelsCrud } from "@stackframe/stack-shared/dist/interface/crud/contact-channels";
 import { CurrentUserCrud } from "@stackframe/stack-shared/dist/interface/crud/current-user";
+import { ItemCrud } from "@stackframe/stack-shared/dist/interface/crud/items";
 import { NotificationPreferenceCrud } from "@stackframe/stack-shared/dist/interface/crud/notification-preferences";
+import { OAuthProviderCrud } from "@stackframe/stack-shared/dist/interface/crud/oauth-providers";
 import { TeamApiKeysCrud, UserApiKeysCrud, teamApiKeysCreateOutputSchema, userApiKeysCreateOutputSchema } from "@stackframe/stack-shared/dist/interface/crud/project-api-keys";
 import { ProjectPermissionsCrud } from "@stackframe/stack-shared/dist/interface/crud/project-permissions";
 import { ClientProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
@@ -12,7 +14,6 @@ import { TeamMemberProfilesCrud } from "@stackframe/stack-shared/dist/interface/
 import { TeamPermissionsCrud } from "@stackframe/stack-shared/dist/interface/crud/team-permissions";
 import { TeamsCrud } from "@stackframe/stack-shared/dist/interface/crud/teams";
 import { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
-import { ItemCrud } from "@stackframe/stack-shared/dist/interface/crud/items";
 import { InternalSession } from "@stackframe/stack-shared/dist/sessions";
 import { scrambleDuringCompileTime } from "@stackframe/stack-shared/dist/utils/compile-time";
 import { isBrowserLike } from "@stackframe/stack-shared/dist/utils/env";
@@ -28,6 +29,8 @@ import { deindent, mergeScopeStrings } from "@stackframe/stack-shared/dist/utils
 import { getRelativePart, isRelative } from "@stackframe/stack-shared/dist/utils/urls";
 import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
 import * as cookie from "cookie";
+import * as NextNavigationUnscrambled from "next/navigation"; // import the entire module to get around some static compiler warnings emitted by Next.js in some cases | THIS_LINE_PLATFORM next
+import React, { useCallback, useMemo } from "react"; // THIS_LINE_PLATFORM react-like
 import type * as yup from "yup";
 import { constructRedirectUrl } from "../../../../utils/url";
 import { addNewOAuthProviderOrScope, callOAuthCallback, signInWithOAuth } from "../../../auth";
@@ -36,18 +39,19 @@ import { ApiKey, ApiKeyCreationOptions, ApiKeyUpdateOptions, apiKeyCreationOptio
 import { GetUserOptions, HandlerUrls, OAuthScopesOnSignIn, RedirectMethod, RedirectToOptions, RequestLike, TokenStoreInit, stackAppInternalsSymbol } from "../../common";
 import { OAuthConnection } from "../../connected-accounts";
 import { ContactChannel, ContactChannelCreateOptions, ContactChannelUpdateOptions, contactChannelCreateOptionsToCrud, contactChannelUpdateOptionsToCrud } from "../../contact-channels";
+import { Customer, Item } from "../../customers";
 import { NotificationCategory } from "../../notification-categories";
 import { TeamPermission } from "../../permissions";
 import { AdminOwnedProject, AdminProjectUpdateOptions, Project, adminProjectCreateOptionsToCrud } from "../../projects";
 import { EditableTeamMemberProfile, Team, TeamCreateOptions, TeamInvitation, TeamUpdateOptions, TeamUser, teamCreateOptionsToCrud, teamUpdateOptionsToCrud } from "../../teams";
-import { ActiveSession, Auth, BaseUser, CurrentUser, InternalUserExtra, ProjectCurrentUser, UserExtra, UserUpdateOptions, userUpdateOptionsToCrud } from "../../users";
-import { Customer, InlineOffer, Item } from "../../customers";
+import { ActiveSession, Auth, BaseUser, CurrentUser, InternalUserExtra, OAuthProvider, ProjectCurrentUser, UserExtra, UserUpdateOptions, userUpdateOptionsToCrud } from "../../users";
 import { StackClientApp, StackClientAppConstructorOptions, StackClientAppJson } from "../interfaces/client-app";
 import { _StackAdminAppImplIncomplete } from "./admin-app-impl";
-import { TokenObject, clientVersion, createCache, createCacheBySession, createEmptyTokenStore, getBaseUrl, getDefaultExtraRequestHeaders, getDefaultProjectId, getDefaultPublishableClientKey, getUrls, } from "./common";
-import * as NextNavigationUnscrambled from "next/navigation"; // import the entire module to get around some static compiler warnings emitted by Next.js in some cases | THIS_LINE_PLATFORM next
-import React, { useCallback, useMemo } from "react"; // THIS_LINE_PLATFORM react-like
-import { useAsyncCache } from "./common"; // THIS_LINE_PLATFORM react-like
+import { TokenObject, clientVersion, createCache, createCacheBySession, createEmptyTokenStore, getBaseUrl, getDefaultExtraRequestHeaders, getDefaultProjectId, getDefaultPublishableClientKey, getUrls } from "./common";
+
+// IF_PLATFORM react-like
+import { useAsyncCache } from "./common";
+// END_PLATFORM
 
 let isReactServer = false;
 // IF_PLATFORM next
@@ -201,6 +205,12 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     }
   );
 
+  private readonly _currentUserOAuthProvidersCache = createCacheBySession<[], OAuthProviderCrud['Client']['Read'][]>(
+    async (session) => {
+      return await this._interface.listOAuthProviders({ user_id: 'me' }, session);
+    }
+  );
+
   private readonly _userItemCache = createCacheBySession<[string, string], ItemCrud['Client']['Read']>(
     async (session, [userId, itemId]) => {
       return await this._interface.getItem({ userId, itemId }, session);
@@ -210,6 +220,12 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
   private readonly _teamItemCache = createCacheBySession<[string, string], ItemCrud['Client']['Read']>(
     async (session, [teamId, itemId]) => {
       return await this._interface.getItem({ teamId, itemId }, session);
+    }
+  );
+
+  private readonly _customItemCache = createCacheBySession<[string, string], ItemCrud['Client']['Read']>(
+    async (session, [customCustomerId, itemId]) => {
+      return await this._interface.getItem({ customCustomerId, itemId }, session);
     }
   );
 
@@ -252,15 +268,15 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         `);
       }
       await addNewOAuthProviderOrScope(
-          this._interface,
-          {
-            provider: options.providerId,
-            redirectUrl: this.urls.oauthCallback,
-            errorRedirectUrl: this.urls.error,
-            providerScope: mergeScopeStrings(options.scope || "", (this._oauthScopesOnSignIn[options.providerId] ?? []).join(" ")),
-          },
-          options.session,
-        );
+        this._interface,
+        {
+          provider: options.providerId,
+          redirectUrl: this.urls.oauthCallback,
+          errorRedirectUrl: this.urls.error,
+          providerScope: mergeScopeStrings(options.scope || "", (this._oauthScopesOnSignIn[options.providerId] ?? []).join(" ")),
+        },
+        options.session,
+      );
       return await neverResolve();
     } else if (!hasConnection) {
       return null;
@@ -596,7 +612,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     return (overrideTokenStoreInit !== undefined ? overrideTokenStoreInit : this._tokenStoreInit) !== null;
   }
 
-  protected _ensurePersistentTokenStore(overrideTokenStoreInit?: TokenStoreInit): asserts this is StackClientApp<true, ProjectId>  {
+  protected _ensurePersistentTokenStore(overrideTokenStoreInit?: TokenStoreInit): asserts this is StackClientApp<true, ProjectId> {
     if (!this._hasPersistentTokenStore(overrideTokenStoreInit)) {
       throw new Error("Cannot call this function on a Stack app without a persistent token store. Make sure the tokenStore option on the constructor is set to a non-null value when initializing Stack.\n\nStack uses token stores to access access tokens of the current user. For example, on web frontends it is commonly the string value 'cookies' for cookie storage.");
     }
@@ -673,10 +689,10 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       value: typeof crud.value === "string" ? crud.value : {
         lastFour: crud.value.last_four,
       },
-      isValid: function() {
+      isValid: function () {
         return this.whyInvalid() === null;
       },
-      whyInvalid: function() {
+      whyInvalid: function () {
         if (this.manuallyRevokedAt) {
           return "manually-revoked";
         }
@@ -748,7 +764,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         return result.map((crud) => app._clientTeamInvitationFromCrud(session, crud));
       },
       // END_PLATFORM
-      async update(data: TeamUpdateOptions){
+      async update(data: TeamUpdateOptions) {
         await app._interface.updateTeam({ data: teamUpdateOptionsToCrud(data), teamId: crud.id }, session);
         await app._currentUserTeamsCache.refresh([session]);
       },
@@ -819,6 +835,43 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       async setEnabled(enabled: boolean) {
         await app._interface.setNotificationsEnabled(crud.notification_category_id, enabled, session);
         await app._notificationCategoriesCache.refresh([session]);
+      },
+    };
+  }
+  protected _clientOAuthProviderFromCrud(crud: OAuthProviderCrud['Client']['Read'], session: InternalSession): OAuthProvider {
+    const app = this;
+    return {
+      id: crud.id,
+      type: crud.type,
+      userId: crud.user_id,
+      email: crud.email,
+      allowSignIn: crud.allow_sign_in,
+      allowConnectedAccounts: crud.allow_connected_accounts,
+
+      async update(data: { allowSignIn?: boolean, allowConnectedAccounts?: boolean }): Promise<Result<void,
+        InstanceType<typeof KnownErrors.OAuthProviderAccountIdAlreadyUsedForSignIn>
+      >> {
+        try {
+          await app._interface.updateOAuthProvider(
+            crud.user_id,
+            crud.id,
+            {
+              allow_sign_in: data.allowSignIn,
+              allow_connected_accounts: data.allowConnectedAccounts,
+            }, session);
+          await app._currentUserOAuthProvidersCache.refresh([session]);
+          return Result.ok(undefined);
+        } catch (error) {
+          if (KnownErrors.OAuthProviderAccountIdAlreadyUsedForSignIn.isInstance(error)) {
+            return Result.error(error);
+          }
+          throw error;
+        }
+      },
+
+      async delete() {
+        await app._interface.deleteOAuthProvider(crud.user_id, crud.id, session);
+        await app._currentUserOAuthProvidersCache.refresh([session]);
       },
     };
   }
@@ -1084,7 +1137,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
           session
         );
       },
-      async updatePassword(options: { oldPassword: string, newPassword: string}) {
+      async updatePassword(options: { oldPassword: string, newPassword: string }) {
         const result = await app._interface.updatePassword(options, session);
         await app._currentUserCache.refresh([session]);
         return result;
@@ -1156,7 +1209,29 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         return app._clientApiKeyFromCrud(session, result);
       },
 
+      // IF_PLATFORM react-like
+      useOAuthProviders() {
+        const results = useAsyncCache(app._currentUserOAuthProvidersCache, [session] as const, "user.useOAuthProviders()");
+        return results.map((crud) => app._clientOAuthProviderFromCrud(crud, session));
+      },
+      // END_PLATFORM
 
+      async listOAuthProviders() {
+        const results = Result.orThrow(await app._currentUserOAuthProvidersCache.getOrWait([session], "write-only"));
+        return results.map((crud) => app._clientOAuthProviderFromCrud(crud, session));
+      },
+
+      // IF_PLATFORM react-like
+      useOAuthProvider(id: string) {
+        const providers = this.useOAuthProviders();
+        return useMemo(() => providers.find((p) => p.id === id) ?? null, [providers, id]);
+      },
+      // END_PLATFORM
+
+      async getOAuthProvider(id: string) {
+        const providers = await this.listOAuthProviders();
+        return providers.find((p) => p.id === id) ?? null;
+      },
     };
   }
 
@@ -1192,11 +1267,35 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         return app._clientItemFromCrud(result);
       },
       // END_PLATFORM
-      async createCheckoutUrl(offerIdOrInline: string | InlineOffer) {
-        return await app._interface.createCheckoutUrl(userIdOrTeamId, offerIdOrInline, session);
+      async createCheckoutUrl(options: { offerId: string }) {
+        return await app._interface.createCheckoutUrl(type, userIdOrTeamId, options.offerId, session);
       },
     };
   }
+
+  async getItem(options: { itemId: string, userId: string } | { itemId: string, teamId: string } | { itemId: string, customCustomerId: string }): Promise<Item> {
+    const session = await this._getSession();
+    let crud: ItemCrud['Client']['Read'];
+    if ("userId" in options) {
+      crud = Result.orThrow(await this._userItemCache.getOrWait([session, options.userId, options.itemId], "write-only"));
+    } else if ("teamId" in options) {
+      crud = Result.orThrow(await this._teamItemCache.getOrWait([session, options.teamId, options.itemId], "write-only"));
+    } else {
+      crud = Result.orThrow(await this._customItemCache.getOrWait([session, options.customCustomerId, options.itemId], "write-only"));
+    }
+    return this._clientItemFromCrud(crud);
+  }
+
+  // IF_PLATFORM react-like
+  useItem(options: { itemId: string, userId: string } | { itemId: string, teamId: string } | { itemId: string, customCustomerId: string }): Item {
+    const session = this._useSession();
+    const [cache, ownerId] =
+      "userId" in options ? [this._userItemCache, options.userId] :
+        "teamId" in options ? [this._teamItemCache, options.teamId] : [this._customItemCache, options.customCustomerId];
+    const crud = useAsyncCache(cache, [session, ownerId, options.itemId] as const, "app.useItem()");
+    return this._clientItemFromCrud(crud);
+  }
+  // END_PLATFORM
 
   protected _currentUserFromCrud(crud: NonNullable<CurrentUserCrud['Client']['Read']>, session: InternalSession): ProjectCurrentUser<ProjectId> {
     const currentUser = {
@@ -1257,10 +1356,10 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
   protected async _redirectTo(options: { url: URL | string, replace?: boolean }) {
     if (this._redirectMethod === "none") {
       return;
-    // IF_PLATFORM next
+      // IF_PLATFORM next
     } else if (isReactServer && this._redirectMethod === "nextjs") {
       NextNavigation.redirect(options.url.toString(), options.replace ? NextNavigation.RedirectType.replace : NextNavigation.RedirectType.push);
-    // END_PLATFORM
+      // END_PLATFORM
     } else if (typeof this._redirectMethod === "object" && this._redirectMethod.navigate) {
       this._redirectMethod.navigate(options.url.toString());
     } else {
@@ -1280,13 +1379,13 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       return this._redirectMethod.useNavigate();
     } else if (this._redirectMethod === "window") {
       return (to: string) => window.location.assign(to);
-    // IF_PLATFORM next
+      // IF_PLATFORM next
     } else if (this._redirectMethod === "nextjs") {
       const router = NextNavigation.useRouter();
       return (to: string) => router.push(to);
-    // END_PLATFORM
+      // END_PLATFORM
     } else {
-      return (to: string) => {};
+      return (to: string) => { };
     }
   }
   // END_PLATFORM
@@ -1414,7 +1513,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     this._ensurePersistentTokenStore(options?.tokenStore);
     const session = await this._getSession(options?.tokenStore);
     let crud = Result.orThrow(await this._currentUserCache.getOrWait([session], "write-only"));
-    if (crud?.is_anonymous && options?.or !== "anonymous" && options?.or !== "anonymous-if-exists") {
+    if (crud?.is_anonymous && options?.or !== "anonymous" && options?.or !== "anonymous-if-exists[deprecated]") {
       crud = null;
     }
 
@@ -1429,10 +1528,10 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         }
         case 'anonymous': {
           const tokens = await this._signUpAnonymously();
-          return await this.getUser({ tokenStore: tokens, or: "anonymous-if-exists" }) ?? throwErr("Something went wrong while signing up anonymously");
+          return await this.getUser({ tokenStore: tokens, or: "anonymous-if-exists[deprecated]" }) ?? throwErr("Something went wrong while signing up anonymously");
         }
         case undefined:
-        case "anonymous-if-exists":
+        case "anonymous-if-exists[deprecated]":
         case "return-null": {
           return null;
         }
@@ -1452,7 +1551,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
 
     const session = this._useSession(options?.tokenStore);
     let crud = useAsyncCache(this._currentUserCache, [session] as const, "useUser()");
-    if (crud?.is_anonymous && options?.or !== "anonymous" && options?.or !== "anonymous-if-exists") {
+    if (crud?.is_anonymous && options?.or !== "anonymous" && options?.or !== "anonymous-if-exists[deprecated]") {
       crud = null;
     }
 
@@ -1479,7 +1578,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
           throw new StackAssertionError("suspend should never return");
         }
         case undefined:
-        case "anonymous-if-exists":
+        case "anonymous-if-exists[deprecated]":
         case "return-null": {
           // do nothing
         }
@@ -1498,19 +1597,22 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     return res;
   }
 
-  async signInWithOAuth(provider: ProviderType) {
+  async signInWithOAuth(provider: ProviderType, options?: { returnTo?: string }) {
     if (typeof window === "undefined") {
       throw new Error("signInWithOAuth can currently only be called in a browser environment");
     }
 
     this._ensurePersistentTokenStore();
+    const session = await this._getSession();
     await signInWithOAuth(
-      this._interface, {
+      this._interface,
+      {
         provider,
-        redirectUrl: this.urls.oauthCallback,
+        redirectUrl: options?.returnTo ?? this.urls.oauthCallback,
         errorRedirectUrl: this.urls.error,
         providerScope: this._oauthScopesOnSignIn[provider]?.join(" "),
-      }
+      },
+      session,
     );
   }
 
@@ -1623,10 +1725,11 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
 
   async signInWithMagicLink(code: string, options?: { noRedirect?: boolean }): Promise<Result<undefined, KnownErrors["VerificationCodeError"] | KnownErrors["InvalidTotpCode"]>> {
     this._ensurePersistentTokenStore();
+    const session = await this._getSession();
     let result;
     try {
       result = await this._catchMfaRequiredError(async () => {
-        return await this._interface.signInWithMagicLink(code);
+        return await this._interface.signInWithMagicLink(code, session);
       });
     } catch (e) {
       if (KnownErrors.InvalidTotpCode.isInstance(e)) {
@@ -1755,10 +1858,11 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
    */
   async signInWithMfa(totp: string, code: string, options?: { noRedirect?: boolean }): Promise<Result<undefined, KnownErrors["VerificationCodeError"] | KnownErrors["InvalidTotpCode"]>> {
     this._ensurePersistentTokenStore();
+    const session = await this._getSession();
     let result;
     try {
       result = await this._catchMfaRequiredError(async () => {
-        return await this._interface.signInWithMfa(totp, code);
+        return await this._interface.signInWithMfa(totp, code, session);
       });
     } catch (e) {
       if (e instanceof KnownErrors.InvalidTotpCode) {
@@ -1801,7 +1905,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         options_json.rpId = window.location.hostname;
 
         const authentication_response = await startAuthentication({ optionsJSON: options_json });
-        return await this._interface.signInWithPasskey({ authentication_response, code });
+        return await this._interface.signInWithPasskey({ authentication_response, code }, session);
       });
     } catch (error) {
       if (error instanceof WebAuthnError) {

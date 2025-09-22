@@ -90,9 +90,22 @@ async function seed() {
     projectId: 'internal',
     branchId: DEFAULT_BRANCH_ID,
     environmentConfigOverrideOverride: {
+      dataVault: {
+        stores: {
+          'neon-connection-strings': {
+            displayName: 'Neon Connection Strings',
+          }
+        }
+      },
       payments: {
+        groups: {
+          plans: {
+            displayName: "Plans",
+          }
+        },
         offers: {
           team: {
+            groupId: "plans",
             displayName: "Team",
             customerType: "team",
             serverOnly: false,
@@ -106,13 +119,14 @@ async function seed() {
             },
             includedItems: {
               dashboard_admins: {
-                quantity: 2,
+                quantity: 3,
                 repeat: "never",
                 expires: "when-purchase-expires"
               }
             }
           },
           growth: {
+            groupId: "plans",
             displayName: "Growth",
             customerType: "team",
             serverOnly: false,
@@ -126,21 +140,56 @@ async function seed() {
             },
             includedItems: {
               dashboard_admins: {
-                quantity: 4,
+                quantity: 5,
                 repeat: "never",
                 expires: "when-purchase-expires"
               }
+            }
+          },
+          free: {
+            groupId: "plans",
+            displayName: "Free",
+            customerType: "team",
+            serverOnly: false,
+            stackable: false,
+            prices: "include-by-default",
+            includedItems: {
+              dashboard_admins: {
+                quantity: 1,
+                repeat: "never",
+                expires: "when-purchase-expires"
+              }
+            }
+          },
+          "extra-admins": {
+            groupId: "plans",
+            displayName: "Extra Admins",
+            customerType: "team",
+            serverOnly: false,
+            stackable: true,
+            prices: {
+              monthly: {
+                USD: "49",
+                interval: [1, "month"] as any,
+                serverOnly: false
+              }
+            },
+            includedItems: {
+              dashboard_admins: {
+                quantity: 1,
+                repeat: "never",
+                expires: "when-purchase-expires"
+              }
+            },
+            isAddOnTo: {
+              team: true,
+              growth: true,
             }
           }
         },
         items: {
           dashboard_admins: {
             displayName: "Dashboard Admins",
-            default: {
-              quantity: 1,
-              expires: "never",
-              repeat: "never"
-            },
             customerType: "team"
           }
         },

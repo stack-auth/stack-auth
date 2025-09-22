@@ -14,6 +14,9 @@ import { getProjectBranchFromClientId } from ".";
 declare module "@node-oauth/oauth2-server" {
   // eslint-disable-next-line @typescript-eslint/consistent-type-definitions
   interface Client {}
+
+  // eslint-disable-next-line @typescript-eslint/consistent-type-definitions
+  interface User {}
 }
 
 const enabledScopes = ["legacy"];
@@ -198,7 +201,7 @@ export class OAuthModel implements AuthorizationCodeModel {
   }
 
   async getAccessToken(accessToken: string): Promise<Token | Falsey> {
-    const result = await decodeAccessToken(accessToken);
+    const result = await decodeAccessToken(accessToken, { allowAnonymous: true });
     if (result.status === "error") {
       captureError("getAccessToken", result.error);
       return false;

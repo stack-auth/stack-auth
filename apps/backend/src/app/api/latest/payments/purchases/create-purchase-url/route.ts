@@ -1,11 +1,13 @@
-import { ensureOfferCustomerTypeMatches, ensureOfferIdOrInlineOffer } from "@/lib/payments";
+import { ensureOfferIdOrInlineOffer } from "@/lib/payments";
 import { getStripeForAccount } from "@/lib/stripe";
+import { globalPrismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
+import { CustomerType } from "@prisma/client";
+import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
 import { adaptSchema, clientOrHigherAuthTypeSchema, inlineOfferSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { purchaseUrlVerificationCodeHandler } from "../verification-code-handler";
-import { CustomerType } from "@prisma/client";
 
 export const POST = createSmartRouteHandler({
   metadata: {
@@ -18,7 +20,8 @@ export const POST = createSmartRouteHandler({
       tenancy: adaptSchema.defined(),
     }).defined(),
     body: yupObject({
-      customer_id: yupString().uuid().defined(),
+      customer_type: yupString().oneOf(["user", "team", "custom"]).defined(),
+      customer_id: yupString().defined(),
       offer_id: yupString().optional(),
       offer_inline: inlineOfferSchema.optional(),
     }),
@@ -32,10 +35,12 @@ export const POST = createSmartRouteHandler({
   }),
   handler: async (req) => {
     const { tenancy } = req.auth;
-    const stripe = getStripeForAccount({ tenancy });
+    const stripe = await getStripeForAccount({ tenancy });
     const offerConfig = await ensureOfferIdOrInlineOffer(tenancy, req.auth.type, req.body.offer_id, req.body.offer_inline);
-    await ensureOfferCustomerTypeMatches(req.body.offer_id, offerConfig.customerType, req.body.customer_id, tenancy);
-    const customerType = offerConfig.customerType ?? throwErr("Customer type not found");
+    const customerType = offerConfig.customerType;
+    if (req.body.customer_type !== customerType) {
+      throw new KnownErrors.OfferCustomerTypeDoesNotMatch(req.body.offer_id, req.body.customer_id, customerType, req.body.customer_type);
+    }
 
     const stripeCustomerSearch = await stripe.customers.search({
       query: `metadata['customerId']:'${req.body.customer_id}'`,
@@ -50,15 +55,21 @@ export const POST = createSmartRouteHandler({
       });
     }
 
+    const project = await globalPrismaClient.project.findUnique({
+      where: { id: tenancy.project.id },
+      select: { stripeAccountId: true },
+    });
+
     const { code } = await purchaseUrlVerificationCodeHandler.createCode({
       tenancy,
       expiresInMs: 1000 * 60 * 60 * 24,
       data: {
         tenancyId: tenancy.id,
         customerId: req.body.customer_id,
+        offerId: req.body.offer_id,
         offer: offerConfig,
         stripeCustomerId: stripeCustomer.id,
-        stripeAccountId: tenancy.config.payments.stripeAccountId ?? throwErr("Stripe account not configured"),
+        stripeAccountId: project?.stripeAccountId ?? throwErr("Stripe account not configured"),
       },
       method: {},
       callbackUrl: undefined,

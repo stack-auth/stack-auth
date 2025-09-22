@@ -1,5 +1,43 @@
 # react-example
 
+## 2.8.39
+
+### Patch Changes
+
+- @stackframe/react@2.8.39
+
+## 2.8.38
+
+### Patch Changes
+
+- @stackframe/react@2.8.38
+
+## 2.8.37
+
+### Patch Changes
+
+- @stackframe/react@2.8.37
+
+## 2.8.36
+
+### Patch Changes
+
+- Various changes
+- Updated dependencies
+  - @stackframe/react@2.8.36
+
+## 2.8.35
+
+### Patch Changes
+
+- @stackframe/react@2.8.35
+
+## 2.8.34
+
+### Patch Changes
+
+- @stackframe/react@2.8.34
+
 ## 2.8.33
 
 ### Patch Changes
