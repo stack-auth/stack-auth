@@ -35,17 +35,26 @@ async function extractOpenApiDetails(content: string, page: { data: { title: str
           const methodSpec = pathSpec?.[method.toLowerCase()];
 
           if (methodSpec) {
-            // Return the raw OpenAPI spec JSON for this specific endpoint
+            // Add human-readable summary first
+            const fullUrl = methodSpec['x-full-url'] || `https://api.stack-auth.com/api/v1${opPath}`;
+
+            apiDetails += `\n## ${method.toUpperCase()} ${opPath}\n`;
+            apiDetails += `**Full URL:** ${fullUrl}\n`;
+            apiDetails += `**Summary:** ${methodSpec.summary || 'No summary available'}\n\n`;
+
+            // Then include the complete OpenAPI spec with all examples and schemas
             const endpointJson = {
               [opPath]: {
                 [method.toLowerCase()]: methodSpec
               }
             };
+            apiDetails += "**Complete API Specification:**\n```json\n";
             apiDetails += JSON.stringify(endpointJson, null, 2);
+            apiDetails += "\n```\n\n---\n";
           }
         }
 
-        const resultText = `Title: ${page.data.title}\nDescription: ${page.data.description || ''}\n\nOpenAPI Spec: ${specFile}\nOperations: ${operations}\n\n${apiDetails}`;
+        const resultText = `Title: ${page.data.title}\nDescription: ${page.data.description || ''}\n\n${apiDetails}`;
 
         return {
           content: [
@@ -86,7 +95,14 @@ async function extractOpenApiDetails(content: string, page: { data: { title: str
 // Get pages from both main docs and API docs
 const pages = source.getPages();
 const apiPages = apiSource.getPages();
-const allPages = [...pages, ...apiPages];
+
+// Filter out admin API pages from the MCP server
+const filteredApiPages = apiPages.filter((page) => {
+  // Exclude admin API pages - they should not be accessible via MCP
+  return !page.url.startsWith('/api/admin/');
+});
+
+const allPages = [...pages, ...filteredApiPages];
 
 const pageSummaries = allPages
   .filter((v) => {
@@ -220,6 +236,42 @@ const handler = createMcpHandler(
         }
       }
     );
+    server.tool(
+      "get_stack_auth_setup_instructions",
+      "Use this tool when the user wants to set up authentication in a new project. It provides step-by-step instructions for installing and configuring Stack Auth authentication.",
+      {},
+      async ({}) => {
+        nodeClient?.capture({
+          event: "get_stack_auth_setup_instructions",
+          properties: {},
+          distinctId: "mcp-handler",
+        });
+
+        try {
+          const instructionsPath = "content/setup-instructions.md";
+          const instructions = await readFile(instructionsPath, "utf-8");
+
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: instructions,
+              },
+            ],
+          };
+        } catch (error) {
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: `Error reading setup instructions: ${error instanceof Error ? error.message : "Unknown error"}`,
+              },
+            ],
+            isError: true,
+          };
+        }
+      }
+    );
   },
   {
     capabilities: {
@@ -240,6 +292,15 @@ const handler = createMcpHandler(
               },
             },
             required: ["id"],
+          },
+        },
+        getStackAuthSetupInstructions: {
+          description:
+            "Use this tool when the user wants to set up Stack Auth in a new project. It provides step-by-step instructions for installing and configuring Stack Auth authentication, including environment setup, file scaffolding, and verification steps.",
+          parameters: {
+            type: "object",
+            properties: {},
+            required: [],
           },
         },
       },

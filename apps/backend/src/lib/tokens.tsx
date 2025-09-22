@@ -120,10 +120,23 @@ export async function generateAccessToken(options: {
   userId: string,
   refreshTokenId: string,
 }) {
-  const user = await usersCrudHandlers.adminRead({
-    tenancy: options.tenancy,
-    user_id: options.userId,
-  });
+  let user;
+  try {
+    user = await usersCrudHandlers.adminRead({
+      tenancy: options.tenancy,
+      user_id: options.userId,
+      allowedErrorTypes: [KnownErrors.UserNotFound],
+    });
+  } catch (error) {
+    if (error instanceof KnownErrors.UserNotFound) {
+      throw new StackAssertionError(`User not found in generateAccessToken. Was the user's account deleted?`, {
+        userId: options.userId,
+        refreshTokenId: options.refreshTokenId,
+        tenancy: options.tenancy,
+      });
+    }
+    throw error;
+  }
 
   await logEvent(
     [SystemEventTypes.SessionActivity],
