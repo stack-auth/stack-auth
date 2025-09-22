@@ -10,7 +10,7 @@ type SearchResult = {
 // Helper function to call MCP server
 async function callMcpServer(search_query: string): Promise<SearchResult[]> {
   try {
-    const response = await fetch('http://localhost:8104/api/internal/mcp', {
+    const response = await fetch('https://mcp.stack-auth.com/api/internal/mcp', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
