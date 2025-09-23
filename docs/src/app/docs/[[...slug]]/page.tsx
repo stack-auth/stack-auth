@@ -34,7 +34,6 @@ export default async function Page(props: {
           <LLMCopyButton markdownUrl={`${page.url}.mdx`} />
           <ViewOptions
             markdownUrl={`${page.url}.mdx`}
-            githubUrl={`https://github.com/stack-auth/stack/blob/dev/docs/content/docs/${page.file.path}`}
           />
         </div>
       </div>
