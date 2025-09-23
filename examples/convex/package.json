@@ -1,5 +1,5 @@
 {
-  "name": "convex",
+  "name": "@stackframe/convex-example",
   "version": "0.1.0",
   "private": true,
   "scripts": {
@@ -8,8 +8,7 @@
     "dev:backend": "convex dev",
     "predev": "convex dev --until-success && convex dashboard",
     "build": "next build",
-    "start": "next start",
-    "lint": "next lint"
+    "start": "next start"
   },
   "dependencies": {
     "@stackframe/stack": "workspace:*",

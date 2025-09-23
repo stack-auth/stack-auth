@@ -3,97 +3,99 @@ title: Convex
 description: Integrate Stack Auth with Convex
 ---
 
-This guide shows how to integrate Stack Auth with Convex
+This guide shows how to integrate Stack Auth with Convex.
 
-### Setup
+### 1) Create a Convex + Next.js app
 
-First create a new Next.js project with convex installed:
-<Tabs defaultValue="wizard">
+```bash title="Terminal"
+npx create-next-app --example convex stack-convex
+cd stack-convex
+npx @stackframe/init-stack@latest
+```
+
+Add your Stack environment variables to bot `.env.local` and convex env:
+- `NEXT_PUBLIC_STACK_PROJECT_ID`
+- `NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY`
+- `STACK_SECRET_SERVER_KEY`
+
+### 2) Update `convex/auth.config.ts`
+
+Use the exported helper to configure Convex auth providers for Stack. If `NEXT_PUBLIC_STACK_PROJECT_ID` is set, the `projectId` option is optional.
+
+```typescript title="convex/auth.config.ts"
+import { getConvexProvidersConfig } from "@stackframe/stack";
+
+export default {
+  providers: getConvexProvidersConfig({
+    // Optional: projectId: PROJECT_ID,
+  }),
+};
+```
+
+### 3) Create your Stack client
+
+```typescript title="stack/client.ts"
+import { StackClientApp } from "@stackframe/stack";
+
+export const stackClientApp = new StackClientApp({
+  tokenStore: "nextjs-cookie",
+});
+```
+
+### 4) Use with Convex clients
+
+<Tabs defaultValue="react">
   <TabsList>
-    <TabsTrigger value="wizard">Setup wizard (recommended)</TabsTrigger>
-    <TabsTrigger value="manual">Manual installation</TabsTrigger>
+    <TabsTrigger value="react">Convex React client</TabsTrigger>
+    <TabsTrigger value="http">Convex HTTP client</TabsTrigger>
   </TabsList>
-  <TabsContent value="wizard">
+  <TabsContent value="react">
     <Steps>
       <Step>
-      ### Run installation wizard
+      ### Set auth for Convex React client
       </Step>
-      Run Stack's installation wizard with the following command:
+      ```tsx title="convex-react.ts"
+      import { ConvexReactClient } from "convex/react";
+      import { stackClientApp } from "../stack/client";
 
-      ```bash title="Terminal"
-      npx create-next-app --example convex stack-convex
+      const convex = new ConvexReactClient(process.env.NEXT_PUBLIC_CONVEX_URL!, { expectAuth: true });
+      convex.setAuth(
+        stackClientApp.getConvexClientAuth({ tokenStore: "nextjs-cookie" })
+      );
       ```
     </Steps>
   </TabsContent>
-  <TabsContent value="manual">
+  <TabsContent value="http">
     <Steps>
       <Step>
-      ### Manual installation
+      ### Set auth for Convex HTTP client
       </Step>
-      Run the following command to create a new Next.js project with convex installed:
+      ```ts title="convex-http.ts"
+      import { ConvexHttpClient } from "convex/browser";
+      import { stackClientApp } from "../stack/client";
 
-      ```bash title="Terminal"
-      npx create-next-app --example convex stack-convex
+      const token = await stackClientApp.getConvexHttpClientAuth({ tokenStore: "nextjs-cookie" });
+      const convex = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
+      convex.setAuth(token);
       ```
     </Steps>
   </TabsContent>
 </Tabs>
 
-Next install Stack Auth:
+### 5) Use in Convex functions (server)
 
-```bash title="Terminal"
-cd stack-convex
-npx @stackframe/init-stack@latest
-```
+In Convex queries/mutations/actions, map Convex identity to a Stack partial user with `ctx`:
 
-Next create a new file in convex/auth.config.ts with the following code:
+```ts title="convex/myFunctions.ts"
+import { v } from "convex/values";
+import { query } from "./_generated/server";
+import { stackClientApp } from "../stack/client";
 
-```typescript title="convex/auth.config.ts"
-import { getConvexProviderConfig } from "@stackframe/convex";
-
-export default {
-  providers: [
-    ...getConvexProvidersConfig(),
-  ],
-}
-```
-
-### Setup a new Next.js project
-
-Now let's create a new Next.js project and install Stack Auth and Supabase client. (more details on [Next.js setup](https://nextjs.org/docs/getting-started/installation), [Stack Auth setup](../getting-started/setup.mdx), and [Supabase setup](https://supabase.com/docs/guides/getting-started/quickstarts/nextjs))
-
-```bash title="Terminal"
-npx create-next-app@latest stack-convex
-cd stack-convex
-npx @stackframe/init-stack@latest
-```
-
-Now copy the environment variables from the Supabase dashboard to the `.env.local` file: 
-- `NEXT_PUBLIC_SUPABASE_URL`
-- `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-- `SUPABASE_JWT_SECRET`
-
-Copy environment variables from the Stack dashboard to the `.env.local` file.
-- `NEXT_PUBLIC_STACK_PROJECT_ID`
-- `NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY`
-- `STACK_SECRET_SERVER_KEY`
-
-
-Next update stack/client.ts with the following code:
-
-```typescript title="stack/client.ts"
-import { convexClient } from "../convex/_generated/client";
-
-export const stackClientApp = new StackClientApp({
-  projectId: process.env.NEXT_PUBLIC_STACK_PROJECT_ID,
-  publishableClientKey: process.env.NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY,
-  tokenStore: "nextjs-cookie",
-  integrations: {
-    convex: {
-      client: convexClient,
-    },
+export const whoAmI = query({
+  args: {},
+  handler: async (ctx) => {
+    const user = await stackClientApp.getPartialUser({ from: "convex", ctx });
+    return user; // null when not authenticated
   },
 });
 ```
-
-You can find the full example [here on GitHub](https://github.com/stack-auth/stack-auth/tree/main/examples/supabase).

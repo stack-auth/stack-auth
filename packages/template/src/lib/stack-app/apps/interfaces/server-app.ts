@@ -47,18 +47,15 @@ export type StackServerApp<HasTokenStore extends boolean = boolean, ProjectId ex
     getPartialUser(options: GetCurrentPartialUserOptions<HasTokenStore> & { from: 'token' }): Promise<TokenPartialUser | null>,
     getPartialUser(options: GetCurrentPartialUserOptions<HasTokenStore> & { from: 'convex' }): Promise<TokenPartialUser | null>,
     getPartialUser(options: GetCurrentPartialUserOptions<HasTokenStore>): Promise<SyncedPartialServerUser | TokenPartialUser | null>,
-
     // IF_PLATFORM react-like
     usePartialUser(options: GetCurrentPartialUserOptions<HasTokenStore> & { from: 'token' }): TokenPartialUser | null,
     usePartialUser(options: GetCurrentPartialUserOptions<HasTokenStore> & { from: 'convex' }): TokenPartialUser | null,
     usePartialUser(options: GetCurrentPartialUserOptions<HasTokenStore>): SyncedPartialServerUser | TokenPartialUser | null,
     // END_PLATFORM
-
     // IF_PLATFORM react-like
     useTeam(id: string): ServerTeam | null,
     useTeam(options: { apiKey: string }): ServerTeam | null,
     // END_PLATFORM
-
     getTeam(id: string): Promise<ServerTeam | null>,
     getTeam(options: { apiKey: string }): Promise<ServerTeam | null>,
 

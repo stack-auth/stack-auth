@@ -1642,7 +1642,6 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       }
     }
   }
-
   // IF_PLATFORM react-like
   usePartialUser(options: GetCurrentPartialUserOptions<HasTokenStore> & { from: 'token' }): TokenPartialUser | null;
   usePartialUser(options: GetCurrentPartialUserOptions<HasTokenStore> & { from: 'convex' }): TokenPartialUser | null;
@@ -1663,7 +1662,6 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     }
   }
   // END_PLATFORM
-
   getConvexClientAuth(options: { tokenStore: TokenStoreInit }): (args: { forceRefreshToken: boolean }) => Promise<string | null> {
     return async (args: { forceRefreshToken: boolean }) => {
       const session = await this._getSession(options.tokenStore);

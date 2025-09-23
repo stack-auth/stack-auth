@@ -24,9 +24,7 @@ export const listNumbers = query({
       .order("desc")
       .take(args.count);
 
-    // @ts-ignore
     const partialUser = await stackClientApp.getPartialUser({ from: "convex", ctx });
-    console.log("partialUser", partialUser);
     return {
       viewer: partialUser?.primaryEmail ?? null,
       numbers: numbers.reverse().map((number) => number.value),
