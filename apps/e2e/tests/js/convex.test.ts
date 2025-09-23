@@ -145,3 +145,36 @@ it("should return null partial user when convex identity is absent", async ({ ex
 });
 
 
+it("should return the server user when provided Convex ctx identity", async ({ expect }) => {
+  const { clientApp, serverApp } = await createApp({});
+  await signIn(clientApp);
+
+  const user = await clientApp.getUser({ or: "throw" });
+  const identity = { subject: user.id } as const;
+
+  const ctx: any = {
+    auth: {
+      getUserIdentity: async () => identity,
+    },
+  };
+
+  const serverUser = await serverApp.getUser({ from: "convex", ctx });
+  expect(serverUser).not.toBeNull();
+  expect(serverUser!.id).toBe(user.id);
+  expect(serverUser!.isAnonymous).toBe(false);
+});
+
+it("should return null when Convex ctx identity is absent for server getUser", async ({ expect }) => {
+  const { serverApp } = await createApp({});
+
+  const ctx: any = {
+    auth: {
+      getUserIdentity: async () => null,
+    },
+  };
+
+  const serverUser = await serverApp.getUser({ from: "convex", ctx });
+  expect(serverUser).toBeNull();
+});
+
+
