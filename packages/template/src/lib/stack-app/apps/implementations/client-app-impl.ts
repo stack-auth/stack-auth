@@ -1656,7 +1656,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     return res;
   }
 
-  async signInWithOAuth(provider: ProviderType) {
+  async signInWithOAuth(provider: ProviderType, options?: { returnTo?: string }) {
     if (typeof window === "undefined") {
       throw new Error("signInWithOAuth can currently only be called in a browser environment");
     }
@@ -1667,7 +1667,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       this._interface,
       {
         provider,
-        redirectUrl: this.urls.oauthCallback,
+        redirectUrl: options?.returnTo ?? this.urls.oauthCallback,
         errorRedirectUrl: this.urls.error,
         providerScope: this._oauthScopesOnSignIn[provider]?.join(" "),
       },

@@ -37,7 +37,7 @@ export type StackClientApp<HasTokenStore extends boolean = boolean, ProjectId ex
 
     readonly urls: Readonly<HandlerUrls>,
 
-    signInWithOAuth(provider: string): Promise<void>,
+    signInWithOAuth(provider: string, options?: { returnTo?: string }): Promise<void>,
     signInWithCredential(options: { email: string, password: string, noRedirect?: boolean }): Promise<Result<undefined, KnownErrors["EmailPasswordMismatch"] | KnownErrors["InvalidTotpCode"]>>,
     signUpWithCredential(options: { email: string, password: string, noRedirect?: boolean, verificationCallbackUrl?: string }): Promise<Result<undefined, KnownErrors["UserWithEmailAlreadyExists"] | KnownErrors["PasswordRequirementsNotMet"]>>,
     signInWithPasskey(): Promise<Result<undefined, KnownErrors["PasskeyAuthenticationFailed"] | KnownErrors["InvalidTotpCode"] | KnownErrors["PasskeyWebAuthnError"]>>,

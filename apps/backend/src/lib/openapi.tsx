@@ -56,7 +56,7 @@ export function parseWebhookOpenAPI(options: {
             ...parseOverload({
               metadata: webhook.metadata,
               method: 'POST',
-              path: webhook.type,
+              path: `/webhooks/${webhook.type}`,
               requestBodyDesc: undefinedIfMixed(yupObject({
                 type: yupString().defined().meta({ openapiField: { description: webhook.type, exampleValue: webhook.type } }),
                 data: webhook.schema.defined(),
@@ -354,6 +354,7 @@ export function parseOverload(options: {
     parameters: [...queryParameters, ...pathParameters, ...headerParameters],
     requestBody,
     tags: endpointDocumentation.tags ?? ["Others"],
+    'x-full-url': `https://api.stack-auth.com/api/v1${options.path}`,
   } as const;
 
   if (!isSchemaStringDescription(options.responseTypeDesc)) {
