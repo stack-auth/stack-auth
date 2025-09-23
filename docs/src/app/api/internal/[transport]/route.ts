@@ -135,7 +135,7 @@ const handler = createMcpHandler(
       }
     );
     server.tool(
-      "search_docs", 
+      "search_docs",
       "Search through all Stack Auth documentation including API docs, guides, and examples. Returns ranked results with snippets and relevance scores.",
       {
         search_query: z.string().describe("The search query to find relevant documentation"),
