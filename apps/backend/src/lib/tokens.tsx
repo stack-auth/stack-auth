@@ -13,6 +13,7 @@ import * as jose from 'jose';
 import { JOSEError, JWTExpired } from 'jose/errors';
 import { SystemEventTypes, logEvent } from './events';
 import { Tenancy } from './tenancies';
+import { AccessTokenPayload } from '@stackframe/stack-shared/dist/sessions';
 
 export const authorizationHeaderSchema = yupString().matches(/^StackSession [^ ]+$/);
 
@@ -149,22 +150,24 @@ export async function generateAccessToken(options: {
     }
   );
 
+  const payload: Omit<AccessTokenPayload, "iss" | "aud"> = {
+    sub: options.userId,
+    project_id: options.tenancy.project.id,
+    branch_id: options.tenancy.branchId,
+    refresh_token_id: options.refreshTokenId,
+    role: 'authenticated',
+    name: user.display_name,
+    email: user.primary_email,
+    email_verified: user.primary_email_verified,
+    selected_team_id: user.selected_team_id,
+    is_anonymous: user.is_anonymous,
+  };
+
   return await signJWT({
     issuer: getIssuer(options.tenancy.project.id, user.is_anonymous),
     audience: getAudience(options.tenancy.project.id, user.is_anonymous),
-    payload: {
-      sub: options.userId,
-      project_id: options.tenancy.project.id,
-      branch_id: options.tenancy.branchId,
-      refresh_token_id: options.refreshTokenId,
-      role: 'authenticated',
-      name: user.display_name,
-      email: user.primary_email,
-      email_verified: user.primary_email_verified,
-      selected_team_id: user.selected_team_id,
-      is_anonymous: user.is_anonymous,
-    },
     expirationTime: getEnvVariable("STACK_ACCESS_TOKEN_EXPIRATION_TIME", "10min"),
+    payload,
   });
 }
 

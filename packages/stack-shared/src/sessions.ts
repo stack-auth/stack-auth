@@ -1,4 +1,5 @@
 import * as jose from 'jose';
+import { InferType } from 'yup';
 import { yupBoolean, yupNumber, yupObject, yupString } from './schema-fields';
 import { StackAssertionError } from "./utils/errors";
 import { Store } from "./utils/stores";
@@ -12,12 +13,14 @@ const accessTokenPayloadSchema = yupObject({
   branch_id: yupString().defined(),
   refresh_token_id: yupString().defined(),
   role: yupString().oneOf(["authenticated"]).defined(),
-  name: yupString().defined(),
-  email: yupString().defined(),
+  name: yupString().defined().nullable(),
+  email: yupString().defined().nullable(),
   email_verified: yupBoolean().defined(),
-  selected_team_id: yupString().defined(),
+  selected_team_id: yupString().defined().nullable(),
   is_anonymous: yupBoolean().defined(),
 });
+
+export type AccessTokenPayload = InferType<typeof accessTokenPayloadSchema>;
 
 export class AccessToken {
   constructor(

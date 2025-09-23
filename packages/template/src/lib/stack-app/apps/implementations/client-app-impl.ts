@@ -1610,6 +1610,20 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     } satisfies TokenPartialUser;
   }
 
+  async _getPartialUserFromConvex(ctx: (GetCurrentPartialUserOptions<HasTokenStore> & { from: "convex" })["ctx"]): Promise<TokenPartialUser | null> {
+    const auth = await ctx.auth.getUserIdentity();
+    if (!auth) {
+      return null;
+    }
+    return {
+      id: auth.subject,
+      displayName: auth.name ?? null,
+      primaryEmail: auth.email ?? null,
+      primaryEmailVerified: auth.email_verified as boolean,
+      isAnonymous: auth.is_anonymous as boolean,
+    };
+  }
+
   async getPartialUser(options: GetCurrentPartialUserOptions<HasTokenStore> & { from: 'token' }): Promise<TokenPartialUser | null>;
   async getPartialUser(options: GetCurrentPartialUserOptions<HasTokenStore> & { from: 'convex' }): Promise<TokenPartialUser | null>;
   async getPartialUser(options: GetCurrentPartialUserOptions<HasTokenStore>): Promise<SyncedPartialUser | TokenPartialUser | null> {
@@ -1620,7 +1634,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         return this._getTokenPartialUserFromSession(session, options);
       }
       case "convex": {
-        throw new Error("Partial user from Convex is currently unimplemented — please use `from: 'token'` instead, which will also work inside a Convex query");
+        return await this._getPartialUserFromConvex(options.ctx as unknown as any);
       }
       default: {
         // @ts-expect-error
@@ -1640,7 +1654,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         return this._getTokenPartialUserFromSession(session, options);
       }
       case "convex": {
-        throw new Error("Partial user from Convex is currently unimplemented — please use `from: 'token'` instead, which will also work inside a Convex query");
+        return this._getPartialUserFromConvex(options.ctx as unknown as any) as any;
       }
       default: {
         // @ts-expect-error
@@ -1649,6 +1663,24 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     }
   }
   // END_PLATFORM
+
+  getConvexClientAuth(options: { tokenStore: TokenStoreInit }): (args: { forceRefreshToken: boolean }) => Promise<string | null> {
+    return async (args: { forceRefreshToken: boolean }) => {
+      const session = await this._getSession(options.tokenStore);
+      if (!args.forceRefreshToken) {
+        const tokens = await session.getOrFetchLikelyValidTokens(20_000);
+        return tokens?.accessToken.token ?? null;
+      }
+      const tokens = await session.fetchNewTokens();
+      return tokens?.accessToken.token ?? null;
+    };
+  }
+
+  async getConvexHttpClientAuth(options: { tokenStore: TokenStoreInit }): Promise<string> {
+    const session = await this._getSession(options.tokenStore);
+    const tokens = await session.getOrFetchLikelyValidTokens(20_000);
+    return tokens?.accessToken.token ?? throwErr("No access token available");
+  }
 
   protected async _updateClientUser(update: UserUpdateOptions, session: InternalSession) {
     const res = await this._interface.updateClientUser(userUpdateOptionsToCrud(update), session);
