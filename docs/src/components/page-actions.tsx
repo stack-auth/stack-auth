@@ -74,17 +74,11 @@ const optionVariants = cva(
 
 export function ViewOptions({
   markdownUrl,
-  githubUrl,
 }: {
   /**
    * A URL to the raw Markdown/MDX content of page
    */
   markdownUrl: string,
-
-  /**
-   * Source file URL on GitHub
-   */
-  githubUrl: string,
 }) {
   const items = useMemo(() => {
     const fullMarkdownUrl =
@@ -201,7 +195,7 @@ export function ViewOptions({
         icon: <MessageCircleIcon />,
       },
     ];
-  }, [githubUrl, markdownUrl]);
+  }, [markdownUrl]);
 
   return (
     <Popover>
