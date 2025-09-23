@@ -18,7 +18,7 @@ type ProductData = {
   stripe_account_id: string,
   project_id: string,
   already_bought_non_stackable?: boolean,
-  conflicting_group_products?: { product_id: string, display_name: string }[],
+  conflicting_products?: { product_id: string, display_name: string }[],
 };
 
 const apiUrl = getPublicEnvVar("NEXT_PUBLIC_STACK_API_URL") ?? throwErr("NEXT_PUBLIC_STACK_API_URL is not set");
@@ -166,12 +166,12 @@ export default function PageClient({ code }: { code: string }) {
                     You already have this product.
                   </AlertDescription>
                 </Alert>
-              ) : data?.conflicting_group_products && data.conflicting_group_products.length > 0 ? (
+              ) : data?.conflicting_products && data.conflicting_products.length > 0 ? (
                 <Alert>
                   <AlertTitle>Plan change</AlertTitle>
                   <AlertDescription>
-                    {data.conflicting_group_products.length === 1 ? (
-                      <>This purchase will change your plan from {data.conflicting_group_products[0].display_name}.</>
+                    {data.conflicting_products.length === 1 ? (
+                      <>This purchase will change your plan from {data.conflicting_products[0].display_name}.</>
                     ) : (
                       <>This purchase will change your plan from one of your existing plans.</>
                     )}

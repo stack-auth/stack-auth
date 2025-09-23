@@ -38,7 +38,7 @@ it("should allow valid code and return product data", async ({ expect }) => {
       "status": 200,
       "body": {
         "already_bought_non_stackable": false,
-        "conflicting_group_products": [],
+        "conflicting_products": [],
         "product": {
           "customer_type": "user",
           "display_name": "Test Product",
@@ -134,7 +134,7 @@ it("should set already_bought_non_stackable when user already owns non-stackable
       "status": 200,
       "body": {
         "already_bought_non_stackable": true,
-        "conflicting_group_products": [],
+        "conflicting_products": [],
         "product": {
           "customer_type": "user",
           "display_name": "Test Product",
@@ -157,7 +157,7 @@ it("should set already_bought_non_stackable when user already owns non-stackable
   `);
 });
 
-it("should include conflicting_group_products when switching within the same group", async ({ expect }) => {
+it("should include conflicting_products when switching within the same group", async ({ expect }) => {
   await Project.createAndSwitch();
   await Payments.setup();
   await Project.updateConfig({
@@ -225,7 +225,7 @@ it("should include conflicting_group_products when switching within the same gro
       "status": 200,
       "body": {
         "already_bought_non_stackable": false,
-        "conflicting_group_products": [
+        "conflicting_products": [
           {
             "display_name": "Product A",
             "product_id": "productA",

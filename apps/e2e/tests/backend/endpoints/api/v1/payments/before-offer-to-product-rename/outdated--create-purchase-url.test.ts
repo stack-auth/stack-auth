@@ -1,11 +1,11 @@
-import { it } from "../../../../../helpers";
-import { Auth, Project, User, niceBackendFetch, Payments } from "../../../../backend-helpers";
 import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
+import { it } from "../../../../../../helpers";
+import { Auth, Payments, Project, User, niceBackendFetch } from "../../../../../backend-helpers";
 
 it("should not be able to create purchase URL without offer_id or offer_inline", async ({ expect }) => {
   await Project.createAndSwitch();
   await Payments.setup();
-  const response = await niceBackendFetch("/api/latest/payments/purchases/create-purchase-url", {
+  const response = await niceBackendFetch("/api/v1/payments/purchases/create-purchase-url", {
     method: "POST",
     accessType: "client",
     body: {
@@ -16,7 +16,7 @@ it("should not be able to create purchase URL without offer_id or offer_inline",
   expect(response).toMatchInlineSnapshot(`
       NiceResponse {
         "status": 400,
-        "body": "Must specify either offer_id or offer_inline!",
+        "body": "Must specify either product_id or product_inline!",
         "headers": Headers { <some fields may have been hidden> },
       }
     `);
@@ -27,7 +27,7 @@ it("should error for non-existent offer_id", async ({ expect }) => {
   await Payments.setup();
   await Project.updateConfig({
     payments: {
-      offers: {
+      products: {
         "test-offer": {
           displayName: "Test Offer",
           customerType: "user",
@@ -45,7 +45,7 @@ it("should error for non-existent offer_id", async ({ expect }) => {
     },
   });
 
-  const response = await niceBackendFetch("/api/latest/payments/purchases/create-purchase-url", {
+  const response = await niceBackendFetch("/api/v1/payments/purchases/create-purchase-url", {
     method: "POST",
     accessType: "client",
     body: {
@@ -58,15 +58,15 @@ it("should error for non-existent offer_id", async ({ expect }) => {
       NiceResponse {
         "status": 400,
         "body": {
-          "code": "OFFER_DOES_NOT_EXIST",
+          "code": "PRODUCT_DOES_NOT_EXIST",
           "details": {
             "access_type": "client",
-            "offer_id": "non-existent-offer",
+            "product_id": "non-existent-offer",
           },
-          "error": "Offer with ID \\"non-existent-offer\\" does not exist or you don't have permissions to access it.",
+          "error": "Product with ID \\"non-existent-offer\\" does not exist or you don't have permissions to access it.",
         },
         "headers": Headers {
-          "x-stack-known-error": "OFFER_DOES_NOT_EXIST",
+          "x-stack-known-error": "PRODUCT_DOES_NOT_EXIST",
           <some fields may have been hidden>,
         },
       }
@@ -78,7 +78,7 @@ it("should error for invalid customer_id", async ({ expect }) => {
   await Payments.setup();
   await Project.updateConfig({
     payments: {
-      offers: {
+      products: {
         "test-offer": {
           displayName: "Test Offer",
           customerType: "user",
@@ -97,7 +97,7 @@ it("should error for invalid customer_id", async ({ expect }) => {
   });
 
   await Auth.Otp.signIn();
-  const response = await niceBackendFetch("/api/latest/payments/purchases/create-purchase-url", {
+  const response = await niceBackendFetch("/api/v1/payments/purchases/create-purchase-url", {
     method: "POST",
     accessType: "client",
     body: {
@@ -110,17 +110,17 @@ it("should error for invalid customer_id", async ({ expect }) => {
     NiceResponse {
       "status": 400,
       "body": {
-        "code": "OFFER_CUSTOMER_TYPE_DOES_NOT_MATCH",
+        "code": "PRODUCT_CUSTOMER_TYPE_DOES_NOT_MATCH",
         "details": {
           "actual_customer_type": "team",
           "customer_id": "<stripped UUID>",
-          "offer_customer_type": "user",
-          "offer_id": "test-offer",
+          "product_customer_type": "user",
+          "product_id": "test-offer",
         },
-        "error": "The team with ID \\"<stripped UUID>\\" is not a valid customer for the inline offer that has been passed in. The offer is configured to only be available for user customers, but the customer is a team.",
+        "error": "The team with ID \\"<stripped UUID>\\" is not a valid customer for the inline product that has been passed in. The product is configured to only be available for user customers, but the customer is a team.",
       },
       "headers": Headers {
-        "x-stack-known-error": "OFFER_CUSTOMER_TYPE_DOES_NOT_MATCH",
+        "x-stack-known-error": "PRODUCT_CUSTOMER_TYPE_DOES_NOT_MATCH",
         <some fields may have been hidden>,
       },
     }
@@ -131,7 +131,7 @@ it("should error for no connected stripe account", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
   await Project.updateConfig({
     payments: {
-      offers: {
+      products: {
         "test-offer": {
           displayName: "Test Offer",
           customerType: "user",
@@ -150,13 +150,13 @@ it("should error for no connected stripe account", async ({ expect }) => {
   });
 
   const user = await User.create();
-  const response = await niceBackendFetch("/api/latest/payments/purchases/create-purchase-url", {
+  const response = await niceBackendFetch("/api/v1/payments/purchases/create-purchase-url", {
     method: "POST",
     accessType: "client",
     body: {
       customer_type: "user",
       customer_id: user.userId,
-      offer_id: "test-offer",
+      product_id: "test-product",
     },
   });
   expect(response).toMatchInlineSnapshot(`
@@ -174,7 +174,7 @@ it("should not allow offer_inline when calling from client", async ({ expect }) 
   await Payments.setup();
 
   const { userId } = await Auth.Otp.signIn();
-  const response = await niceBackendFetch("/api/latest/payments/purchases/create-purchase-url", {
+  const response = await niceBackendFetch("/api/v1/payments/purchases/create-purchase-url", {
     method: "POST",
     accessType: "client",
     body: {
@@ -194,7 +194,7 @@ it("should not allow offer_inline when calling from client", async ({ expect }) 
       },
     },
   });
-  expect(response.body).toMatchInlineSnapshot(`"Cannot specify offer_inline when calling from client! Please call with a server API key, or use the offer_id parameter."`);
+  expect(response.body).toMatchInlineSnapshot(`"Cannot specify product_inline when calling from client! Please call with a server API key, or use the product_id parameter."`);
 });
 
 it("should error for server-only offer when calling from client", async ({ expect }) => {
@@ -202,7 +202,7 @@ it("should error for server-only offer when calling from client", async ({ expec
   await Payments.setup();
   await Project.updateConfig({
     payments: {
-      offers: {
+      products: {
         "test-offer": {
           displayName: "Test Offer",
           customerType: "user",
@@ -221,7 +221,7 @@ it("should error for server-only offer when calling from client", async ({ expec
   });
 
   const { userId } = await User.create();
-  const response = await niceBackendFetch("/api/latest/payments/purchases/create-purchase-url", {
+  const response = await niceBackendFetch("/api/v1/payments/purchases/create-purchase-url", {
     method: "POST",
     accessType: "client",
     body: {
@@ -234,15 +234,15 @@ it("should error for server-only offer when calling from client", async ({ expec
     NiceResponse {
       "status": 400,
       "body": {
-        "code": "OFFER_DOES_NOT_EXIST",
+        "code": "PRODUCT_DOES_NOT_EXIST",
         "details": {
           "access_type": "client",
-          "offer_id": "test-offer",
+          "product_id": "test-offer",
         },
-        "error": "Offer with ID \\"test-offer\\" does not exist or you don't have permissions to access it.",
+        "error": "Product with ID \\"test-offer\\" does not exist or you don't have permissions to access it.",
       },
       "headers": Headers {
-        "x-stack-known-error": "OFFER_DOES_NOT_EXIST",
+        "x-stack-known-error": "PRODUCT_DOES_NOT_EXIST",
         <some fields may have been hidden>,
       },
     }
@@ -254,7 +254,7 @@ it("should allow offer_inline when calling from server", async ({ expect }) => {
   await Payments.setup();
 
   const { userId } = await Auth.Otp.signIn();
-  const response = await niceBackendFetch("/api/latest/payments/purchases/create-purchase-url", {
+  const response = await niceBackendFetch("/api/v1/payments/purchases/create-purchase-url", {
     method: "POST",
     accessType: "server",
     body: {
@@ -283,7 +283,7 @@ it("should allow valid offer_id", async ({ expect }) => {
   await Payments.setup();
   await Project.updateConfig({
     payments: {
-      offers: {
+      products: {
         "test-offer": {
           displayName: "Test Offer",
           customerType: "user",
@@ -302,7 +302,7 @@ it("should allow valid offer_id", async ({ expect }) => {
   });
 
   const { userId } = await User.create();
-  const response = await niceBackendFetch("/api/latest/payments/purchases/create-purchase-url", {
+  const response = await niceBackendFetch("/api/v1/payments/purchases/create-purchase-url", {
     method: "POST",
     accessType: "client",
     body: {

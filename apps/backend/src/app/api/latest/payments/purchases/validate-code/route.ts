@@ -32,7 +32,7 @@ export const POST = createSmartRouteHandler({
       stripe_account_id: yupString().defined(),
       project_id: yupString().defined(),
       already_bought_non_stackable: yupBoolean().defined(),
-      conflicting_group_products: yupArray(yupObject({
+      conflicting_products: yupArray(yupObject({
         product_id: yupString().defined(),
         display_name: yupString().defined(),
       }).defined()).defined(),
@@ -95,7 +95,7 @@ export const POST = createSmartRouteHandler({
         stripe_account_id: verificationCode.data.stripeAccountId,
         project_id: tenancy.project.id,
         already_bought_non_stackable: alreadyBoughtNonStackable,
-        conflicting_group_products: conflictingGroupProducts,
+        conflicting_products: conflictingGroupProducts,
       },
     };
   },
