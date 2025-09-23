@@ -296,6 +296,12 @@ export function migrateConfigOverride(type: "project" | "branch" | "environment"
   }
   // END
 
+  // BEGIN 2025-09-23: payments.offers is now payments.products
+  if (isBranchOrHigher) {
+    res = renameProperty(res, "payments.offers", "payments.products");
+  }
+  // END
+
   // return the result
   return res;
 };
