@@ -6,7 +6,7 @@ export const DUMMY_PAYMENTS_CONFIG: any = {
     "enterprise": { displayName: "Enterprise" },
     "add-ons": { displayName: "Add-ons" },
   },
-  offers: {
+  products: {
     "free-trial": {
       displayName: "Free Trial",
       customerType: "user" as const,

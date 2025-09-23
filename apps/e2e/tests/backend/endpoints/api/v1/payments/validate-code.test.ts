@@ -26,7 +26,7 @@ it("should error on invalid code", async ({ expect }) => {
   `);
 });
 
-it("should allow valid code and return offer data", async ({ expect }) => {
+it("should allow valid code and return product data", async ({ expect }) => {
   const { code } = await Payments.createPurchaseUrlAndGetCode();
   const validateResponse = await niceBackendFetch("/api/latest/payments/purchases/validate-code", {
     method: "POST",
@@ -38,10 +38,10 @@ it("should allow valid code and return offer data", async ({ expect }) => {
       "status": 200,
       "body": {
         "already_bought_non_stackable": false,
-        "conflicting_group_offers": [],
-        "offer": {
+        "conflicting_group_products": [],
+        "product": {
           "customer_type": "user",
-          "display_name": "Test Offer",
+          "display_name": "Test Product",
           "prices": {
             "monthly": {
               "USD": "1000",
@@ -61,14 +61,14 @@ it("should allow valid code and return offer data", async ({ expect }) => {
   `);
 });
 
-it("should set already_bought_non_stackable when user already owns non-stackable offer", async ({ expect }) => {
+it("should set already_bought_non_stackable when user already owns non-stackable product", async ({ expect }) => {
   await Project.createAndSwitch();
   await Payments.setup();
   await Project.updateConfig({
     payments: {
-      offers: {
-        "test-offer": {
-          displayName: "Test Offer",
+      products: {
+        "test-product": {
+          displayName: "Test Product",
           customerType: "user",
           serverOnly: false,
           stackable: false,
@@ -85,14 +85,14 @@ it("should set already_bought_non_stackable when user already owns non-stackable
   });
 
   const { userId } = await User.create();
-  // Create a code for test-offer and purchase it in test mode (creates DB subscription)
+  // Create a code for test-product and purchase it in test mode (creates DB subscription)
   const createUrlRes1 = await niceBackendFetch("/api/latest/payments/purchases/create-purchase-url", {
     method: "POST",
     accessType: "client",
     body: {
       customer_type: "user",
       customer_id: userId,
-      offer_id: "test-offer",
+      product_id: "test-product",
     },
   });
   expect(createUrlRes1.status).toBe(200);
@@ -110,14 +110,14 @@ it("should set already_bought_non_stackable when user already owns non-stackable
   });
   expect(testModeRes.status).toBe(200);
 
-  // Create a second code for the same offer and validate; should report already_bought_non_stackable
+  // Create a second code for the same product and validate; should report already_bought_non_stackable
   const createUrlRes2 = await niceBackendFetch("/api/latest/payments/purchases/create-purchase-url", {
     method: "POST",
     accessType: "client",
     body: {
       customer_type: "user",
       customer_id: userId,
-      offer_id: "test-offer",
+      product_id: "test-product",
     },
   });
   expect(createUrlRes2.status).toBe(200);
@@ -134,10 +134,10 @@ it("should set already_bought_non_stackable when user already owns non-stackable
       "status": 200,
       "body": {
         "already_bought_non_stackable": true,
-        "conflicting_group_offers": [],
-        "offer": {
+        "conflicting_group_products": [],
+        "product": {
           "customer_type": "user",
-          "display_name": "Test Offer",
+          "display_name": "Test Product",
           "prices": {
             "monthly": {
               "USD": "1000",
@@ -157,15 +157,15 @@ it("should set already_bought_non_stackable when user already owns non-stackable
   `);
 });
 
-it("should include conflicting_group_offers when switching within the same group", async ({ expect }) => {
+it("should include conflicting_group_products when switching within the same group", async ({ expect }) => {
   await Project.createAndSwitch();
   await Payments.setup();
   await Project.updateConfig({
     payments: {
       groups: { grp: { displayName: "Group" } },
-      offers: {
-        offerA: {
-          displayName: "Offer A",
+      products: {
+        productA: {
+          displayName: "Product A",
           customerType: "user",
           serverOnly: false,
           groupId: "grp",
@@ -173,8 +173,8 @@ it("should include conflicting_group_offers when switching within the same group
           prices: { monthly: { USD: "1000", interval: [1, "month"] } },
           includedItems: {},
         },
-        offerB: {
-          displayName: "Offer B",
+        productB: {
+          displayName: "Product B",
           customerType: "user",
           serverOnly: false,
           groupId: "grp",
@@ -188,11 +188,11 @@ it("should include conflicting_group_offers when switching within the same group
 
   const { userId } = await User.create();
 
-  // Subscribe to offerA in test mode
+  // Subscribe to productA in test mode
   const resUrlA = await niceBackendFetch("/api/latest/payments/purchases/create-purchase-url", {
     method: "POST",
     accessType: "client",
-    body: { customer_type: "user", customer_id: userId, offer_id: "offerA" },
+    body: { customer_type: "user", customer_id: userId, product_id: "productA" },
   });
   expect(resUrlA.status).toBe(200);
   const codeA = (resUrlA.body as { url: string }).url.match(/\/purchase\/([a-z0-9-_]+)/)?.[1];
@@ -205,11 +205,11 @@ it("should include conflicting_group_offers when switching within the same group
   });
   expect(testModeRes.status).toBe(200);
 
-  // Now validate code for offerB; should report conflict with offerA
+  // Now validate code for productB; should report conflict with productA
   const resUrlB = await niceBackendFetch("/api/latest/payments/purchases/create-purchase-url", {
     method: "POST",
     accessType: "client",
-    body: { customer_type: "user", customer_id: userId, offer_id: "offerB" },
+    body: { customer_type: "user", customer_id: userId, product_id: "productB" },
   });
   expect(resUrlB.status).toBe(200);
   const codeB = (resUrlB.body as { url: string }).url.match(/\/purchase\/([a-z0-9-_]+)/)?.[1];
@@ -225,15 +225,15 @@ it("should include conflicting_group_offers when switching within the same group
       "status": 200,
       "body": {
         "already_bought_non_stackable": false,
-        "conflicting_group_offers": [
+        "conflicting_group_products": [
           {
-            "display_name": "Offer A",
-            "offer_id": "offerA",
+            "display_name": "Product A",
+            "product_id": "productA",
           },
         ],
-        "offer": {
+        "product": {
           "customer_type": "user",
-          "display_name": "Offer B",
+          "display_name": "Product B",
           "prices": {
             "monthly": {
               "USD": "2000",

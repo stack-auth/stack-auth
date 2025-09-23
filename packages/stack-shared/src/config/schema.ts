@@ -3,7 +3,7 @@
 import * as yup from "yup";
 import { DEFAULT_EMAIL_TEMPLATES, DEFAULT_EMAIL_THEMES, DEFAULT_EMAIL_THEME_ID } from "../helpers/emails";
 import * as schemaFields from "../schema-fields";
-import { offerSchema, userSpecifiedIdSchema, yupBoolean, yupDate, yupMixed, yupNever, yupNumber, yupObject, yupRecord, yupString, yupTuple, yupUnion } from "../schema-fields";
+import { productSchema, userSpecifiedIdSchema, yupBoolean, yupDate, yupMixed, yupNever, yupNumber, yupObject, yupRecord, yupString, yupTuple, yupUnion } from "../schema-fields";
 import { isShallowEqual } from "../utils/arrays";
 import { SUPPORTED_CURRENCIES } from "../utils/currency-constants";
 import { StackAssertionError } from "../utils/errors";
@@ -122,10 +122,10 @@ export const branchPaymentsSchema = yupObject({
     yupObject({
       displayName: yupString().optional(),
     }),
-  ).meta({ openapiField: { description: 'The groups that offers can be in. All offers in a group (besides add-ons) are mutually exclusive.', exampleValue: { "group-id": { displayName: "My Group" } } } }),
-  offers: yupRecord(
-    userSpecifiedIdSchema("offerId"),
-    offerSchema,
+  ).meta({ openapiField: { description: 'The groups that products can be in. All products in a group (besides add-ons) are mutually exclusive.', exampleValue: { "group-id": { displayName: "My Group" } } } }),
+  products: yupRecord(
+    userSpecifiedIdSchema("productId"),
+    productSchema,
   ),
   items: yupRecord(
     userSpecifiedIdSchema("itemId"),
@@ -475,7 +475,7 @@ const organizationConfigDefaults = {
     groups: (key: string) => ({
       displayName: undefined,
     }),
-    offers: (key: string) => ({
+    products: (key: string) => ({
       displayName: key,
       groupId: undefined,
       customerType: "user",
@@ -691,18 +691,18 @@ export async function sanitizeOrganizationConfig(config: OrganizationRenderedCon
     ...DEFAULT_EMAIL_TEMPLATES,
     ...prepared.emails.templates,
   };
-  const offers = typedFromEntries(typedEntries(prepared.payments.offers).map(([key, offer]) => {
-    const isAddOnTo = offer.isAddOnTo === false ?
+  const products = typedFromEntries(typedEntries(prepared.payments.products).map(([key, product]) => {
+    const isAddOnTo = product.isAddOnTo === false ?
       false as const :
-      typedFromEntries(Object.keys(offer.isAddOnTo).map((key) => [key, true as const]));
-    const prices = offer.prices === "include-by-default" ?
+      typedFromEntries(Object.keys(product.isAddOnTo).map((key) => [key, true as const]));
+    const prices = product.prices === "include-by-default" ?
       "include-by-default" as const :
-      typedFromEntries(typedEntries(offer.prices).map(([key, value]) => {
+      typedFromEntries(typedEntries(product.prices).map(([key, value]) => {
         const data = { serverOnly: false, ...(value ?? {}) };
         return [key, data];
       }));
     return [key, {
-      ...offer,
+      ...product,
       isAddOnTo,
       prices,
     }];
@@ -717,7 +717,7 @@ export async function sanitizeOrganizationConfig(config: OrganizationRenderedCon
     },
     payments: {
       ...prepared.payments,
-      offers
+      products
     }
   };
 }

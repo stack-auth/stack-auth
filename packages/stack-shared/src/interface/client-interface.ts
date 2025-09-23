@@ -2,7 +2,7 @@ import * as oauth from 'oauth4webapi';
 
 import * as yup from 'yup';
 import { KnownError, KnownErrors } from '../known-errors';
-import { inlineOfferSchema } from '../schema-fields';
+import { inlineProductSchema } from '../schema-fields';
 import { AccessToken, InternalSession, RefreshToken } from '../sessions';
 import { generateSecureRandomString } from '../utils/crypto';
 import { StackAssertionError, throwErr } from '../utils/errors';
@@ -1777,12 +1777,12 @@ export class StackClientInterface {
   async createCheckoutUrl(
     customer_type: "user" | "team" | "custom",
     customer_id: string,
-    offerIdOrInline: string | yup.InferType<typeof inlineOfferSchema>,
+    productIdOrInline: string | yup.InferType<typeof inlineProductSchema>,
     session: InternalSession | null,
   ): Promise<string> {
-    const offerBody = typeof offerIdOrInline === "string" ?
-      { offer_id: offerIdOrInline } :
-      { inline_offer: offerIdOrInline };
+    const productBody = typeof productIdOrInline === "string" ?
+      { product_id: productIdOrInline } :
+      { inline_product: productIdOrInline };
     const response = await this.sendClientRequest(
       "/payments/purchases/create-purchase-url",
       {
@@ -1790,7 +1790,7 @@ export class StackClientInterface {
         headers: {
           "content-type": "application/json",
         },
-        body: JSON.stringify({ customer_type, customer_id, ...offerBody }),
+        body: JSON.stringify({ customer_type, customer_id, ...productBody }),
       },
       session
     );

@@ -39,7 +39,7 @@ it("should error on invalid price_id", async ({ expect }) => {
   expect(response).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 400,
-      "body": "Price not found on offer associated with this purchase code",
+      "body": "Price not found on product associated with this purchase code",
       "headers": Headers { <some fields may have been hidden> },
     }
   `);
@@ -70,9 +70,9 @@ it("should return client secret for one-time price (no interval)", async ({ expe
   await Payments.setup();
   await Project.updateConfig({
     payments: {
-      offers: {
-        "ot-offer": {
-          displayName: "One Time Offer",
+      products: {
+        "ot-product": {
+          displayName: "One Time Product",
           customerType: "user",
           serverOnly: false,
           stackable: true,
@@ -94,7 +94,7 @@ it("should return client secret for one-time price (no interval)", async ({ expe
     body: {
       customer_type: "user",
       customer_id: userId,
-      offer_id: "ot-offer",
+      product_id: "ot-product",
     },
   });
   expect(urlRes.status).toBe(200);
@@ -113,12 +113,12 @@ it("should return client secret for one-time price (no interval)", async ({ expe
   expect(res.body).toEqual({ client_secret: expect.any(String) });
 });
 
-it("should error on one-time price quantity > 1 when offer is not stackable", async ({ expect }) => {
+it("should error on one-time price quantity > 1 when product is not stackable", async ({ expect }) => {
   await Project.createAndSwitch();
   await Payments.setup();
   await Project.updateConfig({
     payments: {
-      offers: {
+      products: {
         "ot-non-stack": {
           displayName: "One Time Non-Stackable",
           customerType: "user",
@@ -140,7 +140,7 @@ it("should error on one-time price quantity > 1 when offer is not stackable", as
     body: {
       customer_type: "user",
       customer_id: userId,
-      offer_id: "ot-non-stack",
+      product_id: "ot-non-stack",
     },
   });
   expect(urlRes.status).toBe(200);
@@ -158,7 +158,7 @@ it("should error on one-time price quantity > 1 when offer is not stackable", as
   expect(res).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 400,
-      "body": "This offer is not stackable; quantity must be 1",
+      "body": "This product is not stackable; quantity must be 1",
       "headers": Headers { <some fields may have been hidden> },
     }
   `);
@@ -170,9 +170,9 @@ it("should return client secret for one-time price even if a conflicting group s
   await Project.updateConfig({
     payments: {
       groups: { grp: { displayName: "Test Group" } },
-      offers: {
-        subOffer: {
-          displayName: "Sub Offer",
+      products: {
+        subProduct: {
+          displayName: "Sub Product",
           customerType: "user",
           serverOnly: false,
           groupId: "grp",
@@ -195,14 +195,14 @@ it("should return client secret for one-time price even if a conflicting group s
 
   const { userId } = await User.create();
 
-  // Create test-mode DB-only subscription for subOffer
+  // Create test-mode DB-only subscription for subProduct
   const createUrlRespA = await niceBackendFetch("/api/latest/payments/purchases/create-purchase-url", {
     method: "POST",
     accessType: "client",
     body: {
       customer_type: "user",
       customer_id: userId,
-      offer_id: "subOffer",
+      product_id: "subProduct",
     },
   });
   expect(createUrlRespA.status).toBe(200);
@@ -214,14 +214,14 @@ it("should return client secret for one-time price even if a conflicting group s
   });
   expect(testModeRes.status).toBe(200);
 
-  // Now purchase one-time offer in same group; should succeed and return client secret
+  // Now purchase one-time product in same group; should succeed and return client secret
   const createUrlRespB = await niceBackendFetch("/api/latest/payments/purchases/create-purchase-url", {
     method: "POST",
     accessType: "client",
     body: {
       customer_type: "user",
       customer_id: userId,
-      offer_id: "oneTime",
+      product_id: "oneTime",
     },
   });
   expect(createUrlRespB.status).toBe(200);
@@ -241,12 +241,12 @@ it("should return client secret for one-time price even if a conflicting group s
   `);
 });
 
-it("test-mode should error on one-time price quantity > 1 when offer is not stackable", async ({ expect }) => {
+it("test-mode should error on one-time price quantity > 1 when product is not stackable", async ({ expect }) => {
   await Project.createAndSwitch();
   await Payments.setup();
   await Project.updateConfig({
     payments: {
-      offers: {
+      products: {
         tmOneTime: {
           displayName: "TM One Time",
           customerType: "user",
@@ -263,7 +263,7 @@ it("test-mode should error on one-time price quantity > 1 when offer is not stac
   const urlRes = await niceBackendFetch("/api/latest/payments/purchases/create-purchase-url", {
     method: "POST",
     accessType: "client",
-    body: { customer_type: "user", customer_id: userId, offer_id: "tmOneTime" },
+    body: { customer_type: "user", customer_id: userId, product_id: "tmOneTime" },
   });
   expect(urlRes.status).toBe(200);
   const code = (urlRes.body as { url: string }).url.match(/\/purchase\/([a-z0-9-_]+)/)?.[1]!;
@@ -276,7 +276,7 @@ it("test-mode should error on one-time price quantity > 1 when offer is not stac
   expect(res).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 400,
-      "body": "This offer is not stackable; quantity must be 1",
+      "body": "This product is not stackable; quantity must be 1",
       "headers": Headers { <some fields may have been hidden> },
     }
   `);
@@ -296,13 +296,13 @@ it("should create purchase URL, validate code, and create purchase session", asy
   expect(response).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 400,
-      "body": "This offer is not stackable; quantity must be 1",
+      "body": "This product is not stackable; quantity must be 1",
       "headers": Headers { <some fields may have been hidden> },
     }
   `);
 });
 
-it("should create purchase URL with inline offer, validate code, and create purchase session", async ({ expect }) => {
+it("should create purchase URL with inline product, validate code, and create purchase session", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
   await Payments.setup();
 
@@ -313,8 +313,8 @@ it("should create purchase URL with inline offer, validate code, and create purc
     body: {
       customer_type: "user",
       customer_id: userId,
-      offer_inline: {
-        display_name: "Inline Test Offer",
+      product_inline: {
+        display_name: "Inline Test Product",
         customer_type: "user",
         server_only: true,
         prices: {
@@ -384,9 +384,9 @@ it("creates subscription in test mode and increases included item quantity", asy
           customerType: "user",
         },
       },
-      offers: {
-        "test-offer": {
-          displayName: "Test Offer",
+      products: {
+        "test-product": {
+          displayName: "Test Product",
           customerType: "user",
           serverOnly: false,
           stackable: false,
@@ -411,7 +411,7 @@ it("creates subscription in test mode and increases included item quantity", asy
     body: {
       customer_type: "user",
       customer_id: userId,
-      offer_id: "test-offer",
+      product_id: "test-product",
     },
   });
   expect(createUrlResponse.status).toBe(200);
@@ -511,7 +511,7 @@ it("test-mode should error on invalid price_id", async ({ expect }) => {
   expect(response).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 400,
-      "body": "Price not found on offer associated with this purchase code",
+      "body": "Price not found on product associated with this purchase code",
       "headers": Headers { <some fields may have been hidden> },
     }
   `);
@@ -528,9 +528,9 @@ it("allows stackable quantity in test mode and multiplies included items", async
           customerType: "user",
         },
       },
-      offers: {
-        "test-offer": {
-          displayName: "Test Offer",
+      products: {
+        "test-product": {
+          displayName: "Test Product",
           customerType: "user",
           serverOnly: false,
           stackable: true,
@@ -555,7 +555,7 @@ it("allows stackable quantity in test mode and multiplies included items", async
     body: {
       customer_type: "user",
       customer_id: userId,
-      offer_id: "test-offer",
+      product_id: "test-product",
     },
   });
   expect(createUrlResponse.status).toBe(200);
@@ -589,7 +589,7 @@ it("allows stackable quantity in test mode and multiplies included items", async
   expect(getAfter.body.quantity).toBe(6);
 });
 
-it("should update existing stripe subscription when switching offers within a group (non test-mode)", async ({ expect }) => {
+it("should update existing stripe subscription when switching products within a group (non test-mode)", async ({ expect }) => {
   await Project.createAndSwitch();
   await Payments.setup();
   await Project.updateConfig({
@@ -597,9 +597,9 @@ it("should update existing stripe subscription when switching offers within a gr
       groups: {
         grp: { displayName: "Test Group" },
       },
-      offers: {
-        offerA: {
-          displayName: "Offer A",
+      products: {
+        productA: {
+          displayName: "Product A",
           customerType: "user",
           serverOnly: false,
           groupId: "grp",
@@ -612,8 +612,8 @@ it("should update existing stripe subscription when switching offers within a gr
           },
           includedItems: {},
         },
-        offerB: {
-          displayName: "Offer B",
+        productB: {
+          displayName: "Product B",
           customerType: "user",
           serverOnly: false,
           groupId: "grp",
@@ -632,14 +632,14 @@ it("should update existing stripe subscription when switching offers within a gr
 
   const { userId } = await User.create();
 
-  // First purchase: Offer A
+  // First purchase: Product A
   const createUrlA = await niceBackendFetch("/api/latest/payments/purchases/create-purchase-url", {
     method: "POST",
     accessType: "client",
     body: {
       customer_type: "user",
       customer_id: userId,
-      offer_id: "offerA",
+      product_id: "productA",
     },
   });
   expect(createUrlA.status).toBe(200);
@@ -663,14 +663,14 @@ it("should update existing stripe subscription when switching offers within a gr
     }
   `);
 
-  // Second purchase: Offer B in same group (should update existing Stripe subscription)
+  // Second purchase: Product B in same group (should update existing Stripe subscription)
   const createUrlB = await niceBackendFetch("/api/latest/payments/purchases/create-purchase-url", {
     method: "POST",
     accessType: "client",
     body: {
       customer_type: "user",
       customer_id: userId,
-      offer_id: "offerB",
+      product_id: "productB",
     },
   });
   expect(createUrlB.status).toBe(200);
@@ -703,9 +703,9 @@ it("should cancel DB-only subscription then create Stripe subscription when swit
       groups: {
         grp: { displayName: "Test Group" },
       },
-      offers: {
-        offerA: {
-          displayName: "Offer A",
+      products: {
+        productA: {
+          displayName: "Product A",
           customerType: "user",
           serverOnly: false,
           groupId: "grp",
@@ -718,8 +718,8 @@ it("should cancel DB-only subscription then create Stripe subscription when swit
           },
           includedItems: {},
         },
-        offerB: {
-          displayName: "Offer B",
+        productB: {
+          displayName: "Product B",
           customerType: "user",
           serverOnly: false,
           groupId: "grp",
@@ -738,14 +738,14 @@ it("should cancel DB-only subscription then create Stripe subscription when swit
 
   const { userId } = await User.create();
 
-  // Create test-mode DB-only subscription for offerA
+  // Create test-mode DB-only subscription for productA
   const resUrlA = await niceBackendFetch("/api/latest/payments/purchases/create-purchase-url", {
     method: "POST",
     accessType: "client",
     body: {
       customer_type: "user",
       customer_id: userId,
-      offer_id: "offerA",
+      product_id: "productA",
     },
   });
   expect(resUrlA.status).toBe(200);
@@ -763,14 +763,14 @@ it("should cancel DB-only subscription then create Stripe subscription when swit
   });
   expect(testModeRes.status).toBe(200);
 
-  // Now purchase offerB in non test-mode; should cancel DB-only sub and create Stripe subscription
+  // Now purchase productB in non test-mode; should cancel DB-only sub and create Stripe subscription
   const resUrlB = await niceBackendFetch("/api/latest/payments/purchases/create-purchase-url", {
     method: "POST",
     accessType: "client",
     body: {
       customer_type: "user",
       customer_id: userId,
-      offer_id: "offerB",
+      product_id: "productB",
     },
   });
   expect(resUrlB.status).toBe(200);
@@ -795,14 +795,14 @@ it("should cancel DB-only subscription then create Stripe subscription when swit
   `);
 });
 
-it("should block one-time purchase for same offer after prior one-time purchase (test-mode persisted)", async ({ expect }) => {
+it("should block one-time purchase for same product after prior one-time purchase (test-mode persisted)", async ({ expect }) => {
   await Project.createAndSwitch();
   await Payments.setup();
   await Project.updateConfig({
     payments: {
-      offers: {
+      products: {
         ot: {
-          displayName: "One Time Offer",
+          displayName: "One Time Product",
           customerType: "user",
           serverOnly: false,
           stackable: true,
@@ -818,7 +818,7 @@ it("should block one-time purchase for same offer after prior one-time purchase 
   const createUrl1 = await niceBackendFetch("/api/latest/payments/purchases/create-purchase-url", {
     method: "POST",
     accessType: "client",
-    body: { customer_type: "user", customer_id: userId, offer_id: "ot" },
+    body: { customer_type: "user", customer_id: userId, product_id: "ot" },
   });
   expect(createUrl1.status).toBe(200);
   const code1 = (createUrl1.body as { url: string }).url.match(/\/purchase\/([a-z0-9-_]+)/)?.[1];
@@ -831,11 +831,11 @@ it("should block one-time purchase for same offer after prior one-time purchase 
   });
   expect(testModeRes.status).toBe(200);
 
-  // Second: attempt another purchase for same offer (should be blocked by OneTimePurchase)
+  // Second: attempt another purchase for same product (should be blocked by OneTimePurchase)
   const createUrl2 = await niceBackendFetch("/api/latest/payments/purchases/create-purchase-url", {
     method: "POST",
     accessType: "client",
-    body: { customer_type: "user", customer_id: userId, offer_id: "ot" },
+    body: { customer_type: "user", customer_id: userId, product_id: "ot" },
   });
   expect(createUrl2.status).toBe(200);
   const code2 = (createUrl2.body as { url: string }).url.match(/\/purchase\/([a-z0-9-_]+)/)?.[1];
@@ -847,7 +847,7 @@ it("should block one-time purchase for same offer after prior one-time purchase 
     body: { full_code: code2, price_id: "one", quantity: 1 },
   });
   expect(res.status).toBe(400);
-  expect(String(res.body)).toContain("one-time purchase for this offer");
+  expect(String(res.body)).toContain("one-time purchase for this product");
 });
 
 it("should block one-time purchase in same group after prior one-time purchase in that group (test-mode persisted)", async ({ expect }) => {
@@ -856,9 +856,9 @@ it("should block one-time purchase in same group after prior one-time purchase i
   await Project.updateConfig({
     payments: {
       groups: { grp: { displayName: "Group" } },
-      offers: {
-        offerA: {
-          displayName: "Offer A",
+      products: {
+        productA: {
+          displayName: "Product A",
           customerType: "user",
           serverOnly: false,
           groupId: "grp",
@@ -866,8 +866,8 @@ it("should block one-time purchase in same group after prior one-time purchase i
           prices: { one: { USD: "500" } },
           includedItems: {},
         },
-        offerB: {
-          displayName: "Offer B",
+        productB: {
+          displayName: "Product B",
           customerType: "user",
           serverOnly: false,
           groupId: "grp",
@@ -880,11 +880,11 @@ it("should block one-time purchase in same group after prior one-time purchase i
   });
 
   const { userId } = await User.create();
-  // Purchase offerA in TEST_MODE (persists OneTimePurchase)
+  // Purchase productA in TEST_MODE (persists OneTimePurchase)
   const urlA = await niceBackendFetch("/api/latest/payments/purchases/create-purchase-url", {
     method: "POST",
     accessType: "client",
-    body: { customer_type: "user", customer_id: userId, offer_id: "offerA" },
+    body: { customer_type: "user", customer_id: userId, product_id: "productA" },
   });
   expect(urlA.status).toBe(200);
   const codeA = (urlA.body as { url: string }).url.match(/\/purchase\/([a-z0-9-_]+)/)?.[1];
@@ -897,11 +897,11 @@ it("should block one-time purchase in same group after prior one-time purchase i
   });
   expect(tmRes.status).toBe(200);
 
-  // Attempt to purchase offerB in same group (should be blocked)
+  // Attempt to purchase productB in same group (should be blocked)
   const urlB = await niceBackendFetch("/api/latest/payments/purchases/create-purchase-url", {
     method: "POST",
     accessType: "client",
-    body: { customer_type: "user", customer_id: userId, offer_id: "offerB" },
+    body: { customer_type: "user", customer_id: userId, product_id: "productB" },
   });
   expect(urlB.status).toBe(200);
   const codeB = (urlB.body as { url: string }).url.match(/\/purchase\/([a-z0-9-_]+)/)?.[1];
@@ -913,5 +913,5 @@ it("should block one-time purchase in same group after prior one-time purchase i
     body: { full_code: codeB, price_id: "one", quantity: 1 },
   });
   expect(resB.status).toBe(400);
-  expect(String(resB.body)).toContain("one-time purchase in this offer group");
+  expect(String(resB.body)).toContain("one-time purchase in this product group");
 });

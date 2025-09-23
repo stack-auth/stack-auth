@@ -54,9 +54,9 @@ export function CreateGroupDialog({ open, onOpenChange, onCreate }: CreateGroupD
     <Dialog open={open} onOpenChange={handleClose}>
       <DialogContent className="sm:max-w-[425px]">
         <DialogHeader>
-          <DialogTitle>Create Offer Group</DialogTitle>
+          <DialogTitle>Create Product Group</DialogTitle>
           <DialogDescription>
-            Offer groups allow you to organize related offers. Customers can only have one active offer from each group at a time (except for add-ons).
+            Product groups allow you to organize related products. Customers can only have one active product from each group at a time (except for add-ons).
           </DialogDescription>
         </DialogHeader>
 

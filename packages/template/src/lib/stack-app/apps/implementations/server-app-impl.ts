@@ -24,7 +24,7 @@ import { ApiKey, ApiKeyCreationOptions, ApiKeyUpdateOptions, apiKeyCreationOptio
 import { GetUserOptions, HandlerUrls, OAuthScopesOnSignIn, TokenStoreInit } from "../../common";
 import { OAuthConnection } from "../../connected-accounts";
 import { ServerContactChannel, ServerContactChannelCreateOptions, ServerContactChannelUpdateOptions, serverContactChannelCreateOptionsToCrud, serverContactChannelUpdateOptionsToCrud } from "../../contact-channels";
-import { InlineOffer, ServerItem } from "../../customers";
+import { InlineProduct, ServerItem } from "../../customers";
 import { DataVaultStore } from "../../data-vault";
 import { SendEmailOptions } from "../../email";
 import { NotificationCategory } from "../../notification-categories";
@@ -646,9 +646,9 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
         const providers = await this.listOAuthProviders();
         return providers.find((p) => p.id === id) ?? null;
       },
-      async createCheckoutUrl(options: { offerId: string } | { offer: InlineOffer }) {
-        const offerIdOrInline = "offerId" in options ? options.offerId : options.offer;
-        return await app._interface.createCheckoutUrl("user", crud.id, offerIdOrInline, null);
+      async createCheckoutUrl(options: { productId: string } | { product: InlineProduct }) {
+        const productIdOrInline = "productId" in options ? options.productId : options.product;
+        return await app._interface.createCheckoutUrl("user", crud.id, productIdOrInline, null);
       },
       async getItem(itemId: string) {
         const result = Result.orThrow(await app._serverUserItemsCache.getOrWait([crud.id, itemId], "write-only"));
@@ -785,9 +785,9 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
         return useMemo(() => app._serverItemFromCrud({ type: "team", id: crud.id }, result), [result]);
       },
       // END_PLATFORM
-      async createCheckoutUrl(options: { offerId: string } | { offer: InlineOffer }) {
-        const offerIdOrInline = "offerId" in options ? options.offerId : options.offer;
-        return await app._interface.createCheckoutUrl("team", crud.id, offerIdOrInline, null);
+      async createCheckoutUrl(options: { productId: string } | { product: InlineProduct }) {
+        const productIdOrInline = "productId" in options ? options.productId : options.product;
+        return await app._interface.createCheckoutUrl("team", crud.id, productIdOrInline, null);
       },
     };
   }

@@ -553,7 +553,7 @@ const validateHasAtLeastOneSupportedCurrency = (value: Record<string, unknown> |
   }
   return true;
 };
-export const offerPriceSchema = yupObject({
+export const productPriceSchema = yupObject({
   ...typedFromEntries(SUPPORTED_CURRENCIES.map(currency => [currency.code, moneyAmountSchema(currency).optional()])),
   interval: dayIntervalSchema.optional(),
   serverOnly: yupBoolean(),
@@ -563,19 +563,19 @@ export const priceOrIncludeByDefaultSchema = yupUnion(
   yupString().oneOf(['include-by-default']).meta({ openapiField: { description: 'Makes this item free and includes it by default for all customers.', exampleValue: 'include-by-default' } }),
   yupRecord(
     userSpecifiedIdSchema("priceId"),
-    offerPriceSchema,
+    productPriceSchema,
   ),
 );
-export const offerSchema = yupObject({
+export const productSchema = yupObject({
   displayName: yupString(),
-  groupId: userSpecifiedIdSchema("groupId").optional().meta({ openapiField: { description: 'The ID of the group this offer belongs to. Within a group, all offers are mutually exclusive unless they are an add-on to another offer in the group.', exampleValue: 'group-id' } }),
+  groupId: userSpecifiedIdSchema("groupId").optional().meta({ openapiField: { description: 'The ID of the group this product belongs to. Within a group, all products are mutually exclusive unless they are an add-on to another product in the group.', exampleValue: 'group-id' } }),
   isAddOnTo: yupUnion(
     yupBoolean().isFalse(),
     yupRecord(
-      userSpecifiedIdSchema("offerId"),
+      userSpecifiedIdSchema("productId"),
       yupBoolean().isTrue().defined(),
     ),
-  ).optional().meta({ openapiField: { description: 'The offers that this offer is an add-on to. If this is set, the customer must already have one of the offers in the record to be able to purchase this offer.', exampleValue: { "offer-id": true } } }),
+  ).optional().meta({ openapiField: { description: 'The products that this product is an add-on to. If this is set, the customer must already have one of the products in the record to be able to purchase this product.', exampleValue: { "product-id": true } } }),
   customerType: customerTypeSchema.defined(),
   freeTrial: dayIntervalSchema.optional(),
   serverOnly: yupBoolean(),
@@ -590,7 +590,7 @@ export const offerSchema = yupObject({
     }),
   ),
 });
-export const inlineOfferSchema = yupObject({
+export const inlineProductSchema = yupObject({
   display_name: yupString().defined(),
   customer_type: customerTypeSchema.defined(),
   free_trial: dayIntervalSchema.optional(),

@@ -103,7 +103,7 @@ async function seed() {
             displayName: "Plans",
           }
         },
-        offers: {
+        products: {
           team: {
             groupId: "plans",
             displayName: "Team",

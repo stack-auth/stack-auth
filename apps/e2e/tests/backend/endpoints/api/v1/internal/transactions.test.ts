@@ -1,15 +1,15 @@
 import { expect } from "vitest";
 import { it } from "../../../../../helpers";
-import { niceBackendFetch, Payments as PaymentsHelper, Project, User, InternalProjectKeys, backendContext } from "../../../../backend-helpers";
+import { Payments as PaymentsHelper, Project, User, niceBackendFetch } from "../../../../backend-helpers";
 
 async function setupProjectWithPaymentsConfig() {
   await Project.createAndSwitch();
   await PaymentsHelper.setup();
   await Project.updateConfig({
     payments: {
-      offers: {
-        "sub-offer": {
-          displayName: "Sub Offer",
+      products: {
+        "sub-product": {
+          displayName: "Sub Product",
           customerType: "user",
           serverOnly: false,
           stackable: false,
@@ -18,8 +18,8 @@ async function setupProjectWithPaymentsConfig() {
           },
           includedItems: {},
         },
-        "otp-offer": {
-          displayName: "One-Time Offer",
+        "otp-product": {
+          displayName: "One-Time Product",
           customerType: "user",
           serverOnly: false,
           stackable: false,
@@ -36,14 +36,14 @@ async function setupProjectWithPaymentsConfig() {
   });
 }
 
-async function createPurchaseCode(options: { userId: string, offerId: string }) {
+async function createPurchaseCode(options: { userId: string, productId: string }) {
   const res = await niceBackendFetch("/api/latest/payments/purchases/create-purchase-url", {
     method: "POST",
     accessType: "client",
     body: {
       customer_type: "user",
       customer_id: options.userId,
-      offer_id: options.offerId,
+      product_id: options.productId,
     },
   });
   expect(res.status).toBe(200);
@@ -75,7 +75,7 @@ it("returns empty list for fresh project", async () => {
 it("includes TEST_MODE subscription", async () => {
   await setupProjectWithPaymentsConfig();
   const { userId } = await User.create();
-  const code = await createPurchaseCode({ userId, offerId: "sub-offer" });
+  const code = await createPurchaseCode({ userId, productId: "sub-product" });
 
   const testModeRes = await niceBackendFetch("/api/latest/internal/payments/test-mode-purchase-session", {
     accessType: "admin",
@@ -95,7 +95,7 @@ it("includes TEST_MODE subscription", async () => {
         "customer_id": "<stripped UUID>",
         "customer_type": "user",
         "id": "<stripped UUID>",
-        "offer_display_name": "Sub Offer",
+        "product_display_name": "Sub Product",
         "price": {
           "USD": "1000",
           "interval": [
@@ -115,7 +115,7 @@ it("includes TEST_MODE subscription", async () => {
 it("includes TEST_MODE one-time purchase", async () => {
   await setupProjectWithPaymentsConfig();
   const { userId } = await User.create();
-  const code = await createPurchaseCode({ userId, offerId: "otp-offer" });
+  const code = await createPurchaseCode({ userId, productId: "otp-product" });
 
   const testModeRes = await niceBackendFetch("/api/latest/internal/payments/test-mode-purchase-session", {
     accessType: "admin",
@@ -135,7 +135,7 @@ it("includes TEST_MODE one-time purchase", async () => {
         "customer_id": "<stripped UUID>",
         "customer_type": "user",
         "id": "<stripped UUID>",
-        "offer_display_name": "One-Time Offer",
+        "product_display_name": "One-Time Product",
         "price": { "USD": "5000" },
         "quantity": 1,
         "status": null,
@@ -172,7 +172,7 @@ it("includes item quantity change entries", async () => {
         "expires_at_millis": <stripped field 'expires_at_millis'>,
         "id": "<stripped UUID>",
         "item_id": "credits",
-        "offer_display_name": null,
+        "product_display_name": null,
         "price": null,
         "quantity": 5,
         "status": null,
@@ -189,7 +189,7 @@ it("supports concatenated cursor pagination", async () => {
 
   // Make a few entries across tables
   {
-    const code = await createPurchaseCode({ userId, offerId: "sub-offer" });
+    const code = await createPurchaseCode({ userId, productId: "sub-product" });
     await niceBackendFetch("/api/latest/internal/payments/test-mode-purchase-session", {
       accessType: "admin",
       method: "POST",
@@ -197,7 +197,7 @@ it("supports concatenated cursor pagination", async () => {
     });
   }
   {
-    const code = await createPurchaseCode({ userId, offerId: "otp-offer" });
+    const code = await createPurchaseCode({ userId, productId: "otp-product" });
     await niceBackendFetch("/api/latest/internal/payments/test-mode-purchase-session", {
       accessType: "admin",
       method: "POST",

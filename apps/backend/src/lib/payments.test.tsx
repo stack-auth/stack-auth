@@ -56,7 +56,7 @@ describe('getItemQuantityForCustomer - manual changes (no subscription)', () => 
           customerType: 'custom',
         },
       },
-      offers: {},
+      products: {},
       groups: {},
     });
 
@@ -100,7 +100,7 @@ describe('getItemQuantityForCustomer - manual changes (no subscription)', () => 
           customerType: 'custom',
         },
       },
-      offers: {},
+      products: {},
       groups: {},
     });
 
@@ -147,7 +147,7 @@ describe('getItemQuantityForCustomer - subscriptions', () => {
         [itemId]: { displayName: 'S', customerType: 'user' },
       },
       groups: { g1: { displayName: 'G' } },
-      offers: {
+      products: {
         off1: {
           displayName: 'O', groupId: 'g1', customerType: 'user', freeTrial: undefined, serverOnly: false, stackable: false,
           prices: {},
@@ -160,7 +160,7 @@ describe('getItemQuantityForCustomer - subscriptions', () => {
     const prisma = createMockPrisma({
       subscription: {
         findMany: async () => [{
-          offerId: 'off1',
+          productId: 'off1',
           currentPeriodStart: new Date('2025-02-01T00:00:00.000Z'),
           currentPeriodEnd: new Date('2025-02-28T23:59:59.000Z'),
           quantity: 2,
@@ -185,7 +185,7 @@ describe('getItemQuantityForCustomer - subscriptions', () => {
         [itemId]: { displayName: 'S', customerType: 'user' },
       },
       groups: { g1: { displayName: 'G' } },
-      offers: {
+      products: {
         offW: {
           displayName: 'O', groupId: 'g1', customerType: 'user', freeTrial: undefined, serverOnly: false, stackable: false,
           prices: {},
@@ -198,7 +198,7 @@ describe('getItemQuantityForCustomer - subscriptions', () => {
     const prisma = createMockPrisma({
       subscription: {
         findMany: async () => [{
-          offerId: 'offW',
+          productId: 'offW',
           currentPeriodStart: new Date('2025-02-01T00:00:00.000Z'),
           currentPeriodEnd: new Date('2025-03-01T00:00:00.000Z'),
           quantity: 1,
@@ -224,7 +224,7 @@ describe('getItemQuantityForCustomer - subscriptions', () => {
         [itemId]: { displayName: 'S', customerType: 'user' },
       },
       groups: { g1: { displayName: 'G' } },
-      offers: {
+      products: {
         offW: {
           displayName: 'O', groupId: 'g1', customerType: 'user', freeTrial: undefined, serverOnly: false, stackable: false,
           prices: {},
@@ -237,7 +237,7 @@ describe('getItemQuantityForCustomer - subscriptions', () => {
     const prisma = createMockPrisma({
       subscription: {
         findMany: async () => [{
-          offerId: 'offW',
+          productId: 'offW',
           currentPeriodStart: new Date('2025-02-01T00:00:00.000Z'),
           currentPeriodEnd: new Date('2025-03-01T00:00:00.000Z'),
           quantity: 1,
@@ -263,7 +263,7 @@ describe('getItemQuantityForCustomer - subscriptions', () => {
         [itemId]: { displayName: 'S', customerType: 'user' },
       },
       groups: { g1: { displayName: 'G' } },
-      offers: {
+      products: {
         offR: {
           displayName: 'O', groupId: 'g1', customerType: 'user', freeTrial: undefined, serverOnly: false, stackable: false,
           prices: {},
@@ -276,7 +276,7 @@ describe('getItemQuantityForCustomer - subscriptions', () => {
     const prisma = createMockPrisma({
       subscription: {
         findMany: async () => [{
-          offerId: 'offR',
+          productId: 'offR',
           currentPeriodStart: new Date('2025-02-01T00:00:00.000Z'),
           currentPeriodEnd: new Date('2025-03-01T00:00:00.000Z'),
           quantity: 1,
@@ -302,7 +302,7 @@ describe('getItemQuantityForCustomer - subscriptions', () => {
         [itemId]: { displayName: 'S', customerType: 'user' },
       },
       groups: { g1: { displayName: 'G' } },
-      offers: {
+      products: {
         offN: {
           displayName: 'O', groupId: 'g1', customerType: 'user', freeTrial: undefined, serverOnly: false, stackable: false,
           prices: {},
@@ -315,7 +315,7 @@ describe('getItemQuantityForCustomer - subscriptions', () => {
     const prisma = createMockPrisma({
       subscription: {
         findMany: async () => [{
-          offerId: 'offN',
+          productId: 'offN',
           currentPeriodStart: new Date('2025-02-01T00:00:00.000Z'),
           currentPeriodEnd: new Date('2025-03-01T00:00:00.000Z'),
           quantity: 3,
@@ -337,7 +337,7 @@ describe('getItemQuantityForCustomer - subscriptions', () => {
         [itemId]: { displayName: 'S', customerType: 'user' },
       },
       groups: { g1: { displayName: 'G' } },
-      offers: {
+      products: {
         offRC: {
           displayName: 'O', groupId: 'g1', customerType: 'user', freeTrial: undefined, serverOnly: false, stackable: false,
           prices: {},
@@ -350,7 +350,7 @@ describe('getItemQuantityForCustomer - subscriptions', () => {
     const prisma = createMockPrisma({
       subscription: {
         findMany: async () => [{
-          offerId: 'offRC',
+          productId: 'offRC',
           currentPeriodStart: new Date('2025-02-01T00:00:00.000Z'),
           currentPeriodEnd: new Date('2025-03-01T00:00:00.000Z'),
           quantity: 1,
@@ -380,7 +380,7 @@ describe('getItemQuantityForCustomer - subscriptions', () => {
         [itemId]: { displayName: 'S', customerType: 'user' },
       },
       groups: { g1: { displayName: 'G' } },
-      offers: {
+      products: {
         offRR: {
           displayName: 'O', groupId: 'g1', customerType: 'user', freeTrial: undefined, serverOnly: false, stackable: false,
           prices: {},
@@ -398,7 +398,7 @@ describe('getItemQuantityForCustomer - subscriptions', () => {
           const start = inFirstPeriod ? new Date('2025-02-01T00:00:00.000Z') : new Date('2025-03-01T00:00:00.000Z');
           const end = inFirstPeriod ? new Date('2025-03-01T00:00:00.000Z') : new Date('2025-04-01T00:00:00.000Z');
           return [{
-            offerId: 'offRR',
+            productId: 'offRR',
             currentPeriodStart: start,
             currentPeriodEnd: end,
             quantity: 1,
@@ -429,7 +429,7 @@ describe('getItemQuantityForCustomer - subscriptions', () => {
         [itemId]: { displayName: 'S', customerType: 'user' },
       },
       groups: { g1: { displayName: 'G' } },
-      offers: {
+      products: {
         offMD: {
           displayName: 'O', groupId: 'g1', customerType: 'user', freeTrial: undefined, serverOnly: false, stackable: false,
           prices: {},
@@ -442,7 +442,7 @@ describe('getItemQuantityForCustomer - subscriptions', () => {
     const prisma = createMockPrisma({
       subscription: {
         findMany: async () => [{
-          offerId: 'offMD',
+          productId: 'offMD',
           currentPeriodStart: new Date('2025-02-01T00:00:00.000Z'),
           currentPeriodEnd: new Date('2025-03-01T00:00:00.000Z'),
           quantity: 1,
@@ -477,7 +477,7 @@ describe('getItemQuantityForCustomer - subscriptions', () => {
     const tenancy = createMockTenancy({
       items: { [itemId]: { displayName: 'S', customerType: 'user' } },
       groups: { g1: { displayName: 'G' } },
-      offers: {
+      products: {
         offBF: {
           displayName: 'O', groupId: 'g1', customerType: 'user', freeTrial: undefined, serverOnly: false, stackable: false,
           prices: {},
@@ -490,7 +490,7 @@ describe('getItemQuantityForCustomer - subscriptions', () => {
     const prisma = createMockPrisma({
       subscription: {
         findMany: async () => [{
-          offerId: 'offBF',
+          productId: 'offBF',
           currentPeriodStart: new Date('2025-02-01T00:00:00.000Z'),
           currentPeriodEnd: new Date('2025-03-01T00:00:00.000Z'),
           quantity: 1,
@@ -525,7 +525,7 @@ describe('getItemQuantityForCustomer - subscriptions', () => {
     const tenancy = createMockTenancy({
       items: { [itemId]: { displayName: 'S', customerType: 'user' } },
       groups: { g1: { displayName: 'G1' }, g2: { displayName: 'G2' } },
-      offers: {
+      products: {
         off1: {
           displayName: 'O1', groupId: 'g1', customerType: 'user', freeTrial: undefined, serverOnly: false, stackable: false,
           prices: {},
@@ -545,14 +545,14 @@ describe('getItemQuantityForCustomer - subscriptions', () => {
       subscription: {
         findMany: async () => [
           {
-            offerId: 'off1',
+            productId: 'off1',
             currentPeriodStart: new Date('2025-02-01T00:00:00.000Z'),
             currentPeriodEnd: new Date('2025-03-01T00:00:00.000Z'),
             quantity: 3,
             status: 'active',
           },
           {
-            offerId: 'off2',
+            productId: 'off2',
             currentPeriodStart: new Date('2025-01-15T00:00:00.000Z'),
             currentPeriodEnd: new Date('2025-03-15T00:00:00.000Z'),
             quantity: 5,
@@ -576,7 +576,7 @@ describe('getItemQuantityForCustomer - subscriptions', () => {
     const tenancy = createMockTenancy({
       items: { [itemA]: { displayName: 'A', customerType: 'user' }, [itemB]: { displayName: 'B', customerType: 'user' } },
       groups: { g1: { displayName: 'G' } },
-      offers: {
+      products: {
         offBundle: {
           displayName: 'OB', groupId: 'g1', customerType: 'user', freeTrial: undefined, serverOnly: false, stackable: false,
           prices: {},
@@ -592,7 +592,7 @@ describe('getItemQuantityForCustomer - subscriptions', () => {
     const prisma = createMockPrisma({
       subscription: {
         findMany: async () => [{
-          offerId: 'offBundle',
+          productId: 'offBundle',
           currentPeriodStart: new Date('2025-02-01T00:00:00.000Z'),
           currentPeriodEnd: new Date('2025-03-01T00:00:00.000Z'),
           quantity: 2,
@@ -616,7 +616,7 @@ describe('getItemQuantityForCustomer - subscriptions', () => {
     const tenancy = createMockTenancy({
       items: { [itemId]: { displayName: 'T', customerType: 'user' } },
       groups: { g1: { displayName: 'G' } },
-      offers: {
+      products: {
         offT: {
           displayName: 'OT', groupId: 'g1', customerType: 'user', freeTrial: undefined, serverOnly: false, stackable: false,
           prices: {},
@@ -629,7 +629,7 @@ describe('getItemQuantityForCustomer - subscriptions', () => {
     const prisma = createMockPrisma({
       subscription: {
         findMany: async () => [{
-          offerId: 'offT',
+          productId: 'offT',
           currentPeriodStart: new Date('2025-02-01T00:00:00.000Z'),
           currentPeriodEnd: new Date('2025-03-01T00:00:00.000Z'),
           quantity: 3,
@@ -651,7 +651,7 @@ describe('getItemQuantityForCustomer - subscriptions', () => {
     const tenancy = createMockTenancy({
       items: { [itemId]: { displayName: 'C', customerType: 'user' } },
       groups: { g1: { displayName: 'G' } },
-      offers: {
+      products: {
         offC: {
           displayName: 'OC', groupId: 'g1', customerType: 'user', freeTrial: undefined, serverOnly: false, stackable: false,
           prices: {},
@@ -664,7 +664,7 @@ describe('getItemQuantityForCustomer - subscriptions', () => {
     const prisma = createMockPrisma({
       subscription: {
         findMany: async () => [{
-          offerId: 'offC',
+          productId: 'offC',
           currentPeriodStart: new Date('2024-12-01T00:00:00.000Z'),
           currentPeriodEnd: new Date('2025-01-01T00:00:00.000Z'),
           quantity: 1,
@@ -678,7 +678,7 @@ describe('getItemQuantityForCustomer - subscriptions', () => {
     vi.useRealTimers();
   });
 
-  it('ungrouped offer works without tenancy groups', async () => {
+  it('ungrouped product works without tenancy groups', async () => {
     const now = new Date('2025-02-10T00:00:00.000Z');
     vi.setSystemTime(now);
     const itemId = 'ungroupedItem';
@@ -686,7 +686,7 @@ describe('getItemQuantityForCustomer - subscriptions', () => {
     const tenancy = createMockTenancy({
       items: { [itemId]: { displayName: 'U', customerType: 'user' } },
       groups: {},
-      offers: {
+      products: {
         offU: {
           displayName: 'OU',
           groupId: undefined,
@@ -704,7 +704,7 @@ describe('getItemQuantityForCustomer - subscriptions', () => {
     const prisma = createMockPrisma({
       subscription: {
         findMany: async () => [{
-          offerId: 'offU',
+          productId: 'offU',
           currentPeriodStart: new Date('2025-02-01T00:00:00.000Z'),
           currentPeriodEnd: new Date('2025-03-01T00:00:00.000Z'),
           quantity: 2,
@@ -725,15 +725,15 @@ describe('getItemQuantityForCustomer - one-time purchases', () => {
     const itemId = 'otpItemA';
     const tenancy = createMockTenancy({
       items: { [itemId]: { displayName: 'I', customerType: 'custom' } },
-      offers: {},
+      products: {},
       groups: {},
     });
 
     const prisma = createMockPrisma({
       oneTimePurchase: {
         findMany: async () => [{
-          offerId: 'off-otp',
-          offer: { includedItems: { [itemId]: { quantity: 5 } } },
+          productId: 'off-otp',
+          product: { includedItems: { [itemId]: { quantity: 5 } } },
           quantity: 2,
           createdAt: new Date('2025-02-10T00:00:00.000Z'),
         }],
@@ -750,19 +750,19 @@ describe('getItemQuantityForCustomer - one-time purchases', () => {
     expect(qty).toBe(10);
   });
 
-  it('aggregates multiple one-time purchases across different offers', async () => {
+  it('aggregates multiple one-time purchases across different products', async () => {
     const itemId = 'otpItemB';
     const tenancy = createMockTenancy({
       items: { [itemId]: { displayName: 'I', customerType: 'custom' } },
-      offers: {},
+      products: {},
       groups: {},
     });
 
     const prisma = createMockPrisma({
       oneTimePurchase: {
         findMany: async () => [
-          { offerId: 'off-1', offer: { includedItems: { [itemId]: { quantity: 3 } } }, quantity: 1, createdAt: new Date('2025-02-10T00:00:00.000Z') },
-          { offerId: 'off-2', offer: { includedItems: { [itemId]: { quantity: 5 } } }, quantity: 2, createdAt: new Date('2025-02-11T00:00:00.000Z') },
+          { productId: 'off-1', product: { includedItems: { [itemId]: { quantity: 3 } } }, quantity: 1, createdAt: new Date('2025-02-10T00:00:00.000Z') },
+          { productId: 'off-2', product: { includedItems: { [itemId]: { quantity: 5 } } }, quantity: 2, createdAt: new Date('2025-02-11T00:00:00.000Z') },
         ],
       },
     } as any);
@@ -780,11 +780,11 @@ describe('getItemQuantityForCustomer - one-time purchases', () => {
 
 
 describe('validatePurchaseSession - one-time purchase rules', () => {
-  it('blocks duplicate one-time purchase for same offerId', async () => {
-    const tenancy = createMockTenancy({ items: {}, offers: {}, groups: {} });
+  it('blocks duplicate one-time purchase for same productId', async () => {
+    const tenancy = createMockTenancy({ items: {}, products: {}, groups: {} });
     const prisma = createMockPrisma({
       oneTimePurchase: {
-        findMany: async () => [{ offerId: 'offer-dup', offer: { groupId: undefined }, quantity: 1, createdAt: new Date('2025-01-01T00:00:00.000Z') }],
+        findMany: async () => [{ productId: 'product-dup', product: { groupId: undefined }, quantity: 1, createdAt: new Date('2025-01-01T00:00:00.000Z') }],
       },
       subscription: { findMany: async () => [] },
     } as any);
@@ -795,8 +795,8 @@ describe('validatePurchaseSession - one-time purchase rules', () => {
       codeData: {
         tenancyId: tenancy.id,
         customerId: 'cust-1',
-        offerId: 'offer-dup',
-        offer: {
+        productId: 'product-dup',
+        product: {
           displayName: 'X',
           groupId: undefined,
           customerType: 'custom',
@@ -810,14 +810,14 @@ describe('validatePurchaseSession - one-time purchase rules', () => {
       },
       priceId: 'price-any',
       quantity: 1,
-    })).rejects.toThrowError('Customer already has a one-time purchase for this offer');
+    })).rejects.toThrowError('Customer already has a one-time purchase for this product');
   });
 
   it('blocks one-time purchase when another one exists in the same group', async () => {
-    const tenancy = createMockTenancy({ items: {}, offers: {}, groups: { g1: { displayName: 'G1' } } });
+    const tenancy = createMockTenancy({ items: {}, products: {}, groups: { g1: { displayName: 'G1' } } });
     const prisma = createMockPrisma({
       oneTimePurchase: {
-        findMany: async () => [{ offerId: 'other-offer', offer: { groupId: 'g1' }, quantity: 1, createdAt: new Date('2025-01-01T00:00:00.000Z') }],
+        findMany: async () => [{ productId: 'other-product', product: { groupId: 'g1' }, quantity: 1, createdAt: new Date('2025-01-01T00:00:00.000Z') }],
       },
       subscription: { findMany: async () => [] },
     } as any);
@@ -828,8 +828,8 @@ describe('validatePurchaseSession - one-time purchase rules', () => {
       codeData: {
         tenancyId: tenancy.id,
         customerId: 'cust-1',
-        offerId: 'offer-y',
-        offer: {
+        productId: 'product-y',
+        product: {
           displayName: 'Y',
           groupId: 'g1',
           customerType: 'custom',
@@ -843,14 +843,14 @@ describe('validatePurchaseSession - one-time purchase rules', () => {
       },
       priceId: 'price-any',
       quantity: 1,
-    })).rejects.toThrowError('Customer already has a one-time purchase in this offer group');
+    })).rejects.toThrowError('Customer already has a one-time purchase in this product group');
   });
 
   it('allows purchase when existing one-time is in a different group', async () => {
-    const tenancy = createMockTenancy({ items: {}, offers: {}, groups: { g1: { displayName: 'G1' }, g2: { displayName: 'G2' } } });
+    const tenancy = createMockTenancy({ items: {}, products: {}, groups: { g1: { displayName: 'G1' }, g2: { displayName: 'G2' } } });
     const prisma = createMockPrisma({
       oneTimePurchase: {
-        findMany: async () => [{ offerId: 'other-offer', offer: { groupId: 'g2' }, quantity: 1, createdAt: new Date('2025-01-01T00:00:00.000Z') }],
+        findMany: async () => [{ productId: 'other-product', product: { groupId: 'g2' }, quantity: 1, createdAt: new Date('2025-01-01T00:00:00.000Z') }],
       },
       subscription: { findMany: async () => [] },
     } as any);
@@ -861,8 +861,8 @@ describe('validatePurchaseSession - one-time purchase rules', () => {
       codeData: {
         tenancyId: tenancy.id,
         customerId: 'cust-1',
-        offerId: 'offer-z',
-        offer: {
+        productId: 'product-z',
+        product: {
           displayName: 'Z',
           groupId: 'g1',
           customerType: 'custom',
@@ -891,7 +891,7 @@ describe('combined sources - one-time purchases + manual changes + subscriptions
     const tenancy = createMockTenancy({
       items: { [itemId]: { displayName: 'Combo', customerType: 'user' } },
       groups: { g1: { displayName: 'G' } },
-      offers: {
+      products: {
         offSub: {
           displayName: 'Sub', groupId: 'g1', customerType: 'user', freeTrial: undefined, serverOnly: false, stackable: false,
           prices: {},
@@ -911,13 +911,13 @@ describe('combined sources - one-time purchases + manual changes + subscriptions
       },
       oneTimePurchase: {
         findMany: async () => [
-          { offerId: 'offA', offer: { includedItems: { [itemId]: { quantity: 4 } } }, quantity: 1, createdAt: new Date('2025-02-09T00:00:00.000Z') },
-          { offerId: 'offB', offer: { includedItems: { [itemId]: { quantity: 2 } } }, quantity: 3, createdAt: new Date('2025-02-11T00:00:00.000Z') },
+          { productId: 'offA', product: { includedItems: { [itemId]: { quantity: 4 } } }, quantity: 1, createdAt: new Date('2025-02-09T00:00:00.000Z') },
+          { productId: 'offB', product: { includedItems: { [itemId]: { quantity: 2 } } }, quantity: 3, createdAt: new Date('2025-02-11T00:00:00.000Z') },
         ],
       },
       subscription: {
         findMany: async () => [{
-          offerId: 'offSub',
+          productId: 'offSub',
           currentPeriodStart: new Date('2025-02-01T00:00:00.000Z'),
           currentPeriodEnd: new Date('2025-03-01T00:00:00.000Z'),
           quantity: 2,

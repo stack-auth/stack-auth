@@ -51,7 +51,7 @@ export const POST = createSmartRouteHandler({
       if (conflicting.stripeSubscriptionId) {
         const existingStripeSub = await stripe.subscriptions.retrieve(conflicting.stripeSubscriptionId);
         const existingItem = existingStripeSub.items.data[0];
-        const product = await stripe.products.create({ name: data.offer.displayName ?? "Subscription" });
+        const product = await stripe.products.create({ name: data.product.displayName ?? "Subscription" });
         if (selectedPrice.interval) {
           const updated = await stripe.subscriptions.update(conflicting.stripeSubscriptionId, {
             payment_behavior: 'default_incomplete',
@@ -71,8 +71,8 @@ export const POST = createSmartRouteHandler({
               quantity,
             }],
             metadata: {
-              offerId: data.offerId ?? null,
-              offer: JSON.stringify(data.offer),
+              productId: data.productId ?? null,
+              product: JSON.stringify(data.product),
               priceId: price_id,
             },
           });
@@ -108,10 +108,10 @@ export const POST = createSmartRouteHandler({
         customer: data.stripeCustomerId,
         automatic_payment_methods: { enabled: true },
         metadata: {
-          offerId: data.offerId || "",
-          offer: JSON.stringify(data.offer),
+          productId: data.productId || "",
+          product: JSON.stringify(data.product),
           customerId: data.customerId,
-          customerType: data.offer.customerType,
+          customerType: data.product.customerType,
           purchaseQuantity: String(quantity),
           purchaseKind: "ONE_TIME",
           tenancyId: data.tenancyId,
@@ -127,7 +127,7 @@ export const POST = createSmartRouteHandler({
     }
 
     const product = await stripe.products.create({
-      name: data.offer.displayName ?? "Subscription",
+      name: data.product.displayName ?? "Subscription",
     });
     const created = await stripe.subscriptions.create({
       customer: data.stripeCustomerId,
@@ -147,8 +147,8 @@ export const POST = createSmartRouteHandler({
         quantity,
       }],
       metadata: {
-        offerId: data.offerId ?? null,
-        offer: JSON.stringify(data.offer),
+        productId: data.productId ?? null,
+        product: JSON.stringify(data.product),
         priceId: price_id,
       },
     });
