@@ -135,13 +135,13 @@ const handler = createMcpHandler(
       }
     );
     server.tool(
-      "search_docs",
+      "search_docs", 
       "Search through all Stack Auth documentation including API docs, guides, and examples. Returns ranked results with snippets and relevance scores.",
       {
         search_query: z.string().describe("The search query to find relevant documentation"),
         result_limit: z.number().optional().describe("Maximum number of results to return (default: 50)")
       },
-      async ({ search_query, result_limit = 10 }) => {
+      async ({ search_query, result_limit = 50 }) => {
         nodeClient?.capture({
           event: "search_docs",
           properties: { search_query, result_limit },
@@ -154,7 +154,7 @@ const handler = createMcpHandler(
         // Search through all pages
         for (const page of allPages) {
           // Skip admin API endpoints
-          if (page.url.startsWith('/api/admin')) {
+          if (page.url.startsWith('/api/admin/')) {
             continue;
           }
 
