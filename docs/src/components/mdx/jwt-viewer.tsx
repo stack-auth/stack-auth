@@ -2,7 +2,8 @@
 
 import { useUser } from '@stackframe/stack';
 import { runAsynchronously } from '@stackframe/stack-shared/dist/utils/promises';
-import { useCallback, useEffect, useState } from 'react';
+import { decodeProtectedHeader, decodeJwt as joseDecodeJwt } from 'jose';
+import { useCallback, useState } from 'react';
 import { cn } from '../../lib/cn';
 
 type DecodedJWT = {
@@ -15,13 +16,13 @@ type DecodedJWT = {
 const decodeJWT = (jwt: string): DecodedJWT => {
   const parts = jwt.split('.');
   if (parts.length !== 3) throw new Error('Invalid JWT format');
-
   return {
-    header: JSON.parse(atob(parts[0].replace(/-/g, '+').replace(/_/g, '/'))),
-    payload: JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/'))),
-    signature: parts[2]
+    header: decodeProtectedHeader(jwt) as Record<string, unknown>,
+    payload: joseDecodeJwt(jwt) as Record<string, unknown>,
+    signature: parts[2]!,
   };
 };
+
 
 type JWTViewerProps = {
   defaultToken?: string,
@@ -52,24 +53,6 @@ export function JWTViewer({ defaultToken = '', className = '' }: JWTViewerProps)
     }
   }, []);
 
-  // Auto-load user token
-  useEffect(() => {
-    const loadUserToken = async () => {
-      if (user && !userTokenLoaded && !defaultToken) {
-        try {
-          const authData = await user.getAuthJson();
-          if (authData.accessToken) {
-            setToken(authData.accessToken);
-            handleDecode(authData.accessToken);
-            setUserTokenLoaded(true);
-          }
-        } catch (err) {
-          console.error('Failed to load user token:', err);
-        }
-      }
-    };
-    runAsynchronously(loadUserToken());
-  }, [user, userTokenLoaded, defaultToken, handleDecode]);
 
   const loadCurrentUserToken = async () => {
     if (user) {
@@ -141,7 +124,7 @@ export function JWTViewer({ defaultToken = '', className = '' }: JWTViewerProps)
                 "border border-fd-border"
               )}
             >
-              {userTokenLoaded ? 'Reload My Token' : 'Use My Token'}
+              {userTokenLoaded ? 'Reload My Token' : 'Load My Token'}
             </button>
           )}
         </div>
@@ -154,7 +137,7 @@ export function JWTViewer({ defaultToken = '', className = '' }: JWTViewerProps)
               handleDecode(e.target.value);
               setUserTokenLoaded(false);
             }}
-            placeholder={user ? "Your token loads automatically, or paste another here..." : "Paste JWT token here..."}
+            placeholder={user ? "Click 'Load My Token' to use your session token, or paste another here..." : "Paste JWT token here..."}
             className={cn(
               "w-full h-24 p-3 text-xs font-mono rounded-lg resize-vertical",
               "bg-fd-background border border-fd-border",
