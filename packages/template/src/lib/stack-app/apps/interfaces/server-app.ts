@@ -1,6 +1,6 @@
 import { KnownErrors } from "@stackframe/stack-shared";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
-import { GenericQueryCtx } from "convex/server";
+import type { GenericQueryCtx } from "convex/server";
 import { AsyncStoreProperty, GetCurrentPartialUserOptions, GetCurrentUserOptions } from "../../common";
 import { ServerItem } from "../../customers";
 import { DataVaultStore } from "../../data-vault";

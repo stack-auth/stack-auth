@@ -36,7 +36,7 @@ import { constructRedirectUrl } from "../../../../utils/url";
 import { addNewOAuthProviderOrScope, callOAuthCallback, signInWithOAuth } from "../../../auth";
 import { CookieHelper, createBrowserCookieHelper, createCookieHelper, createPlaceholderCookieHelper, deleteCookieClient, getCookieClient, setOrDeleteCookie, setOrDeleteCookieClient } from "../../../cookie";
 import { ApiKey, ApiKeyCreationOptions, ApiKeyUpdateOptions, apiKeyCreationOptionsToCrud } from "../../api-keys";
-import { GetCurrentPartialUserOptions, GetCurrentUserOptions, HandlerUrls, OAuthScopesOnSignIn, RedirectMethod, RedirectToOptions, RequestLike, TokenStoreInit, stackAppInternalsSymbol } from "../../common";
+import { ConvexCtx, GetCurrentPartialUserOptions, GetCurrentUserOptions, HandlerUrls, OAuthScopesOnSignIn, RedirectMethod, RedirectToOptions, RequestLike, TokenStoreInit, stackAppInternalsSymbol } from "../../common";
 import { OAuthConnection } from "../../connected-accounts";
 import { ContactChannel, ContactChannelCreateOptions, ContactChannelUpdateOptions, contactChannelCreateOptionsToCrud, contactChannelUpdateOptionsToCrud } from "../../contact-channels";
 import { Customer, Item } from "../../customers";
@@ -227,6 +227,10 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     async (session, [customCustomerId, itemId]) => {
       return await this._interface.getItem({ customCustomerId, itemId }, session);
     }
+  );
+
+  private readonly _convexPartialUserCache = createCache<[unknown], TokenPartialUser | null>(
+    async ([ctx]) => await this._getPartialUserFromConvex(ctx as any)
   );
 
   private _anonymousSignUpInProgress: Promise<{ accessToken: string, refreshToken: string }> | null = null;
@@ -1610,7 +1614,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     } satisfies TokenPartialUser;
   }
 
-  async _getPartialUserFromConvex(ctx: (GetCurrentPartialUserOptions<HasTokenStore> & { from: "convex" })["ctx"]): Promise<TokenPartialUser | null> {
+  async _getPartialUserFromConvex(ctx: ConvexCtx): Promise<TokenPartialUser | null> {
     const auth = await ctx.auth.getUserIdentity();
     if (!auth) {
       return null;
@@ -1634,7 +1638,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         return this._getTokenPartialUserFromSession(session, options);
       }
       case "convex": {
-        return await this._getPartialUserFromConvex(options.ctx as unknown as any);
+        return await this._getPartialUserFromConvex(options.ctx);
       }
       default: {
         // @ts-expect-error
@@ -1653,7 +1657,8 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         return this._getTokenPartialUserFromSession(session, options);
       }
       case "convex": {
-        return this._getPartialUserFromConvex(options.ctx as unknown as any) as any;
+        const result = useAsyncCache(this._convexPartialUserCache, [options.ctx] as const, "usePartialUser(convex)");
+        return result;
       }
       default: {
         // @ts-expect-error

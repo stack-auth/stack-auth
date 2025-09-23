@@ -1,5 +1,5 @@
 const localApiUrl = "http://localhost:8102";
-const apiUrl = "https://davis-tourism-calculators-hop.trycloudflare.com";
+const apiUrl = localApiUrl; // replace with public tunnel url so convex can access it
 const projectId = "internal";
 
 export default {
