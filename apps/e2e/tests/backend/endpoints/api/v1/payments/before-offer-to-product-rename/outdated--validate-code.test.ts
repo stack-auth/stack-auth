@@ -38,22 +38,7 @@ it("should allow valid code and return offer data", async ({ expect }) => {
       "status": 200,
       "body": {
         "already_bought_non_stackable": false,
-        "conflicting_group_offers": [],
         "conflicting_products": [],
-        "offer": {
-          "customer_type": "user",
-          "display_name": "Test Product",
-          "prices": {
-            "monthly": {
-              "USD": "1000",
-              "interval": [
-                1,
-                "month",
-              ],
-            },
-          },
-          "stackable": false,
-        },
         "product": {
           "customer_type": "user",
           "display_name": "Test Product",
@@ -149,22 +134,7 @@ it("should set already_bought_non_stackable when user already owns non-stackable
       "status": 200,
       "body": {
         "already_bought_non_stackable": true,
-        "conflicting_group_offers": [],
         "conflicting_products": [],
-        "offer": {
-          "customer_type": "user",
-          "display_name": "Test Offer",
-          "prices": {
-            "monthly": {
-              "USD": "1000",
-              "interval": [
-                1,
-                "month",
-              ],
-            },
-          },
-          "stackable": false,
-        },
         "product": {
           "customer_type": "user",
           "display_name": "Test Offer",
@@ -255,32 +225,12 @@ it("should include conflicting_group_offers when switching within the same group
       "status": 200,
       "body": {
         "already_bought_non_stackable": false,
-        "conflicting_group_offers": [
-          {
-            "display_name": "Offer A",
-            "offer_id": "offerA",
-          },
-        ],
         "conflicting_products": [
           {
             "display_name": "Offer A",
             "product_id": "offerA",
           },
         ],
-        "offer": {
-          "customer_type": "user",
-          "display_name": "Offer B",
-          "prices": {
-            "monthly": {
-              "USD": "2000",
-              "interval": [
-                1,
-                "month",
-              ],
-            },
-          },
-          "stackable": false,
-        },
         "product": {
           "customer_type": "user",
           "display_name": "Offer B",
