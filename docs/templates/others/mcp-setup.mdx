@@ -17,7 +17,8 @@ Set up Stack Auth's Model Context Protocol (MCP) server to get intelligent code 
     <TabsTrigger value="claudecode">Claude Code</TabsTrigger>
     <TabsTrigger value="claudedesktop">Claude Desktop</TabsTrigger>
     <TabsTrigger value="windsurf">Windsurf</TabsTrigger>
-    <TabsTrigger value="other">Other Environments</TabsTrigger>
+    <TabsTrigger value="chatgpt">ChatGPT</TabsTrigger>
+    <TabsTrigger value="gemini">Gemini CLI</TabsTrigger>
   </TabsList>
   
   <TabsContent value="cursor">
@@ -87,27 +88,146 @@ Set up Stack Auth's Model Context Protocol (MCP) server to get intelligent code 
     ```
   </TabsContent>
 
-  <TabsContent value="other">
-    Stack Auth MCP can be configured in any MCP-compatible environment.
-    
-    **Generic Setup**
-    
-    The MCP server can be run as a standalone process or integrated into your development workflow.
-    
-    ```bash
-    # Install the MCP server
-    npm install -g @stackframe/stack-mcp
-    
-    # Run with environment variables
-    STACK_PROJECT_ID=your-project-id STACK_SECRET_KEY=your-secret-key stack-mcp
-    ```
-    
-    **Custom Integration**
-    
-    For custom integrations, refer to the MCP protocol documentation and adapt the server configuration to your specific environment.
-    
+  <TabsContent value="chatgpt">
+   <Info>
+    In Team, Enterprise, and Edu workspaces, only workspace owners and admins have permission to set this.
+   </Info>
+    Navigate to **Settings > Connectors**
+    Add a custom connector with the server URL: `https://mcp.stack-auth.com`
+
+    After this, it should be visible in Composer > Deep research Tool.
+
+    <Info>
+    Connectors can only be used with **Deep Research**
+    </Info>
   </TabsContent>
+  
+  <TabsContent value="gemini">
+  Add the following JSON to your Gemini CLI configuration file (~/.gemini/settings.json):
+
+  ```json title="settings.json"
+      {
+        "mcpServers": {
+          "stack-auth": {
+           "httpUrl": "https://mcp.stack-auth.com/",
+           "headers": {
+            "Accept": "application/json, text/event-stream"
+           }
+          }
+        }
+      }
+    ```
+  </TabsContent>
+
 </Tabs>
+
+
+## Markdown Instructions
+
+If you want to include instructions for all clients in your project's README.md file, feel free to copy the following markdown:
+
+<pre className="bg-fd-muted/30 p-4 rounded-lg overflow-x-auto"><code className="text-sm">{`<details name="mcp-install-instructions">
+<summary>Cursor</summary>
+
+#### Installation Link
+[![Add to Cursor](https://cursor.com/deeplink/mcp-install-dark.svg)](cursor://anysphere.cursor-deeplink/mcp/install?name=stack-auth&config=eyJ1cmwiOiJodHRwczovL21jcC5zdGFjay1hdXRoLmNvbS8ifQ==)
+
+#### Manual Installation
+Add the following to your \`mcp.json\` file:
+
+\`\`\`json
+{
+  "mcpServers": {
+    "stack-auth": {
+      "url": "https://mcp.stack-auth.com/"
+    }
+  }
+}
+\`\`\`
+</details>
+
+<details name="mcp-install-instructions">
+<summary>VSCode</summary>
+
+#### Installation Link
+[![Install in VS Code](https://img.shields.io/badge/VS_Code-Install_Server-0098FF?style=for-the-badge&logo=visual-studio-code&logoColor=white)](https://insiders.vscode.dev/redirect?url=vscode:mcp/install?%7B%22type%22%3A%22http%22%2C%22name%22%3A%22stack-auth%22%2C%22url%22%3A%22https%3A%2F%2Fmcp.stack-auth.com%2F%22%7D)
+
+#### Manual Installation
+Open a terminal and run the following command:
+
+\`\`\`
+code --add-mcp '{"type":"http","name":"stack-auth","url":"https://mcp.stack-auth.com/"}'
+\`\`\`
+
+Then, from inside VS Code, open the .vscode/mcp.json file and click "Start server".
+</details>
+
+<details name="mcp-install-instructions">
+<summary>Claude Code</summary>
+
+Open a terminal and run the following command:
+\`\`\`
+claude mcp add --transport http stack-auth https://mcp.stack-auth.com/
+\`\`\`
+From within Claude Code, you can use the \`/mcp\` command to get more information about the server.
+</details>
+
+<details name="mcp-install-instructions">
+<summary>Claude Desktop</summary>
+
+Open Claude Desktop and navigate to Settings > Connectors > Add Custom Connector.
+
+Enter the name as \`stack-auth\` and the remote MCP server URL as \`https://mcp.stack-auth.com/\`.
+</details>
+
+<details name="mcp-install-instructions">
+<summary>Windsurf</summary>
+
+Copy the following JSON to your Windsurf MCP config file:
+\`\`\`json
+{
+  "mcpServers": {
+    "stack-auth": {
+      "serverUrl": "https://mcp.stack-auth.com/"
+    }
+  }
+}
+\`\`\`
+</details>
+
+<details name="mcp-install-instructions">
+<summary>ChatGPT</summary>
+
+*Note: In Team, Enterprise, and Edu workspaces, only workspace owners and admins have permission*
+
+- Navigate to **Settings > Connectors**
+- Add a custom connector with the server URL: \`https://mcp.stack-auth.com/\`
+- It should then be visible in the Composer > Deep research tool
+- You may need to add the server as a source
+
+*Connectors can only be used with **Deep Research***
+</details>
+
+<details name="mcp-install-instructions">
+<summary>Gemini CLI</summary>
+
+Add the following JSON to your Gemini CLI configuration file (\`~/.gemini/settings.json\`):
+\`\`\`json
+{
+  "mcpServers": {
+    "stack-auth": {
+      "httpUrl": "https://mcp.stack-auth.com/",
+      "headers": {
+        "Accept": "application/json, text/event-stream"
+      }
+    }
+  }
+}
+\`\`\`
+</details>
+
+by [![Hypr MCP](https://hyprmcp.com/hyprmcp_20px.svg)](https://hyprmcp.com/)`}</code></pre>
+
 
 ## Features
 
@@ -118,14 +238,3 @@ The Stack Auth MCP server provides:
 - **Code Generation**: Generate boilerplate code for common authentication patterns
 - **Best Practices**: Receive guidance on security best practices and implementation patterns
 
-## Getting Your Credentials
-
-1. Go to your [Stack Auth Dashboard](https://app.stack-auth.com)
-2. Select your project
-3. Navigate to the API Keys section
-4. Copy your Project ID and Secret Key
-5. Add them to your MCP configuration
-
-<Info>
-Keep your secret key secure and never commit it to version control. Use environment variables or secure configuration management.
-</Info>
