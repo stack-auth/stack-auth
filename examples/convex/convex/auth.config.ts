@@ -1,14 +1,7 @@
-const localApiUrl = "http://localhost:8102";
-const apiUrl = localApiUrl; // replace with public tunnel url so convex can access it
-const projectId = "internal";
+import { getConvexProvidersConfig } from "@stackframe/stack";
 
 export default {
-  providers: [
-    {
-      type: "customJwt",
-      issuer: `${localApiUrl}/api/v1/projects/${projectId}`,
-      jwks: `${apiUrl}/api/v1/projects/${projectId}/.well-known/jwks.json?include_anonymous=true`,
-      algorithm: "ES256",
-    },
-  ]
+  providers: getConvexProvidersConfig({
+    projectId: process.env.NEXT_PUBLIC_STACK_PROJECT_ID
+  }),
 }
