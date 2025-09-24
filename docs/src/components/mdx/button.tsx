@@ -31,7 +31,7 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
 
     if (href) {
       return (
-        <a
+        <a role="button"
           href={href}
           className={buttonClasses}
           {...(props as React.AnchorHTMLAttributes<HTMLAnchorElement>)}
