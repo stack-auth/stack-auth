@@ -18,7 +18,6 @@ export function StackProviderClient(props: {
   const app = props.serialized
     ? StackClientApp[stackAppInternalsSymbol].fromClientJson(props.app as StackClientAppJson<true, string>)
     : props.app as StackClientApp<true>;
-
   globalVar.__STACK_AUTH__ = { app };
 
   return (
