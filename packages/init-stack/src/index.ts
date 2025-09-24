@@ -660,11 +660,11 @@ const Steps = {
 
     const tokenStore = type === "next" ? '"nextjs-cookie"' : (clientOrServer === "client" ? '"cookie"' : '"memory"');
     const publishableClientKeyWrite = clientOrServer === "server"
-      ? `process.env.STACK_PUBLISHABLE_CLIENT_KEY ${publishableClientKeyFromArgs ? `|| '${publishableClientKeyFromArgs}'` : ""}`
+      ? `process.env.STACK_PUBLISHABLE_CLIENT_KEY ${publishableClientKeyFromArgs ? `|| ${JSON.stringify(publishableClientKeyFromArgs)}` : ""}`
       : `'${publishableClientKeyFromArgs ?? 'INSERT_YOUR_PUBLISHABLE_CLIENT_KEY_HERE'}'`;
     const jsOptions = type === "js" ? [
       `\n\n${indentation}// get your Stack Auth API keys from https://app.stack-auth.com${clientOrServer === "client" ? ` and store them in a safe place (eg. environment variables)` : ""}`,
-      `${projectIdFromArgs ? `${indentation}projectId: '${projectIdFromArgs}',` : ""}`,
+      `${projectIdFromArgs ? `${indentation}projectId: ${JSON.stringify(projectIdFromArgs)},` : ""}`,
       `${indentation}publishableClientKey: ${publishableClientKeyWrite},`,
       `${clientOrServer === "server" ? `${indentation}secretServerKey: process.env.STACK_SECRET_SERVER_KEY,` : ""}`,
     ].filter(Boolean).join("\n") : "";
@@ -672,8 +672,8 @@ const Steps = {
     const nextClientOptions = (type === "next" && clientOrServer === "client")
       ? (() => {
         const lines = [
-          projectIdFromArgs ? `${indentation}projectId: process.env.NEXT_PUBLIC_STACK_PROJECT_ID ?? '${projectIdFromArgs}',` : "",
-          publishableClientKeyFromArgs ? `${indentation}publishableClientKey: process.env.NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY ?? '${publishableClientKeyFromArgs}',` : "",
+          projectIdFromArgs ? `${indentation}projectId: process.env.NEXT_PUBLIC_STACK_PROJECT_ID ?? ${JSON.stringify(projectIdFromArgs)},` : "",
+          publishableClientKeyFromArgs ? `${indentation}publishableClientKey: process.env.NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY ?? ${JSON.stringify(publishableClientKeyFromArgs)},` : "",
         ].filter(Boolean).join("\n");
         return lines ? `\n${lines}` : "";
       })()
