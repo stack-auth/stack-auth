@@ -1,24 +1,9 @@
 import * as jose from 'jose';
 import { InferType } from 'yup';
-import { yupBoolean, yupNumber, yupObject, yupString } from './schema-fields';
+import { accessTokenPayloadSchema } from './schema-fields';
 import { StackAssertionError } from "./utils/errors";
 import { Store } from "./utils/stores";
 
-const accessTokenPayloadSchema = yupObject({
-  sub: yupString().defined(),
-  exp: yupNumber().optional(),
-  iss: yupString().defined(),
-  aud: yupString().defined(),
-  project_id: yupString().defined(),
-  branch_id: yupString().defined(),
-  refresh_token_id: yupString().defined(),
-  role: yupString().oneOf(["authenticated"]).defined(),
-  name: yupString().defined().nullable(),
-  email: yupString().defined().nullable(),
-  email_verified: yupBoolean().defined(),
-  selected_team_id: yupString().defined().nullable(),
-  is_anonymous: yupBoolean().defined(),
-});
 
 export type AccessTokenPayload = InferType<typeof accessTokenPayloadSchema>;
 

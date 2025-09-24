@@ -1,5 +1,5 @@
 import * as yup from "yup";
-import { KnownErrors } from ".";
+import { KnownErrors } from "./known-errors";
 import { isBase64 } from "./utils/bytes";
 import { SUPPORTED_CURRENCIES, type Currency, type MoneyAmount } from "./utils/currency-constants";
 import type { DayInterval, Interval } from "./utils/dates";
@@ -657,6 +657,21 @@ export const userPasswordHashMutationSchema = yupString()
 export const userTotpSecretMutationSchema = base64Schema.nullable().meta({ openapiField: { description: 'Enables 2FA and sets a TOTP secret for the user. Set to null to disable 2FA.', exampleValue: 'dG90cC1zZWNyZXQ=' } });
 
 // Auth
+export const accessTokenPayloadSchema = yupObject({
+  sub: yupString().defined(),
+  exp: yupNumber().optional(),
+  iss: yupString().defined(),
+  aud: yupString().defined(),
+  project_id: yupString().defined(),
+  branch_id: yupString().defined(),
+  refresh_token_id: yupString().defined(),
+  role: yupString().oneOf(["authenticated"]).defined(),
+  name: yupString().defined().nullable(),
+  email: yupString().defined().nullable(),
+  email_verified: yupBoolean().defined(),
+  selected_team_id: yupString().defined().nullable(),
+  is_anonymous: yupBoolean().defined(),
+});
 export const signInEmailSchema = strictEmailSchema(undefined).meta({ openapiField: { description: 'The email to sign in with.', exampleValue: 'johndoe@example.com' } });
 export const emailOtpSignInCallbackUrlSchema = urlSchema.meta({ openapiField: { description: 'The base callback URL to construct the magic link from. A query parameter `code` with the verification code will be appended to it. The page should then make a request to the `/auth/otp/sign-in` endpoint.', exampleValue: 'https://example.com/handler/magic-link-callback' } });
 export const emailVerificationCallbackUrlSchema = urlSchema.meta({ openapiField: { description: 'The base callback URL to construct a verification link for the verification e-mail. A query parameter `code` with the verification code will be appended to it. The page should then make a request to the `/contact-channels/verify` endpoint.', exampleValue: 'https://example.com/handler/email-verification' } });
