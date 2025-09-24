@@ -358,14 +358,18 @@ function renameProperty(obj: Record<string, any>, oldPath: string | ((path: stri
   const res: Record<string, any> = Array.isArray(obj) ? [] : {};
   for (const [key, originalValue] of typedEntries(obj)) {
     const path = key.split(".");
-    const value = isObjectLike(originalValue) ? renameProperty(originalValue, p => pathCond([...path, ...p]), p => pathMapper([...path, ...p])) : originalValue;
-    if (pathCond(path)) {
-      const name = pathMapper(path);
-      if (name.includes(".")) throw new StackAssertionError(`newName must not contain a dot. Provided: ${name}`);
-      set(res, name, value);
-    } else {
-      set(res, key, value);
+
+    for (let i = 0; i < path.length; i++) {
+      const pathPrefix = path.slice(0, i + 1);
+      if (pathCond(pathPrefix)) {
+        const name = pathMapper(pathPrefix);
+        if (name.includes(".")) throw new StackAssertionError(`newName must not contain a dot. Provided: ${name}`);
+        path[i] = name;
+      }
     }
+
+    const value = isObjectLike(originalValue) ? renameProperty(originalValue, p => pathCond([...path, ...p]), p => pathMapper([...path, ...p])) : originalValue;
+    set(res, path.join("."), value);
   }
 
   return res;
@@ -376,6 +380,11 @@ import.meta.vitest?.test("renameProperty", ({ expect }) => {
   expect(renameProperty({ b: { c: 1 } }, "b.c", "d")).toEqual({ b: { d: 1 } });
   expect(renameProperty({ a: { b: { c: 1 } } }, "a.b.c", "d")).toEqual({ a: { b: { d: 1 } } });
   expect(renameProperty({ a: { b: { c: 1 } } }, "a.b.c.d", "e")).toEqual({ a: { b: { c: 1 } } });
+  expect(renameProperty({ a: { b: { c: 1 }, "b.c": 2 } }, "b.c", "d")).toEqual({ a: { b: { c: 1 }, "b.c": 2 } });
+  expect(renameProperty({ a: { "b.c.d": 2 } }, "a.b.c", "e")).toEqual({ a: { "b.e.d": 2 } });
+  expect(renameProperty({ a: { b: { c: 1 }, "b.c": 2 } }, "a.b.c", "d")).toEqual({ a: { b: { d: 1 }, "b.d": 2 } });
+  expect(renameProperty({ a: { b: { c: 1, d: 2 } } }, "a.b.c", "d")).toEqual({ a: { b: { d: 2 } } });
+  expect(renameProperty({ a: { b: { d: 2, c: 1 } } }, "a.b.c", "d")).toEqual({ a: { b: { d: 1 } } });
 
   // Functions
   expect(renameProperty({ a: 1 }, (p) => p.length === 1 && p[0] === "a", (p) => "b")).toEqual({ b: 1 });
