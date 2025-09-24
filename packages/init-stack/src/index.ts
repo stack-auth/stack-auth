@@ -24,6 +24,13 @@ const jsLikeFileExtensions: string[] = [
   "js",
 ];
 
+class UserError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "UserError";
+  }
+}
+
 type OnQuestionMode = "ask" | "guess" | "error";
 
 function isTruthyEnv(name: string): boolean {
@@ -95,20 +102,11 @@ const isClient: boolean = options.client || false;
 const isServer: boolean = options.server || false;
 const projectIdFromArgs: string | undefined = options.projectId;
 const publishableClientKeyFromArgs: string | undefined = options.publishableClientKey;
-
-
 const onQuestionMode: OnQuestionMode = resolveOnQuestionMode(options.onQuestion);
 
 // Commander negates the boolean options with prefix `--no-`
 // so `--no-browser` becomes `browser: false`
 const noBrowser: boolean = !options.browser;
-
-class UserError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "UserError";
-  }
-}
 
 type Ansis = {
   red: string,
