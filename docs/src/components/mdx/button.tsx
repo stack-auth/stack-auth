@@ -3,12 +3,12 @@ import * as React from "react";
 import { cn } from "../../lib/cn";
 import { buttonVariants } from "../ui/button";
 
-interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
-  color?: 'primary' | 'secondary' | 'outline' | 'ghost';
-  size?: 'sm' | 'icon' | 'icon-sm';
-  icon?: React.ReactNode;
-  href?: string;
-  children: React.ReactNode;
+type ButtonProps = React.ButtonHTMLAttributes<HTMLButtonElement> & {
+  color?: 'primary' | 'secondary' | 'outline' | 'ghost',
+  size?: 'sm' | 'icon' | 'icon-sm',
+  icon?: React.ReactNode,
+  href?: string,
+  children: React.ReactNode,
 }
 
 export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
