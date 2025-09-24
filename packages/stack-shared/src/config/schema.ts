@@ -4,11 +4,10 @@ import * as yup from "yup";
 import { DEFAULT_EMAIL_TEMPLATES, DEFAULT_EMAIL_THEMES, DEFAULT_EMAIL_THEME_ID } from "../helpers/emails";
 import * as schemaFields from "../schema-fields";
 import { productSchema, userSpecifiedIdSchema, yupBoolean, yupDate, yupMixed, yupNever, yupNumber, yupObject, yupRecord, yupString, yupTuple, yupUnion } from "../schema-fields";
-import { isShallowEqual } from "../utils/arrays";
 import { SUPPORTED_CURRENCIES } from "../utils/currency-constants";
 import { StackAssertionError } from "../utils/errors";
 import { allProviders } from "../utils/oauth";
-import { DeepFilterUndefined, DeepMerge, DeepRequiredOrUndefined, deleteKey, filterUndefined, get, has, isObjectLike, mapValues, set, typedAssign, typedEntries, typedFromEntries } from "../utils/objects";
+import { DeepFilterUndefined, DeepMerge, DeepRequiredOrUndefined, filterUndefined, get, has, isObjectLike, mapValues, set, typedAssign, typedEntries, typedFromEntries } from "../utils/objects";
 import { Result } from "../utils/results";
 import { CollapseObjectUnion, Expand, IntersectAll, IsUnion, typeAssert, typeAssertExtends, typeAssertIs } from "../utils/types";
 import { Config, NormalizationError, NormalizesTo, assertNormalized, getInvalidConfigReason, normalize } from "./format";
@@ -117,12 +116,12 @@ export const branchPaymentsSchema = yupObject({
   autoPay: yupObject({
     interval: schemaFields.dayIntervalSchema,
   }).optional(),
-  groups: yupRecord(
-    userSpecifiedIdSchema("groupId"),
+  catalogs: yupRecord(
+    userSpecifiedIdSchema("catalogId"),
     yupObject({
       displayName: yupString().optional(),
     }),
-  ).meta({ openapiField: { description: 'The groups that products can be in. All products in a group (besides add-ons) are mutually exclusive.', exampleValue: { "group-id": { displayName: "My Group" } } } }),
+  ).meta({ openapiField: { description: 'The catalogs that products can be in. All products in a catalog (besides add-ons) are mutually exclusive.', exampleValue: { "catalog-id": { displayName: "My Catalog" } } } }),
   products: yupRecord(
     userSpecifiedIdSchema("productId"),
     productSchema,
@@ -255,7 +254,7 @@ export function migrateConfigOverride(type: "project" | "branch" | "environment"
 
   // BEGIN 2025-07-28: emails.theme is now emails.selectedThemeId
   if (isBranchOrHigher) {
-    res = renameProperty(res, "emails.theme", "emails.selectedThemeId");
+    res = renameProperty(res, "emails.theme", "selectedThemeId");
   }
   // END
 
@@ -298,7 +297,19 @@ export function migrateConfigOverride(type: "project" | "branch" | "environment"
 
   // BEGIN 2025-09-23: payments.offers is now payments.products
   if (isBranchOrHigher) {
-    res = renameProperty(res, "payments.offers", "payments.products");
+    res = renameProperty(res, "payments.offers", "products");
+  }
+  // END
+
+  // BEGIN 2025-09-23: payments.groups is now payments.catalogs
+  if (isBranchOrHigher) {
+    res = renameProperty(res, "payments.groups", "catalogs");
+  }
+  // END
+
+  // BEGIN 2025-09-23: payments.products.*.groupId is now payments.products.*.catalogId
+  if (isBranchOrHigher) {
+    res = renameProperty(res, (p) => p.length === 4 && p[0] === "payments" && p[1] === "products" && p[3] === "groupId", (p) => "catalogId");
   }
   // END
 
@@ -340,32 +351,37 @@ import.meta.vitest?.test("mapProperty - basic property mapping", ({ expect }) =>
   expect(mapProperty({ a: { b: { c: 1 } } }, p => p.length === 3 && p[0] === "a" && p[1] === "b", (value) => value + 1)).toEqual({ a: { b: { c: 2 } } });
 });
 
-function renameProperty(obj: Record<string, any>, oldPath: string, newPath: string): any {
-  const oldKeyParts = oldPath.split(".");
-  const newKeyParts = newPath.split(".");
-  if (!isShallowEqual(oldKeyParts.slice(0, -1), newKeyParts.slice(0, -1))) throw new StackAssertionError(`oldPath and newPath must have the same prefix. Provided: ${oldPath} and ${newPath}`);
+function renameProperty(obj: Record<string, any>, oldPath: string | ((path: string[]) => boolean), newName: string | ((path: string[]) => string)): any {
+  const pathCond = typeof oldPath === "function" ? oldPath : (p: string[]) => p.join(".") === oldPath;
+  const pathMapper = typeof newName === "function" ? newName : (p: string[]) => (newName as string);
 
-  for (let i = 0; i < oldKeyParts.length; i++) {
-    const pathPrefix = oldKeyParts.slice(0, i).join(".");
-    const oldPathSuffix = oldKeyParts.slice(i).join(".");
-    const newPathSuffix = newKeyParts.slice(i).join(".");
-    if (has(obj, pathPrefix) && isObjectLike(get(obj, pathPrefix))) {
-      set(obj, pathPrefix, renameProperty(get(obj, pathPrefix), oldPathSuffix, newPathSuffix));
+  const res: Record<string, any> = Array.isArray(obj) ? [] : {};
+  for (const [key, originalValue] of typedEntries(obj)) {
+    const path = key.split(".");
+    const value = isObjectLike(originalValue) ? renameProperty(originalValue, p => pathCond([...path, ...p]), p => pathMapper([...path, ...p])) : originalValue;
+    if (pathCond(path)) {
+      const name = pathMapper(path);
+      if (name.includes(".")) throw new StackAssertionError(`newName must not contain a dot. Provided: ${name}`);
+      set(res, name, value);
+    } else {
+      set(res, key, value);
     }
   }
-  if (has(obj, oldPath)) {
-    set(obj, newPath, get(obj, oldPath));
-    deleteKey(obj, oldPath);
-  }
 
-  return obj;
+  return res;
 }
 import.meta.vitest?.test("renameProperty", ({ expect }) => {
   // Basic
   expect(renameProperty({ a: 1 }, "a", "b")).toEqual({ b: 1 });
-  expect(renameProperty({ b: { c: 1 } }, "b.c", "b.d")).toEqual({ b: { d: 1 } });
-  expect(renameProperty({ a: { b: { c: 1 } } }, "a.b.c", "a.b.d")).toEqual({ a: { b: { d: 1 } } });
-  expect(renameProperty({ a: { b: { c: 1 } } }, "a.b.c.d", "a.b.c.e")).toEqual({ a: { b: { c: 1 } } });
+  expect(renameProperty({ b: { c: 1 } }, "b.c", "d")).toEqual({ b: { d: 1 } });
+  expect(renameProperty({ a: { b: { c: 1 } } }, "a.b.c", "d")).toEqual({ a: { b: { d: 1 } } });
+  expect(renameProperty({ a: { b: { c: 1 } } }, "a.b.c.d", "e")).toEqual({ a: { b: { c: 1 } } });
+
+  // Functions
+  expect(renameProperty({ a: 1 }, (p) => p.length === 1 && p[0] === "a", (p) => "b")).toEqual({ b: 1 });
+  expect(renameProperty({ a: { b: { c: 1 } } }, (p) => p.length === 3 && p[0] === "a" && p[1] === "b" && p[2] === "c", (p) => "d")).toEqual({ a: { b: { d: 1 } } });
+  expect(renameProperty({ a: { b: { c: 1 } } }, (p) => false, (p) => "e")).toEqual({ a: { b: { c: 1 } } });
+  expect(renameProperty({ a: { b: { a: 1 } } }, (p) => p[p.length - 1] === "a", (p) => "c")).toEqual({ c: { b: { c: 1 } } });
 
   // Errors
   expect(() => renameProperty({ a: 1 }, "a", "b.c")).toThrow();
@@ -478,12 +494,12 @@ const organizationConfigDefaults = {
 
   payments: {
     autoPay: undefined,
-    groups: (key: string) => ({
+    catalogs: (key: string) => ({
       displayName: undefined,
     }),
     products: (key: string) => ({
       displayName: key,
-      groupId: undefined,
+      catalogId: undefined,
       customerType: "user",
       freeTrial: undefined,
       serverOnly: false,

@@ -56,13 +56,8 @@ it("should properly create subscription", async ({ expect }) => {
       quantity: 1,
     },
   });
-  expect(response).toMatchInlineSnapshot(`
-    NiceResponse {
-      "status": 200,
-      "body": { "client_secret": "" },
-      "headers": Headers { <some fields may have been hidden> },
-    }
-  `);
+  expect(response.status).toBe(200);
+  expect(response.body).toEqual({ client_secret: expect.any(String) });
 });
 
 it("should return client secret for one-time price (no interval)", async ({ expect }) => {
@@ -169,13 +164,13 @@ it("should return client secret for one-time price even if a conflicting group s
   await Payments.setup();
   await Project.updateConfig({
     payments: {
-      groups: { grp: { displayName: "Test Group" } },
+      catalogs: { grp: { displayName: "Test Group" } },
       products: {
         subProduct: {
           displayName: "Sub Product",
           customerType: "user",
           serverOnly: false,
-          groupId: "grp",
+          catalogId: "grp",
           stackable: false,
           prices: { monthly: { USD: "1000", interval: [1, "month"] } },
           includedItems: {},
@@ -184,7 +179,7 @@ it("should return client secret for one-time price even if a conflicting group s
           displayName: "One Time",
           customerType: "user",
           serverOnly: false,
-          groupId: "grp",
+          catalogId: "grp",
           stackable: true,
           prices: { one: { USD: "500" } },
           includedItems: {},
@@ -594,7 +589,7 @@ it("should update existing stripe subscription when switching products within a 
   await Payments.setup();
   await Project.updateConfig({
     payments: {
-      groups: {
+      catalogs: {
         grp: { displayName: "Test Group" },
       },
       products: {
@@ -602,7 +597,7 @@ it("should update existing stripe subscription when switching products within a 
           displayName: "Product A",
           customerType: "user",
           serverOnly: false,
-          groupId: "grp",
+          catalogId: "grp",
           stackable: false,
           prices: {
             monthly: {
@@ -616,7 +611,7 @@ it("should update existing stripe subscription when switching products within a 
           displayName: "Product B",
           customerType: "user",
           serverOnly: false,
-          groupId: "grp",
+          catalogId: "grp",
           stackable: false,
           prices: {
             monthly: {
@@ -700,7 +695,7 @@ it("should cancel DB-only subscription then create Stripe subscription when swit
   await Payments.setup();
   await Project.updateConfig({
     payments: {
-      groups: {
+      catalogs: {
         grp: { displayName: "Test Group" },
       },
       products: {
@@ -708,7 +703,7 @@ it("should cancel DB-only subscription then create Stripe subscription when swit
           displayName: "Product A",
           customerType: "user",
           serverOnly: false,
-          groupId: "grp",
+          catalogId: "grp",
           stackable: false,
           prices: {
             monthly: {
@@ -722,7 +717,7 @@ it("should cancel DB-only subscription then create Stripe subscription when swit
           displayName: "Product B",
           customerType: "user",
           serverOnly: false,
-          groupId: "grp",
+          catalogId: "grp",
           stackable: false,
           prices: {
             monthly: {
@@ -855,13 +850,13 @@ it("should block one-time purchase in same group after prior one-time purchase i
   await Payments.setup();
   await Project.updateConfig({
     payments: {
-      groups: { grp: { displayName: "Group" } },
+      catalogs: { grp: { displayName: "Group" } },
       products: {
         productA: {
           displayName: "Product A",
           customerType: "user",
           serverOnly: false,
-          groupId: "grp",
+          catalogId: "grp",
           stackable: true,
           prices: { one: { USD: "500" } },
           includedItems: {},
@@ -870,7 +865,7 @@ it("should block one-time purchase in same group after prior one-time purchase i
           displayName: "Product B",
           customerType: "user",
           serverOnly: false,
-          groupId: "grp",
+          catalogId: "grp",
           stackable: true,
           prices: { one: { USD: "700" } },
           includedItems: {},

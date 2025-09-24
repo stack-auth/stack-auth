@@ -57,7 +57,7 @@ describe('getItemQuantityForCustomer - manual changes (no subscription)', () => 
         },
       },
       products: {},
-      groups: {},
+      catalogs: {},
     });
 
     const prisma = createMockPrisma({
@@ -101,7 +101,7 @@ describe('getItemQuantityForCustomer - manual changes (no subscription)', () => 
         },
       },
       products: {},
-      groups: {},
+      catalogs: {},
     });
 
     const prisma = createMockPrisma({
@@ -146,10 +146,10 @@ describe('getItemQuantityForCustomer - subscriptions', () => {
       items: {
         [itemId]: { displayName: 'S', customerType: 'user' },
       },
-      groups: { g1: { displayName: 'G' } },
+      catalogs: { g1: { displayName: 'G' } },
       products: {
         off1: {
-          displayName: 'O', groupId: 'g1', customerType: 'user', freeTrial: undefined, serverOnly: false, stackable: false,
+          displayName: 'O', catalogId: 'g1', customerType: 'user', freeTrial: undefined, serverOnly: false, stackable: false,
           prices: {},
           includedItems: { [itemId]: { quantity: 3, repeat: 'never', expires: 'when-purchase-expires' } },
           isAddOnTo: false,
@@ -184,10 +184,10 @@ describe('getItemQuantityForCustomer - subscriptions', () => {
       items: {
         [itemId]: { displayName: 'S', customerType: 'user' },
       },
-      groups: { g1: { displayName: 'G' } },
+      catalogs: { g1: { displayName: 'G' } },
       products: {
         offW: {
-          displayName: 'O', groupId: 'g1', customerType: 'user', freeTrial: undefined, serverOnly: false, stackable: false,
+          displayName: 'O', catalogId: 'g1', customerType: 'user', freeTrial: undefined, serverOnly: false, stackable: false,
           prices: {},
           includedItems: { [itemId]: { quantity: 4, repeat: [1, 'week'], expires: 'when-purchase-expires' } },
           isAddOnTo: false,
@@ -223,10 +223,10 @@ describe('getItemQuantityForCustomer - subscriptions', () => {
       items: {
         [itemId]: { displayName: 'S', customerType: 'user' },
       },
-      groups: { g1: { displayName: 'G' } },
+      catalogs: { g1: { displayName: 'G' } },
       products: {
         offW: {
-          displayName: 'O', groupId: 'g1', customerType: 'user', freeTrial: undefined, serverOnly: false, stackable: false,
+          displayName: 'O', catalogId: 'g1', customerType: 'user', freeTrial: undefined, serverOnly: false, stackable: false,
           prices: {},
           includedItems: { [itemId]: { quantity: 4, repeat: [1, 'week'], expires: 'never' } },
           isAddOnTo: false,
@@ -262,10 +262,10 @@ describe('getItemQuantityForCustomer - subscriptions', () => {
       items: {
         [itemId]: { displayName: 'S', customerType: 'user' },
       },
-      groups: { g1: { displayName: 'G' } },
+      catalogs: { g1: { displayName: 'G' } },
       products: {
         offR: {
-          displayName: 'O', groupId: 'g1', customerType: 'user', freeTrial: undefined, serverOnly: false, stackable: false,
+          displayName: 'O', catalogId: 'g1', customerType: 'user', freeTrial: undefined, serverOnly: false, stackable: false,
           prices: {},
           includedItems: { [itemId]: { quantity: 7, repeat: [1, 'week'], expires: 'when-repeated' } },
           isAddOnTo: false,
@@ -301,10 +301,10 @@ describe('getItemQuantityForCustomer - subscriptions', () => {
       items: {
         [itemId]: { displayName: 'S', customerType: 'user' },
       },
-      groups: { g1: { displayName: 'G' } },
+      catalogs: { g1: { displayName: 'G' } },
       products: {
         offN: {
-          displayName: 'O', groupId: 'g1', customerType: 'user', freeTrial: undefined, serverOnly: false, stackable: false,
+          displayName: 'O', catalogId: 'g1', customerType: 'user', freeTrial: undefined, serverOnly: false, stackable: false,
           prices: {},
           includedItems: { [itemId]: { quantity: 2, repeat: 'never', expires: 'never' } },
           isAddOnTo: false,
@@ -336,10 +336,10 @@ describe('getItemQuantityForCustomer - subscriptions', () => {
       items: {
         [itemId]: { displayName: 'S', customerType: 'user' },
       },
-      groups: { g1: { displayName: 'G' } },
+      catalogs: { g1: { displayName: 'G' } },
       products: {
         offRC: {
-          displayName: 'O', groupId: 'g1', customerType: 'user', freeTrial: undefined, serverOnly: false, stackable: false,
+          displayName: 'O', catalogId: 'g1', customerType: 'user', freeTrial: undefined, serverOnly: false, stackable: false,
           prices: {},
           includedItems: { [itemId]: { quantity: 7, repeat: [1, 'week'], expires: 'when-repeated' } },
           isAddOnTo: false,
@@ -379,10 +379,10 @@ describe('getItemQuantityForCustomer - subscriptions', () => {
       items: {
         [itemId]: { displayName: 'S', customerType: 'user' },
       },
-      groups: { g1: { displayName: 'G' } },
+      catalogs: { g1: { displayName: 'G' } },
       products: {
         offRR: {
-          displayName: 'O', groupId: 'g1', customerType: 'user', freeTrial: undefined, serverOnly: false, stackable: false,
+          displayName: 'O', catalogId: 'g1', customerType: 'user', freeTrial: undefined, serverOnly: false, stackable: false,
           prices: {},
           includedItems: { [itemId]: { quantity: 7, repeat: [1, 'week'], expires: 'when-repeated' } },
           isAddOnTo: false,
@@ -428,10 +428,10 @@ describe('getItemQuantityForCustomer - subscriptions', () => {
       items: {
         [itemId]: { displayName: 'S', customerType: 'user' },
       },
-      groups: { g1: { displayName: 'G' } },
+      catalogs: { g1: { displayName: 'G' } },
       products: {
         offMD: {
-          displayName: 'O', groupId: 'g1', customerType: 'user', freeTrial: undefined, serverOnly: false, stackable: false,
+          displayName: 'O', catalogId: 'g1', customerType: 'user', freeTrial: undefined, serverOnly: false, stackable: false,
           prices: {},
           includedItems: { [itemId]: { quantity: 10, repeat: [1, 'week'], expires: 'when-repeated' } },
           isAddOnTo: false,
@@ -476,10 +476,10 @@ describe('getItemQuantityForCustomer - subscriptions', () => {
     const itemId = 'subPersistentWhenRepeated';
     const tenancy = createMockTenancy({
       items: { [itemId]: { displayName: 'S', customerType: 'user' } },
-      groups: { g1: { displayName: 'G' } },
+      catalogs: { g1: { displayName: 'G' } },
       products: {
         offBF: {
-          displayName: 'O', groupId: 'g1', customerType: 'user', freeTrial: undefined, serverOnly: false, stackable: false,
+          displayName: 'O', catalogId: 'g1', customerType: 'user', freeTrial: undefined, serverOnly: false, stackable: false,
           prices: {},
           includedItems: { [itemId]: { quantity: 5, repeat: 'never', expires: 'when-repeated' } },
           isAddOnTo: false,
@@ -524,16 +524,16 @@ describe('getItemQuantityForCustomer - subscriptions', () => {
 
     const tenancy = createMockTenancy({
       items: { [itemId]: { displayName: 'S', customerType: 'user' } },
-      groups: { g1: { displayName: 'G1' }, g2: { displayName: 'G2' } },
+      catalogs: { g1: { displayName: 'G1' }, g2: { displayName: 'G2' } },
       products: {
         off1: {
-          displayName: 'O1', groupId: 'g1', customerType: 'user', freeTrial: undefined, serverOnly: false, stackable: false,
+          displayName: 'O1', catalogId: 'g1', customerType: 'user', freeTrial: undefined, serverOnly: false, stackable: false,
           prices: {},
           includedItems: { [itemId]: { quantity: 2, repeat: 'never', expires: 'when-purchase-expires' } },
           isAddOnTo: false,
         },
         off2: {
-          displayName: 'O2', groupId: 'g2', customerType: 'user', freeTrial: undefined, serverOnly: false, stackable: false,
+          displayName: 'O2', catalogId: 'g2', customerType: 'user', freeTrial: undefined, serverOnly: false, stackable: false,
           prices: {},
           includedItems: { [itemId]: { quantity: 1, repeat: 'never', expires: 'when-purchase-expires' } },
           isAddOnTo: false,
@@ -575,10 +575,10 @@ describe('getItemQuantityForCustomer - subscriptions', () => {
 
     const tenancy = createMockTenancy({
       items: { [itemA]: { displayName: 'A', customerType: 'user' }, [itemB]: { displayName: 'B', customerType: 'user' } },
-      groups: { g1: { displayName: 'G' } },
+      catalogs: { g1: { displayName: 'G' } },
       products: {
         offBundle: {
-          displayName: 'OB', groupId: 'g1', customerType: 'user', freeTrial: undefined, serverOnly: false, stackable: false,
+          displayName: 'OB', catalogId: 'g1', customerType: 'user', freeTrial: undefined, serverOnly: false, stackable: false,
           prices: {},
           includedItems: {
             [itemA]: { quantity: 2, repeat: 'never', expires: 'when-purchase-expires' },
@@ -615,10 +615,10 @@ describe('getItemQuantityForCustomer - subscriptions', () => {
 
     const tenancy = createMockTenancy({
       items: { [itemId]: { displayName: 'T', customerType: 'user' } },
-      groups: { g1: { displayName: 'G' } },
+      catalogs: { g1: { displayName: 'G' } },
       products: {
         offT: {
-          displayName: 'OT', groupId: 'g1', customerType: 'user', freeTrial: undefined, serverOnly: false, stackable: false,
+          displayName: 'OT', catalogId: 'g1', customerType: 'user', freeTrial: undefined, serverOnly: false, stackable: false,
           prices: {},
           includedItems: { [itemId]: { quantity: 5, repeat: 'never', expires: 'when-purchase-expires' } },
           isAddOnTo: false,
@@ -650,10 +650,10 @@ describe('getItemQuantityForCustomer - subscriptions', () => {
 
     const tenancy = createMockTenancy({
       items: { [itemId]: { displayName: 'C', customerType: 'user' } },
-      groups: { g1: { displayName: 'G' } },
+      catalogs: { g1: { displayName: 'G' } },
       products: {
         offC: {
-          displayName: 'OC', groupId: 'g1', customerType: 'user', freeTrial: undefined, serverOnly: false, stackable: false,
+          displayName: 'OC', catalogId: 'g1', customerType: 'user', freeTrial: undefined, serverOnly: false, stackable: false,
           prices: {},
           includedItems: { [itemId]: { quantity: 9, repeat: 'never', expires: 'when-purchase-expires' } },
           isAddOnTo: false,
@@ -685,11 +685,11 @@ describe('getItemQuantityForCustomer - subscriptions', () => {
 
     const tenancy = createMockTenancy({
       items: { [itemId]: { displayName: 'U', customerType: 'user' } },
-      groups: {},
+      catalogs: {},
       products: {
         offU: {
           displayName: 'OU',
-          groupId: undefined,
+          catalogId: undefined,
           customerType: 'user',
           freeTrial: undefined,
           serverOnly: false,
@@ -726,7 +726,7 @@ describe('getItemQuantityForCustomer - one-time purchases', () => {
     const tenancy = createMockTenancy({
       items: { [itemId]: { displayName: 'I', customerType: 'custom' } },
       products: {},
-      groups: {},
+      catalogs: {},
     });
 
     const prisma = createMockPrisma({
@@ -755,7 +755,7 @@ describe('getItemQuantityForCustomer - one-time purchases', () => {
     const tenancy = createMockTenancy({
       items: { [itemId]: { displayName: 'I', customerType: 'custom' } },
       products: {},
-      groups: {},
+      catalogs: {},
     });
 
     const prisma = createMockPrisma({
@@ -781,10 +781,10 @@ describe('getItemQuantityForCustomer - one-time purchases', () => {
 
 describe('validatePurchaseSession - one-time purchase rules', () => {
   it('blocks duplicate one-time purchase for same productId', async () => {
-    const tenancy = createMockTenancy({ items: {}, products: {}, groups: {} });
+    const tenancy = createMockTenancy({ items: {}, products: {}, catalogs: {} });
     const prisma = createMockPrisma({
       oneTimePurchase: {
-        findMany: async () => [{ productId: 'product-dup', product: { groupId: undefined }, quantity: 1, createdAt: new Date('2025-01-01T00:00:00.000Z') }],
+        findMany: async () => [{ productId: 'product-dup', product: { catalogId: undefined }, quantity: 1, createdAt: new Date('2025-01-01T00:00:00.000Z') }],
       },
       subscription: { findMany: async () => [] },
     } as any);
@@ -798,7 +798,7 @@ describe('validatePurchaseSession - one-time purchase rules', () => {
         productId: 'product-dup',
         product: {
           displayName: 'X',
-          groupId: undefined,
+          catalogId: undefined,
           customerType: 'custom',
           freeTrial: undefined,
           serverOnly: false,
@@ -814,10 +814,10 @@ describe('validatePurchaseSession - one-time purchase rules', () => {
   });
 
   it('blocks one-time purchase when another one exists in the same group', async () => {
-    const tenancy = createMockTenancy({ items: {}, products: {}, groups: { g1: { displayName: 'G1' } } });
+    const tenancy = createMockTenancy({ items: {}, products: {}, catalogs: { g1: { displayName: 'G1' } } });
     const prisma = createMockPrisma({
       oneTimePurchase: {
-        findMany: async () => [{ productId: 'other-product', product: { groupId: 'g1' }, quantity: 1, createdAt: new Date('2025-01-01T00:00:00.000Z') }],
+        findMany: async () => [{ productId: 'other-product', product: { catalogId: 'g1' }, quantity: 1, createdAt: new Date('2025-01-01T00:00:00.000Z') }],
       },
       subscription: { findMany: async () => [] },
     } as any);
@@ -831,7 +831,7 @@ describe('validatePurchaseSession - one-time purchase rules', () => {
         productId: 'product-y',
         product: {
           displayName: 'Y',
-          groupId: 'g1',
+          catalogId: 'g1',
           customerType: 'custom',
           freeTrial: undefined,
           serverOnly: false,
@@ -843,14 +843,14 @@ describe('validatePurchaseSession - one-time purchase rules', () => {
       },
       priceId: 'price-any',
       quantity: 1,
-    })).rejects.toThrowError('Customer already has a one-time purchase in this product group');
+    })).rejects.toThrowError('Customer already has a one-time purchase in this product catalog');
   });
 
   it('allows purchase when existing one-time is in a different group', async () => {
-    const tenancy = createMockTenancy({ items: {}, products: {}, groups: { g1: { displayName: 'G1' }, g2: { displayName: 'G2' } } });
+    const tenancy = createMockTenancy({ items: {}, products: {}, catalogs: { g1: { displayName: 'G1' }, g2: { displayName: 'G2' } } });
     const prisma = createMockPrisma({
       oneTimePurchase: {
-        findMany: async () => [{ productId: 'other-product', product: { groupId: 'g2' }, quantity: 1, createdAt: new Date('2025-01-01T00:00:00.000Z') }],
+        findMany: async () => [{ productId: 'other-product', product: { catalogId: 'g2' }, quantity: 1, createdAt: new Date('2025-01-01T00:00:00.000Z') }],
       },
       subscription: { findMany: async () => [] },
     } as any);
@@ -864,7 +864,7 @@ describe('validatePurchaseSession - one-time purchase rules', () => {
         productId: 'product-z',
         product: {
           displayName: 'Z',
-          groupId: 'g1',
+          catalogId: 'g1',
           customerType: 'custom',
           freeTrial: undefined,
           serverOnly: false,
@@ -877,8 +877,8 @@ describe('validatePurchaseSession - one-time purchase rules', () => {
       priceId: 'price-any',
       quantity: 1,
     });
-    expect(res.groupId).toBe('g1');
-    expect(res.conflictingGroupSubscriptions.length).toBe(0);
+    expect(res.catalogId).toBe('g1');
+    expect(res.conflictingCatalogSubscriptions.length).toBe(0);
   });
 });
 
@@ -890,10 +890,10 @@ describe('combined sources - one-time purchases + manual changes + subscriptions
     const itemId = 'comboItem';
     const tenancy = createMockTenancy({
       items: { [itemId]: { displayName: 'Combo', customerType: 'user' } },
-      groups: { g1: { displayName: 'G' } },
+      catalogs: { g1: { displayName: 'G' } },
       products: {
         offSub: {
-          displayName: 'Sub', groupId: 'g1', customerType: 'user', freeTrial: undefined, serverOnly: false, stackable: false,
+          displayName: 'Sub', catalogId: 'g1', customerType: 'user', freeTrial: undefined, serverOnly: false, stackable: false,
           prices: {},
           includedItems: { [itemId]: { quantity: 5, repeat: 'never', expires: 'when-purchase-expires' } },
           isAddOnTo: false,

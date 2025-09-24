@@ -162,13 +162,13 @@ it("should include conflicting_products when switching within the same group", a
   await Payments.setup();
   await Project.updateConfig({
     payments: {
-      groups: { grp: { displayName: "Group" } },
+      catalogs: { grp: { displayName: "Group" } },
       products: {
         productA: {
           displayName: "Product A",
           customerType: "user",
           serverOnly: false,
-          groupId: "grp",
+          catalogId: "grp",
           stackable: false,
           prices: { monthly: { USD: "1000", interval: [1, "month"] } },
           includedItems: {},
@@ -177,7 +177,7 @@ it("should include conflicting_products when switching within the same group", a
           displayName: "Product B",
           customerType: "user",
           serverOnly: false,
-          groupId: "grp",
+          catalogId: "grp",
           stackable: false,
           prices: { monthly: { USD: "2000", interval: [1, "month"] } },
           includedItems: {},

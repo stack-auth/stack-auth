@@ -9,38 +9,37 @@ import { prettyPrintWithMagnitudes } from "@stackframe/stack-shared/dist/utils/n
 import { typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
 import {
-    ActionDialog,
-    Button,
-    Collapsible,
-    CollapsibleContent,
-    CollapsibleTrigger,
-    DropdownMenu,
-    DropdownMenuCheckboxItem,
-    DropdownMenuContent,
-    DropdownMenuItem,
-    DropdownMenuSeparator,
-    DropdownMenuTrigger,
-    Input,
-    Label,
-    Popover,
-    PopoverContent,
-    PopoverTrigger,
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-    Separator,
-    SimpleTooltip,
-    Switch,
-    toast
+  ActionDialog,
+  Button,
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+  Input,
+  Label,
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+  Separator,
+  SimpleTooltip,
+  Switch,
+  toast
 } from "@stackframe/stack-ui";
 import { Check, ChevronDown, ChevronsUpDown, Layers, MoreVertical, Pencil, PencilIcon, Plus, Puzzle, Server, Trash2, X } from "lucide-react";
 import { Fragment, useEffect, useId, useMemo, useRef, useState } from "react";
 import { IllustratedInfo } from "../../../../../../../components/illustrated-info";
 import { PageLayout } from "../../page-layout";
 import { useAdminApp } from "../../use-admin-app";
-import { DUMMY_PAYMENTS_CONFIG } from "./dummy-data";
 import { ItemDialog } from "./item-dialog";
 import { ProductDialog } from "./product-dialog";
 
@@ -741,7 +740,7 @@ function ProductCard({ id, activeType, product, allProducts, existingItems, onSa
 
   const itemsList = Object.entries(draft.includedItems);
 
-  const couldBeAddOnTo = allProducts.filter(o => o.product.groupId === draft.groupId && o.id !== id);
+  const couldBeAddOnTo = allProducts.filter(o => o.product.catalogId === draft.catalogId && o.id !== id);
   const isAddOnTo = allProducts.filter(o => draft.isAddOnTo && o.id in draft.isAddOnTo);
 
   const PRODUCT_TOGGLE_OPTIONS = [{
@@ -1045,14 +1044,14 @@ type CatalogViewProps = {
   onDeleteProduct: (id: string) => Promise<void>,
   onCreateNewItem: () => void,
   onOpenProductDetails: (product: Product) => void,
-  onSaveProductWithGroup: (groupId: string, productId: string, product: Product) => Promise<void>,
+  onSaveProductWithGroup: (catalogId: string, productId: string, product: Product) => Promise<void>,
 };
 
 function CatalogView({ groupedProducts, groups, existingItems, onSaveProduct, onDeleteProduct, onCreateNewItem, onOpenProductDetails, onSaveProductWithGroup }: CatalogViewProps) {
   const [activeType, setActiveType] = useState<'user' | 'team' | 'custom'>('user');
-  const [drafts, setDrafts] = useState<Array<{ key: string, groupId: string | undefined, product: Product }>>([]);
+  const [drafts, setDrafts] = useState<Array<{ key: string, catalogId: string | undefined, product: Product }>>([]);
   const [creatingGroupKey, setCreatingGroupKey] = useState<string | undefined>(undefined);
-  const [newGroupId, setNewGroupId] = useState("");
+  const [newCatalogId, setNewCatalogId] = useState("");
   const newGroupInputRef = useRef<HTMLInputElement | null>(null);
 
   const filtered = useMemo(() => {
@@ -1078,9 +1077,9 @@ function CatalogView({ groupedProducts, groups, existingItems, onSaveProduct, on
     prevActiveTypeRef.current = activeType;
     if (!tabChanged) return;
     if (!creatingGroupKey) return;
-    setDrafts(prev => prev.filter(d => d.groupId !== creatingGroupKey));
+    setDrafts(prev => prev.filter(d => d.catalogId !== creatingGroupKey));
     setCreatingGroupKey(undefined);
-    setNewGroupId("");
+    setNewCatalogId("");
   }, [activeType, creatingGroupKey]);
 
 
@@ -1098,7 +1097,7 @@ function CatalogView({ groupedProducts, groups, existingItems, onSaveProduct, on
     return id;
   };
 
-  const groupIdsToRender = useMemo(() => {
+  const catalogIdsToRender = useMemo(() => {
     const s = new Set<string | undefined>();
     filtered.forEach((_products, gid) => s.add(gid));
     const arr = Array.from(s.values());
@@ -1126,18 +1125,18 @@ function CatalogView({ groupedProducts, groups, existingItems, onSaveProduct, on
         </div>
       </div>
 
-      {groupIdsToRender.map((groupId) => {
-        const isNewGroupPlaceholder = !!creatingGroupKey && groupId === creatingGroupKey;
-        const products = isNewGroupPlaceholder ? [] : (filtered.get(groupId) || []);
-        const groupName = !isNewGroupPlaceholder ? (groupId ? ((groups[groupId].displayName || groupId)) : 'No catalog') : '';
+      {catalogIdsToRender.map((catalogId) => {
+        const isNewGroupPlaceholder = !!creatingGroupKey && catalogId === creatingGroupKey;
+        const products = isNewGroupPlaceholder ? [] : (filtered.get(catalogId) || []);
+        const groupName = !isNewGroupPlaceholder ? (catalogId ? ((groups[catalogId].displayName || catalogId)) : 'No catalog') : '';
         return (
-          <div key={groupId || 'ungrouped'}>
+          <div key={catalogId || 'ungrouped'}>
             {isNewGroupPlaceholder ? (
               <div className="mb-3 flex items-center gap-2">
                 <Input
                   ref={newGroupInputRef}
-                  value={newGroupId}
-                  onChange={(e) => setNewGroupId(e.target.value)}
+                  value={newCatalogId}
+                  onChange={(e) => setNewCatalogId(e.target.value)}
                   placeholder="catalog-id"
                   className="w-56"
                 />
@@ -1145,8 +1144,8 @@ function CatalogView({ groupedProducts, groups, existingItems, onSaveProduct, on
                   className="h-8 w-8 inline-flex items-center justify-center rounded hover:bg-muted"
                   onClick={() => {
                     setCreatingGroupKey(undefined);
-                    setNewGroupId("");
-                    setDrafts(prev => prev.filter(d => d.groupId !== groupId));
+                    setNewCatalogId("");
+                    setDrafts(prev => prev.filter(d => d.catalogId !== catalogId));
                   }}
                   aria-label="Cancel new catalog"
                 >
@@ -1175,13 +1174,13 @@ function CatalogView({ groupedProducts, groups, existingItems, onSaveProduct, on
                           ...srcProduct,
                           displayName: `${srcProduct.displayName || id} Copy`,
                         };
-                        setDrafts(prev => [...prev, { key, groupId, product: duplicated }]);
+                        setDrafts(prev => [...prev, { key, catalogId, product: duplicated }]);
                       }}
                       onCreateNewItem={onCreateNewItem}
                       onOpenDetails={(o) => onOpenProductDetails(o)}
                     />
                   ))}
-                  {drafts.filter(d => d.groupId === groupId && d.product.customerType === activeType).map((d) => (
+                  {drafts.filter(d => d.catalogId === catalogId && d.product.customerType === activeType).map((d) => (
                     <ProductCard
                       key={d.key}
                       id={d.key}
@@ -1193,7 +1192,7 @@ function CatalogView({ groupedProducts, groups, existingItems, onSaveProduct, on
                       onSave={async (_ignoredId, product) => {
                         const newId = generateProductId('product');
                         if (isNewGroupPlaceholder) {
-                          const id = newGroupId.trim();
+                          const id = newCatalogId.trim();
                           if (!id) {
                             alert("Catalog ID is required");
                             return;
@@ -1206,10 +1205,10 @@ function CatalogView({ groupedProducts, groups, existingItems, onSaveProduct, on
                             alert("Catalog ID already exists");
                             return;
                           }
-                          const productWithGroup: Product = { ...product, groupId: id };
+                          const productWithGroup: Product = { ...product, catalogId: id };
                           await onSaveProductWithGroup(id, newId, productWithGroup);
                           setCreatingGroupKey(undefined);
-                          setNewGroupId("");
+                          setNewCatalogId("");
                           setDrafts(prev => prev.filter(x => x.key !== d.key));
                           return;
                         }
@@ -1220,12 +1219,12 @@ function CatalogView({ groupedProducts, groups, existingItems, onSaveProduct, on
                         setDrafts(prev => prev.filter(x => x.key !== d.key));
                         if (isNewGroupPlaceholder) {
                           setCreatingGroupKey(undefined);
-                          setNewGroupId("");
+                          setNewCatalogId("");
                         }
                       }}
                       onDuplicate={() => {
                         const cloneKey = `${d.key}-copy`;
-                        setDrafts(prev => ([...prev, { key: cloneKey, groupId: d.groupId, product: { ...d.product, displayName: `${d.product.displayName} Copy` } }]));
+                        setDrafts(prev => ([...prev, { key: cloneKey, catalogId: d.catalogId, product: { ...d.product, displayName: `${d.product.displayName} Copy` } }]));
                       }}
                       onCreateNewItem={onCreateNewItem}
                       onOpenDetails={(o) => onOpenProductDetails(o)}
@@ -1233,7 +1232,7 @@ function CatalogView({ groupedProducts, groups, existingItems, onSaveProduct, on
                         setDrafts(prev => prev.filter(x => x.key !== d.key));
                         if (isNewGroupPlaceholder) {
                           setCreatingGroupKey(undefined);
-                          setNewGroupId("");
+                          setNewCatalogId("");
                         }
                       }}
                     />
@@ -1249,7 +1248,7 @@ function CatalogView({ groupedProducts, groups, existingItems, onSaveProduct, on
                             const newProduct: Product = {
                               displayName: 'New Product',
                               customerType: activeType,
-                              groupId: groupId || undefined,
+                              catalogId: catalogId || undefined,
                               isAddOnTo: false,
                               stackable: false,
                               prices: {},
@@ -1257,7 +1256,7 @@ function CatalogView({ groupedProducts, groups, existingItems, onSaveProduct, on
                               serverOnly: false,
                               freeTrial: undefined,
                             };
-                            setDrafts(prev => [...prev, { key, groupId, product: newProduct }]);
+                            setDrafts(prev => [...prev, { key, catalogId, product: newProduct }]);
                           }}
                         >
                           <Plus className="h-8 w-8" />
@@ -1282,12 +1281,12 @@ function CatalogView({ groupedProducts, groups, existingItems, onSaveProduct, on
             onClick={() => {
               const tempKey = `__new_catalog__${Date.now().toString(36).slice(2, 8)}`;
               setCreatingGroupKey(tempKey);
-              setNewGroupId("");
+              setNewCatalogId("");
               const draftKey = generateProductId("product");
               const newProduct: Product = {
                 displayName: 'New Product',
                 customerType: activeType,
-                groupId: tempKey,
+                catalogId: tempKey,
                 isAddOnTo: false,
                 stackable: false,
                 prices: {},
@@ -1295,7 +1294,7 @@ function CatalogView({ groupedProducts, groups, existingItems, onSaveProduct, on
                 serverOnly: false,
                 freeTrial: undefined,
               };
-              setDrafts(prev => [...prev, { key: draftKey, groupId: tempKey, product: newProduct }]);
+              setDrafts(prev => [...prev, { key: draftKey, catalogId: tempKey, product: newProduct }]);
             }}
           >
             <Plus className="h-8 w-8" />
@@ -1370,20 +1369,20 @@ export default function PageClient({ onViewChange }: { onViewChange: (view: "lis
   const config = project.useConfig();
   const [shouldUseDummyData, setShouldUseDummyData] = useState(false);
   const switchId = useId();
-  const paymentsConfig: CompleteConfig['payments'] = shouldUseDummyData ? (DUMMY_PAYMENTS_CONFIG as CompleteConfig['payments']) : config.payments;
+  const paymentsConfig: CompleteConfig['payments'] = config.payments;
 
 
-  // Group products by groupId and sort by customer type priority
+  // Group products by catalogId and sort by customer type priority
   const groupedProducts = useMemo(() => {
     const groups = new Map<string | undefined, Array<{ id: string, product: Product }>>();
 
     // Group products
     for (const [id, product] of typedEntries(paymentsConfig.products)) {
-      const groupId = product.groupId;
-      if (!groups.has(groupId)) {
-        groups.set(groupId, []);
+      const catalogId = product.catalogId;
+      if (!groups.has(catalogId)) {
+        groups.set(catalogId, []);
       }
-      groups.get(groupId)!.push({ id, product });
+      groups.get(catalogId)!.push({ id, product });
     }
 
     // Sort products within each group by customer type, then by ID
@@ -1419,10 +1418,10 @@ export default function PageClient({ onViewChange }: { onViewChange: (view: "lis
     const sortedGroups = new Map<string | undefined, Array<{ id: string, product: Product }>>();
 
     // Helper to get group priority
-    const getGroupPriority = (groupId: string | undefined) => {
-      if (!groupId) return 999; // Ungrouped always last
+    const getGroupPriority = (catalogId: string | undefined) => {
+      if (!catalogId) return 999; // Ungrouped always last
 
-      const products = groups.get(groupId) || [];
+      const products = groups.get(catalogId) || [];
       if (products.length === 0) return 999;
 
       // Get the most common customer type in the group
@@ -1447,8 +1446,8 @@ export default function PageClient({ onViewChange }: { onViewChange: (view: "lis
     });
 
     // Rebuild map in sorted order
-    sortedEntries.forEach(([groupId, products]) => {
-      sortedGroups.set(groupId, products);
+    sortedEntries.forEach(([catalogId, products]) => {
+      sortedGroups.set(catalogId, products);
     });
 
     return sortedGroups;
@@ -1487,7 +1486,7 @@ export default function PageClient({ onViewChange }: { onViewChange: (view: "lis
   const existingProductsList = typedEntries(paymentsConfig.products).map(([id, product]) => ({
     id,
     displayName: product.displayName,
-    groupId: product.groupId,
+    catalogId: product.catalogId,
     customerType: product.customerType
   }));
 
@@ -1511,7 +1510,7 @@ export default function PageClient({ onViewChange }: { onViewChange: (view: "lis
   // If no products and items, show welcome screen instead of everything
   const innerContent = (
     <PageLayout
-      title='Product'
+      title='Products'
       actions={
         <div className="flex items-center gap-2 self-center">
           <Label htmlFor={switchId}>Pricing table</Label>
@@ -1523,7 +1522,7 @@ export default function PageClient({ onViewChange }: { onViewChange: (view: "lis
       <div className="flex-1">
         <CatalogView
           groupedProducts={groupedProducts}
-          groups={paymentsConfig.groups}
+          groups={paymentsConfig.catalogs}
           existingItems={existingItemsList}
           onSaveProduct={handleInlineSaveProduct}
           onDeleteProduct={handleDeleteProduct}
@@ -1532,9 +1531,9 @@ export default function PageClient({ onViewChange }: { onViewChange: (view: "lis
             setEditingProduct(product);
             setShowProductDialog(true);
           }}
-          onSaveProductWithGroup={async (groupId, productId, product) => {
+          onSaveProductWithGroup={async (catalogId, productId, product) => {
             await project.updateConfig({
-              [`payments.groups.${groupId}`]: {},
+              [`payments.catalogs.${catalogId}`]: {},
               [`payments.products.${productId}`]: product,
             });
             toast({ title: "Product created" });
@@ -1560,7 +1559,7 @@ export default function PageClient({ onViewChange }: { onViewChange: (view: "lis
         onSave={async (productId, product) => await handleSaveProduct(productId, product)}
         editingProduct={editingProduct ?? undefined}
         existingProducts={existingProductsList}
-        existingGroups={Object.fromEntries(Object.entries(paymentsConfig.groups).map(([id, g]) => [id, { displayName: g.displayName || id }]))}
+        existingGroups={Object.fromEntries(Object.entries(paymentsConfig.catalogs).map(([id, g]) => [id, { displayName: g.displayName || id }]))}
         existingItems={existingItemsList}
         onCreateNewItem={handleCreateItem}
       />

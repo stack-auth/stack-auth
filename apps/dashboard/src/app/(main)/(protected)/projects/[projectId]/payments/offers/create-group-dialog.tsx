@@ -10,7 +10,7 @@ type CreateGroupDialogProps = {
 };
 
 export function CreateGroupDialog({ open, onOpenChange, onCreate }: CreateGroupDialogProps) {
-  const [groupId, setGroupId] = useState("");
+  const [catalogId, setCatalogId] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [errors, setErrors] = useState<{ id?: string, displayName?: string }>({});
 
@@ -18,9 +18,9 @@ export function CreateGroupDialog({ open, onOpenChange, onCreate }: CreateGroupD
     const newErrors: { id?: string, displayName?: string } = {};
 
     // Validate group ID
-    if (!groupId.trim()) {
+    if (!catalogId.trim()) {
       newErrors.id = "Group ID is required";
-    } else if (!/^[a-z0-9-]+$/.test(groupId)) {
+    } else if (!/^[a-z0-9-]+$/.test(catalogId)) {
       newErrors.id = "Group ID must contain only lowercase letters, numbers, and hyphens";
     }
 
@@ -34,17 +34,17 @@ export function CreateGroupDialog({ open, onOpenChange, onCreate }: CreateGroupD
       return;
     }
 
-    onCreate({ id: groupId.trim(), displayName: displayName.trim() });
+    onCreate({ id: catalogId.trim(), displayName: displayName.trim() });
 
     // Reset form
-    setGroupId("");
+    setCatalogId("");
     setDisplayName("");
     setErrors({});
     onOpenChange(false);
   };
 
   const handleClose = () => {
-    setGroupId("");
+    setCatalogId("");
     setDisplayName("");
     setErrors({});
     onOpenChange(false);
@@ -69,9 +69,9 @@ export function CreateGroupDialog({ open, onOpenChange, onCreate }: CreateGroupD
             </Label>
             <Input
               id="group-id"
-              value={groupId}
+              value={catalogId}
               onChange={(e) => {
-                setGroupId(e.target.value);
+                setCatalogId(e.target.value);
                 setErrors(prev => ({ ...prev, id: undefined }));
               }}
               placeholder="e.g., pricing-tiers"

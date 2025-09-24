@@ -781,7 +781,7 @@ export function ApiSidebarContent({ pages = [] }: { pages?: PageData[] }) {
       organized[section] ??= {
         title: getApiSectionTitle(section),
         pages: [],
-        groups: {}
+        catalogs: {}
       };
 
       if (rest.length === 1) {

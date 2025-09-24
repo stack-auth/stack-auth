@@ -162,7 +162,7 @@ it("should include conflicting_group_offers when switching within the same group
   await Payments.setup();
   await Project.updateConfig({
     payments: {
-      groups: { grp: { displayName: "Group" } },
+      catalogs: { grp: { displayName: "Group" } },
       products: {
         offerA: {
           displayName: "Offer A",

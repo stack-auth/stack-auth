@@ -40,7 +40,7 @@ export async function ensureProductIdOrInlineProduct(
       throw new StackAssertionError("Inline product does not exist, this should never happen", { inlineProduct, productId });
     }
     return {
-      groupId: undefined,
+      catalogId: undefined,
       isAddOnTo: false,
       displayName: inlineProduct.display_name,
       customerType: inlineProduct.customer_type,
@@ -246,7 +246,7 @@ type Subscription = {
    */
   productId: string | null,
   /**
-   * `null` for test mode purchases and group default products
+   * `null` for test mode purchases and catalog default products
    */
   stripeSubscriptionId: string | null,
   product: yup.InferType<typeof productSchema>,
@@ -267,7 +267,7 @@ export async function getSubscriptions(options: {
   customerType: "user" | "team" | "custom",
   customerId: string,
 }) {
-  const groups = options.tenancy.config.payments.groups;
+  const catalogs = options.tenancy.config.payments.catalogs;
   const products = options.tenancy.config.payments.products;
   const subscriptions: Subscription[] = [];
   const dbSubscriptions = await options.prisma.subscription.findMany({
@@ -278,7 +278,7 @@ export async function getSubscriptions(options: {
     },
   });
 
-  const groupsWithDbSubscriptions = new Set<string>();
+  const catalogsWithDbSubscriptions = new Set<string>();
   for (const s of dbSubscriptions) {
     const product = s.productId ? getOrUndefined(products, s.productId) : s.product as yup.InferType<typeof productSchema>;
     if (!product) continue;
@@ -293,20 +293,20 @@ export async function getSubscriptions(options: {
       createdAt: s.createdAt,
       stripeSubscriptionId: s.stripeSubscriptionId,
     });
-    if (product.groupId !== undefined) {
-      groupsWithDbSubscriptions.add(product.groupId);
+    if (product.catalogId !== undefined) {
+      catalogsWithDbSubscriptions.add(product.catalogId);
     }
   }
 
-  for (const groupId of Object.keys(groups)) {
-    if (groupsWithDbSubscriptions.has(groupId)) continue;
-    const productsInGroup = typedEntries(products).filter(([_, product]) => product.groupId === groupId);
-    const defaultGroupProduct = productsInGroup.find(([_, product]) => product.prices === "include-by-default");
-    if (defaultGroupProduct) {
+  for (const catalogId of Object.keys(catalogs)) {
+    if (catalogsWithDbSubscriptions.has(catalogId)) continue;
+    const productsInCatalog = typedEntries(products).filter(([_, product]) => product.catalogId === catalogId);
+    const defaultCatalogProduct = productsInCatalog.find(([_, product]) => product.prices === "include-by-default");
+    if (defaultCatalogProduct) {
       subscriptions.push({
         id: null,
-        productId: defaultGroupProduct[0],
-        product: defaultGroupProduct[1],
+        productId: defaultCatalogProduct[0],
+        product: defaultCatalogProduct[1],
         quantity: 1,
         currentPeriodStart: DEFAULT_PRODUCT_START_DATE,
         currentPeriodEnd: null,
@@ -375,9 +375,9 @@ export async function validatePurchaseSession(options: {
   quantity: number,
 }): Promise<{
   selectedPrice: SelectedPrice | undefined,
-  groupId: string | undefined,
+  catalogId: string | undefined,
   subscriptions: Subscription[],
-  conflictingGroupSubscriptions: Subscription[],
+  conflictingCatalogSubscriptions: Subscription[],
 }> {
   const { prisma, tenancy, codeData, priceId, quantity } = options;
   const product = codeData.product;
@@ -424,36 +424,36 @@ export async function validatePurchaseSession(options: {
   }
   const addOnProductIds = product.isAddOnTo ? typedKeys(product.isAddOnTo) : [];
   if (product.isAddOnTo && !subscriptions.some((s) => s.productId && addOnProductIds.includes(s.productId))) {
-    throw new StatusError(400, "This product is an add-on to an product that the customer does not have");
+    throw new StatusError(400, "This product is an add-on to a product that the customer does not have");
   }
 
-  const groups = tenancy.config.payments.groups;
-  const groupId = typedKeys(groups).find((g) => product.groupId === g);
+  const catalogs = tenancy.config.payments.catalogs;
+  const catalogId = typedKeys(catalogs).find((g) => product.catalogId === g);
 
-  // Block purchasing any product in the same group if a one-time purchase exists in that group
-  if (groupId) {
-    const hasOneTimeInGroup = existingOneTimePurchases.some((p) => {
+  // Block purchasing any product in the same catalog if a one-time purchase exists in that catalog
+  if (catalogId) {
+    const hasOneTimeInCatalog = existingOneTimePurchases.some((p) => {
       const product = p.product as yup.InferType<typeof productSchema>;
-      return product.groupId === groupId;
+      return product.catalogId === catalogId;
     });
-    if (hasOneTimeInGroup) {
-      throw new StatusError(400, "Customer already has a one-time purchase in this product group");
+    if (hasOneTimeInCatalog) {
+      throw new StatusError(400, "Customer already has a one-time purchase in this product catalog");
     }
   }
 
-  let conflictingGroupSubscriptions: Subscription[] = [];
-  if (groupId) {
-    conflictingGroupSubscriptions = subscriptions.filter((subscription) => (
+  let conflictingCatalogSubscriptions: Subscription[] = [];
+  if (catalogId) {
+    conflictingCatalogSubscriptions = subscriptions.filter((subscription) => (
       subscription.id &&
       subscription.productId &&
-      subscription.product.groupId === groupId &&
+      subscription.product.catalogId === catalogId &&
       isActiveSubscription(subscription) &&
       subscription.product.prices !== "include-by-default" &&
       (!product.isAddOnTo || !addOnProductIds.includes(subscription.productId))
     ));
   }
 
-  return { selectedPrice, groupId, subscriptions, conflictingGroupSubscriptions };
+  return { selectedPrice, catalogId, subscriptions, conflictingCatalogSubscriptions };
 }
 
 export function getClientSecretFromStripeSubscription(subscription: Stripe.Subscription): string {

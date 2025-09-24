@@ -67,15 +67,15 @@ export const POST = createSmartRouteHandler({
 
     const alreadyBoughtNonStackable = !!(subscriptions.find((s) => s.productId === verificationCode.data.productId) && product.stackable !== true);
 
-    const groups = tenancy.config.payments.groups;
-    const groupId = Object.keys(groups).find((g) => product.groupId === g);
+    const groups = tenancy.config.payments.catalogs;
+    const catalogId = Object.keys(groups).find((g) => product.catalogId === g);
     let conflictingGroupProducts: { product_id: string, display_name: string }[] = [];
-    if (groupId) {
+    if (catalogId) {
       const isSubscribable = product.prices !== "include-by-default" && Object.values(product.prices).some((p: any) => p && p.interval);
       if (isSubscribable) {
         const conflicts = subscriptions.filter((subscription) => (
           subscription.productId &&
-          subscription.product.groupId === groupId &&
+          subscription.product.catalogId === catalogId &&
           isActiveSubscription(subscription) &&
           subscription.product.prices !== "include-by-default" &&
           (!product.isAddOnTo || !Object.keys(product.isAddOnTo).includes(subscription.productId))

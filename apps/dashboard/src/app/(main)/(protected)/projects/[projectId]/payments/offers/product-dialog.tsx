@@ -22,7 +22,7 @@ type ProductDialogProps = {
   onSave: (productId: string, product: Product) => Promise<void>,
   editingProductId?: string,
   editingProduct?: Product,
-  existingProducts: Array<{ id: string, displayName: string, groupId?: string, customerType: string }>,
+  existingProducts: Array<{ id: string, displayName: string, catalogId?: string, customerType: string }>,
   existingGroups: Record<string, { displayName: string }>,
   existingItems: Array<{ id: string, displayName: string, customerType: string }>,
   onCreateNewItem?: () => void,
@@ -62,7 +62,7 @@ export function ProductDialog({
   const [productId, setProductId] = useState(editingProductId ?? "");
   const [displayName, setDisplayName] = useState(editingProduct?.displayName || "");
   const [customerType, setCustomerType] = useState<'user' | 'team' | 'custom'>(editingProduct?.customerType || 'user');
-  const [groupId, setGroupId] = useState(editingProduct?.groupId || "");
+  const [catalogId, setCatalogId] = useState(editingProduct?.catalogId || "");
   const [isAddOn, setIsAddOn] = useState(!!editingProduct?.isAddOnTo);
   const [isAddOnTo, setIsAddOnTo] = useState<string[]>(editingProduct?.isAddOnTo !== false ? Object.keys(editingProduct?.isAddOnTo || {}) : []);
   const [stackable, setStackable] = useState(editingProduct?.stackable || false);
@@ -135,7 +135,7 @@ export function ProductDialog({
 
     if (isAddOn && isAddOnTo.length > 0) {
       const addOnGroups = new Set(
-        isAddOnTo.map(productId => existingProducts.find(o => o.id === productId)?.groupId)
+        isAddOnTo.map(productId => existingProducts.find(o => o.id === productId)?.catalogId)
       );
       if (addOnGroups.size > 1) {
         newErrors.isAddOnTo = "All selected products must be in the same group";
@@ -166,7 +166,7 @@ export function ProductDialog({
     const product: Product = {
       displayName,
       customerType,
-      groupId: groupId || undefined,
+      catalogId: catalogId || undefined,
       isAddOnTo: isAddOn ? Object.fromEntries(isAddOnTo.map(id => [id, true])) : false,
       stackable,
       prices: freeByDefault ? "include-by-default" : prices,
@@ -186,7 +186,7 @@ export function ProductDialog({
       setProductId("");
       setDisplayName("");
       setCustomerType('user');
-      setGroupId("");
+      setCatalogId("");
       setIsAddOn(false);
       setIsAddOnTo([]);
       setStackable(false);
@@ -458,14 +458,14 @@ export function ProductDialog({
                   <div className="grid gap-2">
                     <Label htmlFor="group">Product Group (Optional)</Label>
                     <Select
-                      value={groupId || 'no-group'}
+                      value={catalogId || 'no-group'}
                       onValueChange={(value) => {
                         if (value === 'create-new') {
                           setShowGroupDialog(true);
                         } else if (value === 'no-group') {
-                          setGroupId('');
+                          setCatalogId('');
                         } else {
-                          setGroupId(value);
+                          setCatalogId(value);
                         }
                       }}
                     >
@@ -556,9 +556,9 @@ export function ProductDialog({
                                 />
                                 <Label htmlFor={`addon-to-${product.id}`} className="cursor-pointer text-sm">
                                   {product.displayName} ({product.id})
-                                  {product.groupId && (
+                                  {product.catalogId && (
                                     <span className="text-muted-foreground ml-1">
-                                      • {existingGroups[product.groupId].displayName || product.groupId}
+                                      • {existingGroups[product.catalogId].displayName || product.catalogId}
                                     </span>
                                   )}
                                 </Label>
@@ -774,7 +774,7 @@ export function ProductDialog({
         onOpenChange={setShowGroupDialog}
         onCreate={(group) => {
           // In a real app, you'd save the group to the backend
-          setGroupId(group.id);
+          setCatalogId(group.id);
           setShowGroupDialog(false);
         }}
       />

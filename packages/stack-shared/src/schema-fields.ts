@@ -568,7 +568,7 @@ export const priceOrIncludeByDefaultSchema = yupUnion(
 );
 export const productSchema = yupObject({
   displayName: yupString(),
-  groupId: userSpecifiedIdSchema("groupId").optional().meta({ openapiField: { description: 'The ID of the group this product belongs to. Within a group, all products are mutually exclusive unless they are an add-on to another product in the group.', exampleValue: 'group-id' } }),
+  catalogId: userSpecifiedIdSchema("catalogId").optional().meta({ openapiField: { description: 'The ID of the catalog this product belongs to. Within a catalog, all products are mutually exclusive unless they are an add-on to another product in the catalog.', exampleValue: 'catalog-id' } }),
   isAddOnTo: yupUnion(
     yupBoolean().isFalse(),
     yupRecord(

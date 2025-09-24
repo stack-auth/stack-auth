@@ -158,7 +158,7 @@ it("should return client secret for one-time price even if a conflicting group s
   await Payments.setup();
   await Project.updateConfig({
     payments: {
-      groups: { grp: { displayName: "Test Group" } },
+      catalogs: { grp: { displayName: "Test Group" } },
       products: {
         subOffer: {
           displayName: "Sub Offer",
@@ -583,7 +583,7 @@ it("should update existing stripe subscription when switching offers within a gr
   await Payments.setup();
   await Project.updateConfig({
     payments: {
-      groups: {
+      catalogs: {
         grp: { displayName: "Test Group" },
       },
       products: {
@@ -689,7 +689,7 @@ it("should cancel DB-only subscription then create Stripe subscription when swit
   await Payments.setup();
   await Project.updateConfig({
     payments: {
-      groups: {
+      catalogs: {
         grp: { displayName: "Test Group" },
       },
       products: {
@@ -844,7 +844,7 @@ it("should block one-time purchase in same group after prior one-time purchase i
   await Payments.setup();
   await Project.updateConfig({
     payments: {
-      groups: { grp: { displayName: "Group" } },
+      catalogs: { grp: { displayName: "Group" } },
       products: {
         offerA: {
           displayName: "Offer A",

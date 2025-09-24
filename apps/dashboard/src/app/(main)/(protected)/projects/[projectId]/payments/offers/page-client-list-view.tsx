@@ -12,7 +12,6 @@ import React, { ReactNode, useEffect, useId, useMemo, useRef, useState } from "r
 import { IllustratedInfo } from "../../../../../../../components/illustrated-info";
 import { PageLayout } from "../../page-layout";
 import { useAdminApp } from "../../use-admin-app";
-import { DUMMY_PAYMENTS_CONFIG } from "./dummy-data";
 import { ItemDialog } from "./item-dialog";
 import { ListSection } from "./list-section";
 import { ProductDialog } from "./product-dialog";
@@ -338,7 +337,7 @@ function ProductsList({
 
     const filtered = new Map<string | undefined, Array<{ id: string, product: any }>>();
 
-    groupedProducts.forEach((products, groupId) => {
+    groupedProducts.forEach((products, catalogId) => {
       const filteredProducts = products.filter(({ id, product }) => {
         const query = searchQuery.toLowerCase();
         return (
@@ -349,7 +348,7 @@ function ProductsList({
       });
 
       if (filteredProducts.length > 0) {
-        filtered.set(groupId, filteredProducts);
+        filtered.set(catalogId, filteredProducts);
       }
     });
 
@@ -369,12 +368,12 @@ function ProductsList({
       searchPlaceholder="Search products..."
     >
       <GroupedList>
-        {[...filteredGroupedProducts.entries()].map(([groupId, products]) => {
-          const group = groupId ? paymentsGroups[groupId] : undefined;
+        {[...filteredGroupedProducts.entries()].map(([catalogId, products]) => {
+          const group = catalogId ? paymentsGroups[catalogId] : undefined;
           const groupName = group?.displayName;
 
           return (
-            <ListGroup key={groupId || 'ungrouped'} title={groupId ? (groupName || groupId) : "Other"}>
+            <ListGroup key={catalogId || 'ungrouped'} title={catalogId ? (groupName || catalogId) : "Other"}>
               {products.map(({ id, product }) => {
                 const isEven = globalIndex % 2 === 0;
                 globalIndex++;
@@ -600,10 +599,9 @@ export default function PageClient({ onViewChange }: { onViewChange: (view: "lis
   const stackAdminApp = useAdminApp();
   const project = stackAdminApp.useProject();
   const config = project.useConfig();
-  const [shouldUseDummyData, setShouldUseDummyData] = useState(false);
   const switchId = useId();
 
-  const paymentsConfig = shouldUseDummyData ? DUMMY_PAYMENTS_CONFIG : config.payments;
+  const paymentsConfig = config.payments;
 
   // Refs for products and items
   const containerRef = useRef<HTMLDivElement>(null);
@@ -625,17 +623,17 @@ export default function PageClient({ onViewChange }: { onViewChange: (view: "lis
     return refs;
   }, [paymentsConfig.items]);
 
-  // Group products by groupId and sort by customer type priority
+  // Group products by catalogId and sort by customer type priority
   const groupedProducts = useMemo(() => {
     const groups = new Map<string | undefined, Array<{ id: string, product: typeof paymentsConfig.products[keyof typeof paymentsConfig.products] }>>();
 
     // Group products
     Object.entries(paymentsConfig.products).forEach(([id, product]: [string, any]) => {
-      const groupId = product.groupId;
-      if (!groups.has(groupId)) {
-        groups.set(groupId, []);
+      const catalogId = product.catalogId;
+      if (!groups.has(catalogId)) {
+        groups.set(catalogId, []);
       }
-      groups.get(groupId)!.push({ id, product });
+      groups.get(catalogId)!.push({ id, product });
     });
 
     // Sort products within each group by customer type, then by ID
@@ -671,10 +669,10 @@ export default function PageClient({ onViewChange }: { onViewChange: (view: "lis
     const sortedGroups = new Map<string | undefined, Array<{ id: string, product: Product }>>();
 
     // Helper to get group priority
-    const getGroupPriority = (groupId: string | undefined) => {
-      if (!groupId) return 999; // Ungrouped always last
+    const getGroupPriority = (catalogId: string | undefined) => {
+      if (!catalogId) return 999; // Ungrouped always last
 
-      const products = groups.get(groupId) || [];
+      const products = groups.get(catalogId) || [];
       if (products.length === 0) return 999;
 
       // Get the most common customer type in the group
@@ -699,8 +697,8 @@ export default function PageClient({ onViewChange }: { onViewChange: (view: "lis
     });
 
     // Rebuild map in sorted order
-    sortedEntries.forEach(([groupId, products]) => {
-      sortedGroups.set(groupId, products);
+    sortedEntries.forEach(([catalogId, products]) => {
+      sortedGroups.set(catalogId, products);
     });
 
     return sortedGroups;
@@ -758,7 +756,7 @@ export default function PageClient({ onViewChange }: { onViewChange: (view: "lis
   const existingProductsList = Object.entries(paymentsConfig.products).map(([id, product]: [string, any]) => ({
     id,
     displayName: product.displayName,
-    groupId: product.groupId,
+    catalogId: product.catalogId,
     customerType: product.customerType
   }));
 
@@ -824,7 +822,7 @@ export default function PageClient({ onViewChange }: { onViewChange: (view: "lis
               <div className="flex-1">
                 <ProductsList
                   groupedProducts={groupedProducts}
-                  paymentsGroups={paymentsConfig.groups}
+                  paymentsGroups={paymentsConfig.catalogs}
                   hoveredItemId={hoveredItemId}
                   getConnectedProducts={getConnectedProducts}
                   productRefs={productRefs}
@@ -884,7 +882,7 @@ export default function PageClient({ onViewChange }: { onViewChange: (view: "lis
             {activeTab === "products" ? (
               <ProductsList
                 groupedProducts={groupedProducts}
-                paymentsGroups={paymentsConfig.groups}
+                paymentsGroups={paymentsConfig.catalogs}
                 hoveredItemId={hoveredItemId}
                 getConnectedProducts={getConnectedProducts}
                 onProductMouseEnter={setHoveredProductId}
@@ -927,7 +925,7 @@ export default function PageClient({ onViewChange }: { onViewChange: (view: "lis
         onSave={async (productId, product) => await handleSaveProduct(productId, product)}
         editingProduct={editingProduct}
         existingProducts={existingProductsList}
-        existingGroups={paymentsConfig.groups}
+        existingGroups={paymentsConfig.catalogs}
         existingItems={existingItemsList}
         onCreateNewItem={handleCreateItem}
       />

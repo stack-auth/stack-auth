@@ -98,14 +98,14 @@ async function seed() {
         }
       },
       payments: {
-        groups: {
+        catalogs: {
           plans: {
             displayName: "Plans",
           }
         },
         products: {
           team: {
-            groupId: "plans",
+            catalogId: "plans",
             displayName: "Team",
             customerType: "team",
             serverOnly: false,
@@ -126,7 +126,7 @@ async function seed() {
             }
           },
           growth: {
-            groupId: "plans",
+            catalogId: "plans",
             displayName: "Growth",
             customerType: "team",
             serverOnly: false,
@@ -147,7 +147,7 @@ async function seed() {
             }
           },
           free: {
-            groupId: "plans",
+            catalogId: "plans",
             displayName: "Free",
             customerType: "team",
             serverOnly: false,
@@ -162,7 +162,7 @@ async function seed() {
             }
           },
           "extra-admins": {
-            groupId: "plans",
+            catalogId: "plans",
             displayName: "Extra Admins",
             customerType: "team",
             serverOnly: false,

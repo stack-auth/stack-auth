@@ -37,7 +37,7 @@ export const POST = createSmartRouteHandler({
     }
     const prisma = await getPrismaClientForTenancy(auth.tenancy);
 
-    const { selectedPrice, conflictingGroupSubscriptions } = await validatePurchaseSession({
+    const { selectedPrice, conflictingCatalogSubscriptions } = await validatePurchaseSession({
       prisma,
       tenancy: auth.tenancy,
       codeData: data,
@@ -63,8 +63,8 @@ export const POST = createSmartRouteHandler({
       });
     } else {
       // Cancel conflicting subscriptions for TEST_MODE as well, then create new TEST_MODE subscription
-      if (conflictingGroupSubscriptions.length > 0) {
-        const conflicting = conflictingGroupSubscriptions[0];
+      if (conflictingCatalogSubscriptions.length > 0) {
+        const conflicting = conflictingCatalogSubscriptions[0];
         if (conflicting.stripeSubscriptionId) {
           const stripe = await getStripeForAccount({ tenancy: auth.tenancy });
           await stripe.subscriptions.cancel(conflicting.stripeSubscriptionId);
