@@ -18,6 +18,8 @@ import { AsideSection, CollapsibleMethodSection, CollapsibleTypesSection, Method
 
 import { SDKOverview } from './components/sdk/overview';
 
+import { CursorIcon, StackAuthIcon } from './components/icons';
+import { Button } from './components/mdx/button';
 import { Mermaid } from './components/mdx/mermaid';
 import { Accordion, AccordionGroup, ClickableTableOfContents, CodeBlocks, Icon, Markdown, ParamField } from './components/mdx/sdk-components';
 import { PropTable } from './components/prop-table';
@@ -78,6 +80,11 @@ export function getMDXComponents(components?: MDXComponents): MDXComponents {
     CollapsibleMethodSection,
     CollapsibleTypesSection,
     SDKOverview,
-    AppleSecretGenerator
+    AppleSecretGenerator,
+    // Logo Icons
+    StackAuthIcon,
+    CursorIcon,
+    // UI Components
+    Button
   } as MDXComponents;
 }
