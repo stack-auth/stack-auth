@@ -31,6 +31,13 @@ class UserError extends Error {
   }
 }
 
+class UnansweredQuestionError extends UserError {
+  constructor(message: string) {
+    super(message + ", or use --on-question <guess|ask> to answer questions automatically or interactively");
+    this.name = "UnansweredQuestionError";
+  }
+}
+
 type OnQuestionMode = "ask" | "guess" | "error";
 
 function isTruthyEnv(name: string): boolean {
@@ -464,15 +471,15 @@ const Steps = {
     const maybeNextProject = await Steps.maybeGetNextProjectInfo({ packageJson });
     if (!("error" in maybeNextProject)) {
       return "next";
+    if (onQuestionMode === "error") {
+      throw new UnansweredQuestionError("Unable to auto-detect project type (checked for Next.js and React dependencies). Re-run with one of: --js, --react, or --next");
     }
-    if (packageJson.dependencies?.["react"] || packageJson.dependencies?.["react-dom"]) {
-      return "react";
     }
     if (onQuestionMode === "guess") {
       return "js";
     }
     if (onQuestionMode === "error") {
-      throw new UserError("Unable to determine the integration type. Re-run with one of: --js, --react, or --next.");
+      throw new UserError("Unable to auto-detect project type (checked for Next.js and React dependencies). Re-run with one of: --js, --react, or --next.");
     }
 
     const { type } = await inquirer.prompt([
@@ -798,9 +805,9 @@ ${indentation}tokenStore: ${tokenStore},${jsOptions}${nextClientOptions}
       throw new UserError("Installation aborted.");
     }
   },
-
-  async getServerOrClientOrBoth(): Promise<Array<"server" | "client">> {
-    if (isClient && isServer) return ["server", "client"];
+    if (onQuestionMode === "error") {
+      throw new UnansweredQuestionError("Ambiguous installation type. Re-run with --server, --client, or both");
+    }
     if (isServer) return ["server"];
     if (isClient) return ["client"];
 
@@ -938,12 +945,12 @@ function getLineIndex(lines: string[], stringIndex: number): [number, number] {
 }
 
 async function getProjectPath(): Promise<string> {
-  if (savedProjectPath === undefined) {
-    savedProjectPath = process.cwd();
-
-    const askForPathModification = !fs.existsSync(
-      path.join(savedProjectPath, "package.json")
-    );
+      if (onQuestionMode === "guess") {
+        throw new UnansweredQuestionError(`No package.json file found in the project directory ${savedProjectPath}. Re-run with a valid project path as the first argument`);
+      }
+      if (onQuestionMode === "error") {
+        throw new UnansweredQuestionError(`No package.json file found in ${savedProjectPath}. Re-run providing the project path argument (e.g. 'init-stack <project-path>')`);
+      }
     if (askForPathModification) {
       if (onQuestionMode === "guess") {
         throw new UserError(`No package.json file found in the project directory ${savedProjectPath}. Re-run with a valid project path as the first argument.`);
@@ -987,9 +994,9 @@ async function promptPackageManager(): Promise<string> {
     return "yarn";
   } else if (!yarnLock && pnpmLock && !npmLock && !bunLock) {
     return "pnpm";
-  } else if (!yarnLock && !pnpmLock && npmLock && !bunLock) {
-    return "npm";
-  } else if (!yarnLock && !pnpmLock && !npmLock && bunLock) {
+  if (onQuestionMode === "error") {
+    throw new UnansweredQuestionError("Unable to determine the package manager. Re-run with one of: --npm, --yarn, --pnpm, or --bun");
+  }
     return "bun";
   }
 
