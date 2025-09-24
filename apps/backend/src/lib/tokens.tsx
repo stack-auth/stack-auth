@@ -88,7 +88,7 @@ export async function decodeAccessToken(accessToken: string, { allowAnonymous }:
       throw error;
     }
 
-    const isAnonymous = payload.role === 'anon';
+    const isAnonymous = payload.is_anonymous ?? /* legacy, now we always set role to authenticated, TODO next-release remove */ payload.role === 'anon';
     if (aud.endsWith(":anon") && !isAnonymous) {
       console.warn("Unparsable access token. Role is set to anon, but audience is not an anonymous audience.", { accessToken, payload });
       return Result.error(new KnownErrors.UnparsableAccessToken());
