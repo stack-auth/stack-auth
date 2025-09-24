@@ -24,6 +24,37 @@ const jsLikeFileExtensions: string[] = [
   "js",
 ];
 
+type OnQuestionMode = "ask" | "guess" | "error";
+
+function isTruthyEnv(name: string): boolean {
+  const v = process.env[name];
+  if (!v) return false;
+  const s = String(v).toLowerCase();
+  return s === "1" || s === "true" || s === "yes";
+}
+
+function isNonInteractiveEnv(): boolean {
+  if (isTruthyEnv("CI")) return true;
+  if (isTruthyEnv("GITHUB_ACTIONS")) return true;
+  if (isTruthyEnv("NONINTERACTIVE")) return true;
+  if (isTruthyEnv("NO_INTERACTIVE")) return true;
+  if (isTruthyEnv("PNPM_NON_INTERACTIVE")) return true;
+  if (isTruthyEnv("YARN_ENABLE_NON_INTERACTIVE")) return true;
+  if (isTruthyEnv("CURSOR_AGENT")) return true;
+  if (isTruthyEnv("CLAUDECODE")) return true;
+  return false;
+}
+
+function resolveOnQuestionMode(opt: string): OnQuestionMode {
+  if (!opt || opt === "default") {
+    return isNonInteractiveEnv() ? "error" : "ask";
+  }
+  if (opt === "ask" || opt === "guess" || opt === "error") {
+    return opt;
+  }
+  throw new UserError(`Invalid argument for --on-question: "${opt}". Valid modes are: "ask", "guess", "error", "default".`);
+}
+
 // Setup command line parsing
 const program = new Command();
 program
@@ -46,7 +77,7 @@ program
   .option("--project-id <project-id>", "Project ID to use in setup")
   .option("--publishable-client-key <publishable-client-key>", "Publishable client key to use in setup")
   .option("--no-browser", "Don't open browser for environment variable setup")
-  .option("--agent-mode", "Run without prompting for any input")
+  .option("--on-question <mode>", "How to handle interactive questions: ask | guess | error | default", "default")
   .addHelpText('after', `
 For more information, please visit https://docs.stack-auth.com/getting-started/setup`);
 
@@ -64,7 +95,10 @@ const isClient: boolean = options.client || false;
 const isServer: boolean = options.server || false;
 const projectIdFromArgs: string | undefined = options.projectId;
 const publishableClientKeyFromArgs: string | undefined = options.publishableClientKey;
-const agentMode = !!options.agentMode;
+
+
+const onQuestionMode: OnQuestionMode = resolveOnQuestionMode(options.onQuestion);
+
 // Commander negates the boolean options with prefix `--no-`
 // so `--no-browser` becomes `browser: false`
 const noBrowser: boolean = !options.browser;
@@ -436,8 +470,11 @@ const Steps = {
     if (packageJson.dependencies?.["react"] || packageJson.dependencies?.["react-dom"]) {
       return "react";
     }
-    if (agentMode) {
+    if (onQuestionMode === "guess") {
       return "js";
+    }
+    if (onQuestionMode === "error") {
+      throw new UserError("Unable to determine the integration type. Re-run with one of: --js, --react, or --next.");
     }
 
     const { type } = await inquirer.prompt([
@@ -751,7 +788,7 @@ ${indentation}tokenStore: ${tokenStore},${jsOptions}${nextClientOptions}
       react: "React",
     } as const;
     const typeString = typeStringMap[type];
-    const isReady = agentMode || (await inquirer.prompt([
+    const isReady = (onQuestionMode !== "ask") || (await inquirer.prompt([
       {
         type: "confirm",
         name: "ready",
@@ -769,8 +806,9 @@ ${indentation}tokenStore: ${tokenStore},${jsOptions}${nextClientOptions}
     if (isServer) return ["server"];
     if (isClient) return ["client"];
 
-    if (agentMode) {
-      throw new UserError("Please specify the installation type using the --server or --client argument.");
+    if (onQuestionMode === "guess") return ["server", "client"];
+    if (onQuestionMode === "error") {
+      throw new UserError("Ambiguous installation type. Re-run with --server, --client, or both.");
     }
 
     return (await inquirer.prompt([{
@@ -909,8 +947,11 @@ async function getProjectPath(): Promise<string> {
       path.join(savedProjectPath, "package.json")
     );
     if (askForPathModification) {
-      if (agentMode) {
-        throw new UserError(`No package.json file found in the project directory ${savedProjectPath}. Please specify the correct project path using the --project-path argument, or create a new project before running the wizard.`);
+      if (onQuestionMode === "guess") {
+        throw new UserError(`No package.json file found in the project directory ${savedProjectPath}. Re-run with a valid project path as the first argument.`);
+      }
+      if (onQuestionMode === "error") {
+        throw new UserError(`No package.json file found in ${savedProjectPath}. Re-run providing the project path argument (e.g. 'init-stack <project-path>').`);
       }
       savedProjectPath = (
         await inquirer.prompt([
@@ -954,8 +995,9 @@ async function promptPackageManager(): Promise<string> {
     return "bun";
   }
 
-  if (agentMode) {
-    throw new UserError("Unable to determine which package manager to use. Please rerun the init command and specify the package manager using exactly one of the following arguments: --npm, --yarn, --pnpm, or --bun.");
+  if (onQuestionMode === "guess") return "npm";
+  if (onQuestionMode === "error") {
+    throw new UserError("Unable to determine the package manager. Re-run with one of: --npm, --yarn, --pnpm, or --bun.");
   }
 
   const answers = await inquirer.prompt([
