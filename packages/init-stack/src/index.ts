@@ -479,7 +479,7 @@ const Steps = {
       return "js";
     }
     if (onQuestionMode === "error") {
-      throw new UserError("Unable to auto-detect project type (checked for Next.js and React dependencies). Re-run with one of: --js, --react, or --next.");
+      throw new UnansweredQuestionError("Unable to auto-detect project type (checked for Next.js and React dependencies). Re-run with one of: --js, --react, or --next.");
     }
 
     const { type } = await inquirer.prompt([
@@ -813,7 +813,7 @@ ${indentation}tokenStore: ${tokenStore},${jsOptions}${nextClientOptions}
 
     if (onQuestionMode === "guess") return ["server", "client"];
     if (onQuestionMode === "error") {
-      throw new UserError("Ambiguous installation type. Re-run with --server, --client, or both.");
+      throw new UnansweredQuestionError("Ambiguous installation type. Re-run with --server, --client, or both.");
     }
 
     return (await inquirer.prompt([{
@@ -999,7 +999,7 @@ async function promptPackageManager(): Promise<string> {
 
   if (onQuestionMode === "guess") return "npm";
   if (onQuestionMode === "error") {
-    throw new UserError("Unable to determine the package manager. Re-run with one of: --npm, --yarn, --pnpm, or --bun.");
+    throw new UnansweredQuestionError("Unable to determine the package manager. Re-run with one of: --npm, --yarn, --pnpm, or --bun.");
   }
 
   const answers = await inquirer.prompt([
