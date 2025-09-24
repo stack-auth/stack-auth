@@ -31,6 +31,13 @@ class UserError extends Error {
   }
 }
 
+class UnansweredQuestionError extends UserError {
+  constructor(message: string) {
+    super(message + ", or use --on-question <guess|ask> to answer questions automatically or interactively");
+    this.name = "UnansweredQuestionError";
+  }
+}
+
 type OnQuestionMode = "ask" | "guess" | "error";
 
 function isTruthyEnv(name: string): boolean {
@@ -472,7 +479,7 @@ const Steps = {
       return "js";
     }
     if (onQuestionMode === "error") {
-      throw new UserError("Unable to determine the integration type. Re-run with one of: --js, --react, or --next.");
+      throw new UserError("Unable to auto-detect project type (checked for Next.js and React dependencies). Re-run with one of: --js, --react, or --next.");
     }
 
     const { type } = await inquirer.prompt([
@@ -945,10 +952,7 @@ async function getProjectPath(): Promise<string> {
       path.join(savedProjectPath, "package.json")
     );
     if (askForPathModification) {
-      if (onQuestionMode === "guess") {
-        throw new UserError(`No package.json file found in the project directory ${savedProjectPath}. Re-run with a valid project path as the first argument.`);
-      }
-      if (onQuestionMode === "error") {
+      if (onQuestionMode === "guess" || onQuestionMode === "error") {
         throw new UserError(`No package.json file found in ${savedProjectPath}. Re-run providing the project path argument (e.g. 'init-stack <project-path>').`);
       }
       savedProjectPath = (
