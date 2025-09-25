@@ -4,14 +4,17 @@ import { z } from "zod";
 import { apiSource, source } from "../../../../../lib/source";
 
 import { PostHog } from "posthog-node";
+import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 
 const nodeClient = process.env.NEXT_PUBLIC_POSTHOG_KEY
   ? new PostHog(process.env.NEXT_PUBLIC_POSTHOG_KEY)
   : null;
 
 // Helper function to extract OpenAPI details from Enhanced API Page content
-async function extractOpenApiDetails(content: string, page: { data: { title: string, description?: string } }) {
-
+async function extractOpenApiDetails(
+  content: string,
+  page: { data: { title: string, description?: string } },
+) {
   const componentMatch = content.match(/<EnhancedAPIPage\s+([^>]+)>/);
   if (componentMatch) {
     const props = componentMatch[1];
@@ -117,6 +120,104 @@ ID: ${page.url}
   )
   .join("\n");
 
+async function getDocsById({ id }: { id: string }): Promise<CallToolResult> {
+  nodeClient?.capture({
+    event: "get_docs_by_id",
+    properties: { id },
+    distinctId: "mcp-handler",
+  });
+  const page = allPages.find((page) => page.url === id);
+  if (!page) {
+    return { content: [{ type: "text", text: "Page not found." }] };
+  }
+  // Check if this is an API page and handle OpenAPI spec extraction
+  const isApiPage = page.url.startsWith("/api/");
+
+  // Try primary path first, then fallback to docs/ prefix or api/ prefix
+  const filePath = `content/${page.file.path}`;
+  try {
+    const content = await readFile(filePath, "utf-8");
+
+    if (isApiPage && content.includes("<EnhancedAPIPage")) {
+      // Extract OpenAPI information from API pages
+      try {
+        return await extractOpenApiDetails(content, page);
+      } catch {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Title: ${page.data.title}\nDescription: ${page.data.description}\nContent:\n${content}`,
+            },
+          ],
+        };
+      }
+    } else {
+      // Regular doc page - return content as before
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Title: ${page.data.title}\nDescription: ${page.data.description}\nContent:\n${content}`,
+          },
+        ],
+      };
+    }
+  } catch {
+    // Try alternative paths
+    const altPaths = [
+      `content/docs/${page.file.path}`,
+      `content/api/${page.file.path}`,
+    ];
+
+    for (const altPath of altPaths) {
+      try {
+        const content = await readFile(altPath, "utf-8");
+
+        if (isApiPage && content.includes("<EnhancedAPIPage")) {
+          // Same OpenAPI extraction logic for alternative path
+          try {
+            return await extractOpenApiDetails(content, page);
+          } catch {
+            // If parsing fails, return the raw content
+            return {
+              content: [
+                {
+                  type: "text",
+                  text: `Title: ${page.data.title}\nDescription: ${page.data.description}\nContent:\n${content}`,
+                },
+              ],
+            };
+          }
+        } else {
+          return {
+            content: [
+              {
+                type: "text",
+                text: `Title: ${page.data.title}\nDescription: ${page.data.description}\nContent:\n${content}`,
+              },
+            ],
+          };
+        }
+      } catch {
+        // Continue to next path
+        continue;
+      }
+    }
+
+    // If all paths fail
+    return {
+      content: [
+        {
+          type: "text",
+          text: `Title: ${page.data.title}\nDescription: ${page.data.description}\nError: Could not read file at any of the attempted paths: ${filePath}, ${altPaths.join(", ")}`,
+        },
+      ],
+      isError: true,
+    };
+  }
+}
+
 const handler = createMcpHandler(
   async (server) => {
     server.tool(
@@ -132,109 +233,13 @@ const handler = createMcpHandler(
         return {
           content: [{ type: "text", text: pageSummaries }],
         };
-      }
+      },
     );
     server.tool(
       "get_docs_by_id",
       "Use this tool to retrieve a specific Stack Auth Documentation page by its ID. It gives you the full content of the page so you can know exactly how to use specific Stack Auth APIs. Whenever using Stack Auth, you should always check the documentation first to have the most up-to-date information. When you write code using Stack Auth documentation you should reference the content you used in your comments.",
       { id: z.string() },
-      async ({ id }) => {
-        nodeClient?.capture({
-          event: "get_docs_by_id",
-          properties: { id },
-          distinctId: "mcp-handler",
-        });
-        const page = allPages.find((page) => page.url === id);
-        if (!page) {
-          return { content: [{ type: "text", text: "Page not found." }] };
-        }
-        // Check if this is an API page and handle OpenAPI spec extraction
-        const isApiPage = page.url.startsWith('/api/');
-
-        // Try primary path first, then fallback to docs/ prefix or api/ prefix
-        const filePath = `content/${page.file.path}`;
-        try {
-          const content = await readFile(filePath, "utf-8");
-
-          if (isApiPage && content.includes('<EnhancedAPIPage')) {
-            // Extract OpenAPI information from API pages
-            try {
-              return await extractOpenApiDetails(content, page);
-            } catch {
-              return {
-                content: [
-                  {
-                    type: "text",
-                    text: `Title: ${page.data.title}\nDescription: ${page.data.description}\nContent:\n${content}`,
-                  },
-                ],
-              };
-            }
-          } else {
-            // Regular doc page - return content as before
-            return {
-              content: [
-                {
-                  type: "text",
-                  text: `Title: ${page.data.title}\nDescription: ${page.data.description}\nContent:\n${content}`,
-                },
-              ],
-            };
-          }
-        } catch {
-          // Try alternative paths
-          const altPaths = [
-            `content/docs/${page.file.path}`,
-            `content/api/${page.file.path}`,
-          ];
-
-          for (const altPath of altPaths) {
-            try {
-              const content = await readFile(altPath, "utf-8");
-
-              if (isApiPage && content.includes('<EnhancedAPIPage')) {
-                // Same OpenAPI extraction logic for alternative path
-                try {
-                  return await extractOpenApiDetails(content, page);
-                } catch {
-                  // If parsing fails, return the raw content
-                  return {
-                    content: [
-                      {
-                        type: "text",
-                        text: `Title: ${page.data.title}\nDescription: ${page.data.description}\nContent:\n${content}`,
-                      },
-                    ],
-                  };
-                }
-              } else {
-                return {
-                  content: [
-                    {
-                      type: "text",
-                      text: `Title: ${page.data.title}\nDescription: ${page.data.description}\nContent:\n${content}`,
-                    },
-                  ],
-                };
-              }
-            } catch {
-              // Continue to next path
-              continue;
-            }
-          }
-
-          // If all paths fail
-          return {
-            content: [
-              {
-                type: "text",
-                text: `Title: ${page.data.title}\nDescription: ${page.data.description}\nError: Could not read file at any of the attempted paths: ${filePath}, ${altPaths.join(', ')}`,
-              },
-            ],
-            isError: true,
-          };
-        }
-      }
+      getDocsById,
     );
     server.tool(
       "get_stack_auth_setup_instructions",
@@ -270,7 +275,45 @@ const handler = createMcpHandler(
             isError: true,
           };
         }
-      }
+      },
+    );
+
+    // Search tool for ChatGPT deep research
+    // Reference: https://platform.openai.com/docs/mcp#search-tool
+    server.tool(
+      "search",
+      "Search for Stack Auth documentation pages.\n\nUse this tool to find documentation pages that contain a specific keyword or phrase.",
+      { query: z.string() },
+      async ({ query }) => {
+        const results: { id: unknown, title: string, url: string }[] = allPages
+          .filter(
+            (page) =>
+              page.data.title.includes(query) ||
+              page.data.content.includes(query),
+          )
+          .map((page) => ({
+            id: page.url,
+            title: page.data.title,
+            url: page.url,
+          }));
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({ results }),
+            },
+          ],
+        };
+      },
+    );
+
+    // Fetch tool for ChatGPT deep research
+    // Reference: https://platform.openai.com/docs/mcp#fetch-tool
+    server.tool(
+      "fetch",
+      "Fetch a particular Stack Auth Documentation page by its ID.\n\nThis tool is identical to `get_doc_by_id`.",
+      { id: z.string() },
+      getDocsById,
     );
   },
   {
@@ -301,6 +344,34 @@ const handler = createMcpHandler(
             type: "object",
             properties: {},
             required: [],
+          },
+        },
+        search: {
+          description:
+            "Search for Stack Auth documentation pages.\n\nUse this tool to find documentation pages that contain a specific keyword or phrase.",
+          parameters: {
+            type: "object",
+            properties: {
+              query: {
+                type: "string",
+                description: "The search query to use.",
+              },
+            },
+            required: ["query"],
+          },
+        },
+        fetch: {
+          description:
+            "Fetch a particular Stack Auth Documentation page by its ID.\n\nThis tool is identical to `get_doc_by_id`.",
+          parameters: {
+            type: "object",
+            properties: {
+              id: {
+                type: "string",
+                description: "The ID of the documentation page to retrieve.",
+              },
+            },
+            required: ["id"],
           },
         },
       },
