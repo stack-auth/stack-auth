@@ -245,7 +245,7 @@ const handler = createMcpHandler(
       "get_stack_auth_setup_instructions",
       "Use this tool when the user wants to set up authentication in a new project. It provides step-by-step instructions for installing and configuring Stack Auth authentication.",
       {},
-      async ({}) => {
+      async () => {
         nodeClient?.capture({
           event: "get_stack_auth_setup_instructions",
           properties: {},
@@ -285,11 +285,13 @@ const handler = createMcpHandler(
       "Search for Stack Auth documentation pages.\n\nUse this tool to find documentation pages that contain a specific keyword or phrase.",
       { query: z.string() },
       async ({ query }) => {
-        const results: { id: unknown, title: string, url: string }[] = allPages
+        const q = query.toLowerCase();
+        const results = allPages
           .filter(
             (page) =>
-              page.data.title.includes(query) ||
-              page.data.content.includes(query),
+              page.data.title.toLowerCase().includes(q) ||
+              page.data.description?.toLowerCase().includes(q) ||
+              page.data.content.toLowerCase().includes(q),
           )
           .map((page) => ({
             id: page.url,
@@ -311,7 +313,7 @@ const handler = createMcpHandler(
     // Reference: https://platform.openai.com/docs/mcp#fetch-tool
     server.tool(
       "fetch",
-      "Fetch a particular Stack Auth Documentation page by its ID.\n\nThis tool is identical to `get_doc_by_id`.",
+      "Fetch a particular Stack Auth Documentation page by its ID.\n\nThis tool is identical to `get_docs_by_id`.",
       { id: z.string() },
       getDocsById,
     );
@@ -362,7 +364,7 @@ const handler = createMcpHandler(
         },
         fetch: {
           description:
-            "Fetch a particular Stack Auth Documentation page by its ID.\n\nThis tool is identical to `get_doc_by_id`.",
+            "Fetch a particular Stack Auth Documentation page by its ID.\n\nThis tool is identical to `get_docs_by_id`.",
           parameters: {
             type: "object",
             properties: {
