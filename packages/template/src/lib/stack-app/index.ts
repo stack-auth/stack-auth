@@ -28,7 +28,9 @@ export {
   stackAppInternalsSymbol
 } from "./common";
 export type {
-  GetUserOptions,
+  GetCurrentUserOptions,
+  /** @deprecated Use GetCurrentUserOptions instead */
+  GetCurrentUserOptions as GetUserOptions,
   HandlerUrls,
   OAuthScopesOnSignIn
 } from "./common";

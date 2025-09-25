@@ -21,7 +21,7 @@ import { useMemo } from "react"; // THIS_LINE_PLATFORM react-like
 import * as yup from "yup";
 import { constructRedirectUrl } from "../../../../utils/url";
 import { ApiKey, ApiKeyCreationOptions, ApiKeyUpdateOptions, apiKeyCreationOptionsToCrud, apiKeyUpdateOptionsToCrud } from "../../api-keys";
-import { GetUserOptions, HandlerUrls, OAuthScopesOnSignIn, TokenStoreInit } from "../../common";
+import { GetCurrentUserOptions, HandlerUrls, OAuthScopesOnSignIn, TokenStoreInit, ConvexCtx } from "../../common";
 import { OAuthConnection } from "../../connected-accounts";
 import { ServerContactChannel, ServerContactChannelCreateOptions, ServerContactChannelUpdateOptions, serverContactChannelCreateOptionsToCrud, serverContactChannelUpdateOptionsToCrud } from "../../contact-channels";
 import { InlineOffer, ServerItem } from "../../customers";
@@ -149,6 +149,13 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
         team_id: teamId,
       }, null, "server");
       return result as TeamApiKeysCrud['Server']['Read'][];
+    }
+  );
+
+  private readonly _convexIdentitySubjectCache = createCache<[ConvexCtx], string | null>(
+    async ([ctx]) => {
+      const identity = await ctx.auth.getUserIdentity();
+      return identity ? identity.subject : null;
     }
   );
 
@@ -870,6 +877,31 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
     }
     return await this.getServerUserById(apiKeyObject.userId);
   }
+
+  protected async _getUserByConvex(ctx: ConvexCtx, includeAnonymous: boolean): Promise<ServerUser | null> {
+    const identity = await ctx.auth.getUserIdentity();
+    if (identity === null) {
+      return null;
+    }
+    const user = await this.getServerUserById(identity.subject);
+    if (user?.isAnonymous && !includeAnonymous) {
+      return null;
+    }
+    return user;
+  }
+  // IF_PLATFORM react-like
+  protected _useUserByConvex(ctx: ConvexCtx, includeAnonymous: boolean): ServerUser | null {
+    const subject = useAsyncCache(this._convexIdentitySubjectCache, [ctx] as const, "useUserByConvex()");
+    if (subject === null) {
+      return null;
+    }
+    const user = this.useUserById(subject);
+    if (user?.isAnonymous && !includeAnonymous) {
+      return null;
+    }
+    return user;
+  }
+  // END_PLATFORM
   // IF_PLATFORM react-like
   protected _useUserByApiKey(apiKey: string): ServerUser | null {
     const apiKeyObject = this._useUserApiKey({ apiKey });
@@ -903,18 +935,22 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
     return this._serverUserFromCrud(crud);
   }
 
-  async getUser(options: GetUserOptions<HasTokenStore> & { or: 'redirect' }): Promise<ProjectCurrentServerUser<ProjectId>>;
-  async getUser(options: GetUserOptions<HasTokenStore> & { or: 'throw' }): Promise<ProjectCurrentServerUser<ProjectId>>;
-  async getUser(options: GetUserOptions<HasTokenStore> & { or: 'anonymous' }): Promise<ProjectCurrentServerUser<ProjectId>>;
-  async getUser(options?: GetUserOptions<HasTokenStore>): Promise<ProjectCurrentServerUser<ProjectId> | null>;
+  async getUser(options: GetCurrentUserOptions<HasTokenStore> & { or: 'redirect' }): Promise<ProjectCurrentServerUser<ProjectId>>;
+  async getUser(options: GetCurrentUserOptions<HasTokenStore> & { or: 'throw' }): Promise<ProjectCurrentServerUser<ProjectId>>;
+  async getUser(options: GetCurrentUserOptions<HasTokenStore> & { or: 'anonymous' }): Promise<ProjectCurrentServerUser<ProjectId>>;
+  async getUser(options?: GetCurrentUserOptions<HasTokenStore>): Promise<ProjectCurrentServerUser<ProjectId> | null>;
   async getUser(id: string): Promise<ServerUser | null>;
   async getUser(options: { apiKey: string }): Promise<ServerUser | null>;
-  async getUser(options?: string | GetUserOptions<HasTokenStore> | { apiKey: string }): Promise<ProjectCurrentServerUser<ProjectId> | ServerUser | null> {
+  async getUser(options: { from: "convex", ctx: ConvexCtx, or?: "return-null" | "anonymous" }): Promise<ServerUser | null>;
+  async getUser(options?: string | GetCurrentUserOptions<HasTokenStore> | { apiKey: string } | { from: "convex", ctx: ConvexCtx }): Promise<ProjectCurrentServerUser<ProjectId> | ServerUser | null> {
     if (typeof options === "string") {
       return await this.getServerUserById(options);
     } else if (typeof options === "object" && "apiKey" in options) {
       return await this._getUserByApiKey(options.apiKey);
+    } else if (typeof options === "object" && "from" in options && options.from as string === "convex") {
+      return await this._getUserByConvex(options.ctx, "or" in options && options.or === "anonymous");
     } else {
+      options = options as GetCurrentUserOptions<HasTokenStore> | undefined;
       // TODO this code is duplicated from the client app; fix that
       this._ensurePersistentTokenStore(options?.tokenStore);
       const session = await this._getSession(options?.tokenStore);
@@ -959,18 +995,22 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
   }
 
   // IF_PLATFORM react-like
-  useUser(options: GetUserOptions<HasTokenStore> & { or: 'redirect' }): ProjectCurrentServerUser<ProjectId>;
-  useUser(options: GetUserOptions<HasTokenStore> & { or: 'throw' }): ProjectCurrentServerUser<ProjectId>;
-  useUser(options: GetUserOptions<HasTokenStore> & { or: 'anonymous' }): ProjectCurrentServerUser<ProjectId>;
-  useUser(options?: GetUserOptions<HasTokenStore>): ProjectCurrentServerUser<ProjectId> | null;
+  useUser(options: GetCurrentUserOptions<HasTokenStore> & { or: 'redirect' }): ProjectCurrentServerUser<ProjectId>;
+  useUser(options: GetCurrentUserOptions<HasTokenStore> & { or: 'throw' }): ProjectCurrentServerUser<ProjectId>;
+  useUser(options: GetCurrentUserOptions<HasTokenStore> & { or: 'anonymous' }): ProjectCurrentServerUser<ProjectId>;
+  useUser(options?: GetCurrentUserOptions<HasTokenStore>): ProjectCurrentServerUser<ProjectId> | null;
   useUser(id: string): ServerUser | null;
   useUser(options: { apiKey: string }): ServerUser | null;
-  useUser(options?: GetUserOptions<HasTokenStore> | string | { apiKey: string }): ProjectCurrentServerUser<ProjectId> | ServerUser | null {
+  useUser(options: { from: "convex", ctx: ConvexCtx, or?: "return-null" | "anonymous" }): ServerUser | null;
+  useUser(options?: GetCurrentUserOptions<HasTokenStore> | string | { apiKey: string } | { from: "convex", ctx: ConvexCtx }): ProjectCurrentServerUser<ProjectId> | ServerUser | null {
     if (typeof options === "string") {
       return this.useUserById(options);
     } else if (typeof options === "object" && "apiKey" in options) {
       return this._useUserByApiKey(options.apiKey);
+    } else if (typeof options === "object" && "from" in options && options.from as string === "convex") {
+      return this._useUserByConvex(options.ctx, "or" in options && options.or === "anonymous");
     } else {
+      options = options as GetCurrentUserOptions<HasTokenStore> | undefined;
       // TODO this code is duplicated from the client app; fix that
       this._ensurePersistentTokenStore(options?.tokenStore);
 

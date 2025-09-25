@@ -34,7 +34,8 @@ it("anonymous JWT has different kid and role", async ({ expect }) => {
     JSON.parse(Buffer.from(part, 'base64url').toString())
   );
 
-  expect(payload.role).toBe('anon');
+  expect(payload.role).toBe('authenticated');
+  expect(payload.is_anonymous).toBe(true);
   expect(header.kid).toBeTruthy();
 
   // The kid should be different from regular users

@@ -13,6 +13,7 @@ import * as jose from 'jose';
 import { JOSEError, JWTExpired } from 'jose/errors';
 import { SystemEventTypes, logEvent } from './events';
 import { Tenancy } from './tenancies';
+import { AccessTokenPayload } from '@stackframe/stack-shared/dist/sessions';
 
 export const authorizationHeaderSchema = yupString().matches(/^StackSession [^ ]+$/);
 
@@ -87,7 +88,7 @@ export async function decodeAccessToken(accessToken: string, { allowAnonymous }:
       throw error;
     }
 
-    const isAnonymous = payload.role === 'anon';
+    const isAnonymous = payload.is_anonymous as boolean | undefined ?? /* legacy, now we always set role to authenticated, TODO next-release remove */ payload.role === 'anon';
     if (aud.endsWith(":anon") && !isAnonymous) {
       console.warn("Unparsable access token. Role is set to anon, but audience is not an anonymous audience.", { accessToken, payload });
       return Result.error(new KnownErrors.UnparsableAccessToken());
@@ -108,7 +109,7 @@ export async function decodeAccessToken(accessToken: string, { allowAnonymous }:
       branchId: branchId,
       refreshTokenId: payload.refresh_token_id ?? payload.refreshTokenId,
       exp: payload.exp,
-      isAnonymous: payload.role === 'anon',
+      isAnonymous: payload.is_anonymous ?? /* legacy, now we always set role to authenticated, TODO next-release remove */ payload.role === 'anon',
     });
 
     return Result.ok(result);
@@ -149,20 +150,24 @@ export async function generateAccessToken(options: {
     }
   );
 
+  const payload: Omit<AccessTokenPayload, "iss" | "aud"> = {
+    sub: options.userId,
+    project_id: options.tenancy.project.id,
+    branch_id: options.tenancy.branchId,
+    refresh_token_id: options.refreshTokenId,
+    role: 'authenticated',
+    name: user.display_name,
+    email: user.primary_email,
+    email_verified: user.primary_email_verified,
+    selected_team_id: user.selected_team_id,
+    is_anonymous: user.is_anonymous,
+  };
+
   return await signJWT({
     issuer: getIssuer(options.tenancy.project.id, user.is_anonymous),
     audience: getAudience(options.tenancy.project.id, user.is_anonymous),
-    payload: {
-      sub: options.userId,
-      branch_id: options.tenancy.branchId,
-      refresh_token_id: options.refreshTokenId,
-      role: user.is_anonymous ? 'anon' : 'authenticated',
-      name: user.display_name,
-      email: user.primary_email,
-      email_verified: user.primary_email_verified,
-      selected_team_id: user.selected_team_id,
-    },
     expirationTime: getEnvVariable("STACK_ACCESS_TOKEN_EXPIRATION_TIME", "10min"),
+    payload,
   });
 }
 

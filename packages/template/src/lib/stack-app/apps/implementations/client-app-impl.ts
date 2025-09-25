@@ -36,7 +36,7 @@ import { constructRedirectUrl } from "../../../../utils/url";
 import { addNewOAuthProviderOrScope, callOAuthCallback, signInWithOAuth } from "../../../auth";
 import { CookieHelper, createBrowserCookieHelper, createCookieHelper, createPlaceholderCookieHelper, deleteCookieClient, getCookieClient, setOrDeleteCookie, setOrDeleteCookieClient } from "../../../cookie";
 import { ApiKey, ApiKeyCreationOptions, ApiKeyUpdateOptions, apiKeyCreationOptionsToCrud } from "../../api-keys";
-import { GetUserOptions, HandlerUrls, OAuthScopesOnSignIn, RedirectMethod, RedirectToOptions, RequestLike, TokenStoreInit, stackAppInternalsSymbol } from "../../common";
+import { ConvexCtx, GetCurrentPartialUserOptions, GetCurrentUserOptions, HandlerUrls, OAuthScopesOnSignIn, RedirectMethod, RedirectToOptions, RequestLike, TokenStoreInit, stackAppInternalsSymbol } from "../../common";
 import { OAuthConnection } from "../../connected-accounts";
 import { ContactChannel, ContactChannelCreateOptions, ContactChannelUpdateOptions, contactChannelCreateOptionsToCrud, contactChannelUpdateOptionsToCrud } from "../../contact-channels";
 import { Customer, Item } from "../../customers";
@@ -44,7 +44,7 @@ import { NotificationCategory } from "../../notification-categories";
 import { TeamPermission } from "../../permissions";
 import { AdminOwnedProject, AdminProjectUpdateOptions, Project, adminProjectCreateOptionsToCrud } from "../../projects";
 import { EditableTeamMemberProfile, Team, TeamCreateOptions, TeamInvitation, TeamUpdateOptions, TeamUser, teamCreateOptionsToCrud, teamUpdateOptionsToCrud } from "../../teams";
-import { ActiveSession, Auth, BaseUser, CurrentUser, InternalUserExtra, OAuthProvider, ProjectCurrentUser, UserExtra, UserUpdateOptions, userUpdateOptionsToCrud } from "../../users";
+import { ActiveSession, Auth, BaseUser, CurrentUser, InternalUserExtra, OAuthProvider, ProjectCurrentUser, SyncedPartialUser, TokenPartialUser, UserExtra, UserUpdateOptions, userUpdateOptionsToCrud } from "../../users";
 import { StackClientApp, StackClientAppConstructorOptions, StackClientAppJson } from "../interfaces/client-app";
 import { _StackAdminAppImplIncomplete } from "./admin-app-impl";
 import { TokenObject, clientVersion, createCache, createCacheBySession, createEmptyTokenStore, getBaseUrl, getDefaultExtraRequestHeaders, getDefaultProjectId, getDefaultPublishableClientKey, getUrls } from "./common";
@@ -227,6 +227,10 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     async (session, [customCustomerId, itemId]) => {
       return await this._interface.getItem({ customCustomerId, itemId }, session);
     }
+  );
+
+  private readonly _convexPartialUserCache = createCache<[unknown], TokenPartialUser | null>(
+    async ([ctx]) => await this._getPartialUserFromConvex(ctx as any)
   );
 
   private _anonymousSignUpInProgress: Promise<{ accessToken: string, refreshToken: string }> | null = null;
@@ -583,7 +587,8 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
 
   protected async _getSession(overrideTokenStoreInit?: TokenStoreInit): Promise<InternalSession> {
     const tokenStore = this._getOrCreateTokenStore(await this._createCookieHelper(), overrideTokenStoreInit);
-    return this._getSessionFromTokenStore(tokenStore);
+    const session = this._getSessionFromTokenStore(tokenStore);
+    return session;
   }
 
   // IF_PLATFORM react-like
@@ -1505,11 +1510,11 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     return result;
   }
 
-  async getUser(options: GetUserOptions<HasTokenStore> & { or: 'redirect' }): Promise<ProjectCurrentUser<ProjectId>>;
-  async getUser(options: GetUserOptions<HasTokenStore> & { or: 'throw' }): Promise<ProjectCurrentUser<ProjectId>>;
-  async getUser(options: GetUserOptions<HasTokenStore> & { or: 'anonymous' }): Promise<ProjectCurrentUser<ProjectId>>;
-  async getUser(options?: GetUserOptions<HasTokenStore>): Promise<ProjectCurrentUser<ProjectId> | null>;
-  async getUser(options?: GetUserOptions<HasTokenStore>): Promise<ProjectCurrentUser<ProjectId> | null> {
+  async getUser(options: GetCurrentUserOptions<HasTokenStore> & { or: 'redirect' }): Promise<ProjectCurrentUser<ProjectId>>;
+  async getUser(options: GetCurrentUserOptions<HasTokenStore> & { or: 'throw' }): Promise<ProjectCurrentUser<ProjectId>>;
+  async getUser(options: GetCurrentUserOptions<HasTokenStore> & { or: 'anonymous' }): Promise<ProjectCurrentUser<ProjectId>>;
+  async getUser(options?: GetCurrentUserOptions<HasTokenStore>): Promise<ProjectCurrentUser<ProjectId> | null>;
+  async getUser(options?: GetCurrentUserOptions<HasTokenStore>): Promise<ProjectCurrentUser<ProjectId> | null> {
     this._ensurePersistentTokenStore(options?.tokenStore);
     const session = await this._getSession(options?.tokenStore);
     let crud = Result.orThrow(await this._currentUserCache.getOrWait([session], "write-only"));
@@ -1542,11 +1547,11 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
   }
 
   // IF_PLATFORM react-like
-  useUser(options: GetUserOptions<HasTokenStore> & { or: 'redirect' }): ProjectCurrentUser<ProjectId>;
-  useUser(options: GetUserOptions<HasTokenStore> & { or: 'throw' }): ProjectCurrentUser<ProjectId>;
-  useUser(options: GetUserOptions<HasTokenStore> & { or: 'anonymous' }): ProjectCurrentUser<ProjectId>;
-  useUser(options?: GetUserOptions<HasTokenStore>): ProjectCurrentUser<ProjectId> | null;
-  useUser(options?: GetUserOptions<HasTokenStore>): ProjectCurrentUser<ProjectId> | null {
+  useUser(options: GetCurrentUserOptions<HasTokenStore> & { or: 'redirect' }): ProjectCurrentUser<ProjectId>;
+  useUser(options: GetCurrentUserOptions<HasTokenStore> & { or: 'throw' }): ProjectCurrentUser<ProjectId>;
+  useUser(options: GetCurrentUserOptions<HasTokenStore> & { or: 'anonymous' }): ProjectCurrentUser<ProjectId>;
+  useUser(options?: GetCurrentUserOptions<HasTokenStore>): ProjectCurrentUser<ProjectId> | null;
+  useUser(options?: GetCurrentUserOptions<HasTokenStore>): ProjectCurrentUser<ProjectId> | null {
     this._ensurePersistentTokenStore(options?.tokenStore);
 
     const session = this._useSession(options?.tokenStore);
@@ -1590,6 +1595,95 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     }, [crud, session, options?.or]);
   }
   // END_PLATFORM
+
+  _getTokenPartialUserFromSession(session: InternalSession, options: GetCurrentPartialUserOptions<HasTokenStore>): TokenPartialUser | null {
+    const accessToken = session.getAccessTokenIfNotExpiredYet(0);
+    if (!accessToken) {
+      return null;
+    }
+    const isAnonymous = accessToken.payload.is_anonymous;
+    if (isAnonymous && options.or !== "anonymous") {
+      return null;
+    }
+    return {
+      id: accessToken.payload.sub,
+      primaryEmail: accessToken.payload.email,
+      displayName: accessToken.payload.name,
+      primaryEmailVerified: accessToken.payload.email_verified,
+      isAnonymous,
+    } satisfies TokenPartialUser;
+  }
+
+  async _getPartialUserFromConvex(ctx: ConvexCtx): Promise<TokenPartialUser | null> {
+    const auth = await ctx.auth.getUserIdentity();
+    if (!auth) {
+      return null;
+    }
+    return {
+      id: auth.subject,
+      displayName: auth.name ?? null,
+      primaryEmail: auth.email ?? null,
+      primaryEmailVerified: auth.email_verified as boolean,
+      isAnonymous: auth.is_anonymous as boolean,
+    };
+  }
+
+  async getPartialUser(options: GetCurrentPartialUserOptions<HasTokenStore> & { from: 'token' }): Promise<TokenPartialUser | null>;
+  async getPartialUser(options: GetCurrentPartialUserOptions<HasTokenStore> & { from: 'convex' }): Promise<TokenPartialUser | null>;
+  async getPartialUser(options: GetCurrentPartialUserOptions<HasTokenStore>): Promise<SyncedPartialUser | TokenPartialUser | null> {
+    switch (options.from) {
+      case "token": {
+        this._ensurePersistentTokenStore(options.tokenStore ?? this._tokenStoreInit);
+        const session = await this._getSession(options.tokenStore);
+        return this._getTokenPartialUserFromSession(session, options);
+      }
+      case "convex": {
+        return await this._getPartialUserFromConvex(options.ctx);
+      }
+      default: {
+        // @ts-expect-error
+        throw new Error(`Invalid 'from' option: ${options.from}`);
+      }
+    }
+  }
+  // IF_PLATFORM react-like
+  usePartialUser(options: GetCurrentPartialUserOptions<HasTokenStore> & { from: 'token' }): TokenPartialUser | null;
+  usePartialUser(options: GetCurrentPartialUserOptions<HasTokenStore> & { from: 'convex' }): TokenPartialUser | null;
+  usePartialUser(options: GetCurrentPartialUserOptions<HasTokenStore>): TokenPartialUser | SyncedPartialUser | null {
+    switch (options.from) {
+      case "token": {
+        this._ensurePersistentTokenStore(options.tokenStore ?? this._tokenStoreInit);
+        const session = this._useSession(options.tokenStore);
+        return this._getTokenPartialUserFromSession(session, options);
+      }
+      case "convex": {
+        const result = useAsyncCache(this._convexPartialUserCache, [options.ctx] as const, "usePartialUser(convex)");
+        return result;
+      }
+      default: {
+        // @ts-expect-error
+        throw new Error(`Invalid 'from' option: ${options.from}`);
+      }
+    }
+  }
+  // END_PLATFORM
+  getConvexClientAuth(options: { tokenStore: TokenStoreInit }): (args: { forceRefreshToken: boolean }) => Promise<string | null> {
+    return async (args: { forceRefreshToken: boolean }) => {
+      const session = await this._getSession(options.tokenStore);
+      if (!args.forceRefreshToken) {
+        const tokens = await session.getOrFetchLikelyValidTokens(20_000);
+        return tokens?.accessToken.token ?? null;
+      }
+      const tokens = await session.fetchNewTokens();
+      return tokens?.accessToken.token ?? null;
+    };
+  }
+
+  async getConvexHttpClientAuth(options: { tokenStore: TokenStoreInit }): Promise<string> {
+    const session = await this._getSession(options.tokenStore);
+    const tokens = await session.getOrFetchLikelyValidTokens(20_000);
+    return tokens?.accessToken.token ?? throwErr("No access token available");
+  }
 
   protected async _updateClientUser(update: UserUpdateOptions, session: InternalSession) {
     const res = await this._interface.updateClientUser(userUpdateOptionsToCrud(update), session);

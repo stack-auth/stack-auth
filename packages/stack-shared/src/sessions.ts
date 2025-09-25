@@ -1,6 +1,11 @@
 import * as jose from 'jose';
+import { InferType } from 'yup';
+import { accessTokenPayloadSchema } from './schema-fields';
 import { StackAssertionError } from "./utils/errors";
 import { Store } from "./utils/stores";
+
+
+export type AccessTokenPayload = InferType<typeof accessTokenPayloadSchema>;
 
 export class AccessToken {
   constructor(
@@ -11,12 +16,13 @@ export class AccessToken {
     }
   }
 
-  get decoded() {
-    return jose.decodeJwt(this.token);
+  get payload() {
+    const payload = jose.decodeJwt(this.token);
+    return accessTokenPayloadSchema.validateSync(payload);
   }
 
   get expiresAt(): Date {
-    const { exp } = this.decoded;
+    const { exp } = this.payload;
     if (exp === undefined) return new Date(8640000000000000);  // max date value
     return new Date(exp * 1000);
   }
@@ -117,19 +123,28 @@ export class InternalSession {
   }
 
   /**
-   * Returns the access token if it is found in the cache, fetching it otherwise.
-   *
-   * This is usually the function you want to call to get an access token. Either set `minMillisUntilExpiration` to a reasonable value, or catch errors that occur if it expires, and call `markAccessTokenExpired` to mark the token as expired if so (after which a call to this function will always refetch the token).
-   *
-   * @returns null if the session is known to be invalid, cached tokens if they exist in the cache (which may or may not be valid still), or new tokens otherwise.
+   * Returns the access token if it is found in the cache and not expired yet, or null otherwise. Never fetches new tokens.
    */
-  async getOrFetchLikelyValidTokens(minMillisUntilExpiration: number): Promise<{ accessToken: AccessToken, refreshToken: RefreshToken | null } | null> {
-    if (minMillisUntilExpiration >= 60_000) {
+  getAccessTokenIfNotExpiredYet(minMillisUntilExpiration: number): AccessToken | null {
+    if (minMillisUntilExpiration > 60_000) {
       throw new Error(`Required access token expiry ${minMillisUntilExpiration}ms is too long; access tokens are too short to be used for more than 60s`);
     }
 
     const accessToken = this._getPotentiallyInvalidAccessTokenIfAvailable();
-    if (!accessToken || accessToken.expiresInMillis < minMillisUntilExpiration) {
+    if (!accessToken || accessToken.expiresInMillis < minMillisUntilExpiration) return null;
+    return accessToken;
+  }
+
+  /**
+   * Returns the access token if it is found in the cache, fetching it otherwise.
+   *
+   * This is usually the function you want to call to get an access token. Either set `minMillisUntilExpiration` to a reasonable value, or catch errors that occur if it expires, and call `markAccessTokenExpired` to mark the token as expired if so (after which a call to this function will always refetch the token).
+   *
+   * @returns null if the session is known to be invalid, cached tokens if they exist in the cache and the access token hasn't expired yet (the refresh token might still be invalid), or new tokens otherwise.
+   */
+  async getOrFetchLikelyValidTokens(minMillisUntilExpiration: number): Promise<{ accessToken: AccessToken, refreshToken: RefreshToken | null } | null> {
+    const accessToken = this.getAccessTokenIfNotExpiredYet(minMillisUntilExpiration);
+    if (!accessToken) {
       const newTokens = await this.fetchNewTokens();
       const expiresInMillis = newTokens?.accessToken.expiresInMillis;
       if (expiresInMillis && expiresInMillis < minMillisUntilExpiration) {
