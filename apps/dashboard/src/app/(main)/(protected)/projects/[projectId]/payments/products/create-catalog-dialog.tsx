@@ -3,13 +3,13 @@
 import { Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, Input, Label, SimpleTooltip, Typography } from "@stackframe/stack-ui";
 import { useState } from "react";
 
-type CreateGroupDialogProps = {
+type CreateCatalogDialogProps = {
   open: boolean,
   onOpenChange: (open: boolean) => void,
-  onCreate: (group: { id: string, displayName: string }) => void,
+  onCreate: (catalog: { id: string, displayName: string }) => void,
 };
 
-export function CreateGroupDialog({ open, onOpenChange, onCreate }: CreateGroupDialogProps) {
+export function CreateCatalogDialog({ open, onOpenChange, onCreate }: CreateCatalogDialogProps) {
   const [catalogId, setCatalogId] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [errors, setErrors] = useState<{ id?: string, displayName?: string }>({});
@@ -17,11 +17,11 @@ export function CreateGroupDialog({ open, onOpenChange, onCreate }: CreateGroupD
   const validateAndCreate = () => {
     const newErrors: { id?: string, displayName?: string } = {};
 
-    // Validate group ID
+    // Validate catalog ID
     if (!catalogId.trim()) {
-      newErrors.id = "Group ID is required";
+      newErrors.id = "Catalog ID is required";
     } else if (!/^[a-z0-9-]+$/.test(catalogId)) {
-      newErrors.id = "Group ID must contain only lowercase letters, numbers, and hyphens";
+      newErrors.id = "Catalog ID must contain only lowercase letters, numbers, and hyphens";
     }
 
     // Validate display name
@@ -54,21 +54,21 @@ export function CreateGroupDialog({ open, onOpenChange, onCreate }: CreateGroupD
     <Dialog open={open} onOpenChange={handleClose}>
       <DialogContent className="sm:max-w-[425px]">
         <DialogHeader>
-          <DialogTitle>Create Product Group</DialogTitle>
+          <DialogTitle>Create Product Catalog</DialogTitle>
           <DialogDescription>
-            Product groups allow you to organize related products. Customers can only have one active product from each group at a time (except for add-ons).
+            Product catalogs allow you to organize related products. Customers can only have one active product from each catalog at a time (except for add-ons).
           </DialogDescription>
         </DialogHeader>
 
         <div className="grid gap-4 py-4">
           <div className="grid gap-2">
-            <Label htmlFor="group-id">
-              <SimpleTooltip tooltip="This is the unique identifier for your group, used in code">
-                Group ID
+            <Label htmlFor="catalog-id">
+              <SimpleTooltip tooltip="This is the unique identifier for your catalog, used in code">
+                Catalog ID
               </SimpleTooltip>
             </Label>
             <Input
-              id="group-id"
+              id="catalog-id"
               value={catalogId}
               onChange={(e) => {
                 setCatalogId(e.target.value);
@@ -86,7 +86,7 @@ export function CreateGroupDialog({ open, onOpenChange, onCreate }: CreateGroupD
 
           <div className="grid gap-2">
             <Label htmlFor="display-name">
-              <SimpleTooltip tooltip="This is how the group will be displayed to users">
+              <SimpleTooltip tooltip="This is how the catalog will be displayed to users">
                 Display Name
               </SimpleTooltip>
             </Label>
@@ -113,7 +113,7 @@ export function CreateGroupDialog({ open, onOpenChange, onCreate }: CreateGroupD
             Cancel
           </Button>
           <Button onClick={validateAndCreate}>
-            Create Group
+            Create Catalog
           </Button>
         </DialogFooter>
       </DialogContent>

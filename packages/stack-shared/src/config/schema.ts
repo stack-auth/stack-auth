@@ -590,20 +590,21 @@ function applyDefaults<D extends object | ((key: string) => unknown), C extends 
     let currentRes: any = res;
     for (const [index, part] of keyParts.entries()) {
       baseValue = has(baseValue, part) ? get(baseValue, part) : (typeof baseValue === 'function' ? (baseValue as any)(part) : undefined);
-      if (baseValue === undefined || !isObjectLike(baseValue)) {
+      if (baseValue === undefined || (!isObjectLike(baseValue) && mergeValue !== null)) {
         set(res, key, mergeValue);
         continue outer;
       }
       if (!has(currentRes, part)) set(currentRes, part, deepReplaceFunctionsWithObjects(baseValue) as never);
       currentRes = get(currentRes, part);
     }
-    set(res, key, isObjectLike(mergeValue) ? applyDefaults(baseValue, mergeValue) : mergeValue);
+    set(res, key, mergeValue === null ? baseValue : isObjectLike(mergeValue) ? applyDefaults(baseValue, mergeValue) : mergeValue);
   }
   return res as any;
 }
 import.meta.vitest?.test("applyDefaults", ({ expect }) => {
   // Basic
   expect(applyDefaults({ a: 1 }, { a: 2 })).toEqual({ a: 2 });
+  expect(applyDefaults({ a: 1 }, { a: null })).toEqual({ a: 1 });
   expect(applyDefaults({}, { a: 1 })).toEqual({ a: 1 });
   expect(applyDefaults({ a: { b: 1 } }, { a: { b: 2 } })).toEqual({ a: { b: 2 } });
   expect(applyDefaults({ a: { b: 1 } }, { a: { c: 2 } })).toEqual({ a: { b: 1, c: 2 } });
@@ -620,9 +621,11 @@ import.meta.vitest?.test("applyDefaults", ({ expect }) => {
 
   // Dot notation
   expect(applyDefaults({ a: { b: 1 } }, { "a.c": 2 })).toEqual({ a: { b: 1 }, "a.c": 2 });
+  expect(applyDefaults({ a: { b: 1 } }, { "a.c": null })).toEqual({ a: { b: 1 }, "a.c": null });
   expect(applyDefaults({ a: 1 }, { "a.b": 2 })).toEqual({ a: 1, "a.b": 2 });
   expect(applyDefaults({ a: null }, { "a.b": 2 })).toEqual({ a: null, "a.b": 2 });
   expect(applyDefaults({ a: { b: { c: 1 } } }, { "a.b": { d: 2 } })).toEqual({ a: { b: { c: 1 } }, "a.b": { c: 1, d: 2 } });
+  expect(applyDefaults({ a: { b: { c: 1 } } }, { "a.b": null })).toEqual({ a: { b: { c: 1 } }, "a.b": { c: 1 } });
   expect(applyDefaults({ a: { b: { c: { d: 1 } } } }, { "a.b.c": {} })).toEqual({ a: { b: { c: { d: 1 } } }, "a.b.c": { d: 1 } });
   expect(applyDefaults({ a: () => ({ c: 1 }) }, { "a.b": { d: 2 } })).toEqual({ a: { b: { c: 1 } }, "a.b": { c: 1, d: 2 } });
   expect(applyDefaults({ a: () => () => ({ d: 1 }) }, { "a.b.c": {} })).toEqual({ a: { b: { c: { d: 1 } } }, "a.b.c": { d: 1 } });
@@ -884,7 +887,16 @@ export async function getConfigOverrideErrors<T extends yup.AnySchema>(schema: T
     if (value === undefined) continue;
     const subSchema = getSubSchema(schema, key);
     if (!subSchema) {
-      return Result.error(`The key ${JSON.stringify(key)} is not valid for the schema.`);
+      // find smallest key prefix that is invalid
+      const keySplit = key.split(".");
+      for (let i = 0; i < keySplit.length; i++) {
+        const prefix = keySplit.slice(0, i).join(".");
+        const subSchema = getSubSchema(schema, prefix);
+        if (!subSchema) {
+          return Result.error(`The key ${JSON.stringify(key)} is not valid (nested object not found in schema: ${JSON.stringify(prefix)}).`);
+        }
+      }
+      throw new StackAssertionError("Something weird happened? Sub-schema for key is invalid but no prefix is invalid??", { key, subSchema });
     }
     let restrictedSchema = getRestrictedSchema(key, subSchema);
     try {
@@ -963,10 +975,10 @@ export type ValidatedToHaveNoIncompleteConfigWarnings<T extends yup.AnySchema> =
 
 // Normalized overrides
 // ex.: { a?: { b?: number, c?: string }, d?: number }
-type ProjectConfigNormalizedOverride = Expand<ValidatedToHaveNoConfigOverrideErrors<typeof projectConfigSchema>>;
-type BranchConfigNormalizedOverride = Expand<ValidatedToHaveNoConfigOverrideErrors<typeof branchConfigSchema>>;
-type EnvironmentConfigNormalizedOverride = Expand<ValidatedToHaveNoConfigOverrideErrors<typeof environmentConfigSchema>>;
-type OrganizationConfigNormalizedOverride = Expand<ValidatedToHaveNoConfigOverrideErrors<typeof organizationConfigSchema>>;
+export type ProjectConfigNormalizedOverride = Expand<ValidatedToHaveNoConfigOverrideErrors<typeof projectConfigSchema>>;
+export type BranchConfigNormalizedOverride = Expand<ValidatedToHaveNoConfigOverrideErrors<typeof branchConfigSchema>>;
+export type EnvironmentConfigNormalizedOverride = Expand<ValidatedToHaveNoConfigOverrideErrors<typeof environmentConfigSchema>>;
+export type OrganizationConfigNormalizedOverride = Expand<ValidatedToHaveNoConfigOverrideErrors<typeof organizationConfigSchema>>;
 
 
 // Overrides

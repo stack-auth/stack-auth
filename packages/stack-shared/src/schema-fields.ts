@@ -63,7 +63,7 @@ yup.addMethod(yup.string, "nonEmpty", function (message?: string) {
 });
 
 yup.addMethod(yup.Schema, "hasNested", function (path: any) {
-  if (!path.match(/^[a-zA-Z0-9_$:-]+$/)) throw new StackAssertionError(`yupSchema.hasNested can currently only be used with alphanumeric keys, underscores, dollar signs, colons, and hyphens. Fix this in the future. Provided key: ${JSON.stringify(path)}`);
+  if (!path.match(/^[a-zA-Z0-9_$:-]*$/)) throw new StackAssertionError(`yupSchema.hasNested can currently only be used with alphanumeric keys, underscores, dollar signs, colons, and hyphens. Fix this in the future. Provided key: ${JSON.stringify(path)}`);
   const schemaInfo = this.meta()?.stackSchemaInfo as any;
   if (schemaInfo?.type === "record") {
     return schemaInfo.keySchema.isValidSync(path);
@@ -83,7 +83,7 @@ yup.addMethod(yup.Schema, "hasNested", function (path: any) {
 });
 
 yup.addMethod(yup.Schema, "getNested", function (path: any) {
-  if (!path.match(/^[a-zA-Z0-9_$:-]+$/)) throw new StackAssertionError(`yupSchema.getNested can currently only be used with alphanumeric keys, underscores, dollar signs, colons, and hyphens. Fix this in the future. Provided key: ${path}`);
+  if (!path.match(/^[a-zA-Z0-9_$:-]*$/)) throw new StackAssertionError(`yupSchema.getNested can currently only be used with alphanumeric keys, underscores, dollar signs, colons, and hyphens. Fix this in the future. Provided key: ${JSON.stringify(path)}`);
 
   if (!this.hasNested(path as never)) throw new StackAssertionError(`Tried to call yupSchema.getNested, but key is not present in the schema. Provided key: ${path}`, { path, schema: this });
 

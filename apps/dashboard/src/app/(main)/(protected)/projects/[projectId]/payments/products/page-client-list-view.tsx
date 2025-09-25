@@ -925,7 +925,7 @@ export default function PageClient({ onViewChange }: { onViewChange: (view: "lis
         onSave={async (productId, product) => await handleSaveProduct(productId, product)}
         editingProduct={editingProduct}
         existingProducts={existingProductsList}
-        existingGroups={paymentsConfig.catalogs}
+        existingCatalogs={paymentsConfig.catalogs}
         existingItems={existingItemsList}
         onCreateNewItem={handleCreateItem}
       />

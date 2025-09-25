@@ -5,7 +5,7 @@ import { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
 import { Button, Card, CardDescription, CardHeader, CardTitle, Checkbox, Dialog, DialogContent, DialogFooter, DialogTitle, Input, Label, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Typography } from "@stackframe/stack-ui";
 import { ArrowLeft, ArrowRight, CreditCard, Package, Plus, Repeat, Trash2 } from "lucide-react";
 import { useState } from "react";
-import { CreateGroupDialog } from "./create-group-dialog";
+import { CreateCatalogDialog } from "./create-catalog-dialog";
 import { IncludedItemDialog } from "./included-item-dialog";
 import { ListSection } from "./list-section";
 import { PriceDialog } from "./price-dialog";
@@ -23,7 +23,7 @@ type ProductDialogProps = {
   editingProductId?: string,
   editingProduct?: Product,
   existingProducts: Array<{ id: string, displayName: string, catalogId?: string, customerType: string }>,
-  existingGroups: Record<string, { displayName: string }>,
+  existingCatalogs: Record<string, { displayName?: string }>,
   existingItems: Array<{ id: string, displayName: string, customerType: string }>,
   onCreateNewItem?: () => void,
 };
@@ -52,7 +52,7 @@ export function ProductDialog({
   editingProductId,
   editingProduct,
   existingProducts,
-  existingGroups,
+  existingCatalogs,
   existingItems,
   onCreateNewItem
 }: ProductDialogProps) {
@@ -73,7 +73,7 @@ export function ProductDialog({
   const [serverOnly, setServerOnly] = useState(editingProduct?.serverOnly || false);
 
   // Dialog states
-  const [showGroupDialog, setShowGroupDialog] = useState(false);
+  const [showCatalogDialog, setShowCatalogDialog] = useState(false);
   const [showPriceDialog, setShowPriceDialog] = useState(false);
   const [editingPriceId, setEditingPriceId] = useState<string | undefined>();
   const [showItemDialog, setShowItemDialog] = useState(false);
@@ -134,11 +134,11 @@ export function ProductDialog({
     }
 
     if (isAddOn && isAddOnTo.length > 0) {
-      const addOnGroups = new Set(
+      const addOnCatalogs = new Set(
         isAddOnTo.map(productId => existingProducts.find(o => o.id === productId)?.catalogId)
       );
-      if (addOnGroups.size > 1) {
-        newErrors.isAddOnTo = "All selected products must be in the same group";
+      if (addOnCatalogs.size > 1) {
+        newErrors.isAddOnTo = "All selected products must be in the same catalog";
       }
     }
 
@@ -454,15 +454,15 @@ export function ProductDialog({
                     </Typography>
                   </div>
 
-                  {/* Group */}
+                  {/* Catalog */}
                   <div className="grid gap-2">
-                    <Label htmlFor="group">Product Group (Optional)</Label>
+                    <Label htmlFor="catalog">Product Catalog (Optional)</Label>
                     <Select
-                      value={catalogId || 'no-group'}
+                      value={catalogId || 'no-catalog'}
                       onValueChange={(value) => {
                         if (value === 'create-new') {
-                          setShowGroupDialog(true);
-                        } else if (value === 'no-group') {
+                          setShowCatalogDialog(true);
+                        } else if (value === 'no-catalog') {
                           setCatalogId('');
                         } else {
                           setCatalogId(value);
@@ -470,22 +470,22 @@ export function ProductDialog({
                       }}
                     >
                       <SelectTrigger>
-                        <SelectValue placeholder="No group" />
+                        <SelectValue placeholder="No catalog" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="no-group">No group</SelectItem>
-                        {Object.entries(existingGroups).map(([id, group]) => (
+                        <SelectItem value="no-catalog">No catalog</SelectItem>
+                        {Object.entries(existingCatalogs).map(([id, catalog]) => (
                           <SelectItem key={id} value={id}>
-                            {group.displayName || id}
+                            {catalog.displayName || id}
                           </SelectItem>
                         ))}
                         <SelectItem value="create-new">
-                          <span className="text-primary">+ Create new group</span>
+                          <span className="text-primary">+ Create new catalog</span>
                         </SelectItem>
                       </SelectContent>
                     </Select>
                     <Typography type="label" className="text-muted-foreground">
-                      Customers can only have one active product per group (except add-ons)
+                      Customers can only have one active product per catalog (except add-ons)
                     </Typography>
                   </div>
 
@@ -558,7 +558,7 @@ export function ProductDialog({
                                   {product.displayName} ({product.id})
                                   {product.catalogId && (
                                     <span className="text-muted-foreground ml-1">
-                                      • {existingGroups[product.catalogId].displayName || product.catalogId}
+                                      • {existingCatalogs[product.catalogId].displayName || product.catalogId}
                                     </span>
                                   )}
                                 </Label>
@@ -634,7 +634,7 @@ export function ProductDialog({
                             {Object.entries(prices).map(([id, price]) => (
                               <div
                                 key={id}
-                                className="px-3 py-3 hover:bg-muted/50 flex items-center justify-between group transition-colors"
+                                className="px-3 py-3 hover:bg-muted/50 flex items-center justify-between catalog transition-colors"
                               >
                                 <div>
                                   <div className="font-medium">{formatPriceDisplay(price)}</div>
@@ -703,7 +703,7 @@ export function ProductDialog({
                         {Object.entries(includedItems).map(([itemId, item]) => (
                           <div
                             key={itemId}
-                            className="px-3 py-3 hover:bg-muted/50 flex items-center justify-between group transition-colors"
+                            className="px-3 py-3 hover:bg-muted/50 flex items-center justify-between catalog transition-colors"
                           >
                             <div>
                               <div className="font-medium">{getItemDisplay(itemId, item)}</div>
@@ -769,13 +769,13 @@ export function ProductDialog({
       </Dialog>
 
       {/* Sub-dialogs */}
-      <CreateGroupDialog
-        open={showGroupDialog}
-        onOpenChange={setShowGroupDialog}
-        onCreate={(group) => {
-          // In a real app, you'd save the group to the backend
-          setCatalogId(group.id);
-          setShowGroupDialog(false);
+      <CreateCatalogDialog
+        open={showCatalogDialog}
+        onOpenChange={setShowCatalogDialog}
+        onCreate={(catalog) => {
+          // In a real app, you'd save the catalog to the backend
+          setCatalogId(catalog.id);
+          setShowCatalogDialog(false);
         }}
       />
 
