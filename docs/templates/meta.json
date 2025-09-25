@@ -34,6 +34,7 @@
     "others/cli-authentication",
     "others/self-host",
     "others/supabase",
+    "others/convex",
     "sdk",
     "components"
   ]
