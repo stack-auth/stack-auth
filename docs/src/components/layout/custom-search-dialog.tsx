@@ -1,9 +1,10 @@
 'use client';
 
-import { AlignLeft, ChevronDown, ExternalLink, FileText, Hash, Search, X } from 'lucide-react';
+import { AlignLeft, ChevronDown, ExternalLink, FileText, Hash, Search, Sparkles, X } from 'lucide-react';
 import Link from 'next/link';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { cn } from '../../lib/cn';
+import { useSidebar } from '../layouts/sidebar-context';
 
 // Platform colors matching your theme
 const PLATFORM_COLORS = {
@@ -137,9 +138,21 @@ export function CustomSearchDialog({ open, onOpenChange }: CustomSearchDialogPro
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   const searchTimeoutRef = useRef<NodeJS.Timeout>();
+  const sidebarContext = useSidebar();
 
   // Available platforms for the dropdown
   const availablePlatforms = ['all', 'next', 'react', 'js', 'python', 'api'];
+
+  // Handle AI chat opening
+  const handleOpenAIChat = () => {
+    onOpenChange(false); // Close search dialog first
+    if (sidebarContext?.toggleChat) {
+      // Small delay to ensure search dialog closes smoothly
+      setTimeout(() => {
+        sidebarContext.toggleChat();
+      }, 100);
+    }
+  };
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -436,16 +449,30 @@ export function CustomSearchDialog({ open, onOpenChange }: CustomSearchDialogPro
         </div>
 
         {/* Footer */}
-        <div className="border-t border-fd-border px-3 py-2 text-xs text-fd-muted-foreground flex justify-between items-center">
-          <span>Use ↑↓ to navigate, Enter to select, Esc to close</span>
-          <span>
-            {filteredResults.length} result group{filteredResults.length !== 1 ? 's' : ''}
-            {selectedPlatformFilter !== 'all' && filteredResults.length > 0 && (
-              <span className="ml-2 text-fd-primary">
-                • {PLATFORM_NAMES[selectedPlatformFilter as keyof typeof PLATFORM_NAMES]} only
-              </span>
-            )}
-          </span>
+        <div className="border-t border-fd-border px-3 py-2 text-xs text-fd-muted-foreground">
+          <div className="flex justify-between items-center mb-2">
+            <span>Use ↑↓ to navigate, Enter to select, Esc to close</span>
+            <span>
+              {filteredResults.length} result group{filteredResults.length !== 1 ? 's' : ''}
+              {selectedPlatformFilter !== 'all' && filteredResults.length > 0 && (
+                <span className="ml-2 text-fd-primary">
+                  • {PLATFORM_NAMES[selectedPlatformFilter as keyof typeof PLATFORM_NAMES]} only
+                </span>
+              )}
+            </span>
+          </div>
+          
+          {/* AI Chat Fallback */}
+          <div className="flex justify-center items-center gap-2">
+            <span className="text-fd-muted-foreground">Can't find what you're looking for?</span>
+            <button
+              onClick={handleOpenAIChat}
+              className="flex items-center gap-1 px-2 py-1 text-xs rounded-md transition-all duration-300 ease-out relative overflow-hidden text-white chat-gradient-active hover:scale-105 hover:brightness-110 hover:shadow-lg"
+            >
+              <Sparkles className="h-3 w-3 relative z-10" />
+              <span className="font-medium relative z-10">Ask AI</span>
+            </button>
+          </div>
         </div>
       </div>
     </div>
