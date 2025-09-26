@@ -584,20 +584,21 @@ function applyDefaults<D extends object | ((key: string) => unknown), C extends 
   const res: any = deepReplaceFunctionsWithObjects(defaults);
 
   outer: for (const [key, mergeValue] of Object.entries(config)) {
-    if (mergeValue === undefined) continue;
-    const keyParts = key.split(".");
-    let baseValue: any = defaults;
-    let currentRes: any = res;
-    for (const [index, part] of keyParts.entries()) {
-      baseValue = has(baseValue, part) ? get(baseValue, part) : (typeof baseValue === 'function' ? (baseValue as any)(part) : undefined);
-      if (baseValue === undefined || (!isObjectLike(baseValue) && mergeValue !== null)) {
-        set(res, key, mergeValue);
-        continue outer;
+    if (mergeValue == null) continue;
+    if (!isObjectLike(mergeValue)) {
+      set(res, key, mergeValue);
+    } else {
+      const keyParts = key.split(".");
+      let baseValue: any = defaults;
+      for (const [index, part] of keyParts.entries()) {
+        baseValue = has(baseValue, part) ? get(baseValue, part) : (typeof baseValue === 'function' ? (baseValue as any)(part) : undefined);
+        if (baseValue === undefined || !isObjectLike(baseValue)) {
+          set(res, key, mergeValue);
+          continue outer;
+        }
       }
-      if (!has(currentRes, part)) set(currentRes, part, deepReplaceFunctionsWithObjects(baseValue) as never);
-      currentRes = get(currentRes, part);
+      set(res, key, applyDefaults(baseValue, mergeValue));
     }
-    set(res, key, mergeValue === null ? baseValue : isObjectLike(mergeValue) ? applyDefaults(baseValue, mergeValue) : mergeValue);
   }
   return res as any;
 }
@@ -612,20 +613,22 @@ import.meta.vitest?.test("applyDefaults", ({ expect }) => {
 
   // Functions
   expect(applyDefaults((key: string) => ({ b: key }), { a: {} })).toEqual({ a: { b: "a" } });
+  expect(applyDefaults((key: string) => ({ b: key }), { a: null })).toEqual({});
   expect(applyDefaults((key1: string) => (key2: string) => ({ a: key1, b: key2 }), { c: { d: {} } })).toEqual({ c: { d: { a: "c", b: "d" } } });
   expect(applyDefaults({ a: (key: string) => ({ b: key }) }, { a: { c: { d: 1 } } })).toEqual({ a: { c: { b: "c", d: 1 } } });
   expect(applyDefaults({ a: (key: string) => ({ b: key }) }, {})).toEqual({ a: {} });
+  expect(applyDefaults({ a: (key: string) => ({ b: key }) }, { a: null })).toEqual({ a: {} });
   expect(applyDefaults({ a: { b: (key: string) => ({ b: key }) } }, {})).toEqual({ a: { b: {} } });
   expect(applyDefaults(typedAssign(() => ({ b: 1 }), { a: { b: 1, c: 2 } }), { a: {} })).toEqual({ a: { b: 1, c: 2 } });
   expect(applyDefaults(typedAssign(() => ({ b: 1 }), { a: { b: 1, c: 2 } }), { d: {} })).toEqual({ a: { b: 1, c: 2 }, d: { b: 1 } });
 
   // Dot notation
   expect(applyDefaults({ a: { b: 1 } }, { "a.c": 2 })).toEqual({ a: { b: 1 }, "a.c": 2 });
-  expect(applyDefaults({ a: { b: 1 } }, { "a.c": null })).toEqual({ a: { b: 1 }, "a.c": null });
+  expect(applyDefaults({ a: { b: 1 } }, { "a.c": null })).toEqual({ a: { b: 1 } });
   expect(applyDefaults({ a: 1 }, { "a.b": 2 })).toEqual({ a: 1, "a.b": 2 });
   expect(applyDefaults({ a: null }, { "a.b": 2 })).toEqual({ a: null, "a.b": 2 });
   expect(applyDefaults({ a: { b: { c: 1 } } }, { "a.b": { d: 2 } })).toEqual({ a: { b: { c: 1 } }, "a.b": { c: 1, d: 2 } });
-  expect(applyDefaults({ a: { b: { c: 1 } } }, { "a.b": null })).toEqual({ a: { b: { c: 1 } }, "a.b": { c: 1 } });
+  expect(applyDefaults({ a: { b: { c: 1 } } }, { "a.b": null })).toEqual({ a: { b: { c: 1 } } });
   expect(applyDefaults({ a: { b: { c: { d: 1 } } } }, { "a.b.c": {} })).toEqual({ a: { b: { c: { d: 1 } } }, "a.b.c": { d: 1 } });
   expect(applyDefaults({ a: () => ({ c: 1 }) }, { "a.b": { d: 2 } })).toEqual({ a: { b: { c: 1 } }, "a.b": { c: 1, d: 2 } });
   expect(applyDefaults({ a: () => () => ({ d: 1 }) }, { "a.b.c": {} })).toEqual({ a: { b: { c: { d: 1 } } }, "a.b.c": { d: 1 } });
@@ -890,7 +893,7 @@ export async function getConfigOverrideErrors<T extends yup.AnySchema>(schema: T
       // find smallest key prefix that is invalid
       const keySplit = key.split(".");
       for (let i = 0; i < keySplit.length; i++) {
-        const prefix = keySplit.slice(0, i).join(".");
+        const prefix = keySplit.slice(0, i + 1).join(".");
         const subSchema = getSubSchema(schema, prefix);
         if (!subSchema) {
           return Result.error(`The key ${JSON.stringify(key)} is not valid (nested object not found in schema: ${JSON.stringify(prefix)}).`);

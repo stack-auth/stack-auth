@@ -14,7 +14,6 @@ const projectSchemaFuzzerConfig = [{
     type: ["hosted", "neon", "postgres"],
     connectionString: ["", "postgres://user:password@host:port/database", "THIS IS A STRING LOLOL"],
     connectionStrings: [{
-      "": ["", "THIS IS A CONNECTION STRING OR SO"],
       "123-some-branch-id": ["", "THIS IS A CONNECTION STRING OR SO"],
     }],
   }],
@@ -45,10 +44,6 @@ const branchSchemaFuzzerConfig = [{
           type: ["google", "github", "x"] as const,
           allowSignIn: [true, false],
           allowConnectedAccounts: [true, false],
-          isShared: [true, false],
-          clientId: ["some-client-id"],
-          facebookConfigId: ["some-facebook-config-id"],
-          microsoftTenantId: ["some-microsoft-tenant-id"],
         }],
       }],
     }],
@@ -113,14 +108,14 @@ const branchSchemaFuzzerConfig = [{
   }],
   emails: [{
     themes: [{
-      "some-theme-id": [{
+      "12345678-1234-4234-9234-123456789012": [{
         displayName: ["Some Theme", "Some Other Theme"],
         tsxSource: ["", "some typescript source code"],
       }],
     }],
     selectedThemeId: ["some-theme-id", "some-other-theme-id"],
     templates: [{
-      "12345678-90ab-cdef-1234-567890abcdef": [{
+      "12345678-1234-4234-9234-123456789012": [{
         themeId: ["some-theme-id", "some-other-theme-id"],
         displayName: ["Some Template", "Some Other Template"],
         tsxSource: ["", "some typescript source code"],
@@ -145,7 +140,7 @@ const branchSchemaFuzzerConfig = [{
   }],
   rbac: [{
     permissions: [{
-      "$some_permission_id": [{
+      "some_permission_id": [{
         containedPermissionIds: [{
           "some_permission_id": [true],
           "$some_other_permission_id": [true],
@@ -182,7 +177,11 @@ const environmentSchemaFuzzerConfig = [{
       ...branchSchemaFuzzerConfig[0].auth[0].oauth[0],
       providers: [typedFromEntries(typedEntries(branchSchemaFuzzerConfig[0].auth[0].oauth[0].providers[0]).map(([key, value]) => [key, [{
         ...value[0],
+        isShared: [true, false],
+        clientId: ["some-client-id"],
         clientSecret: ["some-client-secret"],
+        facebookConfigId: ["some-facebook-config-id"],
+        microsoftTenantId: ["some-microsoft-tenant-id"],
       }]]))] as const,
     }],
   }],
@@ -213,7 +212,7 @@ const environmentSchemaFuzzerConfig = [{
 const organizationSchemaFuzzerConfig = environmentSchemaFuzzerConfig satisfies FuzzerConfig<OrganizationConfigNormalizedOverride>;
 
 function setDeep<T>(obj: T, path: string[], value: any) {
-  if (typeof obj !== "object" || obj === null) return obj;
+  if (!isObjectLike(obj)) return obj;
 
   if (path.length === 0) {
     throw new Error("Path is empty");
@@ -226,6 +225,7 @@ function setDeep<T>(obj: T, path: string[], value: any) {
 }
 
 function createFuzzerInput<T>(config: FuzzerConfig<T>, progress: number): T {
+  progress = Math.min(1, 2 * progress);
   const createShouldRandom = (strength: number) => {
     const chance = Math.random() * strength * 1.2 - 0.1;
     return () => Math.random() < chance;
@@ -241,33 +241,31 @@ function createFuzzerInput<T>(config: FuzzerConfig<T>, progress: number): T {
   const shouldNull = createShouldRandom(0.25);
 
   let res: any;
-  const recurse = <U>(path: string[], config: FuzzerConfig<U>, force: boolean) => {
+  const recurse = <U>(outputPath: string[], config: FuzzerConfig<U>, forceNested: boolean, forceNonNull: boolean) => {
     let subConfig: any = config[Math.floor(Math.random() * config.length)];
-    let value = typeof subConfig === "object" && subConfig !== null ? (Array.isArray(subConfig) ? [] : {}) : subConfig;
-    if (path.length === 0) {
-      res = value;
+    const originalValue = isObjectLike(subConfig) ? (Array.isArray(subConfig) ? [] : {}) : subConfig;
+
+    const newValue = forceNonNull || !shouldNull() ? originalValue : null;
+    const newOutputPath = forceNested || shouldMakeNested(originalValue) || outputPath.length === 0 ? outputPath : [outputPath.join(".")];
+    if (outputPath.length === 0) {
+      res = newValue;
     } else {
-      if (shouldKeep(value)) {
-        if (shouldNull()) value = null;
-        if (path.length >= 2 && shouldMakeNested(value)) {
-          setDeep(res, path, value);
-        } else {
-          setDeep(res, [path.join(".")], value);
-        }
+      if (forceNested || shouldKeep(originalValue)) {
+        setDeep(res, newOutputPath, newValue);
       }
     }
-    if (typeof subConfig === "object" && subConfig !== null) {
-      for (const key of Object.keys(subConfig)) {
-        recurse([...path, key], subConfig[key], Array.isArray(subConfig));
+    if (isObjectLike(subConfig)) {
+      for (const [key, newValue] of typedEntries(subConfig)) {
+        recurse([...newOutputPath, key], newValue, Array.isArray(subConfig), Array.isArray(subConfig));
       }
     }
   };
-  recurse<T>([], config, false);
+  recurse<T>([], config, false, true);
   return res;
 }
 
 import.meta.vitest?.test("fuzz schemas", async ({ expect }) => {
-  const totalIterations = 10;
+  const totalIterations = process.env.CI ? 1000 : 200;
   for (let i = 0; i < totalIterations; i++) {
     const projectInput = createFuzzerInput<ProjectConfigNormalizedOverride>(projectSchemaFuzzerConfig, i / totalIterations);
     const branchInput = createFuzzerInput<BranchConfigNormalizedOverride>(branchSchemaFuzzerConfig, i / totalIterations);
