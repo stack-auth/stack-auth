@@ -30,6 +30,7 @@ next-env.d.ts
 # ignore all generated docs content
 /content/docs/
 /content/api/
+/content/dashboard/
 /public/openapi/
 /openapi/
 

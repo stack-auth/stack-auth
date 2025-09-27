@@ -11,7 +11,9 @@ const __dirname = path.dirname(__filename);
 // Configure paths
 const TEMPLATE_DIR = path.resolve(__dirname, '../templates');
 const PYTHON_TEMPLATE_DIR = path.resolve(__dirname, '../templates-python');
+const DASHBOARD_TEMPLATE_DIR = path.resolve(__dirname, '../templates-dashboard');
 const OUTPUT_BASE_DIR = path.resolve(__dirname, '../content/docs');
+const DASHBOARD_OUTPUT_DIR = path.resolve(__dirname, '../content/dashboard');
 const CONFIG_FILE = path.resolve(__dirname, '../docs-platform.yml');
 const PLATFORMS = ['next', 'react', 'js', 'python'];
 
@@ -364,6 +366,57 @@ function copyAssets() {
 }
 
 /**
+ * Generate dashboard docs from templates-dashboard
+ */
+function generateDashboardDocs() {
+  // Find all MDX files in the dashboard template directory
+  if (!fs.existsSync(DASHBOARD_TEMPLATE_DIR)) {
+    console.log('No dashboard templates directory found, skipping dashboard docs generation');
+    return;
+  }
+
+  const dashboardTemplateFiles = glob.sync('**/*.mdx', { cwd: DASHBOARD_TEMPLATE_DIR });
+  
+  if (dashboardTemplateFiles.length === 0) {
+    console.warn(`No dashboard template files found in ${DASHBOARD_TEMPLATE_DIR}`);
+    return;
+  }
+
+  console.log(`Found ${dashboardTemplateFiles.length} dashboard template files`);
+
+  // Create the output directory
+  fs.mkdirSync(DASHBOARD_OUTPUT_DIR, { recursive: true });
+
+  // Process each dashboard template file
+  for (const file of dashboardTemplateFiles) {
+    const inputFile = path.join(DASHBOARD_TEMPLATE_DIR, file);
+    const outputFile = path.join(DASHBOARD_OUTPUT_DIR, file);
+
+    // Read the template
+    const templateContent = fs.readFileSync(inputFile, 'utf8');
+
+    // Create output directory if it doesn't exist
+    fs.mkdirSync(path.dirname(outputFile), { recursive: true });
+
+    // Write the content directly (no platform processing needed for dashboard docs)
+    fs.writeFileSync(outputFile, templateContent);
+
+    console.log(`Generated dashboard doc: ${outputFile}`);
+  }
+
+  // Copy dashboard meta.json if it exists
+  const dashboardMetaFile = path.join(DASHBOARD_TEMPLATE_DIR, 'meta.json');
+  if (fs.existsSync(dashboardMetaFile)) {
+    const outputMetaFile = path.join(DASHBOARD_OUTPUT_DIR, 'meta.json');
+    const metaContent = fs.readFileSync(dashboardMetaFile, 'utf8');
+    fs.writeFileSync(outputMetaFile, metaContent);
+    console.log(`Generated dashboard meta.json: ${outputMetaFile}`);
+  }
+
+  console.log('Dashboard documentation generation complete!');
+}
+
+/**
  * Main function to generate platform-specific docs
  */
 function generateDocs() {
@@ -447,5 +500,6 @@ function generateDocs() {
   console.log('Documentation generation complete!');
 }
 
-// Run the generator
+// Run the generators
 generateDocs();
+generateDashboardDocs();
