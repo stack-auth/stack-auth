@@ -531,20 +531,24 @@ import.meta.vitest?.test("deepSortKeys", ({ expect }) => {
 });
 
 export function set<T extends object, K extends keyof T>(obj: T, key: K, value: T[K]) {
+  if (!isObjectLike(obj)) throw new StackAssertionError(`set: obj is not an object (found: ${(obj as any) === null ? "null" : typeof obj})`, { obj, key, value });
   Object.defineProperty(obj, key, { value, writable: true, configurable: true, enumerable: true });
 }
 
 export function get<T extends object, K extends keyof T>(obj: T, key: K): T[K] {
+  if ((obj as any) == null) throw new StackAssertionError("get: obj is null or undefined", { obj, key });
   const descriptor = Object.getOwnPropertyDescriptor(obj, key);
   if (!descriptor) throw new StackAssertionError(`get: key ${String(key)} does not exist`, { obj, key });
   return descriptor.value;
 }
 
 export function getOrUndefined<T extends object, K extends keyof T>(obj: T, key: K): T[K] | undefined {
+  if ((obj as any) == null) throw new StackAssertionError("getOrUndefined: obj is null or undefined", { obj, key });
   return has(obj, key) ? get(obj, key) : undefined;
 }
 
 export function has<T extends object, K extends keyof T>(obj: T, key: K): obj is T & { [k in K]: unknown } {
+  if ((obj as any) == null) throw new StackAssertionError("has: obj is null or undefined", { obj, key });
   return Object.prototype.hasOwnProperty.call(obj, key);
 }
 

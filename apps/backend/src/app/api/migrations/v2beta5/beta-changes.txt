@@ -1,0 +1,1 @@
+Removes the offer_id and offer_inline parameters that previously acted as aliases for product_id and product_inline on some endpoints.

@@ -366,3 +366,6 @@ A: This happens when packages haven't been built yet. Run these commands in orde
 pnpm clean && pnpm i && pnpm codegen && pnpm build:packages
 ```
 Then restart the dev server. This rebuilds all packages and generates the necessary TypeScript declarations.
+
+## Q: How is backwards compatibility for the offer→product rename handled in the payments purchase APIs?
+A: API v1 requests are routed through the `v2beta1` migration. The migration wraps the latest handlers, accepts legacy `offer_id`/`offer_inline` request fields, translates product-related errors back to the old offer error codes/messages, and augments responses (like `validate-code`) with `offer`/`conflicting_group_offers` aliases alongside the new `product` fields. Newer API versions keep the product-only contract.

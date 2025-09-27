@@ -1,5 +1,5 @@
 import type { InferType } from "yup";
-import { customerTypeSchema, offerPriceSchema, yupBoolean, yupNumber, yupObject, yupString } from "../../schema-fields";
+import { customerTypeSchema, productPriceSchema, yupBoolean, yupNumber, yupObject, yupString } from "../../schema-fields";
 
 export const adminTransaction = yupObject({
   id: yupString().defined(),
@@ -9,8 +9,8 @@ export const adminTransaction = yupObject({
   customer_id: yupString().defined(),
   quantity: yupNumber().defined(),
   test_mode: yupBoolean().defined(),
-  offer_display_name: yupString().nullable().defined(),
-  price: offerPriceSchema.omit(["serverOnly", "freeTrial"]).nullable().defined(),
+  product_display_name: yupString().nullable().defined(),
+  price: productPriceSchema.omit(["serverOnly", "freeTrial"]).nullable().defined(),
   status: yupString().nullable().defined(),
   item_id: yupString().optional(),
   description: yupString().nullable().optional(),

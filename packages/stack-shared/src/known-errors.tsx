@@ -1492,34 +1492,34 @@ const CustomerDoesNotExist = createKnownErrorConstructor(
   (json) => [json.customer_id] as const,
 );
 
-const OfferDoesNotExist = createKnownErrorConstructor(
+const ProductDoesNotExist = createKnownErrorConstructor(
   KnownError,
-  "OFFER_DOES_NOT_EXIST",
-  (offerId: string, accessType: "client" | "server" | "admin") => [
+  "PRODUCT_DOES_NOT_EXIST",
+  (productId: string, accessType: "client" | "server" | "admin") => [
     400,
-    `Offer with ID ${JSON.stringify(offerId)} does not exist${accessType === "client" ? " or you don't have permissions to access it." : "."}`,
+    `Product with ID ${JSON.stringify(productId)} does not exist${accessType === "client" ? " or you don't have permissions to access it." : "."}`,
     {
-      offer_id: offerId,
+      product_id: productId,
       access_type: accessType,
     },
   ] as const,
-  (json) => [json.offer_id, json.access_type] as const,
+  (json) => [json.product_id, json.access_type] as const,
 );
 
-const OfferCustomerTypeDoesNotMatch = createKnownErrorConstructor(
+const ProductCustomerTypeDoesNotMatch = createKnownErrorConstructor(
   KnownError,
-  "OFFER_CUSTOMER_TYPE_DOES_NOT_MATCH",
-  (offerId: string | undefined, customerId: string, offerCustomerType: "user" | "team" | "custom" | undefined, actualCustomerType: "user" | "team" | "custom") => [
+  "PRODUCT_CUSTOMER_TYPE_DOES_NOT_MATCH",
+  (productId: string | undefined, customerId: string, productCustomerType: "user" | "team" | "custom" | undefined, actualCustomerType: "user" | "team" | "custom") => [
     400,
-    `The ${actualCustomerType} with ID ${JSON.stringify(customerId)} is not a valid customer for the inline offer that has been passed in. ${offerCustomerType ? `The offer is configured to only be available for ${offerCustomerType} customers, but the customer is a ${actualCustomerType}.` : `The offer is missing a customer type field. Please make sure it is set up correctly in your project configuration.`}`,
+    `The ${actualCustomerType} with ID ${JSON.stringify(customerId)} is not a valid customer for the inline product that has been passed in. ${productCustomerType ? `The product is configured to only be available for ${productCustomerType} customers, but the customer is a ${actualCustomerType}.` : `The product is missing a customer type field. Please make sure it is set up correctly in your project configuration.`}`,
     {
-      offer_id: offerId ?? null,
+      product_id: productId ?? null,
       customer_id: customerId,
-      offer_customer_type: offerCustomerType ?? null,
+      product_customer_type: productCustomerType ?? null,
       actual_customer_type: actualCustomerType,
     },
   ] as const,
-  (json) => [json.offer_id ?? undefined, json.customer_id, json.offer_customer_type ?? undefined, json.actual_customer_type] as const,
+  (json) => [json.product_id ?? undefined, json.customer_id, json.product_customer_type ?? undefined, json.actual_customer_type] as const,
 );
 
 const ItemQuantityInsufficientAmount = createKnownErrorConstructor(
@@ -1685,8 +1685,8 @@ export const KnownErrors = {
   ItemNotFound,
   ItemCustomerTypeDoesNotMatch,
   CustomerDoesNotExist,
-  OfferDoesNotExist,
-  OfferCustomerTypeDoesNotMatch,
+  ProductDoesNotExist,
+  ProductCustomerTypeDoesNotMatch,
   ItemQuantityInsufficientAmount,
   StripeAccountInfoNotFound,
   DataVaultStoreDoesNotExist,

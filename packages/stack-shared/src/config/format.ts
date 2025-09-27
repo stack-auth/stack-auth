@@ -58,7 +58,9 @@ function getInvalidConfigValueReason(value: unknown, options: { valueName?: stri
         break;
       } else if (Array.isArray(value)) {
         for (const [index, v] of value.entries()) {
-          const reason = getInvalidConfigValueReason(v, { valueName: `${valueName}[${index}]` });
+          const elementValueName = `${valueName}[${index}]`;
+          if (v === null) return `${elementValueName} is null; tuple elements cannot be null`;
+          const reason = getInvalidConfigValueReason(v, { valueName: elementValueName });
           if (reason) return reason;
         }
       } else {

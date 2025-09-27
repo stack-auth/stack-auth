@@ -1,12 +1,12 @@
-import { Team, ServerUser } from "@stackframe/stack";
+import { useAdminApp } from "@/app/(main)/(protected)/projects/[projectId]/use-admin-app";
+import { ServerUser, Team } from "@stackframe/stack";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
+import { ActionDialog, InlineCode, Typography, toast } from "@stackframe/stack-ui";
 import { useState } from "react";
-import { ActionDialog, InlineCode, toast, Typography } from "@stackframe/stack-ui";
-import { FormDialog } from "../form-dialog";
-import { useAdminApp } from "@/app/(main)/(protected)/projects/[projectId]/use-admin-app";
-import { SelectField } from "../form-fields";
 import * as yup from "yup";
+import { FormDialog } from "../form-dialog";
+import { SelectField } from "../form-fields";
 
 type Props = {
   open: boolean,
@@ -27,19 +27,19 @@ export function CreateCheckoutDialog(props: Props) {
   const config = project.useConfig();
   const [checkoutUrl, setCheckoutUrl] = useState<string | null>(null);
   const customer = props.user ?? props.team;
-  const offers = config.payments.offers;
-  const shownOffers = Object.keys(offers).filter(id => offers[id].customerType === (props.user ? "user" : "team"));
+  const products = config.payments.products;
+  const shownProducts = Object.keys(products).filter(id => products[id].customerType === (props.user ? "user" : "team"));
 
-  const createCheckoutUrl = async (data: { offerId: string }) => {
-    const result = await Result.fromPromise(customer.createCheckoutUrl({ offerId: data.offerId }));
+  const createCheckoutUrl = async (data: { productId: string }) => {
+    const result = await Result.fromPromise(customer.createCheckoutUrl({ productId: data.productId }));
     if (result.status === "ok") {
       setCheckoutUrl(result.data);
       return;
     }
-    if (result.error instanceof KnownErrors.OfferDoesNotExist) {
-      toast({ title: "Offer with given offerId does not exist", variant: "destructive" });
-    } else if (result.error instanceof KnownErrors.OfferCustomerTypeDoesNotMatch) {
-      toast({ title: "Customer type does not match expected type for this offer", variant: "destructive" });
+    if (result.error instanceof KnownErrors.ProductDoesNotExist) {
+      toast({ title: "Product with given productId does not exist", variant: "destructive" });
+    } else if (result.error instanceof KnownErrors.ProductCustomerTypeDoesNotMatch) {
+      toast({ title: "Customer type does not match expected type for this product", variant: "destructive" });
     } else if (result.error instanceof KnownErrors.CustomerDoesNotExist) {
       toast({ title: "Customer with given customerId does not exist", variant: "destructive" });
     } else {
@@ -55,16 +55,16 @@ export function CreateCheckoutDialog(props: Props) {
         onOpenChange={props.onOpenChange}
         title="Create Checkout URL"
         formSchema={yup.object({
-          offerId: yup.string().defined().label("Offer ID"),
+          productId: yup.string().defined().label("Product ID"),
         })}
         cancelButton
         okButton={{ label: "Create" }}
         onSubmit={values => createCheckoutUrl(values)}
         render={form => <SelectField
           control={form.control}
-          name="offerId"
-          label="Offer"
-          options={shownOffers.map(id => ({ value: id, label: id }))}
+          name="productId"
+          label="Product"
+          options={shownProducts.map(id => ({ value: id, label: id }))}
         />}
       />
       <ActionDialog

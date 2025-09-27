@@ -1,6 +1,6 @@
 import { createVerificationCodeHandler } from "@/route-handlers/verification-code-handler";
 import { VerificationCodeType } from "@prisma/client";
-import { offerSchema, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+import { productSchema, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 
 export const purchaseUrlVerificationCodeHandler = createVerificationCodeHandler({
   type: VerificationCodeType.PURCHASE_URL,
@@ -8,8 +8,8 @@ export const purchaseUrlVerificationCodeHandler = createVerificationCodeHandler(
   data: yupObject({
     tenancyId: yupString().defined(),
     customerId: yupString().defined(),
-    offerId: yupString(),
-    offer: offerSchema,
+    productId: yupString(),
+    product: productSchema,
     stripeCustomerId: yupString().defined(),
     stripeAccountId: yupString().defined(),
   }),
