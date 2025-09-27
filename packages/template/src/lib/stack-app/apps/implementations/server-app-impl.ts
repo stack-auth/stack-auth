@@ -676,6 +676,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
       teamProfile: {
         displayName: crud.display_name,
         profileImageUrl: crud.profile_image_url,
+        permission_ids: crud.permission_ids,
       },
     };
   }
@@ -685,6 +686,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
       id: crud.id,
       recipientEmail: crud.recipient_email,
       expiresAt: new Date(crud.expires_at_millis),
+      permissionIds: crud.permission_ids,
       revoke: async () => {
         await this._interface.revokeServerTeamInvitation(crud.id, crud.team_id);
       },
@@ -745,11 +747,12 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
         });
         await app._serverTeamMemberProfilesCache.refresh([crud.id]);
       },
-      async inviteUser(options: { email: string, callbackUrl?: string }) {
+      async inviteUser(options: { email: string, callbackUrl?: string, permissionIds?: string[] }) {
         await app._interface.sendServerTeamInvitation({
           teamId: crud.id,
           email: options.email,
           callbackUrl: options.callbackUrl ?? constructRedirectUrl(app.urls.teamInvitation, "callbackUrl"),
+          permissionIds: options.permissionIds,
         });
         await app._serverTeamInvitationsCache.refresh([crud.id]);
       },
