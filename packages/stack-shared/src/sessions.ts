@@ -1,14 +1,29 @@
 import * as jose from 'jose';
 import { InferType } from 'yup';
 import { accessTokenPayloadSchema } from './schema-fields';
-import { StackAssertionError } from "./utils/errors";
+import { StackAssertionError, throwErr } from "./utils/errors";
 import { Store } from "./utils/stores";
 
 
 export type AccessTokenPayload = InferType<typeof accessTokenPayloadSchema>;
 
+function decodeAccessTokenIfValid(token: string): AccessTokenPayload | null {
+  try {
+    const payload = jose.decodeJwt(token);
+    return accessTokenPayloadSchema.validateSync(payload);
+  } catch (e) {
+    return null;
+  }
+}
+
 export class AccessToken {
-  constructor(
+  static createIfValid(token: string): AccessToken | null {
+    const payload = decodeAccessTokenIfValid(token);
+    if (!payload) return null;
+    return new AccessToken(token);
+  }
+
+  private constructor(
     public readonly token: string,
   ) {
     if (token === "undefined") {
@@ -17,8 +32,7 @@ export class AccessToken {
   }
 
   get payload() {
-    const payload = jose.decodeJwt(this.token);
-    return accessTokenPayloadSchema.validateSync(payload);
+    return decodeAccessTokenIfValid(this.token) ?? throwErr("Invalid access token in payload (should've been validated in createIfValid)", { token: this.token });
   }
 
   get expiresAt(): Date {
@@ -87,7 +101,7 @@ export class InternalSession {
     refreshToken: string | null,
     accessToken?: string | null,
   }) {
-    this._accessToken = new Store(_options.accessToken ? new AccessToken(_options.accessToken) : null);
+    this._accessToken = new Store(_options.accessToken ? AccessToken.createIfValid(_options.accessToken) : null);
     this._refreshToken = _options.refreshToken ? new RefreshToken(_options.refreshToken) : null;
     if (_options.accessToken === null && _options.refreshToken === null) {
       // this session is already invalid
