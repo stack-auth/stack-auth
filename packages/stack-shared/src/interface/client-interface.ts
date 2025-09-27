@@ -187,7 +187,7 @@ export class StackClientInterface {
       throw new StackAssertionError("Access token not found in token endpoint response, this is weird!");
     }
 
-    return new AccessToken(result.access_token);
+    return AccessToken.createIfValid(result.access_token) ?? throwErr("Access token in fetchNewAccessToken is invalid, looks like the backend is returning an invalid token!", { result });
   }
 
   public async sendClientRequest(

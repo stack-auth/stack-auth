@@ -1,6 +1,6 @@
 {
   "name": "@stackframe/convex-example",
-  "version": "0.1.0",
+  "version": "2.8.41",
   "private": true,
   "scripts": {
     "dev": "npm-run-all --parallel dev:frontend dev:backend",
