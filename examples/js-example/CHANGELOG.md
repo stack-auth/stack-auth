@@ -1,5 +1,18 @@
 # @stackframe/js-example
 
+## 2.8.41
+
+### Patch Changes
+
+- @stackframe/js@2.8.41
+
+## 2.8.40
+
+### Patch Changes
+
+- Updated dependencies
+  - @stackframe/js@2.8.40
+
 ## 2.8.39
 
 ### Patch Changes
