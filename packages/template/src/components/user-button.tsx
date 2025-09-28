@@ -74,8 +74,8 @@ function UserButtonInnerInner(props: UserButtonProps & { user: CurrentUser | nul
           <UserAvatar user={user} />
           {user && props.showUserInfo &&
             <div className="flex flex-col justify-center text-left">
-              <Typography className="max-w-40 truncate">{user.displayName}</Typography>
-              <Typography className="max-w-40 truncate" variant="secondary" type='label'>{user.primaryEmail}</Typography>
+              <div className="max-w-40 truncate">{user.displayName}</div>
+              <div className="max-w-40 truncate text-sm text-gray-500">{user.primaryEmail}</div>
             </div>
           }
         </div>

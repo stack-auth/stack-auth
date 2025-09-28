@@ -201,3 +201,48 @@ import.meta.vitest?.test("unique", ({ expect }) => {
   // Test with different types
   expect(unique([1, "1", true, 1, "1", true])).toEqual([1, "1", true]);
 });
+
+
+export function getChunks<T>(arr: readonly T[], size: number): T[][] {
+  const result: T[][] = [];
+  if (size <= 0) return result;
+  for (let i = 0; i < arr.length; i += size) {
+    result.push(arr.slice(i, i + size));
+  }
+  return result;
+}
+import.meta.vitest?.test("getChunks", ({ expect }) => {
+  expect(getChunks([], 2)).toEqual([]);
+  expect(getChunks([1], 2)).toEqual([[1]]);
+  expect(getChunks([1, 2], 2)).toEqual([[1, 2]]);
+  expect(getChunks([1, 2, 3], 2)).toEqual([[1, 2], [3]]);
+  expect(getChunks([1, 2, 3, 4, 5], 2)).toEqual([[1, 2], [3, 4], [5]]);
+  expect(getChunks([1, 2, 3, 4], 3)).toEqual([[1, 2, 3], [4]]);
+  expect(getChunks([1, 2, 3], 0)).toEqual([]);
+  expect(getChunks([1, 2, 3], -1)).toEqual([]);
+});
+
+export function isStringArray(arr: unknown): arr is string[] {
+  return Array.isArray(arr) && arr.every((item) => typeof item === "string");
+}
+export function isNumberArray(arr: unknown): arr is number[] {
+  return Array.isArray(arr) && arr.every((item) => typeof item === "number");
+}
+export function isBooleanArray(arr: unknown): arr is boolean[] {
+  return Array.isArray(arr) && arr.every((item) => typeof item === "boolean");
+}
+export function isObjectArray(arr: unknown): arr is object[] {
+  return Array.isArray(arr) && arr.every((item) => typeof item === "object" && item !== null);
+}
+import.meta.vitest?.test("is<Type>Array", ({ expect }) => {
+  expect(isStringArray([])).toBe(true);
+  expect(isNumberArray([1, 2, 3])).toBe(true);
+  expect(isBooleanArray([true, false, true])).toBe(true);
+  expect(isObjectArray([{ a: 1 }, { b: 2 }, { c: 3 }])).toBe(true);
+  expect(isStringArray([1, 2, 3])).toBe(false);
+  expect(isNumberArray(["a", "b", "c"])).toBe(false);
+  expect(isBooleanArray([1, 2, 3])).toBe(false);
+  expect(isObjectArray([1, 2, 3])).toBe(false);
+  expect(isObjectArray([{ a: 1 }, null, { b: 2 }])).toBe(false);
+  expect(isObjectArray([{ a: 1 }, undefined, { b: 2 }])).toBe(false);
+});

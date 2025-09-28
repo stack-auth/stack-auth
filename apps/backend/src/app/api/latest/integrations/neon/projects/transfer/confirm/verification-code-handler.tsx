@@ -1,9 +1,10 @@
-import { getPrismaClientForTenancy, globalPrismaClient } from "@/prisma-client";
+import { teamsCrudHandlers } from "@/app/api/latest/teams/crud";
+import { globalPrismaClient } from "@/prisma-client";
 import { createVerificationCodeHandler } from "@/route-handlers/verification-code-handler";
 import { VerificationCodeType } from "@prisma/client";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { StackAssertionError, StatusError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { StackAssertionError, StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 
 export const neonIntegrationProjectTransferCodeHandler = createVerificationCodeHandler({
   metadata: {
@@ -41,8 +42,7 @@ export const neonIntegrationProjectTransferCodeHandler = createVerificationCodeH
   },
 
   async handler(tenancy, method, data, body, user) {
-    const project = tenancy.project;
-    if (project.id !== "internal") throw new StackAssertionError("This endpoint is only available for internal projects, why is it being called for a non-internal project?");
+    if (tenancy.project.id !== "internal") throw new StackAssertionError("This endpoint is only available for internal projects, why is it being called for a non-internal project?");
     if (!user) throw new KnownErrors.UserAuthenticationRequired;
 
     const provisionedProject = await globalPrismaClient.provisionedProject.deleteMany({
@@ -54,33 +54,33 @@ export const neonIntegrationProjectTransferCodeHandler = createVerificationCodeH
 
     if (provisionedProject.count === 0) throw new StatusError(400, "The project to transfer was not provisioned by Neon or has already been transferred.");
 
-    const prisma = await getPrismaClientForTenancy(tenancy);
-
-    const recentDbUser = await prisma.projectUser.findUnique({
+    const project = await globalPrismaClient.project.findUnique({
       where: {
-        tenancyId_projectUserId: {
-          tenancyId: tenancy.id,
-          projectUserId: user.id,
-        },
+        id: data.project_id,
       },
-    }) ?? throwErr("Authenticated user not found in transaction. Something went wrong. Did the user delete their account at the wrong time? (Very unlikely.)");
-    const rduServerMetadata: any = recentDbUser.serverMetadata;
+    });
+    if (!project) throw new StatusError(400, "The project to transfer was not found.");
+    if (project.ownerTeamId) throw new StatusError(400, "The project to transfer has already been transferred.");
 
-    await prisma.projectUser.update({
+    const team = await teamsCrudHandlers.adminCreate({
+      data: {
+        display_name: user.display_name ?
+          `${user.display_name}'s Team` :
+          user.primary_email ?
+            `${user.primary_email}'s Team` :
+            "Personal Team",
+        creator_user_id: 'me',
+      },
+      tenancy,
+      user,
+    });
+
+    await globalPrismaClient.project.update({
       where: {
-        tenancyId_projectUserId: {
-          tenancyId: tenancy.id,
-          projectUserId: user.id,
-        },
+        id: data.project_id,
       },
       data: {
-        serverMetadata: {
-          ...typeof rduServerMetadata === "object" ? rduServerMetadata : {},
-          managedProjectIds: [
-            ...(Array.isArray(rduServerMetadata?.managedProjectIds) ? rduServerMetadata.managedProjectIds : []),
-            data.project_id,
-          ],
-        },
+        ownerTeamId: team.id,
       },
     });
 

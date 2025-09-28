@@ -525,6 +525,7 @@ exposing [`SECRET_SERVER_KEY`](../../rest-api/overview.mdx) on the client.
       // NEXT_LINE_PLATFORM react-like
       ⤷ useUsers([options]): ServerUser[]; //$stack-link-to:#stackserverappuseusersoptions
       createUser([options]): Promise<ServerUser>; //$stack-link-to:#stackserverappcreateuseroptions
+      sendEmail(options): Promise<Result<void, KnownErrors>>; //$stack-link-to:#stackserverappsendemailoptions
 
       getTeam(id): Promise<ServerTeam | null>; //$stack-link-to:#stackserverappgetteamid
       // NEXT_LINE_PLATFORM react-like
@@ -795,6 +796,77 @@ const user = await stackServerApp.createUser({
   </TabsContent>
 </Tabs>
 </AsideSection>
+  </MethodAside>
+</MethodLayout>
+</CollapsibleMethodSection>
+
+<CollapsibleMethodSection method="sendEmail" signature="[options]" appType="StackServerApp" defaultOpen={false}>
+
+<MethodLayout>
+  <MethodContent>
+
+    Send custom emails to users. You can send either custom HTML emails or use predefined templates with variables.
+
+    **Parameters:**
+    - `options` ([SendEmailOptions](../types/email#sendemailoptions)) - Email configuration and content
+
+    **Returns:** `Promise<Result<void, KnownErrors>>`
+
+    The method returns a `Result` object that can contain specific error types:
+
+    - `RequiresCustomEmailServer` - No custom email server configured
+    - `SchemaError` - Invalid email data provided  
+    - `UserIdDoesNotExist` - One or more user IDs don't exist
+
+  </MethodContent>
+  <MethodAside>
+
+<AsideSection title="Signature">
+
+```typescript
+declare function sendEmail(options: SendEmailOptions): Promise<Result<void, KnownErrors>>;
+```
+</AsideSection>
+<AsideSection title="Examples">
+
+<Tabs defaultValue="html-email">
+  <TabsList>
+    <TabsTrigger value="html-email">Send HTML Email</TabsTrigger>
+    <TabsTrigger value="template-email">Send Template Email</TabsTrigger>
+  </TabsList>
+  <TabsContent value="html-email">
+```typescript
+const result = await stackServerApp.sendEmail({
+  userIds: ['user-1', 'user-2'],
+  subject: 'Welcome to our platform!',
+  html: '<h1>Welcome!</h1><p>Thanks for joining us.</p>',
+});
+
+if (result.status === 'error') {
+  console.error('Failed to send email:', result.error);
+}
+```
+  </TabsContent>
+  <TabsContent value="template-email">
+```typescript
+const result = await stackServerApp.sendEmail({
+  userIds: ['user-1'],
+  templateId: 'welcome-template',
+  variables: {
+    userName: 'John Doe',
+    activationUrl: 'https://app.com/activate/token123',
+  },
+});
+
+if (result.status === 'error') {
+  console.error('Failed to send email:', result.error);
+}
+```
+  </TabsContent>
+</Tabs>
+
+</AsideSection>
+
   </MethodAside>
 </MethodLayout>
 </CollapsibleMethodSection>

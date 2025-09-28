@@ -12,10 +12,11 @@ import {
 } from "@/components/vibe-coding";
 import { ToolCallContent } from "@/components/vibe-coding/chat-adapters";
 import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
-import { Button, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, toast } from "@stackframe/stack-ui";
+import { Button, toast } from "@stackframe/stack-ui";
 import { useEffect, useState } from "react";
 import { PageLayout } from "../../page-layout";
 import { useAdminApp } from "../../use-admin-app";
+import { EmailThemeSelector } from "@/components/email-theme-selector";
 
 export default function PageClient(props: { templateId: string }) {
   const stackAdminApp = useAdminApp();
@@ -61,7 +62,7 @@ export default function PageClient(props: { templateId: string }) {
     <VibeCodeLayout
       previewComponent={
         <div className="p-4 w-full h-full">
-          <EmailPreview themeId={selectedThemeId === undefined ? null : selectedThemeId} templateTsxSource={currentCode} />
+          <EmailPreview themeId={selectedThemeId} templateTsxSource={currentCode} />
         </div>
       }
       editorComponent={
@@ -70,7 +71,7 @@ export default function PageClient(props: { templateId: string }) {
           onCodeChange={setCurrentCode}
           action={
             <div className="flex gap-2">
-              <ThemeSelector
+              <EmailThemeSelector
                 selectedThemeId={selectedThemeId}
                 onThemeChange={setSelectedThemeId}
                 className="w-48"
@@ -96,39 +97,3 @@ export default function PageClient(props: { templateId: string }) {
   );
 }
 
-type ThemeSelectorProps = {
-  selectedThemeId: string | undefined | false,
-  onThemeChange: (themeId: string | undefined | false) => void,
-  className?: string,
-}
-
-function themeIdToSelectString(themeId: string | undefined | false): string {
-  return JSON.stringify(themeId ?? null);
-}
-function selectStringToThemeId(value: string): string | undefined | false {
-  return JSON.parse(value) ?? undefined;
-}
-
-function ThemeSelector({ selectedThemeId, onThemeChange, className }: ThemeSelectorProps) {
-  const stackAdminApp = useAdminApp();
-  const themes = stackAdminApp.useEmailThemes();
-  return (
-    <Select
-      value={themeIdToSelectString(selectedThemeId)}
-      onValueChange={(value) => onThemeChange(selectStringToThemeId(value))}
-    >
-      <SelectTrigger className={className}>
-        <SelectValue placeholder="No theme" />
-      </SelectTrigger>
-      <SelectContent>
-        <SelectItem value={"false"}>No theme</SelectItem>
-        <SelectItem value={"null"}>Project theme</SelectItem>
-        {themes.map((theme) => (
-          <SelectItem key={theme.id} value={JSON.stringify(theme.id)}>
-            {theme.displayName}
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
-  );
-}

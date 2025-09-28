@@ -1,5 +1,83 @@
 # @stackframe/stack-shared
 
+## 2.8.41
+
+### Patch Changes
+
+- Various changes
+
+## 2.8.40
+
+### Patch Changes
+
+- Various changes
+
+## 2.8.39
+
+### Patch Changes
+
+- Various changes
+
+## 2.8.38
+
+### Patch Changes
+
+- Various changes
+
+## 2.8.37
+
+### Patch Changes
+
+- Various changes
+
+## 2.8.36
+
+### Patch Changes
+
+- Various changes
+
+## 2.8.35
+
+### Patch Changes
+
+- Various changes
+
+## 2.8.34
+
+### Patch Changes
+
+- Various changes
+
+## 2.8.33
+
+### Patch Changes
+
+- Various changes
+
+## 2.8.32
+
+### Patch Changes
+
+- Various changes
+
+## 2.8.31
+
+### Patch Changes
+
+- Various changes
+
+## 2.8.30
+
+### Patch Changes
+
+- Various changes
+
+## 2.8.29
+
+### Patch Changes
+
+- Various changes
+
 ## 2.8.28
 
 ### Patch Changes

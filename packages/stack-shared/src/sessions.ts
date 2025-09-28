@@ -1,9 +1,29 @@
 import * as jose from 'jose';
-import { StackAssertionError } from "./utils/errors";
+import { InferType } from 'yup';
+import { accessTokenPayloadSchema } from './schema-fields';
+import { StackAssertionError, throwErr } from "./utils/errors";
 import { Store } from "./utils/stores";
 
+
+export type AccessTokenPayload = InferType<typeof accessTokenPayloadSchema>;
+
+function decodeAccessTokenIfValid(token: string): AccessTokenPayload | null {
+  try {
+    const payload = jose.decodeJwt(token);
+    return accessTokenPayloadSchema.validateSync(payload);
+  } catch (e) {
+    return null;
+  }
+}
+
 export class AccessToken {
-  constructor(
+  static createIfValid(token: string): AccessToken | null {
+    const payload = decodeAccessTokenIfValid(token);
+    if (!payload) return null;
+    return new AccessToken(token);
+  }
+
+  private constructor(
     public readonly token: string,
   ) {
     if (token === "undefined") {
@@ -11,12 +31,12 @@ export class AccessToken {
     }
   }
 
-  get decoded() {
-    return jose.decodeJwt(this.token);
+  get payload() {
+    return decodeAccessTokenIfValid(this.token) ?? throwErr("Invalid access token in payload (should've been validated in createIfValid)", { token: this.token });
   }
 
   get expiresAt(): Date {
-    const { exp } = this.decoded;
+    const { exp } = this.payload;
     if (exp === undefined) return new Date(8640000000000000);  // max date value
     return new Date(exp * 1000);
   }
@@ -81,7 +101,7 @@ export class InternalSession {
     refreshToken: string | null,
     accessToken?: string | null,
   }) {
-    this._accessToken = new Store(_options.accessToken ? new AccessToken(_options.accessToken) : null);
+    this._accessToken = new Store(_options.accessToken ? AccessToken.createIfValid(_options.accessToken) : null);
     this._refreshToken = _options.refreshToken ? new RefreshToken(_options.refreshToken) : null;
     if (_options.accessToken === null && _options.refreshToken === null) {
       // this session is already invalid
@@ -117,19 +137,28 @@ export class InternalSession {
   }
 
   /**
-   * Returns the access token if it is found in the cache, fetching it otherwise.
-   *
-   * This is usually the function you want to call to get an access token. Either set `minMillisUntilExpiration` to a reasonable value, or catch errors that occur if it expires, and call `markAccessTokenExpired` to mark the token as expired if so (after which a call to this function will always refetch the token).
-   *
-   * @returns null if the session is known to be invalid, cached tokens if they exist in the cache (which may or may not be valid still), or new tokens otherwise.
+   * Returns the access token if it is found in the cache and not expired yet, or null otherwise. Never fetches new tokens.
    */
-  async getOrFetchLikelyValidTokens(minMillisUntilExpiration: number): Promise<{ accessToken: AccessToken, refreshToken: RefreshToken | null } | null> {
-    if (minMillisUntilExpiration >= 60_000) {
+  getAccessTokenIfNotExpiredYet(minMillisUntilExpiration: number): AccessToken | null {
+    if (minMillisUntilExpiration > 60_000) {
       throw new Error(`Required access token expiry ${minMillisUntilExpiration}ms is too long; access tokens are too short to be used for more than 60s`);
     }
 
     const accessToken = this._getPotentiallyInvalidAccessTokenIfAvailable();
-    if (!accessToken || accessToken.expiresInMillis < minMillisUntilExpiration) {
+    if (!accessToken || accessToken.expiresInMillis < minMillisUntilExpiration) return null;
+    return accessToken;
+  }
+
+  /**
+   * Returns the access token if it is found in the cache, fetching it otherwise.
+   *
+   * This is usually the function you want to call to get an access token. Either set `minMillisUntilExpiration` to a reasonable value, or catch errors that occur if it expires, and call `markAccessTokenExpired` to mark the token as expired if so (after which a call to this function will always refetch the token).
+   *
+   * @returns null if the session is known to be invalid, cached tokens if they exist in the cache and the access token hasn't expired yet (the refresh token might still be invalid), or new tokens otherwise.
+   */
+  async getOrFetchLikelyValidTokens(minMillisUntilExpiration: number): Promise<{ accessToken: AccessToken, refreshToken: RefreshToken | null } | null> {
+    const accessToken = this.getAccessTokenIfNotExpiredYet(minMillisUntilExpiration);
+    if (!accessToken) {
       const newTokens = await this.fetchNewTokens();
       const expiresInMillis = newTokens?.accessToken.expiresInMillis;
       if (expiresInMillis && expiresInMillis < minMillisUntilExpiration) {

@@ -7,7 +7,18 @@ alwaysApply: true
 Code changes MUST follow the naming guidelines below.
 DON'T report any other naming issues.
 
-- Use `snake_case` for anything that goes over HTTP in REST APIs, `camelCase` for JavaScript elsewhere
+- Use `snake_case` for:
+  - REST API parameters (URL params, query params, request/response body fields)
+  - Database column names in Prisma schema
+  - Form field names in HTML
+  - Environment variable names
+  - File names and directory names (kebab-case preferred for directories)
+- Use `camelCase` for:
+  - JavaScript/TypeScript variables, functions, and methods
+  - Object properties in JavaScript/TypeScript code (except API serialization)
+  - React component props (internal usage)
+  - Class and interface names should use PascalCase
+  - TypeScript type names should use PascalCase
 - `captureError`'s first argument should be a machine-readable ID without whitespaces (e.g., `'user-sign-up-email'` not `'Email failed to send'`)
 - When doing OAuth flows, specify the type (inner/outer/external) in variable names, comments, and error messages
 - Use descriptive names that clearly indicate purpose and context
@@ -16,6 +27,26 @@ DON'T report any other naming issues.
 # Solution
 
 Fix naming inconsistencies by:
-- Converting API parameters to snake_case
-- Making captureError IDs machine-readable with hyphens
-- Adding OAuth type prefixes to variable names
+
+## API and External Interfaces (use snake_case):
+- Convert URL parameters: `/api/users/[userId]` → `/api/users/[user_id]`
+- Convert request body fields: `{ teamId: "123" }` → `{ team_id: "123" }`
+- Convert response body fields: `{ apiKey: "abc" }` → `{ api_key: "abc" }`
+- Convert query parameters: `?projectId=123` → `?project_id=123`
+
+## JavaScript/TypeScript Internal Code (use camelCase):
+- Variable names: `const userId = req.params.user_id`
+- Function names: `function getUserById(userId: string)`
+- Method names: `user.getTeams()`, `project.createApiKey()`
+- Object properties: `{ userId, teamId, displayName }`
+
+## Types and Classes (use PascalCase):
+- Interface names: `interface UserData`, `type ProjectConfig`
+- Class names: `class UserManager`, `class TeamService`
+- Enum names: `enum UserRole`, `enum PaymentStatus`
+
+## Special Cases:
+- Database fields in Prisma: Always snake_case (`user_id`, `created_at`)
+- Environment variables: UPPER_SNAKE_CASE (`STACK_PROJECT_ID`)
+- captureError IDs: kebab-case (`'user-sign-up-failed'`, `'payment-processing-error'`)
+- OAuth variable prefixes: `innerOAuthUrl`, `externalOAuthProvider`, `outerOAuthCallback`

@@ -1,5 +1,6 @@
 import { stackServerApp } from "@/stack";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
+import { getOrCreateFeaturebaseUser } from "@stackframe/stack-shared/dist/utils/featurebase";
 import { urlString } from "@stackframe/stack-shared/dist/utils/urls";
 import * as jose from "jose";
 import { Metadata } from "next";
@@ -25,14 +26,22 @@ export default async function FeaturebaseSSO({
     redirect(urlString`/handler/sign-in?after_auth_return_to=${urlString`/integrations/featurebase/sso?return_to=${returnTo}`}`);
   }
 
+  // Get or create Featurebase user with consistent email
+  const featurebaseUser = await getOrCreateFeaturebaseUser({
+    id: user.id,
+    primaryEmail: user.primaryEmail,
+    displayName: user.displayName,
+    profileImageUrl: user.profileImageUrl,
+  });
+
   const featurebaseSecret = getEnvVariable("STACK_FEATUREBASE_JWT_SECRET");
 
-  // Create JWT token
+  // Create JWT token using the Featurebase user data
   const secret = new TextEncoder().encode(featurebaseSecret);
   const jwt = await new jose.SignJWT({
-    userId: user.id,
-    email: user.primaryEmail,
-    name: user.displayName || undefined,
+    userId: featurebaseUser.userId,
+    email: featurebaseUser.email,
+    name: user.displayName || 'Stack Auth User',
     profilePicture: user.profileImageUrl || undefined,
   })
     .setProtectedHeader({ alg: "HS256" })

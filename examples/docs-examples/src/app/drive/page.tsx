@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useState } from 'react';
 import { useUser } from "@stackframe/stack";
+import { useEffect, useState } from 'react';
 
 export default function Page() {
   const user = useUser({ or: 'redirect' });
@@ -10,6 +10,7 @@ export default function Page() {
   const [response, setResponse] = useState<any>();
 
   useEffect(() => {
+    // eslint-disable-next-line no-restricted-syntax
     fetch('https://www.googleapis.com/drive/v3/files', {
       headers: { Authorization: `Bearer ${tokens.accessToken}` }
     })

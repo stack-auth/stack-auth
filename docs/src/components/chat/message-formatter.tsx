@@ -238,10 +238,19 @@ function renderNode(node: MessageNode, index: number): React.ReactNode {
     }
 
     case 'link': {
+      // Fix incorrect domain links
+      let fixedUrl = node.url || '';
+      if (fixedUrl.includes('stackauth.com/docs/')) {
+        fixedUrl = fixedUrl.replace('stackauth.com/docs/', 'docs.stack-auth.com/docs/');
+      }
+      if (fixedUrl.includes('//stackauth.com/docs/')) {
+        fixedUrl = fixedUrl.replace('//stackauth.com/docs/', '//docs.stack-auth.com/docs/');
+      }
+
       return (
         <a
           key={index}
-          href={node.url}
+          href={fixedUrl}
           target="_blank"
           rel="noopener noreferrer"
           className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-blue-100 hover:bg-blue-200 text-blue-700 dark:bg-blue-900/40 dark:hover:bg-blue-900/60 dark:text-blue-300 rounded text-xs font-medium transition-all duration-150 hover:scale-[1.02]"
@@ -312,6 +321,7 @@ export function MessageFormatter({ content, className = '' }: MessageFormatterPr
       }
     };
 
+    // eslint-disable-next-line no-restricted-syntax
     parseContent().catch((error) => {
       console.error('Error parsing markdown:', error);
     });

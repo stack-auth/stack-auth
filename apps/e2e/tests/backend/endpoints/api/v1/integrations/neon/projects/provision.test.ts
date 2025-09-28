@@ -1,5 +1,6 @@
+import { decryptValue, hashKey } from "@stackframe/stack-shared/dist/helpers/vault/client-side";
 import { it } from "../../../../../../../helpers";
-import { Auth, InternalApiKey, backendContext, niceBackendFetch } from "../../../../../../backend-helpers";
+import { Auth, InternalApiKey, InternalProjectKeys, Project, backendContext, niceBackendFetch } from "../../../../../../backend-helpers";
 
 export async function provisionProject() {
   return await niceBackendFetch("/api/v1/integrations/neon/projects/provision", {
@@ -80,8 +81,11 @@ it("should be able to provision a new project if neon client details are correct
         "created_at_millis": <stripped field 'created_at_millis'>,
         "description": "Created with Neon",
         "display_name": "Test project",
+        "full_logo_url": null,
         "id": "<stripped UUID>",
         "is_production_mode": false,
+        "logo_url": null,
+        "owner_team_id": null,
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -189,4 +193,149 @@ it("should fail if the neon client details are missing", async ({ expect }) => {
     },
   }
 `);
+});
+
+it("should accept empty connection_strings without attempting migrations", async ({ expect }) => {
+  const response = await niceBackendFetch("/api/v1/integrations/neon/projects/provision", {
+    method: "POST",
+    body: {
+      display_name: "Test project",
+      connection_strings: [],
+    },
+    headers: {
+      "Authorization": "Basic bmVvbi1sb2NhbDpuZW9uLWxvY2FsLXNlY3JldA==",
+    },
+  });
+  expect(response.status).toBe(200);
+  expect(response.body).toMatchObject({
+    project_id: expect.any(String),
+    super_secret_admin_key: expect.any(String),
+  });
+});
+
+it("should validate connection_strings item shape", async ({ expect }) => {
+  const response = await niceBackendFetch("/api/v1/integrations/neon/projects/provision", {
+    method: "POST",
+    body: {
+      display_name: "Test project",
+      // missing connection_string in the item
+      connection_strings: [
+        { branch_id: "main" } as any,
+      ],
+    },
+    headers: {
+      "Authorization": "Basic bmVvbi1sb2NhbDpuZW9uLWxvY2FsLXNlY3JldA==",
+    },
+  });
+  expect(response.status).toBe(400);
+  expect(response.headers.get("x-stack-known-error")).toBe("SCHEMA_ERROR");
+});
+
+it("can provision with a Neon connection string when provided via env (optional)", async ({ expect }) => {
+  // this test only runs with a neon connection string set
+  const neonConnectionString = process.env.STACK_TEST_NEON_CONNECTION_STRING;
+  if (!neonConnectionString) {
+    return;
+  }
+
+  const response = await niceBackendFetch("/api/v1/integrations/neon/projects/provision", {
+    method: "POST",
+    body: {
+      display_name: "Test project (neon)",
+      connection_strings: [
+        {
+          branch_id: "main",
+          connection_string: neonConnectionString,
+        },
+      ],
+    },
+    headers: {
+      "Authorization": "Basic bmVvbi1sb2NhbDpuZW9uLWxvY2FsLXNlY3JldA==",
+    },
+  });
+
+  expect(response.status).toBe(200);
+  backendContext.set({
+    projectKeys: {
+      projectId: response.body.project_id,
+      superSecretAdminKey: response.body.super_secret_admin_key,
+    },
+  });
+
+  const configResponse = await niceBackendFetch(`/api/latest/internal/config`, {
+    accessType: "admin",
+  });
+  expect(response.status).toBe(200);
+  expect(configResponse.body.config_string).toBeDefined();
+  const sourceOfTruth = JSON.parse(configResponse.body.config_string).sourceOfTruth;
+  expect(sourceOfTruth).toMatchInlineSnapshot(`
+    {
+      "connectionStrings": { "main": "<stripped UUID>" },
+      "type": "neon",
+    }
+  `);
+  backendContext.set({
+    projectKeys: InternalProjectKeys,
+  });
+
+  const getConnectionResponse = await niceBackendFetch(`/api/latest/data-vault/stores/neon-connection-strings/get`, {
+    method: "POST",
+    accessType: "server",
+    body: {
+      hashed_key: await hashKey("no client side encryption", sourceOfTruth.connectionStrings.main),
+    },
+  });
+  expect(getConnectionResponse.status).toBe(200);
+  const connectionString = await decryptValue(
+    "no client side encryption",
+    sourceOfTruth.connectionStrings.main,
+    getConnectionResponse.body.encrypted_value
+  );
+  expect(connectionString).toBe(neonConnectionString);
+});
+
+it("can update the connection_strings for an existing provisioned project", async ({ expect }) => {
+  // this test only runs with a neon connection string set
+  const neonConnectionString = process.env.STACK_TEST_NEON_CONNECTION_STRING;
+  if (!neonConnectionString) {
+    return;
+  }
+  const provisionResponse = await provisionProject();
+  const response = await niceBackendFetch(`/api/v1/integrations/neon/projects/connection?project_id=${provisionResponse.body.project_id}`, {
+    method: "POST",
+    body: {
+      connection_strings: [
+        { branch_id: "branch1", connection_string: neonConnectionString },
+      ],
+    },
+    headers: {
+      "Authorization": "Basic bmVvbi1sb2NhbDpuZW9uLWxvY2FsLXNlY3JldA==",
+    },
+  });
+  expect(response).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": { "project_id": "<stripped UUID>" },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+
+  backendContext.set({
+    projectKeys: {
+      projectId: provisionResponse.body.project_id,
+      superSecretAdminKey: provisionResponse.body.super_secret_admin_key,
+    },
+  });
+  const configResponse = await niceBackendFetch(`/api/latest/internal/config`, {
+    accessType: "admin",
+  });
+  expect(configResponse.status).toBe(200);
+  expect(configResponse.body.config_string).toBeDefined();
+  const sourceOfTruth = JSON.parse(configResponse.body.config_string).sourceOfTruth;
+  expect(sourceOfTruth).toMatchInlineSnapshot(`
+    {
+      "connectionStrings": { "branch1": "<stripped UUID>" },
+      "type": "neon",
+    }
+  `);
 });

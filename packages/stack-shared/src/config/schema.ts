@@ -3,11 +3,12 @@
 import * as yup from "yup";
 import { DEFAULT_EMAIL_TEMPLATES, DEFAULT_EMAIL_THEMES, DEFAULT_EMAIL_THEME_ID } from "../helpers/emails";
 import * as schemaFields from "../schema-fields";
-import { yupBoolean, yupDate, yupMixed, yupNever, yupNumber, yupObject, yupRecord, yupString, yupTuple, yupUnion } from "../schema-fields";
+import { offerSchema, userSpecifiedIdSchema, yupBoolean, yupDate, yupMixed, yupNever, yupNumber, yupObject, yupRecord, yupString, yupTuple, yupUnion } from "../schema-fields";
 import { isShallowEqual } from "../utils/arrays";
+import { SUPPORTED_CURRENCIES } from "../utils/currency-constants";
 import { StackAssertionError } from "../utils/errors";
 import { allProviders } from "../utils/oauth";
-import { DeepFilterUndefined, DeepMerge, DeepRequiredOrUndefined, deleteKey, filterUndefined, get, has, isObjectLike, mapValues, set, typedAssign, typedFromEntries } from "../utils/objects";
+import { DeepFilterUndefined, DeepMerge, DeepRequiredOrUndefined, deleteKey, filterUndefined, get, has, isObjectLike, mapValues, set, typedAssign, typedEntries, typedFromEntries } from "../utils/objects";
 import { Result } from "../utils/results";
 import { CollapseObjectUnion, Expand, IntersectAll, IsUnion, typeAssert, typeAssertExtends, typeAssertIs } from "../utils/types";
 import { Config, NormalizationError, NormalizesTo, assertNormalized, getInvalidConfigReason, normalize } from "./format";
@@ -41,7 +42,7 @@ export const projectConfigSchema = yupObject({
     yupObject({
       type: yupString().oneOf(['neon']).defined(),
       connectionStrings: yupRecord(
-        yupString().defined(),
+        userSpecifiedIdSchema("connectionStringId").defined(),
         yupString().defined(),
       ).defined(),
     }),
@@ -112,8 +113,42 @@ const branchAuthSchema = yupObject({
   }),
 });
 
+export const branchPaymentsSchema = yupObject({
+  autoPay: yupObject({
+    interval: schemaFields.dayIntervalSchema,
+  }).optional(),
+  groups: yupRecord(
+    userSpecifiedIdSchema("groupId"),
+    yupObject({
+      displayName: yupString().optional(),
+    }),
+  ).meta({ openapiField: { description: 'The groups that offers can be in. All offers in a group (besides add-ons) are mutually exclusive.', exampleValue: { "group-id": { displayName: "My Group" } } } }),
+  offers: yupRecord(
+    userSpecifiedIdSchema("offerId"),
+    offerSchema,
+  ),
+  items: yupRecord(
+    userSpecifiedIdSchema("itemId"),
+    yupObject({
+      displayName: yupString().optional(),
+      customerType: schemaFields.customerTypeSchema,
+    }),
+  ),
+});
+
 const branchDomain = yupObject({
   allowLocalhost: yupBoolean(),
+});
+
+const branchWorkflowsSchema = yupObject({
+  availableWorkflows: yupRecord(
+    userSpecifiedIdSchema("workflowId"),
+    yupObject({
+      displayName: yupString(),
+      tsSource: yupString(),
+      enabled: yupBoolean(),
+    }),
+  ),
 });
 
 export const branchConfigSchema = canNoLongerBeOverridden(projectConfigSchema, ["sourceOfTruth"]).concat(yupObject({
@@ -139,6 +174,19 @@ export const branchConfigSchema = canNoLongerBeOverridden(projectConfigSchema, [
     themes: schemaFields.emailThemeListSchema,
     templates: schemaFields.emailTemplateListSchema,
   }),
+
+  payments: branchPaymentsSchema,
+
+  dataVault: yupObject({
+    stores: yupRecord(
+      userSpecifiedIdSchema("storeId"),
+      yupObject({
+        displayName: yupString(),
+      }),
+    ),
+  }),
+
+  workflows: branchWorkflowsSchema,
 }));
 
 
@@ -164,6 +212,7 @@ export const environmentConfigSchema = branchConfigSchema.concat(yupObject({
   emails: branchConfigSchema.getNested("emails").concat(yupObject({
     server: yupObject({
       isShared: yupBoolean(),
+      provider: yupString().oneOf(['resend', 'smtp']).optional(),
       host: schemaFields.emailHostSchema.optional().nonEmpty(),
       port: schemaFields.emailPortSchema.optional(),
       username: schemaFields.emailUsernameSchema.optional().nonEmpty(),
@@ -175,10 +224,10 @@ export const environmentConfigSchema = branchConfigSchema.concat(yupObject({
 
   domains: branchConfigSchema.getNested("domains").concat(yupObject({
     trustedDomains: yupRecord(
-      yupString(),
+      userSpecifiedIdSchema("trustedDomainId"),
       yupObject({
-        baseUrl: schemaFields.urlSchema,
-        handlerPath: schemaFields.handlerPathSchema,
+        baseUrl: schemaFields.wildcardUrlSchema.max(300),
+        handlerPath: schemaFields.handlerPathSchema.max(300),
       }),
     ),
   })),
@@ -212,7 +261,7 @@ export function migrateConfigOverride(type: "project" | "branch" | "environment"
 
   // BEGIN 2025-07-28: domains.trustedDomains can no longer be an array
   if (isEnvironmentOrHigher) {
-    res = mapProperty(res, "domains.trustedDomains", (value) => {
+    res = mapProperty(res, p => p.join(".") === "domains.trustedDomains", (value) => {
       if (Array.isArray(value)) {
         return typedFromEntries(value.map((v, i) => [`${i}`, v]));
       }
@@ -223,14 +272,27 @@ export function migrateConfigOverride(type: "project" | "branch" | "environment"
 
   // BEGIN 2025-07-28: themeList and templateList have been renamed (this was before the email release, so they're safe to remove)
   if (isBranchOrHigher) {
-    res = removeProperty(res, "emails.themeList");
-    res = removeProperty(res, "emails.templateList");
+    res = removeProperty(res, p => p.join(".") === "emails.themeList");
+    res = removeProperty(res, p => p.join(".") === "emails.templateList");
   }
   // END
 
   // BEGIN 2025-07-28: sourceOfTruth was mistakenly written to the environment config in some cases, so let's remove it
   if (type === "environment") {
-    res = removeProperty(res, "sourceOfTruth");
+    res = removeProperty(res, p => p.join(".") === "sourceOfTruth");
+  }
+  // END
+
+  // BEGIN 2025-08-25: stripeAccountId and stripeAccountSetupComplete are unused, so let's remove them
+  if (type === "environment") {
+    res = removeProperty(res, p => p.join(".") === "payments.stripeAccountId");
+    res = removeProperty(res, p => p.join(".") === "payments.stripeAccountSetupComplete");
+  }
+  // END
+
+  // BEGIN 2025-08-25: payments.items.default is no longer used, so let's remove it
+  if (isBranchOrHigher) {
+    res = removeProperty(res, p => p.length === 4 && p[0] === "payments" && p[1] === "items" && p[3] === "default");
   }
   // END
 
@@ -238,41 +300,41 @@ export function migrateConfigOverride(type: "project" | "branch" | "environment"
   return res;
 };
 
-function removeProperty(obj: any, path: string): any {
-  return mapProperty(obj, path, () => undefined);
+function removeProperty(obj: Record<string, any>, pathCond: (path: (string | symbol)[]) => boolean): any {
+  return mapProperty(obj, pathCond, () => undefined);
 }
 
-function mapProperty(obj: any, path: string, mapper: (value: any) => any): any {
-  const keyParts = path.split(".");
-
-  for (let i = 0; i < keyParts.length; i++) {
-    const pathPrefix = keyParts.slice(0, i).join(".");
-    const pathSuffix = keyParts.slice(i).join(".");
-    if (has(obj, pathPrefix) && isObjectLike(get(obj, pathPrefix))) {
-      const newValue = mapProperty(get(obj, pathPrefix), pathSuffix, mapper);
-      set(obj, pathPrefix, newValue);
-    }
-  }
-  if (has(obj, path)) {
-    const newValue = mapper(get(obj, path));
-    if (newValue !== undefined) {
-      set(obj, path, newValue);
+function mapProperty(obj: Record<string, any>, pathCond: (path: string[]) => boolean, mapper: (value: any) => any): any {
+  const res: Record<string, any> = Array.isArray(obj) ? [] : {};
+  for (const [key, value] of typedEntries(obj)) {
+    const path = key.split(".");
+    if (pathCond(path)) {
+      const newValue = mapper(value);
+      if (newValue !== undefined) {
+        set(res, key, newValue);
+      } else {
+        // do nothing
+      }
+    } else if (isObjectLike(value)) {
+      set(res, key, mapProperty(value, p => pathCond([...path, ...p]), mapper));
     } else {
-      deleteKey(obj, path);
+      set(res, key, value);
     }
   }
-
-  return obj;
+  return res;
 }
 import.meta.vitest?.test("mapProperty - basic property mapping", ({ expect }) => {
-  expect(mapProperty({ a: { b: { c: 1 } } }, "a.b.c", (value) => value + 1)).toEqual({ a: { b: { c: 2 } } });
-  expect(mapProperty({ a: { b: { c: 1 } } }, "a.b.d", (value) => value + 1)).toEqual({ a: { b: { c: 1 } } });
-  expect(mapProperty({ x: 5 }, "x", (value) => value * 2)).toEqual({ x: 10 });
-  expect(mapProperty({ a: { b: { c: 1 } } }, "b.c", (value) => value * 10)).toEqual({ a: { b: { c: 1 } } });
-  expect(mapProperty({ a: 1 }, "b.c", (value) => value)).toEqual({ a: 1 });
+  expect(mapProperty({ a: { b: { c: 1 } } }, p => p.join(".") === "a.b.c", (value) => value + 1)).toEqual({ a: { b: { c: 2 } } });
+  expect(mapProperty({ a: { b: { c: 1 } } }, p => p.join(".") === "a.b.d", (value) => value + 1)).toEqual({ a: { b: { c: 1 } } });
+  expect(mapProperty({ x: 5 }, p => p.join(".") === "x", (value) => value * 2)).toEqual({ x: 10 });
+  expect(mapProperty({ a: { b: { c: 1 } } }, p => p.join(".") === "b.c", (value) => value * 10)).toEqual({ a: { b: { c: 1 } } });
+  expect(mapProperty({ a: 1 }, p => p.join(".") === "b.c", (value) => value)).toEqual({ a: 1 });
+  expect(mapProperty({ "a.b": { c: 1 } }, p => p.join(".") === "a.b.c", (value) => value + 1)).toEqual({ "a.b": { c: 2 } });
+
+  expect(mapProperty({ a: { b: { c: 1 } } }, p => p.length === 3 && p[0] === "a" && p[1] === "b", (value) => value + 1)).toEqual({ a: { b: { c: 2 } } });
 });
 
-function renameProperty(obj: any, oldPath: string, newPath: string): any {
+function renameProperty(obj: Record<string, any>, oldPath: string, newPath: string): any {
   const oldKeyParts = oldPath.split(".");
   const newKeyParts = newPath.split(".");
   if (!isShallowEqual(oldKeyParts.slice(0, -1), newKeyParts.slice(0, -1))) throw new StackAssertionError(`oldPath and newPath must have the same prefix. Provided: ${oldPath} and ${newPath}`);
@@ -388,6 +450,7 @@ const organizationConfigDefaults = {
   emails: {
     server: {
       isShared: true,
+      provider: "smtp",
       host: undefined,
       port: undefined,
       username: undefined,
@@ -406,6 +469,51 @@ const organizationConfigDefaults = {
       themeId: undefined,
     }), DEFAULT_EMAIL_TEMPLATES),
   },
+
+  payments: {
+    autoPay: undefined,
+    groups: (key: string) => ({
+      displayName: undefined,
+    }),
+    offers: (key: string) => ({
+      displayName: key,
+      groupId: undefined,
+      customerType: "user",
+      freeTrial: undefined,
+      serverOnly: false,
+      stackable: undefined,
+      isAddOnTo: false,
+      prices: (key: string) => ({
+        ...typedFromEntries(SUPPORTED_CURRENCIES.map(currency => [currency.code, undefined])),
+        interval: undefined,
+        serverOnly: false,
+        freeTrial: undefined,
+      }),
+      includedItems: (key: string) => ({
+        quantity: 0,
+        repeat: "never",
+        expires: "when-repeated",
+      }),
+    } as const),
+    items: (key: string) => ({
+      displayName: key,
+      customerType: "user",
+    } as const)
+  },
+
+  dataVault: {
+    stores: (key: string) => ({
+      displayName: "Unnamed Vault",
+    }),
+  },
+
+  workflows: {
+    availableWorkflows: (key: string) => ({
+      displayName: "Unnamed Workflow",
+      tsSource: "Error: Workflow config is missing TypeScript source code.",
+      enabled: false,
+    }),
+  },
 } as const satisfies DefaultsType<OrganizationRenderedConfigBeforeDefaults, [typeof environmentConfigDefaults, typeof branchConfigDefaults, typeof projectConfigDefaults]>;
 
 type _DeepOmitDefaultsImpl<T, U> = T extends object ? (
@@ -420,12 +528,12 @@ typeAssertIs<DefaultsType<{ a: { b: Record<string, 123>, c: 456 } }, [{ a: { c: 
 
 type DeepReplaceAllowFunctionsForObjects<T> = T extends object
   ? (
-      string extends keyof T
-        ? ((arg: Exclude<keyof T, number>) => DeepReplaceAllowFunctionsForObjects<T[keyof T]>) & ({ [K in keyof T]?: DeepReplaceAllowFunctionsForObjects<T[K]> } | {})
-        : { [K in keyof T]: DeepReplaceAllowFunctionsForObjects<T[K]> }
-    )
+    string extends keyof T
+    ? ((arg: Exclude<keyof T, number>) => DeepReplaceAllowFunctionsForObjects<T[keyof T]>) & ({ [K in keyof T]?: DeepReplaceAllowFunctionsForObjects<T[K]> } | {})
+    : { [K in keyof T]: DeepReplaceAllowFunctionsForObjects<T[K]> }
+  )
   :
-    T;
+  T;
 type ReplaceFunctionsWithObjects<T> = T & (T extends (arg: infer K extends string) => infer R ? Record<K, R> & object : unknown);
 type DeepReplaceFunctionsWithObjects<T> = T extends object ? { [K in keyof ReplaceFunctionsWithObjects<T>]: DeepReplaceFunctionsWithObjects<ReplaceFunctionsWithObjects<T>[K]> } : T;
 typeAssertIs<DeepReplaceFunctionsWithObjects<{ a: { b: 123 } & ((key: string) => number) }>, { a: { b: 123, [key: string]: number } }>()();
@@ -434,7 +542,7 @@ function deepReplaceFunctionsWithObjects(obj: any): any {
   return mapValues({ ...obj }, v => (isObjectLike(v) ? deepReplaceFunctionsWithObjects(v as any) : v));
 }
 import.meta.vitest?.test("deepReplaceFunctionsWithObjects", ({ expect }) => {
-  expect(deepReplaceFunctionsWithObjects(() => {})).toEqual({});
+  expect(deepReplaceFunctionsWithObjects(() => { })).toEqual({});
   expect(deepReplaceFunctionsWithObjects({ a: 3 })).toEqual({ a: 3 });
   expect(deepReplaceFunctionsWithObjects({ a: () => ({ b: 1 }) })).toEqual({ a: {} });
   expect(deepReplaceFunctionsWithObjects({ a: typedAssign(() => ({}), { b: { c: 1 } }) })).toEqual({ a: { b: { c: 1 } } });
@@ -583,6 +691,22 @@ export async function sanitizeOrganizationConfig(config: OrganizationRenderedCon
     ...DEFAULT_EMAIL_TEMPLATES,
     ...prepared.emails.templates,
   };
+  const offers = typedFromEntries(typedEntries(prepared.payments.offers).map(([key, offer]) => {
+    const isAddOnTo = offer.isAddOnTo === false ?
+      false as const :
+      typedFromEntries(Object.keys(offer.isAddOnTo).map((key) => [key, true as const]));
+    const prices = offer.prices === "include-by-default" ?
+      "include-by-default" as const :
+      typedFromEntries(typedEntries(offer.prices).map(([key, value]) => {
+        const data = { serverOnly: false, ...(value ?? {}) };
+        return [key, data];
+      }));
+    return [key, {
+      ...offer,
+      isAddOnTo,
+      prices,
+    }];
+  }));
   return {
     ...prepared,
     emails: {
@@ -591,8 +715,13 @@ export async function sanitizeOrganizationConfig(config: OrganizationRenderedCon
       themes,
       templates,
     },
+    payments: {
+      ...prepared.payments,
+      offers
+    }
   };
 }
+
 
 /**
  * Does not require a base config, and hence solely relies on the override itself to validate the config. If it returns
@@ -749,7 +878,7 @@ export async function getConfigOverrideErrors<T extends yup.AnySchema>(schema: T
 }
 export async function assertNoConfigOverrideErrors<T extends yup.AnySchema>(schema: T, config: unknown, options: { allowPropertiesThatCanNoLongerBeOverridden?: boolean, extraInfo?: any } = {}): Promise<void> {
   const res = await getConfigOverrideErrors(schema, config, options);
-  if (res.status === "error") throw new StackAssertionError(`Config override is invalid — at a place where it should have already been validated! ${res.error}`, { options, config, schema });
+  if (res.status === "error") throw new StackAssertionError(`Config override is invalid — at a place where it should have already been validated! ${res.error}`, { options, config });
 }
 type _ValidatedToHaveNoConfigOverrideErrorsImpl<T> =
   IsUnion<T & object> extends true ? _ValidatedToHaveNoConfigOverrideErrorsImpl<CollapseObjectUnion<T & object> | Exclude<T, object>>
@@ -808,6 +937,7 @@ type BranchConfigNormalizedOverride = Expand<ValidatedToHaveNoConfigOverrideErro
 type EnvironmentConfigNormalizedOverride = Expand<ValidatedToHaveNoConfigOverrideErrors<typeof environmentConfigSchema>>;
 type OrganizationConfigNormalizedOverride = Expand<ValidatedToHaveNoConfigOverrideErrors<typeof organizationConfigSchema>>;
 
+
 // Overrides
 // ex.: { a?: null | { b?: null | number, c: string }, d?: null | number, "a.b"?: number, "a.c"?: string }
 export type ProjectConfigOverride = NormalizesTo<ProjectConfigNormalizedOverride>;
@@ -830,6 +960,7 @@ export type BranchIncompleteConfig = Expand<ProjectIncompleteConfig & BranchConf
 export type EnvironmentIncompleteConfig = Expand<BranchIncompleteConfig & EnvironmentConfigNormalizedOverride>;
 export type OrganizationIncompleteConfig = Expand<EnvironmentIncompleteConfig & OrganizationConfigNormalizedOverride>;
 
+
 // Rendered configs before defaults, normalization, and sanitization
 type ProjectRenderedConfigBeforeDefaults = Omit<ProjectIncompleteConfig,
   | keyof BranchConfigNormalizedOverride
@@ -845,6 +976,7 @@ type EnvironmentRenderedConfigBeforeDefaults = Omit<EnvironmentIncompleteConfig,
 >;
 type OrganizationRenderedConfigBeforeDefaults = OrganizationIncompleteConfig;
 
+
 // Rendered configs before sanitization
 type ProjectRenderedConfigBeforeSanitization = Expand<Awaited<ReturnType<typeof applyProjectDefaults<ProjectRenderedConfigBeforeDefaults>>>>;
 type BranchRenderedConfigBeforeSanitization = Expand<Awaited<ReturnType<typeof applyBranchDefaults<BranchRenderedConfigBeforeDefaults>>>>;
@@ -857,6 +989,8 @@ export type BranchRenderedConfig = Expand<Awaited<ReturnType<typeof sanitizeBran
 export type EnvironmentRenderedConfig = Expand<Awaited<ReturnType<typeof sanitizeEnvironmentConfig<EnvironmentRenderedConfigBeforeSanitization>>>>;
 export type OrganizationRenderedConfig = Expand<Awaited<ReturnType<typeof sanitizeOrganizationConfig>>>;
 
+// Complete config
+export type CompleteConfig = OrganizationRenderedConfig;
 
 // Type assertions (just to make sure the types are correct)
 const __assertEmptyObjectIsValidProjectOverride: ProjectConfigOverride = {};

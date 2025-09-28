@@ -518,3 +518,101 @@ it("cannot update a team permission definition to contain a permission that does
     }
   `);
 });
+
+it("removes deleted permission definition from team creator default permissions", async ({ expect }) => {
+  backendContext.set({ projectKeys: InternalProjectKeys });
+  const { adminAccessToken } = await Project.createAndGetAdminToken();
+
+  // Step 1: Create a new team permission definition
+  const createPermissionResponse = await niceBackendFetch(`/api/v1/team-permission-definitions`, {
+    accessType: "admin",
+    method: "POST",
+    body: {
+      id: 'custom_team_permission',
+      description: "Custom team permission for testing"
+    },
+    headers: {
+      'x-stack-admin-access-token': adminAccessToken
+    },
+  });
+  expect(createPermissionResponse).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 201,
+      "body": {
+        "contained_permission_ids": [],
+        "description": "Custom team permission for testing",
+        "id": "custom_team_permission",
+      },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+
+  // Step 2: Update project to set team creator default permissions to include the new permission
+  const updateProjectResponse = await niceBackendFetch(`/api/v1/internal/projects/current`, {
+    accessType: "admin",
+    method: "PATCH",
+    body: {
+      config: {
+        team_creator_default_permissions: [
+          { id: "team_admin" },
+          { id: "custom_team_permission" }
+        ]
+      }
+    },
+    headers: {
+      'x-stack-admin-access-token': adminAccessToken
+    },
+  });
+  expect(updateProjectResponse.status).toBe(200);
+  expect(updateProjectResponse.body.config.team_creator_default_permissions).toMatchInlineSnapshot(`
+    [
+      { "id": "custom_team_permission" },
+      { "id": "team_admin" },
+    ]
+  `);
+
+  // Step 3: Verify the permission is in the team creator default permissions
+  const getProjectResponse1 = await niceBackendFetch(`/api/v1/internal/projects/current`, {
+    accessType: "admin",
+    method: "GET",
+    headers: {
+      'x-stack-admin-access-token': adminAccessToken
+    },
+  });
+  expect(getProjectResponse1.status).toBe(200);
+  expect(getProjectResponse1.body.config.team_creator_default_permissions).toMatchInlineSnapshot(`
+    [
+      { "id": "custom_team_permission" },
+      { "id": "team_admin" },
+    ]
+  `);
+
+  // Step 4: Delete the permission definition
+  const deletePermissionResponse = await niceBackendFetch(`/api/v1/team-permission-definitions/custom_team_permission`, {
+    accessType: "admin",
+    method: "DELETE",
+    headers: {
+      'x-stack-admin-access-token': adminAccessToken
+    },
+  });
+  expect(deletePermissionResponse).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": { "success": true },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+
+  // Step 5: Verify the deleted permission is no longer in team creator default permissions
+  const getProjectResponse2 = await niceBackendFetch(`/api/v1/internal/projects/current`, {
+    accessType: "admin",
+    method: "GET",
+    headers: {
+      'x-stack-admin-access-token': adminAccessToken
+    },
+  });
+  expect(getProjectResponse2.status).toBe(200);
+  expect(getProjectResponse2.body.config.team_creator_default_permissions).toMatchInlineSnapshot(`
+    [{ "id": "team_admin" }]
+  `);
+});

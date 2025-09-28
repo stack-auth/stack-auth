@@ -123,8 +123,15 @@ export function FormDialog<F extends FieldValues>(
         },
       }}
     >
-      <Form {...form}>
-        <form onSubmit={e => runAsynchronouslyWithAlert(form.handleSubmit(onSubmit)(e))} className="space-y-4" id={formId}>
+      <Form {...(form)}>
+        <form
+          onSubmit={(e) => {
+            e.stopPropagation();
+            return runAsynchronouslyWithAlert(form.handleSubmit(onSubmit)(e));
+          }}
+          className="space-y-4"
+          id={formId}
+        >
           {props.render(form)}
         </form>
       </Form>

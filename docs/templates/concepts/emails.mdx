@@ -1,0 +1,197 @@
+---
+title: Emails
+description: Send custom emails to your users with Stack Auth's email system.
+---
+
+Stack Auth provides emails that allows you to send custom emails to your users. The system supports both custom HTML emails and template-based emails with theming.
+
+## Email Types:
+There are two types of emails that you can send to your users:
+- **Transactional Emails**: Transactional emails are those required for your user to use your application. These emails cannot be opted out of.
+- **Marketing Emails**: Marketing emails always contain an unsubscribe link and may be more general marketing material related to your application/company.
+
+<Info>
+Never send marketing emails as transactional emails, as this can quickly lead to your domain being blacklisted by email spam filters.
+</Info>
+
+
+
+## Overview
+
+The email system provides:
+
+- **Email Sending**: Send custom emails to users via the `sendEmail` method on `StackServerApp`
+- **Email Templates**: Use predefined email templates for common authentication flows
+- **Email Themes**: Apply consistent styling to your emails
+- **Notification Categories**: Allow users to control which emails they receive
+
+## Server-Side Email Sending
+
+### Basic Email Sending
+
+Use the `sendEmail` method on your server app to send emails to users:
+
+```typescript
+import { stackServerApp } from './stack';
+
+// Send a custom HTML email
+const result = await stackServerApp.sendEmail({
+  userIds: ['user-id-1', 'user-id-2'],
+  subject: 'Welcome to our platform!',
+  html: '<h1>Welcome!</h1><p>Thanks for joining us.</p>',
+});
+
+if (result.status === 'error') {
+  console.error('Failed to send email:', result.error);
+}
+```
+
+### Template-Based Emails
+
+Send emails using predefined templates with variables:
+
+```typescript
+// Send email using a template
+const result = await stackServerApp.sendEmail({
+  userIds: ['user-id'],
+  templateId: 'welcome-template',
+  subject: 'Welcome to our platform!',
+  variables: {
+    userName: 'John Doe',
+    activationUrl: 'https://yourapp.com/activate/token123',
+    supportEmail: 'support@yourapp.com',
+  },
+});
+```
+
+### Email Options
+
+The `sendEmail` method accepts the following options:
+
+```typescript
+type SendEmailOptions = {
+  userIds: string[];                    // Array of user IDs to send to
+  themeId?: string | null | false;      // Theme to apply (optional)
+  subject?: string;                     // Email subject
+  notificationCategoryName?: string;    // Notification category for user preferences
+  html?: string;                        // Custom HTML content
+  templateId?: string;                  // Template ID to use
+  variables?: Record<string, any>;      // Template variables
+};
+```
+
+### Error Handling
+
+The `sendEmail` method returns a `Result` type that can contain specific errors:
+
+```typescript
+const result = await stackServerApp.sendEmail({
+  userIds: ['user-id'],
+  html: '<p>Hello!</p>',
+  subject: 'Test Email',
+});
+
+if (result.status === 'error') {
+  switch (result.error.code) {
+    case 'REQUIRES_CUSTOM_EMAIL_SERVER':
+      console.error('Please configure a custom email server');
+      break;
+    case 'SCHEMA_ERROR':
+      console.error('Invalid email data provided');
+      break;
+    case 'USER_ID_DOES_NOT_EXIST':
+      console.error('One or more user IDs do not exist');
+      break;
+  }
+}
+```
+
+
+
+## Built-in Email Templates
+
+Stack Auth provides several built-in email templates for common authentication flows:
+
+- **Email Verification**: `email_verification` - Sent when users need to verify their email
+- **Password Reset**: `password_reset` - Sent when users request password reset
+- **Magic Link**: `magic_link` - Sent for passwordless authentication
+- **Team Invitation**: `team_invitation` - Sent when users are invited to teams
+- **Sign-in Invitation**: `sign_in_invitation` - Sent to invite users to sign up
+
+These templates can be customized through the admin interface or programmatically.
+
+## Email Configuration
+
+Email configuration is managed through the Stack Auth dashboard or admin API, not directly in your application code. You have two options:
+
+### Shared Email Provider (Development)
+
+For development and testing, you can use Stack's shared email provider. This sends emails from `noreply@stackframe.co` and is configured through your project settings in the Stack Auth dashboard.
+
+- Go to your project's Email settings in the dashboard
+- Select "Shared" as your email server type
+- No additional configuration required
+
+### Custom Email Server (Production)
+
+For production, configure your own SMTP server through the dashboard:
+
+- Go to your project's Email settings in the dashboard  
+- Select "Custom SMTP server" as your email server type
+- Configure the following settings:
+  - **Host**: Your SMTP server hostname (e.g., `smtp.yourprovider.com`)
+  - **Port**: SMTP port (typically 587 for TLS or 465 for SSL)
+  - **Username**: Your SMTP username
+  - **Password**: Your SMTP password
+  - **Sender Email**: The email address emails will be sent from
+  - **Sender Name**: The display name for your emails
+
+The dashboard will automatically test your configuration when you save it.
+
+## Notification Categories
+
+Control which emails users receive by organizing them into notification categories:
+
+```typescript
+await stackServerApp.sendEmail({
+  userIds: ['user-id'],
+  html: '<p>New feature available!</p>',
+  subject: 'Product Updates',
+  notificationCategoryName: 'product_updates',
+});
+```
+
+Users can then opt in or out of specific notification categories through their account settings.
+
+## Best Practices
+
+1. **Use Templates**: Leverage built-in templates for consistent branding and easier maintenance
+2. **Handle Errors**: Always check the result status and handle potential errors  
+3. **Respect User Preferences**: Use notification categories to let users control what emails they receive
+4. **Server-Side Only**: Always send emails from your server-side code, never from the client
+
+## React Components Integration
+
+Emails integrates seamlessly with Stack Auth's React components. Email verification, password reset, and other authentication emails are automatically sent when users interact with the provided components.
+
+For custom email flows, use the `sendEmail` method from your server-side code:
+
+```typescript
+// In your API route or server action
+import { stackServerApp } from '@stackframe/stack';
+
+export async function inviteUser(email: string) {
+  const result = await stackServerApp.sendEmail({
+    userIds: [userId], // Get user ID first
+    templateId: 'invitation-template',
+    subject: 'You\'re invited!',
+    variables: {
+      inviteUrl: 'https://yourapp.com/invite/token123',
+    },
+  });
+  
+  return result;
+}
+```
+
+This email system gives you control over your application's email communications while maintaining the security and reliability of Stack Auth's infrastructure.

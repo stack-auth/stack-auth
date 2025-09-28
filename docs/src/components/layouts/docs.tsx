@@ -45,6 +45,7 @@ import { ArrowLeft, ChevronDown, ChevronRight, Languages, Sidebar as SidebarIcon
 import { usePathname, useRouter } from 'next/navigation';
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type HTMLAttributes, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
+import { CodeOverlayProvider, useCodeOverlay } from '../../hooks/use-code-overlay';
 import { usePlatformPreference } from '../../hooks/use-platform-preference';
 import { cn } from '../../lib/cn';
 import { getSmartRedirectUrl } from '../../lib/navigation-utils';
@@ -61,6 +62,7 @@ import {
 } from '../layout/language-toggle';
 import { RootToggle } from '../layout/root-toggle';
 import { ThemeToggle } from '../layout/theme-toggle';
+import { DynamicCodeblockOverlay } from '../mdx/dynamic-code-block-overlay';
 import { buttonVariants } from '../ui/button';
 import { HideIfEmpty } from '../ui/hide-if-empty';
 import { ScrollArea, ScrollViewport } from '../ui/scroll-area';
@@ -1114,86 +1116,89 @@ export function DocsLayout({
   };
 
   return (
-    <AccordionProvider>
-      <TreeContextProvider tree={props.tree}>
-        <NavProvider transparentMode={transparentMode}>
-          {slot(
-            nav,
-            <Navbar className="h-14 md:hidden">
-              <Link
-                href={nav.url ?? '/'}
-                className="inline-flex items-center gap-2.5 font-semibold"
-              >
-                {nav.title}
-              </Link>
-              <div className="flex-1">{nav.children}</div>
-              {slots('sm', searchToggle, <SearchInputToggle onOpen={() => setSearchOpen(true)} />)}
-              <NavbarSidebarTrigger className="-me-2 md:hidden" />
-            </Navbar>,
-          )}
-          <CustomSearchDialog
-            open={searchOpen}
-            onOpenChange={setSearchOpen}
-          />
-          <main
-            id="nd-docs-layout"
-            {...props.containerProps}
-            className={cn(
-              'flex flex-1 flex-row md:ml-64 pt-14 min-w-0',
-              variables,
-              props.containerProps?.className,
-            )}
-            style={{
-              ...layoutVariables,
-              ...props.containerProps?.style,
-            }}
-          >
+    <CodeOverlayProvider>
+      <AccordionProvider>
+        <TreeContextProvider tree={props.tree}>
+          <NavProvider transparentMode={transparentMode}>
             {slot(
-              sidebar,
-              <DocsLayoutSidebar
-                {...omit(sidebar, 'enabled', 'component', 'tabs')}
-                links={links}
-                tree={props.tree}
-                onSearchOpen={() => setSearchOpen(true)}
-                nav={
-                  <>
-                    <Link
-                      href={nav.url ?? '/'}
-                      className="inline-flex text-[15px] items-center gap-2.5 font-medium"
-                    >
-                      {nav.title}
-                    </Link>
-                    {nav.children}
-                  </>
-                }
-                banner={
-                  <>
-                    {tabs.length > 0 ? <RootToggle options={tabs} /> : null}
-                    {sidebar.banner}
-                  </>
-                }
-                footer={
-                  <>
-                    <DocsLayoutSidebarFooter
-                      links={links.filter((item) => item.type === 'icon')}
-                      i18n={i18n}
-                      themeSwitch={themeSwitch}
-                    />
-                    {sidebar.footer}
-                  </>
-                }
-              />,
+              nav,
+              <Navbar className="h-14 md:hidden">
+                <Link
+                  href={nav.url ?? '/'}
+                  className="inline-flex items-center gap-2.5 font-semibold"
+                >
+                  {nav.title}
+                </Link>
+                <div className="flex-1">{nav.children}</div>
+                {slots('sm', searchToggle, <SearchInputToggle onOpen={() => setSearchOpen(true)} />)}
+                <NavbarSidebarTrigger className="-me-2 md:hidden" />
+              </Navbar>,
             )}
-            <div className={cn(
-              'flex-1 transition-all duration-300 min-w-0'
-            )}>
-              <StylesProvider {...pageStyles}>{children}</StylesProvider>
-            </div>
-          </main>
-          <AIChatDrawer />
-        </NavProvider>
-      </TreeContextProvider>
-    </AccordionProvider>
+            <CustomSearchDialog
+              open={searchOpen}
+              onOpenChange={setSearchOpen}
+            />
+            <main
+              id="nd-docs-layout"
+              {...props.containerProps}
+              className={cn(
+                'flex flex-1 flex-row md:ml-64 pt-14 min-w-0',
+                variables,
+                props.containerProps?.className,
+              )}
+              style={{
+                ...layoutVariables,
+                ...props.containerProps?.style,
+              }}
+            >
+              {slot(
+                sidebar,
+                <DocsLayoutSidebar
+                  {...omit(sidebar, 'enabled', 'component', 'tabs')}
+                  links={links}
+                  tree={props.tree}
+                  onSearchOpen={() => setSearchOpen(true)}
+                  nav={
+                    <>
+                      <Link
+                        href={nav.url ?? '/'}
+                        className="inline-flex text-[15px] items-center gap-2.5 font-medium"
+                      >
+                        {nav.title}
+                      </Link>
+                      {nav.children}
+                    </>
+                  }
+                  banner={
+                    <>
+                      {tabs.length > 0 ? <RootToggle options={tabs} /> : null}
+                      {sidebar.banner}
+                    </>
+                  }
+                  footer={
+                    <>
+                      <DocsLayoutSidebarFooter
+                        links={links.filter((item) => item.type === 'icon')}
+                        i18n={i18n}
+                        themeSwitch={themeSwitch}
+                      />
+                      {sidebar.footer}
+                    </>
+                  }
+                />,
+              )}
+              <div className={cn(
+                'flex-1 transition-all duration-300 min-w-0'
+              )}>
+                <StylesProvider {...pageStyles}>{children}</StylesProvider>
+              </div>
+            </main>
+            <AIChatDrawer />
+            <CodeOverlayRenderer />
+          </NavProvider>
+        </TreeContextProvider>
+      </AccordionProvider>
+    </CodeOverlayProvider>
   );
 }
 
@@ -1346,6 +1351,23 @@ export function DocsLayoutSidebarFooter({
         )}
       </div>
     </HideIfEmpty>
+  );
+}
+
+// Component to render the code overlay
+function CodeOverlayRenderer() {
+  const { isOpen, code, language, title, closeOverlay } = useCodeOverlay();
+
+  return (
+    <DynamicCodeblockOverlay
+      isOpen={isOpen}
+      code={code}
+      language={language}
+      title={title}
+      onToggle={(open: boolean) => {
+        if (!open) closeOverlay();
+      }}
+    />
   );
 }
 

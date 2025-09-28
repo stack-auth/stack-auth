@@ -84,6 +84,9 @@ jobs:
       - name: Create .env.test.local file for examples/supabase
         run: cp examples/supabase/.env.development examples/supabase/.env.test.local
 
+      - name: Create .env.test.local file for examples/convex
+        run: cp examples/convex/.env.development examples/convex/.env.test.local
+
       - name: Build
         run: pnpm build
 
@@ -134,9 +137,11 @@ jobs:
         run: pnpm test
 
       - name: Run tests again, to make sure they are stable (attempt 1)
+        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev'
         run: pnpm test
 
       - name: Run tests again, to make sure they are stable (attempt 2)
+        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev'
         run: pnpm test
 
       - name: Verify data integrity

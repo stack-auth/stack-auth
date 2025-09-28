@@ -1,11 +1,11 @@
 'use client';
-import { InputField, SwitchListField } from "@/components/form-fields";
+import { FieldLabel, InputField, SwitchListField } from "@/components/form-fields";
 import { useRouter } from "@/components/router";
 import { yupResolver } from "@hookform/resolvers/yup";
-import { AuthPage, useUser } from "@stackframe/stack";
+import { AuthPage, TeamSwitcher, useUser } from "@stackframe/stack";
 import { allProviders } from "@stackframe/stack-shared/dist/utils/oauth";
 import { runAsynchronouslyWithAlert, wait } from "@stackframe/stack-shared/dist/utils/promises";
-import { BrowserFrame, Button, Form, Separator, Typography } from "@stackframe/stack-ui";
+import { BrowserFrame, Button, Form, FormControl, FormField, FormItem, FormMessage, Separator, Typography } from "@stackframe/stack-ui";
 import { useSearchParams } from "next/navigation";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
@@ -16,11 +16,12 @@ export const projectFormSchema = yup.object({
   signInMethods: yup.array(yup.string().oneOf(["credential", "magicLink", "passkey"].concat(allProviders)).defined())
     .min(1, "At least one sign-in method is required")
     .defined("At least one sign-in method is required"),
+  teamId: yup.string().uuid().defined("Team is required"),
 });
 
 type ProjectFormValues = yup.InferType<typeof projectFormSchema>
 
-export default function PageClient () {
+export default function PageClient() {
   const user = useUser({ or: 'redirect', projectIdMustMatch: "internal" });
   const [loading, setLoading] = useState(false);
   const router = useRouter();
@@ -30,6 +31,7 @@ export default function PageClient () {
   const defaultValues: Partial<ProjectFormValues> = {
     displayName: displayName || "",
     signInMethods: ["credential", "google", "github"],
+    teamId: user.selectedTeam?.id,
   };
 
   const form = useForm<ProjectFormValues>({
@@ -45,7 +47,7 @@ export default function PageClient () {
       credentialEnabled: form.watch("signInMethods").includes("credential"),
       magicLinkEnabled: form.watch("signInMethods").includes("magicLink"),
       passkeyEnabled: form.watch("signInMethods").includes("passkey"),
-      oauthProviders: form.watch('signInMethods').filter((method) => ["google", "github", "microsoft", "spotify"].includes(method)).map(provider => ({ id: provider, type: 'shared' })),
+      oauthProviders: form.watch('signInMethods').filter((method) => ["google", "github", "microsoft"].includes(method)).map(provider => ({ id: provider, type: 'shared' })),
     }
   };
 
@@ -58,6 +60,7 @@ export default function PageClient () {
     try {
       newProject = await user.createProject({
         displayName: values.displayName,
+        teamId: values.teamId,
         config: {
           credentialEnabled: values.signInMethods.includes("credential"),
           magicLinkEnabled: values.signInMethods.includes("magicLink"),
@@ -83,6 +86,7 @@ export default function PageClient () {
     }
   };
 
+
   return (
     <div className="w-full flex-grow flex items-center justify-center">
       <div className="w-full md:w-1/2 p-4">
@@ -96,6 +100,28 @@ export default function PageClient () {
 
               <InputField required control={form.control} name="displayName" label="Display Name" placeholder="My Project" />
 
+              <FormField
+                control={form.control}
+                name="teamId"
+                render={({ field }) => (
+                  <FormItem>
+                    <label className="flex flex-col gap-2">
+                      <FieldLabel required={true}>Team</FieldLabel>
+                      <FormControl>
+                        <TeamSwitcher
+                          triggerClassName="max-w-full"
+                          teamId={field.value}
+                          onChange={async (team) => {
+                            field.onChange(team.id);
+                          }}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </label>
+                  </FormItem>
+                )}
+              />
+
               <SwitchListField
                 control={form.control}
                 name="signInMethods"
@@ -107,7 +133,6 @@ export default function PageClient () {
                   { value: "google", label: "Google" },
                   { value: "github", label: "GitHub" },
                   { value: "microsoft", label: "Microsoft" },
-                  { value: "spotify", label: "Spotify" },
                 ]}
                 info="More sign-in methods are available on the dashboard later."
               />
@@ -121,7 +146,6 @@ export default function PageClient () {
           </Form>
         </div>
       </div>
-      <Separator orientation="vertical" />
 
       <div className="w-1/2 self-stretch py-4 px-4 lg:px-20 bg-zinc-300 dark:bg-zinc-800 hidden md:flex items-center">
         <div className="w-full">

@@ -1,0 +1,101 @@
+---
+title: Convex
+description: Integrate Stack Auth with Convex
+---
+
+This guide shows how to integrate Stack Auth with Convex.
+
+### 1) Create a Convex + Next.js app
+
+```bash title="Terminal"
+npx create-next-app --example convex stack-convex
+cd stack-convex
+npx @stackframe/init-stack@latest
+```
+
+Add your Stack environment variables to both `.env.local` and convex env:
+- `NEXT_PUBLIC_STACK_PROJECT_ID`
+- `NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY`
+- `STACK_SECRET_SERVER_KEY`
+
+### 2) Update `convex/auth.config.ts`
+
+Use the exported helper to configure Convex auth providers for Stack. If `NEXT_PUBLIC_STACK_PROJECT_ID` is set, the `projectId` option is optional.
+
+```typescript title="convex/auth.config.ts"
+import { getConvexProvidersConfig } from "@stackframe/stack";
+
+export default {
+  providers: getConvexProvidersConfig({
+    // Optional: projectId: PROJECT_ID,
+  }),
+};
+```
+
+### 3) Create your Stack client
+
+```typescript title="stack/client.ts"
+import { StackClientApp } from "@stackframe/stack";
+
+export const stackClientApp = new StackClientApp({
+  tokenStore: "nextjs-cookie",
+});
+```
+
+### 4) Use with Convex clients
+
+<Tabs defaultValue="react">
+  <TabsList>
+    <TabsTrigger value="react">Convex React client</TabsTrigger>
+    <TabsTrigger value="http">Convex HTTP client</TabsTrigger>
+  </TabsList>
+  <TabsContent value="react">
+    <Steps>
+      <Step>
+      ### Set auth for Convex React client
+      </Step>
+      ```tsx title="convex-react.ts"
+      import { ConvexReactClient } from "convex/react";
+      import { stackClientApp } from "../stack/client";
+
+      const convex = new ConvexReactClient(process.env.NEXT_PUBLIC_CONVEX_URL!, { expectAuth: true });
+      convex.setAuth(
+        stackClientApp.getConvexClientAuth({ tokenStore: "nextjs-cookie" })
+      );
+      ```
+    </Steps>
+  </TabsContent>
+  <TabsContent value="http">
+    <Steps>
+      <Step>
+      ### Set auth for Convex HTTP client
+      </Step>
+      ```ts title="convex-http.ts"
+      import { ConvexHttpClient } from "convex/browser";
+      import { stackClientApp } from "../stack/client";
+
+      const token = await stackClientApp.getConvexHttpClientAuth({ tokenStore: "nextjs-cookie" });
+      const convex = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
+      convex.setAuth(token);
+      ```
+    </Steps>
+  </TabsContent>
+</Tabs>
+
+### 5) Use in Convex functions (server)
+
+In Convex queries/mutations/actions, map Convex identity to a Stack partial user with `ctx`:
+
+```ts title="convex/myFunctions.ts"
+import { v } from "convex/values";
+import { query } from "./_generated/server";
+import { stackClientApp } from "../stack/client";
+
+export const whoAmI = query({
+  args: {},
+  handler: async (ctx) => {
+    const user = await stackClientApp.getPartialUser({ from: "convex", ctx });
+    return user; // null when not authenticated
+  },
+});
+```

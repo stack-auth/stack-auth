@@ -96,7 +96,7 @@ export const usersCrud = createCrud({
     serverList: {
       tags: ["Users"],
       summary: 'List users',
-      description: 'Lists all the users in the project.',
+      description: 'Lists all the users in the project. Anonymous users are only included if the `include_anonymous` query parameter is set to `true`.',
     },
   },
 });

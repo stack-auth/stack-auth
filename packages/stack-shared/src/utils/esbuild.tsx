@@ -14,16 +14,26 @@ let esbuildInitializePromise: Promise<void> | null = null;
 export function initializeEsbuild(): Promise<void> {
   if (!esbuildInitializePromise) {
     esbuildInitializePromise = withTraceSpan('initializeEsbuild', async () => {
-      await esbuild.initialize(isBrowserLike() ? {
-        wasmURL: esbuildWasmUrl,
-      } : {
-        wasmModule: (
-          await fetch(esbuildWasmUrl)
-            .then(wasm => wasm.arrayBuffer())
-            .then(wasm => new WebAssembly.Module(wasm))
-        ),
-        worker: false,
-      });
+      if (isBrowserLike()) {
+        await esbuild.initialize({
+          wasmURL: esbuildWasmUrl,
+        });
+      } else {
+        const esbuildWasmResponse = await fetch(esbuildWasmUrl);
+        if (!esbuildWasmResponse.ok) {
+          throw new StackAssertionError(`Failed to fetch esbuild.wasm: ${esbuildWasmResponse.status} ${esbuildWasmResponse.statusText}: ${await esbuildWasmResponse.text()}`);
+        }
+        const esbuildWasm = await esbuildWasmResponse.arrayBuffer();
+        const esbuildWasmArray = new Uint8Array(esbuildWasm);
+        if (esbuildWasmArray[0] !== 0x00 || esbuildWasmArray[1] !== 0x61 || esbuildWasmArray[2] !== 0x73 || esbuildWasmArray[3] !== 0x6d) {
+          throw new StackAssertionError(`Invalid esbuild.wasm file: ${new TextDecoder().decode(esbuildWasmArray)}`);
+        }
+        const esbuildWasmModule = new WebAssembly.Module(esbuildWasm);
+        await esbuild.initialize({
+          wasmModule: esbuildWasmModule,
+          worker: false,
+        });
+      }
     })();
   }
 
@@ -35,12 +45,15 @@ export async function bundleJavaScript(sourceFiles: Record<string, string> & { '
   externalPackages?: Record<string, string>,
   keepAsImports?: string[],
   sourcemap?: false | 'inline',
+  allowHttpImports?: boolean,
 } = {}): Promise<Result<string, string>> {
   await initializeEsbuild();
 
   const sourceFilesMap = new Map(Object.entries(sourceFiles));
   const externalPackagesMap = new Map(Object.entries(options.externalPackages ?? {}));
   const keepAsImports = options.keepAsImports ?? [];
+
+  const httpImportCache = new Map<string, { contents: string, loader: esbuild.Loader, resolveDir: string }>();
 
   const extToLoader: Map<string, esbuild.Loader> = new Map([
     ['tsx', 'tsx'],
@@ -63,6 +76,68 @@ export async function bundleJavaScript(sourceFiles: Record<string, string> & { '
       sourcemap: options.sourcemap ?? 'inline',
       external: keepAsImports,
       plugins: [
+        ...options.allowHttpImports ? [{
+          name: "esm-sh-only",
+          setup(build: esbuild.PluginBuild) {
+            // Handle absolute URLs and relative imports from esm.sh modules.
+            build.onResolve({ filter: /.*/ }, (args) => {
+              // Only touch absolute http(s) specifiers or children of our own namespace
+              const isHttp = args.path.startsWith("http://") || args.path.startsWith("https://");
+              const fromEsmNs = args.namespace === "esm-sh";
+
+              if (!isHttp && !fromEsmNs) return null; // Let other plugins handle bare/relative/local
+
+              // Resolve relative URLs inside esm.sh-fetched modules
+              const url = new URL(args.path, fromEsmNs ? args.importer : undefined);
+
+              if (url.protocol !== "https:" || url.host !== "esm.sh") {
+                throw new Error(`Blocked non-esm.sh URL import: ${url.href}`);
+              }
+
+              return { path: url.href, namespace: "esm-sh" };
+            });
+
+            build.onLoad({ filter: /.*/, namespace: "esm-sh" }, async (args) => {
+              if (httpImportCache.has(args.path)) return httpImportCache.get(args.path)!;
+
+              const res = await fetch(args.path, { redirect: "follow" });
+              if (!res.ok) throw new Error(`Fetch ${res.status} ${res.statusText} for ${args.path}`);
+              const finalUrl = new URL(res.url);
+              // Defensive: follow shouldn’t leave esm.sh, but re-check.
+              if (finalUrl.host !== "esm.sh") {
+                throw new Error(`Redirect escaped esm.sh: ${finalUrl.href}`);
+              }
+
+              const ct = (res.headers.get("content-type") || "").toLowerCase();
+              let loader: esbuild.Loader =
+                ct.includes("css") ? "css" :
+                ct.includes("json") ? "json" :
+                ct.includes("typescript") ? "ts" :
+                ct.includes("jsx") ? "jsx" :
+                ct.includes("tsx") ? "tsx" :
+                  "js";
+
+              // Fallback by extension (esm.sh sometimes omits CT)
+              const p = finalUrl.pathname;
+              if (p.endsWith(".css")) loader = "css";
+              else if (p.endsWith(".json")) loader = "json";
+              else if (p.endsWith(".ts")) loader = "ts";
+              else if (p.endsWith(".tsx")) loader = "tsx";
+              else if (p.endsWith(".jsx")) loader = "jsx";
+
+              const contents = await res.text();
+              const result = {
+                contents,
+                loader,
+                // Ensures relative imports inside that module resolve against the file’s URL
+                resolveDir: new URL(".", finalUrl.href).toString(),
+                watchFiles: [finalUrl.href],
+              };
+              httpImportCache.set(args.path, result);
+              return result;
+            });
+          },
+        } as esbuild.Plugin] : [],
         {
           name: 'replace-packages-with-globals',
           setup(build) {

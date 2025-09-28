@@ -24,6 +24,51 @@ const jsLikeFileExtensions: string[] = [
   "js",
 ];
 
+class UserError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "UserError";
+  }
+}
+
+class UnansweredQuestionError extends UserError {
+  constructor(message: string) {
+    super(message + ", or use --on-question <guess|ask> to answer questions automatically or interactively");
+    this.name = "UnansweredQuestionError";
+  }
+}
+
+type OnQuestionMode = "ask" | "guess" | "error";
+
+function isTruthyEnv(name: string): boolean {
+  const v = process.env[name];
+  if (!v) return false;
+  const s = String(v).toLowerCase();
+  return s === "1" || s === "true" || s === "yes";
+}
+
+function isNonInteractiveEnv(): boolean {
+  if (isTruthyEnv("CI")) return true;
+  if (isTruthyEnv("GITHUB_ACTIONS")) return true;
+  if (isTruthyEnv("NONINTERACTIVE")) return true;
+  if (isTruthyEnv("NO_INTERACTIVE")) return true;
+  if (isTruthyEnv("PNPM_NON_INTERACTIVE")) return true;
+  if (isTruthyEnv("YARN_ENABLE_NON_INTERACTIVE")) return true;
+  if (isTruthyEnv("CURSOR_AGENT")) return true;
+  if (isTruthyEnv("CLAUDECODE")) return true;
+  return false;
+}
+
+function resolveOnQuestionMode(opt: string): OnQuestionMode {
+  if (!opt || opt === "default") {
+    return isNonInteractiveEnv() ? "error" : "ask";
+  }
+  if (opt === "ask" || opt === "guess" || opt === "error") {
+    return opt;
+  }
+  throw new UserError(`Invalid argument for --on-question: "${opt}". Valid modes are: "ask", "guess", "error", "default".`);
+}
+
 // Setup command line parsing
 const program = new Command();
 program
@@ -36,13 +81,17 @@ program
   .option("--neon", "Use Neon database")
   .option("--js", "Initialize for JavaScript project")
   .option("--next", "Initialize for Next.js project")
+  .option("--react", "Initialize for React project")
   .option("--npm", "Use npm as package manager")
   .option("--yarn", "Use yarn as package manager")
   .option("--pnpm", "Use pnpm as package manager")
   .option("--bun", "Use bun as package manager")
   .option("--client", "Initialize client-side only")
   .option("--server", "Initialize server-side only")
+  .option("--project-id <project-id>", "Project ID to use in setup")
+  .option("--publishable-client-key <publishable-client-key>", "Publishable client key to use in setup")
   .option("--no-browser", "Don't open browser for environment variable setup")
+  .option("--on-question <mode>", "How to handle interactive questions: ask | guess | error | default", "default")
   .addHelpText('after', `
 For more information, please visit https://docs.stack-auth.com/getting-started/setup`);
 
@@ -54,20 +103,17 @@ const options = program.opts();
 let savedProjectPath: string | undefined = program.args[0] || undefined;
 const isDryRun: boolean = options.dryRun || false;
 const isNeon: boolean = options.neon || false;
-const typeFromArgs: string | undefined = options.js ? "js" : options.next ? "next" : undefined;
+const typeFromArgs: "js" | "next" | "react" | undefined = options.js ? "js" : options.next ? "next" : options.react ? "react" : undefined;
 const packageManagerFromArgs: string | undefined = options.npm ? "npm" : options.yarn ? "yarn" : options.pnpm ? "pnpm" : options.bun ? "bun" : undefined;
 const isClient: boolean = options.client || false;
 const isServer: boolean = options.server || false;
+const projectIdFromArgs: string | undefined = options.projectId;
+const publishableClientKeyFromArgs: string | undefined = options.publishableClientKey;
+const onQuestionMode: OnQuestionMode = resolveOnQuestionMode(options.onQuestion);
+
 // Commander negates the boolean options with prefix `--no-`
 // so `--no-browser` becomes `browser: false`
 const noBrowser: boolean = !options.browser;
-
-class UserError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "UserError";
-  }
-}
 
 type Ansis = {
   red: string,
@@ -195,11 +241,25 @@ async function main(): Promise<void> {
   if (type === "next") {
     const projectInfo = await Steps.getNextProjectInfo({ packageJson: projectPackageJson });
     await Steps.updateNextLayoutFile(projectInfo);
+    await Steps.writeStackAppFile(projectInfo, "client");
     await Steps.writeStackAppFile(projectInfo, "server");
     await Steps.writeNextHandlerFile(projectInfo);
     await Steps.writeNextLoadingFile(projectInfo);
     nextSteps.push(`Copy the environment variables from the new API key into your .env.local file`);
-  } else if (type === "js") {
+  } else if (type === "react") {
+    const defaultExtension = await Steps.guessDefaultFileExtension();
+    const srcPath = await Steps.guessSrcPath();
+    const hasReactRouterDom = !!(projectPackageJson.dependencies?.["react-router-dom"] || projectPackageJson.devDependencies?.["react-router-dom"]);
+    const { fileName } = await Steps.writeReactClientFile({
+      srcPath,
+      defaultExtension,
+      indentation: "  ",
+      hasReactRouterDom,
+    });
+    nextSteps.push(
+      `Copy the environment variables from the new API key into your own environment and reference them in ${fileName}`,
+    );
+  } else {
     const defaultExtension = await Steps.guessDefaultFileExtension();
     const where = await Steps.getServerOrClientOrBoth();
     const srcPath = await Steps.guessSrcPath();
@@ -217,8 +277,6 @@ async function main(): Promise<void> {
       `Copy the environment variables from the new API key into your own environment and reference them in ${appFiles.join(" and ")}`,
       `Follow the instructions on how to use Stack Auth's vanilla SDK at http://docs.stack-auth.com/others/js-client`,
     );
-  } else {
-    throw new Error("Unknown type: " + type);
   }
 
   const { packageManager } = await Steps.getPackageManager();
@@ -234,8 +292,16 @@ async function main(): Promise<void> {
   // Install dependencies
   console.log();
   console.log(colorize.bold`Installing dependencies...`);
-  const installCommand = packageManager === "yarn" ? "yarn add" : `${packageManager} install`;
-  await shellNicelyFormatted(`${installCommand} ${packagesToInstall.join(' ')}`, {
+  const installCommandMap = new Map<string, string>([
+    ["npm", "npm install"],
+    ["yarn", "yarn add"],
+    ["pnpm", "pnpm add"],
+    ["bun", "bun add"],
+  ]);
+  const installCommand = installCommandMap.get(packageManager) ?? `${packageManager} install`;
+  // Quote each package name to avoid shell interpretation of env-overridden values.
+  const safePackages = packagesToInstall.map((p) => JSON.stringify(p));
+  await shellNicelyFormatted(`${installCommand} ${safePackages.join(' ')}`, {
     shell: true,
     cwd: projectPath,
   });
@@ -301,46 +367,46 @@ ${colorize.bold`Next steps:`}
 
 For more information, please visit https://docs.stack-auth.com/getting-started/setup
   `.trim());
-  if (!process.env.STACK_DISABLE_INTERACTIVE && !noBrowser) {
+  if (!noBrowser) {
     await open(`https://app.stack-auth.com/wizard-congrats?stack-init-id=${encodeURIComponent(distinctId)}`);
   }
   await ph_client.shutdown();
 }
 
-main()
-  .catch(async (err) => {
-    try {
-      await capture("error", {
-        error: err.message,
-        errorType: err instanceof UserError ? "UserError" : "SystemError",
-        stack: err.stack,
-      });
-    } catch (e) { }
-    if (!(err instanceof UserError)) {
-      console.error(err);
-    }
-    console.error('\n\n\n\n');
-    console.log(colorize.red`===============================================`);
-    console.error();
-    if (err instanceof UserError) {
-      console.error(`${colorize.red`ERROR!`} ${err.message}`);
-    } else {
-      console.error("An error occurred during the initialization process.");
-    }
-    console.error();
-    console.log(colorize.red`===============================================`);
-    console.error();
-    console.error(
-      "If you need assistance, please try installing Stack manually as described in https://docs.stack-auth.com/getting-started/setup or join our Discord where we're happy to help: https://discord.stack-auth.com"
-    );
-    if (!(err instanceof UserError)) {
-      console.error("");
-      console.error(`Error message: ${err.message}`);
-    }
-    console.error();
-    await ph_client.shutdown();
-    process.exit(1);
-  });
+// eslint-disable-next-line no-restricted-syntax
+main().catch(async (err) => {
+  try {
+    await capture("error", {
+      error: err.message,
+      errorType: err instanceof UserError ? "UserError" : "SystemError",
+      stack: err.stack,
+    });
+  } catch (e) { }
+  if (!(err instanceof UserError)) {
+    console.error(err);
+  }
+  console.error('\n\n\n\n');
+  console.log(colorize.red`===============================================`);
+  console.error();
+  if (err instanceof UserError) {
+    console.error(`${colorize.red`ERROR!`} ${err.message}`);
+  } else {
+    console.error("An error occurred during the initialization process.");
+  }
+  console.error();
+  console.log(colorize.red`===============================================`);
+  console.error();
+  console.error(
+    "If you need assistance, please try installing Stack manually as described in https://docs.stack-auth.com/getting-started/setup or join our Discord where we're happy to help: https://discord.stack-auth.com"
+  );
+  if (!(err instanceof UserError)) {
+    console.error("");
+    console.error(`Error message: ${err.message}`);
+  }
+  console.error();
+  await ph_client.shutdown();
+  process.exit(1);
+});
 
 
 type PackageJson = {
@@ -350,7 +416,7 @@ type PackageJson = {
 }
 
 type ProjectInfo = {
-  type: string,
+  type: "js" | "next" | "react",
   srcPath: string,
   appPath: string,
   defaultExtension: string,
@@ -364,7 +430,7 @@ type NextProjectInfoError = {
 type NextProjectInfoResult = ProjectInfo | NextProjectInfoError;
 
 type StackAppFileOptions = {
-  type: string,
+  type: "js" | "next" | "react",
   srcPath: string,
   defaultExtension: string,
   indentation: string,
@@ -399,11 +465,22 @@ const Steps = {
     return { packageJson };
   },
 
-  async getProjectType({ packageJson }: { packageJson: PackageJson }): Promise<string> {
+  async getProjectType({ packageJson }: { packageJson: PackageJson }): Promise<"js" | "next" | "react"> {
     if (typeFromArgs) return typeFromArgs;
 
     const maybeNextProject = await Steps.maybeGetNextProjectInfo({ packageJson });
-    if (!("error" in maybeNextProject)) return "next";
+    if (!("error" in maybeNextProject)) {
+      return "next";
+    }
+    if (packageJson.dependencies?.["react"] || packageJson.dependencies?.["react-dom"]) {
+      return "react";
+    }
+    if (onQuestionMode === "guess") {
+      return "js";
+    }
+    if (onQuestionMode === "error") {
+      throw new UnansweredQuestionError("Unable to auto-detect project type (checked for Next.js and React dependencies). Re-run with one of: --js, --react, or --next.");
+    }
 
     const { type } = await inquirer.prompt([
       {
@@ -412,6 +489,7 @@ const Steps = {
         message: "Which integration would you like to install?",
         choices: [
           { name: "None (vanilla JS, Node.js, etc)", value: "js" },
+          { name: "React", value: "react" },
           { name: "Next.js", value: "next" },
         ]
       }
@@ -420,14 +498,16 @@ const Steps = {
     return type;
   },
 
-  async getStackPackageName(type: string, install = false): Promise<string> {
-    return {
-      "js": (install && process.env.STACK_JS_INSTALL_PACKAGE_NAME_OVERRIDE) || "@stackframe/js",
-      "next": (install && process.env.STACK_NEXT_INSTALL_PACKAGE_NAME_OVERRIDE) || "@stackframe/stack",
-    }[type] ?? throwErr("Unknown type in addStackPackage: " + type);
+  async getStackPackageName(type: "js" | "next" | "react", install = false): Promise<string> {
+    const mapping = {
+      js: (install && process.env.STACK_JS_INSTALL_PACKAGE_NAME_OVERRIDE) || "@stackframe/js",
+      next: (install && process.env.STACK_NEXT_INSTALL_PACKAGE_NAME_OVERRIDE) || "@stackframe/stack",
+      react: (install && process.env.STACK_REACT_INSTALL_PACKAGE_NAME_OVERRIDE) || "@stackframe/react",
+    } as const;
+    return mapping[type];
   },
 
-  async addStackPackage(type: string): Promise<void> {
+  async addStackPackage(type: "js" | "next" | "react"): Promise<void> {
     packagesToInstall.push(await Steps.getStackPackageName(type, true));
   },
 
@@ -480,7 +560,7 @@ const Steps = {
     };
   },
 
-  async writeEnvVars(type: string): Promise<boolean> {
+  async writeEnvVars(type: "js" | "next" | "react"): Promise<boolean> {
     const projectPath = await getProjectPath();
 
     // TODO: in non-Next environments, ask the user what method they prefer for envvars
@@ -499,18 +579,18 @@ const Steps = {
     if (potentialEnvLocations.every((p) => !fs.existsSync(p))) {
       const envContent = noBrowser
         ? "# Stack Auth keys\n" +
-          "# To get these variables:\n" +
-          "# 1. Go to https://app.stack-auth.com\n" +
-          "# 2. Create a new project\n" +
-          "# 3. Copy the keys below\n" +
-          "NEXT_PUBLIC_STACK_PROJECT_ID=\n" +
-          "NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY=\n" +
-          "STACK_SECRET_SERVER_KEY=\n"
+        "# To get these variables:\n" +
+        "# 1. Go to https://app.stack-auth.com\n" +
+        "# 2. Create a new project\n" +
+        "# 3. Copy the keys below\n" +
+        `NEXT_PUBLIC_STACK_PROJECT_ID="${projectIdFromArgs ?? ""}"\n` +
+        `NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY="${publishableClientKeyFromArgs ?? ""}"\n` +
+        "STACK_SECRET_SERVER_KEY=\n"
         : "# Stack Auth keys\n" +
-          "# Get these variables by creating a project on https://app.stack-auth.com.\n" +
-          "NEXT_PUBLIC_STACK_PROJECT_ID=\n" +
-          "NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY=\n" +
-          "STACK_SECRET_SERVER_KEY=\n";
+        "# Get these variables by creating a project on https://app.stack-auth.com.\n" +
+        `NEXT_PUBLIC_STACK_PROJECT_ID="${projectIdFromArgs ?? ""}"\n` +
+        `NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY="${publishableClientKeyFromArgs ?? ""}"\n` +
+        "STACK_SECRET_SERVER_KEY=\n";
 
       laterWriteFile(envLocalPath, envContent);
       return true;
@@ -559,18 +639,14 @@ const Steps = {
     return res;
   },
 
-  async writeStackAppFile({ type, srcPath, defaultExtension, indentation }: StackAppFileOptions, clientOrServer: string): Promise<StackAppFileResult> {
+  async writeStackAppFile({ type, srcPath, defaultExtension, indentation }: StackAppFileOptions, clientOrServer: "server" | "client"): Promise<StackAppFileResult> {
     const packageName = await Steps.getStackPackageName(type);
 
     const clientOrServerCap = {
       client: "Client",
       server: "Server",
-    }[clientOrServer] ?? throwErr("unknown clientOrServer " + clientOrServer);
-
-    const relativeStackAppPath = {
-      js: `stack/${clientOrServer}`,
-      next: "stack",
-    }[type] ?? throwErr("unknown type");
+    }[clientOrServer as "client" | "server"];
+    const relativeStackAppPath = `stack/${clientOrServer}`;
 
     const stackAppPathWithoutExtension = path.join(srcPath, relativeStackAppPath);
     const stackAppFileExtension =
@@ -581,27 +657,79 @@ const Steps = {
     if (stackAppContent) {
       if (!stackAppContent.includes("@stackframe/")) {
         throw new UserError(
-          `A file at the path ${stackAppPath} already exists. Stack uses the stack.ts file to initialize the Stack SDK. Please remove the existing file and try again.`
+          `A file at the path ${stackAppPath} already exists. Stack uses the stack/${clientOrServer}.ts file to initialize the Stack SDK. Please remove the existing file and try again.`
         );
       }
       throw new UserError(
         `It seems that you already installed Stack in this project.`
       );
     }
+
+    const tokenStore = type === "next" ? '"nextjs-cookie"' : (clientOrServer === "client" ? '"cookie"' : '"memory"');
+    const publishableClientKeyWrite = clientOrServer === "server"
+      ? `process.env.STACK_PUBLISHABLE_CLIENT_KEY ${publishableClientKeyFromArgs ? `|| ${JSON.stringify(publishableClientKeyFromArgs)}` : ""}`
+      : `'${publishableClientKeyFromArgs ?? 'INSERT_YOUR_PUBLISHABLE_CLIENT_KEY_HERE'}'`;
+    const jsOptions = type === "js" ? [
+      `\n\n${indentation}// get your Stack Auth API keys from https://app.stack-auth.com${clientOrServer === "client" ? ` and store them in a safe place (eg. environment variables)` : ""}`,
+      `${projectIdFromArgs ? `${indentation}projectId: ${JSON.stringify(projectIdFromArgs)},` : ""}`,
+      `${indentation}publishableClientKey: ${publishableClientKeyWrite},`,
+      `${clientOrServer === "server" ? `${indentation}secretServerKey: process.env.STACK_SECRET_SERVER_KEY,` : ""}`,
+    ].filter(Boolean).join("\n") : "";
+
+    const nextClientOptions = (type === "next" && clientOrServer === "client")
+      ? (() => {
+        const lines = [
+          projectIdFromArgs ? `${indentation}projectId: process.env.NEXT_PUBLIC_STACK_PROJECT_ID ?? ${JSON.stringify(projectIdFromArgs)},` : "",
+          publishableClientKeyFromArgs ? `${indentation}publishableClientKey: process.env.NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY ?? ${JSON.stringify(publishableClientKeyFromArgs)},` : "",
+        ].filter(Boolean).join("\n");
+        return lines ? `\n${lines}` : "";
+      })()
+      : "";
+
+
     laterWriteFileIfNotExists(
       stackAppPath,
       `
-${type === "next" ? `import "server-only";` : ""}
+${type === "next" && clientOrServer === "server" ? `import "server-only";` : ""}
 
 import { Stack${clientOrServerCap}App } from ${JSON.stringify(packageName)};
 
 export const stack${clientOrServerCap}App = new Stack${clientOrServerCap}App({
-${indentation}tokenStore: ${type === "next" ? '"nextjs-cookie"' : (clientOrServer === "client" ? '"cookie"' : '"memory"')},${
-type === "js" ? `\n\n${indentation}// get your Stack Auth API keys from https://app.stack-auth.com${clientOrServer === "client" ? ` and store them in a safe place (eg. environment variables)` : ""}` : ""}${
-type === "js" ? `\n${indentation}publishableClientKey: ${clientOrServer === "server" ? 'process.env.STACK_PUBLISHABLE_CLIENT_KEY' : 'INSERT_YOUR_PUBLISHABLE_CLIENT_KEY_HERE'},` : ""}${
-type === "js" && clientOrServer === "server" ? `\n${indentation}secretServerKey: process.env.STACK_SECRET_SERVER_KEY,` : ""}
+${indentation}tokenStore: ${tokenStore},${jsOptions}${nextClientOptions}
 });
       `.trim() + "\n"
+    );
+    return { fileName: stackAppPath };
+  },
+
+  async writeReactClientFile({ srcPath, defaultExtension, indentation, hasReactRouterDom }: { srcPath: string, defaultExtension: string, indentation: string, hasReactRouterDom: boolean }): Promise<StackAppFileResult> {
+    const packageName = await Steps.getStackPackageName("react");
+    const relativeStackAppPath = `stack/client`;
+    const stackAppPathWithoutExtension = path.join(srcPath, relativeStackAppPath);
+    const stackAppFileExtension = (await findJsExtension(stackAppPathWithoutExtension)) ?? defaultExtension;
+    const stackAppPath = stackAppPathWithoutExtension + "." + stackAppFileExtension;
+    const stackAppContent = await readFile(stackAppPath);
+    if (stackAppContent) {
+      if (!stackAppContent.includes("@stackframe/")) {
+        throw new UserError(`A file at the path ${stackAppPath} already exists. Stack uses the stack/client.ts file to initialize the Stack SDK. Please remove the existing file and try again.`);
+      }
+      throw new UserError(`It seems that you already installed Stack in this project.`);
+    }
+
+    const publishableClientKeyWrite = `'${publishableClientKeyFromArgs ?? 'INSERT_YOUR_PUBLISHABLE_CLIENT_KEY_HERE'}'`;
+    const projectIdWrite = `'${projectIdFromArgs ?? 'INSERT_PROJECT_ID'}'`;
+
+    const imports = hasReactRouterDom
+      ? `import { StackClientApp } from ${JSON.stringify(packageName)};\nimport { useNavigate } from "react-router-dom";\n\n`
+      : `import { StackClientApp } from ${JSON.stringify(packageName)};\n\n`;
+
+    const redirectMethod = hasReactRouterDom
+      ? `,\n${indentation}redirectMethod: {\n${indentation}${indentation}useNavigate,\n${indentation}}`
+      : "";
+
+    laterWriteFileIfNotExists(
+      stackAppPath,
+      `${imports}export const stackClientApp = new StackClientApp({ \n${indentation}tokenStore: "cookie", \n${indentation}projectId: ${projectIdWrite}, \n${indentation}publishableClientKey: ${publishableClientKeyWrite}${redirectMethod}, \n}); \n`
     );
     return { fileName: stackAppPath };
   },
@@ -617,14 +745,13 @@ type === "js" && clientOrServer === "server" ? `\n${indentation}secretServerKey:
     const handlerContent = await readFile(handlerPath);
     if (handlerContent && !handlerContent.includes("@stackframe/")) {
       throw new UserError(
-        `A file at the path ${handlerPath} already exists. Stack uses the /handler path to handle incoming requests. Please remove the existing file and try again.`
+        `A file at the path ${handlerPath} already exists.Stack uses the / handler path to handle incoming requests.Please remove the existing file and try again.`
       );
     }
     laterWriteFileIfNotExists(
       handlerPath,
-      `import { StackHandler } from "@stackframe/stack";\nimport { stackServerApp } from "../../../stack";\n\nexport default function Handler(props${
-        handlerFileExtension.includes("ts") ? ": unknown" : ""
-      }) {\n${projectInfo.indentation}return <StackHandler fullPage app={stackServerApp} routeProps={props} />;\n}\n`
+      `import { StackHandler } from "@stackframe/stack"; \nimport { stackServerApp } from "../../../stack/server"; \n\nexport default function Handler(props${handlerFileExtension.includes("ts") ? ": unknown" : ""
+      }) { \n${projectInfo.indentation} return <StackHandler fullPage app = { stackServerApp } routeProps = { props } />; \n } \n`
     );
   },
 
@@ -635,7 +762,8 @@ type === "js" && clientOrServer === "server" ? `\n${indentation}secretServerKey:
     const loadingPath = loadingPathWithoutExtension + "." + loadingFileExtension;
     laterWriteFileIfNotExists(
       loadingPath,
-      `export default function Loading() {\n${projectInfo.indentation}// Stack uses React Suspense, which will render this page while user data is being fetched.\n${projectInfo.indentation}// See: https://nextjs.org/docs/app/api-reference/file-conventions/loading\n${projectInfo.indentation}return <></>;\n}\n`
+      `export default function Loading() {
+\n${projectInfo.indentation}// Stack uses React Suspense, which will render this page while user data is being fetched.\n${projectInfo.indentation}// See: https://nextjs.org/docs/app/api-reference/file-conventions/loading\n${projectInfo.indentation}return <></>;\n}\n`
     );
   },
 
@@ -656,14 +784,16 @@ type === "js" && clientOrServer === "server" ? `\n${indentation}secretServerKey:
     return { packageManager };
   },
 
-  async ensureReady(type: string): Promise<void> {
+  async ensureReady(type: "js" | "next" | "react"): Promise<void> {
     const projectPath = await getProjectPath();
 
-    const typeString = {
+    const typeStringMap = {
       js: "JavaScript",
-      next: "Next.js"
-    }[type] ?? throwErr("unknown type");
-    const isReady = !!process.env.STACK_DISABLE_INTERACTIVE || (await inquirer.prompt([
+      next: "Next.js",
+      react: "React",
+    } as const;
+    const typeString = typeStringMap[type];
+    const isReady = (onQuestionMode !== "ask") || (await inquirer.prompt([
       {
         type: "confirm",
         name: "ready",
@@ -676,10 +806,15 @@ type === "js" && clientOrServer === "server" ? `\n${indentation}secretServerKey:
     }
   },
 
-  async getServerOrClientOrBoth(): Promise<string[]> {
+  async getServerOrClientOrBoth(): Promise<Array<"server" | "client">> {
     if (isClient && isServer) return ["server", "client"];
     if (isServer) return ["server"];
     if (isClient) return ["client"];
+
+    if (onQuestionMode === "guess") return ["server", "client"];
+    if (onQuestionMode === "error") {
+      throw new UnansweredQuestionError("Ambiguous installation type. Re-run with --server, --client, or both.");
+    }
 
     return (await inquirer.prompt([{
       type: "list",
@@ -734,7 +869,7 @@ async function getUpdatedLayout(originalLayout: string): Promise<LayoutResult | 
   const importInsertLocationM1 =
     firstImportLocationM1 ?? (hasStringAsFirstLine ? layout.indexOf("\n") : -1);
   const importInsertLocation = importInsertLocationM1 + 1;
-  const importStatement = `import { StackProvider, StackTheme } from "@stackframe/stack";\nimport { stackServerApp } from "../stack";\n`;
+  const importStatement = `import { StackProvider, StackTheme } from "@stackframe/stack";\nimport { stackClientApp } from "../stack/client";\n`;
   layout =
     layout.slice(0, importInsertLocation) +
     importStatement +
@@ -761,7 +896,7 @@ async function getUpdatedLayout(originalLayout: string): Promise<LayoutResult | 
     bodyCloseStartIndex
   );
 
-  const insertOpen = "<StackProvider app={stackServerApp}><StackTheme>";
+  const insertOpen = "<StackProvider app={stackClientApp}><StackTheme>";
   const insertClose = "</StackTheme></StackProvider>";
 
   layout =
@@ -817,6 +952,9 @@ async function getProjectPath(): Promise<string> {
       path.join(savedProjectPath, "package.json")
     );
     if (askForPathModification) {
+      if (onQuestionMode === "guess" || onQuestionMode === "error") {
+        throw new UserError(`No package.json file found in ${savedProjectPath}. Re-run providing the project path argument (e.g. 'init-stack <project-path>').`);
+      }
       savedProjectPath = (
         await inquirer.prompt([
           {
@@ -847,7 +985,7 @@ async function promptPackageManager(): Promise<string> {
   const yarnLock = fs.existsSync(path.join(projectPath, "yarn.lock"));
   const pnpmLock = fs.existsSync(path.join(projectPath, "pnpm-lock.yaml"));
   const npmLock = fs.existsSync(path.join(projectPath, "package-lock.json"));
-  const bunLock = fs.existsSync(path.join(projectPath, "bun.lockb"));
+  const bunLock = fs.existsSync(path.join(projectPath, "bun.lockb")) || fs.existsSync(path.join(projectPath, "bun.lock"));
 
   if (yarnLock && !pnpmLock && !npmLock && !bunLock) {
     return "yarn";
@@ -857,6 +995,11 @@ async function promptPackageManager(): Promise<string> {
     return "npm";
   } else if (!yarnLock && !pnpmLock && !npmLock && bunLock) {
     return "bun";
+  }
+
+  if (onQuestionMode === "guess") return "npm";
+  if (onQuestionMode === "error") {
+    throw new UnansweredQuestionError("Unable to determine the package manager. Re-run with one of: --npm, --yarn, --pnpm, or --bun.");
   }
 
   const answers = await inquirer.prompt([
@@ -988,13 +1131,6 @@ function laterWriteFileIfNotExists(fullPath: string, content: string): void {
   });
 }
 
-function assertInteractive(): true {
-  if (process.env.STACK_DISABLE_INTERACTIVE) {
-    throw new UserError("STACK_DISABLE_INTERACTIVE is set, but wizard requires interactivity to complete. Make sure you supplied all required command line arguments!");
-  }
-  return true;
-}
-
 function throwErr(message: string): never {
   throw new Error(message);
 }
@@ -1010,20 +1146,20 @@ export function templateIdentity(strings: TemplateStringsArray, ...values: any[]
 async function clearStdin(): Promise<void> {
   await new Promise<void>((resolve) => {
     if (process.stdin.isTTY) {
-        process.stdin.setRawMode(true);
+      process.stdin.setRawMode(true);
     }
-      process.stdin.resume();
-      process.stdin.removeAllListeners('data');
+    process.stdin.resume();
+    process.stdin.removeAllListeners('data');
 
-      const flush = () => {
-        while (process.stdin.read() !== null) {}
-        if (process.stdin.isTTY) {
-            process.stdin.setRawMode(false);
-        }
-          resolve();
-      };
+    const flush = () => {
+      while (process.stdin.read() !== null) { }
+      if (process.stdin.isTTY) {
+        process.stdin.setRawMode(false);
+      }
+      resolve();
+    };
 
-      // Add a small delay to allow any buffered input to clear
-      setTimeout(flush, 10);
+    // Add a small delay to allow any buffered input to clear
+    setTimeout(flush, 10);
   });
 }

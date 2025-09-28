@@ -1,7 +1,7 @@
 import withPostHog from "@/analytics";
 import { globalPrismaClient } from "@/prisma-client";
 import { runAsynchronouslyAndWaitUntil } from "@/utils/vercel";
-import { urlSchema, yupMixed, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+import { urlSchema, yupBoolean, yupMixed, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { getEnvVariable, getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
 import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { HTTP_METHODS } from "@stackframe/stack-shared/dist/utils/http";
@@ -49,6 +49,8 @@ const UserActivityEventType = {
     // old events of this type may not have a branchId field, so we default to the default branch ID
     branchId: yupString().defined().default(DEFAULT_BRANCH_ID),
     userId: yupString().uuid().defined(),
+    // old events of this type may not have an isAnonymous field, so we default to false
+    isAnonymous: yupBoolean().defined().default(false),
   }),
   inherits: [ProjectActivityEventType],
 } as const satisfies SystemEventTypeBase;

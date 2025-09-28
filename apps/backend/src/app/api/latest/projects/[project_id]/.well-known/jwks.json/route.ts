@@ -1,20 +1,24 @@
-import { yupArray, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
+import { yupArray, yupNumber, yupObject, yupString, yupTuple } from "@stackframe/stack-shared/dist/schema-fields";
 import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
-import { getPerAudienceSecret, getPublicJwkSet } from "@stackframe/stack-shared/dist/utils/jwt";
+import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
 import { getProject } from "../../../../../../../lib/projects";
+import { getPublicProjectJwkSet } from "../../../../../../../lib/tokens";
 import { createSmartRouteHandler } from "../../../../../../../route-handlers/smart-route-handler";
 
 export const GET = createSmartRouteHandler({
   metadata: {
     summary: "JWKS Endpoint",
-    description: "Returns information about the JSON Web Key Set (JWKS) used to sign and verify JWTs.",
+    description: deindent`
+      Returns a JSON Web Key Set (JWKS) for the given project, allowing you to verify JWTs for the given project without hitting our API. If include_anonymous is true, it will also include the JWKS for the anonymous users of the project.
+    `,
     tags: [],
-    hidden: true,
   },
   request: yupObject({
     params: yupObject({
       project_id: yupString().defined(),
+    }),
+    query: yupObject({
+      include_anonymous: yupString().oneOf(["true", "false"]).default("false"),
     }),
   }),
   response: yupObject({
@@ -23,8 +27,11 @@ export const GET = createSmartRouteHandler({
     body: yupObject({
       keys: yupArray().defined(),
     }).defined(),
+    headers: yupObject({
+      "Cache-Control": yupTuple([yupString().defined()]).defined(),
+    }).defined(),
   }),
-  async handler({ params }) {
+  async handler({ params, query }) {
     const project = await getProject(params.project_id);
 
     if (!project) {
@@ -34,10 +41,11 @@ export const GET = createSmartRouteHandler({
     return {
       statusCode: 200,
       bodyType: "json",
-      body: await getPublicJwkSet(getPerAudienceSecret({
-        audience: params.project_id,
-        secret: getEnvVariable("STACK_SERVER_SECRET"),
-      })),
+      body: await getPublicProjectJwkSet(params.project_id, query.include_anonymous === "true"),
+      headers: {
+        // Cache for 1 hour
+        "Cache-Control": ["public, max-age=3600"] as const,
+      },
     };
   },
 });

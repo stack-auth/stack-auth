@@ -15,20 +15,22 @@ export type NullishCoalesce<T, U> = T extends null | undefined ? U : T;
 
 export type LastUnionElement<U> = UnionToIntersection<U extends any ? (x: U) => 0 : never> extends (x: infer L) => 0 ? L & U : never;
 
+type primitive = string | number | boolean | bigint | symbol | null | undefined;
+
 /**
  * Makes a type prettier by recursively expanding all object types. For example, `Omit<{ a: 1 }, "a">` becomes just `{}`.
  */
 export type Expand<T> = T extends (...args: infer A) => infer R
-  ? (
-    ((...args: A) => R) extends T
-      ? (...args: Expand<A>) => Expand<R>
-      : ((...args: Expand<A>) => Expand<R>) & { [K in keyof T]: Expand<T[K]> }
-  )
-  : (
-    T extends object
-      ? { [K in keyof T]: Expand<T[K]> }
-      : T
-  );
+  ? ((...args: A) => R) extends T
+    ? (...args: Expand<A>) => Expand<R>
+    : ((...args: Expand<A>) => Expand<R>) & { [K in keyof T]: Expand<T[K]> }
+  : T extends object
+    ? T extends primitive
+      ? T
+      : T extends infer O
+        ? { [K in keyof O]: Expand<O[K]> }
+        : never
+    : T;
 
 
 /**
@@ -59,12 +61,26 @@ export type RequiredKeys<T> = {
 }[keyof T];
 
 /**
+ * Returns a type whose keys are the intersection of the keys of T and U, deeply.
+ */
+export type KeyIntersect<T, U> =
+  | { [K in keyof T & keyof U]?: T[K] & U[K] }
+  | { [K in RequiredKeys<T> & keyof U]: T[K] & U[K] }
+  | { [K in RequiredKeys<U> & keyof T]: U[K] & T[K] }
+
+/**
  * Returns ALL keys of all union elements.
  */
 export type AllUnionKeys<T extends object> = T extends T ? keyof T : never;
 typeAssertIs<AllUnionKeys<{ a: string } | { b: number }>, "a" | "b">()();
 
 export type SubtractType<T, U> = T extends object ? { [K in keyof T]: K extends keyof U ? SubtractType<T[K], U[K]> : T[K] } : (T extends U ? never : T); // note: this only works due to the distributive property of conditional types https://www.typescriptlang.org/docs/handbook/2/conditional-types.html#distributive-conditional-types
+
+export type XOR<T extends readonly any[]> = T extends readonly [infer A, infer B, ...infer Rest]
+  ? Rest extends []
+  ? (A & { [K in keyof B]?: never }) | (B & { [K in keyof A]?: never })
+  : XOR<[(A & { [K in keyof B]?: never }) | (B & { [K in keyof A]?: never }), ...Rest]>
+  : T[0];
 
 
 type _AntiIntersectInner<T, U> = T extends object ? (

@@ -1,5 +1,90 @@
 # @stackframe/js-example
 
+## 2.8.41
+
+### Patch Changes
+
+- @stackframe/js@2.8.41
+
+## 2.8.40
+
+### Patch Changes
+
+- Updated dependencies
+  - @stackframe/js@2.8.40
+
+## 2.8.39
+
+### Patch Changes
+
+- @stackframe/js@2.8.39
+
+## 2.8.38
+
+### Patch Changes
+
+- @stackframe/js@2.8.38
+
+## 2.8.37
+
+### Patch Changes
+
+- @stackframe/js@2.8.37
+
+## 2.8.36
+
+### Patch Changes
+
+- Various changes
+- Updated dependencies
+  - @stackframe/js@2.8.36
+
+## 2.8.35
+
+### Patch Changes
+
+- @stackframe/js@2.8.35
+
+## 2.8.34
+
+### Patch Changes
+
+- @stackframe/js@2.8.34
+
+## 2.8.33
+
+### Patch Changes
+
+- Various changes
+- Updated dependencies
+  - @stackframe/js@2.8.33
+
+## 2.8.32
+
+### Patch Changes
+
+- @stackframe/js@2.8.32
+
+## 2.8.31
+
+### Patch Changes
+
+- Various changes
+- Updated dependencies
+  - @stackframe/js@2.8.31
+
+## 2.8.30
+
+### Patch Changes
+
+- @stackframe/js@2.8.30
+
+## 2.8.29
+
+### Patch Changes
+
+- @stackframe/js@2.8.29
+
 ## 2.8.28
 
 ### Patch Changes

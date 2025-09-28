@@ -1,3 +1,4 @@
+import { validateRedirectUrl } from "@/lib/redirect-urls";
 import { createAuthTokens } from "@/lib/tokens";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createVerificationCodeHandler } from "@/route-handlers/verification-code-handler";
@@ -63,34 +64,16 @@ export const passkeySignInVerificationCodeHandler = createVerificationCodeHandle
     }
 
     // HACK: we validate origin and rpid outside of simpleauth, this should be replaced once we have a primary authentication domain
-    let expectedRPID = "";
-    let expectedOrigin = "";
     const clientDataJSON = decodeClientDataJSON(authentication_response.response.clientDataJSON);
     const { origin } = clientDataJSON;
-    const localhostAllowed = tenancy.config.domains.allowLocalhost;
+
+    if (!validateRedirectUrl(origin, tenancy)) {
+      throw new KnownErrors.PasskeyAuthenticationFailed("Passkey authentication failed because the origin is not allowed");
+    }
+
     const parsedOrigin = new URL(origin);
-    const isLocalhost = parsedOrigin.hostname === "localhost";
-
-    if (!localhostAllowed && isLocalhost) {
-      throw new KnownErrors.PasskeyAuthenticationFailed("Passkey authentication failed because localhost is not allowed");
-    }
-
-    if (localhostAllowed && isLocalhost) {
-      expectedRPID = parsedOrigin.hostname;
-      expectedOrigin = origin;
-    }
-
-    if (!isLocalhost) {
-      if (!Object.values(tenancy.config.domains.trustedDomains)
-        .filter(e => e.baseUrl)
-        .map(e => e.baseUrl)
-        .includes(parsedOrigin.origin)) {
-        throw new KnownErrors.PasskeyAuthenticationFailed("Passkey authentication failed because the origin is not allowed");
-      } else {
-        expectedRPID = parsedOrigin.hostname;
-        expectedOrigin = origin;
-      }
-    }
+    const expectedRPID = parsedOrigin.hostname;
+    const expectedOrigin = origin;
 
     let authVerify;
     authVerify = await verifyAuthenticationResponse({

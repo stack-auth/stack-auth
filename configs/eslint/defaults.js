@@ -72,8 +72,8 @@ module.exports = {
         message: "Switch cases without blocks are disallowed.",
       },
       {
-        selector: "CallExpression[callee.property.name='catch'] > MemberExpression[object.name='console'][property.name='error']",
-        message: "Don't do .catch(console.error). Please handle errors explicitly, eg. with runAsynchronously<WithAlert> or process.exit(1).",
+        selector: "CallExpression[callee.property.name='catch']:has(MemberExpression[object.name='console'])",
+        message: "Don't do .catch(console.error). Please handle errors explicitly, eg. with runAsynchronously or runAsynchronouslyWithAlert.",
       },
       {
         selector:
