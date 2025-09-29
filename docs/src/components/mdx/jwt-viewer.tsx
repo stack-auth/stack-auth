@@ -3,7 +3,7 @@
 import { useUser } from '@stackframe/stack';
 import { runAsynchronously } from '@stackframe/stack-shared/dist/utils/promises';
 import { decodeProtectedHeader, decodeJwt as joseDecodeJwt } from 'jose';
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { cn } from '../../lib/cn';
 
 type DecodedJWT = {
@@ -34,8 +34,19 @@ export function JWTViewer({ defaultToken = '', className = '' }: JWTViewerProps)
   const [decoded, setDecoded] = useState<DecodedJWT | null>(null);
   const [error, setError] = useState<string>('');
   const [userTokenLoaded, setUserTokenLoaded] = useState(false);
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
   const user = useUser();
+
+  const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (copyTimeoutRef.current) {
+        clearTimeout(copyTimeoutRef.current);
+      }
+    };
+  }, []);
 
   const handleDecode = useCallback((jwtString: string) => {
     if (!jwtString.trim()) {
@@ -53,21 +64,52 @@ export function JWTViewer({ defaultToken = '', className = '' }: JWTViewerProps)
     }
   }, []);
 
-
-  const loadCurrentUserToken = async () => {
-    if (user) {
-      try {
-        const authData = await user.getAuthJson();
-        if (authData.accessToken) {
-          setToken(authData.accessToken);
-          handleDecode(authData.accessToken);
-          setUserTokenLoaded(true);
-        }
-      } catch (err) {
-        console.error('Failed to load user token:', err);
+  const handleCopy = useCallback(async (text: string, key: string) => {
+    if (!text) return;
+    try {
+      if (
+        typeof navigator !== 'undefined' &&
+        'clipboard' in navigator &&
+        typeof navigator.clipboard.writeText === 'function'
+      ) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        const temp = document.createElement('textarea');
+        temp.value = text;
+        temp.setAttribute('readonly', '');
+        temp.style.position = 'absolute';
+        temp.style.left = '-9999px';
+        document.body.appendChild(temp);
+        temp.select();
+        document.execCommand('copy');
+        document.body.removeChild(temp);
       }
+      setCopiedKey(key);
+      if (copyTimeoutRef.current) {
+        clearTimeout(copyTimeoutRef.current);
+      }
+      copyTimeoutRef.current = setTimeout(() => {
+        setCopiedKey(null);
+      }, 2000);
+    } catch (err) {
+      console.error('Failed to copy value', err);
     }
-  };
+  }, [copyTimeoutRef]);
+
+
+  const loadCurrentUserToken = useCallback(async () => {
+    if (!user) return;
+    try {
+      const authData = await user.getAuthJson();
+      if (authData.accessToken) {
+        setToken(authData.accessToken);
+        handleDecode(authData.accessToken);
+        setUserTokenLoaded(true);
+      }
+    } catch (err) {
+      console.error('Failed to load user token:', err);
+    }
+  }, [handleDecode, user]);
 
   const formatTime = (timestamp: number, field: string) => {
     const date = new Date(timestamp * 1000);
@@ -109,24 +151,169 @@ export function JWTViewer({ defaultToken = '', className = '' }: JWTViewerProps)
     return <code className="text-fd-foreground">{String(value)}</code>;
   };
 
+  const tokenParts = useMemo(() => token.split('.'), [token]);
+  const hasTokenSegments = tokenParts.length === 3 && tokenParts.every(Boolean);
+
+  const tokenMeta = useMemo(() => {
+    if (!decoded) return null;
+    const payload = decoded.payload;
+    const now = Math.floor(Date.now() / 1000);
+    const exp = typeof payload.exp === 'number' ? payload.exp : undefined;
+    const iat = typeof payload.iat === 'number' ? payload.iat : undefined;
+    const nbf = typeof payload.nbf === 'number' ? payload.nbf : undefined;
+    const issuer = typeof payload.iss === 'string' ? payload.iss : undefined;
+    const audience = Array.isArray(payload.aud)
+      ? payload.aud.map(String).join(', ')
+      : typeof payload.aud === 'string'
+        ? payload.aud
+        : undefined;
+    const subject = typeof payload.sub === 'string' ? payload.sub : undefined;
+    const status = exp !== undefined && exp < now
+      ? 'expired'
+      : nbf !== undefined && nbf > now
+        ? 'pending'
+        : 'active';
+
+    return { status, exp, iat, nbf, issuer, audience, subject } as const;
+  }, [decoded]);
+
+  const summaryRows: Array<{ key: string, label: string, content: JSX.Element }> = [];
+  if (decoded && tokenMeta) {
+    if (tokenMeta.issuer) {
+      summaryRows.push({
+        key: 'issuer',
+        label: 'Issuer',
+        content: (
+          <div className="flex items-center gap-2">
+            <code className="text-xs font-mono break-all text-fd-foreground flex-1">{tokenMeta.issuer}</code>
+            <button
+              type="button"
+              onClick={() => runAsynchronously(() => handleCopy(tokenMeta.issuer!, 'issuer'))}
+              className={cn(
+                "px-2 py-1 text-[11px] font-medium rounded-md border",
+                "border-fd-border bg-fd-muted/20 text-fd-muted-foreground hover:bg-fd-muted/40",
+                "transition-colors"
+              )}
+            >
+              {copiedKey === 'issuer' ? 'Copied' : 'Copy'}
+            </button>
+          </div>
+        ),
+      });
+    }
+
+    if (tokenMeta.audience) {
+      summaryRows.push({
+        key: 'audience',
+        label: 'Audience',
+        content: (
+          <div className="flex items-center gap-2">
+            <code className="text-xs font-mono break-all text-fd-foreground flex-1">{tokenMeta.audience}</code>
+            <button
+              type="button"
+              onClick={() => runAsynchronously(() => handleCopy(tokenMeta.audience!, 'audience'))}
+              className={cn(
+                "px-2 py-1 text-[11px] font-medium rounded-md border",
+                "border-fd-border bg-fd-muted/20 text-fd-muted-foreground hover:bg-fd-muted/40",
+                "transition-colors"
+              )}
+            >
+              {copiedKey === 'audience' ? 'Copied' : 'Copy'}
+            </button>
+          </div>
+        ),
+      });
+    }
+
+    if (tokenMeta.subject) {
+      summaryRows.push({
+        key: 'subject',
+        label: 'User ID',
+        content: <code className="text-xs font-mono break-all text-fd-foreground">{tokenMeta.subject}</code>,
+      });
+    }
+
+    if (tokenMeta.iat !== undefined) {
+      summaryRows.push({
+        key: 'iat',
+        label: 'Issued At',
+        content: renderValue('iat', tokenMeta.iat),
+      });
+    }
+
+    if (tokenMeta.nbf !== undefined) {
+      summaryRows.push({
+        key: 'nbf',
+        label: 'Not Before',
+        content: renderValue('nbf', tokenMeta.nbf),
+      });
+    }
+
+    if (tokenMeta.exp !== undefined) {
+      summaryRows.push({
+        key: 'exp',
+        label: 'Expires',
+        content: renderValue('exp', tokenMeta.exp),
+      });
+    }
+  }
+
+  const statusConfig = {
+    active: {
+      label: 'Valid',
+      className: 'bg-emerald-500/15 text-emerald-500 border-emerald-500/30',
+    },
+    expired: {
+      label: 'Expired',
+      className: 'bg-red-500/15 text-red-500 border-red-500/30',
+    },
+    pending: {
+      label: 'Starts Soon',
+      className: 'bg-amber-500/15 text-amber-500 border-amber-500/30',
+    },
+  } as const;
+
+  const statusBadge = tokenMeta ? statusConfig[tokenMeta.status] : undefined;
+  const segmentStyles = [
+    { label: 'Header', className: 'border-blue-500/25 bg-blue-500/10 text-blue-500' },
+    { label: 'Payload', className: 'border-green-500/25 bg-green-500/10 text-green-500' },
+    { label: 'Signature', className: 'border-purple-500/25 bg-purple-500/10 text-purple-500' },
+  ] as const;
+
   return (
     <div className={cn("not-prose space-y-4", className)}>
       {/* Input Section */}
       <div className="space-y-3">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <label className="text-sm font-medium text-fd-foreground">JWT Token</label>
-          {user && (
-            <button
-              onClick={() => runAsynchronously(loadCurrentUserToken())}
-              className={cn(
-                "px-3 py-1.5 text-xs font-medium rounded-md transition-colors",
-                "bg-fd-primary text-fd-primary-foreground hover:bg-fd-primary/90",
-                "border border-fd-border"
-              )}
-            >
-              {userTokenLoaded ? 'Reload My Token' : 'Load My Token'}
-            </button>
-          )}
+          <div className="flex flex-wrap items-center gap-2">
+            {token && (
+              <button
+                type="button"
+                onClick={() => runAsynchronously(() => handleCopy(token, 'token'))}
+                className={cn(
+                  "px-3 py-1.5 text-xs font-medium rounded-md border",
+                  "border-fd-border bg-fd-muted/40 text-fd-muted-foreground hover:bg-fd-muted/60",
+                  "transition-colors"
+                )}
+              >
+                {copiedKey === 'token' ? 'Copied' : 'Copy Token'}
+              </button>
+            )}
+            {user && (
+              <button
+                type="button"
+                onClick={() => runAsynchronously(loadCurrentUserToken)}
+                className={cn(
+                  "px-3 py-1.5 text-xs font-medium rounded-md transition-colors",
+                  "bg-fd-primary text-fd-primary-foreground hover:bg-fd-primary/90",
+                  "border border-fd-border"
+                )}
+              >
+                {userTokenLoaded ? 'Reload My Token' : 'Load My Token'}
+              </button>
+            )}
+          </div>
         </div>
 
         <div className="relative">
@@ -139,7 +326,7 @@ export function JWTViewer({ defaultToken = '', className = '' }: JWTViewerProps)
             }}
             placeholder={user ? "Click 'Load My Token' to use your session token, or paste another here..." : "Paste JWT token here..."}
             className={cn(
-              "w-full h-24 p-3 text-xs font-mono rounded-lg resize-vertical",
+              "w-full h-28 p-3 text-xs font-mono rounded-lg resize-vertical",
               "bg-fd-background border border-fd-border",
               "text-fd-foreground placeholder:text-fd-muted-foreground",
               "focus:outline-none focus:ring-2 focus:ring-fd-primary/20 focus:border-fd-primary",
@@ -155,6 +342,33 @@ export function JWTViewer({ defaultToken = '', className = '' }: JWTViewerProps)
             </div>
           )}
         </div>
+
+        {hasTokenSegments && (
+          <div className="flex flex-wrap items-center gap-2 text-[11px] font-mono">
+            {tokenParts.map((segment, index) => (
+              <button
+                type="button"
+                key={segmentStyles[index]!.label}
+                onClick={() => runAsynchronously(() => handleCopy(segment, `segment-${index}`))}
+                className={cn(
+                  "flex items-center gap-2 rounded-md border px-3 py-1.5",
+                  "transition-colors hover:brightness-[1.05]",
+                  segmentStyles[index]!.className
+                )}
+              >
+                <span className="font-semibold uppercase tracking-wide">
+                  {segmentStyles[index]!.label}
+                </span>
+                <span className="truncate max-w-[160px] text-fd-foreground/80">
+                  {segment.slice(0, 12)}{segment.length > 12 ? '…' : ''}
+                </span>
+                <span className="text-[10px] text-fd-muted-foreground">
+                  {copiedKey === `segment-${index}` ? 'Copied' : 'Tap to copy'}
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Error */}
@@ -176,6 +390,39 @@ export function JWTViewer({ defaultToken = '', className = '' }: JWTViewerProps)
       {/* Decoded JWT */}
       {decoded && (
         <div className="space-y-4">
+          {(statusBadge || summaryRows.length > 0) && (
+            <div className={cn(
+              "rounded-lg border border-fd-border/50 bg-fd-card shadow-sm",
+              "overflow-hidden"
+            )}>
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-fd-border/50 bg-fd-muted/20 px-4 py-3">
+                <div className="text-sm font-medium text-fd-foreground">Token Summary</div>
+                {statusBadge && (
+                  <span className={cn(
+                    "px-2.5 py-1 text-xs font-medium rounded-full border",
+                    statusBadge.className
+                  )}>
+                    {statusBadge.label}
+                  </span>
+                )}
+              </div>
+              {summaryRows.length > 0 && (
+                <div className="grid gap-4 px-4 py-4 sm:grid-cols-2">
+                  {summaryRows.map((row) => (
+                    <div key={row.key} className="space-y-1 rounded-md bg-fd-muted/10 p-3">
+                      <div className="text-[11px] font-semibold uppercase tracking-wide text-fd-muted-foreground">
+                        {row.label}
+                      </div>
+                      <div className="text-sm text-fd-foreground">
+                        {row.content}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Header */}
           <div className={cn(
             "rounded-lg border border-fd-border/50 bg-fd-card shadow-sm",

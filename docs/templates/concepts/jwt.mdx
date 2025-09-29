@@ -22,25 +22,32 @@ Use the interactive JWT viewer below to decode and inspect JWT tokens. If you're
 
 ## Stack Auth JWT Structure
 
-Stack Auth JWTs contain specific claims that are used throughout the authentication system:
+Stack Auth JWTs contain standardized headers and claims that power authentication throughout the platform.
+
+### Header
+
+- **`alg`**: Always `ES256`
+- **`kid`**: Identifies which public key from the JWKS should be used for verification
 
 ### Standard Claims
 
-- **`iss` (Issuer)**: The Stack Auth server that issued the token
+- **`iss` (Issuer)**: `https://api.stack-auth.com/api/v1/projects/<project-id>` for regular users, or `https://api.stack-auth.com/api/v1/projects-anonymous-users/<project-id>` for anonymous sessions
 - **`sub` (Subject)**: The user ID this token represents
-- **`aud` (Audience)**: The intended recipient of the token (your project)
+- **`aud` (Audience)**: The intended recipient of the token — `<project-id>` for regular sessions, `<project-id>:anon` for anonymous sessions
 - **`exp` (Expiration)**: When the token expires (Unix timestamp)
 - **`iat` (Issued At)**: When the token was issued (Unix timestamp)
-- **`nbf` (Not Before)**: When the token becomes valid (Unix timestamp)
 
 ### Stack Auth Specific Claims
 
-- **`userId`**: The unique identifier for the user
-- **`projectId`**: Your Stack Auth project ID
-- **`role`**: The user's role (`user`, `admin`, etc.)
-- **`teamId`**: The current team context (if applicable)
-- **`permissions`**: Array of permissions granted to the user
-- **`branchId`**: The project branch (typically `main`)
+- **`project_id`**: Your Stack Auth project ID
+- **`branch_id`**: The project branch (currently always `main`)
+- **`refresh_token_id`**: ID of the associated refresh token
+- **`role`**: Always set to `authenticated` for valid users
+- **`name`**: The user's display name (nullable)
+- **`email`**: The user's primary email address (nullable)
+- **`email_verified`**: Whether the user's email has been verified
+- **`selected_team_id`**: The currently selected team ID (nullable)
+- **`is_anonymous`**: Whether this is an anonymous user session
 
 ## Example JWT Payload
 
@@ -48,19 +55,28 @@ Here's what a typical Stack Auth JWT payload looks like:
 
 ```json
 {
-  "iss": "https://api.stack-auth.com",
+  "iss": "https://api.stack-auth.com/api/v1/projects/project_abcdef",
   "sub": "user_123456",
-  "aud": "project_abcdef:main",
+  "aud": "project_abcdef",
   "exp": 1735689600,
   "iat": 1735603200,
-  "userId": "user_123456",
-  "projectId": "project_abcdef",
-  "role": "user",
-  "teamId": "team_789",
-  "permissions": ["read", "write"],
-  "branchId": "main"
+  "project_id": "project_abcdef",
+  "branch_id": "main",
+  "refresh_token_id": "refresh_xyz789",
+  "role": "authenticated",
+  "name": "John Doe",
+  "email": "john@example.com",
+  "email_verified": true,
+  "selected_team_id": "team_789",
+  "is_anonymous": false
 }
 ```
+
+Anonymous user tokens have the same shape, but:
+
+- `iss` becomes `https://api.stack-auth.com/api/v1/projects-anonymous-users/<project-id>`
+- `aud` becomes `<project-id>:anon`
+- `is_anonymous` is `true`
 
 ## Working with JWTs
 
@@ -98,8 +114,10 @@ export async function GET() {
   
   // Access user information from the JWT
   return Response.json({
-    userId: user.id,
+    id: user.id,
     displayName: user.displayName,
+    primaryEmail: user.primaryEmail,
+    selectedTeamId: user.selectedTeamId,
     // Other user properties...
   });
 }
@@ -107,28 +125,50 @@ export async function GET() {
 
 ### Manual JWT Verification
 
-If you need to manually verify a JWT (for example, in a different service), you can use the public key endpoint:
+If you need to manually verify a JWT (for example, in a different service), fetch the public keys from Stack Auth's JWKS endpoint. Keys are derived per audience so the `kid` in the JWT header always matches one of the published keys.
 
 ```typescript
 import * as jose from 'jose';
 
 // Get the public key set from Stack Auth
 const jwks = jose.createRemoteJWKSet(
-  new URL('https://api.stack-auth.com/api/latest/projects/YOUR_PROJECT_ID/jwks')
+  new URL('https://api.stack-auth.com/api/v1/projects/YOUR_PROJECT_ID/.well-known/jwks.json')
 );
 
-// Verify the JWT
+// Verify a regular (non-anonymous) access token
 try {
   const { payload } = await jose.jwtVerify(token, jwks, {
-    issuer: 'https://api.stack-auth.com',
-    audience: 'YOUR_PROJECT_ID:main',
+    issuer: 'https://api.stack-auth.com/api/v1/projects/YOUR_PROJECT_ID',
+    audience: 'YOUR_PROJECT_ID',
   });
-  
+
   console.log('JWT is valid:', payload);
 } catch (error) {
   console.error('JWT verification failed:', error);
 }
 ```
+
+To support anonymous sessions, include those keys and allow both issuers and audiences:
+
+```typescript
+const jwks = jose.createRemoteJWKSet(
+  new URL('https://api.stack-auth.com/api/v1/projects/YOUR_PROJECT_ID/.well-known/jwks.json?include_anonymous=true')
+);
+
+const { payload } = await jose.jwtVerify(token, jwks, {
+  issuer: [
+    'https://api.stack-auth.com/api/v1/projects/YOUR_PROJECT_ID',
+    'https://api.stack-auth.com/api/v1/projects-anonymous-users/YOUR_PROJECT_ID',
+  ],
+  audience: ['YOUR_PROJECT_ID', 'YOUR_PROJECT_ID:anon'],
+});
+```
+
+### Signing Keys
+
+- Private keys are deterministically derived from your project ID, optional anonymous audience, and the `STACK_SERVER_SECRET` environment variable. This means no key material is ever stored in the database.
+- The JWKS currently exposes both the latest key pair and a legacy compatibility key. Verification libraries automatically pick the correct key by matching the `kid` provided in the JWT header.
+- Tokens are always signed server-side; client SDKs never receive the private keys.
 
 ## Security Considerations
 
@@ -140,7 +180,7 @@ try {
 
 ### Token Expiration
 
-- JWTs have a limited lifetime (typically 1 hour)
+- JWTs have a limited lifetime (default is 10 minutes via `STACK_ACCESS_TOKEN_EXPIRATION_TIME`)
 - Stack Auth automatically refreshes tokens before they expire
 - Always check the `exp` claim when manually handling JWTs
 
@@ -180,4 +220,5 @@ Use the JWT viewer above to inspect tokens and verify their contents. Pay specia
 
 - [API Keys](/docs/concepts/api-keys) - Alternative authentication method for server-to-server communication
 - [Backend Integration](/docs/concepts/backend-integration) - How to verify JWTs in your backend
-- [Permissions](/docs/concepts/permissions) - Understanding the permissions claim in JWTs
+- [Permissions](/docs/concepts/permissions) - Understanding user permissions (not included in JWTs)
+- [Teams](/docs/concepts/teams) - Understanding team context in JWTs
