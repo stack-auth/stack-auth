@@ -276,6 +276,9 @@ pages:
   - path: others/supabase.mdx
     platforms: ["next"] # Next only
 
+  - path: others/convex.mdx
+    platforms: ["next", "react", "js"] # No Python
+
   - path: others/cli-authentication.mdx
     platforms: ["python"] # Python only
 

@@ -276,6 +276,29 @@ export type CurrentInternalUser = CurrentUser & InternalUserExtra;
 
 export type ProjectCurrentUser<ProjectId> = ProjectId extends "internal" ? CurrentInternalUser : CurrentUser;
 
+export type TokenPartialUser = Pick<
+  User,
+  | "id"
+  | "displayName"
+  | "primaryEmail"
+  | "primaryEmailVerified"
+  | "isAnonymous"
+>
+
+export type SyncedPartialUser = TokenPartialUser & Pick<
+  User,
+  | "id"
+  | "displayName"
+  | "primaryEmail"
+  | "primaryEmailVerified"
+  | "profileImageUrl"
+  | "signedUpAt"
+  | "clientMetadata"
+  | "clientReadOnlyMetadata"
+  | "isAnonymous"
+  | "hasPassword"
+>;
+
 
 export type ActiveSession = {
   id: string,
@@ -377,6 +400,10 @@ export type CurrentInternalServerUser = CurrentServerUser & InternalUserExtra;
 
 export type ProjectCurrentServerUser<ProjectId> = ProjectId extends "internal" ? CurrentInternalServerUser : CurrentServerUser;
 
+export type SyncedPartialServerUser = SyncedPartialUser & Pick<
+  ServerUser,
+  | "serverMetadata"
+>;
 
 export type ServerUserUpdateOptions = {
   primaryEmail?: string | null,
