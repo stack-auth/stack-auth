@@ -260,15 +260,15 @@ export function JWTViewer({ defaultToken = '', className = '' }: JWTViewerProps)
 
   const statusConfig = {
     active: {
-      label: 'Valid',
+      label: 'Time-Valid (Unverified)',
       className: 'bg-emerald-500/15 text-emerald-500 border-emerald-500/30',
     },
     expired: {
-      label: 'Expired',
+      label: 'Expired (Unverified)',
       className: 'bg-red-500/15 text-red-500 border-red-500/30',
     },
     pending: {
-      label: 'Starts Soon',
+      label: 'Not Yet Valid (Unverified)',
       className: 'bg-amber-500/15 text-amber-500 border-amber-500/30',
     },
   } as const;
