@@ -4,6 +4,7 @@ import {
   DocsPage,
   DocsTitle,
 } from '@/components/layouts/page';
+import { LLMCopyButton, ViewOptions } from '@/components/page-actions';
 import { getMDXComponents } from '@/mdx-components';
 import { createRelativeLink } from 'fumadocs-ui/mdx';
 import { source } from 'lib/source';
@@ -27,7 +28,15 @@ export default async function Page(props: {
 
   return (
     <DocsPage toc={page.data.toc} full={page.data.full}>
-      <DocsTitle>{page.data.title}</DocsTitle>
+      <div className="flex flex-row items-center justify-between gap-4 mb-4">
+        <DocsTitle>{page.data.title}</DocsTitle>
+        <div className="flex flex-row gap-2 items-center">
+          <LLMCopyButton markdownUrl={`${page.url}.mdx`} />
+          <ViewOptions
+            markdownUrl={`${page.url}.mdx`}
+          />
+        </div>
+      </div>
       {/* Only show description if it exists and is not empty */}
       {page.data.description && page.data.description.trim() && (
         <DocsDescription>{page.data.description}</DocsDescription>
