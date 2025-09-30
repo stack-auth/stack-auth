@@ -26,8 +26,10 @@
 
 'use client';
 import { baseOptions } from '@/app/layout.config';
+import { filterTreeForSection, resolveDocsSection } from '@/lib/docs-tree';
 import { usePathname } from 'next/navigation';
 import type { ReactNode } from 'react';
+import { useMemo } from 'react';
 import { ApiSidebarContent } from './api/api-sidebar';
 import { DocsLayout, type DocsLayoutProps } from './docs';
 import { isInApiSection, isInCustomizationSection } from './shared/section-utils';
@@ -38,6 +40,8 @@ type DynamicDocsLayoutProps = {
 
 export function DynamicDocsLayout({ children, ...props }: DynamicDocsLayoutProps) {
   const pathname = usePathname();
+  const section = resolveDocsSection(pathname);
+  const sectionTree = useMemo(() => filterTreeForSection(props.tree, section), [props.tree, section]);
 
   // For API docs, use minimal layout without platform tabs
   if (isInApiSection(pathname)) {
@@ -77,7 +81,7 @@ export function DynamicDocsLayout({ children, ...props }: DynamicDocsLayoutProps
       <DocsLayout
         {...baseOptions}
         {...props}
-        tree={props.tree}
+        tree={sectionTree}
         nav={{
           enabled: false, // Disable Fumadocs navbar - using SharedHeader instead
         }}
@@ -97,7 +101,7 @@ export function DynamicDocsLayout({ children, ...props }: DynamicDocsLayoutProps
     <DocsLayout
       {...baseOptions}
       {...props}
-      tree={props.tree}
+      tree={sectionTree}
       nav={{
         enabled: false, // Disable Fumadocs navbar - using SharedHeader instead
       }}

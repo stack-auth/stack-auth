@@ -1,4 +1,5 @@
 'use client';
+import { filterTreeForSection, resolveDocsSection } from '@/lib/docs-tree';
 import type { PageTree } from 'fumadocs-core/server';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import { usePathname } from 'next/navigation';
@@ -250,6 +251,8 @@ function GeneralDocsSidebarContent({ pageTree }: { pageTree?: PageTree.Root }) {
 export function DocsHeaderWrapper({ showSearch = true, pageTree, className, apiPages }: DocsHeaderWrapperProps) {
   const pathname = usePathname();
   const navLinks = useMemo(() => generateNavLinks(), []);
+  const docsSection = resolveDocsSection(pathname);
+  const sectionTree = useMemo(() => (pageTree ? filterTreeForSection(pageTree, docsSection) : undefined), [pageTree, docsSection]);
 
   // Determine current sidebar content based on route
   const sidebarContent = useMemo(() => {
@@ -259,11 +262,11 @@ export function DocsHeaderWrapper({ showSearch = true, pageTree, className, apiP
 
     // For all docs pages, use the page tree
     if (pathname.startsWith('/docs') && !isInApiSection(pathname)) {
-      return <GeneralDocsSidebarContent pageTree={pageTree} />;
+      return <GeneralDocsSidebarContent pageTree={sectionTree} />;
     }
 
     return null;
-  }, [pathname, pageTree, apiPages]);
+  }, [pathname, apiPages, sectionTree]);
 
   return (
     <SharedHeader
