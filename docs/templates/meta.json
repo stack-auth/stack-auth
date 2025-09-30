@@ -15,6 +15,7 @@
     "concepts/backend-integration",
     "concepts/custom-user-data",
     "concepts/emails",
+    "concepts/jwt",
     "concepts/oauth",
     "concepts/auth-providers",
     "concepts/orgs-and-teams",
