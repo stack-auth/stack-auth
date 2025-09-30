@@ -1,0 +1,69 @@
+---
+title: Webhooks
+---
+
+Webhooks are a powerful way to keep your backend in sync with Stack. They allow you to receive real-time updates when events occur in your Stack project, such as when a user or team is created, updated, or deleted.
+
+For more information and a list of all webhooks, please refer to the [webhook API reference](/api/webhooks/users/user.created).
+
+## Setting up webhooks
+
+In the Stack dashboard, you can create a webhook endpoint in the "Webhooks" section. After creating this endpoint with your server URL, you will start receiving POST requests with a JSON payload at that endpoint. The event payload will look something like this:
+
+```json
+{
+  "type": "team.created",
+  "data": {
+    "id": "2209422a-eef7-4668-967d-be79409972c5",
+    "display_name": "My Team",
+    ...
+  }
+}
+```
+
+## Testing webhooks locally
+
+You can use services like [Svix Playground](https://www.svix.com/play/) or [Webhook.site](https://webhook.site/) to test the receiving of webhooks or relay them to your local development environment.
+
+## Verifying webhooks
+
+To ensure the webhook is coming from Stack (and not from a malicious actor) and is not prone to replay attacks, you should verify the request. 
+
+Stack signs the webhook payload with a secret key that you can find in the endpoint details on the dashboard. You can verify the signature using the Svix client library. Check out the [Svix documentation](https://docs.svix.com/receiving/verifying-payloads/how) for instructions on how to verify the signature in JavaScript, Python, Ruby, and other languages. Here is an quick example in JavaScript:
+
+```jsx
+import { Webhook } from "svix";
+
+const secret = "<from the dashboard>";
+const headers = {
+  "svix-id": "<from the webhook request headers>",
+  "svix-timestamp": "<from the webhook request headers>",
+  "svix-signature": "<from the webhook request headers>",
+};
+const payload = "<the webhook request body>";
+
+const wh = new Webhook(secret);
+// Throws on error, returns the verified content on success
+const payload = wh.verify(payload, headers);
+```
+
+If you do not want to install the Svix client library or are using a language that is not supported, you can [verify the signature manually](https://docs.svix.com/receiving/verifying-payloads/how-manual).
+
+## Event types
+
+Please refer to the webhook endpoint API reference for more details on the available event types and their payload structures.
+
+- [user.created](/api/webhooks/users/user.created)
+- [user.updated](/api/webhooks/users/user.updated)
+- [user.deleted](/api/webhooks/users/user.deleted)
+- [team.created](/api/webhooks/teams/team.created)
+- [team.updated](/api/webhooks/teams/team.updated)
+- [team.deleted](/api/webhooks/teams/team.deleted)
+- [team_membership.created](/api/webhooks/teams/team-membership.created)
+- [team_membership.deleted](/api/webhooks/teams/team-membership.deleted)
+- [team_permission.created](/api/webhooks/teams/team-permission.created)
+- [team_permission.deleted](/api/webhooks/teams/team-permission.deleted)
+
+## Examples
+
+Some members of the community have shared their webhook implementations. For example, [here is an example by Clark Gredoña](https://gist.github.com/clarkg/56ffad44949826ae3efe0a431b6021c4) that validates the Webhook schema and update a database user.

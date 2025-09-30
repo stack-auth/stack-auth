@@ -1,0 +1,36 @@
+---
+title: "Twitch"
+---
+
+This guide explains how to set up Twitch as an authentication provider with Stack Auth. Twitch OAuth allows users to sign in to your application using their Twitch account.
+
+## Integration Steps
+
+<Steps>
+  <Step>
+  ### Create a Twitch OAuth App
+  
+  1. Navigate to the [Twitch Developer Console](https://dev.twitch.tv/console).
+  2. Log in with your Twitch account.
+  3. Navigate to **Applications** and click **Register New Application**.
+  4. Enter a **Name** and select a **Category**.
+  5. Under **OAuth Redirect URLs**, add `https://api.stack-auth.com/api/v1/auth/oauth/callback/twitch`
+  6. Click **Create**.
+  7. You'll be redirected to your app's dashboard.
+  8. Click **Manage** of the app you just created to view more details about your app.
+  9. Click "New Secret" to generate a new secret.
+  10. Copy and save the **Client ID** and **Client Secret**.
+  </Step>
+  <Step>
+  ### Enable Twitch OAuth in Stack Auth
+  
+  1. On the Stack Auth dashboard, select **Auth Methods** in the left sidebar.
+  2. Click **Add SSO Providers** and select **Twitch** as the provider.
+  3. Set the **Client ID** and **Client Secret** you obtained from the Twitch Developer Console earlier.
+  </Step>
+</Steps>
+
+### Need More Help?
+
+- Check the [Twitch OAuth Documentation](https://dev.twitch.tv/docs/authentication/getting-tokens-oauth/)
+- Join our [Discord](https://discord.stack-auth.com)
