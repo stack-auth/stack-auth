@@ -157,3 +157,4 @@ export const DEFAULT_FRAMEWORK_PREFERENCES: { [platform: string]: string } = {
   "Ruby": "Rails",
   "Rust": "Axum"
 };
+
