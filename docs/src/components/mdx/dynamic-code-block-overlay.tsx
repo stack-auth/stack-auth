@@ -163,7 +163,7 @@ export function DynamicCodeblockOverlay({
         className={cn(
           "sticky bottom-0 mx-2 bg-fd-background border-t border-r border-l rounded-tl-xl rounded-tr-xl border-fd-border z-50",
           "transition-all duration-300 ease-out",
-          "shadow-2xl shadow-black/30 dark:shadow-white/30",
+          "shadow-2xl shadow-black/20 dark:shadow-white/20",
           "flex flex-col", // Add flex container
           // Position to avoid sidebar overlap - adjust based on sidebar state
           "left-0 right-0",
