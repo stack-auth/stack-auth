@@ -14,7 +14,7 @@ Follow this workflow without asking for extra clarification unless a step fails.
 - Use the `stack-auth` MCP server.
 - Call the tool or run the command:
   ```bash
-  STACK_DISABLE_INTERACTIVE=1 npx @stackframe/init-stack@latest
+  npx @stackframe/init-stack@latest --on-question error
   ```
 - Accept defaults for Next.js (App Router).
 - Add all generated files to the repo.
