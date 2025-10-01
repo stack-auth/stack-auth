@@ -1,6 +1,6 @@
 {
   "name": "@stackframe/stack-docs",
-  "version": "2.8.39",
+  "version": "2.8.41",
   "description": "",
   "main": "index.js",
   "private": true,
@@ -40,6 +40,7 @@
     "fumadocs-openapi": "^8.1.12",
     "fumadocs-typescript": "^4.0.5",
     "fumadocs-ui": "15.3.3",
+    "jose": "^6.1.0",
     "js-yaml": "^4.1.0",
     "lucide-react": "^0.511.0",
     "mermaid": "^11.6.0",
