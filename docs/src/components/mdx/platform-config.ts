@@ -136,8 +136,7 @@ export function getAvailablePlatforms(): string[] {
 
 // Helper function to get frameworks for a platform
 export function getFrameworksForPlatform(platform: string): string[] {
-  const platformConfig = PLATFORM_CONFIG[platform];
-  return platformConfig ? Object.keys(platformConfig) : [];
+  return Object.keys(PLATFORM_CONFIG[platform]);
 }
 
 // Helper function to get config for a platform/framework combination

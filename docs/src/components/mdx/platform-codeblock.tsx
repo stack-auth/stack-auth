@@ -10,6 +10,8 @@ import { cn } from '../../lib/cn';
 type PlatformChangeListener = (platform: string) => void;
 type FrameworkChangeListener = (platform: string, framework: string) => void;
 
+type VariantSelections = Partial<Record<string, Partial<Record<string, 'server' | 'client'>>>>;
+
 const platformListeners = new Map<string, PlatformChangeListener[]>();
 const frameworkListeners = new Map<string, FrameworkChangeListener[]>();
 
@@ -104,7 +106,7 @@ export type PlatformCodeblockProps = {
   /**
    * Default server/client selection for each platform/framework
    */
-  defaultVariants?: { [platformName: string]: { [frameworkName: string]: 'server' | 'client' } },
+  defaultVariants?: VariantSelections,
   /**
    * Optional title for the code block
    */
@@ -171,7 +173,7 @@ export function PlatformCodeblock({
   const [selectedFrameworks, setSelectedFrameworks] = useState<{ [platform: string]: string }>(() => {
     return { ...globalSelectedFrameworks };
   });
-  const [selectedVariants, setSelectedVariants] = useState<{ [platform: string]: { [framework: string]: 'server' | 'client' } }>(() => {
+  const [selectedVariants, setSelectedVariants] = useState<VariantSelections>(() => {
     return { ...defaultVariants };
   });
 
@@ -187,12 +189,8 @@ export function PlatformCodeblock({
   // Helper functions for server/client variants
   const hasVariants = (platform: string, framework: string) => {
     const platformConfig = platforms[platform];
-    if (!platformConfig) {
-      return false;
-    }
-
     const config = platformConfig[framework];
-    if (!config || typeof config !== 'object') {
+    if (typeof config !== 'object') {
       return false;
     }
 
@@ -201,21 +199,20 @@ export function PlatformCodeblock({
 
   const getCurrentVariant = (): 'server' | 'client' => {
     const platformVariants = selectedVariants[selectedPlatform];
-    if (platformVariants && platformVariants[currentFramework]) {
-      return platformVariants[currentFramework];
-    }
-
-    return 'server';
+    return platformVariants?.[currentFramework] ?? 'server';
   };
 
   const getCurrentCodeConfig = () => {
+    if (!Object.prototype.hasOwnProperty.call(platforms, selectedPlatform)) {
+      return null;
+    }
+
     const platformConfig = platforms[selectedPlatform];
-    if (!platformConfig) {
+    if (!Object.prototype.hasOwnProperty.call(platformConfig, currentFramework)) {
       return null;
     }
 
     const config = platformConfig[currentFramework];
-    if (!config) return null;
 
     if (hasVariants(selectedPlatform, currentFramework)) {
       const variant = getCurrentVariant();
