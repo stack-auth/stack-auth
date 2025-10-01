@@ -40,92 +40,6 @@ export const PLATFORM_CONFIG: PlatformConfig = {
       defaultFilename: "index.js",
       language: "javascript"
     }
-  },
-  "TypeScript": {
-    "Next.js": {
-      defaultFilename: "app/api/route.ts",
-      language: "typescript"
-    },
-    "Express": {
-      defaultFilename: "server.ts",
-      language: "typescript"
-    },
-    "React": {
-      defaultFilename: "components/LoginForm.tsx",
-      language: "typescript"
-    },
-    "Node.js": {
-      defaultFilename: "index.ts",
-      language: "typescript"
-    }
-  },
-  "Go": {
-    "Gin": {
-      defaultFilename: "main.go",
-      language: "go"
-    },
-    "Echo": {
-      defaultFilename: "server.go",
-      language: "go"
-    },
-    "Standard Library": {
-      defaultFilename: "handler.go",
-      language: "go"
-    }
-  },
-  "Java": {
-    "Spring Boot": {
-      defaultFilename: "AuthController.java",
-      language: "java"
-    },
-    "Spring Security": {
-      defaultFilename: "SecurityConfig.java",
-      language: "java"
-    }
-  },
-  "C#": {
-    ".NET Core": {
-      defaultFilename: "AuthController.cs",
-      language: "csharp"
-    },
-    "ASP.NET": {
-      defaultFilename: "LoginController.cs",
-      language: "csharp"
-    }
-  },
-  "PHP": {
-    "Laravel": {
-      defaultFilename: "AuthController.php",
-      language: "php"
-    },
-    "Symfony": {
-      defaultFilename: "SecurityController.php",
-      language: "php"
-    },
-    "Plain PHP": {
-      defaultFilename: "login.php",
-      language: "php"
-    }
-  },
-  "Ruby": {
-    "Rails": {
-      defaultFilename: "sessions_controller.rb",
-      language: "ruby"
-    },
-    "Sinatra": {
-      defaultFilename: "app.rb",
-      language: "ruby"
-    }
-  },
-  "Rust": {
-    "Axum": {
-      defaultFilename: "main.rs",
-      language: "rust"
-    },
-    "Actix": {
-      defaultFilename: "handlers.rs",
-      language: "rust"
-    }
   }
 };
 
@@ -147,13 +61,6 @@ export function getPlatformFrameworkConfig(platform: string, framework: string) 
 // Default framework preferences (can be overridden)
 export const DEFAULT_FRAMEWORK_PREFERENCES: { [platform: string]: string } = {
   "Python": "Django",
-  "JavaScript": "Next.js",
-  "TypeScript": "Next.js",
-  "Go": "Gin",
-  "Java": "Spring Boot",
-  "C#": ".NET Core",
-  "PHP": "Laravel",
-  "Ruby": "Rails",
-  "Rust": "Axum"
+  "JavaScript": "Next.js"
 };
 
