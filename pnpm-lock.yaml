@@ -68,7 +68,7 @@ importers:
         version: 14.2.17(eslint@8.30.0)(typescript@5.3.3)
       eslint-plugin-import:
         specifier: ^2.31.0
-        version: 2.31.0(@typescript-eslint/parser@6.21.0(eslint@8.30.0)(typescript@5.3.3))(eslint@8.30.0)
+        version: 2.31.0(@typescript-eslint/parser@6.21.0(eslint@8.30.0)(typescript@5.3.3))(eslint-import-resolver-typescript@3.6.1)(eslint@8.30.0)
       eslint-plugin-node:
         specifier: ^11.1.0
         version: 11.1.0(eslint@8.30.0)
@@ -1160,7 +1160,7 @@ importers:
     dependencies:
       '@hookform/resolvers':
         specifier: ^3.3.4
-        version: 3.6.0(react-hook-form@7.56.4(react@18.3.1))
+        version: 3.6.0(react-hook-form@7.56.4(react@19.0.0))
       '@oslojs/otp':
         specifier: ^1.1.0
         version: 1.1.0
@@ -1172,7 +1172,7 @@ importers:
         version: link:../stack-shared
       '@tanstack/react-table':
         specifier: ^8.20.5
-        version: 8.20.5(react-dom@19.1.0(react@18.3.1))(react@18.3.1)
+        version: 8.20.5(react-dom@19.1.0(react@19.0.0))(react@19.0.0)
       color:
         specifier: ^4.2.3
         version: 4.2.3
@@ -1203,7 +1203,7 @@ importers:
     devDependencies:
       '@quetzallabs/i18n':
         specifier: ^0.1.19
-        version: 0.1.19(next@15.5.3(@babel/core@7.26.0)(@opentelemetry/api@1.9.0)(react-dom@19.1.0(react@18.3.1))(react@18.3.1))
+        version: 0.1.19(next@15.5.3(@babel/core@7.26.0)(@opentelemetry/api@1.9.0)(react-dom@19.1.0(react@19.0.0))(react@19.0.0))
       '@types/color':
         specifier: ^3.0.6
         version: 3.0.6
@@ -1227,7 +1227,7 @@ importers:
         version: 3.0.0
       convex:
         specifier: ^1.27.0
-        version: 1.27.0(react@18.3.1)
+        version: 1.27.0(react@19.0.0)
       esbuild:
         specifier: ^0.20.2
         version: 0.20.2
@@ -1244,8 +1244,8 @@ importers:
         specifier: ^6.0.1
         version: 6.2.0(postcss@8.4.47)
       react:
-        specifier: ^18.2.0
-        version: 18.3.1
+        specifier: ^19.0.0-rc.0
+        version: 19.0.0
       tailwindcss:
         specifier: ^3.4.4
         version: 3.4.14
@@ -1257,7 +1257,7 @@ importers:
     dependencies:
       '@hookform/resolvers':
         specifier: ^3.3.4
-        version: 3.6.0(react-hook-form@7.53.1(react@18.3.1))
+        version: 3.6.0(react-hook-form@7.53.1(react@19.0.0))
       '@oslojs/otp':
         specifier: ^1.1.0
         version: 1.1.0
@@ -1272,7 +1272,7 @@ importers:
         version: link:../stack-ui
       '@tanstack/react-table':
         specifier: ^8.20.5
-        version: 8.20.5(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+        version: 8.20.5(react-dom@19.0.0(react@19.0.0))(react@19.0.0)
       '@types/react':
         specifier: ^18.2.0
         version: 18.3.12
@@ -1293,7 +1293,7 @@ importers:
         version: 3.0.5
       lucide-react:
         specifier: ^0.378.0
-        version: 0.378.0(react@18.3.1)
+        version: 0.378.0(react@19.0.0)
       oauth4webapi:
         specifier: ^2.10.3
         version: 2.10.4
@@ -1302,10 +1302,10 @@ importers:
         version: 1.5.4
       react-easy-crop:
         specifier: ^5.4.1
-        version: 5.4.1(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+        version: 5.4.1(react-dom@19.0.0(react@19.0.0))(react@19.0.0)
       react-hook-form:
         specifier: ^7.51.4
-        version: 7.53.1(react@18.3.1)
+        version: 7.53.1(react@19.0.0)
       rimraf:
         specifier: ^5.0.5
         version: 5.0.10
@@ -1321,7 +1321,7 @@ importers:
     devDependencies:
       '@quetzallabs/i18n':
         specifier: ^0.1.19
-        version: 0.1.19(next@15.5.3(@babel/core@7.26.0)(@opentelemetry/api@1.9.0)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))
+        version: 0.1.19(next@15.5.3(@babel/core@7.26.0)(@opentelemetry/api@1.9.0)(react-dom@19.0.0(react@19.0.0))(react@19.0.0))
       '@types/color':
         specifier: ^3.0.6
         version: 3.0.6
@@ -1345,7 +1345,7 @@ importers:
         version: 3.0.0
       convex:
         specifier: ^1.27.0
-        version: 1.27.0(react@18.3.1)
+        version: 1.27.0(react@19.0.0)
       esbuild:
         specifier: ^0.20.2
         version: 0.20.2
@@ -1362,11 +1362,11 @@ importers:
         specifier: ^6.0.1
         version: 6.2.0(postcss@8.5.2)
       react:
-        specifier: ^18.2.0
-        version: 18.3.1
+        specifier: ^19.0.0-rc.0
+        version: 19.0.0
       react-dom:
-        specifier: ^18.2.0
-        version: 18.3.1(react@18.3.1)
+        specifier: ^19.0.0-rc.0
+        version: 19.0.0(react@19.0.0)
       tailwindcss:
         specifier: ^3.4.4
         version: 3.4.14
@@ -1378,7 +1378,7 @@ importers:
     dependencies:
       '@hookform/resolvers':
         specifier: ^3.3.4
-        version: 3.6.0(react-hook-form@7.53.1(react@18.2.0))
+        version: 3.6.0(react-hook-form@7.53.1(react@19.0.0))
       '@oslojs/otp':
         specifier: ^1.1.0
         version: 1.1.0
@@ -1396,7 +1396,7 @@ importers:
         version: link:../stack-ui
       '@tanstack/react-table':
         specifier: ^8.20.5
-        version: 8.20.5(react-dom@18.3.1(react@18.2.0))(react@18.2.0)
+        version: 8.20.5(react-dom@19.0.0(react@19.0.0))(react@19.0.0)
       '@types/react':
         specifier: ^18.2.0
         version: 18.3.12
@@ -1420,7 +1420,7 @@ importers:
         version: 3.0.5
       lucide-react:
         specifier: ^0.378.0
-        version: 0.378.0(react@18.2.0)
+        version: 0.378.0(react@19.0.0)
       oauth4webapi:
         specifier: ^2.10.3
         version: 2.10.4
@@ -1429,10 +1429,10 @@ importers:
         version: 1.5.4
       react-easy-crop:
         specifier: ^5.4.1
-        version: 5.4.1(react-dom@18.3.1(react@18.2.0))(react@18.2.0)
+        version: 5.4.1(react-dom@19.0.0(react@19.0.0))(react@19.0.0)
       react-hook-form:
         specifier: ^7.51.4
-        version: 7.53.1(react@18.2.0)
+        version: 7.53.1(react@19.0.0)
       rimraf:
         specifier: ^5.0.5
         version: 5.0.7
@@ -1448,7 +1448,7 @@ importers:
     devDependencies:
       '@quetzallabs/i18n':
         specifier: ^0.1.19
-        version: 0.1.19(next@14.2.5(@babel/core@7.26.0)(@opentelemetry/api@1.9.0)(react-dom@18.3.1(react@18.2.0))(react@18.2.0))
+        version: 0.1.19(next@14.2.5(@babel/core@7.26.0)(@opentelemetry/api@1.9.0)(react-dom@19.0.0(react@19.0.0))(react@19.0.0))
       '@types/color':
         specifier: ^3.0.6
         version: 3.0.6
@@ -1472,7 +1472,7 @@ importers:
         version: 3.0.0
       convex:
         specifier: ^1.27.0
-        version: 1.27.0(react@18.2.0)
+        version: 1.27.0(react@19.0.0)
       esbuild:
         specifier: ^0.20.2
         version: 0.20.2
@@ -1484,7 +1484,7 @@ importers:
         version: 9.0.2
       next:
         specifier: ^14.1.0
-        version: 14.2.5(@babel/core@7.26.0)(@opentelemetry/api@1.9.0)(react-dom@18.3.1(react@18.2.0))(react@18.2.0)
+        version: 14.2.5(@babel/core@7.26.0)(@opentelemetry/api@1.9.0)(react-dom@19.0.0(react@19.0.0))(react@19.0.0)
       postcss:
         specifier: ^8.4.38
         version: 8.4.47
@@ -1492,11 +1492,11 @@ importers:
         specifier: ^6.0.1
         version: 6.2.0(postcss@8.4.47)
       react:
-        specifier: ^18.2.0
-        version: 18.2.0
+        specifier: ^19.0.0-rc.0
+        version: 19.0.0
       react-dom:
-        specifier: ^18.2.0
-        version: 18.3.1(react@18.2.0)
+        specifier: ^19.0.0-rc.0
+        version: 19.0.0(react@19.0.0)
       tailwindcss:
         specifier: ^3.4.4
         version: 3.4.14
@@ -1760,7 +1760,7 @@ importers:
     dependencies:
       '@hookform/resolvers':
         specifier: ^3.3.4
-        version: 3.6.0(react-hook-form@7.53.1(react@18.3.1))
+        version: 3.6.0(react-hook-form@7.53.1(react@19.0.0))
       '@oslojs/otp':
         specifier: ^1.1.0
         version: 1.1.0
@@ -1778,7 +1778,7 @@ importers:
         version: link:../stack-ui
       '@tanstack/react-table':
         specifier: ^8.20.5
-        version: 8.20.5(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+        version: 8.20.5(react-dom@19.0.0(react@19.0.0))(react@19.0.0)
       '@types/react':
         specifier: ^18.2.0
         version: 18.3.12
@@ -1802,7 +1802,7 @@ importers:
         version: 3.0.5
       lucide-react:
         specifier: ^0.378.0
-        version: 0.378.0(react@18.3.1)
+        version: 0.378.0(react@19.0.0)
       oauth4webapi:
         specifier: ^2.10.3
         version: 2.10.4
@@ -1811,10 +1811,10 @@ importers:
         version: 1.5.4
       react-easy-crop:
         specifier: ^5.4.1
-        version: 5.4.1(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+        version: 5.4.1(react-dom@19.0.0(react@19.0.0))(react@19.0.0)
       react-hook-form:
         specifier: ^7.51.4
-        version: 7.53.1(react@18.3.1)
+        version: 7.53.1(react@19.0.0)
       rimraf:
         specifier: ^5.0.5
         version: 5.0.10
@@ -1830,7 +1830,7 @@ importers:
     devDependencies:
       '@quetzallabs/i18n':
         specifier: ^0.1.19
-        version: 0.1.19(next@14.2.5(@babel/core@7.26.0)(@opentelemetry/api@1.9.0)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))
+        version: 0.1.19(next@14.2.5(@babel/core@7.26.0)(@opentelemetry/api@1.9.0)(react-dom@19.0.0(react@19.0.0))(react@19.0.0))
       '@types/color':
         specifier: ^3.0.6
         version: 3.0.6
@@ -1854,7 +1854,7 @@ importers:
         version: 3.0.0
       convex:
         specifier: ^1.27.0
-        version: 1.27.0(react@18.3.1)
+        version: 1.27.0(react@19.0.0)
       esbuild:
         specifier: ^0.20.2
         version: 0.20.2
@@ -1866,7 +1866,7 @@ importers:
         version: 9.0.2
       next:
         specifier: ^14.1.0
-        version: 14.2.5(@babel/core@7.26.0)(@opentelemetry/api@1.9.0)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+        version: 14.2.5(@babel/core@7.26.0)(@opentelemetry/api@1.9.0)(react-dom@19.0.0(react@19.0.0))(react@19.0.0)
       postcss:
         specifier: ^8.4.38
         version: 8.4.47
@@ -1874,11 +1874,11 @@ importers:
         specifier: ^6.0.1
         version: 6.2.0(postcss@8.4.47)
       react:
-        specifier: ^18.2.0
-        version: 18.3.1
+        specifier: ^19.0.0-rc.0
+        version: 19.0.0
       react-dom:
-        specifier: ^18.2.0
-        version: 18.3.1(react@18.3.1)
+        specifier: ^19.0.0-rc.0
+        version: 19.0.0(react@19.0.0)
       tailwindcss:
         specifier: ^3.4.4
         version: 3.4.14
@@ -19639,21 +19639,13 @@ snapshots:
 
   '@hey-api/client-fetch@0.5.7': {}
 
-  '@hookform/resolvers@3.6.0(react-hook-form@7.53.1(react@18.2.0))':
-    dependencies:
-      react-hook-form: 7.53.1(react@18.2.0)
-
-  '@hookform/resolvers@3.6.0(react-hook-form@7.53.1(react@18.3.1))':
-    dependencies:
-      react-hook-form: 7.53.1(react@18.3.1)
-
   '@hookform/resolvers@3.6.0(react-hook-form@7.53.1(react@19.0.0))':
     dependencies:
       react-hook-form: 7.53.1(react@19.0.0)
 
-  '@hookform/resolvers@3.6.0(react-hook-form@7.56.4(react@18.3.1))':
+  '@hookform/resolvers@3.6.0(react-hook-form@7.56.4(react@19.0.0))':
     dependencies:
-      react-hook-form: 7.56.4(react@18.3.1)
+      react-hook-form: 7.56.4(react@19.0.0)
 
   '@humanfs/core@0.19.1': {}
 
@@ -20906,7 +20898,7 @@ snapshots:
 
   '@protobufjs/utf8@1.1.0': {}
 
-  '@quetzallabs/i18n@0.1.19(next@14.2.5(@babel/core@7.26.0)(@opentelemetry/api@1.9.0)(react-dom@18.3.1(react@18.2.0))(react@18.2.0))':
+  '@quetzallabs/i18n@0.1.19(next@14.2.5(@babel/core@7.26.0)(@opentelemetry/api@1.9.0)(react-dom@19.0.0(react@19.0.0))(react@19.0.0))':
     dependencies:
       '@babel/parser': 7.25.6
       '@babel/traverse': 7.25.6
@@ -20914,7 +20906,7 @@ snapshots:
       dotenv: 10.0.0
       i18next: 21.10.0
       i18next-parser: 9.0.2
-      next-intl: 3.19.1(next@14.2.5(@babel/core@7.26.0)(@opentelemetry/api@1.9.0)(react-dom@18.3.1(react@18.2.0))(react@18.2.0))(react@18.3.1)
+      next-intl: 3.19.1(next@14.2.5(@babel/core@7.26.0)(@opentelemetry/api@1.9.0)(react-dom@19.0.0(react@19.0.0))(react@19.0.0))(react@18.3.1)
       path: 0.12.7
       react: 18.3.1
       react-dom: 18.3.1(react@18.3.1)
@@ -20923,7 +20915,7 @@ snapshots:
       - next
       - supports-color
 
-  '@quetzallabs/i18n@0.1.19(next@14.2.5(@babel/core@7.26.0)(@opentelemetry/api@1.9.0)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))':
+  '@quetzallabs/i18n@0.1.19(next@15.5.3(@babel/core@7.26.0)(@opentelemetry/api@1.9.0)(react-dom@19.0.0(react@19.0.0))(react@19.0.0))':
     dependencies:
       '@babel/parser': 7.25.6
       '@babel/traverse': 7.25.6
@@ -20931,7 +20923,7 @@ snapshots:
       dotenv: 10.0.0
       i18next: 21.10.0
       i18next-parser: 9.0.2
-      next-intl: 3.19.1(next@14.2.5(@babel/core@7.26.0)(@opentelemetry/api@1.9.0)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react@18.3.1)
+      next-intl: 3.19.1(next@15.5.3(@babel/core@7.26.0)(@opentelemetry/api@1.9.0)(react-dom@19.0.0(react@19.0.0))(react@19.0.0))(react@18.3.1)
       path: 0.12.7
       react: 18.3.1
       react-dom: 18.3.1(react@18.3.1)
@@ -20940,7 +20932,7 @@ snapshots:
       - next
       - supports-color
 
-  '@quetzallabs/i18n@0.1.19(next@15.5.3(@babel/core@7.26.0)(@opentelemetry/api@1.9.0)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))':
+  '@quetzallabs/i18n@0.1.19(next@15.5.3(@babel/core@7.26.0)(@opentelemetry/api@1.9.0)(react-dom@19.1.0(react@19.0.0))(react@19.0.0))':
     dependencies:
       '@babel/parser': 7.25.6
       '@babel/traverse': 7.25.6
@@ -20948,24 +20940,7 @@ snapshots:
       dotenv: 10.0.0
       i18next: 21.10.0
       i18next-parser: 9.0.2
-      next-intl: 3.19.1(next@15.5.3(@babel/core@7.26.0)(@opentelemetry/api@1.9.0)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react@18.3.1)
-      path: 0.12.7
-      react: 18.3.1
-      react-dom: 18.3.1(react@18.3.1)
-    transitivePeerDependencies:
-      - debug
-      - next
-      - supports-color
-
-  '@quetzallabs/i18n@0.1.19(next@15.5.3(@babel/core@7.26.0)(@opentelemetry/api@1.9.0)(react-dom@19.1.0(react@18.3.1))(react@18.3.1))':
-    dependencies:
-      '@babel/parser': 7.25.6
-      '@babel/traverse': 7.25.6
-      axios: 1.7.4
-      dotenv: 10.0.0
-      i18next: 21.10.0
-      i18next-parser: 9.0.2
-      next-intl: 3.19.1(next@15.5.3(@babel/core@7.26.0)(@opentelemetry/api@1.9.0)(react-dom@19.1.0(react@18.3.1))(react@18.3.1))(react@18.3.1)
+      next-intl: 3.19.1(next@15.5.3(@babel/core@7.26.0)(@opentelemetry/api@1.9.0)(react-dom@19.1.0(react@19.0.0))(react@19.0.0))(react@18.3.1)
       path: 0.12.7
       react: 18.3.1
       react-dom: 18.3.1(react@18.3.1)
@@ -23819,29 +23794,17 @@ snapshots:
       react: 18.2.0
       react-dom: 18.2.0(react@18.2.0)
 
-  '@tanstack/react-table@8.20.5(react-dom@18.3.1(react@18.2.0))(react@18.2.0)':
-    dependencies:
-      '@tanstack/table-core': 8.20.5
-      react: 18.2.0
-      react-dom: 18.3.1(react@18.2.0)
-
-  '@tanstack/react-table@8.20.5(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
-    dependencies:
-      '@tanstack/table-core': 8.20.5
-      react: 18.3.1
-      react-dom: 18.3.1(react@18.3.1)
-
   '@tanstack/react-table@8.20.5(react-dom@19.0.0(react@19.0.0))(react@19.0.0)':
     dependencies:
       '@tanstack/table-core': 8.20.5
       react: 19.0.0
       react-dom: 19.0.0(react@19.0.0)
 
-  '@tanstack/react-table@8.20.5(react-dom@19.1.0(react@18.3.1))(react@18.3.1)':
+  '@tanstack/react-table@8.20.5(react-dom@19.1.0(react@19.0.0))(react@19.0.0)':
     dependencies:
       '@tanstack/table-core': 8.20.5
-      react: 18.3.1
-      react-dom: 19.1.0(react@18.3.1)
+      react: 19.0.0
+      react-dom: 19.1.0(react@19.0.0)
 
   '@tanstack/table-core@8.20.5': {}
 
@@ -26003,22 +25966,6 @@ snapshots:
 
   convert-source-map@2.0.0: {}
 
-  convex@1.27.0(react@18.2.0):
-    dependencies:
-      esbuild: 0.25.4
-      jwt-decode: 4.0.0
-      prettier: 3.5.3
-    optionalDependencies:
-      react: 18.2.0
-
-  convex@1.27.0(react@18.3.1):
-    dependencies:
-      esbuild: 0.25.4
-      jwt-decode: 4.0.0
-      prettier: 3.5.3
-    optionalDependencies:
-      react: 18.3.1
-
   convex@1.27.0(react@19.0.0):
     dependencies:
       esbuild: 0.25.4
@@ -27196,6 +27143,35 @@ snapshots:
       eslint-utils: 2.1.0
       regexpp: 3.2.0
 
+  eslint-plugin-import@2.31.0(@typescript-eslint/parser@6.21.0(eslint@8.30.0)(typescript@5.3.3))(eslint-import-resolver-typescript@3.6.1)(eslint@8.30.0):
+    dependencies:
+      '@rtsao/scc': 1.1.0
+      array-includes: 3.1.8
+      array.prototype.findlastindex: 1.2.5
+      array.prototype.flat: 1.3.2
+      array.prototype.flatmap: 1.3.2
+      debug: 3.2.7
+      doctrine: 2.1.0
+      eslint: 8.30.0
+      eslint-import-resolver-node: 0.3.9
+      eslint-module-utils: 2.12.0(@typescript-eslint/parser@6.21.0(eslint@8.30.0)(typescript@5.3.3))(eslint-import-resolver-node@0.3.9)(eslint@8.30.0)
+      hasown: 2.0.2
+      is-core-module: 2.15.1
+      is-glob: 4.0.3
+      minimatch: 3.1.2
+      object.fromentries: 2.0.8
+      object.groupby: 1.0.3
+      object.values: 1.2.0
+      semver: 6.3.1
+      string.prototype.trimend: 1.0.8
+      tsconfig-paths: 3.15.0
+    optionalDependencies:
+      '@typescript-eslint/parser': 6.21.0(eslint@8.30.0)(typescript@5.3.3)
+    transitivePeerDependencies:
+      - eslint-import-resolver-typescript
+      - eslint-import-resolver-webpack
+      - supports-color
+
   eslint-plugin-import@2.31.0(@typescript-eslint/parser@6.21.0(eslint@8.30.0)(typescript@5.3.3))(eslint-import-resolver-typescript@3.6.3)(eslint@8.30.0):
     dependencies:
       '@rtsao/scc': 1.1.0
@@ -27209,12 +27185,12 @@ snapshots:
       eslint-import-resolver-node: 0.3.9
       eslint-module-utils: 2.12.0(@typescript-eslint/parser@6.21.0(eslint@8.30.0)(typescript@5.3.3))(eslint-import-resolver-node@0.3.9)(eslint-import-resolver-typescript@3.6.3(@typescript-eslint/parser@6.21.0(eslint@8.30.0)(typescript@5.3.3))(eslint-import-resolver-node@0.3.9)(eslint-plugin-import@2.31.0)(eslint@8.30.0))(eslint@8.30.0)
       hasown: 2.0.2
-      is-core-module: 2.16.1
+      is-core-module: 2.15.1
       is-glob: 4.0.3
       minimatch: 3.1.2
       object.fromentries: 2.0.8
       object.groupby: 1.0.3
-      object.values: 1.2.1
+      object.values: 1.2.0
       semver: 6.3.1
       string.prototype.trimend: 1.0.8
       tsconfig-paths: 3.15.0
@@ -27267,12 +27243,12 @@ snapshots:
       eslint-import-resolver-node: 0.3.9
       eslint-module-utils: 2.12.0(@typescript-eslint/parser@6.21.0(eslint@8.30.0)(typescript@5.8.3))(eslint-import-resolver-node@0.3.9)(eslint@8.30.0)
       hasown: 2.0.2
-      is-core-module: 2.16.1
+      is-core-module: 2.15.1
       is-glob: 4.0.3
       minimatch: 3.1.2
       object.fromentries: 2.0.8
       object.groupby: 1.0.3
-      object.values: 1.2.1
+      object.values: 1.2.0
       semver: 6.3.1
       string.prototype.trimend: 1.0.8
       tsconfig-paths: 3.15.0
@@ -29744,13 +29720,9 @@ snapshots:
     dependencies:
       yallist: 4.0.0
 
-  lucide-react@0.378.0(react@18.2.0):
+  lucide-react@0.378.0(react@19.0.0):
     dependencies:
-      react: 18.2.0
-
-  lucide-react@0.378.0(react@18.3.1):
-    dependencies:
-      react: 18.3.1
+      react: 19.0.0
 
   lucide-react@0.508.0(react@18.2.0):
     dependencies:
@@ -30612,35 +30584,27 @@ snapshots:
 
   neverthrow@7.2.0: {}
 
-  next-intl@3.19.1(next@14.2.5(@babel/core@7.26.0)(@opentelemetry/api@1.9.0)(react-dom@18.3.1(react@18.2.0))(react@18.2.0))(react@18.3.1):
+  next-intl@3.19.1(next@14.2.5(@babel/core@7.26.0)(@opentelemetry/api@1.9.0)(react-dom@19.0.0(react@19.0.0))(react@19.0.0))(react@18.3.1):
     dependencies:
       '@formatjs/intl-localematcher': 0.5.4
       negotiator: 0.6.3
-      next: 14.2.5(@babel/core@7.26.0)(@opentelemetry/api@1.9.0)(react-dom@18.3.1(react@18.2.0))(react@18.2.0)
+      next: 14.2.5(@babel/core@7.26.0)(@opentelemetry/api@1.9.0)(react-dom@19.0.0(react@19.0.0))(react@19.0.0)
       react: 18.3.1
       use-intl: 3.19.1(react@18.3.1)
 
-  next-intl@3.19.1(next@14.2.5(@babel/core@7.26.0)(@opentelemetry/api@1.9.0)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react@18.3.1):
+  next-intl@3.19.1(next@15.5.3(@babel/core@7.26.0)(@opentelemetry/api@1.9.0)(react-dom@19.0.0(react@19.0.0))(react@19.0.0))(react@18.3.1):
     dependencies:
       '@formatjs/intl-localematcher': 0.5.4
       negotiator: 0.6.3
-      next: 14.2.5(@babel/core@7.26.0)(@opentelemetry/api@1.9.0)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      next: 15.5.3(@babel/core@7.26.0)(@opentelemetry/api@1.9.0)(react-dom@19.0.0(react@19.0.0))(react@19.0.0)
       react: 18.3.1
       use-intl: 3.19.1(react@18.3.1)
 
-  next-intl@3.19.1(next@15.5.3(@babel/core@7.26.0)(@opentelemetry/api@1.9.0)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react@18.3.1):
+  next-intl@3.19.1(next@15.5.3(@babel/core@7.26.0)(@opentelemetry/api@1.9.0)(react-dom@19.1.0(react@19.0.0))(react@19.0.0))(react@18.3.1):
     dependencies:
       '@formatjs/intl-localematcher': 0.5.4
       negotiator: 0.6.3
-      next: 15.5.3(@babel/core@7.26.0)(@opentelemetry/api@1.9.0)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
-      react: 18.3.1
-      use-intl: 3.19.1(react@18.3.1)
-
-  next-intl@3.19.1(next@15.5.3(@babel/core@7.26.0)(@opentelemetry/api@1.9.0)(react-dom@19.1.0(react@18.3.1))(react@18.3.1))(react@18.3.1):
-    dependencies:
-      '@formatjs/intl-localematcher': 0.5.4
-      negotiator: 0.6.3
-      next: 15.5.3(@babel/core@7.26.0)(@opentelemetry/api@1.9.0)(react-dom@19.1.0(react@18.3.1))(react@18.3.1)
+      next: 15.5.3(@babel/core@7.26.0)(@opentelemetry/api@1.9.0)(react-dom@19.1.0(react@19.0.0))(react@19.0.0)
       react: 18.3.1
       use-intl: 3.19.1(react@18.3.1)
 
@@ -30744,7 +30708,7 @@ snapshots:
       - '@babel/core'
       - babel-plugin-macros
 
-  next@14.2.5(@babel/core@7.26.0)(@opentelemetry/api@1.9.0)(react-dom@18.3.1(react@18.2.0))(react@18.2.0):
+  next@14.2.5(@babel/core@7.26.0)(@opentelemetry/api@1.9.0)(react-dom@18.3.1(react@18.3.1))(react@18.3.1):
     dependencies:
       '@next/env': 14.2.5
       '@swc/helpers': 0.5.5
@@ -30752,9 +30716,9 @@ snapshots:
       caniuse-lite: 1.0.30001678
       graceful-fs: 4.2.11
       postcss: 8.4.31
-      react: 18.2.0
-      react-dom: 18.3.1(react@18.2.0)
-      styled-jsx: 5.1.1(@babel/core@7.26.0)(react@18.2.0)
+      react: 18.3.1
+      react-dom: 18.3.1(react@18.3.1)
+      styled-jsx: 5.1.1(@babel/core@7.26.0)(react@18.3.1)
     optionalDependencies:
       '@next/swc-darwin-arm64': 14.2.5
       '@next/swc-darwin-x64': 14.2.5
@@ -30770,7 +30734,7 @@ snapshots:
       - '@babel/core'
       - babel-plugin-macros
 
-  next@14.2.5(@babel/core@7.26.0)(@opentelemetry/api@1.9.0)(react-dom@18.3.1(react@18.3.1))(react@18.3.1):
+  next@14.2.5(@babel/core@7.26.0)(@opentelemetry/api@1.9.0)(react-dom@19.0.0(react@19.0.0))(react@19.0.0):
     dependencies:
       '@next/env': 14.2.5
       '@swc/helpers': 0.5.5
@@ -30778,9 +30742,9 @@ snapshots:
       caniuse-lite: 1.0.30001678
       graceful-fs: 4.2.11
       postcss: 8.4.31
-      react: 18.3.1
-      react-dom: 18.3.1(react@18.3.1)
-      styled-jsx: 5.1.1(@babel/core@7.26.0)(react@18.3.1)
+      react: 19.0.0
+      react-dom: 19.0.0(react@19.0.0)
+      styled-jsx: 5.1.1(@babel/core@7.26.0)(react@19.0.0)
     optionalDependencies:
       '@next/swc-darwin-arm64': 14.2.5
       '@next/swc-darwin-x64': 14.2.5
@@ -30921,15 +30885,15 @@ snapshots:
       - '@babel/core'
       - babel-plugin-macros
 
-  next@15.5.3(@babel/core@7.26.0)(@opentelemetry/api@1.9.0)(react-dom@18.3.1(react@18.3.1))(react@18.3.1):
+  next@15.5.3(@babel/core@7.26.0)(@opentelemetry/api@1.9.0)(react-dom@19.0.0(react@19.0.0))(react@19.0.0):
     dependencies:
       '@next/env': 15.5.3
       '@swc/helpers': 0.5.15
       caniuse-lite: 1.0.30001726
       postcss: 8.4.31
-      react: 18.3.1
-      react-dom: 18.3.1(react@18.3.1)
-      styled-jsx: 5.1.6(@babel/core@7.26.0)(react@18.3.1)
+      react: 19.0.0
+      react-dom: 19.0.0(react@19.0.0)
+      styled-jsx: 5.1.6(@babel/core@7.26.0)(react@19.0.0)
     optionalDependencies:
       '@next/swc-darwin-arm64': 15.5.3
       '@next/swc-darwin-x64': 15.5.3
@@ -30945,15 +30909,15 @@ snapshots:
       - '@babel/core'
       - babel-plugin-macros
 
-  next@15.5.3(@babel/core@7.26.0)(@opentelemetry/api@1.9.0)(react-dom@19.1.0(react@18.3.1))(react@18.3.1):
+  next@15.5.3(@babel/core@7.26.0)(@opentelemetry/api@1.9.0)(react-dom@19.1.0(react@19.0.0))(react@19.0.0):
     dependencies:
       '@next/env': 15.5.3
       '@swc/helpers': 0.5.15
       caniuse-lite: 1.0.30001726
       postcss: 8.4.31
-      react: 18.3.1
-      react-dom: 19.1.0(react@18.3.1)
-      styled-jsx: 5.1.6(@babel/core@7.26.0)(react@18.3.1)
+      react: 19.0.0
+      react-dom: 19.1.0(react@19.0.0)
+      styled-jsx: 5.1.6(@babel/core@7.26.0)(react@19.0.0)
     optionalDependencies:
       '@next/swc-darwin-arm64': 15.5.3
       '@next/swc-darwin-x64': 15.5.3
@@ -31972,12 +31936,6 @@ snapshots:
       react: 18.2.0
       scheduler: 0.23.2
 
-  react-dom@18.3.1(react@18.2.0):
-    dependencies:
-      loose-envify: 1.4.0
-      react: 18.2.0
-      scheduler: 0.23.2
-
   react-dom@18.3.1(react@18.3.1):
     dependencies:
       loose-envify: 1.4.0
@@ -31989,9 +31947,9 @@ snapshots:
       react: 19.0.0
       scheduler: 0.25.0
 
-  react-dom@19.1.0(react@18.3.1):
+  react-dom@19.1.0(react@19.0.0):
     dependencies:
-      react: 18.3.1
+      react: 19.0.0
       scheduler: 0.26.0
 
   react-dom@19.1.0(react@19.1.0):
@@ -31999,18 +31957,11 @@ snapshots:
       react: 19.1.0
       scheduler: 0.26.0
 
-  react-easy-crop@5.4.1(react-dom@18.3.1(react@18.2.0))(react@18.2.0):
+  react-easy-crop@5.4.1(react-dom@19.0.0(react@19.0.0))(react@19.0.0):
     dependencies:
       normalize-wheel: 1.0.1
-      react: 18.2.0
-      react-dom: 18.3.1(react@18.2.0)
-      tslib: 2.8.1
-
-  react-easy-crop@5.4.1(react-dom@18.3.1(react@18.3.1))(react@18.3.1):
-    dependencies:
-      normalize-wheel: 1.0.1
-      react: 18.3.1
-      react-dom: 18.3.1(react@18.3.1)
+      react: 19.0.0
+      react-dom: 19.0.0(react@19.0.0)
       tslib: 2.8.1
 
   react-fast-compare@3.2.2: {}
@@ -32040,10 +31991,6 @@ snapshots:
     dependencies:
       react: 18.2.0
 
-  react-hook-form@7.53.1(react@18.3.1):
-    dependencies:
-      react: 18.3.1
-
   react-hook-form@7.53.1(react@19.0.0):
     dependencies:
       react: 19.0.0
@@ -32051,6 +31998,10 @@ snapshots:
   react-hook-form@7.56.4(react@18.3.1):
     dependencies:
       react: 18.3.1
+
+  react-hook-form@7.56.4(react@19.0.0):
+    dependencies:
+      react: 19.0.0
 
   react-icons@5.2.1(react@18.3.1):
     dependencies:
@@ -33442,6 +33393,13 @@ snapshots:
     dependencies:
       client-only: 0.0.1
       react: 18.3.1
+    optionalDependencies:
+      '@babel/core': 7.26.0
+
+  styled-jsx@5.1.1(@babel/core@7.26.0)(react@19.0.0):
+    dependencies:
+      client-only: 0.0.1
+      react: 19.0.0
     optionalDependencies:
       '@babel/core': 7.26.0
 
