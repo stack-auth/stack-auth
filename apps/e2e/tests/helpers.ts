@@ -2,8 +2,11 @@ import { generateSecureRandomString } from "@stackframe/stack-shared/dist/utils/
 import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { filterUndefined, omit } from "@stackframe/stack-shared/dist/utils/objects";
 import { wait } from "@stackframe/stack-shared/dist/utils/promises";
-import { Nicifiable } from "@stackframe/stack-shared/dist/utils/strings";
+import { Nicifiable, templateIdentity } from "@stackframe/stack-shared/dist/utils/strings";
+import { exec } from "child_process";
 import { AsyncLocalStorage } from "node:async_hooks";
+
+
 // eslint-disable-next-line no-restricted-imports
 import { afterEach, beforeEach, test as vitestTest } from "vitest";
 
@@ -270,6 +273,18 @@ export class MailboxMessage {
       ],
     });
   };
+}
+
+export async function runCommand(strings: TemplateStringsArray, ...args: any[]) {
+  const cmd = templateIdentity(strings, ...args.map(a => `'${`${a}`.replace(/'/g, `'\\''`)}'`));
+  return await new Promise<{ error: Error | null, stdout: string, stderr: string }>((resolve) => {
+    exec(cmd, (error, stdout, stderr) => {
+      if (error) {
+        throw new StackAssertionError(`Error running command: ${cmd}\n\n\n\nstdout: ${stdout}\n\n\n\nstderr: ${stderr}`, { cause: error });
+      }
+      resolve({ error, stdout, stderr });
+    });
+  });
 }
 
 export const STACK_DASHBOARD_BASE_URL = getEnvVar("STACK_DASHBOARD_BASE_URL");

@@ -133,7 +133,9 @@ jobs:
       - name: Wait 10 seconds
         run: sleep 10
 
-      - name: Run tests
+      - name: Run tests (with MCP tests enabled)
+        env:
+          STACK_TEST_RUN_MCP_TESTS: true
         run: pnpm test
 
       - name: Run tests again, to make sure they are stable (attempt 1)

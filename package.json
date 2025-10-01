@@ -68,6 +68,7 @@
     "generate-openapi-docs:watch": "chokidar --silent -c 'pnpm run --filter=@stackframe/stack-docs generate-openapi-docs' './docs/public/openapi/{admin,client,server,webhooks}.json' --throttle 2000"
   },
   "devDependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.1.1",
     "@changesets/cli": "^2.27.9",
     "@testing-library/react": "^15.0.7",
     "@types/node": "20.17.6",
