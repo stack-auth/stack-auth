@@ -1,5 +1,6 @@
 'use client';
 
+import { runAsynchronously } from '@stackframe/stack-shared/dist/utils/promises';
 import { ChevronDown } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { codeToHtml } from 'shiki';
@@ -49,7 +50,6 @@ function broadcastPlatformChange(platform: string): void {
   if (typeof window !== 'undefined') {
     sessionStorage.setItem('stack-docs-selected-platform', platform);
   }
-  
   // Notify all listeners
   for (const listeners of platformListeners.values()) {
     listeners.forEach(listener => listener(platform));
@@ -62,54 +62,70 @@ function broadcastFrameworkChange(platform: string, framework: string): void {
   if (typeof window !== 'undefined') {
     sessionStorage.setItem('stack-docs-selected-frameworks', JSON.stringify(globalSelectedFrameworks));
   }
-  
   // Notify all listeners
   for (const listeners of frameworkListeners.values()) {
     listeners.forEach(listener => listener(platform, framework));
   }
 }
 
-export interface PlatformCodeblockProps {
+export type PlatformCodeblockProps = {
   /**
    * Platform configurations with their frameworks and code examples
+   * Can include server/client variants for each framework
    */
   platforms: {
     [platformName: string]: {
       [frameworkName: string]: {
-        code: string;
-        language?: string;
-        filename?: string;
-      };
-    };
-  };
+        code: string,
+        language?: string,
+        filename?: string,
+      } | {
+        server: {
+          code: string,
+          language?: string,
+          filename?: string,
+        },
+        client: {
+            code: string,
+          language?: string,
+          filename?: string,
+        },
+      },
+    },
+  },
   /**
    * Default platform to show
    */
-  defaultPlatform?: string;
+  defaultPlatform?: string,
   /**
    * Default framework to show for each platform
    */
-  defaultFrameworks?: { [platformName: string]: string };
+  defaultFrameworks?: { [platformName: string]: string },
+  /**
+   * Default server/client selection for each platform/framework
+   */
+  defaultVariants?: { [platformName: string]: { [frameworkName: string]: 'server' | 'client' } },
   /**
    * Optional title for the code block
    */
-  title?: string;
+  title?: string,
   /**
    * Additional CSS classes
    */
-  className?: string;
+  className?: string,
 }
 
 export function PlatformCodeblock({
   platforms,
   defaultPlatform,
   defaultFrameworks = {},
+  defaultVariants = {},
   title,
   className
 }: PlatformCodeblockProps) {
   const platformNames = Object.keys(platforms);
   const firstPlatform = defaultPlatform || platformNames[0];
-  
+
   // Initialize with global platform or default
   const getInitialPlatform = () => {
     if (typeof window !== 'undefined') {
@@ -118,8 +134,8 @@ export function PlatformCodeblock({
         return stored;
       }
     }
-    return globalSelectedPlatform && platformNames.includes(globalSelectedPlatform) 
-      ? globalSelectedPlatform 
+    return globalSelectedPlatform && platformNames.includes(globalSelectedPlatform)
+      ? globalSelectedPlatform
       : firstPlatform;
   };
 
@@ -141,7 +157,7 @@ export function PlatformCodeblock({
     platformNames.forEach(platform => {
       if (!globalSelectedFrameworks[platform]) {
         const frameworks = Object.keys(platforms[platform]);
-        globalSelectedFrameworks[platform] = defaultFrameworks?.[platform] || frameworks[0];
+        globalSelectedFrameworks[platform] = defaultFrameworks[platform] || frameworks[0];
       }
     });
   };
@@ -150,21 +166,66 @@ export function PlatformCodeblock({
   useState(() => {
     initializeGlobalFrameworks();
   });
-  
+
   const [selectedPlatform, setSelectedPlatform] = useState(getInitialPlatform);
   const [selectedFrameworks, setSelectedFrameworks] = useState<{ [platform: string]: string }>(() => {
     return { ...globalSelectedFrameworks };
   });
-  
+  const [selectedVariants, setSelectedVariants] = useState<{ [platform: string]: { [framework: string]: 'server' | 'client' } }>(() => {
+    return { ...defaultVariants };
+  });
+
   const [highlightedCode, setHighlightedCode] = useState<string>('');
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [dropdownView, setDropdownView] = useState<'platform' | 'framework'>('platform');
   const [componentId] = useState(() => Math.random().toString(36).substr(2, 9));
 
   // Get current framework options for selected platform
-  const currentFrameworks = Object.keys(platforms[selectedPlatform] || {});
+  const currentFrameworks = Object.keys(platforms[selectedPlatform] ?? {});
   const currentFramework = selectedFrameworks[selectedPlatform] || currentFrameworks[0];
-  const currentCodeConfig = platforms[selectedPlatform]?.[currentFramework];
+
+  // Helper functions for server/client variants
+  const hasVariants = (platform: string, framework: string) => {
+    const platformConfig = platforms[platform];
+    if (!platformConfig) {
+      return false;
+    }
+
+    const config = platformConfig[framework];
+    if (!config || typeof config !== 'object') {
+      return false;
+    }
+
+    return 'server' in config && 'client' in config;
+  };
+
+  const getCurrentVariant = (): 'server' | 'client' => {
+    const platformVariants = selectedVariants[selectedPlatform];
+    if (platformVariants && platformVariants[currentFramework]) {
+      return platformVariants[currentFramework];
+    }
+
+    return 'server';
+  };
+
+  const getCurrentCodeConfig = () => {
+    const platformConfig = platforms[selectedPlatform];
+    if (!platformConfig) {
+      return null;
+    }
+
+    const config = platformConfig[currentFramework];
+    if (!config) return null;
+
+    if (hasVariants(selectedPlatform, currentFramework)) {
+      const variant = getCurrentVariant();
+      return (config as { server: { code: string, language?: string, filename?: string }, client: { code: string, language?: string, filename?: string } })[variant];
+    }
+
+    return config as { code: string, language?: string, filename?: string };
+  };
+
+  const currentCodeConfig = getCurrentCodeConfig();
 
   // Set up global platform synchronization
   useEffect(() => {
@@ -185,7 +246,7 @@ export function PlatformCodeblock({
   useEffect(() => {
     const onFrameworkChange = (platform: string, framework: string) => {
       // Only update if this platform exists in our platforms and the framework is available
-      if (platforms[platform] && Object.keys(platforms[platform]).includes(framework)) {
+      if (platform in platforms && Object.keys(platforms[platform]).includes(framework)) {
         setSelectedFrameworks(prev => ({
           ...prev,
           [platform]: framework
@@ -256,11 +317,11 @@ export function PlatformCodeblock({
       }
     };
 
-    updateHighlightedCode();
+    runAsynchronously(updateHighlightedCode);
 
     // Listen for theme changes
     const observer = new MutationObserver(() => {
-      updateHighlightedCode();
+      runAsynchronously(updateHighlightedCode);
     });
 
     observer.observe(document.documentElement, {
@@ -275,11 +336,11 @@ export function PlatformCodeblock({
     broadcastPlatformChange(platform);
     // Show framework selection for this platform
     setDropdownView('framework');
-    
+
     // Auto-select first framework of new platform
-    const newPlatformFrameworks = Object.keys(platforms[platform] || {});
+    const newPlatformFrameworks = Object.keys(platforms[platform] ?? {});
     if (newPlatformFrameworks.length > 0) {
-      const firstFramework = defaultFrameworks?.[platform] || newPlatformFrameworks[0];
+      const firstFramework = defaultFrameworks[platform] || newPlatformFrameworks[0];
       broadcastFrameworkChange(platform, firstFramework);
     }
   };
@@ -295,6 +356,16 @@ export function PlatformCodeblock({
     setDropdownView('platform');
   };
 
+  const handleVariantChange = (variant: 'server' | 'client') => {
+    setSelectedVariants(prev => ({
+      ...prev,
+      [selectedPlatform]: {
+        ...prev[selectedPlatform],
+        [currentFramework]: variant
+      }
+    }));
+  };
+
   if (platformNames.length === 0) {
     return <div className="text-fd-muted-foreground">No platforms configured</div>;
   }
@@ -307,17 +378,41 @@ export function PlatformCodeblock({
             <div className="text-xs font-medium text-fd-muted-foreground">{title}</div>
           </div>
         )}
-        
-        {/* Single Cascading Dropdown */}
+
+        {/* Server/Client Tabs and Cascading Dropdown */}
         <div className="flex items-center justify-between p-1 text-fd-secondary-foreground overflow-x-auto backdrop-blur-sm not-prose border-b relative">
-          {/* Current Selection Display */}
-          <div className="flex items-center gap-2 text-sm text-fd-muted-foreground">
-            <span className="font-medium text-fd-primary">{selectedPlatform}</span>
-            <span>/</span>
-            <span>{currentFramework}</span>
+          {/* Left Side: Server/Client Tabs or Current Selection */}
+          <div className="flex items-center gap-1">
+            {hasVariants(selectedPlatform, currentFramework) ? (
+              // Show Server/Client tabs when variants exist
+              <div className="flex items-center gap-1">
+                {(['server', 'client'] as const).map((variant) => (
+                  <button
+                    key={variant}
+                    onClick={() => handleVariantChange(variant)}
+                    className={cn(
+                      "relative inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-lg px-3 py-1.5 text-sm font-medium transition-all duration-200 ease-out",
+                      "text-fd-muted-foreground hover:text-fd-accent-foreground disabled:pointer-events-none disabled:opacity-50",
+                      "before:absolute before:inset-0 before:rounded-lg before:opacity-0 before:transition-opacity before:duration-200",
+                      "hover:before:opacity-5",
+                      getCurrentVariant() === variant && "bg-fd-background text-fd-primary shadow-sm"
+                    )}
+                  >
+                    {variant.charAt(0).toUpperCase() + variant.slice(1)}
+                  </button>
+                ))}
+              </div>
+            ) : (
+              // Show current selection when no variants
+              <div className="flex items-center gap-2 text-sm text-fd-muted-foreground">
+                <span className="font-medium text-fd-primary">{selectedPlatform}</span>
+                <span>/</span>
+                <span>{currentFramework}</span>
+              </div>
+            )}
           </div>
 
-          {/* Cascading Dropdown - Right Side */}
+          {/* Right Side: Cascading Dropdown */}
           <div className="relative" data-dropdown-id={componentId}>
             <button
               onClick={handleDropdownToggle}
@@ -329,7 +424,14 @@ export function PlatformCodeblock({
                 "bg-fd-primary/10 text-fd-primary font-semibold"
               )}
             >
-              Change
+              {hasVariants(selectedPlatform, currentFramework) ? (
+                // Show platform/framework when tabs are visible
+                <span className="text-xs">
+                  {selectedPlatform} / {currentFramework}
+                </span>
+              ) : (
+                "Change"
+              )}
               <ChevronDown className={cn(
                 "h-4 w-4 transition-transform duration-200",
                 isDropdownOpen && "rotate-180"
@@ -360,7 +462,7 @@ export function PlatformCodeblock({
 
       {/* Single Cascading Dropdown Menu */}
       {isDropdownOpen && (
-        <div 
+        <div
           className="absolute right-3 z-50 min-w-[160px] rounded-lg border bg-fd-background shadow-lg"
           style={{ top: title ? '85px' : '53px' }}
           data-dropdown-id={componentId}
@@ -378,8 +480,8 @@ export function PlatformCodeblock({
                   className={cn(
                     "w-full text-left px-3 py-2 text-sm transition-colors duration-150 flex items-center justify-between",
                     "hover:bg-fd-muted/50 hover:text-fd-accent-foreground",
-                    selectedPlatform === platform 
-                      ? "bg-fd-primary/10 text-fd-primary font-medium" 
+                    selectedPlatform === platform
+                      ? "bg-fd-primary/10 text-fd-primary font-medium"
                       : "text-fd-muted-foreground"
                   )}
                 >
@@ -408,8 +510,8 @@ export function PlatformCodeblock({
                   className={cn(
                     "w-full text-left px-3 py-2 text-sm transition-colors duration-150",
                     "hover:bg-fd-muted/50 hover:text-fd-accent-foreground",
-                    currentFramework === framework 
-                      ? "bg-fd-secondary/50 text-fd-foreground font-medium" 
+                    currentFramework === framework
+                      ? "bg-fd-secondary/50 text-fd-foreground font-medium"
                       : "text-fd-muted-foreground"
                   )}
                 >

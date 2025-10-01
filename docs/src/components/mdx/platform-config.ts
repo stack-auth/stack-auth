@@ -1,11 +1,11 @@
 // Centralized platform and framework configuration
-export interface PlatformConfig {
+export type PlatformConfig = {
   [platformName: string]: {
     [frameworkName: string]: {
-      defaultFilename?: string;
-      language: string;
-    };
-  };
+      defaultFilename?: string,
+      language: string,
+    },
+  },
 }
 
 export const PLATFORM_CONFIG: PlatformConfig = {
@@ -15,7 +15,7 @@ export const PLATFORM_CONFIG: PlatformConfig = {
       language: "python"
     },
     "FastAPI": {
-      defaultFilename: "main.py", 
+      defaultFilename: "main.py",
       language: "python"
     },
     "Flask": {
@@ -136,18 +136,19 @@ export function getAvailablePlatforms(): string[] {
 
 // Helper function to get frameworks for a platform
 export function getFrameworksForPlatform(platform: string): string[] {
-  return Object.keys(PLATFORM_CONFIG[platform] || {});
+  const platformConfig = PLATFORM_CONFIG[platform];
+  return platformConfig ? Object.keys(platformConfig) : [];
 }
 
 // Helper function to get config for a platform/framework combination
 export function getPlatformFrameworkConfig(platform: string, framework: string) {
-  return PLATFORM_CONFIG[platform]?.[framework];
+  return PLATFORM_CONFIG[platform][framework];
 }
 
 // Default framework preferences (can be overridden)
 export const DEFAULT_FRAMEWORK_PREFERENCES: { [platform: string]: string } = {
   "Python": "Django",
-  "JavaScript": "Next.js", 
+  "JavaScript": "Next.js",
   "TypeScript": "Next.js",
   "Go": "Gin",
   "Java": "Spring Boot",
@@ -156,4 +157,3 @@ export const DEFAULT_FRAMEWORK_PREFERENCES: { [platform: string]: string } = {
   "Ruby": "Rails",
   "Rust": "Axum"
 };
-

@@ -4,7 +4,7 @@ import { PlatformCodeblock, PlatformCodeblockProps } from './platform-codeblock'
 import { DEFAULT_FRAMEWORK_PREFERENCES, getPlatformFrameworkConfig } from './platform-config';
 
 // Simplified interface - just provide the code for each platform/framework
-export interface SimplePlatformCodeblockProps {
+export type SimplePlatformCodeblockProps = {
   /**
    * Code examples organized by platform and framework
    * Uses the centralized platform config for language and filename defaults
@@ -12,31 +12,31 @@ export interface SimplePlatformCodeblockProps {
   code: {
     [platformName: string]: {
       [frameworkName: string]: string | {
-        code: string;
-        filename?: string; // Override default filename
-      };
-    };
-  };
+        code: string,
+        filename?: string, // Override default filename
+      },
+    },
+  },
   /**
    * Which platforms to include (defaults to all platforms in the code object)
    */
-  platforms?: string[];
+  platforms?: string[],
   /**
    * Default platform to show
    */
-  defaultPlatform?: string;
+  defaultPlatform?: string,
   /**
    * Override default framework preferences
    */
-  defaultFrameworks?: { [platformName: string]: string };
+  defaultFrameworks?: { [platformName: string]: string },
   /**
    * Optional title for the code block
    */
-  title?: string;
+  title?: string,
   /**
    * Additional CSS classes
    */
-  className?: string;
+  className?: string,
 }
 
 export function SimplePlatformCodeblock({
@@ -49,17 +49,19 @@ export function SimplePlatformCodeblock({
 }: SimplePlatformCodeblockProps) {
   // Determine which platforms to include
   const availablePlatforms = Object.keys(code);
-  const platformsToShow = includedPlatforms || availablePlatforms;
+  const platformsToShow = (includedPlatforms || availablePlatforms).filter(
+    (platform): platform is keyof typeof code => Object.prototype.hasOwnProperty.call(code, platform)
+  );
 
   // Build the full platform configuration
   const fullPlatforms: PlatformCodeblockProps['platforms'] = {};
 
   platformsToShow.forEach(platform => {
-    if (!code[platform]) return;
-    
     fullPlatforms[platform] = {};
-    
-    Object.entries(code[platform]).forEach(([framework, codeData]) => {
+
+    const platformCode = code[platform];
+
+    Object.entries(platformCode).forEach(([framework, codeData]) => {
       const config = getPlatformFrameworkConfig(platform, framework);
       if (!config) {
         console.warn(`Unknown platform/framework combination: ${platform}/${framework}`);
@@ -67,8 +69,8 @@ export function SimplePlatformCodeblock({
       }
 
       const codeString = typeof codeData === 'string' ? codeData : codeData.code;
-      const filename = typeof codeData === 'object' && codeData.filename 
-        ? codeData.filename 
+      const filename = typeof codeData === 'object' && codeData.filename
+        ? codeData.filename
         : config.defaultFilename;
 
       fullPlatforms[platform][framework] = {
@@ -98,5 +100,4 @@ export function SimplePlatformCodeblock({
 
 // Export the centralized config for direct access if needed
 export { DEFAULT_FRAMEWORK_PREFERENCES, PLATFORM_CONFIG } from './platform-config';
-
 

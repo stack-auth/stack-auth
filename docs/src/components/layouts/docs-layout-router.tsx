@@ -15,7 +15,6 @@
  *
  * RESPONSIBILITIES:
  * - Route detection (SDK, Components, API, etc.)
- * - Platform tab configuration
  * - Passing appropriate props to base DocsLayout
  * - Filter page tree for SDK/Components sections
  *
@@ -83,7 +82,7 @@ export function DynamicDocsLayout({ children, ...props }: DynamicDocsLayoutProps
         {...props}
         tree={sectionTree}
         nav={{
-          enabled: false, // Disable Fumadocs navbar - using SharedHeader instead
+          enabled: false, // Disable Fumadocs navbar - using SharedHeader instead - Much cleaner look, dont like dropdown.
         }}
         links={[]}
         sidebar={{
