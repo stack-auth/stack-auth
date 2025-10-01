@@ -112,7 +112,7 @@ export function SidebarProvider({ children }: { children: ReactNode }) {
     } else {
       setActiveSidebar(null);
       localStorage.setItem('ai-chat-open', 'false');
-      setIsChatExpanded(false);
+      setChatExpanded(false);
     }
   };
 
@@ -153,7 +153,7 @@ export function SidebarProvider({ children }: { children: ReactNode }) {
   const closeSidebar = () => {
     setActiveSidebar(null);
     localStorage.setItem('ai-chat-open', 'false');
-    setIsChatExpanded(false);
+    setChatExpanded(false);
   };
 
   return (

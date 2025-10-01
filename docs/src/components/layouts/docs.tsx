@@ -41,7 +41,7 @@ import {
   type PageStyles,
 } from 'fumadocs-ui/contexts/layout';
 import { TreeContextProvider } from 'fumadocs-ui/contexts/tree';
-import { ArrowLeft, ChevronDown, ChevronRight, Languages, Sidebar as SidebarIcon } from 'lucide-react';
+import { ChevronDown, ChevronRight, Languages, Sidebar as SidebarIcon } from 'lucide-react';
 import { usePathname, useRouter } from 'next/navigation';
 import { createContext, useContext, useEffect, useRef, useState, type HTMLAttributes, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
@@ -865,7 +865,7 @@ export function DocsLayout({
               id="nd-docs-layout"
               {...props.containerProps}
               className={cn(
-                'flex flex-1 flex-row md:ml-64 pt-14 min-w-0',
+                'flex flex-1 flex-row min-w-0 items-start',
                 variables,
                 props.containerProps?.className,
               )}
@@ -909,10 +909,10 @@ export function DocsLayout({
                 'flex-1 transition-all duration-300 min-w-0'
               )}>
                 <StylesProvider {...pageStyles}>{children}</StylesProvider>
+                <CodeOverlayRenderer />
               </div>
             </main>
             <AIChatDrawer />
-            <CodeOverlayRenderer />
           </NavProvider>
         </TreeContextProvider>
       </AccordionProvider>
@@ -969,24 +969,14 @@ export function DocsLayoutSidebar({
       {collapsible ? <CollapsibleControl onSearchOpen={onSearchOpen} /> : null}
       {/* Sidebar positioned under the header */}
       <div className={cn(
-        "hidden md:block fixed left-0 top-14 border-r border-fd-border bg-fd-background z-30 transition-all duration-300 ease-out",
+        "hidden md:block sticky left-0 top-14 lg:top-26 z-30 transition-all duration-300 ease-out",
         isMainSidebarCollapsed ? "w-16" : "w-64"
       )}>
-        <div className="h-[calc(100vh-3.5rem)] flex flex-col">
+        <div className="h-[calc(100vh-3.5rem)] lg:h-[calc(100vh-6.5rem)] flex flex-col">
           {/* Scrollable content area */}
-          <div className="flex-1 min-h-0 overflow-hidden">
+          <div className="flex-1 min-h-0 pt-4 overflow-hidden">
             <ScrollArea className="h-full">
               <ScrollViewport className={isMainSidebarCollapsed ? "p-2" : "p-4"}>
-                {!isMainSidebarCollapsed && (
-                  <Link
-                    href="/"
-                    className="flex items-center gap-2 px-2 py-1.5 mb-2 text-sm text-fd-muted-foreground hover:text-fd-foreground transition-colors"
-                  >
-                    <ArrowLeft className="h-3 w-3" />
-                    Back to home
-                  </Link>
-                )}
-
                 {/* Platform tabs/banner */}
                 {banner && !isMainSidebarCollapsed && (
                   <div className="mb-4">
@@ -1091,3 +1081,4 @@ function CodeOverlayRenderer() {
 
 export { getSidebarTabsFromOptions } from './docs/shared';
 export { CollapsibleControl, Navbar, NavbarSidebarTrigger, type LinkItemType };
+

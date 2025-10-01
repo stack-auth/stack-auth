@@ -176,8 +176,8 @@ export function AIChatDrawer() {
 
 
   // Calculate position based on homepage and scroll state
-  const topPosition = isHomePage && isScrolled ? 'top-0' : 'top-14';
-  const height = isHomePage && isScrolled ? 'h-screen' : 'h-[calc(100vh-3.5rem)]';
+  const topPosition = isHomePage && isScrolled ? 'top-0' : 'top-0';
+  const height = isHomePage && isScrolled ? 'h-screen' : 'h-[calc(100vh)]';
 
   const {
     messages,
@@ -333,7 +333,6 @@ export function AIChatDrawer() {
           <StackIcon size={18} className="text-fd-primary" />
           <div>
             <h3 className="font-medium text-fd-foreground text-sm">Stack Auth AI</h3>
-            <p className="text-xs text-fd-muted-foreground">Documentation assistant</p>
           </div>
         </div>
         <div className="flex items-center gap-1">

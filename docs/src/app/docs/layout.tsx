@@ -8,7 +8,7 @@ import './custom-docs-styles.css';
 export default function DocsLayout({ children }: { children: ReactNode }) {
   return (
     <SidebarProvider>
-      <div className="relative">
+      <div className="mx-auto">
         {/* Docs Header Wrapper - Provides sidebar content to mobile navigation */}
         <DocsHeaderWrapper
           showSearch={true}
@@ -16,7 +16,7 @@ export default function DocsLayout({ children }: { children: ReactNode }) {
         />
 
         {/* Docs Layout Content - with top margin for fixed header */}
-        <div className="pt-14">
+        <div>
           <DynamicDocsLayout
             tree={source.pageTree}
           >

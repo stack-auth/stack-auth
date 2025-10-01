@@ -5,12 +5,12 @@ import { useI18n } from 'fumadocs-ui/contexts/i18n';
 import { usePageStyles } from 'fumadocs-ui/contexts/layout';
 import { X } from 'lucide-react';
 import {
-  type ComponentProps,
-  type HTMLAttributes,
-  type ReactNode,
   useEffect,
   useRef,
-  useState
+  useState,
+  type ComponentProps,
+  type HTMLAttributes,
+  type ReactNode
 } from 'react';
 import { cn } from '../../lib/cn';
 import { useSidebar } from '../layouts/sidebar-context';
@@ -73,8 +73,8 @@ export function Toc(props: HTMLAttributes<HTMLDivElement>) {
   }, []);
 
   // Calculate position based on homepage and scroll state (same as AI Chat and Auth Panel)
-  const topPosition = isHomePage && isScrolled ? 'top-0' : 'top-14';
-  const height = isHomePage && isScrolled ? 'h-screen' : 'h-[calc(100vh-3.5rem)]';
+  const topPosition = isHomePage && isScrolled ? 'top-0' : 'top-0';
+  const height = isHomePage && isScrolled ? 'h-screen' : 'h-[calc(100vh)]';
 
   return (
     <div
@@ -97,7 +97,6 @@ export function Toc(props: HTMLAttributes<HTMLDivElement>) {
           </div>
           <div>
             <h3 className="font-medium text-fd-foreground text-sm">Table of Contents</h3>
-            <p className="text-xs text-fd-muted-foreground">Navigate this page</p>
           </div>
         </div>
         <button

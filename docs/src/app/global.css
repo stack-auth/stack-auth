@@ -6,6 +6,18 @@
 @import '../components/mdx/mdx-cards.css';
 @import '../components/mdx/reset-code-styles.css';
 
+:root {
+  --color-fd-background: #fafbfd;
+}
+
+.dark {
+  --color-fd-background: hsl(0, 0%, 7.04%);
+}
+
+[id] {
+  scroll-margin-top: 7rem;
+}
+
 /* Standardize top spacing between docs and API pages */
 /* Target the specific fumadocs layout components */
 #nd-page > article > div {
@@ -17,19 +29,12 @@
   padding-top: 0 !important;
 }
 
-/* Also target the div with mb-12 class inside DocsPage */
-#nd-page .mb-12 {
-  margin-top: -2rem !important;
-}
-
 /* Main sidebar collapsed state */
-body.main-sidebar-collapsed #nd-docs-layout {
-  margin-left: 4rem !important; /* 64px collapsed width */
+#nd-docs-layout {
   transition: margin-left 300ms ease-out;
 }
 
-body.main-sidebar-collapsed #api-main-content {
-  margin-left: 4rem !important; /* 64px collapsed width */
+#api-main-content {
   transition: margin-left 300ms ease-out;
 }
 
@@ -53,19 +58,19 @@ body.main-sidebar-collapsed .api-sidebar {
 
 /* TOC open state - only when chat is not open */
 body.toc-open:not(.chat-open):not(.home-page) {
-  padding-right: 17rem; /* 264px + 16px for spacing (w-64 + spacing) */
+  padding-right: 16rem; /* same as w-64 */
   transition: padding-right 300ms ease-out;
 }
 
 /* Chat open state - overrides everything */
 body.chat-open:not(.home-page) {
-  padding-right: 25rem; /* 384px + 16px for spacing */
+  padding-right: 24rem; /* 384px */
   transition: padding-right 300ms ease-out;
 }
 
 /* Auth open state - for API pages */
 body.auth-open:not(.home-page) {
-  padding-right: 26rem; /* 384px + 32px for more spacing (auth panel is 384px wide) */
+  padding-right: 24rem; /* 384px (auth panel is 384px wide) */
   transition: padding-right 300ms ease-out;
 }
 

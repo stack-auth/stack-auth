@@ -1,6 +1,6 @@
 'use client';
 
-import { ArrowLeft, ChevronDown, ChevronRight, FileText, Sidebar as SidebarIcon } from 'lucide-react';
+import { ChevronDown, ChevronRight, FileText, Sidebar as SidebarIcon } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import type { ReactNode } from 'react';
@@ -838,16 +838,6 @@ export function ApiSidebarContent({ pages = [] }: { pages?: PageData[] }) {
       <div className="h-full flex flex-col">
         <ScrollArea className="flex-1">
           <ScrollViewport className={`space-y-1 ${isMainSidebarCollapsed ? 'p-2' : 'p-4'}`}>
-            {!isMainSidebarCollapsed && (
-              <Link
-                href="/docs"
-                className="flex items-center gap-2 px-2 py-1.5 mb-2 text-sm text-fd-muted-foreground hover:text-fd-foreground"
-              >
-                <ArrowLeft className="h-3 w-3" />
-                Back to docs
-              </Link>
-            )}
-
             <ApiSidebarLink href="/api/overview" isCollapsed={isMainSidebarCollapsed}>
               Overview
             </ApiSidebarLink>

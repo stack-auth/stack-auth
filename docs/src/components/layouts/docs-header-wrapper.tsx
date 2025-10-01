@@ -1,13 +1,12 @@
 'use client';
 import { filterTreeForSection, resolveDocsSection } from '@/lib/docs-tree';
+import { generateNavLinks } from '@/lib/navigation-utils';
 import type { PageTree } from 'fumadocs-core/server';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import { usePathname } from 'next/navigation';
 import React, { useMemo, useState } from 'react';
-import { generateNavLinks } from '@/lib/navigation-utils';
 import { ApiSidebarContent } from './api/api-sidebar';
-import { SharedHeader } from './shared-header';
-import { isInApiSection } from './shared-header';
+import { SharedHeader, isInApiSection } from './shared-header';
 
 // Types for the page data
 type PageData = {
@@ -22,7 +21,6 @@ type PageData = {
 type DocsHeaderWrapperProps = {
   showSearch?: boolean,
   pageTree?: PageTree.Root,
-  className?: string,
   apiPages?: PageData[],
 }
 
@@ -248,7 +246,7 @@ function GeneralDocsSidebarContent({ pageTree }: { pageTree?: PageTree.Root }) {
  * that can use hooks to determine the current section and provide
  * appropriate sidebar content for mobile navigation.
  */
-export function DocsHeaderWrapper({ showSearch = true, pageTree, className, apiPages }: DocsHeaderWrapperProps) {
+export function DocsHeaderWrapper({ showSearch = true, pageTree, apiPages }: DocsHeaderWrapperProps) {
   const pathname = usePathname();
   const navLinks = useMemo(() => generateNavLinks(), []);
   const docsSection = resolveDocsSection(pathname);
@@ -273,7 +271,6 @@ export function DocsHeaderWrapper({ showSearch = true, pageTree, className, apiP
       navLinks={navLinks}
       showSearch={showSearch}
       sidebarContent={sidebarContent}
-      className={className}
     />
   );
 }

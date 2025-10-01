@@ -1,7 +1,6 @@
 'use client';
 import { CustomSearchDialog } from '@/components/layout/custom-search-dialog';
 import { SearchInputToggle } from '@/components/layout/custom-search-toggle';
-import Waves from '@/components/layouts/api/waves';
 import { type NavLink } from '@/lib/navigation-utils';
 import { UserButton } from '@stackframe/stack';
 import { Key, Menu, Sparkles, TableOfContents, X } from 'lucide-react';
@@ -17,8 +16,6 @@ type SharedHeaderProps = {
   navLinks: NavLink[],
   /** Whether to show the search bar */
   showSearch?: boolean,
-  /** Custom positioning classes - defaults to fixed positioning for docs */
-  className?: string,
   /** Additional content to render after nav links */
   children?: ReactNode,
   /** Mobile menu click handler */
@@ -63,7 +60,7 @@ function isNavLinkActive(pathname: string, navLink: NavLink): boolean {
   if (navLink.label === 'API Reference' && isInApiSection(pathname)) {
     return true;
   }
-  if (navLink.label === 'Documentation' && pathname.startsWith('/docs') &&
+  if (navLink.label === 'Guides' && pathname.startsWith('/docs') &&
       !isInComponentsSection(pathname) && !isInSdkSection(pathname)) {
     return true;
   }
@@ -73,7 +70,7 @@ function isNavLinkActive(pathname: string, navLink: NavLink): boolean {
 /**
  * AI Chat Toggle Button
  */
-function AIChatToggleButton() {
+function AIChatToggleButton(props: { className: string }) {
   const sidebarContext = useSidebar();
 
   // Return null if context is not available
@@ -87,7 +84,8 @@ function AIChatToggleButton() {
     <button
       className={cn(
         'flex items-center justify-center rounded-md w-8 h-8 text-xs transition-all duration-500 ease-out relative overflow-hidden',
-        'text-white chat-gradient-active hover:scale-105 hover:brightness-110 hover:shadow-lg'
+        'text-white chat-gradient-active hover:scale-105 hover:brightness-110 hover:shadow-lg',
+        props.className,
       )}
       onClick={toggleChat}
       title="AI Chat"
@@ -100,7 +98,7 @@ function AIChatToggleButton() {
 /**
  * Inner TOC Toggle Button that uses the context
  */
-function TOCToggleButtonInner() {
+function TOCToggleButtonInner(props: { className: string }) {
   const sidebarContext = useSidebar();
 
   // Return null if context is not available
@@ -122,7 +120,8 @@ function TOCToggleButtonInner() {
         'flex items-center gap-2 rounded-md px-2 py-1 text-xs transition-colors',
         isTocEffectivelyVisible
           ? 'bg-fd-primary/10 text-fd-primary hover:bg-fd-primary/20'
-          : 'text-fd-muted-foreground hover:text-fd-foreground hover:bg-fd-muted/50'
+          : 'text-fd-muted-foreground hover:text-fd-foreground hover:bg-fd-muted/50',
+        props.className
       )}
       onClick={toggleToc}
       title={isTocEffectivelyVisible ? 'Close table of contents' : 'Open table of contents'}
@@ -136,7 +135,7 @@ function TOCToggleButtonInner() {
 /**
  * TOC Toggle Button - Only shows on docs pages
  */
-function TOCToggleButton() {
+function TOCToggleButton(props: { className: string }) {
   const pathname = usePathname();
 
   // Only show on docs pages (not API pages)
@@ -144,13 +143,13 @@ function TOCToggleButton() {
 
   if (!isDocsPage) return null;
 
-  return <TOCToggleButtonInner />;
+  return <TOCToggleButtonInner {...props} />;
 }
 
 /**
  * Auth Toggle Button - Only shows on API pages
  */
-function AuthToggleButton() {
+function AuthToggleButton(props: { className: string }) {
   const pathname = usePathname();
   const sidebarContext = useSidebar();
 
@@ -172,7 +171,8 @@ function AuthToggleButton() {
         'flex items-center gap-2 rounded-md px-2 py-1 text-xs transition-colors',
         isAuthOpen
           ? 'bg-fd-primary/10 text-fd-primary hover:bg-fd-primary/20'
-          : 'text-fd-muted-foreground hover:text-fd-foreground hover:bg-fd-muted/50'
+          : 'text-fd-muted-foreground hover:text-fd-foreground hover:bg-fd-muted/50',
+        props.className
       )}
       onClick={toggleAuth}
     >
@@ -224,7 +224,6 @@ function StackAuthLogo() {
 export function SharedHeader({
   navLinks,
   showSearch = false,
-  className = "fixed top-0 left-0 right-0 z-50 h-14 border-b border-fd-border flex items-center justify-between px-4 md:px-6 bg-fd-background",
   children,
   onMobileMenuClick,
   sidebarContent
@@ -261,29 +260,65 @@ export function SharedHeader({
 
   return (
     <>
-      <header className={className}>
-        {/* Waves Background */}
-        <div className="absolute inset-0 pointer-events-none">
-          <Waves
-            lineColor="rgba(29, 29, 29, 0.3)"
-            backgroundColor="transparent"
-            waveSpeedX={0.01}
-            waveSpeedY={0.005}
-            waveAmpX={15}
-            waveAmpY={8}
-            xGap={12}
-            yGap={20}
-            className="opacity-10 dark:opacity-100"
-          />
+      <header className="sticky top-0 w-full h-14 lg:h-26 z-49 flex flex-col space-around bg-fd-background">
+
+        {/* First row */}
+        <div className="flex items-center justify-between h-14 border-b border-fd-border px-4">
+          {/* Left side - Stack Auth Logo and Navigation */}
+          <div className="flex items-center gap-6 relative z-10">
+            {/* Stack Auth Logo - Always visible */}
+            <StackAuthLogo />
+          </div>
+
+          {/* Right side - Mobile Menu and Search */}
+          <div className="flex items-center gap-4 relative z-10">
+            {/* Search Bar - Responsive sizing */}
+            {showSearch && (
+              <>
+                <div className="w-9 sm:w-32 md:w-48 lg:w-64">
+                  <SearchInputToggle
+                    onOpen={() => setSearchOpen(true)}
+                  />
+                </div>
+                <CustomSearchDialog
+                  open={searchOpen}
+                  onOpenChange={setSearchOpen}
+                />
+              </>
+            )}
+
+            {/* TOC Toggle Button - Only on docs pages */}
+            <TOCToggleButton className='hidden md:flex' />
+
+            {/* Auth Toggle Button - Shows on all pages like AI Chat button */}
+            <AuthToggleButton className='hidden md:flex' />
+
+            {/* AI Chat Toggle Button */}
+            <AIChatToggleButton className='hidden md:flex' />
+
+            {/* User Button */}
+            <div className="hidden md:block">
+              <UserButton />
+            </div>
+
+            {/* Mobile Hamburger Menu - Shown on mobile */}
+            <div className="flex lg:hidden">
+              <button
+                onClick={handleMobileMenuClick}
+                className="flex items-center gap-2 text-sm font-medium transition-colors py-1 px-2 text-fd-muted-foreground hover:text-fd-foreground"
+                aria-label="Toggle navigation menu"
+              >
+                {showMobileNav ? <X className="w-4 h-4" /> : <Menu className="w-4 h-4" />}
+                <span>{showMobileNav ? 'Close' : 'Menu'}</span>
+              </button>
+            </div>
+          </div>
         </div>
 
-        {/* Left side - Stack Auth Logo and Navigation */}
-        <div className="flex items-center gap-6 relative z-10">
-          {/* Stack Auth Logo - Always visible */}
-          <StackAuthLogo />
-
+        {/* Second row */}
+        <div className="h-12 hidden lg:flex items-center justify-stretch border-b border-fd-border px-4">
           {/* Desktop Navigation Links - Hidden on mobile */}
-          <div className="hidden lg:flex items-center gap-6">
+          <div className="flex items-center gap-6">
             {navLinks.map((link, index) => {
               const isActive = isNavLinkActive(pathname, link);
               const IconComponent = link.icon;
@@ -308,56 +343,6 @@ export function SharedHeader({
               );
             })}
             {children}
-          </div>
-        </div>
-
-        {/* Right side - Mobile Menu and Search */}
-        <div className="flex items-center gap-4 relative z-10">
-          {/* Search Bar - Responsive sizing */}
-          {showSearch && (
-            <>
-              <div className="w-9 sm:w-32 md:w-48 lg:w-64">
-                <SearchInputToggle
-                  onOpen={() => setSearchOpen(true)}
-                />
-              </div>
-              <CustomSearchDialog
-                open={searchOpen}
-                onOpenChange={setSearchOpen}
-              />
-            </>
-          )}
-
-          {/* TOC Toggle Button - Only on docs pages */}
-          <div className="hidden md:block">
-            <TOCToggleButton />
-          </div>
-
-          {/* Auth Toggle Button - Shows on all pages like AI Chat button */}
-          <div className="hidden md:block">
-            <AuthToggleButton />
-          </div>
-
-          {/* AI Chat Toggle Button */}
-          <div className="hidden md:block">
-            <AIChatToggleButton />
-          </div>
-
-          {/* User Button */}
-          <div className="hidden md:block">
-            <UserButton />
-          </div>
-
-          {/* Mobile Hamburger Menu - Shown on mobile */}
-          <div className="flex lg:hidden">
-            <button
-              onClick={handleMobileMenuClick}
-              className="flex items-center gap-2 text-sm font-medium transition-colors py-1 px-2 text-fd-muted-foreground hover:text-fd-foreground"
-              aria-label="Toggle navigation menu"
-            >
-              {showMobileNav ? <X className="w-4 h-4" /> : <Menu className="w-4 h-4" />}
-              <span>{showMobileNav ? 'Close' : 'Menu'}</span>
-            </button>
           </div>
         </div>
       </header>

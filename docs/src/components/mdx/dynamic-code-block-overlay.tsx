@@ -161,9 +161,9 @@ export function DynamicCodeblockOverlay({
       {/* Overlay - positioned to not overlap sidebar */}
       <div
         className={cn(
-          "fixed bottom-0 bg-fd-background border-t border-fd-border z-50",
+          "sticky bottom-0 mx-2 bg-fd-background border-t border-r border-l rounded-tl-xl rounded-tr-xl border-fd-border z-50",
           "transition-all duration-300 ease-out",
-          "shadow-2xl",
+          "shadow-2xl shadow-black/30 dark:shadow-white/30",
           "flex flex-col", // Add flex container
           // Position to avoid sidebar overlap - adjust based on sidebar state
           "left-0 right-0",
@@ -174,7 +174,7 @@ export function DynamicCodeblockOverlay({
         }}
       >
         {/* Header */}
-        <div className="flex items-center justify-between p-3 sm:p-4 border-b border-fd-border bg-fd-muted/30 flex-shrink-0">
+        <div className="flex items-center justify-between p-2 bg-fd-muted/30 flex-shrink-0">
           <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
             <div className="flex items-center gap-2 min-w-0">
               <Code className="h-4 w-4 text-fd-primary flex-shrink-0" />
