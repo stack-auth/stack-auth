@@ -13,6 +13,8 @@ import { Card, CardGroup, Info } from './components/mdx';
 import ApiSequenceDiagram from './components/mdx/api-sequence-diagram';
 import { AuthCard } from './components/mdx/auth-card';
 import { DynamicCodeblock } from './components/mdx/dynamic-code-block';
+import { PlatformCodeblock } from './components/mdx/platform-codeblock';
+import { SimplePlatformCodeblock } from './components/mdx/simple-platform-codeblock';
 
 import { AsideSection, CollapsibleMethodSection, CollapsibleTypesSection, MethodAside, MethodContent, MethodLayout, MethodSection, MethodTitle } from './components/ui/method-layout';
 
@@ -68,6 +70,8 @@ export function getMDXComponents(components?: MDXComponents): MDXComponents {
     CodeBlocks,
     Icon,
     DynamicCodeblock,
+    PlatformCodeblock,
+    SimplePlatformCodeblock,
     Mermaid,
     MethodLayout,
     MethodContent,

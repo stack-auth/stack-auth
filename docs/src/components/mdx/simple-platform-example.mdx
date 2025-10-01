@@ -1,0 +1,120 @@
+# Simplified Platform Codeblock Example
+
+## Before (Verbose)
+
+```tsx
+<PlatformCodeblock
+  platforms={{
+    "Python": {
+      "Django": {
+        code: `# Django code here`,
+        language: "python",
+        filename: "views.py"
+      },
+      "FastAPI": {
+        code: `# FastAPI code here`,
+        language: "python", 
+        filename: "main.py"
+      }
+    },
+    "JavaScript": {
+      "Next.js": {
+        code: `// Next.js code here`,
+        language: "typescript",
+        filename: "app/api/route.ts"
+      }
+    }
+  }}
+  defaultFrameworks={{
+    "Python": "Django",
+    "JavaScript": "Next.js"
+  }}
+/>
+```
+
+## After (Simplified)
+
+<SimplePlatformCodeblock
+  title="User Authentication"
+  code={{
+    "Python": {
+      "Django": `from django.contrib.auth import authenticate, login
+from django.http import JsonResponse
+
+def login_view(request):
+    user = authenticate(username='user', password='pass')
+    if user:
+        login(request, user)
+        return JsonResponse({'success': True})`,
+      "FastAPI": `from fastapi import FastAPI, HTTPException
+
+app = FastAPI()
+
+@app.post("/login")
+async def login():
+    # Authentication logic here
+    return {"access_token": "token", "token_type": "bearer"}`
+    },
+    "JavaScript": {
+      "Next.js": `import { NextRequest, NextResponse } from 'next/server';
+
+export async function POST(request: NextRequest) {
+  const { username, password } = await request.json();
+  
+  // Authentication logic here
+  return NextResponse.json({ success: true });
+}`,
+      "Express": `const express = require('express');
+const app = express();
+
+app.post('/login', async (req, res) => {
+  const { username, password } = req.body;
+  
+  // Authentication logic here
+  res.json({ success: true });
+});`
+    }
+  }}
+/>
+
+## Benefits
+
+1. **No repetition**: Platform names, framework names, languages, and default filenames are centralized
+2. **Consistency**: All instances use the same naming and configuration
+3. **Maintainability**: Add new platforms/frameworks in one place
+4. **Simplicity**: Just provide the code, everything else is automatic
+5. **Flexibility**: Can still override filenames when needed
+
+## Custom Filename Example
+
+<SimplePlatformCodeblock
+  title="Custom Filename Override"
+  code={{
+    "Python": {
+      "Django": {
+        code: `# Custom Django code`,
+        filename: "custom_auth.py"  // Override default
+      }
+    }
+  }}
+/>
+
+## Platform Filtering
+
+<SimplePlatformCodeblock
+  title="Only Show Specific Platforms"
+  platforms={["Python", "Go"]}  // Only show these platforms
+  code={{
+    "Python": {
+      "Django": `# Django code`,
+      "FastAPI": `# FastAPI code`
+    },
+    "JavaScript": {
+      "Next.js": `// This won't show because JavaScript not in platforms array`
+    },
+    "Go": {
+      "Gin": `// Gin code here`
+    }
+  }}
+/>
+
