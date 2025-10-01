@@ -165,7 +165,7 @@ export function PlatformCodeblock({
   };
 
   // Initialize global state on first render
-  useState(() => {
+  useEffect(() => {
     initializeGlobalFrameworks();
   });
 
@@ -286,7 +286,11 @@ export function PlatformCodeblock({
 
         const theme = isDarkMode ? 'github-dark' : 'github-light';
 
-        const html = await codeToHtml(currentCodeConfig.code, {
+        const codeToHighlight = currentCodeConfig.code.startsWith(' ')
+          ? currentCodeConfig.code.slice(1)
+          : currentCodeConfig.code;
+
+        const html = await codeToHtml(codeToHighlight, {
           lang: currentCodeConfig.language || 'typescript',
           theme,
           transformers: [{
@@ -310,7 +314,10 @@ export function PlatformCodeblock({
         setHighlightedCode(html);
       } catch (error) {
         console.error('Error highlighting code:', error);
-        setHighlightedCode(`<pre><code>${currentCodeConfig.code}</code></pre>`);
+        const sanitized = currentCodeConfig.code.startsWith(' ')
+          ? currentCodeConfig.code.slice(1)
+          : currentCodeConfig.code;
+        setHighlightedCode(`<pre><code>${sanitized}</code></pre>`);
       }
     };
 
