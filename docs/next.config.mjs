@@ -51,8 +51,7 @@ const config = {
   },
   // Include OpenAPI files in output tracing for Vercel deployments
   outputFileTracingIncludes: {
-    '/api/**/*': ['./openapi/**/*'],
-    '/**/*': ['./openapi/**/*'],
+    '/**/*': ['./content/**/*', './openapi/**/*'],
   },
   async redirects() {
     return [
