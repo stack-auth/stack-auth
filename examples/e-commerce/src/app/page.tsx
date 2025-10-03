@@ -1,6 +1,6 @@
+import { ServerUser } from "@stackframe/stack";
 import { Shop } from "@/shop";
 import { stackServerApp } from "@/stack";
-import { ServerUser } from "@stackframe/stack";
 
 export default async function Home() {
   const users = await stackServerApp.listUsers();
