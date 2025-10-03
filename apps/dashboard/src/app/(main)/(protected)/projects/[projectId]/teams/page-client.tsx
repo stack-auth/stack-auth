@@ -1,6 +1,7 @@
 "use client";
 import { TeamTable } from "@/components/data-table/team-table";
 import { SmartFormDialog } from "@/components/form-dialog";
+import { RequireAppEnabled } from "@/components/require-app-enabled";
 import { Button } from "@stackframe/stack-ui";
 import React from "react";
 import * as yup from "yup";
@@ -19,19 +20,21 @@ export default function PageClient() {
   const [createTeamsOpen, setCreateTeamsOpen] = React.useState(false);
 
   return (
-    <PageLayout
-      title="Teams"
-      actions={
-        <Button onClick={() => setCreateTeamsOpen(true)}>
-          Create Team
-        </Button>
-      }>
-      <TeamTable teams={teams} />
-      <CreateDialog
+    <RequireAppEnabled appId="teams">
+      <PageLayout
+        title="Teams"
+        actions={
+          <Button onClick={() => setCreateTeamsOpen(true)}>
+            Create Team
+          </Button>
+        }>
+        <TeamTable teams={teams} />
+        <CreateDialog
         open={createTeamsOpen}
         onOpenChange={setCreateTeamsOpen}
       />
-    </PageLayout>
+      </PageLayout>
+    </RequireAppEnabled>
   );
 }
 

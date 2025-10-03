@@ -3,6 +3,7 @@ import { InternalApiKeyTable } from "@/components/data-table/api-key-table";
 import { EnvKeys } from "@/components/env-keys";
 import { SmartFormDialog } from "@/components/form-dialog";
 import { SelectField } from "@/components/form-fields";
+import { RequireAppEnabled } from "@/components/require-app-enabled";
 import { InternalApiKeyFirstView } from "@stackframe/stack";
 import { ActionDialog, Button, Typography } from "@stackframe/stack-ui";
 import { useSearchParams } from "next/navigation";
@@ -22,27 +23,29 @@ export default function PageClient() {
   const [returnedApiKey, setReturnedApiKey] = useState<InternalApiKeyFirstView | null>(null);
 
   return (
-    <PageLayout
-      title="Stack Auth Keys"
-      actions={
-        <Button onClick={() => setIsNewApiKeyDialogOpen(true)}>
-          Create Stack Auth Keys
-        </Button>
-      }
-    >
-      <InternalApiKeyTable apiKeys={apiKeySets} />
+    <RequireAppEnabled appId="api-keys">
+      <PageLayout
+        title="Stack Auth Keys"
+        actions={
+          <Button onClick={() => setIsNewApiKeyDialogOpen(true)}>
+            Create Stack Auth Keys
+          </Button>
+        }
+      >
+        <InternalApiKeyTable apiKeys={apiKeySets} />
 
-      <CreateDialog
-        open={isNewApiKeyDialogOpen}
-        onOpenChange={setIsNewApiKeyDialogOpen}
-        onKeyCreated={setReturnedApiKey}
-      />
-      <ShowKeyDialog
-        apiKey={returnedApiKey || undefined}
-        onClose={() => setReturnedApiKey(null)}
-      />
+        <CreateDialog
+          open={isNewApiKeyDialogOpen}
+          onOpenChange={setIsNewApiKeyDialogOpen}
+          onKeyCreated={setReturnedApiKey}
+        />
+        <ShowKeyDialog
+          apiKey={returnedApiKey || undefined}
+          onClose={() => setReturnedApiKey(null)}
+        />
 
-    </PageLayout>
+      </PageLayout>
+    </RequireAppEnabled>
   );
 }
 

@@ -1,5 +1,6 @@
 "use client";
 
+import { RequireAppEnabled } from "@/components/require-app-enabled";
 import { typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import { Button, Card, CardContent, CardHeader, Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Input, Label, toast } from "@stackframe/stack-ui";
 import { Database, Plus } from "lucide-react";
@@ -59,15 +60,16 @@ export default function PageClient() {
   };
 
   return (
-    <PageLayout
-      title="Data Vault Stores"
-      actions={
-        <Button onClick={() => setIsCreateDialogOpen(true)}>
-          <Plus className="h-4 w-4 mr-2" />
-          Create Store
-        </Button>
-      }
-    >
+    <RequireAppEnabled appId="data-vault">
+      <PageLayout
+        title="Data Vault Stores"
+        actions={
+          <Button onClick={() => setIsCreateDialogOpen(true)}>
+            <Plus className="h-4 w-4 mr-2" />
+            Create Store
+          </Button>
+        }
+      >
       <div className="space-y-6">
         <div className="flex justify-between items-center">
           <div>
@@ -162,6 +164,7 @@ export default function PageClient() {
           </DialogContent>
         </Dialog>
       </div>
-    </PageLayout>
+      </PageLayout>
+    </RequireAppEnabled>
   );
 }

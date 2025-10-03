@@ -1,5 +1,6 @@
 "use client";
 
+import { RequireAppEnabled } from "@/components/require-app-enabled";
 import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
 import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
 import { Button, Card, CardContent, Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, Input, Label, Textarea, toast } from "@stackframe/stack-ui";
@@ -220,75 +221,75 @@ export default function WorkflowsPage() {
     });
   };
 
-  if (workflows.length === 0) {
-    return (
-      <>
-        <EmptyState onCreateWorkflow={handleCreateWorkflow} />
-        <CreateWorkflowDialog
-          open={showCreateDialog}
-          onOpenChange={setShowCreateDialog}
-          onSave={handleSaveWorkflow}
-        />
-      </>
-    );
-  }
-
   return (
-    <>
-      <PageLayout title="Workflows">
-        <div className="flex gap-6 flex-1" style={{ flexBasis: "0px", overflow: "scroll" }}>
-          <Card className="flex w-full">
-            <CardContent className="flex w-full p-0">
-              <div className="flex-1">
-                <WorkflowList
-                  workflows={workflows}
-                  projectId={project.id}
-                  onAddClick={handleCreateWorkflow}
-                  onEdit={handleEditWorkflow}
-                  onDelete={(id) => {
-                    handleDeleteWorkflow(id).catch(() => {
-                      toast({ title: "Failed to delete workflow", variant: "destructive" });
-                    });
-                  }}
-                  onDuplicate={(workflow) => {
-                    handleDuplicateWorkflow(workflow).catch(() => {
-                      toast({ title: "Failed to duplicate workflow", variant: "destructive" });
-                    });
-                  }}
-                  onToggleEnabled={(workflow) => {
-                    handleToggleEnabled(workflow).catch(() => {
-                      toast({ title: "Failed to toggle workflow", variant: "destructive" });
-                    });
+    <RequireAppEnabled appId="workflows">
+      {workflows.length === 0 ? (
+        <>
+          <EmptyState onCreateWorkflow={handleCreateWorkflow} />
+          <CreateWorkflowDialog
+            open={showCreateDialog}
+            onOpenChange={setShowCreateDialog}
+            onSave={handleSaveWorkflow}
+          />
+        </>
+      ) : (
+        <>
+          <PageLayout title="Workflows">
+            <div className="flex gap-6 flex-1" style={{ flexBasis: "0px", overflow: "scroll" }}>
+              <Card className="flex w-full">
+                <CardContent className="flex w-full p-0">
+                  <div className="flex-1">
+                    <WorkflowList
+                      workflows={workflows}
+                      projectId={project.id}
+                      onAddClick={handleCreateWorkflow}
+                      onEdit={handleEditWorkflow}
+                      onDelete={(id) => {
+                        handleDeleteWorkflow(id).catch(() => {
+                          toast({ title: "Failed to delete workflow", variant: "destructive" });
+                        });
+                      }}
+                      onDuplicate={(workflow) => {
+                        handleDuplicateWorkflow(workflow).catch(() => {
+                          toast({ title: "Failed to duplicate workflow", variant: "destructive" });
+                        });
+                      }}
+                      onToggleEnabled={(workflow) => {
+                        handleToggleEnabled(workflow).catch(() => {
+                          toast({ title: "Failed to toggle workflow", variant: "destructive" });
+                        });
+                      }}
+                    />
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          </PageLayout>
+          <CreateWorkflowDialog
+            open={showCreateDialog}
+            onOpenChange={setShowCreateDialog}
+            onSave={handleSaveWorkflow}
+          />
+          {editingWorkflow && (
+            <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
+              <DialogContent className="max-w-2xl">
+                <DialogHeader>
+                  <DialogTitle>Edit Workflow</DialogTitle>
+                </DialogHeader>
+                <EditWorkflowForm
+                  workflow={editingWorkflow}
+                  onSave={handleUpdateWorkflow}
+                  onCancel={() => {
+                    setShowEditDialog(false);
+                    setEditingWorkflow(null);
                   }}
                 />
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      </PageLayout>
-      <CreateWorkflowDialog
-        open={showCreateDialog}
-        onOpenChange={setShowCreateDialog}
-        onSave={handleSaveWorkflow}
-      />
-      {editingWorkflow && (
-        <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
-          <DialogContent className="max-w-2xl">
-            <DialogHeader>
-              <DialogTitle>Edit Workflow</DialogTitle>
-            </DialogHeader>
-            <EditWorkflowForm
-              workflow={editingWorkflow}
-              onSave={handleUpdateWorkflow}
-              onCancel={() => {
-                setShowEditDialog(false);
-                setEditingWorkflow(null);
-              }}
-            />
-          </DialogContent>
-        </Dialog>
+              </DialogContent>
+            </Dialog>
+          )}
+        </>
       )}
-    </>
+    </RequireAppEnabled>
   );
 }
 
