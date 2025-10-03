@@ -570,6 +570,9 @@ export function nicify(
           return `[${resValues.join(", ")}]`;
         }
       }
+      if (value instanceof Date) {
+        return `Date(${nestedNicify(value.toISOString(), `${path}.toISOString()`, null)})`;
+      }
       if (value instanceof URL) {
         return `URL(${nestedNicify(value.toString(), `${path}.toString()`, null)})`;
       }
