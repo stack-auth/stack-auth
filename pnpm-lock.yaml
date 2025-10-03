@@ -1244,7 +1244,7 @@ importers:
         specifier: ^6.0.1
         version: 6.2.0(postcss@8.4.47)
       react:
-        specifier: ^19.0.0-rc.0
+        specifier: ^19.0.0
         version: 19.0.0
       tailwindcss:
         specifier: ^3.4.4
@@ -1362,10 +1362,10 @@ importers:
         specifier: ^6.0.1
         version: 6.2.0(postcss@8.5.2)
       react:
-        specifier: ^19.0.0-rc.0
+        specifier: ^19.0.0
         version: 19.0.0
       react-dom:
-        specifier: ^19.0.0-rc.0
+        specifier: ^19.0.0
         version: 19.0.0(react@19.0.0)
       tailwindcss:
         specifier: ^3.4.4
@@ -1492,10 +1492,10 @@ importers:
         specifier: ^6.0.1
         version: 6.2.0(postcss@8.4.47)
       react:
-        specifier: ^19.0.0-rc.0
+        specifier: ^19.0.0
         version: 19.0.0
       react-dom:
-        specifier: ^19.0.0-rc.0
+        specifier: ^19.0.0
         version: 19.0.0(react@19.0.0)
       tailwindcss:
         specifier: ^3.4.4
@@ -1874,10 +1874,10 @@ importers:
         specifier: ^6.0.1
         version: 6.2.0(postcss@8.4.47)
       react:
-        specifier: ^19.0.0-rc.0
+        specifier: ^19.0.0
         version: 19.0.0
       react-dom:
-        specifier: ^19.0.0-rc.0
+        specifier: ^19.0.0
         version: 19.0.0(react@19.0.0)
       tailwindcss:
         specifier: ^3.4.4
