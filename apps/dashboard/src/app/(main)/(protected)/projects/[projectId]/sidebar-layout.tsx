@@ -6,8 +6,9 @@ import { ProjectSwitcher } from "@/components/project-switcher";
 import { StackCompanion } from "@/components/stack-companion";
 import ThemeToggle from "@/components/theme-toggle";
 import { getPublicEnvVar } from '@/lib/env';
-import { cn, devFeaturesEnabledForProject } from "@/lib/utils";
-import { AdminProject, UserButton, useUser } from "@stackframe/stack";
+import { cn } from "@/lib/utils";
+// import { UserButton, useUser } from "@stackframe/stack";
+import { type AppId } from "@/lib/apps";
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -19,22 +20,23 @@ import {
   SheetContent,
   SheetTitle,
   SheetTrigger,
-  Typography,
   buttonVariants
 } from "@stackframe/stack-ui";
 import {
   Book,
+  ChevronDown,
+  ChevronRight,
   CreditCard,
+  Database,
   FilePen,
   Globe,
-  KeyRound,
   LayoutTemplate,
-  Link as LinkIcon,
   LockKeyhole,
   LucideIcon,
   Mail,
   Menu,
   Palette,
+  Plus,
   Receipt,
   Settings,
   Settings2,
@@ -42,6 +44,7 @@ import {
   User,
   Users,
   Webhook,
+  Workflow
 } from "lucide-react";
 import { useTheme } from "next-themes";
 import { usePathname } from "next/navigation";
@@ -71,25 +74,128 @@ type Hidden = {
   type: 'hidden',
 };
 
-const navigationItems: (Label | Item | Hidden)[] = [
+type AppSection = {
+  appId: AppId;
+  name: string;
+  icon: LucideIcon;
+  items: {
+    name: string;
+    href: string;
+    icon?: LucideIcon;
+    regex: RegExp;
+  }[];
+};
+
+type BottomItem = {
+  name: string;
+  href: string;
+  icon: LucideIcon;
+  regex: RegExp;
+  external?: boolean;
+};
+
+// App-based navigation structure
+const appSections: AppSection[] = [
   {
-    name: "Overview",
-    href: "/",
-    regex: /^\/projects\/[^\/]+\/?$/,
-    icon: Globe,
-    type: 'item'
+    appId: 'authentication',
+    name: 'Authentication',
+    icon: ShieldEllipsis,
+    items: [
+      { name: 'Users', href: '/users', icon: User, regex: /^\/projects\/[^\/]+\/users$/ },
+      { name: 'Auth Methods', href: '/auth-methods', icon: ShieldEllipsis, regex: /^\/projects\/[^\/]+\/auth-methods$/ },
+      { name: 'Project Permissions', href: '/project-permissions', icon: LockKeyhole, regex: /^\/projects\/[^\/]+\/project-permissions$/ },
+    ]
   },
   {
-    name: "Users",
-    type: 'label'
+    appId: 'teams',
+    name: 'Teams',
+    icon: Users,
+    items: [
+      { name: 'Teams', href: '/teams', icon: Users, regex: /^\/projects\/[^\/]+\/teams$/ },
+      { name: 'Team Permissions', href: '/team-permissions', icon: LockKeyhole, regex: /^\/projects\/[^\/]+\/team-permissions$/ },
+      { name: 'Team Settings', href: '/team-settings', icon: Settings2, regex: /^\/projects\/[^\/]+\/team-settings$/ },
+    ]
   },
   {
-    name: "Users",
-    href: "/users",
-    regex: /^\/projects\/[^\/]+\/users$/,
-    icon: User,
-    type: 'item'
+    appId: 'emails',
+    name: 'Emails',
+    icon: Mail,
+    items: [
+      { name: 'Emails', href: '/emails', icon: Mail, regex: /^\/projects\/[^\/]+\/emails$/ },
+      { name: 'Drafts', href: '/email-drafts', icon: FilePen, regex: /^\/projects\/[^\/]+\/email-drafts$/ },
+      { name: 'Templates', href: '/email-templates', icon: LayoutTemplate, regex: /^\/projects\/[^\/]+\/email-templates$/ },
+      { name: 'Themes', href: '/email-themes', icon: Palette, regex: /^\/projects\/[^\/]+\/email-themes$/ },
+    ]
   },
+  {
+    appId: 'payments',
+    name: 'Payments',
+    icon: CreditCard,
+    items: [
+      { name: 'Offers', href: '/payments/offers', icon: CreditCard, regex: /^\/projects\/[^\/]+\/payments\/offers$/ },
+      { name: 'Transactions', href: '/payments/transactions', icon: Receipt, regex: /^\/projects\/[^\/]+\/payments\/transactions$/ },
+    ]
+  },
+  {
+    appId: 'data-vault',
+    name: 'Data Vault',
+    icon: Database,
+    items: [
+      { name: 'Stores', href: '/data-vault/stores', icon: Database, regex: /^\/projects\/[^\/]+\/data-vault\/stores$/ },
+    ]
+  },
+  {
+    appId: 'workflows',
+    name: 'Workflows',
+    icon: Workflow,
+    items: [
+      { name: 'Workflows', href: '/workflows', icon: Workflow, regex: /^\/projects\/[^\/]+\/workflows$/ },
+    ]
+  },
+  {
+    appId: 'webhooks',
+    name: 'Webhooks',
+    icon: Webhook,
+    items: [
+      { name: 'Webhooks', href: '/webhooks', icon: Webhook, regex: /^\/projects\/[^\/]+\/webhooks$/ },
+    ]
+  },
+];
+
+// Bottom navigation items (always visible)
+const bottomItems: BottomItem[] = [
+  {
+    name: 'Explore Apps',
+    href: '/apps/explore',
+    icon: Plus,
+    regex: /^\/projects\/[^\/]+\/apps\/explore$/,
+  },
+  {
+    name: 'Project Settings',
+    href: '/project-settings',
+    icon: Settings,
+    regex: /^\/projects\/[^\/]+\/project-settings$/,
+  },
+  {
+    name: 'Documentation',
+    href: 'https://docs.stack-auth.com/',
+    icon: Book,
+    regex: /^$/,
+    external: true,
+  },
+];
+
+// Overview item (always at top)
+const overviewItem: Item = {
+  name: "Overview",
+  href: "/",
+  regex: /^\/projects\/[^\/]+\/?$/,
+  icon: Globe,
+  type: 'item'
+};
+
+// Hidden breadcrumb items (for dynamic routes)
+const hiddenBreadcrumbItems: Hidden[] = [
   {
     name: (pathname: string) => {
       const match = pathname.match(/^\/projects\/[^\/]+\/users\/([^\/]+)$/);
@@ -111,31 +217,6 @@ const navigationItems: (Label | Item | Hidden)[] = [
     type: 'hidden',
   },
   {
-    name: "Auth Methods",
-    href: "/auth-methods",
-    regex: /^\/projects\/[^\/]+\/auth-methods$/,
-    icon: ShieldEllipsis,
-    type: 'item'
-  },
-  {
-    name: "Project Permissions",
-    href: "/project-permissions",
-    regex: /^\/projects\/[^\/]+\/project-permissions$/,
-    icon: LockKeyhole,
-    type: 'item'
-  },
-  {
-    name: "Teams",
-    type: 'label'
-  },
-  {
-    name: "Teams",
-    href: "/teams",
-    regex: /^\/projects\/[^\/]+\/teams$/,
-    icon: Users,
-    type: 'item'
-  },
-  {
     name: (pathname: string) => {
       const match = pathname.match(/^\/projects\/[^\/]+\/teams\/([^\/]+)$/);
       let item;
@@ -147,7 +228,6 @@ const navigationItems: (Label | Item | Hidden)[] = [
         item = "Members";
         href = "";
       }
-
       return [
         { item: "Teams", href: "/teams" },
         { item, href },
@@ -155,52 +235,6 @@ const navigationItems: (Label | Item | Hidden)[] = [
     },
     regex: /^\/projects\/[^\/]+\/teams\/[^\/]+$/,
     type: "hidden",
-  },
-  {
-    name: "Team Permissions",
-    href: "/team-permissions",
-    regex: /^\/projects\/[^\/]+\/team-permissions$/,
-    icon: LockKeyhole,
-    type: 'item'
-  },
-  {
-    name: "Team Settings",
-    href: "/team-settings",
-    regex: /^\/projects\/[^\/]+\/team-settings$/,
-    icon: Settings2,
-    type: 'item'
-  },
-  {
-    name: "Emails",
-    type: 'label'
-  },
-  {
-    name: "Emails",
-    href: "/emails",
-    regex: /^\/projects\/[^\/]+\/emails$/,
-    icon: Mail,
-    type: 'item'
-  },
-  {
-    name: "Drafts",
-    href: "/email-drafts",
-    regex: /^\/projects\/[^\/]+\/email-drafts$/,
-    icon: FilePen,
-    type: 'item',
-  },
-  {
-    name: "Templates",
-    href: "/email-templates",
-    regex: /^\/projects\/[^\/]+\/email-templates$/,
-    icon: LayoutTemplate,
-    type: 'item'
-  },
-  {
-    name: "Themes",
-    href: "/email-themes",
-    regex: /^\/projects\/[^\/]+\/email-themes$/,
-    icon: Palette,
-    type: 'item',
   },
   {
     name: (pathname: string) => {
@@ -243,60 +277,6 @@ const navigationItems: (Label | Item | Hidden)[] = [
     type: 'hidden',
   },
   {
-    name: "Payments",
-    type: 'label',
-  },
-  {
-    name: "Offers",
-    href: "/payments/offers",
-    regex: /^\/projects\/[^\/]+\/payments\/offers$/,
-    icon: CreditCard,
-    type: 'item',
-  },
-  {
-    name: "Transactions",
-    href: "/payments/transactions",
-    regex: /^\/projects\/[^\/]+\/payments\/transactions$/,
-    icon: Receipt,
-    type: 'item',
-  },
-  {
-    name: "Configuration",
-    type: 'label'
-  },
-  {
-    name: "Domains",
-    href: "/domains",
-    regex: /^\/projects\/[^\/]+\/domains$/,
-    icon: LinkIcon,
-    type: 'item'
-  },
-  {
-    name: "Webhooks",
-    href: "/webhooks",
-    regex: /^\/projects\/[^\/]+\/webhooks$/,
-    icon: Webhook,
-    type: 'item'
-  },
-  {
-    name: (pathname: string) => {
-      const match = pathname.match(/^\/projects\/[^\/]+\/webhooks\/([^\/]+)$/);
-      let href;
-      if (match) {
-        href = `/teams/${match[1]}`;
-      } else {
-        href = "";
-      }
-
-      return [
-        { item: "Webhooks", href: "/webhooks" },
-        { item: "Endpoint", href },
-      ];
-    },
-    regex: /^\/projects\/[^\/]+\/webhooks\/[^\/]+$/,
-    type: 'hidden',
-  },
-  {
     name: (pathname: string) => {
       const match = pathname.match(/^\/projects\/[^\/]+\/email-templates\/([^\/]+)$/);
       let item;
@@ -317,19 +297,65 @@ const navigationItems: (Label | Item | Hidden)[] = [
     type: 'hidden',
   },
   {
-    name: "Stack Auth Keys",
-    href: "/api-keys",
-    regex: /^\/projects\/[^\/]+\/api-keys$/,
-    icon: KeyRound,
-    type: 'item'
+    name: (pathname: string) => {
+      const match = pathname.match(/^\/projects\/[^\/]+\/webhooks\/([^\/]+)$/);
+      let item;
+      let href;
+      if (match) {
+        item = <WebhookBreadcrumbItem key='webhook-display-name' endpointId={match[1]} />;
+        href = `/webhooks/${match[1]}`;
+      } else {
+        item = "Endpoint";
+        href = "";
+      }
+      return [
+        { item: "Webhooks", href: "/webhooks" },
+        { item, href },
+      ];
+    },
+    regex: /^\/projects\/[^\/]+\/webhooks\/[^\/]+$/,
+    type: 'hidden',
   },
   {
-    name: "Project Settings",
-    href: "/project-settings",
-    regex: /^\/projects\/[^\/]+\/project-settings$/,
-    icon: Settings,
-    type: 'item'
-  }
+    name: (pathname: string) => {
+      const match = pathname.match(/^\/projects\/[^\/]+\/data-vault\/stores\/([^\/]+)$/);
+      let item;
+      let href;
+      if (match) {
+        item = <StoreBreadcrumbItem key='store-display-name' storeId={match[1]} />;
+        href = `/data-vault/stores/${match[1]}`;
+      } else {
+        item = "Store";
+        href = "";
+      }
+      return [
+        { item: "Stores", href: "/data-vault/stores" },
+        { item, href },
+      ];
+    },
+    regex: /^\/projects\/[^\/]+\/data-vault\/stores\/[^\/]+$/,
+    type: 'hidden',
+  },
+  {
+    name: (pathname: string) => {
+      const match = pathname.match(/^\/projects\/[^\/]+\/workflows\/([^\/]+)$/);
+      let item;
+      let href;
+      if (match) {
+        item = <WorkflowBreadcrumbItem key='workflow-display-name' workflowId={match[1]} />;
+        href = `/workflows/${match[1]}`;
+      } else {
+        item = "Workflow";
+        href = "";
+      }
+      return [
+        { item: "Workflows", href: "/workflows" },
+        { item, href },
+      ];
+    },
+    regex: /^\/projects\/[^\/]+\/workflows\/[^\/]+$/,
+    type: 'hidden',
+  },
 ];
 
 function TeamMemberBreadcrumbItem(props: { teamId: string }) {
@@ -363,7 +389,7 @@ function ThemeBreadcrumbItem(props: { themeId: string }) {
 function TemplateBreadcrumbItem(props: { templateId: string }) {
   const stackAdminApp = useAdminApp();
   const templates = stackAdminApp.useEmailTemplates();
-  const template = templates.find((template) => template.id === props.templateId);
+  const template = templates.find((template: any) => template.id === props.templateId);
   if (!template) {
     return null;
   }
@@ -373,11 +399,41 @@ function TemplateBreadcrumbItem(props: { templateId: string }) {
 function DraftBreadcrumbItem(props: { draftId: string }) {
   const stackAdminApp = useAdminApp();
   const drafts = stackAdminApp.useEmailDrafts();
-  const draft = drafts.find((d) => d.id === props.draftId);
+  const draft = drafts.find((d: any) => d.id === props.draftId);
   if (!draft) {
     return null;
   }
   return draft.displayName;
+}
+
+function WebhookBreadcrumbItem(props: { endpointId: string }) {
+  const stackAdminApp = useAdminApp();
+  const webhooks = stackAdminApp.useWebhooks();
+  const webhook = webhooks.find((w: any) => w.id === props.endpointId);
+  if (!webhook) {
+    return null;
+  }
+  return webhook.displayName;
+}
+
+function StoreBreadcrumbItem(props: { storeId: string }) {
+  const stackAdminApp = useAdminApp();
+  const stores = stackAdminApp.useDataVaultStores();
+  const store = stores.find((s: any) => s.id === props.storeId);
+  if (!store) {
+    return null;
+  }
+  return store.displayName;
+}
+
+function WorkflowBreadcrumbItem(props: { workflowId: string }) {
+  const stackAdminApp = useAdminApp();
+  const workflows = stackAdminApp.useWorkflows();
+  const workflow = workflows.find((w: any) => w.id === props.workflowId);
+  if (!workflow) {
+    return null;
+  }
+  return workflow.displayName;
 }
 
 function NavItem({ item, href, onClick }: { item: Item, href: string, onClick?: () => void }) {
@@ -405,6 +461,30 @@ function NavItem({ item, href, onClick }: { item: Item, href: string, onClick?: 
 }
 
 function SidebarContent({ projectId, onNavigate }: { projectId: string, onNavigate?: () => void }) {
+  const stackAdminApp = useAdminApp();
+  const project = stackAdminApp.useProject();
+  const config = project.useConfig();
+  const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set());
+  
+  // Get enabled apps with error handling and fallback
+  const enabledApps = config?.apps?.installed || {};
+  
+  // Filter app sections to only show enabled apps
+  // For now, show all sections until config is properly loaded
+  const enabledAppSections = appSections;
+  
+  const toggleSection = (appId: string) => {
+    setExpandedSections(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(appId)) {
+        newSet.delete(appId);
+      } else {
+        newSet.add(appId);
+      }
+      return newSet;
+    });
+  };
+
   return (
     <div className="flex flex-col h-full items-stretch">
       <div className="h-14 border-b flex items-center px-2 shrink-0">
@@ -417,38 +497,72 @@ function SidebarContent({ projectId, onNavigate }: { projectId: string, onNaviga
         )}
       </div>
       <div className="flex flex-grow flex-col gap-1 pt-2 overflow-y-auto">
-        {navigationItems.map((item, index) => {
-          if (item.type === 'label') {
-            if (item.requiresDevFeatureFlag && !devFeaturesEnabledForProject(projectId)) {
-              return null;
-            }
-            return <Typography key={index} className="pl-2 mt-3" type="label" variant="secondary">
-              {item.name}
-            </Typography>;
-          } else if (item.type === 'item') {
-            if (item.requiresDevFeatureFlag && !devFeaturesEnabledForProject(projectId)) {
-              return null;
-            }
-            return <div key={index} className="flex px-2">
-              <NavItem item={item} onClick={onNavigate} href={`/projects/${projectId}${item.href}`} />
-            </div>;
-          }
+        {/* Overview - always at top */}
+        <div className="flex px-2">
+          <NavItem item={overviewItem} onClick={onNavigate} href={`/projects/${projectId}${overviewItem.href}`} />
+        </div>
+
+        {/* App Sections */}
+        {enabledAppSections.map((section) => {
+          const isExpanded = expandedSections.has(section.appId);
+          const IconComponent = section.icon;
+          
+          return (
+            <div key={section.appId} className="px-2">
+              <button
+                onClick={() => toggleSection(section.appId)}
+                className="flex items-center w-full py-2 px-2 text-left hover:bg-muted rounded-md transition-colors"
+              >
+                <IconComponent className="mr-2 h-4 w-4" />
+                <span className="flex-1 font-medium">{section.name}</span>
+                {isExpanded ? (
+                  <ChevronDown className="h-4 w-4" />
+                ) : (
+                  <ChevronRight className="h-4 w-4" />
+                )}
+              </button>
+              
+              {isExpanded && (
+                <div className="ml-6 space-y-1">
+                  {section.items.map((item) => {
+                    const ItemIcon = item.icon;
+                    return (
+                      <Link
+                        key={item.href}
+                        href={`/projects/${projectId}${item.href}`}
+                        onClick={onNavigate}
+                        className="flex items-center py-1 px-2 text-sm text-muted-foreground hover:text-foreground hover:bg-muted rounded-md transition-colors"
+                      >
+                        {ItemIcon && <ItemIcon className="mr-2 h-3 w-3" />}
+                        <span>{item.name}</span>
+                      </Link>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          );
         })}
 
         <div className="flex-grow" />
 
-        <div className="py-2 px-2 flex">
-          <NavItem
-            onClick={onNavigate}
-            item={{
-              name: "Documentation",
-              type: "item",
-              href: "",
-              icon: Book,
-              regex: /^$/,
-            }}
-            href={"https://docs.stack-auth.com/"}
-          />
+        {/* Bottom Items */}
+        <div className="py-2 space-y-1">
+          {bottomItems.map((item) => (
+            <div key={item.name} className="px-2">
+              <NavItem
+                onClick={onNavigate}
+                item={{
+                  name: item.name,
+                  type: "item",
+                  href: item.href,
+                  icon: item.icon,
+                  regex: item.regex,
+                }}
+                href={item.external ? item.href : `/projects/${projectId}${item.href}`}
+              />
+            </div>
+          ))}
         </div>
       </div>
     </div>
@@ -463,40 +577,67 @@ function HeaderBreadcrumb({
   mobile?: boolean,
 }) {
   const pathname = usePathname();
-  const user = useUser({ or: 'redirect', projectIdMustMatch: "internal" });
-  const projects = user.useOwnedProjects();
+  // const user = useUser({ or: 'redirect', projectIdMustMatch: "internal" });
+  // const projects = user.useOwnedProjects();
+  const projects: any[] = [];
 
   const breadcrumbItems: BreadcrumbItem[] = useMemo(() => {
-    const item = navigationItems.find((item) => {
-      if (item.type === 'label') {
-        return false;
-      } else {
-        return item.regex.test(pathname);
+    try {
+      // Check hidden breadcrumb items first
+      const hiddenItem = hiddenBreadcrumbItems.find((item) => item.regex.test(pathname));
+      if (hiddenItem) {
+        const name = hiddenItem.name;
+        let results: BreadcrumbItem[];
+        if (typeof name === 'function') {
+          results = name(pathname);
+        } else {
+          results = [];
+        }
+        return results.map((item) => ({
+          item: item.item,
+          href: `/projects/${projectId}${item.href}`,
+        }));
       }
-    });
-    const name = item?.name;
 
-    let results: BreadcrumbItem[];
-    if (!name) {
-      results = [];
-    } else if (name instanceof Array) {
-      results = name;
-    } else if (typeof name === 'function') {
-      results = name(pathname);
-    } else {
-      results = [{
-        item: name,
-        href: (item as any)?.href,
-      }];
+      // Check overview item
+      if (overviewItem.regex.test(pathname)) {
+        return [{
+          item: overviewItem.name,
+          href: `/projects/${projectId}${overviewItem.href}`,
+        }];
+      }
+
+      // Check app sections
+      for (const section of appSections) {
+        for (const item of section.items) {
+          if (item.regex.test(pathname)) {
+            return [{
+              item: item.name,
+              href: `/projects/${projectId}${item.href}`,
+            }];
+          }
+        }
+      }
+
+      // Check bottom items
+      for (const item of bottomItems) {
+        if (item.regex.test(pathname)) {
+          return [{
+            item: item.name,
+            href: item.external ? item.href : `/projects/${projectId}${item.href}`,
+          }];
+        }
+      }
+
+      return [];
+    } catch (error) {
+      console.error('Breadcrumb error:', error);
+      return [];
     }
-    return results.map((item) => ({
-      item: item.item,
-      href: `/projects/${projectId}${item.href}`,
-    }));
   }, [pathname, projectId]);
 
-  const selectedProject: AdminProject | undefined = useMemo(() => {
-    return projects.find((project) => project.id === projectId);
+  const selectedProject: any = useMemo(() => {
+    return projects.find((project: any) => project.id === projectId);
   }, [projectId, projects]);
 
   if (mobile) {
@@ -592,7 +733,7 @@ export default function SidebarLayout(props: { projectId: string, children?: Rea
           <div className="flex gap-4 relative">
             {getPublicEnvVar("NEXT_PUBLIC_STACK_EMULATOR_ENABLED") === "true" ?
               <ThemeToggle /> :
-              <UserButton colorModeToggle={() => setTheme(resolvedTheme === 'light' ? 'dark' : 'light')} />
+              <div>User Button Placeholder</div>
             }
           </div>
         </div>
