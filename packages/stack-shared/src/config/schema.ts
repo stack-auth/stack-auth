@@ -151,6 +151,41 @@ const branchWorkflowsSchema = yupObject({
   ),
 });
 
+// Apps schema - using a much simpler approach to avoid type explosion
+const branchAppsSchema = yupObject({
+  installed: yupRecord(
+    yupString(),
+    yupObject({
+      enabled: yupBoolean(),
+    }),
+  ),
+}).test(
+  'required-apps-enabled',
+  'Authentication and Emails apps must be enabled',
+  function (value) {
+    if (!value?.installed) return true;
+    
+    const authEnabled = value.installed['authentication']?.enabled;
+    const emailsEnabled = value.installed['emails']?.enabled;
+    
+    if (authEnabled !== true) {
+      return this.createError({
+        path: 'installed.authentication.enabled',
+        message: 'Authentication app must be enabled'
+      });
+    }
+    
+    if (emailsEnabled !== true) {
+      return this.createError({
+        path: 'installed.emails.enabled',
+        message: 'Emails app must be enabled'
+      });
+    }
+    
+    return true;
+  }
+) as any;
+
 export const branchConfigSchema = canNoLongerBeOverridden(projectConfigSchema, ["sourceOfTruth"]).concat(yupObject({
   rbac: branchRbacSchema,
 
@@ -187,6 +222,8 @@ export const branchConfigSchema = canNoLongerBeOverridden(projectConfigSchema, [
   }),
 
   workflows: branchWorkflowsSchema,
+
+  apps: branchAppsSchema,
 }));
 
 
@@ -511,6 +548,13 @@ const organizationConfigDefaults = {
     availableWorkflows: (key: string) => ({
       displayName: "Unnamed Workflow",
       tsSource: "Error: Workflow config is missing TypeScript source code.",
+      enabled: false,
+    }),
+  },
+  apps: {
+    availableApps: (key: string) => ({
+      displayName: "Unnamed App",
+      tsSource: "Error: App config is missing TypeScript source code.",
       enabled: false,
     }),
   },

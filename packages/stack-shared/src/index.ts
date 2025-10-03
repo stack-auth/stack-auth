@@ -1,4 +1,7 @@
 export {
+  APP_METADATA, getAllApps, getAppMetadata, getAppsByType
+} from "./apps";
+export {
   StackAdminInterface
 } from "./interface/admin-interface";
 export {
