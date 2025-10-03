@@ -30,7 +30,7 @@ export type SmartResponse = {
   }
   | {
     bodyType: "binary",
-    body: BodyInit,
+    body: ArrayBuffer,
   }
   | {
     bodyType: "success",

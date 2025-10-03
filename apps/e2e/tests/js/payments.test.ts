@@ -4,16 +4,7 @@ import { createApp } from "./js-helpers";
 it("createCheckoutUrl supports optional returnUrl and embeds it", async ({ expect }) => {
   const { clientApp, adminApp } = await createApp({ config: {} });
   const project = await adminApp.getProject();
-  const adminRes = await (adminApp as any)[Symbol.for("StackAuth--DO-NOT-USE-OR-YOU-WILL-BE-FIRED--StackAppInternals")].sendRequest(
-    "/internal/payments/setup",
-    {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({})
-    }, "admin"
-  );
-  expect(adminRes.ok).toBe(true);
-
+  await adminApp.setupPayments();
   await project.updateConfig({
     "payments.offers.test-offer": {
       displayName: "Test Offer",
@@ -24,6 +15,7 @@ it("createCheckoutUrl supports optional returnUrl and embeds it", async ({ expec
       includedItems: {},
     },
   });
+
   await clientApp.signUpWithCredential({ email: "checkout-return@test.com", password: "password", verificationCallbackUrl: "http://localhost:3000" });
   await clientApp.signInWithCredential({ email: "checkout-return@test.com", password: "password" });
   const user = await clientApp.getUser();

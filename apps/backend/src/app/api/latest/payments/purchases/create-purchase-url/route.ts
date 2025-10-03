@@ -4,7 +4,7 @@ import { globalPrismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { CustomerType } from "@prisma/client";
 import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
-import { adaptSchema, clientOrHigherAuthTypeSchema, inlineOfferSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+import { adaptSchema, clientOrHigherAuthTypeSchema, inlineOfferSchema, urlSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { purchaseUrlVerificationCodeHandler } from "../verification-code-handler";
@@ -24,7 +24,7 @@ export const POST = createSmartRouteHandler({
       customer_id: yupString().defined(),
       offer_id: yupString().optional(),
       offer_inline: inlineOfferSchema.optional(),
-      return_url: yupString().optional(),
+      return_url: urlSchema.optional(),
     }),
   }),
   response: yupObject({

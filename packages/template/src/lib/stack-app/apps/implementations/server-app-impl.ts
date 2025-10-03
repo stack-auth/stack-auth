@@ -209,7 +209,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
       // END_PLATFORM
       async createCheckoutUrl(options: { offerId: string, returnUrl?: string } | { offer: InlineOffer, returnUrl?: string }) {
         const offerIdOrInline = "offerId" in options ? options.offerId : options.offer;
-        return await app._interface.createCheckoutUrl(type, userIdOrTeamId, offerIdOrInline, null, (options as any).returnUrl);
+        return await app._interface.createCheckoutUrl(type, userIdOrTeamId, offerIdOrInline, null, options.returnUrl);
       },
     };
   }
