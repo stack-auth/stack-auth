@@ -47,17 +47,17 @@ export default function PageClient() {
       // Always enable required apps first
       const configUpdate: Record<string, any> = {
         apps: {
-          installed: {}
+          installed: { ...config.apps?.installed } // Preserve existing data
         }
       };
       
-      console.log("🔧 Initializing apps.installed structure");
+      console.log("🔧 Preserving existing apps.installed data:", config.apps?.installed);
       
       // Enable the target app
       configUpdate.apps.installed[appId] = { enabled: true };
       console.log(`🔧 Will enable ${appId}`);
       
-      // Enable authentication and emails if not already enabled
+      // Enable only the apps required by schema validation
       if (!enabledApps['authentication']?.enabled) {
         configUpdate.apps.installed.authentication = { enabled: true };
         console.log("🔐 Will enable authentication");
