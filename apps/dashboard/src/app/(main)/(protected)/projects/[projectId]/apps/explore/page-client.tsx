@@ -10,10 +10,10 @@ import { AppGrid } from "./app-grid";
 export default function PageClient() {
   const stackAdminApp = useAdminApp();
   const project = stackAdminApp.useProject();
+  const config = project.useConfig();
   
-  // For now, assume no apps are enabled since the config schema might not be updated yet
-  // TODO: Update this when the config schema is properly deployed
-  const enabledApps: Record<string, { enabled: boolean }> = {};
+  // Read enabled apps from project configuration
+  const enabledApps = config.apps?.installed || {};
   
   // Separate apps into enabled and available
   const regularApps = getRegularApps();
@@ -28,6 +28,7 @@ export default function PageClient() {
   // State for app detail dialog
   const [selectedApp, setSelectedApp] = useState<AppId | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [isEnabling, setIsEnabling] = useState(false);
   
   const handleAppClick = (appId: string) => {
     setSelectedApp(appId as AppId);
@@ -35,9 +36,69 @@ export default function PageClient() {
   };
   
   const handleEnableApp = async (appId: AppId) => {
-    // TODO: Implement app enabling logic
-    console.log("Enabling app:", appId);
-    setIsDialogOpen(false);
+    console.log("🚀 Starting to enable app:", appId);
+    console.log("📊 Current enabled apps before:", enabledApps);
+    console.log("📊 Current config before:", config);
+    console.log("📊 Current apps config before:", config.apps);
+    console.log("📊 Current installed field before:", config.apps?.installed);
+    
+    setIsEnabling(true);
+    try {
+      // Always enable required apps first
+      const configUpdate: Record<string, any> = {
+        apps: {
+          installed: {}
+        }
+      };
+      
+      console.log("🔧 Initializing apps.installed structure");
+      
+      // Enable the target app
+      configUpdate.apps.installed[appId] = { enabled: true };
+      console.log(`🔧 Will enable ${appId}`);
+      
+      // Enable authentication and emails if not already enabled
+      if (!enabledApps['authentication']?.enabled) {
+        configUpdate.apps.installed.authentication = { enabled: true };
+        console.log("🔐 Will enable authentication");
+      } else {
+        console.log("🔐 Authentication already enabled");
+      }
+      if (!enabledApps['emails']?.enabled) {
+        configUpdate.apps.installed.emails = { enabled: true };
+        console.log("📧 Will enable emails");
+      } else {
+        console.log("📧 Emails already enabled");
+      }
+      
+      console.log("📝 Config update payload:", configUpdate);
+      console.log("📝 Config update payload keys:", Object.keys(configUpdate));
+      console.log("📝 Config update payload values:", Object.values(configUpdate));
+      
+      console.log("🔄 Calling project.updateConfig...");
+      const result = await project.updateConfig(configUpdate);
+      console.log("📊 Config update result:", result);
+      console.log("📊 Config update result type:", typeof result);
+      
+      console.log("✅ Config update successful!");
+      
+      // Wait a moment for the config to propagate
+      console.log("⏳ Waiting for config to propagate...");
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
+      // Check if the config actually changed
+      console.log("🔍 Config update completed - will check on next render");
+      
+      // Close dialog after successful enable
+      setIsDialogOpen(false);
+    } catch (error) {
+      console.error("❌ Failed to enable app:", error);
+      console.error("Error details:", error);
+      console.error("Error stack:", error.stack);
+      // TODO: Show user-friendly error message
+    } finally {
+      setIsEnabling(false);
+    }
   };
 
   return (
@@ -105,6 +166,7 @@ export default function PageClient() {
             onOpenChange={setIsDialogOpen}
             onEnable={handleEnableApp}
             isEnabled={enabledApps[selectedApp]?.enabled || false}
+            isEnabling={isEnabling}
           />
         )}
       </div>

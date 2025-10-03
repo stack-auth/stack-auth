@@ -10,13 +10,15 @@ interface AppEnableContentProps {
   projectId: string;
   onEnable?: () => void;
   isEnabled?: boolean;
+  isEnabling?: boolean;
 }
 
 export function AppEnableContent({ 
   appId, 
   projectId, 
   onEnable, 
-  isEnabled = false 
+  isEnabled = false,
+  isEnabling = false
 }: AppEnableContentProps) {
   const app = DASHBOARD_APPS[appId];
   
@@ -99,9 +101,9 @@ export function AppEnableContent({
         {/* Action Buttons */}
         <div className="flex flex-col sm:flex-row gap-4 justify-center">
           {!isEnabled && onEnable && (
-            <Button onClick={onEnable} size="lg">
+            <Button onClick={onEnable} size="lg" disabled={isEnabling}>
               <Plus size={20} className="mr-2" />
-              Enable {app.displayName}
+              {isEnabling ? "Enabling..." : `Enable ${app.displayName}`}
             </Button>
           )}
           

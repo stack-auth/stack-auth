@@ -11,6 +11,7 @@ interface AppDetailDialogProps {
   onOpenChange: (open: boolean) => void;
   onEnable: (appId: AppId) => void;
   isEnabled: boolean;
+  isEnabling?: boolean;
 }
 
 export function AppDetailDialog({
@@ -19,6 +20,7 @@ export function AppDetailDialog({
   onOpenChange,
   onEnable,
   isEnabled,
+  isEnabling = false,
 }: AppDetailDialogProps) {
   const app = DASHBOARD_APPS[appId];
   const [selectedScreenshot, setSelectedScreenshot] = useState<number>(0);
@@ -47,13 +49,13 @@ export function AppDetailDialog({
         description={app.subtitle}
         okButton={
           isEnabled
-            ? {
-                children: "Close",
-                variant: "outline",
-              }
+            ? "Close"
             : {
-                children: "Enable App",
+                label: isEnabling ? "Enabling..." : "Enable App",
                 onClick: () => onEnable(appId),
+                props: {
+                  disabled: isEnabling,
+                }
               }
         }
         cancelButton={false}
