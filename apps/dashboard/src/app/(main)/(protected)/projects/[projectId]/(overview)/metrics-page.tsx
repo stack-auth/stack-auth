@@ -1,5 +1,6 @@
 'use client';
 
+import { AppsOverview } from "@/components/apps-overview";
 import { useRouter } from "@/components/router";
 import { ErrorBoundary } from '@sentry/nextjs';
 import { UserAvatar } from '@stackframe/stack';
@@ -42,12 +43,20 @@ export default function MetricsPage(props: { toSetup: () => void }) {
   const [includeAnonymous, setIncludeAnonymous] = useState(false);
 
   const data = (adminApp as any)[stackAppInternalsSymbol].useMetrics(includeAnonymous);
+  
+  // For now, assume no apps are enabled since the config schema might not be updated yet
+  // TODO: Update this when the config schema is properly deployed
+  const enabledApps: Record<string, { enabled: boolean }> = {};
 
   return (
     <PageLayout fillWidth>
       <ErrorBoundary fallback={<div className='text-center text-sm text-red-500'>Error initializing globe visualization. Please try updating your browser or enabling WebGL.</div>}>
         <GlobeSection countryData={data.users_by_country} totalUsers={data.total_users} />
       </ErrorBoundary>
+      
+      {/* Apps Section */}
+      <AppsOverview enabledApps={enabledApps} projectId={adminApp.projectId} />
+      
       <div className='grid gap-4 lg:grid-cols-2'>
         <LineChartDisplay
           config={dailySignUpsConfig}
