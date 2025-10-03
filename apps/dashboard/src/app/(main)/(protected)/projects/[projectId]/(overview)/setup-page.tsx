@@ -33,7 +33,7 @@ export default function SetupPage(props: { toMetrics: () => void }) {
       hasPublishableClientKey: true,
       hasSecretServerKey: true,
       hasSuperSecretAdminKey: false,
-      expiresAt: new Date(Date.now() + 1000 * 60 * 60 * 24 * 30),
+      expiresAt: new Date(Date.now() + 1000 * 60 * 60 * 24 * 365 * 200),
       description: 'Onboarding',
     });
 

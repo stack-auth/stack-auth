@@ -47,6 +47,41 @@ it("should not refresh sessions given invalid refresh tokens", async ({ expect }
 
 it.todo("should not refresh sessions of other projects");
 
+it("should not refresh sessions when user has been deleted", async ({ expect }) => {
+  await Auth.Password.signUpWithEmail();
+
+  // delete the user
+  const response = await niceBackendFetch("/api/v1/users/me", {
+    method: "DELETE",
+    accessType: "server",
+  });
+  expect(response).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": { "success": true },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+
+  const refreshSessionResponse = await niceBackendFetch("/api/v1/auth/sessions/current/refresh", {
+    method: "POST",
+    accessType: "client",
+  });
+  expect(refreshSessionResponse).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 401,
+      "body": {
+        "code": "REFRESH_TOKEN_NOT_FOUND_OR_EXPIRED",
+        "error": "Refresh token not found for this project, or the session has expired/been revoked.",
+      },
+      "headers": Headers {
+        "x-stack-known-error": "REFRESH_TOKEN_NOT_FOUND_OR_EXPIRED",
+        <some fields may have been hidden>,
+      },
+    }
+  `);
+});
+
 it("should not refresh revoked sessions", async ({ expect }) => {
   // Create a user and sign up
   const res = await Auth.Password.signUpWithEmail();

@@ -2,12 +2,11 @@ import { createMfaRequiredError } from "@/app/api/latest/auth/mfa/sign-in/verifi
 import { checkApiKeySet } from "@/lib/internal-api-keys";
 import { validateRedirectUrl } from "@/lib/redirect-urls";
 import { getSoleTenancyFromProjectBranch, getTenancy } from "@/lib/tenancies";
-import { decodeAccessToken, generateAccessToken } from "@/lib/tokens";
+import { createRefreshTokenObj, decodeAccessToken, generateAccessTokenFromRefreshTokenIfValid, isRefreshTokenValid } from "@/lib/tokens";
 import { getPrismaClientForTenancy, globalPrismaClient } from "@/prisma-client";
 import { AuthorizationCode, AuthorizationCodeModel, Client, Falsey, RefreshToken, Token, User } from "@node-oauth/oauth2-server";
 import { PrismaClientKnownRequestError } from "@prisma/client/runtime/library";
 import { KnownErrors } from "@stackframe/stack-shared";
-import { generateSecureRandomString } from "@stackframe/stack-shared/dist/utils/crypto";
 import { captureError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { getProjectBranchFromClientId } from ".";
 
@@ -98,35 +97,20 @@ export class OAuthModel implements AuthorizationCodeModel {
     assertScopeIsValid(scope);
     const tenancy = await getSoleTenancyFromProjectBranch(...getProjectBranchFromClientId(client.id));
 
-    if (!user.refreshTokenId) {
-      // create new refresh token
-      const refreshToken = await this.generateRefreshToken(client, user, scope);
-      // save it in user, then we just access it in refresh
-      // HACK: This is a hack to ensure the refresh token is already there so we can associate the access token with it
-      const newRefreshToken = await globalPrismaClient.projectUserRefreshToken.create({
-        data: {
-          refreshToken,
-          tenancyId: tenancy.id,
-          projectUserId: user.id,
-          expiresAt: new Date(),
-        },
-      });
-      user.refreshTokenId = newRefreshToken.id;
-    }
+    const refreshTokenObj = await this._getOrCreateRefreshTokenObj(client, user, scope);
 
-    return await generateAccessToken({
+    return await generateAccessTokenFromRefreshTokenIfValid({
       tenancy,
-      userId: user.id,
-      refreshTokenId: user.refreshTokenId ?? throwErr("Refresh token ID not found on OAuth user"),
-    });
+      refreshTokenObj,
+    }) ?? throwErr("Get or create refresh token failed; returned refreshTokenObj that's invalid (or maybe it's an ultra-rare race condition and it became invalid in since the function call?)", { refreshTokenObj });  // TODO fix the ultra-rare race condition — although unless we're at gigascale this should basically never happen
   }
 
-  async generateRefreshToken(client: Client, user: User, scope: string[]): Promise<string> {
-    assertScopeIsValid(scope);
+  async _getOrCreateRefreshTokenObj(client: Client, user: User, scope: string[]) {
+    const tenancy = await getSoleTenancyFromProjectBranch(...getProjectBranchFromClientId(client.id));
 
+    // if refresh token already exists and is valid, return it
     if (user.refreshTokenId) {
-      const tenancy = await getSoleTenancyFromProjectBranch(...getProjectBranchFromClientId(client.id));
-      const refreshToken = await globalPrismaClient.projectUserRefreshToken.findUniqueOrThrow({
+      const refreshTokenObj = await globalPrismaClient.projectUserRefreshToken.findUnique({
         where: {
           tenancyId_id: {
             tenancyId: tenancy.id,
@@ -134,10 +118,25 @@ export class OAuthModel implements AuthorizationCodeModel {
           },
         },
       });
-      return refreshToken.refreshToken;
+      if (refreshTokenObj && await isRefreshTokenValid({ tenancy, refreshTokenObj })) {
+        return refreshTokenObj;
+      }
     }
 
-    return generateSecureRandomString();
+    // otherwise, create a new refresh token and set its ID on the user
+    const refreshTokenObj = await createRefreshTokenObj({
+      tenancy,
+      projectUserId: user.id,
+    });
+    user.refreshTokenId = refreshTokenObj.id;
+    return refreshTokenObj;
+  }
+
+  async generateRefreshToken(client: Client, user: User, scope: string[]): Promise<string> {
+    assertScopeIsValid(scope);
+
+    const tokenObj = await this._getOrCreateRefreshTokenObj(client, user, scope);
+    return tokenObj.refreshToken;
   }
 
   async saveToken(token: Token, client: Client, user: User): Promise<Token | Falsey> {
