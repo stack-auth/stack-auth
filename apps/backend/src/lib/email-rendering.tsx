@@ -196,6 +196,7 @@ export async function renderEmailsWithTemplateBatched(
 
   const freestyle = new Freestyle({ apiKey });
   const nodeModules = {
+    "react-dom": "19.1.1",
     "react": "19.1.1",
     "@react-email/components": "0.1.1",
     "arktype": "2.1.20",
