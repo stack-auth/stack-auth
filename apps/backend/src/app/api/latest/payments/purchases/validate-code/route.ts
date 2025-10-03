@@ -31,7 +31,6 @@ export const POST = createSmartRouteHandler({
       offer: offerDataSchema,
       stripe_account_id: yupString().defined(),
       project_id: yupString().defined(),
-      return_url: yupString().optional(),
       already_bought_non_stackable: yupBoolean().defined(),
       conflicting_group_offers: yupArray(yupObject({
         offer_id: yupString().defined(),
@@ -95,7 +94,6 @@ export const POST = createSmartRouteHandler({
         offer: offerData,
         stripe_account_id: verificationCode.data.stripeAccountId,
         project_id: tenancy.project.id,
-        return_url: verificationCode.data.returnUrl,
         already_bought_non_stackable: alreadyBoughtNonStackable,
         conflicting_group_offers: conflictingGroupOffers,
       },

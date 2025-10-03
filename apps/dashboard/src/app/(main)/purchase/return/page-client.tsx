@@ -38,7 +38,7 @@ export default function ReturnClient({ clientSecret, stripeAccountId, purchaseFu
         const message = returnUrl
           ? "Bypassed in test mode. No payment processed. You will be redirected shortly."
           : "Bypassed in test mode. No payment processed.";
-        setState({ kind: "success", message: "Bypassed in test mode. No payment processed." });
+        setState({ kind: "success", message });
         return;
       }
       const stripe = await loadStripe(stripePublicKey, { stripeAccount: stripeAccountId });
