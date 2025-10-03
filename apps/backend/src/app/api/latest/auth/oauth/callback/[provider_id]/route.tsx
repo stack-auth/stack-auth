@@ -354,7 +354,29 @@ const handler = createSmartRouteHandler({
                     throw new KnownErrors.SignUpNotEnabled();
                   }
 
-                  const currentUser = projectUserId ? await usersCrudHandlers.adminRead({ tenancy, user_id: projectUserId }) : null;
+                  // Set currentUser to the user that was signed in with the `token` access token during the /authorize request
+                  let currentUser;
+                  if (projectUserId) {
+                    // note that it's possible that the user has been deleted, but the request is still done with a token that was issued before the user was deleted
+                    // (or the user was deleted between the /authorize and /callback requests)
+                    // hence, we catch the error and ignore if that's the case
+                    try {
+                      currentUser = await usersCrudHandlers.adminRead({
+                        tenancy,
+                        user_id: projectUserId,
+                        allowedErrorTypes: [KnownErrors.UserNotFound],
+                      });
+                    } catch (error) {
+                      if (KnownErrors.UserNotFound.isInstance(error)) {
+                        currentUser = null;
+                      } else {
+                        throw error;
+                      }
+                    }
+                  } else {
+                    currentUser = null;
+                  }
+
                   const newAccountBeforeAuthMethod = await createOrUpgradeAnonymousUser(
                     tenancy,
                     currentUser,

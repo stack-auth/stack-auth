@@ -41,7 +41,7 @@ export const POST = createSmartRouteHandler({
         oauthRequest,
         oauthResponse,
         {
-          // note the `accessTokenLifetime` won't have any effect here because we set it in the `generateAccessToken` function
+          // note the `accessTokenLifetime` won't have any effect here because we set it in the `generateAccessTokenFromRefreshTokenIfValid` function
           refreshTokenLifetime: 60 * 60 * 24 * 365, // 1 year
           alwaysIssueNewRefreshToken: false, // add token rotation later
         }
