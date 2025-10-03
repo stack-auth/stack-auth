@@ -1779,6 +1779,7 @@ export class StackClientInterface {
     customer_id: string,
     offerIdOrInline: string | yup.InferType<typeof inlineOfferSchema>,
     session: InternalSession | null,
+    returnUrl?: string,
   ): Promise<string> {
     const offerBody = typeof offerIdOrInline === "string" ?
       { offer_id: offerIdOrInline } :
@@ -1790,7 +1791,7 @@ export class StackClientInterface {
         headers: {
           "content-type": "application/json",
         },
-        body: JSON.stringify({ customer_type, customer_id, ...offerBody }),
+        body: JSON.stringify({ customer_type, customer_id, ...offerBody, return_url: returnUrl }),
       },
       session
     );

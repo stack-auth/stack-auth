@@ -1,6 +1,6 @@
-import { it } from "../../../../../helpers";
-import { Auth, Project, User, niceBackendFetch, Payments } from "../../../../backend-helpers";
 import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
+import { it } from "../../../../../helpers";
+import { Auth, niceBackendFetch, Payments, Project, User } from "../../../../backend-helpers";
 
 it("should not be able to create purchase URL without offer_id or offer_inline", async ({ expect }) => {
   await Project.createAndSwitch();
@@ -309,9 +309,13 @@ it("should allow valid offer_id", async ({ expect }) => {
       customer_type: "user",
       customer_id: userId,
       offer_id: "test-offer",
+      return_url: "http://stack-test.localhost/after-purchase",
     },
   });
   expect(response.status).toBe(200);
   const body = response.body as { url: string };
-  expect(body.url).toMatch(/^https?:\/\/localhost:8101\/purchase\/[a-z0-9-_]+$/);
+  expect(body.url).toMatch(/^https?:\/\/localhost:8101\/purchase\/[a-z0-9-_]+\?return_url=/);
+  const urlObj = new URL(body.url);
+  const returnUrl = urlObj.searchParams.get("return_url");
+  expect(returnUrl).toBe("http://stack-test.localhost/after-purchase");
 });

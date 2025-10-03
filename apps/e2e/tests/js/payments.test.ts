@@ -1,6 +1,40 @@
 import { it } from "../helpers";
 import { createApp } from "./js-helpers";
 
+it("createCheckoutUrl supports optional returnUrl and embeds it", async ({ expect }) => {
+  const { clientApp, adminApp } = await createApp({ config: {} });
+  const project = await adminApp.getProject();
+  const adminRes = await (adminApp as any)[Symbol.for("StackAuth--DO-NOT-USE-OR-YOU-WILL-BE-FIRED--StackAppInternals")].sendRequest(
+    "/internal/payments/setup",
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({})
+    }, "admin"
+  );
+  expect(adminRes.ok).toBe(true);
+
+  await project.updateConfig({
+    "payments.offers.test-offer": {
+      displayName: "Test Offer",
+      customerType: "user",
+      serverOnly: false,
+      stackable: false,
+      prices: { monthly: { USD: "1000", interval: [1, "month"] } },
+      includedItems: {},
+    },
+  });
+  await clientApp.signUpWithCredential({ email: "checkout-return@test.com", password: "password", verificationCallbackUrl: "http://localhost:3000" });
+  await clientApp.signInWithCredential({ email: "checkout-return@test.com", password: "password" });
+  const user = await clientApp.getUser();
+  if (!user) throw new Error("User not found");
+
+  const url = await user.createCheckoutUrl({ offerId: "test-offer", returnUrl: "http://stack-test.localhost/after" });
+  expect(url).toMatch(/^https?:\/\/localhost:8101\/purchase\/[a-z0-9-_]+\?return_url=/);
+  const urlObj = new URL(url);
+  expect(urlObj.searchParams.get("return_url")).toBe("http://stack-test.localhost/after");
+}, { timeout: 60_000 });
+
 it("returns default item quantity for a team", async ({ expect }) => {
   const { clientApp, adminApp } = await createApp({
     config: {

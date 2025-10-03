@@ -10,6 +10,7 @@ import { typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { Alert, AlertDescription, AlertTitle, Button, Card, CardContent, Input, Skeleton, Typography } from "@stackframe/stack-ui";
 import { ArrowRight, Minus, Plus } from "lucide-react";
+import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import * as yup from "yup";
 
@@ -30,8 +31,10 @@ export default function PageClient({ code }: { code: string }) {
   const [error, setError] = useState<string | null>(null);
   const [selectedPriceId, setSelectedPriceId] = useState<string | null>(null);
   const [quantityInput, setQuantityInput] = useState<string>("1");
+  const searchParams = useSearchParams();
   const user = useUser({ projectIdMustMatch: "internal" });
   const [adminApp, setAdminApp] = useState<StackAdminApp>();
+  const returnUrl = searchParams.get("return_url");
 
   useEffect(() => {
     if (!user || !data) return;
@@ -138,8 +141,11 @@ export default function PageClient({ code }: { code: string }) {
     const url = new URL(`/purchase/return`, window.location.origin);
     url.searchParams.set("bypass", "1");
     url.searchParams.set("purchase_full_code", code);
+    if (returnUrl) {
+      url.searchParams.set("return_url", returnUrl);
+    }
     window.location.assign(url.toString());
-  }, [code, adminApp, selectedPriceId, quantityNumber, isTooLarge]);
+  }, [code, adminApp, selectedPriceId, quantityNumber, isTooLarge, returnUrl]);
 
   return (
     <div className="flex flex-row">
@@ -281,6 +287,7 @@ export default function PageClient({ code }: { code: string }) {
               fullCode={code}
               stripeAccountId={data.stripe_account_id}
               setupSubscription={setupSubscription}
+              returnUrl={returnUrl ?? undefined}
               disabled={quantityNumber < 1 || isTooLarge || data.already_bought_non_stackable === true}
             />
           </StripeElementsProvider>

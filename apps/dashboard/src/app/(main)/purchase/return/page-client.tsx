@@ -6,6 +6,7 @@ import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises"
 import { Typography } from "@stackframe/stack-ui";
 import { loadStripe } from "@stripe/stripe-js";
 import { useCallback, useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 
 type Props = {
   redirectStatus?: string,
@@ -25,10 +26,18 @@ const stripePublicKey = getPublicEnvVar("NEXT_PUBLIC_STACK_STRIPE_PUBLISHABLE_KE
 
 export default function ReturnClient({ clientSecret, stripeAccountId, purchaseFullCode, bypass }: Props) {
   const [state, setState] = useState<ViewState>({ kind: "loading" });
+  const searchParams = useSearchParams();
+  const returnUrl = searchParams.get("return_url");
 
   const updateViewState = useCallback(async (): Promise<void> => {
     try {
       if (bypass === "1") {
+        if (returnUrl) {
+          window.location.assign(returnUrl);
+        }
+        const message = returnUrl
+          ? "Bypassed in test mode. No payment processed. You will be redirected shortly."
+          : "Bypassed in test mode. No payment processed.";
         setState({ kind: "success", message: "Bypassed in test mode. No payment processed." });
         return;
       }
@@ -40,7 +49,13 @@ export default function ReturnClient({ clientSecret, stripeAccountId, purchaseFu
       const lastErrorMessage = result.paymentIntent?.last_payment_error?.message;
 
       if (status === "succeeded") {
-        setState({ kind: "success", message: "Payment succeeded. You can close this page." });
+        if (returnUrl) {
+          window.location.assign(returnUrl);
+        }
+        const message = returnUrl
+          ? "Payment succeeded. You will be redirected shortly."
+          : "Payment succeeded. You can close this page.";
+        setState({ kind: "success", message });
         return;
       }
       if (status === "processing") {
@@ -64,7 +79,7 @@ export default function ReturnClient({ clientSecret, stripeAccountId, purchaseFu
       const message = e instanceof Error ? e.message : "Unexpected error retrieving payment.";
       setState({ kind: "error", message });
     }
-  }, [clientSecret, stripeAccountId, bypass]);
+  }, [clientSecret, stripeAccountId, bypass, returnUrl]);
 
   useEffect(() => {
     runAsynchronously(updateViewState());

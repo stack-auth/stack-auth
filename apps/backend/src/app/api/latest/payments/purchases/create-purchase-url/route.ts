@@ -24,6 +24,7 @@ export const POST = createSmartRouteHandler({
       customer_id: yupString().defined(),
       offer_id: yupString().optional(),
       offer_inline: inlineOfferSchema.optional(),
+      return_url: yupString().optional(),
     }),
   }),
   response: yupObject({
@@ -77,6 +78,9 @@ export const POST = createSmartRouteHandler({
 
     const fullCode = `${tenancy.id}_${code}`;
     const url = new URL(`/purchase/${fullCode}`, getEnvVariable("NEXT_PUBLIC_STACK_DASHBOARD_URL"));
+    if (req.body.return_url) {
+      url.searchParams.set("return_url", req.body.return_url);
+    }
 
     return {
       statusCode: 200,
