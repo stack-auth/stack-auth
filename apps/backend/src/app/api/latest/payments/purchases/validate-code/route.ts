@@ -67,9 +67,9 @@ export const POST = createSmartRouteHandler({
 
     const alreadyBoughtNonStackable = !!(subscriptions.find((s) => s.productId === verificationCode.data.productId) && product.stackable !== true);
 
-    const groups = tenancy.config.payments.catalogs;
-    const catalogId = Object.keys(groups).find((g) => product.catalogId === g);
-    let conflictingGroupProducts: { product_id: string, display_name: string }[] = [];
+    const catalogs = tenancy.config.payments.catalogs;
+    const catalogId = Object.keys(catalogs).find((g) => product.catalogId === g);
+    let conflictingCatalogProducts: { product_id: string, display_name: string }[] = [];
     if (catalogId) {
       const isSubscribable = product.prices !== "include-by-default" && Object.values(product.prices).some((p: any) => p && p.interval);
       if (isSubscribable) {
@@ -80,7 +80,7 @@ export const POST = createSmartRouteHandler({
           subscription.product.prices !== "include-by-default" &&
           (!product.isAddOnTo || !Object.keys(product.isAddOnTo).includes(subscription.productId))
         ));
-        conflictingGroupProducts = conflicts.map((s) => ({
+        conflictingCatalogProducts = conflicts.map((s) => ({
           product_id: s.productId!,
           display_name: s.product.displayName ?? s.productId!,
         }));
@@ -95,7 +95,7 @@ export const POST = createSmartRouteHandler({
         stripe_account_id: verificationCode.data.stripeAccountId,
         project_id: tenancy.project.id,
         already_bought_non_stackable: alreadyBoughtNonStackable,
-        conflicting_products: conflictingGroupProducts,
+        conflicting_products: conflictingCatalogProducts,
       },
     };
   },
