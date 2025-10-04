@@ -6,18 +6,17 @@ import { useHover } from "@stackframe/stack-shared/dist/hooks/use-hover";
 import { DayInterval } from "@stackframe/stack-shared/dist/utils/dates";
 import { prettyPrintWithMagnitudes } from "@stackframe/stack-shared/dist/utils/numbers";
 import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
-import { Button, Card, CardContent, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, Switch, Label, toast } from "@stackframe/stack-ui";
+import { Button, Card, CardContent, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, Label, Switch, toast } from "@stackframe/stack-ui";
 import { MoreVertical, Plus } from "lucide-react";
 import React, { ReactNode, useEffect, useId, useMemo, useRef, useState } from "react";
 import { IllustratedInfo } from "../../../../../../../components/illustrated-info";
 import { PageLayout } from "../../page-layout";
 import { useAdminApp } from "../../use-admin-app";
-import { DUMMY_PAYMENTS_CONFIG } from "./dummy-data";
 import { ItemDialog } from "./item-dialog";
 import { ListSection } from "./list-section";
-import { OfferDialog } from "./offer-dialog";
+import { ProductDialog } from "./product-dialog";
 
-type Offer = CompleteConfig['payments']['offers'][keyof CompleteConfig['payments']['offers']];
+type Product = CompleteConfig['payments']['products'][keyof CompleteConfig['payments']['products']];
 type Item = CompleteConfig['payments']['items'][keyof CompleteConfig['payments']['items']];
 
 // Custom action menu component
@@ -270,7 +269,7 @@ function formatInterval(interval: DayInterval): string {
   return count > 1 ? `${count}${unitShort}` : unitShort;
 }
 
-function formatPrice(price: (Offer['prices'] & object)[string]): string | null {
+function formatPrice(price: (Product['prices'] & object)[string]): string | null {
   if (typeof price === 'string') return null;
 
   const amounts = [];
@@ -289,7 +288,7 @@ function formatPrice(price: (Offer['prices'] & object)[string]): string | null {
   return amounts.join(', ') || null;
 }
 
-function formatOfferPrices(prices: Offer['prices']): string {
+function formatProductPrices(prices: Product['prices']): string {
   if (prices === 'include-by-default') return 'Free';
   if (typeof prices !== 'object') return '';
 
@@ -301,113 +300,113 @@ function formatOfferPrices(prices: Offer['prices']): string {
   return formattedPrices.join(', ');
 }
 
-// OffersList component with props
-type OffersListProps = {
-  groupedOffers: Map<string | undefined, Array<{ id: string, offer: any }>>,
+// ProductsList component with props
+type ProductsListProps = {
+  groupedProducts: Map<string | undefined, Array<{ id: string, product: any }>>,
   paymentsGroups: any,
   hoveredItemId: string | null,
-  getConnectedOffers: (itemId: string) => string[],
-  offerRefs?: Record<string, React.RefObject<HTMLDivElement>>,
-  onOfferMouseEnter: (offerId: string) => void,
-  onOfferMouseLeave: () => void,
-  onOfferAdd?: () => void,
-  setEditingOffer: (offer: any) => void,
-  setShowOfferDialog: (show: boolean) => void,
+  getConnectedProducts: (itemId: string) => string[],
+  productRefs?: Record<string, React.RefObject<HTMLDivElement>>,
+  onProductMouseEnter: (productId: string) => void,
+  onProductMouseLeave: () => void,
+  onProductAdd?: () => void,
+  setEditingProduct: (product: any) => void,
+  setShowProductDialog: (show: boolean) => void,
 };
 
-function OffersList({
-  groupedOffers,
+function ProductsList({
+  groupedProducts,
   paymentsGroups,
   hoveredItemId,
-  getConnectedOffers,
-  offerRefs,
-  onOfferMouseEnter,
-  onOfferMouseLeave,
-  onOfferAdd,
-  setEditingOffer,
-  setShowOfferDialog,
-}: OffersListProps) {
+  getConnectedProducts,
+  productRefs,
+  onProductMouseEnter,
+  onProductMouseLeave,
+  onProductAdd,
+  setEditingProduct,
+  setShowProductDialog,
+}: ProductsListProps) {
   const stackAdminApp = useAdminApp();
   const project = stackAdminApp.useProject();
   const [searchQuery, setSearchQuery] = useState("");
   let globalIndex = 0;
 
-  // Filter offers based on search query
-  const filteredGroupedOffers = useMemo(() => {
-    if (!searchQuery) return groupedOffers;
+  // Filter products based on search query
+  const filteredGroupedProducts = useMemo(() => {
+    if (!searchQuery) return groupedProducts;
 
-    const filtered = new Map<string | undefined, Array<{ id: string, offer: any }>>();
+    const filtered = new Map<string | undefined, Array<{ id: string, product: any }>>();
 
-    groupedOffers.forEach((offers, groupId) => {
-      const filteredOffers = offers.filter(({ id, offer }) => {
+    groupedProducts.forEach((products, catalogId) => {
+      const filteredProducts = products.filter(({ id, product }) => {
         const query = searchQuery.toLowerCase();
         return (
           id.toLowerCase().includes(query) ||
-          offer.displayName?.toLowerCase().includes(query) ||
-          offer.customerType?.toLowerCase().includes(query)
+          product.displayName?.toLowerCase().includes(query) ||
+          product.customerType?.toLowerCase().includes(query)
         );
       });
 
-      if (filteredOffers.length > 0) {
-        filtered.set(groupId, filteredOffers);
+      if (filteredProducts.length > 0) {
+        filtered.set(catalogId, filteredProducts);
       }
     });
 
     return filtered;
-  }, [groupedOffers, searchQuery]);
+  }, [groupedProducts, searchQuery]);
 
   return (
     <ListSection
       title={<>
-        Offers
+        Products
       </>}
-      titleTooltip="Offers are the products, plans, or pricing tiers you sell to your customers. They are the columns in a pricing table."
-      onAddClick={() => onOfferAdd?.()}
+      titleTooltip="Products are the products, plans, or pricing tiers you sell to your customers. They are the columns in a pricing table."
+      onAddClick={() => onProductAdd?.()}
       hasTitleBorder={false}
       searchValue={searchQuery}
       onSearchChange={setSearchQuery}
-      searchPlaceholder="Search offers..."
+      searchPlaceholder="Search products..."
     >
       <GroupedList>
-        {[...filteredGroupedOffers.entries()].map(([groupId, offers]) => {
-          const group = groupId ? paymentsGroups[groupId] : undefined;
+        {[...filteredGroupedProducts.entries()].map(([catalogId, products]) => {
+          const group = catalogId ? paymentsGroups[catalogId] : undefined;
           const groupName = group?.displayName;
 
           return (
-            <ListGroup key={groupId || 'ungrouped'} title={groupId ? (groupName || groupId) : "Other"}>
-              {offers.map(({ id, offer }) => {
+            <ListGroup key={catalogId || 'ungrouped'} title={catalogId ? (groupName || catalogId) : "Other"}>
+              {products.map(({ id, product }) => {
                 const isEven = globalIndex % 2 === 0;
                 globalIndex++;
-                const connectedItems = hoveredItemId ? getConnectedOffers(hoveredItemId) : [];
+                const connectedItems = hoveredItemId ? getConnectedProducts(hoveredItemId) : [];
                 const isHighlighted = hoveredItemId ? connectedItems.includes(id) : false;
 
                 return (
                   <ListItem
                     key={id}
                     id={id}
-                    displayName={offer.displayName}
-                    customerType={offer.customerType}
-                    subtitle={formatOfferPrices(offer.prices)}
+                    displayName={product.displayName}
+                    customerType={product.customerType}
+                    subtitle={formatProductPrices(product.prices)}
                     isEven={isEven}
                     isHighlighted={isHighlighted}
-                    itemRef={offerRefs?.[id]}
-                    onMouseEnter={() => onOfferMouseEnter(id)}
-                    onMouseLeave={onOfferMouseLeave}
+                    itemRef={productRefs?.[id]}
+                    onMouseEnter={() => onProductMouseEnter(id)}
+                    onMouseLeave={onProductMouseLeave}
                     actionItems={[
                       {
                         item: "Edit",
                         onClick: () => {
-                          setEditingOffer(offer);
-                          setShowOfferDialog(true);
+                          setEditingProduct(product);
+                          setShowProductDialog(true);
                         },
                       },
                       '-',
                       {
                         item: "Delete",
                         onClick: async () => {
-                          if (confirm(`Are you sure you want to delete the offer "${offer.displayName}"?`)) {
-                            await project.updateConfig({ [`payments.offers.${id}`]: null });
-                            toast({ title: "Offer deleted" });
+                          if (confirm(`Are you sure you want to delete the product "${product.displayName}"?`)) {
+                            await project.updateConfig({ [`payments.products.${id}`]: null });
+                            toast({ title: "Product deleted" });
                           }
                         },
                         danger: true,
@@ -427,8 +426,8 @@ function OffersList({
 // ItemsList component with props
 type ItemsListProps = {
   items: CompleteConfig['payments']['items'],
-  hoveredOfferId: string | null,
-  getConnectedItems: (offerId: string) => string[],
+  hoveredProductId: string | null,
+  getConnectedItems: (productId: string) => string[],
   itemRefs?: Record<string, React.RefObject<HTMLDivElement>>,
   onItemMouseEnter: (itemId: string) => void,
   onItemMouseLeave: () => void,
@@ -439,7 +438,7 @@ type ItemsListProps = {
 
 function ItemsList({
   items,
-  hoveredOfferId,
+  hoveredProductId,
   getConnectedItems,
   itemRefs,
   onItemMouseEnter,
@@ -491,8 +490,8 @@ function ItemsList({
     >
       <GroupedList>
         {filteredItems.map(([id, item]: [string, any], index) => {
-          const connectedOffers = hoveredOfferId ? getConnectedItems(hoveredOfferId) : [];
-          const isHighlighted = hoveredOfferId ? connectedOffers.includes(id) : false;
+          const connectedProducts = hoveredProductId ? getConnectedItems(hoveredProductId) : [];
+          const isHighlighted = hoveredProductId ? connectedProducts.includes(id) : false;
 
           return (
             <ListItem
@@ -537,7 +536,7 @@ function ItemsList({
   );
 }
 
-function WelcomeScreen({ onCreateOffer }: { onCreateOffer: () => void }) {
+function WelcomeScreen({ onCreateProduct }: { onCreateProduct: () => void }) {
   return (
     <div className="flex flex-col items-center justify-center h-full px-4 py-12 max-w-3xl mx-auto">
       <IllustratedInfo
@@ -575,47 +574,46 @@ function WelcomeScreen({ onCreateOffer }: { onCreateOffer: () => void }) {
         )}
         title="Welcome to Payments!"
         description={[
-          <>Stack Auth Payments is built on two primitives: offers and items.</>,
-          <>Offers are what customers buy — the columns of your pricing table. Each offer has one or more prices and may or may not include items.</>,
+          <>Stack Auth Payments is built on two primitives: products and items.</>,
+          <>Products are what customers buy — the columns of your pricing table. Each product has one or more prices and may or may not include items.</>,
           <>Items are what customers receive — the rows of your pricing table. A user can hold multiple of the same item. Items are powerful; they can unlock feature access, raise limits, or meter consumption for usage-based billing.</>,
-          <>Create your first offer to get started!</>,
+          <>Create your first product to get started!</>,
         ]}
       />
-      <Button onClick={onCreateOffer}>
+      <Button onClick={onCreateProduct}>
         <Plus className="h-4 w-4 mr-2" />
-        Create Your First Offer
+        Create Your First Product
       </Button>
     </div>
   );
 }
 
 export default function PageClient({ onViewChange }: { onViewChange: (view: "list" | "catalogs") => void }) {
-  const [activeTab, setActiveTab] = useState<"offers" | "items">("offers");
-  const [hoveredOfferId, setHoveredOfferId] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<"products" | "items">("products");
+  const [hoveredProductId, setHoveredProductId] = useState<string | null>(null);
   const [hoveredItemId, setHoveredItemId] = useState<string | null>(null);
-  const [showOfferDialog, setShowOfferDialog] = useState(false);
-  const [editingOffer, setEditingOffer] = useState<any>(null);
+  const [showProductDialog, setShowProductDialog] = useState(false);
+  const [editingProduct, setEditingProduct] = useState<any>(null);
   const [showItemDialog, setShowItemDialog] = useState(false);
   const [editingItem, setEditingItem] = useState<any>(null);
   const stackAdminApp = useAdminApp();
   const project = stackAdminApp.useProject();
   const config = project.useConfig();
-  const [shouldUseDummyData, setShouldUseDummyData] = useState(false);
   const switchId = useId();
 
-  const paymentsConfig = shouldUseDummyData ? DUMMY_PAYMENTS_CONFIG : config.payments;
+  const paymentsConfig = config.payments;
 
-  // Refs for offers and items
+  // Refs for products and items
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // Create refs for all offers and items
-  const offerRefs = useMemo(() => {
+  // Create refs for all products and items
+  const productRefs = useMemo(() => {
     const refs = Object.fromEntries(
-      Object.keys(paymentsConfig.offers)
+      Object.keys(paymentsConfig.products)
         .map(id => [id, React.createRef<HTMLDivElement>()])
     );
     return refs;
-  }, [paymentsConfig.offers]);
+  }, [paymentsConfig.products]);
 
   const itemRefs = useMemo(() => {
     const refs = Object.fromEntries(
@@ -625,40 +623,40 @@ export default function PageClient({ onViewChange }: { onViewChange: (view: "lis
     return refs;
   }, [paymentsConfig.items]);
 
-  // Group offers by groupId and sort by customer type priority
-  const groupedOffers = useMemo(() => {
-    const groups = new Map<string | undefined, Array<{ id: string, offer: typeof paymentsConfig.offers[keyof typeof paymentsConfig.offers] }>>();
+  // Group products by catalogId and sort by customer type priority
+  const groupedProducts = useMemo(() => {
+    const groups = new Map<string | undefined, Array<{ id: string, product: typeof paymentsConfig.products[keyof typeof paymentsConfig.products] }>>();
 
-    // Group offers
-    Object.entries(paymentsConfig.offers).forEach(([id, offer]: [string, any]) => {
-      const groupId = offer.groupId;
-      if (!groups.has(groupId)) {
-        groups.set(groupId, []);
+    // Group products
+    Object.entries(paymentsConfig.products).forEach(([id, product]: [string, any]) => {
+      const catalogId = product.catalogId;
+      if (!groups.has(catalogId)) {
+        groups.set(catalogId, []);
       }
-      groups.get(groupId)!.push({ id, offer });
+      groups.get(catalogId)!.push({ id, product });
     });
 
-    // Sort offers within each group by customer type, then by ID
+    // Sort products within each group by customer type, then by ID
     const customerTypePriority = { user: 1, team: 2, custom: 3 };
-    groups.forEach((offers) => {
-      offers.sort((a, b) => {
-        const priorityA = customerTypePriority[a.offer.customerType as keyof typeof customerTypePriority] || 4;
-        const priorityB = customerTypePriority[b.offer.customerType as keyof typeof customerTypePriority] || 4;
+    groups.forEach((products) => {
+      products.sort((a, b) => {
+        const priorityA = customerTypePriority[a.product.customerType as keyof typeof customerTypePriority] || 4;
+        const priorityB = customerTypePriority[b.product.customerType as keyof typeof customerTypePriority] || 4;
         if (priorityA !== priorityB) {
           return priorityA - priorityB;
         }
         // If same customer type, sort addons last
-        if (a.offer.isAddOnTo !== b.offer.isAddOnTo) {
-          return a.offer.isAddOnTo ? 1 : -1;
+        if (a.product.isAddOnTo !== b.product.isAddOnTo) {
+          return a.product.isAddOnTo ? 1 : -1;
         }
         // If same customer type and addons, sort by lowest price
-        const getPricePriority = (offer: Offer) => {
-          if (offer.prices === 'include-by-default') return 0;
-          if (typeof offer.prices !== 'object') return 0;
-          return Math.min(...Object.values(offer.prices).map(price => +(price.USD ?? Infinity)));
+        const getPricePriority = (product: Product) => {
+          if (product.prices === 'include-by-default') return 0;
+          if (typeof product.prices !== 'object') return 0;
+          return Math.min(...Object.values(product.prices).map(price => +(price.USD ?? Infinity)));
         };
-        const priceA = getPricePriority(a.offer);
-        const priceB = getPricePriority(b.offer);
+        const priceA = getPricePriority(a.product);
+        const priceB = getPricePriority(b.product);
         if (priceA !== priceB) {
           return priceA - priceB;
         }
@@ -668,18 +666,18 @@ export default function PageClient({ onViewChange }: { onViewChange: (view: "lis
     });
 
     // Sort groups by their predominant customer type
-    const sortedGroups = new Map<string | undefined, Array<{ id: string, offer: Offer }>>();
+    const sortedGroups = new Map<string | undefined, Array<{ id: string, product: Product }>>();
 
     // Helper to get group priority
-    const getGroupPriority = (groupId: string | undefined) => {
-      if (!groupId) return 999; // Ungrouped always last
+    const getGroupPriority = (catalogId: string | undefined) => {
+      if (!catalogId) return 999; // Ungrouped always last
 
-      const offers = groups.get(groupId) || [];
-      if (offers.length === 0) return 999;
+      const products = groups.get(catalogId) || [];
+      if (products.length === 0) return 999;
 
       // Get the most common customer type in the group
-      const typeCounts = offers.reduce((acc, { offer }) => {
-        const type = offer.customerType;
+      const typeCounts = products.reduce((acc, { product }) => {
+        const type = product.customerType;
         acc[type] = (acc[type] || 0) + 1;
         return acc;
       }, {} as Record<string, number>);
@@ -699,39 +697,39 @@ export default function PageClient({ onViewChange }: { onViewChange: (view: "lis
     });
 
     // Rebuild map in sorted order
-    sortedEntries.forEach(([groupId, offers]) => {
-      sortedGroups.set(groupId, offers);
+    sortedEntries.forEach(([catalogId, products]) => {
+      sortedGroups.set(catalogId, products);
     });
 
     return sortedGroups;
   }, [paymentsConfig]);
 
-  // Get connected items for an offer
-  const getConnectedItems = (offerId: string) => {
-    const offer = paymentsConfig.offers[offerId];
-    return Object.keys(offer.includedItems);
+  // Get connected items for an product
+  const getConnectedItems = (productId: string) => {
+    const product = paymentsConfig.products[productId];
+    return Object.keys(product.includedItems);
   };
 
-  // Get item quantity for an offer
-  const getItemQuantity = (offerId: string, itemId: string) => {
-    const offer = paymentsConfig.offers[offerId];
-    if (!(itemId in offer.includedItems)) return 0;
-    return offer.includedItems[itemId].quantity;
+  // Get item quantity for an product
+  const getItemQuantity = (productId: string, itemId: string) => {
+    const product = paymentsConfig.products[productId];
+    if (!(itemId in product.includedItems)) return 0;
+    return product.includedItems[itemId].quantity;
   };
 
-  // Get connected offers for an item
-  const getConnectedOffers = (itemId: string) => {
-    return Object.entries(paymentsConfig.offers)
-      .filter(([_, offer]: [string, any]) => itemId in offer.includedItems)
+  // Get connected products for an item
+  const getConnectedProducts = (itemId: string) => {
+    return Object.entries(paymentsConfig.products)
+      .filter(([_, product]: [string, any]) => itemId in product.includedItems)
       .map(([id]) => id);
   };
 
-  // Check if there are no offers and no items
-  const hasNoOffersAndNoItems = Object.keys(paymentsConfig.offers).length === 0 && Object.keys(paymentsConfig.items).length === 0;
+  // Check if there are no products and no items
+  const hasNoProductsAndNoItems = Object.keys(paymentsConfig.products).length === 0 && Object.keys(paymentsConfig.items).length === 0;
 
-  // Handler for create offer button
-  const handleCreateOffer = () => {
-    setShowOfferDialog(true);
+  // Handler for create product button
+  const handleCreateProduct = () => {
+    setShowProductDialog(true);
   };
 
   // Handler for create item button
@@ -739,11 +737,11 @@ export default function PageClient({ onViewChange }: { onViewChange: (view: "lis
     setShowItemDialog(true);
   };
 
-  // Handler for saving offer
-  const handleSaveOffer = async (offerId: string, offer: Offer) => {
-    await project.updateConfig({ [`payments.offers.${offerId}`]: offer });
-    setShowOfferDialog(false);
-    toast({ title: editingOffer ? "Offer updated" : "Offer created" });
+  // Handler for saving product
+  const handleSaveProduct = async (productId: string, product: Product) => {
+    await project.updateConfig({ [`payments.products.${productId}`]: product });
+    setShowProductDialog(false);
+    toast({ title: editingProduct ? "Product updated" : "Product created" });
   };
 
   // Handler for saving item
@@ -754,12 +752,12 @@ export default function PageClient({ onViewChange }: { onViewChange: (view: "lis
     toast({ title: editingItem ? "Item updated" : "Item created" });
   };
 
-  // Prepare data for offer dialog - update when items change
-  const existingOffersList = Object.entries(paymentsConfig.offers).map(([id, offer]: [string, any]) => ({
+  // Prepare data for product dialog - update when items change
+  const existingProductsList = Object.entries(paymentsConfig.products).map(([id, product]: [string, any]) => ({
     id,
-    displayName: offer.displayName,
-    groupId: offer.groupId,
-    customerType: offer.customerType
+    displayName: product.displayName,
+    catalogId: product.catalogId,
+    customerType: product.customerType
   }));
 
   const existingItemsList = Object.entries(paymentsConfig.items).map(([id, item]: [string, any]) => ({
@@ -768,14 +766,14 @@ export default function PageClient({ onViewChange }: { onViewChange: (view: "lis
     customerType: item.customerType
   }));
 
-  // If no offers and items, show welcome screen instead of everything
+  // If no products and items, show welcome screen instead of everything
   let innerContent;
-  if (hasNoOffersAndNoItems) {
-    innerContent = <WelcomeScreen onCreateOffer={handleCreateOffer} />;
+  if (hasNoProductsAndNoItems) {
+    innerContent = <WelcomeScreen onCreateProduct={handleCreateProduct} />;
   } else {
     innerContent = (
       <PageLayout
-        title="Offers"
+        title="Products"
         actions={
           <div className="flex items-center gap-2 self-center">
             <Label htmlFor={switchId}>Pricing table</Label>
@@ -788,15 +786,15 @@ export default function PageClient({ onViewChange }: { onViewChange: (view: "lis
         < div className="lg:hidden mb-4" >
           <div className="flex space-x-1 bg-muted p-1 rounded-md">
             <button
-              onClick={() => setActiveTab("offers")}
+              onClick={() => setActiveTab("products")}
               className={cn(
                 "flex-1 px-3 py-2 rounded-sm text-sm font-medium transition-all",
-                activeTab === "offers"
+                activeTab === "products"
                   ? "bg-background text-foreground shadow-sm"
                   : "text-muted-foreground hover:text-foreground"
               )}
             >
-              Offers
+              Products
             </button>
             <button
               onClick={() => setActiveTab("items")}
@@ -822,17 +820,17 @@ export default function PageClient({ onViewChange }: { onViewChange: (view: "lis
           < Card className="hidden lg:flex w-full relative" ref={containerRef} >
             <CardContent className="flex w-full">
               <div className="flex-1">
-                <OffersList
-                  groupedOffers={groupedOffers}
-                  paymentsGroups={paymentsConfig.groups}
+                <ProductsList
+                  groupedProducts={groupedProducts}
+                  paymentsGroups={paymentsConfig.catalogs}
                   hoveredItemId={hoveredItemId}
-                  getConnectedOffers={getConnectedOffers}
-                  offerRefs={offerRefs}
-                  onOfferMouseEnter={setHoveredOfferId}
-                  onOfferMouseLeave={() => setHoveredOfferId(null)}
-                  onOfferAdd={handleCreateOffer}
-                  setEditingOffer={setEditingOffer}
-                  setShowOfferDialog={setShowOfferDialog}
+                  getConnectedProducts={getConnectedProducts}
+                  productRefs={productRefs}
+                  onProductMouseEnter={setHoveredProductId}
+                  onProductMouseLeave={() => setHoveredProductId(null)}
+                  onProductAdd={handleCreateProduct}
+                  setEditingProduct={setEditingProduct}
+                  setShowProductDialog={setShowProductDialog}
                 />
               </div>
             </CardContent>
@@ -841,7 +839,7 @@ export default function PageClient({ onViewChange }: { onViewChange: (view: "lis
               <div className="flex-1">
                 <ItemsList
                   items={paymentsConfig.items}
-                  hoveredOfferId={hoveredOfferId}
+                  hoveredProductId={hoveredProductId}
                   getConnectedItems={getConnectedItems}
                   itemRefs={itemRefs}
                   onItemMouseEnter={setHoveredItemId}
@@ -855,25 +853,25 @@ export default function PageClient({ onViewChange }: { onViewChange: (view: "lis
 
             {/* Connection lines */}
             {
-              hoveredOfferId && getConnectedItems(hoveredOfferId).map(itemId => (
+              hoveredProductId && getConnectedItems(hoveredProductId).map(itemId => (
                 <ConnectionLine
-                  key={`${hoveredOfferId}-${itemId}`}
-                  fromRef={offerRefs[hoveredOfferId]}
+                  key={`${hoveredProductId}-${itemId}`}
+                  fromRef={productRefs[hoveredProductId]}
                   toRef={itemRefs[itemId]}
                   containerRef={containerRef}
-                  quantity={getItemQuantity(hoveredOfferId, itemId)}
+                  quantity={getItemQuantity(hoveredProductId, itemId)}
                 />
               ))
             }
 
             {
-              hoveredItemId && getConnectedOffers(hoveredItemId).map(offerId => (
+              hoveredItemId && getConnectedProducts(hoveredItemId).map(productId => (
                 <ConnectionLine
-                  key={`${offerId}-${hoveredItemId}`}
-                  fromRef={offerRefs[offerId]}
+                  key={`${productId}-${hoveredItemId}`}
+                  fromRef={productRefs[productId]}
                   toRef={itemRefs[hoveredItemId]}
                   containerRef={containerRef}
-                  quantity={getItemQuantity(offerId, hoveredItemId)}
+                  quantity={getItemQuantity(productId, hoveredItemId)}
                 />
               ))
             }
@@ -881,22 +879,22 @@ export default function PageClient({ onViewChange }: { onViewChange: (view: "lis
 
           {/* Mobile single column with tabs */}
           < div className="lg:hidden w-full" >
-            {activeTab === "offers" ? (
-              <OffersList
-                groupedOffers={groupedOffers}
-                paymentsGroups={paymentsConfig.groups}
+            {activeTab === "products" ? (
+              <ProductsList
+                groupedProducts={groupedProducts}
+                paymentsGroups={paymentsConfig.catalogs}
                 hoveredItemId={hoveredItemId}
-                getConnectedOffers={getConnectedOffers}
-                onOfferMouseEnter={setHoveredOfferId}
-                onOfferMouseLeave={() => setHoveredOfferId(null)}
-                onOfferAdd={handleCreateOffer}
-                setEditingOffer={setEditingOffer}
-                setShowOfferDialog={setShowOfferDialog}
+                getConnectedProducts={getConnectedProducts}
+                onProductMouseEnter={setHoveredProductId}
+                onProductMouseLeave={() => setHoveredProductId(null)}
+                onProductAdd={handleCreateProduct}
+                setEditingProduct={setEditingProduct}
+                setShowProductDialog={setShowProductDialog}
               />
             ) : (
               <ItemsList
                 items={paymentsConfig.items}
-                hoveredOfferId={hoveredOfferId}
+                hoveredProductId={hoveredProductId}
                 getConnectedItems={getConnectedItems}
                 onItemMouseEnter={setHoveredItemId}
                 onItemMouseLeave={() => setHoveredItemId(null)}
@@ -915,19 +913,19 @@ export default function PageClient({ onViewChange }: { onViewChange: (view: "lis
     <>
       {innerContent}
 
-      {/* Offer Dialog */}
-      <OfferDialog
-        open={showOfferDialog}
+      {/* Product Dialog */}
+      <ProductDialog
+        open={showProductDialog}
         onOpenChange={(open) => {
-          setShowOfferDialog(open);
+          setShowProductDialog(open);
           if (!open) {
-            setEditingOffer(null);
+            setEditingProduct(null);
           }
         }}
-        onSave={async (offerId, offer) => await handleSaveOffer(offerId, offer)}
-        editingOffer={editingOffer}
-        existingOffers={existingOffersList}
-        existingGroups={paymentsConfig.groups}
+        onSave={async (productId, product) => await handleSaveProduct(productId, product)}
+        editingProduct={editingProduct}
+        existingProducts={existingProductsList}
+        existingCatalogs={paymentsConfig.catalogs}
         existingItems={existingItemsList}
         onCreateNewItem={handleCreateItem}
       />
