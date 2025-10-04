@@ -205,10 +205,11 @@ export async function overrideProjectConfigOverride(options: {
 
   // TODO put this in a serializable transaction (or a single SQL query) to prevent race conditions
   const oldConfig = await rawQuery(globalPrismaClient, getProjectConfigOverrideQuery(options));
-  const newConfig = override(
+  const newConfigUnmigrated = override(
     oldConfig,
     options.projectConfigOverrideOverride,
   );
+  const newConfig = migrateConfigOverride("project", newConfigUnmigrated);
 
   // large configs make our DB slow; let's prevent them early
   const newConfigString = JSON.stringify(newConfig);
@@ -249,10 +250,11 @@ export async function overrideEnvironmentConfigOverride(options: {
 
   // TODO put this in a serializable transaction (or a single SQL query) to prevent race conditions
   const oldConfig = await rawQuery(globalPrismaClient, getEnvironmentConfigOverrideQuery(options));
-  const newConfig = override(
+  const newConfigUnmigrated = override(
     oldConfig,
     options.environmentConfigOverrideOverride,
   );
+  const newConfig = migrateConfigOverride("environment", newConfigUnmigrated);
 
   // large configs make our DB slow; let's prevent them early
   const newConfigString = JSON.stringify(newConfig);
@@ -434,8 +436,10 @@ import.meta.vitest?.test('_validateConfigOverrideSchemaImpl(...)', async ({ expe
   expect(await validateConfigOverrideSchema(yupObject({ a: yupObject({ b: yupObject({ c: yupString().defined() }).defined() }).defined() }), { a: { b: {} } }, { "a.b": { c: 123 } })).toEqual(Result.error("[ERROR] a.b.c must be a `string` type, but the final value was: `123`."));
   expect(await validateConfigOverrideSchema(yupObject({ a: yupString().defined().oneOf(['b']) }), {}, { a: 'c' })).toEqual(Result.error("[ERROR] a must be one of the following values: b"));
   expect(await validateConfigOverrideSchema(yupObject({ a: yupString().defined() }), {}, {})).toEqual(Result.error("[WARNING] a must be defined"));
-  expect(await validateConfigOverrideSchema(yupObject({ a: yupMixed() }), {}, { "a.b": "c" })).toEqual(Result.error(`[ERROR] The key \"a.b\" is not valid for the schema.`));
-  expect(await validateConfigOverrideSchema(yupObject({ a: yupMixed() }), { a: 'str' }, { "a.b": "c" })).toEqual(Result.error(`[ERROR] The key \"a.b\" is not valid for the schema.`));
+  expect(await validateConfigOverrideSchema(yupObject({}), {}, { "a.b": "c" })).toEqual(Result.error(`[ERROR] The key \"a.b\" is not valid (nested object not found in schema: "a").`));
+  expect(await validateConfigOverrideSchema(yupObject({ a: yupMixed() }), {}, { "a.b": "c" })).toEqual(Result.error(`[ERROR] The key \"a.b\" is not valid (nested object not found in schema: "a.b").`));
+  expect(await validateConfigOverrideSchema(yupObject({ a: yupMixed() }), { a: 'str' }, { "a.b": "c" })).toEqual(Result.error(`[ERROR] The key \"a.b\" is not valid (nested object not found in schema: "a.b").`));
+  expect(await validateConfigOverrideSchema(yupObject({ a: yupObject({ c: yupString().optional() }) }), { a: 'str' }, { "a.b": "c" })).toEqual(Result.error(`[ERROR] The key \"a.b\" is not valid (nested object not found in schema: "a.b").`));
   expect(await validateConfigOverrideSchema(schema1, {}, { a: 123 })).toEqual(Result.error('[ERROR] a must be a `string` type, but the final value was: `123`.'));
   expect(await validateConfigOverrideSchema(unionSchema, { a: { "time": "now" } }, { "a.morning": true })).toMatchInlineSnapshot(`
     {

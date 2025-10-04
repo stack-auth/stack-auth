@@ -31,16 +31,17 @@ it("should be able to create and update user api keys", async ({ expect }) => {
   }
 
 
+  const expiresAt = new Date(Date.now() + 1000 * 60 * 60 * 24 * 30);
   const createApiKeyResponse = await user.createApiKey({
     description: "test",
-    expiresAt: new Date(Date.now() + 1000 * 60 * 60 * 24 * 30),
+    expiresAt,
   });
 
   expect(createApiKeyResponse).toMatchInlineSnapshot(`
     {
       "createdAt": <stripped field 'createdAt'>,
       "description": "test",
-      "expiresAt": Date {},
+      "expiresAt": Date("${expiresAt.toISOString()}"),
       "id": "<stripped UUID>",
       "isValid"(...): { ... },
       "manuallyRevokedAt": null,
@@ -60,7 +61,7 @@ it("should be able to create and update user api keys", async ({ expect }) => {
       {
         "createdAt": <stripped field 'createdAt'>,
         "description": "test",
-        "expiresAt": Date {},
+        "expiresAt": Date("${expiresAt.toISOString()}"),
         "id": "<stripped UUID>",
         "isValid"(...): { ... },
         "manuallyRevokedAt": null,
@@ -86,7 +87,7 @@ it("should be able to create and update user api keys", async ({ expect }) => {
       {
         "createdAt": <stripped field 'createdAt'>,
         "description": "test2",
-        "expiresAt": Date {},
+        "expiresAt": Date("${expiresAt.toISOString()}"),
         "id": "<stripped UUID>",
         "isValid"(...): { ... },
         "manuallyRevokedAt": null,

@@ -40,13 +40,12 @@ import { Fragment, useEffect, useId, useMemo, useRef, useState } from "react";
 import { IllustratedInfo } from "../../../../../../../components/illustrated-info";
 import { PageLayout } from "../../page-layout";
 import { useAdminApp } from "../../use-admin-app";
-import { DUMMY_PAYMENTS_CONFIG } from "./dummy-data";
 import { ItemDialog } from "./item-dialog";
-import { OfferDialog } from "./offer-dialog";
+import { ProductDialog } from "./product-dialog";
 
-type Offer = CompleteConfig['payments']['offers'][keyof CompleteConfig['payments']['offers']];
-type Price = (Offer['prices'] & object)[string];
-type PricesObject = Exclude<Offer['prices'], 'include-by-default'>;
+type Product = CompleteConfig['payments']['products'][keyof CompleteConfig['payments']['products']];
+type Price = (Product['prices'] & object)[string];
+type PricesObject = Exclude<Product['prices'], 'include-by-default'>;
 
 
 function intervalLabel(tuple: DayInterval | undefined): string | null {
@@ -244,7 +243,7 @@ function IntervalPopover({
 }
 
 
-function OfferPriceRow({
+function ProductPriceRow({
   priceId,
   price,
   readOnly,
@@ -254,10 +253,10 @@ function OfferPriceRow({
   existingPriceIds,
 }: {
   priceId: string,
-  price: (Offer['prices'] & object)[string],
+  price: (Product['prices'] & object)[string],
   readOnly?: boolean,
   startEditing?: boolean,
-  onSave: (newId: string | undefined, price: (Offer['prices'] & object)[string]) => void,
+  onSave: (newId: string | undefined, price: (Product['prices'] & object)[string]) => void,
   onRemove?: () => void,
   existingPriceIds: string[],
 }) {
@@ -361,7 +360,7 @@ function OfferPriceRow({
   );
 }
 
-const EXPIRES_OPTIONS: Array<{ value: Offer["includedItems"][string]["expires"], label: string, description: string }> = [
+const EXPIRES_OPTIONS: Array<{ value: Product["includedItems"][string]["expires"], label: string, description: string }> = [
   {
     value: 'never' as const,
     label: 'Never expires',
@@ -379,7 +378,7 @@ const EXPIRES_OPTIONS: Array<{ value: Offer["includedItems"][string]["expires"],
   }
 ];
 
-function OfferItemRow({
+function ProductItemRow({
   activeType,
   itemId,
   item,
@@ -395,11 +394,11 @@ function OfferItemRow({
 }: {
   activeType: 'user' | 'team' | 'custom',
   itemId: string,
-  item: Offer['includedItems'][string],
+  item: Product['includedItems'][string],
   itemDisplayName: string,
   readOnly?: boolean,
   startEditing?: boolean,
-  onSave: (itemId: string, item: Offer['includedItems'][string]) => void,
+  onSave: (itemId: string, item: Product['includedItems'][string]) => void,
   onRemove?: () => void,
   allItems: Array<{ id: string, displayName: string, customerType: string }>,
   existingIncludedItemIds: string[],
@@ -431,7 +430,7 @@ function OfferItemRow({
 
   const updateParent = (raw: string) => {
     const normalized = raw === '' ? 0 : parseInt(raw, 10);
-    const updated: Offer['includedItems'][string] = { ...item, quantity: Number.isNaN(normalized) ? 0 : normalized };
+    const updated: Product['includedItems'][string] = { ...item, quantity: Number.isNaN(normalized) ? 0 : normalized };
     onSave(itemId, updated);
   };
 
@@ -519,7 +518,7 @@ function OfferItemRow({
             noneLabel="one time"
             onChange={(interval) => {
               if (readOnly) return;
-              const updated: Offer['includedItems'][string] = {
+              const updated: Product['includedItems'][string] = {
                 ...item,
                 repeat: interval ? interval : 'never',
               };
@@ -621,34 +620,34 @@ function OfferItemRow({
 }
 
 
-type OfferCardProps = {
+type ProductCardProps = {
   id: string,
   activeType: 'user' | 'team' | 'custom',
-  offer: Offer,
-  allOffers: Array<{ id: string, offer: Offer }>,
+  product: Product,
+  allProducts: Array<{ id: string, product: Product }>,
   existingItems: Array<{ id: string, displayName: string, customerType: string }>,
-  onSave: (id: string, offer: Offer) => Promise<void>,
+  onSave: (id: string, product: Product) => Promise<void>,
   onDelete: (id: string) => Promise<void>,
-  onDuplicate: (offer: Offer) => void,
+  onDuplicate: (product: Product) => void,
   onCreateNewItem: () => void,
-  onOpenDetails: (offer: Offer) => void,
+  onOpenDetails: (product: Product) => void,
   isDraft?: boolean,
   onCancelDraft?: () => void,
 };
 
-function OfferCard({ id, activeType, offer, allOffers, existingItems, onSave, onDelete, onDuplicate, onCreateNewItem, onOpenDetails, isDraft, onCancelDraft }: OfferCardProps) {
+function ProductCard({ id, activeType, product, allProducts, existingItems, onSave, onDelete, onDuplicate, onCreateNewItem, onOpenDetails, isDraft, onCancelDraft }: ProductCardProps) {
   const [isEditing, setIsEditing] = useState(!!isDraft);
-  const [draft, setDraft] = useState<Offer>(offer);
+  const [draft, setDraft] = useState<Product>(product);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [editingPriceId, setEditingPriceId] = useState<string | undefined>(undefined);
   const cardRef = useRef<HTMLDivElement | null>(null);
   const [hasAutoScrolled, setHasAutoScrolled] = useState(false);
-  const [localOfferId, setLocalOfferId] = useState<string>(id);
+  const [localProductId, setLocalProductId] = useState<string>(id);
 
   useEffect(() => {
-    setDraft(offer);
-    setLocalOfferId(id);
-  }, [offer, id]);
+    setDraft(product);
+    setLocalProductId(id);
+  }, [product, id]);
 
   useEffect(() => {
     if (isDraft && !hasAutoScrolled && cardRef.current) {
@@ -659,8 +658,8 @@ function OfferCard({ id, activeType, offer, allOffers, existingItems, onSave, on
 
   const pricesObject: PricesObject = typeof draft.prices === 'object' ? draft.prices : {};
 
-  const canSaveOffer = draft.prices === 'include-by-default' || (typeof draft.prices === 'object' && Object.keys(pricesObject).length > 0);
-  const saveDisabledReason = canSaveOffer ? undefined : "Add at least one price or set Include by default";
+  const canSaveProduct = draft.prices === 'include-by-default' || (typeof draft.prices === 'object' && Object.keys(pricesObject).length > 0);
+  const saveDisabledReason = canSaveProduct ? undefined : "Add at least one price or set Include by default";
 
   const handleRemovePrice = (priceId: string) => {
     setDraft(prev => {
@@ -672,7 +671,7 @@ function OfferCard({ id, activeType, offer, allOffers, existingItems, onSave, on
     if (editingPriceId === priceId) setEditingPriceId(undefined);
   };
 
-  const handleAddOrEditIncludedItem = (itemId: string, item: Offer['includedItems'][string]) => {
+  const handleAddOrEditIncludedItem = (itemId: string, item: Product['includedItems'][string]) => {
     setDraft(prev => ({
       ...prev,
       includedItems: {
@@ -684,7 +683,7 @@ function OfferCard({ id, activeType, offer, allOffers, existingItems, onSave, on
 
   const handleRemoveIncludedItem = (itemId: string) => {
     setDraft(prev => {
-      const next: Offer['includedItems'] = { ...prev.includedItems };
+      const next: Product['includedItems'] = { ...prev.includedItems };
       delete next[itemId];
       return { ...prev, includedItems: next };
     });
@@ -704,7 +703,7 @@ function OfferCard({ id, activeType, offer, allOffers, existingItems, onSave, on
       <div className="space-y-3 shrink-0">
         {entries.map(([pid, price], index) => (
           <Fragment key={pid}>
-            <OfferPriceRow
+            <ProductPriceRow
               key={pid}
               priceId={pid}
               price={price}
@@ -741,13 +740,13 @@ function OfferCard({ id, activeType, offer, allOffers, existingItems, onSave, on
 
   const itemsList = Object.entries(draft.includedItems);
 
-  const couldBeAddOnTo = allOffers.filter(o => o.offer.groupId === draft.groupId && o.id !== id);
-  const isAddOnTo = allOffers.filter(o => draft.isAddOnTo && o.id in draft.isAddOnTo);
+  const couldBeAddOnTo = allProducts.filter(o => o.product.catalogId === draft.catalogId && o.id !== id);
+  const isAddOnTo = allProducts.filter(o => draft.isAddOnTo && o.id in draft.isAddOnTo);
 
-  const OFFER_TOGGLE_OPTIONS = [{
+  const PRODUCT_TOGGLE_OPTIONS = [{
     key: 'serverOnly' as const,
     label: 'Server only',
-    description: "Restricts this offer to only be purchased from server-side calls",
+    description: "Restricts this product to only be purchased from server-side calls",
     active: !!draft.serverOnly,
     visible: true,
     icon: <Server size={16} />,
@@ -756,7 +755,7 @@ function OfferCard({ id, activeType, offer, allOffers, existingItems, onSave, on
   }, {
     key: 'stackable' as const,
     label: 'Stackable',
-    description: "Allow customers to purchase this offer multiple times",
+    description: "Allow customers to purchase this product multiple times",
     active: !!draft.stackable,
     visible: true,
     icon: <Layers size={16} />,
@@ -765,7 +764,7 @@ function OfferCard({ id, activeType, offer, allOffers, existingItems, onSave, on
   }, {
     key: 'addon' as const,
     label: 'Add-on',
-    description: "Make this offer an add-on. An add-on can be purchased along with the offer(s) it is an add-on to.",
+    description: "Make this product an add-on. An add-on can be purchased along with the product(s) it is an add-on to.",
     visible: draft.isAddOnTo !== false || couldBeAddOnTo.length > 0,
     active: draft.isAddOnTo !== false,
     icon: <Puzzle size={16} />,
@@ -776,22 +775,22 @@ function OfferCard({ id, activeType, offer, allOffers, existingItems, onSave, on
           {button}
         </DropdownMenuTrigger>
         <DropdownMenuContent>
-          {couldBeAddOnTo.map(offer => (
+          {couldBeAddOnTo.map(product => (
             <DropdownMenuCheckboxItem
-              checked={isAddOnTo.some(o => o.id === offer.id)}
-              key={offer.id}
+              checked={isAddOnTo.some(o => o.id === product.id)}
+              key={product.id}
               onCheckedChange={(checked) => setDraft(prev => {
                 const newIsAddOnTo = { ...prev.isAddOnTo || {} };
                 if (checked) {
-                  newIsAddOnTo[offer.id] = true;
+                  newIsAddOnTo[product.id] = true;
                 } else {
-                  delete newIsAddOnTo[offer.id];
+                  delete newIsAddOnTo[product.id];
                 }
                 return { ...prev, isAddOnTo: Object.keys(newIsAddOnTo).length > 0 ? newIsAddOnTo : false };
               })}
               className="cursor-pointer"
             >
-              {offer.offer.displayName} ({offer.id})
+              {product.product.displayName} ({product.id})
             </DropdownMenuCheckboxItem>
           ))}
         </DropdownMenuContent>
@@ -809,9 +808,9 @@ function OfferCard({ id, activeType, offer, allOffers, existingItems, onSave, on
           <div className="flex flex-col gap-2 w-full">
             <div className="flex items-center gap-2">
               <div className="grow flex flex-row justify-end">
-                <SimpleTooltip tooltip={saveDisabledReason} disabled={canSaveOffer}>
+                <SimpleTooltip tooltip={saveDisabledReason} disabled={canSaveProduct}>
                   <Button size="icon" variant="ghost" onClick={async () => {
-                    const trimmed = localOfferId.trim();
+                    const trimmed = localProductId.trim();
                     const validId = trimmed && /^[a-z0-9-]+$/.test(trimmed) ? trimmed : id;
                     if (validId !== id) {
                       await onSave(validId, draft);
@@ -821,7 +820,7 @@ function OfferCard({ id, activeType, offer, allOffers, existingItems, onSave, on
                     }
                     setIsEditing(false);
                     setEditingPriceId(undefined);
-                  }} disabled={!canSaveOffer}>
+                  }} disabled={!canSaveProduct}>
                     <Check className="text-green-500" />
                   </Button>
                 </SimpleTooltip>
@@ -834,7 +833,7 @@ function OfferCard({ id, activeType, offer, allOffers, existingItems, onSave, on
                       return;
                     }
                     setIsEditing(false);
-                    setDraft(offer);
+                    setDraft(product);
                     setEditingPriceId(undefined);
                   }}
                   aria-label="Cancel edit"
@@ -847,25 +846,25 @@ function OfferCard({ id, activeType, offer, allOffers, existingItems, onSave, on
         )}
         <div className="flex justify-center flex-col items-center w-full">
           <EditableInput
-            value={localOfferId}
-            onUpdate={async (value) => setLocalOfferId(value)}
+            value={localProductId}
+            onUpdate={async (value) => setLocalProductId(value)}
             readOnly={!isDraft || !isEditing}
-            placeholder={"Offer ID"}
+            placeholder={"Product ID"}
             inputClassName="text-xs font-mono text-center text-muted-foreground"
           />
           <EditableInput
             value={draft.displayName || ""}
             onUpdate={async (value) => setDraft(prev => ({ ...prev, displayName: value }))}
             readOnly={!isEditing}
-            placeholder={"Offer display name"}
+            placeholder={"Product display name"}
             inputClassName="text-lg font-bold text-center w-full"
           />
         </div>
         {!isEditing && (
           <div className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity">
-            <button className="h-7 w-7 inline-flex items-center justify-center rounded hover:bg-muted" aria-label="Edit offer" onClick={() => {
+            <button className="h-7 w-7 inline-flex items-center justify-center rounded hover:bg-muted" aria-label="Edit product" onClick={() => {
               setIsEditing(true);
-              setDraft(offer);
+              setDraft(product);
             }}>
               <PencilIcon className="h-4 w-4" />
             </button>
@@ -878,11 +877,11 @@ function OfferCard({ id, activeType, offer, allOffers, existingItems, onSave, on
               <DropdownMenuContent align="end" className="min-w-[160px]">
                 <DropdownMenuItem onClick={() => {
                   setIsEditing(true);
-                  setDraft(offer);
+                  setDraft(product);
                 }}>
                   Edit
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => { onDuplicate(offer); }}>
+                <DropdownMenuItem onClick={() => { onDuplicate(product); }}>
                   Duplicate
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
@@ -896,7 +895,7 @@ function OfferCard({ id, activeType, offer, allOffers, existingItems, onSave, on
       </div>
       {/* Toggles row */}
       <div className="px-4 pb-3 pt-1 flex flex-wrap gap-2 justify-center text-muted-foreground">
-        {OFFER_TOGGLE_OPTIONS.filter(b => b.visible !== false).filter(b => isEditing || b.active).map((b) => (
+        {PRODUCT_TOGGLE_OPTIONS.filter(b => b.visible !== false).filter(b => isEditing || b.active).map((b) => (
           <SimpleTooltip tooltip={b.description} key={b.key}>
             {(isEditing ? b.wrapButton : ((x: any) => x))(
               <button
@@ -908,7 +907,7 @@ function OfferCard({ id, activeType, offer, allOffers, existingItems, onSave, on
                 onClick={isEditing ? b.onToggle : undefined}
               >
                 {b.icon}
-                {b.key === "addon" && isAddOnTo.length > 0 ? `Add-on to ${isAddOnTo.map(o => o.offer.displayName).join(", ")}` : b.label}
+                {b.key === "addon" && isAddOnTo.length > 0 ? `Add-on to ${isAddOnTo.map(o => o.product.displayName).join(", ")}` : b.label}
               </button>
             )}
           </SimpleTooltip>
@@ -950,7 +949,7 @@ function OfferCard({ id, activeType, offer, allOffers, existingItems, onSave, on
               const itemMeta = existingItems.find(i => i.id === itemId);
               const itemLabel = itemMeta ? (itemMeta.displayName || itemMeta.id) : 'Select item';
               return (
-                <OfferItemRow
+                <ProductItemRow
                   key={itemId}
                   activeType={activeType}
                   itemId={itemId}
@@ -967,7 +966,7 @@ function OfferCard({ id, activeType, offer, allOffers, existingItems, onSave, on
                         toast({ title: "Item already included" });
                         return prev;
                       }
-                      const next: Offer['includedItems'] = { ...prev.includedItems };
+                      const next: Product['includedItems'] = { ...prev.includedItems };
                       const value = next[itemId];
                       delete next[itemId];
                       next[newItemId] = value;
@@ -991,7 +990,7 @@ function OfferCard({ id, activeType, offer, allOffers, existingItems, onSave, on
               onClick={() => {
                 const available = existingItems.find(i => !Object.prototype.hasOwnProperty.call(draft.includedItems, i.id));
                 const newItemId = available?.id || `__new_item__${Date.now().toString(36).slice(2, 8)}`;
-                const newItem: Offer['includedItems'][string] = { quantity: 1, repeat: 'never', expires: 'never' };
+                const newItem: Product['includedItems'][string] = { quantity: 1, repeat: 'never', expires: 'never' };
                 setDraft(prev => ({
                   ...prev,
                   includedItems: {
@@ -1009,7 +1008,7 @@ function OfferCard({ id, activeType, offer, allOffers, existingItems, onSave, on
         <div className="border-t p-4">
           <CodeBlock
             language="typescript"
-            content={`const checkoutUrl = await ${activeType === "user" ? "user" : "team"}.createCheckoutUrl({ offerId: "${id}" });\nwindow.open(checkoutUrl, "_blank");`}
+            content={`const checkoutUrl = await ${activeType === "user" ? "user" : "team"}.createCheckoutUrl({ productId: "${id}" });\nwindow.open(checkoutUrl, "_blank");`}
             title="Checkout"
             icon="code"
             compact
@@ -1020,7 +1019,7 @@ function OfferCard({ id, activeType, offer, allOffers, existingItems, onSave, on
       <ActionDialog
         open={showDeleteDialog}
         onOpenChange={setShowDeleteDialog}
-        title="Delete offer"
+        title="Delete product"
         danger
         okButton={{
           label: "Delete",
@@ -1031,38 +1030,38 @@ function OfferCard({ id, activeType, offer, allOffers, existingItems, onSave, on
         }}
         cancelButton
       >
-        Are you sure you want to delete this offer?
+        Are you sure you want to delete this product?
       </ActionDialog>
     </div >
   );
 }
 
 type CatalogViewProps = {
-  groupedOffers: Map<string | undefined, Array<{ id: string, offer: Offer }>>,
+  groupedProducts: Map<string | undefined, Array<{ id: string, product: Product }>>,
   groups: Record<string, { displayName?: string }>,
   existingItems: Array<{ id: string, displayName: string, customerType: string }>,
-  onSaveOffer: (id: string, offer: Offer) => Promise<void>,
-  onDeleteOffer: (id: string) => Promise<void>,
+  onSaveProduct: (id: string, product: Product) => Promise<void>,
+  onDeleteProduct: (id: string) => Promise<void>,
   onCreateNewItem: () => void,
-  onOpenOfferDetails: (offer: Offer) => void,
-  onSaveOfferWithGroup: (groupId: string, offerId: string, offer: Offer) => Promise<void>,
+  onOpenProductDetails: (product: Product) => void,
+  onSaveProductWithGroup: (catalogId: string, productId: string, product: Product) => Promise<void>,
 };
 
-function CatalogView({ groupedOffers, groups, existingItems, onSaveOffer, onDeleteOffer, onCreateNewItem, onOpenOfferDetails, onSaveOfferWithGroup }: CatalogViewProps) {
+function CatalogView({ groupedProducts, groups, existingItems, onSaveProduct, onDeleteProduct, onCreateNewItem, onOpenProductDetails, onSaveProductWithGroup }: CatalogViewProps) {
   const [activeType, setActiveType] = useState<'user' | 'team' | 'custom'>('user');
-  const [drafts, setDrafts] = useState<Array<{ key: string, groupId: string | undefined, offer: Offer }>>([]);
+  const [drafts, setDrafts] = useState<Array<{ key: string, catalogId: string | undefined, product: Product }>>([]);
   const [creatingGroupKey, setCreatingGroupKey] = useState<string | undefined>(undefined);
-  const [newGroupId, setNewGroupId] = useState("");
+  const [newCatalogId, setNewCatalogId] = useState("");
   const newGroupInputRef = useRef<HTMLInputElement | null>(null);
 
   const filtered = useMemo(() => {
-    const res = new Map<string | undefined, Array<{ id: string, offer: Offer }>>();
-    groupedOffers.forEach((offers, gid) => {
-      const f = offers.filter(o => o.offer.customerType === activeType);
+    const res = new Map<string | undefined, Array<{ id: string, product: Product }>>();
+    groupedProducts.forEach((products, gid) => {
+      const f = products.filter(o => o.product.customerType === activeType);
       if (f.length) res.set(gid, f);
     });
     return res;
-  }, [groupedOffers, activeType]);
+  }, [groupedProducts, activeType]);
 
   useEffect(() => {
     if (creatingGroupKey && newGroupInputRef.current) {
@@ -1078,29 +1077,29 @@ function CatalogView({ groupedOffers, groups, existingItems, onSaveOffer, onDele
     prevActiveTypeRef.current = activeType;
     if (!tabChanged) return;
     if (!creatingGroupKey) return;
-    setDrafts(prev => prev.filter(d => d.groupId !== creatingGroupKey));
+    setDrafts(prev => prev.filter(d => d.catalogId !== creatingGroupKey));
     setCreatingGroupKey(undefined);
-    setNewGroupId("");
+    setNewCatalogId("");
   }, [activeType, creatingGroupKey]);
 
 
   const usedIds = useMemo(() => {
     const all: string[] = [];
-    groupedOffers.forEach(arr => arr.forEach(({ id }) => all.push(id)));
+    groupedProducts.forEach(arr => arr.forEach(({ id }) => all.push(id)));
     drafts.forEach(d => all.push(d.key));
     return new Set(all);
-  }, [groupedOffers, drafts]);
+  }, [groupedProducts, drafts]);
 
-  const generateOfferId = (base: string) => {
+  const generateProductId = (base: string) => {
     let id = base;
     let i = 2;
     while (usedIds.has(id)) id = `${base}-${i++}`;
     return id;
   };
 
-  const groupIdsToRender = useMemo(() => {
+  const catalogIdsToRender = useMemo(() => {
     const s = new Set<string | undefined>();
-    filtered.forEach((_offers, gid) => s.add(gid));
+    filtered.forEach((_products, gid) => s.add(gid));
     const arr = Array.from(s.values());
     const withoutUndefined = arr.filter((gid): gid is string => gid !== undefined);
     const ordered: Array<string | undefined> = [...withoutUndefined, undefined];
@@ -1126,18 +1125,18 @@ function CatalogView({ groupedOffers, groups, existingItems, onSaveOffer, onDele
         </div>
       </div>
 
-      {groupIdsToRender.map((groupId) => {
-        const isNewGroupPlaceholder = !!creatingGroupKey && groupId === creatingGroupKey;
-        const offers = isNewGroupPlaceholder ? [] : (filtered.get(groupId) || []);
-        const groupName = !isNewGroupPlaceholder ? (groupId ? ((groups[groupId].displayName || groupId)) : 'No catalog') : '';
+      {catalogIdsToRender.map((catalogId) => {
+        const isNewGroupPlaceholder = !!creatingGroupKey && catalogId === creatingGroupKey;
+        const products = isNewGroupPlaceholder ? [] : (filtered.get(catalogId) || []);
+        const groupName = !isNewGroupPlaceholder ? (catalogId ? ((groups[catalogId].displayName || catalogId)) : 'No catalog') : '';
         return (
-          <div key={groupId || 'ungrouped'}>
+          <div key={catalogId || 'ungrouped'}>
             {isNewGroupPlaceholder ? (
               <div className="mb-3 flex items-center gap-2">
                 <Input
                   ref={newGroupInputRef}
-                  value={newGroupId}
-                  onChange={(e) => setNewGroupId(e.target.value)}
+                  value={newCatalogId}
+                  onChange={(e) => setNewCatalogId(e.target.value)}
                   placeholder="catalog-id"
                   className="w-56"
                 />
@@ -1145,8 +1144,8 @@ function CatalogView({ groupedOffers, groups, existingItems, onSaveOffer, onDele
                   className="h-8 w-8 inline-flex items-center justify-center rounded hover:bg-muted"
                   onClick={() => {
                     setCreatingGroupKey(undefined);
-                    setNewGroupId("");
-                    setDrafts(prev => prev.filter(d => d.groupId !== groupId));
+                    setNewCatalogId("");
+                    setDrafts(prev => prev.filter(d => d.catalogId !== catalogId));
                   }}
                   aria-label="Cancel new catalog"
                 >
@@ -1159,41 +1158,41 @@ function CatalogView({ groupedOffers, groups, existingItems, onSaveOffer, onDele
             <div className="relative rounded-xl bg-slate-100 dark:bg-muted border-slate-100 dark:border-muted border-2">
               <div className="flex gap-4 justify-start overflow-x-auto p-4 min-h-20 pr-16">
                 <div className="flex max-w-max gap-4 items-start">
-                  {offers.map(({ id, offer }) => (
-                    <OfferCard
+                  {products.map(({ id, product }) => (
+                    <ProductCard
                       key={id}
                       id={id}
                       activeType={activeType}
-                      offer={offer}
-                      allOffers={offers}
+                      product={product}
+                      allProducts={products}
                       existingItems={existingItems}
-                      onSave={onSaveOffer}
-                      onDelete={onDeleteOffer}
-                      onDuplicate={(srcOffer) => {
-                        const key = generateOfferId("offer");
-                        const duplicated: Offer = {
-                          ...srcOffer,
-                          displayName: `${srcOffer.displayName || id} Copy`,
+                      onSave={onSaveProduct}
+                      onDelete={onDeleteProduct}
+                      onDuplicate={(srcProduct) => {
+                        const key = generateProductId("product");
+                        const duplicated: Product = {
+                          ...srcProduct,
+                          displayName: `${srcProduct.displayName || id} Copy`,
                         };
-                        setDrafts(prev => [...prev, { key, groupId, offer: duplicated }]);
+                        setDrafts(prev => [...prev, { key, catalogId, product: duplicated }]);
                       }}
                       onCreateNewItem={onCreateNewItem}
-                      onOpenDetails={(o) => onOpenOfferDetails(o)}
+                      onOpenDetails={(o) => onOpenProductDetails(o)}
                     />
                   ))}
-                  {drafts.filter(d => d.groupId === groupId && d.offer.customerType === activeType).map((d) => (
-                    <OfferCard
+                  {drafts.filter(d => d.catalogId === catalogId && d.product.customerType === activeType).map((d) => (
+                    <ProductCard
                       key={d.key}
                       id={d.key}
                       activeType={activeType}
-                      offer={d.offer}
-                      allOffers={offers}
+                      product={d.product}
+                      allProducts={products}
                       existingItems={existingItems}
                       isDraft
-                      onSave={async (_ignoredId, offer) => {
-                        const newId = generateOfferId('offer');
+                      onSave={async (_ignoredId, product) => {
+                        const newId = generateProductId('product');
                         if (isNewGroupPlaceholder) {
-                          const id = newGroupId.trim();
+                          const id = newCatalogId.trim();
                           if (!id) {
                             alert("Catalog ID is required");
                             return;
@@ -1206,34 +1205,34 @@ function CatalogView({ groupedOffers, groups, existingItems, onSaveOffer, onDele
                             alert("Catalog ID already exists");
                             return;
                           }
-                          const offerWithGroup: Offer = { ...offer, groupId: id };
-                          await onSaveOfferWithGroup(id, newId, offerWithGroup);
+                          const productWithGroup: Product = { ...product, catalogId: id };
+                          await onSaveProductWithGroup(id, newId, productWithGroup);
                           setCreatingGroupKey(undefined);
-                          setNewGroupId("");
+                          setNewCatalogId("");
                           setDrafts(prev => prev.filter(x => x.key !== d.key));
                           return;
                         }
-                        await onSaveOffer(newId, offer);
+                        await onSaveProduct(newId, product);
                         setDrafts(prev => prev.filter(x => x.key !== d.key));
                       }}
                       onDelete={async () => {
                         setDrafts(prev => prev.filter(x => x.key !== d.key));
                         if (isNewGroupPlaceholder) {
                           setCreatingGroupKey(undefined);
-                          setNewGroupId("");
+                          setNewCatalogId("");
                         }
                       }}
                       onDuplicate={() => {
                         const cloneKey = `${d.key}-copy`;
-                        setDrafts(prev => ([...prev, { key: cloneKey, groupId: d.groupId, offer: { ...d.offer, displayName: `${d.offer.displayName} Copy` } }]));
+                        setDrafts(prev => ([...prev, { key: cloneKey, catalogId: d.catalogId, product: { ...d.product, displayName: `${d.product.displayName} Copy` } }]));
                       }}
                       onCreateNewItem={onCreateNewItem}
-                      onOpenDetails={(o) => onOpenOfferDetails(o)}
+                      onOpenDetails={(o) => onOpenProductDetails(o)}
                       onCancelDraft={() => {
                         setDrafts(prev => prev.filter(x => x.key !== d.key));
                         if (isNewGroupPlaceholder) {
                           setCreatingGroupKey(undefined);
-                          setNewGroupId("");
+                          setNewCatalogId("");
                         }
                       }}
                     />
@@ -1245,11 +1244,11 @@ function CatalogView({ groupedOffers, groups, existingItems, onSaveOffer, onDele
                           variant="outline"
                           className="h-10 w-10 rounded-full p-0"
                           onClick={() => {
-                            const key = generateOfferId("offer");
-                            const newOffer: Offer = {
-                              displayName: 'New Offer',
+                            const key = generateProductId("product");
+                            const newProduct: Product = {
+                              displayName: 'New Product',
                               customerType: activeType,
-                              groupId: groupId || undefined,
+                              catalogId: catalogId || undefined,
                               isAddOnTo: false,
                               stackable: false,
                               prices: {},
@@ -1257,12 +1256,12 @@ function CatalogView({ groupedOffers, groups, existingItems, onSaveOffer, onDele
                               serverOnly: false,
                               freeTrial: undefined,
                             };
-                            setDrafts(prev => [...prev, { key, groupId, offer: newOffer }]);
+                            setDrafts(prev => [...prev, { key, catalogId, product: newProduct }]);
                           }}
                         >
                           <Plus className="h-8 w-8" />
                         </Button>
-                        Create offer
+                        Create product
                       </div>
                     </div>
                   )}
@@ -1282,12 +1281,12 @@ function CatalogView({ groupedOffers, groups, existingItems, onSaveOffer, onDele
             onClick={() => {
               const tempKey = `__new_catalog__${Date.now().toString(36).slice(2, 8)}`;
               setCreatingGroupKey(tempKey);
-              setNewGroupId("");
-              const draftKey = generateOfferId("offer");
-              const newOffer: Offer = {
-                displayName: 'New Offer',
+              setNewCatalogId("");
+              const draftKey = generateProductId("product");
+              const newProduct: Product = {
+                displayName: 'New Product',
                 customerType: activeType,
-                groupId: tempKey,
+                catalogId: tempKey,
                 isAddOnTo: false,
                 stackable: false,
                 prices: {},
@@ -1295,7 +1294,7 @@ function CatalogView({ groupedOffers, groups, existingItems, onSaveOffer, onDele
                 serverOnly: false,
                 freeTrial: undefined,
               };
-              setDrafts(prev => [...prev, { key: draftKey, groupId: tempKey, offer: newOffer }]);
+              setDrafts(prev => [...prev, { key: draftKey, catalogId: tempKey, product: newProduct }]);
             }}
           >
             <Plus className="h-8 w-8" />
@@ -1308,7 +1307,7 @@ function CatalogView({ groupedOffers, groups, existingItems, onSaveOffer, onDele
   );
 }
 
-function WelcomeScreen({ onCreateOffer }: { onCreateOffer: () => void }) {
+function WelcomeScreen({ onCreateProduct }: { onCreateProduct: () => void }) {
   return (
     <div className="flex flex-col items-center justify-center h-full px-4 py-12 max-w-3xl mx-auto">
       <IllustratedInfo
@@ -1346,23 +1345,23 @@ function WelcomeScreen({ onCreateOffer }: { onCreateOffer: () => void }) {
         )}
         title="Welcome to Payments!"
         description={[
-          <>Stack Auth Payments is built on two primitives: offers and items.</>,
-          <>Offers are what customers buy — the columns of your pricing table. Each offer has one or more prices and may or may not include items.</>,
+          <>Stack Auth Payments is built on two primitives: products and items.</>,
+          <>Products are what customers buy — the columns of your pricing table. Each product has one or more prices and may or may not include items.</>,
           <>Items are what customers receive — the rows of your pricing table. A user can hold multiple of the same item. Items are powerful; they can unlock feature access, raise limits, or meter consumption for usage-based billing.</>,
-          <>Create your first offer to get started!</>,
+          <>Create your first product to get started!</>,
         ]}
       />
-      <Button onClick={onCreateOffer}>
+      <Button onClick={onCreateProduct}>
         <Plus className="h-4 w-4 mr-2" />
-        Create Your First Offer
+        Create Your First Product
       </Button>
     </div>
   );
 }
 
 export default function PageClient({ onViewChange }: { onViewChange: (view: "list" | "catalogs") => void }) {
-  const [showOfferDialog, setShowOfferDialog] = useState(false);
-  const [editingOffer, setEditingOffer] = useState<Offer | null>(null);
+  const [showProductDialog, setShowProductDialog] = useState(false);
+  const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [showItemDialog, setShowItemDialog] = useState(false);
   const [editingItem, setEditingItem] = useState<{ id: string, displayName: string, customerType: 'user' | 'team' | 'custom' } | null>(null);
   const stackAdminApp = useAdminApp();
@@ -1370,43 +1369,43 @@ export default function PageClient({ onViewChange }: { onViewChange: (view: "lis
   const config = project.useConfig();
   const [shouldUseDummyData, setShouldUseDummyData] = useState(false);
   const switchId = useId();
-  const paymentsConfig: CompleteConfig['payments'] = shouldUseDummyData ? (DUMMY_PAYMENTS_CONFIG as CompleteConfig['payments']) : config.payments;
+  const paymentsConfig: CompleteConfig['payments'] = config.payments;
 
 
-  // Group offers by groupId and sort by customer type priority
-  const groupedOffers = useMemo(() => {
-    const groups = new Map<string | undefined, Array<{ id: string, offer: Offer }>>();
+  // Group products by catalogId and sort by customer type priority
+  const groupedProducts = useMemo(() => {
+    const groups = new Map<string | undefined, Array<{ id: string, product: Product }>>();
 
-    // Group offers
-    for (const [id, offer] of typedEntries(paymentsConfig.offers)) {
-      const groupId = offer.groupId;
-      if (!groups.has(groupId)) {
-        groups.set(groupId, []);
+    // Group products
+    for (const [id, product] of typedEntries(paymentsConfig.products)) {
+      const catalogId = product.catalogId;
+      if (!groups.has(catalogId)) {
+        groups.set(catalogId, []);
       }
-      groups.get(groupId)!.push({ id, offer });
+      groups.get(catalogId)!.push({ id, product });
     }
 
-    // Sort offers within each group by customer type, then by ID
+    // Sort products within each group by customer type, then by ID
     const customerTypePriority = { user: 1, team: 2, custom: 3 };
-    groups.forEach((offers) => {
-      offers.sort((a, b) => {
-        const priorityA = customerTypePriority[a.offer.customerType as keyof typeof customerTypePriority] || 4;
-        const priorityB = customerTypePriority[b.offer.customerType as keyof typeof customerTypePriority] || 4;
+    groups.forEach((products) => {
+      products.sort((a, b) => {
+        const priorityA = customerTypePriority[a.product.customerType as keyof typeof customerTypePriority] || 4;
+        const priorityB = customerTypePriority[b.product.customerType as keyof typeof customerTypePriority] || 4;
         if (priorityA !== priorityB) {
           return priorityA - priorityB;
         }
         // If same customer type, sort addons last
-        if (a.offer.isAddOnTo !== b.offer.isAddOnTo) {
-          return a.offer.isAddOnTo ? 1 : -1;
+        if (a.product.isAddOnTo !== b.product.isAddOnTo) {
+          return a.product.isAddOnTo ? 1 : -1;
         }
         // If same customer type and addons, sort by lowest price
-        const getPricePriority = (offer: Offer) => {
-          if (offer.prices === 'include-by-default') return 0;
-          if (typeof offer.prices !== 'object') return 0;
-          return Math.min(...Object.values(offer.prices).map(price => +(price.USD ?? Infinity)));
+        const getPricePriority = (product: Product) => {
+          if (product.prices === 'include-by-default') return 0;
+          if (typeof product.prices !== 'object') return 0;
+          return Math.min(...Object.values(product.prices).map(price => +(price.USD ?? Infinity)));
         };
-        const priceA = getPricePriority(a.offer);
-        const priceB = getPricePriority(b.offer);
+        const priceA = getPricePriority(a.product);
+        const priceB = getPricePriority(b.product);
         if (priceA !== priceB) {
           return priceA - priceB;
         }
@@ -1416,18 +1415,18 @@ export default function PageClient({ onViewChange }: { onViewChange: (view: "lis
     });
 
     // Sort groups by their predominant customer type
-    const sortedGroups = new Map<string | undefined, Array<{ id: string, offer: Offer }>>();
+    const sortedGroups = new Map<string | undefined, Array<{ id: string, product: Product }>>();
 
     // Helper to get group priority
-    const getGroupPriority = (groupId: string | undefined) => {
-      if (!groupId) return 999; // Ungrouped always last
+    const getGroupPriority = (catalogId: string | undefined) => {
+      if (!catalogId) return 999; // Ungrouped always last
 
-      const offers = groups.get(groupId) || [];
-      if (offers.length === 0) return 999;
+      const products = groups.get(catalogId) || [];
+      if (products.length === 0) return 999;
 
       // Get the most common customer type in the group
-      const typeCounts = offers.reduce((acc, { offer }) => {
-        const type = offer.customerType;
+      const typeCounts = products.reduce((acc, { product }) => {
+        const type = product.customerType;
         acc[type] = (acc[type] || 0) + 1;
         return acc;
       }, {} as Record<string, number>);
@@ -1447,20 +1446,20 @@ export default function PageClient({ onViewChange }: { onViewChange: (view: "lis
     });
 
     // Rebuild map in sorted order
-    sortedEntries.forEach(([groupId, offers]) => {
-      sortedGroups.set(groupId, offers);
+    sortedEntries.forEach(([catalogId, products]) => {
+      sortedGroups.set(catalogId, products);
     });
 
     return sortedGroups;
   }, [paymentsConfig]);
 
 
-  // Check if there are no offers and no items
-  const hasNoOffersAndNoItems = Object.keys(paymentsConfig.offers).length === 0 && Object.keys(paymentsConfig.items).length === 0;
+  // Check if there are no products and no items
+  const hasNoProductsAndNoItems = Object.keys(paymentsConfig.products).length === 0 && Object.keys(paymentsConfig.items).length === 0;
 
-  // Handler for create offer button
-  const handleCreateOffer = () => {
-    setShowOfferDialog(true);
+  // Handler for create product button
+  const handleCreateProduct = () => {
+    setShowProductDialog(true);
   };
 
   // Handler for create item button
@@ -1468,11 +1467,11 @@ export default function PageClient({ onViewChange }: { onViewChange: (view: "lis
     setShowItemDialog(true);
   };
 
-  // Handler for saving offer
-  const handleSaveOffer = async (offerId: string, offer: Offer) => {
-    await project.updateConfig({ [`payments.offers.${offerId}`]: offer });
-    setShowOfferDialog(false);
-    toast({ title: editingOffer ? "Offer updated" : "Offer created" });
+  // Handler for saving product
+  const handleSaveProduct = async (productId: string, product: Product) => {
+    await project.updateConfig({ [`payments.products.${productId}`]: product });
+    setShowProductDialog(false);
+    toast({ title: editingProduct ? "Product updated" : "Product created" });
   };
 
   // Handler for saving item
@@ -1483,12 +1482,12 @@ export default function PageClient({ onViewChange }: { onViewChange: (view: "lis
     toast({ title: editingItem ? "Item updated" : "Item created" });
   };
 
-  // Prepare data for offer dialog - update when items change
-  const existingOffersList = typedEntries(paymentsConfig.offers).map(([id, offer]) => ({
+  // Prepare data for product dialog - update when items change
+  const existingProductsList = typedEntries(paymentsConfig.products).map(([id, product]) => ({
     id,
-    displayName: offer.displayName,
-    groupId: offer.groupId,
-    customerType: offer.customerType
+    displayName: product.displayName,
+    catalogId: product.catalogId,
+    customerType: product.customerType
   }));
 
   const existingItemsList = typedEntries(paymentsConfig.items).map(([id, item]) => ({
@@ -1497,21 +1496,21 @@ export default function PageClient({ onViewChange }: { onViewChange: (view: "lis
     customerType: item.customerType
   }));
 
-  const handleInlineSaveOffer = async (offerId: string, offer: Offer) => {
-    await project.updateConfig({ [`payments.offers.${offerId}`]: offer });
-    toast({ title: "Offer updated" });
+  const handleInlineSaveProduct = async (productId: string, product: Product) => {
+    await project.updateConfig({ [`payments.products.${productId}`]: product });
+    toast({ title: "Product updated" });
   };
 
-  const handleDeleteOffer = async (offerId: string) => {
-    await project.updateConfig({ [`payments.offers.${offerId}`]: null });
-    toast({ title: "Offer deleted" });
+  const handleDeleteProduct = async (productId: string) => {
+    await project.updateConfig({ [`payments.products.${productId}`]: null });
+    toast({ title: "Product deleted" });
   };
 
 
-  // If no offers and items, show welcome screen instead of everything
+  // If no products and items, show welcome screen instead of everything
   const innerContent = (
     <PageLayout
-      title='Offer'
+      title='Products'
       actions={
         <div className="flex items-center gap-2 self-center">
           <Label htmlFor={switchId}>Pricing table</Label>
@@ -1522,22 +1521,22 @@ export default function PageClient({ onViewChange }: { onViewChange: (view: "lis
     >
       <div className="flex-1">
         <CatalogView
-          groupedOffers={groupedOffers}
-          groups={paymentsConfig.groups}
+          groupedProducts={groupedProducts}
+          groups={paymentsConfig.catalogs}
           existingItems={existingItemsList}
-          onSaveOffer={handleInlineSaveOffer}
-          onDeleteOffer={handleDeleteOffer}
+          onSaveProduct={handleInlineSaveProduct}
+          onDeleteProduct={handleDeleteProduct}
           onCreateNewItem={handleCreateItem}
-          onOpenOfferDetails={(offer) => {
-            setEditingOffer(offer);
-            setShowOfferDialog(true);
+          onOpenProductDetails={(product) => {
+            setEditingProduct(product);
+            setShowProductDialog(true);
           }}
-          onSaveOfferWithGroup={async (groupId, offerId, offer) => {
+          onSaveProductWithGroup={async (catalogId, productId, product) => {
             await project.updateConfig({
-              [`payments.groups.${groupId}`]: {},
-              [`payments.offers.${offerId}`]: offer,
+              [`payments.catalogs.${catalogId}`]: {},
+              [`payments.products.${productId}`]: product,
             });
-            toast({ title: "Offer created" });
+            toast({ title: "Product created" });
           }}
         />
       </div>
@@ -1548,19 +1547,19 @@ export default function PageClient({ onViewChange }: { onViewChange: (view: "lis
     <>
       {innerContent}
 
-      {/* Offer Dialog */}
-      <OfferDialog
-        open={showOfferDialog}
+      {/* Product Dialog */}
+      <ProductDialog
+        open={showProductDialog}
         onOpenChange={(open) => {
-          setShowOfferDialog(open);
+          setShowProductDialog(open);
           if (!open) {
-            setEditingOffer(null);
+            setEditingProduct(null);
           }
         }}
-        onSave={async (offerId, offer) => await handleSaveOffer(offerId, offer)}
-        editingOffer={editingOffer ?? undefined}
-        existingOffers={existingOffersList}
-        existingGroups={Object.fromEntries(Object.entries(paymentsConfig.groups).map(([id, g]) => [id, { displayName: g.displayName || id }]))}
+        onSave={async (productId, product) => await handleSaveProduct(productId, product)}
+        editingProduct={editingProduct ?? undefined}
+        existingProducts={existingProductsList}
+        existingCatalogs={Object.fromEntries(Object.entries(paymentsConfig.catalogs).map(([id, g]) => [id, { displayName: g.displayName || id }]))}
         existingItems={existingItemsList}
         onCreateNewItem={handleCreateItem}
       />

@@ -1,6 +1,7 @@
-import { getRenderedEnvironmentConfigQuery, overrideEnvironmentConfigOverride, validateEnvironmentConfigOverride } from "@/lib/config";
+import { getRenderedEnvironmentConfigQuery, overrideEnvironmentConfigOverride } from "@/lib/config";
 import { globalPrismaClient, rawQuery } from "@/prisma-client";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
+import { environmentConfigSchema, getConfigOverrideErrors, migrateConfigOverride } from "@stackframe/stack-shared/dist/config/schema";
 import { configOverrideCrud } from "@stackframe/stack-shared/dist/interface/crud/config";
 import { yupObject } from "@stackframe/stack-shared/dist/schema-fields";
 import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
@@ -20,14 +21,10 @@ export const configOverridesCrudHandlers = createLazyProxy(() => createCrudHandl
         throw e;
       }
 
-      const validationResult = await validateEnvironmentConfigOverride({
-        environmentConfigOverride: parsedConfig,
-        branchId: auth.tenancy.branchId,
-        projectId: auth.tenancy.project.id,
-      });
-
-      if (validationResult.status === "error") {
-        throw new StatusError(StatusError.BadRequest, validationResult.error);
+      // TODO instead of doing this check here, we should change overrideEnvironmentConfigOverride to return the errors from its ensureNoConfigOverrideErrors call
+      const overrideError = await getConfigOverrideErrors(environmentConfigSchema, migrateConfigOverride("environment", parsedConfig));
+      if (overrideError.status === "error") {
+        throw new StatusError(StatusError.BadRequest, overrideError.error);
       }
 
       await overrideEnvironmentConfigOverride({

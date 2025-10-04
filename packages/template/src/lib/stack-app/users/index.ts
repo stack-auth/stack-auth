@@ -265,6 +265,7 @@ export type UserExtra = {
 export type InternalUserExtra =
   & {
     createProject(newProject: AdminProjectCreateOptions): Promise<AdminOwnedProject>,
+    transferProject(projectIdToTransfer: string, newTeamId: string): Promise<void>,
   }
   & AsyncStoreProperty<"ownedProjects", [], AdminOwnedProject[], true>
 

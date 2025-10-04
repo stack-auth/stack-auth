@@ -1,20 +1,20 @@
 'use client';
 import { useAdminApp } from "@/app/(main)/(protected)/projects/[projectId]/use-admin-app";
-import { OfferDialog } from "@/components/payments/offer-dialog";
+import { ProductDialog } from "@/components/payments/product-dialog";
 import { branchPaymentsSchema } from "@stackframe/stack-shared/dist/config/schema";
 import { ActionCell, ActionDialog, DataTable, DataTableColumnHeader, TextCell, toast } from "@stackframe/stack-ui";
 import { ColumnDef } from "@tanstack/react-table";
 import { useState } from "react";
 import * as yup from "yup";
 
-type PaymentOffer = {
+type PaymentProduct = {
   id: string,
-} & yup.InferType<typeof branchPaymentsSchema>["offers"][string];
+} & yup.InferType<typeof branchPaymentsSchema>["products"][string];
 
-const columns: ColumnDef<PaymentOffer>[] = [
+const columns: ColumnDef<PaymentProduct>[] = [
   {
     accessorKey: "id",
-    header: ({ column }) => <DataTableColumnHeader column={column} columnTitle="Offer ID" />,
+    header: ({ column }) => <DataTableColumnHeader column={column} columnTitle="Product ID" />,
     cell: ({ row }) => <TextCell><span className="font-mono text-sm">{row.original.id}</span></TextCell>,
     enableSorting: false,
   },
@@ -44,14 +44,14 @@ const columns: ColumnDef<PaymentOffer>[] = [
   },
   {
     id: "actions",
-    cell: ({ row }) => <ActionsCell offer={row.original} />,
+    cell: ({ row }) => <ActionsCell product={row.original} />,
   }
 ];
 
-export function PaymentOfferTable({ offers }: { offers: Record<string, yup.InferType<typeof branchPaymentsSchema>["offers"][string]> }) {
-  const data: PaymentOffer[] = Object.entries(offers).map(([id, offer]) => ({
+export function PaymentProductTable({ products }: { products: Record<string, yup.InferType<typeof branchPaymentsSchema>["products"][string]> }) {
+  const data: PaymentProduct[] = Object.entries(products).map(([id, product]) => ({
     id,
-    ...offer,
+    ...product,
   }));
 
   return <DataTable
@@ -63,7 +63,7 @@ export function PaymentOfferTable({ offers }: { offers: Record<string, yup.Infer
   />;
 }
 
-function ActionsCell({ offer }: { offer: PaymentOffer }) {
+function ActionsCell({ product }: { product: PaymentProduct }) {
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
   const stackAdminApp = useAdminApp();
@@ -85,25 +85,25 @@ function ActionsCell({ offer }: { offer: PaymentOffer }) {
           },
         ]}
       />
-      <OfferDialog
+      <ProductDialog
         open={isEditOpen}
         onOpenChange={setIsEditOpen}
         project={project}
         mode="edit"
-        initial={{ id: offer.id, value: offer }}
+        initial={{ id: product.id, value: product }}
       />
       <ActionDialog
         open={isDeleteOpen}
         onOpenChange={setIsDeleteOpen}
-        title="Delete Offer"
-        description="This action will permanently delete this offer."
+        title="Delete Product"
+        description="This action will permanently delete this product."
         cancelButton
         danger
         okButton={{
           label: "Delete",
           onClick: async () => {
-            await project.updateConfig({ [`payments.offers.${offer.id}`]: null });
-            toast({ title: "Offer deleted" });
+            await project.updateConfig({ [`payments.products.${product.id}`]: null });
+            toast({ title: "Product deleted" });
           },
         }}
       />

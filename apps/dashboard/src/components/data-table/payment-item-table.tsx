@@ -105,11 +105,11 @@ function ActionsCell({ item }: { item: PaymentItem }) {
           label: "Delete",
           onClick: async () => {
             const config = await project.getConfig();
-            for (const [offerId, offer] of Object.entries(config.payments.offers)) {
-              if (has(offer.includedItems, item.id)) {
+            for (const [productId, product] of Object.entries(config.payments.products)) {
+              if (has(product.includedItems, item.id)) {
                 toast({
-                  title: "Item is included in offer",
-                  description: `Please remove it from the offer "${offerId}" before deleting.`,
+                  title: "Item is included in product",
+                  description: `Please remove it from the product "${productId}" before deleting.`,
                   variant: "destructive",
                 });
                 return "prevent-close";

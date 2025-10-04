@@ -3,25 +3,25 @@
 import { Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, Input, Label, SimpleTooltip, Typography } from "@stackframe/stack-ui";
 import { useState } from "react";
 
-type CreateGroupDialogProps = {
+type CreateCatalogDialogProps = {
   open: boolean,
   onOpenChange: (open: boolean) => void,
-  onCreate: (group: { id: string, displayName: string }) => void,
+  onCreate: (catalog: { id: string, displayName: string }) => void,
 };
 
-export function CreateGroupDialog({ open, onOpenChange, onCreate }: CreateGroupDialogProps) {
-  const [groupId, setGroupId] = useState("");
+export function CreateCatalogDialog({ open, onOpenChange, onCreate }: CreateCatalogDialogProps) {
+  const [catalogId, setCatalogId] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [errors, setErrors] = useState<{ id?: string, displayName?: string }>({});
 
   const validateAndCreate = () => {
     const newErrors: { id?: string, displayName?: string } = {};
 
-    // Validate group ID
-    if (!groupId.trim()) {
-      newErrors.id = "Group ID is required";
-    } else if (!/^[a-z0-9-]+$/.test(groupId)) {
-      newErrors.id = "Group ID must contain only lowercase letters, numbers, and hyphens";
+    // Validate catalog ID
+    if (!catalogId.trim()) {
+      newErrors.id = "Catalog ID is required";
+    } else if (!/^[a-z0-9-]+$/.test(catalogId)) {
+      newErrors.id = "Catalog ID must contain only lowercase letters, numbers, and hyphens";
     }
 
     // Validate display name
@@ -34,17 +34,17 @@ export function CreateGroupDialog({ open, onOpenChange, onCreate }: CreateGroupD
       return;
     }
 
-    onCreate({ id: groupId.trim(), displayName: displayName.trim() });
+    onCreate({ id: catalogId.trim(), displayName: displayName.trim() });
 
     // Reset form
-    setGroupId("");
+    setCatalogId("");
     setDisplayName("");
     setErrors({});
     onOpenChange(false);
   };
 
   const handleClose = () => {
-    setGroupId("");
+    setCatalogId("");
     setDisplayName("");
     setErrors({});
     onOpenChange(false);
@@ -54,24 +54,24 @@ export function CreateGroupDialog({ open, onOpenChange, onCreate }: CreateGroupD
     <Dialog open={open} onOpenChange={handleClose}>
       <DialogContent className="sm:max-w-[425px]">
         <DialogHeader>
-          <DialogTitle>Create Offer Group</DialogTitle>
+          <DialogTitle>Create Product Catalog</DialogTitle>
           <DialogDescription>
-            Offer groups allow you to organize related offers. Customers can only have one active offer from each group at a time (except for add-ons).
+            Product catalogs allow you to organize related products. Customers can only have one active product from each catalog at a time (except for add-ons).
           </DialogDescription>
         </DialogHeader>
 
         <div className="grid gap-4 py-4">
           <div className="grid gap-2">
-            <Label htmlFor="group-id">
-              <SimpleTooltip tooltip="This is the unique identifier for your group, used in code">
-                Group ID
+            <Label htmlFor="catalog-id">
+              <SimpleTooltip tooltip="This is the unique identifier for your catalog, used in code">
+                Catalog ID
               </SimpleTooltip>
             </Label>
             <Input
-              id="group-id"
-              value={groupId}
+              id="catalog-id"
+              value={catalogId}
               onChange={(e) => {
-                setGroupId(e.target.value);
+                setCatalogId(e.target.value);
                 setErrors(prev => ({ ...prev, id: undefined }));
               }}
               placeholder="e.g., pricing-tiers"
@@ -86,7 +86,7 @@ export function CreateGroupDialog({ open, onOpenChange, onCreate }: CreateGroupD
 
           <div className="grid gap-2">
             <Label htmlFor="display-name">
-              <SimpleTooltip tooltip="This is how the group will be displayed to users">
+              <SimpleTooltip tooltip="This is how the catalog will be displayed to users">
                 Display Name
               </SimpleTooltip>
             </Label>
@@ -113,7 +113,7 @@ export function CreateGroupDialog({ open, onOpenChange, onCreate }: CreateGroupD
             Cancel
           </Button>
           <Button onClick={validateAndCreate}>
-            Create Group
+            Create Catalog
           </Button>
         </DialogFooter>
       </DialogContent>

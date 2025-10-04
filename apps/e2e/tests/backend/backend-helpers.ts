@@ -1449,9 +1449,9 @@ export namespace Payments {
     await Payments.setup();
     await Project.updateConfig({
       payments: {
-        offers: {
-          "test-offer": {
-            displayName: "Test Offer",
+        products: {
+          "test-product": {
+            displayName: "Test Product",
             customerType: "user",
             serverOnly: false,
             stackable: false,
@@ -1474,7 +1474,7 @@ export namespace Payments {
       body: {
         customer_type: "user",
         customer_id: userId,
-        offer_id: "test-offer",
+        product_id: "test-product",
       },
     });
     expect(response.status).toBe(200);

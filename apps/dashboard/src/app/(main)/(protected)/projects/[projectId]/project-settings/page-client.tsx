@@ -41,7 +41,7 @@ export default function PageClient() {
 
     setIsTransferring(true);
     try {
-      await project.transfer(user, selectedTeamId);
+      await user.transferProject(project.id, selectedTeamId);
 
       // Reload the page to reflect changes
       // we don't actually need this, but it's a nicer UX as it clearly indicates to the user that a "big" change was made

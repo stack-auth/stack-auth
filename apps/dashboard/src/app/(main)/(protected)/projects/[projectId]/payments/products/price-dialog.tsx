@@ -9,9 +9,9 @@ const SUPPORTED_CURRENCIES = [
   { code: 'USD', symbol: '$', name: 'US Dollar' }
 ];
 
-type Offer = CompleteConfig['payments']['offers'][string];
-type IncludedItem = Offer['includedItems'][string];
-type Price = (Offer['prices'] & object)[string];
+type Product = CompleteConfig['payments']['products'][string];
+type IncludedItem = Product['includedItems'][string];
+type Price = (Product['prices'] & object)[string];
 
 type PriceDialogProps = {
   open: boolean,
@@ -147,7 +147,7 @@ export function PriceDialog({
         <DialogHeader>
           <DialogTitle>{editingPrice ? "Edit Price" : "Add Price"}</DialogTitle>
           <DialogDescription>
-            Configure the pricing for this offer. You can create one-time or recurring prices with optional free trials.
+            Configure the pricing for this product. You can create one-time or recurring prices with optional free trials.
           </DialogDescription>
         </DialogHeader>
 
