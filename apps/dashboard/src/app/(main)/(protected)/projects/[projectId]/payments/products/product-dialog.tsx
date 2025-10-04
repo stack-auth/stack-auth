@@ -5,30 +5,30 @@ import { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
 import { Button, Card, CardDescription, CardHeader, CardTitle, Checkbox, Dialog, DialogContent, DialogFooter, DialogTitle, Input, Label, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Typography } from "@stackframe/stack-ui";
 import { ArrowLeft, ArrowRight, CreditCard, Package, Plus, Repeat, Trash2 } from "lucide-react";
 import { useState } from "react";
-import { CreateGroupDialog } from "./create-group-dialog";
+import { CreateCatalogDialog } from "./create-catalog-dialog";
 import { IncludedItemDialog } from "./included-item-dialog";
 import { ListSection } from "./list-section";
 import { PriceDialog } from "./price-dialog";
 
 type Template = 'one-time' | 'subscription' | 'addon' | 'scratch';
 
-type Offer = CompleteConfig['payments']['offers'][string];
-type IncludedItem = Offer['includedItems'][string];
-type Price = (Offer['prices'] & object)[string];
+type Product = CompleteConfig['payments']['products'][string];
+type IncludedItem = Product['includedItems'][string];
+type Price = (Product['prices'] & object)[string];
 
-type OfferDialogProps = {
+type ProductDialogProps = {
   open: boolean,
   onOpenChange: (open: boolean) => void,
-  onSave: (offerId: string, offer: Offer) => Promise<void>,
-  editingOfferId?: string,
-  editingOffer?: Offer,
-  existingOffers: Array<{ id: string, displayName: string, groupId?: string, customerType: string }>,
-  existingGroups: Record<string, { displayName: string }>,
+  onSave: (productId: string, product: Product) => Promise<void>,
+  editingProductId?: string,
+  editingProduct?: Product,
+  existingProducts: Array<{ id: string, displayName: string, catalogId?: string, customerType: string }>,
+  existingCatalogs: Record<string, { displayName?: string }>,
   existingItems: Array<{ id: string, displayName: string, customerType: string }>,
   onCreateNewItem?: () => void,
 };
 
-const TEMPLATE_CONFIGS: Record<Template, Partial<Offer>> = {
+const TEMPLATE_CONFIGS: Record<Template, Partial<Product>> = {
   'one-time': {
     displayName: 'One-Time Purchase',
     stackable: false,
@@ -45,35 +45,35 @@ const TEMPLATE_CONFIGS: Record<Template, Partial<Offer>> = {
   'scratch': {}
 };
 
-export function OfferDialog({
+export function ProductDialog({
   open,
   onOpenChange,
   onSave,
-  editingOfferId,
-  editingOffer,
-  existingOffers,
-  existingGroups,
+  editingProductId,
+  editingProduct,
+  existingProducts,
+  existingCatalogs,
   existingItems,
   onCreateNewItem
-}: OfferDialogProps) {
-  const [currentStep, setCurrentStep] = useState(editingOffer ? 1 : 0);
+}: ProductDialogProps) {
+  const [currentStep, setCurrentStep] = useState(editingProduct ? 1 : 0);
 
   // Form state
-  const [offerId, setOfferId] = useState(editingOfferId ?? "");
-  const [displayName, setDisplayName] = useState(editingOffer?.displayName || "");
-  const [customerType, setCustomerType] = useState<'user' | 'team' | 'custom'>(editingOffer?.customerType || 'user');
-  const [groupId, setGroupId] = useState(editingOffer?.groupId || "");
-  const [isAddOn, setIsAddOn] = useState(!!editingOffer?.isAddOnTo);
-  const [isAddOnTo, setIsAddOnTo] = useState<string[]>(editingOffer?.isAddOnTo !== false ? Object.keys(editingOffer?.isAddOnTo || {}) : []);
-  const [stackable, setStackable] = useState(editingOffer?.stackable || false);
-  const [freeByDefault, setFreeByDefault] = useState(editingOffer?.prices === "include-by-default" || false);
-  const [prices, setPrices] = useState<Record<string, Price>>(editingOffer?.prices === "include-by-default" ? {} : editingOffer?.prices || {});
-  const [includedItems, setIncludedItems] = useState<Offer['includedItems']>(editingOffer?.includedItems || {});
-  const [freeTrial, setFreeTrial] = useState<Offer['freeTrial']>(editingOffer?.freeTrial || undefined);
-  const [serverOnly, setServerOnly] = useState(editingOffer?.serverOnly || false);
+  const [productId, setProductId] = useState(editingProductId ?? "");
+  const [displayName, setDisplayName] = useState(editingProduct?.displayName || "");
+  const [customerType, setCustomerType] = useState<'user' | 'team' | 'custom'>(editingProduct?.customerType || 'user');
+  const [catalogId, setCatalogId] = useState(editingProduct?.catalogId || "");
+  const [isAddOn, setIsAddOn] = useState(!!editingProduct?.isAddOnTo);
+  const [isAddOnTo, setIsAddOnTo] = useState<string[]>(editingProduct?.isAddOnTo !== false ? Object.keys(editingProduct?.isAddOnTo || {}) : []);
+  const [stackable, setStackable] = useState(editingProduct?.stackable || false);
+  const [freeByDefault, setFreeByDefault] = useState(editingProduct?.prices === "include-by-default" || false);
+  const [prices, setPrices] = useState<Record<string, Price>>(editingProduct?.prices === "include-by-default" ? {} : editingProduct?.prices || {});
+  const [includedItems, setIncludedItems] = useState<Product['includedItems']>(editingProduct?.includedItems || {});
+  const [freeTrial, setFreeTrial] = useState<Product['freeTrial']>(editingProduct?.freeTrial || undefined);
+  const [serverOnly, setServerOnly] = useState(editingProduct?.serverOnly || false);
 
   // Dialog states
-  const [showGroupDialog, setShowGroupDialog] = useState(false);
+  const [showCatalogDialog, setShowCatalogDialog] = useState(false);
   const [showPriceDialog, setShowPriceDialog] = useState(false);
   const [editingPriceId, setEditingPriceId] = useState<string | undefined>();
   const [showItemDialog, setShowItemDialog] = useState(false);
@@ -117,12 +117,12 @@ export function OfferDialog({
   const validateGeneralInfo = () => {
     const newErrors: Record<string, string> = {};
 
-    if (!offerId.trim()) {
-      newErrors.offerId = "Offer ID is required";
-    } else if (!/^[a-z0-9-]+$/.test(offerId)) {
-      newErrors.offerId = "Offer ID must contain only lowercase letters, numbers, and hyphens";
-    } else if (!editingOffer && existingOffers.some(o => o.id === offerId)) {
-      newErrors.offerId = "This offer ID already exists";
+    if (!productId.trim()) {
+      newErrors.productId = "Product ID is required";
+    } else if (!/^[a-z0-9-]+$/.test(productId)) {
+      newErrors.productId = "Product ID must contain only lowercase letters, numbers, and hyphens";
+    } else if (!editingProduct && existingProducts.some(o => o.id === productId)) {
+      newErrors.productId = "This product ID already exists";
     }
 
     if (!displayName.trim()) {
@@ -130,15 +130,15 @@ export function OfferDialog({
     }
 
     if (isAddOn && isAddOnTo.length === 0) {
-      newErrors.isAddOnTo = "Please select at least one offer this is an add-on to";
+      newErrors.isAddOnTo = "Please select at least one product this is an add-on to";
     }
 
     if (isAddOn && isAddOnTo.length > 0) {
-      const addOnGroups = new Set(
-        isAddOnTo.map(offerId => existingOffers.find(o => o.id === offerId)?.groupId)
+      const addOnCatalogs = new Set(
+        isAddOnTo.map(productId => existingProducts.find(o => o.id === productId)?.catalogId)
       );
-      if (addOnGroups.size > 1) {
-        newErrors.isAddOnTo = "All selected offers must be in the same group";
+      if (addOnCatalogs.size > 1) {
+        newErrors.isAddOnTo = "All selected products must be in the same catalog";
       }
     }
 
@@ -159,14 +159,14 @@ export function OfferDialog({
   };
 
   const handleBack = () => {
-    setCurrentStep(prev => Math.max(prev - 1, editingOffer ? 1 : 0));
+    setCurrentStep(prev => Math.max(prev - 1, editingProduct ? 1 : 0));
   };
 
   const handleSave = async () => {
-    const offer: Offer = {
+    const product: Product = {
       displayName,
       customerType,
-      groupId: groupId || undefined,
+      catalogId: catalogId || undefined,
       isAddOnTo: isAddOn ? Object.fromEntries(isAddOnTo.map(id => [id, true])) : false,
       stackable,
       prices: freeByDefault ? "include-by-default" : prices,
@@ -175,18 +175,18 @@ export function OfferDialog({
       freeTrial,
     };
 
-    await onSave(offerId, offer);
+    await onSave(productId, product);
     handleClose();
   };
 
   const handleClose = () => {
     // Reset form
-    if (!editingOffer) {
+    if (!editingProduct) {
       setCurrentStep(0);
-      setOfferId("");
+      setProductId("");
       setDisplayName("");
       setCustomerType('user');
-      setGroupId("");
+      setCatalogId("");
       setIsAddOn(false);
       setIsAddOnTo([]);
       setStackable(false);
@@ -265,15 +265,15 @@ export function OfferDialog({
     return display;
   };
 
-  const isFirstOffer = existingOffers.length === 0;
+  const isFirstProduct = existingProducts.length === 0;
 
   return (
     <>
       <Dialog open={open} onOpenChange={handleClose}>
         <DialogContent className="max-w-2xl">
           <Stepper currentStep={currentStep} onStepChange={setCurrentStep} className="min-h-[400px]">
-            {/* Step 0: Template Selection (only for new offers) */}
-            {!editingOffer && (
+            {/* Step 0: Template Selection (only for new products) */}
+            {!editingProduct && (
               <StepperPage>
                 <div className="space-y-4">
                   <div>
@@ -322,7 +322,7 @@ export function OfferDialog({
                       </CardHeader>
                     </Card>
 
-                    {!isFirstOffer && <Card
+                    {!isFirstProduct && <Card
                       className="cursor-pointer hover:border-primary transition-colors"
                       onClick={() => applyTemplate('addon')}
                     >
@@ -334,7 +334,7 @@ export function OfferDialog({
                           <div>
                             <CardTitle className="text-base">Add-on</CardTitle>
                             <CardDescription className="text-sm mt-1">
-                              Additional features that complement existing offers
+                              Additional features that complement existing products
                             </CardDescription>
                           </div>
                         </div>
@@ -353,7 +353,7 @@ export function OfferDialog({
                           <div>
                             <CardTitle className="text-base">Create from Scratch</CardTitle>
                             <CardDescription className="text-sm mt-1">
-                              Start with a blank offer and configure everything yourself
+                              Start with a blank product and configure everything yourself
                             </CardDescription>
                           </div>
                         </div>
@@ -370,38 +370,38 @@ export function OfferDialog({
                 <div>
                   <DialogTitle>General Information</DialogTitle>
                   <Typography type="p" className="text-muted-foreground mt-1">
-                    Configure the basic details of your offer
+                    Configure the basic details of your product
                   </Typography>
                 </div>
 
                 <div className="grid gap-4 mt-6">
-                  {/* Offer ID */}
+                  {/* Product ID */}
                   <div className="grid gap-2">
-                    <Label htmlFor="offer-id">Offer ID</Label>
+                    <Label htmlFor="product-id">Product ID</Label>
                     <Input
-                      id="offer-id"
-                      value={offerId}
+                      id="product-id"
+                      value={productId}
                       onChange={(e) => {
-                        setOfferId(e.target.value);
-                        if (errors.offerId) {
+                        setProductId(e.target.value);
+                        if (errors.productId) {
                           setErrors(prev => {
                             const newErrors = { ...prev };
-                            delete newErrors.offerId;
+                            delete newErrors.productId;
                             return newErrors;
                           });
                         }
                       }}
                       placeholder="e.g., pro-plan"
-                      disabled={!!editingOffer}
-                      className={errors.offerId ? "border-destructive" : ""}
+                      disabled={!!editingProduct}
+                      className={errors.productId ? "border-destructive" : ""}
                     />
-                    {errors.offerId ? (
+                    {errors.productId ? (
                       <Typography type="label" className="text-destructive">
-                        {errors.offerId}
+                        {errors.productId}
                       </Typography>
                     ) : (
                       <Typography type="label" className="text-muted-foreground">
-                        Unique identifier used to reference this offer in code
+                        Unique identifier used to reference this product in code
                       </Typography>
                     )}
                   </div>
@@ -431,7 +431,7 @@ export function OfferDialog({
                       </Typography>
                     ) : (
                       <Typography type="label" className="text-muted-foreground">
-                        How this offer will be displayed to customers
+                        How this product will be displayed to customers
                       </Typography>
                     )}
                   </div>
@@ -450,42 +450,42 @@ export function OfferDialog({
                       </SelectContent>
                     </Select>
                     <Typography type="label" className="text-muted-foreground">
-                      The type of customer this offer is for
+                      The type of customer this product is for
                     </Typography>
                   </div>
 
-                  {/* Group */}
+                  {/* Catalog */}
                   <div className="grid gap-2">
-                    <Label htmlFor="group">Offer Group (Optional)</Label>
+                    <Label htmlFor="catalog">Product Catalog (Optional)</Label>
                     <Select
-                      value={groupId || 'no-group'}
+                      value={catalogId || 'no-catalog'}
                       onValueChange={(value) => {
                         if (value === 'create-new') {
-                          setShowGroupDialog(true);
-                        } else if (value === 'no-group') {
-                          setGroupId('');
+                          setShowCatalogDialog(true);
+                        } else if (value === 'no-catalog') {
+                          setCatalogId('');
                         } else {
-                          setGroupId(value);
+                          setCatalogId(value);
                         }
                       }}
                     >
                       <SelectTrigger>
-                        <SelectValue placeholder="No group" />
+                        <SelectValue placeholder="No catalog" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="no-group">No group</SelectItem>
-                        {Object.entries(existingGroups).map(([id, group]) => (
+                        <SelectItem value="no-catalog">No catalog</SelectItem>
+                        {Object.entries(existingCatalogs).map(([id, catalog]) => (
                           <SelectItem key={id} value={id}>
-                            {group.displayName || id}
+                            {catalog.displayName || id}
                           </SelectItem>
                         ))}
                         <SelectItem value="create-new">
-                          <span className="text-primary">+ Create new group</span>
+                          <span className="text-primary">+ Create new catalog</span>
                         </SelectItem>
                       </SelectContent>
                     </Select>
                     <Typography type="label" className="text-muted-foreground">
-                      Customers can only have one active offer per group (except add-ons)
+                      Customers can only have one active product per catalog (except add-ons)
                     </Typography>
                   </div>
 
@@ -501,11 +501,11 @@ export function OfferDialog({
                     </Label>
                   </div>
                   <Typography type="label" className="text-muted-foreground -mt-2">
-                    Allow customers to purchase this offer multiple times
+                    Allow customers to purchase this product multiple times
                   </Typography>
 
-                  {/* Add-on (only if not the first offer) */}
-                  {!isFirstOffer && (
+                  {/* Add-on (only if not the first product) */}
+                  {!isFirstProduct && (
                     <>
                       <div className="flex items-center space-x-2">
                         <Checkbox
@@ -532,18 +532,18 @@ export function OfferDialog({
 
                       {isAddOn && (
                         <div className="grid gap-2">
-                          <Label>Add-on to offers</Label>
+                          <Label>Add-on to products</Label>
                           <div className="space-y-2 max-h-40 overflow-y-auto border rounded-lg p-2">
-                            {existingOffers.filter(o => !o.id.startsWith('addon')).map(offer => (
-                              <div key={offer.id} className="flex items-center space-x-2">
+                            {existingProducts.filter(o => !o.id.startsWith('addon')).map(product => (
+                              <div key={product.id} className="flex items-center space-x-2">
                                 <Checkbox
-                                  id={`addon-to-${offer.id}`}
-                                  checked={isAddOnTo.includes(offer.id)}
+                                  id={`addon-to-${product.id}`}
+                                  checked={isAddOnTo.includes(product.id)}
                                   onCheckedChange={(checked) => {
                                     if (checked) {
-                                      setIsAddOnTo(prev => [...prev, offer.id]);
+                                      setIsAddOnTo(prev => [...prev, product.id]);
                                     } else {
-                                      setIsAddOnTo(prev => prev.filter(id => id !== offer.id));
+                                      setIsAddOnTo(prev => prev.filter(id => id !== product.id));
                                     }
                                     if (errors.isAddOnTo) {
                                       setErrors(prev => {
@@ -554,11 +554,11 @@ export function OfferDialog({
                                     }
                                   }}
                                 />
-                                <Label htmlFor={`addon-to-${offer.id}`} className="cursor-pointer text-sm">
-                                  {offer.displayName} ({offer.id})
-                                  {offer.groupId && (
+                                <Label htmlFor={`addon-to-${product.id}`} className="cursor-pointer text-sm">
+                                  {product.displayName} ({product.id})
+                                  {product.catalogId && (
                                     <span className="text-muted-foreground ml-1">
-                                      • {existingGroups[offer.groupId].displayName || offer.groupId}
+                                      • {existingCatalogs[product.catalogId].displayName || product.catalogId}
                                     </span>
                                   )}
                                 </Label>
@@ -571,7 +571,7 @@ export function OfferDialog({
                             </Typography>
                           )}
                           <Typography type="label" className="text-muted-foreground">
-                            Customers must have one of these offers to purchase this add-on
+                            Customers must have one of these products to purchase this add-on
                           </Typography>
                         </div>
                       )}
@@ -587,7 +587,7 @@ export function OfferDialog({
                 <div>
                   <DialogTitle>Pricing</DialogTitle>
                   <Typography type="p" className="text-muted-foreground mt-1">
-                    Configure how customers will pay for this offer
+                    Configure how customers will pay for this product
                   </Typography>
                 </div>
 
@@ -609,7 +609,7 @@ export function OfferDialog({
                     </Label>
                   </div>
                   <Typography type="label" className="text-muted-foreground -mt-2">
-                    This offer will be automatically included for all customers at no cost
+                    This product will be automatically included for all customers at no cost
                   </Typography>
 
                   {/* Prices list */}
@@ -634,7 +634,7 @@ export function OfferDialog({
                             {Object.entries(prices).map(([id, price]) => (
                               <div
                                 key={id}
-                                className="px-3 py-3 hover:bg-muted/50 flex items-center justify-between group transition-colors"
+                                className="px-3 py-3 hover:bg-muted/50 flex items-center justify-between catalog transition-colors"
                               >
                                 <div>
                                   <div className="font-medium">{formatPriceDisplay(price)}</div>
@@ -679,7 +679,7 @@ export function OfferDialog({
                 <div>
                   <DialogTitle>Included Items</DialogTitle>
                   <Typography type="p" className="text-muted-foreground mt-1">
-                    Select which items customers receive with this offer
+                    Select which items customers receive with this product
                   </Typography>
                 </div>
 
@@ -695,7 +695,7 @@ export function OfferDialog({
                       <div className="p-8 text-center text-muted-foreground">
                         <Typography type="p">No items included yet</Typography>
                         <Typography type="p" className="text-sm mt-1">
-                          Click the + button to include items with this offer
+                          Click the + button to include items with this product
                         </Typography>
                       </div>
                     ) : (
@@ -703,7 +703,7 @@ export function OfferDialog({
                         {Object.entries(includedItems).map(([itemId, item]) => (
                           <div
                             key={itemId}
-                            className="px-3 py-3 hover:bg-muted/50 flex items-center justify-between group transition-colors"
+                            className="px-3 py-3 hover:bg-muted/50 flex items-center justify-between catalog transition-colors"
                           >
                             <div>
                               <div className="font-medium">{getItemDisplay(itemId, item)}</div>
@@ -742,7 +742,7 @@ export function OfferDialog({
 
           <DialogFooter className="flex justify-between">
             <div className="flex gap-2">
-              {currentStep > (editingOffer ? 1 : 0) && (
+              {currentStep > (editingProduct ? 1 : 0) && (
                 <Button variant="outline" onClick={handleBack}>
                   <ArrowLeft className="h-4 w-4 mr-2" />
                   Back
@@ -760,7 +760,7 @@ export function OfferDialog({
                 </Button>
               ) : (
                 <Button onClick={handleSave}>
-                  {editingOffer ? "Save Changes" : "Create Offer"}
+                  {editingProduct ? "Save Changes" : "Create Product"}
                 </Button>
               )}
             </div>}
@@ -769,13 +769,13 @@ export function OfferDialog({
       </Dialog>
 
       {/* Sub-dialogs */}
-      <CreateGroupDialog
-        open={showGroupDialog}
-        onOpenChange={setShowGroupDialog}
-        onCreate={(group) => {
-          // In a real app, you'd save the group to the backend
-          setGroupId(group.id);
-          setShowGroupDialog(false);
+      <CreateCatalogDialog
+        open={showCatalogDialog}
+        onOpenChange={setShowCatalogDialog}
+        onCreate={(catalog) => {
+          // In a real app, you'd save the catalog to the backend
+          setCatalogId(catalog.id);
+          setShowCatalogDialog(false);
         }}
       />
 

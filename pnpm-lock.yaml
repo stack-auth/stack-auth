@@ -302,8 +302,8 @@ importers:
         specifier: ^10.4.1
         version: 10.4.1
       import-in-the-middle:
-        specifier: ^1.12.0
-        version: 1.12.0
+        specifier: 1.14.2
+        version: 1.14.2
       prisma:
         specifier: ^6.12.0
         version: 6.12.0(typescript@5.8.3)
@@ -489,8 +489,8 @@ importers:
         specifier: ^10.4.1
         version: 10.4.1
       import-in-the-middle:
-        specifier: ^1.12.0
-        version: 1.12.0
+        specifier: 1.14.2
+        version: 1.14.2
       postcss:
         specifier: ^8.4.38
         version: 8.4.38
@@ -11639,9 +11639,6 @@ packages:
     resolution: {integrity: sha512-TR3KfrTZTYLPB6jUjfx6MF9WcWrHL9su5TObK4ZkYgBdWKPOFoSoQIdEuTuR82pmtxH2spWG9h6etwfr1pLBqQ==}
     engines: {node: '>=6'}
 
-  import-in-the-middle@1.12.0:
-    resolution: {integrity: sha512-yAgSE7GmtRcu4ZUSFX/4v69UGXwugFFSdIQJ14LHPOPPQrWv8Y7O9PHsw8Ovk7bKCLe4sjXMbZFqGFcLHpZ89w==}
-
   import-in-the-middle@1.14.2:
     resolution: {integrity: sha512-5tCuY9BV8ujfOpwtAGgsTx9CGUapcFMEEyByLv1B+v2+6DhAcw+Zr0nhQT7uwaZ7DiourxFEscghOR8e1aPLQw==}
 
@@ -20644,7 +20641,7 @@ snapshots:
       '@opentelemetry/api': 1.9.0
       '@opentelemetry/api-logs': 0.53.0
       '@types/shimmer': 1.2.0
-      import-in-the-middle: 1.12.0
+      import-in-the-middle: 1.14.2
       require-in-the-middle: 7.4.0
       semver: 7.6.3
       shimmer: 1.2.1
@@ -24579,10 +24576,6 @@ snapshots:
       negotiator: 1.0.0
 
   accessor-fn@1.5.1: {}
-
-  acorn-import-attributes@1.9.5(acorn@8.14.0):
-    dependencies:
-      acorn: 8.14.0
 
   acorn-import-attributes@1.9.5(acorn@8.15.0):
     dependencies:
@@ -28690,13 +28683,6 @@ snapshots:
     dependencies:
       parent-module: 1.0.1
       resolve-from: 4.0.0
-
-  import-in-the-middle@1.12.0:
-    dependencies:
-      acorn: 8.14.0
-      acorn-import-attributes: 1.9.5(acorn@8.14.0)
-      cjs-module-lexer: 1.4.0
-      module-details-from-path: 1.0.3
 
   import-in-the-middle@1.14.2:
     dependencies:
