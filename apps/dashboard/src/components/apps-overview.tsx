@@ -46,10 +46,10 @@ function AppTile({
   return (
     <li ref={setNodeRef} style={style} {...attributes} {...listeners}>
       <div className={`tile p-4 sm:p-5 flex items-center gap-3 ${isDragging ? "tile--dragging" : ""}`}>
-        <div className="h-10 w-10 rounded-xl border border-gray-200 dark:border-white/15 bg-gray-100 dark:bg-white/5 flex items-center justify-center">
+        <div className="h-10 w-10 rounded-xl border border-gray-200 dark:border-white/15 bg-gray-100 dark:bg-white/5 flex items-center justify-center flex-shrink-0">
           <Icon size={20} className="opacity-85 text-gray-700 dark:text-gray-300" />
         </div>
-        <span className="text-sm font-medium leading-none text-gray-900 dark:text-white">{name}</span>
+        <span className="text-sm font-medium leading-none text-gray-900 dark:text-white truncate">{name}</span>
       </div>
     </li>
   );
@@ -124,91 +124,95 @@ export function AppsOverview({ projectId }: AppsOverviewProps) {
   const byId = Object.fromEntries(registry.map((a) => [a.id, a]));
 
   return (
-    <section className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <h3 className="text-base font-semibold tracking-tight">Apps</h3>
-        <div className="flex items-center gap-2">
-          <Link href={`/projects/${projectId}/apps/explore`}>
-            <Button size="sm" className="rounded-2xl">
-              <Plus size={16} className="mr-1.5" />
-              Add New
-            </Button>
-          </Link>
-          <Link href={`/projects/${projectId}/apps/explore`}>
-            <Button variant="ghost" size="sm" className="rounded-2xl">
-              <ExternalLink size={16} className="mr-1.5" />
-              Explore More Apps
-            </Button>
-          </Link>
-        </div>
-      </div>
-
+    <div className="bg-card border rounded-2xl overflow-hidden">
       <DndContext sensors={sensors} onDragEnd={onDragEnd}>
-        {/* ENABLED */}
-        <div className="glass-surface rounded-3xl p-4 sm:p-6 relative">
-          <div className="text-xs font-medium tracking-[0.18em] text-gray-700 dark:text-white/70 mb-3 sm:mb-4">
-            ENABLED
+        {/* Card Header */}
+        <div className="p-4 sm:p-6 border-b border-gray-200/50 dark:border-white/10">
+          <div className="flex items-center justify-between">
+            <h3 className="text-base font-semibold tracking-tight text-gray-900 dark:text-white">Apps</h3>
+            <div className="flex items-center gap-2">
+              <Link href={`/projects/${projectId}/apps/explore`}>
+                <Button size="sm" className="rounded-full bg-blue-600 hover:bg-blue-700 text-white">
+                  <Plus size={16} className="mr-1.5" />
+                  Add New
+                </Button>
+              </Link>
+              <Link href={`/projects/${projectId}/apps/explore`}>
+                <Button variant="ghost" size="sm" className="rounded-full text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200">
+                  <ExternalLink size={16} />
+                </Button>
+              </Link>
+            </div>
           </div>
-          {enabled.length ? (
-            <SortableContext items={enabled} strategy={rectSortingStrategy}>
-              <ul className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 sm:gap-4">
-                {enabled.map((id) => {
-                  const app = byId[id];
-                  if (!app) return null;
-                  const Icon = app.icon;
-                  return <AppTile key={id} id={id} name={app.displayName} Icon={Icon} />;
-                })}
-              </ul>
-            </SortableContext>
-          ) : (
-            <div className="text-sm text-gray-600 dark:text-white/60 py-6">No apps enabled yet. Drag from below or click <span className="underline">Add New</span>.</div>
+        </div>
+
+        {/* Card Content */}
+        <div className="p-4 sm:p-6">
+          {/* ENABLED Section */}
+          <div className="mb-6">
+            <div className="text-xs font-medium tracking-[0.18em] text-gray-700 dark:text-white/70 mb-3 sm:mb-4">
+              ENABLED
+            </div>
+            {enabled.length ? (
+              <SortableContext items={enabled} strategy={rectSortingStrategy}>
+                <ul className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 sm:gap-4">
+                  {enabled.map((id) => {
+                    const app = byId[id];
+                    if (!app) return null;
+                    const Icon = app.icon;
+                    return <AppTile key={id} id={id} name={app.displayName} Icon={Icon} />;
+                  })}
+                </ul>
+              </SortableContext>
+            ) : (
+              <div className="text-sm text-gray-600 dark:text-white/60 py-6">No apps enabled yet. Drag from below or click <span className="underline">Add New</span>.</div>
+            )}
+          </div>
+
+          {/* Toggle button for disabled apps */}
+          {disabled.length > 0 && (
+            <div className="flex justify-center mb-4">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowDisabled(!showDisabled)}
+                className="text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-white/5 rounded-full px-4 py-2"
+              >
+                {showDisabled ? (
+                  <>
+                    <ChevronUp size={16} className="mr-1.5" />
+                    Hide Disabled Apps
+                  </>
+                ) : (
+                  <>
+                    <ChevronDown size={16} className="mr-1.5" />
+                    Show Disabled Apps ({disabled.length})
+                  </>
+                )}
+              </Button>
+            </div>
+          )}
+
+          {/* DISABLED Section - Only show when toggled */}
+          {showDisabled && (
+            <div className="border-t border-gray-200/50 dark:border-white/10 pt-6">
+              <div className="text-xs font-medium tracking-[0.18em] text-gray-500 dark:text-white/50 mb-3 sm:mb-4">
+                DISABLED
+              </div>
+              <SortableContext items={disabled} strategy={rectSortingStrategy}>
+                <ul className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 sm:gap-4">
+                  {disabled.map((id) => {
+                    const app = byId[id];
+                    if (!app) return null;
+                    const Icon = app.icon;
+                    return <AppTile key={id} id={id} name={app.displayName} Icon={Icon} />;
+                  })}
+                </ul>
+              </SortableContext>
+            </div>
           )}
         </div>
-
-        {/* DISABLED - Only show when toggled */}
-        {showDisabled && (
-          <div className="rounded-3xl p-4 sm:p-6 relative border border-gray-200 dark:border-white/8 bg-gray-50/50 dark:bg-black/40 backdrop-blur-xl">
-            <div className="text-xs font-medium tracking-[0.18em] text-gray-500 dark:text-white/50 mb-3 sm:mb-4">
-              DISABLED
-            </div>
-            <SortableContext items={disabled} strategy={rectSortingStrategy}>
-              <ul className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 sm:gap-4">
-                {disabled.map((id) => {
-                  const app = byId[id];
-                  if (!app) return null;
-                  const Icon = app.icon;
-                  return <AppTile key={id} id={id} name={app.displayName} Icon={Icon} />;
-                })}
-              </ul>
-            </SortableContext>
-          </div>
-        )}
-
-        {/* Toggle button for disabled apps */}
-        {disabled.length > 0 && (
-          <div className="flex justify-center">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setShowDisabled(!showDisabled)}
-              className="rounded-2xl text-gray-600 dark:text-white/60 hover:text-gray-800 dark:hover:text-white/80 hover:bg-gray-100 dark:hover:bg-white/5"
-            >
-              {showDisabled ? (
-                <>
-                  <ChevronUp size={16} className="mr-1.5" />
-                  Hide Disabled Apps
-                </>
-              ) : (
-                <>
-                  <ChevronDown size={16} className="mr-1.5" />
-                  Show Disabled Apps ({disabled.length})
-                </>
-              )}
-            </Button>
-          </div>
-        )}
       </DndContext>
-    </section>
+    </div>
   );
 }
