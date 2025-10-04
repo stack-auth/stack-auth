@@ -5,9 +5,9 @@ import { CheckboxField, InputField, SelectField } from "@/components/form-fields
 import { IncludedItemEditorField } from "@/components/payments/included-item-editor";
 import { PriceEditorField } from "@/components/payments/price-editor";
 import { AdminProject } from "@stackframe/stack";
-import { offerSchema, priceOrIncludeByDefaultSchema, userSpecifiedIdSchema, yupRecord } from "@stackframe/stack-shared/dist/schema-fields";
+import { priceOrIncludeByDefaultSchema, productSchema, userSpecifiedIdSchema, yupRecord } from "@stackframe/stack-shared/dist/schema-fields";
 import { has } from "@stackframe/stack-shared/dist/utils/objects";
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger, FormLabel, FormItem, FormMessage, toast, FormField, Checkbox, FormControl, SimpleTooltip } from "@stackframe/stack-ui";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger, Checkbox, FormControl, FormField, FormItem, FormLabel, FormMessage, SimpleTooltip, toast } from "@stackframe/stack-ui";
 import * as yup from "yup";
 
 type Props = {
@@ -22,15 +22,15 @@ type Props = {
       mode: "edit",
       initial: {
         id: string,
-        value: yup.InferType<typeof offerSchema>,
+        value: yup.InferType<typeof productSchema>,
       },
     }
   )
 
-export function OfferDialog({ open, onOpenChange, project, mode, initial }: Props) {
+export function ProductDialog({ open, onOpenChange, project, mode, initial }: Props) {
   const config = project.useConfig();
-  const localOfferSchema = yup.object({
-    offerId: userSpecifiedIdSchema("offerId").defined().label("Offer ID"),
+  const localProductSchema = yup.object({
+    productId: userSpecifiedIdSchema("productId").defined().label("Product ID"),
     displayName: yup.string().defined().label("Display Name"),
     customerType: yup.string().oneOf(["user", "team", "custom"]).defined().label("Customer Type"),
     prices: priceOrIncludeByDefaultSchema.defined().label("Prices").test("at-least-one-price", (value, context) => {
@@ -55,19 +55,19 @@ export function OfferDialog({ open, onOpenChange, project, mode, initial }: Prop
     <FormDialog
       open={open}
       onOpenChange={onOpenChange}
-      title={mode === "create" ? "Create New Offer" : "Edit Offer"}
-      formSchema={localOfferSchema}
+      title={mode === "create" ? "Create New Product" : "Edit Product"}
+      formSchema={localProductSchema}
       defaultValues={initial?.value ? {
-        offerId: initial.id,
+        productId: initial.id,
         ...initial.value,
       } : undefined}
-      okButton={{ label: mode === "create" ? "Create Offer" : "Save" }}
+      okButton={{ label: mode === "create" ? "Create Product" : "Save" }}
       cancelButton
       onSubmit={async (values) => {
         if (mode === "create") {
           const config = await project.getConfig();
-          if (has(config.payments.offers, values.offerId)) {
-            toast({ title: "An offer with this ID already exists", variant: "destructive" });
+          if (has(config.payments.products, values.productId)) {
+            toast({ title: "An product with this ID already exists", variant: "destructive" });
             return "prevent-close-and-prevent-reset";
           }
         }
@@ -79,11 +79,11 @@ export function OfferDialog({ open, onOpenChange, project, mode, initial }: Prop
           serverOnly: values.serverOnly,
           stackable: values.stackable,
         };
-        await project.updateConfig({ [`payments.offers.${values.offerId}`]: payload });
+        await project.updateConfig({ [`payments.products.${values.productId}`]: payload });
       }}
       render={(form) => (
         <div className="space-y-4">
-          <InputField control={form.control} name={"offerId"} label="Offer ID" required disabled={mode === "edit"} placeholder="team" />
+          <InputField control={form.control} name={"productId"} label="Product ID" required disabled={mode === "edit"} placeholder="team" />
           <InputField control={form.control} name={"displayName"} label="Display Name" required placeholder="Team" />
           <SelectField control={form.control} name={"customerType"} label="Customer Type" required options={[
             { value: "user", label: "User" },
@@ -128,7 +128,7 @@ export function OfferDialog({ open, onOpenChange, project, mode, initial }: Prop
                       </FormControl>
                       <div className="space-y-1 leading-none">
                         <FormLabel>
-                          <SimpleTooltip tooltip="The default offer that is included in the group">
+                          <SimpleTooltip tooltip="The default product that is included in the group">
                             Include by default
                           </SimpleTooltip>
                         </FormLabel>
