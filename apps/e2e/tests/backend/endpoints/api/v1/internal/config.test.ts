@@ -374,7 +374,7 @@ it("returns an error when the oauth config is misconfigured", async ({ expect })
   expect(invalidTypeResponse).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 400,
-      "body": "[ERROR] auth.oauth.providers.invalid.type must be one of the following values: google, github, microsoft, spotify, facebook, discord, gitlab, bitbucket, linkedin, apple, x, twitch",
+      "body": "auth.oauth.providers.invalid.type must be one of the following values: google, github, microsoft, spotify, facebook, discord, gitlab, bitbucket, linkedin, apple, x, twitch",
       "headers": Headers { <some fields may have been hidden> },
     }
   `);
@@ -404,7 +404,7 @@ it("returns an error when config override contains non-existent fields", async (
   expect(invalidTopLevelResponse).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 400,
-      "body": "[ERROR] The key \\"nonExistentField\\" is not valid (nested object not found in schema: \\"nonExistentField\\").",
+      "body": "The key \\"nonExistentField\\" is not valid (nested object not found in schema: \\"nonExistentField\\").",
       "headers": Headers { <some fields may have been hidden> },
     }
   `);
