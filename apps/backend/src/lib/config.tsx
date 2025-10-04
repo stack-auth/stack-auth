@@ -205,10 +205,11 @@ export async function overrideProjectConfigOverride(options: {
 
   // TODO put this in a serializable transaction (or a single SQL query) to prevent race conditions
   const oldConfig = await rawQuery(globalPrismaClient, getProjectConfigOverrideQuery(options));
-  const newConfig = override(
+  const newConfigUnmigrated = override(
     oldConfig,
     options.projectConfigOverrideOverride,
   );
+  const newConfig = migrateConfigOverride("project", newConfigUnmigrated);
 
   // large configs make our DB slow; let's prevent them early
   const newConfigString = JSON.stringify(newConfig);
@@ -249,10 +250,11 @@ export async function overrideEnvironmentConfigOverride(options: {
 
   // TODO put this in a serializable transaction (or a single SQL query) to prevent race conditions
   const oldConfig = await rawQuery(globalPrismaClient, getEnvironmentConfigOverrideQuery(options));
-  const newConfig = override(
+  const newConfigUnmigrated = override(
     oldConfig,
     options.environmentConfigOverrideOverride,
   );
+  const newConfig = migrateConfigOverride("environment", newConfigUnmigrated);
 
   // large configs make our DB slow; let's prevent them early
   const newConfigString = JSON.stringify(newConfig);
