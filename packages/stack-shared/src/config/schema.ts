@@ -153,8 +153,6 @@ const branchWorkflowsSchema = yupObject({
 export const branchConfigSchema = canNoLongerBeOverridden(projectConfigSchema, ["sourceOfTruth"]).concat(yupObject({
   rbac: branchRbacSchema,
 
-  apps: yupMixed(),
-
   teams: yupObject({
     createPersonalTeamOnSignUp: yupBoolean(),
     allowClientTeamCreation: yupBoolean(),
