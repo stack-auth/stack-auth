@@ -301,12 +301,19 @@ export async function getSubscriptions(options: {
   for (const groupId of Object.keys(groups)) {
     if (groupsWithDbSubscriptions.has(groupId)) continue;
     const offersInGroup = typedEntries(offers).filter(([_, offer]) => offer.groupId === groupId);
-    const defaultGroupOffer = offersInGroup.find(([_, offer]) => offer.prices === "include-by-default");
-    if (defaultGroupOffer) {
+    const defaultGroupOffers = offersInGroup.filter(([_, offer]) => offer.prices === "include-by-default");
+    if (defaultGroupOffers.length > 1) {
+      throw new StackAssertionError(
+        "Multiple include-by-default offers configured in the same group",
+        { groupId, offerIds: defaultGroupOffers.map(([id]) => id) },
+      );
+    }
+    if (defaultGroupOffers.length === 1) {
+      const [offerId, offer] = defaultGroupOffers[0];
       subscriptions.push({
         id: null,
-        offerId: defaultGroupOffer[0],
-        offer: defaultGroupOffer[1],
+        offerId,
+        offer,
         quantity: 1,
         currentPeriodStart: DEFAULT_OFFER_START_DATE,
         currentPeriodEnd: null,
@@ -315,6 +322,23 @@ export async function getSubscriptions(options: {
         stripeSubscriptionId: null,
       });
     }
+  }
+
+  const ungroupedDefaults = typedEntries(offers).filter(([id, offer]) => (
+    offer.groupId === undefined && offer.prices === "include-by-default" && !subscriptions.some((s) => s.offerId === id)
+  ));
+  for (const [offerId, offer] of ungroupedDefaults) {
+    subscriptions.push({
+      id: null,
+      offerId,
+      offer,
+      quantity: 1,
+      currentPeriodStart: DEFAULT_OFFER_START_DATE,
+      currentPeriodEnd: null,
+      status: SubscriptionStatus.active,
+      createdAt: DEFAULT_OFFER_START_DATE,
+      stripeSubscriptionId: null,
+    });
   }
 
   return subscriptions;

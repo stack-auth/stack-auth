@@ -1,6 +1,6 @@
 import type { PrismaClientTransaction } from '@/prisma-client';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { getItemQuantityForCustomer, validatePurchaseSession } from './payments';
+import { getItemQuantityForCustomer, getSubscriptions, validatePurchaseSession } from './payments';
 import type { Tenancy } from './tenancies';
 
 function createMockPrisma(overrides: Partial<PrismaClientTransaction> = {}): PrismaClientTransaction {
@@ -717,6 +717,38 @@ describe('getItemQuantityForCustomer - subscriptions', () => {
     expect(qty).toBe(8);
     vi.useRealTimers();
   });
+
+  it('ungrouped include-by-default provides item quantity without db subscription', async () => {
+    const now = new Date('2025-02-10T00:00:00.000Z');
+    vi.setSystemTime(now);
+    const itemId = 'defaultItemUngrouped';
+
+    const tenancy = createMockTenancy({
+      items: { [itemId]: { displayName: 'UDF', customerType: 'user' } },
+      groups: {},
+      offers: {
+        offFreeUngrouped: {
+          displayName: 'Free Ungrouped',
+          groupId: undefined,
+          customerType: 'user',
+          freeTrial: undefined,
+          serverOnly: false,
+          stackable: false,
+          prices: 'include-by-default',
+          includedItems: { [itemId]: { quantity: 5, repeat: 'never', expires: 'when-purchase-expires' } },
+          isAddOnTo: false,
+        },
+      },
+    });
+
+    const prisma = createMockPrisma({
+      subscription: { findMany: async () => [] },
+    } as any);
+
+    const qty = await getItemQuantityForCustomer({ prisma, tenancy, itemId, customerId: 'u1', customerType: 'user' });
+    expect(qty).toBe(5);
+    vi.useRealTimers();
+  });
 });
 
 
@@ -930,6 +962,96 @@ describe('combined sources - one-time purchases + manual changes + subscriptions
     // OTP: 4 + (2*3)=6 => 10; Manual: +3 -1 => +2; Subscription: 5 * 2 => 10; Total => 22
     expect(qty).toBe(22);
     vi.useRealTimers();
+  });
+});
+
+
+describe('getSubscriptions - defaults behavior', () => {
+  it('includes ungrouped include-by-default offers in subscriptions', async () => {
+    const tenancy = createMockTenancy({
+      items: {},
+      groups: {},
+      offers: {
+        freeUngrouped: {
+          displayName: 'Free',
+          groupId: undefined,
+          customerType: 'custom',
+          freeTrial: undefined,
+          serverOnly: false,
+          stackable: false,
+          prices: 'include-by-default',
+          includedItems: {},
+          isAddOnTo: false,
+        },
+        paidUngrouped: {
+          displayName: 'Paid',
+          groupId: undefined,
+          customerType: 'custom',
+          freeTrial: undefined,
+          serverOnly: false,
+          stackable: false,
+          prices: {},
+          includedItems: {},
+          isAddOnTo: false,
+        },
+      },
+    });
+
+    const prisma = createMockPrisma({
+      subscription: { findMany: async () => [] },
+    } as any);
+
+    const subs = await getSubscriptions({
+      prisma,
+      tenancy,
+      customerType: 'custom',
+      customerId: 'c-1',
+    });
+
+    const ids = subs.map(s => s.offerId);
+    expect(ids).toContain('freeUngrouped');
+  });
+
+  it('throws error when multiple include-by-default offers exist in same group', async () => {
+    const tenancy = createMockTenancy({
+      items: {},
+      groups: { g1: { displayName: 'G1' } },
+      offers: {
+        g1FreeA: {
+          displayName: 'Free A',
+          groupId: 'g1',
+          customerType: 'custom',
+          freeTrial: undefined,
+          serverOnly: false,
+          stackable: false,
+          prices: 'include-by-default',
+          includedItems: {},
+          isAddOnTo: false,
+        },
+        g1FreeB: {
+          displayName: 'Free B',
+          groupId: 'g1',
+          customerType: 'custom',
+          freeTrial: undefined,
+          serverOnly: false,
+          stackable: false,
+          prices: 'include-by-default',
+          includedItems: {},
+          isAddOnTo: false,
+        },
+      },
+    });
+
+    const prisma = createMockPrisma({
+      subscription: { findMany: async () => [] },
+    } as any);
+
+    await expect(getSubscriptions({
+      prisma,
+      tenancy,
+      customerType: 'custom',
+      customerId: 'c-1',
+    })).rejects.toThrowError('Multiple include-by-default offers configured in the same group');
   });
 });
 
