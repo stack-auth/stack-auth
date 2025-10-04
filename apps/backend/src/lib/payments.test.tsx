@@ -912,6 +912,157 @@ describe('validatePurchaseSession - one-time purchase rules', () => {
     expect(res.groupId).toBe('g1');
     expect(res.conflictingGroupSubscriptions.length).toBe(0);
   });
+
+  it('allows duplicate one-time purchase for same offerId when offer is stackable', async () => {
+    const tenancy = createMockTenancy({ items: {}, offers: {}, groups: {} });
+    const prisma = createMockPrisma({
+      oneTimePurchase: {
+        findMany: async () => [
+          { offerId: 'offer-stackable', offer: { groupId: undefined }, quantity: 1, createdAt: new Date('2025-01-01T00:00:00.000Z') },
+        ],
+      },
+      subscription: { findMany: async () => [] },
+    } as any);
+
+    const res = await validatePurchaseSession({
+      prisma,
+      tenancy,
+      codeData: {
+        tenancyId: tenancy.id,
+        customerId: 'cust-1',
+        offerId: 'offer-stackable',
+        offer: {
+          displayName: 'Stackable Offer',
+          groupId: undefined,
+          customerType: 'custom',
+          freeTrial: undefined,
+          serverOnly: false,
+          stackable: true,
+          prices: 'include-by-default',
+          includedItems: {},
+          isAddOnTo: false,
+        },
+      },
+      priceId: 'price-any',
+      quantity: 2,
+    });
+
+    expect(res.groupId).toBeUndefined();
+    expect(res.conflictingGroupSubscriptions.length).toBe(0);
+  });
+
+  it('blocks when subscription for same offer exists and offer is not stackable', async () => {
+    const tenancy = createMockTenancy({
+      items: {},
+      groups: {},
+      offers: {
+        'offer-sub': {
+          displayName: 'Non-stackable Offer',
+          groupId: undefined,
+          customerType: 'custom',
+          freeTrial: undefined,
+          serverOnly: false,
+          stackable: false,
+          prices: {},
+          includedItems: {},
+          isAddOnTo: false,
+        },
+      },
+    });
+    const prisma = createMockPrisma({
+      oneTimePurchase: { findMany: async () => [] },
+      subscription: {
+        findMany: async () => [{
+          offerId: 'offer-sub',
+          currentPeriodStart: new Date('2025-02-01T00:00:00.000Z'),
+          currentPeriodEnd: new Date('2025-03-01T00:00:00.000Z'),
+          quantity: 1,
+          status: 'active',
+        }],
+      },
+    } as any);
+
+    await expect(validatePurchaseSession({
+      prisma,
+      tenancy,
+      codeData: {
+        tenancyId: tenancy.id,
+        customerId: 'cust-1',
+        offerId: 'offer-sub',
+        offer: {
+          displayName: 'Non-stackable Offer',
+          groupId: undefined,
+          customerType: 'custom',
+          freeTrial: undefined,
+          serverOnly: false,
+          stackable: false,
+          prices: 'include-by-default',
+          includedItems: {},
+          isAddOnTo: false,
+        },
+      },
+      priceId: 'price-any',
+      quantity: 1,
+    })).rejects.toThrowError('Customer already has a subscription for this offer; this offer is not stackable');
+  });
+
+  it('allows when subscription for same offer exists and offer is stackable', async () => {
+    const tenancy = createMockTenancy({
+      items: {},
+      groups: {},
+      offers: {
+        'offer-sub-stackable': {
+          displayName: 'Stackable Offer',
+          groupId: undefined,
+          customerType: 'custom',
+          freeTrial: undefined,
+          serverOnly: false,
+          stackable: true,
+          prices: {},
+          includedItems: {},
+          isAddOnTo: false,
+        },
+      },
+    });
+    const prisma = createMockPrisma({
+      oneTimePurchase: { findMany: async () => [] },
+      subscription: {
+        findMany: async () => [{
+          offerId: 'offer-sub-stackable',
+          currentPeriodStart: new Date('2025-02-01T00:00:00.000Z'),
+          currentPeriodEnd: new Date('2025-03-01T00:00:00.000Z'),
+          quantity: 1,
+          status: 'active',
+        }],
+      },
+    } as any);
+
+    const res = await validatePurchaseSession({
+      prisma,
+      tenancy,
+      codeData: {
+        tenancyId: tenancy.id,
+        customerId: 'cust-1',
+        offerId: 'offer-sub-stackable',
+        offer: {
+          displayName: 'Stackable Offer',
+          groupId: undefined,
+          customerType: 'custom',
+          freeTrial: undefined,
+          serverOnly: false,
+          stackable: true,
+          prices: 'include-by-default',
+          includedItems: {},
+          isAddOnTo: false,
+        },
+      },
+      priceId: 'price-any',
+      quantity: 2,
+    });
+
+    expect(res.groupId).toBeUndefined();
+    expect(res.conflictingGroupSubscriptions.length).toBe(0);
+  });
 });
 
 describe('combined sources - one-time purchases + manual changes + subscriptions', () => {

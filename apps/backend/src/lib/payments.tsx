@@ -433,7 +433,7 @@ export async function validatePurchaseSession(options: {
     },
   });
 
-  if (codeData.offerId && existingOneTimePurchases.some((p) => p.offerId === codeData.offerId)) {
+  if (codeData.offerId && existingOneTimePurchases.some((p) => p.offerId === codeData.offerId && offer.stackable !== true)) {
     throw new StatusError(400, "Customer already has a one-time purchase for this offer");
   }
 
