@@ -1,3 +1,4 @@
+import { ALL_APPS } from "../apps/apps-config";
 import { SUPPORTED_CURRENCIES } from "../utils/currency-constants";
 import { StackAssertionError } from "../utils/errors";
 import { getOrUndefined, isObjectLike, set, typedEntries, typedFromEntries } from "../utils/objects";
@@ -166,6 +167,11 @@ const branchSchemaFuzzerConfig = [{
   }],
   domains: [{
     allowLocalhost: [true, false],
+  }],
+  apps: [{
+    installed: [typedFromEntries(typedEntries(ALL_APPS).map(([key, value]) => [key, [{
+      enabled: [true, false],
+    }]]))],
   }],
 }] satisfies FuzzerConfig<BranchConfigNormalizedOverride>;
 
