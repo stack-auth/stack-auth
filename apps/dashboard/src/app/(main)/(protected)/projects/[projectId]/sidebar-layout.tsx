@@ -247,9 +247,9 @@ const navigationItems: (Label | Item | Hidden)[] = [
     type: 'label',
   },
   {
-    name: "Offers",
-    href: "/payments/offers",
-    regex: /^\/projects\/[^\/]+\/payments\/offers$/,
+    name: "Products",
+    href: "/payments/products",
+    regex: /^\/projects\/[^\/]+\/payments\/products$/,
     icon: CreditCard,
     type: 'item',
   },

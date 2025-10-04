@@ -5,7 +5,7 @@ import { yupBoolean, yupNumber, yupObject, yupString } from "@stackframe/stack-s
 import { AccessTokenPayload } from '@stackframe/stack-shared/dist/sessions';
 import { generateSecureRandomString } from '@stackframe/stack-shared/dist/utils/crypto';
 import { getEnvVariable } from '@stackframe/stack-shared/dist/utils/env';
-import { StackAssertionError } from '@stackframe/stack-shared/dist/utils/errors';
+import { StackAssertionError, throwErr } from '@stackframe/stack-shared/dist/utils/errors';
 import { getPrivateJwks, getPublicJwkSet, signJWT, verifyJWT } from '@stackframe/stack-shared/dist/utils/jwt';
 import { Result } from '@stackframe/stack-shared/dist/utils/results';
 import { traceSpan } from '@stackframe/stack-shared/dist/utils/telemetry';
@@ -222,7 +222,7 @@ export async function createAuthTokens(options: CreateRefreshTokenOptions) {
   const accessToken = await generateAccessTokenFromRefreshTokenIfValid({
     tenancy: options.tenancy,
     refreshTokenObj: refreshTokenObj,
-  });
+  }) ?? throwErr("Newly generated refresh token is not valid; this should never happen!", { refreshTokenObj });
 
   return { refreshToken: refreshTokenObj.refreshToken, accessToken };
 }
