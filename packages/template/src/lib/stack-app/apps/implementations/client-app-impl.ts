@@ -1250,7 +1250,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       async transferProject(projectIdToTransfer: string, newTeamId: string): Promise<void> {
         await app._interface.transferProject(session, projectIdToTransfer, newTeamId);
         await app._refreshProject();
-      }
+      },
       listOwnedProjects() {
         return app._listOwnedProjects(session);
       },
