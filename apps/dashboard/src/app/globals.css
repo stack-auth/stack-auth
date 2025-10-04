@@ -250,3 +250,68 @@ body:has(.show-site-loading-indicator) .site-loading-indicator {
 :where([data-pacifica-children-min-width-0] > *) {
   min-width: 0;
 }
+
+/* Frosted card background + caustic highlight */
+.glass-surface {
+  background: rgba(255,255,255,0.8);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid rgba(0,0,0,0.1);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.8),
+    0 10px 30px rgba(0,0,0,0.1);
+  position: relative;
+}
+
+.dark .glass-surface {
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.10);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.08),
+    0 10px 30px rgba(0,0,0,0.25);
+}
+
+.glass-surface::after {
+  /* caustic / light streaks (cheap, fast) */
+  content: "";
+  position: absolute; inset: 0;
+  pointer-events: none; border-radius: inherit;
+  background:
+    radial-gradient(1200px 300px at 80% 10%, rgba(255,255,255,0.08), transparent 60%),
+    radial-gradient(800px 240px at 30% -10%, rgba(78,143,255,0.10), transparent 60%),
+    radial-gradient(600px 200px at 60% 0%, rgba(255,255,255,0.06), transparent 70%);
+  mix-blend-mode: screen;
+  opacity: .9;
+}
+
+.tile {
+  background: rgba(255,255,255,0.6);
+  border: 1px solid rgba(0,0,0,0.1);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border-radius: 16px;
+  transition: transform .15s ease, background .15s ease, border-color .15s ease;
+}
+
+.dark .tile {
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.12);
+}
+
+.tile:hover { 
+  transform: translateY(-1px); 
+  background: rgba(255,255,255,0.8); 
+}
+
+.dark .tile:hover {
+  background: rgba(255,255,255,0.08); 
+}
+
+.tile--dragging { 
+  transform: scale(.98); 
+  border-color: rgba(0,0,0,0.2); 
+}
+
+.dark .tile--dragging {
+  border-color: rgba(255,255,255,0.24); 
+}
