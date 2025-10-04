@@ -170,7 +170,7 @@ it("should return client secret for one-time price even if a conflicting group s
           displayName: "Sub Offer",
           customerType: "user",
           serverOnly: false,
-          catalogId: "grp",
+          groupId: "grp",
           stackable: false,
           prices: { monthly: { USD: "1000", interval: [1, "month"] } },
           includedItems: {},
@@ -179,7 +179,7 @@ it("should return client secret for one-time price even if a conflicting group s
           displayName: "One Time",
           customerType: "user",
           serverOnly: false,
-          catalogId: "grp",
+          groupId: "grp",
           stackable: true,
           prices: { one: { USD: "500" } },
           includedItems: {},
@@ -597,7 +597,7 @@ it("should update existing stripe subscription when switching offers within a gr
           displayName: "Offer A",
           customerType: "user",
           serverOnly: false,
-          catalogId: "grp",
+          groupId: "grp",
           stackable: false,
           prices: {
             monthly: {
@@ -611,7 +611,7 @@ it("should update existing stripe subscription when switching offers within a gr
           displayName: "Offer B",
           customerType: "user",
           serverOnly: false,
-          catalogId: "grp",
+          groupId: "grp",
           stackable: false,
           prices: {
             monthly: {
@@ -703,7 +703,7 @@ it("should cancel DB-only subscription then create Stripe subscription when swit
           displayName: "Offer A",
           customerType: "user",
           serverOnly: false,
-          catalogId: "grp",
+          groupId: "grp",
           stackable: false,
           prices: {
             monthly: {
@@ -717,7 +717,7 @@ it("should cancel DB-only subscription then create Stripe subscription when swit
           displayName: "Offer B",
           customerType: "user",
           serverOnly: false,
-          catalogId: "grp",
+          groupId: "grp",
           stackable: false,
           prices: {
             monthly: {
@@ -856,7 +856,7 @@ it("should block one-time purchase in same group after prior one-time purchase i
           displayName: "Offer A",
           customerType: "user",
           serverOnly: false,
-          catalogId: "grp",
+          groupId: "grp",
           stackable: true,
           prices: { one: { USD: "500" } },
           includedItems: {},
@@ -865,7 +865,7 @@ it("should block one-time purchase in same group after prior one-time purchase i
           displayName: "Offer B",
           customerType: "user",
           serverOnly: false,
-          catalogId: "grp",
+          groupId: "grp",
           stackable: true,
           prices: { one: { USD: "700" } },
           includedItems: {},
