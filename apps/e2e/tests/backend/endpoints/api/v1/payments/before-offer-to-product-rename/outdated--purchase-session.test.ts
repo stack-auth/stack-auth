@@ -150,7 +150,13 @@ it("should error on one-time price quantity > 1 when offer is not stackable", as
       quantity: 2,
     },
   });
-  expect(res).toMatchInlineSnapshot(`{ "client_secret": "pi_3SAe2C2KCgi1aqUo1EpPjb95_secret_L8CPurjiGtbxopdDmeLkJpR6y" }`);
+  expect(res).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 400,
+      "body": "This product is not stackable; quantity must be 1",
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
 });
 
 it("should return client secret for one-time price even if a conflicting group subscription exists (DB-only)", async ({ expect }) => {
@@ -164,7 +170,7 @@ it("should return client secret for one-time price even if a conflicting group s
           displayName: "Sub Offer",
           customerType: "user",
           serverOnly: false,
-          groupId: "grp",
+          catalogId: "grp",
           stackable: false,
           prices: { monthly: { USD: "1000", interval: [1, "month"] } },
           includedItems: {},
@@ -173,7 +179,7 @@ it("should return client secret for one-time price even if a conflicting group s
           displayName: "One Time",
           customerType: "user",
           serverOnly: false,
-          groupId: "grp",
+          catalogId: "grp",
           stackable: true,
           prices: { one: { USD: "500" } },
           includedItems: {},
@@ -591,7 +597,7 @@ it("should update existing stripe subscription when switching offers within a gr
           displayName: "Offer A",
           customerType: "user",
           serverOnly: false,
-          groupId: "grp",
+          catalogId: "grp",
           stackable: false,
           prices: {
             monthly: {
@@ -605,7 +611,7 @@ it("should update existing stripe subscription when switching offers within a gr
           displayName: "Offer B",
           customerType: "user",
           serverOnly: false,
-          groupId: "grp",
+          catalogId: "grp",
           stackable: false,
           prices: {
             monthly: {
@@ -697,7 +703,7 @@ it("should cancel DB-only subscription then create Stripe subscription when swit
           displayName: "Offer A",
           customerType: "user",
           serverOnly: false,
-          groupId: "grp",
+          catalogId: "grp",
           stackable: false,
           prices: {
             monthly: {
@@ -711,7 +717,7 @@ it("should cancel DB-only subscription then create Stripe subscription when swit
           displayName: "Offer B",
           customerType: "user",
           serverOnly: false,
-          groupId: "grp",
+          catalogId: "grp",
           stackable: false,
           prices: {
             monthly: {
@@ -836,7 +842,7 @@ it("should block one-time purchase for same product after prior one-time purchas
     body: { full_code: code2, price_id: "one", quantity: 1 },
   });
   expect(res.status).toBe(400);
-  expect(String(res.body)).toContain("one-time purchase for this offer");
+  expect(String(res.body)).toContain("one-time purchase for this product");
 });
 
 it("should block one-time purchase in same group after prior one-time purchase in that group (test-mode persisted)", async ({ expect }) => {
@@ -850,7 +856,7 @@ it("should block one-time purchase in same group after prior one-time purchase i
           displayName: "Offer A",
           customerType: "user",
           serverOnly: false,
-          groupId: "grp",
+          catalogId: "grp",
           stackable: true,
           prices: { one: { USD: "500" } },
           includedItems: {},
@@ -859,7 +865,7 @@ it("should block one-time purchase in same group after prior one-time purchase i
           displayName: "Offer B",
           customerType: "user",
           serverOnly: false,
-          groupId: "grp",
+          catalogId: "grp",
           stackable: true,
           prices: { one: { USD: "700" } },
           includedItems: {},
@@ -902,5 +908,5 @@ it("should block one-time purchase in same group after prior one-time purchase i
     body: { full_code: codeB, price_id: "one", quantity: 1 },
   });
   expect(resB.status).toBe(400);
-  expect(String(resB.body)).toContain("one-time purchase in this product group");
+  expect(String(resB.body)).toContain("one-time purchase in this product catalog");
 });
