@@ -8,15 +8,15 @@ import { typedToLowercase, typedToUppercase } from "@stackframe/stack-shared/dis
 
 
 type SelectedPrice = NonNullable<AdminTransaction['price']>;
-type OfferWithPrices = {
+type ProductWithPrices = {
   displayName?: string,
   prices?: Record<string, SelectedPrice & { serverOnly?: unknown, freeTrial?: unknown }> | "include-by-default",
 } | null | undefined;
 
-function resolveSelectedPriceFromOffer(offer: OfferWithPrices, priceId?: string | null): SelectedPrice | null {
-  if (!offer) return null;
+function resolveSelectedPriceFromProduct(product: ProductWithPrices, priceId?: string | null): SelectedPrice | null {
+  if (!product) return null;
   if (!priceId) return null;
-  const prices = offer.prices;
+  const prices = product.prices;
   if (!prices || prices === "include-by-default") return null;
   const selected = prices[priceId as keyof typeof prices] as (SelectedPrice & { serverOnly?: unknown, freeTrial?: unknown }) | undefined;
   if (!selected) return null;
@@ -24,8 +24,8 @@ function resolveSelectedPriceFromOffer(offer: OfferWithPrices, priceId?: string 
   return rest as SelectedPrice;
 }
 
-function getOfferDisplayName(offer: OfferWithPrices): string | null {
-  return offer?.displayName ?? null;
+function getProductDisplayName(product: ProductWithPrices): string | null {
+  return product?.displayName ?? null;
 }
 
 
@@ -137,8 +137,8 @@ export const GET = createSmartRouteHandler({
       customer_id: s.customerId,
       quantity: s.quantity,
       test_mode: s.creationSource === 'TEST_MODE',
-      offer_display_name: getOfferDisplayName(s.offer as OfferWithPrices),
-      price: resolveSelectedPriceFromOffer(s.offer as OfferWithPrices, s.priceId ?? null),
+      product_display_name: getProductDisplayName(s.product as ProductWithPrices),
+      price: resolveSelectedPriceFromProduct(s.product as ProductWithPrices, s.priceId ?? null),
       status: s.status,
     }));
 
@@ -153,7 +153,7 @@ export const GET = createSmartRouteHandler({
         customer_id: i.customerId,
         quantity: i.quantity,
         test_mode: false,
-        offer_display_name: null,
+        product_display_name: null,
         price: null,
         status: null,
         item_id: i.itemId,
@@ -170,8 +170,8 @@ export const GET = createSmartRouteHandler({
       customer_id: o.customerId,
       quantity: o.quantity,
       test_mode: o.creationSource === 'TEST_MODE',
-      offer_display_name: getOfferDisplayName(o.offer as OfferWithPrices),
-      price: resolveSelectedPriceFromOffer(o.offer as OfferWithPrices, o.priceId ?? null),
+      product_display_name: getProductDisplayName(o.product as ProductWithPrices),
+      price: resolveSelectedPriceFromProduct(o.product as ProductWithPrices, o.priceId ?? null),
       status: null,
     }));
 
