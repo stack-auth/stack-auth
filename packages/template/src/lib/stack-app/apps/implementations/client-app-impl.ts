@@ -1247,6 +1247,10 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       createProject(newProject: AdminProjectUpdateOptions & { displayName: string, teamId: string }) {
         return app._createProject(session, newProject);
       },
+      async transferProject(projectIdToTransfer: string, newTeamId: string): Promise<void> {
+        await app._interface.transferProject(session, projectIdToTransfer, newTeamId);
+        await app._refreshProject();
+      },
       listOwnedProjects() {
         return app._listOwnedProjects(session);
       },

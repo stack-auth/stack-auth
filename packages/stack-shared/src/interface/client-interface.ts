@@ -1797,5 +1797,25 @@ export class StackClientInterface {
     const { url } = await response.json() as { url: string };
     return url;
   }
+
+  async transferProject(internalProjectSession: InternalSession, projectIdToTransfer: string, newTeamId: string): Promise<void> {
+    if (this.options.projectId !== "internal") {
+      throw new StackAssertionError("StackClientInterface.transferProject() is only available for internal projects (please specify the project ID in the constructor)");
+    }
+    await this.sendClientRequest(
+      "/internal/projects/transfer",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          project_id: projectIdToTransfer,
+          new_team_id: newTeamId,
+        }),
+      },
+      internalProjectSession,
+    );
+  }
 }
 
