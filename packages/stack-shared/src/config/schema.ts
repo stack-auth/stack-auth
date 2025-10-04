@@ -1,6 +1,7 @@
 // TODO: rename this file to spaghetti.ts because that's the kind of code here
 
 import * as yup from "yup";
+import { ALL_APPS } from "../apps/apps-config";
 import { DEFAULT_EMAIL_TEMPLATES, DEFAULT_EMAIL_THEMES, DEFAULT_EMAIL_THEME_ID } from "../helpers/emails";
 import * as schemaFields from "../schema-fields";
 import { productSchema, userSpecifiedIdSchema, yupBoolean, yupDate, yupMixed, yupNever, yupNumber, yupObject, yupRecord, yupString, yupTuple, yupUnion } from "../schema-fields";
@@ -87,6 +88,32 @@ const branchApiKeysSchema = yupObject({
 });
 // --- END NEW API Keys Schema ---
 
+// --- NEW Apps Schema ---
+const appIds = Object.keys(ALL_APPS) as (keyof typeof ALL_APPS)[];
+const branchAppsSchema = yupObject({
+  installed: yupRecord(
+    yupString().oneOf(appIds),
+    yupObject({
+      enabled: yupBoolean(),
+    }),
+  ).test(
+    'authentication-and-emails-enabled',
+    'authentication and emails must be installed and enabled',
+    function(value) {
+      const hasAuthentication = value['authentication'].enabled === true;
+      const hasEmails = value['emails'].enabled === true;
+      if (!hasAuthentication || !hasEmails) {
+        return this.createError({
+          message: 'authentication and emails must be installed and enabled',
+          path: this.path,
+        });
+      }
+      return true;
+    }
+  ),
+});
+// --- END NEW Apps Schema ---
+
 
 const branchAuthSchema = yupObject({
   allowSignUp: yupBoolean(),
@@ -163,6 +190,8 @@ export const branchConfigSchema = canNoLongerBeOverridden(projectConfigSchema, [
   }),
 
   apiKeys: branchApiKeysSchema,
+
+  apps: branchAppsSchema,
 
   domains: branchDomain,
 
@@ -433,6 +462,10 @@ const organizationConfigDefaults = {
       team: false,
       user: false,
     },
+  },
+
+  apps: {
+    installed: typedFromEntries(appIds.map(appId => [appId, { enabled: false }])),
   },
 
   teams: {

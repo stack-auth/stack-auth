@@ -1,0 +1,92 @@
+export const ALL_APPS = {
+  "authentication": {
+    type: "app" as const,
+    displayName: "Authentication",
+    subtitle: "User sign-in and account management",
+    tags: ["auth", "security"],
+  },
+  "teams": {
+    type: "app" as const,
+    displayName: "Teams",
+    subtitle: "Team collaboration and management",
+    tags: ["collaboration", "organization"],
+  },
+  "rbac": {
+    type: "app" as const,
+    displayName: "RBAC",
+    subtitle: "Role-based access control and permissions",
+    tags: ["security", "permissions"],
+  },
+  "api-keys": {
+    type: "app" as const,
+    displayName: "API Keys",
+    subtitle: "API key generation and management",
+    tags: ["api", "security"],
+  },
+  "payments": {
+    type: "app" as const,
+    displayName: "Payments",
+    subtitle: "Payment processing and subscription management",
+    tags: ["billing", "monetization"],
+  },
+  "emails": {
+    type: "app" as const,
+    displayName: "Emails",
+    subtitle: "Email template configuration and management",
+    tags: ["communication", "templates"],
+  },
+  "email-api": {
+    type: "app" as const,
+    displayName: "Email API",
+    subtitle: "Programmatic email sending and delivery",
+    tags: ["api", "communication"],
+  },
+  "data-vault": {
+    type: "app" as const,
+    displayName: "Data Vault",
+    subtitle: "Secure storage for sensitive user data",
+    tags: ["security", "storage"],
+  },
+  "workflows": {
+    type: "app" as const,
+    displayName: "Workflows",
+    subtitle: "Automated business process orchestration",
+    tags: ["automation", "processes"],
+  },
+  "webhooks": {
+    type: "app" as const,
+    displayName: "Webhooks",
+    subtitle: "Real-time event notifications and integrations",
+    tags: ["integration", "events"],
+  },
+  "tv-mode": {
+    type: "app" as const,
+    displayName: "TV mode",
+    subtitle: "Dashboard display for large screens",
+    tags: ["display", "monitoring"],
+  },
+  "launch-checklist": {
+    type: "app" as const,
+    displayName: "Launch Checklist",
+    subtitle: "Pre-launch verification and readiness checks",
+    tags: ["deployment", "verification"],
+  },
+  "catalyst": {
+    type: "app" as const,
+    displayName: "Catalyst",
+    subtitle: "Project scaffolding and rapid development",
+    tags: ["development", "tooling"],
+  },
+  "neon": {
+    type: "integration" as const,
+    displayName: "Neon",
+    subtitle: "Serverless Postgres database integration",
+    tags: ["database", "integration"],
+  },
+  "convex": {
+    type: "integration" as const,
+    displayName: "Convex",
+    subtitle: "Real-time backend platform integration",
+    tags: ["database", "integration", "realtime"],
+  },
+} as const;
