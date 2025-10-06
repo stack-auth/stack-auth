@@ -21,7 +21,7 @@ it("createCheckoutUrl supports optional returnUrl and embeds it", async ({ expec
   const user = await clientApp.getUser();
   if (!user) throw new Error("User not found");
 
-  const url = await user.createCheckoutUrl({ offerId: "test-offer", returnUrl: "http://stack-test.localhost/after" });
+  const url = await user.createCheckoutUrl({ productId: "test-offer", returnUrl: "http://stack-test.localhost/after" });
   expect(url).toMatch(/^https?:\/\/localhost:8101\/purchase\/[a-z0-9-_]+\?return_url=/);
   const urlObj = new URL(url);
   expect(urlObj.searchParams.get("return_url")).toBe("http://stack-test.localhost/after");

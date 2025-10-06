@@ -1247,6 +1247,10 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       createProject(newProject: AdminProjectUpdateOptions & { displayName: string, teamId: string }) {
         return app._createProject(session, newProject);
       },
+      async transferProject(projectIdToTransfer: string, newTeamId: string): Promise<void> {
+        await app._interface.transferProject(session, projectIdToTransfer, newTeamId);
+        await app._refreshProject();
+      },
       listOwnedProjects() {
         return app._listOwnedProjects(session);
       },
@@ -1272,8 +1276,8 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         return app._clientItemFromCrud(result);
       },
       // END_PLATFORM
-      async createCheckoutUrl(options: { offerId: string, returnUrl?: string }) {
-        return await app._interface.createCheckoutUrl(type, userIdOrTeamId, options.offerId, session, options.returnUrl);
+      async createCheckoutUrl(options: { productId: string, returnUrl?: string }) {
+        return await app._interface.createCheckoutUrl(type, userIdOrTeamId, options.productId, session, options.returnUrl);
       },
     };
   }
