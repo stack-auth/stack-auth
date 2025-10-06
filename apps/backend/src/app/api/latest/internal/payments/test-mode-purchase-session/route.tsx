@@ -37,7 +37,7 @@ export const POST = createSmartRouteHandler({
     }
     const prisma = await getPrismaClientForTenancy(auth.tenancy);
 
-    const { selectedPrice, conflictingGroupSubscriptions } = await validatePurchaseSession({
+    const { selectedPrice, conflictingCatalogSubscriptions } = await validatePurchaseSession({
       prisma,
       tenancy: auth.tenancy,
       codeData: data,
@@ -53,18 +53,18 @@ export const POST = createSmartRouteHandler({
         data: {
           tenancyId: auth.tenancy.id,
           customerId: data.customerId,
-          customerType: typedToUppercase(data.offer.customerType),
-          offerId: data.offerId,
+          customerType: typedToUppercase(data.product.customerType),
+          productId: data.productId,
           priceId: price_id,
-          offer: data.offer,
+          product: data.product,
           quantity,
           creationSource: "TEST_MODE",
         },
       });
     } else {
       // Cancel conflicting subscriptions for TEST_MODE as well, then create new TEST_MODE subscription
-      if (conflictingGroupSubscriptions.length > 0) {
-        const conflicting = conflictingGroupSubscriptions[0];
+      if (conflictingCatalogSubscriptions.length > 0) {
+        const conflicting = conflictingCatalogSubscriptions[0];
         if (conflicting.stripeSubscriptionId) {
           const stripe = await getStripeForAccount({ tenancy: auth.tenancy });
           await stripe.subscriptions.cancel(conflicting.stripeSubscriptionId);
@@ -85,11 +85,11 @@ export const POST = createSmartRouteHandler({
         data: {
           tenancyId: auth.tenancy.id,
           customerId: data.customerId,
-          customerType: typedToUppercase(data.offer.customerType),
+          customerType: typedToUppercase(data.product.customerType),
           status: "active",
-          offerId: data.offerId,
+          productId: data.productId,
           priceId: price_id,
-          offer: data.offer,
+          product: data.product,
           quantity,
           currentPeriodStart: new Date(),
           currentPeriodEnd: addInterval(new Date(), selectedPrice.interval!),

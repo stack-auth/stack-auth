@@ -1,9 +1,9 @@
 import { PrismaClientTransaction } from "@/prisma-client";
 import { SubscriptionStatus } from "@prisma/client";
 import { KnownErrors } from "@stackframe/stack-shared";
-import type { inlineOfferSchema, offerSchema } from "@stackframe/stack-shared/dist/schema-fields";
+import type { inlineProductSchema, productSchema } from "@stackframe/stack-shared/dist/schema-fields";
 import { SUPPORTED_CURRENCIES } from "@stackframe/stack-shared/dist/utils/currency-constants";
-import { addInterval, FAR_FUTURE_DATE, getIntervalsElapsed } from "@stackframe/stack-shared/dist/utils/dates";
+import { FAR_FUTURE_DATE, addInterval, getIntervalsElapsed } from "@stackframe/stack-shared/dist/utils/dates";
 import { StackAssertionError, StatusError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { getOrUndefined, typedEntries, typedFromEntries, typedKeys } from "@stackframe/stack-shared/dist/utils/objects";
 import { typedToUppercase } from "@stackframe/stack-shared/dist/utils/strings";
@@ -12,48 +12,48 @@ import Stripe from "stripe";
 import * as yup from "yup";
 import { Tenancy } from "./tenancies";
 
-const DEFAULT_OFFER_START_DATE = new Date("1973-01-01T12:00:00.000Z"); // monday
+const DEFAULT_PRODUCT_START_DATE = new Date("1973-01-01T12:00:00.000Z"); // monday
 
-export async function ensureOfferIdOrInlineOffer(
+export async function ensureProductIdOrInlineProduct(
   tenancy: Tenancy,
   accessType: "client" | "server" | "admin",
-  offerId: string | undefined,
-  inlineOffer: yup.InferType<typeof inlineOfferSchema> | undefined
-): Promise<Tenancy["config"]["payments"]["offers"][string]> {
-  if (offerId && inlineOffer) {
-    throw new StatusError(400, "Cannot specify both offer_id and offer_inline!");
+  productId: string | undefined,
+  inlineProduct: yup.InferType<typeof inlineProductSchema> | undefined
+): Promise<Tenancy["config"]["payments"]["products"][string]> {
+  if (productId && inlineProduct) {
+    throw new StatusError(400, "Cannot specify both product_id and product_inline!");
   }
-  if (inlineOffer && accessType === "client") {
-    throw new StatusError(400, "Cannot specify offer_inline when calling from client! Please call with a server API key, or use the offer_id parameter.");
+  if (inlineProduct && accessType === "client") {
+    throw new StatusError(400, "Cannot specify product_inline when calling from client! Please call with a server API key, or use the product_id parameter.");
   }
-  if (!offerId && !inlineOffer) {
-    throw new StatusError(400, "Must specify either offer_id or offer_inline!");
+  if (!productId && !inlineProduct) {
+    throw new StatusError(400, "Must specify either product_id or product_inline!");
   }
-  if (offerId) {
-    const offer = getOrUndefined(tenancy.config.payments.offers, offerId);
-    if (!offer || (offer.serverOnly && accessType === "client")) {
-      throw new KnownErrors.OfferDoesNotExist(offerId, accessType);
+  if (productId) {
+    const product = getOrUndefined(tenancy.config.payments.products, productId);
+    if (!product || (product.serverOnly && accessType === "client")) {
+      throw new KnownErrors.ProductDoesNotExist(productId, accessType);
     }
-    return offer;
+    return product;
   } else {
-    if (!inlineOffer) {
-      throw new StackAssertionError("Inline offer does not exist, this should never happen", { inlineOffer, offerId });
+    if (!inlineProduct) {
+      throw new StackAssertionError("Inline product does not exist, this should never happen", { inlineProduct, productId });
     }
     return {
-      groupId: undefined,
+      catalogId: undefined,
       isAddOnTo: false,
-      displayName: inlineOffer.display_name,
-      customerType: inlineOffer.customer_type,
-      freeTrial: inlineOffer.free_trial,
-      serverOnly: inlineOffer.server_only,
+      displayName: inlineProduct.display_name,
+      customerType: inlineProduct.customer_type,
+      freeTrial: inlineProduct.free_trial,
+      serverOnly: inlineProduct.server_only,
       stackable: false,
-      prices: Object.fromEntries(Object.entries(inlineOffer.prices).map(([key, value]) => [key, {
+      prices: Object.fromEntries(Object.entries(inlineProduct.prices).map(([key, value]) => [key, {
         ...typedFromEntries(SUPPORTED_CURRENCIES.map(c => [c.code, getOrUndefined(value, c.code)])),
         interval: value.interval,
         freeTrial: value.free_trial,
         serverOnly: true,
       }])),
-      includedItems: typedFromEntries(Object.entries(inlineOffer.included_items).map(([key, value]) => [key, {
+      includedItems: typedFromEntries(Object.entries(inlineProduct.included_items).map(([key, value]) => [key, {
         repeat: value.repeat ?? "never",
         quantity: value.quantity ?? 0,
         expires: value.expires ?? "never",
@@ -169,8 +169,8 @@ export async function getItemQuantityForCustomer(options: {
     },
   });
   for (const p of oneTimePurchases) {
-    const offer = p.offer as yup.InferType<typeof offerSchema>;
-    const inc = getOrUndefined(offer.includedItems, options.itemId);
+    const product = p.product as yup.InferType<typeof productSchema>;
+    const inc = getOrUndefined(product.includedItems, options.itemId);
     if (!inc) continue;
     const baseQty = inc.quantity * p.quantity;
     if (baseQty <= 0) continue;
@@ -189,8 +189,8 @@ export async function getItemQuantityForCustomer(options: {
     customerId: options.customerId,
   });
   for (const s of subscriptions) {
-    const offer = s.offer;
-    const inc = getOrUndefined(offer.includedItems, options.itemId);
+    const product = s.product;
+    const inc = getOrUndefined(product.includedItems, options.itemId);
     if (!inc) continue;
     const baseQty = inc.quantity * s.quantity;
     if (baseQty <= 0) continue;
@@ -242,14 +242,14 @@ type Subscription = {
    */
   id: string | null,
   /**
-   * `null` for inline offers
+   * `null` for inline products
    */
-  offerId: string | null,
+  productId: string | null,
   /**
-   * `null` for test mode purchases and group default offers
+   * `null` for test mode purchases and catalog default products
    */
   stripeSubscriptionId: string | null,
-  offer: yup.InferType<typeof offerSchema>,
+  product: yup.InferType<typeof productSchema>,
   quantity: number,
   currentPeriodStart: Date,
   currentPeriodEnd: Date | null,
@@ -267,8 +267,8 @@ export async function getSubscriptions(options: {
   customerType: "user" | "team" | "custom",
   customerId: string,
 }) {
-  const groups = options.tenancy.config.payments.groups;
-  const offers = options.tenancy.config.payments.offers;
+  const catalogs = options.tenancy.config.payments.catalogs;
+  const products = options.tenancy.config.payments.products;
   const subscriptions: Subscription[] = [];
   const dbSubscriptions = await options.prisma.subscription.findMany({
     where: {
@@ -278,14 +278,14 @@ export async function getSubscriptions(options: {
     },
   });
 
-  const groupsWithDbSubscriptions = new Set<string>();
+  const catalogsWithDbSubscriptions = new Set<string>();
   for (const s of dbSubscriptions) {
-    const offer = s.offerId ? getOrUndefined(offers, s.offerId) : s.offer as yup.InferType<typeof offerSchema>;
-    if (!offer) continue;
+    const product = s.productId ? getOrUndefined(products, s.productId) : s.product as yup.InferType<typeof productSchema>;
+    if (!product) continue;
     subscriptions.push({
       id: s.id,
-      offerId: s.offerId,
-      offer,
+      productId: s.productId,
+      product,
       quantity: s.quantity,
       currentPeriodStart: s.currentPeriodStart,
       currentPeriodEnd: s.currentPeriodEnd,
@@ -293,50 +293,43 @@ export async function getSubscriptions(options: {
       createdAt: s.createdAt,
       stripeSubscriptionId: s.stripeSubscriptionId,
     });
-    if (offer.groupId !== undefined) {
-      groupsWithDbSubscriptions.add(offer.groupId);
+    if (product.catalogId !== undefined) {
+      catalogsWithDbSubscriptions.add(product.catalogId);
     }
   }
 
-  for (const groupId of Object.keys(groups)) {
-    if (groupsWithDbSubscriptions.has(groupId)) continue;
-    const offersInGroup = typedEntries(offers).filter(([_, offer]) => offer.groupId === groupId);
-    const defaultGroupOffers = offersInGroup.filter(([_, offer]) => offer.prices === "include-by-default");
-    if (defaultGroupOffers.length > 1) {
-      throw new StackAssertionError(
-        "Multiple include-by-default offers configured in the same group",
-        { groupId, offerIds: defaultGroupOffers.map(([id]) => id) },
-      );
-    }
-    if (defaultGroupOffers.length === 1) {
-      const [offerId, offer] = defaultGroupOffers[0];
+  for (const catalogId of Object.keys(catalogs)) {
+    if (catalogsWithDbSubscriptions.has(catalogId)) continue;
+    const productsInCatalog = typedEntries(products).filter(([_, product]) => product.catalogId === catalogId);
+    const defaultCatalogProduct = productsInCatalog.find(([_, product]) => product.prices === "include-by-default");
+    if (defaultCatalogProduct) {
       subscriptions.push({
         id: null,
-        offerId,
-        offer,
+        productId: defaultCatalogProduct[0],
+        product: defaultCatalogProduct[1],
         quantity: 1,
-        currentPeriodStart: DEFAULT_OFFER_START_DATE,
+        currentPeriodStart: DEFAULT_PRODUCT_START_DATE,
         currentPeriodEnd: null,
         status: SubscriptionStatus.active,
-        createdAt: DEFAULT_OFFER_START_DATE,
+        createdAt: DEFAULT_PRODUCT_START_DATE,
         stripeSubscriptionId: null,
       });
     }
   }
 
-  const ungroupedDefaults = typedEntries(offers).filter(([id, offer]) => (
-    offer.groupId === undefined && offer.prices === "include-by-default" && !subscriptions.some((s) => s.offerId === id)
+  const ungroupedDefaults = typedEntries(products).filter(([id, product]) => (
+    product.catalogId === undefined && product.prices === "include-by-default" && !subscriptions.some((s) => s.productId === id)
   ));
-  for (const [offerId, offer] of ungroupedDefaults) {
+  for (const [productId, product] of ungroupedDefaults) {
     subscriptions.push({
       id: null,
-      offerId,
-      offer,
+      productId,
+      product,
       quantity: 1,
-      currentPeriodStart: DEFAULT_OFFER_START_DATE,
+      currentPeriodStart: DEFAULT_PRODUCT_START_DATE,
       currentPeriodEnd: null,
       status: SubscriptionStatus.active,
-      createdAt: DEFAULT_OFFER_START_DATE,
+      createdAt: DEFAULT_PRODUCT_START_DATE,
       stripeSubscriptionId: null,
     });
   }
@@ -383,8 +376,8 @@ export async function ensureCustomerExists(options: {
   }
 }
 
-type Offer = yup.InferType<typeof offerSchema>;
-type SelectedPrice = Exclude<Offer["prices"], "include-by-default">[string];
+type Product = yup.InferType<typeof productSchema>;
+type SelectedPrice = Exclude<Product["prices"], "include-by-default">[string];
 
 export async function validatePurchaseSession(options: {
   prisma: PrismaClientTransaction,
@@ -392,36 +385,36 @@ export async function validatePurchaseSession(options: {
   codeData: {
     tenancyId: string,
     customerId: string,
-    offerId?: string,
-    offer: Offer,
+    productId?: string,
+    product: Product,
   },
   priceId: string,
   quantity: number,
 }): Promise<{
   selectedPrice: SelectedPrice | undefined,
-  groupId: string | undefined,
+  catalogId: string | undefined,
   subscriptions: Subscription[],
-  conflictingGroupSubscriptions: Subscription[],
+  conflictingCatalogSubscriptions: Subscription[],
 }> {
   const { prisma, tenancy, codeData, priceId, quantity } = options;
-  const offer = codeData.offer;
+  const product = codeData.product;
   await ensureCustomerExists({
     prisma,
     tenancyId: tenancy.id,
-    customerType: offer.customerType,
+    customerType: product.customerType,
     customerId: codeData.customerId,
   });
 
   let selectedPrice: SelectedPrice | undefined = undefined;
-  if (offer.prices !== "include-by-default") {
-    const pricesMap = new Map(typedEntries(offer.prices));
+  if (product.prices !== "include-by-default") {
+    const pricesMap = new Map(typedEntries(product.prices));
     selectedPrice = pricesMap.get(priceId);
     if (!selectedPrice) {
-      throw new StatusError(400, "Price not found on offer associated with this purchase code");
+      throw new StatusError(400, "Price not found on product associated with this purchase code");
     }
   }
-  if (quantity !== 1 && offer.stackable !== true) {
-    throw new StatusError(400, "This offer is not stackable; quantity must be 1");
+  if (quantity !== 1 && product.stackable !== true) {
+    throw new StatusError(400, "This product is not stackable; quantity must be 1");
   }
 
   // Block based on prior one-time purchases for same customer and customerType
@@ -429,55 +422,55 @@ export async function validatePurchaseSession(options: {
     where: {
       tenancyId: tenancy.id,
       customerId: codeData.customerId,
-      customerType: typedToUppercase(offer.customerType),
+      customerType: typedToUppercase(product.customerType),
     },
   });
 
-  if (codeData.offerId && existingOneTimePurchases.some((p) => p.offerId === codeData.offerId && offer.stackable !== true)) {
-    throw new StatusError(400, "Customer already has a one-time purchase for this offer");
+  if (codeData.productId && existingOneTimePurchases.some((p) => p.productId === codeData.productId) && product.stackable !== true) {
+    throw new StatusError(400, "Customer already has a one-time purchase for this product");
   }
 
   const subscriptions = await getSubscriptions({
     prisma,
     tenancy,
-    customerType: offer.customerType,
+    customerType: product.customerType,
     customerId: codeData.customerId,
   });
-  if (subscriptions.find((s) => s.offerId === codeData.offerId) && offer.stackable !== true) {
-    throw new StatusError(400, "Customer already has a subscription for this offer; this offer is not stackable");
+  if (subscriptions.find((s) => s.productId === codeData.productId) && product.stackable !== true) {
+    throw new StatusError(400, "Customer already has a subscription for this product; this product is not stackable");
   }
-  const addOnOfferIds = offer.isAddOnTo ? typedKeys(offer.isAddOnTo) : [];
-  if (offer.isAddOnTo && !subscriptions.some((s) => s.offerId && addOnOfferIds.includes(s.offerId))) {
-    throw new StatusError(400, "This offer is an add-on to an offer that the customer does not have");
+  const addOnProductIds = product.isAddOnTo ? typedKeys(product.isAddOnTo) : [];
+  if (product.isAddOnTo && !subscriptions.some((s) => s.productId && addOnProductIds.includes(s.productId))) {
+    throw new StatusError(400, "This product is an add-on to a product that the customer does not have");
   }
 
-  const groups = tenancy.config.payments.groups;
-  const groupId = typedKeys(groups).find((g) => offer.groupId === g);
+  const catalogs = tenancy.config.payments.catalogs;
+  const catalogId = typedKeys(catalogs).find((g) => product.catalogId === g);
 
-  // Block purchasing any offer in the same group if a one-time purchase exists in that group
-  if (groupId) {
-    const hasOneTimeInGroup = existingOneTimePurchases.some((p) => {
-      const offer = p.offer as yup.InferType<typeof offerSchema>;
-      return offer.groupId === groupId;
+  // Block purchasing any product in the same catalog if a one-time purchase exists in that catalog
+  if (catalogId) {
+    const hasOneTimeInCatalog = existingOneTimePurchases.some((p) => {
+      const product = p.product as yup.InferType<typeof productSchema>;
+      return product.catalogId === catalogId;
     });
-    if (hasOneTimeInGroup) {
-      throw new StatusError(400, "Customer already has a one-time purchase in this offer group");
+    if (hasOneTimeInCatalog) {
+      throw new StatusError(400, "Customer already has a one-time purchase in this product catalog");
     }
   }
 
-  let conflictingGroupSubscriptions: Subscription[] = [];
-  if (groupId) {
-    conflictingGroupSubscriptions = subscriptions.filter((subscription) => (
+  let conflictingCatalogSubscriptions: Subscription[] = [];
+  if (catalogId) {
+    conflictingCatalogSubscriptions = subscriptions.filter((subscription) => (
       subscription.id &&
-      subscription.offerId &&
-      subscription.offer.groupId === groupId &&
+      subscription.productId &&
+      subscription.product.catalogId === catalogId &&
       isActiveSubscription(subscription) &&
-      subscription.offer.prices !== "include-by-default" &&
-      (!offer.isAddOnTo || !addOnOfferIds.includes(subscription.offerId))
+      subscription.product.prices !== "include-by-default" &&
+      (!product.isAddOnTo || !addOnProductIds.includes(subscription.productId))
     ));
   }
 
-  return { selectedPrice, groupId, subscriptions, conflictingGroupSubscriptions };
+  return { selectedPrice, catalogId, subscriptions, conflictingCatalogSubscriptions };
 }
 
 export function getClientSecretFromStripeSubscription(subscription: Stripe.Subscription): string {
