@@ -725,11 +725,11 @@ describe('getItemQuantityForCustomer - subscriptions', () => {
 
     const tenancy = createMockTenancy({
       items: { [itemId]: { displayName: 'UDF', customerType: 'user' } },
-      groups: {},
-      offers: {
+      catalogs: {},
+      products: {
         offFreeUngrouped: {
           displayName: 'Free Ungrouped',
-          groupId: undefined,
+          catalogId: undefined,
           customerType: 'user',
           freeTrial: undefined,
           serverOnly: false,
@@ -970,11 +970,11 @@ describe('getSubscriptions - defaults behavior', () => {
   it('includes ungrouped include-by-default offers in subscriptions', async () => {
     const tenancy = createMockTenancy({
       items: {},
-      groups: {},
-      offers: {
+      catalogs: {},
+      products: {
         freeUngrouped: {
           displayName: 'Free',
-          groupId: undefined,
+          catalogId: undefined,
           customerType: 'custom',
           freeTrial: undefined,
           serverOnly: false,
@@ -985,7 +985,7 @@ describe('getSubscriptions - defaults behavior', () => {
         },
         paidUngrouped: {
           displayName: 'Paid',
-          groupId: undefined,
+          catalogId: undefined,
           customerType: 'custom',
           freeTrial: undefined,
           serverOnly: false,
@@ -1008,18 +1008,18 @@ describe('getSubscriptions - defaults behavior', () => {
       customerId: 'c-1',
     });
 
-    const ids = subs.map(s => s.offerId);
+    const ids = subs.map(s => s.productId);
     expect(ids).toContain('freeUngrouped');
   });
 
   it('throws error when multiple include-by-default offers exist in same group', async () => {
     const tenancy = createMockTenancy({
       items: {},
-      groups: { g1: { displayName: 'G1' } },
-      offers: {
+      catalogs: { g1: { displayName: 'G1' } },
+      products: {
         g1FreeA: {
           displayName: 'Free A',
-          groupId: 'g1',
+          catalogId: 'g1',
           customerType: 'custom',
           freeTrial: undefined,
           serverOnly: false,
@@ -1030,7 +1030,7 @@ describe('getSubscriptions - defaults behavior', () => {
         },
         g1FreeB: {
           displayName: 'Free B',
-          groupId: 'g1',
+          catalogId: 'g1',
           customerType: 'custom',
           freeTrial: undefined,
           serverOnly: false,
