@@ -319,3 +319,52 @@ it("should allow valid product_id", async ({ expect }) => {
   const returnUrl = urlObj.searchParams.get("return_url");
   expect(returnUrl).toBe("http://stack-test.localhost/after-purchase");
 });
+
+it("should error for untrusted return_url", async ({ expect }) => {
+  await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+  await Payments.setup();
+  await Project.updateConfig({
+    payments: {
+      products: {
+        "test-product": {
+          displayName: "Test Product",
+          customerType: "user",
+          serverOnly: false,
+          stackable: false,
+          prices: {
+            "monthly": {
+              USD: "1000",
+              interval: [1, "month"],
+            },
+          },
+          includedItems: {},
+        },
+      },
+    },
+  });
+
+  const { userId } = await User.create();
+  const response = await niceBackendFetch("/api/latest/payments/purchases/create-purchase-url", {
+    method: "POST",
+    accessType: "client",
+    body: {
+      customer_type: "user",
+      customer_id: userId,
+      product_id: "test-product",
+      return_url: "https://malicious.com/callback",
+    },
+  });
+  expect(response).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 400,
+      "body": {
+        "code": "REDIRECT_URL_NOT_WHITELISTED",
+        "error": "Redirect URL not whitelisted. Did you forget to add this domain to the trusted domains list on the Stack Auth dashboard?",
+      },
+      "headers": Headers {
+        "x-stack-known-error": "REDIRECT_URL_NOT_WHITELISTED",
+        <some fields may have been hidden>,
+      },
+    }
+  `);
+});

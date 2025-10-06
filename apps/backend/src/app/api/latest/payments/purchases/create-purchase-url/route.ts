@@ -1,4 +1,5 @@
 import { ensureProductIdOrInlineProduct } from "@/lib/payments";
+import { validateRedirectUrl } from "@/lib/redirect-urls";
 import { getStripeForAccount } from "@/lib/stripe";
 import { globalPrismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
@@ -79,6 +80,9 @@ export const POST = createSmartRouteHandler({
     const fullCode = `${tenancy.id}_${code}`;
     const url = new URL(`/purchase/${fullCode}`, getEnvVariable("NEXT_PUBLIC_STACK_DASHBOARD_URL"));
     if (req.body.return_url) {
+      if (!validateRedirectUrl(req.body.return_url, tenancy)) {
+        throw new KnownErrors.RedirectUrlNotWhitelisted();
+      }
       url.searchParams.set("return_url", req.body.return_url);
     }
 

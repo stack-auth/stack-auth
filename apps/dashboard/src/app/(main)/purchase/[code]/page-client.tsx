@@ -95,7 +95,10 @@ export default function PageClient({ code }: { code: string }) {
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ full_code: code }),
+      body: JSON.stringify({
+        full_code: code,
+        return_url: returnUrl ?? undefined,
+      }),
     });
     if (!response.ok) {
       throw new Error('Failed to validate code');
@@ -106,7 +109,7 @@ export default function PageClient({ code }: { code: string }) {
       const firstPriceId = Object.keys(result.product.prices)[0];
       setSelectedPriceId(firstPriceId);
     }
-  }, [code]);
+  }, [code, returnUrl]);
 
   useEffect(() => {
     setLoading(true);
