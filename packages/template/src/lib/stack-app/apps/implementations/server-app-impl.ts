@@ -24,7 +24,7 @@ import { ApiKey, ApiKeyCreationOptions, ApiKeyUpdateOptions, apiKeyCreationOptio
 import { ConvexCtx, GetCurrentUserOptions, HandlerUrls, OAuthScopesOnSignIn, TokenStoreInit } from "../../common";
 import { OAuthConnection } from "../../connected-accounts";
 import { ServerContactChannel, ServerContactChannelCreateOptions, ServerContactChannelUpdateOptions, serverContactChannelCreateOptionsToCrud, serverContactChannelUpdateOptionsToCrud } from "../../contact-channels";
-import { Customer, InlineOffer, ServerItem } from "../../customers";
+import { Customer, InlineProduct, ServerItem } from "../../customers";
 import { DataVaultStore } from "../../data-vault";
 import { SendEmailOptions } from "../../email";
 import { NotificationCategory } from "../../notification-categories";
@@ -207,9 +207,9 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
         return useMemo(() => app._serverItemFromCrud({ type, id: userIdOrTeamId }, result), [result]);
       },
       // END_PLATFORM
-      async createCheckoutUrl(options: { offerId: string, returnUrl?: string } | { offer: InlineOffer, returnUrl?: string }) {
-        const offerIdOrInline = "offerId" in options ? options.offerId : options.offer;
-        return await app._interface.createCheckoutUrl(type, userIdOrTeamId, offerIdOrInline, null, options.returnUrl);
+      async createCheckoutUrl(options: { productId: string, returnUrl?: string } | { product: InlineProduct, returnUrl?: string }) {
+        const productIdOrInline = "productId" in options ? options.productId : options.product;
+        return await app._interface.createCheckoutUrl(type, userIdOrTeamId, productIdOrInline, null, options.returnUrl);
       },
     };
   }

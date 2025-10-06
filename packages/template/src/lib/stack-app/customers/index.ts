@@ -1,8 +1,8 @@
-import { inlineOfferSchema } from "@stackframe/stack-shared/dist/schema-fields";
+import { inlineProductSchema } from "@stackframe/stack-shared/dist/schema-fields";
 import * as yup from "yup";
 import { AsyncStoreProperty } from "../common";
 
-export type InlineOffer = yup.InferType<typeof inlineOfferSchema>;
+export type InlineProduct = yup.InferType<typeof inlineProductSchema>;
 
 export type Item = {
   displayName: string,
@@ -37,8 +37,8 @@ export type Customer<IsServer extends boolean = false> =
     readonly id: string,
 
     createCheckoutUrl(options: (
-      | { offerId: string, returnUrl?: string }
-      | (IsServer extends true ? { offer: InlineOffer, returnUrl?: string } : never)
+      | { productId: string, returnUrl?: string }
+      | (IsServer extends true ? { product: InlineProduct, returnUrl?: string } : never)
     )): Promise<string>,
   }
   & AsyncStoreProperty<
