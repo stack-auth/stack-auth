@@ -344,7 +344,7 @@ function ProductPriceRow({
       {isEditing ? (
         <>
           <div className="relative w-full pb-2 flex items-center">
-            <span className="pointer-events-none font-semibold text-xl text-black absolute left-1.5 z-20">$</span>
+            <span className="pointer-events-none font-semibold text-xl absolute left-1.5 z-20">$</span>
             <Input
               className="h-8 !pl-[18px] w-full mr-3 text-xl font-semibold bg-transparent tabular-nums text-center"
               tabIndex={0}
