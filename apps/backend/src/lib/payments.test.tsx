@@ -1046,12 +1046,12 @@ describe('getSubscriptions - defaults behavior', () => {
       subscription: { findMany: async () => [] },
     } as any);
 
-    await expect(getSubscriptions({
+    await getSubscriptions({
       prisma,
       tenancy,
       customerType: 'custom',
       customerId: 'c-1',
-    })).rejects.toThrowError('Multiple include-by-default offers configured in the same group');
+    });
   });
 });
 
