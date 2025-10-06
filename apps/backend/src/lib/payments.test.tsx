@@ -842,7 +842,7 @@ describe('validatePurchaseSession - one-time purchase rules', () => {
       },
       priceId: 'price-any',
       quantity: 1,
-    })).rejects.toThrowError('Customer already has a one-time purchase for this product');
+    })).rejects.toThrowError('Customer already has purchased this product; this product is not stackable');
   });
 
   it('blocks one-time purchase when another one exists in the same group', async () => {
@@ -913,12 +913,12 @@ describe('validatePurchaseSession - one-time purchase rules', () => {
     expect(res.conflictingCatalogSubscriptions.length).toBe(0);
   });
 
-  it('allows duplicate one-time purchase for same offerId when offer is stackable', async () => {
-    const tenancy = createMockTenancy({ items: {}, offers: {}, groups: {} });
+  it('allows duplicate one-time purchase for same productId when product is stackable', async () => {
+    const tenancy = createMockTenancy({ items: {}, products: {}, catalogs: {} });
     const prisma = createMockPrisma({
       oneTimePurchase: {
         findMany: async () => [
-          { offerId: 'offer-stackable', offer: { groupId: undefined }, quantity: 1, createdAt: new Date('2025-01-01T00:00:00.000Z') },
+          { productId: 'product-stackable', product: { catalogId: undefined }, quantity: 1, createdAt: new Date('2025-01-01T00:00:00.000Z') },
         ],
       },
       subscription: { findMany: async () => [] },
@@ -930,10 +930,10 @@ describe('validatePurchaseSession - one-time purchase rules', () => {
       codeData: {
         tenancyId: tenancy.id,
         customerId: 'cust-1',
-        offerId: 'offer-stackable',
-        offer: {
-          displayName: 'Stackable Offer',
-          groupId: undefined,
+        productId: 'product-stackable',
+        product: {
+          displayName: 'Stackable Product',
+          catalogId: undefined,
           customerType: 'custom',
           freeTrial: undefined,
           serverOnly: false,
@@ -947,18 +947,18 @@ describe('validatePurchaseSession - one-time purchase rules', () => {
       quantity: 2,
     });
 
-    expect(res.groupId).toBeUndefined();
-    expect(res.conflictingGroupSubscriptions.length).toBe(0);
+    expect(res.catalogId).toBeUndefined();
+    expect(res.conflictingCatalogSubscriptions.length).toBe(0);
   });
 
-  it('blocks when subscription for same offer exists and offer is not stackable', async () => {
+  it('blocks when subscription for same product exists and product is not stackable', async () => {
     const tenancy = createMockTenancy({
       items: {},
-      groups: {},
-      offers: {
-        'offer-sub': {
+      catalogs: {},
+      products: {
+        'product-sub': {
           displayName: 'Non-stackable Offer',
-          groupId: undefined,
+          catalogId: undefined,
           customerType: 'custom',
           freeTrial: undefined,
           serverOnly: false,
@@ -973,7 +973,7 @@ describe('validatePurchaseSession - one-time purchase rules', () => {
       oneTimePurchase: { findMany: async () => [] },
       subscription: {
         findMany: async () => [{
-          offerId: 'offer-sub',
+          productId: 'product-sub',
           currentPeriodStart: new Date('2025-02-01T00:00:00.000Z'),
           currentPeriodEnd: new Date('2025-03-01T00:00:00.000Z'),
           quantity: 1,
@@ -988,10 +988,10 @@ describe('validatePurchaseSession - one-time purchase rules', () => {
       codeData: {
         tenancyId: tenancy.id,
         customerId: 'cust-1',
-        offerId: 'offer-sub',
-        offer: {
+        productId: 'product-sub',
+        product: {
           displayName: 'Non-stackable Offer',
-          groupId: undefined,
+          catalogId: undefined,
           customerType: 'custom',
           freeTrial: undefined,
           serverOnly: false,
@@ -1003,17 +1003,17 @@ describe('validatePurchaseSession - one-time purchase rules', () => {
       },
       priceId: 'price-any',
       quantity: 1,
-    })).rejects.toThrowError('Customer already has a subscription for this offer; this offer is not stackable');
+    })).rejects.toThrowError('Customer already has purchased this product; this product is not stackable');
   });
 
-  it('allows when subscription for same offer exists and offer is stackable', async () => {
+  it('allows when subscription for same product exists and product is stackable', async () => {
     const tenancy = createMockTenancy({
       items: {},
-      groups: {},
-      offers: {
-        'offer-sub-stackable': {
-          displayName: 'Stackable Offer',
-          groupId: undefined,
+      catalogs: {},
+      products: {
+        'product-sub-stackable': {
+          displayName: 'Stackable Product',
+          catalogId: undefined,
           customerType: 'custom',
           freeTrial: undefined,
           serverOnly: false,
@@ -1028,7 +1028,7 @@ describe('validatePurchaseSession - one-time purchase rules', () => {
       oneTimePurchase: { findMany: async () => [] },
       subscription: {
         findMany: async () => [{
-          offerId: 'offer-sub-stackable',
+          productId: 'product-sub-stackable',
           currentPeriodStart: new Date('2025-02-01T00:00:00.000Z'),
           currentPeriodEnd: new Date('2025-03-01T00:00:00.000Z'),
           quantity: 1,
@@ -1043,10 +1043,10 @@ describe('validatePurchaseSession - one-time purchase rules', () => {
       codeData: {
         tenancyId: tenancy.id,
         customerId: 'cust-1',
-        offerId: 'offer-sub-stackable',
-        offer: {
-          displayName: 'Stackable Offer',
-          groupId: undefined,
+        productId: 'product-sub-stackable',
+        product: {
+          displayName: 'Stackable Product',
+          catalogId: undefined,
           customerType: 'custom',
           freeTrial: undefined,
           serverOnly: false,
@@ -1060,8 +1060,8 @@ describe('validatePurchaseSession - one-time purchase rules', () => {
       quantity: 2,
     });
 
-    expect(res.groupId).toBeUndefined();
-    expect(res.conflictingGroupSubscriptions.length).toBe(0);
+    expect(res.catalogId).toBeUndefined();
+    expect(res.conflictingCatalogSubscriptions.length).toBe(0);
   });
 });
 
@@ -1118,7 +1118,7 @@ describe('combined sources - one-time purchases + manual changes + subscriptions
 
 
 describe('getSubscriptions - defaults behavior', () => {
-  it('includes ungrouped include-by-default offers in subscriptions', async () => {
+  it('includes ungrouped include-by-default products in subscriptions', async () => {
     const tenancy = createMockTenancy({
       items: {},
       catalogs: {},
@@ -1163,7 +1163,7 @@ describe('getSubscriptions - defaults behavior', () => {
     expect(ids).toContain('freeUngrouped');
   });
 
-  it('throws error when multiple include-by-default offers exist in same group', async () => {
+  it('throws error when multiple include-by-default products exist in same catalog', async () => {
     const tenancy = createMockTenancy({
       items: {},
       catalogs: { g1: { displayName: 'G1' } },
@@ -1202,7 +1202,7 @@ describe('getSubscriptions - defaults behavior', () => {
       tenancy,
       customerType: 'custom',
       customerId: 'c-1',
-    })).rejects.toThrowError('Multiple include-by-default offers configured in the same group');
+    })).rejects.toThrowError('Multiple include-by-default products configured in the same catalog');
   });
 });
 

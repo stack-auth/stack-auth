@@ -800,7 +800,7 @@ it("should block one-time purchase for same product after prior one-time purchas
           displayName: "One Time Product",
           customerType: "user",
           serverOnly: false,
-          stackable: true,
+          stackable: false,
           prices: { one: { USD: "500" } },
           includedItems: {},
         },
