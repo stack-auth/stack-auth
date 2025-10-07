@@ -196,7 +196,7 @@ services:
   # ================= QStash =================
 
   qstash:
-    image: public.ecr.aws/upstash/qstash:latest
+    image: public.ecr.aws/upstash/qstash:v2.30.4
     ports:
       - 8125:8080
     command: qstash dev
