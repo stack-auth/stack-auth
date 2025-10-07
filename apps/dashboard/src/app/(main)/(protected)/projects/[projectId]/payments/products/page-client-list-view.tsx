@@ -725,8 +725,8 @@ export default function PageClient({ onViewChange }: { onViewChange: (view: "lis
       .map(([id]) => id);
   };
 
-  // Check if there are no products and no items
-  const hasNoProductsAndNoItems = Object.keys(paymentsConfig.products).length === 0 && Object.keys(paymentsConfig.items).length === 0;
+  // Check if there are no products (aka offers). Show tutorial regardless of items.
+  const hasNoProducts = Object.keys(paymentsConfig.products).length === 0;
 
   // Handler for create product button
   const handleCreateProduct = () => {
@@ -779,9 +779,9 @@ export default function PageClient({ onViewChange }: { onViewChange: (view: "lis
     customerType: item.customerType
   }));
 
-  // If no products and items, show welcome screen instead of everything
+  // If there are no products, show the tutorial welcome screen instead of the builder UI
   let innerContent;
-  if (hasNoProductsAndNoItems) {
+  if (hasNoProducts) {
     innerContent = <WelcomeScreen onCreateProduct={handleCreateProduct} />;
   } else {
     innerContent = (
