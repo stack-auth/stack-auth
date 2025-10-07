@@ -34,7 +34,7 @@ import {
   Switch,
   toast
 } from "@stackframe/stack-ui";
-import { ChevronDown, ChevronsUpDown, Layers, MoreVertical, Pencil, PencilIcon, Plus, Puzzle, Server, Trash2, X } from "lucide-react";
+import { Check, ChevronDown, ChevronLeft, ChevronRight, ChevronsUpDown, Layers, MoreVertical, Package, Pencil, PencilIcon, Plus, Puzzle, Server, Sparkles, Trash2, X } from "lucide-react";
 import { Fragment, useEffect, useId, useMemo, useRef, useState } from "react";
 import { IllustratedInfo } from "../../../../../../../components/illustrated-info";
 import { PageLayout } from "../../page-layout";
@@ -1368,53 +1368,264 @@ function CatalogView({ groupedProducts, groups, existingItems, onSaveProduct, on
 }
 
 function WelcomeScreen({ onCreateProduct }: { onCreateProduct: () => void }) {
-  return (
-    <div className="flex flex-col items-center justify-center h-full px-4 py-12 max-w-3xl mx-auto">
-      <IllustratedInfo
-        illustration={(
-          <div className="grid grid-cols-3 gap-2">
-            {/* Simple pricing table representation */}
-            <div className="bg-background rounded p-3 shadow-sm">
-              <div className="h-2 bg-muted rounded mb-2"></div>
-              <div className="h-8 bg-primary/20 rounded mb-2"></div>
-              <div className="space-y-1">
-                <div className="h-1.5 bg-muted rounded"></div>
-                <div className="h-1.5 bg-muted rounded"></div>
-                <div className="h-1.5 bg-muted rounded"></div>
+  const [currentStep, setCurrentStep] = useState(0);
+
+  const tutorialSteps = [
+    {
+      title: "Welcome to Stack Auth Payments",
+      content: (
+        <div className="space-y-4">
+          <p className="text-muted-foreground">
+            Build powerful billing systems with our two core primitives: <strong>Products</strong> and <strong>Items</strong>.
+          </p>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="p-4 border rounded-lg bg-muted/20">
+              <h4 className="font-semibold mb-2 flex items-center gap-2">
+                <Package className="h-4 w-4" />
+                Products
+              </h4>
+              <p className="text-sm text-muted-foreground">
+                What customers buy - the columns of your pricing table
+              </p>
+            </div>
+            <div className="p-4 border rounded-lg bg-muted/20">
+              <h4 className="font-semibold mb-2 flex items-center gap-2">
+                <Layers className="h-4 w-4" />
+                Items
+              </h4>
+              <p className="text-sm text-muted-foreground">
+                What customers receive - the rows of your pricing table
+              </p>
+            </div>
+          </div>
+        </div>
+      )
+    },
+    {
+      title: "Understanding Products",
+      content: (
+        <div className="space-y-4">
+          <p className="text-muted-foreground">
+            Products represent your pricing plans (Free, Pro, Enterprise). Each product can:
+          </p>
+          <ul className="space-y-2">
+            <li className="flex items-start gap-2">
+              <Check className="h-4 w-4 mt-0.5 text-green-500" />
+              <span className="text-sm">Have multiple price points (monthly/yearly)</span>
+            </li>
+            <li className="flex items-start gap-2">
+              <Check className="h-4 w-4 mt-0.5 text-green-500" />
+              <span className="text-sm">Include specific items for buyers</span>
+            </li>
+            <li className="flex items-start gap-2">
+              <Check className="h-4 w-4 mt-0.5 text-green-500" />
+              <span className="text-sm">Be assigned to users or teams</span>
+            </li>
+            <li className="flex items-start gap-2">
+              <Check className="h-4 w-4 mt-0.5 text-green-500" />
+              <span className="text-sm">Support add-ons and upgrades</span>
+            </li>
+          </ul>
+        </div>
+      )
+    },
+    {
+      title: "Understanding Items",
+      content: (
+        <div className="space-y-4">
+          <p className="text-muted-foreground">
+            Items are the features and limits your customers get. Use them to:
+          </p>
+          <ul className="space-y-2">
+            <li className="flex items-start gap-2">
+              <Sparkles className="h-4 w-4 mt-0.5 text-yellow-500" />
+              <span className="text-sm">Unlock feature access (e.g., "Advanced Analytics")</span>
+            </li>
+            <li className="flex items-start gap-2">
+              <Sparkles className="h-4 w-4 mt-0.5 text-yellow-500" />
+              <span className="text-sm">Set usage limits (e.g., "100 API calls/month")</span>
+            </li>
+            <li className="flex items-start gap-2">
+              <Sparkles className="h-4 w-4 mt-0.5 text-yellow-500" />
+              <span className="text-sm">Track consumption for usage-based billing</span>
+            </li>
+            <li className="flex items-start gap-2">
+              <Sparkles className="h-4 w-4 mt-0.5 text-yellow-500" />
+              <span className="text-sm">Stack multiple quantities (e.g., extra seats)</span>
+            </li>
+          </ul>
+        </div>
+      )
+    },
+    {
+      title: "Example: SaaS Pricing Table",
+      content: (
+        <div className="space-y-4">
+          <p className="text-muted-foreground text-sm mb-4">
+            Here's how products and items work together in a typical pricing table:
+          </p>
+          <div className="border rounded-lg overflow-hidden">
+            <table className="w-full text-sm">
+              <thead className="bg-muted/30">
+                <tr>
+                  <th className="text-left p-3 font-medium">Features</th>
+                  <th className="text-center p-3 font-medium">Free</th>
+                  <th className="text-center p-3 font-medium bg-primary/10">Pro</th>
+                  <th className="text-center p-3 font-medium">Enterprise</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr className="border-t">
+                  <td className="p-3">API Calls</td>
+                  <td className="text-center p-3 text-muted-foreground">100/mo</td>
+                  <td className="text-center p-3 bg-primary/5">10,000/mo</td>
+                  <td className="text-center p-3 text-muted-foreground">Unlimited</td>
+                </tr>
+                <tr className="border-t">
+                  <td className="p-3">Team Members</td>
+                  <td className="text-center p-3 text-muted-foreground">1</td>
+                  <td className="text-center p-3 bg-primary/5">5</td>
+                  <td className="text-center p-3 text-muted-foreground">Unlimited</td>
+                </tr>
+                <tr className="border-t">
+                  <td className="p-3">Advanced Analytics</td>
+                  <td className="text-center p-3 text-muted-foreground">-</td>
+                  <td className="text-center p-3 bg-primary/5">✓</td>
+                  <td className="text-center p-3 text-muted-foreground">✓</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p className="text-xs text-muted-foreground italic">
+            Columns are products, rows are items
+          </p>
+        </div>
+      )
+    },
+    {
+      title: "Quick Start Guide",
+      content: (
+        <div className="space-y-4">
+          <p className="text-muted-foreground">
+            Follow these steps to set up your first pricing model:
+          </p>
+          <div className="space-y-3">
+            <div className="flex gap-3">
+              <div className="flex-shrink-0 w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center text-sm font-semibold">
+                1
+              </div>
+              <div>
+                <p className="font-medium">Create your first product</p>
+                <p className="text-sm text-muted-foreground">Start with a basic plan (e.g., "Free" or "Starter")</p>
               </div>
             </div>
-            <div className="bg-background rounded p-3 shadow-sm border-2 border-primary">
-              <div className="h-2 bg-muted rounded mb-2"></div>
-              <div className="h-8 bg-primary/40 rounded mb-2"></div>
-              <div className="space-y-1">
-                <div className="h-1.5 bg-muted rounded"></div>
-                <div className="h-1.5 bg-muted rounded"></div>
-                <div className="h-1.5 bg-muted rounded"></div>
+            <div className="flex gap-3">
+              <div className="flex-shrink-0 w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center text-sm font-semibold">
+                2
+              </div>
+              <div>
+                <p className="font-medium">Define your items</p>
+                <p className="text-sm text-muted-foreground">Add features and limits that products will include</p>
               </div>
             </div>
-            <div className="bg-background rounded p-3 shadow-sm">
-              <div className="h-2 bg-muted rounded mb-2"></div>
-              <div className="h-8 bg-primary/20 rounded mb-2"></div>
-              <div className="space-y-1">
-                <div className="h-1.5 bg-muted rounded"></div>
-                <div className="h-1.5 bg-muted rounded"></div>
-                <div className="h-1.5 bg-muted rounded"></div>
+            <div className="flex gap-3">
+              <div className="flex-shrink-0 w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center text-sm font-semibold">
+                3
+              </div>
+              <div>
+                <p className="font-medium">Connect items to products</p>
+                <p className="text-sm text-muted-foreground">Specify which items each product includes</p>
+              </div>
+            </div>
+            <div className="flex gap-3">
+              <div className="flex-shrink-0 w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center text-sm font-semibold">
+                4
+              </div>
+              <div>
+                <p className="font-medium">Test and iterate</p>
+                <p className="text-sm text-muted-foreground">Use test mode to verify your setup before going live</p>
               </div>
             </div>
           </div>
-        )}
-        title="Welcome to Payments!"
-        description={[
-          <>Stack Auth Payments is built on two primitives: products and items.</>,
-          <>Products are what customers buy — the columns of your pricing table. Each product has one or more prices and may or may not include items.</>,
-          <>Items are what customers receive — the rows of your pricing table. A user can hold multiple of the same item. Items are powerful; they can unlock feature access, raise limits, or meter consumption for usage-based billing.</>,
-          <>Create your first product to get started!</>,
-        ]}
-      />
-      <Button onClick={onCreateProduct}>
-        <Plus className="h-4 w-4 mr-2" />
-        Create Your First Product
-      </Button>
+        </div>
+      )
+    }
+  ];
+
+  return (
+    <div className="flex flex-col items-center justify-center h-full px-4 py-8 max-w-4xl mx-auto">
+      {/* Progress indicator */}
+      <div className="flex gap-2 mb-8">
+        {tutorialSteps.map((_, index) => (
+          <button
+            key={index}
+            onClick={() => setCurrentStep(index)}
+            className={cn(
+              "w-2 h-2 rounded-full transition-all",
+              currentStep === index
+                ? "w-8 bg-primary"
+                : "bg-muted hover:bg-muted-foreground/30"
+            )}
+            aria-label={`Go to step ${index + 1}`}
+          />
+        ))}
+      </div>
+
+      {/* Tutorial content */}
+      <div className="w-full max-w-2xl">
+        <div className="text-center mb-6">
+          <h2 className="text-2xl font-bold mb-2">
+            {tutorialSteps[currentStep].title}
+          </h2>
+        </div>
+
+        <div className="bg-background border rounded-lg p-6 shadow-sm">
+          {tutorialSteps[currentStep].content}
+        </div>
+
+        {/* Navigation buttons */}
+        <div className="flex justify-between items-center mt-6">
+          <Button
+            variant="outline"
+            onClick={() => setCurrentStep(Math.max(0, currentStep - 1))}
+            disabled={currentStep === 0}
+          >
+            <ChevronLeft className="h-4 w-4 mr-1" />
+            Previous
+          </Button>
+
+          <span className="text-sm text-muted-foreground">
+            Step {currentStep + 1} of {tutorialSteps.length}
+          </span>
+
+          {currentStep < tutorialSteps.length - 1 ? (
+            <Button
+              variant="outline"
+              onClick={() => setCurrentStep(Math.min(tutorialSteps.length - 1, currentStep + 1))}
+            >
+              Next
+              <ChevronRight className="h-4 w-4 ml-1" />
+            </Button>
+          ) : (
+            <Button onClick={onCreateProduct}>
+              <Plus className="h-4 w-4 mr-2" />
+              Create Your First Product
+            </Button>
+          )}
+        </div>
+      </div>
+
+      {/* Skip tutorial option */}
+      <div className="mt-8">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={onCreateProduct}
+          className="text-muted-foreground hover:text-foreground"
+        >
+          Skip tutorial and create product
+        </Button>
+      </div>
     </div>
   );
 }
