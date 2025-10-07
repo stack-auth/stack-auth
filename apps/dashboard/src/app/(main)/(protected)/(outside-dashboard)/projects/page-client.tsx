@@ -98,17 +98,17 @@ export default function PageClient(props: { inviteUser: (origin: string, teamId:
 
       {projectsByTeam.map(({ teamId, projects }) => (
         <div key={teamId} className="mb-4">
-          <Typography type="label" className="flex items-center">
+          <div className="flex items-center justify-between mb-2">
+            <Typography>
+              {teamId ? teamIdMap.get(teamId) : "No Team"}
+            </Typography>
             {teamId && teams.find(t => t.id === teamId) && (
-              <Suspense fallback={<Button size="icon" variant="ghost" disabled><UserPlus className="w-4 h-4" /></Button>}>
-                <TeamAddUserDialog
-                  team={teams.find(t => t.id === teamId)!}
-                  onSubmit={(email) => props.inviteUser(window.location.origin, teamId, email)}
-                />
-              </Suspense>
+              <TeamAddUserDialog
+                team={teams.find(t => t.id === teamId)!}
+                onSubmit={(email) => props.inviteUser(window.location.origin, teamId, email)}
+              />
             )}
-            {teamId ? teamIdMap.get(teamId) : "No Team"}
-          </Typography>
+          </div>
           <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4">
             {projects.map((project) => (
               <ProjectCard key={project.id} project={project} />
@@ -128,11 +128,12 @@ function TeamAddUserDialog(props: {
   team: Team,
   onSubmit: (email: string) => Promise<void>,
 }) {
-  const users = props.team.useUsers();
-  const { quantity } = props.team.useItem("dashboard_admins");
-
   const onSubmit = async (values: yup.InferType<typeof inviteFormSchema>) => {
-    if (users.length + 1 > quantity) {
+    const [users, admins] = await Promise.all([
+      props.team.listUsers(),
+      props.team.getItem("dashboard_admins"),
+    ]);
+    if (users.length + 1 > admins.quantity) {
       alert("You have reached the maximum number of dashboard admins. Please upgrade your plan to add more admins.");
       const checkoutUrl = await props.team.createCheckoutUrl({
         productId: "team",
@@ -146,11 +147,11 @@ function TeamAddUserDialog(props: {
   };
 
   return <FormDialog
-    title={"Invite a new user"}
+    title={`Invite a new user to ${JSON.stringify(props.team.displayName)}`}
     formSchema={inviteFormSchema}
     okButton={{ label: "Invite" }}
     onSubmit={onSubmit}
-    trigger={<Button size="icon" variant="ghost"><UserPlus className="w-4 h-4" /></Button>}
+    trigger={<Button variant="default"><UserPlus className="w-4 h-4 mr-2" />Invite Teammate</Button>}
     render={(form) => <InputField control={form.control} name="email" placeholder="Email" />}
   />;
 }
