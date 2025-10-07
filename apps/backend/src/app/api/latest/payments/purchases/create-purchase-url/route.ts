@@ -1,10 +1,11 @@
 import { ensureProductIdOrInlineProduct } from "@/lib/payments";
+import { validateRedirectUrl } from "@/lib/redirect-urls";
 import { getStripeForAccount } from "@/lib/stripe";
 import { globalPrismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { CustomerType } from "@prisma/client";
 import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
-import { adaptSchema, clientOrHigherAuthTypeSchema, inlineProductSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+import { adaptSchema, clientOrHigherAuthTypeSchema, inlineProductSchema, urlSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { purchaseUrlVerificationCodeHandler } from "../verification-code-handler";
@@ -24,6 +25,7 @@ export const POST = createSmartRouteHandler({
       customer_id: yupString().defined(),
       product_id: yupString().optional(),
       product_inline: inlineProductSchema.optional(),
+      return_url: urlSchema.optional(),
     }),
   }),
   response: yupObject({
@@ -77,6 +79,12 @@ export const POST = createSmartRouteHandler({
 
     const fullCode = `${tenancy.id}_${code}`;
     const url = new URL(`/purchase/${fullCode}`, getEnvVariable("NEXT_PUBLIC_STACK_DASHBOARD_URL"));
+    if (req.body.return_url) {
+      if (!validateRedirectUrl(req.body.return_url, tenancy)) {
+        throw new KnownErrors.RedirectUrlNotWhitelisted();
+      }
+      url.searchParams.set("return_url", req.body.return_url);
+    }
 
     return {
       statusCode: 200,

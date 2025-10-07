@@ -21,10 +21,10 @@ import { useMemo } from "react"; // THIS_LINE_PLATFORM react-like
 import * as yup from "yup";
 import { constructRedirectUrl } from "../../../../utils/url";
 import { ApiKey, ApiKeyCreationOptions, ApiKeyUpdateOptions, apiKeyCreationOptionsToCrud, apiKeyUpdateOptionsToCrud } from "../../api-keys";
-import { GetCurrentUserOptions, HandlerUrls, OAuthScopesOnSignIn, TokenStoreInit, ConvexCtx } from "../../common";
+import { ConvexCtx, GetCurrentUserOptions, HandlerUrls, OAuthScopesOnSignIn, TokenStoreInit } from "../../common";
 import { OAuthConnection } from "../../connected-accounts";
 import { ServerContactChannel, ServerContactChannelCreateOptions, ServerContactChannelUpdateOptions, serverContactChannelCreateOptionsToCrud, serverContactChannelUpdateOptionsToCrud } from "../../contact-channels";
-import { InlineProduct, ServerItem } from "../../customers";
+import { Customer, InlineProduct, ServerItem } from "../../customers";
 import { DataVaultStore } from "../../data-vault";
 import { SendEmailOptions } from "../../email";
 import { NotificationCategory } from "../../notification-categories";
@@ -192,6 +192,27 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
       return await this._interface.getItem({ customCustomerId, itemId }, null);
     }
   );
+
+  protected _createServerCustomer(userIdOrTeamId: string, type: "user" | "team"): Omit<Customer<true>, "id"> {
+    const app = this;
+    const cache = type === "user" ? app._serverUserItemsCache : app._serverTeamItemsCache;
+    return {
+      async getItem(itemId: string) {
+        const result = Result.orThrow(await cache.getOrWait([userIdOrTeamId, itemId], "write-only"));
+        return app._serverItemFromCrud({ type, id: userIdOrTeamId }, result);
+      },
+      // IF_PLATFORM react-like
+      useItem(itemId: string) {
+        const result = useAsyncCache(cache, [userIdOrTeamId, itemId] as const, `${type}.useItem()`);
+        return useMemo(() => app._serverItemFromCrud({ type, id: userIdOrTeamId }, result), [result]);
+      },
+      // END_PLATFORM
+      async createCheckoutUrl(options: { productId: string, returnUrl?: string } | { product: InlineProduct, returnUrl?: string }) {
+        const productIdOrInline = "productId" in options ? options.productId : options.product;
+        return await app._interface.createCheckoutUrl(type, userIdOrTeamId, productIdOrInline, null, options.returnUrl);
+      },
+    };
+  }
 
   private async _updateServerUser(userId: string, update: ServerUserUpdateOptions): Promise<UsersCrud['Server']['Read']> {
     const result = await this._interface.updateServerUser(userId, serverUserUpdateOptionsToCrud(update));
@@ -653,20 +674,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
         const providers = await this.listOAuthProviders();
         return providers.find((p) => p.id === id) ?? null;
       },
-      async createCheckoutUrl(options: { productId: string } | { product: InlineProduct }) {
-        const productIdOrInline = "productId" in options ? options.productId : options.product;
-        return await app._interface.createCheckoutUrl("user", crud.id, productIdOrInline, null);
-      },
-      async getItem(itemId: string) {
-        const result = Result.orThrow(await app._serverUserItemsCache.getOrWait([crud.id, itemId], "write-only"));
-        return app._serverItemFromCrud({ type: "user", id: crud.id }, result);
-      },
-      // IF_PLATFORM react-like
-      useItem(itemId: string) {
-        const result = useAsyncCache(app._serverUserItemsCache, [crud.id, itemId] as const, "user.useItem()");
-        return useMemo(() => app._serverItemFromCrud({ type: "user", id: crud.id }, result), [result]);
-      },
-      // END_PLATFORM
+      ...app._createServerCustomer(crud.id, "user"),
     };
   }
 
@@ -782,20 +790,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
         await app._serverTeamApiKeysCache.refresh([crud.id]);
         return app._serverApiKeyFromCrud(result);
       },
-      async getItem(itemId: string) {
-        const result = Result.orThrow(await app._serverTeamItemsCache.getOrWait([crud.id, itemId], "write-only"));
-        return app._serverItemFromCrud({ type: "team", id: crud.id }, result);
-      },
-      // IF_PLATFORM react-like
-      useItem(itemId: string) {
-        const result = useAsyncCache(app._serverTeamItemsCache, [crud.id, itemId] as const, "team.useItem()");
-        return useMemo(() => app._serverItemFromCrud({ type: "team", id: crud.id }, result), [result]);
-      },
-      // END_PLATFORM
-      async createCheckoutUrl(options: { productId: string } | { product: InlineProduct }) {
-        const productIdOrInline = "productId" in options ? options.productId : options.product;
-        return await app._interface.createCheckoutUrl("team", crud.id, productIdOrInline, null);
-      },
+      ...app._createServerCustomer(crud.id, "team"),
     };
   }
 

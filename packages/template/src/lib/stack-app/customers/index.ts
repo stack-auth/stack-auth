@@ -37,8 +37,8 @@ export type Customer<IsServer extends boolean = false> =
     readonly id: string,
 
     createCheckoutUrl(options: (
-      | { productId: string }
-      | (IsServer extends true ? { product: InlineProduct } : never)
+      | { productId: string, returnUrl?: string }
+      | (IsServer extends true ? { product: InlineProduct, returnUrl?: string } : never)
     )): Promise<string>,
   }
   & AsyncStoreProperty<
