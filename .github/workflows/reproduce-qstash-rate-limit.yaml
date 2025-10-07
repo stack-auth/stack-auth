@@ -1,0 +1,22 @@
+name: "Reproduce QStash rate limit"
+
+on:
+  workflow_dispatch:
+
+jobs:
+  repro:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Pull qstash image repeatedly
+        run: |
+          for i in {1..20}; do
+            echo ""
+            echo "--- pull $i ---"
+            docker rmi -f public.ecr.aws/upstash/qstash:latest >/dev/null 2>&1 || true
+            if docker pull public.ecr.aws/upstash/qstash:latest; then
+              echo "pull $i succeeded"
+            else
+              echo "pull $i failed" >&2
+            fi
+            sleep 2
+          done
