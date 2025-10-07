@@ -1369,6 +1369,8 @@ export default function PageClient({ onViewChange }: { onViewChange: (view: "lis
   const config = project.useConfig();
   const [shouldUseDummyData, setShouldUseDummyData] = useState(false);
   const switchId = useId();
+  const testModeSwitchId = useId();
+  const [isUpdatingTestMode, setIsUpdatingTestMode] = useState(false);
   const paymentsConfig: CompleteConfig['payments'] = config.payments;
 
 
@@ -1506,16 +1508,40 @@ export default function PageClient({ onViewChange }: { onViewChange: (view: "lis
     toast({ title: "Product deleted" });
   };
 
+  const handleToggleTestMode = async (enabled: boolean) => {
+    setIsUpdatingTestMode(true);
+    try {
+      await project.updateConfig({ "payments.testMode": enabled });
+      toast({ title: enabled ? "Test mode enabled" : "Test mode disabled" });
+    } catch (_error) {
+      toast({ title: "Failed to update test mode", variant: "destructive" });
+    } finally {
+      setIsUpdatingTestMode(false);
+    }
+  };
+
 
   // If no products and items, show welcome screen instead of everything
   const innerContent = (
     <PageLayout
       title='Products'
       actions={
-        <div className="flex items-center gap-2 self-center">
-          <Label htmlFor={switchId}>Pricing table</Label>
-          <Switch id={switchId} checked={false} onCheckedChange={() => onViewChange("list")} />
-          <Label htmlFor={switchId}>List</Label>
+        <div className="flex items-center gap-4 self-center">
+          <div className="flex items-center gap-2">
+            <Label htmlFor={switchId}>Pricing table</Label>
+            <Switch id={switchId} checked={false} onCheckedChange={() => onViewChange("list")} />
+            <Label htmlFor={switchId}>List</Label>
+          </div>
+          <Separator orientation="vertical" className="h-6" />
+          <div className="flex items-center gap-2">
+            <Label htmlFor={testModeSwitchId}>Test mode</Label>
+            <Switch
+              id={testModeSwitchId}
+              checked={paymentsConfig.testMode === true}
+              disabled={isUpdatingTestMode}
+              onCheckedChange={(checked) => void handleToggleTestMode(checked)}
+            />
+          </div>
         </div>
       }
     >

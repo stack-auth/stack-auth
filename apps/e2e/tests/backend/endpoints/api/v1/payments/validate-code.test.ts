@@ -55,6 +55,7 @@ it("should allow valid code and return product data", async ({ expect }) => {
         },
         "project_id": "<stripped UUID>",
         "stripe_account_id": <stripped field 'stripe_account_id'>,
+        "test_mode": false,
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -66,6 +67,7 @@ it("should set already_bought_non_stackable when user already owns non-stackable
   await Payments.setup();
   await Project.updateConfig({
     payments: {
+      testMode: true,
       products: {
         "test-product": {
           displayName: "Test Product",
@@ -151,6 +153,7 @@ it("should set already_bought_non_stackable when user already owns non-stackable
         },
         "project_id": "<stripped UUID>",
         "stripe_account_id": <stripped field 'stripe_account_id'>,
+        "test_mode": true,
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -162,6 +165,7 @@ it("should include conflicting_products when switching within the same group", a
   await Payments.setup();
   await Project.updateConfig({
     payments: {
+      testMode: true,
       catalogs: { grp: { displayName: "Group" } },
       products: {
         productA: {
@@ -247,6 +251,7 @@ it("should include conflicting_products when switching within the same group", a
         },
         "project_id": "<stripped UUID>",
         "stripe_account_id": <stripped field 'stripe_account_id'>,
+        "test_mode": true,
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -335,6 +340,7 @@ it("should reject untrusted return_url and accept trusted return_url", async ({ 
         },
         "project_id": "<stripped UUID>",
         "stripe_account_id": <stripped field 'stripe_account_id'>,
+        "test_mode": false,
       },
       "headers": Headers { <some fields may have been hidden> },
     }
