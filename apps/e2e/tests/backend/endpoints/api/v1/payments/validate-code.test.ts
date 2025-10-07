@@ -252,3 +252,91 @@ it("should include conflicting_products when switching within the same group", a
     }
   `);
 });
+
+it("should reject untrusted return_url and accept trusted return_url", async ({ expect }) => {
+  await Project.createAndSwitch();
+  await Payments.setup();
+  await Project.updateConfig({
+    payments: {
+      products: {
+        "test-product": {
+          displayName: "Test Product",
+          customerType: "user",
+          serverOnly: false,
+          stackable: false,
+          prices: { monthly: { USD: "1000", interval: [1, "month"] } },
+          includedItems: {},
+        },
+      },
+    },
+  });
+
+  const { userId } = await User.create();
+  await Project.updateConfig({
+    domains: {
+      allowLocalhost: false,
+      trustedDomains: {
+        '1': { baseUrl: 'https://stack-test.com', handlerPath: '/handler' },
+      },
+    },
+  });
+  const createUrlRes = await niceBackendFetch("/api/latest/payments/purchases/create-purchase-url", {
+    method: "POST",
+    accessType: "client",
+    body: { customer_type: "user", customer_id: userId, product_id: "test-product" },
+  });
+  expect(createUrlRes.status).toBe(200);
+  const code = (createUrlRes.body as { url: string }).url.match(/\/purchase\/([a-z0-9-_]+)/)?.[1];
+  expect(code).toBeDefined();
+
+  const badRes = await niceBackendFetch("/api/latest/payments/purchases/validate-code", {
+    method: "POST",
+    accessType: "client",
+    body: { full_code: code, return_url: "https://malicious.com/callback" },
+  });
+  expect(badRes).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 400,
+      "body": {
+        "code": "REDIRECT_URL_NOT_WHITELISTED",
+        "error": "Redirect URL not whitelisted. Did you forget to add this domain to the trusted domains list on the Stack Auth dashboard?",
+      },
+      "headers": Headers {
+        "x-stack-known-error": "REDIRECT_URL_NOT_WHITELISTED",
+        <some fields may have been hidden>,
+      },
+    }
+  `);
+
+  const goodRes = await niceBackendFetch("/api/latest/payments/purchases/validate-code", {
+    method: "POST",
+    accessType: "client",
+    body: { full_code: code, return_url: "https://stack-test.com/handler" },
+  });
+  expect(goodRes).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": {
+        "already_bought_non_stackable": false,
+        "conflicting_products": [],
+        "product": {
+          "customer_type": "user",
+          "display_name": "Test Product",
+          "prices": {
+            "monthly": {
+              "USD": "1000",
+              "interval": [
+                1,
+                "month",
+              ],
+            },
+          },
+          "stackable": false,
+        },
+        "project_id": "<stripped UUID>",
+        "stripe_account_id": <stripped field 'stripe_account_id'>,
+      },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+});
