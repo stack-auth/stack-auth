@@ -163,7 +163,8 @@ export function PriceDialog({
               id="price-id"
               value={priceId}
               onChange={(e) => {
-                setPriceId(e.target.value);
+                const nextValue = e.target.value.toLowerCase();
+                setPriceId(nextValue);
                 if (errors.priceId) {
                   setErrors(prev => {
                     const newErrors = { ...prev };
@@ -371,4 +372,3 @@ export function PriceDialog({
     </Dialog>
   );
 }
-

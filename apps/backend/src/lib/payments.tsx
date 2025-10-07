@@ -31,8 +31,11 @@ export async function ensureProductIdOrInlineProduct(
   }
   if (productId) {
     const product = getOrUndefined(tenancy.config.payments.products, productId);
-    if (!product || (product.serverOnly && accessType === "client")) {
+    if (!product) {
       throw new KnownErrors.ProductDoesNotExist(productId, accessType);
+    }
+    if (product.serverOnly && accessType === "client") {
+      throw new StatusError(400, "This product is marked as server-only and cannot be accessed client side!");
     }
     return product;
   } else {

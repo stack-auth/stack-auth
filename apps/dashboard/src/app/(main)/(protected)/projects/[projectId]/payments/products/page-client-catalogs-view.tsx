@@ -46,6 +46,9 @@ type Product = CompleteConfig['payments']['products'][keyof CompleteConfig['paym
 type Price = (Product['prices'] & object)[string];
 type PricesObject = Exclude<Product['prices'], 'include-by-default'>;
 
+const DEFAULT_INTERVAL_UNITS: DayInterval[1][] = ['day', 'week', 'month', 'year'];
+const PRICE_INTERVAL_UNITS: DayInterval[1][] = ['week', 'month', 'year'];
+
 
 function intervalLabel(tuple: DayInterval | undefined): string | null {
   if (!tuple) return null;
@@ -92,6 +95,7 @@ function IntervalPopover({
   setCount,
   onChange,
   noneLabel = 'one time',
+  allowedUnits,
 }: {
   readOnly?: boolean,
   intervalText: string | null,
@@ -103,8 +107,25 @@ function IntervalPopover({
   setCount: (n: number) => void,
   onChange: (interval: DayInterval | null) => void,
   noneLabel?: string,
+  allowedUnits?: DayInterval[1][],
 }) {
   const [open, setOpen] = useState(false);
+  const buttonLabels: Record<DayInterval[1], string> = {
+    day: 'daily',
+    week: 'weekly',
+    month: 'monthly',
+    year: 'yearly',
+  };
+
+  const units = allowedUnits ?? DEFAULT_INTERVAL_UNITS;
+  const normalizedUnits = units.length > 0 ? units : DEFAULT_INTERVAL_UNITS;
+  const defaultUnit = (normalizedUnits[0] ?? 'month') as DayInterval[1];
+  const effectiveUnit = unit && normalizedUnits.includes(unit) ? unit : defaultUnit;
+  const isIntervalUnit = intervalSelection !== 'custom' && intervalSelection !== 'one-time';
+  const effectiveSelection: 'one-time' | 'custom' | DayInterval[1] =
+    isIntervalUnit && !normalizedUnits.includes(intervalSelection)
+      ? 'custom'
+      : intervalSelection;
 
   const selectOneTime = () => {
     setIntervalSelection('one-time');
@@ -114,19 +135,21 @@ function IntervalPopover({
     setOpen(false);
   };
 
-  const selectFixed = (unit: DayInterval[1]) => {
-    setIntervalSelection(unit);
-    setUnit(unit);
+  const selectFixed = (unitOption: DayInterval[1]) => {
+    if (!normalizedUnits.includes(unitOption)) return;
+    setIntervalSelection(unitOption);
+    setUnit(unitOption);
     setCount(1);
-    if (!readOnly) onChange([1, unit]);
+    if (!readOnly) onChange([1, unitOption]);
     setOpen(false);
   };
 
-  const applyCustom = (count: number, unit: DayInterval[1]) => {
+  const applyCustom = (countValue: number, maybeUnit?: DayInterval[1]) => {
+    const safeUnit = maybeUnit && normalizedUnits.includes(maybeUnit) ? maybeUnit : defaultUnit;
     setIntervalSelection('custom');
-    setUnit(unit);
-    setCount(count);
-    if (!readOnly) onChange([count, unit]);
+    setUnit(safeUnit);
+    setCount(countValue);
+    if (!readOnly) onChange([countValue, safeUnit]);
   };
 
   const triggerLabel = intervalText || noneLabel;
@@ -142,60 +165,38 @@ function IntervalPopover({
       <PopoverContent align="start" className="w-60 p-2">
         <div className="flex flex-col gap-1">
           <Button
-            variant={intervalSelection === 'one-time' ? 'secondary' : 'ghost'}
+            variant={effectiveSelection === 'one-time' ? 'secondary' : 'ghost'}
             size="sm"
             className="justify-start"
             onClick={selectOneTime}
           >
             {noneLabel}
           </Button>
-          <Button
-            variant={intervalSelection === 'day' ? 'secondary' : 'ghost'}
-            size="sm"
-            className="justify-start"
-            onClick={() => selectFixed('day')}
-          >
-            daily
-          </Button>
-          <Button
-            variant={intervalSelection === 'week' ? 'secondary' : 'ghost'}
-            size="sm"
-            className="justify-start"
-            onClick={() => selectFixed('week')}
-          >
-            weekly
-          </Button>
-          <Button
-            variant={intervalSelection === 'month' ? 'secondary' : 'ghost'}
-            size="sm"
-            className="justify-start"
-            onClick={() => selectFixed('month')}
-          >
-            monthly
-          </Button>
-          <Button
-            variant={intervalSelection === 'year' ? 'secondary' : 'ghost'}
-            size="sm"
-            className="justify-start"
-            onClick={() => selectFixed('year')}
-          >
-            yearly
-          </Button>
+          {normalizedUnits.map((unitOption) => (
+            <Button
+              key={unitOption}
+              variant={effectiveSelection === unitOption ? 'secondary' : 'ghost'}
+              size="sm"
+              className="justify-start"
+              onClick={() => selectFixed(unitOption)}
+            >
+              {buttonLabels[unitOption]}
+            </Button>
+          ))}
 
           <Button
-            variant={intervalSelection === 'custom' ? 'secondary' : 'ghost'}
+            variant={effectiveSelection === 'custom' ? 'secondary' : 'ghost'}
             size="sm"
             className="justify-start"
             onClick={() => {
               setIntervalSelection('custom');
-              const nextUnit = (unit || 'month') as DayInterval[1];
-              setUnit(nextUnit);
+              setUnit(effectiveUnit);
             }}
           >
             custom
           </Button>
 
-          {intervalSelection === 'custom' && (
+          {effectiveSelection === 'custom' && (
             <div className="mt-2 px-1">
               <div className="text-xs text-muted-foreground mb-1">Custom</div>
               <div className="flex items-center gap-2">
@@ -209,13 +210,13 @@ function IntervalPopover({
                       const v = e.target.value;
                       if (!/^\d*$/.test(v)) return;
                       const n = v === '' ? 0 : parseInt(v, 10);
-                      applyCustom(n, (unit || 'month') as DayInterval[1]);
+                      applyCustom(n, effectiveUnit);
                     }}
                   />
                 </div>
                 <div className="w-24">
                   <Select
-                    value={(unit || 'month') as DayInterval[1]}
+                    value={effectiveUnit}
                     onValueChange={(u) => {
                       const newUnit = u as DayInterval[1];
                       applyCustom(count, newUnit);
@@ -225,10 +226,11 @@ function IntervalPopover({
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="day">day</SelectItem>
-                      <SelectItem value="week">week</SelectItem>
-                      <SelectItem value="month">month</SelectItem>
-                      <SelectItem value="year">year</SelectItem>
+                      {normalizedUnits.map((unitOption) => (
+                        <SelectItem key={unitOption} value={unitOption}>
+                          {unitOption}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>
@@ -248,6 +250,7 @@ type ProductEditableInputProps = {
   readOnly?: boolean,
   placeholder?: string,
   inputClassName?: string,
+  transform?: (value: string) => string,
 };
 
 function ProductEditableInput({
@@ -256,6 +259,7 @@ function ProductEditableInput({
   readOnly,
   placeholder,
   inputClassName,
+  transform,
 }: ProductEditableInputProps) {
   const [isActive, setIsActive] = useState(false);
 
@@ -278,7 +282,8 @@ function ProductEditableInput({
     <Input
       value={value}
       onChange={(event) => {
-        const nextValue = event.target.value;
+        const rawValue = event.target.value;
+        const nextValue = transform ? transform(rawValue) : rawValue;
         void onUpdate?.(nextValue);
       }}
       placeholder={placeholder}
@@ -383,6 +388,7 @@ function ProductPriceRow({
               setIntervalSelection={setIntervalSelection}
               setUnit={setPriceInterval}
               setCount={setIntervalCount}
+              allowedUnits={PRICE_INTERVAL_UNITS}
               onChange={(interval) => {
                 if (readOnly) return;
                 const normalized = amount === '' ? '0.00' : (Number.isNaN(parseFloat(amount)) ? '0.00' : parseFloat(amount).toFixed(2));
@@ -496,7 +502,7 @@ function ProductItemRow({
           <Popover open={itemSelectOpen} onOpenChange={setItemSelectOpen}>
             <PopoverTrigger>
               <div className="text-sm px-2 py-0.5 rounded bg-muted hover:bg-muted/70 cursor-pointer select-none flex items-center gap-1">
-                {itemDisplayName}
+                {itemId}
                 <ChevronsUpDown className="h-4 w-4" />
               </div>
             </PopoverTrigger>
@@ -627,7 +633,7 @@ function ProductItemRow({
                 <ChevronDown className={cn("h-4 w-4 transition-transform", isOpen ? "rotate-0" : "-rotate-90")} />
               </button>
             </CollapsibleTrigger >
-            <div className="text-sm">{itemDisplayName}</div>
+            <div className="text-sm">{itemId}</div>
             <div className="ml-auto w-16 text-right text-sm text-muted-foreground tabular-nums">{prettyPrintWithMagnitudes(item.quantity)}</div>
             <div className="ml-2">
               <div className="text-xs px-2 py-0.5 rounded bg-muted text-muted-foreground">{shortRepeatText}</div>
@@ -863,6 +869,7 @@ function ProductCard({ id, activeType, product, allProducts, existingItems, onSa
             readOnly={!isDraft || !isEditing}
             placeholder={"Product ID"}
             inputClassName="text-xs font-mono text-center text-muted-foreground"
+            transform={(value) => value.toLowerCase()}
           />
           <ProductEditableInput
             value={draft.displayName || ""}
@@ -1422,6 +1429,8 @@ export default function PageClient({ onViewChange }: { onViewChange: (view: "lis
   const config = project.useConfig();
   const [shouldUseDummyData, setShouldUseDummyData] = useState(false);
   const switchId = useId();
+  const testModeSwitchId = useId();
+  const [isUpdatingTestMode, setIsUpdatingTestMode] = useState(false);
   const paymentsConfig: CompleteConfig['payments'] = config.payments;
 
 
@@ -1559,16 +1568,40 @@ export default function PageClient({ onViewChange }: { onViewChange: (view: "lis
     toast({ title: "Product deleted" });
   };
 
+  const handleToggleTestMode = async (enabled: boolean) => {
+    setIsUpdatingTestMode(true);
+    try {
+      await project.updateConfig({ "payments.testMode": enabled });
+      toast({ title: enabled ? "Test mode enabled" : "Test mode disabled" });
+    } catch (_error) {
+      toast({ title: "Failed to update test mode", variant: "destructive" });
+    } finally {
+      setIsUpdatingTestMode(false);
+    }
+  };
+
 
   // If no products and items, show welcome screen instead of everything
   const innerContent = (
     <PageLayout
       title='Products'
       actions={
-        <div className="flex items-center gap-2 self-center">
-          <Label htmlFor={switchId}>Pricing table</Label>
-          <Switch id={switchId} checked={false} onCheckedChange={() => onViewChange("list")} />
-          <Label htmlFor={switchId}>List</Label>
+        <div className="flex items-center gap-4 self-center">
+          <div className="flex items-center gap-2">
+            <Label htmlFor={switchId}>Pricing table</Label>
+            <Switch id={switchId} checked={false} onCheckedChange={() => onViewChange("list")} />
+            <Label htmlFor={switchId}>List</Label>
+          </div>
+          <Separator orientation="vertical" className="h-6" />
+          <div className="flex items-center gap-2">
+            <Label htmlFor={testModeSwitchId}>Test mode</Label>
+            <Switch
+              id={testModeSwitchId}
+              checked={paymentsConfig.testMode === true}
+              disabled={isUpdatingTestMode}
+              onCheckedChange={(checked) => void handleToggleTestMode(checked)}
+            />
+          </div>
         </div>
       }
     >
