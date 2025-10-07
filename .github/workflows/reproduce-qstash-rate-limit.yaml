@@ -1,7 +1,7 @@
 name: "Reproduce QStash rate limit"
 
 on:
-  workflow_dispatch:
+  push:
 
 jobs:
   repro:
