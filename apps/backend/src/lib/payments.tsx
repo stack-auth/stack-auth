@@ -320,6 +320,23 @@ export async function getSubscriptions(options: {
     }
   }
 
+  const ungroupedDefaults = typedEntries(products).filter(([id, product]) => (
+    product.catalogId === undefined && product.prices === "include-by-default" && !subscriptions.some((s) => s.productId === id)
+  ));
+  for (const [productId, product] of ungroupedDefaults) {
+    subscriptions.push({
+      id: null,
+      productId,
+      product,
+      quantity: 1,
+      currentPeriodStart: DEFAULT_PRODUCT_START_DATE,
+      currentPeriodEnd: null,
+      status: SubscriptionStatus.active,
+      createdAt: DEFAULT_PRODUCT_START_DATE,
+      stripeSubscriptionId: null,
+    });
+  }
+
   return subscriptions;
 }
 
