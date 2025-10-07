@@ -304,12 +304,19 @@ export async function getSubscriptions(options: {
   for (const catalogId of Object.keys(catalogs)) {
     if (catalogsWithDbSubscriptions.has(catalogId)) continue;
     const productsInCatalog = typedEntries(products).filter(([_, product]) => product.catalogId === catalogId);
-    const defaultCatalogProduct = productsInCatalog.find(([_, product]) => product.prices === "include-by-default");
-    if (defaultCatalogProduct) {
+    const defaultCatalogProducts = productsInCatalog.filter(([_, product]) => product.prices === "include-by-default");
+    if (defaultCatalogProducts.length > 1) {
+      throw new StackAssertionError(
+        "Multiple include-by-default products configured in the same catalog",
+        { catalogId, productIds: defaultCatalogProducts.map(([id]) => id) },
+      );
+    }
+    if (defaultCatalogProducts.length > 0) {
+      const product = defaultCatalogProducts[0];
       subscriptions.push({
         id: null,
-        productId: defaultCatalogProduct[0],
-        product: defaultCatalogProduct[1],
+        productId: product[0],
+        product: product[1],
         quantity: 1,
         currentPeriodStart: DEFAULT_PRODUCT_START_DATE,
         currentPeriodEnd: null,
@@ -429,18 +436,19 @@ export async function validatePurchaseSession(options: {
     },
   });
 
-  if (codeData.productId && existingOneTimePurchases.some((p) => p.productId === codeData.productId)) {
-    throw new StatusError(400, "Customer already has a one-time purchase for this product");
-  }
-
   const subscriptions = await getSubscriptions({
     prisma,
     tenancy,
     customerType: product.customerType,
     customerId: codeData.customerId,
   });
-  if (subscriptions.find((s) => s.productId === codeData.productId) && product.stackable !== true) {
-    throw new StatusError(400, "Customer already has a subscription for this product; this product is not stackable");
+
+  if (
+    codeData.productId &&
+    product.stackable !== true &&
+    [...subscriptions, ...existingOneTimePurchases].some((p) => p.productId === codeData.productId)
+  ) {
+    throw new StatusError(400, "Customer already has purchased this product; this product is not stackable");
   }
   const addOnProductIds = product.isAddOnTo ? typedKeys(product.isAddOnTo) : [];
   if (product.isAddOnTo && !subscriptions.some((s) => s.productId && addOnProductIds.includes(s.productId))) {

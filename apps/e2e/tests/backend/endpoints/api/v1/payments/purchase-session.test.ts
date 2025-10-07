@@ -777,7 +777,7 @@ it("should block one-time purchase for same product after prior one-time purchas
           displayName: "One Time Product",
           customerType: "user",
           serverOnly: false,
-          stackable: true,
+          stackable: false,
           prices: { one: { USD: "500" } },
           includedItems: {},
         },
@@ -819,7 +819,7 @@ it("should block one-time purchase for same product after prior one-time purchas
     body: { full_code: code2, price_id: "one", quantity: 1 },
   });
   expect(res.status).toBe(400);
-  expect(String(res.body)).toContain("one-time purchase for this product");
+  expect(String(res.body)).toBe("Customer already has purchased this product; this product is not stackable");
 });
 
 it("should block one-time purchase in same group after prior one-time purchase in that group (test-mode persisted)", async ({ expect }) => {
