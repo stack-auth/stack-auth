@@ -1,13 +1,13 @@
-import { ensureProductIdOrInlineProduct } from "@/lib/payments";
+import { ensureProductIdOrInlineProduct, getCustomerPurchaseContext } from "@/lib/payments";
 import { validateRedirectUrl } from "@/lib/redirect-urls";
 import { getStripeForAccount } from "@/lib/stripe";
-import { globalPrismaClient } from "@/prisma-client";
+import { getPrismaClientForTenancy, globalPrismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { CustomerType } from "@prisma/client";
 import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
 import { adaptSchema, clientOrHigherAuthTypeSchema, inlineProductSchema, urlSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
-import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { StatusError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { purchaseUrlVerificationCodeHandler } from "../verification-code-handler";
 
 export const POST = createSmartRouteHandler({
@@ -42,6 +42,20 @@ export const POST = createSmartRouteHandler({
     const customerType = productConfig.customerType;
     if (req.body.customer_type !== customerType) {
       throw new KnownErrors.ProductCustomerTypeDoesNotMatch(req.body.product_id, req.body.customer_id, customerType, req.body.customer_type);
+    }
+
+    if (req.body.product_id && productConfig.stackable !== true) {
+      const prisma = await getPrismaClientForTenancy(tenancy);
+      const { alreadyOwnsProduct } = await getCustomerPurchaseContext({
+        prisma,
+        tenancy,
+        customerType,
+        customerId: req.body.customer_id,
+        productId: req.body.product_id,
+      });
+      if (alreadyOwnsProduct) {
+        throw new StatusError(400, "Customer already has purchased this product; this product is not stackable");
+      }
     }
 
     const stripeCustomerSearch = await stripe.customers.search({
