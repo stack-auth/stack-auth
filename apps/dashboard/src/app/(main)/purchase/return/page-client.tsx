@@ -2,9 +2,11 @@
 
 import { StyledLink } from "@/components/link";
 import { getPublicEnvVar } from "@/lib/env";
+import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
 import { Typography } from "@stackframe/stack-ui";
 import { loadStripe } from "@stripe/stripe-js";
+import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 
 type Props = {
@@ -22,14 +24,33 @@ type ViewState =
   | { kind: "error", message: string };
 
 const stripePublicKey = getPublicEnvVar("NEXT_PUBLIC_STACK_STRIPE_PUBLISHABLE_KEY") ?? "";
+const apiUrl = getPublicEnvVar("NEXT_PUBLIC_STACK_API_URL") ?? throwErr("NEXT_PUBLIC_STACK_API_URL is not set");
+const baseUrl = new URL("/api/v1", apiUrl).toString();
 
 export default function ReturnClient({ clientSecret, stripeAccountId, purchaseFullCode, bypass }: Props) {
   const [state, setState] = useState<ViewState>({ kind: "loading" });
+  const searchParams = useSearchParams();
+  const returnUrl = searchParams.get("return_url");
+
+  const checkAndReturnUser = useCallback(async () => {
+    if (!returnUrl || !purchaseFullCode) {
+      return;
+    }
+    const url = new URL(`${baseUrl}/payments/purchases/validate-code`);
+    url.searchParams.set("full_code", purchaseFullCode);
+    url.searchParams.set("return_url", returnUrl);
+    const response = await fetch(url);
+    if (response.ok) {
+      window.location.assign(returnUrl);
+    }
+  }, [returnUrl, purchaseFullCode]);
 
   const updateViewState = useCallback(async (): Promise<void> => {
     try {
       if (bypass === "1") {
-        setState({ kind: "success", message: "Bypassed in test mode. No payment processed." });
+        runAsynchronously(checkAndReturnUser());
+        const message = `Bypassed in test mode. No payment processed.${returnUrl ? " You will be redirected shortly." : ""}`;
+        setState({ kind: "success", message });
         return;
       }
       const stripe = await loadStripe(stripePublicKey, { stripeAccount: stripeAccountId });
@@ -40,7 +61,9 @@ export default function ReturnClient({ clientSecret, stripeAccountId, purchaseFu
       const lastErrorMessage = result.paymentIntent?.last_payment_error?.message;
 
       if (status === "succeeded") {
-        setState({ kind: "success", message: "Payment succeeded. You can close this page." });
+        runAsynchronously(checkAndReturnUser());
+        const message = `Payment succeeded.${returnUrl ? " You will be redirected shortly." : " You can safely close this page."}`;
+        setState({ kind: "success", message });
         return;
       }
       if (status === "processing") {
@@ -64,7 +87,7 @@ export default function ReturnClient({ clientSecret, stripeAccountId, purchaseFu
       const message = e instanceof Error ? e.message : "Unexpected error retrieving payment.";
       setState({ kind: "error", message });
     }
-  }, [clientSecret, stripeAccountId, bypass]);
+  }, [clientSecret, stripeAccountId, bypass, returnUrl, checkAndReturnUser]);
 
   useEffect(() => {
     runAsynchronously(updateViewState());

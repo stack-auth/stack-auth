@@ -1,6 +1,6 @@
 import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
 import { it } from "../../../../../helpers";
-import { Auth, Payments, Project, User, niceBackendFetch } from "../../../../backend-helpers";
+import { Auth, niceBackendFetch, Payments, Project, User } from "../../../../backend-helpers";
 
 it("should not be able to create purchase URL without product_id or product_inline", async ({ expect }) => {
   await Project.createAndSwitch();
@@ -233,18 +233,8 @@ it("should error for server-only product when calling from client", async ({ exp
   expect(response).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 400,
-      "body": {
-        "code": "PRODUCT_DOES_NOT_EXIST",
-        "details": {
-          "access_type": "client",
-          "product_id": "test-product",
-        },
-        "error": "Product with ID \\"test-product\\" does not exist or you don't have permissions to access it.",
-      },
-      "headers": Headers {
-        "x-stack-known-error": "PRODUCT_DOES_NOT_EXIST",
-        <some fields may have been hidden>,
-      },
+      "body": "This product is marked as server-only and cannot be accessed client side!",
+      "headers": Headers { <some fields may have been hidden> },
     }
   `);
 });
@@ -309,9 +299,62 @@ it("should allow valid product_id", async ({ expect }) => {
       customer_type: "user",
       customer_id: userId,
       product_id: "test-product",
+      return_url: "http://stack-test.localhost/after-purchase",
     },
   });
   expect(response.status).toBe(200);
   const body = response.body as { url: string };
-  expect(body.url).toMatch(/^https?:\/\/localhost:8101\/purchase\/[a-z0-9-_]+$/);
+  expect(body.url).toMatch(/^https?:\/\/localhost:8101\/purchase\/[a-z0-9-_]+\?return_url=/);
+  const urlObj = new URL(body.url);
+  const returnUrl = urlObj.searchParams.get("return_url");
+  expect(returnUrl).toBe("http://stack-test.localhost/after-purchase");
+});
+
+it("should error for untrusted return_url", async ({ expect }) => {
+  await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+  await Payments.setup();
+  await Project.updateConfig({
+    payments: {
+      products: {
+        "test-product": {
+          displayName: "Test Product",
+          customerType: "user",
+          serverOnly: false,
+          stackable: false,
+          prices: {
+            "monthly": {
+              USD: "1000",
+              interval: [1, "month"],
+            },
+          },
+          includedItems: {},
+        },
+      },
+    },
+  });
+
+  const { userId } = await User.create();
+  const response = await niceBackendFetch("/api/latest/payments/purchases/create-purchase-url", {
+    method: "POST",
+    accessType: "client",
+    body: {
+      customer_type: "user",
+      customer_id: userId,
+      product_id: "test-product",
+      return_url: "https://malicious.com/callback",
+    },
+  });
+  expect(response).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 400,
+      "body": {
+        "code": "REDIRECT_URL_NOT_WHITELISTED",
+        "error": "Redirect URL not whitelisted. Did you forget to add this domain to the trusted domains list on the Stack Auth dashboard?",
+      },
+      "headers": Headers {
+        "x-stack-known-error": "REDIRECT_URL_NOT_WHITELISTED",
+        <some fields may have been hidden>,
+      },
+    }
+  `);
 });
