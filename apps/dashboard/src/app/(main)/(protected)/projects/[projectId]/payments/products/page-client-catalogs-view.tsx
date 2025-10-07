@@ -1,7 +1,6 @@
 "use client";
 
 import { CodeBlock } from '@/components/code-block';
-import { EditableInput } from "@/components/editable-input";
 import { cn } from "@/lib/utils";
 import { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
 import type { DayInterval } from "@stackframe/stack-shared/dist/utils/dates";
@@ -35,7 +34,7 @@ import {
   Switch,
   toast
 } from "@stackframe/stack-ui";
-import { Check, ChevronDown, ChevronsUpDown, Layers, MoreVertical, Pencil, PencilIcon, Plus, Puzzle, Server, Trash2, X } from "lucide-react";
+import { ChevronDown, ChevronsUpDown, Layers, MoreVertical, Pencil, PencilIcon, Plus, Puzzle, Server, Trash2, X } from "lucide-react";
 import { Fragment, useEffect, useId, useMemo, useRef, useState } from "react";
 import { IllustratedInfo } from "../../../../../../../components/illustrated-info";
 import { PageLayout } from "../../page-layout";
@@ -243,6 +242,59 @@ function IntervalPopover({
 }
 
 
+type ProductEditableInputProps = {
+  value: string,
+  onUpdate?: (value: string) => void | Promise<void>,
+  readOnly?: boolean,
+  placeholder?: string,
+  inputClassName?: string,
+};
+
+function ProductEditableInput({
+  value,
+  onUpdate,
+  readOnly,
+  placeholder,
+  inputClassName,
+}: ProductEditableInputProps) {
+  const [isActive, setIsActive] = useState(false);
+
+  if (readOnly) {
+    return (
+      <div
+        className={cn(
+          "w-full px-1 py-0 h-[unset] border-transparent bg-transparent cursor-default truncate",
+          inputClassName,
+          !value && "text-muted-foreground"
+        )}
+        aria-label={placeholder}
+      >
+        {value || placeholder}
+      </div>
+    );
+  }
+
+  return (
+    <Input
+      value={value}
+      onChange={(event) => {
+        const nextValue = event.target.value;
+        void onUpdate?.(nextValue);
+      }}
+      placeholder={placeholder}
+      autoComplete="off"
+      className={cn(
+        "w-full px-1 py-0 h-[unset] border-transparent transition-colors focus-visible:ring-1 focus-visible:ring-ring focus-visible:border-transparent",
+        isActive ? "bg-muted/60 dark:bg-muted/30 z-20" : "bg-transparent hover:bg-muted/40 dark:hover:bg-muted/20",
+        inputClassName,
+      )}
+      onFocus={() => setIsActive(true)}
+      onBlur={() => setIsActive(false)}
+    />
+  );
+}
+
+
 function ProductPriceRow({
   priceId,
   price,
@@ -291,8 +343,8 @@ function ProductPriceRow({
     <div className={cn("relative flex flex-col items-center rounded-md px-2 py-1")}>
       {isEditing ? (
         <>
-          <div className="relative w-full pb-2">
-            <span className="pointer-events-none font-semibold text-xl text-black absolute left-1.5 top-1/2 -translate-y-1/2 z-20">$</span>
+          <div className="relative w-full pb-2 flex items-center">
+            <span className="pointer-events-none font-semibold text-xl absolute left-1.5 z-20">$</span>
             <Input
               className="h-8 !pl-[18px] w-full mr-3 text-xl font-semibold bg-transparent tabular-nums text-center"
               tabIndex={0}
@@ -804,55 +856,15 @@ function ProductCard({ id, activeType, product, allProducts, existingItems, onSa
       isEditing && "border-foreground/60 dark:border-foreground/40"
     )}>
       <div className="pt-4 px-4 flex flex-col items-center justify-center">
-        {isEditing && (
-          <div className="flex flex-col gap-2 w-full">
-            <div className="flex items-center gap-2">
-              <div className="grow flex flex-row justify-end">
-                <SimpleTooltip tooltip={saveDisabledReason} disabled={canSaveProduct}>
-                  <Button size="icon" variant="ghost" onClick={async () => {
-                    const trimmed = localProductId.trim();
-                    const validId = trimmed && /^[a-z0-9-]+$/.test(trimmed) ? trimmed : id;
-                    if (validId !== id) {
-                      await onSave(validId, draft);
-                      await onDelete(id);
-                    } else {
-                      await onSave(id, draft);
-                    }
-                    setIsEditing(false);
-                    setEditingPriceId(undefined);
-                  }} disabled={!canSaveProduct}>
-                    <Check className="text-green-500" />
-                  </Button>
-                </SimpleTooltip>
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  onClick={() => {
-                    if (isDraft && onCancelDraft) {
-                      onCancelDraft();
-                      return;
-                    }
-                    setIsEditing(false);
-                    setDraft(product);
-                    setEditingPriceId(undefined);
-                  }}
-                  aria-label="Cancel edit"
-                >
-                  <X className="h-4 w-4" />
-                </Button>
-              </div>
-            </div>
-          </div>
-        )}
-        <div className="flex justify-center flex-col items-center w-full">
-          <EditableInput
+        <div className="flex justify-center flex-col gap-0.5 items-center w-full">
+          <ProductEditableInput
             value={localProductId}
             onUpdate={async (value) => setLocalProductId(value)}
             readOnly={!isDraft || !isEditing}
             placeholder={"Product ID"}
             inputClassName="text-xs font-mono text-center text-muted-foreground"
           />
-          <EditableInput
+          <ProductEditableInput
             value={draft.displayName || ""}
             onUpdate={async (value) => setDraft(prev => ({ ...prev, displayName: value }))}
             readOnly={!isEditing}
@@ -1004,6 +1016,47 @@ function ProductCard({ id, activeType, product, allProducts, existingItems, onSa
           </div>
         )
       }
+      {isEditing && (
+        <div className="px-4 mt-auto">
+          <div className="flex justify-end gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                if (isDraft && onCancelDraft) {
+                  onCancelDraft();
+                  return;
+                }
+                setIsEditing(false);
+                setDraft(product);
+                setEditingPriceId(undefined);
+              }}
+            >
+              Cancel
+            </Button>
+            <SimpleTooltip tooltip={saveDisabledReason} disabled={canSaveProduct}>
+              <Button
+                size="sm"
+                onClick={async () => {
+                  const trimmed = localProductId.trim();
+                  const validId = trimmed && /^[a-z0-9-]+$/.test(trimmed) ? trimmed : id;
+                  if (validId !== id) {
+                    await onSave(validId, draft);
+                    await onDelete(id);
+                  } else {
+                    await onSave(id, draft);
+                  }
+                  setIsEditing(false);
+                  setEditingPriceId(undefined);
+                }}
+                disabled={!canSaveProduct}
+              >
+                Save
+              </Button>
+            </SimpleTooltip>
+          </div>
+        </div>
+      )}
       {!isEditing && activeType !== "custom" && (
         <div className="border-t p-4">
           <CodeBlock
