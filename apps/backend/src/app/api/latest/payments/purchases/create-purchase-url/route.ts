@@ -24,18 +24,47 @@ export const POST = createSmartRouteHandler({
       tenancy: adaptSchema.defined(),
     }).defined(),
     body: yupObject({
-      customer_type: yupString().oneOf(["user", "team", "custom"]).defined(),
-      customer_id: yupString().defined(),
-      product_id: yupString().optional(),
-      product_inline: inlineProductSchema.optional(),
-      return_url: urlSchema.optional(),
+      customer_type: yupString().oneOf(["user", "team", "custom"]).defined().meta({
+        openapiField: {
+          description: "The type of customer making the purchase",
+          exampleValue: "user"
+        }
+      }),
+      customer_id: yupString().defined().meta({
+        openapiField: {
+          description: "The ID of the customer (user ID, team ID, or custom customer ID)",
+          exampleValue: "user_1234567890abcdef"
+        }
+      }),
+      product_id: yupString().optional().meta({
+        openapiField: {
+          description: "The ID of the product to purchase",
+          exampleValue: "prod_premium_monthly"
+        }
+      }),
+      product_inline: inlineProductSchema.optional().meta({
+        openapiField: {
+          description: "Inline product definition (alternative to product_id)"
+        }
+      }),
+      return_url: urlSchema.optional().meta({
+        openapiField: {
+          description: "URL to redirect to after purchase completion",
+          exampleValue: "https://myapp.com/purchase-success"
+        }
+      }),
     }),
   }),
   response: yupObject({
     statusCode: yupNumber().oneOf([200]).defined(),
     bodyType: yupString().oneOf(["json"]).defined(),
     body: yupObject({
-      url: yupString().defined(),
+      url: yupString().defined().meta({
+        openapiField: {
+          description: "The secure checkout URL for completing the purchase",
+          exampleValue: "https://dashboard.stack-auth.com/purchase/proj_abc123_def456ghi789"
+        }
+      }),
     }).defined(),
   }),
   handler: async (req) => {

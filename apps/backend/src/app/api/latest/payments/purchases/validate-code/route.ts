@@ -26,8 +26,18 @@ export const POST = createSmartRouteHandler({
   },
   request: yupObject({
     body: yupObject({
-      full_code: yupString().defined(),
-      return_url: urlSchema.optional(),
+      full_code: yupString().defined().meta({
+        openapiField: {
+          description: "The full verification code from the purchase URL",
+          exampleValue: "proj_abc123_def456ghi789"
+        }
+      }),
+      return_url: urlSchema.optional().meta({
+        openapiField: {
+          description: "URL to redirect to after purchase completion",
+          exampleValue: "https://myapp.com/purchase-success"
+        }
+      }),
     }),
   }),
   response: yupObject({

@@ -20,24 +20,64 @@ export const POST = createSmartRouteHandler({
       tenancy: adaptSchema.defined(),
     }).defined(),
     params: yupObject({
-      customer_type: yupString().oneOf(["user", "team", "custom"]).defined(),
-      customer_id: yupString().defined(),
-      item_id: yupString().defined(),
+      customer_type: yupString().oneOf(["user", "team", "custom"]).defined().meta({
+        openapiField: {
+          description: "The type of customer",
+          exampleValue: "user"
+        }
+      }),
+      customer_id: yupString().defined().meta({
+        openapiField: {
+          description: "The ID of the customer",
+          exampleValue: "user_1234567890abcdef"
+        }
+      }),
+      item_id: yupString().defined().meta({
+        openapiField: {
+          description: "The ID of the item to update",
+          exampleValue: "credits"
+        }
+      }),
     }).defined(),
     query: yupObject({
-      allow_negative: yupString().oneOf(["true", "false"]).defined(),
+      allow_negative: yupString().oneOf(["true", "false"]).defined().meta({
+        openapiField: {
+          description: "Whether to allow the quantity to go negative",
+          exampleValue: "false"
+        }
+      }),
     }).defined(),
     body: yupObject({
-      delta: yupNumber().integer().defined(),
-      expires_at: yupString().optional(),
-      description: yupString().optional(),
+      delta: yupNumber().integer().defined().meta({
+        openapiField: {
+          description: "The amount to change the quantity by (positive to increase, negative to decrease)",
+          exampleValue: 100
+        }
+      }),
+      expires_at: yupString().optional().meta({
+        openapiField: {
+          description: "Optional expiration date for this quantity change (ISO 8601 format)",
+          exampleValue: "2024-12-31T23:59:59Z"
+        }
+      }),
+      description: yupString().optional().meta({
+        openapiField: {
+          description: "Optional description for this quantity change",
+          exampleValue: "Monthly subscription renewal"
+        }
+      }),
     }).defined(),
   }),
   response: yupObject({
     statusCode: yupNumber().oneOf([200]).defined(),
     bodyType: yupString().oneOf(["json"]).defined(),
     body: yupObject({
-      id: yupString().defined(),
+      id: yupString().defined().meta({
+        openapiField: {
+          description: "The ID of the created quantity change record",
+          exampleValue: "qc_1234567890abcdef"
+        }
+      }),
     }).defined(),
   }),
   handler: async (req) => {

@@ -17,16 +17,36 @@ export const POST = createSmartRouteHandler({
   },
   request: yupObject({
     body: yupObject({
-      full_code: yupString().defined(),
-      price_id: yupString().defined(),
-      quantity: yupNumber().integer().min(1).default(1),
+      full_code: yupString().defined().meta({
+        openapiField: {
+          description: "The full verification code from the purchase URL",
+          exampleValue: "proj_abc123_def456ghi789"
+        }
+      }),
+      price_id: yupString().defined().meta({
+        openapiField: {
+          description: "The Stripe price ID to purchase",
+          exampleValue: "price_1234567890abcdef"
+        }
+      }),
+      quantity: yupNumber().integer().min(1).default(1).meta({
+        openapiField: {
+          description: "The quantity to purchase",
+          exampleValue: 1
+        }
+      }),
     }),
   }),
   response: yupObject({
     statusCode: yupNumber().oneOf([200]).defined(),
     bodyType: yupString().oneOf(["json"]).defined(),
     body: yupObject({
-      client_secret: yupString().defined(),
+      client_secret: yupString().defined().meta({
+        openapiField: {
+          description: "The Stripe client secret for completing the payment",
+          exampleValue: "pi_1234567890abcdef_secret_xyz123"
+        }
+      }),
     }),
   }),
   async handler({ body }) {

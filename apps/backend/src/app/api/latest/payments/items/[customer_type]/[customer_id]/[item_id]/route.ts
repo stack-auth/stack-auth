@@ -20,18 +20,48 @@ export const GET = createSmartRouteHandler({
       tenancy: adaptSchema.defined(),
     }).defined(),
     params: yupObject({
-      customer_type: yupString().oneOf(["user", "team", "custom"]).defined(),
-      customer_id: yupString().defined(),
-      item_id: yupString().defined(),
+      customer_type: yupString().oneOf(["user", "team", "custom"]).defined().meta({
+        openapiField: {
+          description: "The type of customer",
+          exampleValue: "user"
+        }
+      }),
+      customer_id: yupString().defined().meta({
+        openapiField: {
+          description: "The ID of the customer",
+          exampleValue: "user_1234567890abcdef"
+        }
+      }),
+      item_id: yupString().defined().meta({
+        openapiField: {
+          description: "The ID of the item to retrieve",
+          exampleValue: "credits"
+        }
+      }),
     }).defined(),
   }),
   response: yupObject({
     statusCode: yupNumber().oneOf([200]).defined(),
     bodyType: yupString().oneOf(["json"]).defined(),
     body: yupObject({
-      id: yupString().defined(),
-      display_name: yupString().defined(),
-      quantity: yupNumber().defined(),
+      id: yupString().defined().meta({
+        openapiField: {
+          description: "The ID of the item",
+          exampleValue: "credits"
+        }
+      }),
+      display_name: yupString().defined().meta({
+        openapiField: {
+          description: "The human-readable name of the item",
+          exampleValue: "API Credits"
+        }
+      }),
+      quantity: yupNumber().defined().meta({
+        openapiField: {
+          description: "The current quantity of the item (can be negative)",
+          exampleValue: 1000
+        }
+      }),
     }).defined(),
   }),
   handler: async (req) => {
