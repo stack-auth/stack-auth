@@ -17,7 +17,10 @@ const productDataSchema = inlineProductSchema
 
 export const POST = createSmartRouteHandler({
   metadata: {
-    hidden: true,
+    hidden: false,
+    summary: "Validate Purchase Code",
+    description: "Validates a purchase verification code and returns purchase details including available prices.",
+    tags: ["Payments"],
   },
   request: yupObject({
     body: yupObject({

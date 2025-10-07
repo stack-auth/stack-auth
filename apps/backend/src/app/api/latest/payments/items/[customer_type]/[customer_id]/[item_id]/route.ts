@@ -1,14 +1,17 @@
+import { ensureCustomerExists, getItemQuantityForCustomer } from "@/lib/payments";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { adaptSchema, clientOrHigherAuthTypeSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { ensureCustomerExists, getItemQuantityForCustomer } from "@/lib/payments";
 import { getOrUndefined } from "@stackframe/stack-shared/dist/utils/objects";
 
 
 export const GET = createSmartRouteHandler({
   metadata: {
-    hidden: true,
+    hidden: false,
+    summary: "Get Item",
+    description: "Retrieves information about a specific item (credits, quotas, etc.) for a customer.",
+    tags: ["Payments"],
   },
   request: yupObject({
     auth: yupObject({

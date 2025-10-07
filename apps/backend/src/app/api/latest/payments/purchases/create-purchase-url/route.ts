@@ -11,7 +11,10 @@ import { purchaseUrlVerificationCodeHandler } from "../verification-code-handler
 
 export const POST = createSmartRouteHandler({
   metadata: {
-    hidden: true,
+    hidden: false,
+    summary: "Create Purchase URL",
+    description: "Creates a secure checkout URL for purchasing a product. This integrates with Stripe to generate a payment link.",
+    tags: ["Payments"],
   },
   request: yupObject({
     auth: yupObject({

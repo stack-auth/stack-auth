@@ -10,7 +10,10 @@ import { purchaseUrlVerificationCodeHandler } from "../verification-code-handler
 
 export const POST = createSmartRouteHandler({
   metadata: {
-    hidden: true,
+    hidden: false,
+    summary: "Create Purchase Session",
+    description: "Creates a Stripe payment session for completing a purchase. Returns a client secret for Stripe integration.",
+    tags: ["Payments"],
   },
   request: yupObject({
     body: yupObject({

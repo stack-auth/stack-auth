@@ -1,14 +1,17 @@
-import { adaptSchema, serverOrHigherAuthTypeSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { ensureCustomerExists, getItemQuantityForCustomer } from "@/lib/payments";
 import { getPrismaClientForTenancy, retryTransaction } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@stackframe/stack-shared";
+import { adaptSchema, serverOrHigherAuthTypeSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { getOrUndefined } from "@stackframe/stack-shared/dist/utils/objects";
 import { typedToUppercase } from "@stackframe/stack-shared/dist/utils/strings";
 
 export const POST = createSmartRouteHandler({
   metadata: {
-    hidden: true,
+    hidden: false,
+    summary: "Update Item Quantity",
+    description: "Updates the quantity of an item for a customer. Can increase or decrease quantities, with optional expiration and negative balance control.",
+    tags: ["Payments"],
   },
   request: yupObject({
     auth: yupObject({
