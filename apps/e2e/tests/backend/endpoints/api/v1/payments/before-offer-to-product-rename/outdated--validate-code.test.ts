@@ -55,6 +55,7 @@ it("should allow valid code and return offer data", async ({ expect }) => {
         },
         "project_id": "<stripped UUID>",
         "stripe_account_id": <stripped field 'stripe_account_id'>,
+        "test_mode": false,
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -66,6 +67,7 @@ it("should set already_bought_non_stackable when user already owns non-stackable
   await Payments.setup();
   await Project.updateConfig({
     payments: {
+      testMode: true,
       products: {
         "test-offer": {
           displayName: "Test Offer",
@@ -151,6 +153,7 @@ it("should set already_bought_non_stackable when user already owns non-stackable
         },
         "project_id": "<stripped UUID>",
         "stripe_account_id": <stripped field 'stripe_account_id'>,
+        "test_mode": true,
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -162,6 +165,7 @@ it("should include conflicting_group_offers when switching within the same group
   await Payments.setup();
   await Project.updateConfig({
     payments: {
+      testMode: true,
       catalogs: { grp: { displayName: "Group" } },
       products: {
         offerA: {
@@ -247,6 +251,7 @@ it("should include conflicting_group_offers when switching within the same group
         },
         "project_id": "<stripped UUID>",
         "stripe_account_id": <stripped field 'stripe_account_id'>,
+        "test_mode": true,
       },
       "headers": Headers { <some fields may have been hidden> },
     }
