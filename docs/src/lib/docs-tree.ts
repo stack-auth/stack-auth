@@ -1,3 +1,4 @@
+import { throwErr } from '@stackframe/stack-shared/dist/utils/errors';
 import type { PageTree } from 'fumadocs-core/server';
 
 export type DocsSection = 'guides' | 'sdk' | 'components';
@@ -100,7 +101,7 @@ function matchesSection(url: string, section: DocsSection): boolean {
 }
 
 function normalizeUrl(url: string): string {
-  const withoutFragment = url.split('#')[0];
+  const withoutFragment = url.split('#')[0] ?? throwErr("URL split by # returned empty array", { url });
   return withoutFragment.replace(/\/$/, '');
 }
 
@@ -142,7 +143,7 @@ function flattenRootChildren(nodes: PageTree.Node[]): PageTree.Node[] {
     return nodes;
   }
 
-  const soleNode = nodes[0] as PageTree.Node;
+  const soleNode = nodes[0] ?? throwErr("Expected at least one node but array is empty", { nodesLength: nodes.length });
   if (soleNode.type !== 'folder') {
     return nodes;
   }
