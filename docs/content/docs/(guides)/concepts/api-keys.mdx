@@ -177,8 +177,14 @@ To use API keys in your application, you need to enable them in your project set
     const teamApiKeys = await team.listApiKeys();
     
     // Using hooks in React components
-    const apiKeys = user.useApiKeys();
-    const teamApiKeys = team.useApiKeys();
+    function ApiKeysList() {
+      const user = useUser();
+      const apiKeys = user.useApiKeys();
+      const team = user.getTeam("team-id-here");
+      const teamApiKeys = team.useApiKeys();
+
+      // Render UI here.
+    }
     ```
   </TabsContent>
   <TabsContent value="server">
