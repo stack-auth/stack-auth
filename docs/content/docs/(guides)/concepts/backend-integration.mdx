@@ -77,7 +77,7 @@ Stack Auth provides two methods for authenticating users on your server endpoint
             access_token,
             signing_key.key,
             algorithms=["ES256"],
-            audience=<your-project-id>
+            audience="<your-project-id>"
         )
         print('Authenticated user with ID:', payload['sub'])
     except Exception as error:
