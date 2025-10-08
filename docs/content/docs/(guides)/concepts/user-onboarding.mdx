@@ -69,7 +69,7 @@ Next, we can create a hook/function to check if the user has completed onboardin
       const router = useRouter();
 
       useEffect(() => {
-        if (!user.clientMetadata.onboarded) {
+        if (!user.clientReadOnlyMetadata.onboarded) {
           router.push('/onboarding');
         }
       }, [user]);
@@ -83,7 +83,7 @@ Next, we can create a hook/function to check if the user has completed onboardin
 
     export async function ensureOnboarded() {
       const user = await stackServerApp.getUser();
-      if (!user.serverMetadata.onboarded) {
+      if (!user.clientReadOnlyMetadata.onboarded) {
         redirect('/onboarding');
       }
     }
