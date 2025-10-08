@@ -20,7 +20,7 @@ type GroupedResult = {
 
 function extractBasePathFromUrl(url: string): string {
   // Extract everything after the platform but before any hash
-  const match = url.match(/\/docs\/(?:[^\/]+\/)?(.+?)(?:#|$)/);
+  const match = url.match(/\/docs\/(.+?)(?:#|$)/);
   return match?.[1] || '';
 }
 
