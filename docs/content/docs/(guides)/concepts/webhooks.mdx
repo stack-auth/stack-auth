@@ -44,7 +44,7 @@ const payload = "<the webhook request body>";
 
 const wh = new Webhook(secret);
 // Throws on error, returns the verified content on success
-const payload = wh.verify(payload, headers);
+const verifiedPayload = wh.verify(payload, headers);
 ```
 
 If you do not want to install the Svix client library or are using a language that is not supported, you can [verify the signature manually](https://docs.svix.com/receiving/verifying-payloads/how-manual).
