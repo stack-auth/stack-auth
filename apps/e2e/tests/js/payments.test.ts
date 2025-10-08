@@ -165,7 +165,7 @@ it("admin can increase team item quantity and client sees updated value", async 
 }, { timeout: 40_000 });
 
 it("cannot decrease team item quantity below zero", async ({ expect }) => {
-  const { clientApp, adminApp } = await createApp({
+  const { clientApp, serverApp, adminApp } = await createApp({
     config: {
       clientTeamCreationEnabled: true,
     },
@@ -197,8 +197,9 @@ it("cannot decrease team item quantity below zero", async ({ expect }) => {
   expect(current.quantity).toBe(0);
 
   // Try to decrease by 1 (should fail with KnownErrors.ItemQuantityInsufficientAmount)
-  await expect(adminApp.createItemQuantityChange({ teamId: team.id, itemId, quantity: -1 }))
-    .rejects.toThrow();
+  const item = await serverApp.getItem({ teamId: team.id, itemId });
+  const success = await item.tryDecreaseQuantity(1);
+  expect(success).toBe(false);
 
   const still = await team.getItem(itemId);
   expect(still.quantity).toBe(0);
