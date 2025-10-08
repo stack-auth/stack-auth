@@ -1,10 +1,49 @@
+type AppTag = {
+  displayName: string,
+};
+
+export const ALL_APP_TAGS = {
+  "auth": {
+    displayName: "Authentication",
+  },
+  "developers": {
+    displayName: "For Developers",
+  },
+  "security": {
+    displayName: "Security",
+  },
+  "integrations": {
+    displayName: "Integrations",
+  },
+  "operations": {
+    displayName: "For Operations",
+  },
+  "gtm": {
+    displayName: "Go-to-market",
+  },
+  "comms": {
+    displayName: "Communications",
+  },
+  "automation": {
+    displayName: "Automation",
+  },
+  "storage": {
+    displayName: "Storage & Databases",
+  },
+  "various": {
+    displayName: "Various",
+  },
+} as const satisfies Record<string, AppTag>;
+
 type App = {
   type: "app" | "integration",
   displayName: string,
   subtitle: string,
-  tags: string[],
+  tags: (keyof typeof ALL_APP_TAGS)[],
   stage: "alpha" | "beta" | "stable",
 };
+
+export type AppId = keyof typeof ALL_APPS;
 
 export const ALL_APPS = {
   "authentication": {
@@ -18,42 +57,42 @@ export const ALL_APPS = {
     type: "app",
     displayName: "Teams",
     subtitle: "Team collaboration and management",
-    tags: ["collaboration", "organization"],
+    tags: ["auth", "security"],
     stage: "stable",
   },
   "rbac": {
     type: "app",
     displayName: "RBAC",
     subtitle: "Role-based access control and permissions",
-    tags: ["security", "permissions"],
+    tags: ["auth", "security"],
     stage: "stable",
   },
   "api-keys": {
     type: "app",
     displayName: "API Keys",
     subtitle: "API key generation and management",
-    tags: ["api", "security"],
+    tags: ["auth", "security", "developers"],
     stage: "stable",
   },
   "payments": {
     type: "app",
     displayName: "Payments",
     subtitle: "Payment processing and subscription management",
-    tags: ["billing", "monetization"],
+    tags: ["operations", "gtm"],
     stage: "stable",
   },
   "emails": {
     type: "app",
     displayName: "Emails",
     subtitle: "Email template configuration and management",
-    tags: ["communication", "templates"],
+    tags: ["comms"],
     stage: "stable",
   },
   "email-api": {
     type: "app",
     displayName: "Email API",
     subtitle: "Programmatic email sending and delivery",
-    tags: ["api", "communication"],
+    tags: ["comms", "developers"],
     stage: "alpha",
   },
   "data-vault": {
@@ -67,49 +106,49 @@ export const ALL_APPS = {
     type: "app",
     displayName: "Workflows",
     subtitle: "Automated business process orchestration",
-    tags: ["automation", "processes"],
+    tags: ["automation"],
     stage: "beta",
   },
   "webhooks": {
     type: "app",
     displayName: "Webhooks",
     subtitle: "Real-time event notifications and integrations",
-    tags: ["integration", "events"],
+    tags: ["integrations"],
     stage: "stable",
   },
   "tv-mode": {
     type: "app",
     displayName: "TV mode",
     subtitle: "Dashboard display for large screens",
-    tags: ["display", "monitoring"],
+    tags: ["various"],
     stage: "alpha",
   },
   "launch-checklist": {
     type: "app",
     displayName: "Launch Checklist",
     subtitle: "Pre-launch verification and readiness checks",
-    tags: ["deployment", "verification"],
+    tags: ["various"],
     stage: "alpha",
   },
   "catalyst": {
     type: "app",
     displayName: "Catalyst",
     subtitle: "Project scaffolding and rapid development",
-    tags: ["development", "tooling"],
+    tags: ["various"],
     stage: "alpha",
   },
   "neon": {
     type: "integration",
     displayName: "Neon",
     subtitle: "Serverless Postgres database integration",
-    tags: ["database", "integration"],
+    tags: ["integrations", "storage"],
     stage: "alpha",
   },
   "convex": {
     type: "integration",
     displayName: "Convex",
     subtitle: "Real-time backend platform integration",
-    tags: ["database", "integration", "realtime"],
+    tags: ["integrations", "storage"],
     stage: "alpha",
   },
 } as const satisfies Record<string, App>;

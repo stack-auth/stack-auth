@@ -1,9 +1,12 @@
 'use client';
 
+import { AppSquare, appSquareWidthExpression } from "@/components/app-square";
 import { useRouter } from "@/components/router";
 import { ErrorBoundary } from '@sentry/nextjs';
 import { UserAvatar } from '@stackframe/stack';
+import { ALL_APPS, AppId } from "@stackframe/stack-shared/dist/apps/apps-config";
 import { fromNow } from '@stackframe/stack-shared/dist/utils/dates';
+import { typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import { Card, CardContent, CardHeader, CardTitle, Table, TableBody, TableCell, TableRow, Typography } from '@stackframe/stack-ui';
 import { useState } from 'react';
 import { PageLayout } from "../page-layout";
@@ -38,16 +41,69 @@ const dauConfig = {
 
 export default function MetricsPage(props: { toSetup: () => void }) {
   const adminApp = useAdminApp();
+  const project = adminApp.useProject();
+  const config = project.useConfig();
   const router = useRouter();
   const [includeAnonymous, setIncludeAnonymous] = useState(false);
 
   const data = (adminApp as any)[stackAppInternalsSymbol].useMetrics(includeAnonymous);
+
+  const installedApps = Object.entries(config.apps.installed)
+    .filter(([_, appConfig]) => appConfig.enabled)
+    .map(([appId]) => appId as AppId);
+
+  const suggestedApps = typedEntries(ALL_APPS)
+    .map(([appId]) => appId)
+    .filter((appId) => !config.apps.installed[appId].enabled);
 
   return (
     <PageLayout fillWidth>
       <ErrorBoundary fallback={<div className='text-center text-sm text-red-500'>Error initializing globe visualization. Please try updating your browser or enabling WebGL.</div>}>
         <GlobeSection countryData={data.users_by_country} totalUsers={data.total_users} />
       </ErrorBoundary>
+
+
+      {/* Installed Apps Section */}
+      <section className="mt-8">
+        <h2 className="text-xl font-bold">Installed Apps</h2>
+        {installedApps.length > 0 ? (
+          <div
+            className="grid gap-y-2 py-8 justify-items-between"
+            style={{
+              gridTemplateColumns: `repeat(auto-fit,minmax(${appSquareWidthExpression},1fr))`,
+            }}
+          >
+            {installedApps.map(appId => (
+              <AppSquare key={appId} appId={appId} />
+            ))}
+          </div>
+        ) : (
+          <p className="text-gray-500 dark:text-gray-400">No apps installed yet.</p>
+        )}
+      </section>
+
+
+      {/* Suggested Apps Section */}
+      {suggestedApps.length > 0 && (
+        <section className="mt-4 mb-16">
+          <h2 className="text-xl font-bold">Suggested Apps</h2>
+          {suggestedApps.length > 0 ? (
+            <div
+              className="grid gap-y-2 py-8 justify-items-between"
+              style={{
+                gridTemplateColumns: `repeat(auto-fit,minmax(${appSquareWidthExpression},1fr))`,
+              }}
+            >
+              {suggestedApps.map(appId => (
+                <AppSquare key={appId} appId={appId} />
+              ))}
+            </div>
+          ) : (
+            <p className="text-gray-500 dark:text-gray-400">No apps installed yet.</p>
+          )}
+        </section>
+      )}
+
       <div className='grid gap-4 lg:grid-cols-2'>
         <LineChartDisplay
           config={dailySignUpsConfig}

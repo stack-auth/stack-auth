@@ -3,6 +3,7 @@
 import { cn } from "../lib/utils";
 // eslint-disable-next-line
 import NextLink from 'next/link';
+import React from "react";
 import { useRouter, useRouterConfirm } from "./router";
 
 type LinkProps = {
@@ -15,11 +16,12 @@ type LinkProps = {
   prefetch?: boolean,
 };
 
-export function Link(props: LinkProps) {
+export const Link = React.forwardRef<HTMLAnchorElement, LinkProps>((props, ref) => {
   const router = useRouter();
   const { needConfirm } = useRouterConfirm();
 
   return <NextLink
+    ref={ref}
     href={props.href}
     target={props.target}
     className={props.className}
@@ -37,7 +39,8 @@ export function Link(props: LinkProps) {
     {props.children}
   </NextLink>;
 
-}
+});
+Link.displayName = 'Link';
 
 export function StyledLink(props: LinkProps) {
   return (
