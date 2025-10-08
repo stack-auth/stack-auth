@@ -1,5 +1,6 @@
 'use client';
 
+import { runAsynchronously } from '@stackframe/stack-shared/dist/utils/promises';
 import React from 'react';
 import { ClickableTableOfContents, ParamField } from '../mdx/sdk-components';
 import { AsideSection, CollapsibleTypesSection, MethodAside, MethodContent, MethodLayout } from '../ui/method-layout';
@@ -67,7 +68,7 @@ function generateTableOfContents(typeInfo: TypeInfo, platform = 'react-like'): s
 
     const memberName = member.name;
     const isOptional = member.optional ? '?' : '';
-    const anchorId = `#${typeInfo.name.toLowerCase()}${memberName.toLowerCase()}`;
+    const anchorId = `#${typeInfo.name.toLowerCase()}-${memberName.toLowerCase()}`;
 
     if (member.kind === 'property') {
       const cleanType = formatTypeSignature(member.type || 'unknown');
@@ -97,6 +98,7 @@ function generateTableOfContents(typeInfo: TypeInfo, platform = 'react-like'): s
 
 function renderMemberDocumentation(typeInfo: TypeInfo, member: TypeMember, platform = 'react-like') {
   const memberName = member.name;
+  const primarySignature = member.signatures?.[0];
 
   // Skip platform-specific members if they don't match current platform
   if (member.platforms && !member.platforms.includes(platform)) {
@@ -108,8 +110,9 @@ function renderMemberDocumentation(typeInfo: TypeInfo, member: TypeMember, platf
       key={memberName}
       type={typeInfo.name}
       property={memberName}
-      signature={member.kind === 'method' && member.signatures?.[0] ?
-        member.signatures[0].parameters.map(p => p.name).join(', ') : undefined
+      signature={member.kind === 'method' && primarySignature
+        ? primarySignature.parameters.map(p => p.name).join(', ')
+        : undefined
       }
       defaultOpen={false}
     >
@@ -132,15 +135,15 @@ function renderMemberDocumentation(typeInfo: TypeInfo, member: TypeMember, platf
             </div>
           )}
 
-          {member.kind === 'method' && member.signatures && (
+          {member.kind === 'method' && (
             <>
               <h4 className="text-sm font-semibold text-fd-foreground mb-3">Parameters</h4>
 
-              {member.signatures[0].parameters.length === 0 ? (
+              {(primarySignature?.parameters.length ?? 0) === 0 ? (
                 <p className="text-sm text-fd-muted-foreground mb-4">No parameters.</p>
               ) : (
                 <div className="space-y-3 mb-6">
-                  {member.signatures[0].parameters.map((param, index) => (
+                  {(primarySignature?.parameters ?? []).map((param, index) => (
                     <ParamField
                       key={index}
                       path={param.name}
@@ -156,7 +159,7 @@ function renderMemberDocumentation(typeInfo: TypeInfo, member: TypeMember, platf
               <h4 className="text-sm font-semibold text-fd-foreground mb-2">Returns</h4>
               <p className="text-sm text-fd-muted-foreground">
                 <code className="bg-fd-muted px-1.5 py-0.5 rounded text-xs">
-                  {formatTypeSignature(member.signatures[0].returnType)}
+                  {formatTypeSignature(primarySignature?.returnType ?? 'unknown')}
                 </code>
               </p>
             </>
@@ -318,13 +321,7 @@ export function TypeFromJson({ typeName, platform = 'react-like' }: { typeName: 
         setLoading(false);
       }
     }
-
-    loadTypeInfo().then(() => {
-      // Type info loaded successfully
-    }).catch((err) => {
-      setError(err instanceof Error ? err.message : 'Failed to load type info');
-      setLoading(false);
-    });
+    runAsynchronously(loadTypeInfo());
   }, [typeName]);
 
   if (loading) {
