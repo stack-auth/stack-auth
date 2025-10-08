@@ -8,24 +8,44 @@ Stack offers a REST API for backends & frontends of any programming language or 
 
 ## Authentication
 
-The following authentication headers are common to every endpoint:
+Stack Auth uses different authentication patterns depending on whether you're making requests from client-side code (browser, mobile app) or server-side code (your backend).
+
+<Warning>
+**Security Critical**: Never expose your secret server key (`ssk_...`) in client-side code, browser requests, or any publicly accessible location. Server keys should only be used in secure backend environments.
+</Warning>
+
+### Client-Side Authentication
+
+For requests from browsers, mobile apps, or other client-side environments:
 
 ```http
 curl https://api.stack-auth.com/api/v1/ \
-     -H "X-Stack-Access-Type: <either 'client' or 'server'>" \
+     -H "X-Stack-Access-Type: client" \
      -H "X-Stack-Project-Id: <your project UUID>" \
      -H "X-Stack-Publishable-Client-Key: pck_<your publishable client key>" \
-     -H "X-Stack-Secret-Server-Key: ssk_<your secret server key>" \
      -H "X-Stack-Access-Token: <the current user's access token>"
 ```
 
-| Header | Type | Description |
-| ------ | ---- | ----------- |
-| `X-Stack-Access-Type` | "client" \| "server" | Required. "client" (without quotes) for the frontend API, or "server" for the backend API. |
-| `X-Stack-Project-Id` | UUID | Required. The project ID as found on the Stack dashboard. |
-| `X-Stack-Publishable-Client-Key` | string | Required for client access. The API key as found on the Stack dashboard. |
-| `X-Stack-Secret-Server-Key` | string | Required for server access. The API key as found on the Stack dashboard. |
-| `X-Stack-Access-Token` | string | Optional. The access token for the current user. If not given, the request is considered to be logged out. |
+### Server-Side Authentication
+
+For requests from your secure backend server:
+
+```http
+curl https://api.stack-auth.com/api/v1/ \
+     -H "X-Stack-Access-Type: server" \
+     -H "X-Stack-Project-Id: <your project UUID>" \
+     -H "X-Stack-Secret-Server-Key: ssk_<your secret server key>"
+```
+
+### Authentication Headers
+
+| Header | Type | Used In | Description |
+| ------ | ---- | ------- | ----------- |
+| `X-Stack-Access-Type` | "client" \| "server" | Both | Required. Use "client" for frontend/browser requests, "server" for backend requests. |
+| `X-Stack-Project-Id` | UUID | Both | Required. Your project ID from the Stack dashboard. |
+| `X-Stack-Publishable-Client-Key` | string | Client only | Required for client access. Safe to expose in frontend code. Starts with `pck_`. |
+| `X-Stack-Secret-Server-Key` | string | Server only | Required for server access. **Never expose in client code**. Starts with `ssk_`. |
+| `X-Stack-Access-Token` | string | Client only | Optional. The current user's access token. Used to act on behalf of a specific user. |
 
 <Info type="info">
 {/* IF_PLATFORM python */}
@@ -60,9 +80,11 @@ To see how to use these headers in various programming languages, see the [examp
   </Accordion>
   
   <Accordion title="Should I use client or server access type?">
-    **Client access type** is mostly used for client-side applications, like a browser or mobile app. The client APIs can only read and update the currently authenticated user's data, and it is usually fine to post the publishable client key in the client-side code.
+    **Client access type** (`X-Stack-Access-Type: client`) is for client-side applications like browsers and mobile apps. Client APIs can only read and update the currently authenticated user's data. Use your publishable client key (`pck_...`) - it's safe to include in frontend code.
 
-    **Server access type**, on the other hand, is for your backend server that you control. It has full access over all user data, and the secret server key should never be exposed to client-side code.
+    **Server access type** (`X-Stack-Access-Type: server`) is for your secure backend server. It has full access over all user data using your secret server key (`ssk_...`). 
+
+    **🚨 Security Warning**: Never use server access type or secret server keys in client-side code, browser requests, or any publicly accessible location. Always keep server keys secure on your backend.
 
     For more information, see the concept documentation on [StackApp](../concepts/stack-app#client-vs-server).
   </Accordion>
