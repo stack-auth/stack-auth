@@ -55,6 +55,12 @@ function formatTypeSignature(type: string): string {
     .trim();
 }
 
+function buildAnchorId(typeName: string, memberName: string): string {
+  const cleanType = typeName.replace(/[^a-z0-9]/gi, '').toLowerCase();
+  const cleanMember = memberName.replace(/[^a-z0-9]/gi, '').toLowerCase();
+  return `#${cleanType}${cleanMember}`;
+}
+
 function generateTableOfContents(typeInfo: TypeInfo, platform = 'react-like'): string {
   const lines: string[] = [];
 
@@ -68,7 +74,7 @@ function generateTableOfContents(typeInfo: TypeInfo, platform = 'react-like'): s
 
     const memberName = member.name;
     const isOptional = member.optional ? '?' : '';
-    const anchorId = `#${typeInfo.name.toLowerCase()}-${memberName.toLowerCase()}`;
+    const anchorId = buildAnchorId(typeInfo.name, memberName);
 
     if (member.kind === 'property') {
       const cleanType = formatTypeSignature(member.type || 'unknown');
