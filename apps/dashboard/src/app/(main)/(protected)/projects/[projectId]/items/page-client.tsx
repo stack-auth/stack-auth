@@ -32,6 +32,8 @@ import {
 } from "@stackframe/stack-ui";
 import { Suspense, useEffect, useMemo, useState } from "react";
 import * as yup from "yup";
+import { ChevronsUpDown } from "lucide-react";
+import { ItemDialog } from "@/components/payments/item-dialog";
 
 type CustomerType = "user" | "team" | "custom";
 
@@ -48,13 +50,11 @@ export default function PageClient() {
 
   const [customerType, setCustomerType] = useState<CustomerType>("user");
   const [selectedCustomer, setSelectedCustomer] = useState<SelectedCustomer | null>(null);
+  const [showItemDialog, setShowItemDialog] = useState(false);
 
   const items = useMemo(() => {
     const payments = config.payments;
-    if (!payments) {
-      return [] as Array<[string, { displayName?: string | null, customerType?: CustomerType }]>;
-    }
-    return Object.entries(payments.items ?? {});
+    return Object.entries(payments.items);
   }, [config.payments]);
 
   const itemsForType = useMemo(
@@ -64,63 +64,79 @@ export default function PageClient() {
 
   const paymentsConfigured = Boolean(config.payments);
 
+  const itemDialogTitle = useMemo(() => {
+    if (customerType === "user") {
+      return "Create User Item";
+    }
+    if (customerType === "team") {
+      return "Create Team Item";
+    }
+    return "Create Custom Item";
+  }, [customerType]);
+
+  const handleSaveItem = async (item: { id: string, displayName: string, customerType: 'user' | 'team' | 'custom' }) => {
+    await project.updateConfig({ [`payments.items.${item.id}`]: { displayName: item.displayName, customerType: item.customerType } });
+    setShowItemDialog(false);
+  };
+
   return (
     <PageLayout
-      title="Item Quantities"
-      description="Inspect customer balances and make adjustments when necessary."
-      fillWidth
+      title="Items"
+      description="Inspect customer items and make adjustments"
+      actions={<Button onClick={() => setShowItemDialog(true)}>{itemDialogTitle}</Button>}
     >
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle>Customer balances</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <Select
-              value={customerType}
-              onValueChange={(value: CustomerType) => {
-                setCustomerType(value);
-                setSelectedCustomer(null);
-              }}
-            >
-              <SelectTrigger id="customer-type" className="w-full md:w-[220px]">
-                <SelectValue placeholder="Select type" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="user">User</SelectItem>
-                <SelectItem value="team">Team</SelectItem>
-                <SelectItem value="custom">Custom</SelectItem>
-              </SelectContent>
-            </Select>
+      <div className="flex flex-col sm:flex-row items-center justify-between gap-3 mt-4">
+        <Select
+          value={customerType}
+          onValueChange={(value: CustomerType) => {
+            setCustomerType(value);
+            setSelectedCustomer(null);
+          }}
+        >
+          <SelectTrigger id="customer-type" className="w-full sm:w-52">
+            <SelectValue placeholder="Select type" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="user">User</SelectItem>
+            <SelectItem value="team">Team</SelectItem>
+            <SelectItem value="custom">Custom</SelectItem>
+          </SelectContent>
+        </Select>
 
-            <CustomerSelector
-              customerType={customerType}
-              selectedCustomer={selectedCustomer}
-              onSelect={setSelectedCustomer}
-            />
-          </div>
+        <CustomerSelector
+          customerType={customerType}
+          selectedCustomer={selectedCustomer}
+          onSelect={setSelectedCustomer}
+        />
+      </div>
 
-          {!paymentsConfigured && (
-            <Typography variant="secondary">
-              Payments are not configured for this project yet. Set up payments to define items.
-            </Typography>
-          )}
+      {!paymentsConfigured && (
+        <Typography variant="secondary">
+          Payments are not configured for this project yet. Set up payments to define items.
+        </Typography>
+      )}
 
-          {paymentsConfigured && itemsForType.length === 0 && (
-            <Typography variant="secondary">
-              {customerType === "user" && "No user items are configured yet."}
-              {customerType === "team" && "No team items are configured yet."}
-              {customerType === "custom" && "No custom items are configured yet."}
-            </Typography>
-          )}
+      {paymentsConfigured && itemsForType.length === 0 && (
+        <Typography variant="secondary">
+          {customerType === "user" && "No user items are configured yet."}
+          {customerType === "team" && "No team items are configured yet."}
+          {customerType === "custom" && "No custom items are configured yet."}
+        </Typography>
+      )}
 
-          {paymentsConfigured && itemsForType.length > 0 && (
-            <Suspense fallback={<ItemTableSkeleton rows={Math.min(itemsForType.length, 5)} />}>
-              <ItemTable items={itemsForType} customer={selectedCustomer} />
-            </Suspense>
-          )}
-        </CardContent>
-      </Card>
+      {paymentsConfigured && itemsForType.length > 0 && (
+        <Suspense fallback={<ItemTableSkeleton rows={Math.min(itemsForType.length, 5)} />}>
+          <ItemTable items={itemsForType} customer={selectedCustomer} />
+        </Suspense>
+      )}
+
+      <ItemDialog
+        open={showItemDialog}
+        onOpenChange={setShowItemDialog}
+        onSave={handleSaveItem}
+        existingItemIds={items.map(([id]) => id)}
+        forceCustomerType={customerType}
+      />
     </PageLayout>
   );
 }
@@ -188,7 +204,7 @@ function CustomerSelector(props: CustomerSelectorProps) {
                 handleSelect({
                   type: "team",
                   id: team.id,
-                  label: team.displayName ?? team.id,
+                  label: team.displayName,
                 })}
             >
               Select
@@ -214,8 +230,9 @@ function CustomerSelector(props: CustomerSelectorProps) {
   return (
     <ActionDialog
       trigger={
-        <Button variant="outline" size="sm" className="w-full md:w-auto">
+        <Button variant="outline" className="flex justify-between gap-2 overflow-x-auto w-full sm:!w-auto">
           {triggerLabel}
+          <ChevronsUpDown className="w-3 h-3" />
         </Button>
       }
       title={dialogTitle}
@@ -319,7 +336,6 @@ type ItemRowProps = {
 function ItemRowContent(props: ItemRowProps) {
   const adminApp = useAdminApp();
   const [isAdjustOpen, setIsAdjustOpen] = useState(false);
-  const [isSetOpen, setIsSetOpen] = useState(false);
 
   const item = useItemForCustomer(adminApp, props.customer, props.itemId);
 
@@ -332,23 +348,15 @@ function ItemRowContent(props: ItemRowProps) {
             <span className="text-xs font-mono text-muted-foreground">{props.itemId}</span>
           </div>
         </TableCell>
-        <TableCell className="align-top">
+        <TableCell className="align-middle">
           <div className="flex flex-col gap-1 text-sm">
             <span className="font-medium">{item.quantity}</span>
-            {item.quantity !== item.nonNegativeQuantity && (
-              <span className="text-xs text-muted-foreground">
-                Available: {item.nonNegativeQuantity}
-              </span>
-            )}
           </div>
         </TableCell>
         <TableCell className="align-top">
           <div className="flex justify-end gap-2">
             <Button variant="outline" size="sm" onClick={() => setIsAdjustOpen(true)}>
               Adjust
-            </Button>
-            <Button variant="outline" size="sm" onClick={() => setIsSetOpen(true)}>
-              Set amount
             </Button>
           </div>
         </TableCell>
@@ -361,14 +369,6 @@ function ItemRowContent(props: ItemRowProps) {
         itemId={props.itemId}
         itemLabel={props.itemDisplayName}
       />
-      <SetItemQuantityDialog
-        open={isSetOpen}
-        onOpenChange={setIsSetOpen}
-        customer={props.customer}
-        itemId={props.itemId}
-        itemLabel={props.itemDisplayName}
-        currentQuantity={item.quantity}
-      />
     </>
   );
 }
@@ -378,13 +378,14 @@ function useItemForCustomer(
   customer: SelectedCustomer,
   itemId: string,
 ) {
+  let options: Parameters<typeof adminApp.useItem>[0] = { customCustomerId: customer.id, itemId };
   if (customer.type === "user") {
-    return adminApp.useItem({ userId: customer.id, itemId });
+    options = { userId: customer.id, itemId };
   }
   if (customer.type === "team") {
-    return adminApp.useItem({ teamId: customer.id, itemId });
+    options = { teamId: customer.id, itemId };
   }
-  return adminApp.useItem({ customCustomerId: customer.id, itemId });
+  return adminApp.useItem(options);
 }
 
 type QuantityDialogProps = {
@@ -406,7 +407,7 @@ function AdjustItemQuantityDialog(props: QuantityDialogProps) {
       .meta({
         stackFormFieldPlaceholder: "Eg. 5 or -3",
       })
-      .test("non-zero", "Please enter a non-zero amount", (value) => (value ?? 0) !== 0),
+      .test("non-zero", "Please enter a non-zero amount", (value) => (value !== 0)),
     description: yup
       .string()
       .optional()
@@ -457,77 +458,6 @@ function AdjustItemQuantityDialog(props: QuantityDialogProps) {
   );
 }
 
-function SetItemQuantityDialog(
-  props: QuantityDialogProps & { currentQuantity: number },
-) {
-  const adminApp = useAdminApp();
-
-  const schema = useMemo(() => yup.object({
-    quantity: yup
-      .number()
-      .defined()
-      .min(0, "Quantity cannot be negative")
-      .label("New quantity")
-      .default(Math.max(0, props.currentQuantity))
-      .meta({
-        stackFormFieldPlaceholder: "Enter the desired final quantity",
-      }),
-    description: yup
-      .string()
-      .optional()
-      .label("Description")
-      .meta({
-        type: "textarea",
-        stackFormFieldPlaceholder: "Optional note for your records",
-        description: "Appears in transaction history for context.",
-      }),
-    expiresAt: yup
-      .date()
-      .optional()
-      .label("Expires at"),
-  }), [props.currentQuantity]);
-
-  const onSubmit = async (values: yup.InferType<typeof schema>) => {
-    const desiredQuantity = values.quantity ?? 0;
-    const delta = desiredQuantity - props.currentQuantity;
-
-    if (delta === 0) {
-      toast({ title: "No changes applied" });
-      return "prevent-close";
-    }
-
-    const customerOptions = customerToMutationOptions(props.customer);
-    const result = await Result.fromPromise(adminApp.createItemQuantityChange({
-      ...customerOptions,
-      itemId: props.itemId,
-      quantity: delta,
-      description: values.description?.trim() ? values.description.trim() : undefined,
-      expiresAt: values.expiresAt ? values.expiresAt.toISOString() : undefined,
-    }));
-
-    if (result.status === "ok") {
-      await refreshItem(adminApp, props.customer, props.itemId);
-      toast({ title: "Item quantity set" });
-      return;
-    }
-
-    handleItemQuantityError(result.error);
-    return "prevent-close";
-  };
-
-  return (
-    <SmartFormDialog
-      open={props.open}
-      onOpenChange={props.onOpenChange}
-      title={`Set “${props.itemLabel}” amount`}
-      description="Define the exact quantity this customer should have."
-      formSchema={schema}
-      okButton={{ label: "Save amount" }}
-      cancelButton
-      onSubmit={onSubmit}
-    />
-  );
-}
 
 function customerToMutationOptions(customer: SelectedCustomer) {
   if (customer.type === "user") {

@@ -23,7 +23,7 @@ function toolbarRender<TData>(table: Table<TData>) {
 }
 
 export function TeamSearchTable(props: {
-  action: (team: ServerTeam) => React.ReactNode;
+  action: (team: ServerTeam) => React.ReactNode,
 }) {
   const adminApp = useAdminApp();
   const teams = adminApp.useTeams();
@@ -35,7 +35,7 @@ export function TeamSearchTable(props: {
         <DataTableColumnHeader column={column} columnTitle="Display Name" />
       ),
       cell: ({ row }) => (
-        <TextCell size={180}>{row.original.displayName ?? "–"}</TextCell>
+        <TextCell size={180}>{row.original.displayName}</TextCell>
       ),
       enableSorting: false,
     },
@@ -56,7 +56,7 @@ export function TeamSearchTable(props: {
       cell: ({ row }) => props.action(row.original),
       enableSorting: false,
     },
-  ], [props.action]);
+  ], [props]);
 
   return (
     <DataTable

@@ -255,9 +255,9 @@ const navigationItems: (Label | Item | Hidden)[] = [
     type: 'item',
   },
   {
-    name: "Item Quantities",
-    href: "/item-quantities",
-    regex: /^\/projects\/[^\/]+\/item-quantities$/,
+    name: "Items",
+    href: "/items",
+    regex: /^\/projects\/[^\/]+\/items$/,
     icon: Package,
     type: 'item',
   },
