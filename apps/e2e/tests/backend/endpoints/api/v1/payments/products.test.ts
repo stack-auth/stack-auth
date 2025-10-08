@@ -8,6 +8,56 @@ async function configureProduct(config: any) {
   });
 }
 
+it("should reject client requests to grant product", async ({ expect }) => {
+  await Project.createAndSwitch();
+  await Payments.setup();
+  await configureProduct({
+    products: {
+      "pro-plan": {
+        displayName: "Pro Plan",
+        customerType: "user",
+        serverOnly: false,
+        stackable: false,
+        prices: {
+          monthly: {
+            USD: "1000",
+            interval: [1, "month"],
+          },
+        },
+        includedItems: {},
+      },
+    },
+  });
+  const { userId } = await User.create();
+  const response = await niceBackendFetch(`/api/v1/payments/products/user/${userId}`, {
+    method: "POST",
+    accessType: "client",
+    body: {
+      product_id: "pro-plan",
+    },
+  });
+  expect(response).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 401,
+      "body": {
+        "code": "INSUFFICIENT_ACCESS_TYPE",
+        "details": {
+          "actual_access_type": "client",
+          "allowed_access_types": [
+            "server",
+            "admin",
+          ],
+        },
+        "error": "The x-stack-access-type header must be 'server' or 'admin', but was 'client'.",
+      },
+      "headers": Headers {
+        "x-stack-known-error": "INSUFFICIENT_ACCESS_TYPE",
+        <some fields may have been hidden>,
+      },
+    }
+  `);
+});
+
 it("should grant configured subscription product and expose it via listing", async ({ expect }) => {
   await Project.createAndSwitch();
   await Payments.setup();
@@ -535,49 +585,49 @@ it("listing products should list both subscription and one-time products", async
   });
 
   expect(response).toMatchInlineSnapshot(`
-      NiceResponse {
-        "status": 200,
-        "body": {
-          "is_paginated": true,
-          "items": [
-            {
-              "id": "subscription-plan",
-              "product": {
-                "customer_type": "user",
-                "display_name": "Subscription Plan",
-                "included_items": {},
-                "prices": {
-                  "monthly": {
-                    "USD": "1200",
-                    "interval": [
-                      1,
-                      "month",
-                    ],
-                  },
+    NiceResponse {
+      "status": 200,
+      "body": {
+        "is_paginated": true,
+        "items": [
+          {
+            "id": "subscription-plan",
+            "product": {
+              "customer_type": "user",
+              "display_name": "Subscription Plan",
+              "included_items": {},
+              "prices": {
+                "monthly": {
+                  "USD": "1200",
+                  "interval": [
+                    1,
+                    "month",
+                  ],
                 },
-                "server_only": false,
-                "stackable": false,
               },
-              "quantity": 1,
+              "server_only": false,
+              "stackable": false,
             },
-            {
-              "id": "lifetime-addon",
-              "product": {
-                "customer_type": "user",
-                "display_name": "Lifetime Add-on",
-                "included_items": {},
-                "prices": { "lifetime": { "USD": "5000" } },
-                "server_only": false,
-                "stackable": false,
-              },
-              "quantity": 1,
+            "quantity": 1,
+          },
+          {
+            "id": "lifetime-addon",
+            "product": {
+              "customer_type": "user",
+              "display_name": "Lifetime Add-on",
+              "included_items": {},
+              "prices": { "lifetime": { "USD": "5000" } },
+              "server_only": false,
+              "stackable": false,
             },
-          ],
-          "pagination": { "next_cursor": null },
-        },
-        "headers": Headers { <some fields may have been hidden> },
-      }
-    `);
+            "quantity": 1,
+          },
+        ],
+        "pagination": { "next_cursor": null },
+      },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
 });
 
 it("listing products should support cursor pagination", async ({ expect }) => {
@@ -663,78 +713,78 @@ it("listing products should support cursor pagination", async ({ expect }) => {
     accessType: "client",
   });
   expect(firstPage).toMatchInlineSnapshot(`
-      NiceResponse {
-        "status": 200,
-        "body": {
-          "is_paginated": true,
-          "items": [
-            {
-              "id": "subscription-plan",
-              "product": {
-                "customer_type": "user",
-                "display_name": "Subscription Plan",
-                "included_items": {},
-                "prices": {
-                  "monthly": {
-                    "USD": "1200",
-                    "interval": [
-                      1,
-                      "month",
-                    ],
-                  },
+    NiceResponse {
+      "status": 200,
+      "body": {
+        "is_paginated": true,
+        "items": [
+          {
+            "id": "subscription-plan",
+            "product": {
+              "customer_type": "user",
+              "display_name": "Subscription Plan",
+              "included_items": {},
+              "prices": {
+                "monthly": {
+                  "USD": "1200",
+                  "interval": [
+                    1,
+                    "month",
+                  ],
                 },
-                "server_only": false,
-                "stackable": false,
               },
-              "quantity": 1,
+              "server_only": false,
+              "stackable": false,
             },
-          ],
-          "pagination": { "next_cursor": "<stripped UUID>" },
-        },
-        "headers": Headers { <some fields may have been hidden> },
-      }
-    `);
+            "quantity": 1,
+          },
+        ],
+        "pagination": { "next_cursor": "<stripped UUID>" },
+      },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
 
   const cursor = firstPage.body.pagination.next_cursor;
   const secondPage = await niceBackendFetch(`${basePath}?limit=5&cursor=${encodeURIComponent(cursor)}`, {
     accessType: "client",
   });
   expect(secondPage).toMatchInlineSnapshot(`
-      NiceResponse {
-        "status": 200,
-        "body": {
-          "is_paginated": true,
-          "items": [
-            {
-              "id": "lifetime-addon",
-              "product": {
-                "customer_type": "user",
-                "display_name": "Lifetime Add-on",
-                "included_items": {},
-                "prices": { "lifetime": { "USD": "5000" } },
-                "server_only": false,
-                "stackable": false,
-              },
-              "quantity": 1,
+    NiceResponse {
+      "status": 200,
+      "body": {
+        "is_paginated": true,
+        "items": [
+          {
+            "id": "lifetime-addon",
+            "product": {
+              "customer_type": "user",
+              "display_name": "Lifetime Add-on",
+              "included_items": {},
+              "prices": { "lifetime": { "USD": "5000" } },
+              "server_only": false,
+              "stackable": false,
             },
-            {
-              "id": "pro-addon",
-              "product": {
-                "customer_type": "user",
-                "display_name": "Pro Add-on",
-                "included_items": {},
-                "prices": { "standard": { "USD": "7000" } },
-                "server_only": false,
-                "stackable": false,
-              },
-              "quantity": 1,
+            "quantity": 1,
+          },
+          {
+            "id": "pro-addon",
+            "product": {
+              "customer_type": "user",
+              "display_name": "Pro Add-on",
+              "included_items": {},
+              "prices": { "standard": { "USD": "7000" } },
+              "server_only": false,
+              "stackable": false,
             },
-          ],
-          "pagination": { "next_cursor": null },
-        },
-        "headers": Headers { <some fields may have been hidden> },
-      }
-    `);
+            "quantity": 1,
+          },
+        ],
+        "pagination": { "next_cursor": null },
+      },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
 
   const combinedItems = [...firstPage.body.items, ...secondPage.body.items];
   expect(combinedItems).toEqual(allResponse.body.items);

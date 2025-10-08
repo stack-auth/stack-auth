@@ -432,6 +432,9 @@ export async function validatePurchaseSession(options: {
   });
 
   let selectedPrice: SelectedPrice | undefined = undefined;
+  if (!priceId && product.prices !== "include-by-default") {
+    selectedPrice = typedValues(product.prices)[0];
+  }
   if (priceId && product.prices !== "include-by-default") {
     const pricesMap = new Map(typedEntries(product.prices));
     selectedPrice = pricesMap.get(priceId);
