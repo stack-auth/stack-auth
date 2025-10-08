@@ -28,17 +28,15 @@ type SharedHeaderProps = {
  * Helper functions to detect which section we're in
  */
 export function isInSdkSection(pathname: string): boolean {
-  // Match the actual SDK section: /docs/platform/sdk or /docs/platform/sdk/...
+  // Match the actual SDK section: /docs/sdk or /docs/sdk/...
   // This excludes docs pages that might mention SDK in other contexts
-  const match = pathname.match(/^\/docs\/[^\/]+\/sdk($|\/)/);
-  return Boolean(match);
+  return pathname === '/docs/sdk' || pathname.startsWith('/docs/sdk/');
 }
 
 export function isInComponentsSection(pathname: string): boolean {
-  // Match the actual Components section: /docs/platform/components or /docs/platform/components/...
-  // This excludes docs pages like /docs/platform/getting-started/components
-  const match = pathname.match(/^\/docs\/[^\/]+\/components($|\/)/);
-  return Boolean(match);
+  // Match the actual Components section: /docs/components or /docs/components/...
+  // This excludes docs pages that might mention components in other contexts
+  return pathname === '/docs/components' || pathname.startsWith('/docs/components/');
 }
 
 export function isInApiSection(pathname: string): boolean {
