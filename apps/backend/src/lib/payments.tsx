@@ -1,18 +1,22 @@
 import { PrismaClientTransaction } from "@/prisma-client";
-import { SubscriptionStatus } from "@prisma/client";
+import { PurchaseCreationSource, SubscriptionStatus } from "@prisma/client";
 import { KnownErrors } from "@stackframe/stack-shared";
 import type { inlineProductSchema, productSchema } from "@stackframe/stack-shared/dist/schema-fields";
 import { SUPPORTED_CURRENCIES } from "@stackframe/stack-shared/dist/utils/currency-constants";
 import { FAR_FUTURE_DATE, addInterval, getIntervalsElapsed } from "@stackframe/stack-shared/dist/utils/dates";
 import { StackAssertionError, StatusError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
-import { getOrUndefined, typedEntries, typedFromEntries, typedKeys } from "@stackframe/stack-shared/dist/utils/objects";
+import { filterUndefined, getOrUndefined, typedEntries, typedFromEntries, typedKeys, typedValues } from "@stackframe/stack-shared/dist/utils/objects";
 import { typedToUppercase } from "@stackframe/stack-shared/dist/utils/strings";
 import { isUuid } from "@stackframe/stack-shared/dist/utils/uuids";
 import Stripe from "stripe";
 import * as yup from "yup";
 import { Tenancy } from "./tenancies";
+import { getStripeForAccount } from "./stripe";
 
 const DEFAULT_PRODUCT_START_DATE = new Date("1973-01-01T12:00:00.000Z"); // monday
+
+type Product = yup.InferType<typeof productSchema>;
+type SelectedPrice = Exclude<Product["prices"], "include-by-default">[string];
 
 export async function ensureProductIdOrInlineProduct(
   tenancy: Tenancy,
@@ -386,8 +390,20 @@ export async function ensureCustomerExists(options: {
   }
 }
 
-type Product = yup.InferType<typeof productSchema>;
-type SelectedPrice = Exclude<Product["prices"], "include-by-default">[string];
+export function productToInlineProduct(product: Product): yup.InferType<typeof inlineProductSchema> {
+  return {
+    display_name: product.displayName ?? "Product",
+    customer_type: product.customerType,
+    stackable: product.stackable === true,
+    server_only: product.serverOnly === true,
+    included_items: product.includedItems,
+    prices: product.prices === "include-by-default" ? {} : typedFromEntries(typedEntries(product.prices).map(([key, value]) => [key, filterUndefined({
+      ...typedFromEntries(SUPPORTED_CURRENCIES.map(c => [c.code, getOrUndefined(value, c.code)])),
+      interval: value.interval,
+      free_trial: value.freeTrial,
+    })])),
+  };
+}
 
 export async function validatePurchaseSession(options: {
   prisma: PrismaClientTransaction,
@@ -398,7 +414,7 @@ export async function validatePurchaseSession(options: {
     productId?: string,
     product: Product,
   },
-  priceId: string,
+  priceId: string | undefined,
   quantity: number,
 }): Promise<{
   selectedPrice: SelectedPrice | undefined,
@@ -416,7 +432,7 @@ export async function validatePurchaseSession(options: {
   });
 
   let selectedPrice: SelectedPrice | undefined = undefined;
-  if (product.prices !== "include-by-default") {
+  if (priceId && product.prices !== "include-by-default") {
     const pricesMap = new Map(typedEntries(product.prices));
     selectedPrice = pricesMap.get(priceId);
     if (!selectedPrice) {
@@ -448,7 +464,7 @@ export async function validatePurchaseSession(options: {
     product.stackable !== true &&
     [...subscriptions, ...existingOneTimePurchases].some((p) => p.productId === codeData.productId)
   ) {
-    throw new StatusError(400, "Customer already has purchased this product; this product is not stackable");
+    throw new KnownErrors.ProductAlreadyGranted(codeData.productId, codeData.customerId);
   }
   const addOnProductIds = product.isAddOnTo ? typedKeys(product.isAddOnTo) : [];
   if (product.isAddOnTo && !subscriptions.some((s) => s.productId && addOnProductIds.includes(s.productId))) {
@@ -498,4 +514,168 @@ export function getClientSecretFromStripeSubscription(subscription: Stripe.Subsc
     if (typeof piSecret === "string") return piSecret;
   }
   throwErr(500, "No client secret returned from Stripe for subscription");
+}
+
+type GrantProductResult =
+  | {
+    type: "one_time",
+    purchaseId: string | null,
+  }
+  | {
+    type: "subscription",
+    subscriptionId: string,
+  };
+
+export async function grantProductToCustomer(options: {
+  prisma: PrismaClientTransaction,
+  tenancy: Tenancy,
+  customerType: "user" | "team" | "custom",
+  customerId: string,
+  product: Product,
+  quantity: number,
+  productId: string | undefined,
+  priceId: string | undefined,
+  creationSource: PurchaseCreationSource,
+}): Promise<GrantProductResult> {
+  const { prisma, tenancy, customerId, customerType, product, productId, priceId, quantity, creationSource } = options;
+  const { selectedPrice, conflictingCatalogSubscriptions } = await validatePurchaseSession({
+    prisma,
+    tenancy,
+    codeData: {
+      tenancyId: tenancy.id,
+      customerId,
+      productId,
+      product,
+    },
+    priceId,
+    quantity,
+  });
+
+  if (conflictingCatalogSubscriptions.length > 0) {
+    const conflicting = conflictingCatalogSubscriptions[0];
+    if (conflicting.stripeSubscriptionId) {
+      const stripe = await getStripeForAccount({ tenancy });
+      await stripe.subscriptions.cancel(conflicting.stripeSubscriptionId);
+    } else if (conflicting.id) {
+      await prisma.subscription.update({
+        where: {
+          tenancyId_id: {
+            tenancyId: tenancy.id,
+            id: conflicting.id,
+          },
+        },
+        data: { status: SubscriptionStatus.canceled },
+      });
+    }
+  }
+
+  if (!selectedPrice) {
+    return { type: "one_time", purchaseId: null };
+  }
+
+  if (!selectedPrice.interval) {
+    const purchase = await prisma.oneTimePurchase.create({
+      data: {
+        tenancyId: tenancy.id,
+        customerId,
+        customerType: typedToUppercase(customerType),
+        productId,
+        priceId,
+        product,
+        quantity,
+        creationSource,
+      },
+    });
+    return { type: "one_time", purchaseId: purchase.id };
+  }
+
+  const subscription = await prisma.subscription.create({
+    data: {
+      tenancyId: tenancy.id,
+      customerId,
+      customerType: typedToUppercase(customerType),
+      status: "active",
+      productId,
+      priceId,
+      product,
+      quantity,
+      currentPeriodStart: new Date(),
+      currentPeriodEnd: addInterval(new Date(), selectedPrice.interval!),
+      cancelAtPeriodEnd: false,
+      creationSource,
+    },
+  });
+
+  return { type: "subscription", subscriptionId: subscription.id };
+}
+
+export type OwnedProduct = {
+  id: string | null,
+  type: "one_time" | "subscription",
+  quantity: number,
+  product: Product,
+  createdAt: Date,
+  sourceId: string,
+};
+
+export async function getOwnedProductsForCustomer(options: {
+  prisma: PrismaClientTransaction,
+  tenancy: Tenancy,
+  customerType: "user" | "team" | "custom",
+  customerId: string,
+}): Promise<OwnedProduct[]> {
+  await ensureCustomerExists({
+    prisma: options.prisma,
+    tenancyId: options.tenancy.id,
+    customerType: options.customerType,
+    customerId: options.customerId,
+  });
+
+  const [subscriptions, oneTimePurchases] = await Promise.all([
+    getSubscriptions({
+      prisma: options.prisma,
+      tenancy: options.tenancy,
+      customerType: options.customerType,
+      customerId: options.customerId,
+    }),
+    options.prisma.oneTimePurchase.findMany({
+      where: {
+        tenancyId: options.tenancy.id,
+        customerId: options.customerId,
+        customerType: typedToUppercase(options.customerType),
+      },
+    }),
+  ]);
+
+  const ownedProducts: OwnedProduct[] = [];
+
+  for (const subscription of subscriptions) {
+    if (!isActiveSubscription(subscription)) continue;
+    const sourceId = subscription.id ?? subscription.productId;
+    if (!sourceId) {
+      throw new StackAssertionError("Subscription is missing both id and productId", { subscription });
+    }
+    ownedProducts.push({
+      id: subscription.productId,
+      type: "subscription",
+      quantity: subscription.quantity,
+      product: subscription.product,
+      createdAt: subscription.createdAt,
+      sourceId,
+    });
+  }
+
+  for (const purchase of oneTimePurchases) {
+    const product = purchase.product as Product;
+    ownedProducts.push({
+      id: purchase.productId ?? null,
+      type: "one_time",
+      quantity: purchase.quantity,
+      product,
+      createdAt: purchase.createdAt,
+      sourceId: purchase.id,
+    });
+  }
+
+  return ownedProducts;
 }

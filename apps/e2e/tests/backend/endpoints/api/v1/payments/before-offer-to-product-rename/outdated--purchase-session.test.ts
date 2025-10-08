@@ -802,8 +802,23 @@ it("should block one-time purchase for same product after prior one-time purchas
     accessType: "client",
     body: { full_code: code2, price_id: "one", quantity: 1 },
   });
-  expect(res.status).toBe(400);
-  expect(String(res.body)).toBe("Customer already has purchased this product; this product is not stackable");
+  expect(res).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 400,
+      "body": {
+        "code": "PRODUCT_ALREADY_GRANTED",
+        "details": {
+          "customer_id": "<stripped UUID>",
+          "product_id": "ot",
+        },
+        "error": "Customer with ID \\"<stripped UUID>\\" already owns product \\"ot\\".",
+      },
+      "headers": Headers {
+        "x-stack-known-error": "PRODUCT_ALREADY_GRANTED",
+        <some fields may have been hidden>,
+      },
+    }
+  `);
 });
 
 it("should block one-time purchase in same group after prior one-time purchase in that group (test-mode persisted)", async ({ expect }) => {
