@@ -6,13 +6,16 @@ import { ALL_APPS, ALL_APP_TAGS, AppId } from "@stackframe/stack-shared/dist/app
 import { Button, ScrollArea } from "@stackframe/stack-ui";
 import { Badge } from "lucide-react";
 import Image from "next/image";
+import { FunctionComponent } from "react";
 
 export function AppStoreEntry({
   appId,
   onEnable,
+  titleComponent: TitleComponent = "h1",
 }: {
   appId: AppId,
   onEnable: () => Promise<void>,
+  titleComponent?: FunctionComponent<any> | string,
 }) {
   const app = ALL_APPS[appId];
   const appFrontend = ALL_APPS_FRONTEND[appId];
@@ -24,7 +27,7 @@ export function AppStoreEntry({
         <div className="flex gap-4">
           <AppIcon appId={appId} className="w-24 h-24 shadow-md" />
           <div className="flex-1">
-            <h1 className="text-2xl font-bold mb-1">{app.displayName}</h1>
+            <TitleComponent className="text-2xl font-bold mb-1">{app.displayName}</TitleComponent>
             <p className="text-gray-600 dark:text-gray-400 mb-2">{app.subtitle}</p>
             <div className="flex items-center gap-4 text-sm text-gray-500">
               {app.tags.map((tag) => (

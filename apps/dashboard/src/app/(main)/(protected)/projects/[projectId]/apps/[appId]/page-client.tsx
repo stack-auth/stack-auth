@@ -6,6 +6,7 @@ import { useRouter } from "@/components/router";
 import { ALL_APPS_FRONTEND, getAppPath } from "@/lib/apps-frontend";
 import { AppId } from "@stackframe/stack-shared/dist/apps/apps-config";
 import { wait } from "@stackframe/stack-shared/dist/utils/promises";
+import { PageLayout } from "../../page-layout";
 
 export default function AppDetailsPageClient({ appId }: { appId: AppId }) {
   const router = useRouter();
@@ -23,11 +24,11 @@ export default function AppDetailsPageClient({ appId }: { appId: AppId }) {
   };
 
   return (
-    <div className="max-w-4xl mx-auto p-6">
+    <PageLayout>
       <AppStoreEntry
         appId={appId}
         onEnable={handleEnable}
       />
-    </div>
+    </PageLayout>
   );
 }

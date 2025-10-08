@@ -14,30 +14,26 @@ type LinkProps = {
   onClick?: () => void,
   style?: React.CSSProperties,
   prefetch?: boolean,
+  scroll?: boolean,
 };
 
-export const Link = React.forwardRef<HTMLAnchorElement, LinkProps>((props, ref) => {
+export const Link = React.forwardRef<HTMLAnchorElement, LinkProps>(({ onClick, href, ...rest }, ref) => {
   const router = useRouter();
   const { needConfirm } = useRouterConfirm();
 
   return <NextLink
     ref={ref}
-    href={props.href}
-    target={props.target}
-    className={props.className}
-    prefetch={props.prefetch}
-    style={props.style}
+    href={href}
+    {...rest}
     onClick={(e: React.MouseEvent<HTMLAnchorElement>) => {
       if (needConfirm) {
         e.preventDefault();
-        props.onClick?.();
-        router.push(props.href);
+        onClick?.();
+        router.push(href);
       }
-      props.onClick?.();
+      onClick?.();
     }}
-  >
-    {props.children}
-  </NextLink>;
+  />;
 
 });
 Link.displayName = 'Link';

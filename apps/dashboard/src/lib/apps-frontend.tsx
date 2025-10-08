@@ -18,12 +18,12 @@ type AppFrontend = {
 };
 
 export function getAppPath(projectId: string, appFrontend: AppFrontend) {
-  const url = new URL(appFrontend.href, `https://example.com/projects/${projectId}`);
+  const url = new URL(appFrontend.href, `https://example.com/projects/${projectId}/`);
   return getRelativePart(url);
 }
 
 export function getItemPath(projectId: string, appFrontend: AppFrontend, item: AppFrontend["navigationItems"][number]) {
-  const url = new URL(item.href, new URL(appFrontend.href, `https://example.com/projects/${projectId}`));
+  const url = new URL(item.href, new URL(appFrontend.href, `https://example.com/projects/${projectId}/`) + "/");
   return getRelativePart(url);
 }
 

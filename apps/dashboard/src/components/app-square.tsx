@@ -1,11 +1,9 @@
 import { useAdminApp } from "@/app/(main)/(protected)/projects/[projectId]/use-admin-app";
 import { ALL_APPS_FRONTEND, getAppPath } from "@/lib/apps-frontend";
 import { ALL_APPS, AppId } from "@stackframe/stack-shared/dist/apps/apps-config";
+import { typedIncludes } from "@stackframe/stack-shared/dist/utils/arrays";
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger, cn } from "@stackframe/stack-ui";
-import Image from "next/image";
-import AppBgDark from "../../public/app-bg-dark.png";
-import AppBgLight from "../../public/app-bg-light.png";
 import { Link } from "./link";
 
 export const appSquareWidthExpression = "max(min(16vw,180px),128px)";
@@ -17,50 +15,61 @@ export function AppIcon({ appId, className, disabled, style }: {
   disabled?: boolean,
   style?: React.CSSProperties,
 }) {
+  const svgGradients = (gradients: Record<string, string[]>) => {
+    return (
+      <svg width="0" height="0">
+        {Object.entries(gradients).map(([id, gradient]) => {
+          return (
+            <linearGradient key={id} id={id} x1="100%" y1="100%" x2="0%" y2="0%">
+              {gradient.map((color, index) => {
+                return <stop key={index} stopColor={color} offset={`${index * 100 / (gradient.length - 1)}%`} />;
+              })}
+            </linearGradient>
+          );
+        })}
+      </svg>
+    );
+
+  };
+
+  const app = ALL_APPS[appId];
   const appFrontend = ALL_APPS_FRONTEND[appId];
   return <div style={style} className={cn(
-    "relative w-24 h-24 rounded-[24.154%] overflow-hidden p-[20%] select-none",
-    className
+    "relative w-24 h-24 rounded-[24.154%] overflow-hidden select-none",
+    !disabled && "bg-[linear-gradient(45deg,#dde,#fff)] dark:bg-[linear-gradient(45deg,#222,#666)]",
+    disabled && 'border border-gray-400/50 border-dashed border-4 bg-slate-200/20',
+    className,
   )}>
     <div className={cn(
-      "absolute inset-0 hidden dark:block rounded-[24.154%]",
-      !disabled && "bg-[linear-gradient(45deg,#222_0%,#666_100%)]",
-      disabled && 'border border-gray-500/50 border-dashed border-4 bg-gray-500/20'
-    )}>
-      <Image src={AppBgDark} alt="App background" fill className="object-cover hidden" />
-    </div>
-    <div className={cn(
-      "absolute inset-0 block dark:hidden",
-      !disabled && "bag-[linear-gradient(45deg,_rgba(10,_201,_150,_1)_0%,_rgba(15,_28,_98,_1)_50%,_rgba(170,_68,_242,_1)_100%)]",
-      disabled && 'border border-gray-500/500 border-dashed border-4'
-    )}>
-      <Image src={AppBgLight} alt="App background" fill className="object-cover" />
-    </div>
-    <div className={cn(
       "w-full h-full isolate relative",
-      "bg-red z-1",
     )}>
       <svg width="0" height="0">
-        <linearGradient id="app-icon-gradient-light" x1="100%" y1="100%" x2="0%" y2="0%">
-          <stop stopColor="#0AC996" offset="0%" />
-          <stop stopColor="#051C62" offset="50%" />
-          <stop stopColor="#AA44F2" offset="100%" />
-        </linearGradient>
-      </svg>
-      <svg width="0" height="0">
-        <linearGradient id="app-icon-gradient-dark" x1="100%" y1="100%" x2="0%" y2="0%">
-          <stop stopColor="#30E6C8" offset="0%" />
-          <stop stopColor="#9EA3FE" offset="50%" />
-          <stop stopColor="#AE55F2" offset="100%" />
-        </linearGradient>
+        {svgGradients({
+          "app-icon-gradient-light": ["#c0f", "#66f", "#4af"],
+          "app-icon-gradient-dark": ["#3ec", "#9af", "#a5f"],
+          "app-icon-gradient-light-expert": ["#f0c", "#f66", "#fa4"],
+          "app-icon-gradient-dark-expert": ["#f0c", "#f66", "#fa4"],
+          "app-icon-gradient-light-integration": ["#E5AB00", "#FFBA00", "#F8DF80"],
+          "app-icon-gradient-dark-integration": ["#E5AB00", "#FFBA00", "#F8DF80"],
+        })}
       </svg>
       <appFrontend.icon
+        opacity={disabled ? 0.75 : 1}
         className={cn(
-          "w-full h-full bg-clip-text text-transparent text-white",
-          disabled
+          "inset-[20%] w-[60%] h-[60%] bg-clip-text text-transparent text-white absolute",
+          /*disabled
             ? "stroke-gray-500/50"
-            : "stroke-[url(#app-icon-gradient-light)] dark:stroke-[url(#app-icon-gradient-dark)]"
-        )} />
+            :*/ (typedIncludes(app.tags, "expert")
+            ? "stroke-[url(#app-icon-gradient-light-expert)] dark:stroke-[url(#app-icon-gradient-dark-expert)]"
+            : typedIncludes(app.tags, "integration")
+              ? "stroke-[url(#app-icon-gradient-light-integration)] dark:stroke-[url(#app-icon-gradient-dark-integration)]"
+              : "stroke-[url(#app-icon-gradient-light)] dark:stroke-[url(#app-icon-gradient-dark)]"
+            )
+        )}
+      />
+    </div>
+    <div className="absolute top-0 left-0 right-0 p- translate-x-[-50%]">
+      <div className="h-20px" />
     </div>
   </div>;
 }
@@ -100,6 +109,7 @@ export function AppSquare({ appId }: {
             style={{
               padding: appSquarePaddingExpression,
             }}
+            scroll={isEnabled}
           >
             <AppIcon
               appId={appId}
