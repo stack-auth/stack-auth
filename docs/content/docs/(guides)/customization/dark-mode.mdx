@@ -14,12 +14,14 @@ Here is an example of how to set up next-themes with Stack (find more details in
   npm install next-themes
   ```
 
-2. Add the `ThemeProvider` to your `layout.tsx` file:
+2. Create a client-side provider component:
 
-  ```jsx
+  ```jsx title="components/providers.jsx"
+  'use client';
   import { ThemeProvider } from 'next-themes'
+  import { StackTheme } from '@stackframe/stack'
 
-  export default function Layout({ children }) {
+  export default function Providers({ children }) {
     return (
       {/* 
         ThemeProvider enables theme switching throughout the application.
@@ -36,7 +38,25 @@ Here is an example of how to set up next-themes with Stack (find more details in
   }
   ```
 
-3. Build a color mode switcher component:
+3. Use the provider in your `layout.tsx` file:
+
+  ```jsx title="app/layout.tsx"
+  import Providers from './components/providers'
+
+  export default function Layout({ children }) {
+    return (
+      <html lang="en">
+        <body>
+          <Providers>
+            {children}
+          </Providers>
+        </body>
+      </html>
+    )
+  }
+  ```
+
+4. Build a color mode switcher component:
 
   ```jsx
   'use client';
