@@ -91,7 +91,8 @@ export function ItemDialog({
               id="item-id"
               value={itemId}
               onChange={(e) => {
-                setItemId(e.target.value);
+                const nextValue = e.target.value.toLowerCase();
+                setItemId(nextValue);
                 if (errors.itemId) {
                   setErrors(prev => {
                     const newErrors = { ...prev };

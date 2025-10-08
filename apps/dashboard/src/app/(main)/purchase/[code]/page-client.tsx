@@ -20,6 +20,7 @@ type ProductData = {
   project_id: string,
   already_bought_non_stackable?: boolean,
   conflicting_products?: { product_id: string, display_name: string }[],
+  test_mode: boolean,
 };
 
 const apiUrl = getPublicEnvVar("NEXT_PUBLIC_STACK_API_URL") ?? throwErr("NEXT_PUBLIC_STACK_API_URL is not set");
@@ -32,19 +33,7 @@ export default function PageClient({ code }: { code: string }) {
   const [selectedPriceId, setSelectedPriceId] = useState<string | null>(null);
   const [quantityInput, setQuantityInput] = useState<string>("1");
   const searchParams = useSearchParams();
-  const user = useUser({ projectIdMustMatch: "internal" });
-  const [adminApp, setAdminApp] = useState<StackAdminApp>();
   const returnUrl = searchParams.get("return_url");
-
-  useEffect(() => {
-    if (!user || !data) return;
-    runAsynchronouslyWithAlert(user.listOwnedProjects().then(projects => {
-      const project = projects.find(p => p.id === data.project_id);
-      if (project) {
-        setAdminApp(project.app);
-      }
-    }));
-  }, [user, data]);
 
   const quantityNumber = useMemo((): number => {
     const n = parseInt(quantityInput, 10);
@@ -134,13 +123,21 @@ export default function PageClient({ code }: { code: string }) {
   };
 
   const handleBypass = useCallback(async () => {
-    if (!adminApp || !selectedPriceId) {
-      return;
-    }
     if (quantityNumber < 1 || isTooLarge) {
       return;
     }
-    await adminApp.testModePurchase({ priceId: selectedPriceId, fullCode: code, quantity: quantityNumber });
+    const response = await fetch(`${baseUrl}/internal/payments/test-mode-purchase-session`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        full_code: code,
+        price_id: selectedPriceId,
+        quantity: quantityNumber
+      }),
+    });
+    if (!response.ok) {
+      throw new Error("Failed to bypass with test mode");
+    }
     const url = new URL(`/purchase/return`, window.location.origin);
     url.searchParams.set("bypass", "1");
     url.searchParams.set("purchase_full_code", code);
@@ -148,7 +145,7 @@ export default function PageClient({ code }: { code: string }) {
       url.searchParams.set("return_url", returnUrl);
     }
     window.location.assign(url.toString());
-  }, [code, adminApp, selectedPriceId, quantityNumber, isTooLarge, returnUrl]);
+  }, [code, selectedPriceId, quantityNumber, isTooLarge, returnUrl]);
 
   return (
     <div className="flex flex-row">
@@ -275,9 +272,9 @@ export default function PageClient({ code }: { code: string }) {
         )}
       </div>
       <div className="grow relative flex justify-center items-center bg-primary/5">
-        {adminApp && (
+        {data?.test_mode && (
           <div className="absolute top-4 right-4 max-w-xs">
-            <BypassInfo handleBypass={handleBypass} />
+            <BypassInfo handleBypass={handleBypass} disabled={!selectedPriceId || quantityNumber < 1 || isTooLarge} />
           </div>
         )}
         {data && (
@@ -300,16 +297,15 @@ export default function PageClient({ code }: { code: string }) {
   );
 }
 
-function BypassInfo({ handleBypass }: { handleBypass: () => Promise<void> }) {
+function BypassInfo({ handleBypass, disabled }: { handleBypass: () => Promise<void>, disabled: boolean }) {
   return (
     <Card className="border-primary/30 bg-secondary animate-fade-in">
       <CardContent className="p-3">
         <div className="flex items-center justify-between gap-3">
           <div className="flex flex-col">
             <Typography type="label">Test mode bypass</Typography>
-            <Typography type="footnote" variant="secondary">Not shown to customers</Typography>
           </div>
-          <Button onClick={handleBypass} size="icon" variant="ghost">
+          <Button onClick={handleBypass} size="icon" variant="ghost" disabled={disabled}>
             <ArrowRight className="w-4 h-4" />
           </Button>
         </div>
