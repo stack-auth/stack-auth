@@ -96,8 +96,8 @@ Server items can be retrieved through:
     & Item //$stack-link-to:#item
     & {
       increaseQuantity(amount): Promise<void>; //$stack-link-to:#serveritemincreasequantity
-      decreaseQuantity(amount): Promise<void>; //$stack-link-to:#serveritemdecreasquantity
-      tryDecreaseQuantity(amount): Promise<boolean>; //$stack-link-to:#serveritemtrydecreasquantity
+      decreaseQuantity(amount): Promise<void>; //$stack-link-to:#serveritemdecreasequantity
+      tryDecreaseQuantity(amount): Promise<boolean>; //$stack-link-to:#serveritemtrydecreasequantity
     };`} />
 
 <CollapsibleTypesSection type="serverItem" property="increaseQuantity" signature="amount" defaultOpen={false}>
@@ -140,7 +140,7 @@ Server items can be retrieved through:
     <MethodContent>
       Decreases the item quantity by the specified amount. This operation allows the quantity to go negative.
 
-      **Note**: If you want to prevent the quantity from going below zero, use [`tryDecreaseQuantity()`](#serveritemtrydecreasquantity) instead, as it provides race-condition-free protection against negative quantities.
+      **Note**: If you want to prevent the quantity from going below zero, use [`tryDecreaseQuantity()`](#serveritemtrydecreasequantity) instead, as it provides race-condition-free protection against negative quantities.
 
       ### Parameters
 
