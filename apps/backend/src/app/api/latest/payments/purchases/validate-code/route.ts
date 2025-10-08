@@ -39,6 +39,7 @@ export const POST = createSmartRouteHandler({
         product_id: yupString().defined(),
         display_name: yupString().defined(),
       }).defined()).defined(),
+      test_mode: yupBoolean().defined(),
     }).defined(),
   }),
   async handler({ body }) {
@@ -102,6 +103,7 @@ export const POST = createSmartRouteHandler({
         project_id: tenancy.project.id,
         already_bought_non_stackable: alreadyBoughtNonStackable,
         conflicting_products: conflictingCatalogProducts,
+        test_mode: tenancy.config.payments.testMode === true,
       },
     };
   },

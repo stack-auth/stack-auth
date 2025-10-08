@@ -382,7 +382,8 @@ export function ProductDialog({
                       id="product-id"
                       value={productId}
                       onChange={(e) => {
-                        setProductId(e.target.value);
+                        const nextValue = e.target.value.toLowerCase();
+                        setProductId(nextValue);
                         if (errors.productId) {
                           setErrors(prev => {
                             const newErrors = { ...prev };
@@ -818,4 +819,3 @@ export function ProductDialog({
     </>
   );
 }
-

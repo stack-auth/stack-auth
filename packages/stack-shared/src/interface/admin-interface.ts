@@ -597,16 +597,4 @@ export class StackAdminInterface extends StackServerInterface {
     return { transactions: json.transactions, nextCursor: json.next_cursor };
   }
 
-  async testModePurchase(options: { price_id: string, full_code: string, quantity?: number }): Promise<void> {
-    await this.sendAdminRequest(
-      "/internal/payments/test-mode-purchase-session",
-      {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(options),
-      },
-      null,
-    );
-  }
-
 }

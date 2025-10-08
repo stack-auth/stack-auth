@@ -1,6 +1,6 @@
 import type { PrismaClientTransaction } from '@/prisma-client';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { getItemQuantityForCustomer, validatePurchaseSession } from './payments';
+import { getItemQuantityForCustomer, getSubscriptions, validatePurchaseSession } from './payments';
 import type { Tenancy } from './tenancies';
 
 function createMockPrisma(overrides: Partial<PrismaClientTransaction> = {}): PrismaClientTransaction {
@@ -717,6 +717,38 @@ describe('getItemQuantityForCustomer - subscriptions', () => {
     expect(qty).toBe(8);
     vi.useRealTimers();
   });
+
+  it('ungrouped include-by-default provides item quantity without db subscription', async () => {
+    const now = new Date('2025-02-10T00:00:00.000Z');
+    vi.setSystemTime(now);
+    const itemId = 'defaultItemUngrouped';
+
+    const tenancy = createMockTenancy({
+      items: { [itemId]: { displayName: 'UDF', customerType: 'user' } },
+      catalogs: {},
+      products: {
+        offFreeUngrouped: {
+          displayName: 'Free Ungrouped',
+          catalogId: undefined,
+          customerType: 'user',
+          freeTrial: undefined,
+          serverOnly: false,
+          stackable: false,
+          prices: 'include-by-default',
+          includedItems: { [itemId]: { quantity: 5, repeat: 'never', expires: 'when-purchase-expires' } },
+          isAddOnTo: false,
+        },
+      },
+    });
+
+    const prisma = createMockPrisma({
+      subscription: { findMany: async () => [] },
+    } as any);
+
+    const qty = await getItemQuantityForCustomer({ prisma, tenancy, itemId, customerId: 'u1', customerType: 'user' });
+    expect(qty).toBe(5);
+    vi.useRealTimers();
+  });
 });
 
 
@@ -810,7 +842,7 @@ describe('validatePurchaseSession - one-time purchase rules', () => {
       },
       priceId: 'price-any',
       quantity: 1,
-    })).rejects.toThrowError('Customer already has a one-time purchase for this product');
+    })).rejects.toThrowError('Customer already has purchased this product; this product is not stackable');
   });
 
   it('blocks one-time purchase when another one exists in the same group', async () => {
@@ -880,6 +912,157 @@ describe('validatePurchaseSession - one-time purchase rules', () => {
     expect(res.catalogId).toBe('g1');
     expect(res.conflictingCatalogSubscriptions.length).toBe(0);
   });
+
+  it('allows duplicate one-time purchase for same productId when product is stackable', async () => {
+    const tenancy = createMockTenancy({ items: {}, products: {}, catalogs: {} });
+    const prisma = createMockPrisma({
+      oneTimePurchase: {
+        findMany: async () => [
+          { productId: 'product-stackable', product: { catalogId: undefined }, quantity: 1, createdAt: new Date('2025-01-01T00:00:00.000Z') },
+        ],
+      },
+      subscription: { findMany: async () => [] },
+    } as any);
+
+    const res = await validatePurchaseSession({
+      prisma,
+      tenancy,
+      codeData: {
+        tenancyId: tenancy.id,
+        customerId: 'cust-1',
+        productId: 'product-stackable',
+        product: {
+          displayName: 'Stackable Product',
+          catalogId: undefined,
+          customerType: 'custom',
+          freeTrial: undefined,
+          serverOnly: false,
+          stackable: true,
+          prices: 'include-by-default',
+          includedItems: {},
+          isAddOnTo: false,
+        },
+      },
+      priceId: 'price-any',
+      quantity: 2,
+    });
+
+    expect(res.catalogId).toBeUndefined();
+    expect(res.conflictingCatalogSubscriptions.length).toBe(0);
+  });
+
+  it('blocks when subscription for same product exists and product is not stackable', async () => {
+    const tenancy = createMockTenancy({
+      items: {},
+      catalogs: {},
+      products: {
+        'product-sub': {
+          displayName: 'Non-stackable Offer',
+          catalogId: undefined,
+          customerType: 'custom',
+          freeTrial: undefined,
+          serverOnly: false,
+          stackable: false,
+          prices: {},
+          includedItems: {},
+          isAddOnTo: false,
+        },
+      },
+    });
+    const prisma = createMockPrisma({
+      oneTimePurchase: { findMany: async () => [] },
+      subscription: {
+        findMany: async () => [{
+          productId: 'product-sub',
+          currentPeriodStart: new Date('2025-02-01T00:00:00.000Z'),
+          currentPeriodEnd: new Date('2025-03-01T00:00:00.000Z'),
+          quantity: 1,
+          status: 'active',
+        }],
+      },
+    } as any);
+
+    await expect(validatePurchaseSession({
+      prisma,
+      tenancy,
+      codeData: {
+        tenancyId: tenancy.id,
+        customerId: 'cust-1',
+        productId: 'product-sub',
+        product: {
+          displayName: 'Non-stackable Offer',
+          catalogId: undefined,
+          customerType: 'custom',
+          freeTrial: undefined,
+          serverOnly: false,
+          stackable: false,
+          prices: 'include-by-default',
+          includedItems: {},
+          isAddOnTo: false,
+        },
+      },
+      priceId: 'price-any',
+      quantity: 1,
+    })).rejects.toThrowError('Customer already has purchased this product; this product is not stackable');
+  });
+
+  it('allows when subscription for same product exists and product is stackable', async () => {
+    const tenancy = createMockTenancy({
+      items: {},
+      catalogs: {},
+      products: {
+        'product-sub-stackable': {
+          displayName: 'Stackable Product',
+          catalogId: undefined,
+          customerType: 'custom',
+          freeTrial: undefined,
+          serverOnly: false,
+          stackable: true,
+          prices: {},
+          includedItems: {},
+          isAddOnTo: false,
+        },
+      },
+    });
+    const prisma = createMockPrisma({
+      oneTimePurchase: { findMany: async () => [] },
+      subscription: {
+        findMany: async () => [{
+          productId: 'product-sub-stackable',
+          currentPeriodStart: new Date('2025-02-01T00:00:00.000Z'),
+          currentPeriodEnd: new Date('2025-03-01T00:00:00.000Z'),
+          quantity: 1,
+          status: 'active',
+        }],
+      },
+    } as any);
+
+    const res = await validatePurchaseSession({
+      prisma,
+      tenancy,
+      codeData: {
+        tenancyId: tenancy.id,
+        customerId: 'cust-1',
+        productId: 'product-sub-stackable',
+        product: {
+          displayName: 'Stackable Product',
+          catalogId: undefined,
+          customerType: 'custom',
+          freeTrial: undefined,
+          serverOnly: false,
+          stackable: true,
+          prices: 'include-by-default',
+          includedItems: {},
+          isAddOnTo: false,
+        },
+      },
+      priceId: 'price-any',
+      quantity: 2,
+    });
+
+    expect(res.catalogId).toBeUndefined();
+    expect(res.conflictingCatalogSubscriptions.length).toBe(0);
+  });
 });
 
 describe('combined sources - one-time purchases + manual changes + subscriptions', () => {
@@ -930,6 +1113,96 @@ describe('combined sources - one-time purchases + manual changes + subscriptions
     // OTP: 4 + (2*3)=6 => 10; Manual: +3 -1 => +2; Subscription: 5 * 2 => 10; Total => 22
     expect(qty).toBe(22);
     vi.useRealTimers();
+  });
+});
+
+
+describe('getSubscriptions - defaults behavior', () => {
+  it('includes ungrouped include-by-default products in subscriptions', async () => {
+    const tenancy = createMockTenancy({
+      items: {},
+      catalogs: {},
+      products: {
+        freeUngrouped: {
+          displayName: 'Free',
+          catalogId: undefined,
+          customerType: 'custom',
+          freeTrial: undefined,
+          serverOnly: false,
+          stackable: false,
+          prices: 'include-by-default',
+          includedItems: {},
+          isAddOnTo: false,
+        },
+        paidUngrouped: {
+          displayName: 'Paid',
+          catalogId: undefined,
+          customerType: 'custom',
+          freeTrial: undefined,
+          serverOnly: false,
+          stackable: false,
+          prices: {},
+          includedItems: {},
+          isAddOnTo: false,
+        },
+      },
+    });
+
+    const prisma = createMockPrisma({
+      subscription: { findMany: async () => [] },
+    } as any);
+
+    const subs = await getSubscriptions({
+      prisma,
+      tenancy,
+      customerType: 'custom',
+      customerId: 'c-1',
+    });
+
+    const ids = subs.map(s => s.productId);
+    expect(ids).toContain('freeUngrouped');
+  });
+
+  it('throws error when multiple include-by-default products exist in same catalog', async () => {
+    const tenancy = createMockTenancy({
+      items: {},
+      catalogs: { g1: { displayName: 'G1' } },
+      products: {
+        g1FreeA: {
+          displayName: 'Free A',
+          catalogId: 'g1',
+          customerType: 'custom',
+          freeTrial: undefined,
+          serverOnly: false,
+          stackable: false,
+          prices: 'include-by-default',
+          includedItems: {},
+          isAddOnTo: false,
+        },
+        g1FreeB: {
+          displayName: 'Free B',
+          catalogId: 'g1',
+          customerType: 'custom',
+          freeTrial: undefined,
+          serverOnly: false,
+          stackable: false,
+          prices: 'include-by-default',
+          includedItems: {},
+          isAddOnTo: false,
+        },
+      },
+    });
+
+    const prisma = createMockPrisma({
+      subscription: { findMany: async () => [] },
+    } as any);
+
+    await expect(getSubscriptions({
+      prisma,
+      tenancy,
+      customerType: 'custom',
+      customerId: 'c-1',
+    })).rejects.toThrowError('Multiple include-by-default products configured in the same catalog');
   });
 });
 

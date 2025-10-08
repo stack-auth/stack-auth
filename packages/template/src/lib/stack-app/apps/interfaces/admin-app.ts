@@ -91,7 +91,6 @@ export type StackAdminApp<HasTokenStore extends boolean = boolean, ProjectId ext
       { teamId: string, itemId: string, quantity: number, expiresAt?: string, description?: string } |
       { customCustomerId: string, itemId: string, quantity: number, expiresAt?: string, description?: string }
     )): Promise<void>,
-    testModePurchase(options: { priceId: string, fullCode: string, quantity?: number }): Promise<void>,
   }
   & StackServerApp<HasTokenStore, ProjectId>
 );

@@ -143,6 +143,7 @@ export const branchPaymentsSchema = yupObject({
   autoPay: yupObject({
     interval: schemaFields.dayIntervalSchema,
   }).optional(),
+  testMode: yupBoolean(),
   catalogs: yupRecord(
     userSpecifiedIdSchema("catalogId"),
     yupObject({
@@ -535,6 +536,7 @@ const organizationConfigDefaults = {
   },
 
   payments: {
+    testMode: false,
     autoPay: undefined,
     catalogs: (key: string) => ({
       displayName: undefined,

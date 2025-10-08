@@ -10,7 +10,7 @@ export class Freestyle {
 
   constructor(options: { apiKey?: string } = {}) {
     const apiKey = options.apiKey || getEnvVariable("STACK_FREESTYLE_API_KEY");
-    let baseUrl = undefined;
+    let baseUrl = getEnvVariable("STACK_FREESTYLE_API_ENDPOINT", "") || undefined;
     if (apiKey === "mock_stack_freestyle_key") {
       if (!["development", "test"].includes(getNodeEnvironment())) {
         throw new StackAssertionError("Mock Freestyle key used in production; please set the STACK_FREESTYLE_API_KEY environment variable.");

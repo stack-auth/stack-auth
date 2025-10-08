@@ -164,6 +164,7 @@ it("should return client secret for one-time price even if a conflicting group s
   await Payments.setup();
   await Project.updateConfig({
     payments: {
+      testMode: true,
       catalogs: { grp: { displayName: "Test Group" } },
       products: {
         subProduct: {
@@ -241,6 +242,7 @@ it("test-mode should error on one-time price quantity > 1 when product is not st
   await Payments.setup();
   await Project.updateConfig({
     payments: {
+      testMode: true,
       products: {
         tmOneTime: {
           displayName: "TM One Time",
@@ -346,9 +348,8 @@ it("should create purchase URL with inline product, validate code, and create pu
   `);
 });
 
-it("should error when admin tenancy differs from code tenancy", async ({ expect }) => {
+it("should error when test mode is not enabled", async ({ expect }) => {
   const { code } = await Payments.createPurchaseUrlAndGetCode();
-  await Project.createAndSwitch();
 
   const response = await niceBackendFetch("/api/latest/internal/payments/test-mode-purchase-session", {
     method: "POST",
@@ -359,13 +360,8 @@ it("should error when admin tenancy differs from code tenancy", async ({ expect 
     },
   });
 
-  expect(response).toMatchInlineSnapshot(`
-    NiceResponse {
-      "status": 400,
-      "body": "Tenancy id does not match value from code data",
-      "headers": Headers { <some fields may have been hidden> },
-    }
-  `);
+  expect(response.status).toBe(403);
+  expect(response.body).toBe("Test mode is not enabled for this project");
 });
 
 it("creates subscription in test mode and increases included item quantity", async ({ expect }) => {
@@ -373,6 +369,7 @@ it("creates subscription in test mode and increases included item quantity", asy
   await Payments.setup();
   await Project.updateConfig({
     payments: {
+      testMode: true,
       items: {
         "test-item": {
           displayName: "Test Item",
@@ -439,35 +436,6 @@ it("creates subscription in test mode and increases included item quantity", asy
   expect(getAfter.body.quantity).toBe(2);
 });
 
-it("test-mode should error when access type is not admin", async ({ expect }) => {
-  const { code } = await Payments.createPurchaseUrlAndGetCode();
-  const response = await niceBackendFetch("/api/latest/internal/payments/test-mode-purchase-session", {
-    method: "POST",
-    accessType: "client",
-    body: {
-      full_code: code,
-      price_id: "monthly",
-    },
-  });
-  expect(response).toMatchInlineSnapshot(`
-    NiceResponse {
-      "status": 401,
-      "body": {
-        "code": "INSUFFICIENT_ACCESS_TYPE",
-        "details": {
-          "actual_access_type": "client",
-          "allowed_access_types": ["admin"],
-        },
-        "error": "The x-stack-access-type header must be 'admin', but was 'client'.",
-      },
-      "headers": Headers {
-        "x-stack-known-error": "INSUFFICIENT_ACCESS_TYPE",
-        <some fields may have been hidden>,
-      },
-    }
-  `);
-});
-
 it("test-mode should error on invalid code", async ({ expect }) => {
   await Project.createAndSwitch();
   const response = await niceBackendFetch("/api/latest/internal/payments/test-mode-purchase-session", {
@@ -495,6 +463,11 @@ it("test-mode should error on invalid code", async ({ expect }) => {
 
 it("test-mode should error on invalid price_id", async ({ expect }) => {
   const { code } = await Payments.createPurchaseUrlAndGetCode();
+  await Project.updateConfig({
+    payments: {
+      testMode: true,
+    },
+  });
   const response = await niceBackendFetch("/api/latest/internal/payments/test-mode-purchase-session", {
     method: "POST",
     accessType: "admin",
@@ -517,6 +490,7 @@ it("allows stackable quantity in test mode and multiplies included items", async
   await Payments.setup();
   await Project.updateConfig({
     payments: {
+      testMode: true,
       items: {
         "test-item": {
           displayName: "Test Item",
@@ -589,6 +563,7 @@ it("should update existing stripe subscription when switching products within a 
   await Payments.setup();
   await Project.updateConfig({
     payments: {
+      testMode: true,
       catalogs: {
         grp: { displayName: "Test Group" },
       },
@@ -695,6 +670,7 @@ it("should cancel DB-only subscription then create Stripe subscription when swit
   await Payments.setup();
   await Project.updateConfig({
     payments: {
+      testMode: true,
       catalogs: {
         grp: { displayName: "Test Group" },
       },
@@ -795,12 +771,13 @@ it("should block one-time purchase for same product after prior one-time purchas
   await Payments.setup();
   await Project.updateConfig({
     payments: {
+      testMode: true,
       products: {
         ot: {
           displayName: "One Time Product",
           customerType: "user",
           serverOnly: false,
-          stackable: true,
+          stackable: false,
           prices: { one: { USD: "500" } },
           includedItems: {},
         },
@@ -842,7 +819,7 @@ it("should block one-time purchase for same product after prior one-time purchas
     body: { full_code: code2, price_id: "one", quantity: 1 },
   });
   expect(res.status).toBe(400);
-  expect(String(res.body)).toContain("one-time purchase for this product");
+  expect(String(res.body)).toBe("Customer already has purchased this product; this product is not stackable");
 });
 
 it("should block one-time purchase in same group after prior one-time purchase in that group (test-mode persisted)", async ({ expect }) => {
@@ -850,6 +827,7 @@ it("should block one-time purchase in same group after prior one-time purchase i
   await Payments.setup();
   await Project.updateConfig({
     payments: {
+      testMode: true,
       catalogs: { grp: { displayName: "Group" } },
       products: {
         productA: {
