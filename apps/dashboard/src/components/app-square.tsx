@@ -68,12 +68,23 @@ export function AppIcon({ appId, className, disabled, style }: {
         )}
       />
     </div>
-    <div className="absolute top-0 left-0 right-0 p- translate-x-[-50%]">
-      <div className="h-20px" />
+    <div className="absolute top-0 left-0 right-0 [transform:_translate(-50%,-50%)_rotate(-45deg)_translateY(32px)]">
+      {app.stage !== "stable" && (
+        <div className={cn(
+          "h-4 uppercase text-xs font-bold font-mono tracking-widest text-center",
+          disabled
+            ? "bg-gray-400/60 text-white"
+            : app.stage === "alpha"
+              ? "bg-red-500 text-white"
+              : "bg-yellow-600 text-white"
+          )}
+        >
+          {app.stage}
+        </div>
+      )}
     </div>
   </div>;
 }
-
 
 export function AppSquare({ appId }: {
   appId: AppId,
