@@ -233,18 +233,8 @@ it("should error for server-only offer when calling from client", async ({ expec
   expect(response).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 400,
-      "body": {
-        "code": "PRODUCT_DOES_NOT_EXIST",
-        "details": {
-          "access_type": "client",
-          "product_id": "test-offer",
-        },
-        "error": "Product with ID \\"test-offer\\" does not exist or you don't have permissions to access it.",
-      },
-      "headers": Headers {
-        "x-stack-known-error": "PRODUCT_DOES_NOT_EXIST",
-        <some fields may have been hidden>,
-      },
+      "body": "This product is marked as server-only and cannot be accessed client side!",
+      "headers": Headers { <some fields may have been hidden> },
     }
   `);
 });
