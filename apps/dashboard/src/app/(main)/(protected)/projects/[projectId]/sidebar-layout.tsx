@@ -35,6 +35,7 @@ import {
   Mail,
   Menu,
   Palette,
+  Package,
   Receipt,
   Settings,
   Settings2,
@@ -251,6 +252,13 @@ const navigationItems: (Label | Item | Hidden)[] = [
     href: "/payments/products",
     regex: /^\/projects\/[^\/]+\/payments\/products$/,
     icon: CreditCard,
+    type: 'item',
+  },
+  {
+    name: "Item Quantities",
+    href: "/item-quantities",
+    regex: /^\/projects\/[^\/]+\/item-quantities$/,
+    icon: Package,
     type: 'item',
   },
   {
