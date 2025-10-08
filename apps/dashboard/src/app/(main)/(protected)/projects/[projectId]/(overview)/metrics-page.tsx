@@ -68,7 +68,7 @@ export default function MetricsPage(props: { toSetup: () => void }) {
         <h2 className="text-xl font-bold">Installed Apps</h2>
         {installedApps.length > 0 ? (
           <div
-            className="grid gap-y-4 py-8 justify-items-between"
+            className="grid gap-y-1 py-2 lg:py-8 justify-items-between"
             style={{
               gridTemplateColumns: `repeat(auto-fit,minmax(${appSquareWidthExpression},1fr))`,
             }}
@@ -89,7 +89,7 @@ export default function MetricsPage(props: { toSetup: () => void }) {
           <h2 className="text-xl font-bold">Suggested Apps</h2>
           {suggestedApps.length > 0 ? (
             <div
-              className="grid gap-y-4 py-8 justify-items-between"
+              className="grid gap-y-1 py-2 lg:py-8 justify-items-between"
               style={{
                 gridTemplateColumns: `repeat(auto-fit,minmax(${appSquareWidthExpression},1fr))`,
               }}
