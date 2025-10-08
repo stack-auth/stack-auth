@@ -344,28 +344,26 @@ export const stackClientApp = new StackClientApp({
       }
     });
 
-    document.getElementById("signUp")?.addEventListener("click", async () => {
-      const emailInput = document.getElementById("signUpEmail") as HTMLInputElement;
-      const passwordInput = document.getElementById("signUpPassword") as HTMLInputElement;
-
-      const result = await stackClientApp.signUpWithCredential({
+     document.getElementById("sendCode")?.addEventListener("click", async () => {
+     const emailInput = document.getElementById("emailInput") as HTMLInputElement;
+      
+      await stackClientApp.sendMagicLinkEmail({
         email: emailInput.value,
-        password: passwordInput.value,
       });
+      
+      document.getElementById("emailStep")!.style.display = "none";
+      document.getElementById("codeStep")!.style.display = "block";
+    });
 
+    document.getElementById("verifyCode")?.addEventListener("click", async () => {
+      const codeInput = document.getElementById("codeInput") as HTMLInputElement;
+      
+      const result = await stackClientApp.signInWithMagicLink({
+        code: codeInput.value,
+      });
+      
       if (result.status === "error") {
-        alert("Sign up failed. Please try again.");
-        return;
-      }
-
-      const signInResult = await stackClientApp.signInWithCredential({
-        email: emailInput.value,
-        password: passwordInput.value,
-      });
-
-      if (signInResult.status === "error") {
-        alert("Account created but sign in failed. Please sign in manually.");
-        window.location.href = "/password-sign-in";
+        alert("Verification failed. Please check the code and try again.");
       } else {
         window.location.href = "/";
       }
