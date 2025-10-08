@@ -7,6 +7,7 @@ async function setupProjectWithPaymentsConfig() {
   await PaymentsHelper.setup();
   await Project.updateConfig({
     payments: {
+      testMode: true,
       products: {
         "sub-product": {
           displayName: "Sub Product",
