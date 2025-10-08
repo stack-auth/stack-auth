@@ -1276,8 +1276,8 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         return app._clientItemFromCrud(result);
       },
       // END_PLATFORM
-      async createCheckoutUrl(options: { productId: string }) {
-        return await app._interface.createCheckoutUrl(type, userIdOrTeamId, options.productId, session);
+      async createCheckoutUrl(options: { productId: string, returnUrl?: string }) {
+        return await app._interface.createCheckoutUrl(type, userIdOrTeamId, options.productId, session, options.returnUrl);
       },
     };
   }

@@ -21,10 +21,11 @@ type Props = {
   setupSubscription: () => Promise<string>,
   stripeAccountId: string,
   fullCode: string,
+  returnUrl?: string,
   disabled?: boolean,
 };
 
-export function CheckoutForm({ setupSubscription, stripeAccountId, fullCode, disabled }: Props) {
+export function CheckoutForm({ setupSubscription, stripeAccountId, fullCode, returnUrl, disabled }: Props) {
   const stripe = useStripe();
   const elements = useElements();
   const [message, setMessage] = useState<string | null>(null);
@@ -39,15 +40,18 @@ export function CheckoutForm({ setupSubscription, stripeAccountId, fullCode, dis
     }
 
     const clientSecret = await setupSubscription();
-    const returnUrl = new URL(`/purchase/return`, window.location.origin);
-    returnUrl.searchParams.set("stripe_account_id", stripeAccountId);
-    returnUrl.searchParams.set("purchase_full_code", fullCode);
+    const stripeReturnUrl = new URL(`/purchase/return`, window.location.origin);
+    stripeReturnUrl.searchParams.set("stripe_account_id", stripeAccountId);
+    stripeReturnUrl.searchParams.set("purchase_full_code", fullCode);
+    if (returnUrl) {
+      stripeReturnUrl.searchParams.set("return_url", returnUrl);
+    }
 
     const { error } = await stripe.confirmPayment({
       elements,
       clientSecret,
       confirmParams: {
-        return_url: returnUrl.toString(),
+        return_url: stripeReturnUrl.toString(),
       },
     }) as { error?: StripeError };
 
