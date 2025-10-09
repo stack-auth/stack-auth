@@ -52,7 +52,12 @@ export const GET = createSmartRouteHandler({
       customerId: params.customer_id,
     });
 
-    const sorted = ownedProducts
+    const visibleProducts =
+      auth.type === "client"
+        ? ownedProducts.filter(({ product }) => !product.serverOnly)
+        : ownedProducts;
+
+    const sorted = visibleProducts
       .slice()
       .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
       .map((product) => ({

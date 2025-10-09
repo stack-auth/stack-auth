@@ -133,6 +133,98 @@ it("should grant configured subscription product and expose it via listing", asy
   `);
 });
 
+it("should hide server-only products from clients while exposing them to servers", async ({ expect }) => {
+  await Project.createAndSwitch();
+  await Payments.setup();
+  await configureProduct({
+    products: {
+      "server-plan": {
+        displayName: "Server Plan",
+        customerType: "user",
+        serverOnly: true,
+        stackable: false,
+        prices: {
+          monthly: {
+            USD: "1500",
+            interval: [1, "month"],
+          },
+        },
+        includedItems: {},
+      },
+    },
+  });
+
+  const { userId } = await User.create();
+  const grantResponse = await niceBackendFetch(`/api/v1/payments/products/user/${userId}`, {
+    method: "POST",
+    accessType: "server",
+    body: {
+      product_id: "server-plan",
+    },
+  });
+
+  expect(grantResponse).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": { "success": true },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+
+  const clientListResponse = await niceBackendFetch(`/api/v1/payments/products/user/${userId}`, {
+    accessType: "client",
+  });
+
+  expect(clientListResponse).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": {
+        "is_paginated": true,
+        "items": [],
+        "pagination": { "next_cursor": null },
+      },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+
+  const serverListResponse = await niceBackendFetch(`/api/v1/payments/products/user/${userId}`, {
+    accessType: "server",
+  });
+
+  expect(serverListResponse).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": {
+        "is_paginated": true,
+        "items": [
+          {
+            "id": "server-plan",
+            "product": {
+              "customer_type": "user",
+              "display_name": "Server Plan",
+              "included_items": {},
+              "prices": {
+                "monthly": {
+                  "USD": "1500",
+                  "interval": [
+                    1,
+                    "month",
+                  ],
+                },
+              },
+              "server_only": true,
+              "stackable": false,
+            },
+            "quantity": 1,
+          },
+        ],
+        "pagination": { "next_cursor": null },
+      },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+});
+
 it("should prevent granting an already owned non-stackable product", async ({ expect }) => {
   await Project.createAndSwitch();
   await Payments.setup();
@@ -286,7 +378,7 @@ it("should grant inline product without needing configuration", async ({ expect 
   expect(grantResponse.status).toBe(200);
 
   const listResponse = await niceBackendFetch(`/api/v1/payments/products/user/${userId}`, {
-    accessType: "client",
+    accessType: "server",
   });
   expect(listResponse).toMatchInlineSnapshot(`
     NiceResponse {
