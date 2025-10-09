@@ -567,7 +567,11 @@ export async function grantProductToCustomer(options: {
             id: conflicting.id,
           },
         },
-        data: { status: SubscriptionStatus.canceled },
+        data: {
+          status: SubscriptionStatus.canceled,
+          currentPeriodEnd: new Date(),
+          cancelAtPeriodEnd: true,
+        },
       });
     }
   }

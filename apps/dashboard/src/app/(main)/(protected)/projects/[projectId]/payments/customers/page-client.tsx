@@ -3,23 +3,23 @@
 import { TeamMemberSearchTable } from "@/components/data-table/team-member-search-table";
 import { TeamSearchTable } from "@/components/data-table/team-search-table";
 import { SmartFormDialog } from "@/components/form-dialog";
-import { PageLayout } from "../page-layout";
-import { useAdminApp } from "../use-admin-app";
+import { NumberField, SelectField } from "@/components/form-fields";
+import { ItemDialog } from "@/components/payments/item-dialog";
+import { PageLayout } from "../../page-layout";
+import { useAdminApp } from "../../use-admin-app";
 import { KnownErrors } from "@stackframe/stack-shared";
+import { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import {
   ActionDialog,
   Button,
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
   Input,
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
+  SimpleTooltip,
   Skeleton,
   Table,
   TableBody,
@@ -30,10 +30,13 @@ import {
   Typography,
   toast,
 } from "@stackframe/stack-ui";
-import { Suspense, useEffect, useMemo, useState } from "react";
-import * as yup from "yup";
 import { ChevronsUpDown } from "lucide-react";
-import { ItemDialog } from "@/components/payments/item-dialog";
+import { Suspense, useEffect, useMemo, useState } from "react";
+import { useWatch } from "react-hook-form";
+import * as yup from "yup";
+import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
+
+const DISABLED_GRANT_TOOLTIP = "Select a customer to grant products.";
 
 type CustomerType = "user" | "team" | "custom";
 
@@ -43,6 +46,8 @@ type SelectedCustomer = {
   label: string,
 };
 
+type ProductEntry = [string, CompleteConfig["payments"]["products"][string]];
+
 export default function PageClient() {
   const adminApp = useAdminApp();
   const project = adminApp.useProject();
@@ -51,15 +56,26 @@ export default function PageClient() {
   const [customerType, setCustomerType] = useState<CustomerType>("user");
   const [selectedCustomer, setSelectedCustomer] = useState<SelectedCustomer | null>(null);
   const [showItemDialog, setShowItemDialog] = useState(false);
+  const [showGrantProductDialog, setShowGrantProductDialog] = useState(false);
 
   const items = useMemo(() => {
     const payments = config.payments;
     return Object.entries(payments.items);
   }, [config.payments]);
 
+  const products = useMemo<ProductEntry[]>(() => {
+    const payments = config.payments;
+    return Object.entries(payments.products) as ProductEntry[];
+  }, [config.payments]);
+
   const itemsForType = useMemo(
     () => items.filter(([, itemConfig]) => itemConfig.customerType === customerType),
     [items, customerType],
+  );
+
+  const productsForType = useMemo(
+    () => products.filter(([, product]) => product.customerType === customerType),
+    [products, customerType],
   );
 
   const paymentsConfigured = Boolean(config.payments);
@@ -74,16 +90,38 @@ export default function PageClient() {
     return "Create Custom Item";
   }, [customerType]);
 
-  const handleSaveItem = async (item: { id: string, displayName: string, customerType: 'user' | 'team' | 'custom' }) => {
+  const handleSaveItem = async (item: { id: string, displayName: string, customerType: "user" | "team" | "custom" }) => {
     await project.updateConfig({ [`payments.items.${item.id}`]: { displayName: item.displayName, customerType: item.customerType } });
     setShowItemDialog(false);
   };
 
+  useEffect(() => {
+    if (!selectedCustomer && showGrantProductDialog) {
+      setShowGrantProductDialog(false);
+    }
+  }, [selectedCustomer, showGrantProductDialog]);
+
+  const grantButtonDisabled = !selectedCustomer;
+
   return (
     <PageLayout
-      title="Items"
+      title="Customers"
       description="Inspect customer items and make adjustments"
-      actions={<Button onClick={() => setShowItemDialog(true)}>{itemDialogTitle}</Button>}
+      actions={(
+        <div className="flex gap-2">
+          <SimpleTooltip tooltip={grantButtonDisabled ? DISABLED_GRANT_TOOLTIP : undefined}>
+            <div className="inline-flex">
+              <Button
+                onClick={() => setShowGrantProductDialog(true)}
+                disabled={grantButtonDisabled}
+              >
+                Grant Product
+              </Button>
+            </div>
+          </SimpleTooltip>
+          <Button onClick={() => setShowItemDialog(true)}>{itemDialogTitle}</Button>
+        </div>
+      )}
     >
       <div className="flex flex-col sm:flex-row items-center justify-between gap-3 mt-4">
         <Select
@@ -117,7 +155,7 @@ export default function PageClient() {
       )}
 
       {paymentsConfigured && itemsForType.length === 0 && (
-        <Typography variant="secondary">
+        <Typography variant="secondary" className="text-center mt-4">
           {customerType === "user" && "No user items are configured yet."}
           {customerType === "team" && "No team items are configured yet."}
           {customerType === "custom" && "No custom items are configured yet."}
@@ -137,7 +175,134 @@ export default function PageClient() {
         existingItemIds={items.map(([id]) => id)}
         forceCustomerType={customerType}
       />
+      {selectedCustomer && (
+        <GrantProductDialog
+          open={showGrantProductDialog}
+          onOpenChange={setShowGrantProductDialog}
+          customer={selectedCustomer}
+          products={productsForType}
+        />
+      )}
     </PageLayout>
+  );
+}
+
+type GrantProductDialogProps = {
+  open: boolean,
+  onOpenChange: (open: boolean) => void,
+  customer: SelectedCustomer,
+  products: ProductEntry[],
+};
+
+function GrantProductDialog(props: GrantProductDialogProps) {
+  const adminApp = useAdminApp();
+
+  const productOptions = useMemo(
+    () => props.products.map(([productId, product]) => ({
+      value: productId,
+      label: product.displayName ? `${product.displayName} (${productId})` : productId,
+    })),
+    [props.products],
+  );
+
+  const hasProducts = productOptions.length > 0;
+
+  const formSchema = useMemo(() => yup.object({
+    productId: yup.string().defined().label("Product").meta({
+      stackFormFieldRender: (innerProps: { control: any, name: string, label: string, disabled: boolean }) => (
+        <div className="space-y-2">
+          <SelectField
+            {...innerProps}
+            label={innerProps.label}
+            required
+            options={productOptions}
+            placeholder={hasProducts ? "Select product" : "No products available"}
+            disabled={!hasProducts || innerProps.disabled}
+          />
+          {!hasProducts && (
+            <Typography variant="secondary" className="mt-4">
+              No products are configured for this customer type yet
+            </Typography>
+          )}
+        </div>
+      ),
+    }),
+    quantity: yup.number()
+      .default(1)
+      .defined()
+      .label("Quantity")
+      .meta({
+        stackFormFieldPlaceholder: "1",
+        stackFormFieldRender: (innerProps: { control: any, name: string, label: string, disabled: boolean }) => (
+          <StackableQuantityField {...innerProps} products={props.products} />
+        ),
+      })
+      .integer("Quantity must be an integer")
+      .min(1, "Quantity must be at least 1"),
+  }), [hasProducts, productOptions, props.products]);
+
+  const onSubmit = async (values: yup.InferType<typeof formSchema>) => {
+    const customerOptions = customerToMutationOptions(props.customer);
+    const result = await Result.fromPromise(adminApp.grantProduct({
+      ...customerOptions,
+      productId: values.productId,
+      quantity: values.quantity,
+    }));
+
+    if (result.status === "ok") {
+      toast({ title: "Product granted" });
+      const product = props.products.find(([id]) => id === values.productId)?.[1];
+      if (product) {
+        runAsynchronously(Promise.all(
+          Object.keys(product.includedItems).map(itemId => refreshItem(adminApp, props.customer, itemId))
+        ));
+      }
+      return;
+    }
+
+    handleGrantProductError(result.error);
+    return "prevent-close";
+  };
+
+  return (
+    <SmartFormDialog
+      open={props.open}
+      onOpenChange={props.onOpenChange}
+      title={`Grant product to ${props.customer.label}`}
+      formSchema={formSchema}
+      okButton={{ label: "Grant product", props: { disabled: !hasProducts } }}
+      cancelButton
+      onSubmit={onSubmit}
+    />
+  );
+}
+
+type StackableQuantityFieldProps = {
+  control: any,
+  name: string,
+  label: string,
+  disabled: boolean,
+  products: ProductEntry[],
+};
+
+function StackableQuantityField(props: StackableQuantityFieldProps) {
+  const selectedProductId = useWatch({ control: props.control, name: "productId" });
+  const selectedProduct = props.products.find(([id]) => id === selectedProductId)?.[1];
+
+  if (!selectedProduct?.stackable) {
+    return null;
+  }
+
+  return (
+    <NumberField
+      control={props.control}
+      name={props.name as any}
+      label={props.label}
+      required
+      disabled={props.disabled}
+      placeholder="1"
+      min={1}
+    />
   );
 }
 
@@ -458,7 +623,6 @@ function AdjustItemQuantityDialog(props: QuantityDialogProps) {
   );
 }
 
-
 function customerToMutationOptions(customer: SelectedCustomer) {
   if (customer.type === "user") {
     return { userId: customer.id } as const;
@@ -481,6 +645,42 @@ async function refreshItem(
   } else {
     await adminApp.getItem({ customCustomerId: customer.id, itemId });
   }
+}
+
+function handleGrantProductError(error: unknown) {
+  if (error instanceof KnownErrors.ProductDoesNotExist) {
+    toast({ title: "Product not found", variant: "destructive" });
+    return;
+  }
+  if (error instanceof KnownErrors.ProductCustomerTypeDoesNotMatch) {
+    toast({
+      title: "Customer type mismatch",
+      description: "This product is not available for the selected customer type.",
+      variant: "destructive",
+    });
+    return;
+  }
+  if (error instanceof KnownErrors.ProductAlreadyGranted) {
+    toast({
+      title: "Product already granted",
+      description: "The customer already owns this product.",
+      variant: "destructive",
+    });
+    return;
+  }
+  if (error instanceof KnownErrors.UserNotFound) {
+    toast({ title: "User not found", variant: "destructive" });
+    return;
+  }
+  if (error instanceof KnownErrors.TeamNotFound) {
+    toast({ title: "Team not found", variant: "destructive" });
+    return;
+  }
+  if (error instanceof KnownErrors.CustomerDoesNotExist) {
+    toast({ title: "Customer not found", variant: "destructive" });
+    return;
+  }
+  toast({ title: "Unable to grant product", variant: "destructive" });
 }
 
 function handleItemQuantityError(error: unknown) {

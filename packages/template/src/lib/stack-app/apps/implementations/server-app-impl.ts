@@ -229,16 +229,16 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
 
   protected _createServerCustomer(userIdOrTeamId: string, type: "user" | "team"): Omit<Customer<true>, "id"> {
     const app = this;
-    const cache = type === "user" ? app._serverUserItemsCache : app._serverTeamItemsCache;
+    const itemsCache = type === "user" ? app._serverUserItemsCache : app._serverTeamItemsCache;
     const productsCache = type === "user" ? app._serverUserProductsCache : app._serverTeamProductsCache;
     return {
       async getItem(itemId: string) {
-        const result = Result.orThrow(await cache.getOrWait([userIdOrTeamId, itemId], "write-only"));
+        const result = Result.orThrow(await itemsCache.getOrWait([userIdOrTeamId, itemId], "write-only"));
         return app._serverItemFromCrud({ type, id: userIdOrTeamId }, result);
       },
       // IF_PLATFORM react-like
       useItem(itemId: string) {
-        const result = useAsyncCache(cache, [userIdOrTeamId, itemId] as const, `${type}.useItem()`);
+        const result = useAsyncCache(itemsCache, [userIdOrTeamId, itemId] as const, `${type}.useItem()`);
         return useMemo(() => app._serverItemFromCrud({ type, id: userIdOrTeamId }, result), [result]);
       },
       // END_PLATFORM

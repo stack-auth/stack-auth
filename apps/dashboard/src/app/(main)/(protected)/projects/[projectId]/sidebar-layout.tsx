@@ -35,13 +35,13 @@ import {
   Mail,
   Menu,
   Palette,
-  Package,
   Receipt,
   Settings,
   Settings2,
   ShieldEllipsis,
   User,
   Users,
+  UserRound,
   Webhook,
 } from "lucide-react";
 import { useTheme } from "next-themes";
@@ -255,10 +255,10 @@ const navigationItems: (Label | Item | Hidden)[] = [
     type: 'item',
   },
   {
-    name: "Items",
-    href: "/items",
-    regex: /^\/projects\/[^\/]+\/items$/,
-    icon: Package,
+    name: "Customers",
+    href: "/payments/customers",
+    regex: /^\/projects\/[^\/]+\/payments\/customers$/,
+    icon: UserRound,
     type: 'item',
   },
   {
