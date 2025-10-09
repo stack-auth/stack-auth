@@ -881,3 +881,105 @@ it("listing products should support cursor pagination", async ({ expect }) => {
   const combinedItems = [...firstPage.body.items, ...secondPage.body.items];
   expect(combinedItems).toEqual(allResponse.body.items);
 });
+
+it("should immediately cancel existing subscriptions when granting a product of same catalog", async ({ expect }) => {
+  await Project.createAndSwitch();
+  await Payments.setup();
+  await configureProduct({
+    testMode: true,
+    items: {
+      i1: {
+        displayName: "Item 1",
+      },
+    },
+    catalogs: {
+      grp: {
+        displayName: "Catalog",
+      },
+    },
+    products: {
+      base: {
+        displayName: "Base Plan",
+        customerType: "user",
+        serverOnly: false,
+        stackable: false,
+        catalogId: "grp",
+        prices: {
+          monthly: {
+            USD: "1000",
+            interval: [1, "month"],
+          },
+        },
+        includedItems: {
+          i1: {
+            quantity: 2,
+            repeat: "never",
+            expires: "when-purchase-expires",
+          },
+        },
+      },
+      premium: {
+        displayName: "Premium Plan",
+        customerType: "user",
+        serverOnly: false,
+        stackable: false,
+        catalogId: "grp",
+        prices: {
+          monthly: {
+            USD: "2000",
+            interval: [1, "month"],
+          },
+        },
+        includedItems: {
+          i1: {
+            quantity: 3,
+            repeat: "never",
+            expires: "when-purchase-expires",
+          },
+        },
+      },
+    },
+  });
+
+  const { userId } = await User.create();
+  const grantBaseResponse = await niceBackendFetch(`/api/v1/payments/products/user/${userId}`, {
+    method: "POST",
+    accessType: "server",
+    body: { product_id: "base" },
+  });
+  expect(grantBaseResponse).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": { "success": true },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+
+  const grantPremiumResponse = await niceBackendFetch(`/api/v1/payments/products/user/${userId}`, {
+    method: "POST",
+    accessType: "server",
+    body: { product_id: "premium" },
+  });
+  expect(grantPremiumResponse).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": { "success": true },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+
+  const itemQuantities = await niceBackendFetch(`/api/v1/payments/items/user/${userId}/i1`, {
+    accessType: "client",
+  });
+  expect(itemQuantities).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": {
+        "display_name": "Item 1",
+        "id": "i1",
+        "quantity": 3,
+      },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+});
