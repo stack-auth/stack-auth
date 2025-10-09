@@ -1,10 +1,10 @@
 import { ensureProductIdOrInlineProduct, getOwnedProductsForCustomer, grantProductToCustomer, productToInlineProduct } from "@/lib/payments";
-import { getStripeForAccount } from "@/lib/stripe";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { adaptSchema, clientOrHigherAuthTypeSchema, inlineProductSchema, productSchema, serverOrHigherAuthTypeSchema, yupArray, yupBoolean, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+import { adaptSchema, clientOrHigherAuthTypeSchema, inlineProductSchema, serverOrHigherAuthTypeSchema, yupBoolean, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
+import { customerProductsListResponseSchema } from "@stackframe/stack-shared/dist/interface/crud/products";
 
 export const GET = createSmartRouteHandler({
   metadata: {
@@ -29,19 +29,7 @@ export const GET = createSmartRouteHandler({
   response: yupObject({
     statusCode: yupNumber().oneOf([200]).defined(),
     bodyType: yupString().oneOf(["json"]).defined(),
-    body: yupObject({
-      items: yupArray(
-        yupObject({
-          id: yupString().nullable().defined(),
-          quantity: yupNumber().defined(),
-          product: inlineProductSchema.defined(),
-        }).defined(),
-      ).defined(),
-      is_paginated: yupBoolean().oneOf([true]).defined(),
-      pagination: yupObject({
-        next_cursor: yupString().nullable().defined(),
-      }).defined(),
-    }).defined(),
+    body: customerProductsListResponseSchema,
   }),
   handler: async ({ auth, params, query }) => {
     const prisma = await getPrismaClientForTenancy(auth.tenancy);
