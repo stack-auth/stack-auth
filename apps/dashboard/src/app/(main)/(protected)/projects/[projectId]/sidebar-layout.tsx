@@ -65,7 +65,7 @@ type Hidden = {
 type AppSection = {
   appId: AppId,
   name: string,
-  icon: LucideIcon,
+  icon: React.FunctionComponent<React.SVGProps<SVGSVGElement>>,
   items: {
     name: string,
     href: string,
