@@ -61,7 +61,7 @@ export default function MetricsPage(props: { toSetup: () => void }) {
     .filter((appId) => !config.apps.installed[appId].enabled);
 
   return (
-    <PageLayout fillWidth>
+    <PageLayout>
       <ErrorBoundary fallback={<div className='text-center text-sm text-red-500'>Error initializing globe visualization. Please try updating your browser or enabling WebGL.</div>}>
         <GlobeSection countryData={data.users_by_country} totalUsers={data.total_users} />
       </ErrorBoundary>

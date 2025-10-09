@@ -374,13 +374,7 @@ function HeaderBreadcrumb({
 
   if (mobile) {
     return (
-      <Breadcrumb>
-        <BreadcrumbList>
-          <BreadcrumbItem>
-            <Link href="/projects">Home</Link>
-          </BreadcrumbItem>
-        </BreadcrumbList>
-      </Breadcrumb>
+      <Link href="/projects"><Logo full height={24} /></Link>
     );
   } else {
     return (
@@ -430,7 +424,7 @@ export default function SidebarLayout(props: { projectId: string, children?: Rea
   return (
     <div className="w-full flex">
       {/* Left Sidebar */}
-      <div className="flex-col border-r min-w-[240px] h-screen sticky top-0 hidden md:flex bg-slate-200/20 dark:bg-black/20 z-[10] relative">
+      <div className="flex-col border-r min-w-[240px] h-screen sticky top-0 hidden lg:flex bg-slate-200/20 dark:bg-black/20 z-[10] relative">
         {/*
           If we put a backdrop blur on the sidebar div, it will create a new backdrop root,
           which would then make us unable to properly do a nested blur for the bottom elements
@@ -447,12 +441,12 @@ export default function SidebarLayout(props: { projectId: string, children?: Rea
       {/* Main Content Area */}
       <div className="flex flex-col flex-grow w-0">
         {/* Header */}
-        <div className="h-14 border-b flex items-center justify-between sticky top-0 backdrop-blur-md bg-slate-200/20 dark:bg-black/20 z-10 px-4 md:px-6">
-          <div className="hidden md:flex">
+        <div className="h-14 border-b flex items-center justify-between sticky top-0 backdrop-blur-md bg-slate-200/20 dark:bg-black/20 z-10 px-4 lg:px-6">
+          <div className="hidden lg:flex">
             <HeaderBreadcrumb projectId={props.projectId} />
           </div>
 
-          <div className="flex md:hidden items-center">
+          <div className="flex lg:hidden items-center">
             <Sheet onOpenChange={(open) => setSidebarOpen(open)} open={sidebarOpen}>
               <SheetTitle className="hidden">
                 Sidebar Menu
@@ -467,7 +461,7 @@ export default function SidebarLayout(props: { projectId: string, children?: Rea
               </SheetContent>
             </Sheet>
 
-            <div className="ml-4 flex md:hidden">
+            <div className="ml-4 flex lg:hidden">
               <HeaderBreadcrumb projectId={props.projectId} mobile />
             </div>
           </div>
