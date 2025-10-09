@@ -1,6 +1,6 @@
 import { WebAuthnError, startAuthentication, startRegistration } from "@simplewebauthn/browser";
 import { KnownErrors, StackClientInterface } from "@stackframe/stack-shared";
-import type { CustomerProductsListResponse } from "@stackframe/stack-shared/dist/interface/client-interface";
+import type { CustomerProductsListResponse } from "@stackframe/stack-shared/dist/interface/crud/products";
 import { ContactChannelsCrud } from "@stackframe/stack-shared/dist/interface/crud/contact-channels";
 import { CurrentUserCrud } from "@stackframe/stack-shared/dist/interface/crud/current-user";
 import { ItemCrud } from "@stackframe/stack-shared/dist/interface/crud/items";

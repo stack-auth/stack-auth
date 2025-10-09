@@ -30,7 +30,6 @@ import { TeamMemberProfilesCrud } from './crud/team-member-profiles';
 import { TeamPermissionsCrud } from './crud/team-permissions';
 import { TeamsCrud } from './crud/teams';
 import { CustomerProductsListResponse, ListCustomerProductsOptions } from './crud/products';
-export type { CustomerProductsListResponse, ListCustomerProductsOptions } from './crud/products';
 
 export type ClientInterfaceOptions = {
   clientVersion: string,
