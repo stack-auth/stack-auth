@@ -64,46 +64,33 @@ export default function MetricsPage(props: { toSetup: () => void }) {
       </ErrorBoundary>
 
 
-      {/* Installed Apps Section */}
+      {/* Apps */}
       <section className="mt-8">
-        <h2 className="text-xl font-bold">Installed Apps</h2>
-        {installedApps.length > 0 ? (
-          <div
-            className="grid gap-y-1 py-2 lg:py-8 justify-items-between"
-            style={{
-              gridTemplateColumns: `repeat(auto-fit,minmax(${appSquareWidthExpression},1fr))`,
-            }}
-          >
-            {installedApps.map(appId => (
+        <div
+          className="grid gap-y-1 py-2 lg:py-8 justify-items-between"
+          style={{
+            gridTemplateColumns: `repeat(auto-fit,minmax(${appSquareWidthExpression},1fr))`,
+          }}
+        >
+          <h2 className="text-xl font-bold col-span-full">Installed Apps</h2>
+          {installedApps.length > 0 ? (
+            installedApps.map(appId => (
               <AppSquare key={appId} appId={appId} />
-            ))}
-          </div>
-        ) : (
-          <p className="text-gray-500 dark:text-gray-400">No apps installed yet.</p>
-        )}
-      </section>
-
-
-      {/* Suggested Apps Section */}
-      {suggestedApps.length > 0 && (
-        <section className="mt-4 mb-16">
-          <h2 className="text-xl font-bold">Suggested Apps</h2>
-          {suggestedApps.length > 0 ? (
-            <div
-              className="grid gap-y-1 py-2 lg:py-8 justify-items-between"
-              style={{
-                gridTemplateColumns: `repeat(auto-fit,minmax(${appSquareWidthExpression},1fr))`,
-              }}
-            >
-              {suggestedApps.map(appId => (
-                <AppSquare key={appId} appId={appId} />
-              ))}
-            </div>
+            ))
           ) : (
-            <p className="text-gray-500 dark:text-gray-400">No apps installed yet.</p>
+            <p className="text-gray-500 dark:text-gray-400 col-span-full">No apps installed yet.</p>
           )}
-        </section>
-      )}
+
+          <h2 className="text-xl font-bold col-span-full">Suggested Apps</h2>
+          {suggestedApps.length > 0 ? (
+            suggestedApps.map(appId => (
+              <AppSquare key={appId} appId={appId} />
+            ))
+          ) : (
+            <p className="text-gray-500 dark:text-gray-400 col-span-full">No apps installed yet.</p>
+          )}
+        </div>
+      </section>
 
       <div className='grid gap-4 lg:grid-cols-2'>
         <LineChartDisplay
