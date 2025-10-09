@@ -9,10 +9,11 @@ import { getPublicEnvVar } from '@/lib/env';
 import { cn } from "@/lib/utils";
 // import { UserButton, useUser } from "@stackframe/stack";
 import { useRouter } from "@/components/router";
-import { UserButton } from "@stackframe/stack";
-import type { AppId } from "@stackframe/stack-shared/dist/apps/apps-config";
+import { ALL_APPS_FRONTEND, AppFrontend, getAppPath, getItemPath, testAppPath, testItemPath } from "@/lib/apps-frontend";
+import { UserButton, useUser } from "@stackframe/stack";
+import { ALL_APPS, type AppId } from "@stackframe/stack-shared/dist/apps/apps-config";
 import { useHover } from "@stackframe/stack-shared/dist/hooks/use-hover";
-import { getOrUndefined } from "@stackframe/stack-shared/dist/utils/objects";
+import { typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -28,24 +29,10 @@ import {
   Blocks,
   ChevronDown,
   ChevronRight,
-  CreditCard,
-  Database,
-  FilePen,
   Globe,
-  LayoutTemplate,
-  LockKeyhole,
   LucideIcon,
-  Mail,
   Menu,
-  Palette,
-  Receipt,
-  Settings,
-  Settings2,
-  ShieldEllipsis,
-  User,
-  Users,
-  Webhook,
-  Workflow
+  Settings
 } from "lucide-react";
 import { useTheme } from "next-themes";
 import { usePathname } from "next/navigation";
@@ -82,8 +69,7 @@ type AppSection = {
   items: {
     name: string,
     href: string,
-    icon?: LucideIcon,
-    regex: RegExp,
+    match: (fullUrl: URL) => boolean,
   }[],
 };
 
@@ -95,81 +81,13 @@ type BottomItem = {
   external?: boolean,
 };
 
-// App-based navigation structure
-const appSections: AppSection[] = [
-  {
-    appId: 'authentication',
-    name: 'Authentication',
-    icon: ShieldEllipsis,
-    items: [
-      { name: 'Users', href: '/users', icon: User, regex: /^\/projects\/[^\/]+\/users$/ },
-      { name: 'Auth Methods', href: '/auth-methods', icon: ShieldEllipsis, regex: /^\/projects\/[^\/]+\/auth-methods$/ },
-      { name: 'Project Permissions', href: '/project-permissions', icon: LockKeyhole, regex: /^\/projects\/[^\/]+\/project-permissions$/ },
-    ]
-  },
-  {
-    appId: 'teams',
-    name: 'Teams',
-    icon: Users,
-    items: [
-      { name: 'Teams', href: '/teams', icon: Users, regex: /^\/projects\/[^\/]+\/teams$/ },
-      { name: 'Team Permissions', href: '/team-permissions', icon: LockKeyhole, regex: /^\/projects\/[^\/]+\/team-permissions$/ },
-      { name: 'Team Settings', href: '/team-settings', icon: Settings2, regex: /^\/projects\/[^\/]+\/team-settings$/ },
-    ]
-  },
-  {
-    appId: 'emails',
-    name: 'Emails',
-    icon: Mail,
-    items: [
-      { name: 'Emails', href: '/emails', icon: Mail, regex: /^\/projects\/[^\/]+\/emails$/ },
-      { name: 'Drafts', href: '/email-drafts', icon: FilePen, regex: /^\/projects\/[^\/]+\/email-drafts$/ },
-      { name: 'Templates', href: '/email-templates', icon: LayoutTemplate, regex: /^\/projects\/[^\/]+\/email-templates$/ },
-      { name: 'Themes', href: '/email-themes', icon: Palette, regex: /^\/projects\/[^\/]+\/email-themes$/ },
-    ]
-  },
-  {
-    appId: 'payments',
-    name: 'Payments',
-    icon: CreditCard,
-    items: [
-      { name: 'Offers', href: '/payments/offers', icon: CreditCard, regex: /^\/projects\/[^\/]+\/payments\/offers$/ },
-      { name: 'Transactions', href: '/payments/transactions', icon: Receipt, regex: /^\/projects\/[^\/]+\/payments\/transactions$/ },
-    ]
-  },
-  {
-    appId: 'data-vault',
-    name: 'Data Vault',
-    icon: Database,
-    items: [
-      { name: 'Stores', href: '/data-vault/stores', icon: Database, regex: /^\/projects\/[^\/]+\/data-vault\/stores$/ },
-    ]
-  },
-  {
-    appId: 'workflows',
-    name: 'Workflows',
-    icon: Workflow,
-    items: [
-      { name: 'Workflows', href: '/workflows', icon: Workflow, regex: /^\/projects\/[^\/]+\/workflows$/ },
-    ]
-  },
-  {
-    appId: 'webhooks',
-    name: 'Webhooks',
-    icon: Webhook,
-    items: [
-      { name: 'Webhooks', href: '/webhooks', icon: Webhook, regex: /^\/projects\/[^\/]+\/webhooks$/ },
-    ]
-  },
-];
-
 // Bottom navigation items (always visible)
 const bottomItems: BottomItem[] = [
   {
     name: 'Explore Apps',
     href: '/apps',
     icon: Blocks,
-    regex: /^\/projects\/[^\/]+\/apps$/,
+    regex: /^\/projects\/[^\/]+\/apps(\/.*)?$/,
   },
   {
     name: 'Project Settings',
@@ -187,248 +105,6 @@ const overviewItem: Item = {
   icon: Globe,
   type: 'item'
 };
-
-// Hidden breadcrumb items (for dynamic routes)
-const hiddenBreadcrumbItems: Hidden[] = [
-  {
-    name: (pathname: string) => {
-      const match = pathname.match(/^\/projects\/[^\/]+\/users\/([^\/]+)$/);
-      let item;
-      let href;
-      if (match) {
-        item = <UserBreadcrumbItem key='user-display-name' userId={match[1]} />;
-        href = `/users/${match[1]}`;
-      } else {
-        item = "Users";
-        href = "";
-      }
-      return [
-        { item: "Users", href: "/users" },
-        { item, href },
-      ];
-    },
-    regex: /^\/projects\/[^\/]+\/users\/[^\/]+$/,
-    type: 'hidden',
-  },
-  {
-    name: (pathname: string) => {
-      const match = pathname.match(/^\/projects\/[^\/]+\/teams\/([^\/]+)$/);
-      let item;
-      let href;
-      if (match) {
-        item = <TeamMemberBreadcrumbItem key='team-display-name' teamId={match[1]} />;
-        href = `/teams/${match[1]}`;
-      } else {
-        item = "Members";
-        href = "";
-      }
-      return [
-        { item: "Teams", href: "/teams" },
-        { item, href },
-      ];
-    },
-    regex: /^\/projects\/[^\/]+\/teams\/[^\/]+$/,
-    type: "hidden",
-  },
-  {
-    name: (pathname: string) => {
-      const match = pathname.match(/^\/projects\/[^\/]+\/email-drafts\/([^\/]+)$/);
-      let item;
-      let href;
-      if (match) {
-        item = <DraftBreadcrumbItem key='draft-display-name' draftId={match[1]} />;
-        href = `/email-drafts/${match[1]}`;
-      } else {
-        item = "Draft";
-        href = "";
-      }
-      return [
-        { item: "Drafts", href: "/email-drafts" },
-        { item, href },
-      ];
-    },
-    regex: /^\/projects\/[^\/]+\/email-drafts\/[^\/]+$/,
-    type: 'hidden',
-  },
-  {
-    name: (pathname: string) => {
-      const match = pathname.match(/^\/projects\/[^\/]+\/email-themes\/([^\/]+)$/);
-      let item;
-      let href;
-      if (match) {
-        item = <ThemeBreadcrumbItem key='theme-display-name' themeId={match[1]} />;
-        href = `/email-themes/${match[1]}`;
-      } else {
-        item = "Theme";
-        href = "";
-      }
-      return [
-        { item: "Themes", href: "/email-themes" },
-        { item, href },
-      ];
-    },
-    regex: /^\/projects\/[^\/]+\/email-themes\/[^\/]+$/,
-    type: 'hidden',
-  },
-  {
-    name: (pathname: string) => {
-      const match = pathname.match(/^\/projects\/[^\/]+\/email-templates\/([^\/]+)$/);
-      let item;
-      let href;
-      if (match) {
-        item = <TemplateBreadcrumbItem key='template-display-name' templateId={match[1]} />;
-        href = `/email-templates/${match[1]}`;
-      } else {
-        item = "Templates";
-        href = "";
-      }
-      return [
-        { item: "Templates", href: "/email-templates" },
-        { item, href },
-      ];
-    },
-    regex: /^\/projects\/[^\/]+\/email-templates\/[^\/]+$/,
-    type: 'hidden',
-  },
-  {
-    name: (pathname: string) => {
-      const match = pathname.match(/^\/projects\/[^\/]+\/webhooks\/([^\/]+)$/);
-      let item;
-      let href;
-      if (match) {
-        item = <WebhookBreadcrumbItem key='webhook-display-name' endpointId={match[1]} />;
-        href = `/webhooks/${match[1]}`;
-      } else {
-        item = "Endpoint";
-        href = "";
-      }
-      return [
-        { item: "Webhooks", href: "/webhooks" },
-        { item, href },
-      ];
-    },
-    regex: /^\/projects\/[^\/]+\/webhooks\/[^\/]+$/,
-    type: 'hidden',
-  },
-  {
-    name: (pathname: string) => {
-      const match = pathname.match(/^\/projects\/[^\/]+\/data-vault\/stores\/([^\/]+)$/);
-      let item;
-      let href;
-      if (match) {
-        item = <StoreBreadcrumbItem key='store-display-name' storeId={match[1]} />;
-        href = `/data-vault/stores/${match[1]}`;
-      } else {
-        item = "Store";
-        href = "";
-      }
-      return [
-        { item: "Stores", href: "/data-vault/stores" },
-        { item, href },
-      ];
-    },
-    regex: /^\/projects\/[^\/]+\/data-vault\/stores\/[^\/]+$/,
-    type: 'hidden',
-  },
-  {
-    name: (pathname: string) => {
-      const match = pathname.match(/^\/projects\/[^\/]+\/workflows\/([^\/]+)$/);
-      let item;
-      let href;
-      if (match) {
-        item = <WorkflowBreadcrumbItem key='workflow-display-name' workflowId={match[1]} />;
-        href = `/workflows/${match[1]}`;
-      } else {
-        item = "Workflow";
-        href = "";
-      }
-      return [
-        { item: "Workflows", href: "/workflows" },
-        { item, href },
-      ];
-    },
-    regex: /^\/projects\/[^\/]+\/workflows\/[^\/]+$/,
-    type: 'hidden',
-  },
-];
-
-function TeamMemberBreadcrumbItem(props: { teamId: string }) {
-  const stackAdminApp = useAdminApp();
-  const team = stackAdminApp.useTeam(props.teamId);
-
-  if (!team) {
-    return null;
-  } else {
-    return team.displayName;
-  }
-}
-
-function UserBreadcrumbItem(props: { userId: string }) {
-  const stackAdminApp = useAdminApp();
-  const user = stackAdminApp.useUser(props.userId);
-
-  if (!user) {
-    return null;
-  } else {
-    return user.displayName ?? user.primaryEmail ?? user.id;
-  }
-}
-
-function ThemeBreadcrumbItem(props: { themeId: string }) {
-  const stackAdminApp = useAdminApp();
-  const theme = stackAdminApp.useEmailTheme(props.themeId);
-  return theme.displayName;
-}
-
-function TemplateBreadcrumbItem(props: { templateId: string }) {
-  const stackAdminApp = useAdminApp();
-  const templates = stackAdminApp.useEmailTemplates();
-  const template = templates.find((template) => template.id === props.templateId);
-  if (!template) {
-    return null;
-  }
-  return template.displayName;
-}
-
-function DraftBreadcrumbItem(props: { draftId: string }) {
-  const stackAdminApp = useAdminApp();
-  const drafts = stackAdminApp.useEmailDrafts();
-  const draft = drafts.find((d) => d.id === props.draftId);
-  if (!draft) {
-    return null;
-  }
-  return draft.displayName;
-}
-
-function WebhookBreadcrumbItem(props: { endpointId: string }) {
-  const stackAdminApp = useAdminApp();
-  const config = stackAdminApp.useProject().useConfig();
-  const webhook = config.webhooks.find((w: any) => w.id === props.endpointId);
-  if (!webhook) {
-    return null;
-  }
-  return webhook.displayName;
-}
-
-function StoreBreadcrumbItem(props: { storeId: string }) {
-  const stackAdminApp = useAdminApp();
-  const stores = stackAdminApp.useDataVaultStores();
-  const store = stores.find((s) => s.id === props.storeId);
-  if (!store) {
-    return null;
-  }
-  return store.displayName;
-}
-
-function WorkflowBreadcrumbItem(props: { workflowId: string }) {
-  const stackAdminApp = useAdminApp();
-  const workflows = stackAdminApp.useWorkflows();
-  const workflow = workflows.find((w) => w.id === props.workflowId);
-  if (!workflow) {
-    return null;
-  }
-  return workflow.displayName;
-}
 
 function NavItem({
   item,
@@ -455,11 +131,12 @@ function NavItem({
 
   const subItemsRef = useRef<any>(null);
 
-  console.log("rerendering");
-
   // If this is a collapsible section
   const IconComponent = item.icon;
   const ButtonComponent: any = isSection ? "button" : Link;
+
+  const isActive = "type" in item && item.regex.test(pathname);
+  console.log("isActive", { item, isActive, pathname });
 
   return (
     <div className={cn(
@@ -472,6 +149,7 @@ function NavItem({
         className={cn(
           "flex items-center w-full py-1.5 px-4 text-left",
           isHovered && "bg-foreground/5",
+          isActive && "bg-foreground/5",
           isSection && "cursor-default"
         )}
       >
@@ -501,7 +179,7 @@ function NavItem({
         >
           {item.items.map((item) => {
             return (
-              <NavSubItem key={item.href} item={item} href={"/projects/" + projectId + item.href} onClick={onClick} />
+              <NavSubItem key={item.href} item={item} href={item.href} onClick={onClick} />
             );
           })}
         </div>
@@ -515,12 +193,13 @@ function NavSubItem({
   href,
   onClick,
 }: {
-  item: { name: string, href: string, icon?: LucideIcon },
+  item: AppSection["items"][number],
   href: string,
   onClick?: () => void,
 }) {
   const ref = useRef<any>(null);
   const hover = useHover(ref);
+  const isActive = item.match(new URL(window.location.href));
   return (
     <Link
       ref={ref}
@@ -528,6 +207,7 @@ function NavSubItem({
       onClick={onClick}
       className={cn(
         "flex items-center pl-10 pr-2 py-1 text-sm text-muted-foreground",
+        isActive && "bg-foreground/5 text-foreground",
         hover && "bg-foreground/5 text-foreground"
       )}
     >
@@ -545,8 +225,7 @@ function SidebarContent({ projectId, onNavigate }: { projectId: string, onNaviga
   const router = useRouter();
 
   // Get enabled apps with error handling and fallback
-  const enabledApps = config.apps.installed;
-  const enabledAppSections = appSections.filter((section) => getOrUndefined(enabledApps, section.appId)?.enabled);
+  const enabledApps = typedEntries(config.apps.installed).filter(([_, appConfig]) => appConfig.enabled).map(([appId]) => appId);
 
   const toggleSection = (appId: string) => {
     setExpandedSections(prev => {
@@ -580,16 +259,30 @@ function SidebarContent({ projectId, onNavigate }: { projectId: string, onNaviga
           My Apps
         </div>
         {/* App Sections */}
-        {enabledAppSections.map((section) => (
-          <NavItem
-            key={section.appId}
-            item={section}
-            projectId={projectId}
-            isExpanded={expandedSections.has(section.appId)}
-            onToggle={() => toggleSection(section.appId)}
-            onNavigate={onNavigate}
-          />
-        ))}
+        {enabledApps.map((appId) => {
+          const app = ALL_APPS[appId];
+          const appFrontend = ALL_APPS_FRONTEND[appId];
+          return (
+            <NavItem
+              key={appId}
+              item={{
+                name: app.displayName,
+                appId,
+                items: appFrontend.navigationItems.map((item) => ({
+                  name: item.displayName,
+                  href: getItemPath(projectId, appFrontend, item),
+                  match: (fullUrl: URL) => testItemPath(projectId, appFrontend, item, fullUrl),
+                })),
+                href: getAppPath(projectId, appFrontend),
+                icon: appFrontend.icon,
+              }}
+              projectId={projectId}
+              isExpanded={expandedSections.has(appId)}
+              onToggle={() => toggleSection(appId)}
+              onNavigate={onNavigate}
+            />
+          );
+        })}
 
         <div className="flex-grow" />
 
@@ -623,46 +316,18 @@ function HeaderBreadcrumb({
   mobile?: boolean,
 }) {
   const pathname = usePathname();
-  // const user = useUser({ or: 'redirect', projectIdMustMatch: "internal" });
-  // const projects = user.useOwnedProjects();
-  const projects: any[] = [];
+
+  const user = useUser({ or: 'redirect', projectIdMustMatch: "internal" });
+  const projects = user.useOwnedProjects();
 
   const breadcrumbItems: BreadcrumbItem[] = useMemo(() => {
     try {
-      // Check hidden breadcrumb items first
-      const hiddenItem = hiddenBreadcrumbItems.find((item) => item.regex.test(pathname));
-      if (hiddenItem) {
-        const name = hiddenItem.name;
-        let results: BreadcrumbItem[];
-        if (typeof name === 'function') {
-          results = name(pathname);
-        } else {
-          results = [];
-        }
-        return results.map((item) => ({
-          item: item.item,
-          href: `/projects/${projectId}${item.href}`,
-        }));
-      }
-
       // Check overview item
       if (overviewItem.regex.test(pathname)) {
         return [{
           item: overviewItem.name,
           href: `/projects/${projectId}${overviewItem.href}`,
         }];
-      }
-
-      // Check app sections
-      for (const section of appSections) {
-        for (const item of section.items) {
-          if (item.regex.test(pathname)) {
-            return [{
-              item: item.name,
-              href: `/projects/${projectId}${item.href}`,
-            }];
-          }
-        }
       }
 
       // Check bottom items
@@ -672,6 +337,29 @@ function HeaderBreadcrumb({
             item: item.name,
             href: item.external ? item.href : `/projects/${projectId}${item.href}`,
           }];
+        }
+      }
+
+      // Check apps
+      for (const [appId, app] of typedEntries(ALL_APPS)) {
+        const appFrontend: AppFrontend = ALL_APPS_FRONTEND[appId];
+        if (testAppPath(projectId, appFrontend, new URL(pathname, `https://example.com`))) {
+          // TODO app.getBreadcrumbItems returns a relative href to the project, so we need to convert it first
+          const appBreadcrumbs = appFrontend.getBreadcrumbItems?.(pathname) ?? [{
+            item: app.displayName,
+            href: getAppPath(projectId, appFrontend),
+          }];
+          for (const item of appFrontend.navigationItems) {
+            if (testItemPath(projectId, appFrontend, item, new URL(pathname, `https://example.com`))) {
+              // TODO item.getBreadcrumbItems returns a relative href to the app, so we need to convert it first
+              const itemBreadcrumbs = item.getBreadcrumbItems?.(pathname) ?? [{
+                item: item.displayName,
+                href: getItemPath(projectId, appFrontend, item),
+              }];
+              return [...appBreadcrumbs, ...itemBreadcrumbs];
+            }
+          }
+          return [...appBreadcrumbs];
         }
       }
 

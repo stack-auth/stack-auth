@@ -1,17 +1,25 @@
 import { AppId } from "@stackframe/stack-shared/dist/apps/apps-config";
-import { getRelativePart } from "@stackframe/stack-shared/dist/utils/urls";
+import { getRelativePart, isChildUrl } from "@stackframe/stack-shared/dist/utils/urls";
 import { LucideIcon, Newspaper, ShieldEllipsis, Users } from "lucide-react";
 import LogoBright from "../../public/logo-bright.svg";
 import OpenGraphImage from "../../public/open-graph-image.png";
 
-type AppFrontend = {
+export type AppFrontend = {
   icon: LucideIcon,
   href: string,
-  matchPath?: (pathname: string) => boolean,
+  matchPath?: (relativePart: string) => boolean,
+  getBreadcrumbItems?: (relativePart: string) => {
+    item: string,
+    href: string,
+  }[] | null,
   navigationItems: {
     displayName: string,
     href: string,
-    matchPath?: (pathname: string) => boolean,
+    matchPath?: (relativePart: string) => boolean,
+    getBreadcrumbItems?: (relativePart: string) => {
+      item: string,
+      href: string,
+    }[] | null,
   }[],
   screenshots: string[],
   storeDescription: React.ReactNode,
@@ -27,6 +35,23 @@ export function getItemPath(projectId: string, appFrontend: AppFrontend, item: A
   return getRelativePart(url);
 }
 
+export function testAppPath(projectId: string, appFrontend: AppFrontend, fullUrl: URL) {
+  if (appFrontend.matchPath) return appFrontend.matchPath(getRelativePart(fullUrl));
+
+  for (const item of appFrontend.navigationItems) {
+    if (testItemPath(projectId, appFrontend, item, fullUrl)) return true;
+  }
+  const url = new URL(appFrontend.href, `https://example.com/projects/${projectId}/`);
+  return isChildUrl(url, fullUrl);
+}
+
+export function testItemPath(projectId: string, appFrontend: AppFrontend, item: AppFrontend["navigationItems"][number], fullUrl: URL) {
+  if (item.matchPath) return item.matchPath(getRelativePart(fullUrl));
+
+  const url = new URL(getItemPath(projectId, appFrontend, item), fullUrl);
+  return isChildUrl(url, fullUrl);
+}
+
 export const ALL_APPS_FRONTEND = {
   authentication: {
     icon: ShieldEllipsis,
@@ -40,6 +65,7 @@ export const ALL_APPS_FRONTEND = {
       LogoBright,
       OpenGraphImage,
     ],
+    getBreadcrumbItems: (relativePart: string) => [],
     storeDescription: <></>,
   },
   teams: {
