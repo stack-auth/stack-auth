@@ -3,8 +3,7 @@
 import { AppIcon } from "@/components/app-square";
 import { ALL_APPS_FRONTEND } from "@/lib/apps-frontend";
 import { ALL_APPS, ALL_APP_TAGS, AppId } from "@stackframe/stack-shared/dist/apps/apps-config";
-import { Button, ScrollArea } from "@stackframe/stack-ui";
-import { Badge } from "lucide-react";
+import { Badge, Button, ScrollArea } from "@stackframe/stack-ui";
 import Image from "next/image";
 import { FunctionComponent } from "react";
 
@@ -29,9 +28,9 @@ export function AppStoreEntry({
           <div className="flex-1">
             <TitleComponent className="text-2xl font-bold mb-1">{app.displayName}</TitleComponent>
             <p className="text-gray-600 dark:text-gray-400 mb-2">{app.subtitle}</p>
-            <div className="flex items-center gap-4 text-sm text-gray-500">
+            <div className="flex items-center gap-2 text-sm text-gray-500">
               {app.tags.map((tag) => (
-                <Badge key={tag}>{ALL_APP_TAGS[tag].displayName}</Badge>
+                <Badge key={tag} variant={tag === "expert" ? "destructive" : "outline"} >{ALL_APP_TAGS[tag].displayName}</Badge>
               ))}
             </div>
           </div>
@@ -78,6 +77,16 @@ export function AppStoreEntry({
       {/* Long description */}
       <ScrollArea className="flex-1 p-6">
         <div className="prose dark:prose-invert max-w-none">
+          {app.stage === "alpha" && (
+            <p className="text-red-500 dark:text-red-400 bg-red-500/10 p-2 rounded-md text-sm text-center">
+              IMPORTANT: This app is in alpha. It is still under development, and may break in unexpected ways.
+            </p>
+          )}
+          {app.stage === "beta" && (
+            <p className="text-yellow-700 dark:text-yellow-400 bg-yellow-500/10 p-2 rounded-md text-sm text-center">
+              IMPORTANT: This app is in beta. You may still experience some bugs and issues.
+            </p>
+          )}
           {appFrontend.storeDescription || <p>No additional information available.</p>}
         </div>
       </ScrollArea>

@@ -487,7 +487,7 @@ export default function SidebarLayout(props: { projectId: string, children?: Rea
       </div>
 
       {/* Stack Companion - Sticky positioned like left sidebar */}
-      <div className="h-screen sticky top-0 backdrop-blur-md bg-slate-200/20 dark:bg-black/20 z-[10]">
+      <div className="hidden sm:block h-screen sticky top-0 backdrop-blur-md bg-slate-200/20 dark:bg-black/20 z-[10]">
         <StackCompanion onExpandedChange={setCompanionExpanded} />
       </div>
     </div>

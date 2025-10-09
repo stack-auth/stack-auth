@@ -6,7 +6,7 @@ import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger, cn } from "@stackframe/stack-ui";
 import { Link } from "./link";
 
-export const appSquareWidthExpression = "max(min(10vw,180px),128px)";
+export const appSquareWidthExpression = "max(min(11vw,180px),80px)";
 export const appSquarePaddingExpression = "max(min(1vw,1.5rem),0.25rem)";
 
 export function AppIcon({ appId, className, disabled, style }: {
@@ -37,14 +37,19 @@ export function AppIcon({ appId, className, disabled, style }: {
   return <div style={style} className={cn(
     "relative w-24 h-24 rounded-[24.154%] overflow-hidden select-none",
     !disabled && "bg-[linear-gradient(45deg,#dde,#fff)] dark:bg-[linear-gradient(45deg,#222,#666)]",
-    disabled && 'border border-gray-400/50 border-dashed border-4 bg-slate-200/20',
+    disabled && 'border border-gray-400/70 border-dashed border-4',
     className,
   )}>
     <div className={cn(
       "w-full h-full isolate relative",
     )}>
       {appFrontend.logo ? (
-        <div className="absolute inset-[20%] w-[60%] h-[60%] rounded-[24.154%] flex items-center justify-center border">
+        <div
+          className="absolute inset-[20%] w-[60%] h-[60%] rounded-[24.154%] flex items-center justify-center border"
+          style={{
+            opacity: disabled ? 0.6 : 1,
+          }}
+        >
           <appFrontend.logo className="rounded-[24.154%]" />
         </div>
       ) : (
@@ -74,12 +79,12 @@ export function AppIcon({ appId, className, disabled, style }: {
         </>
       )}
     </div>
-    <div className="absolute top-0 left-[-100%] right-0 flex flex-col gap-1 [transform:_rotate(-45deg)_translateY(32px)] [transform-origin:top_center]">
+    <div className="absolute top-0 left-[-100%] right-0 flex flex-col gap-1 [transform:_rotate(-45deg)_translateY(24px)] [transform-origin:top_center]">
       {app.stage !== "stable" && (
         <div className={cn(
           "h-4 uppercase text-xs font-bold font-mono tracking-widest text-center",
           disabled
-            ? "bg-gray-400/60 text-white"
+            ? "bg-gray-400/80 text-white"
             : app.stage === "alpha"
               ? "bg-red-500 text-white"
               : "bg-yellow-600 text-white"
@@ -140,10 +145,10 @@ export function AppSquare({ appId }: {
               )}
             />
             <span className={cn(
-              "text-xs sm:text-sm text-center max-w-20 sm:max-w-28 md:max-w-32 lg:max-w-36 truncate select-none",
+              "text-xs lg:text-sm text-center max-w-20 sm:max-w-28 md:max-w-32 lg:max-w-36 truncate select-none",
               isEnabled
                 ? 'text-gray-700 dark:text-gray-300'
-                : 'text-gray-500 dark:text-gray-500'
+                : 'text-gray-600 dark:text-gray-400'
             )}
             >
               {app.displayName}

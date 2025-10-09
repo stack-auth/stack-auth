@@ -1,13 +1,16 @@
 'use client';
 
-import { AppSquare, appSquareWidthExpression } from "@/components/app-square";
+import { AppSquare, appSquarePaddingExpression, appSquareWidthExpression } from "@/components/app-square";
+import { Link } from "@/components/link";
 import { useRouter } from "@/components/router";
 import { ErrorBoundary } from '@sentry/nextjs';
 import { UserAvatar } from '@stackframe/stack';
 import { ALL_APPS, AppId } from "@stackframe/stack-shared/dist/apps/apps-config";
 import { fromNow } from '@stackframe/stack-shared/dist/utils/dates';
 import { typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
-import { Card, CardContent, CardHeader, CardTitle, Table, TableBody, TableCell, TableRow, Typography } from '@stackframe/stack-ui';
+import { urlString } from "@stackframe/stack-shared/dist/utils/urls";
+import { Card, CardContent, CardHeader, CardTitle, Table, TableBody, TableCell, TableRow, Typography, cn } from '@stackframe/stack-ui';
+import { ArrowRight } from "lucide-react";
 import { useState } from 'react';
 import { PageLayout } from "../page-layout";
 import { useAdminApp } from '../use-admin-app';
@@ -65,14 +68,14 @@ export default function MetricsPage(props: { toSetup: () => void }) {
 
 
       {/* Apps */}
-      <section className="mt-8">
+      <section className="mb-8">
         <div
-          className="grid gap-y-1 py-2 lg:py-8 justify-items-between"
+          className="grid gap-y-1 gap-x-1.5 justify-items-between"
           style={{
             gridTemplateColumns: `repeat(auto-fit,minmax(${appSquareWidthExpression},1fr))`,
           }}
         >
-          <h2 className="text-xl font-bold col-span-full">Installed Apps</h2>
+          <h2 className="text-xl font-bold col-span-full mb-4">Installed Apps</h2>
           {installedApps.length > 0 ? (
             installedApps.map(appId => (
               <AppSquare key={appId} appId={appId} />
@@ -81,13 +84,34 @@ export default function MetricsPage(props: { toSetup: () => void }) {
             <p className="text-gray-500 dark:text-gray-400 col-span-full">No apps installed yet.</p>
           )}
 
-          <h2 className="text-xl font-bold col-span-full">Suggested Apps</h2>
-          {suggestedApps.length > 0 ? (
-            suggestedApps.map(appId => (
+          <h2 className="text-xl font-bold col-span-full mb-4 mt-4">Suggested Apps</h2>
+          {suggestedApps.length > 0 ? (<>
+            {suggestedApps.map(appId => (
               <AppSquare key={appId} appId={appId} />
-            ))
+            ))}
+            <div className="flex flex-col items-center">
+              <Link
+                href={urlString`/projects/${adminApp.projectId}/apps`}
+                className={cn(
+                "flex-grow flex flex-col items-center gap-1 sm:gap-2 transition-all duration-200 cursor-pointer group select-none",
+                "p-2 rounded-lg",
+                "hover:bg-foreground/15 hover:duration-0",
+                "text-gray-600 dark:text-gray-400",
+              )}
+                style={{
+                  padding: appSquarePaddingExpression,
+                  width: appSquareWidthExpression,
+                }}
+              >
+                <div className="flex-grow" />
+                <ArrowRight className="w-16 h-16" strokeWidth={1.5} />
+                <div className="flex-grow" />
+                <span className="text-xs lg:text-sm">Explore more</span>
+              </Link>
+            </div>
+          </>
           ) : (
-            <p className="text-gray-500 dark:text-gray-400 col-span-full">No apps installed yet.</p>
+            <p className="text-gray-500 dark:text-gray-400 col-span-full">No app suggestions.</p>
           )}
         </div>
       </section>
