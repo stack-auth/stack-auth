@@ -1,5 +1,6 @@
 import { WebAuthnError, startAuthentication, startRegistration } from "@simplewebauthn/browser";
 import { KnownErrors, StackClientInterface } from "@stackframe/stack-shared";
+import type { CustomerProductsListResponse } from "@stackframe/stack-shared/dist/interface/client-interface";
 import { ContactChannelsCrud } from "@stackframe/stack-shared/dist/interface/crud/contact-channels";
 import { CurrentUserCrud } from "@stackframe/stack-shared/dist/interface/crud/current-user";
 import { ItemCrud } from "@stackframe/stack-shared/dist/interface/crud/items";
@@ -39,7 +40,7 @@ import { ApiKey, ApiKeyCreationOptions, ApiKeyUpdateOptions, apiKeyCreationOptio
 import { ConvexCtx, GetCurrentPartialUserOptions, GetCurrentUserOptions, HandlerUrls, OAuthScopesOnSignIn, RedirectMethod, RedirectToOptions, RequestLike, TokenStoreInit, stackAppInternalsSymbol } from "../../common";
 import { OAuthConnection } from "../../connected-accounts";
 import { ContactChannel, ContactChannelCreateOptions, ContactChannelUpdateOptions, contactChannelCreateOptionsToCrud, contactChannelUpdateOptionsToCrud } from "../../contact-channels";
-import { Customer, Item } from "../../customers";
+import { Customer, CustomerProductsList, CustomerProductsListOptions, CustomerProductsRequestOptions, Item } from "../../customers";
 import { NotificationCategory } from "../../notification-categories";
 import { TeamPermission } from "../../permissions";
 import { AdminOwnedProject, AdminProjectUpdateOptions, Project, adminProjectCreateOptionsToCrud } from "../../projects";
@@ -226,6 +227,39 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
   private readonly _customItemCache = createCacheBySession<[string, string], ItemCrud['Client']['Read']>(
     async (session, [customCustomerId, itemId]) => {
       return await this._interface.getItem({ customCustomerId, itemId }, session);
+    }
+  );
+
+  private readonly _userProductsCache = createCacheBySession<[string, string | null, number | null], CustomerProductsListResponse>(
+    async (session, [userId, cursor, limit]) => {
+      return await this._interface.listProducts({
+        customer_type: "user",
+        customer_id: userId,
+        cursor: cursor ?? undefined,
+        limit: limit ?? undefined,
+      }, session);
+    }
+  );
+
+  private readonly _teamProductsCache = createCacheBySession<[string, string | null, number | null], CustomerProductsListResponse>(
+    async (session, [teamId, cursor, limit]) => {
+      return await this._interface.listProducts({
+        customer_type: "team",
+        customer_id: teamId,
+        cursor: cursor ?? undefined,
+        limit: limit ?? undefined,
+      }, session);
+    }
+  );
+
+  private readonly _customProductsCache = createCacheBySession<[string, string | null, number | null], CustomerProductsListResponse>(
+    async (session, [customCustomerId, cursor, limit]) => {
+      return await this._interface.listProducts({
+        customer_type: "custom",
+        customer_id: customCustomerId,
+        cursor: cursor ?? undefined,
+        limit: limit ?? undefined,
+      }, session);
     }
   );
 
@@ -890,6 +924,18 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     };
   }
 
+  protected _customerProductsFromResponse(response: CustomerProductsListResponse): CustomerProductsList {
+    const products = response.items.map((item) => ({
+      id: item.id,
+      quantity: item.quantity,
+      displayName: item.product.display_name,
+      customerType: item.product.customer_type,
+      isServerOnly: item.product.server_only,
+      stackable: item.product.stackable,
+    }));
+    return Object.assign(products, { nextCursor: response.pagination.next_cursor ?? null });
+  }
+
   protected _createAuth(session: InternalSession): Auth {
     const app = this;
     return {
@@ -1265,6 +1311,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
   protected _createCustomer(userIdOrTeamId: string, type: "user" | "team", session: InternalSession): Omit<Customer, "id"> {
     const app = this;
     const cache = type === "user" ? app._userItemCache : app._teamItemCache;
+    const productsCache = type === "user" ? app._userProductsCache : app._teamProductsCache;
     return {
       async getItem(itemId: string) {
         const result = Result.orThrow(await cache.getOrWait([session, userIdOrTeamId, itemId], "write-only"));
@@ -1274,6 +1321,16 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       useItem(itemId: string) {
         const result = useAsyncCache(cache, [session, userIdOrTeamId, itemId] as const, "team.useItem()");
         return app._clientItemFromCrud(result);
+      },
+      // END_PLATFORM
+      async listProducts(options?: CustomerProductsListOptions) {
+        const response = Result.orThrow(await productsCache.getOrWait([session, userIdOrTeamId, options?.cursor ?? null, options?.limit ?? null], "write-only"));
+        return app._customerProductsFromResponse(response);
+      },
+      // IF_PLATFORM react-like
+      useProducts(options?: CustomerProductsListOptions) {
+        const response = useAsyncCache(productsCache, [session, userIdOrTeamId, options?.cursor ?? null, options?.limit ?? null] as const, `${type}.useProducts()`);
+        return app._customerProductsFromResponse(response);
       },
       // END_PLATFORM
       async createCheckoutUrl(options: { productId: string, returnUrl?: string }) {
@@ -1303,6 +1360,34 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         "teamId" in options ? [this._teamItemCache, options.teamId] : [this._customItemCache, options.customCustomerId];
     const crud = useAsyncCache(cache, [session, ownerId, options.itemId] as const, "app.useItem()");
     return this._clientItemFromCrud(crud);
+  }
+  // END_PLATFORM
+
+  async listProducts(options: CustomerProductsRequestOptions): Promise<CustomerProductsList> {
+    const session = await this._getSession();
+    if ("userId" in options) {
+      const response = Result.orThrow(await this._userProductsCache.getOrWait([session, options.userId, options.cursor ?? null, options.limit ?? null], "write-only"));
+      return this._customerProductsFromResponse(response);
+    } else if ("teamId" in options) {
+      const response = Result.orThrow(await this._teamProductsCache.getOrWait([session, options.teamId, options.cursor ?? null, options.limit ?? null], "write-only"));
+      return this._customerProductsFromResponse(response);
+    }
+    const response = Result.orThrow(await this._customProductsCache.getOrWait([session, options.customCustomerId, options.cursor ?? null, options.limit ?? null], "write-only"));
+    return this._customerProductsFromResponse(response);
+  }
+
+  // IF_PLATFORM react-like
+  useProducts(options: CustomerProductsRequestOptions): CustomerProductsList {
+    const session = this._useSession();
+    if ("userId" in options) {
+      const response = useAsyncCache(this._userProductsCache, [session, options.userId, options.cursor ?? null, options.limit ?? null] as const, "app.useProducts(user)");
+      return this._customerProductsFromResponse(response);
+    } else if ("teamId" in options) {
+      const response = useAsyncCache(this._teamProductsCache, [session, options.teamId, options.cursor ?? null, options.limit ?? null] as const, "app.useProducts(team)");
+      return this._customerProductsFromResponse(response);
+    }
+    const response = useAsyncCache(this._customProductsCache, [session, options.customCustomerId, options.cursor ?? null, options.limit ?? null] as const, "app.useProducts(custom)");
+    return this._customerProductsFromResponse(response);
   }
   // END_PLATFORM
 

@@ -247,3 +247,108 @@ it("can create item quantity change from server app", { timeout: 40_000 }, async
   const newItem4 = await user.getItem(itemId);
   expect(newItem4.quantity).toBe(0);
 });
+
+it("supports granting and listing customer products", { timeout: 60_000 }, async ({ expect }) => {
+  const { clientApp, serverApp, adminApp } = await createApp({
+    config: {
+      clientTeamCreationEnabled: true,
+    },
+  });
+
+  const project = await adminApp.getProject();
+  await project.updateConfig({
+    "payments.offers.test-offer": {
+      displayName: "Config Offer",
+      customerType: "user",
+      serverOnly: false,
+      stackable: true,
+      prices: { monthly: { USD: "1500", interval: [1, "month"] } },
+      includedItems: {},
+    },
+  });
+
+  await clientApp.signUpWithCredential({
+    email: "products@example.com",
+    password: "password",
+    verificationCallbackUrl: "http://localhost:3000",
+  });
+  await clientApp.signInWithCredential({
+    email: "products@example.com",
+    password: "password",
+  });
+
+  const user = await clientApp.getUser();
+  if (!user) throw new Error("User not found");
+
+  await serverApp.grantProduct({ userId: user.id, productId: "test-offer", quantity: 2 });
+
+  const inlineUserProduct = {
+    display_name: "Inline User Offer",
+    customer_type: "user",
+    server_only: false,
+    stackable: true,
+    prices: {
+      onetime: { USD: "500" },
+    },
+    included_items: {},
+  } as const;
+  await serverApp.grantProduct({ userId: user.id, product: inlineUserProduct });
+
+  const allUserProducts = await clientApp.listProducts({ userId: user.id });
+  expect(allUserProducts).toHaveLength(2);
+  expect(allUserProducts.nextCursor).toBeNull();
+  const configGrant = allUserProducts.find((product) => product.displayName === "Config Offer");
+  expect(configGrant?.quantity).toBe(2);
+  const inlineGrant = allUserProducts.find((product) => product.displayName === inlineUserProduct.display_name);
+  expect(inlineGrant?.quantity).toBe(1);
+
+  const paginatedUserProducts = await serverApp.listProducts({ userId: user.id, limit: 1 });
+  expect(paginatedUserProducts).toHaveLength(1);
+  expect(paginatedUserProducts.nextCursor).not.toBeNull();
+  const nextPage = await serverApp.listProducts({ userId: user.id, cursor: paginatedUserProducts.nextCursor!, limit: 1 });
+  expect(nextPage).toHaveLength(1);
+  expect(nextPage.nextCursor).toBeNull();
+
+  const userProductsFromCustomer = await user.listProducts();
+  expect(userProductsFromCustomer).toHaveLength(2);
+
+  const team = await user.createTeam({ displayName: "Products Team" });
+  const inlineTeamProduct = {
+    display_name: "Team Inline Offer",
+    customer_type: "team",
+    server_only: false,
+    stackable: true,
+    prices: {
+      quarterly: { USD: "2500" },
+    },
+    included_items: {},
+  } as const;
+  await serverApp.grantProduct({ teamId: team.id, product: inlineTeamProduct, quantity: 1 });
+
+  const teamProducts = await serverApp.listProducts({ teamId: team.id });
+  expect(teamProducts).toHaveLength(1);
+  expect(teamProducts[0].quantity).toBe(1);
+  expect(teamProducts[0].displayName).toBe(inlineTeamProduct.display_name);
+
+  const teamProductsFromCustomer = await team.listProducts();
+  expect(teamProductsFromCustomer).toHaveLength(1);
+  expect(teamProductsFromCustomer[0].displayName).toBe(inlineTeamProduct.display_name);
+
+  const customCustomerId = "custom-products-id";
+  const inlineCustomProduct = {
+    display_name: "Custom Inline Offer",
+    customer_type: "custom",
+    server_only: false,
+    stackable: false,
+    prices: {
+      yearly: { USD: "10000" },
+    },
+    included_items: {},
+  } as const;
+  await serverApp.grantProduct({ customCustomerId, product: inlineCustomProduct, quantity: 1 });
+
+  const customProducts = await clientApp.listProducts({ customCustomerId });
+  expect(customProducts).toHaveLength(1);
+  expect(customProducts[0].quantity).toBe(1);
+  expect(customProducts[0].displayName).toBe(inlineCustomProduct.display_name);
+});

@@ -32,6 +32,29 @@ export type ServerItem = Item & {
   tryDecreaseQuantity(amount: number): Promise<boolean>,
 };
 
+export type CustomerProduct = {
+  id: string | null,
+  quantity: number,
+  displayName: string,
+  customerType: "user" | "team" | "custom",
+  isServerOnly: boolean,
+  stackable: boolean,
+};
+
+export type CustomerProductsList = CustomerProduct[] & {
+  nextCursor: string | null,
+};
+
+export type CustomerProductsListOptions = {
+  cursor?: string,
+  limit?: number,
+};
+
+export type CustomerProductsRequestOptions =
+  | ({ userId: string } & CustomerProductsListOptions)
+  | ({ teamId: string } & CustomerProductsListOptions)
+  | ({ customCustomerId: string } & CustomerProductsListOptions);
+
 export type Customer<IsServer extends boolean = false> =
   & {
     readonly id: string,
@@ -46,4 +69,15 @@ export type Customer<IsServer extends boolean = false> =
     [itemId: string],
     IsServer extends true ? ServerItem : Item,
     false
-  >;
+  >
+  & AsyncStoreProperty<
+    "products",
+    [options?: CustomerProductsListOptions],
+    CustomerProductsList,
+    true
+  >
+  & (IsServer extends true ? {
+    grantProduct(
+      product: { productId: string, quantity?: number } | { product: InlineProduct, quantity?: number },
+    ): Promise<void>,
+  } : {});

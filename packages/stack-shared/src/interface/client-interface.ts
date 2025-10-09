@@ -29,6 +29,8 @@ import { TeamInvitationCrud } from './crud/team-invitation';
 import { TeamMemberProfilesCrud } from './crud/team-member-profiles';
 import { TeamPermissionsCrud } from './crud/team-permissions';
 import { TeamsCrud } from './crud/teams';
+import { CustomerProductsListResponse, ListCustomerProductsOptions } from './crud/products';
+export type { CustomerProductsListResponse, ListCustomerProductsOptions } from './crud/products';
 
 export type ClientInterfaceOptions = {
   clientVersion: string,
@@ -1774,6 +1776,23 @@ export class StackClientInterface {
     return await response.json();
   }
 
+  async listProducts(
+    options: ListCustomerProductsOptions,
+    session: InternalSession | null,
+  ): Promise<CustomerProductsListResponse> {
+    const queryParams = new URLSearchParams(filterUndefined({
+      cursor: options.cursor,
+      limit: options.limit !== undefined ? options.limit.toString() : undefined,
+    }));
+    const path = urlString`/payments/products/${options.customer_type}/${options.customer_id}`;
+    const response = await this.sendClientRequest(
+      `${path}${queryParams.toString() ? `?${queryParams.toString()}` : ''}`,
+      {},
+      session,
+    );
+    return await response.json();
+  }
+
   async createCheckoutUrl(
     customer_type: "user" | "team" | "custom",
     customer_id: string,
@@ -1819,4 +1838,3 @@ export class StackClientInterface {
     );
   }
 }
-
