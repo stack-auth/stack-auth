@@ -1,5 +1,5 @@
 import { useAdminApp } from "@/app/(main)/(protected)/projects/[projectId]/use-admin-app";
-import { ALL_APPS_FRONTEND, getAppPath } from "@/lib/apps-frontend";
+import { ALL_APPS_FRONTEND, AppFrontend, getAppPath } from "@/lib/apps-frontend";
 import { ALL_APPS, AppId } from "@stackframe/stack-shared/dist/apps/apps-config";
 import { typedIncludes } from "@stackframe/stack-shared/dist/utils/arrays";
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
@@ -33,7 +33,7 @@ export function AppIcon({ appId, className, disabled, style }: {
   };
 
   const app = ALL_APPS[appId];
-  const appFrontend = ALL_APPS_FRONTEND[appId];
+  const appFrontend: AppFrontend = ALL_APPS_FRONTEND[appId];
   return <div style={style} className={cn(
     "relative w-24 h-24 rounded-[24.154%] overflow-hidden select-none",
     !disabled && "bg-[linear-gradient(45deg,#dde,#fff)] dark:bg-[linear-gradient(45deg,#222,#666)]",
@@ -43,30 +43,36 @@ export function AppIcon({ appId, className, disabled, style }: {
     <div className={cn(
       "w-full h-full isolate relative",
     )}>
-      <svg width="0" height="0">
-        {svgGradients({
-          "app-icon-gradient-light": ["#c0f", "#66f", "#4af"],
-          "app-icon-gradient-dark": ["#3ec", "#9af", "#a5f"],
-          "app-icon-gradient-light-expert": ["#f0c", "#f66", "#fa4"],
-          "app-icon-gradient-dark-expert": ["#f0c", "#f66", "#fa4"],
-          "app-icon-gradient-light-integration": ["#E5AB00", "#FFBA00", "#F8DF80"],
-          "app-icon-gradient-dark-integration": ["#E5AB00", "#FFBA00", "#F8DF80"],
-        })}
-      </svg>
-      <appFrontend.icon
-        opacity={disabled ? 0.75 : 1}
-        className={cn(
-          "inset-[20%] w-[60%] h-[60%] bg-clip-text text-transparent text-white absolute",
-          /*disabled
-            ? "stroke-gray-500/50"
-            :*/ (typedIncludes(app.tags, "expert")
-            ? "stroke-[url(#app-icon-gradient-light-expert)] dark:stroke-[url(#app-icon-gradient-dark-expert)]"
-            : typedIncludes(app.tags, "integration")
-              ? "stroke-[url(#app-icon-gradient-light-integration)] dark:stroke-[url(#app-icon-gradient-dark-integration)]"
-              : "stroke-[url(#app-icon-gradient-light)] dark:stroke-[url(#app-icon-gradient-dark)]"
-            )
-        )}
-      />
+      {appFrontend.logo ? (
+        <div className="absolute inset-[20%] w-[60%] h-[60%] rounded-[24.154%] flex items-center justify-center border">
+          <appFrontend.logo className="rounded-[24.154%]" />
+        </div>
+      ) : (
+        <>
+          <svg width="0" height="0">
+            {svgGradients({
+              "app-icon-gradient-light": ["#c0f", "#66f", "#4af"],
+              "app-icon-gradient-dark": ["#3ec", "#9af", "#a5f"],
+              "app-icon-gradient-light-expert": ["#f0c", "#f66", "#fa4"],
+              "app-icon-gradient-dark-expert": ["#f0c", "#f66", "#fa4"],
+              "app-icon-gradient-light-integration": ["#E5AB00", "#FFBA00", "#F8DF80"],
+              "app-icon-gradient-dark-integration": ["#E5AB00", "#FFBA00", "#F8DF80"],
+            })}
+          </svg>
+          <appFrontend.icon
+            opacity={disabled ? 0.75 : 1}
+            className={cn(
+              "inset-[20%] w-[60%] h-[60%] bg-clip-text text-transparent text-white absolute",
+              (typedIncludes(app.tags, "expert")
+                ? "stroke-[url(#app-icon-gradient-light-expert)] dark:stroke-[url(#app-icon-gradient-dark-expert)]"
+                : typedIncludes(app.tags, "integration")
+                  ? "stroke-[url(#app-icon-gradient-light-integration)] dark:stroke-[url(#app-icon-gradient-dark-integration)]"
+                  : "stroke-[url(#app-icon-gradient-light)] dark:stroke-[url(#app-icon-gradient-dark)]"
+              )
+            )}
+          />
+        </>
+      )}
     </div>
     <div className="absolute top-0 left-0 right-0 [transform:_translate(-50%,-50%)_rotate(-45deg)_translateY(32px)]">
       {app.stage !== "stable" && (
