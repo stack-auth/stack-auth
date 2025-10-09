@@ -96,7 +96,6 @@ export default function MetricsPage(props: { toSetup: () => void }) {
                 "flex-grow flex flex-col items-center gap-1 sm:gap-2 transition-all duration-200 cursor-pointer group select-none",
                 "p-2 rounded-lg",
                 "hover:bg-foreground/15 hover:duration-0",
-                "text-gray-600 dark:text-gray-400",
               )}
                 style={{
                   padding: appSquarePaddingExpression,
@@ -104,9 +103,9 @@ export default function MetricsPage(props: { toSetup: () => void }) {
                 }}
               >
                 <div className="flex-grow" />
-                <ArrowRight className="w-16 h-16" strokeWidth={1.5} />
+                <ArrowRight className="w-16 h-16 text-gray-400" strokeWidth={1.5} />
                 <div className="flex-grow" />
-                <span className="text-xs lg:text-sm">Explore more</span>
+                <span className="text-xs lg:text-sm text-gray-600 dark:text-gray-400">Explore more</span>
               </Link>
             </div>
           </>
