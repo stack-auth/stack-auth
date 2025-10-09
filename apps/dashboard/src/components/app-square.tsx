@@ -74,7 +74,7 @@ export function AppIcon({ appId, className, disabled, style }: {
         </>
       )}
     </div>
-    <div className="absolute top-0 left-0 right-0 [transform:_translate(-50%,-50%)_rotate(-45deg)_translateY(32px)]">
+    <div className="absolute top-0 left-[-100%] right-0 flex flex-col gap-1 [transform:_rotate(-45deg)_translateY(32px)] [transform-origin:top_center]">
       {app.stage !== "stable" && (
         <div className={cn(
           "h-4 uppercase text-xs font-bold font-mono tracking-widest text-center",

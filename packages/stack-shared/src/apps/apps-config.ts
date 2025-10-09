@@ -130,7 +130,7 @@ export const ALL_APPS = {
     displayName: "Neon",
     subtitle: "Serverless Postgres database integration",
     tags: ["integration", "storage"],
-    stage: "alpha",
+    stage: "stable",
   },
   "convex": {
     displayName: "Convex",
