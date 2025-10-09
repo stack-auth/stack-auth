@@ -6,7 +6,7 @@ import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger, cn } from "@stackframe/stack-ui";
 import { Link } from "./link";
 
-export const appSquareWidthExpression = "max(min(16vw,180px),128px)";
+export const appSquareWidthExpression = "max(min(10vw,180px),128px)";
 export const appSquarePaddingExpression = "max(min(1vw,1.5rem),0.25rem)";
 
 export function AppIcon({ appId, className, disabled, style }: {
