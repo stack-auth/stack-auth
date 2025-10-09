@@ -1,5 +1,6 @@
 import { KnownErrors } from "@stackframe/stack-shared";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
+import type { XOR } from "@stackframe/stack-shared/dist/utils/types";
 import type { GenericQueryCtx } from "convex/server";
 import { AsyncStoreProperty, GetCurrentPartialUserOptions, GetCurrentUserOptions } from "../../common";
 import { CustomerProductsList, CustomerProductsRequestOptions, InlineProduct, ServerItem } from "../../customers";
@@ -25,9 +26,13 @@ export type StackServerApp<HasTokenStore extends boolean = boolean, ProjectId ex
 
     createUser(options: ServerUserCreateOptions): Promise<ServerUser>,
     grantProduct(options: (
-      ({ userId: string } | { teamId: string } | { customCustomerId: string }) &
-      ({ productId: string } | { product: InlineProduct }) &
+      XOR<[{ userId: string }, { teamId: string }, { customCustomerId: string }]> &
+      XOR<[{ productId: string }, { product: InlineProduct }]> &
       { quantity?: number }
+    )): Promise<void>,
+    revokeProduct(options: (
+      XOR<[{ userId: string }, { teamId: string }, { customCustomerId: string }]> &
+      { productId: string }
     )): Promise<void>,
 
     // IF_PLATFORM react-like

@@ -1,4 +1,4 @@
-import { ensureProductIdOrInlineProduct, getOwnedProductsForCustomer, grantProductToCustomer, productToInlineProduct } from "@/lib/payments";
+import { ensureProductIdOrInlineProduct, getOwnedProductsForCustomer, grantProductToCustomer, productToInlineProduct, revokeProductFromCustomer } from "@/lib/payments";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { adaptSchema, clientOrHigherAuthTypeSchema, inlineProductSchema, serverOrHigherAuthTypeSchema, yupBoolean, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
@@ -151,3 +151,62 @@ export const POST = createSmartRouteHandler({
     };
   },
 });
+
+export const DELETE = createSmartRouteHandler({
+  metadata: {
+    summary: "Revoke a product from a customer",
+    hidden: true,
+  },
+  request: yupObject({
+    auth: yupObject({
+      type: serverOrHigherAuthTypeSchema.defined(),
+      project: adaptSchema.defined(),
+      tenancy: adaptSchema.defined(),
+    }).defined(),
+    params: yupObject({
+      customer_type: yupString().oneOf(["user", "team", "custom"]).defined(),
+      customer_id: yupString().defined(),
+    }).defined(),
+    body: yupObject({
+      product_id: yupString().defined(),
+    }).defined(),
+  }),
+  response: yupObject({
+    statusCode: yupNumber().oneOf([200]).defined(),
+    bodyType: yupString().oneOf(["json"]).defined(),
+    body: yupObject({
+      success: yupBoolean().oneOf([true]).defined(),
+    }).defined(),
+  }),
+  handler: async ({ auth, params, body }) => {
+    const { tenancy } = auth;
+    const prisma = await getPrismaClientForTenancy(tenancy);
+    const product = await ensureProductIdOrInlineProduct(tenancy, auth.type, body.product_id, undefined);
+
+    if (params.customer_type !== product.customerType) {
+      throw new KnownErrors.ProductCustomerTypeDoesNotMatch(
+        body.product_id,
+        params.customer_id,
+        product.customerType,
+        params.customer_type,
+      );
+    }
+
+    await revokeProductFromCustomer({
+      prisma,
+      tenancy,
+      customerType: params.customer_type,
+      customerId: params.customer_id,
+      productId: body.product_id,
+    });
+
+    return {
+      statusCode: 200,
+      bodyType: "json",
+      body: {
+        success: true,
+      },
+    };
+  },
+});
+

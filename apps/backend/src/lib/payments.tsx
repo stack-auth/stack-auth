@@ -462,12 +462,14 @@ export async function validatePurchaseSession(options: {
     customerId: codeData.customerId,
   });
 
-  if (
-    codeData.productId &&
-    product.stackable !== true &&
-    [...subscriptions, ...existingOneTimePurchases].some((p) => p.productId === codeData.productId)
-  ) {
-    throw new KnownErrors.ProductAlreadyGranted(codeData.productId, codeData.customerId);
+  if (codeData.productId && product.stackable !== true) {
+    const hasActiveSubscription = subscriptions.some((subscription) => (
+      subscription.productId === codeData.productId && isActiveSubscription(subscription)
+    ));
+    const hasOneTimePurchase = existingOneTimePurchases.some((purchase) => purchase.productId === codeData.productId);
+    if (hasActiveSubscription || hasOneTimePurchase) {
+      throw new KnownErrors.ProductAlreadyGranted(codeData.productId, codeData.customerId);
+    }
   }
   const addOnProductIds = product.isAddOnTo ? typedKeys(product.isAddOnTo) : [];
   if (product.isAddOnTo && !subscriptions.some((s) => s.productId && addOnProductIds.includes(s.productId))) {
@@ -529,6 +531,36 @@ type GrantProductResult =
     subscriptionId: string,
   };
 
+async function cancelSubscriptionRecord(options: {
+  prisma: PrismaClientTransaction,
+  tenancy: Tenancy,
+  subscription: {
+    id: string,
+    stripeSubscriptionId: string | null,
+  },
+}) {
+  const { prisma, tenancy, subscription } = options;
+
+  if (subscription.stripeSubscriptionId) {
+    const stripe = await getStripeForAccount({ tenancy });
+    await stripe.subscriptions.cancel(subscription.stripeSubscriptionId);
+  }
+
+  await prisma.subscription.update({
+    where: {
+      tenancyId_id: {
+        tenancyId: tenancy.id,
+        id: subscription.id,
+      },
+    },
+    data: {
+      status: SubscriptionStatus.canceled,
+      currentPeriodEnd: new Date(),
+      cancelAtPeriodEnd: true,
+    },
+  });
+}
+
 export async function grantProductToCustomer(options: {
   prisma: PrismaClientTransaction,
   tenancy: Tenancy,
@@ -556,21 +588,13 @@ export async function grantProductToCustomer(options: {
 
   if (conflictingCatalogSubscriptions.length > 0) {
     const conflicting = conflictingCatalogSubscriptions[0];
-    if (conflicting.stripeSubscriptionId) {
-      const stripe = await getStripeForAccount({ tenancy });
-      await stripe.subscriptions.cancel(conflicting.stripeSubscriptionId);
-    } else if (conflicting.id) {
-      await prisma.subscription.update({
-        where: {
-          tenancyId_id: {
-            tenancyId: tenancy.id,
-            id: conflicting.id,
-          },
-        },
-        data: {
-          status: SubscriptionStatus.canceled,
-          currentPeriodEnd: new Date(),
-          cancelAtPeriodEnd: true,
+    if (conflicting.id) {
+      await cancelSubscriptionRecord({
+        prisma,
+        tenancy,
+        subscription: {
+          id: conflicting.id,
+          stripeSubscriptionId: conflicting.stripeSubscriptionId ?? null,
         },
       });
     }
@@ -685,4 +709,64 @@ export async function getOwnedProductsForCustomer(options: {
   }
 
   return ownedProducts;
+}
+
+export async function revokeProductFromCustomer(options: {
+  prisma: PrismaClientTransaction,
+  tenancy: Tenancy,
+  customerType: "user" | "team" | "custom",
+  customerId: string,
+  productId: string,
+}) {
+  const { prisma, tenancy, customerType, customerId, productId } = options;
+
+  await ensureCustomerExists({
+    prisma,
+    tenancyId: tenancy.id,
+    customerType,
+    customerId,
+  });
+
+  const upperCustomerType = typedToUppercase(customerType);
+  const activeSubscriptions = await prisma.subscription.findMany({
+    where: {
+      tenancyId: tenancy.id,
+      customerType: upperCustomerType,
+      customerId,
+      productId,
+      status: {
+        in: [SubscriptionStatus.active, SubscriptionStatus.trialing],
+      },
+    },
+  });
+
+  let revoked = false;
+  for (const subscription of activeSubscriptions) {
+    await cancelSubscriptionRecord({
+      prisma,
+      tenancy,
+      subscription: {
+        id: subscription.id,
+        stripeSubscriptionId: subscription.stripeSubscriptionId,
+      },
+    });
+    revoked = true;
+  }
+
+  const oneTimeResult = await prisma.oneTimePurchase.deleteMany({
+    where: {
+      tenancyId: tenancy.id,
+      customerType: upperCustomerType,
+      customerId,
+      productId,
+    },
+  });
+
+  if (oneTimeResult.count > 0) {
+    revoked = true;
+  }
+
+  if (!revoked) {
+    throw new StatusError(404, "Product not granted to this customer");
+  }
 }

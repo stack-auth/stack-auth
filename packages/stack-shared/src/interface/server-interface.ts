@@ -872,6 +872,24 @@ export class StackServerInterface extends StackClientInterface {
     );
   }
 
+  async revokeProduct(
+    options: {
+      customerType: "user" | "team" | "custom",
+      customerId: string,
+      productId: string,
+    },
+  ): Promise<void> {
+    await this.sendServerRequest(
+      urlString`/payments/products/${options.customerType}/${options.customerId}`,
+      {
+        method: "DELETE",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ product_id: options.productId }),
+      },
+      null,
+    );
+  }
+
   async getDataVaultStoreValue(secret: string, storeId: string, key: string) {
     const hashedKey = await hashKey(secret, key);
     const response = await this.sendServerRequestAndCatchKnownError(

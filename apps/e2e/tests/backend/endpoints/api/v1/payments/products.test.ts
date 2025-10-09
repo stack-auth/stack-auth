@@ -722,6 +722,179 @@ it("listing products should list both subscription and one-time products", async
   `);
 });
 
+it("should revoke a subscription product", async ({ expect }) => {
+  await Project.createAndSwitch();
+  await Payments.setup();
+  await Project.updateConfig({
+    payments: {
+      products: {
+        "subscription-plan": {
+          displayName: "Subscription Plan",
+          customerType: "user",
+          serverOnly: false,
+          stackable: false,
+          prices: {
+            monthly: {
+              USD: "1200",
+              interval: [1, "month"],
+            },
+          },
+          includedItems: {},
+        },
+      },
+    },
+  });
+
+  const { userId } = await User.create();
+
+  await niceBackendFetch(`/api/v1/payments/products/user/${userId}`, {
+    method: "POST",
+    accessType: "server",
+    body: {
+      product_id: "subscription-plan",
+    },
+  });
+
+  const revokeResponse = await niceBackendFetch(`/api/v1/payments/products/user/${userId}`, {
+    method: "DELETE",
+    accessType: "server",
+    body: {
+      product_id: "subscription-plan",
+    },
+  });
+
+  expect(revokeResponse).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": { "success": true },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+
+  const listResponse = await niceBackendFetch(`/api/v1/payments/products/user/${userId}`, {
+    accessType: "server",
+  });
+
+  expect(listResponse).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": {
+        "is_paginated": true,
+        "items": [],
+        "pagination": { "next_cursor": null },
+      },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+});
+
+it("should revoke a one-time product", async ({ expect }) => {
+  await Project.createAndSwitch();
+  await Payments.setup();
+  await Project.updateConfig({
+    payments: {
+      products: {
+        "lifetime-addon": {
+          displayName: "Lifetime Add-on",
+          customerType: "user",
+          serverOnly: false,
+          stackable: false,
+          prices: {
+            lifetime: {
+              USD: "5000",
+            },
+          },
+          includedItems: {},
+        },
+      },
+    },
+  });
+
+  const { userId } = await User.create();
+
+  await niceBackendFetch(`/api/v1/payments/products/user/${userId}`, {
+    method: "POST",
+    accessType: "server",
+    body: {
+      product_id: "lifetime-addon",
+    },
+  });
+
+  const revokeResponse = await niceBackendFetch(`/api/v1/payments/products/user/${userId}`, {
+    method: "DELETE",
+    accessType: "server",
+    body: {
+      product_id: "lifetime-addon",
+    },
+  });
+
+  expect(revokeResponse).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": { "success": true },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+
+  const listResponse = await niceBackendFetch(`/api/v1/payments/products/user/${userId}`, {
+    accessType: "server",
+  });
+
+  expect(listResponse).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": {
+        "is_paginated": true,
+        "items": [],
+        "pagination": { "next_cursor": null },
+      },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+});
+
+it("should return not found when revoking a product the customer does not own", async ({ expect }) => {
+  await Project.createAndSwitch();
+  await Payments.setup();
+  await Project.updateConfig({
+    payments: {
+      products: {
+        "missing-product": {
+          displayName: "Missing Product",
+          customerType: "user",
+          serverOnly: false,
+          stackable: false,
+          prices: {
+            monthly: {
+              USD: "1200",
+              interval: [1, "month"],
+            },
+          },
+          includedItems: {},
+        },
+      },
+    },
+  });
+
+  const { userId } = await User.create();
+
+  const response = await niceBackendFetch(`/api/v1/payments/products/user/${userId}`, {
+    method: "DELETE",
+    accessType: "server",
+    body: {
+      product_id: "missing-product",
+    },
+  });
+
+  expect(response).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 404,
+      "body": "Product not granted to this customer",
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+});
+
 it("listing products should support cursor pagination", async ({ expect }) => {
   await Project.createAndSwitch();
   await Payments.setup();

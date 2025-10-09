@@ -80,4 +80,5 @@ export type Customer<IsServer extends boolean = false> =
     grantProduct(
       product: { productId: string, quantity?: number } | { product: InlineProduct, quantity?: number },
     ): Promise<void>,
+    revokeProduct(options: { productId: string }): Promise<void>,
   } : {});

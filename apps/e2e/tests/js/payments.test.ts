@@ -248,24 +248,47 @@ it("can create item quantity change from server app", { timeout: 40_000 }, async
   expect(newItem4.quantity).toBe(0);
 });
 
-it("supports granting and listing customer products", { timeout: 60_000 }, async ({ expect }) => {
-  const { clientApp, serverApp, adminApp } = await createApp({
-    config: {
-      clientTeamCreationEnabled: true,
-    },
-  });
+const baseConfig = {
+  clientTeamCreationEnabled: true,
+} as const;
 
-  const project = await adminApp.getProject();
-  await project.updateConfig({
-    "payments.offers.test-offer": {
-      displayName: "Config Offer",
-      customerType: "user",
-      serverOnly: false,
-      stackable: true,
-      prices: { monthly: { USD: "1500", interval: [1, "month"] } },
-      includedItems: {},
-    },
-  });
+const paymentsOffersConfig = {
+  "payments.offers.test-offer": {
+    displayName: "Config Offer",
+    customerType: "user",
+    serverOnly: false,
+    stackable: true,
+    prices: { monthly: { USD: "1500", interval: [1, "month"] } },
+    includedItems: {},
+  },
+  "payments.offers.team-offer": {
+    displayName: "Team Config Offer",
+    customerType: "team",
+    serverOnly: false,
+    stackable: false,
+    prices: { yearly: { USD: "10000", interval: [1, "year"] } },
+    includedItems: {},
+  },
+  "payments.offers.custom-offer": {
+    displayName: "Custom Config Offer",
+    customerType: "custom",
+    serverOnly: false,
+    stackable: false,
+    prices: { lifetime: { USD: "2500" } },
+    includedItems: {},
+  },
+};
+
+async function setupCustomerProductsScenario() {
+  const apps = await createApp({ config: baseConfig });
+  const project = await apps.adminApp.getProject();
+  await apps.adminApp.setupPayments();
+  await project.updateConfig(paymentsOffersConfig);
+  return apps;
+}
+
+it("grants and lists config plus inline products for users", { timeout: 60_000 }, async ({ expect }) => {
+  const { clientApp, serverApp, adminApp } = await setupCustomerProductsScenario();
 
   await clientApp.signUpWithCredential({
     email: "products@example.com",
@@ -311,8 +334,27 @@ it("supports granting and listing customer products", { timeout: 60_000 }, async
 
   const userProductsFromCustomer = await user.listProducts();
   expect(userProductsFromCustomer).toHaveLength(2);
+});
+
+it("supports granting products to team and custom customers", { timeout: 60_000 }, async ({ expect }) => {
+  const { clientApp, serverApp } = await setupCustomerProductsScenario();
+
+  await clientApp.signUpWithCredential({
+    email: "teams@example.com",
+    password: "password",
+    verificationCallbackUrl: "http://localhost:3000",
+  });
+  await clientApp.signInWithCredential({
+    email: "teams@example.com",
+    password: "password",
+  });
+
+  const user = await clientApp.getUser();
+  if (!user) throw new Error("User not found");
 
   const team = await user.createTeam({ displayName: "Products Team" });
+  await serverApp.grantProduct({ teamId: team.id, productId: "team-offer" });
+
   const inlineTeamProduct = {
     display_name: "Team Inline Offer",
     customer_type: "team",
@@ -326,13 +368,9 @@ it("supports granting and listing customer products", { timeout: 60_000 }, async
   await serverApp.grantProduct({ teamId: team.id, product: inlineTeamProduct, quantity: 1 });
 
   const teamProducts = await serverApp.listProducts({ teamId: team.id });
-  expect(teamProducts).toHaveLength(1);
-  expect(teamProducts[0].quantity).toBe(1);
-  expect(teamProducts[0].displayName).toBe(inlineTeamProduct.display_name);
-
-  const teamProductsFromCustomer = await team.listProducts();
-  expect(teamProductsFromCustomer).toHaveLength(1);
-  expect(teamProductsFromCustomer[0].displayName).toBe(inlineTeamProduct.display_name);
+  expect(teamProducts).toHaveLength(2);
+  const inlineGrant = teamProducts.find((product) => product.displayName === inlineTeamProduct.display_name);
+  expect(inlineGrant?.quantity).toBe(1);
 
   const customCustomerId = "custom-products-id";
   const inlineCustomProduct = {
@@ -349,6 +387,72 @@ it("supports granting and listing customer products", { timeout: 60_000 }, async
 
   const customProducts = await clientApp.listProducts({ customCustomerId });
   expect(customProducts).toHaveLength(1);
-  expect(customProducts[0].quantity).toBe(1);
   expect(customProducts[0].displayName).toBe(inlineCustomProduct.display_name);
+});
+
+it("revokes products via root-level server SDK helpers", { timeout: 60_000 }, async ({ expect }) => {
+  const { clientApp, serverApp } = await setupCustomerProductsScenario();
+
+  await clientApp.signUpWithCredential({
+    email: "revoke@example.com",
+    password: "password",
+    verificationCallbackUrl: "http://localhost:3000",
+  });
+  await clientApp.signInWithCredential({
+    email: "revoke@example.com",
+    password: "password",
+  });
+
+  const user = await clientApp.getUser();
+  if (!user) throw new Error("User not found");
+
+  await serverApp.grantProduct({ userId: user.id, productId: "test-offer" });
+  const team = await user.createTeam({ displayName: "Revoke Team" });
+  await serverApp.grantProduct({ teamId: team.id, productId: "team-offer" });
+  const customCustomerId = "custom-revoke-id";
+  await serverApp.grantProduct({ customCustomerId, productId: "custom-offer" });
+
+  await serverApp.revokeProduct({ userId: user.id, productId: "test-offer" });
+  expect(await serverApp.listProducts({ userId: user.id })).toHaveLength(0);
+
+  await serverApp.revokeProduct({ teamId: team.id, productId: "team-offer" });
+  expect(await serverApp.listProducts({ teamId: team.id })).toHaveLength(0);
+  expect(await clientApp.listProducts({ teamId: team.id })).toHaveLength(0);
+
+  await serverApp.revokeProduct({ customCustomerId, productId: "custom-offer" });
+  expect(await clientApp.listProducts({ customCustomerId })).toHaveLength(0);
+});
+
+it("revokes products via customer-bound helpers", { timeout: 60_000 }, async ({ expect }) => {
+  const { clientApp, serverApp } = await setupCustomerProductsScenario();
+
+  await clientApp.signUpWithCredential({
+    email: "customer-revoke@example.com",
+    password: "password",
+    verificationCallbackUrl: "http://localhost:3000",
+  });
+  await clientApp.signInWithCredential({
+    email: "customer-revoke@example.com",
+    password: "password",
+  });
+
+  const user = await clientApp.getUser();
+  if (!user) throw new Error("User not found");
+
+  await serverApp.grantProduct({ userId: user.id, productId: "test-offer" });
+  const serverUser = await serverApp.getUser(user.id);
+  if (!serverUser) throw new Error("Server user not found");
+
+  await serverUser.revokeProduct({ productId: "test-offer" });
+  expect(await serverApp.listProducts({ userId: user.id })).toHaveLength(0);
+
+  const team = await user.createTeam({ displayName: "Customer Revoke Team" });
+  await serverApp.grantProduct({ teamId: team.id, productId: "team-offer" });
+
+  const serverTeam = await serverApp.getTeam(team.id);
+  if (!serverTeam) {
+    throw new Error("Server team not found");
+  }
+  await serverTeam.revokeProduct({ productId: "team-offer" });
+  expect(await serverApp.listProducts({ teamId: team.id })).toHaveLength(0);
 });

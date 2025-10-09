@@ -1,4 +1,5 @@
 import { KnownErrors, StackServerInterface } from "@stackframe/stack-shared";
+import type { XOR } from "@stackframe/stack-shared/dist/utils/types";
 import type { CustomerProductsListResponse } from "@stackframe/stack-shared/dist/interface/crud/products";
 import { ContactChannelsCrud } from "@stackframe/stack-shared/dist/interface/crud/contact-channels";
 import { ItemCrud } from "@stackframe/stack-shared/dist/interface/crud/items";
@@ -252,19 +253,27 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
         return useMemo(() => app._customerProductsFromResponse(response), [response]);
       },
       // END_PLATFORM
-      async grantProduct(productOptions: { productId: string, quantity?: number } | { product: InlineProduct, quantity?: number }) {
+      async grantProduct(productOptions: XOR<[{ productId: string, quantity?: number }, { product: InlineProduct, quantity?: number }]>) {
         if (type === "user") {
-          if ("productId" in productOptions) {
+          if (productOptions.productId !== undefined) {
             await app.grantProduct({ userId: userIdOrTeamId, productId: productOptions.productId, quantity: productOptions.quantity });
           } else {
             await app.grantProduct({ userId: userIdOrTeamId, product: productOptions.product, quantity: productOptions.quantity });
           }
         } else {
-          if ("productId" in productOptions) {
+          if (productOptions.productId !== undefined) {
             await app.grantProduct({ teamId: userIdOrTeamId, productId: productOptions.productId, quantity: productOptions.quantity });
           } else {
             await app.grantProduct({ teamId: userIdOrTeamId, product: productOptions.product, quantity: productOptions.quantity });
           }
+        }
+        await productsCache.refresh([userIdOrTeamId, null, null]);
+      },
+      async revokeProduct(options: { productId: string }) {
+        if (type === "user") {
+          await app.revokeProduct({ userId: userIdOrTeamId, productId: options.productId });
+        } else {
+          await app.revokeProduct({ teamId: userIdOrTeamId, productId: options.productId });
         }
         await productsCache.refresh([userIdOrTeamId, null, null]);
       },
@@ -1253,6 +1262,37 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
       productId: "productId" in options ? options.productId : undefined,
       product: "product" in options ? options.product : undefined,
       quantity: options.quantity,
+    });
+
+    const cache = customerType === "user"
+      ? this._serverUserProductsCache
+      : customerType === "team"
+        ? this._serverTeamProductsCache
+        : this._serverCustomProductsCache;
+    await cache.refresh([customerId, null, null]);
+  }
+
+  async revokeProduct(options: (
+    ({ userId: string } | { teamId: string } | { customCustomerId: string }) &
+    { productId: string }
+  )): Promise<void> {
+    let customerType: "user" | "team" | "custom";
+    let customerId: string;
+    if ("userId" in options) {
+      customerType = "user";
+      customerId = options.userId;
+    } else if ("teamId" in options) {
+      customerType = "team";
+      customerId = options.teamId;
+    } else {
+      customerType = "custom";
+      customerId = options.customCustomerId;
+    }
+
+    await this._interface.revokeProduct({
+      customerType,
+      customerId,
+      productId: options.productId,
     });
 
     const cache = customerType === "user"

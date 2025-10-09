@@ -91,7 +91,7 @@ export type ServerTeam = {
   addUser(userId: string): Promise<void>,
   inviteUser(options: { email: string, callbackUrl?: string }): Promise<void>,
   removeUser(userId: string): Promise<void>,
-} & Team;
+} & Team & Customer<true>;
 
 export type ServerListUsersOptions = {
   cursor?: string,
