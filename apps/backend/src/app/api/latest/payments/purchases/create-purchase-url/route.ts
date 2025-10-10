@@ -49,7 +49,7 @@ export const POST = createSmartRouteHandler({
       }),
       return_url: urlSchema.optional().meta({
         openapiField: {
-          description: "URL to redirect to after purchase completion. Must be configured as a tursted domain in the project configuration.",
+          description: "URL to redirect to after purchase completion. Must be configured as a trusted domain in the project configuration.",
           exampleValue: "https://myapp.com/purchase-success"
         }
       }),
