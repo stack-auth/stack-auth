@@ -104,6 +104,13 @@ function Content() {
         </Link>{" "}
         for an example of loading data in a server component
       </p>
+      <p>
+        See the{" "}
+        <Link href="/action" className="underline hover:no-underline">
+          /action route
+        </Link>{" "}
+        for an example of using a convex action to update user data in stack auth
+      </p>
       <div className="flex flex-col">
         <p className="text-lg font-bold">Useful resources:</p>
         <div className="flex gap-2">
