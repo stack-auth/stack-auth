@@ -279,6 +279,9 @@ pages:
   - path: others/self-host.mdx
     platforms: ["next", "react", "js", "python"] # All platforms
 
+  - path: others/mcp-setup.mdx
+    platforms: ["next", "react", "js", "python"] # All platforms
+
   - path: others/supabase.mdx
     platforms: ["next"] # Next only
 
