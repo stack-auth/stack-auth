@@ -4,44 +4,36 @@ import { CheckoutForm } from "@/components/payments/checkout";
 import { StripeElementsProvider } from "@/components/payments/stripe-elements-provider";
 import { getPublicEnvVar } from "@/lib/env";
 import { StackAdminApp, useUser } from "@stackframe/stack";
-import { inlineOfferSchema } from "@stackframe/stack-shared/dist/schema-fields";
+import { inlineProductSchema } from "@stackframe/stack-shared/dist/schema-fields";
 import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { Alert, AlertDescription, AlertTitle, Button, Card, CardContent, Input, Skeleton, Typography } from "@stackframe/stack-ui";
 import { ArrowRight, Minus, Plus } from "lucide-react";
+import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import * as yup from "yup";
 
-type OfferData = {
-  offer?: Omit<yup.InferType<typeof inlineOfferSchema>, "included_items" | "server_only"> & { stackable: boolean },
+type ProductData = {
+  product?: Omit<yup.InferType<typeof inlineProductSchema>, "included_items" | "server_only"> & { stackable: boolean },
   stripe_account_id: string,
   project_id: string,
   already_bought_non_stackable?: boolean,
-  conflicting_group_offers?: { offer_id: string, display_name: string }[],
+  conflicting_products?: { product_id: string, display_name: string }[],
+  test_mode: boolean,
 };
 
 const apiUrl = getPublicEnvVar("NEXT_PUBLIC_STACK_API_URL") ?? throwErr("NEXT_PUBLIC_STACK_API_URL is not set");
 const baseUrl = new URL("/api/v1", apiUrl).toString();
 
 export default function PageClient({ code }: { code: string }) {
-  const [data, setData] = useState<OfferData | null>(null);
+  const [data, setData] = useState<ProductData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedPriceId, setSelectedPriceId] = useState<string | null>(null);
   const [quantityInput, setQuantityInput] = useState<string>("1");
-  const user = useUser({ projectIdMustMatch: "internal" });
-  const [adminApp, setAdminApp] = useState<StackAdminApp>();
-
-  useEffect(() => {
-    if (!user || !data) return;
-    runAsynchronouslyWithAlert(user.listOwnedProjects().then(projects => {
-      const project = projects.find(p => p.id === data.project_id);
-      if (project) {
-        setAdminApp(project.app);
-      }
-    }));
-  }, [user, data]);
+  const searchParams = useSearchParams();
+  const returnUrl = searchParams.get("return_url");
 
   const quantityNumber = useMemo((): number => {
     const n = parseInt(quantityInput, 10);
@@ -52,10 +44,10 @@ export default function PageClient({ code }: { code: string }) {
   }, [quantityInput]);
 
   const unitCents = useMemo((): number => {
-    if (!selectedPriceId || !data?.offer?.prices) {
+    if (!selectedPriceId || !data?.product?.prices) {
       return 0;
     }
-    return Number(data.offer.prices[selectedPriceId].USD) * 100;
+    return Number(data.product.prices[selectedPriceId].USD) * 100;
   }, [data, selectedPriceId]);
 
   const MAX_STRIPE_AMOUNT_CENTS = 999_999 * 100;
@@ -74,8 +66,8 @@ export default function PageClient({ code }: { code: string }) {
   }, [unitCents, rawAmountCents, isTooLarge, MAX_STRIPE_AMOUNT_CENTS]);
 
   const elementsMode = useMemo<"subscription" | "payment">(() => {
-    if (!selectedPriceId || !data?.offer?.prices) return "subscription";
-    const price = data.offer.prices[selectedPriceId];
+    if (!selectedPriceId || !data?.product?.prices) return "subscription";
+    const price = data.product.prices[selectedPriceId];
     return price.interval ? "subscription" : "payment";
   }, [data, selectedPriceId]);
 
@@ -92,18 +84,21 @@ export default function PageClient({ code }: { code: string }) {
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ full_code: code }),
+      body: JSON.stringify({
+        full_code: code,
+        return_url: returnUrl ?? undefined,
+      }),
     });
     if (!response.ok) {
       throw new Error('Failed to validate code');
     }
     const result = await response.json();
     setData(result);
-    if (result?.offer?.prices) {
-      const firstPriceId = Object.keys(result.offer.prices)[0];
+    if (result?.product?.prices) {
+      const firstPriceId = Object.keys(result.product.prices)[0];
       setSelectedPriceId(firstPriceId);
     }
-  }, [code]);
+  }, [code, returnUrl]);
 
   useEffect(() => {
     setLoading(true);
@@ -128,18 +123,29 @@ export default function PageClient({ code }: { code: string }) {
   };
 
   const handleBypass = useCallback(async () => {
-    if (!adminApp || !selectedPriceId) {
-      return;
-    }
     if (quantityNumber < 1 || isTooLarge) {
       return;
     }
-    await adminApp.testModePurchase({ priceId: selectedPriceId, fullCode: code, quantity: quantityNumber });
+    const response = await fetch(`${baseUrl}/internal/payments/test-mode-purchase-session`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        full_code: code,
+        price_id: selectedPriceId,
+        quantity: quantityNumber
+      }),
+    });
+    if (!response.ok) {
+      throw new Error("Failed to bypass with test mode");
+    }
     const url = new URL(`/purchase/return`, window.location.origin);
     url.searchParams.set("bypass", "1");
     url.searchParams.set("purchase_full_code", code);
+    if (returnUrl) {
+      url.searchParams.set("return_url", returnUrl);
+    }
     window.location.assign(url.toString());
-  }, [code, adminApp, selectedPriceId, quantityNumber, isTooLarge]);
+  }, [code, selectedPriceId, quantityNumber, isTooLarge, returnUrl]);
 
   return (
     <div className="flex flex-row">
@@ -156,29 +162,29 @@ export default function PageClient({ code }: { code: string }) {
         ) : (
           <>
             <div className="mb-6">
-              <Typography type="h2" className="mb-2">{data?.offer?.display_name || "Plan"}</Typography>
+              <Typography type="h2" className="mb-2">{data?.product?.display_name || "Plan"}</Typography>
             </div>
             <div className="space-y-3">
               {data?.already_bought_non_stackable ? (
                 <Alert variant="destructive">
                   <AlertTitle>Already purchased</AlertTitle>
                   <AlertDescription>
-                    You already have this offer.
+                    You already have this product.
                   </AlertDescription>
                 </Alert>
-              ) : data?.conflicting_group_offers && data.conflicting_group_offers.length > 0 ? (
+              ) : data?.conflicting_products && data.conflicting_products.length > 0 ? (
                 <Alert>
                   <AlertTitle>Plan change</AlertTitle>
                   <AlertDescription>
-                    {data.conflicting_group_offers.length === 1 ? (
-                      <>This purchase will change your plan from {data.conflicting_group_offers[0].display_name}.</>
+                    {data.conflicting_products.length === 1 ? (
+                      <>This purchase will change your plan from {data.conflicting_products[0].display_name}.</>
                     ) : (
                       <>This purchase will change your plan from one of your existing plans.</>
                     )}
                   </AlertDescription>
                 </Alert>
               ) : null}
-              {data?.offer?.prices && typedEntries(data.offer.prices).map(([priceId, priceData]) => (
+              {data?.product?.prices && typedEntries(data.product.prices).map(([priceId, priceData]) => (
                 <Card
                   key={priceId}
                   className={`border cursor-pointer transition-colors ${selectedPriceId === priceId ? 'border-blue-500' : 'hover:border-primary/30'}`}
@@ -203,7 +209,7 @@ export default function PageClient({ code }: { code: string }) {
                   </CardContent>
                 </Card>
               ))}
-              {data?.offer?.stackable && selectedPriceId && (
+              {data?.product?.stackable && selectedPriceId && (
                 <div className="pt-4 space-y-2">
                   <div className="flex items-center justify-between">
                     <Typography type="label">Quantity</Typography>
@@ -251,10 +257,10 @@ export default function PageClient({ code }: { code: string }) {
                   <div className="pt-4 flex items-baseline justify-between">
                     <Typography type="label">Total</Typography>
                     <Typography type="h4">
-                      ${selectedPriceId ? (Number(data.offer.prices[selectedPriceId].USD) * Math.max(0, quantityNumber)) : 0}
-                      {selectedPriceId && data.offer.prices[selectedPriceId].interval && (
+                      ${selectedPriceId ? (Number(data.product.prices[selectedPriceId].USD) * Math.max(0, quantityNumber)) : 0}
+                      {selectedPriceId && data.product.prices[selectedPriceId].interval && (
                         <span className="text-sm text-primary/50">
-                          {" "}/ {shortenedInterval(data.offer.prices[selectedPriceId].interval!)}
+                          {" "}/ {shortenedInterval(data.product.prices[selectedPriceId].interval!)}
                         </span>
                       )}
                     </Typography>
@@ -266,9 +272,9 @@ export default function PageClient({ code }: { code: string }) {
         )}
       </div>
       <div className="grow relative flex justify-center items-center bg-primary/5">
-        {adminApp && (
+        {data?.test_mode && (
           <div className="absolute top-4 right-4 max-w-xs">
-            <BypassInfo handleBypass={handleBypass} />
+            <BypassInfo handleBypass={handleBypass} disabled={!selectedPriceId || quantityNumber < 1 || isTooLarge} />
           </div>
         )}
         {data && (
@@ -281,6 +287,7 @@ export default function PageClient({ code }: { code: string }) {
               fullCode={code}
               stripeAccountId={data.stripe_account_id}
               setupSubscription={setupSubscription}
+              returnUrl={returnUrl ?? undefined}
               disabled={quantityNumber < 1 || isTooLarge || data.already_bought_non_stackable === true}
             />
           </StripeElementsProvider>
@@ -290,16 +297,15 @@ export default function PageClient({ code }: { code: string }) {
   );
 }
 
-function BypassInfo({ handleBypass }: { handleBypass: () => Promise<void> }) {
+function BypassInfo({ handleBypass, disabled }: { handleBypass: () => Promise<void>, disabled: boolean }) {
   return (
     <Card className="border-primary/30 bg-secondary animate-fade-in">
       <CardContent className="p-3">
         <div className="flex items-center justify-between gap-3">
           <div className="flex flex-col">
             <Typography type="label">Test mode bypass</Typography>
-            <Typography type="footnote" variant="secondary">Not shown to customers</Typography>
           </div>
-          <Button onClick={handleBypass} size="icon" variant="ghost">
+          <Button onClick={handleBypass} size="icon" variant="ghost" disabled={disabled}>
             <ArrowRight className="w-4 h-4" />
           </Button>
         </div>

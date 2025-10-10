@@ -110,6 +110,9 @@ pages:
   
   - path: concepts/backend-integration.mdx
     platforms: ["next", "react", "js", "python"]
+
+  - path: concepts/jwt.mdx
+    platforms: ["next", "react", "js", "python"]
   
   - path: concepts/emails.mdx
     platforms: ["next", "react", "js"]  # No Python (server-side email functionality)
@@ -268,6 +271,9 @@ pages:
 
   # Others
   - path: others/self-host.mdx
+    platforms: ["next", "react", "js", "python"] # All platforms
+
+  - path: others/mcp-setup.mdx
     platforms: ["next", "react", "js", "python"] # All platforms
 
   - path: others/supabase.mdx

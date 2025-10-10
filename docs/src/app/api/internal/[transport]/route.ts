@@ -253,8 +253,8 @@ const handler = createMcpHandler(
         });
 
         try {
-          const instructionsPath = "content/setup-instructions.md";
-          const instructions = await readFile(instructionsPath, "utf-8");
+          const instructionsFromCurrentFile = "content/setup-instructions.md";
+          const instructions = await readFile(instructionsFromCurrentFile, "utf-8");
 
           return {
             content: [
