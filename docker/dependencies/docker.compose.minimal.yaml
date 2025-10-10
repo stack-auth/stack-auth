@@ -1,0 +1,108 @@
+services:
+
+  # ================= PostgreSQL =================
+
+  db:
+    build: ../postgres-with-extensions
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: PASSWORD-PLACEHOLDER--uqfEC1hmmv
+      POSTGRES_DB: stackframe
+      POSTGRES_DELAY_MS: ${POSTGRES_DELAY_MS:-0}
+    ports:
+      - 5432:5432
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    cap_add:
+      - NET_ADMIN  # required for the fake latency during dev
+
+  # ================= Inbucket =================
+
+  inbucket:
+    image: inbucket/inbucket:3.1.0
+    ports:
+      - 2500:2500
+      - 8105:9000
+      - 1100:1100
+    volumes:
+      - inbucket-data:/data
+
+  # ================= svix =================
+
+  svix-db:
+    image: "docker.io/postgres:16.1"
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: PASSWORD-PLACEHOLDER--KsoIMcchtp
+      POSTGRES_DB: svix
+    volumes:
+      - svix-postgres-data:/var/lib/postgresql/data
+    
+  svix-redis:
+    image: docker.io/redis:7-alpine
+    command: --save 60 500 --appendonly yes --appendfsync everysec --requirepass PASSWORD-PLACEHOLDER--oVn8GSD6b9
+    volumes:
+      - svix-redis-data:/data
+
+  svix-server:
+    image: svix/svix-server
+    environment:
+      WAIT_FOR: 'true'
+      SVIX_REDIS_DSN: redis://:PASSWORD-PLACEHOLDER--oVn8GSD6b9@svix-redis:6379
+      SVIX_DB_DSN: postgres://postgres:PASSWORD-PLACEHOLDER--KsoIMcchtp@svix-db:5432/svix
+      SVIX_CACHE_TYPE: memory
+      SVIX_JWT_SECRET: secret
+      SVIX_LOG_LEVEL: trace
+      SVIX_QUEUE_TYPE: redis
+    ports:
+      - 8113:8071
+    depends_on:
+    - svix-redis
+    - svix-db
+
+  # ================= Adobe S3 Mock =================
+  
+  s3mock:
+    image: adobe/s3mock:latest
+    ports:
+      - 8121:9090
+    environment:
+      - initialBuckets=stack-storage
+      - root=s3mockroot
+      - debug=false
+    volumes:
+      - s3mock-data:/tmp/s3mock
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9090/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ================= Freestyle mock =================
+
+  freestyle-mock:
+    build:
+      context: ./freestyle-mock
+      dockerfile: Dockerfile
+    image: freestyle-mock
+    container_name: freestyle-mock
+    ports:
+      - "8122:8080"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"  # noop on Docker Desktop/Orbstack, enables host.docker.internal on Linux
+    environment:
+      DENO_DIR: /deno-cache
+      HOST_ON_HOST: host.docker.internal
+    volumes:
+      - deno-cache:/deno-cache
+
+# ================= volumes =================
+
+volumes:
+  postgres-data:
+  inbucket-data:
+  svix-redis-data:
+  svix-postgres-data:
+  s3mock-data:
+  deno-cache:
+
