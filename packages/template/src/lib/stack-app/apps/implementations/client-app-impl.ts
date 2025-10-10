@@ -1374,14 +1374,10 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
   // IF_PLATFORM react-like
   useProducts(options: CustomerProductsRequestOptions): CustomerProductsList {
     const session = this._useSession();
-    if ("userId" in options) {
-      const response = useAsyncCache(this._userProductsCache, [session, options.userId, options.cursor ?? null, options.limit ?? null] as const, "app.useProducts(user)");
-      return this._customerProductsFromResponse(response);
-    } else if ("teamId" in options) {
-      const response = useAsyncCache(this._teamProductsCache, [session, options.teamId, options.cursor ?? null, options.limit ?? null] as const, "app.useProducts(team)");
-      return this._customerProductsFromResponse(response);
-    }
-    const response = useAsyncCache(this._customProductsCache, [session, options.customCustomerId, options.cursor ?? null, options.limit ?? null] as const, "app.useProducts(custom)");
+    const cache = "userId" in options ? this._userProductsCache : "teamId" in options ? this._teamProductsCache : this._customProductsCache;
+    const debugLabel = "userId" in options ? "app.useProducts(user)" : "teamId" in options ? "app.useProducts(team)" : "app.useProducts(custom)";
+    const customerId = "userId" in options ? options.userId : "teamId" in options ? options.teamId : options.customCustomerId;
+    const response = useAsyncCache(cache, [session, customerId, options.cursor ?? null, options.limit ?? null] as const, debugLabel);
     return this._customerProductsFromResponse(response);
   }
   // END_PLATFORM
