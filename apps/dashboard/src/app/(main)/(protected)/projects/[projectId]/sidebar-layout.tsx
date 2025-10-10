@@ -253,8 +253,8 @@ function useNavigationItems(): (Label | Item | Hidden)[] {
     },
     {
       name: t('offers'),
-      href: "/payments/offers",
-      regex: /^\/projects\/[^\/]+\/payments\/offers$/,
+      href: "/payments/products",
+      regex: /^\/projects\/[^\/]+\/payments\/products$/,
       icon: CreditCard,
       type: 'item' as const,
     },

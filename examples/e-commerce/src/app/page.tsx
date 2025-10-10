@@ -34,7 +34,7 @@ export default async function Home() {
       {shops.map(shop => (
         <div key={shop[0].id} className="card">
           <h2>{shop[1].displayName}</h2>
-          Offered by {shop[0].displayName ?? shop[0].primaryEmail}<br />
+          Producted by {shop[0].displayName ?? shop[0].primaryEmail}<br />
           <h3>Products</h3>
           <ul>
             {shop[1].products.map((product, i) => (

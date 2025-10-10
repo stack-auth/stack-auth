@@ -125,11 +125,11 @@ function ActionsCell({ item }: { item: PaymentItem }) {
           label: tDialog('deleteButton'),
           onClick: async () => {
             const config = await project.getConfig();
-            for (const [offerId, offer] of Object.entries(config.payments.offers)) {
-              if (has(offer.includedItems, item.id)) {
+            for (const [productId, product] of Object.entries(config.payments.products)) {
+              if (has(product.includedItems, item.id)) {
                 toast({
                   title: tDialog('errorInOffer'),
-                  description: tDialog('errorInOfferDescription', { offerId }),
+                  description: tDialog('errorInOfferDescription', { productId }),
                   variant: "destructive",
                 });
                 return "prevent-close";

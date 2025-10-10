@@ -8,9 +8,9 @@ import { useState } from "react";
 type Interval = [number, 'day' | 'week' | 'month' | 'year'] | 'never';
 type ExpiresOption = 'never' | 'when-purchase-expires' | 'when-repeated';
 
-type Offer = CompleteConfig['payments']['offers'][string];
-type IncludedItem = Offer['includedItems'][string];
-type Price = (Offer['prices'] & object)[string];
+type Product = CompleteConfig['payments']['products'][string];
+type IncludedItem = Product['includedItems'][string];
+type Price = (Product['prices'] & object)[string];
 
 type IncludedItemDialogProps = {
   open: boolean,
@@ -77,7 +77,7 @@ export function IncludedItemDialog({
     if (!selectedItemId) {
       newErrors.itemId = "Please select an item";
     } else if (!editingItem && existingIncludedItemIds.includes(selectedItemId)) {
-      newErrors.itemId = "This item is already included in the offer";
+      newErrors.itemId = "This item is already included in the product";
     }
 
     // Validate quantity
@@ -135,7 +135,7 @@ export function IncludedItemDialog({
         <DialogHeader>
           <DialogTitle>{editingItem ? "Edit Included Item" : "Add Included Item"}</DialogTitle>
           <DialogDescription>
-            Configure which items are included with this offer and how they behave.
+            Configure which items are included with this product and how they behave.
           </DialogDescription>
         </DialogHeader>
 
@@ -143,7 +143,7 @@ export function IncludedItemDialog({
           {/* Item Selection */}
           <div className="grid gap-2">
             <Label htmlFor="item-select">
-              <SimpleTooltip tooltip="Choose which item to include with this offer">
+              <SimpleTooltip tooltip="Choose which item to include with this product">
                 Select Item
               </SimpleTooltip>
             </Label>

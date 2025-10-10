@@ -1,15 +1,17 @@
 import { getSubscriptions, isActiveSubscription } from "@/lib/payments";
+import { validateRedirectUrl } from "@/lib/redirect-urls";
 import { getTenancy } from "@/lib/tenancies";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { inlineOfferSchema, yupArray, yupBoolean, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+import { KnownErrors } from "@stackframe/stack-shared";
+import { inlineProductSchema, urlSchema, yupArray, yupBoolean, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { SUPPORTED_CURRENCIES } from "@stackframe/stack-shared/dist/utils/currency-constants";
 import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { filterUndefined, getOrUndefined, typedEntries, typedFromEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import * as yup from "yup";
 import { purchaseUrlVerificationCodeHandler } from "../verification-code-handler";
 
-const offerDataSchema = inlineOfferSchema
+const productDataSchema = inlineProductSchema
   .omit(["server_only", "included_items"])
   .concat(yupObject({
     stackable: yupBoolean().defined(),
@@ -22,20 +24,22 @@ export const POST = createSmartRouteHandler({
   request: yupObject({
     body: yupObject({
       full_code: yupString().defined(),
+      return_url: urlSchema.optional(),
     }),
   }),
   response: yupObject({
     statusCode: yupNumber().oneOf([200]).defined(),
     bodyType: yupString().oneOf(["json"]).defined(),
     body: yupObject({
-      offer: offerDataSchema,
+      product: productDataSchema,
       stripe_account_id: yupString().defined(),
       project_id: yupString().defined(),
       already_bought_non_stackable: yupBoolean().defined(),
-      conflicting_group_offers: yupArray(yupObject({
-        offer_id: yupString().defined(),
+      conflicting_products: yupArray(yupObject({
+        product_id: yupString().defined(),
         display_name: yupString().defined(),
       }).defined()).defined(),
+      test_mode: yupBoolean().defined(),
     }).defined(),
   }),
   async handler({ body }) {
@@ -44,12 +48,15 @@ export const POST = createSmartRouteHandler({
     if (!tenancy) {
       throw new StackAssertionError(`No tenancy found for given tenancyId`);
     }
-    const offer = verificationCode.data.offer;
-    const offerData: yup.InferType<typeof offerDataSchema> = {
-      display_name: offer.displayName ?? "Offer",
-      customer_type: offer.customerType,
-      stackable: offer.stackable === true,
-      prices: offer.prices === "include-by-default" ? {} : typedFromEntries(typedEntries(offer.prices).map(([key, value]) => [key, filterUndefined({
+    if (body.return_url && !validateRedirectUrl(body.return_url, tenancy)) {
+      throw new KnownErrors.RedirectUrlNotWhitelisted();
+    }
+    const product = verificationCode.data.product;
+    const productData: yup.InferType<typeof productDataSchema> = {
+      display_name: product.displayName ?? "Product",
+      customer_type: product.customerType,
+      stackable: product.stackable === true,
+      prices: product.prices === "include-by-default" ? {} : typedFromEntries(typedEntries(product.prices).map(([key, value]) => [key, filterUndefined({
         ...typedFromEntries(SUPPORTED_CURRENCIES.map(c => [c.code, getOrUndefined(value, c.code)])),
         interval: value.interval,
         free_trial: value.freeTrial,
@@ -61,28 +68,28 @@ export const POST = createSmartRouteHandler({
     const subscriptions = await getSubscriptions({
       prisma,
       tenancy,
-      customerType: offer.customerType,
+      customerType: product.customerType,
       customerId: verificationCode.data.customerId,
     });
 
-    const alreadyBoughtNonStackable = !!(subscriptions.find((s) => s.offerId === verificationCode.data.offerId) && offer.stackable !== true);
+    const alreadyBoughtNonStackable = !!(subscriptions.find((s) => s.productId === verificationCode.data.productId) && product.stackable !== true);
 
-    const groups = tenancy.config.payments.groups;
-    const groupId = Object.keys(groups).find((g) => offer.groupId === g);
-    let conflictingGroupOffers: { offer_id: string, display_name: string }[] = [];
-    if (groupId) {
-      const isSubscribable = offer.prices !== "include-by-default" && Object.values(offer.prices).some((p: any) => p && p.interval);
+    const catalogs = tenancy.config.payments.catalogs;
+    const catalogId = Object.keys(catalogs).find((g) => product.catalogId === g);
+    let conflictingCatalogProducts: { product_id: string, display_name: string }[] = [];
+    if (catalogId) {
+      const isSubscribable = product.prices !== "include-by-default" && Object.values(product.prices).some((p: any) => p && p.interval);
       if (isSubscribable) {
         const conflicts = subscriptions.filter((subscription) => (
-          subscription.offerId &&
-          subscription.offer.groupId === groupId &&
+          subscription.productId &&
+          subscription.product.catalogId === catalogId &&
           isActiveSubscription(subscription) &&
-          subscription.offer.prices !== "include-by-default" &&
-          (!offer.isAddOnTo || !Object.keys(offer.isAddOnTo).includes(subscription.offerId))
+          subscription.product.prices !== "include-by-default" &&
+          (!product.isAddOnTo || !Object.keys(product.isAddOnTo).includes(subscription.productId))
         ));
-        conflictingGroupOffers = conflicts.map((s) => ({
-          offer_id: s.offerId!,
-          display_name: s.offer.displayName ?? s.offerId!,
+        conflictingCatalogProducts = conflicts.map((s) => ({
+          product_id: s.productId!,
+          display_name: s.product.displayName ?? s.productId!,
         }));
       }
     }
@@ -91,11 +98,52 @@ export const POST = createSmartRouteHandler({
       statusCode: 200,
       bodyType: "json",
       body: {
-        offer: offerData,
+        product: productData,
         stripe_account_id: verificationCode.data.stripeAccountId,
         project_id: tenancy.project.id,
         already_bought_non_stackable: alreadyBoughtNonStackable,
-        conflicting_group_offers: conflictingGroupOffers,
+        conflicting_products: conflictingCatalogProducts,
+        test_mode: tenancy.config.payments.testMode === true,
+      },
+    };
+  },
+});
+
+
+export const GET = createSmartRouteHandler({
+  metadata: {
+    hidden: true,
+  },
+  request: yupObject({
+    query: yupObject({
+      full_code: yupString().defined(),
+      return_url: urlSchema.optional(),
+    }),
+  }),
+  response: yupObject({
+    statusCode: yupNumber().oneOf([200]).defined(),
+    bodyType: yupString().oneOf(["json"]).defined(),
+    body: yupObject({
+      valid: yupBoolean().defined(),
+    }).defined(),
+  }),
+  async handler({ query }) {
+    const tenancyId = query.full_code.split("_")[0];
+    if (!tenancyId) {
+      throw new KnownErrors.VerificationCodeNotFound();
+    }
+    const tenancy = await getTenancy(tenancyId);
+    if (!tenancy) {
+      throw new KnownErrors.VerificationCodeNotFound();
+    }
+    if (query.return_url && !validateRedirectUrl(query.return_url, tenancy)) {
+      throw new KnownErrors.RedirectUrlNotWhitelisted();
+    }
+    return {
+      statusCode: 200,
+      bodyType: "json",
+      body: {
+        valid: true,
       },
     };
   },

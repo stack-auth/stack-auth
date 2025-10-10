@@ -1,15 +1,15 @@
 "use client";
 
-import { DayInterval } from "@stackframe/stack-shared/dist/utils/dates";
 import { InputField } from "@/components/form-fields";
-import { Control, FieldValues, Path } from "react-hook-form";
-import { KeyedRecordEditorField } from "../form-fields/keyed-record-editor-field";
-import { dayIntervalSchema, userSpecifiedIdSchema } from "@stackframe/stack-shared/dist/schema-fields";
-import * as yup from "yup";
 import { readableInterval } from "@/lib/dates";
+import { dayIntervalSchema, userSpecifiedIdSchema } from "@stackframe/stack-shared/dist/schema-fields";
+import { DayInterval } from "@stackframe/stack-shared/dist/utils/dates";
+import { Control, FieldValues, Path } from "react-hook-form";
+import * as yup from "yup";
 import { DayIntervalSelectorField } from "../form-fields/day-interval-selector-field";
+import { KeyedRecordEditorField } from "../form-fields/keyed-record-editor-field";
 
-type OfferPrice = {
+type ProductPrice = {
   USD: string,
   interval?: DayInterval,
   freeTrial?: DayInterval,
@@ -55,7 +55,7 @@ export function PriceEditorField<F extends FieldValues>(props: {
           USD: yup.string().defined().label("Price (USD)"),
           interval: dayIntervalSchema.optional().label("Interval"),
         }),
-        toFormValue: (id: string, value: OfferPrice) => typeof value === "string" ? value : ({
+        toFormValue: (id: string, value: ProductPrice) => typeof value === "string" ? value : ({
           id,
           USD: value.USD,
           interval: value.interval,

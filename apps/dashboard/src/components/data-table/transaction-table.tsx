@@ -61,11 +61,11 @@ const getColumns = (t: any, tTypes: any): ColumnDef<AdminTransaction>[] => [
     enableSorting: false,
   },
   {
-    accessorKey: 'offer_or_item',
-    header: ({ column }) => <DataTableColumnHeader column={column} columnTitle={t('offerOrItem')} />,
+    accessorKey: 'product_or_item',
+    header: ({ column }) => <DataTableColumnHeader column={column} columnTitle="Product / Item" />,
     cell: ({ row }) => (
       <TextCell>
-        {row.original.type === 'item_quantity_change' ? (row.original.item_id ?? '—') : (row.original.offer_display_name || '—')}
+        {row.original.type === 'item_quantity_change' ? (row.original.item_id ?? '—') : (row.original.product_display_name || '—')}
       </TextCell>
     ),
     enableSorting: false,
@@ -154,7 +154,7 @@ export function TransactionTable() {
         customer_id: true,
         price: true,
         // Hide the rest by default; users can enable via View menu
-        offer_or_item: false,
+        product_or_item: false,
         quantity: false,
         test_mode: true,
         status: false,
