@@ -229,7 +229,6 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
 
   protected _createServerCustomer(userIdOrTeamId: string, type: "user" | "team"): Omit<Customer<true>, "id"> {
     const app = this;
-    const itemsCache = type === "user" ? app._serverUserItemsCache : app._serverTeamItemsCache;
     const productsCache = type === "user" ? app._serverUserProductsCache : app._serverTeamProductsCache;
     const customerOptions = type === "user" ? { userId: userIdOrTeamId } : { teamId: userIdOrTeamId };
     return {
