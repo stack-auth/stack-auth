@@ -128,11 +128,17 @@ const columns: ColumnDef<ServerTeam>[] =  [
 ];
 
 export function TeamTable(props: { teams: ServerTeam[] }) {
+  const router = useRouter();
+  const stackAdminApp = useAdminApp();
+
   return <DataTable
     data={props.teams}
     columns={columns}
     toolbarRender={toolbarRender}
     defaultColumnFilters={[]}
     defaultSorting={[{ id: 'createdAt', desc: true }]}
+    onRowClick={(row) => {
+      router.push(`/projects/${encodeURIComponent(stackAdminApp.projectId)}/teams/${encodeURIComponent(row.id)}`);
+    }}
   />;
 }
