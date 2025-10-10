@@ -1,9 +1,9 @@
 "use client";
 
-import { useMutation, useQuery } from "convex/react";
-import { api } from "../convex/_generated/api";
-import Link from "next/link";
 import { UserButton, useUser } from "@stackframe/stack";
+import { useMutation, useQuery } from "convex/react";
+import Link from "next/link";
+import { api } from "../convex/_generated/api";
 
 export default function Home() {
   const user = useUser();
@@ -15,7 +15,7 @@ export default function Home() {
       </header>
       <main className="p-8 flex flex-col gap-16">
         <h1 className="text-4xl font-bold text-center">Convex + Next.js</h1>
-        <p className="text-center">User: {user?.primaryEmail}</p>
+        <p className="text-center">User (client): {user ? user?.primaryEmail ?? "null" : "Not logged in"}</p>
         <Content />
       </main>
     </>
@@ -28,6 +28,7 @@ function Content() {
       count: 10,
     }) ?? {};
   const addNumber = useMutation(api.myFunctions.addNumber);
+  const getUserInfo = useQuery(api.myFunctions.getUserInfo, {});
 
   if (viewer === undefined || numbers === undefined) {
     return (
@@ -40,6 +41,11 @@ function Content() {
   return (
     <div className="flex flex-col gap-8 max-w-lg mx-auto">
       <p>Welcome {viewer ?? "Anonymous"}!</p>
+      <button className="bg-foreground text-background text-sm px-4 py-2 rounded-md" onClick={() => {
+        alert(getUserInfo);
+      }}>
+        View user info
+      </button>
       <p>
         Click the button below and open this page in another window - this data
         is persisted in the Convex cloud database!
