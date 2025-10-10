@@ -1527,6 +1527,20 @@ const ProductCustomerTypeDoesNotMatch = createKnownErrorConstructor(
   (json) => [json.product_id ?? undefined, json.customer_id, json.product_customer_type ?? undefined, json.actual_customer_type] as const,
 );
 
+const ProductAlreadyGranted = createKnownErrorConstructor(
+  KnownError,
+  "PRODUCT_ALREADY_GRANTED",
+  (productId: string, customerId: string) => [
+    400,
+    `Customer with ID ${JSON.stringify(customerId)} already owns product ${JSON.stringify(productId)}.`,
+    {
+      product_id: productId,
+      customer_id: customerId,
+    },
+  ] as const,
+  (json) => [json.product_id, json.customer_id] as const,
+);
+
 const ItemQuantityInsufficientAmount = createKnownErrorConstructor(
   KnownError,
   "ITEM_QUANTITY_INSUFFICIENT_AMOUNT",
@@ -1692,6 +1706,7 @@ export const KnownErrors = {
   CustomerDoesNotExist,
   ProductDoesNotExist,
   ProductCustomerTypeDoesNotMatch,
+  ProductAlreadyGranted,
   ItemQuantityInsufficientAmount,
   StripeAccountInfoNotFound,
   DataVaultStoreDoesNotExist,

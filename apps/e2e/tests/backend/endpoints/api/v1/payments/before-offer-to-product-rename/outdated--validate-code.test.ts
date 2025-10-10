@@ -42,6 +42,7 @@ it("should allow valid code and return offer data", async ({ expect }) => {
         "product": {
           "customer_type": "user",
           "display_name": "Test Product",
+          "included_items": {},
           "prices": {
             "monthly": {
               "USD": "1000",
@@ -51,6 +52,7 @@ it("should allow valid code and return offer data", async ({ expect }) => {
               ],
             },
           },
+          "server_only": false,
           "stackable": false,
         },
         "project_id": "<stripped UUID>",
@@ -125,8 +127,18 @@ it("should set already_bought_non_stackable when user already owns non-stackable
   expect(createUrlRes2).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 400,
-      "body": "Customer already has purchased this product; this product is not stackable",
-      "headers": Headers { <some fields may have been hidden> },
+      "body": {
+        "code": "PRODUCT_ALREADY_GRANTED",
+        "details": {
+          "customer_id": "<stripped UUID>",
+          "product_id": "test-offer",
+        },
+        "error": "Customer with ID \\"<stripped UUID>\\" already owns product \\"test-offer\\".",
+      },
+      "headers": Headers {
+        "x-stack-known-error": "PRODUCT_ALREADY_GRANTED",
+        <some fields may have been hidden>,
+      },
     }
   `);
 });
@@ -209,6 +221,7 @@ it("should include conflicting_group_offers when switching within the same group
         "product": {
           "customer_type": "user",
           "display_name": "Offer B",
+          "included_items": {},
           "prices": {
             "monthly": {
               "USD": "2000",
@@ -218,6 +231,7 @@ it("should include conflicting_group_offers when switching within the same group
               ],
             },
           },
+          "server_only": false,
           "stackable": false,
         },
         "project_id": "<stripped UUID>",

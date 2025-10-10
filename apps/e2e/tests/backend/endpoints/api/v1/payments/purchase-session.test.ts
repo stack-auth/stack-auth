@@ -812,8 +812,18 @@ it("should block one-time purchase for same product after prior one-time purchas
   expect(createUrl2).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 400,
-      "body": "Customer already has purchased this product; this product is not stackable",
-      "headers": Headers { <some fields may have been hidden> },
+      "body": {
+        "code": "PRODUCT_ALREADY_GRANTED",
+        "details": {
+          "customer_id": "<stripped UUID>",
+          "product_id": "ot",
+        },
+        "error": "Customer with ID \\"<stripped UUID>\\" already owns product \\"ot\\".",
+      },
+      "headers": Headers {
+        "x-stack-known-error": "PRODUCT_ALREADY_GRANTED",
+        <some fields may have been hidden>,
+      },
     }
   `);
 });
