@@ -30,13 +30,16 @@ const fixImportExtensions = (extension: string = ".js")  => ({
 });
 
 
-export default function createJsLibraryTsupConfig(options: { barrelFile: boolean }) {
+export default function createJsLibraryTsupConfig(options: { barrelFiles?: string[] | undefined }) {
   return defineConfig({
     entryPoints: ['src/**/*.(ts|tsx|js|jsx)'],
     sourcemap: true,
     clean: false,
     noExternal: [...customNoExternal],
-    dts: options.barrelFile ? 'src/index.ts' : true,  // we only generate types for the barrel file because it drastically decreases the memory needed for tsup https://github.com/egoist/tsup/issues/920#issuecomment-2454732254
+    dts: options.barrelFiles ? {
+      // we only generate types for the barrel file because it drastically decreases the memory needed for tsup https://github.com/egoist/tsup/issues/920#issuecomment-2454732254
+      entry: options.barrelFiles,
+    } : true,
     outDir: 'dist',
     format: ['esm', 'cjs'],
     legacyOutput: true,

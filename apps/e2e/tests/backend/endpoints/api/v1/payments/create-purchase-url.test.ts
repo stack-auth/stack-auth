@@ -60,10 +60,10 @@ it("should error for non-existent product_id", async ({ expect }) => {
         "body": {
           "code": "PRODUCT_DOES_NOT_EXIST",
           "details": {
-            "access_type": "client",
+            "context": null,
             "product_id": "non-existent-product",
           },
-          "error": "Product with ID \\"non-existent-product\\" does not exist or you don't have permissions to access it.",
+          "error": "Product with ID \\"non-existent-product\\" does not exist.",
         },
         "headers": Headers {
           "x-stack-known-error": "PRODUCT_DOES_NOT_EXIST",
@@ -233,8 +233,18 @@ it("should error for server-only product when calling from client", async ({ exp
   expect(response).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 400,
-      "body": "This product is marked as server-only and cannot be accessed client side!",
-      "headers": Headers { <some fields may have been hidden> },
+      "body": {
+        "code": "PRODUCT_DOES_NOT_EXIST",
+        "details": {
+          "context": "server_only",
+          "product_id": "test-product",
+        },
+        "error": "Product with ID \\"test-product\\" is marked as server-only and cannot be accessed client side.",
+      },
+      "headers": Headers {
+        "x-stack-known-error": "PRODUCT_DOES_NOT_EXIST",
+        <some fields may have been hidden>,
+      },
     }
   `);
 });
@@ -308,6 +318,73 @@ it("should allow valid product_id", async ({ expect }) => {
   const urlObj = new URL(body.url);
   const returnUrl = urlObj.searchParams.get("return_url");
   expect(returnUrl).toBe("http://stack-test.localhost/after-purchase");
+});
+
+it("should error when customer already owns a non-stackable product", async ({ expect }) => {
+  await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+  await Payments.setup();
+  await Project.updateConfig({
+    payments: {
+      testMode: true,
+      products: {
+        "test-product": {
+          displayName: "Test Product",
+          customerType: "user",
+          serverOnly: false,
+          stackable: false,
+          prices: {
+            "monthly": {
+              USD: "1000",
+              interval: [1, "month"],
+            },
+          },
+          includedItems: {},
+        },
+      },
+    },
+  });
+
+  const { userId } = await User.create();
+  const firstResponse = await niceBackendFetch("/api/latest/payments/purchases/create-purchase-url", {
+    method: "POST",
+    accessType: "client",
+    body: {
+      customer_type: "user",
+      customer_id: userId,
+      product_id: "test-product",
+    },
+  });
+  expect(firstResponse.status).toBe(200);
+  const firstBody = firstResponse.body as { url: string };
+  const firstUrl = new URL(firstBody.url);
+  const fullCode = firstUrl.pathname.split("/").pop();
+  expect(fullCode).toBeDefined();
+  if (!fullCode) {
+    throw new Error("Expected full purchase code");
+  }
+
+  const purchaseResponse = await niceBackendFetch("/api/latest/internal/payments/test-mode-purchase-session", {
+    method: "POST",
+    accessType: "admin",
+    body: {
+      full_code: fullCode,
+      price_id: "monthly",
+      quantity: 1,
+    },
+  });
+  expect(purchaseResponse.status).toBe(200);
+
+  const secondResponse = await niceBackendFetch("/api/latest/payments/purchases/create-purchase-url", {
+    method: "POST",
+    accessType: "client",
+    body: {
+      customer_type: "user",
+      customer_id: userId,
+      product_id: "test-product",
+    },
+  });
+  expect(secondResponse.status).toBe(400);
+  expect(secondResponse.body).toBe("Customer already has purchased this product; this product is not stackable");
 });
 
 it("should error for untrusted return_url", async ({ expect }) => {
