@@ -1686,7 +1686,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
   async getConvexHttpClientAuth(options: { tokenStore: TokenStoreInit }): Promise<string> {
     const session = await this._getSession(options.tokenStore);
     const tokens = await session.getOrFetchLikelyValidTokens(20_000);
-    return tokens?.accessToken.token ?? throwErr("No access token available");
+    return tokens?.accessToken.token ?? "";
   }
 
   protected async _updateClientUser(update: UserUpdateOptions, session: InternalSession) {
