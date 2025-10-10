@@ -39,6 +39,7 @@ import {
   ShieldEllipsis,
   User,
   Users,
+  UserRound,
   Webhook,
 } from "lucide-react";
 import { useTheme } from "next-themes";
@@ -249,6 +250,13 @@ const navigationItems: (Label | Item | Hidden)[] = [
     href: "/payments/products",
     regex: /^\/projects\/[^\/]+\/payments\/products$/,
     icon: CreditCard,
+    type: 'item',
+  },
+  {
+    name: "Customers",
+    href: "/payments/customers",
+    regex: /^\/projects\/[^\/]+\/payments\/customers$/,
+    icon: UserRound,
     type: 'item',
   },
   {
