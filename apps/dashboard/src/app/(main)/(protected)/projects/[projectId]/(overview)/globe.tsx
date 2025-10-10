@@ -3,6 +3,7 @@ import useResizeObserver from '@react-hook/resize-observer';
 import { useUser } from '@stackframe/stack';
 import { getFlagEmoji } from '@stackframe/stack-shared/dist/utils/unicode';
 import { Typography } from '@stackframe/stack-ui';
+import { useTranslations } from 'next-intl';
 import dynamic from 'next/dynamic';
 import { RefObject, use, useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { GlobeMethods } from 'react-globe.gl';
@@ -29,6 +30,7 @@ function useSize(target: RefObject<HTMLDivElement | null>) {
 }
 
 export function GlobeSection({ countryData, totalUsers, children }: {countryData: Record<string, number>, totalUsers: number, children?: React.ReactNode}) {
+  const t = useTranslations('overview.globe');
   const countries = use(countriesPromise);
   const globeRef = useRef<GlobeMethods | undefined>(undefined);
 
@@ -273,12 +275,12 @@ export function GlobeSection({ countryData, totalUsers, children }: {countryData
     >
       <div className='absolute top-0 left-0 right-0 bottom-0 lg:hidden block'>
         <Typography type="h2">
-          Welcome back!
+          {t('welcomeBack')}!
         </Typography>
       </div>
       <div className='absolute top-1 left-2 right-0 bottom-0 flex flex-col gap-4 hidden lg:block'>
         <Typography type="h2">
-          Welcome back{displayName ? `, ${displayName}!` : '!'}
+          {t('welcomeBack')}{displayName ? `, ${displayName}!` : '!'}
         </Typography>
         <div className='text-red-500 p-4 flex items-center gap-1.5 text-xs font-bold'>
           <div className="stack-live-pulse" />
@@ -296,16 +298,16 @@ export function GlobeSection({ countryData, totalUsers, children }: {countryData
                   100% {box-shadow: 0 0 0 8px #0000}
               }
             `}</style>
-          LIVE
+          {t('live')}
         </div>
       </div>
     </div>
     <div className='relative h-full flex-grow flex flex-col gap-4 z-1'>
       <Typography type='h2' className='text-sm uppercase'>
-        🌎 Worldwide
+        {t('worldwide')}
       </Typography>
       <Typography type='p' className='text-2xl'>
-        {totalUsers} total users
+        {totalUsers} {t('totalUsers')}
       </Typography>
       {selectedCountry && (
         <>
@@ -313,7 +315,7 @@ export function GlobeSection({ countryData, totalUsers, children }: {countryData
             {selectedCountry.code.match(/^[a-zA-Z][a-zA-Z]$/) ? `${getFlagEmoji(selectedCountry.code)} ` : ""} {selectedCountry.name}
           </Typography>
           <Typography type='p' className='text-2xl'>
-            {countryData[selectedCountry.code] ?? 0} users
+            {countryData[selectedCountry.code] ?? 0} {t('users')}
           </Typography>
         </>
       )}

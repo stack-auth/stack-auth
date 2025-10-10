@@ -15,6 +15,11 @@ type DataTableToolbarProps<TData> = {
   defaultColumnFilters: ColumnFiltersState,
   defaultSorting: SortingState,
   showResetFilters?: boolean,
+  resetFiltersLabel?: string,
+  exportCSVLabel?: string,
+  noDataToExportLabel?: string,
+  viewLabel?: string,
+  toggleColumnsLabel?: string,
 }
 
 export function DataTableToolbar<TData>({
@@ -24,6 +29,11 @@ export function DataTableToolbar<TData>({
   defaultColumnFilters,
   defaultSorting,
   showResetFilters = true,
+  resetFiltersLabel = "Reset filters",
+  exportCSVLabel = "Export CSV",
+  noDataToExportLabel = "No data to export",
+  viewLabel,
+  toggleColumnsLabel,
 }: DataTableToolbarProps<TData>) {
   const isFiltered = !deepPlainEquals(table.getState().columnFilters, defaultColumnFilters);
   const isSorted = !deepPlainEquals(table.getState().sorting, defaultSorting);
@@ -41,7 +51,7 @@ export function DataTableToolbar<TData>({
             }}
             className="h-8 px-2 lg:px-3"
           >
-            Reset filters
+            {resetFiltersLabel}
             <Cross2Icon className="ml-2 h-4 w-4" />
           </Button>
         )}
@@ -49,7 +59,7 @@ export function DataTableToolbar<TData>({
       {showDefaultToolbar && (
         <>
           <div className="flex items-center gap-2 flex-wrap">
-            <DataTableViewOptions table={table} />
+            <DataTableViewOptions table={table} viewLabel={viewLabel} toggleColumnsLabel={toggleColumnsLabel} />
             <Button
               variant="outline"
               size="sm"
@@ -82,7 +92,7 @@ export function DataTableToolbar<TData>({
                 const rowModel = table.getCoreRowModel();
                 const rows = rowModel.rows.map(row => Object.fromEntries(row.getAllCells().map(c => [c.column.id, renderCellValue(c)]).filter(([_, v]) => v !== undefined)));
                 if (rows.length === 0) {
-                  alert("No data to export");
+                  alert(noDataToExportLabel);
                   return;
                 }
                 const csv = generateCsv(csvConfig)(rows as any);
@@ -90,7 +100,7 @@ export function DataTableToolbar<TData>({
               }}
             >
               <DownloadIcon className="mr-2 h-4 w-4" />
-              Export CSV
+              {exportCSVLabel}
             </Button>
           </div>
         </>

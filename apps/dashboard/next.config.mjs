@@ -1,10 +1,13 @@
 import { withSentryConfig } from "@sentry/nextjs";
 
 import createBundleAnalyzer from "@next/bundle-analyzer";
+import createNextIntlPlugin from 'next-intl/plugin';
 
 const withBundleAnalyzer = createBundleAnalyzer({
   enabled: !!process.env.ANALYZE_BUNDLE,
 });
+
+const withNextIntl = createNextIntlPlugin('./src/i18n/request.ts');
 
 const withConfiguredSentryConfig = (nextConfig) =>
   withSentryConfig(
@@ -128,5 +131,7 @@ const nextConfig = {
 };
 
 export default withConfiguredSentryConfig(
-  withBundleAnalyzer(nextConfig)
+  withBundleAnalyzer(
+    withNextIntl(nextConfig)
+  )
 );

@@ -13,6 +13,8 @@ import { SpeedInsights } from "@vercel/speed-insights/next";
 import { GeistMono } from "geist/font/mono";
 import { GeistSans } from 'geist/font/sans';
 import type { Metadata } from 'next';
+import { NextIntlClientProvider } from 'next-intl';
+import { getLocale, getMessages } from 'next-intl/server';
 import { Inter as FontSans } from "next/font/google";
 import React from 'react';
 import { VersionAlerter } from '../components/version-alerter';
@@ -53,7 +55,7 @@ type TagConfigJson = {
   innerHTML?: string,
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: {
   children: React.ReactNode,
@@ -64,8 +66,12 @@ export default function RootLayout({
     throw new Error(`STACK_DEVELOPMENT_TRANSLATION_LOCALE can only be used in development mode (found: ${JSON.stringify(translationLocale)})`);
   }
 
+  // Get locale and messages for i18n
+  const locale = await getLocale();
+  const messages = await getMessages();
+
   return (
-    <html suppressHydrationWarning lang="en" className={`${GeistSans.variable} ${GeistMono.variable}`}>
+    <html suppressHydrationWarning lang={locale} className={`${GeistSans.variable} ${GeistMono.variable}`}>
       <head>
         <link rel="preconnect" href="https://fonts.gstatic.com" />
         <StyleLink href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded&display=block" />
@@ -91,19 +97,21 @@ export default function RootLayout({
           <Analytics />
           <PageView />
           <SpeedInsights />
-          <ThemeProvider>
-            <StackProvider app={stackServerApp} lang={translationLocale as any}>
-              <StackTheme>
-                <ClientPolyfill />
-                <RouterProvider>
-                  <UserIdentity />
-                  <VersionAlerter />
-                  <BackgroundShine />
-                  {children}
-                </RouterProvider>
-              </StackTheme>
-            </StackProvider>
-          </ThemeProvider>
+          <NextIntlClientProvider locale={locale} messages={messages}>
+            <ThemeProvider>
+              <StackProvider app={stackServerApp} lang={translationLocale as any}>
+                <StackTheme>
+                  <ClientPolyfill />
+                  <RouterProvider>
+                    <UserIdentity />
+                    <VersionAlerter />
+                    <BackgroundShine />
+                    {children}
+                  </RouterProvider>
+                </StackTheme>
+              </StackProvider>
+            </ThemeProvider>
+          </NextIntlClientProvider>
           <DevErrorNotifier />
           <Toaster />
           <SiteLoadingIndicatorDisplay />

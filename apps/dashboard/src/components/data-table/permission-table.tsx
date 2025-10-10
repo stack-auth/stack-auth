@@ -1,9 +1,10 @@
 'use client';
 import { useAdminApp } from "@/app/(main)/(protected)/projects/[projectId]/use-admin-app";
 import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
-import { ActionCell, ActionDialog, BadgeCell, DataTable, DataTableColumnHeader, SearchToolbarItem, SimpleTooltip, TextCell } from "@stackframe/stack-ui";
+import { ActionCell, ActionDialog, BadgeCell, DataTable, DataTableColumnHeader, DataTableI18n, SearchToolbarItem, SimpleTooltip, TextCell } from "@stackframe/stack-ui";
 import { ColumnDef, Row, Table } from "@tanstack/react-table";
-import { useState } from "react";
+import { useTranslations } from 'next-intl';
+import { useMemo, useState } from "react";
 import * as yup from "yup";
 import { SmartFormDialog } from "../form-dialog";
 import { PermissionListField } from "../permission-field";
@@ -16,10 +17,10 @@ type AdminPermissionDefinition = {
 
 type PermissionType = 'project' | 'team';
 
-function toolbarRender<TData>(table: Table<TData>) {
+function toolbarRender<TData>(table: Table<TData>, searchPlaceholder: string) {
   return (
     <>
-      <SearchToolbarItem table={table} keyName="id" placeholder="Filter by ID" />
+      <SearchToolbarItem table={table} keyName="id" placeholder={searchPlaceholder} />
     </>
   );
 }
@@ -30,6 +31,7 @@ function EditDialog(props: {
   selectedPermissionId: string,
   permissionType: PermissionType,
 }) {
+  const t = useTranslations('permissions.table.dialogs.edit');
   const stackAdminApp = useAdminApp();
   const teamPermissions = stackAdminApp.useTeamPermissionDefinitions();
   const projectPermissions = stackAdminApp.useProjectPermissionDefinitions();
@@ -45,14 +47,14 @@ function EditDialog(props: {
     id: yup.string()
       .defined()
       .oneOf([props.selectedPermissionId])
-      .matches(/^[a-z0-9_:]+$/, 'Only lowercase letters, numbers, ":" and "_" are allowed')
-      .label("ID")
+      .matches(/^[a-z0-9_:]+$/, t('idValidation'))
+      .label(t('idLabel'))
       .meta({
         stackFormFieldExtraProps: {
           disabled: true,
         },
       }),
-    description: yup.string().label("Description"),
+    description: yup.string().label(t('descriptionLabel')),
     containedPermissionIds: yup.array().of(yup.string().defined()).defined().meta({
       stackFormFieldRender: (innerProps) => (
         <PermissionListField
@@ -72,9 +74,9 @@ function EditDialog(props: {
   return <SmartFormDialog
     open={props.open}
     onOpenChange={props.onOpenChange}
-    title="Edit Permission"
+    title={t('title')}
     formSchema={formSchema}
-    okButton={{ label: "Save" }}
+    okButton={{ label: t('save') }}
     onSubmit={(values) => {
       runAsynchronously(async () => {
         if (props.permissionType === 'project') {
@@ -94,24 +96,25 @@ function DeleteDialog<T extends AdminPermissionDefinition>(props: {
   onOpenChange: (open: boolean) => void,
   permissionType: PermissionType,
 }) {
+  const t = useTranslations('permissions.table.dialogs.delete');
   const stackAdminApp = useAdminApp();
 
   return <ActionDialog
     open={props.open}
     onOpenChange={props.onOpenChange}
-    title="Delete Permission"
+    title={t('title')}
     danger
     cancelButton
-    okButton={{ label: "Delete Permission", onClick: async () => {
+    okButton={{ label: t('deleteButton'), onClick: async () => {
       if (props.permissionType === 'project') {
         await stackAdminApp.deleteProjectPermissionDefinition(props.permission.id);
       } else {
         await stackAdminApp.deleteTeamPermissionDefinition(props.permission.id);
       }
     } }}
-    confirmText="I understand this will remove the permission from all users and other permissions that contain it."
+    confirmText={t('confirmText')}
   >
-    {`Are you sure you want to delete the permission "${props.permission.id}"?`}
+    {t('description', { permissionId: props.permission.id })}
   </ActionDialog>;
 }
 
@@ -120,6 +123,7 @@ function Actions<T extends AdminPermissionDefinition>({ row, invisible, permissi
   invisible: boolean,
   permissionType: PermissionType,
 }) {
+  const t = useTranslations('permissions.table.actions');
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
 
@@ -130,12 +134,12 @@ function Actions<T extends AdminPermissionDefinition>({ row, invisible, permissi
       <ActionCell
         items={[
           {
-            item: "Edit",
+            item: t('edit'),
             onClick: () => setIsEditModalOpen(true),
           },
           '-',
           {
-            item: "Delete",
+            item: t('delete'),
             danger: true,
             onClick: () => setIsDeleteModalOpen(true),
           }
@@ -145,23 +149,23 @@ function Actions<T extends AdminPermissionDefinition>({ row, invisible, permissi
   );
 }
 
-function createColumns<T extends AdminPermissionDefinition>(permissionType: PermissionType): ColumnDef<T>[] {
+function createColumns<T extends AdminPermissionDefinition>(permissionType: PermissionType, t: any, tTooltips: any): ColumnDef<T>[] {
   return [
     {
       accessorKey: "id",
-      header: ({ column }) => <DataTableColumnHeader column={column} columnTitle="ID" />,
+      header: ({ column }) => <DataTableColumnHeader column={column} columnTitle={t('id')} />,
       cell: ({ row }) => <TextCell size={160}>
         <div className="flex items-center gap-1">
           {row.original.id}
           {row.original.id.startsWith('$') ?
-            <SimpleTooltip tooltip="Built-in system permissions are prefixed with $. They cannot be edited or deleted, but can be contained in other permissions." type='info'/>
+            <SimpleTooltip tooltip={tTooltips('systemPermission')} type='info'/>
             : null}
         </div>
       </TextCell>,
     },
     {
       accessorKey: "description",
-      header: ({ column }) => <DataTableColumnHeader column={column} columnTitle="Description" />,
+      header: ({ column }) => <DataTableColumnHeader column={column} columnTitle={t('description')} />,
       cell: ({ row }) => <TextCell size={200}>{row.getValue("description")}</TextCell>,
     },
     {
@@ -169,8 +173,8 @@ function createColumns<T extends AdminPermissionDefinition>(permissionType: Perm
       header: ({ column }) => <DataTableColumnHeader
         column={column}
         columnTitle={<div className="flex items-center gap-1">
-          Contained Permissions
-          <SimpleTooltip tooltip="Only showing permissions that are contained directly (non-recursive)." type='info' />
+          {t('containedPermissions')}
+          <SimpleTooltip tooltip={tTooltips('directPermissions')} type='info' />
         </div>}
       />,
       cell: ({ row }) => <BadgeCell size={120} badges={row.original.containedPermissionIds} />,
@@ -186,13 +190,30 @@ export function PermissionTable<T extends AdminPermissionDefinition>(props: {
   permissions: T[],
   permissionType: PermissionType,
 }) {
-  const columns = createColumns<T>(props.permissionType);
+  const t = useTranslations('permissions.table.columns');
+  const tTooltips = useTranslations('permissions.table.tooltips');
+  const tSearch = useTranslations('permissions.table');
+  const tToolbar = useTranslations('common.dataTable.toolbar');
+  const tPagination = useTranslations('common.dataTable.pagination');
+  
+  const columns = useMemo(() => createColumns<T>(props.permissionType, t, tTooltips), [props.permissionType, t, tTooltips]);
 
   return <DataTable
     data={props.permissions}
     columns={columns}
-    toolbarRender={toolbarRender}
+    toolbarRender={(table) => toolbarRender(table, tSearch('searchPlaceholder'))}
     defaultColumnFilters={[]}
     defaultSorting={[]}
+    i18n={{
+      resetFilters: tToolbar('resetFilters'),
+      exportCSV: tToolbar('exportCSV'),
+      noDataToExport: tToolbar('noDataToExport'),
+      view: tToolbar('view'),
+      toggleColumns: tToolbar('toggleColumns'),
+      rowsSelected: (selected: number, total: number) => tPagination('rowsSelected', { selected, total }),
+      rowsPerPage: tPagination('rowsPerPage'),
+      previousPage: tPagination('goToPreviousPage'),
+      nextPage: tPagination('goToNextPage'),
+    } satisfies DataTableI18n}
   />;
 }

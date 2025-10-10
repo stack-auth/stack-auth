@@ -5,6 +5,7 @@ import { SmartFormDialog } from "@/components/form-dialog";
 import { SelectField } from "@/components/form-fields";
 import { InternalApiKeyFirstView } from "@stackframe/stack";
 import { ActionDialog, Button, Typography } from "@stackframe/stack-ui";
+import { useTranslations } from 'next-intl';
 import { useSearchParams } from "next/navigation";
 import { useState } from "react";
 import * as yup from "yup";
@@ -13,6 +14,7 @@ import { useAdminApp } from "../use-admin-app";
 
 
 export default function PageClient() {
+  const t = useTranslations('apiKeys');
   const stackAdminApp = useAdminApp();
   const apiKeySets = stackAdminApp.useInternalApiKeys();
   const params = useSearchParams();
@@ -23,10 +25,10 @@ export default function PageClient() {
 
   return (
     <PageLayout
-      title="Stack Auth Keys"
+      title={t('title')}
       actions={
         <Button onClick={() => setIsNewApiKeyDialogOpen(true)}>
-          Create Stack Auth Keys
+          {t('createButton')}
         </Button>
       }
     >
@@ -47,27 +49,29 @@ export default function PageClient() {
 }
 
 const neverInMs = 1000 * 60 * 60 * 24 * 365 * 200;
-const expiresInOptions = {
-  [1000 * 60 * 60 * 24 * 1]: "1 day",
-  [1000 * 60 * 60 * 24 * 7]: "7 days",
-  [1000 * 60 * 60 * 24 * 30]: "30 days",
-  [1000 * 60 * 60 * 24 * 90]: "90 days",
-  [1000 * 60 * 60 * 24 * 365]: "1 year",
-  [neverInMs]: "Never",
-} as const;
 
 function CreateDialog(props: {
   open: boolean,
   onOpenChange: (open: boolean) => void,
   onKeyCreated?: (key: InternalApiKeyFirstView) => void,
 }) {
+  const t = useTranslations('apiKeys.createDialog');
   const stackAdminApp = useAdminApp();
   const params = useSearchParams();
   const defaultDescription = params.get("description");
 
+  const expiresInOptions = {
+    [1000 * 60 * 60 * 24 * 1]: t('expiresIn.1day'),
+    [1000 * 60 * 60 * 24 * 7]: t('expiresIn.7days'),
+    [1000 * 60 * 60 * 24 * 30]: t('expiresIn.30days'),
+    [1000 * 60 * 60 * 24 * 90]: t('expiresIn.90days'),
+    [1000 * 60 * 60 * 24 * 365]: t('expiresIn.1year'),
+    [neverInMs]: t('expiresIn.never'),
+  } as const;
+
   const formSchema = yup.object({
-    description: yup.string().defined().label("Description").default(defaultDescription || ""),
-    expiresIn: yup.string().default(neverInMs.toString()).label("Expires in").meta({
+    description: yup.string().defined().label(t('descriptionLabel')).default(defaultDescription || ""),
+    expiresIn: yup.string().default(neverInMs.toString()).label(t('expiresInLabel')).meta({
       stackFormFieldRender: (props) => (
         <SelectField {...props} options={Object.entries(expiresInOptions).map(([value, label]) => ({ value, label }))} />
       )
@@ -77,9 +81,9 @@ function CreateDialog(props: {
   return <SmartFormDialog
     open={props.open}
     onOpenChange={props.onOpenChange}
-    title="Create Stack Auth Keys"
+    title={t('title')}
     formSchema={formSchema}
-    okButton={{ label: "Create" }}
+    okButton={{ label: t('createButton') }}
     onSubmit={async (values) => {
       const expiresIn = parseInt(values.expiresIn);
       const newKey = await stackAdminApp.createInternalApiKey({
@@ -99,6 +103,7 @@ function ShowKeyDialog(props: {
   apiKey?: InternalApiKeyFirstView,
   onClose?: () => void,
 }) {
+  const t = useTranslations('apiKeys.showDialog');
   const stackAdminApp = useAdminApp();
   const project = stackAdminApp.useProject();
   if (!props.apiKey) return null;
@@ -107,17 +112,17 @@ function ShowKeyDialog(props: {
   return (
     <ActionDialog
       open={!!props.apiKey}
-      title="Stack Auth Keys"
-      okButton={{ label: "Close" }}
+      title={t('title')}
+      okButton={{ label: t('closeButton') }}
       onClose={props.onClose}
       preventClose
-      confirmText="I understand that I will not be able to view these keys again."
+      confirmText={t('confirmText')}
     >
       <div className="flex flex-col gap-4">
         <Typography>
-          Here are your Stack Auth keys.{" "}
+          {t('message.start')}{" "}
           <span className="font-bold">
-            Copy them to a safe place. You will not be able to view them again.
+            {t('message.warning')}
           </span>
         </Typography>
         <EnvKeys

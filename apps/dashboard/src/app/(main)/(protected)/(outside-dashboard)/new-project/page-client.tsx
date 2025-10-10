@@ -5,28 +5,34 @@ import { yupResolver } from "@hookform/resolvers/yup";
 import { AuthPage, TeamSwitcher, useUser } from "@stackframe/stack";
 import { allProviders } from "@stackframe/stack-shared/dist/utils/oauth";
 import { runAsynchronouslyWithAlert, wait } from "@stackframe/stack-shared/dist/utils/promises";
-import { BrowserFrame, Button, Form, FormControl, FormField, FormItem, FormMessage, Separator, Typography } from "@stackframe/stack-ui";
+import { BrowserFrame, Button, Form, FormControl, FormField, FormItem, FormMessage, Typography } from "@stackframe/stack-ui";
+import { useTranslations } from 'next-intl';
 import { useSearchParams } from "next/navigation";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import * as yup from "yup";
 
-export const projectFormSchema = yup.object({
-  displayName: yup.string().min(1, "Display name is required").defined().nonEmpty("Display name is required"),
-  signInMethods: yup.array(yup.string().oneOf(["credential", "magicLink", "passkey"].concat(allProviders)).defined())
-    .min(1, "At least one sign-in method is required")
-    .defined("At least one sign-in method is required"),
-  teamId: yup.string().uuid().defined("Team is required"),
-});
-
-type ProjectFormValues = yup.InferType<typeof projectFormSchema>
+type ProjectFormValues = {
+  displayName: string,
+  signInMethods: string[],
+  teamId: string,
+};
 
 export default function PageClient() {
+  const t = useTranslations('newProject');
   const user = useUser({ or: 'redirect', projectIdMustMatch: "internal" });
   const [loading, setLoading] = useState(false);
   const router = useRouter();
   const searchParams = useSearchParams();
   const displayName = searchParams.get("display_name");
+
+  const projectFormSchema = yup.object({
+    displayName: yup.string().min(1, t('validation.displayNameRequired')).defined().nonEmpty(t('validation.displayNameRequired')),
+    signInMethods: yup.array(yup.string().oneOf(["credential", "magicLink", "passkey"].concat(allProviders)).defined())
+      .min(1, t('validation.signInMethodRequired'))
+      .defined(t('validation.signInMethodRequired')),
+    teamId: yup.string().uuid().defined(t('validation.teamRequired')),
+  });
 
   const defaultValues: Partial<ProjectFormValues> = {
     displayName: displayName || "",
@@ -92,13 +98,13 @@ export default function PageClient() {
       <div className="w-full md:w-1/2 p-4">
         <div className='max-w-xs m-auto'>
           <div className="flex justify-center mb-4">
-            <Typography type='h2'>Create a new project</Typography>
+            <Typography type='h2'>{t('title')}</Typography>
           </div>
 
           <Form {...form}>
             <form onSubmit={e => runAsynchronouslyWithAlert(form.handleSubmit(onSubmit)(e))} className="space-y-4">
 
-              <InputField required control={form.control} name="displayName" label="Display Name" placeholder="My Project" />
+              <InputField required control={form.control} name="displayName" label={t('fields.displayName')} placeholder={t('fields.displayNamePlaceholder')} />
 
               <FormField
                 control={form.control}
@@ -106,7 +112,7 @@ export default function PageClient() {
                 render={({ field }) => (
                   <FormItem>
                     <label className="flex flex-col gap-2">
-                      <FieldLabel required={true}>Team</FieldLabel>
+                      <FieldLabel required={true}>{t('fields.team')}</FieldLabel>
                       <FormControl>
                         <TeamSwitcher
                           triggerClassName="max-w-full"
@@ -125,21 +131,21 @@ export default function PageClient() {
               <SwitchListField
                 control={form.control}
                 name="signInMethods"
-                label="Sign-In Methods"
+                label={t('fields.signInMethods')}
                 options={[
-                  { value: "credential", label: "Email password" },
-                  { value: "magicLink", label: "Magic link/OTP" },
-                  { value: "passkey", label: "Passkey" },
+                  { value: "credential", label: t('signInOptions.emailPassword') },
+                  { value: "magicLink", label: t('signInOptions.magicLink') },
+                  { value: "passkey", label: t('signInOptions.passkey') },
                   { value: "google", label: "Google" },
                   { value: "github", label: "GitHub" },
                   { value: "microsoft", label: "Microsoft" },
                 ]}
-                info="More sign-in methods are available on the dashboard later."
+                info={t('signInMethodsInfo')}
               />
 
               <div className="flex justify-center">
                 <Button loading={loading} type="submit">
-                  {redirectToNeonConfirmWith ? "Create & Connect Project" : "Create Project"}
+                  {redirectToNeonConfirmWith ? t('buttons.createAndConnect') : t('buttons.create')}
                 </Button>
               </div>
             </form>

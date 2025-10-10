@@ -5,26 +5,28 @@ import { UserTable } from "@/components/data-table/user-table";
 import { StyledLink } from "@/components/link";
 import { UserDialog } from "@/components/user-dialog";
 import { Alert, Button } from "@stackframe/stack-ui";
+import { useTranslations } from 'next-intl';
 import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";
 
 export default function PageClient() {
+  const t = useTranslations('users');
   const stackAdminApp = useAdminApp();
   const data = (stackAdminApp as any)[stackAppInternalsSymbol].useMetrics();
   const firstUser = stackAdminApp.useUsers({ limit: 1 });
 
   return (
     <PageLayout
-      title="Users"
-      description={`Total: ${data.total_users}`}
+      title={t('title')}
+      description={`${t('total')}: ${data.total_users}`}
       actions={<UserDialog
         type="create"
-        trigger={<Button>Create User</Button>}
+        trigger={<Button>{t('createUser')}</Button>}
       />}
     >
       {firstUser.length > 0 ? null : (
         <Alert variant='success'>
-          Congratulations on starting your project! Check the <StyledLink href="https://docs.stack-auth.com">documentation</StyledLink> to add your first users.
+          {t('welcomeMessage.start')} <StyledLink href="https://docs.stack-auth.com">{t('welcomeMessage.documentation')}</StyledLink> {t('welcomeMessage.end')}
         </Alert>
       )}
 

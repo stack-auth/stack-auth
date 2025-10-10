@@ -1,0 +1,1053 @@
+{
+  "common": {
+    "dataTable": {
+      "search": "搜索表格",
+      "noResults": "无结果",
+      "toolbar": {
+        "view": "视图",
+        "toggleColumns": "切换列",
+        "exportCSV": "导出 CSV",
+        "resetFilters": "重置筛选",
+        "noDataToExport": "没有数据可导出"
+      },
+      "pagination": {
+        "rowsSelected": "{selected} / {total} 行已选择",
+        "rowsPerPage": "每页行数",
+        "goToPreviousPage": "转到上一页",
+        "goToNextPage": "转到下一页",
+        "page": "第 {page} 页"
+      },
+      "columns": {
+        "avatar": "头像",
+        "id": "ID",
+        "displayName": "显示名称",
+        "primaryEmail": "主邮箱",
+        "lastActive": "最后活跃",
+        "emailVerified": "邮箱已验证",
+        "signedUpAt": "注册时间",
+        "authMethod": "认证方式",
+        "permissions": "权限",
+        "actions": "操作"
+      },
+      "status": {
+        "anonymous": "匿名",
+        "emailNotVerified": "邮箱未验证",
+        "verified": "✓",
+        "unverified": "✗"
+      },
+      "actions": {
+        "viewDetails": "查看详情",
+        "impersonate": "模拟登录",
+        "createCheckout": "创建结账",
+        "remove2FA": "移除双因素认证",
+        "delete": "删除",
+        "editPermissions": "编辑权限",
+        "removeFromTeam": "从团队中移除"
+      },
+      "dialogs": {
+        "editPermission": {
+          "title": "编辑权限",
+          "save": "保存"
+        },
+        "removeUser": {
+          "title": "从团队中移除用户",
+          "confirmText": "我理解这将导致用户失去对团队的访问权限。",
+          "description": "确定要将用户 \"{userName}\" 从团队 \"{teamName}\" 中移除吗？",
+          "buttonLabel": "从团队中移除用户"
+        }
+      },
+      "tooltips": {
+        "onlyShowingDirectPermissions": "仅显示直接权限"
+      }
+    },
+    "dashboard": "控制台",
+    "projects": "项目",
+    "settings": "设置",
+    "logout": "退出登录",
+    "loading": "加载中...",
+    "save": "保存",
+    "cancel": "取消",
+    "delete": "删除",
+    "edit": "编辑",
+    "create": "创建",
+    "search": "搜索",
+    "language": "语言"
+  },
+  "nav": {
+    "home": "首页",
+    "overview": "概览",
+    "users": "用户",
+    "teams": "团队",
+    "api": "API",
+    "authentication": "身份验证",
+    "permissions": "权限",
+    "emails": "邮件",
+    "analytics": "分析",
+    "billing": "账单",
+    "documentation": "文档"
+  },
+  "auth": {
+    "signIn": "登录",
+    "signUp": "注册",
+    "signOut": "退出",
+    "email": "邮箱",
+    "password": "密码",
+    "forgotPassword": "忘记密码？",
+    "resetPassword": "重置密码",
+    "welcomeBack": "欢迎回来",
+    "createAccount": "创建账号",
+    "alreadyHaveAccount": "已有账号？",
+    "dontHaveAccount": "还没有账号？"
+  },
+  "projects": {
+    "title": "项目",
+    "newProject": "新建项目",
+    "createProject": "创建项目",
+    "projectName": "项目名称",
+    "projectDescription": "项目描述",
+    "selectProject": "选择项目",
+    "noProjects": "暂无项目",
+    "createFirstProject": "创建您的第一个项目开始使用",
+    "searchPlaceholder": "搜索项目名称",
+    "sortBy": "排序",
+    "recency": "最近",
+    "name": "名称",
+    "noTeam": "无团队"
+  },
+  "newProject": {
+    "title": "创建新项目",
+    "fields": {
+      "displayName": "显示名称",
+      "displayNamePlaceholder": "我的项目",
+      "team": "团队",
+      "signInMethods": "登录方式"
+    },
+    "signInOptions": {
+      "emailPassword": "邮箱密码",
+      "magicLink": "魔法链接/一次性密码",
+      "passkey": "通行密钥"
+    },
+    "signInMethodsInfo": "更多登录方式稍后可在控制台中配置。",
+    "buttons": {
+      "create": "创建项目",
+      "createAndConnect": "创建并连接项目"
+    },
+    "validation": {
+      "displayNameRequired": "显示名称为必填项",
+      "signInMethodRequired": "至少选择一种登录方式",
+      "teamRequired": "团队为必填项"
+    }
+  },
+  "overview": {
+    "metrics": {
+      "globe": {
+        "errorMessage": "加载地图时出错"
+      },
+      "dailySignUps": {
+        "title": "每日注册",
+        "description": "过去 30 天的用户注册数量"
+      },
+      "dailyActiveUsers": {
+        "title": "每日活跃用户",
+        "description": "过去 30 天内活跃的独立用户数量"
+      },
+      "charts": {
+        "activity": "活跃度",
+        "authMethods": "认证方式"
+      },
+      "recentSignUps": {
+        "title": "最近注册",
+        "empty": "暂无最近注册用户",
+        "signedUp": "注册于"
+      },
+      "recentlyActive": {
+        "title": "最近活跃用户",
+        "empty": "暂无最近活跃用户",
+        "lastActive": "最后活跃于"
+      },
+      "authMethods": {
+        "email": "邮箱",
+        "magiclink": "魔法链接",
+        "passkey": "通行密钥",
+        "google": "Google",
+        "github": "GitHub",
+        "microsoft": "Microsoft",
+        "spotify": "Spotify",
+        "facebook": "Facebook",
+        "discord": "Discord",
+        "gitlab": "GitLab",
+        "bitbucket": "Bitbucket",
+        "linkedin": "LinkedIn",
+        "apple": "Apple",
+        "x": "X (Twitter)",
+        "password": "密码",
+        "other": "其他",
+        "otp": "一次性密码/魔法链接"
+      }
+    },
+    "globe": {
+      "welcomeBack": "欢迎回来",
+      "live": "实时",
+      "worldwide": "🌎 全球",
+      "totalUsers": "总用户数",
+      "users": "位用户",
+      "errorMessage": "初始化地球可视化时出错。请尝试更新浏览器或启用 WebGL。"
+    },
+    "setup": {
+      "title": "在您的代码库中设置 Stack Auth",
+      "closeButton": "关闭设置",
+      "waitingForFirstUser": "等待您的第一位用户...",
+      "fullDocumentation": "完整文档",
+      "selectFramework": "选择您的框架",
+      "frameworks": {
+        "nextjs": "Next.js",
+        "react": "React",
+        "javascript": "JavaScript",
+        "python": "Python"
+      },
+      "steps": {
+        "installStackAuth": "安装 Stack Auth",
+        "installRequests": "安装 requests",
+        "createKeys": "创建密钥",
+        "done": "完成",
+        "createFile": "创建 stack/client.ts 文件",
+        "updateApp": "更新 App.tsx",
+        "initializeApp": "初始化应用",
+        "exampleUsage": "示例用法",
+        "createHelper": "创建辅助函数",
+        "makeRequests": "发起请求",
+        "generateKeys": "生成密钥"
+      },
+      "instructions": {
+        "nextjs": {
+          "install": "在新的或现有的 Next.js 项目中，运行：",
+          "keys": "将这些密钥放入 .env.local 文件中。",
+          "done": "如果您使用 npm run dev 启动 Next.js 应用并导航到 http://localhost:3000/handler/signup，您将看到注册页面。"
+        },
+        "react": {
+          "install": "在新的或现有的 React 项目中，运行：",
+          "createFile": "创建一个名为 stack/client.ts 的新文件并添加以下代码。这里我们以 react-router-dom 为例。",
+          "updateApp": "更新您的 App.tsx 文件以使用 StackProvider 和 StackTheme 包装整个应用，并添加 StackHandler 组件来处理身份验证流程。",
+          "done": "如果您使用 npm run dev 启动 React 应用并导航到 http://localhost:5173/handler/signup，您将看到注册页面。"
+        },
+        "javascript": {
+          "install": "使用 npm 安装 Stack Auth：",
+          "createFile": "创建一个新文件用于 Stack 应用初始化：",
+          "server": "服务端",
+          "client": "客户端"
+        },
+        "python": {
+          "install": "安装 requests 库以向 Stack Auth API 发起 HTTP 请求：",
+          "createHelper": "创建一个辅助函数来向 Stack Auth API 发起请求：",
+          "makeRequests": "您现在可以向 Stack Auth API 发起请求："
+        },
+        "keysWarning": "请安全保存这些密钥 - 离开此页面后将无法再次查看。"
+      }
+    }
+  },
+  "users": {
+    "title": "用户",
+    "total": "总数",
+    "createUser": "创建用户",
+    "dialog": {
+      "createTitle": "创建用户",
+      "editTitle": "编辑用户",
+      "createButton": "创建",
+      "saveButton": "保存",
+      "cancel": "取消",
+      "fields": {
+        "id": "ID",
+        "primaryEmail": "主邮箱",
+        "verified": "已验证",
+        "displayName": "显示名称",
+        "signedUpAt": "注册时间",
+        "otpAuthEnabled": "OTP/魔法链接登录",
+        "passwordEnabled": "密码登录",
+        "updatePassword": "更新密码",
+        "password": "密码",
+        "newPassword": "新密码",
+        "metadata": "元数据",
+        "clientMetadata": "客户端元数据",
+        "clientReadOnlyMetadata": "客户端只读元数据",
+        "serverMetadata": "服务器元数据"
+      },
+      "hints": {
+        "emailVerifiedRequired": "如果启用 OTP/魔法链接登录，主邮箱必须已验证"
+      },
+      "errors": {
+        "emailAlreadyExists": "邮箱已存在",
+        "emailAlreadyExistsDescription": "请选择不同的邮箱地址",
+        "passwordRequired": "需要密码"
+      }
+    },
+    "welcomeMessage": {
+      "start": "恭喜您启动项目！查看",
+      "documentation": "文档",
+      "end": "以添加您的第一批用户。"
+    },
+    "totalUsers": "总用户数",
+    "activeUsers": "活跃用户",
+    "newUsers": "新用户",
+    "userDetails": "用户详情",
+    "userName": "用户名",
+    "userEmail": "用户邮箱",
+    "userRole": "用户角色",
+    "lastActive": "最后活跃",
+    "createdAt": "创建时间",
+    "table": {
+      "showAnonymous": "显示匿名用户"
+    }
+  },
+  "userDetail": {
+    "notFound": "用户未找到",
+    "lastActive": "最后活跃",
+    "actions": {
+      "impersonate": "模拟登录",
+      "remove2FA": "移除双因素认证",
+      "delete": "删除"
+    },
+    "fields": {
+      "userId": "用户 ID",
+      "primaryEmail": "主邮箱",
+      "displayName": "显示名称",
+      "password": "密码",
+      "twoFactorAuth": "双因素认证",
+      "signedUpAt": "注册时间",
+      "enabled": "已启用",
+      "disabled": "已禁用"
+    },
+    "contactChannels": {
+      "title": "联系渠道",
+      "addEmail": "添加邮箱",
+      "noChannels": "暂无联系渠道",
+      "table": {
+        "email": "邮箱",
+        "primary": "主要",
+        "verified": "已验证",
+        "usedForSignIn": "用于登录"
+      },
+      "actions": {
+        "sendSignInInvitation": "发送登录邀请",
+        "sendVerificationEmail": "发送验证邮件",
+        "sendResetPasswordEmail": "发送重置密码邮件",
+        "markAsUnverified": "标记为未验证",
+        "markAsVerified": "标记为已验证",
+        "setAsPrimary": "设为主邮箱",
+        "disableForSignIn": "禁用登录",
+        "enableForSignIn": "启用登录",
+        "delete": "删除"
+      },
+      "addDialog": {
+        "title": "添加邮箱",
+        "description": "为此用户账户添加新的邮箱地址。",
+        "fields": {
+          "email": "邮箱",
+          "emailPlaceholder": "输入邮箱地址",
+          "isVerified": "设为已验证",
+          "isPrimary": "设为主邮箱",
+          "isUsedForAuth": "用于登录"
+        },
+        "hints": {
+          "isVerified": "通过验证邮件验证的邮箱。可用于一次性密码/魔法链接",
+          "isPrimary": "将此邮箱设为用户的主邮箱",
+          "isUsedForAuth": "允许此邮箱用于密码登录。如果邮箱已验证，也启用一次性密码/魔法链接。"
+        }
+      },
+      "sendEmailDialog": {
+        "verification": {
+          "title": "发送验证邮件",
+          "description": "向 {email} 发送验证邮件？邮件将包含指向您域名的回调链接。"
+        },
+        "resetPassword": {
+          "title": "发送重置密码邮件",
+          "description": "向 {email} 发送密码重置邮件？邮件将包含指向您域名的回调链接。"
+        },
+        "signInInvitation": {
+          "title": "发送登录邀请",
+          "description": "向 {email} 发送登录邀请邮件？邮件将包含指向您域名的回调链接。"
+        },
+        "domain": "域名",
+        "localhostPort": "本地主机端口",
+        "advanced": "高级",
+        "handlerPath": "处理程序路径",
+        "handlerPathHint": "仅在您更改了应用中的默认处理程序路径时修改此项",
+        "send": "发送"
+      }
+    },
+    "teams": {
+      "title": "团队",
+      "description": "此用户所属的团队",
+      "noTeams": "未找到团队",
+      "table": {
+        "teamId": "团队 ID",
+        "displayName": "显示名称",
+        "createdAt": "创建时间"
+      },
+      "actions": {
+        "viewTeam": "查看团队"
+      }
+    },
+    "oauthProviders": {
+      "title": "OAuth 提供商",
+      "addProvider": "添加提供商",
+      "noProviders": "未连接 OAuth 提供商",
+      "table": {
+        "provider": "提供商",
+        "email": "邮箱",
+        "accountId": "账户 ID",
+        "usedForSignIn": "用于登录",
+        "usedForConnectedAccounts": "用于关联账户"
+      },
+      "actions": {
+        "edit": "编辑",
+        "disableSignIn": "禁用登录",
+        "enableSignIn": "启用登录",
+        "disableConnectedAccounts": "禁用关联账户",
+        "enableConnectedAccounts": "启用关联账户",
+        "delete": "删除"
+      },
+      "dialog": {
+        "create": {
+          "title": "添加 OAuth 提供商",
+          "description": "将新的 OAuth 提供商连接到此用户账户。"
+        },
+        "edit": {
+          "title": "编辑 OAuth 提供商",
+          "description": "更新 OAuth 提供商设置。"
+        },
+        "fields": {
+          "provider": "OAuth 提供商",
+          "providerPlaceholder": "选择 OAuth 提供商",
+          "email": "邮箱",
+          "emailPlaceholder": "输入邮箱地址（可选）",
+          "accountId": "账户 ID",
+          "accountIdPlaceholder": "输入 OAuth 账户 ID",
+          "accountIdDescription": "来自 OAuth 提供商的唯一账户标识符",
+          "allowSignIn": "用于登录",
+          "allowSignInDescription": "允许此 OAuth 提供商用于身份验证",
+          "allowConnectedAccounts": "用于关联账户",
+          "allowConnectedAccountsDescription": "允许此 OAuth 提供商用于关联账户功能"
+        },
+        "errors": {
+          "accountAlreadyConnected": "账户已连接",
+          "accountAlreadyConnectedDescription": "具有账户 ID \"{accountId}\" 的 {provider} 提供商已存在（可能是其他用户）",
+          "unexpectedError": "错误",
+          "unexpectedErrorDescription": "在 {operation} OAuth 提供商时发生意外错误。",
+          "updateFailed": "更新失败",
+          "signInUpdateFailed": "无法更新登录设置。",
+          "connectedAccountsUpdateFailed": "无法更新关联账户设置。"
+        },
+        "success": {
+          "title": "成功",
+          "signInDisabled": "已为 {provider} 提供商禁用登录。",
+          "signInEnabled": "已为 {provider} 提供商启用登录。",
+          "connectedAccountsDisabled": "已为 {provider} 提供商禁用关联账户。",
+          "connectedAccountsEnabled": "已为 {provider} 提供商启用关联账户。"
+        }
+      }
+    },
+    "metadata": {
+      "title": "元数据",
+      "description": "使用元数据在用户上存储自定义 JSON 对象。",
+      "client": "客户端",
+      "clientHint": "可从客户端和服务器读取和写入。",
+      "clientReadOnly": "客户端只读",
+      "clientReadOnlyHint": "可从客户端读取，但只能从服务器写入。",
+      "server": "服务器",
+      "serverHint": "可从服务器读取和写入。客户端无法访问。",
+      "loadingEditor": "加载编辑器...",
+      "revert": "还原",
+      "save": "保存"
+    }
+  },
+  "teams": {
+    "title": "团队",
+    "createTeam": "创建团队",
+    "createDialog": {
+      "title": "创建团队",
+      "displayNameLabel": "显示名称",
+      "createButton": "创建"
+    },
+    "table": {
+      "searchPlaceholder": "按名称筛选",
+      "columns": {
+        "id": "ID",
+        "displayName": "显示名称",
+        "createdAt": "创建时间"
+      },
+      "actions": {
+        "viewMembers": "查看成员",
+        "edit": "编辑",
+        "createCheckout": "创建结账",
+        "delete": "删除"
+      },
+      "dialogs": {
+        "edit": {
+          "title": "编辑团队",
+          "save": "保存",
+          "id": "ID",
+          "displayName": "显示名称"
+        },
+        "delete": {
+          "title": "删除团队",
+          "deleteButton": "删除团队",
+          "confirmText": "我了解此操作无法撤销，所有团队成员也将从团队中移除。",
+          "description": "您确定要删除团队 \"{teamName}\" (ID: {teamId}) 吗？"
+        }
+      }
+    }
+  },
+  "apiKeys": {
+    "title": "Stack Auth 密钥",
+    "createButton": "创建 Stack Auth 密钥",
+    "createDialog": {
+      "title": "创建 Stack Auth 密钥",
+      "descriptionLabel": "描述",
+      "expiresInLabel": "过期时间",
+      "expiresIn": {
+        "1day": "1 天",
+        "7days": "7 天",
+        "30days": "30 天",
+        "90days": "90 天",
+        "1year": "1 年",
+        "never": "永不过期"
+      },
+      "createButton": "创建"
+    },
+    "showDialog": {
+      "title": "Stack Auth 密钥",
+      "closeButton": "关闭",
+      "confirmText": "我了解这些密钥将无法再次查看。",
+      "message": {
+        "start": "这是您的 Stack Auth 密钥。",
+        "warning": "请将它们复制到安全的地方。您将无法再次查看它们。"
+      }
+    },
+    "table": {
+      "searchPlaceholder": "搜索表格",
+      "columns": {
+        "description": "描述",
+        "status": "状态",
+        "clientKey": "客户端密钥",
+        "serverKey": "服务器密钥",
+        "expiresAt": "过期时间",
+        "createdAt": "创建时间"
+      },
+      "status": {
+        "title": "状态",
+        "valid": "有效",
+        "expired": "已过期",
+        "revoked": "已撤销"
+      },
+      "actions": {
+        "revoke": "撤销"
+      },
+      "dialogs": {
+        "revoke": {
+          "title": "撤销 API 密钥",
+          "revokeButton": "撤销密钥",
+          "confirmText": "我了解这将取消所有使用此 API 密钥的应用的链接",
+          "description": "您确定要撤销客户端密钥 *****{clientKey} 和服务器密钥 *****{serverKey} 吗？"
+        }
+      }
+    }
+  },
+  "navigation": {
+    "home": "首页",
+    "overview": "概览",
+    "users": "用户",
+    "authMethods": "认证方式",
+    "projectPermissions": "项目权限",
+    "teams": "团队",
+    "members": "成员",
+    "teamPermissions": "团队权限",
+    "teamSettings": "团队设置",
+    "emails": "邮件",
+    "drafts": "草稿",
+    "draft": "草稿",
+    "templates": "模板",
+    "themes": "主题",
+    "theme": "主题",
+    "offers": "优惠",
+    "transactions": "交易",
+    "domains": "域名",
+    "webhooks": "Webhooks",
+    "endpoint": "端点",
+    "stackAuthKeys": "Stack Auth 密钥",
+    "projectSettings": "项目设置",
+    "documentation": "文档",
+    "sections": {
+      "users": "用户",
+      "teams": "团队",
+      "emails": "邮件",
+      "payments": "支付",
+      "configuration": "配置"
+    }
+  },
+  "domains": {
+    "title": "域名",
+    "trustedDomains": {
+      "title": "可信域名",
+      "description": "需要重定向到您应用的功能（如单点登录和邮件验证）将拒绝重定向到此处未列出的域名。请确保您信任此处列出的所有域名，因为它们可以用于访问用户数据。",
+      "addButton": "添加新域名",
+      "table": {
+        "domain": "域名"
+      },
+      "emptyState": "尚未添加域名。"
+    },
+    "devSettings": {
+      "title": "开发设置",
+      "localhostLabel": "允许所有 localhost 回调用于开发",
+      "localhostHint": "启用后，默认允许从所有 localhost URL 访问。这使开发更容易，但",
+      "localhostWarning": "在生产环境中应该禁用。"
+    },
+    "editDialog": {
+      "title": {
+        "create": "创建域名和处理程序",
+        "update": "更新域名和处理程序"
+      },
+      "button": {
+        "create": "创建",
+        "update": "保存"
+      },
+      "validation": {
+        "invalidDomain": "无效的域名",
+        "domainExists": "域名已存在",
+        "handlerPathStart": "处理程序路径必须以 / 开头"
+      },
+      "alert": {
+        "ownership": "请确保您拥有或控制此域名。另请注意，每个子域名（例如 blog.example.com、app.example.com）都被视为不同的域名。",
+        "wildcardTitle": "通配符域名：",
+        "wildcardDesc": "您可以使用通配符来匹配多个域名：",
+        "wildcard1": "匹配任何单个子域名（例如 api.example.com、www.example.com）",
+        "wildcard2": "匹配任何子域名层级（例如 api.v2.example.com）",
+        "wildcard3": "匹配 api-v1.example.com、api-prod.example.com 等",
+        "wildcard4": "匹配 mail.example.org，但不匹配 example.org"
+      },
+      "field": {
+        "domainLabel": "域名",
+        "addWwwLabel": "同时添加 www.{domain} 作为可信域名"
+      },
+      "advanced": {
+        "title": "高级",
+        "useHttp": "使用 HTTP 而不是 HTTPS",
+        "httpWarning": "HTTP 应仅在开发期间使用。在生产环境中，请使用 HTTPS。",
+        "handlerPathLabel": "处理程序路径",
+        "handlerPathHint": "仅在您更改了应用中的默认处理程序路径时修改此项"
+      }
+    },
+    "deleteDialog": {
+      "title": "删除域名",
+      "button": "删除",
+      "message": "您确定要从允许列表中删除 {domain} 吗？您的项目将无法再从此域名接收回调。"
+    },
+    "actionMenu": {
+      "edit": "编辑",
+      "delete": "删除"
+    }
+  },
+  "webhooks": {
+    "title": "Webhooks",
+    "description": "Webhooks 用于将用户和团队事件从 Stack 同步到您自己的服务器。",
+    "endpoints": {
+      "title": "端点",
+      "description": "端点是我们将发送事件的 URL。请确保您控制这些端点，因为它们可以接收敏感数据。",
+      "addButton": "添加新端点",
+      "table": {
+        "url": "端点 URL",
+        "description": "描述"
+      }
+    },
+    "createDialog": {
+      "title": "创建新端点",
+      "button": "创建",
+      "alert": {
+        "trustedUrl": "确保这是您控制的可信 URL。",
+        "httpWarning": "使用 HTTP 端点不安全。这可能会将您的用户数据暴露给攻击者。仅在开发环境中使用 HTTP 端点。"
+      },
+      "field": {
+        "urlLabel": "URL",
+        "descriptionLabel": "描述"
+      }
+    },
+    "editDialog": {
+      "title": "编辑端点",
+      "button": "保存",
+      "field": {
+        "descriptionLabel": "描述"
+      }
+    },
+    "deleteDialog": {
+      "title": "删除端点",
+      "button": "删除",
+      "message": "您确定要从端点列表中删除 {url} 吗？该端点将不再接收事件。"
+    },
+    "actionMenu": {
+      "viewDetails": "查看详情",
+      "edit": "编辑",
+      "delete": "删除"
+    }
+  },
+  "emails": {
+    "title": "邮件",
+    "description": "管理邮件服务器和日志",
+    "sendEmailButton": "发送邮件",
+    "mockEmails": {
+      "title": "模拟邮件",
+      "description": "查看通过模拟器发送的所有邮件（Inbucket）",
+      "openInboxButton": "打开收件箱"
+    },
+    "emailServer": {
+      "title": "邮件服务器",
+      "description": "配置发送邮件的邮件服务器和发件人地址",
+      "testSendButton": "发送测试邮件",
+      "configureButton": "配置",
+      "serverLabel": "服务器",
+      "senderEmailLabel": "发件人邮箱",
+      "shared": "共享",
+      "sharedTooltip": "使用共享邮件服务器时，所有邮件都会从 Stack 的邮箱地址发送",
+      "resend": "Resend",
+      "customSmtp": "自定义 SMTP 服务器"
+    },
+    "emailLog": {
+      "title": "邮件日志",
+      "description": "管理邮件发送历史",
+      "loading": "正在加载邮件日志...",
+      "columns": {
+        "recipient": "收件人",
+        "subject": "主题",
+        "sentAt": "发送时间",
+        "status": "状态",
+        "failed": "失败",
+        "sent": "已发送"
+      }
+    }
+  },
+  "emailTemplates": {
+    "title": "邮件模板",
+    "description": "自定义发送给用户的邮件",
+    "editButton": "编辑模板",
+    "sharedServerWarning": {
+      "title": "警告",
+      "description": "您正在使用共享邮件服务器。如果您想自定义邮件模板，需要配置自定义 SMTP 服务器。"
+    },
+    "dialog": {
+      "title": "共享邮件服务器",
+      "editButton": "仍然编辑模板",
+      "cancelButton": "取消",
+      "warningTitle": "警告",
+      "warningDescription": "您正在使用共享邮件服务器。如果您想自定义邮件模板，需要配置自定义 SMTP 服务器。您仍然可以编辑模板，但无法保存它们。"
+    }
+  },
+  "emailThemes": {
+    "title": "邮件主题",
+    "description": "自定义您项目的邮件主题",
+    "activeTheme": {
+      "title": "活动主题"
+    }
+  },
+  "emailDrafts": {
+    "title": "邮件草稿",
+    "description": "创建、编辑和发送邮件草稿",
+    "sharedServerWarning": {
+      "title": "警告",
+      "description": "您正在使用共享邮件服务器。如果您想发送手动邮件，需要配置自定义 SMTP 服务器。"
+    }
+  },
+  "paymentsTransactions": {
+    "title": "交易记录"
+  },
+  "projectPermissions": {
+    "title": "项目权限",
+    "createButton": "创建权限",
+    "dialog": {
+      "title": "创建权限",
+      "createButton": "创建",
+      "field": {
+        "idLabel": "ID",
+        "descriptionLabel": "描述"
+      },
+      "validation": {
+        "idExists": "ID 已存在",
+        "idFormat": "仅允许小写字母、数字、\":\" 和 \"_\""
+      }
+    }
+  },
+  "teamPermissions": {
+    "title": "团队权限",
+    "createButton": "创建权限",
+    "dialog": {
+      "title": "创建权限",
+      "createButton": "创建",
+      "field": {
+        "idLabel": "ID",
+        "descriptionLabel": "描述"
+      },
+      "validation": {
+        "idExists": "ID 已存在",
+        "idFormat": "仅允许小写字母、数字、\":\" 和 \"_\""
+      }
+    }
+  },
+  "teamSettings": {
+    "title": "团队设置",
+    "clientCreation": {
+      "title": "客户端团队创建",
+      "label": "允许客户端用户创建团队",
+      "hint": "启用后，\"创建团队\"按钮将添加到账户设置页面和团队切换器。"
+    },
+    "autoCreation": {
+      "title": "自动团队创建",
+      "label": "为每个用户在注册时创建个人团队",
+      "hint": "启用后，每个用户注册时都会创建一个个人团队。这不会自动为现有用户创建团队。"
+    },
+    "permissions": {
+      "creator": {
+        "title": "团队创建者默认权限",
+        "description": "用户创建团队时将自动获得的权限"
+      },
+      "member": {
+        "title": "团队成员默认权限",
+        "description": "用户加入团队时将自动获得的权限"
+      },
+      "editButton": "编辑",
+      "noPermissions": "未设置默认权限"
+    },
+    "dialog": {
+      "title": {
+        "creator": "团队创建者默认权限",
+        "member": "团队成员默认权限"
+      },
+      "permissionsLabel": "默认权限",
+      "saveButton": "保存"
+    }
+  },
+  "projectSettings": {
+    "title": "项目设置",
+    "description": "管理您的项目",
+    "information": {
+      "title": "项目信息",
+      "projectId": "项目 ID",
+      "jwksUrl": "JWKS URL"
+    },
+    "details": {
+      "title": "项目详情",
+      "displayName": "显示名称",
+      "description": "描述",
+      "hint": "显示名称和描述可能会对您应用的用户公开可见。"
+    },
+    "logo": {
+      "title": "项目 Logo",
+      "logo": "Logo",
+      "logoDesc": "为您的项目上传 Logo。推荐尺寸：200x200px",
+      "fullLogo": "完整 Logo",
+      "fullLogoDesc": "上传带文字的完整 Logo。推荐尺寸：至少 100px 高，横向格式",
+      "hint": "Logo 图片将在您的应用程序（例如登录页面）和邮件中显示。Logo 应该是方形图片，而完整 Logo 可以包含文字并且更宽。"
+    },
+    "apiKeys": {
+      "title": "API 密钥设置",
+      "description": "配置项目中允许的 API 密钥类型。",
+      "allowUserKeys": "允许用户 API 密钥",
+      "userKeysHint": "启用以允许用户为其账户创建 API 密钥。启用 user-api-keys 后端路由。",
+      "allowTeamKeys": "允许团队 API 密钥",
+      "teamKeysHint": "启用以允许用户为其团队创建 API 密钥。启用 team-api-keys 后端路由。"
+    },
+    "productionMode": {
+      "title": "生产模式",
+      "description": "生产模式禁止某些对开发有用但在生产使用中被认为不安全的配置选项。为防止意外错误配置，强烈建议在生产环境中启用生产模式。",
+      "enableLabel": "启用生产模式",
+      "ready": "您的配置已准备好用于生产，可以启用生产模式。干得好！",
+      "notReady": "您的配置尚未准备好用于生产模式。请修复以下问题：",
+      "showConfig": "显示配置"
+    },
+    "transfer": {
+      "title": "转移项目",
+      "description": "将此项目转移到另一个团队",
+      "needAdmin": "您需要是\"{teamName}\"的团队管理员才能转移此项目。",
+      "currentTeam": "当前团队",
+      "currentOwner": "当前所有者团队：{teamName}",
+      "unknown": "未知",
+      "button": "转移",
+      "dialogTitle": "转移项目",
+      "dialogButton": "转移项目",
+      "confirm": "您确定要将\"{projectName}\"转移到 {teamName} 吗？",
+      "warning": "这将改变项目的所有权。只有新团队的团队管理员才能管理项目设置。",
+      "error": "转移项目失败：{message}"
+    },
+    "dangerZone": {
+      "title": "危险区域",
+      "description": "不可逆和破坏性操作",
+      "warning": "一旦删除项目，就无法恢复。所有数据将被永久删除。",
+      "deleteButton": "删除项目",
+      "dialogTitle": "删除项目",
+      "dialogButton": "删除项目",
+      "confirmText": "我了解此操作是不可逆的，将删除所有相关数据。",
+      "confirmMessage": "您确定要删除名称为\"{projectName}\"、ID 为\"{projectId}\"的项目吗？",
+      "irreversible": "此操作是",
+      "irreversibleBold": "不可逆的",
+      "willDelete": "并将永久删除：",
+      "deleteItems": {
+        "users": "所有用户及其数据",
+        "teams": "所有团队和团队成员",
+        "apiKeys": "所有 API 密钥",
+        "configs": "所有项目配置",
+        "oauth": "所有 OAuth 提供商设置"
+      }
+    }
+  },
+  "settings": {
+    "title": "设置",
+    "general": "通用",
+    "security": "安全",
+    "notifications": "通知",
+    "appearance": "外观",
+    "theme": "主题",
+    "lightMode": "浅色模式",
+    "darkMode": "深色模式",
+    "systemMode": "跟随系统",
+    "language": "语言",
+    "selectLanguage": "选择语言"
+  },
+  "errors": {
+    "somethingWentWrong": "出错了",
+    "pageNotFound": "页面未找到",
+    "unauthorized": "未授权",
+    "forbidden": "禁止访问",
+    "serverError": "服务器错误",
+    "tryAgain": "重试",
+    "goHome": "返回首页"
+  },
+  "success": {
+    "saved": "保存成功",
+    "created": "创建成功",
+    "updated": "更新成功",
+    "deleted": "删除成功"
+  },
+  "transactions": {
+    "table": {
+      "columns": {
+        "type": "类型",
+        "customerType": "客户类型",
+        "customerId": "客户 ID",
+        "offerOrItem": "优惠/项目",
+        "price": "价格",
+        "quantity": "数量",
+        "testMode": "测试模式",
+        "status": "状态",
+        "created": "创建时间"
+      },
+      "types": {
+        "subscription": "订阅",
+        "oneTime": "一次性",
+        "itemQuantityChange": "项目数量变更"
+      },
+      "filters": {
+        "filterByType": "按类型筛选",
+        "allTypes": "所有类型",
+        "customerType": "客户类型",
+        "allCustomers": "所有客户",
+        "user": "用户",
+        "team": "团队",
+        "custom": "自定义"
+      }
+    }
+  },
+  "permissions": {
+    "table": {
+      "searchPlaceholder": "按 ID 筛选",
+      "columns": {
+        "id": "ID",
+        "description": "描述",
+        "containedPermissions": "包含的权限"
+      },
+      "tooltips": {
+        "systemPermission": "以 $ 开头的是内置系统权限。它们不能被编辑或删除，但可以包含在其他权限中。",
+        "directPermissions": "仅显示直接包含的权限（非递归）。"
+      },
+      "actions": {
+        "edit": "编辑",
+        "delete": "删除"
+      },
+      "dialogs": {
+        "edit": {
+          "title": "编辑权限",
+          "save": "保存",
+          "idLabel": "ID",
+          "descriptionLabel": "描述",
+          "idValidation": "只允许小写字母、数字、\":\" 和 \"_\""
+        },
+        "delete": {
+          "title": "删除权限",
+          "deleteButton": "删除权限",
+          "confirmText": "我了解这将从所有用户和包含它的其他权限中移除该权限。",
+          "description": "您确定要删除权限 \"{permissionId}\" 吗？"
+        }
+      }
+    }
+  },
+  "payments": {
+    "offers": {
+      "table": {
+        "columns": {
+          "offerId": "优惠 ID",
+          "displayName": "显示名称",
+          "customerType": "客户类型",
+          "freeTrial": "免费试用",
+          "stackable": "可叠加",
+          "yes": "是",
+          "no": "否"
+        },
+        "actions": {
+          "edit": "编辑",
+          "delete": "删除"
+        },
+        "dialogs": {
+          "delete": {
+            "title": "删除优惠",
+            "description": "此操作将永久删除此优惠。",
+            "deleteButton": "删除",
+            "success": "优惠已删除"
+          }
+        }
+      }
+    },
+    "items": {
+      "table": {
+        "columns": {
+          "itemId": "项目 ID",
+          "displayName": "显示名称",
+          "customerType": "客户类型"
+        },
+        "actions": {
+          "updateQuantity": "更新客户数量",
+          "edit": "编辑",
+          "delete": "删除"
+        },
+        "dialogs": {
+          "delete": {
+            "title": "删除项目",
+            "description": "这将删除该项目",
+            "deleteButton": "删除",
+            "success": "项目已删除",
+            "errorInOffer": "项目包含在优惠中",
+            "errorInOfferDescription": "请先从优惠 \"{offerId}\" 中移除它，然后再删除。"
+          },
+          "quantityChange": {
+            "title": "新建项目数量变更",
+            "customerIdLabel": "客户 ID",
+            "quantityLabel": "数量",
+            "descriptionLabel": "描述",
+            "expiresAtLabel": "过期时间",
+            "createButton": "创建",
+            "success": "项目数量变更已创建",
+            "errorItemNotFound": "未找到项目",
+            "errorUserNotFound": "未找到指定 ID 的用户",
+            "errorTeamNotFound": "未找到指定 ID 的团队",
+            "errorUnknown": "发生未知错误"
+          }
+        }
+      }
+    }
+  }
+}
+

@@ -4,6 +4,7 @@ import { UserButton } from "@stackframe/stack";
 import { Typography } from "@stackframe/stack-ui";
 import { useTheme } from "next-themes";
 
+import { LanguageSwitcher } from "./language-switcher";
 import { Link } from "./link";
 import { Logo } from "./logo";
 
@@ -17,12 +18,13 @@ export function Navbar({ ...props }) {
       <div className="flex items-center justify-center">
         <Logo full height={24} href="/projects" className="h-6" />
       </div>
-      <div className="flex items-center">
-        <div className="flex gap-4 mr-8 items-center">
+      <div className="flex items-center gap-2">
+        <div className="flex gap-4 mr-4 items-center">
           <Link href="https://docs.stack-auth.com/">
             <Typography type='label'>Docs</Typography>
           </Link>
         </div>
+        <LanguageSwitcher />
         <UserButton colorModeToggle={() => setTheme(resolvedTheme === 'light' ? 'dark' : 'light')}/>
       </div>
     </header>

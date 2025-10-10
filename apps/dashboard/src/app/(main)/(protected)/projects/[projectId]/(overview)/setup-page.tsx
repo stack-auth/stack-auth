@@ -2,12 +2,11 @@
 
 import { CodeBlock } from '@/components/code-block';
 import { APIEnvKeys, NextJsEnvKeys } from '@/components/env-keys';
-import { InlineCode } from '@/components/inline-code';
-import { StyledLink } from '@/components/link';
 import { useThemeWatcher } from '@/lib/theme';
 import { deindent } from '@stackframe/stack-shared/dist/utils/strings';
 import { Button, Tabs, TabsContent, TabsList, TabsTrigger, Typography, cn } from "@stackframe/stack-ui";
 import { Book, X } from "lucide-react";
+import { useTranslations } from 'next-intl';
 import dynamic from "next/dynamic";
 import Image from 'next/image';
 import { Suspense, use, useRef, useState } from "react";
@@ -24,6 +23,7 @@ const commandClasses = "text-red-600 dark:text-red-400";
 const nameClasses = "text-green-600 dark:text-green-500";
 
 export default function SetupPage(props: { toMetrics: () => void }) {
+  const t = useTranslations('overview.setup');
   const adminApp = useAdminApp();
   const [selectedFramework, setSelectedFramework] = useState<'nextjs' | 'react' | 'javascript' | 'python'>('nextjs');
   const [keys, setKeys] = useState<{ projectId: string, publishableClientKey: string, secretServerKey: string } | null>(null);
@@ -47,10 +47,10 @@ export default function SetupPage(props: { toMetrics: () => void }) {
   const nextJsSteps = [
     {
       step: 2,
-      title: "Install Stack Auth",
+      title: t('steps.installStackAuth'),
       content: <>
         <Typography>
-          In a new or existing Next.js project, run:
+          {t('instructions.nextjs.install')}
         </Typography>
         <CodeBlock
           language="bash"
@@ -67,20 +67,20 @@ export default function SetupPage(props: { toMetrics: () => void }) {
     },
     {
       step: 3,
-      title: "Create Keys",
+      title: t('steps.createKeys'),
       content: <>
         <Typography>
-          Put these keys in the <InlineCode>.env.local</InlineCode> file.
+          {t('instructions.nextjs.keys')}
         </Typography>
         <StackAuthKeys keys={keys} onGenerateKeys={onGenerateKeys} type="next" />
       </>
     },
     {
       step: 4,
-      title: "Done",
+      title: t('steps.done'),
       content: <>
         <Typography>
-          If you start your Next.js app with npm run dev and navigate to <StyledLink href="http://localhost:3000/handler/signup">http://localhost:3000/handler/signup</StyledLink>, you will see the sign-up page.
+          {t('instructions.nextjs.done')}
         </Typography>
       </>
     },
@@ -89,10 +89,10 @@ export default function SetupPage(props: { toMetrics: () => void }) {
   const reactSteps = [
     {
       step: 2,
-      title: "Install Stack Auth",
+      title: t('steps.installStackAuth'),
       content: <>
         <Typography>
-          In a new or existing React project, run:
+          {t('instructions.react.install')}
         </Typography>
         <CodeBlock
           language="bash"
@@ -109,15 +109,15 @@ export default function SetupPage(props: { toMetrics: () => void }) {
     },
     {
       step: 3,
-      title: "Create Keys",
+      title: t('steps.createKeys'),
       content: <StackAuthKeys keys={keys} onGenerateKeys={onGenerateKeys} type="raw" />
     },
     {
       step: 4,
-      title: "Create stack/client.ts file",
+      title: t('steps.createFile'),
       content: <>
         <Typography>
-          Create a new file called <InlineCode>stack/client.ts</InlineCode> and add the following code. Here we use react-router-dom as an example.
+          {t('instructions.react.createFile')}
         </Typography>
         <CodeBlock
           language="tsx"
@@ -142,10 +142,10 @@ export default function SetupPage(props: { toMetrics: () => void }) {
     },
     {
       step: 5,
-      title: "Update App.tsx",
+      title: t('steps.updateApp'),
       content: <>
         <Typography>
-          Update your App.tsx file to wrap the entire app with a <InlineCode>StackProvider</InlineCode> and <InlineCode>StackTheme</InlineCode> and add a <InlineCode>StackHandler</InlineCode> component to handle the authentication flow.
+          {t('instructions.react.updateApp')}
         </Typography>
         <CodeBlock
           language="tsx"
@@ -188,10 +188,10 @@ export default function SetupPage(props: { toMetrics: () => void }) {
     },
     {
       step: 6,
-      title: "Done",
+      title: t('steps.done'),
       content: <>
         <Typography>
-          If you start your React app with npm run dev and navigate to <StyledLink href="http://localhost:5173/handler/signup">http://localhost:5173/handler/signup</StyledLink>, you will see the sign-up page.
+          {t('instructions.react.done')}
         </Typography>
       </>
     }
@@ -200,10 +200,10 @@ export default function SetupPage(props: { toMetrics: () => void }) {
   const javascriptSteps = [
     {
       step: 2,
-      title: "Install Stack Auth",
+      title: t('steps.installStackAuth'),
       content: <>
         <Typography>
-          Install Stack Auth using npm:
+          {t('instructions.javascript.install')}
         </Typography>
         <CodeBlock
           language="bash"
@@ -220,20 +220,20 @@ export default function SetupPage(props: { toMetrics: () => void }) {
     },
     {
       step: 3,
-      title: "Create Keys",
+      title: t('steps.createKeys'),
       content: <StackAuthKeys keys={keys} onGenerateKeys={onGenerateKeys} type="raw" />
     },
     {
       step: 4,
-      title: "Initialize the app",
+      title: t('steps.initializeApp'),
       content: <>
         <Typography>
-          Create a new file for your Stack app initialization:
+          {t('instructions.javascript.createFile')}
         </Typography>
         <Tabs defaultValue="server">
           <TabsList>
-            <TabsTrigger value="server">Server</TabsTrigger>
-            <TabsTrigger value="client">Client</TabsTrigger>
+            <TabsTrigger value="server">{t('instructions.javascript.server')}</TabsTrigger>
+            <TabsTrigger value="client">{t('instructions.javascript.client')}</TabsTrigger>
           </TabsList>
           <TabsContent value="server">
             <CodeBlock
@@ -275,12 +275,12 @@ export default function SetupPage(props: { toMetrics: () => void }) {
     },
     {
       step: 5,
-      title: "Example usage",
+      title: t('steps.exampleUsage'),
       content: <>
         <Tabs defaultValue="server">
           <TabsList>
-            <TabsTrigger value="server">Server</TabsTrigger>
-            <TabsTrigger value="client">Client</TabsTrigger>
+            <TabsTrigger value="server">{t('instructions.javascript.server')}</TabsTrigger>
+            <TabsTrigger value="client">{t('instructions.javascript.client')}</TabsTrigger>
           </TabsList>
           <TabsContent value="server">
             <CodeBlock
@@ -335,10 +335,10 @@ export default function SetupPage(props: { toMetrics: () => void }) {
   const pythonSteps = [
     {
       step: 2,
-      title: "Install requests",
+      title: t('steps.installRequests'),
       content: <>
         <Typography>
-          Install the requests library to make HTTP requests to the Stack Auth API:
+          {t('instructions.python.install')}
         </Typography>
         <CodeBlock
           language="bash"
@@ -355,15 +355,15 @@ export default function SetupPage(props: { toMetrics: () => void }) {
     },
     {
       step: 3,
-      title: "Create Keys",
+      title: t('steps.createKeys'),
       content: <StackAuthKeys keys={keys} onGenerateKeys={onGenerateKeys} type="raw" />
     },
     {
       step: 4,
-      title: "Create helper function",
+      title: t('steps.createHelper'),
       content: <>
         <Typography>
-          Create a helper function to make requests to the Stack Auth API:
+          {t('instructions.python.createHelper')}
         </Typography>
         <CodeBlock
           language="python"
@@ -395,10 +395,10 @@ export default function SetupPage(props: { toMetrics: () => void }) {
     },
     {
       step: 5,
-      title: "Make requests",
+      title: t('steps.makeRequests'),
       content: <>
         <Typography>
-          You can now make requests to the Stack Auth API:
+          {t('instructions.python.makeRequests')}
         </Typography>
         <CodeBlock
           language="python"
@@ -423,7 +423,7 @@ export default function SetupPage(props: { toMetrics: () => void }) {
     <PageLayout width={1000}>
       <div className="flex justify-end">
         <Button variant='plain' onClick={props.toMetrics}>
-          Close Setup
+          {t('closeButton')}
           <X className="w-4 h-4 ml-1 mt-0.5" />
         </Button>
       </div>
@@ -434,10 +434,10 @@ export default function SetupPage(props: { toMetrics: () => void }) {
           <div className="flex flex-col gap-1">
             <div className='text-[rgb(107,93,247)] flex items-center gap-1.5 text-xs font-bold'>
               <div className={styles.livePulse} />
-              Waiting for your first user...
+              {t('waitingForFirstUser')}
             </div>
             <Typography type="h2">
-              Setup Stack Auth in your codebase
+              {t('title')}
             </Typography>
           </div>
 
@@ -450,7 +450,7 @@ export default function SetupPage(props: { toMetrics: () => void }) {
               }}
             >
               <Book className="w-4 h-4 mr-2" />
-              Full Documentation
+              {t('fullDocumentation')}
             </Button>
           </Typography>
         </div>
@@ -461,27 +461,27 @@ export default function SetupPage(props: { toMetrics: () => void }) {
           {[
             {
               step: 1,
-              title: "Select your framework",
+              title: t('selectFramework'),
               content: <div>
                 <div className="flex gap-4 flex-wrap">
                   {([{
                     id: 'nextjs',
-                    name: 'Next.js',
+                    name: t('frameworks.nextjs'),
                     reverseIfDark: true,
                     imgSrc: '/next-logo.svg',
                   }, {
                     id: 'react',
-                    name: 'React',
+                    name: t('frameworks.react'),
                     reverseIfDark: false,
                     imgSrc: '/react-logo.svg',
                   }, {
                     id: 'javascript',
-                    name: 'JavaScript',
+                    name: t('frameworks.javascript'),
                     reverseIfDark: false,
                     imgSrc: '/javascript-logo.svg',
                   }, {
                     id: 'python',
-                    name: 'Python',
+                    name: t('frameworks.python'),
                     reverseIfDark: false,
                     imgSrc: '/python-logo.svg',
                   }] as const).map(({ name, imgSrc: src, reverseIfDark, id }) => (
@@ -609,6 +609,8 @@ function StackAuthKeys(props: {
   onGenerateKeys: () => Promise<void>,
   type: 'next' | 'raw',
 }) {
+  const t = useTranslations('overview.setup');
+
   return (
     <div className="w-full border rounded-xl p-8 gap-4 flex flex-col">
       {props.keys ? (
@@ -628,13 +630,13 @@ function StackAuthKeys(props: {
           )}
 
           <Typography type="label" variant="secondary">
-            {`Save these keys securely - they won't be shown again after leaving this page.`}
+            {t('instructions.keysWarning')}
           </Typography>
         </>
       ) : (
         <div className="flex items-center justify-center">
           <Button onClick={props.onGenerateKeys}>
-            Generate Keys
+            {t('steps.generateKeys')}
           </Button>
         </div>
       )}

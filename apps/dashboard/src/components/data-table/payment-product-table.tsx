@@ -2,16 +2,17 @@
 import { useAdminApp } from "@/app/(main)/(protected)/projects/[projectId]/use-admin-app";
 import { ProductDialog } from "@/components/payments/product-dialog";
 import { branchPaymentsSchema } from "@stackframe/stack-shared/dist/config/schema";
-import { ActionCell, ActionDialog, DataTable, DataTableColumnHeader, TextCell, toast } from "@stackframe/stack-ui";
+import { ActionCell, ActionDialog, DataTable, DataTableColumnHeader, DataTableI18n, TextCell, toast } from "@stackframe/stack-ui";
 import { ColumnDef } from "@tanstack/react-table";
-import { useState } from "react";
+import { useTranslations } from 'next-intl';
+import { useMemo, useState } from "react";
 import * as yup from "yup";
 
 type PaymentProduct = {
   id: string,
 } & yup.InferType<typeof branchPaymentsSchema>["products"][string];
 
-const columns: ColumnDef<PaymentProduct>[] = [
+const getColumns = (t: any): ColumnDef<PaymentProduct>[] => [
   {
     accessorKey: "id",
     header: ({ column }) => <DataTableColumnHeader column={column} columnTitle="Product ID" />,
@@ -20,26 +21,26 @@ const columns: ColumnDef<PaymentProduct>[] = [
   },
   {
     accessorKey: "displayName",
-    header: ({ column }) => <DataTableColumnHeader column={column} columnTitle="Display Name" />,
+    header: ({ column }) => <DataTableColumnHeader column={column} columnTitle={t('displayName')} />,
     cell: ({ row }) => <TextCell>{row.original.displayName}</TextCell>,
     enableSorting: false,
   },
   {
     accessorKey: "customerType",
-    header: ({ column }) => <DataTableColumnHeader column={column} columnTitle="Customer Type" />,
+    header: ({ column }) => <DataTableColumnHeader column={column} columnTitle={t('customerType')} />,
     cell: ({ row }) => <TextCell><span className="capitalize">{row.original.customerType}</span></TextCell>,
     enableSorting: false,
   },
   {
     accessorKey: "freeTrial",
-    header: ({ column }) => <DataTableColumnHeader column={column} columnTitle="Free Trial" />,
+    header: ({ column }) => <DataTableColumnHeader column={column} columnTitle={t('freeTrial')} />,
     cell: ({ row }) => <TextCell>{row.original.freeTrial?.join(" ") ?? ""}</TextCell>,
     enableSorting: false,
   },
   {
     accessorKey: "stackable",
-    header: ({ column }) => <DataTableColumnHeader column={column} columnTitle="Stackable" />,
-    cell: ({ row }) => <TextCell>{row.original.stackable ? "Yes" : "No"}</TextCell>,
+    header: ({ column }) => <DataTableColumnHeader column={column} columnTitle={t('stackable')} />,
+    cell: ({ row }) => <TextCell>{row.original.stackable ? t('yes') : t('no')}</TextCell>,
     enableSorting: false,
   },
   {
@@ -49,6 +50,11 @@ const columns: ColumnDef<PaymentProduct>[] = [
 ];
 
 export function PaymentProductTable({ products }: { products: Record<string, yup.InferType<typeof branchPaymentsSchema>["products"][string]> }) {
+    const t = useTranslations('payments.offers.table.columns');
+  const tToolbar = useTranslations('common.dataTable.toolbar');
+  const tPagination = useTranslations('common.dataTable.pagination');
+  
+  const columns = useMemo(() => getColumns(t), [t]);
   const data: PaymentProduct[] = Object.entries(products).map(([id, product]) => ({
     id,
     ...product,
@@ -60,10 +66,23 @@ export function PaymentProductTable({ products }: { products: Record<string, yup
     defaultColumnFilters={[]}
     defaultSorting={[]}
     showDefaultToolbar={false}
+    i18n={{
+      resetFilters: tToolbar('resetFilters'),
+      exportCSV: tToolbar('exportCSV'),
+      noDataToExport: tToolbar('noDataToExport'),
+      view: tToolbar('view'),
+      toggleColumns: tToolbar('toggleColumns'),
+      rowsSelected: (selected: number, total: number) => tPagination('rowsSelected', { selected, total }),
+      rowsPerPage: tPagination('rowsPerPage'),
+      previousPage: tPagination('goToPreviousPage'),
+      nextPage: tPagination('goToNextPage'),
+    } satisfies DataTableI18n}
   />;
 }
 
 function ActionsCell({ product }: { product: PaymentProduct }) {
+  const t = useTranslations('payments.offers.table.actions');
+  const tDialog = useTranslations('payments.offers.table.dialogs.delete');
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
   const stackAdminApp = useAdminApp();
@@ -74,12 +93,12 @@ function ActionsCell({ product }: { product: PaymentProduct }) {
       <ActionCell
         items={[
           {
-            item: "Edit",
+            item: t('edit'),
             onClick: () => setIsEditOpen(true),
           },
           '-',
           {
-            item: "Delete",
+            item: t('delete'),
             onClick: () => setIsDeleteOpen(true),
             danger: true,
           },
@@ -100,7 +119,7 @@ function ActionsCell({ product }: { product: PaymentProduct }) {
         cancelButton
         danger
         okButton={{
-          label: "Delete",
+          label: tDialog('deleteButton'),
           onClick: async () => {
             await project.updateConfig({ [`payments.products.${product.id}`]: null });
             toast({ title: "Product deleted" });
