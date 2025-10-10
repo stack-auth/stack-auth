@@ -1,11 +1,19 @@
 import { v } from "convex/values";
-import { query, mutation, action } from "./_generated/server";
+import { stackClientApp } from "../stack/client";
+import { stackServerApp } from "../stack/server";
 import { api } from "./_generated/api";
-import { stackClientApp } from "../stack/client"
+import { action, mutation, query } from "./_generated/server";
 
 
 // Write your Convex functions in any file inside this directory (`convex`).
 // See https://docs.convex.dev/functions for more.
+
+export const getUserInfo = query({
+  handler: async (ctx, args) => {
+    const obj = await stackServerApp.getPartialUser({ from: "convex", ctx });
+    return JSON.stringify(obj);
+  },
+});
 
 // You can read data from the database via a query:
 export const listNumbers = query({
