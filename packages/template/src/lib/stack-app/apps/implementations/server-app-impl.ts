@@ -231,25 +231,15 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
     const app = this;
     const itemsCache = type === "user" ? app._serverUserItemsCache : app._serverTeamItemsCache;
     const productsCache = type === "user" ? app._serverUserProductsCache : app._serverTeamProductsCache;
+    const customerOptions = type === "user" ? { userId: userIdOrTeamId } : { teamId: userIdOrTeamId };
     return {
+      ...this._createCustomer(userIdOrTeamId, type, null),
       async getItem(itemId: string) {
-        const result = Result.orThrow(await itemsCache.getOrWait([userIdOrTeamId, itemId], "write-only"));
-        return app._serverItemFromCrud({ type, id: userIdOrTeamId }, result);
+        return await app.getItem({ itemId, ...customerOptions });
       },
       // IF_PLATFORM react-like
       useItem(itemId: string) {
-        const result = useAsyncCache(itemsCache, [userIdOrTeamId, itemId] as const, `${type}.useItem()`);
-        return useMemo(() => app._serverItemFromCrud({ type, id: userIdOrTeamId }, result), [result]);
-      },
-      // END_PLATFORM
-      async listProducts(options?: CustomerProductsListOptions) {
-        const response = Result.orThrow(await productsCache.getOrWait([userIdOrTeamId, options?.cursor ?? null, options?.limit ?? null], "write-only"));
-        return app._customerProductsFromResponse(response);
-      },
-      // IF_PLATFORM react-like
-      useProducts(options?: CustomerProductsListOptions) {
-        const response = useAsyncCache(productsCache, [userIdOrTeamId, options?.cursor ?? null, options?.limit ?? null] as const, `${type}.useProducts()`);
-        return useMemo(() => app._customerProductsFromResponse(response), [response]);
+        return app.useItem({ itemId, ...customerOptions });
       },
       // END_PLATFORM
       async grantProduct(productOptions: { productId: string, quantity?: number } | { product: InlineProduct, quantity?: number }) {
@@ -1202,33 +1192,6 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
     return useMemo(() => this._serverItemFromCrud({ type, id }, result), [result]);
   }
   // END_PLATFORM
-
-  async listProducts(options: CustomerProductsRequestOptions): Promise<CustomerProductsList> {
-    if ("userId" in options) {
-      const response = Result.orThrow(await this._serverUserProductsCache.getOrWait([options.userId, options.cursor ?? null, options.limit ?? null], "write-only"));
-      return this._customerProductsFromResponse(response);
-    } else if ("teamId" in options) {
-      const response = Result.orThrow(await this._serverTeamProductsCache.getOrWait([options.teamId, options.cursor ?? null, options.limit ?? null], "write-only"));
-      return this._customerProductsFromResponse(response);
-    }
-    const response = Result.orThrow(await this._serverCustomProductsCache.getOrWait([options.customCustomerId, options.cursor ?? null, options.limit ?? null], "write-only"));
-    return this._customerProductsFromResponse(response);
-  }
-
-  // IF_PLATFORM react-like
-  useProducts(options: CustomerProductsRequestOptions): CustomerProductsList {
-    if ("userId" in options) {
-      const response = useAsyncCache(this._serverUserProductsCache, [options.userId, options.cursor ?? null, options.limit ?? null] as const, "app.useProducts(user)");
-      return this._customerProductsFromResponse(response);
-    } else if ("teamId" in options) {
-      const response = useAsyncCache(this._serverTeamProductsCache, [options.teamId, options.cursor ?? null, options.limit ?? null] as const, "app.useProducts(team)");
-      return this._customerProductsFromResponse(response);
-    }
-    const response = useAsyncCache(this._serverCustomProductsCache, [options.customCustomerId, options.cursor ?? null, options.limit ?? null] as const, "app.useProducts(custom)");
-    return this._customerProductsFromResponse(response);
-  }
-  // END_PLATFORM
-
   async grantProduct(options: (
     ({ userId: string } | { teamId: string } | { customCustomerId: string }) &
     ({ productId: string } | { product: InlineProduct }) &

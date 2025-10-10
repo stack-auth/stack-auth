@@ -124,42 +124,21 @@ it("should set already_bought_non_stackable when user already owns non-stackable
       offer_id: "test-offer",
     },
   });
-  expect(createUrlRes2.status).toBe(200);
-  const code2 = (createUrlRes2.body as { url: string }).url.match(/\/purchase\/([a-z0-9-_]+)/)?.[1];
-  expect(code2).toBeDefined();
-
-  const validateResponse = await niceBackendFetch("/api/v1/payments/purchases/validate-code", {
-    method: "POST",
-    accessType: "client",
-    body: { full_code: code2 },
-  });
-  expect(validateResponse).toMatchInlineSnapshot(`
+  expect(createUrlRes2).toMatchInlineSnapshot(`
     NiceResponse {
-      "status": 200,
+      "status": 400,
       "body": {
-        "already_bought_non_stackable": true,
-        "conflicting_products": [],
-        "product": {
-          "customer_type": "user",
-          "display_name": "Test Offer",
-          "included_items": {},
-          "prices": {
-            "monthly": {
-              "USD": "1000",
-              "interval": [
-                1,
-                "month",
-              ],
-            },
-          },
-          "server_only": false,
-          "stackable": false,
+        "code": "PRODUCT_ALREADY_GRANTED",
+        "details": {
+          "customer_id": "<stripped UUID>",
+          "product_id": "test-offer",
         },
-        "project_id": "<stripped UUID>",
-        "stripe_account_id": <stripped field 'stripe_account_id'>,
-        "test_mode": true,
+        "error": "Customer with ID \\"<stripped UUID>\\" already owns product \\"test-offer\\".",
       },
-      "headers": Headers { <some fields may have been hidden> },
+      "headers": Headers {
+        "x-stack-known-error": "PRODUCT_ALREADY_GRANTED",
+        <some fields may have been hidden>,
+      },
     }
   `);
 });

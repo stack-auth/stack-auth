@@ -1308,29 +1308,24 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     };
   }
 
-  protected _createCustomer(userIdOrTeamId: string, type: "user" | "team", session: InternalSession): Omit<Customer, "id"> {
+  protected _createCustomer(userIdOrTeamId: string, type: "user" | "team", session: InternalSession | null): Omit<Customer, "id"> {
     const app = this;
-    const cache = type === "user" ? app._userItemCache : app._teamItemCache;
-    const productsCache = type === "user" ? app._userProductsCache : app._teamProductsCache;
+    const customerOptions = type === "user" ? { userId: userIdOrTeamId } : { teamId: userIdOrTeamId };
     return {
       async getItem(itemId: string) {
-        const result = Result.orThrow(await cache.getOrWait([session, userIdOrTeamId, itemId], "write-only"));
-        return app._clientItemFromCrud(result);
+        return await app.getItem({ itemId, ...customerOptions });
       },
       // IF_PLATFORM react-like
       useItem(itemId: string) {
-        const result = useAsyncCache(cache, [session, userIdOrTeamId, itemId] as const, "team.useItem()");
-        return app._clientItemFromCrud(result);
+        return app.useItem({ itemId, ...customerOptions });
       },
       // END_PLATFORM
       async listProducts(options?: CustomerProductsListOptions) {
-        const response = Result.orThrow(await productsCache.getOrWait([session, userIdOrTeamId, options?.cursor ?? null, options?.limit ?? null], "write-only"));
-        return app._customerProductsFromResponse(response);
+        return await app.listProducts({ ...options, ...customerOptions });
       },
       // IF_PLATFORM react-like
       useProducts(options?: CustomerProductsListOptions) {
-        const response = useAsyncCache(productsCache, [session, userIdOrTeamId, options?.cursor ?? null, options?.limit ?? null] as const, `${type}.useProducts()`);
-        return app._customerProductsFromResponse(response);
+        return app.useProducts({ ...options, ...customerOptions });
       },
       // END_PLATFORM
       async createCheckoutUrl(options: { productId: string, returnUrl?: string }) {
