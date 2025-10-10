@@ -5,7 +5,7 @@ import type { inlineProductSchema, productSchema } from "@stackframe/stack-share
 import { SUPPORTED_CURRENCIES } from "@stackframe/stack-shared/dist/utils/currency-constants";
 import { FAR_FUTURE_DATE, addInterval, getIntervalsElapsed } from "@stackframe/stack-shared/dist/utils/dates";
 import { StackAssertionError, StatusError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
-import { getOrUndefined, typedEntries, typedFromEntries, typedKeys } from "@stackframe/stack-shared/dist/utils/objects";
+import { getOrUndefined, has, typedEntries, typedFromEntries, typedKeys } from "@stackframe/stack-shared/dist/utils/objects";
 import { typedToUppercase } from "@stackframe/stack-shared/dist/utils/strings";
 import { isUuid } from "@stackframe/stack-shared/dist/utils/uuids";
 import Stripe from "stripe";
@@ -32,10 +32,11 @@ export async function ensureProductIdOrInlineProduct(
   if (productId) {
     const product = getOrUndefined(tenancy.config.payments.products, productId);
     if (!product) {
-      throw new KnownErrors.ProductDoesNotExist(productId, accessType);
+      const itemExists = has(tenancy.config.payments.items, productId);
+      throw new KnownErrors.ProductDoesNotExist(productId, itemExists ? "item_exists" : null);
     }
     if (product.serverOnly && accessType === "client") {
-      throw new StatusError(400, "This product is marked as server-only and cannot be accessed client side!");
+      throw new KnownErrors.ProductDoesNotExist(productId, "server_only");
     }
     return product;
   } else {
@@ -347,6 +348,35 @@ export async function getSubscriptions(options: {
   return subscriptions;
 }
 
+export async function getCustomerPurchaseContext(options: {
+  prisma: PrismaClientTransaction,
+  tenancy: Tenancy,
+  customerType: "user" | "team" | "custom",
+  customerId: string,
+  productId?: string,
+}) {
+  const existingOneTimePurchases = await options.prisma.oneTimePurchase.findMany({
+    where: {
+      tenancyId: options.tenancy.id,
+      customerId: options.customerId,
+      customerType: typedToUppercase(options.customerType),
+    },
+  });
+
+  const subscriptions = await getSubscriptions({
+    prisma: options.prisma,
+    tenancy: options.tenancy,
+    customerType: options.customerType,
+    customerId: options.customerId,
+  });
+
+  const alreadyOwnsProduct = options.productId
+    ? [...subscriptions, ...existingOneTimePurchases].some((p) => p.productId === options.productId)
+    : false;
+
+  return { existingOneTimePurchases, subscriptions, alreadyOwnsProduct };
+}
+
 export async function ensureCustomerExists(options: {
   prisma: PrismaClientTransaction,
   tenancyId: string,
@@ -427,27 +457,15 @@ export async function validatePurchaseSession(options: {
     throw new StatusError(400, "This product is not stackable; quantity must be 1");
   }
 
-  // Block based on prior one-time purchases for same customer and customerType
-  const existingOneTimePurchases = await prisma.oneTimePurchase.findMany({
-    where: {
-      tenancyId: tenancy.id,
-      customerId: codeData.customerId,
-      customerType: typedToUppercase(product.customerType),
-    },
-  });
-
-  const subscriptions = await getSubscriptions({
+  const { existingOneTimePurchases, subscriptions, alreadyOwnsProduct } = await getCustomerPurchaseContext({
     prisma,
     tenancy,
     customerType: product.customerType,
     customerId: codeData.customerId,
+    productId: codeData.productId,
   });
 
-  if (
-    codeData.productId &&
-    product.stackable !== true &&
-    [...subscriptions, ...existingOneTimePurchases].some((p) => p.productId === codeData.productId)
-  ) {
+  if (product.stackable !== true && alreadyOwnsProduct) {
     throw new StatusError(400, "Customer already has purchased this product; this product is not stackable");
   }
   const addOnProductIds = product.isAddOnTo ? typedKeys(product.isAddOnTo) : [];
