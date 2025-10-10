@@ -11,8 +11,8 @@ import { groupBy } from "@stackframe/stack-shared/dist/utils/arrays";
 import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
 import { Button, Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue, Typography, toast } from "@stackframe/stack-ui";
-import { UserPlus } from "lucide-react";
-import { Suspense, useEffect, useMemo, useState } from "react";
+import { Settings } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 import * as yup from "yup";
 
 
@@ -96,26 +96,29 @@ export default function PageClient(props: { inviteUser: (origin: string, teamId:
         </div>
       </div>
 
-      {projectsByTeam.map(({ teamId, projects }) => (
-        <div key={teamId} className="mb-4">
-          <div className="flex items-center justify-between mb-2">
-            <Typography>
-              {teamId ? teamIdMap.get(teamId) : "No Team"}
-            </Typography>
-            {teamId && teams.find(t => t.id === teamId) && (
-              <TeamAddUserDialog
-                team={teams.find(t => t.id === teamId)!}
-                onSubmit={(email) => props.inviteUser(window.location.origin, teamId, email)}
-              />
-            )}
+      {projectsByTeam.map(({ teamId, projects }) => {
+        const team = teamId ? teams.find((t) => t.id === teamId) : undefined;
+        return (
+          <div key={teamId} className="mb-4">
+            <div className="mb-2 flex items-center gap-2">
+              <Typography>
+                {teamId ? teamIdMap.get(teamId) : "No Team"}
+              </Typography>
+              {team && (
+                <TeamAddUserDialog
+                  team={team}
+                  onSubmit={(email) => props.inviteUser(window.location.origin, team.id, email)}
+                />
+              )}
+            </div>
+            <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4">
+              {projects.map((project) => (
+                <ProjectCard key={project.id} project={project} />
+              ))}
+            </div>
           </div>
-          <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4">
-            {projects.map((project) => (
-              <ProjectCard key={project.id} project={project} />
-            ))}
-          </div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
@@ -151,7 +154,16 @@ function TeamAddUserDialog(props: {
     formSchema={inviteFormSchema}
     okButton={{ label: "Invite" }}
     onSubmit={onSubmit}
-    trigger={<Button variant="default"><UserPlus className="w-4 h-4 mr-2" />Invite Teammate</Button>}
+    trigger={
+      <Button
+        variant="ghost"
+        size="icon"
+        aria-label={`Invite teammates to ${props.team.displayName}`}
+        title={`Invite teammates to ${props.team.displayName}`}
+      >
+        <Settings className="h-4 w-4" />
+      </Button>
+    }
     render={(form) => <InputField control={form.control} name="email" placeholder="Email" />}
   />;
 }
