@@ -93,7 +93,7 @@ export const POST = createSmartRouteHandler({
       customerId: req.params.customer_id,
     });
 
-    const changeId = await retryTransaction(prisma, async (tx) => {
+    await retryTransaction(prisma, async (tx) => {
       const totalQuantity = await getItemQuantityForCustomer({
         prisma: tx,
         tenancy,
@@ -104,7 +104,7 @@ export const POST = createSmartRouteHandler({
       if (!allowNegative && (totalQuantity + req.body.delta < 0)) {
         throw new KnownErrors.ItemQuantityInsufficientAmount(req.params.item_id, req.params.customer_id, req.body.delta);
       }
-      const change = await tx.itemQuantityChange.create({
+      await tx.itemQuantityChange.create({
         data: {
           tenancyId: tenancy.id,
           customerId: req.params.customer_id,
@@ -115,13 +115,12 @@ export const POST = createSmartRouteHandler({
           expiresAt: req.body.expires_at ? new Date(req.body.expires_at) : null,
         },
       });
-      return change.id;
     });
 
     return {
       statusCode: 200,
       bodyType: "json",
-      body: { id: changeId },
+      body: {},
     };
   },
 });
