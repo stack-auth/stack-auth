@@ -127,8 +127,18 @@ it("should set already_bought_non_stackable when user already owns non-stackable
   expect(createUrlRes2).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 400,
-      "body": "Customer already has purchased this product; this product is not stackable",
-      "headers": Headers { <some fields may have been hidden> },
+      "body": {
+        "code": "PRODUCT_ALREADY_GRANTED",
+        "details": {
+          "customer_id": "<stripped UUID>",
+          "product_id": "test-product",
+        },
+        "error": "Customer with ID \\"<stripped UUID>\\" already owns product \\"test-product\\".",
+      },
+      "headers": Headers {
+        "x-stack-known-error": "PRODUCT_ALREADY_GRANTED",
+        <some fields may have been hidden>,
+      },
     }
   `);
 });

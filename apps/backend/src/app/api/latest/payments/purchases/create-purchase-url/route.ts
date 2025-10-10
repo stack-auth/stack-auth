@@ -54,7 +54,7 @@ export const POST = createSmartRouteHandler({
         productId: req.body.product_id,
       });
       if (alreadyOwnsProduct) {
-        throw new StatusError(400, "Customer already has purchased this product; this product is not stackable");
+        throw new KnownErrors.ProductAlreadyGranted(req.body.product_id, req.body.customer_id);
       }
     }
 
