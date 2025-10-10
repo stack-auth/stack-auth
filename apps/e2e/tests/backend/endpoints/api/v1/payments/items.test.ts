@@ -137,7 +137,7 @@ it("should return ItemCustomerTypeDoesNotMatch error for user accessing team ite
     `);
 });
 
-it("creates an item quantity change successfully", async ({ expect }) => {
+it("creates an item quantity change and returns id", async ({ expect }) => {
   await Project.createAndSwitch();
   await updateConfig({
     payments: {
@@ -162,7 +162,7 @@ it("creates an item quantity change successfully", async ({ expect }) => {
   });
 
   expect(response.status).toBe(200);
-  expect(response.body).toMatchObject({});
+  expect(response.body).toMatchObject({ id: expect.any(String) });
 });
 
 it("aggregates item quantity changes in item quantity", async ({ expect }) => {
@@ -415,7 +415,7 @@ it("should allow negative quantity changes when allow_negative is true", async (
   expect(response).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 200,
-      "body": {},
+      "body": { "id": "<stripped UUID>" },
       "headers": Headers { <some fields may have been hidden> },
     }
   `);
