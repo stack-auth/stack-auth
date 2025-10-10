@@ -7,6 +7,7 @@ import { getPublicEnvVar } from '@/lib/env';
 import { TeamSwitcher, useUser } from "@stackframe/stack";
 import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { ActionDialog, Alert, Button, Typography } from "@stackframe/stack-ui";
+import { useTranslations } from 'next-intl';
 import { useState } from "react";
 import * as yup from "yup";
 import { PageLayout } from "../page-layout";
@@ -18,6 +19,7 @@ const projectInformationSchema = yup.object().shape({
 });
 
 export default function PageClient() {
+  const t = useTranslations('projectSettings');
   const stackAdminApp = useAdminApp();
   const project = stackAdminApp.useProject();
   const productionModeErrors = project.useProductionModeErrors();
@@ -48,27 +50,27 @@ export default function PageClient() {
       window.location.reload();
     } catch (error) {
       console.error('Failed to transfer project:', error);
-      alert(`Failed to transfer project: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      alert(t('transfer.error', { message: error instanceof Error ? error.message : 'Unknown error' }));
     } finally {
       setIsTransferring(false);
     }
   };
 
   return (
-    <PageLayout title="Project Settings" description="Manage your project">
+    <PageLayout title={t('title')} description={t('description')}>
       <SettingCard
-        title="Project Information"
+        title={t('information.title')}
       >
-        <SettingText label="Project ID">
+        <SettingText label={t('information.projectId')}>
           {project.id}
         </SettingText>
 
-        <SettingText label="JWKS URL">
+        <SettingText label={t('information.jwksUrl')}>
           {`${getPublicEnvVar('NEXT_PUBLIC_STACK_API_URL')}/api/v1/projects/${project.id}/.well-known/jwks.json`}
         </SettingText>
       </SettingCard>
       <FormSettingCard
-        title="Project Details"
+        title={t('details.title')}
         defaultValues={{
           displayName: project.displayName,
           description: project.description || undefined,
@@ -80,57 +82,56 @@ export default function PageClient() {
         render={(form) => (
           <>
             <InputField
-              label="Display Name"
+              label={t('details.displayName')}
               control={form.control}
               name="displayName"
               required
             />
             <InputField
-              label="Description"
+              label={t('details.description')}
               control={form.control}
               name="description"
             />
 
             <Typography variant="secondary" type="footnote">
-              The display name and description may be publicly visible to the
-              users of your app.
+              {t('details.hint')}
             </Typography>
           </>
         )}
       />
 
-      <SettingCard title="Project Logo">
+      <SettingCard title={t('logo.title')}>
         <LogoUpload
-          label="Logo"
+          label={t('logo.logo')}
           value={project.logoUrl}
           onValueChange={async (logoUrl) => {
             await project.update({ logoUrl });
           }}
-          description="Upload a logo for your project. Recommended size: 200x200px"
+          description={t('logo.logoDesc')}
           type="logo"
         />
 
         <LogoUpload
-          label="Full Logo"
+          label={t('logo.fullLogo')}
           value={project.fullLogoUrl}
           onValueChange={async (fullLogoUrl) => {
             await project.update({ fullLogoUrl });
           }}
-          description="Upload a full logo with text. Recommended size: At least 100px tall, landscape format"
+          description={t('logo.fullLogoDesc')}
           type="full-logo"
         />
 
         <Typography variant="secondary" type="footnote">
-          Logo images will be displayed in your application (e.g. login page) and emails. The logo should be a square image, while the full logo can include text and be wider.
+          {t('logo.hint')}
         </Typography>
       </SettingCard>
 
       <SettingCard
-        title="API Key Settings"
-        description="Configure which types of API keys are allowed in your project."
+        title={t('apiKeys.title')}
+        description={t('apiKeys.description')}
       >
         <SettingSwitch
-          label="Allow User API Keys"
+          label={t('apiKeys.allowUserKeys')}
           checked={project.config.allowUserApiKeys}
           onCheckedChange={async (checked) => {
             await project.update({
@@ -141,11 +142,11 @@ export default function PageClient() {
           }}
         />
         <Typography variant="secondary" type="footnote">
-          Enable to allow users to create API keys for their accounts. Enables user-api-keys backend routes.
+          {t('apiKeys.userKeysHint')}
         </Typography>
 
         <SettingSwitch
-          label="Allow Team API Keys"
+          label={t('apiKeys.allowTeamKeys')}
           checked={project.config.allowTeamApiKeys}
           onCheckedChange={async (checked) => {
             await project.update({
@@ -156,18 +157,18 @@ export default function PageClient() {
           }}
         />
         <Typography variant="secondary" type="footnote">
-          Enable to allow users to create API keys for their teams. Enables team-api-keys backend routes.
+          {t('apiKeys.teamKeysHint')}
         </Typography>
 
 
       </SettingCard>
 
       <SettingCard
-        title="Production mode"
-        description="Production mode disallows certain configuration options that are useful for development but deemed unsafe for production usage. To prevent accidental misconfigurations, it is strongly recommended to enable production mode on your production environments."
+        title={t('productionMode.title')}
+        description={t('productionMode.description')}
       >
         <SettingSwitch
-          label="Enable production mode"
+          label={t('productionMode.enableLabel')}
           checked={project.isProductionMode}
           disabled={
             !project.isProductionMode && productionModeErrors.length > 0
@@ -179,17 +180,15 @@ export default function PageClient() {
 
         {productionModeErrors.length === 0 ? (
           <Alert>
-            Your configuration is ready for production and production mode can
-            be enabled. Good job!
+            {t('productionMode.ready')}
           </Alert>
         ) : (
           <Alert variant="destructive">
-            Your configuration is not ready for production mode. Please fix the
-            following issues:
+            {t('productionMode.notReady')}
             <ul className="mt-2 list-disc pl-5">
               {productionModeErrors.map((error) => (
                 <li key={error.message}>
-                  {error.message} (<StyledLink href={error.relativeFixUrl}>show configuration</StyledLink>)
+                  {error.message} (<StyledLink href={error.relativeFixUrl}>{t('productionMode.showConfig')}</StyledLink>)
                 </li>
               ))}
             </ul>
@@ -198,19 +197,19 @@ export default function PageClient() {
       </SettingCard>
 
       <SettingCard
-        title="Transfer Project"
-        description="Transfer this project to another team"
+        title={t('transfer.title')}
+        description={t('transfer.description')}
       >
         <div className="flex flex-col gap-4">
           {!hasAdminPermissionForCurrentTeam ? (
             <Alert variant="destructive">
-              {`You need to be a team admin of "${currentOwnerTeam.displayName || 'the current team'}" to transfer this project.`}
+              {t('transfer.needAdmin', { teamName: currentOwnerTeam.displayName || t('transfer.currentTeam') })}
             </Alert>
           ) : (
             <>
               <div>
                 <Typography variant="secondary" className="mb-2">
-                  Current owner team: {currentOwnerTeam.displayName || "Unknown"}
+                  {t('transfer.currentOwner', { teamName: currentOwnerTeam.displayName || t('transfer.unknown') })}
                 </Typography>
               </div>
               <div className="flex gap-2">
@@ -229,21 +228,24 @@ export default function PageClient() {
                       variant="secondary"
                       disabled={!selectedTeam || isTransferring}
                     >
-                      Transfer
+                      {t('transfer.button')}
                     </Button>
                   }
-                  title="Transfer Project"
+                  title={t('transfer.dialogTitle')}
                   okButton={{
-                    label: "Transfer Project",
+                    label: t('transfer.dialogButton'),
                     onClick: handleTransfer
                   }}
                   cancelButton
                 >
                   <Typography>
-                    {`Are you sure you want to transfer "${project.displayName}" to ${teams.find(t => t.id === selectedTeamId)?.displayName}?`}
+                    {t('transfer.confirm', {
+                      projectName: project.displayName,
+                      teamName: teams.find(t => t.id === selectedTeamId)?.displayName
+                    })}
                   </Typography>
                   <Typography className="mt-2" variant="secondary">
-                    This will change the ownership of the project. Only team admins of the new team will be able to manage project settings.
+                    {t('transfer.warning')}
                   </Typography>
                 </ActionDialog>
               </div>
@@ -253,45 +255,48 @@ export default function PageClient() {
       </SettingCard>
 
       <SettingCard
-        title="Danger Zone"
-        description="Irreversible and destructive actions"
+        title={t('dangerZone.title')}
+        description={t('dangerZone.description')}
         className="border-destructive"
       >
         <div className="flex flex-col gap-4">
           <div>
             <Typography variant="secondary" className="mb-2">
-              Once you delete a project, there is no going back. All data will be permanently removed.
+              {t('dangerZone.warning')}
             </Typography>
             <ActionDialog
               trigger={
                 <Button variant="destructive" size="sm">
-                  Delete Project
+                  {t('dangerZone.deleteButton')}
                 </Button>
               }
-              title="Delete Project"
+              title={t('dangerZone.dialogTitle')}
               danger
               okButton={{
-                label: "Delete Project",
+                label: t('dangerZone.dialogButton'),
                 onClick: async () => {
                   await project.delete();
                   await stackAdminApp.redirectToHome();
                 }
               }}
               cancelButton
-              confirmText="I understand this action is IRREVERSIBLE and will delete ALL associated data."
+              confirmText={t('dangerZone.confirmText')}
             >
               <Typography>
-                {`Are you sure that you want to delete the project with name "${project.displayName}" and ID "${project.id}"?`}
+                {t('dangerZone.confirmMessage', {
+                  projectName: project.displayName,
+                  projectId: project.id
+                })}
               </Typography>
               <Typography className="mt-2">
-                This action is <strong>irreversible</strong> and will permanently delete:
+                {t('dangerZone.irreversible')} <strong>{t('dangerZone.irreversibleBold')}</strong> {t('dangerZone.willDelete')}
               </Typography>
               <ul className="mt-2 list-disc pl-5">
-                <li>All users and their data</li>
-                <li>All teams and team memberships</li>
-                <li>All API keys</li>
-                <li>All project configurations</li>
-                <li>All OAuth provider settings</li>
+                <li>{t('dangerZone.deleteItems.users')}</li>
+                <li>{t('dangerZone.deleteItems.teams')}</li>
+                <li>{t('dangerZone.deleteItems.apiKeys')}</li>
+                <li>{t('dangerZone.deleteItems.configs')}</li>
+                <li>{t('dangerZone.deleteItems.oauth')}</li>
               </ul>
             </ActionDialog>
           </div>

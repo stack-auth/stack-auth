@@ -4,8 +4,9 @@ import { useRouter } from "@/components/router";
 import { ServerUser } from '@stackframe/stack';
 import { deepPlainEquals } from '@stackframe/stack-shared/dist/utils/objects';
 import { deindent } from '@stackframe/stack-shared/dist/utils/strings';
-import { ActionCell, AvatarCell, BadgeCell, DataTableColumnHeader, DataTableManualPagination, DateCell, SearchToolbarItem, SimpleTooltip, TextCell } from "@stackframe/stack-ui";
+import { ActionCell, AvatarCell, BadgeCell, DataTableColumnHeader, DataTableI18n, DataTableManualPagination, DateCell, SearchToolbarItem, SimpleTooltip, TextCell } from "@stackframe/stack-ui";
 import { ColumnDef, ColumnFiltersState, Row, SortingState, Table } from "@tanstack/react-table";
+import { useTranslations } from 'next-intl';
 import React, { useState } from "react";
 import { Link } from '../link';
 import { CreateCheckoutDialog } from '../payments/create-checkout-dialog';
@@ -16,10 +17,10 @@ export type ExtendedServerUser = ServerUser & {
   emailVerified: 'verified' | 'unverified',
 };
 
-function userToolbarRender<TData>(table: Table<TData>, showAnonymous: boolean, setShowAnonymous: (value: boolean) => void) {
+function userToolbarRender<TData>(table: Table<TData>, showAnonymous: boolean, setShowAnonymous: (value: boolean) => void, t: any, tUsers: any) {
   return (
     <>
-      <SearchToolbarItem table={table} placeholder="Search table" />
+      <SearchToolbarItem table={table} placeholder={t('search')} />
       <div className="flex items-center gap-2 ml-auto mr-4">
         <label className="flex items-center gap-2 text-sm">
           <input
@@ -28,7 +29,7 @@ function userToolbarRender<TData>(table: Table<TData>, showAnonymous: boolean, s
             onChange={(e) => setShowAnonymous(e.target.checked)}
             className="rounded border-gray-300"
           />
-          Show anonymous users
+          {tUsers('showAnonymous')}
         </label>
       </div>
     </>
@@ -36,6 +37,7 @@ function userToolbarRender<TData>(table: Table<TData>, showAnonymous: boolean, s
 }
 
 function UserActions({ row }: { row: Row<ExtendedServerUser> }) {
+  const t = useTranslations('common.dataTable.actions');
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [impersonateSnippet, setImpersonateSnippet] = useState<string | null>(null);
   const [isCreateCheckoutModalOpen, setIsCreateCheckoutModalOpen] = useState(false);
@@ -49,13 +51,13 @@ function UserActions({ row }: { row: Row<ExtendedServerUser> }) {
       <ActionCell
         items={[
           {
-            item: "View details",
+            item: t('viewDetails'),
             onClick: () => {
               router.push(`/projects/${encodeURIComponent(app.projectId)}/users/${encodeURIComponent(row.original.id)}`);
             },
           },
           {
-            item: "Impersonate",
+            item: t('impersonate'),
             onClick: async () => {
               const expiresInMillis = 1000 * 60 * 60 * 2;
               const expiresAtDate = new Date(Date.now() + expiresInMillis);
@@ -68,18 +70,18 @@ function UserActions({ row }: { row: Row<ExtendedServerUser> }) {
             }
           },
           {
-            item: "Create Checkout",
+            item: t('createCheckout'),
             onClick: () => setIsCreateCheckoutModalOpen(true),
           },
           ...row.original.isMultiFactorRequired ? [{
-            item: "Remove 2FA",
+            item: t('remove2FA'),
             onClick: async () => {
               await row.original.update({ totpMultiFactorSecret: null });
             },
           }] : [],
           '-',
           {
-            item: "Delete",
+            item: t('delete'),
             onClick: () => setIsDeleteModalOpen(true),
             danger: true,
           },
@@ -99,10 +101,10 @@ function AvatarCellWrapper({ user }: { user: ServerUser }) {
   </Link>;
 }
 
-export const getCommonUserColumns = <T extends ExtendedServerUser>() => [
+export const getCommonUserColumns = <T extends ExtendedServerUser>(t: any, tStatus: any) => [
   {
     accessorKey: "profileImageUrl",
-    header: ({ column }) => <DataTableColumnHeader column={column} columnTitle="Avatar" />,
+    header: ({ column }) => <DataTableColumnHeader column={column} columnTitle={t('avatar')} />,
     cell: ({ row }) => {
       return <AvatarCellWrapper user={row.original} />;
     },
@@ -110,56 +112,56 @@ export const getCommonUserColumns = <T extends ExtendedServerUser>() => [
   },
   {
     accessorKey: "id",
-    header: ({ column }) => <DataTableColumnHeader column={column} columnTitle="ID" />,
+    header: ({ column }) => <DataTableColumnHeader column={column} columnTitle={t('id')} />,
     cell: ({ row }) => <TextCell size={60}>{row.original.id}</TextCell>,
     enableSorting: false,
   },
   {
     accessorKey: "displayName",
-    header: ({ column }) => <DataTableColumnHeader column={column} columnTitle="Display Name" />,
+    header: ({ column }) => <DataTableColumnHeader column={column} columnTitle={t('displayName')} />,
     cell: ({ row }) =>  <TextCell size={120}>
       <div className="flex items-center gap-2">
         <span className={row.original.displayName === null ? 'text-slate-400' : ''}>{row.original.displayName ?? '–'}</span>
-        {row.original.isAnonymous && <span className="px-2 py-0.5 text-xs bg-gray-100 text-gray-600 rounded">Anonymous</span>}
+        {row.original.isAnonymous && <span className="px-2 py-0.5 text-xs bg-gray-100 text-gray-600 rounded">{tStatus('anonymous')}</span>}
       </div>
     </TextCell>,
     enableSorting: false,
   },
   {
     accessorKey: "primaryEmail",
-    header: ({ column }) => <DataTableColumnHeader column={column} columnTitle="Primary Email" />,
+    header: ({ column }) => <DataTableColumnHeader column={column} columnTitle={t('primaryEmail')} />,
     cell: ({ row }) => <TextCell
       size={180}
-      icon={row.original.primaryEmail && row.original.emailVerified === "unverified" && <SimpleTooltip tooltip='Email not verified' type='warning'/>}>
+      icon={row.original.primaryEmail && row.original.emailVerified === "unverified" && <SimpleTooltip tooltip={tStatus('emailNotVerified')} type='warning'/>}>
       {row.original.primaryEmail ?? '–'}
     </TextCell>,
     enableSorting: false,
   },
   {
     accessorKey: "lastActiveAt",
-    header: ({ column }) => <DataTableColumnHeader column={column} columnTitle="Last Active" />,
+    header: ({ column }) => <DataTableColumnHeader column={column} columnTitle={t('lastActive')} />,
     cell: ({ row }) => <DateCell date={row.original.lastActiveAt} />,
     enableSorting: false,
   },
   {
     accessorKey: "emailVerified",
-    header: ({ column }) => <DataTableColumnHeader column={column} columnTitle="Email Verified" />,
-    cell: ({ row }) => <TextCell>{row.original.emailVerified === 'verified' ? '✓' : '✗'}</TextCell>,
+    header: ({ column }) => <DataTableColumnHeader column={column} columnTitle={t('emailVerified')} />,
+    cell: ({ row }) => <TextCell>{row.original.emailVerified === 'verified' ? tStatus('verified') : tStatus('unverified')}</TextCell>,
     enableSorting: false,
   },
 ] satisfies ColumnDef<T>[];
 
-const columns: ColumnDef<ExtendedServerUser>[] = [
-  ...getCommonUserColumns<ExtendedServerUser>(),
+const getColumns = (t: any, tStatus: any): ColumnDef<ExtendedServerUser>[] => [
+  ...getCommonUserColumns<ExtendedServerUser>(t, tStatus),
   {
     accessorKey: "authTypes",
-    header: ({ column }) => <DataTableColumnHeader column={column} columnTitle="Auth Method" />,
+    header: ({ column }) => <DataTableColumnHeader column={column} columnTitle={t('authMethod')} />,
     cell: ({ row }) => <BadgeCell badges={row.original.authTypes} />,
     enableSorting: false,
   },
   {
     accessorKey: "signedUpAt",
-    header: ({ column }) => <DataTableColumnHeader column={column} columnTitle="Signed Up At" />,
+    header: ({ column }) => <DataTableColumnHeader column={column} columnTitle={t('signedUpAt')} />,
     cell: ({ row }) => <DateCell date={row.original.signedUpAt} />,
   },
   {
@@ -184,6 +186,12 @@ export function extendUsers(users: ServerUser[] & { nextCursor?: string | null }
 }
 
 export function UserTable() {
+  const t = useTranslations('common.dataTable.columns');
+  const tStatus = useTranslations('common.dataTable.status');
+  const tSearch = useTranslations('common.dataTable');
+  const tUsers = useTranslations('users.table');
+  const tToolbar = useTranslations('common.dataTable.toolbar');
+  const tPagination = useTranslations('common.dataTable.pagination');
   const stackAdminApp = useAdminApp();
   const router = useRouter();
   const [showAnonymous, setShowAnonymous] = useState(false);
@@ -193,6 +201,8 @@ export function UserTable() {
     desc: true,
     includeAnonymous: false,
   });
+
+  const columns = React.useMemo(() => getColumns(t, tStatus), [t, tStatus]);
 
   // Update filters when showAnonymous changes
   React.useEffect(() => {
@@ -235,7 +245,7 @@ export function UserTable() {
   return <DataTableManualPagination
     columns={columns}
     data={users}
-    toolbarRender={(table) => userToolbarRender(table, showAnonymous, setShowAnonymous)}
+    toolbarRender={(table) => userToolbarRender(table, showAnonymous, setShowAnonymous, tSearch, tUsers)}
     onUpdate={onUpdate}
     defaultVisibility={{ emailVerified: false }}
     defaultColumnFilters={[]}
@@ -243,5 +253,16 @@ export function UserTable() {
     onRowClick={(row) => {
       router.push(`/projects/${encodeURIComponent(stackAdminApp.projectId)}/users/${encodeURIComponent(row.id)}`);
     }}
+    i18n={{
+      resetFilters: tToolbar('resetFilters'),
+      exportCSV: tToolbar('exportCSV'),
+      noDataToExport: tToolbar('noDataToExport'),
+      view: tToolbar('view'),
+      toggleColumns: tToolbar('toggleColumns'),
+      rowsSelected: (selected: number, total: number) => tPagination('rowsSelected', { selected, total }),
+      rowsPerPage: tPagination('rowsPerPage'),
+      previousPage: tPagination('goToPreviousPage'),
+      nextPage: tPagination('goToNextPage'),
+    } satisfies DataTableI18n}
   />;
 }

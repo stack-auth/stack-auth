@@ -41,6 +41,7 @@ import {
   useToast
 } from "@stackframe/stack-ui";
 import { AtSign, Calendar, Check, Hash, Mail, MoreHorizontal, Shield, SquareAsterisk, X } from "lucide-react";
+import { useTranslations } from 'next-intl';
 import { useEffect, useMemo, useState } from "react";
 import * as yup from "yup";
 import { PageLayout } from "../../page-layout";
@@ -71,6 +72,7 @@ type MetadataEditorProps = {
   onUpdate?: (value: any) => Promise<void>,
 }
 function MetadataEditor({ title, initialValue, onUpdate, hint }: MetadataEditorProps) {
+  const t = useTranslations('userDetail.metadata');
   const formatJson = (json: string) => JSON.stringify(JSON.parse(json), null, 2);
   const [hasChanged, setHasChanged] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
@@ -133,7 +135,7 @@ function MetadataEditor({ title, initialValue, onUpdate, hint }: MetadataEditorP
       </div>
     ) : (
       <div className={cn("rounded-md overflow-hidden h-[240px] flex items-center justify-center", theme !== 'dark' && "border")}>
-        <div className="text-sm text-muted-foreground">Loading editor...</div>
+        <div className="text-sm text-muted-foreground">{t('loadingEditor')}</div>
       </div>
     )}
     <div className={cn('self-end flex items-end gap-2 transition-all h-0 opacity-0 overflow-hidden', hasChanged && 'h-[48px] opacity-100')}>
@@ -143,25 +145,26 @@ function MetadataEditor({ title, initialValue, onUpdate, hint }: MetadataEditorP
           setValue(formatJson(initialValue));
           setHasChanged(false);
         }}>
-        Revert
+        {t('revert')}
       </Button>
       <Button
         variant={isJson ? "default" : "secondary"}
         disabled={!isJson}
-        onClick={handleSave}>Save</Button>
+        onClick={handleSave}>{t('save')}</Button>
     </div>
   </div>;
 }
 
 export default function PageClient({ userId }: { userId: string }) {
+  const t = useTranslations('userDetail');
   const stackAdminApp = useAdminApp();
   const user = stackAdminApp.useUser(userId);
 
   if (user === null) {
     return <PageLayout
-      title="User Not Found"
+      title={t('notFound')}
     >
-      User Not Found
+      {t('notFound')}
     </PageLayout>;
   }
 
@@ -173,6 +176,7 @@ type UserHeaderProps = {
 };
 
 function UserHeader({ user }: UserHeaderProps) {
+  const t = useTranslations('userDetail');
   const nameFallback = user.primaryEmail ?? user.id;
   const name = user.displayName ?? nameFallback;
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
@@ -195,7 +199,7 @@ function UserHeader({ user }: UserHeaderProps) {
           onUpdate={async (newName) => {
             await user.setDisplayName(newName);
           }}/>
-        <p>Last active {fromNow(user.lastActiveAt)}</p>
+        <p>{t('lastActive')} {fromNow(user.lastActiveAt)}</p>
       </div>
       <div>
         <DropdownMenu>
@@ -215,18 +219,18 @@ function UserHeader({ user }: UserHeaderProps) {
                 window.location.reload();
               `);
             }}>
-              <span>Impersonate</span>
+              <span>{t('actions.impersonate')}</span>
             </DropdownMenuItem>
             {user.isMultiFactorRequired && (
               <DropdownMenuItem onClick={async () => {
                 await user.update({ totpMultiFactorSecret: null });
               }}>
-                <span>Remove 2FA</span>
+                <span>{t('actions.remove2FA')}</span>
               </DropdownMenuItem>
             )}
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={() => setIsDeleteModalOpen(true)}>
-              <Typography className="text-destructive">Delete</Typography>
+              <Typography className="text-destructive">{t('actions.delete')}</Typography>
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
@@ -242,21 +246,22 @@ type UserDetailsProps = {
 };
 
 function UserDetails({ user }: UserDetailsProps) {
+  const t = useTranslations('userDetail.fields');
   const [newPassword, setNewPassword] = useState<string | null>(null);
   return (
     <div className="grid grid-cols-[min-content_1fr] lg:grid-cols-[min-content_1fr_min-content_1fr] gap-2 text-sm px-4">
-      <UserInfo icon={<Hash size={16}/>} name="User ID">
+      <UserInfo icon={<Hash size={16}/>} name={t('userId')}>
         <EditableInput value={user.id} readOnly />
       </UserInfo>
-      <UserInfo icon={<Mail size={16}/>} name="Primary email">
+      <UserInfo icon={<Mail size={16}/>} name={t('primaryEmail')}>
         <EditableInput value={user.primaryEmail ?? ""} placeholder={"-"} readOnly/>
       </UserInfo>
-      <UserInfo icon={<AtSign size={16}/>} name="Display name">
+      <UserInfo icon={<AtSign size={16}/>} name={t('displayName')}>
         <EditableInput value={user.displayName ?? ""} placeholder={"-"} onUpdate={async (newName) => {
           await user.setDisplayName(newName);
         }}/>
       </UserInfo>
-      <UserInfo icon={<SquareAsterisk size={16}/>} name="Password">
+      <UserInfo icon={<SquareAsterisk size={16}/>} name={t('password')}>
         <EditableInput
           value={""}
           placeholder={user.hasPassword ? "************" : "-"}
@@ -266,10 +271,10 @@ function UserDetails({ user }: UserDetailsProps) {
           }}
         />
       </UserInfo>
-      <UserInfo icon={<Shield size={16}/>} name="2-factor auth">
-        <EditableInput value={user.isMultiFactorRequired ? 'Enabled' : ''} placeholder='Disabled' readOnly />
+      <UserInfo icon={<Shield size={16}/>} name={t('twoFactorAuth')}>
+        <EditableInput value={user.isMultiFactorRequired ? t('enabled') : ''} placeholder={t('disabled')} readOnly />
       </UserInfo>
-      <UserInfo icon={<Calendar size={16}/>} name="Signed up at">
+      <UserInfo icon={<Calendar size={16}/>} name={t('signedUpAt')}>
         <EditableInput value={user.signedUpAt.toDateString()} readOnly />
       </UserInfo>
     </div>
@@ -287,38 +292,39 @@ type AddEmailDialogProps = {
 };
 
 function AddEmailDialog({ user, open, onOpenChange }: AddEmailDialogProps) {
+  const t = useTranslations('userDetail.contactChannels.addDialog');
   const formSchema = yup.object({
     email: yup.string()
       .email("Please enter a valid e-mail address")
       .defined("E-mail is required")
-      .label("E-mail")
+      .label(t('fields.email'))
       .meta({
-        stackFormFieldPlaceholder: "Enter e-mail address",
+        stackFormFieldPlaceholder: t('fields.emailPlaceholder'),
       }),
     isVerified: yup.boolean()
       .default(false)
-      .label("Set as verified")
+      .label(t('fields.isVerified'))
       .meta({
-        description: "E-mails verified by verification emails. Can be used for OTP/magic links"
+        description: t('hints.isVerified')
       }),
     isPrimary: yup.boolean()
       .default(false)
-      .label("Set as primary")
+      .label(t('fields.isPrimary'))
       .meta({
-        description: "Make this the primary e-mail for the user"
+        description: t('hints.isPrimary')
       }),
     isUsedForAuth: yup.boolean()
       .default(false)
-      .label("Used for sign-in")
+      .label(t('fields.isUsedForAuth'))
       .meta({
-        description: "Allow this e-mail to be used for password sign-in. Also enables OTP/magic links if the e-mail is verified."
+        description: t('hints.isUsedForAuth')
       }),
   });
 
   return (
     <SmartFormDialog
-      title="Add E-mail"
-      description="Add a new e-mail address to this user account."
+      title={t('title')}
+      description={t('description')}
       open={open}
       onOpenChange={onOpenChange}
       formSchema={formSchema}
@@ -363,12 +369,13 @@ type DomainSelectorProps = {
 };
 
 function DomainSelector({ control, watch, domains, allowLocalhost }: DomainSelectorProps) {
+  const t = useTranslations('userDetail.contactChannels.sendEmailDialog');
   return (
     <>
       <SelectField
         control={control}
         name="selected"
-        label="Domain"
+        label={t('domain')}
         options={[
           ...domains.map((domain, index) => ({ value: index.toString(), label: domain.domain })),
           ...(allowLocalhost ? [{ value: "localhost", label: "localhost" }] : [])
@@ -379,23 +386,23 @@ function DomainSelector({ control, watch, domains, allowLocalhost }: DomainSelec
           <InputField
             control={control}
             name="localhostPort"
-            label="Localhost Port"
+            label={t('localhostPort')}
             placeholder="3000"
             type="number"
           />
           <Accordion type="single" collapsible className="w-full">
             <AccordionItem value="item-1">
-              <AccordionTrigger>Advanced</AccordionTrigger>
+              <AccordionTrigger>{t('advanced')}</AccordionTrigger>
               <AccordionContent className="flex flex-col gap-8">
                 <div className="flex flex-col gap-2">
                   <InputField
-                    label="Handler path"
+                    label={t('handlerPath')}
                     name="handlerPath"
                     control={control}
                     placeholder='/handler'
                   />
                   <Typography variant="secondary" type="footnote">
-                    Only modify this if you changed the default handler path in your app
+                    {t('handlerPathHint')}
                   </Typography>
                 </div>
               </AccordionContent>
@@ -424,6 +431,7 @@ function SendEmailWithDomainDialog({
   endpointPath,
   onSubmit
 }: SendEmailWithDomainDialogProps) {
+  const t = useTranslations('userDetail.contactChannels.sendEmailDialog');
   const stackAdminApp = useAdminApp();
   const project = stackAdminApp.useProject();
   const domains = project.config.domains;
@@ -442,7 +450,7 @@ function SendEmailWithDomainDialog({
         handlerPath: yup.string().optional(),
       })}
       okButton={{
-        label: "Send",
+        label: t('send'),
       }}
       render={({ control, watch }) => (
         <DomainSelector
@@ -471,10 +479,11 @@ function SendEmailWithDomainDialog({
 }
 
 function SendVerificationEmailDialog({ channel, open, onOpenChange }: SendVerificationEmailDialogProps) {
+  const t = useTranslations('userDetail.contactChannels.sendEmailDialog.verification');
   return (
     <SendEmailWithDomainDialog
-      title="Send Verification Email"
-      description={`Send a verification email to ${channel.value}? The email will contain a callback link to your domain.`}
+      title={t('title')}
+      description={t('description', { email: channel.value })}
       open={open}
       onOpenChange={onOpenChange}
       endpointPath="/email-verification"
@@ -486,12 +495,13 @@ function SendVerificationEmailDialog({ channel, open, onOpenChange }: SendVerifi
 }
 
 function SendResetPasswordEmailDialog({ channel, open, onOpenChange }: SendResetPasswordEmailDialogProps) {
+  const t = useTranslations('userDetail.contactChannels.sendEmailDialog.resetPassword');
   const stackAdminApp = useAdminApp();
 
   return (
     <SendEmailWithDomainDialog
-      title="Send Reset Password Email"
-      description={`Send a password reset email to ${channel.value}? The email will contain a callback link to your domain.`}
+      title={t('title')}
+      description={t('description', { email: channel.value })}
       open={open}
       onOpenChange={onOpenChange}
       endpointPath="/password-reset"
@@ -503,12 +513,13 @@ function SendResetPasswordEmailDialog({ channel, open, onOpenChange }: SendReset
 }
 
 function SendSignInInvitationDialog({ channel, open, onOpenChange }: SendSignInInvitationDialogProps) {
+  const t = useTranslations('userDetail.contactChannels.sendEmailDialog.signInInvitation');
   const stackAdminApp = useAdminApp();
 
   return (
     <SendEmailWithDomainDialog
-      title="Send Sign-In Invitation"
-      description={`Send a sign-in invitation email to ${channel.value}? The email will contain a callback link to your domain.`}
+      title={t('title')}
+      description={t('description', { email: channel.value })}
       open={open}
       onOpenChange={onOpenChange}
       endpointPath="/sign-in"
@@ -520,6 +531,8 @@ function SendSignInInvitationDialog({ channel, open, onOpenChange }: SendSignInI
 }
 
 function ContactChannelsSection({ user }: ContactChannelsSectionProps) {
+  const t = useTranslations('userDetail.contactChannels');
+  const tActions = useTranslations('userDetail.contactChannels.actions');
   const stackAdminApp = useAdminApp();
   const project = stackAdminApp.useProject();
   const contactChannels = user.useContactChannels();
@@ -553,14 +566,14 @@ function ContactChannelsSection({ user }: ContactChannelsSectionProps) {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-lg font-semibold">Contact Channels</h2>
+          <h2 className="text-lg font-semibold">{t('title')}</h2>
         </div>
         <Button
           variant="outline"
           size="sm"
           onClick={() => setIsAddEmailDialogOpen(true)}
         >
-          Add E-mail
+          {t('addEmail')}
         </Button>
       </div>
 
@@ -609,7 +622,7 @@ function ContactChannelsSection({ user }: ContactChannelsSectionProps) {
       {contactChannels.length === 0 ? (
         <div className="flex flex-col items-center gap-2 p-4 border rounded-md bg-muted/10">
           <p className='text-sm text-gray-500 text-center'>
-            No contact channels
+            {t('noChannels')}
           </p>
         </div>
       ) : (
@@ -617,10 +630,10 @@ function ContactChannelsSection({ user }: ContactChannelsSectionProps) {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>E-Mail</TableHead>
-                <TableHead className="text-center">Primary</TableHead>
-                <TableHead className="text-center">Verified</TableHead>
-                <TableHead className="text-center">Used for sign-in</TableHead>
+                <TableHead>{t('table.email')}</TableHead>
+                <TableHead className="text-center">{t('table.primary')}</TableHead>
+                <TableHead className="text-center">{t('table.verified')}</TableHead>
+                <TableHead className="text-center">{t('table.usedForSignIn')}</TableHead>
                 <TableHead className="w-[80px]"></TableHead>
               </TableRow>
             </TableHeader>
@@ -651,7 +664,7 @@ function ContactChannelsSection({ user }: ContactChannelsSectionProps) {
                     <ActionCell
                       items={[
                         {
-                          item: "Send sign-in invitation",
+                          item: tActions('sendSignInInvitation'),
                           onClick: async () => {
                             setSendSignInInvitationDialog({
                               channel,
@@ -660,7 +673,7 @@ function ContactChannelsSection({ user }: ContactChannelsSectionProps) {
                           },
                         },
                         ...(!channel.isVerified ? [{
-                          item: "Send verification email",
+                          item: tActions('sendVerificationEmail'),
                           onClick: async () => {
                             setSendVerificationEmailDialog({
                               channel,
@@ -669,7 +682,7 @@ function ContactChannelsSection({ user }: ContactChannelsSectionProps) {
                           },
                         }] : []),
                         ...(project.config.credentialEnabled ? [{
-                          item: "Send reset password email",
+                          item: tActions('sendResetPasswordEmail'),
                           onClick: async () => {
                             setSendResetPasswordEmailDialog({
                               channel,
@@ -678,25 +691,25 @@ function ContactChannelsSection({ user }: ContactChannelsSectionProps) {
                           },
                         }] : []),
                         {
-                          item: channel.isVerified ? "Mark as unverified" : "Mark as verified",
+                          item: channel.isVerified ? tActions('markAsUnverified') : tActions('markAsVerified'),
                           onClick: async () => {
                             await toggleVerified(channel);
                           },
                         },
                         ...(!channel.isPrimary ? [{
-                          item: "Set as primary",
+                          item: tActions('setAsPrimary'),
                           onClick: async () => {
                             await setPrimaryEmail(channel);
                           },
                         }] : []),
                         {
-                          item: channel.usedForAuth ? "Disable for sign-in" : "Enable for sign-in",
+                          item: channel.usedForAuth ? tActions('disableForSignIn') : tActions('enableForSignIn'),
                           onClick: async () => {
                             await toggleUsedForAuth(channel);
                           },
                         },
                         {
-                          item: "Delete",
+                          item: tActions('delete'),
                           danger: true,
                           onClick: async () => {
                             await channel.delete();
@@ -720,6 +733,8 @@ type UserTeamsSectionProps = {
 };
 
 function UserTeamsSection({ user }: UserTeamsSectionProps) {
+  const t = useTranslations('userDetail.teams');
+  const tActions = useTranslations('userDetail.teams.actions');
   const stackAdminApp = useAdminApp();
   const teams = user.useTeams();
 
@@ -727,15 +742,15 @@ function UserTeamsSection({ user }: UserTeamsSectionProps) {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-lg font-semibold">Teams</h2>
-          <p className="text-sm text-muted-foreground">Teams this user belongs to</p>
+          <h2 className="text-lg font-semibold">{t('title')}</h2>
+          <p className="text-sm text-muted-foreground">{t('description')}</p>
         </div>
       </div>
 
       {teams.length === 0 ? (
         <div className="flex flex-col items-center gap-2 p-4 border rounded-md bg-muted/10">
           <p className='text-sm text-gray-500 text-center'>
-            No teams found
+            {t('noTeams')}
           </p>
         </div>
       ) : (
@@ -743,9 +758,9 @@ function UserTeamsSection({ user }: UserTeamsSectionProps) {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Team ID</TableHead>
-                <TableHead>Display Name</TableHead>
-                <TableHead>Created At</TableHead>
+                <TableHead>{t('table.teamId')}</TableHead>
+                <TableHead>{t('table.displayName')}</TableHead>
+                <TableHead>{t('table.createdAt')}</TableHead>
                 <TableHead className="w-[80px]"></TableHead>
               </TableRow>
             </TableHeader>
@@ -771,7 +786,7 @@ function UserTeamsSection({ user }: UserTeamsSectionProps) {
                     <ActionCell
                       items={[
                         {
-                          item: "View Team",
+                          item: tActions('viewTeam'),
                           onClick: () => {
                             window.open(`/projects/${stackAdminApp.projectId}/teams/${team.id}`, '_blank', 'noopener');
                           },
@@ -805,6 +820,10 @@ type OAuthProviderDialogProps = {
 });
 
 function OAuthProviderDialog(props: OAuthProviderDialogProps) {
+  const t = useTranslations('userDetail.oauthProviders.dialog');
+  const tFields = useTranslations('userDetail.oauthProviders.dialog.fields');
+  const tErrors = useTranslations('userDetail.oauthProviders.dialog.errors');
+  const tSuccess = useTranslations('userDetail.oauthProviders.dialog.success');
   const stackAdminApp = useAdminApp();
   const project = stackAdminApp.useProject();
   const { toast } = useToast();
@@ -818,7 +837,7 @@ function OAuthProviderDialog(props: OAuthProviderDialogProps) {
     providerId: yup.string()
       .defined("Provider is required")
       .nonEmpty("Provider is required")
-      .label("OAuth Provider")
+      .label(tFields('provider'))
       .meta({
         stackFormFieldRender: (innerProps: { control: any, name: string, label: string, disabled: boolean }) => (
           <SelectField
@@ -830,38 +849,38 @@ function OAuthProviderDialog(props: OAuthProviderDialogProps) {
               value: p.id,
               label: p.id.charAt(0).toUpperCase() + p.id.slice(1)
             }))}
-            placeholder="Select OAuth provider"
+            placeholder={tFields('providerPlaceholder')}
           />
         ),
       }),
     email: yup.string()
       .email("Please enter a valid e-mail address")
       .optional()
-      .label("Email")
+      .label(tFields('email'))
       .meta({
-        stackFormFieldPlaceholder: "Enter email address (optional)",
+        stackFormFieldPlaceholder: tFields('emailPlaceholder'),
       }),
     accountId: yup.string()
       .defined("Account ID is required")
-      .label("Account ID")
+      .label(tFields('accountId'))
       .meta({
-        stackFormFieldPlaceholder: "Enter OAuth account ID",
-        description: "The unique account identifier from the OAuth provider",
+        stackFormFieldPlaceholder: tFields('accountIdPlaceholder'),
+        description: tFields('accountIdDescription'),
         stackFormFieldExtraProps: {
           disabled: isEditMode, // Disable account ID editing in edit mode
         },
       }),
     allowSignIn: yup.boolean()
       .default(true)
-      .label("Used for sign-in")
+      .label(tFields('allowSignIn'))
       .meta({
-        description: "Allow this OAuth provider to be used for authentication"
+        description: tFields('allowSignInDescription')
       }),
     allowConnectedAccounts: yup.boolean()
       .default(true)
-      .label("Used for connected accounts")
+      .label(tFields('allowConnectedAccounts'))
       .meta({
-        description: "Allow this OAuth provider to be used for connected account features"
+        description: tFields('allowConnectedAccountsDescription')
       }),
   });
 
@@ -917,15 +936,15 @@ function OAuthProviderDialog(props: OAuthProviderDialogProps) {
 
       if (KnownErrors.OAuthProviderAccountIdAlreadyUsedForSignIn.isInstance(result.error)) {
         toast({
-          title: "Account Already Connected",
-          description: `A ${providerType} provider with account ID "${accountId}" already exists (possibly for a different user)`,
+          title: tErrors('accountAlreadyConnected'),
+          description: tErrors('accountAlreadyConnectedDescription', { provider: providerType, accountId }),
           variant: "destructive",
         });
       } else {
         console.error(result.error);
         toast({
-          title: "Error",
-          description: `An unexpected error occurred while ${operation} the OAuth provider.`,
+          title: tErrors('unexpectedError'),
+          description: tErrors('unexpectedErrorDescription', { operation }),
           variant: "destructive",
         });
       }
@@ -938,8 +957,8 @@ function OAuthProviderDialog(props: OAuthProviderDialogProps) {
 
   return (
     <SmartFormDialog
-      title={isEditMode ? "Edit OAuth Provider" : "Add OAuth Provider"}
-      description={isEditMode ? "Update the OAuth provider settings." : "Connect a new OAuth provider to this user account."}
+      title={isEditMode ? t('edit.title') : t('create.title')}
+      description={isEditMode ? t('edit.description') : t('create.description')}
       open={props.open}
       onOpenChange={props.onOpenChange}
       formSchema={schemaWithDefaults}
@@ -949,6 +968,10 @@ function OAuthProviderDialog(props: OAuthProviderDialogProps) {
 }
 
 function OAuthProvidersSection({ user }: OAuthProvidersSectionProps) {
+  const t = useTranslations('userDetail.oauthProviders');
+  const tActions = useTranslations('userDetail.oauthProviders.actions');
+  const tErrors = useTranslations('userDetail.oauthProviders.dialog.errors');
+  const tSuccess = useTranslations('userDetail.oauthProviders.dialog.success');
   const oauthProviders = user.useOAuthProviders();
   const [isAddProviderDialogOpen, setIsAddProviderDialogOpen] = useState(false);
   const [editingProvider, setEditingProvider] = useState<ServerOAuthProvider | null>(null);
@@ -959,27 +982,27 @@ function OAuthProvidersSection({ user }: OAuthProvidersSectionProps) {
     if (result.status === "error") {
       if (KnownErrors.OAuthProviderAccountIdAlreadyUsedForSignIn.isInstance(result.error)) {
         toast({
-          title: "Account Already Connected",
-          description: `A ${provider.type} provider with account ID "${provider.accountId}" is already connected for this user.`,
+          title: tErrors('accountAlreadyConnected'),
+          description: tErrors('accountAlreadyConnectedDescription', { provider: provider.type, accountId: provider.accountId }),
           variant: "destructive",
         });
       } else {
         const settingType = updates.allowSignIn !== undefined ? "sign-in" : "connected accounts";
         toast({
-          title: "Error",
-          description: `Failed to update ${settingType} setting.`,
+          title: tErrors('updateFailed'),
+          description: updates.allowSignIn !== undefined ? tErrors('signInUpdateFailed') : tErrors('connectedAccountsUpdateFailed'),
           variant: "destructive",
         });
       }
     } else {
       let successMessage = "";
       if (updates.allowSignIn !== undefined) {
-        successMessage = `Sign-in ${provider.allowSignIn ? 'disabled' : 'enabled'} for ${provider.type} provider.`;
+        successMessage = provider.allowSignIn ? tSuccess('signInDisabled', { provider: provider.type }) : tSuccess('signInEnabled', { provider: provider.type });
       } else if (updates.allowConnectedAccounts !== undefined) {
-        successMessage = `Connected accounts ${provider.allowConnectedAccounts ? 'disabled' : 'enabled'} for ${provider.type} provider.`;
+        successMessage = provider.allowConnectedAccounts ? tSuccess('connectedAccountsDisabled', { provider: provider.type }) : tSuccess('connectedAccountsEnabled', { provider: provider.type });
       }
       toast({
-        title: "Success",
+        title: tSuccess('title'),
         description: successMessage,
         variant: "success",
       });
@@ -998,14 +1021,14 @@ function OAuthProvidersSection({ user }: OAuthProvidersSectionProps) {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-lg font-semibold">OAuth Providers</h2>
+          <h2 className="text-lg font-semibold">{t('title')}</h2>
         </div>
         <Button
           variant="outline"
           size="sm"
           onClick={() => setIsAddProviderDialogOpen(true)}
         >
-          Add Provider
+          {t('addProvider')}
         </Button>
       </div>
 
@@ -1029,7 +1052,7 @@ function OAuthProvidersSection({ user }: OAuthProvidersSectionProps) {
       {oauthProviders.length === 0 ? (
         <div className="flex flex-col items-center gap-2 p-4 border rounded-md bg-muted/10">
           <p className='text-sm text-gray-500 text-center'>
-            No OAuth providers connected
+            {t('noProviders')}
           </p>
         </div>
       ) : (
@@ -1037,11 +1060,11 @@ function OAuthProvidersSection({ user }: OAuthProvidersSectionProps) {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Provider</TableHead>
-                <TableHead>Email</TableHead>
-                <TableHead>Account ID</TableHead>
-                <TableHead className="text-center">Used for sign-in</TableHead>
-                <TableHead className="text-center">Used for connected accounts</TableHead>
+                <TableHead>{t('table.provider')}</TableHead>
+                <TableHead>{t('table.email')}</TableHead>
+                <TableHead>{t('table.accountId')}</TableHead>
+                <TableHead className="text-center">{t('table.usedForSignIn')}</TableHead>
+                <TableHead className="text-center">{t('table.usedForConnectedAccounts')}</TableHead>
                 <TableHead className="w-[80px]"></TableHead>
               </TableRow>
             </TableHeader>
@@ -1081,23 +1104,23 @@ function OAuthProvidersSection({ user }: OAuthProvidersSectionProps) {
                     <ActionCell
                       items={[
                         {
-                          item: "Edit",
+                          item: tActions('edit'),
                           onClick: () => setEditingProvider(provider),
                         },
                         {
-                          item: provider.allowSignIn ? "Disable sign-in" : "Enable sign-in",
+                          item: provider.allowSignIn ? tActions('disableSignIn') : tActions('enableSignIn'),
                           onClick: async () => {
                             await toggleAllowSignIn(provider);
                           },
                         },
                         {
-                          item: provider.allowConnectedAccounts ? "Disable connected accounts" : "Enable connected accounts",
+                          item: provider.allowConnectedAccounts ? tActions('disableConnectedAccounts') : tActions('enableConnectedAccounts'),
                           onClick: async () => {
                             await toggleAllowConnectedAccounts(provider);
                           },
                         },
                         {
-                          item: "Delete",
+                          item: tActions('delete'),
                           danger: true,
                           onClick: async () => {
                             await provider.delete();
@@ -1121,31 +1144,32 @@ type MetadataSectionProps = {
 };
 
 function MetadataSection({ user }: MetadataSectionProps) {
+  const t = useTranslations('userDetail.metadata');
   return (
     <SettingCard
-      title="Metadata"
-      description="Use metadata to store a custom JSON object on the user."
+      title={t('title')}
+      description={t('description')}
     >
       <div className="grid gap-4 grid-cols-1 lg:grid-cols-3">
         <MetadataEditor
-          title="Client"
-          hint="Readable and writable from both clients and servers."
+          title={t('client')}
+          hint={t('clientHint')}
           initialValue={JSON.stringify(user.clientMetadata)}
           onUpdate={async (value) => {
             await user.setClientMetadata(value);
           }}
         />
         <MetadataEditor
-          title="Client Read-Only"
-          hint="Readable from clients, but only writable from servers."
+          title={t('clientReadOnly')}
+          hint={t('clientReadOnlyHint')}
           initialValue={JSON.stringify(user.clientReadOnlyMetadata)}
           onUpdate={async (value) => {
             await user.setClientReadOnlyMetadata(value);
           }}
         />
         <MetadataEditor
-          title="Server"
-          hint="Readable and writable from servers. Not accessible to clients."
+          title={t('server')}
+          hint={t('serverHint')}
           initialValue={JSON.stringify(user.serverMetadata)}
           onUpdate={async (value) => {
             await user.setServerMetadata(value);

@@ -1,5 +1,6 @@
 'use client';
 
+import { LanguageSwitcher } from "@/components/language-switcher";
 import { Link } from "@/components/link";
 import { Logo } from "@/components/logo";
 import { ProjectSwitcher } from "@/components/project-switcher";
@@ -43,6 +44,7 @@ import {
   Users,
   Webhook,
 } from "lucide-react";
+import { useTranslations } from 'next-intl';
 import { useTheme } from "next-themes";
 import { usePathname } from "next/navigation";
 import { Fragment, useMemo, useState } from "react";
@@ -71,266 +73,270 @@ type Hidden = {
   type: 'hidden',
 };
 
-const navigationItems: (Label | Item | Hidden)[] = [
-  {
-    name: "Overview",
-    href: "/",
-    regex: /^\/projects\/[^\/]+\/?$/,
-    icon: Globe,
-    type: 'item'
-  },
-  {
-    name: "Users",
-    type: 'label'
-  },
-  {
-    name: "Users",
-    href: "/users",
-    regex: /^\/projects\/[^\/]+\/users$/,
-    icon: User,
-    type: 'item'
-  },
-  {
-    name: (pathname: string) => {
-      const match = pathname.match(/^\/projects\/[^\/]+\/users\/([^\/]+)$/);
-      let item;
-      let href;
-      if (match) {
-        item = <UserBreadcrumbItem key='user-display-name' userId={match[1]} />;
-        href = `/users/${match[1]}`;
-      } else {
-        item = "Users";
-        href = "";
-      }
-      return [
-        { item: "Users", href: "/users" },
-        { item, href },
-      ];
-    },
-    regex: /^\/projects\/[^\/]+\/users\/[^\/]+$/,
-    type: 'hidden',
-  },
-  {
-    name: "Auth Methods",
-    href: "/auth-methods",
-    regex: /^\/projects\/[^\/]+\/auth-methods$/,
-    icon: ShieldEllipsis,
-    type: 'item'
-  },
-  {
-    name: "Project Permissions",
-    href: "/project-permissions",
-    regex: /^\/projects\/[^\/]+\/project-permissions$/,
-    icon: LockKeyhole,
-    type: 'item'
-  },
-  {
-    name: "Teams",
-    type: 'label'
-  },
-  {
-    name: "Teams",
-    href: "/teams",
-    regex: /^\/projects\/[^\/]+\/teams$/,
-    icon: Users,
-    type: 'item'
-  },
-  {
-    name: (pathname: string) => {
-      const match = pathname.match(/^\/projects\/[^\/]+\/teams\/([^\/]+)$/);
-      let item;
-      let href;
-      if (match) {
-        item = <TeamMemberBreadcrumbItem key='team-display-name' teamId={match[1]} />;
-        href = `/teams/${match[1]}`;
-      } else {
-        item = "Members";
-        href = "";
-      }
+function useNavigationItems(): (Label | Item | Hidden)[] {
+  const t = useTranslations('navigation');
 
-      return [
-        { item: "Teams", href: "/teams" },
-        { item, href },
-      ];
+  return useMemo(() => [
+    {
+      name: t('overview'),
+      href: "/",
+      regex: /^\/projects\/[^\/]+\/?$/,
+      icon: Globe,
+      type: 'item' as const
     },
-    regex: /^\/projects\/[^\/]+\/teams\/[^\/]+$/,
-    type: "hidden",
-  },
-  {
-    name: "Team Permissions",
-    href: "/team-permissions",
-    regex: /^\/projects\/[^\/]+\/team-permissions$/,
-    icon: LockKeyhole,
-    type: 'item'
-  },
-  {
-    name: "Team Settings",
-    href: "/team-settings",
-    regex: /^\/projects\/[^\/]+\/team-settings$/,
-    icon: Settings2,
-    type: 'item'
-  },
-  {
-    name: "Emails",
-    type: 'label'
-  },
-  {
-    name: "Emails",
-    href: "/emails",
-    regex: /^\/projects\/[^\/]+\/emails$/,
-    icon: Mail,
-    type: 'item'
-  },
-  {
-    name: "Drafts",
-    href: "/email-drafts",
-    regex: /^\/projects\/[^\/]+\/email-drafts$/,
-    icon: FilePen,
-    type: 'item',
-  },
-  {
-    name: "Templates",
-    href: "/email-templates",
-    regex: /^\/projects\/[^\/]+\/email-templates$/,
-    icon: LayoutTemplate,
-    type: 'item'
-  },
-  {
-    name: "Themes",
-    href: "/email-themes",
-    regex: /^\/projects\/[^\/]+\/email-themes$/,
-    icon: Palette,
-    type: 'item',
-  },
-  {
-    name: (pathname: string) => {
-      const match = pathname.match(/^\/projects\/[^\/]+\/email-drafts\/([^\/]+)$/);
-      let item;
-      let href;
-      if (match) {
-        item = <DraftBreadcrumbItem key='draft-display-name' draftId={match[1]} />;
-        href = `/email-drafts/${match[1]}`;
-      } else {
-        item = "Draft";
-        href = "";
-      }
-      return [
-        { item: "Drafts", href: "/email-drafts" },
-        { item, href },
-      ];
+    {
+      name: t('sections.users'),
+      type: 'label' as const
     },
-    regex: /^\/projects\/[^\/]+\/email-drafts\/[^\/]+$/,
-    type: 'hidden',
-  },
-  {
-    name: (pathname: string) => {
-      const match = pathname.match(/^\/projects\/[^\/]+\/email-themes\/([^\/]+)$/);
-      let item;
-      let href;
-      if (match) {
-        item = <ThemeBreadcrumbItem key='theme-display-name' themeId={match[1]} />;
-        href = `/email-themes/${match[1]}`;
-      } else {
-        item = "Theme";
-        href = "";
-      }
-      return [
-        { item: "Themes", href: "/email-themes" },
-        { item, href },
-      ];
+    {
+      name: t('users'),
+      href: "/users",
+      regex: /^\/projects\/[^\/]+\/users$/,
+      icon: User,
+      type: 'item' as const
     },
-    regex: /^\/projects\/[^\/]+\/email-themes\/[^\/]+$/,
-    type: 'hidden',
-  },
-  {
-    name: "Payments",
-    type: 'label',
-  },
-  {
-    name: "Offers",
-    href: "/payments/offers",
-    regex: /^\/projects\/[^\/]+\/payments\/offers$/,
-    icon: CreditCard,
-    type: 'item',
-  },
-  {
-    name: "Transactions",
-    href: "/payments/transactions",
-    regex: /^\/projects\/[^\/]+\/payments\/transactions$/,
-    icon: Receipt,
-    type: 'item',
-  },
-  {
-    name: "Configuration",
-    type: 'label'
-  },
-  {
-    name: "Domains",
-    href: "/domains",
-    regex: /^\/projects\/[^\/]+\/domains$/,
-    icon: LinkIcon,
-    type: 'item'
-  },
-  {
-    name: "Webhooks",
-    href: "/webhooks",
-    regex: /^\/projects\/[^\/]+\/webhooks$/,
-    icon: Webhook,
-    type: 'item'
-  },
-  {
-    name: (pathname: string) => {
-      const match = pathname.match(/^\/projects\/[^\/]+\/webhooks\/([^\/]+)$/);
-      let href;
-      if (match) {
-        href = `/teams/${match[1]}`;
-      } else {
-        href = "";
-      }
+    {
+      name: (pathname: string) => {
+        const match = pathname.match(/^\/projects\/[^\/]+\/users\/([^\/]+)$/);
+        let item;
+        let href;
+        if (match) {
+          item = <UserBreadcrumbItem key='user-display-name' userId={match[1]} />;
+          href = `/users/${match[1]}`;
+        } else {
+          item = t('users');
+          href = "";
+        }
+        return [
+          { item: t('users'), href: "/users" },
+          { item, href },
+        ];
+      },
+      regex: /^\/projects\/[^\/]+\/users\/[^\/]+$/,
+      type: 'hidden' as const,
+    },
+    {
+      name: t('authMethods'),
+      href: "/auth-methods",
+      regex: /^\/projects\/[^\/]+\/auth-methods$/,
+      icon: ShieldEllipsis,
+      type: 'item' as const
+    },
+    {
+      name: t('projectPermissions'),
+      href: "/project-permissions",
+      regex: /^\/projects\/[^\/]+\/project-permissions$/,
+      icon: LockKeyhole,
+      type: 'item' as const
+    },
+    {
+      name: t('sections.teams'),
+      type: 'label' as const
+    },
+    {
+      name: t('teams'),
+      href: "/teams",
+      regex: /^\/projects\/[^\/]+\/teams$/,
+      icon: Users,
+      type: 'item' as const
+    },
+    {
+      name: (pathname: string) => {
+        const match = pathname.match(/^\/projects\/[^\/]+\/teams\/([^\/]+)$/);
+        let item;
+        let href;
+        if (match) {
+          item = <TeamMemberBreadcrumbItem key='team-display-name' teamId={match[1]} />;
+          href = `/teams/${match[1]}`;
+        } else {
+          item = t('members');
+          href = "";
+        }
 
-      return [
-        { item: "Webhooks", href: "/webhooks" },
-        { item: "Endpoint", href },
-      ];
+        return [
+          { item: t('teams'), href: "/teams" },
+          { item, href },
+        ];
+      },
+      regex: /^\/projects\/[^\/]+\/teams\/[^\/]+$/,
+      type: "hidden" as const,
     },
-    regex: /^\/projects\/[^\/]+\/webhooks\/[^\/]+$/,
-    type: 'hidden',
-  },
-  {
-    name: (pathname: string) => {
-      const match = pathname.match(/^\/projects\/[^\/]+\/email-templates\/([^\/]+)$/);
-      let item;
-      let href;
-      if (match) {
-        item = <TemplateBreadcrumbItem key='template-display-name' templateId={match[1]} />;
-        href = `/email-templates/${match[1]}`;
-      } else {
-        item = "Templates";
-        href = "";
-      }
-      return [
-        { item: "Templates", href: "/email-templates" },
-        { item, href },
-      ];
+    {
+      name: t('teamPermissions'),
+      href: "/team-permissions",
+      regex: /^\/projects\/[^\/]+\/team-permissions$/,
+      icon: LockKeyhole,
+      type: 'item' as const
     },
-    regex: /^\/projects\/[^\/]+\/email-templates\/[^\/]+$/,
-    type: 'hidden',
-  },
-  {
-    name: "Stack Auth Keys",
-    href: "/api-keys",
-    regex: /^\/projects\/[^\/]+\/api-keys$/,
-    icon: KeyRound,
-    type: 'item'
-  },
-  {
-    name: "Project Settings",
-    href: "/project-settings",
-    regex: /^\/projects\/[^\/]+\/project-settings$/,
-    icon: Settings,
-    type: 'item'
-  }
-];
+    {
+      name: t('teamSettings'),
+      href: "/team-settings",
+      regex: /^\/projects\/[^\/]+\/team-settings$/,
+      icon: Settings2,
+      type: 'item' as const
+    },
+    {
+      name: t('sections.emails'),
+      type: 'label' as const
+    },
+    {
+      name: t('emails'),
+      href: "/emails",
+      regex: /^\/projects\/[^\/]+\/emails$/,
+      icon: Mail,
+      type: 'item' as const
+    },
+    {
+      name: t('drafts'),
+      href: "/email-drafts",
+      regex: /^\/projects\/[^\/]+\/email-drafts$/,
+      icon: FilePen,
+      type: 'item' as const,
+    },
+    {
+      name: t('templates'),
+      href: "/email-templates",
+      regex: /^\/projects\/[^\/]+\/email-templates$/,
+      icon: LayoutTemplate,
+      type: 'item' as const
+    },
+    {
+      name: t('themes'),
+      href: "/email-themes",
+      regex: /^\/projects\/[^\/]+\/email-themes$/,
+      icon: Palette,
+      type: 'item' as const,
+    },
+    {
+      name: (pathname: string) => {
+        const match = pathname.match(/^\/projects\/[^\/]+\/email-drafts\/([^\/]+)$/);
+        let item;
+        let href;
+        if (match) {
+          item = <DraftBreadcrumbItem key='draft-display-name' draftId={match[1]} />;
+          href = `/email-drafts/${match[1]}`;
+        } else {
+          item = t('draft');
+          href = "";
+        }
+        return [
+          { item: t('drafts'), href: "/email-drafts" },
+          { item, href },
+        ];
+      },
+      regex: /^\/projects\/[^\/]+\/email-drafts\/[^\/]+$/,
+      type: 'hidden' as const,
+    },
+    {
+      name: (pathname: string) => {
+        const match = pathname.match(/^\/projects\/[^\/]+\/email-themes\/([^\/]+)$/);
+        let item;
+        let href;
+        if (match) {
+          item = <ThemeBreadcrumbItem key='theme-display-name' themeId={match[1]} />;
+          href = `/email-themes/${match[1]}`;
+        } else {
+          item = t('theme');
+          href = "";
+        }
+        return [
+          { item: t('themes'), href: "/email-themes" },
+          { item, href },
+        ];
+      },
+      regex: /^\/projects\/[^\/]+\/email-themes\/[^\/]+$/,
+      type: 'hidden' as const,
+    },
+    {
+      name: t('sections.payments'),
+      type: 'label' as const,
+    },
+    {
+      name: t('offers'),
+      href: "/payments/offers",
+      regex: /^\/projects\/[^\/]+\/payments\/offers$/,
+      icon: CreditCard,
+      type: 'item' as const,
+    },
+    {
+      name: t('transactions'),
+      href: "/payments/transactions",
+      regex: /^\/projects\/[^\/]+\/payments\/transactions$/,
+      icon: Receipt,
+      type: 'item' as const,
+    },
+    {
+      name: t('sections.configuration'),
+      type: 'label' as const
+    },
+    {
+      name: t('domains'),
+      href: "/domains",
+      regex: /^\/projects\/[^\/]+\/domains$/,
+      icon: LinkIcon,
+      type: 'item' as const
+    },
+    {
+      name: t('webhooks'),
+      href: "/webhooks",
+      regex: /^\/projects\/[^\/]+\/webhooks$/,
+      icon: Webhook,
+      type: 'item' as const
+    },
+    {
+      name: (pathname: string) => {
+        const match = pathname.match(/^\/projects\/[^\/]+\/webhooks\/([^\/]+)$/);
+        let href;
+        if (match) {
+          href = `/teams/${match[1]}`;
+        } else {
+          href = "";
+        }
+
+        return [
+          { item: t('webhooks'), href: "/webhooks" },
+          { item: t('endpoint'), href },
+        ];
+      },
+      regex: /^\/projects\/[^\/]+\/webhooks\/[^\/]+$/,
+      type: 'hidden' as const,
+    },
+    {
+      name: (pathname: string) => {
+        const match = pathname.match(/^\/projects\/[^\/]+\/email-templates\/([^\/]+)$/);
+        let item;
+        let href;
+        if (match) {
+          item = <TemplateBreadcrumbItem key='template-display-name' templateId={match[1]} />;
+          href = `/email-templates/${match[1]}`;
+        } else {
+          item = t('templates');
+          href = "";
+        }
+        return [
+          { item: t('templates'), href: "/email-templates" },
+          { item, href },
+        ];
+      },
+      regex: /^\/projects\/[^\/]+\/email-templates\/[^\/]+$/,
+      type: 'hidden' as const,
+    },
+    {
+      name: t('stackAuthKeys'),
+      href: "/api-keys",
+      regex: /^\/projects\/[^\/]+\/api-keys$/,
+      icon: KeyRound,
+      type: 'item' as const
+    },
+    {
+      name: t('projectSettings'),
+      href: "/project-settings",
+      regex: /^\/projects\/[^\/]+\/project-settings$/,
+      icon: Settings,
+      type: 'item' as const
+    }
+  ], [t]);
+}
 
 function TeamMemberBreadcrumbItem(props: { teamId: string }) {
   const stackAdminApp = useAdminApp();
@@ -405,6 +411,9 @@ function NavItem({ item, href, onClick }: { item: Item, href: string, onClick?: 
 }
 
 function SidebarContent({ projectId, onNavigate }: { projectId: string, onNavigate?: () => void }) {
+  const t = useTranslations('navigation');
+  const navigationItems = useNavigationItems();
+
   return (
     <div className="flex flex-col h-full items-stretch">
       <div className="h-14 border-b flex items-center px-2 shrink-0">
@@ -441,7 +450,7 @@ function SidebarContent({ projectId, onNavigate }: { projectId: string, onNaviga
           <NavItem
             onClick={onNavigate}
             item={{
-              name: "Documentation",
+              name: t('documentation'),
               type: "item",
               href: "",
               icon: Book,
@@ -462,9 +471,11 @@ function HeaderBreadcrumb({
   projectId: string,
   mobile?: boolean,
 }) {
+  const t = useTranslations('navigation');
   const pathname = usePathname();
   const user = useUser({ or: 'redirect', projectIdMustMatch: "internal" });
   const projects = user.useOwnedProjects();
+  const navigationItems = useNavigationItems();
 
   const breadcrumbItems: BreadcrumbItem[] = useMemo(() => {
     const item = navigationItems.find((item) => {
@@ -493,7 +504,7 @@ function HeaderBreadcrumb({
       item: item.item,
       href: `/projects/${projectId}${item.href}`,
     }));
-  }, [pathname, projectId]);
+  }, [pathname, projectId, navigationItems]);
 
   const selectedProject: AdminProject | undefined = useMemo(() => {
     return projects.find((project) => project.id === projectId);
@@ -504,7 +515,7 @@ function HeaderBreadcrumb({
       <Breadcrumb>
         <BreadcrumbList>
           <BreadcrumbItem>
-            <Link href="/projects">Home</Link>
+            <Link href="/projects">{t('home')}</Link>
           </BreadcrumbItem>
         </BreadcrumbList>
       </Breadcrumb>
@@ -516,7 +527,7 @@ function HeaderBreadcrumb({
           {getPublicEnvVar("NEXT_PUBLIC_STACK_EMULATOR_ENABLED") !== "true" &&
             <>
               <BreadcrumbItem>
-                <Link href="/projects">Home</Link>
+                <Link href="/projects">{t('home')}</Link>
               </BreadcrumbItem>
               <BreadcrumbSeparator />
               <BreadcrumbItem>
@@ -589,7 +600,8 @@ export default function SidebarLayout(props: { projectId: string, children?: Rea
             </div>
           </div>
 
-          <div className="flex gap-4 relative">
+          <div className="flex gap-2 relative items-center">
+            <LanguageSwitcher />
             {getPublicEnvVar("NEXT_PUBLIC_STACK_EMULATOR_ENABLED") === "true" ?
               <ThemeToggle /> :
               <UserButton colorModeToggle={() => setTheme(resolvedTheme === 'light' ? 'dark' : 'light')} />

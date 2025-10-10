@@ -2,8 +2,9 @@
 import { useAdminApp } from "@/app/(main)/(protected)/projects/[projectId]/use-admin-app";
 import { ServerTeam, ServerUser } from '@stackframe/stack';
 import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
-import { ActionCell, ActionDialog, BadgeCell, DataTable, DataTableColumnHeader, SearchToolbarItem, SimpleTooltip } from "@stackframe/stack-ui";
+import { ActionCell, ActionDialog, BadgeCell, DataTable, DataTableColumnHeader, DataTableI18n, SearchToolbarItem, SimpleTooltip } from "@stackframe/stack-ui";
 import { ColumnDef, Row, Table } from "@tanstack/react-table";
+import { useTranslations } from 'next-intl';
 import { useEffect, useMemo, useState } from "react";
 import * as yup from "yup";
 import { SmartFormDialog } from "../form-dialog";
@@ -15,10 +16,10 @@ type ExtendedServerUserForTeam = ExtendedServerUser & {
   permissions: string[],
 };
 
-function teamMemberToolbarRender<TData>(table: Table<TData>) {
+function teamMemberToolbarRender<TData>(table: Table<TData>, searchPlaceholder: string) {
   return (
     <>
-      <SearchToolbarItem table={table} placeholder="Search table" />
+      <SearchToolbarItem table={table} placeholder={searchPlaceholder} />
     </>
   );
 }
@@ -29,19 +30,21 @@ function RemoveUserDialog(props: {
   open: boolean,
   onOpenChange: (open: boolean) => void,
 }) {
+  const t = useTranslations('common.dataTable.dialogs.removeUser');
   return <ActionDialog
     title
     danger
     open={props.open}
     onOpenChange={props.onOpenChange}
     okButton={{
-      label: "Remove user from team",
+      label: t('buttonLabel'),
       onClick: async () => { await props.team.removeUser(props.user.id); }
     }}
     cancelButton
-    confirmText="I understand this will cause the user to lose access to the team."
+    confirmText={t('confirmText')}
   >
-    {`Are you sure you want to remove the user "${props.user.displayName}" from the team "${props.team.displayName}"?`}
+    {/* eslint-disable-next-line @typescript-eslint/no-unnecessary-condition */}
+    {t('description', { userName: props.user.displayName ?? props.user.primaryEmail ?? props.user.id, teamName: props.team.displayName ?? props.team.id })}
   </ActionDialog>;
 }
 
@@ -52,6 +55,7 @@ function EditPermissionDialog(props: {
   onOpenChange: (open: boolean) => void,
   onSubmit: () => void,
 }) {
+  const t = useTranslations('common.dataTable.dialogs.editPermission');
   const stackAdminApp = useAdminApp();
   const permissions = stackAdminApp.useTeamPermissionDefinitions();
 
@@ -71,9 +75,9 @@ function EditPermissionDialog(props: {
   return <SmartFormDialog
     open={props.open}
     onOpenChange={props.onOpenChange}
-    title="Edit Permission"
+    title={t('title')}
     formSchema={formSchema}
-    okButton={{ label: "Save" }}
+    okButton={{ label: t('save') }}
     onSubmit={async (values) => {
       const promises = permissions.map(p => {
         if (values.permissions.includes(p.id)) {
@@ -94,6 +98,7 @@ function Actions(
   { row, team, setUpdateCounter }:
   { row: Row<ExtendedServerUserForTeam>, team: ServerTeam, setUpdateCounter: (c: (v: number) => number) => void }
 ) {
+  const t = useTranslations('common.dataTable.actions');
   const [isRemoveModalOpen, setIsRemoveModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
 
@@ -115,12 +120,12 @@ function Actions(
       <ActionCell
         items={[
           {
-            item: "Edit permissions",
+            item: t('editPermissions'),
             onClick: () => setIsEditModalOpen(true),
           },
           '-',
           {
-            item: "Remove from team",
+            item: t('removeFromTeam'),
             danger: true,
             onClick: () => setIsRemoveModalOpen(true),
           }
@@ -131,15 +136,22 @@ function Actions(
 }
 
 export function TeamMemberTable(props: { users: ServerUser[], team: ServerTeam }) {
+  const t = useTranslations('common.dataTable.columns');
+  const tStatus = useTranslations('common.dataTable.status');
+  const tSearch = useTranslations('common.dataTable');
+  const tTooltips = useTranslations('common.dataTable.tooltips');
+  const tToolbar = useTranslations('common.dataTable.toolbar');
+  const tPagination = useTranslations('common.dataTable.pagination');
+
   const teamMemberColumns: ColumnDef<ExtendedServerUserForTeam>[] = [
-    ...getCommonUserColumns<ExtendedServerUserForTeam>(),
+    ...getCommonUserColumns<ExtendedServerUserForTeam>(t, tStatus),
     {
       accessorKey: "permissions",
       header: ({ column }) => <DataTableColumnHeader
         column={column}
         columnTitle={<div className="flex items-center gap-1">
-          Permissions
-          <SimpleTooltip tooltip="Only showing direct permissions" type='info' />
+          {t('permissions')}
+          <SimpleTooltip tooltip={tTooltips('onlyShowingDirectPermissions')} type='info' />
         </div>}
       />,
       cell: ({ row }) => <BadgeCell size={120} badges={row.getValue("permissions")} />,
@@ -187,9 +199,20 @@ export function TeamMemberTable(props: { users: ServerUser[], team: ServerTeam }
   return <DataTable
     data={extendedUsers}
     columns={teamMemberColumns}
-    toolbarRender={teamMemberToolbarRender}
+    toolbarRender={(table) => teamMemberToolbarRender(table, tSearch('search'))}
     defaultVisibility={{ emailVerified: false }}
     defaultColumnFilters={[]}
     defaultSorting={[]}
+    i18n={{
+      resetFilters: tToolbar('resetFilters'),
+      exportCSV: tToolbar('exportCSV'),
+      noDataToExport: tToolbar('noDataToExport'),
+      view: tToolbar('view'),
+      toggleColumns: tToolbar('toggleColumns'),
+      rowsSelected: (selected: number, total: number) => tPagination('rowsSelected', { selected, total }),
+      rowsPerPage: tPagination('rowsPerPage'),
+      previousPage: tPagination('goToPreviousPage'),
+      nextPage: tPagination('goToNextPage'),
+    } satisfies DataTableI18n}
   />;
 }

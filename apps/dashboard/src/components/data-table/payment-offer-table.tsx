@@ -2,44 +2,45 @@
 import { useAdminApp } from "@/app/(main)/(protected)/projects/[projectId]/use-admin-app";
 import { OfferDialog } from "@/components/payments/offer-dialog";
 import { branchPaymentsSchema } from "@stackframe/stack-shared/dist/config/schema";
-import { ActionCell, ActionDialog, DataTable, DataTableColumnHeader, TextCell, toast } from "@stackframe/stack-ui";
+import { ActionCell, ActionDialog, DataTable, DataTableColumnHeader, DataTableI18n, TextCell, toast } from "@stackframe/stack-ui";
 import { ColumnDef } from "@tanstack/react-table";
-import { useState } from "react";
+import { useTranslations } from 'next-intl';
+import { useMemo, useState } from "react";
 import * as yup from "yup";
 
 type PaymentOffer = {
   id: string,
 } & yup.InferType<typeof branchPaymentsSchema>["offers"][string];
 
-const columns: ColumnDef<PaymentOffer>[] = [
+const getColumns = (t: any): ColumnDef<PaymentOffer>[] => [
   {
     accessorKey: "id",
-    header: ({ column }) => <DataTableColumnHeader column={column} columnTitle="Offer ID" />,
+    header: ({ column }) => <DataTableColumnHeader column={column} columnTitle={t('offerId')} />,
     cell: ({ row }) => <TextCell><span className="font-mono text-sm">{row.original.id}</span></TextCell>,
     enableSorting: false,
   },
   {
     accessorKey: "displayName",
-    header: ({ column }) => <DataTableColumnHeader column={column} columnTitle="Display Name" />,
+    header: ({ column }) => <DataTableColumnHeader column={column} columnTitle={t('displayName')} />,
     cell: ({ row }) => <TextCell>{row.original.displayName}</TextCell>,
     enableSorting: false,
   },
   {
     accessorKey: "customerType",
-    header: ({ column }) => <DataTableColumnHeader column={column} columnTitle="Customer Type" />,
+    header: ({ column }) => <DataTableColumnHeader column={column} columnTitle={t('customerType')} />,
     cell: ({ row }) => <TextCell><span className="capitalize">{row.original.customerType}</span></TextCell>,
     enableSorting: false,
   },
   {
     accessorKey: "freeTrial",
-    header: ({ column }) => <DataTableColumnHeader column={column} columnTitle="Free Trial" />,
+    header: ({ column }) => <DataTableColumnHeader column={column} columnTitle={t('freeTrial')} />,
     cell: ({ row }) => <TextCell>{row.original.freeTrial?.join(" ") ?? ""}</TextCell>,
     enableSorting: false,
   },
   {
     accessorKey: "stackable",
-    header: ({ column }) => <DataTableColumnHeader column={column} columnTitle="Stackable" />,
-    cell: ({ row }) => <TextCell>{row.original.stackable ? "Yes" : "No"}</TextCell>,
+    header: ({ column }) => <DataTableColumnHeader column={column} columnTitle={t('stackable')} />,
+    cell: ({ row }) => <TextCell>{row.original.stackable ? t('yes') : t('no')}</TextCell>,
     enableSorting: false,
   },
   {
@@ -49,6 +50,12 @@ const columns: ColumnDef<PaymentOffer>[] = [
 ];
 
 export function PaymentOfferTable({ offers }: { offers: Record<string, yup.InferType<typeof branchPaymentsSchema>["offers"][string]> }) {
+  const t = useTranslations('payments.offers.table.columns');
+  const tToolbar = useTranslations('common.dataTable.toolbar');
+  const tPagination = useTranslations('common.dataTable.pagination');
+  
+  const columns = useMemo(() => getColumns(t), [t]);
+  
   const data: PaymentOffer[] = Object.entries(offers).map(([id, offer]) => ({
     id,
     ...offer,
@@ -60,10 +67,23 @@ export function PaymentOfferTable({ offers }: { offers: Record<string, yup.Infer
     defaultColumnFilters={[]}
     defaultSorting={[]}
     showDefaultToolbar={false}
+    i18n={{
+      resetFilters: tToolbar('resetFilters'),
+      exportCSV: tToolbar('exportCSV'),
+      noDataToExport: tToolbar('noDataToExport'),
+      view: tToolbar('view'),
+      toggleColumns: tToolbar('toggleColumns'),
+      rowsSelected: (selected: number, total: number) => tPagination('rowsSelected', { selected, total }),
+      rowsPerPage: tPagination('rowsPerPage'),
+      previousPage: tPagination('goToPreviousPage'),
+      nextPage: tPagination('goToNextPage'),
+    } satisfies DataTableI18n}
   />;
 }
 
 function ActionsCell({ offer }: { offer: PaymentOffer }) {
+  const t = useTranslations('payments.offers.table.actions');
+  const tDialog = useTranslations('payments.offers.table.dialogs.delete');
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
   const stackAdminApp = useAdminApp();
@@ -74,12 +94,12 @@ function ActionsCell({ offer }: { offer: PaymentOffer }) {
       <ActionCell
         items={[
           {
-            item: "Edit",
+            item: t('edit'),
             onClick: () => setIsEditOpen(true),
           },
           '-',
           {
-            item: "Delete",
+            item: t('delete'),
             onClick: () => setIsDeleteOpen(true),
             danger: true,
           },
@@ -95,15 +115,15 @@ function ActionsCell({ offer }: { offer: PaymentOffer }) {
       <ActionDialog
         open={isDeleteOpen}
         onOpenChange={setIsDeleteOpen}
-        title="Delete Offer"
-        description="This action will permanently delete this offer."
+        title={tDialog('title')}
+        description={tDialog('description')}
         cancelButton
         danger
         okButton={{
-          label: "Delete",
+          label: tDialog('deleteButton'),
           onClick: async () => {
             await project.updateConfig({ [`payments.offers.${offer.id}`]: null });
-            toast({ title: "Offer deleted" });
+            toast({ title: tDialog('success') });
           },
         }}
       />

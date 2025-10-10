@@ -3,6 +3,7 @@ import { ServerUser } from "@stackframe/stack";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { emailSchema, jsonStringOrEmptySchema, passwordSchema } from "@stackframe/stack-shared/dist/schema-fields";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger, Button, Typography, useToast } from "@stackframe/stack-ui";
+import { useTranslations } from 'next-intl';
 import * as yup from "yup";
 import { FormDialog } from "./form-dialog";
 import { DateField, InputField, SwitchField, TextAreaField } from "./form-fields";
@@ -17,6 +18,10 @@ export function UserDialog(props: {
   type: 'edit',
   user: ServerUser,
 })) {
+  const t = useTranslations('users.dialog');
+  const tFields = useTranslations('users.dialog.fields');
+  const tHints = useTranslations('users.dialog.hints');
+  const tErrors = useTranslations('users.dialog.errors');
   const { toast } = useToast();
   const adminApp = useAdminApp();
   const project = adminApp.useProject();
@@ -42,7 +47,7 @@ export function UserDialog(props: {
   }
 
   const formSchema = yup.object({
-    primaryEmail: emailSchema.label("Primary email").defined().nonEmpty(),
+    primaryEmail: emailSchema.label(tFields('primaryEmail')).defined().nonEmpty(),
     displayName: yup.string().optional(),
     signedUpAt: yup.date().defined(),
     clientMetadata: jsonStringOrEmptySchema.default("null"),
@@ -51,7 +56,7 @@ export function UserDialog(props: {
     primaryEmailVerified: yup.boolean().optional(),
     password: passwordSchema.min(1).test({
       name: 'password-required',
-      message: "Password is required",
+      message: tErrors('passwordRequired'),
       test: (value, context) => {
         if (context.parent.passwordEnabled && (context.parent.updatePassword || props.type === 'create')) {
           return value != null;
@@ -61,7 +66,7 @@ export function UserDialog(props: {
     }).optional(),
     otpAuthEnabled: yup.boolean().test({
       name: 'otp-verified',
-      message: "Primary email must be verified if OTP/magic link sign-in is enabled",
+      message: tHints('emailVerifiedRequired'),
       test: (value, context) => {
         return context.parent.primaryEmailVerified || !value;
       },
@@ -88,8 +93,8 @@ export function UserDialog(props: {
     } catch (error) {
       if (KnownErrors.UserWithEmailAlreadyExists.isInstance(error)) {
         toast({
-          title: "Email already exists",
-          description: "Please choose a different email address",
+          title: tErrors('emailAlreadyExists'),
+          description: tErrors('emailAlreadyExistsDescription'),
           variant: "destructive",
         });
         return 'prevent-close';
@@ -101,29 +106,29 @@ export function UserDialog(props: {
     open={props.open}
     onOpenChange={props.onOpenChange}
     trigger={props.trigger}
-    title={props.type === 'edit' ? "Edit User" : "Create User"}
+    title={props.type === 'edit' ? t('editTitle') : t('createTitle')}
     formSchema={formSchema}
     defaultValues={defaultValues}
-    okButton={{ label: props.type === 'edit' ? "Save" : "Create" }}
+    okButton={{ label: props.type === 'edit' ? t('saveButton') : t('createButton') }}
     render={(form) => (
       <>
-        {props.type === 'edit' ? <Typography variant='secondary'>ID: {props.user.id}</Typography> : null}
+        {props.type === 'edit' ? <Typography variant='secondary'>{tFields('id')}: {props.user.id}</Typography> : null}
 
         <div className="flex gap-4 items-end">
           <div className="flex-1">
-            <InputField control={form.control} label="Primary email" name="primaryEmail" required />
+            <InputField control={form.control} label={tFields('primaryEmail')} name="primaryEmail" required />
           </div>
           <div className="mb-2">
-            <SwitchField control={form.control} label="Verified" name="primaryEmailVerified" />
+            <SwitchField control={form.control} label={tFields('verified')} name="primaryEmailVerified" />
           </div>
         </div>
 
-        <InputField control={form.control} label="Display name" name="displayName" />
+        <InputField control={form.control} label={tFields('displayName')} name="displayName" />
 
-        <DateField control={form.control} label="Signed Up At" name="signedUpAt" />
+        <DateField control={form.control} label={tFields('signedUpAt')} name="signedUpAt" />
 
-        {project.config.magicLinkEnabled && <SwitchField control={form.control} label="OTP/magic link sign-in" name="otpAuthEnabled" />}
-        {project.config.credentialEnabled && <SwitchField control={form.control} label="Password sign-in" name="passwordEnabled" />}
+        {project.config.magicLinkEnabled && <SwitchField control={form.control} label={tFields('otpAuthEnabled')} name="otpAuthEnabled" />}
+        {project.config.credentialEnabled && <SwitchField control={form.control} label={tFields('passwordEnabled')} name="passwordEnabled" />}
         {form.watch("passwordEnabled") && (
           props.type === 'edit' && !form.watch("password") && !form.watch("updatePassword") ? (
             <Button
@@ -131,27 +136,27 @@ export function UserDialog(props: {
               variant="outline"
               onClick={() => form.setValue('updatePassword', true)}
             >
-              Update Password
+              {tFields('updatePassword')}
             </Button>
           ) : (
             <InputField
               control={form.control}
-              label={props.type === 'edit' ? "New password" : "Password"}
+              label={props.type === 'edit' ? tFields('newPassword') : tFields('password')}
               name="password"
               type="password"
               autoComplete="off"
             />
           )
         )}
-        {!form.watch("primaryEmailVerified") && form.watch("otpAuthEnabled") && <Typography variant="secondary">Primary email must be verified if OTP/magic link sign-in is enabled</Typography>}
+        {!form.watch("primaryEmailVerified") && form.watch("otpAuthEnabled") && <Typography variant="secondary">{tHints('emailVerifiedRequired')}</Typography>}
 
         <Accordion type="single" collapsible>
           <AccordionItem value="item-1">
-            <AccordionTrigger>Metadata</AccordionTrigger>
+            <AccordionTrigger>{tFields('metadata')}</AccordionTrigger>
             <AccordionContent className="space-y-4">
-              <TextAreaField rows={3} control={form.control} label="Client metadata" name="clientMetadata" placeholder="null" monospace />
-              <TextAreaField rows={3} control={form.control} label="Client read only metadata" name="clientReadOnlyMetadata" placeholder="null" monospace />
-              <TextAreaField rows={3} control={form.control} label="Server metadata" name="serverMetadata" placeholder="null" monospace />
+              <TextAreaField rows={3} control={form.control} label={tFields('clientMetadata')} name="clientMetadata" placeholder="null" monospace />
+              <TextAreaField rows={3} control={form.control} label={tFields('clientReadOnlyMetadata')} name="clientReadOnlyMetadata" placeholder="null" monospace />
+              <TextAreaField rows={3} control={form.control} label={tFields('serverMetadata')} name="serverMetadata" placeholder="null" monospace />
             </AccordionContent>
           </AccordionItem>
         </Accordion>

@@ -3,6 +3,7 @@ import { SmartFormDialog } from "@/components/form-dialog";
 import { PermissionListField } from "@/components/permission-field";
 import { SettingCard, SettingSwitch } from "@/components/settings";
 import { Badge, Button, Typography } from "@stackframe/stack-ui";
+import { useTranslations } from 'next-intl';
 import * as yup from "yup";
 import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";
@@ -11,6 +12,7 @@ function CreateDialog(props: {
   trigger: React.ReactNode,
   type: "creator" | "member",
 }) {
+  const t = useTranslations('teamSettings');
   const stackAdminApp = useAdminApp();
   const project = stackAdminApp.useProject();
   const permissions = stackAdminApp.useTeamPermissionDefinitions();
@@ -26,7 +28,7 @@ function CreateDialog(props: {
           permissions={permissions}
           selectedPermissionIds={selectedPermissionIds}
           type="select"
-          label="Default Permissions"
+          label={t('dialog.permissionsLabel')}
         />
       ),
     }).default(selectedPermissionIds),
@@ -34,9 +36,9 @@ function CreateDialog(props: {
 
   return <SmartFormDialog
     trigger={props.trigger}
-    title={props.type === "creator" ? "Team Creator Default Permissions" : "Team Member Default Permissions"}
+    title={t(`dialog.title.${props.type}`)}
     formSchema={formSchema}
-    okButton={{ label: "Save" }}
+    okButton={{ label: t('dialog.saveButton') }}
     onSubmit={async (values) => {
       if (props.type === "creator") {
         await project.update({
@@ -57,14 +59,15 @@ function CreateDialog(props: {
 }
 
 export default function PageClient() {
+  const t = useTranslations('teamSettings');
   const stackAdminApp = useAdminApp();
   const project = stackAdminApp.useProject();
 
   return (
-    <PageLayout title="Team Settings">
-      <SettingCard title="Client-side Team Creation">
+    <PageLayout title={t('title')}>
+      <SettingCard title={t('clientCreation.title')}>
         <SettingSwitch
-          label="Allow client users to create teams"
+          label={t('clientCreation.label')}
           checked={project.config.clientTeamCreationEnabled}
           onCheckedChange={async (checked) => {
             await project.update({
@@ -75,13 +78,13 @@ export default function PageClient() {
           }}
         />
         <Typography variant="secondary" type="footnote">
-          {'When enabled, a "Create Team" button will be added to the account settings page and the team switcher.'}
+          {t('clientCreation.hint')}
         </Typography>
       </SettingCard>
 
-      <SettingCard title="Automatic Team Creation">
+      <SettingCard title={t('autoCreation.title')}>
         <SettingSwitch
-          label="Create a personal team for each user on sign-up"
+          label={t('autoCreation.label')}
           checked={project.config.createTeamOnSignUp}
           onCheckedChange={async (checked) => {
             await project.update({
@@ -92,20 +95,20 @@ export default function PageClient() {
           }}
         />
         <Typography variant="secondary" type="footnote">
-          When enabled, a personal team will be created for each user when they sign up. This will not automatically create teams for existing users.
+          {t('autoCreation.hint')}
         </Typography>
       </SettingCard>
 
       {([
         {
           type: 'creator',
-          title: "Team Creator Default Permissions",
-          description: "Permissions the user will automatically be granted when creating a team",
+          title: t('permissions.creator.title'),
+          description: t('permissions.creator.description'),
           key: 'teamCreatorDefaultPermissions',
         }, {
           type: 'member',
-          title: "Team Member Default Permissions",
-          description: "Permissions the user will automatically be granted when joining a team",
+          title: t('permissions.member.title'),
+          description: t('permissions.member.description'),
           key: 'teamMemberDefaultPermissions',
         }
       ] as const).map(({ type, title, description, key }) => (
@@ -114,7 +117,7 @@ export default function PageClient() {
           title={title}
           description={description}
           actions={<CreateDialog
-            trigger={<Button variant="secondary">Edit</Button>}
+            trigger={<Button variant="secondary">{t('permissions.editButton')}</Button>}
             type={type}
           />}
         >
@@ -123,7 +126,7 @@ export default function PageClient() {
               project.config[key].map((p) => (
                 <Badge key={p.id} variant='secondary'>{p.id}</Badge>
               )) :
-              <Typography variant="secondary" type="label">No default permissions set</Typography>
+              <Typography variant="secondary" type="label">{t('permissions.noPermissions')}</Typography>
             }
           </div>
         </SettingCard>

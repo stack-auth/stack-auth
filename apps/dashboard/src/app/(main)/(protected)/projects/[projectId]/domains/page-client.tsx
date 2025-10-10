@@ -7,6 +7,7 @@ import { yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { isValidHostnameWithWildcards, isValidUrl } from "@stackframe/stack-shared/dist/utils/urls";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger, ActionCell, ActionDialog, Alert, Button, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, Typography } from "@stackframe/stack-ui";
+import { useTranslations } from 'next-intl';
 import React from "react";
 import * as yup from "yup";
 import { PageLayout } from "../page-layout";
@@ -30,16 +31,18 @@ function EditDialog(props: {
     defaultHandlerPath: string,
   }
 )) {
+  const t = useTranslations('domains');
+
   const domainFormSchema = yup.object({
     domain: yupString()
       .test({
         name: 'domain',
-        message: (params) => `Invalid domain`,
+        message: (params) => t('editDialog.validation.invalidDomain'),
         test: (value) => value == null || isValidHostnameWithWildcards(value)
       })
       .test({
         name: 'unique-domain',
-        message: "Domain already exists",
+        message: t('editDialog.validation.domainExists'),
         test: function(value) {
           if (!value) return true;
           const { addWww, insecureHttp } = this.parent;
@@ -66,7 +69,7 @@ function EditDialog(props: {
       })
       .defined(),
     handlerPath: yup.string()
-      .matches(/^\//, "Handler path must start with /")
+      .matches(/^\//, t('editDialog.validation.handlerPathStart'))
       .defined(),
     addWww: yup.boolean(),
     insecureHttp: yup.boolean(),
@@ -105,9 +108,9 @@ function EditDialog(props: {
     }}
     onOpenChange={props.onOpenChange}
     trigger={props.trigger}
-    title={(props.type === 'create' ? "Create" : "Update") + " domain and handler"}
+    title={t(`editDialog.title.${props.type}`)}
     formSchema={domainFormSchema}
-    okButton={{ label: props.type === 'create' ? "Create" : "Save" }}
+    okButton={{ label: t(`editDialog.button.${props.type}`) }}
     onSubmit={async (values) => {
       const newDomains = [
         ...props.domains,
@@ -159,18 +162,18 @@ function EditDialog(props: {
       <>
         <Alert>
           <div className="space-y-2">
-            <p>Please ensure you own or have control over this domain. Also note that each subdomain (e.g. blog.example.com, app.example.com) is treated as a distinct domain.</p>
-            <p><strong>Wildcard domains:</strong> You can use wildcards to match multiple domains:</p>
+            <p>{t('editDialog.alert.ownership')}</p>
+            <p><strong>{t('editDialog.alert.wildcardTitle')}</strong> {t('editDialog.alert.wildcardDesc')}</p>
             <ul className="list-disc list-inside ml-2 space-y-1">
-              <li><code>*.example.com</code> - matches any single subdomain (e.g., api.example.com, www.example.com)</li>
-              <li><code>**.example.com</code> - matches any subdomain level (e.g., api.v2.example.com)</li>
-              <li><code>api-*.example.com</code> - matches api-v1.example.com, api-prod.example.com, etc.</li>
-              <li><code>*.*.org</code> - matches mail.example.org, but not example.org</li>
+              <li><code>*.example.com</code> - {t('editDialog.alert.wildcard1')}</li>
+              <li><code>**.example.com</code> - {t('editDialog.alert.wildcard2')}</li>
+              <li><code>api-*.example.com</code> - {t('editDialog.alert.wildcard3')}</li>
+              <li><code>*.*.org</code> - {t('editDialog.alert.wildcard4')}</li>
             </ul>
           </div>
         </Alert>
         <InputField
-          label="Domain"
+          label={t('editDialog.field.domainLabel')}
           name="domain"
           control={form.control}
           prefixItem={form.getValues('insecureHttp') ? 'http://' : 'https://'}
@@ -180,7 +183,7 @@ function EditDialog(props: {
         {props.type === 'create' &&
           canAddWww(form.watch('domain')) && (
           <SwitchField
-            label={`Also add www.${form.watch('domain') as any ?? ''} as a trusted domain`}
+            label={t('editDialog.field.addWwwLabel', { domain: form.watch('domain') ?? '' })}
             name="addWww"
             control={form.control}
           />
@@ -188,29 +191,29 @@ function EditDialog(props: {
 
         <Accordion type="single" collapsible className="w-full">
           <AccordionItem value="item-1">
-            <AccordionTrigger>Advanced</AccordionTrigger>
+            <AccordionTrigger>{t('editDialog.advanced.title')}</AccordionTrigger>
             <AccordionContent className="flex flex-col gap-8">
               <div className="flex flex-col gap-4">
                 <SwitchField
-                  label="Use HTTP instead of HTTPS"
+                  label={t('editDialog.advanced.useHttp')}
                   name="insecureHttp"
                   control={form.control}
                 />
                 {form.watch('insecureHttp') && (
                   <Alert variant="destructive">
-                    HTTP should only be allowed during development use. For production use, please use HTTPS.
+                    {t('editDialog.advanced.httpWarning')}
                   </Alert>
                 )}
               </div>
               <div className="flex flex-col gap-2">
                 <InputField
-                  label="Handler path"
+                  label={t('editDialog.advanced.handlerPathLabel')}
                   name="handlerPath"
                   control={form.control}
                   placeholder='/handler'
                 />
                 <Typography variant="secondary" type="footnote">
-                  only modify this if you changed the default handler path in your app
+                  {t('editDialog.advanced.handlerPathHint')}
                 </Typography>
               </div>
             </AccordionContent>
@@ -227,14 +230,16 @@ function DeleteDialog(props: {
   domain: string,
   project: AdminProject,
 }) {
+  const t = useTranslations('domains');
+
   return (
     <ActionDialog
       open={props.open}
       onOpenChange={props.onOpenChange}
-      title="Delete domain"
+      title={t('deleteDialog.title')}
       danger
       okButton={{
-        label: "Delete",
+        label: t('deleteDialog.button'),
         onClick: async () => {
           await props.project.update({
             config: {
@@ -246,7 +251,7 @@ function DeleteDialog(props: {
       cancelButton
     >
       <Typography>
-        Do you really want to remove <b>{props.domain}</b> from the allow list? Your project will no longer be able to receive callbacks from this domain.
+        {t('deleteDialog.message', { domain: props.domain })}
       </Typography>
     </ActionDialog>
   );
@@ -259,6 +264,7 @@ function ActionMenu(props: {
   targetDomain: string,
   defaultHandlerPath: string,
 }) {
+  const t = useTranslations('domains');
   const [isDeleteModalOpen, setIsDeleteModalOpen] = React.useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = React.useState(false);
 
@@ -282,9 +288,9 @@ function ActionMenu(props: {
       />
       <ActionCell
         items={[
-          { item: "Edit", onClick: () => setIsEditModalOpen(true) },
+          { item: t('actionMenu.edit'), onClick: () => setIsEditModalOpen(true) },
           '-',
-          { item: "Delete", onClick: () => setIsDeleteModalOpen(true), danger: true }
+          { item: t('actionMenu.delete'), onClick: () => setIsDeleteModalOpen(true), danger: true }
         ]}
       />
     </>
@@ -292,19 +298,20 @@ function ActionMenu(props: {
 }
 
 export default function PageClient() {
+  const t = useTranslations('domains');
   const stackAdminApp = useAdminApp();
   const project = stackAdminApp.useProject();
   const domains = project.config.domains;
 
 
   return (
-    <PageLayout title="Domains">
+    <PageLayout title={t('title')}>
       <SettingCard
-        title="Trusted domains"
-        description="Features that will redirect to your app, such as SSO and e-mail verification, will refuse to redirect to domains other than the ones listed here. Please make sure that you trust all domains listed here, as they can be used to access user data."
+        title={t('trustedDomains.title')}
+        description={t('trustedDomains.description')}
         actions={
           <EditDialog
-            trigger={<Button>Add new domain</Button>}
+            trigger={<Button>{t('trustedDomains.addButton')}</Button>}
             domains={domains}
             project={project}
             type="create"
@@ -316,7 +323,7 @@ export default function PageClient() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="w-[200px]">Domain</TableHead>
+                  <TableHead className="w-[200px]">{t('trustedDomains.table.domain')}</TableHead>
                   <TableHead>&nbsp;</TableHead>
                 </TableRow>
               </TableHeader>
@@ -340,12 +347,12 @@ export default function PageClient() {
           </div>
         ) : (
           <Alert>
-            No domains added yet.
+            {t('trustedDomains.emptyState')}
           </Alert>
         )}
       </SettingCard>
 
-      <SettingCard title="Development settings">
+      <SettingCard title={t('devSettings.title')}>
         <SettingSwitch
           checked={project.config.allowLocalhost}
           onCheckedChange={async (checked) => {
@@ -353,10 +360,10 @@ export default function PageClient() {
               config: { allowLocalhost: checked },
             });
           }}
-          label="Allow all localhost callbacks for development"
-          hint={<>
-            When enabled, allow access from all localhost URLs by default. This makes development easier but <b>should be disabled in production.</b>
-          </>}
+          label={t('devSettings.localhostLabel')}
+          hint={
+            <>{t('devSettings.localhostHint')} <b>{t('devSettings.localhostWarning')}</b></>
+          }
         />
       </SettingCard>
     </PageLayout>

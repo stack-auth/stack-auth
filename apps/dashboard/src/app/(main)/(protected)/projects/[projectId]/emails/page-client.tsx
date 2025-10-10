@@ -6,71 +6,73 @@ import { InputField, SelectField, TextAreaField } from "@/components/form-fields
 import { SettingCard, SettingText } from "@/components/settings";
 import { getPublicEnvVar } from "@/lib/env";
 import { AdminEmailConfig, AdminProject, AdminSentEmail, ServerUser, UserAvatar } from "@stackframe/stack";
+import { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
 import { strictEmailSchema } from "@stackframe/stack-shared/dist/schema-fields";
 import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { deepPlainEquals } from "@stackframe/stack-shared/dist/utils/objects";
 import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
-import { ActionDialog, Alert, Button, DataTable, SimpleTooltip, Typography, useToast, TooltipProvider, TooltipTrigger, TooltipContent, Tooltip, AlertDescription, AlertTitle } from "@stackframe/stack-ui";
+import { ActionDialog, Alert, AlertDescription, AlertTitle, Button, DataTable, DataTableI18n, SimpleTooltip, Tooltip, TooltipContent, TooltipProvider, TooltipTrigger, Typography, useToast } from "@stackframe/stack-ui";
 import { ColumnDef } from "@tanstack/react-table";
 import { AlertCircle, X } from "lucide-react";
+import { useTranslations } from 'next-intl';
 import { useEffect, useMemo, useState } from "react";
 import * as yup from "yup";
 import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";
-import { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
 
 export default function PageClient() {
+  const t = useTranslations('emails');
   const stackAdminApp = useAdminApp();
   const project = stackAdminApp.useProject();
   const emailConfig = project.useConfig().emails.server;
 
   return (
     <PageLayout
-      title="Emails"
-      description="Manage email server and logs"
+      title={t('title')}
+      description={t('description')}
       actions={
         <SendEmailDialog
-          trigger={<Button>Send Email</Button>}
+          trigger={<Button>{t('sendEmailButton')}</Button>}
           emailConfig={emailConfig}
         />
       }
     >
       {getPublicEnvVar('NEXT_PUBLIC_STACK_EMULATOR_ENABLED') === 'true' ? (
         <SettingCard
-          title="Mock Emails"
-          description="View all emails sent through the emulator in Inbucket"
+          title={t('mockEmails.title')}
+          description={t('mockEmails.description')}
         >
           <Button variant='secondary' onClick={() => {
             window.open(getPublicEnvVar('NEXT_PUBLIC_STACK_INBUCKET_WEB_URL') + '/monitor', '_blank');
           }}>
-            Open Inbox
+            {t('mockEmails.openInboxButton')}
           </Button>
         </SettingCard>
       ) : (
         <SettingCard
-          title="Email Server"
-          description="Configure the email server and sender address for outgoing emails"
+          title={t('emailServer.title')}
+          description={t('emailServer.description')}
           actions={
             <div className="flex items-center gap-2">
-              {!emailConfig.isShared && <TestSendingDialog trigger={<Button variant='secondary' className="w-full">Send Test Email</Button>} />}
-              <EditEmailServerDialog trigger={<Button variant='secondary' className="w-full">Configure</Button>} />
+              {!emailConfig.isShared && <TestSendingDialog trigger={<Button variant='secondary' className="w-full">{t('emailServer.testSendButton')}</Button>} />}
+              <EditEmailServerDialog trigger={<Button variant='secondary' className="w-full">{t('emailServer.configureButton')}</Button>} />
             </div>
           }
         >
-          <SettingText label="Server">
+          <SettingText label={t('emailServer.serverLabel')}>
             <div className="flex items-center gap-2">
               {emailConfig.isShared ?
-                <>Shared <SimpleTooltip tooltip="When you use the shared email server, all the emails are sent from Stack's email address" type='info' /></>
-                : (emailConfig.provider === 'resend' ? "Resend" : "Custom SMTP server")
+                <>{t('emailServer.shared')} <SimpleTooltip tooltip={t('emailServer.sharedTooltip')} type='info' /></>
+                : (emailConfig.provider === 'resend' ? t('emailServer.resend') : t('emailServer.customSmtp'))
               }
             </div>
           </SettingText>
-          <SettingText label="Sender Email">
+          <SettingText label={t('emailServer.senderEmailLabel')}>
             {emailConfig.isShared ? 'noreply@stackframe.co' : emailConfig.senderEmail}
           </SettingText>
         </SettingCard>
       )}
-      <SettingCard title="Email Log" description="Manage email sending history" >
+      <SettingCard title={t('emailLog.title')} description={t('emailLog.description')} >
         <EmailSendDataTable />
       </SettingCard>
     </PageLayout>
@@ -316,27 +318,34 @@ function TestSendingDialog(props: {
   />;
 }
 
-const emailTableColumns: ColumnDef<AdminSentEmail>[] = [
-  { accessorKey: 'recipient', header: 'Recipient' },
-  { accessorKey: 'subject', header: 'Subject' },
-  {
-    accessorKey: 'sentAt', header: 'Sent At', cell: ({ row }) => {
-      const date = row.original.sentAt;
-      return date.toLocaleDateString() + ' ' + date.toLocaleTimeString();
-    }
-  },
-  {
-    accessorKey: 'status', header: 'Status', cell: ({ row }) => {
-      return row.original.error ? (
-        <div className="text-red-500">Failed</div>
-      ) : (
-        <div className="text-green-500">Sent</div>
-      );
-    }
-  },
-];
+const useEmailTableColumns = (): ColumnDef<AdminSentEmail>[] => {
+  const t = useTranslations('emails.emailLog.columns');
+  return [
+    { accessorKey: 'recipient', header: t('recipient') },
+    { accessorKey: 'subject', header: t('subject') },
+    {
+      accessorKey: 'sentAt', header: t('sentAt'), cell: ({ row }) => {
+        const date = row.original.sentAt;
+        return date.toLocaleDateString() + ' ' + date.toLocaleTimeString();
+      }
+    },
+    {
+      accessorKey: 'status', header: t('status'), cell: ({ row }) => {
+        return row.original.error ? (
+          <div className="text-red-500">{t('failed')}</div>
+        ) : (
+          <div className="text-green-500">{t('sent')}</div>
+        );
+      }
+    },
+  ];
+};
 
 function EmailSendDataTable() {
+  const t = useTranslations('emails.emailLog');
+  const tToolbar = useTranslations('common.dataTable.toolbar');
+  const tPagination = useTranslations('common.dataTable.pagination');
+  const emailTableColumns = useEmailTableColumns();
   const stackAdminApp = useAdminApp();
   const [emailLogs, setEmailLogs] = useState<AdminSentEmail[]>([]);
   const [loading, setLoading] = useState(true);
@@ -357,7 +366,7 @@ function EmailSendDataTable() {
   if (loading) {
     return (
       <div className="flex justify-center py-4">
-        <Typography>Loading email logs...</Typography>
+        <Typography>{t('loading')}</Typography>
       </div>
     );
   }
@@ -367,6 +376,17 @@ function EmailSendDataTable() {
     defaultColumnFilters={[]}
     columns={emailTableColumns}
     defaultSorting={[{ id: 'sentAt', desc: true }]}
+    i18n={{
+      resetFilters: tToolbar('resetFilters'),
+      exportCSV: tToolbar('exportCSV'),
+      noDataToExport: tToolbar('noDataToExport'),
+      view: tToolbar('view'),
+      toggleColumns: tToolbar('toggleColumns'),
+      rowsSelected: (selected: number, total: number) => tPagination('rowsSelected', { selected, total }),
+      rowsPerPage: tPagination('rowsPerPage'),
+      previousPage: tPagination('goToPreviousPage'),
+      nextPage: tPagination('goToNextPage'),
+    } satisfies DataTableI18n}
   />;
 }
 

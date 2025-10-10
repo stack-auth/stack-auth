@@ -1,0 +1,1053 @@
+{
+  "common": {
+    "dataTable": {
+      "search": "Search table",
+      "noResults": "No results",
+      "toolbar": {
+        "view": "View",
+        "toggleColumns": "Toggle columns",
+        "exportCSV": "Export CSV",
+        "resetFilters": "Reset filters",
+        "noDataToExport": "No data to export"
+      },
+      "pagination": {
+        "rowsSelected": "{selected} of {total} row(s) selected",
+        "rowsPerPage": "Rows per page",
+        "goToPreviousPage": "Go to previous page",
+        "goToNextPage": "Go to next page",
+        "page": "Page {page}"
+      },
+      "columns": {
+        "avatar": "Avatar",
+        "id": "ID",
+        "displayName": "Display Name",
+        "primaryEmail": "Primary Email",
+        "lastActive": "Last Active",
+        "emailVerified": "Email Verified",
+        "signedUpAt": "Signed Up At",
+        "authMethod": "Auth Method",
+        "permissions": "Permissions",
+        "actions": "Actions"
+      },
+      "status": {
+        "anonymous": "Anonymous",
+        "emailNotVerified": "Email not verified",
+        "verified": "✓",
+        "unverified": "✗"
+      },
+      "actions": {
+        "viewDetails": "View details",
+        "impersonate": "Impersonate",
+        "createCheckout": "Create Checkout",
+        "remove2FA": "Remove 2FA",
+        "delete": "Delete",
+        "editPermissions": "Edit permissions",
+        "removeFromTeam": "Remove from team"
+      },
+      "dialogs": {
+        "editPermission": {
+          "title": "Edit Permission",
+          "save": "Save"
+        },
+        "removeUser": {
+          "title": "Remove User from Team",
+          "confirmText": "I understand this will cause the user to lose access to the team.",
+          "description": "Are you sure you want to remove the user \"{userName}\" from the team \"{teamName}\"?",
+          "buttonLabel": "Remove user from team"
+        }
+      },
+      "tooltips": {
+        "onlyShowingDirectPermissions": "Only showing direct permissions"
+      }
+    },
+    "dashboard": "Dashboard",
+    "projects": "Projects",
+    "settings": "Settings",
+    "logout": "Logout",
+    "loading": "Loading...",
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "edit": "Edit",
+    "create": "Create",
+    "search": "Search",
+    "language": "Language"
+  },
+  "nav": {
+    "home": "Home",
+    "overview": "Overview",
+    "users": "Users",
+    "teams": "Teams",
+    "api": "API",
+    "authentication": "Authentication",
+    "permissions": "Permissions",
+    "emails": "Emails",
+    "analytics": "Analytics",
+    "billing": "Billing",
+    "documentation": "Documentation"
+  },
+  "auth": {
+    "signIn": "Sign In",
+    "signUp": "Sign Up",
+    "signOut": "Sign Out",
+    "email": "Email",
+    "password": "Password",
+    "forgotPassword": "Forgot Password?",
+    "resetPassword": "Reset Password",
+    "welcomeBack": "Welcome back",
+    "createAccount": "Create an account",
+    "alreadyHaveAccount": "Already have an account?",
+    "dontHaveAccount": "Don't have an account?"
+  },
+  "projects": {
+    "title": "Projects",
+    "newProject": "New Project",
+    "createProject": "Create Project",
+    "projectName": "Project Name",
+    "projectDescription": "Project Description",
+    "selectProject": "Select a project",
+    "noProjects": "No projects yet",
+    "createFirstProject": "Create your first project to get started",
+    "searchPlaceholder": "Search project name",
+    "sortBy": "Sort by",
+    "recency": "Recency",
+    "name": "Name",
+    "noTeam": "No Team"
+  },
+  "newProject": {
+    "title": "Create a new project",
+    "fields": {
+      "displayName": "Display Name",
+      "displayNamePlaceholder": "My Project",
+      "team": "Team",
+      "signInMethods": "Sign-In Methods"
+    },
+    "signInOptions": {
+      "emailPassword": "Email password",
+      "magicLink": "Magic link/OTP",
+      "passkey": "Passkey"
+    },
+    "signInMethodsInfo": "More sign-in methods are available on the dashboard later.",
+    "buttons": {
+      "create": "Create Project",
+      "createAndConnect": "Create & Connect Project"
+    },
+    "validation": {
+      "displayNameRequired": "Display name is required",
+      "signInMethodRequired": "At least one sign-in method is required",
+      "teamRequired": "Team is required"
+    }
+  },
+  "overview": {
+    "metrics": {
+      "globe": {
+        "errorMessage": "Error loading map"
+      },
+      "dailySignUps": {
+        "title": "Daily Sign-ups",
+        "description": "User registration over the last 30 days"
+      },
+      "dailyActiveUsers": {
+        "title": "Daily Active Users",
+        "description": "Number of unique users that were active over the last 30 days"
+      },
+      "charts": {
+        "activity": "Activity",
+        "authMethods": "Auth Methods"
+      },
+      "recentSignUps": {
+        "title": "Recent Sign Ups",
+        "empty": "No recent sign ups",
+        "signedUp": "signed up"
+      },
+      "recentlyActive": {
+        "title": "Recently Active Users",
+        "empty": "No recent active users",
+        "lastActive": "last active"
+      },
+      "authMethods": {
+        "email": "Email",
+        "magiclink": "Magic Link",
+        "passkey": "Passkey",
+        "google": "Google",
+        "github": "GitHub",
+        "microsoft": "Microsoft",
+        "spotify": "Spotify",
+        "facebook": "Facebook",
+        "discord": "Discord",
+        "gitlab": "GitLab",
+        "bitbucket": "Bitbucket",
+        "linkedin": "LinkedIn",
+        "apple": "Apple",
+        "x": "X (Twitter)",
+        "password": "Password",
+        "other": "Other",
+        "otp": "OTP/Magic Link"
+      }
+    },
+    "globe": {
+      "welcomeBack": "Welcome back",
+      "live": "LIVE",
+      "worldwide": "🌎 Worldwide",
+      "totalUsers": "total users",
+      "users": "users",
+      "errorMessage": "Error initializing globe visualization. Please try updating your browser or enabling WebGL."
+    },
+    "setup": {
+      "title": "Setup Stack Auth in your codebase",
+      "closeButton": "Close Setup",
+      "waitingForFirstUser": "Waiting for your first user...",
+      "fullDocumentation": "Full Documentation",
+      "selectFramework": "Select your framework",
+      "frameworks": {
+        "nextjs": "Next.js",
+        "react": "React",
+        "javascript": "JavaScript",
+        "python": "Python"
+      },
+      "steps": {
+        "installStackAuth": "Install Stack Auth",
+        "installRequests": "Install requests",
+        "createKeys": "Create Keys",
+        "done": "Done",
+        "createFile": "Create stack/client.ts file",
+        "updateApp": "Update App.tsx",
+        "initializeApp": "Initialize the app",
+        "exampleUsage": "Example usage",
+        "createHelper": "Create helper function",
+        "makeRequests": "Make requests",
+        "generateKeys": "Generate Keys"
+      },
+      "instructions": {
+        "nextjs": {
+          "install": "In a new or existing Next.js project, run:",
+          "keys": "Put these keys in the .env.local file.",
+          "done": "If you start your Next.js app with npm run dev and navigate to http://localhost:3000/handler/signup, you will see the sign-up page."
+        },
+        "react": {
+          "install": "In a new or existing React project, run:",
+          "createFile": "Create a new file called stack/client.ts and add the following code. Here we use react-router-dom as an example.",
+          "updateApp": "Update your App.tsx file to wrap the entire app with a StackProvider and StackTheme and add a StackHandler component to handle the authentication flow.",
+          "done": "If you start your React app with npm run dev and navigate to http://localhost:5173/handler/signup, you will see the sign-up page."
+        },
+        "javascript": {
+          "install": "Install Stack Auth using npm:",
+          "createFile": "Create a new file for your Stack app initialization:",
+          "server": "Server",
+          "client": "Client"
+        },
+        "python": {
+          "install": "Install the requests library to make HTTP requests to the Stack Auth API:",
+          "createHelper": "Create a helper function to make requests to the Stack Auth API:",
+          "makeRequests": "You can now make requests to the Stack Auth API:"
+        },
+        "keysWarning": "Save these keys securely - they won't be shown again after leaving this page."
+      }
+    }
+  },
+  "users": {
+    "title": "Users",
+    "total": "Total",
+    "createUser": "Create User",
+    "dialog": {
+      "createTitle": "Create User",
+      "editTitle": "Edit User",
+      "createButton": "Create",
+      "saveButton": "Save",
+      "cancel": "Cancel",
+      "fields": {
+        "id": "ID",
+        "primaryEmail": "Primary email",
+        "verified": "Verified",
+        "displayName": "Display name",
+        "signedUpAt": "Signed Up At",
+        "otpAuthEnabled": "OTP/magic link sign-in",
+        "passwordEnabled": "Password sign-in",
+        "updatePassword": "Update Password",
+        "password": "Password",
+        "newPassword": "New password",
+        "metadata": "Metadata",
+        "clientMetadata": "Client metadata",
+        "clientReadOnlyMetadata": "Client read only metadata",
+        "serverMetadata": "Server metadata"
+      },
+      "hints": {
+        "emailVerifiedRequired": "Primary email must be verified if OTP/magic link sign-in is enabled"
+      },
+      "errors": {
+        "emailAlreadyExists": "Email already exists",
+        "emailAlreadyExistsDescription": "Please choose a different email address",
+        "passwordRequired": "Password is required"
+      }
+    },
+    "welcomeMessage": {
+      "start": "Congratulations on starting your project! Check the",
+      "documentation": "documentation",
+      "end": "to add your first users."
+    },
+    "totalUsers": "Total Users",
+    "activeUsers": "Active Users",
+    "newUsers": "New Users",
+    "userDetails": "User Details",
+    "userName": "User Name",
+    "userEmail": "User Email",
+    "userRole": "User Role",
+    "lastActive": "Last Active",
+    "createdAt": "Created At",
+    "table": {
+      "showAnonymous": "Show anonymous users"
+    }
+  },
+  "userDetail": {
+    "notFound": "User Not Found",
+    "lastActive": "Last active",
+    "actions": {
+      "impersonate": "Impersonate",
+      "remove2FA": "Remove 2FA",
+      "delete": "Delete"
+    },
+    "fields": {
+      "userId": "User ID",
+      "primaryEmail": "Primary email",
+      "displayName": "Display name",
+      "password": "Password",
+      "twoFactorAuth": "2-factor auth",
+      "signedUpAt": "Signed up at",
+      "enabled": "Enabled",
+      "disabled": "Disabled"
+    },
+    "contactChannels": {
+      "title": "Contact Channels",
+      "addEmail": "Add E-mail",
+      "noChannels": "No contact channels",
+      "table": {
+        "email": "E-Mail",
+        "primary": "Primary",
+        "verified": "Verified",
+        "usedForSignIn": "Used for sign-in"
+      },
+      "actions": {
+        "sendSignInInvitation": "Send sign-in invitation",
+        "sendVerificationEmail": "Send verification email",
+        "sendResetPasswordEmail": "Send reset password email",
+        "markAsUnverified": "Mark as unverified",
+        "markAsVerified": "Mark as verified",
+        "setAsPrimary": "Set as primary",
+        "disableForSignIn": "Disable for sign-in",
+        "enableForSignIn": "Enable for sign-in",
+        "delete": "Delete"
+      },
+      "addDialog": {
+        "title": "Add E-mail",
+        "description": "Add a new e-mail address to this user account.",
+        "fields": {
+          "email": "E-mail",
+          "emailPlaceholder": "Enter e-mail address",
+          "isVerified": "Set as verified",
+          "isPrimary": "Set as primary",
+          "isUsedForAuth": "Used for sign-in"
+        },
+        "hints": {
+          "isVerified": "E-mails verified by verification emails. Can be used for OTP/magic links",
+          "isPrimary": "Make this the primary e-mail for the user",
+          "isUsedForAuth": "Allow this e-mail to be used for password sign-in. Also enables OTP/magic links if the e-mail is verified."
+        }
+      },
+      "sendEmailDialog": {
+        "verification": {
+          "title": "Send Verification Email",
+          "description": "Send a verification email to {email}? The email will contain a callback link to your domain."
+        },
+        "resetPassword": {
+          "title": "Send Reset Password Email",
+          "description": "Send a password reset email to {email}? The email will contain a callback link to your domain."
+        },
+        "signInInvitation": {
+          "title": "Send Sign-In Invitation",
+          "description": "Send a sign-in invitation email to {email}? The email will contain a callback link to your domain."
+        },
+        "domain": "Domain",
+        "localhostPort": "Localhost Port",
+        "advanced": "Advanced",
+        "handlerPath": "Handler path",
+        "handlerPathHint": "only modify this if you changed the default handler path in your app",
+        "send": "Send"
+      }
+    },
+    "teams": {
+      "title": "Teams",
+      "description": "Teams this user belongs to",
+      "noTeams": "No teams found",
+      "table": {
+        "teamId": "Team ID",
+        "displayName": "Display Name",
+        "createdAt": "Created At"
+      },
+      "actions": {
+        "viewTeam": "View Team"
+      }
+    },
+    "oauthProviders": {
+      "title": "OAuth Providers",
+      "addProvider": "Add Provider",
+      "noProviders": "No OAuth providers connected",
+      "table": {
+        "provider": "Provider",
+        "email": "Email",
+        "accountId": "Account ID",
+        "usedForSignIn": "Used for sign-in",
+        "usedForConnectedAccounts": "Used for connected accounts"
+      },
+      "actions": {
+        "edit": "Edit",
+        "disableSignIn": "Disable sign-in",
+        "enableSignIn": "Enable sign-in",
+        "disableConnectedAccounts": "Disable connected accounts",
+        "enableConnectedAccounts": "Enable connected accounts",
+        "delete": "Delete"
+      },
+      "dialog": {
+        "create": {
+          "title": "Add OAuth Provider",
+          "description": "Connect a new OAuth provider to this user account."
+        },
+        "edit": {
+          "title": "Edit OAuth Provider",
+          "description": "Update the OAuth provider settings."
+        },
+        "fields": {
+          "provider": "OAuth Provider",
+          "providerPlaceholder": "Select OAuth provider",
+          "email": "Email",
+          "emailPlaceholder": "Enter email address (optional)",
+          "accountId": "Account ID",
+          "accountIdPlaceholder": "Enter OAuth account ID",
+          "accountIdDescription": "The unique account identifier from the OAuth provider",
+          "allowSignIn": "Used for sign-in",
+          "allowSignInDescription": "Allow this OAuth provider to be used for authentication",
+          "allowConnectedAccounts": "Used for connected accounts",
+          "allowConnectedAccountsDescription": "Allow this OAuth provider to be used for connected account features"
+        },
+        "errors": {
+          "accountAlreadyConnected": "Account Already Connected",
+          "accountAlreadyConnectedDescription": "A {provider} provider with account ID \"{accountId}\" already exists (possibly for a different user)",
+          "unexpectedError": "Error",
+          "unexpectedErrorDescription": "An unexpected error occurred while {operation} the OAuth provider.",
+          "updateFailed": "Update Failed",
+          "signInUpdateFailed": "Failed to update sign-in setting.",
+          "connectedAccountsUpdateFailed": "Failed to update connected accounts setting."
+        },
+        "success": {
+          "title": "Success",
+          "signInDisabled": "Sign-in disabled for {provider} provider.",
+          "signInEnabled": "Sign-in enabled for {provider} provider.",
+          "connectedAccountsDisabled": "Connected accounts disabled for {provider} provider.",
+          "connectedAccountsEnabled": "Connected accounts enabled for {provider} provider."
+        }
+      }
+    },
+    "metadata": {
+      "title": "Metadata",
+      "description": "Use metadata to store a custom JSON object on the user.",
+      "client": "Client",
+      "clientHint": "Readable and writable from both clients and servers.",
+      "clientReadOnly": "Client Read-Only",
+      "clientReadOnlyHint": "Readable from clients, but only writable from servers.",
+      "server": "Server",
+      "serverHint": "Readable and writable from servers. Not accessible to clients.",
+      "loadingEditor": "Loading editor...",
+      "revert": "Revert",
+      "save": "Save"
+    }
+  },
+  "teams": {
+    "title": "Teams",
+    "createTeam": "Create Team",
+    "createDialog": {
+      "title": "Create a Team",
+      "displayNameLabel": "Display Name",
+      "createButton": "Create"
+    },
+    "table": {
+      "searchPlaceholder": "Filter by name",
+      "columns": {
+        "id": "ID",
+        "displayName": "Display Name",
+        "createdAt": "Created At"
+      },
+      "actions": {
+        "viewMembers": "View Members",
+        "edit": "Edit",
+        "createCheckout": "Create Checkout",
+        "delete": "Delete"
+      },
+      "dialogs": {
+        "edit": {
+          "title": "Edit Team",
+          "save": "Save",
+          "id": "ID",
+          "displayName": "Display Name"
+        },
+        "delete": {
+          "title": "Delete Team",
+          "deleteButton": "Delete Team",
+          "confirmText": "I understand that this action cannot be undone and all the team members will be also removed from the team.",
+          "description": "Are you sure you want to delete the team \"{teamName}\" with ID {teamId}?"
+        }
+      }
+    }
+  },
+  "apiKeys": {
+    "title": "Stack Auth Keys",
+    "createButton": "Create Stack Auth Keys",
+    "createDialog": {
+      "title": "Create Stack Auth Keys",
+      "descriptionLabel": "Description",
+      "expiresInLabel": "Expires in",
+      "expiresIn": {
+        "1day": "1 day",
+        "7days": "7 days",
+        "30days": "30 days",
+        "90days": "90 days",
+        "1year": "1 year",
+        "never": "Never"
+      },
+      "createButton": "Create"
+    },
+    "showDialog": {
+      "title": "Stack Auth Keys",
+      "closeButton": "Close",
+      "confirmText": "I understand that I will not be able to view these keys again.",
+      "message": {
+        "start": "Here are your Stack Auth keys.",
+        "warning": "Copy them to a safe place. You will not be able to view them again."
+      }
+    },
+    "table": {
+      "searchPlaceholder": "Search table",
+      "columns": {
+        "description": "Description",
+        "status": "Status",
+        "clientKey": "Client Key",
+        "serverKey": "Server Key",
+        "expiresAt": "Expires At",
+        "createdAt": "Created At"
+      },
+      "status": {
+        "title": "Status",
+        "valid": "Valid",
+        "expired": "Expired",
+        "revoked": "Revoked"
+      },
+      "actions": {
+        "revoke": "Revoke"
+      },
+      "dialogs": {
+        "revoke": {
+          "title": "Revoke API Key",
+          "revokeButton": "Revoke Key",
+          "confirmText": "I understand this will unlink all the apps using this API key",
+          "description": "Are you sure you want to revoke client key *****{clientKey} and server key *****{serverKey}?"
+        }
+      }
+    }
+  },
+  "navigation": {
+    "home": "Home",
+    "overview": "Overview",
+    "users": "Users",
+    "authMethods": "Auth Methods",
+    "projectPermissions": "Project Permissions",
+    "teams": "Teams",
+    "members": "Members",
+    "teamPermissions": "Team Permissions",
+    "teamSettings": "Team Settings",
+    "emails": "Emails",
+    "drafts": "Drafts",
+    "draft": "Draft",
+    "templates": "Templates",
+    "themes": "Themes",
+    "theme": "Theme",
+    "offers": "Offers",
+    "transactions": "Transactions",
+    "domains": "Domains",
+    "webhooks": "Webhooks",
+    "endpoint": "Endpoint",
+    "stackAuthKeys": "Stack Auth Keys",
+    "projectSettings": "Project Settings",
+    "documentation": "Documentation",
+    "sections": {
+      "users": "Users",
+      "teams": "Teams",
+      "emails": "Emails",
+      "payments": "Payments",
+      "configuration": "Configuration"
+    }
+  },
+  "domains": {
+    "title": "Domains",
+    "trustedDomains": {
+      "title": "Trusted domains",
+      "description": "Features that will redirect to your app, such as SSO and e-mail verification, will refuse to redirect to domains other than the ones listed here. Please make sure that you trust all domains listed here, as they can be used to access user data.",
+      "addButton": "Add new domain",
+      "table": {
+        "domain": "Domain"
+      },
+      "emptyState": "No domains added yet."
+    },
+    "devSettings": {
+      "title": "Development settings",
+      "localhostLabel": "Allow all localhost callbacks for development",
+      "localhostHint": "When enabled, allow access from all localhost URLs by default. This makes development easier but",
+      "localhostWarning": "should be disabled in production."
+    },
+    "editDialog": {
+      "title": {
+        "create": "Create domain and handler",
+        "update": "Update domain and handler"
+      },
+      "button": {
+        "create": "Create",
+        "update": "Save"
+      },
+      "validation": {
+        "invalidDomain": "Invalid domain",
+        "domainExists": "Domain already exists",
+        "handlerPathStart": "Handler path must start with /"
+      },
+      "alert": {
+        "ownership": "Please ensure you own or have control over this domain. Also note that each subdomain (e.g. blog.example.com, app.example.com) is treated as a distinct domain.",
+        "wildcardTitle": "Wildcard domains:",
+        "wildcardDesc": "You can use wildcards to match multiple domains:",
+        "wildcard1": "matches any single subdomain (e.g., api.example.com, www.example.com)",
+        "wildcard2": "matches any subdomain level (e.g., api.v2.example.com)",
+        "wildcard3": "matches api-v1.example.com, api-prod.example.com, etc.",
+        "wildcard4": "matches mail.example.org, but not example.org"
+      },
+      "field": {
+        "domainLabel": "Domain",
+        "addWwwLabel": "Also add www.{domain} as a trusted domain"
+      },
+      "advanced": {
+        "title": "Advanced",
+        "useHttp": "Use HTTP instead of HTTPS",
+        "httpWarning": "HTTP should only be allowed during development use. For production use, please use HTTPS.",
+        "handlerPathLabel": "Handler path",
+        "handlerPathHint": "only modify this if you changed the default handler path in your app"
+      }
+    },
+    "deleteDialog": {
+      "title": "Delete domain",
+      "button": "Delete",
+      "message": "Do you really want to remove {domain} from the allow list? Your project will no longer be able to receive callbacks from this domain."
+    },
+    "actionMenu": {
+      "edit": "Edit",
+      "delete": "Delete"
+    }
+  },
+  "webhooks": {
+    "title": "Webhooks",
+    "description": "Webhooks are used to sync users and teams events from Stack to your own server.",
+    "endpoints": {
+      "title": "Endpoints",
+      "description": "Endpoints are the URLs that we will send events to. Please make sure you control these endpoints, as they can receive sensitive data.",
+      "addButton": "Add new endpoint",
+      "table": {
+        "url": "Endpoint URL",
+        "description": "Description"
+      }
+    },
+    "createDialog": {
+      "title": "Create new endpoint",
+      "button": "Create",
+      "alert": {
+        "trustedUrl": "Make sure this is a trusted URL that you control.",
+        "httpWarning": "Using HTTP endpoints is insecure. This can expose your user data to attackers. Only use HTTP endpoints in development environments."
+      },
+      "field": {
+        "urlLabel": "URL",
+        "descriptionLabel": "Description"
+      }
+    },
+    "editDialog": {
+      "title": "Edit endpoint",
+      "button": "Save",
+      "field": {
+        "descriptionLabel": "Description"
+      }
+    },
+    "deleteDialog": {
+      "title": "Delete endpoint",
+      "button": "Delete",
+      "message": "Do you really want to remove {url} from the endpoint list? The endpoint will no longer receive events."
+    },
+    "actionMenu": {
+      "viewDetails": "View Details",
+      "edit": "Edit",
+      "delete": "Delete"
+    }
+  },
+  "emails": {
+    "title": "Emails",
+    "description": "Manage email server and logs",
+    "sendEmailButton": "Send Email",
+    "mockEmails": {
+      "title": "Mock Emails",
+      "description": "View all emails sent through the emulator in Inbucket",
+      "openInboxButton": "Open Inbox"
+    },
+    "emailServer": {
+      "title": "Email Server",
+      "description": "Configure the email server and sender address for outgoing emails",
+      "testSendButton": "Send Test Email",
+      "configureButton": "Configure",
+      "serverLabel": "Server",
+      "senderEmailLabel": "Sender Email",
+      "shared": "Shared",
+      "sharedTooltip": "When you use the shared email server, all the emails are sent from Stack's email address",
+      "resend": "Resend",
+      "customSmtp": "Custom SMTP server"
+    },
+    "emailLog": {
+      "title": "Email Log",
+      "description": "Manage email sending history",
+      "loading": "Loading email logs...",
+      "columns": {
+        "recipient": "Recipient",
+        "subject": "Subject",
+        "sentAt": "Sent At",
+        "status": "Status",
+        "failed": "Failed",
+        "sent": "Sent"
+      }
+    }
+  },
+  "emailTemplates": {
+    "title": "Email Templates",
+    "description": "Customize the emails sent to your users",
+    "editButton": "Edit Template",
+    "sharedServerWarning": {
+      "title": "Warning",
+      "description": "You are using a shared email server. If you want to customize the email templates, you need to configure a custom SMTP server."
+    },
+    "dialog": {
+      "title": "Shared Email Server",
+      "editButton": "Edit Templates Anyway",
+      "cancelButton": "Cancel",
+      "warningTitle": "Warning",
+      "warningDescription": "You are using a shared email server. If you want to customize the email templates, you need to configure a custom SMTP server. You can edit the templates anyway, but you will not be able to save them."
+    }
+  },
+  "emailThemes": {
+    "title": "Email Themes",
+    "description": "Customize email themes for your project",
+    "activeTheme": {
+      "title": "Active Theme"
+    }
+  },
+  "emailDrafts": {
+    "title": "Email Drafts",
+    "description": "Create, edit, and send email drafts",
+    "sharedServerWarning": {
+      "title": "Warning",
+      "description": "You are using a shared email server. If you want to send manual emails, you need to configure a custom SMTP server."
+    }
+  },
+  "paymentsTransactions": {
+    "title": "Transactions"
+  },
+  "projectPermissions": {
+    "title": "Project Permissions",
+    "createButton": "Create Permission",
+    "dialog": {
+      "title": "Create Permission",
+      "createButton": "Create",
+      "field": {
+        "idLabel": "ID",
+        "descriptionLabel": "Description"
+      },
+      "validation": {
+        "idExists": "ID already exists",
+        "idFormat": "Only lowercase letters, numbers, \":\" and \"_\" are allowed"
+      }
+    }
+  },
+  "teamPermissions": {
+    "title": "Team Permissions",
+    "createButton": "Create Permission",
+    "dialog": {
+      "title": "Create Permission",
+      "createButton": "Create",
+      "field": {
+        "idLabel": "ID",
+        "descriptionLabel": "Description"
+      },
+      "validation": {
+        "idExists": "ID already exists",
+        "idFormat": "Only lowercase letters, numbers, \":\" and \"_\" are allowed"
+      }
+    }
+  },
+  "teamSettings": {
+    "title": "Team Settings",
+    "clientCreation": {
+      "title": "Client-side Team Creation",
+      "label": "Allow client users to create teams",
+      "hint": "When enabled, a \"Create Team\" button will be added to the account settings page and the team switcher."
+    },
+    "autoCreation": {
+      "title": "Automatic Team Creation",
+      "label": "Create a personal team for each user on sign-up",
+      "hint": "When enabled, a personal team will be created for each user when they sign up. This will not automatically create teams for existing users."
+    },
+    "permissions": {
+      "creator": {
+        "title": "Team Creator Default Permissions",
+        "description": "Permissions the user will automatically be granted when creating a team"
+      },
+      "member": {
+        "title": "Team Member Default Permissions",
+        "description": "Permissions the user will automatically be granted when joining a team"
+      },
+      "editButton": "Edit",
+      "noPermissions": "No default permissions set"
+    },
+    "dialog": {
+      "title": {
+        "creator": "Team Creator Default Permissions",
+        "member": "Team Member Default Permissions"
+      },
+      "permissionsLabel": "Default Permissions",
+      "saveButton": "Save"
+    }
+  },
+  "projectSettings": {
+    "title": "Project Settings",
+    "description": "Manage your project",
+    "information": {
+      "title": "Project Information",
+      "projectId": "Project ID",
+      "jwksUrl": "JWKS URL"
+    },
+    "details": {
+      "title": "Project Details",
+      "displayName": "Display Name",
+      "description": "Description",
+      "hint": "The display name and description may be publicly visible to the users of your app."
+    },
+    "logo": {
+      "title": "Project Logo",
+      "logo": "Logo",
+      "logoDesc": "Upload a logo for your project. Recommended size: 200x200px",
+      "fullLogo": "Full Logo",
+      "fullLogoDesc": "Upload a full logo with text. Recommended size: At least 100px tall, landscape format",
+      "hint": "Logo images will be displayed in your application (e.g. login page) and emails. The logo should be a square image, while the full logo can include text and be wider."
+    },
+    "apiKeys": {
+      "title": "API Key Settings",
+      "description": "Configure which types of API keys are allowed in your project.",
+      "allowUserKeys": "Allow User API Keys",
+      "userKeysHint": "Enable to allow users to create API keys for their accounts. Enables user-api-keys backend routes.",
+      "allowTeamKeys": "Allow Team API Keys",
+      "teamKeysHint": "Enable to allow users to create API keys for their teams. Enables team-api-keys backend routes."
+    },
+    "productionMode": {
+      "title": "Production mode",
+      "description": "Production mode disallows certain configuration options that are useful for development but deemed unsafe for production usage. To prevent accidental misconfigurations, it is strongly recommended to enable production mode on your production environments.",
+      "enableLabel": "Enable production mode",
+      "ready": "Your configuration is ready for production and production mode can be enabled. Good job!",
+      "notReady": "Your configuration is not ready for production mode. Please fix the following issues:",
+      "showConfig": "show configuration"
+    },
+    "transfer": {
+      "title": "Transfer Project",
+      "description": "Transfer this project to another team",
+      "needAdmin": "You need to be a team admin of \"{teamName}\" to transfer this project.",
+      "currentTeam": "the current team",
+      "currentOwner": "Current owner team: {teamName}",
+      "unknown": "Unknown",
+      "button": "Transfer",
+      "dialogTitle": "Transfer Project",
+      "dialogButton": "Transfer Project",
+      "confirm": "Are you sure you want to transfer \"{projectName}\" to {teamName}?",
+      "warning": "This will change the ownership of the project. Only team admins of the new team will be able to manage project settings.",
+      "error": "Failed to transfer project: {message}"
+    },
+    "dangerZone": {
+      "title": "Danger Zone",
+      "description": "Irreversible and destructive actions",
+      "warning": "Once you delete a project, there is no going back. All data will be permanently removed.",
+      "deleteButton": "Delete Project",
+      "dialogTitle": "Delete Project",
+      "dialogButton": "Delete Project",
+      "confirmText": "I understand this action is IRREVERSIBLE and will delete ALL associated data.",
+      "confirmMessage": "Are you sure that you want to delete the project with name \"{projectName}\" and ID \"{projectId}\"?",
+      "irreversible": "This action is",
+      "irreversibleBold": "irreversible",
+      "willDelete": "and will permanently delete:",
+      "deleteItems": {
+        "users": "All users and their data",
+        "teams": "All teams and team memberships",
+        "apiKeys": "All API keys",
+        "configs": "All project configurations",
+        "oauth": "All OAuth provider settings"
+      }
+    }
+  },
+  "settings": {
+    "title": "Settings",
+    "general": "General",
+    "security": "Security",
+    "notifications": "Notifications",
+    "appearance": "Appearance",
+    "theme": "Theme",
+    "lightMode": "Light Mode",
+    "darkMode": "Dark Mode",
+    "systemMode": "System Mode",
+    "language": "Language",
+    "selectLanguage": "Select Language"
+  },
+  "errors": {
+    "somethingWentWrong": "Something went wrong",
+    "pageNotFound": "Page not found",
+    "unauthorized": "Unauthorized",
+    "forbidden": "Forbidden",
+    "serverError": "Server error",
+    "tryAgain": "Try again",
+    "goHome": "Go to home"
+  },
+  "success": {
+    "saved": "Saved successfully",
+    "created": "Created successfully",
+    "updated": "Updated successfully",
+    "deleted": "Deleted successfully"
+  },
+  "transactions": {
+    "table": {
+      "columns": {
+        "type": "Type",
+        "customerType": "Customer Type",
+        "customerId": "Customer ID",
+        "offerOrItem": "Offer / Item",
+        "price": "Price",
+        "quantity": "Quantity",
+        "testMode": "Test Mode",
+        "status": "Status",
+        "created": "Created"
+      },
+      "types": {
+        "subscription": "Subscription",
+        "oneTime": "One-time",
+        "itemQuantityChange": "Item Quantity Change"
+      },
+      "filters": {
+        "filterByType": "Filter by type",
+        "allTypes": "All types",
+        "customerType": "Customer type",
+        "allCustomers": "All customers",
+        "user": "User",
+        "team": "Team",
+        "custom": "Custom"
+      }
+    }
+  },
+  "permissions": {
+    "table": {
+      "searchPlaceholder": "Filter by ID",
+      "columns": {
+        "id": "ID",
+        "description": "Description",
+        "containedPermissions": "Contained Permissions"
+      },
+      "tooltips": {
+        "systemPermission": "Built-in system permissions are prefixed with $. They cannot be edited or deleted, but can be contained in other permissions.",
+        "directPermissions": "Only showing permissions that are contained directly (non-recursive)."
+      },
+      "actions": {
+        "edit": "Edit",
+        "delete": "Delete"
+      },
+      "dialogs": {
+        "edit": {
+          "title": "Edit Permission",
+          "save": "Save",
+          "idLabel": "ID",
+          "descriptionLabel": "Description",
+          "idValidation": "Only lowercase letters, numbers, \":\" and \"_\" are allowed"
+        },
+        "delete": {
+          "title": "Delete Permission",
+          "deleteButton": "Delete Permission",
+          "confirmText": "I understand this will remove the permission from all users and other permissions that contain it.",
+          "description": "Are you sure you want to delete the permission \"{permissionId}\"?"
+        }
+      }
+    }
+  },
+  "payments": {
+    "offers": {
+      "table": {
+        "columns": {
+          "offerId": "Offer ID",
+          "displayName": "Display Name",
+          "customerType": "Customer Type",
+          "freeTrial": "Free Trial",
+          "stackable": "Stackable",
+          "yes": "Yes",
+          "no": "No"
+        },
+        "actions": {
+          "edit": "Edit",
+          "delete": "Delete"
+        },
+        "dialogs": {
+          "delete": {
+            "title": "Delete Offer",
+            "description": "This action will permanently delete this offer.",
+            "deleteButton": "Delete",
+            "success": "Offer deleted"
+          }
+        }
+      }
+    },
+    "items": {
+      "table": {
+        "columns": {
+          "itemId": "Item ID",
+          "displayName": "Display Name",
+          "customerType": "Customer Type"
+        },
+        "actions": {
+          "updateQuantity": "Update Customer Quantity",
+          "edit": "Edit",
+          "delete": "Delete"
+        },
+        "dialogs": {
+          "delete": {
+            "title": "Delete Item",
+            "description": "This will delete the item",
+            "deleteButton": "Delete",
+            "success": "Item deleted",
+            "errorInOffer": "Item is included in offer",
+            "errorInOfferDescription": "Please remove it from the offer \"{offerId}\" before deleting."
+          },
+          "quantityChange": {
+            "title": "New Item Quantity Change",
+            "customerIdLabel": "Customer ID",
+            "quantityLabel": "Quantity",
+            "descriptionLabel": "Description",
+            "expiresAtLabel": "Expires At",
+            "createButton": "Create",
+            "success": "Item quantity change created",
+            "errorItemNotFound": "Item not found",
+            "errorUserNotFound": "No user found with the given ID",
+            "errorTeamNotFound": "No team found with the given ID",
+            "errorUnknown": "An unknown error occurred"
+          }
+        }
+      }
+    }
+  }
+}
+

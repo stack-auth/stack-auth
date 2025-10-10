@@ -12,11 +12,13 @@ import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
 import { Button, Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue, Typography, toast } from "@stackframe/stack-ui";
 import { UserPlus } from "lucide-react";
+import { useTranslations } from 'next-intl';
 import { Suspense, useEffect, useMemo, useState } from "react";
 import * as yup from "yup";
 
 
 export default function PageClient(props: { inviteUser: (origin: string, teamId: string, email: string) => Promise<void> }) {
+  const t = useTranslations('projects');
   const user = useUser({ or: 'redirect', projectIdMustMatch: "internal" });
   const rawProjects = user.useOwnedProjects();
   const teams = user.useTeams();
@@ -69,19 +71,19 @@ export default function PageClient(props: { inviteUser: (origin: string, teamId:
     <div className="flex-grow p-4">
       <div className="flex justify-between gap-4 mb-4 flex-col sm:flex-row">
         <SearchBar
-          placeholder="Search project name"
+          placeholder={t('searchPlaceholder')}
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
         <div className="flex gap-4">
           <Select value={sort} onValueChange={(n) => setSort(n === 'recency' ? 'recency' : 'name')}>
             <SelectTrigger>
-              <SelectValue>Sort by {sort === "recency" ? "recency" : "name"}</SelectValue>
+              <SelectValue>{t('sortBy')} {sort === "recency" ? t('recency') : t('name')}</SelectValue>
             </SelectTrigger>
             <SelectContent>
               <SelectGroup>
-                <SelectItem value="recency">Recency</SelectItem>
-                <SelectItem value="name">Name</SelectItem>
+                <SelectItem value="recency">{t('recency')}</SelectItem>
+                <SelectItem value="name">{t('name')}</SelectItem>
               </SelectGroup>
             </SelectContent>
           </Select>
@@ -91,7 +93,7 @@ export default function PageClient(props: { inviteUser: (origin: string, teamId:
               router.push('/new-project');
               return await wait(2000);
             }}
-          >Create Project
+          >{t('createProject')}
           </Button>
         </div>
       </div>
@@ -107,7 +109,7 @@ export default function PageClient(props: { inviteUser: (origin: string, teamId:
                 />
               </Suspense>
             )}
-            {teamId ? teamIdMap.get(teamId) : "No Team"}
+            {teamId ? teamIdMap.get(teamId) : t('noTeam')}
           </Typography>
           <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4">
             {projects.map((project) => (

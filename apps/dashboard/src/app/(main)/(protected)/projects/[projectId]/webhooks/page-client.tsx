@@ -7,6 +7,7 @@ import { SettingCard } from "@/components/settings";
 import { getPublicEnvVar } from '@/lib/env';
 import { urlSchema } from "@stackframe/stack-shared/dist/schema-fields";
 import { ActionCell, ActionDialog, Alert, Button, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, Typography } from "@stackframe/stack-ui";
+import { useTranslations } from 'next-intl';
 import { useState } from "react";
 import { SvixProvider, useEndpoints, useSvix } from "svix-react";
 import * as yup from "yup";
@@ -24,18 +25,19 @@ function CreateDialog(props: {
   trigger: React.ReactNode,
   updateFn: () => void,
 }) {
+  const t = useTranslations('webhooks');
   const { svix, appId } = useSvix();
 
   const formSchema = yup.object({
-    url: urlSchema.defined().label("URL"),
-    description: yup.string().label("Description"),
+    url: urlSchema.defined().label(t('createDialog.field.urlLabel')),
+    description: yup.string().label(t('createDialog.field.descriptionLabel')),
   });
 
   return <FormDialog
     trigger={props.trigger}
-    title={"Create new endpoint"}
+    title={t('createDialog.title')}
     formSchema={formSchema}
-    okButton={{ label: "Create" }}
+    okButton={{ label: t('createDialog.button') }}
     onSubmit={async (values) => {
       await svix.endpoint.create(appId, { url: values.url, description: values.description });
       props.updateFn();
@@ -43,21 +45,21 @@ function CreateDialog(props: {
     render={(form) => (
       <>
         <Alert>
-          Make sure this is a trusted URL that you control.
+          {t('createDialog.alert.trustedUrl')}
         </Alert>
         <InputField
-          label="URL"
+          label={t('createDialog.field.urlLabel')}
           name="url"
           control={form.control}
         />
         <InputField
-          label="Description"
+          label={t('createDialog.field.descriptionLabel')}
           name="description"
           control={form.control}
         />
         {(form.watch('url') as any)?.startsWith('http://') && (
           <Alert variant="destructive">
-            Using HTTP endpoints is insecure. This can expose your user data to attackers. Only use HTTP endpoints in development environments.
+            {t('createDialog.alert.httpWarning')}
           </Alert>
         )}
       </>
@@ -71,18 +73,19 @@ export function EndpointEditDialog(props: {
   endpoint: Endpoint,
   updateFn: () => void,
 }) {
+  const t = useTranslations('webhooks');
   const { svix, appId } = useSvix();
 
   const formSchema = yup.object({
-    description: yup.string().label("Description"),
+    description: yup.string().label(t('editDialog.field.descriptionLabel')),
   }).default(props.endpoint);
 
   return <SmartFormDialog
     open={props.open}
     onClose={props.onClose}
-    title={"Edit endpoint"}
+    title={t('editDialog.title')}
     formSchema={formSchema}
-    okButton={{ label: "Save" }}
+    okButton={{ label: t('editDialog.button') }}
     onSubmit={async (values) => {
       await svix.endpoint.update(appId, props.endpoint.id, { url: props.endpoint.url, description: values.description });
       props.updateFn();
@@ -96,15 +99,16 @@ function DeleteDialog(props: {
   endpoint: Endpoint,
   updateFn: () => void,
 }) {
+  const t = useTranslations('webhooks');
   const { svix, appId } = useSvix();
   return (
     <ActionDialog
       open={props.open}
       onClose={props.onClose}
-      title="Delete domain"
+      title={t('deleteDialog.title')}
       danger
       okButton={{
-        label: "Delete",
+        label: t('deleteDialog.button'),
         onClick: async () => {
           await svix.endpoint.delete(appId, props.endpoint.id);
           props.updateFn();
@@ -113,13 +117,14 @@ function DeleteDialog(props: {
       cancelButton
     >
       <Typography>
-        Do you really want to remove <b>{props.endpoint.url}</b> from the endpoint list? The endpoint will no longer receive events.
+        {t('deleteDialog.message', { url: props.endpoint.url })}
       </Typography>
     </ActionDialog>
   );
 }
 
 function ActionMenu(props: { endpoint: Endpoint, updateFn: () => void }) {
+  const t = useTranslations('webhooks');
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const router = useRouter();
@@ -142,10 +147,10 @@ function ActionMenu(props: { endpoint: Endpoint, updateFn: () => void }) {
       />
       <ActionCell
         items={[
-          { item: "View Details", onClick: () => router.push(`/projects/${project.id}/webhooks/${props.endpoint.id}`) },
-          { item: "Edit", onClick: () => setEditDialogOpen(true) },
+          { item: t('actionMenu.viewDetails'), onClick: () => router.push(`/projects/${project.id}/webhooks/${props.endpoint.id}`) },
+          { item: t('actionMenu.edit'), onClick: () => setEditDialogOpen(true) },
           '-',
-          { item: "Delete", onClick: () => setDeleteDialogOpen(true), danger: true }
+          { item: t('actionMenu.delete'), onClick: () => setDeleteDialogOpen(true), danger: true }
         ]}
       />
     </>
@@ -153,6 +158,7 @@ function ActionMenu(props: { endpoint: Endpoint, updateFn: () => void }) {
 }
 
 function Endpoints(props: { updateFn: () => void }) {
+  const t = useTranslations('webhooks');
   const endpoints = getSvixResult(useEndpoints({ limit: 100 }));
 
   if (!endpoints.loaded) {
@@ -160,16 +166,16 @@ function Endpoints(props: { updateFn: () => void }) {
   } else {
     return (
       <SettingCard
-        title="Endpoints"
-        description="Endpoints are the URLs that we will send events to. Please make sure you control these endpoints, as they can receive sensitive data."
-        actions={<CreateDialog trigger={<Button>Add new endpoint</Button>} updateFn={props.updateFn}/>}
+        title={t('endpoints.title')}
+        description={t('endpoints.description')}
+        actions={<CreateDialog trigger={<Button>{t('endpoints.addButton')}</Button>} updateFn={props.updateFn}/>}
       >
         <div className="border rounded-md">
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead className="w-[600px]">Endpoint URL</TableHead>
-                <TableHead className="w-[300px]">Description</TableHead>
+                <TableHead className="w-[600px]">{t('endpoints.table.url')}</TableHead>
+                <TableHead className="w-[300px]">{t('endpoints.table.description')}</TableHead>
                 <TableHead></TableHead>
               </TableRow>
             </TableHeader>
@@ -192,14 +198,15 @@ function Endpoints(props: { updateFn: () => void }) {
 }
 
 export default function PageClient() {
+  const t = useTranslations('webhooks');
   const stackAdminApp = useAdminApp();
   const svixToken = stackAdminApp.useSvixToken();
   const [updateCounter, setUpdateCounter] = useState(0);
 
   return (
     <PageLayout
-      title="Webhooks"
-      description="Webhooks are used to sync users and teams events from Stack to your own server."
+      title={t('title')}
+      description={t('description')}
     >
       <SvixProvider
         key={updateCounter}

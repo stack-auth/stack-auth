@@ -1,30 +1,38 @@
 import { ChevronLeftIcon, ChevronRightIcon } from "@radix-ui/react-icons";
 import {
-  Button, Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue
+    Button, Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue
 } from "@stackframe/stack-ui";
 import { Table } from "@tanstack/react-table";
 
 type DataTablePaginationProps<TData> = {
   table: Table<TData>,
+  rowsSelectedLabel?: (selected: number, total: number) => string,
+  rowsPerPageLabel?: string,
+  previousPageLabel?: string,
+  nextPageLabel?: string,
 }
 
 export function DataTablePagination<TData>({
   table,
+  rowsSelectedLabel = (selected, total) => `${selected} of ${total} row(s) selected`,
+  rowsPerPageLabel = "Rows per page",
+  previousPageLabel = "Go to previous page",
+  nextPageLabel = "Go to next page",
 }: DataTablePaginationProps<TData>) {
   return (
     <div className="flex items-center justify-between px-2 flex-col sm:flex-row gap-y-4 sm:gap-y-0">
       <div className="flex-1 text-sm text-muted-foreground">
         {table.getFilteredSelectedRowModel().rows.length !== 0 ?
-          `${table.getFilteredSelectedRowModel().rows.length} of ${table.getFilteredRowModel().rows.length} row(s) selected` :
+          rowsSelectedLabel(table.getFilteredSelectedRowModel().rows.length, table.getFilteredRowModel().rows.length) :
           undefined}
       </div>
       <div className="flex items-center gap-x-6 lg:gap-x-8 flex-col sm:flex-row gap-y-4 sm:gap-y-0">
         <div className="flex items-center space-x-2">
-          <p className="text-sm font-medium">Rows per page</p>
+          <p className="text-sm font-medium">{rowsPerPageLabel}</p>
           <Select
             value={`${table.getState().pagination.pageSize}`}
             onValueChange={(value) => {
@@ -55,7 +63,7 @@ export function DataTablePagination<TData>({
               onClick={() => table.previousPage()}
               disabled={!table.getCanPreviousPage()}
             >
-              <span className="sr-only">Go to previous page</span>
+              <span className="sr-only">{previousPageLabel}</span>
               <ChevronLeftIcon className="h-4 w-4" />
             </Button>
             <Button
@@ -64,7 +72,7 @@ export function DataTablePagination<TData>({
               onClick={() => table.nextPage()}
               disabled={!table.getCanNextPage()}
             >
-              <span className="sr-only">Go to next page</span>
+              <span className="sr-only">{nextPageLabel}</span>
               <ChevronRightIcon className="h-4 w-4" />
             </Button>
           </div>

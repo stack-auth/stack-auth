@@ -5,12 +5,14 @@ import { InputField } from "@/components/form-fields";
 import { useRouter } from "@/components/router";
 import { ActionDialog, Alert, AlertDescription, AlertTitle, Button, Card, Typography } from "@stackframe/stack-ui";
 import { AlertCircle } from "lucide-react";
+import { useTranslations } from 'next-intl';
 import { useState } from "react";
 import * as yup from "yup";
 import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";
 
 export default function PageClient() {
+  const t = useTranslations('emailDrafts');
   const stackAdminApp = useAdminApp();
   const project = stackAdminApp.useProject();
   const emailConfig = project.config.emailConfig;
@@ -20,15 +22,15 @@ export default function PageClient() {
 
   return (
     <PageLayout
-      title="Email Drafts"
-      description="Create, edit, and send email drafts"
+      title={t('title')}
+      description={t('description')}
       actions={<NewDraftButton />}
     >
       {emailConfig?.type === 'shared' && <Alert variant="default">
         <AlertCircle className="h-4 w-4" />
-        <AlertTitle>Warning</AlertTitle>
+        <AlertTitle>{t('sharedServerWarning.title')}</AlertTitle>
         <AlertDescription>
-          You are using a shared email server. If you want to send manual emails, you need to configure a custom SMTP server.
+          {t('sharedServerWarning.description')}
         </AlertDescription>
       </Alert>}
 

@@ -6,31 +6,32 @@ import { KnownErrors } from "@stackframe/stack-shared";
 import { branchPaymentsSchema } from "@stackframe/stack-shared/dist/config/schema";
 import { has } from "@stackframe/stack-shared/dist/utils/objects";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
-import { ActionCell, ActionDialog, DataTable, DataTableColumnHeader, TextCell, toast } from "@stackframe/stack-ui";
+import { ActionCell, ActionDialog, DataTable, DataTableColumnHeader, DataTableI18n, TextCell, toast } from "@stackframe/stack-ui";
 import { ColumnDef } from "@tanstack/react-table";
-import { useState } from "react";
+import { useTranslations } from 'next-intl';
+import { useMemo, useState } from "react";
 import * as yup from "yup";
 
 type PaymentItem = {
   id: string,
 } & yup.InferType<typeof branchPaymentsSchema>["items"][string];
 
-const columns: ColumnDef<PaymentItem>[] = [
+const getColumns = (t: any): ColumnDef<PaymentItem>[] => [
   {
     accessorKey: "id",
-    header: ({ column }) => <DataTableColumnHeader column={column} columnTitle="Item ID" />,
+    header: ({ column }) => <DataTableColumnHeader column={column} columnTitle={t('itemId')} />,
     cell: ({ row }) => <TextCell><span className="font-mono text-sm">{row.original.id}</span></TextCell>,
     enableSorting: false,
   },
   {
     accessorKey: "displayName",
-    header: ({ column }) => <DataTableColumnHeader column={column} columnTitle="Display Name" />,
+    header: ({ column }) => <DataTableColumnHeader column={column} columnTitle={t('displayName')} />,
     cell: ({ row }) => <TextCell>{row.original.displayName ?? ""}</TextCell>,
     enableSorting: false,
   },
   {
     accessorKey: "customerType",
-    header: ({ column }) => <DataTableColumnHeader column={column} columnTitle="Customer Type" />,
+    header: ({ column }) => <DataTableColumnHeader column={column} columnTitle={t('customerType')} />,
     cell: ({ row }) => <TextCell><span className="capitalize">{row.original.customerType}</span></TextCell>,
     enableSorting: false,
   },
@@ -41,6 +42,12 @@ const columns: ColumnDef<PaymentItem>[] = [
 ];
 
 export function PaymentItemTable({ items }: { items: Record<string, yup.InferType<typeof branchPaymentsSchema>["items"][string]> }) {
+  const t = useTranslations('payments.items.table.columns');
+  const tToolbar = useTranslations('common.dataTable.toolbar');
+  const tPagination = useTranslations('common.dataTable.pagination');
+  
+  const columns = useMemo(() => getColumns(t), [t]);
+  
   const data: PaymentItem[] = Object.entries(items).map(([id, item]) => ({
     id,
     ...item,
@@ -52,10 +59,23 @@ export function PaymentItemTable({ items }: { items: Record<string, yup.InferTyp
     defaultColumnFilters={[]}
     defaultSorting={[]}
     showDefaultToolbar={false}
+    i18n={{
+      resetFilters: tToolbar('resetFilters'),
+      exportCSV: tToolbar('exportCSV'),
+      noDataToExport: tToolbar('noDataToExport'),
+      view: tToolbar('view'),
+      toggleColumns: tToolbar('toggleColumns'),
+      rowsSelected: (selected: number, total: number) => tPagination('rowsSelected', { selected, total }),
+      rowsPerPage: tPagination('rowsPerPage'),
+      previousPage: tPagination('goToPreviousPage'),
+      nextPage: tPagination('goToNextPage'),
+    } satisfies DataTableI18n}
   />;
 }
 
 function ActionsCell({ item }: { item: PaymentItem }) {
+  const t = useTranslations('payments.items.table.actions');
+  const tDialog = useTranslations('payments.items.table.dialogs.delete');
   const [open, setOpen] = useState(false);
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
@@ -66,16 +86,16 @@ function ActionsCell({ item }: { item: PaymentItem }) {
       <ActionCell
         items={[
           {
-            item: "Update Customer Quantity",
+            item: t('updateQuantity'),
             onClick: () => setOpen(true),
           },
           {
-            item: "Edit",
+            item: t('edit'),
             onClick: () => setIsEditOpen(true),
           },
           '-',
           {
-            item: "Delete",
+            item: t('delete'),
             onClick: () => setIsDeleteOpen(true),
             danger: true,
           },
@@ -97,19 +117,19 @@ function ActionsCell({ item }: { item: PaymentItem }) {
       <ActionDialog
         open={isDeleteOpen}
         onOpenChange={setIsDeleteOpen}
-        title="Delete Item"
-        description="This will delete the item"
+        title={tDialog('title')}
+        description={tDialog('description')}
         cancelButton
         danger
         okButton={{
-          label: "Delete",
+          label: tDialog('deleteButton'),
           onClick: async () => {
             const config = await project.getConfig();
             for (const [offerId, offer] of Object.entries(config.payments.offers)) {
               if (has(offer.includedItems, item.id)) {
                 toast({
-                  title: "Item is included in offer",
-                  description: `Please remove it from the offer "${offerId}" before deleting.`,
+                  title: tDialog('errorInOffer'),
+                  description: tDialog('errorInOfferDescription', { offerId }),
                   variant: "destructive",
                 });
                 return "prevent-close";
@@ -118,7 +138,7 @@ function ActionsCell({ item }: { item: PaymentItem }) {
             await project.updateConfig({
               [`payments.items.${item.id}`]: null,
             });
-            toast({ title: "Item deleted" });
+            toast({ title: tDialog('success') });
           }
         }}
       />
@@ -134,13 +154,14 @@ type CreateItemQuantityChangeDialogProps = {
 }
 
 function CreateItemQuantityChangeDialog({ open, onOpenChange, itemId, customerType }: CreateItemQuantityChangeDialogProps) {
+  const t = useTranslations('payments.items.table.dialogs.quantityChange');
   const stackAdminApp = useAdminApp();
 
   const schema = yup.object({
-    customerId: yup.string().defined().label("Customer ID"),
-    quantity: yup.number().defined().label("Quantity"),
-    description: yup.string().optional().label("Description"),
-    expiresAt: yup.date().optional().label("Expires At"),
+    customerId: yup.string().defined().label(t('customerIdLabel')),
+    quantity: yup.number().defined().label(t('quantityLabel')),
+    description: yup.string().optional().label(t('descriptionLabel')),
+    expiresAt: yup.date().optional().label(t('expiresAtLabel')),
   });
 
   const submit = async (values: yup.InferType<typeof schema>) => {
@@ -157,17 +178,17 @@ function CreateItemQuantityChangeDialog({ open, onOpenChange, itemId, customerTy
       description: values.description,
     }));
     if (result.status === "ok") {
-      toast({ title: "Item quantity change created" });
+      toast({ title: t('success') });
       return;
     }
     if (result.error instanceof KnownErrors.ItemNotFound) {
-      toast({ title: "Item not found", variant: "destructive" });
+      toast({ title: t('errorItemNotFound'), variant: "destructive" });
     } else if (result.error instanceof KnownErrors.UserNotFound) {
-      toast({ title: "No user found with the given ID", variant: "destructive" });
+      toast({ title: t('errorUserNotFound'), variant: "destructive" });
     } else if (result.error instanceof KnownErrors.TeamNotFound) {
-      toast({ title: "No team found with the given ID", variant: "destructive" });
+      toast({ title: t('errorTeamNotFound'), variant: "destructive" });
     } else {
-      toast({ title: "An unknown error occurred", variant: "destructive" });
+      toast({ title: t('errorUnknown'), variant: "destructive" });
     }
     return "prevent-close" as const;
   };
@@ -176,10 +197,10 @@ function CreateItemQuantityChangeDialog({ open, onOpenChange, itemId, customerTy
     <SmartFormDialog
       open={open}
       onOpenChange={onOpenChange}
-      title="New Item Quantity Change"
+      title={t('title')}
       formSchema={schema}
       cancelButton
-      okButton={{ label: "Create" }}
+      okButton={{ label: t('createButton') }}
       onSubmit={submit}
     />
   );

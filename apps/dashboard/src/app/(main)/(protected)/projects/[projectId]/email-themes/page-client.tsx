@@ -10,12 +10,14 @@ import { previewTemplateSource } from "@stackframe/stack-shared/dist/helpers/ema
 import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { ActionDialog, Button, Typography } from "@stackframe/stack-ui";
 import { Check, Pencil } from "lucide-react";
+import { useTranslations } from 'next-intl';
 import { useState } from "react";
 import * as yup from "yup";
 import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";
 
 export default function PageClient() {
+  const t = useTranslations('emailThemes');
   const stackAdminApp = useAdminApp();
   const project = stackAdminApp.useProject();
   const themes = stackAdminApp.useEmailThemes();
@@ -42,12 +44,12 @@ export default function PageClient() {
 
   return (
     <PageLayout
-      title="Email Themes"
-      description="Customize email themes for your project"
+      title={t('title')}
+      description={t('description')}
       actions={<NewThemeButton />}
     >
       <SettingCard
-        title="Active Theme"
+        title={t('activeTheme.title')}
         description={`Currently using ${selectedThemeData.displayName}`}
       >
         <div className="h-72">

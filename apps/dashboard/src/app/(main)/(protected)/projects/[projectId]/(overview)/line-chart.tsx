@@ -1,6 +1,7 @@
 import { ChartConfig, ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
 import { isWeekend } from "@stackframe/stack-shared/dist/utils/dates";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@stackframe/stack-ui";
+import { useTranslations } from "next-intl";
 import { Bar, BarChart, CartesianGrid, Cell, Pie, PieChart, XAxis, YAxis } from "recharts";
 
 export type LineChartDisplayConfig = {
@@ -149,11 +150,13 @@ export function DonutChartDisplay({
 }: {
   datapoints: AuthMethodDatapoint[],
 }) {
+  const t = useTranslations('overview.metrics');
+
   return (
     <Card>
       <CardHeader>
         <CardTitle>
-          Auth Methods
+          {t('charts.authMethods')}
         </CardTitle>
       </CardHeader>
       <CardContent>

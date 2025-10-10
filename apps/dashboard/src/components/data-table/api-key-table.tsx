@@ -1,24 +1,22 @@
 'use client';
 import { InternalApiKey } from '@stackframe/stack';
-import { ActionCell, ActionDialog, BadgeCell, DataTable, DataTableColumnHeader, DataTableFacetedFilter, DateCell, SearchToolbarItem, TextCell, standardFilterFn } from "@stackframe/stack-ui";
+import { ActionCell, ActionDialog, BadgeCell, DataTable, DataTableColumnHeader, DataTableFacetedFilter, DataTableI18n, DateCell, SearchToolbarItem, TextCell, standardFilterFn } from "@stackframe/stack-ui";
 import { ColumnDef, Row, Table } from "@tanstack/react-table";
+import { useTranslations } from 'next-intl';
 import { useMemo, useState } from "react";
 
 type ExtendedInternalApiKey = InternalApiKey & {
   status: 'valid' | 'expired' | 'revoked',
 };
 
-function toolbarRender<TData>(table: Table<TData>) {
+function toolbarRender<TData>(table: Table<TData>, searchPlaceholder: string, statusTitle: string, statusOptions: { value: string, label: string }[]) {
   return (
     <>
-      <SearchToolbarItem table={table} placeholder="Search table" />
+      <SearchToolbarItem table={table} placeholder={searchPlaceholder} />
       <DataTableFacetedFilter
         column={table.getColumn("status")}
-        title="Status"
-        options={['valid', 'expired', 'revoked'].map((provider) => ({
-          value: provider,
-          label: provider,
-        }))}
+        title={statusTitle}
+        options={statusOptions}
       />
     </>
   );
@@ -29,20 +27,25 @@ function RevokeDialog(props: {
   open: boolean,
   onOpenChange: (open: boolean) => void,
 }) {
+  const t = useTranslations('apiKeys.table.dialogs.revoke');
   return <ActionDialog
     open={props.open}
     onOpenChange={props.onOpenChange}
-    title="Revoke API Key"
+    title={t('title')}
     danger
     cancelButton
-    okButton={{ label: "Revoke Key", onClick: async () => { await props.apiKey.revoke(); } }}
-    confirmText="I understand this will unlink all the apps using this API key"
+    okButton={{ label: t('revokeButton'), onClick: async () => { await props.apiKey.revoke(); } }}
+    confirmText={t('confirmText')}
   >
-    {`Are you sure you want to revoke client key *****${props.apiKey.publishableClientKey?.lastFour} and server key *****${props.apiKey.secretServerKey?.lastFour}?`}
+    {t('description', { 
+      clientKey: props.apiKey.publishableClientKey?.lastFour,
+      serverKey: props.apiKey.secretServerKey?.lastFour 
+    })}
   </ActionDialog>;
 }
 
 function Actions({ row }: { row: Row<ExtendedInternalApiKey> }) {
+  const t = useTranslations('apiKeys.table.actions');
   const [isRevokeModalOpen, setIsRevokeModalOpen] = useState(false);
   return (
     <>
@@ -50,7 +53,7 @@ function Actions({ row }: { row: Row<ExtendedInternalApiKey> }) {
       <ActionCell
         invisible={row.original.status !== 'valid'}
         items={[{
-          item: "Revoke",
+          item: t('revoke'),
           danger: true,
           onClick: () => setIsRevokeModalOpen(true),
         }]}
@@ -59,40 +62,40 @@ function Actions({ row }: { row: Row<ExtendedInternalApiKey> }) {
   );
 }
 
-const columns: ColumnDef<ExtendedInternalApiKey>[] =  [
+const getColumns = (t: any): ColumnDef<ExtendedInternalApiKey>[] =>  [
   {
     accessorKey: "description",
-    header: ({ column }) => <DataTableColumnHeader column={column} columnTitle="Description" />,
+    header: ({ column }) => <DataTableColumnHeader column={column} columnTitle={t('description')} />,
     cell: ({ row }) => <TextCell size={300}>{row.original.description}</TextCell>,
   },
   {
     accessorKey: "status",
-    header: ({ column }) => <DataTableColumnHeader column={column} columnTitle="Status" />,
+    header: ({ column }) => <DataTableColumnHeader column={column} columnTitle={t('status')} />,
     cell: ({ row }) => <BadgeCell badges={[row.original.status]} />,
     filterFn: standardFilterFn,
   },
   {
     id: "clientKey",
     accessorFn: (row) => row.publishableClientKey?.lastFour,
-    header: ({ column }) => <DataTableColumnHeader column={column} columnTitle="Client Key" />,
+    header: ({ column }) => <DataTableColumnHeader column={column} columnTitle={t('clientKey')} />,
     cell: ({ row }) => <TextCell>*******{row.original.publishableClientKey?.lastFour}</TextCell>,
     enableSorting: false,
   },
   {
     id: "serverKey",
     accessorFn: (row) => row.secretServerKey?.lastFour,
-    header: ({ column }) => <DataTableColumnHeader column={column} columnTitle="Server Key" />,
+    header: ({ column }) => <DataTableColumnHeader column={column} columnTitle={t('serverKey')} />,
     cell: ({ row }) => <TextCell>*******{row.original.secretServerKey?.lastFour}</TextCell>,
     enableSorting: false,
   },
   {
     accessorKey: "expiresAt",
-    header: ({ column }) => <DataTableColumnHeader column={column} columnTitle="Expires At" />,
+    header: ({ column }) => <DataTableColumnHeader column={column} columnTitle={t('expiresAt')} />,
     cell: ({ row }) => <DateCell date={row.original.expiresAt} ignoreAfterYears={50} />
   },
   {
     accessorKey: "createdAt",
-    header: ({ column }) => <DataTableColumnHeader column={column} columnTitle="Created At" />,
+    header: ({ column }) => <DataTableColumnHeader column={column} columnTitle={t('createdAt')} />,
     cell: ({ row }) => <DateCell date={row.original.createdAt} ignoreAfterYears={50} />
   },
   {
@@ -102,6 +105,20 @@ const columns: ColumnDef<ExtendedInternalApiKey>[] =  [
 ];
 
 export function InternalApiKeyTable(props: { apiKeys: InternalApiKey[] }) {
+  const t = useTranslations('apiKeys.table.columns');
+  const tStatus = useTranslations('apiKeys.table.status');
+  const tSearch = useTranslations('apiKeys.table');
+  const tToolbar = useTranslations('common.dataTable.toolbar');
+  const tPagination = useTranslations('common.dataTable.pagination');
+  
+  const columns = useMemo(() => getColumns(t), [t]);
+  
+  const statusOptions = useMemo(() => [
+    { value: 'valid', label: tStatus('valid') },
+    { value: 'expired', label: tStatus('expired') },
+    { value: 'revoked', label: tStatus('revoked') }
+  ], [tStatus]);
+  
   const extendedApiKeys = useMemo(() => {
     const keys = props.apiKeys.map((apiKey) => ({
       ...apiKey,
@@ -119,8 +136,19 @@ export function InternalApiKeyTable(props: { apiKeys: InternalApiKey[] }) {
   return <DataTable
     data={extendedApiKeys}
     columns={columns}
-    toolbarRender={toolbarRender}
+    toolbarRender={(table) => toolbarRender(table, tSearch('searchPlaceholder'), tStatus('title'), statusOptions)}
     defaultColumnFilters={[{ id: 'status', value: ['valid'] }]}
     defaultSorting={[]}
+    i18n={{
+      resetFilters: tToolbar('resetFilters'),
+      exportCSV: tToolbar('exportCSV'),
+      noDataToExport: tToolbar('noDataToExport'),
+      view: tToolbar('view'),
+      toggleColumns: tToolbar('toggleColumns'),
+      rowsSelected: (selected: number, total: number) => tPagination('rowsSelected', { selected, total }),
+      rowsPerPage: tPagination('rowsPerPage'),
+      previousPage: tPagination('goToPreviousPage'),
+      nextPage: tPagination('goToNextPage'),
+    } satisfies DataTableI18n}
   />;
 }
