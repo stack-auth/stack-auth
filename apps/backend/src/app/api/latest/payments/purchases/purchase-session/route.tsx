@@ -12,14 +12,14 @@ export const POST = createSmartRouteHandler({
   metadata: {
     hidden: false,
     summary: "Create Purchase Session",
-    description: "Creates a Stripe payment session for completing a purchase. Returns a client secret for Stripe integration.",
+    description: "Creates a purchase session for completing a purchase.",
     tags: ["Payments"],
   },
   request: yupObject({
     body: yupObject({
       full_code: yupString().defined().meta({
         openapiField: {
-          description: "The full verification code from the purchase URL",
+          description: "The verification code, given as a query parameter in the purchase URL",
           exampleValue: "proj_abc123_def456ghi789"
         }
       }),
@@ -44,7 +44,7 @@ export const POST = createSmartRouteHandler({
       client_secret: yupString().defined().meta({
         openapiField: {
           description: "The Stripe client secret for completing the payment",
-          exampleValue: "pi_1234567890abcdef_secret_xyz123"
+          exampleValue: "1234567890abcdef_secret_xyz123"
         }
       }),
     }),

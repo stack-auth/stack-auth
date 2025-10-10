@@ -28,7 +28,7 @@ export const POST = createSmartRouteHandler({
     body: yupObject({
       full_code: yupString().defined().meta({
         openapiField: {
-          description: "The full verification code from the purchase URL",
+          description: "The verification code, given as a query parameter in the purchase URL",
           exampleValue: "proj_abc123_def456ghi789"
         }
       }),

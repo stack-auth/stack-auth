@@ -14,7 +14,7 @@ export const POST = createSmartRouteHandler({
   metadata: {
     hidden: false,
     summary: "Create Purchase URL",
-    description: "Creates a secure checkout URL for purchasing a product. This integrates with Stripe to generate a payment link.",
+    description: "Creates a secure checkout URL for purchasing a product.",
     tags: ["Payments"],
   },
   request: yupObject({
@@ -38,18 +38,18 @@ export const POST = createSmartRouteHandler({
       }),
       product_id: yupString().optional().meta({
         openapiField: {
-          description: "The ID of the product to purchase",
+          description: "The ID of the product to purchase. Either this or product_inline should be given.",
           exampleValue: "prod_premium_monthly"
         }
       }),
       product_inline: inlineProductSchema.optional().meta({
         openapiField: {
-          description: "Inline product definition (alternative to product_id)"
+          description: "Inline product definition. Either this or product_id should be given."
         }
       }),
       return_url: urlSchema.optional().meta({
         openapiField: {
-          description: "URL to redirect to after purchase completion",
+          description: "URL to redirect to after purchase completion. Must be configured as a tursted domain in the project configuration.",
           exampleValue: "https://myapp.com/purchase-success"
         }
       }),
@@ -61,8 +61,7 @@ export const POST = createSmartRouteHandler({
     body: yupObject({
       url: yupString().defined().meta({
         openapiField: {
-          description: "The secure checkout URL for completing the purchase",
-          exampleValue: "https://dashboard.stack-auth.com/purchase/proj_abc123_def456ghi789"
+          description: "The secure checkout URL for completing the purchase"
         }
       }),
     }).defined(),
