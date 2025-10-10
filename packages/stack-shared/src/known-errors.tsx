@@ -1495,15 +1495,20 @@ const CustomerDoesNotExist = createKnownErrorConstructor(
 const ProductDoesNotExist = createKnownErrorConstructor(
   KnownError,
   "PRODUCT_DOES_NOT_EXIST",
-  (productId: string, accessType: "client" | "server" | "admin") => [
+  (productId: string, context: "item_exists" | "server_only" | null) => [
     400,
-    `Product with ID ${JSON.stringify(productId)} does not exist${accessType === "client" ? " or you don't have permissions to access it." : "."}`,
+    `Product with ID ${JSON.stringify(productId)} ${context === "server_only"
+      ? "is marked as server-only and cannot be accessed client side."
+      : context === "item_exists"
+        ? "does not exist, but an item with this ID exists."
+        : "does not exist."
+    }`,
     {
       product_id: productId,
-      access_type: accessType,
-    },
+      context,
+    } as const,
   ] as const,
-  (json) => [json.product_id, json.access_type] as const,
+  (json) => [json.product_id, json.context] as const,
 );
 
 const ProductCustomerTypeDoesNotMatch = createKnownErrorConstructor(
