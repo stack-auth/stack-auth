@@ -391,3 +391,36 @@ import.meta.vitest?.test("a migration that fails for whatever reasons rolls back
 
   await expect(prismaClient.$queryRaw`SELECT * FROM should_exist_after_the_third_migration`).resolves.toBeDefined();
 }));
+
+import.meta.vitest?.test("repeats migrations when a REPEAT_MIGRATION error is thrown", runTest(async ({ expect, prismaClient, dbURL }) => {
+  const exampleMigration3 = {
+    migrationName: '003-repeat-ten-times',
+    // increment a value; if the value is < 10, raise a REPEAT_MIGRATION error
+    sql: `
+      CREATE TABLE IF NOT EXISTS repeat_counter (value INTEGER DEFAULT 0);
+      CREATE TABLE IF NOT EXISTS has_finished_counter (value INTEGER DEFAULT 0);
+      
+      INSERT INTO repeat_counter (value)
+      SELECT 0 
+      WHERE NOT EXISTS (SELECT 1 FROM repeat_counter);
+      INSERT INTO has_finished_counter (value)
+      SELECT 0 
+      WHERE NOT EXISTS (SELECT 1 FROM has_finished_counter);
+      
+      -- SPLIT_STATEMENT_SENTINEL
+      -- SINGLE_STATEMENT_SENTINEL
+      -- CONDITIONALLY_REPEAT_MIGRATION_SENTINEL
+      UPDATE repeat_counter SET value = value + 1 RETURNING 
+        CASE WHEN value >= 10 THEN false ELSE true END AS should_repeat_migration;
+      -- SPLIT_STATEMENT_SENTINEL
+
+      UPDATE has_finished_counter SET value = value + 1;
+    `,
+  };
+
+  const result = await applyMigrations({ prismaClient, migrationFiles: [...exampleMigrationFiles1, exampleMigration3], schema: 'public', logging: true });
+  expect(result.newlyAppliedMigrationNames).toEqual(['001-create-table', '002-update-table', '003-repeat-ten-times']);
+
+  expect(await prismaClient.$queryRaw`SELECT value FROM repeat_counter`).toEqual([{ value: 10 }]);
+  expect(await prismaClient.$queryRaw`SELECT value FROM has_finished_counter`).toEqual([{ value: 1 }]);
+}));

@@ -126,7 +126,7 @@ export function getBaseUrl(userSpecifiedBaseUrl: string | { browser: string, ser
 
   return url.endsWith('/') ? url.slice(0, -1) : url;
 }
-const defaultBaseUrl = "https://api.stack-auth.com";
+export const defaultBaseUrl = "https://api.stack-auth.com";
 
 export type TokenObject = {
   accessToken: string | null,

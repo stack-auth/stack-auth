@@ -1,3 +1,3 @@
 import createJsLibraryTsupConfig from '../../configs/tsup/js-library';
 
-export default createJsLibraryTsupConfig({ barrelFile: false });
+export default createJsLibraryTsupConfig({});
