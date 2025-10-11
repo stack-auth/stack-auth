@@ -136,7 +136,6 @@ function NavItem({
   const ButtonComponent: any = isSection ? "button" : Link;
 
   const isActive = "type" in item && item.regex.test(pathname);
-  console.log("isActive", { item, isActive, pathname });
 
   return (
     <div className={cn(
