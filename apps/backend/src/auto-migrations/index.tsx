@@ -217,6 +217,7 @@ export async function runMigrationNeeded(options: {
         migrationFiles: options.migrationFiles,
         artificialDelayInSeconds: options.artificialDelayInSeconds,
         schema: options.schema,
+        logging: true,
       });
     } else {
       throw e;
