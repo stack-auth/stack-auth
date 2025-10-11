@@ -170,6 +170,28 @@ export function mapRefState<T, R>(refState: RefState<T>, mapper: (value: T) => R
   };
 }
 
+export function useQueryState(key: string, defaultValue?: string) {
+  const getValue = () => new URLSearchParams(window.location.search).get(key) ?? defaultValue ?? "";
+
+  const [value, setValue] = React.useState(getValue);
+
+  React.useEffect(() => {
+    const onPopState = () => setValue(getValue());
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, []);
+
+  const update = (next: string) => {
+    const params = new URLSearchParams(window.location.search);
+    params.set(key, next);
+    const newUrl = `${window.location.pathname}?${params.toString()}`;
+    window.history.pushState(null, "", newUrl);
+    setValue(next);
+  };
+
+  return [value, update] as const;
+}
+
 export class NoSuspenseBoundaryError extends Error {
   digest: string;
   reason: string;

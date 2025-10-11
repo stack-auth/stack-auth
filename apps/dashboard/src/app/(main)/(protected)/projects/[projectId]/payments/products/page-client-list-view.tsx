@@ -1,18 +1,17 @@
 "use client";
 
+import { ItemDialog } from "@/components/payments/item-dialog";
 import { cn } from "@/lib/utils";
 import { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
 import { useHover } from "@stackframe/stack-shared/dist/hooks/use-hover";
 import { DayInterval } from "@stackframe/stack-shared/dist/utils/dates";
 import { prettyPrintWithMagnitudes } from "@stackframe/stack-shared/dist/utils/numbers";
 import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
-import { Button, Card, CardContent, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, Label, Separator, Switch, toast } from "@stackframe/stack-ui";
+import { Button, Card, CardContent, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, toast } from "@stackframe/stack-ui";
 import { MoreVertical, Plus } from "lucide-react";
-import React, { ReactNode, useEffect, useId, useMemo, useRef, useState } from "react";
+import React, { ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { IllustratedInfo } from "../../../../../../../components/illustrated-info";
-import { PageLayout } from "../../page-layout";
 import { useAdminApp } from "../../use-admin-app";
-import { ItemDialog } from "@/components/payments/item-dialog";
 import { ListSection } from "./list-section";
 import { ProductDialog } from "./product-dialog";
 
@@ -588,7 +587,7 @@ function WelcomeScreen({ onCreateProduct }: { onCreateProduct: () => void }) {
   );
 }
 
-export default function PageClient({ onViewChange }: { onViewChange: (view: "list" | "catalogs") => void }) {
+export default function PageClient() {
   const [activeTab, setActiveTab] = useState<"products" | "items">("products");
   const [hoveredProductId, setHoveredProductId] = useState<string | null>(null);
   const [hoveredItemId, setHoveredItemId] = useState<string | null>(null);
@@ -599,9 +598,6 @@ export default function PageClient({ onViewChange }: { onViewChange: (view: "lis
   const stackAdminApp = useAdminApp();
   const project = stackAdminApp.useProject();
   const config = project.useConfig();
-  const switchId = useId();
-  const testModeSwitchId = useId();
-  const [isUpdatingTestMode, setIsUpdatingTestMode] = useState(false);
   const paymentsConfig = config.payments;
 
   // Refs for products and items
@@ -753,18 +749,6 @@ export default function PageClient({ onViewChange }: { onViewChange: (view: "lis
     toast({ title: editingItem ? "Item updated" : "Item created" });
   };
 
-  const handleToggleTestMode = async (enabled: boolean) => {
-    setIsUpdatingTestMode(true);
-    try {
-      await project.updateConfig({ "payments.testMode": enabled });
-      toast({ title: enabled ? "Test mode enabled" : "Test mode disabled" });
-    } catch (_error) {
-      toast({ title: "Failed to update test mode", variant: "destructive" });
-    } finally {
-      setIsUpdatingTestMode(false);
-    }
-  };
-
   // Prepare data for product dialog - update when items change
   const existingProductsList = Object.entries(paymentsConfig.products).map(([id, product]: [string, any]) => ({
     id,
@@ -785,28 +769,7 @@ export default function PageClient({ onViewChange }: { onViewChange: (view: "lis
     innerContent = <WelcomeScreen onCreateProduct={handleCreateProduct} />;
   } else {
     innerContent = (
-      <PageLayout
-        title="Products"
-        actions={
-          <div className="flex items-center gap-4 self-center">
-            <div className="flex items-center gap-2">
-              <Label htmlFor={switchId}>Pricing table</Label>
-              <Switch id={switchId} checked={true} onCheckedChange={() => onViewChange("catalogs")} />
-              <Label htmlFor={switchId}>List</Label>
-            </div>
-            <Separator orientation="vertical" className="h-6" />
-            <div className="flex items-center gap-2">
-              <Label htmlFor={testModeSwitchId}>Test mode</Label>
-              <Switch
-                id={testModeSwitchId}
-                checked={paymentsConfig.testMode === true}
-                disabled={isUpdatingTestMode}
-                onCheckedChange={(checked) => void handleToggleTestMode(checked)}
-              />
-            </div>
-          </div>
-        }
-      >
+      <>
         {/* Mobile tabs */}
         < div className="lg:hidden mb-4" >
           <div className="flex space-x-1 bg-muted p-1 rounded-md">
@@ -930,7 +893,7 @@ export default function PageClient({ onViewChange }: { onViewChange: (view: "lis
             )}
           </div >
         </div >
-      </PageLayout >
+      </>
     );
   }
 

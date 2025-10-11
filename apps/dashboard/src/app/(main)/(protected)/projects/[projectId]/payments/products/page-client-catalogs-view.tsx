@@ -1,11 +1,15 @@
 "use client";
 
 import { CodeBlock } from '@/components/code-block';
+import { Link } from '@/components/link';
+import { ItemDialog } from "@/components/payments/item-dialog";
 import { cn } from "@/lib/utils";
 import { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
+import { typedIncludes } from '@stackframe/stack-shared/dist/utils/arrays';
 import type { DayInterval } from "@stackframe/stack-shared/dist/utils/dates";
 import { prettyPrintWithMagnitudes } from "@stackframe/stack-shared/dist/utils/numbers";
 import { typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
+import { useQueryState } from '@stackframe/stack-shared/dist/utils/react';
 import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
 import {
   ActionDialog,
@@ -31,15 +35,11 @@ import {
   SelectValue,
   Separator,
   SimpleTooltip,
-  Switch,
   toast
 } from "@stackframe/stack-ui";
 import { ChevronDown, ChevronsUpDown, Layers, MoreVertical, Pencil, PencilIcon, Plus, Puzzle, Server, Trash2, X } from "lucide-react";
-import { Fragment, useEffect, useId, useMemo, useRef, useState } from "react";
-import { IllustratedInfo } from "../../../../../../../components/illustrated-info";
-import { PageLayout } from "../../page-layout";
+import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useAdminApp } from "../../use-admin-app";
-import { ItemDialog } from "@/components/payments/item-dialog";
 import { ProductDialog } from "./product-dialog";
 
 type Product = CompleteConfig['payments']['products'][keyof CompleteConfig['payments']['products']];
@@ -83,6 +83,16 @@ function OrSeparator() {
   );
 }
 
+function SectionHeading({ label }: { label: string }) {
+  return (
+    <div className="flex items-center gap-3 text-[11px] font-semibold uppercase tracking-[0.35em] text-muted-foreground">
+      <div className="h-px flex-1 bg-border" />
+      <span>{label}</span>
+      <div className="h-px flex-1 bg-border" />
+    </div>
+  );
+}
+
 
 function IntervalPopover({
   readOnly,
@@ -96,6 +106,7 @@ function IntervalPopover({
   onChange,
   noneLabel = 'one time',
   allowedUnits,
+  triggerClassName,
 }: {
   readOnly?: boolean,
   intervalText: string | null,
@@ -108,6 +119,7 @@ function IntervalPopover({
   onChange: (interval: DayInterval | null) => void,
   noneLabel?: string,
   allowedUnits?: DayInterval[1][],
+  triggerClassName?: string,
 }) {
   const [open, setOpen] = useState(false);
   const buttonLabels: Record<DayInterval[1], string> = {
@@ -153,11 +165,12 @@ function IntervalPopover({
   };
 
   const triggerLabel = intervalText || noneLabel;
+  const triggerClasses = triggerClassName ?? "text-xs px-2 py-0.5 rounded bg-muted text-muted-foreground cursor-pointer select-none flex items-center gap-1";
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger>
-        <div className="text-xs px-2 py-0.5 rounded bg-muted text-muted-foreground cursor-pointer select-none flex items-center gap-1">
+        <div className={cn(triggerClasses, readOnly && "cursor-default")}>
           {triggerLabel}
           <ChevronsUpDown className="h-4 w-4" />
         </div>
@@ -246,7 +259,7 @@ function IntervalPopover({
 
 type ProductEditableInputProps = {
   value: string,
-  onUpdate?: (value: string) => void | Promise<void>,
+  onUpdate?: (value: string) => void,
   readOnly?: boolean,
   placeholder?: string,
   inputClassName?: string,
@@ -284,7 +297,7 @@ function ProductEditableInput({
       onChange={(event) => {
         const rawValue = event.target.value;
         const nextValue = transform ? transform(rawValue) : rawValue;
-        void onUpdate?.(nextValue);
+        onUpdate?.(nextValue);
       }}
       placeholder={placeholder}
       autoComplete="off"
@@ -345,73 +358,94 @@ function ProductPriceRow({
   const intervalText = intervalLabel(price.interval);
 
   return (
-    <div className={cn("relative flex flex-col items-center rounded-md px-2 py-1")}>
+    <div
+      className={cn(
+        "relative rounded-2xl border border-border/60 bg-muted/30 px-4 py-4",
+        isEditing ? "flex flex-col gap-4" : "items-center justify-center text-center"
+      )}
+    >
       {isEditing ? (
         <>
-          <div className="relative w-full pb-2 flex items-center">
-            <span className="pointer-events-none font-semibold text-xl absolute left-1.5 z-20">$</span>
-            <Input
-              className="h-8 !pl-[18px] w-full mr-3 text-xl font-semibold bg-transparent tabular-nums text-center"
-              tabIndex={0}
-              inputMode="decimal"
-              value={amount}
-              readOnly={false}
-              placeholder="0.00"
-              aria-label="Amount in USD"
-              onChange={(e) => {
-                const v = e.target.value;
-                if (v === '' || /^\d*(?:\.?\d{0,2})?$/.test(v)) setAmount(v);
-                if (!readOnly) {
-                  const normalized = v === '' ? '0.00' : (Number.isNaN(parseFloat(v)) ? '0.00' : parseFloat(v).toFixed(2));
-                  const intervalObj = intervalSelection === 'one-time' ? undefined : ([
-                    intervalSelection === 'custom' ? intervalCount : 1,
-                    (intervalSelection === 'custom' ? (priceInterval || 'month') : intervalSelection) as DayInterval[1]
-                  ] as DayInterval);
+          <div className="grid gap-4">
+            <div className="flex flex-col gap-1">
+              <Label className="text-[11px] font-medium uppercase tracking-[0.24em] text-muted-foreground">
+                Amount
+              </Label>
+              <div className="relative">
+                <span className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 font-semibold text-base text-muted-foreground">
+                  $
+                </span>
+                <Input
+                  className="h-10 w-full rounded-xl border border-border bg-background pl-7 pr-3 text-base font-semibold tabular-nums"
+                  tabIndex={0}
+                  inputMode="decimal"
+                  value={amount}
+                  readOnly={false}
+                  placeholder="0.00"
+                  aria-label="Amount in USD"
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    if (v === '' || /^\d*(?:\.?\d{0,2})?$/.test(v)) setAmount(v);
+                    if (!readOnly) {
+                      const normalized = v === '' ? '0.00' : (Number.isNaN(parseFloat(v)) ? '0.00' : parseFloat(v).toFixed(2));
+                      const intervalObj = intervalSelection === 'one-time' ? undefined : ([
+                        intervalSelection === 'custom' ? intervalCount : 1,
+                        (intervalSelection === 'custom' ? (priceInterval || 'month') : intervalSelection) as DayInterval[1]
+                      ] as DayInterval);
+                      const updated: Price = {
+                        USD: normalized,
+                        serverOnly: !!price.serverOnly,
+                        ...(intervalObj ? { interval: intervalObj } : {}),
+                      };
+                      onSave(undefined, updated);
+                    }
+                  }}
+                />
+              </div>
+            </div>
+            <div className="flex flex-col gap-1">
+              <Label className="text-[11px] font-medium uppercase tracking-[0.24em] text-muted-foreground">
+                Billing Frequency
+              </Label>
+              <IntervalPopover
+                readOnly={readOnly}
+                intervalText={intervalText}
+                intervalSelection={intervalSelection}
+                unit={priceInterval}
+                count={intervalCount}
+                setIntervalSelection={setIntervalSelection}
+                setUnit={setPriceInterval}
+                setCount={setIntervalCount}
+                allowedUnits={PRICE_INTERVAL_UNITS}
+                triggerClassName="flex h-10 w-full items-center justify-between rounded-xl border border-border bg-background px-3 text-sm font-medium capitalize text-foreground shadow-sm"
+                onChange={(interval) => {
+                  if (readOnly) return;
+                  const normalized = amount === '' ? '0.00' : (Number.isNaN(parseFloat(amount)) ? '0.00' : parseFloat(amount).toFixed(2));
                   const updated: Price = {
                     USD: normalized,
                     serverOnly: !!price.serverOnly,
-                    ...(intervalObj ? { interval: intervalObj } : {}),
+                    ...(interval ? { interval } : {}),
                   };
                   onSave(undefined, updated);
-                }
-              }}
-            />
-          </div>
-
-          <div className="relative shrink-0">
-            <IntervalPopover
-              readOnly={readOnly}
-              intervalText={intervalText}
-              intervalSelection={intervalSelection}
-              unit={priceInterval}
-              count={intervalCount}
-              setIntervalSelection={setIntervalSelection}
-              setUnit={setPriceInterval}
-              setCount={setIntervalCount}
-              allowedUnits={PRICE_INTERVAL_UNITS}
-              onChange={(interval) => {
-                if (readOnly) return;
-                const normalized = amount === '' ? '0.00' : (Number.isNaN(parseFloat(amount)) ? '0.00' : parseFloat(amount).toFixed(2));
-                const updated: Price = {
-                  USD: normalized,
-                  serverOnly: !!price.serverOnly,
-                  ...(interval ? { interval } : {}),
-                };
-                onSave(undefined, updated);
-              }}
-            />
+                }}
+              />
+            </div>
           </div>
 
           {onRemove && (
-            <button className="absolute right-1 top-1 text-muted-foreground hover:text-foreground" onClick={onRemove} aria-label="Remove price">
-              <X className="h-3.5 w-3.5" />
+            <button
+              className="absolute right-3 top-3 text-muted-foreground transition-colors hover:text-foreground"
+              onClick={onRemove}
+              aria-label="Remove price"
+            >
+              <X className="h-4 w-4" />
             </button>
           )}
         </>
       ) : (
         <>
-          <div className="text-xl text-center font-semibold tabular-nums">${niceAmount}</div>
-          <div className="text-xs text-muted-foreground">{intervalText ?? 'one-time'}</div>
+          <div className="text-xl font-semibold tabular-nums">${niceAmount}</div>
+          <div className="text-xs text-muted-foreground capitalize">{intervalText ?? 'one-time'}</div>
         </>
       )}
     </div>
@@ -497,68 +531,74 @@ function ProductItemRow({
 
   if (isEditing) {
     return (
-      <div className="flex flex-col gap-2 mb-4">
-        <div className="flex w-full items-center justify-between gap-2">
-          <Popover open={itemSelectOpen} onOpenChange={setItemSelectOpen}>
-            <PopoverTrigger>
-              <div className="text-sm px-2 py-0.5 rounded bg-muted hover:bg-muted/70 cursor-pointer select-none flex items-center gap-1">
-                <span className="overflow-x-auto max-w-24">
-                  {itemDisplayName}
-                </span>
-                <ChevronsUpDown className="h-4 w-4" />
-              </div>
-            </PopoverTrigger>
-            <PopoverContent align="start" className="w-72 p-2">
-              <div className="flex flex-col gap-1 max-h-64 overflow-auto">
-                {allItems.map((opt) => {
-                  const isSelected = opt.id === itemId;
-                  const isUsed = existingIncludedItemIds.includes(opt.id) && !isSelected;
-                  return (
-                    <Button
-                      key={opt.id}
-                      variant={isSelected ? 'secondary' : 'ghost'}
-                      size="sm"
-                      className="justify-start"
-                      disabled={isUsed}
-                      onClick={() => {
-                        if (isSelected) {
+      <div className="relative rounded-2xl border border-foreground bg-muted/30 p-4">
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="flex flex-col gap-1">
+            <Label className="text-[11px] font-medium uppercase tracking-[0.24em] text-muted-foreground">
+              Item Name
+            </Label>
+            <Popover open={itemSelectOpen} onOpenChange={setItemSelectOpen}>
+              <PopoverTrigger asChild>
+                <button className="flex h-10 w-full items-center justify-between rounded-xl border border-border bg-background px-3 text-sm font-medium">
+                  <span className="truncate">{itemDisplayName}</span>
+                  <ChevronsUpDown className="h-4 w-4 text-muted-foreground" />
+                </button>
+              </PopoverTrigger>
+              <PopoverContent align="start" className="w-72 p-2">
+                <div className="flex max-h-64 flex-col gap-1 overflow-auto">
+                  {allItems.map((opt) => {
+                    const isSelected = opt.id === itemId;
+                    const isUsed = existingIncludedItemIds.includes(opt.id) && !isSelected;
+                    return (
+                      <Button
+                        key={opt.id}
+                        variant={isSelected ? 'secondary' : 'ghost'}
+                        size="sm"
+                        className="justify-start text-left"
+                        disabled={isUsed}
+                        onClick={() => {
+                          if (isSelected) {
+                            setItemSelectOpen(false);
+                            return;
+                          }
+                          if (isUsed) {
+                            toast({ title: 'Item already included' });
+                            return;
+                          }
+                          onChangeItemId(opt.id);
                           setItemSelectOpen(false);
-                          return;
-                        }
-                        if (isUsed) {
-                          toast({ title: 'Item already included' });
-                          return;
-                        }
-                        onChangeItemId(opt.id);
+                        }}
+                      >
+                        <div className="flex flex-col items-start">
+                          <span>{opt.displayName || opt.id}</span>
+                          <span className="text-xs text-muted-foreground">{opt.customerType.toUpperCase()} • {opt.id}</span>
+                        </div>
+                      </Button>
+                    );
+                  })}
+                  <div className="mt-1 border-t pt-1">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="justify-start text-primary"
+                      onClick={() => {
                         setItemSelectOpen(false);
+                        onCreateNewItem();
                       }}
                     >
-                      <div className="flex flex-col items-start">
-                        <span>{opt.displayName || opt.id}</span>
-                        <span className="text-xs text-muted-foreground">{opt.customerType.toUpperCase()} • {opt.id}</span>
-                      </div>
+                      <Plus className="mr-2 h-4 w-4" /> New Item
                     </Button>
-                  );
-                })}
-                <div className="pt-1 mt-1 border-t">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="justify-start text-primary"
-                    onClick={() => {
-                      setItemSelectOpen(false);
-                      onCreateNewItem();
-                    }}
-                  >
-                    <Plus className="h-4 w-4 mr-2" /> New Item
-                  </Button>
+                  </div>
                 </div>
-              </div>
-            </PopoverContent>
-          </Popover>
-          <div className="flex items-center gap-2">
+              </PopoverContent>
+            </Popover>
+          </div>
+          <div className="flex flex-col gap-1">
+            <Label className="text-[11px] font-medium uppercase tracking-[0.24em] text-muted-foreground">
+              Quantity
+            </Label>
             <Input
-              className="w-24 text-right tabular-nums"
+              className="h-10 w-full rounded-xl border border-border bg-background pr-3 text-right tabular-nums"
               inputMode="numeric"
               value={quantity}
               onChange={(e) => {
@@ -567,34 +607,37 @@ function ProductItemRow({
                 if (!readOnly && (v === '' || /^\d*$/.test(v))) updateParent(v);
               }}
             />
-            {onRemove && (
-              <button className="text-muted-foreground hover:text-foreground" onClick={onRemove} aria-label="Remove item">
-                <X className="h-4 w-4" />
-              </button>
-            )}
           </div>
         </div>
-        <div className="flex w-full items-center justify-between gap-2">
-          <div className="flex items-center gap-2">
+
+        <div className="mt-4 grid gap-4 sm:grid-cols-2">
+          <div className="flex flex-col gap-1">
+            <Label className="text-[11px] font-medium uppercase tracking-[0.24em] text-muted-foreground">
+              Purchase expires
+            </Label>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <div className="text-xs px-2 py-0.5 w-fit rounded bg-muted text-muted-foreground cursor-pointer select-none flex items-center gap-1">
-                  {item.expires === 'never' ? 'Never expires' : `${EXPIRES_OPTIONS.find(o => o.value === item.expires)?.label.toLowerCase()}`}
-                  <ChevronsUpDown className="h-4 w-4" />
-                </div>
+                <button className="flex h-10 w-full items-center justify-between rounded-xl border border-border bg-background px-3 text-sm font-medium">
+                  <span className="truncate">
+                    {item.expires === 'never'
+                      ? 'Never expires'
+                      : EXPIRES_OPTIONS.find(o => o.value === item.expires)?.label ?? 'Custom'}
+                  </span>
+                  <ChevronsUpDown className="h-4 w-4 text-muted-foreground" />
+                </button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" className="p-2">
+              <DropdownMenuContent align="start" className="w-64 p-2">
                 <div className="flex flex-col gap-2">
                   {EXPIRES_OPTIONS.map((option) => (
-                    <DropdownMenuItem key={option.value}>
+                    <DropdownMenuItem key={option.value} className="p-0">
                       <Button
-                        key={option.value}
                         variant="ghost"
                         size="sm"
-                        className="flex flex-col items-start"
+                        className="flex w-full flex-col items-start text-left"
                         onClick={() => {
                           onSave(itemId, { ...item, expires: option.value });
-                        }}>
+                        }}
+                      >
                         {option.label}
                         <span className="text-xs text-muted-foreground">{option.description}</span>
                       </Button>
@@ -604,83 +647,99 @@ function ProductItemRow({
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
-          <IntervalPopover
-            readOnly={readOnly}
-            intervalText={repeatText}
-            intervalSelection={repeatSelection}
-            unit={repeatUnit}
-            count={repeatCount}
-            setIntervalSelection={setRepeatSelection}
-            setUnit={setRepeatUnit}
-            setCount={setRepeatCount}
-            noneLabel="one time"
-            onChange={(interval) => {
-              if (readOnly) return;
-              const updated: Product['includedItems'][string] = {
-                ...item,
-                repeat: interval ? interval : 'never',
-              };
-              onSave(itemId, updated);
-            }}
-          />
+          <div className="flex flex-col gap-1">
+            <Label className="text-[11px] font-medium uppercase tracking-[0.24em] text-muted-foreground">
+              Repeat
+            </Label>
+            <IntervalPopover
+              readOnly={readOnly}
+              intervalText={repeatText}
+              intervalSelection={repeatSelection}
+              unit={repeatUnit}
+              count={repeatCount}
+              setIntervalSelection={setRepeatSelection}
+              setUnit={setRepeatUnit}
+              setCount={setRepeatCount}
+              noneLabel="one time"
+              triggerClassName="flex h-10 w-full items-center justify-between rounded-xl border border-border bg-background px-3 text-sm font-medium capitalize"
+              onChange={(interval) => {
+                if (readOnly) return;
+                const updated: Product['includedItems'][string] = {
+                  ...item,
+                  repeat: interval ? interval : 'never',
+                };
+                onSave(itemId, updated);
+              }}
+            />
+          </div>
         </div>
+
+        {onRemove && (
+          <button
+            className="absolute right-4 top-4 text-muted-foreground transition-colors hover:text-foreground"
+            onClick={onRemove}
+            aria-label="Remove item"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        )}
       </div>
     );
-  }
-
-  return (
-    <div className="flex flex-row">
-      <div className="flex items-center gap-2 w-full">
-        <Collapsible open={isOpen} onOpenChange={setIsOpen} className="w-full">
-          <div className="flex items-center gap-2 w-full">
-            <CollapsibleTrigger asChild>
-              <button className="h-5 w-5 inline-flex items-center justify-center rounded hover:bg-muted">
-                <ChevronDown className={cn("h-4 w-4 transition-transform", isOpen ? "rotate-0" : "-rotate-90")} />
-              </button>
-            </CollapsibleTrigger >
-            <div className="text-sm">{itemDisplayName}</div>
-            <div className="ml-auto w-16 text-right text-sm text-muted-foreground tabular-nums">{prettyPrintWithMagnitudes(item.quantity)}</div>
-            <div className="ml-2">
-              <div className="text-xs px-2 py-0.5 rounded bg-muted text-muted-foreground">{shortRepeatText}</div>
-            </div>
-            {
-              !readOnly && (
-                <>
-                  <button
-                    className="ml-2 text-muted-foreground hover:text-foreground"
-                    onClick={() => setIsEditing(true)}
-                    aria-label="Edit item"
-                  >
-                    <Pencil className="h-4 w-4" />
-                  </button>
-                  {onRemove && (
-                    <button className="text-destructive ml-1" onClick={onRemove} aria-label="Remove item">
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  )}
-                </>
-              )
-            }
-          </div >
-          <CollapsibleContent>
-            <div className="mt-2 space-y-2">
-              <div className="text-xs pl-7 text-muted-foreground">{item.expires !== 'never' ? `Expires: ${String(item.expires).replace(/-/g, ' ')}` : 'Never expires'}</div>
-              <div className="text-xs">
-                <CodeBlock
-                  language="typescript"
-                  content={`const item = await ${activeType === "user" ? "user" : "team"}.getItem("${itemId}");\nconst count = item.quantity;\n`}
-                  title="Example"
-                  icon="code"
-                  compact
-                  tooltip="Retrieves this item for the active customer and reads the current quantity they hold."
-                />
+  } else {
+    return (
+      <div className="flex flex-row">
+        <div className="flex items-center gap-2 w-full">
+          <Collapsible open={isOpen} onOpenChange={setIsOpen} className="w-full">
+            <div className="flex items-center gap-2 w-full">
+              <CollapsibleTrigger asChild>
+                <button className="h-5 w-5 inline-flex items-center justify-center rounded hover:bg-muted">
+                  <ChevronDown className={cn("h-4 w-4 transition-transform", isOpen ? "rotate-0" : "-rotate-90")} />
+                </button>
+              </CollapsibleTrigger >
+              <div className="text-sm">{itemDisplayName}</div>
+              <div className="ml-auto w-16 text-right text-sm text-muted-foreground tabular-nums">{prettyPrintWithMagnitudes(item.quantity)}</div>
+              <div className="ml-2">
+                <div className="text-xs px-2 py-0.5 rounded bg-muted text-muted-foreground">{shortRepeatText}</div>
               </div>
-            </div>
-          </CollapsibleContent>
-        </Collapsible >
+              {
+                !readOnly && (
+                  <>
+                    <button
+                      className="ml-2 text-muted-foreground hover:text-foreground"
+                      onClick={() => setIsEditing(true)}
+                      aria-label="Edit item"
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </button>
+                    {onRemove && (
+                      <button className="text-destructive ml-1" onClick={onRemove} aria-label="Remove item">
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    )}
+                  </>
+                )
+              }
+            </div >
+            <CollapsibleContent>
+              <div className="mt-2 space-y-2">
+                <div className="text-xs pl-7 text-muted-foreground">{item.expires !== 'never' ? `Expires: ${String(item.expires).replace(/-/g, ' ')}` : 'Never expires'}</div>
+                <div className="text-xs">
+                  <CodeBlock
+                    language="typescript"
+                    content={`const item = await ${activeType === "user" ? "user" : "team"}.getItem("${itemId}");\nconst count = item.quantity;\n`}
+                    title="Example"
+                    icon="code"
+                    compact
+                    tooltip="Retrieves this item for the active customer and reads the current quantity they hold."
+                  />
+                </div>
+              </div>
+            </CollapsibleContent>
+          </Collapsible >
+        </div >
       </div >
-    </div >
-  );
+    );
+  }
 }
 
 
@@ -707,6 +766,9 @@ function ProductCard({ id, activeType, product, allProducts, existingItems, onSa
   const cardRef = useRef<HTMLDivElement | null>(null);
   const [hasAutoScrolled, setHasAutoScrolled] = useState(false);
   const [localProductId, setLocalProductId] = useState<string>(id);
+  const [currentHash, setCurrentHash] = useState<string | null>(null);
+  const hashAnchor = `#product-${id}`;
+  const isHashTarget = currentHash === hashAnchor;
 
   useEffect(() => {
     setDraft(product);
@@ -719,6 +781,27 @@ function ProductCard({ id, activeType, product, allProducts, existingItems, onSa
       setHasAutoScrolled(true);
     }
   }, [isDraft, hasAutoScrolled]);
+
+  useEffect(() => {
+    const updateFromHash = () => {
+      if (window.location.hash === currentHash) return;
+      setCurrentHash(window.location.hash);
+    };
+    updateFromHash();
+    const interval = setInterval(() => updateFromHash(), 10);
+
+    const removeHashTarget = () => {
+      if (isHashTarget && window.location.hash === hashAnchor) {
+        window.history.replaceState(null, "", window.location.pathname + window.location.search);
+      }
+    };
+    window.addEventListener("click", removeHashTarget, { capture: true });
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener("click", removeHashTarget, { capture: true });
+    };
+  }, [currentHash, hashAnchor, isHashTarget]);
 
   const pricesObject: PricesObject = typeof draft.prices === 'object' ? draft.prices : {};
 
@@ -753,26 +836,35 @@ function ProductCard({ id, activeType, product, allProducts, existingItems, onSa
     });
   };
 
-  const renderPrimaryPrices = () => {
+  const renderPrimaryPrices = (mode: 'editing' | 'view') => {
     if (draft.prices === 'include-by-default') {
       return (
-        <div className="text-2xl text-center font-semibold">Free</div>
+        <div className={cn(
+          "text-xl font-semibold",
+          mode === 'view' ? "text-center" : ""
+        )}>
+          Free
+        </div>
       );
     }
     const entries = Object.entries(pricesObject);
     if (entries.length === 0) {
       return null;
     }
+    const showSeparators = mode === 'view';
     return (
-      <div className="space-y-3 shrink-0">
+      <div className={cn(
+        "shrink-0",
+        mode === 'view' ? "space-y-3 text-center" : "flex flex-col gap-3"
+      )}>
         {entries.map(([pid, price], index) => (
           <Fragment key={pid}>
             <ProductPriceRow
               key={pid}
               priceId={pid}
               price={price}
-              readOnly={!isEditing}
-              startEditing={isEditing}
+              readOnly={mode !== 'editing'}
+              startEditing={mode === 'editing'}
               existingPriceIds={entries.map(([k]) => k).filter(k => k !== pid)}
               onSave={(newId, newPrice) => {
                 const finalId = newId || pid;
@@ -795,7 +887,7 @@ function ProductCard({ id, activeType, product, allProducts, existingItems, onSa
               }}
               onRemove={() => handleRemovePrice(pid)}
             />
-            {index < entries.length - 1 && <OrSeparator />}
+            {showSeparators && index < entries.length - 1 && <OrSeparator />}
           </Fragment>
         ))}
       </div>
@@ -815,7 +907,7 @@ function ProductCard({ id, activeType, product, allProducts, existingItems, onSa
     visible: true,
     icon: <Server size={16} />,
     onToggle: () => setDraft(prev => ({ ...prev, serverOnly: !prev.serverOnly })),
-    wrapButton: (button: React.ReactNode) => button,
+    wrapButton: (button: ReactNode) => button,
   }, {
     key: 'stackable' as const,
     label: 'Stackable',
@@ -824,7 +916,7 @@ function ProductCard({ id, activeType, product, allProducts, existingItems, onSa
     visible: true,
     icon: <Layers size={16} />,
     onToggle: () => setDraft(prev => ({ ...prev, stackable: !prev.stackable })),
-    wrapButton: (button: React.ReactNode) => button,
+    wrapButton: (button: ReactNode) => button,
   }, {
     key: 'addon' as const,
     label: 'Add-on',
@@ -833,7 +925,7 @@ function ProductCard({ id, activeType, product, allProducts, existingItems, onSa
     active: draft.isAddOnTo !== false,
     icon: <Puzzle size={16} />,
     onToggle: isAddOnTo.length === 0 && draft.isAddOnTo !== false ? () => setDraft(prev => ({ ...prev, isAddOnTo: false })) : undefined,
-    wrapButton: (button: React.ReactNode) => isAddOnTo.length === 0 && draft.isAddOnTo !== false ? button : (
+    wrapButton: (button: ReactNode) => isAddOnTo.length === 0 && draft.isAddOnTo !== false ? button : (
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           {button}
@@ -862,90 +954,141 @@ function ProductCard({ id, activeType, product, allProducts, existingItems, onSa
     ),
   }] as const;
 
-  return (
-    <div ref={cardRef} className={cn(
-      "rounded-lg border bg-background w-[280px] flex flex-col relative group shrink-0 pb-4",
-      isEditing && "border-foreground/60 dark:border-foreground/40"
-    )}>
-      <div className="pt-4 px-4 flex flex-col items-center justify-center">
-        <div className="flex justify-center flex-col gap-0.5 items-center w-full">
-          <ProductEditableInput
-            value={localProductId}
-            onUpdate={async (value) => setLocalProductId(value)}
-            readOnly={!isDraft || !isEditing}
-            placeholder={"Product ID"}
-            inputClassName="text-xs font-mono text-center text-muted-foreground"
-            transform={(value) => value.toLowerCase()}
-          />
-          <ProductEditableInput
-            value={draft.displayName || ""}
-            onUpdate={async (value) => setDraft(prev => ({ ...prev, displayName: value }))}
-            readOnly={!isEditing}
-            placeholder={"Product display name"}
-            inputClassName="text-lg font-bold text-center w-full"
-          />
-        </div>
-        {!isEditing && (
-          <div className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity">
-            <button className="h-7 w-7 inline-flex items-center justify-center rounded hover:bg-muted" aria-label="Edit product" onClick={() => {
-              setIsEditing(true);
-              setDraft(product);
-            }}>
-              <PencilIcon className="h-4 w-4" />
-            </button>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <button className="h-7 w-7 inline-flex items-center justify-center rounded hover:bg-muted" aria-label="Open menu">
-                  <MoreVertical className="h-4 w-4" />
+  const handleCancelEdit = () => {
+    if (isDraft && onCancelDraft) {
+      onCancelDraft();
+      return;
+    }
+    setIsEditing(false);
+    setDraft(product);
+    setLocalProductId(id);
+    setEditingPriceId(undefined);
+  };
+
+  const handleSaveEdit = async () => {
+    const trimmed = localProductId.trim();
+    const validId = trimmed && /^[a-z0-9-]+$/.test(trimmed) ? trimmed : id;
+    if (validId !== id) {
+      await onSave(validId, draft);
+      await onDelete(id);
+    } else {
+      await onSave(id, draft);
+    }
+    setIsEditing(false);
+    setEditingPriceId(undefined);
+  };
+
+  const renderToggleButtons = (mode: 'editing' | 'view') => {
+    const getLabel = (b: typeof PRODUCT_TOGGLE_OPTIONS[number], editing: boolean) => {
+      if (b.key === "addon" && isAddOnTo.length > 0) {
+        return <span>
+          Add-on to {isAddOnTo.map((o, i) => (
+            <>
+              {i > 0 && ", "}
+              {editing ? o.product.displayName : (
+                <Link className="underline hover:text-primary" href={`#product-${o.id}`}>
+                  {o.product.displayName}
+                </Link>
+              )}
+            </>
+          ))}
+        </span>;
+      }
+      return b.label;
+    };
+    return mode === 'editing' ? (
+      PRODUCT_TOGGLE_OPTIONS
+        .filter(b => b.visible !== false)
+        .filter(b => b.active)
+        .map((b) => {
+          const wrap = b.wrapButton;
+          return (
+            <SimpleTooltip tooltip={b.description} key={b.key}>
+              {wrap(
+                <button
+                  key={b.key}
+                  className={cn(
+                    "flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-medium transition-colors",
+                    b.active
+                      ? "border-primary/40 bg-primary/10 text-primary"
+                      : "border-border bg-background/80 text-muted-foreground line-through"
+                  )}
+                  onClick={b.onToggle}
+                >
+                  {b.icon}
+                  {getLabel(b, true)}
                 </button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="min-w-[160px]">
-                <DropdownMenuItem onClick={() => {
-                  setIsEditing(true);
-                  setDraft(product);
-                }}>
-                  Edit
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => { onDuplicate(product); }}>
-                  Duplicate
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => { setShowDeleteDialog(true); }}>
-                  Delete
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+              )}
+            </SimpleTooltip>
+          );
+        })
+    ) : (
+      PRODUCT_TOGGLE_OPTIONS
+        .filter(b => b.visible !== false)
+        .filter(b => b.active)
+        .map((b) => {
+          return <span className="flex items-center gap-2 text-xs" key={b.key}>
+            {b.icon}
+            {getLabel(b, false)}
+          </span>;
+        })
+    );
+  };
+
+  const editingContent = (
+    <div className={cn("flex h-full flex-col rounded-3xl border border-border bg-background/95 shadow-lg transition-colors duration-600",
+      isHashTarget && "border-primary shadow-[0_0_0_1px_rgba(59,130,246,0.35)]"
+    )}>
+      <div className="flex flex-col gap-6 p-6">
+        <div>
+          <div className="text-xl font-semibold tracking-tight">
+            {isDraft ? "New product" : "Edit product"}
           </div>
-        )}
-      </div>
-      {/* Toggles row */}
-      <div className="px-4 pb-3 pt-1 flex flex-wrap gap-2 justify-center text-muted-foreground">
-        {PRODUCT_TOGGLE_OPTIONS.filter(b => b.visible !== false).filter(b => isEditing || b.active).map((b) => (
-          <SimpleTooltip tooltip={b.description} key={b.key}>
-            {(isEditing ? b.wrapButton : ((x: any) => x))(
-              <button
-                key={b.key}
-                className={cn("text-xs px-2 py-0.5 flex items-center gap-1 rounded-full",
-                  isEditing ? "border bg-muted/40 hover:bg-muted/60" : "bg-transparent",
-                  !b.active && "line-through text-muted-foreground",
-                )}
-                onClick={isEditing ? b.onToggle : undefined}
-              >
-                {b.icon}
-                {b.key === "addon" && isAddOnTo.length > 0 ? `Add-on to ${isAddOnTo.map(o => o.product.displayName).join(", ")}` : b.label}
-              </button>
-            )}
-          </SimpleTooltip>
-        ))}
-      </div>
-      <div className="px-4 py-4 border-y border-border">
-        {renderPrimaryPrices()}
-        {isEditing && draft.prices !== 'include-by-default' && (
-          <>
-            {Object.keys(draft.prices).length > 0 && <OrSeparator />}
+        </div>
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="flex flex-col gap-1">
+            <Label className="text-[11px] font-medium uppercase tracking-[0.24em] text-muted-foreground">
+              Offer Name
+            </Label>
+            <Input
+              className="h-10 rounded-xl border border-border bg-background px-3 text-sm"
+              value={draft.displayName || ""}
+              onChange={(event) => {
+                const value = event.target.value;
+                setDraft(prev => ({ ...prev, displayName: value }));
+              }}
+              placeholder="Offer name"
+            />
+          </div>
+          <div className="flex flex-col gap-1">
+            <Label className="text-[11px] font-medium uppercase tracking-[0.24em] text-muted-foreground">
+              Offer ID
+            </Label>
+            <Input
+              className="h-10 rounded-xl border border-border bg-background px-3 text-sm"
+              value={localProductId}
+              onChange={(event) => {
+                const value = event.target.value.toLowerCase().replace(/[^a-z0-9_\-]/g, '-');
+                setLocalProductId(value);
+              }}
+              placeholder="offer-id"
+              readOnly={!isDraft}
+            />
+          </div>
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          {renderToggleButtons('editing')}
+        </div>
+
+        <SectionHeading label="Prices" />
+        <div className="flex flex-col gap-3">
+          {renderPrimaryPrices('editing')}
+          {draft.prices !== 'include-by-default' && (
             <Button
               variant="outline"
-              className="w-full h-20 border-dashed border"
+              className="flex h-10 w-full items-center justify-center gap-2 rounded-xl border border-dashed border-border/70 bg-background/80 text-sm font-medium"
               onClick={() => {
                 const tempId = `price-${Date.now().toString(36).slice(2, 8)}`;
                 const newPrice: Price = { USD: '0.00', serverOnly: false };
@@ -959,17 +1102,19 @@ function ProductCard({ id, activeType, product, allProducts, existingItems, onSa
                 setEditingPriceId(tempId);
               }}
             >
-              + Add Price
+              <Plus className="h-4 w-4" />
+              Add Price
             </Button>
-          </>
-        )}
-      </div>
+          )}
+        </div>
 
-      <div className="px-4 py-3">
+        <SectionHeading label="Includes" />
         {itemsList.length === 0 ? (
-          <div className="text-sm text-muted-foreground text-center">No items yet</div>
+          <div className="rounded-2xl border border-dashed border-border/70 bg-background/50 py-6 text-center text-sm text-muted-foreground">
+            No items yet
+          </div>
         ) : (
-          <div className="space-y-2">
+          <div className="flex flex-col gap-4">
             {itemsList.map(([itemId, item]) => {
               const itemMeta = existingItems.find(i => i.id === itemId);
               const itemLabel = itemMeta ? itemMeta.id : 'Select item';
@@ -982,8 +1127,8 @@ function ProductCard({ id, activeType, product, allProducts, existingItems, onSa
                   itemDisplayName={itemLabel}
                   allItems={existingItems}
                   existingIncludedItemIds={Object.keys(draft.includedItems).filter(id => id !== itemId)}
-                  startEditing={isEditing}
-                  readOnly={!isEditing}
+                  startEditing={true}
+                  readOnly={false}
                   onSave={(id, updated) => handleAddOrEditIncludedItem(id, updated)}
                   onChangeItemId={(newItemId) => {
                     setDraft(prev => {
@@ -998,7 +1143,156 @@ function ProductCard({ id, activeType, product, allProducts, existingItems, onSa
                       return { ...prev, includedItems: next };
                     });
                   }}
-                  onRemove={isEditing ? () => handleRemoveIncludedItem(itemId) : undefined}
+                  onRemove={() => handleRemoveIncludedItem(itemId)}
+                  onCreateNewItem={onCreateNewItem}
+                />
+              );
+            })}
+          </div>
+        )}
+        <Button
+          variant="outline"
+          className="flex h-10 w-full items-center justify-center gap-2 rounded-xl border border-dashed border-border/70 bg-background/80 text-sm font-medium"
+          onClick={() => {
+            const available = existingItems.find(i => !Object.prototype.hasOwnProperty.call(draft.includedItems, i.id));
+            const newItemId = available?.id || `__new_item__${Date.now().toString(36).slice(2, 8)}`;
+            const newItem: Product['includedItems'][string] = { quantity: 1, repeat: 'never', expires: 'never' };
+            setDraft(prev => ({
+              ...prev,
+              includedItems: {
+                ...prev.includedItems,
+                [newItemId]: newItem,
+              }
+            }));
+          }}
+        >
+          <Plus className="h-4 w-4" />
+          Add Item
+        </Button>
+
+        <div className="mt-4 flex items-center justify-between gap-3">
+          <button
+            className="flex h-10 w-10 items-center justify-center rounded-xl text-destructive transition-colors hover:bg-destructive/10"
+            onClick={() => {
+              if (isDraft && onCancelDraft) {
+                onCancelDraft();
+              } else {
+                setShowDeleteDialog(true);
+              }
+            }}
+            aria-label="Delete offer"
+          >
+            <Trash2 className="h-5 w-5" />
+          </button>
+          <div className="ml-auto flex items-center gap-2">
+            <Button
+              variant="ghost"
+              className="rounded-xl px-4"
+              onClick={handleCancelEdit}
+            >
+              Cancel
+            </Button>
+            <SimpleTooltip tooltip={saveDisabledReason} disabled={canSaveProduct}>
+              <Button
+                className="h-10 rounded-xl px-6"
+                disabled={!canSaveProduct}
+                onClick={async () => { await handleSaveEdit(); }}
+              >
+                Save
+              </Button>
+            </SimpleTooltip>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
+  const viewingContent = (
+    <div className={cn("group relative flex flex-col rounded-2xl border bg-background pb-4 transition-colors",
+      isHashTarget && "border-primary shadow-[0_0_0_1px_rgba(59,130,246,0.35)]"
+    )}>
+      <div className="flex flex-col items-center justify-center px-4 pt-4">
+        <div className="flex w-full flex-col items-center justify-center gap-0.5">
+          <ProductEditableInput
+            value={localProductId}
+            onUpdate={(value) => setLocalProductId(value)}
+            readOnly
+            placeholder={"Product ID"}
+            inputClassName="text-xs font-mono text-center text-muted-foreground"
+            transform={(value) => value.toLowerCase()}
+          />
+          <ProductEditableInput
+            value={draft.displayName || ""}
+            onUpdate={(value) => setDraft(prev => ({ ...prev, displayName: value }))}
+            readOnly
+            placeholder={"Product display name"}
+            inputClassName="text-lg font-bold text-center w-full"
+          />
+        </div>
+        <div className="absolute right-4 top-4 opacity-0 transition-opacity group-hover:opacity-100">
+          <button
+            className="inline-flex h-7 w-7 items-center justify-center rounded hover:bg-muted"
+            aria-label="Edit product"
+            onClick={() => {
+              setIsEditing(true);
+              setDraft(product);
+            }}
+          >
+            <PencilIcon className="h-4 w-4" />
+          </button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button className="inline-flex h-7 w-7 items-center justify-center rounded hover:bg-muted" aria-label="Open menu">
+                <MoreVertical className="h-4 w-4" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="min-w-[160px]">
+              <DropdownMenuItem onClick={() => {
+                setIsEditing(true);
+                setDraft(product);
+              }}>
+                Edit
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => { onDuplicate(product); }}>
+                Duplicate
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => { setShowDeleteDialog(true); }}>
+                Delete
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      </div>
+      <div className="flex flex-wrap justify-center gap-2 px-4 pb-3 pt-1 text-muted-foreground">
+        {renderToggleButtons('view')}
+      </div>
+      <div className="border-y border-border px-4 py-4">
+        {renderPrimaryPrices('view')}
+      </div>
+
+      <div className="px-4 py-3">
+        {itemsList.length === 0 ? (
+          <div className="text-center text-sm text-muted-foreground">No items yet</div>
+        ) : (
+          <div className="space-y-2">
+            {itemsList.map(([itemId, item]) => {
+              const itemMeta = existingItems.find(i => i.id === itemId);
+              const itemLabel = itemMeta ? itemMeta.id : 'Select item';
+              return (
+                <ProductItemRow
+                  key={itemId}
+                  activeType={activeType}
+                  itemId={itemId}
+                  item={item}
+                  itemDisplayName={itemLabel}
+                  allItems={existingItems}
+                  existingIncludedItemIds={Object.keys(draft.includedItems).filter(id => id !== itemId)}
+                  startEditing={false}
+                  readOnly
+                  onSave={(id, updated) => handleAddOrEditIncludedItem(id, updated)}
+                  onChangeItemId={(_newItemId) => { }}
+                  onRemove={undefined}
                   onCreateNewItem={onCreateNewItem}
                 />
               );
@@ -1006,71 +1300,7 @@ function ProductCard({ id, activeType, product, allProducts, existingItems, onSa
           </div>
         )}
       </div>
-      {
-        isEditing && (
-          <div className="px-4 pb-4">
-            <Button
-              variant="outline"
-              className="w-full h-14 border-dashed border"
-              onClick={() => {
-                const available = existingItems.find(i => !Object.prototype.hasOwnProperty.call(draft.includedItems, i.id));
-                const newItemId = available?.id || `__new_item__${Date.now().toString(36).slice(2, 8)}`;
-                const newItem: Product['includedItems'][string] = { quantity: 1, repeat: 'never', expires: 'never' };
-                setDraft(prev => ({
-                  ...prev,
-                  includedItems: {
-                    ...prev.includedItems,
-                    [newItemId]: newItem,
-                  }
-                }));
-              }}>
-              + Add Item
-            </Button>
-          </div>
-        )
-      }
-      {isEditing && (
-        <div className="px-4 mt-auto">
-          <div className="flex justify-end gap-2">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => {
-                if (isDraft && onCancelDraft) {
-                  onCancelDraft();
-                  return;
-                }
-                setIsEditing(false);
-                setDraft(product);
-                setEditingPriceId(undefined);
-              }}
-            >
-              Cancel
-            </Button>
-            <SimpleTooltip tooltip={saveDisabledReason} disabled={canSaveProduct}>
-              <Button
-                size="sm"
-                onClick={async () => {
-                  const trimmed = localProductId.trim();
-                  const validId = trimmed && /^[a-z0-9-]+$/.test(trimmed) ? trimmed : id;
-                  if (validId !== id) {
-                    await onSave(validId, draft);
-                    await onDelete(id);
-                  } else {
-                    await onSave(id, draft);
-                  }
-                  setIsEditing(false);
-                  setEditingPriceId(undefined);
-                }}
-                disabled={!canSaveProduct}
-              >
-                Save
-              </Button>
-            </SimpleTooltip>
-          </div>
-        </div>
-      )}
-      {!isEditing && activeType !== "custom" && (
+      {activeType !== "custom" && (
         <div className="border-t p-4">
           <CodeBlock
             language="typescript"
@@ -1082,6 +1312,19 @@ function ProductCard({ id, activeType, product, allProducts, existingItems, onSa
           />
         </div>
       )}
+    </div>
+  );
+
+  return (
+    <div
+      ref={cardRef}
+      id={`product-${id}`}
+      className={cn(
+        "shrink-0 transition-all",
+        isEditing ? "w-[420px]" : "w-[320px]"
+      )}
+    >
+      {isEditing ? editingContent : viewingContent}
 
       <ActionDialog
         open={showDeleteDialog}
@@ -1115,7 +1358,8 @@ type CatalogViewProps = {
 };
 
 function CatalogView({ groupedProducts, groups, existingItems, onSaveProduct, onDeleteProduct, onCreateNewItem, onOpenProductDetails, onSaveProductWithGroup }: CatalogViewProps) {
-  const [activeType, setActiveType] = useState<'user' | 'team' | 'custom'>('user');
+  const [activeTypeUnfiltered, setActiveType] = useQueryState('catalog_type', 'user');
+  const activeType = typedIncludes(['user', 'team', 'custom'] as const, activeTypeUnfiltered) ? activeTypeUnfiltered : 'user';
   const [drafts, setDrafts] = useState<Array<{ key: string, catalogId: string | undefined, product: Product }>>([]);
   const [creatingGroupKey, setCreatingGroupKey] = useState<string | undefined>(undefined);
   const [newCatalogId, setNewCatalogId] = useState("");
@@ -1305,32 +1549,31 @@ function CatalogView({ groupedProducts, groups, existingItems, onSaveProduct, on
                     />
                   ))}
                   {!isNewGroupPlaceholder && (
-                    <div className="self-stretch border border-dashed rounded-lg w-[150px] py-8 flex flex-col items-center justify-center bg-background">
+                    <Button
+                      variant="outline"
+                      size="plain"
+                      className="self-stretch border border-dashed rounded-xl w-[320px] py-32 flex flex-col items-center justify-center bg-background"
+                      onClick={() => {
+                        const key = generateProductId("product");
+                        const newProduct: Product = {
+                          displayName: 'New Product',
+                          customerType: activeType,
+                          catalogId: catalogId || undefined,
+                          isAddOnTo: false,
+                          stackable: false,
+                          prices: {},
+                          includedItems: {},
+                          serverOnly: false,
+                          freeTrial: undefined,
+                        };
+                        setDrafts(prev => [...prev, { key, catalogId, product: newProduct }]);
+                      }}
+                    >
                       <div className="flex flex-col items-center gap-2">
-                        <Button
-                          variant="outline"
-                          className="h-10 w-10 rounded-full p-0"
-                          onClick={() => {
-                            const key = generateProductId("product");
-                            const newProduct: Product = {
-                              displayName: 'New Product',
-                              customerType: activeType,
-                              catalogId: catalogId || undefined,
-                              isAddOnTo: false,
-                              stackable: false,
-                              prices: {},
-                              includedItems: {},
-                              serverOnly: false,
-                              freeTrial: undefined,
-                            };
-                            setDrafts(prev => [...prev, { key, catalogId, product: newProduct }]);
-                          }}
-                        >
-                          <Plus className="h-8 w-8" />
-                        </Button>
+                        <Plus className="h-8 w-8" />
                         Create product
                       </div>
-                    </div>
+                    </Button>
                   )}
                 </div>
               </div>
@@ -1338,95 +1581,39 @@ function CatalogView({ groupedProducts, groups, existingItems, onSaveProduct, on
           </div>
         );
       })}
-      {/* TODO: Add new catalog is temporarily disabled, uncomment this to enable it
-      <div className="w-full h-40 flex items-center justify-center border border-dashed rounded-lg">
+      <Button
+        variant="outline"
+        size="plain"
+        className="w-full h-40 flex items-center justify-center border border-dashed rounded-xl"
+        onClick={() => {
+          const tempKey = `__new_catalog__${Date.now().toString(36).slice(2, 8)}`;
+          setCreatingGroupKey(tempKey);
+          setNewCatalogId("");
+          const draftKey = generateProductId("product");
+          const newProduct: Product = {
+            displayName: 'New Product',
+            customerType: activeType,
+            catalogId: tempKey,
+            isAddOnTo: false,
+            stackable: false,
+            prices: {},
+            includedItems: {},
+            serverOnly: false,
+            freeTrial: undefined,
+          };
+          setDrafts(prev => [...prev, { key: draftKey, catalogId: tempKey, product: newProduct }]);
+        }}
+      >
         <div className="flex flex-col items-center gap-2">
-          <Button
-            variant="outline"
-            className="h-10 w-10 rounded-full p-0"
-            disabled={!!creatingGroupKey}
-            onClick={() => {
-              const tempKey = `__new_catalog__${Date.now().toString(36).slice(2, 8)}`;
-              setCreatingGroupKey(tempKey);
-              setNewCatalogId("");
-              const draftKey = generateProductId("product");
-              const newProduct: Product = {
-                displayName: 'New Product',
-                customerType: activeType,
-                catalogId: tempKey,
-                isAddOnTo: false,
-                stackable: false,
-                prices: {},
-                includedItems: {},
-                serverOnly: false,
-                freeTrial: undefined,
-              };
-              setDrafts(prev => [...prev, { key: draftKey, catalogId: tempKey, product: newProduct }]);
-            }}
-          >
-            <Plus className="h-8 w-8" />
-          </Button>
+          <Plus className="h-8 w-8" />
           Create catalog
         </div>
-      </div>
-      */}
-    </div>
-  );
-}
-
-function WelcomeScreen({ onCreateProduct }: { onCreateProduct: () => void }) {
-  return (
-    <div className="flex flex-col items-center justify-center h-full px-4 py-12 max-w-3xl mx-auto">
-      <IllustratedInfo
-        illustration={(
-          <div className="grid grid-cols-3 gap-2">
-            {/* Simple pricing table representation */}
-            <div className="bg-background rounded p-3 shadow-sm">
-              <div className="h-2 bg-muted rounded mb-2"></div>
-              <div className="h-8 bg-primary/20 rounded mb-2"></div>
-              <div className="space-y-1">
-                <div className="h-1.5 bg-muted rounded"></div>
-                <div className="h-1.5 bg-muted rounded"></div>
-                <div className="h-1.5 bg-muted rounded"></div>
-              </div>
-            </div>
-            <div className="bg-background rounded p-3 shadow-sm border-2 border-primary">
-              <div className="h-2 bg-muted rounded mb-2"></div>
-              <div className="h-8 bg-primary/40 rounded mb-2"></div>
-              <div className="space-y-1">
-                <div className="h-1.5 bg-muted rounded"></div>
-                <div className="h-1.5 bg-muted rounded"></div>
-                <div className="h-1.5 bg-muted rounded"></div>
-              </div>
-            </div>
-            <div className="bg-background rounded p-3 shadow-sm">
-              <div className="h-2 bg-muted rounded mb-2"></div>
-              <div className="h-8 bg-primary/20 rounded mb-2"></div>
-              <div className="space-y-1">
-                <div className="h-1.5 bg-muted rounded"></div>
-                <div className="h-1.5 bg-muted rounded"></div>
-                <div className="h-1.5 bg-muted rounded"></div>
-              </div>
-            </div>
-          </div>
-        )}
-        title="Welcome to Payments!"
-        description={[
-          <>Stack Auth Payments is built on two primitives: products and items.</>,
-          <>Products are what customers buy — the columns of your pricing table. Each product has one or more prices and may or may not include items.</>,
-          <>Items are what customers receive — the rows of your pricing table. A user can hold multiple of the same item. Items are powerful; they can unlock feature access, raise limits, or meter consumption for usage-based billing.</>,
-          <>Create your first product to get started!</>,
-        ]}
-      />
-      <Button onClick={onCreateProduct}>
-        <Plus className="h-4 w-4 mr-2" />
-        Create Your First Product
       </Button>
     </div>
   );
 }
 
-export default function PageClient({ onViewChange }: { onViewChange: (view: "list" | "catalogs") => void }) {
+export default function PageClient() {
   const [showProductDialog, setShowProductDialog] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [showItemDialog, setShowItemDialog] = useState(false);
@@ -1434,10 +1621,6 @@ export default function PageClient({ onViewChange }: { onViewChange: (view: "lis
   const stackAdminApp = useAdminApp();
   const project = stackAdminApp.useProject();
   const config = project.useConfig();
-  const [shouldUseDummyData, setShouldUseDummyData] = useState(false);
-  const switchId = useId();
-  const testModeSwitchId = useId();
-  const [isUpdatingTestMode, setIsUpdatingTestMode] = useState(false);
   const paymentsConfig: CompleteConfig['payments'] = config.payments;
 
 
@@ -1522,15 +1705,6 @@ export default function PageClient({ onViewChange }: { onViewChange: (view: "lis
     return sortedGroups;
   }, [paymentsConfig]);
 
-
-  // Check if there are no products and no items
-  const hasNoProductsAndNoItems = Object.keys(paymentsConfig.products).length === 0 && Object.keys(paymentsConfig.items).length === 0;
-
-  // Handler for create product button
-  const handleCreateProduct = () => {
-    setShowProductDialog(true);
-  };
-
   // Handler for create item button
   const handleCreateItem = () => {
     setShowItemDialog(true);
@@ -1575,65 +1749,28 @@ export default function PageClient({ onViewChange }: { onViewChange: (view: "lis
     toast({ title: "Product deleted" });
   };
 
-  const handleToggleTestMode = async (enabled: boolean) => {
-    setIsUpdatingTestMode(true);
-    try {
-      await project.updateConfig({ "payments.testMode": enabled });
-      toast({ title: enabled ? "Test mode enabled" : "Test mode disabled" });
-    } catch (_error) {
-      toast({ title: "Failed to update test mode", variant: "destructive" });
-    } finally {
-      setIsUpdatingTestMode(false);
-    }
-  };
-
-
-  // If no products and items, show welcome screen instead of everything
   const innerContent = (
-    <PageLayout
-      title='Products'
-      actions={
-        <div className="flex items-center gap-4 self-center">
-          <div className="flex items-center gap-2">
-            <Label htmlFor={switchId}>Pricing table</Label>
-            <Switch id={switchId} checked={false} onCheckedChange={() => onViewChange("list")} />
-            <Label htmlFor={switchId}>List</Label>
-          </div>
-          <Separator orientation="vertical" className="h-6" />
-          <div className="flex items-center gap-2">
-            <Label htmlFor={testModeSwitchId}>Test mode</Label>
-            <Switch
-              id={testModeSwitchId}
-              checked={paymentsConfig.testMode === true}
-              disabled={isUpdatingTestMode}
-              onCheckedChange={(checked) => void handleToggleTestMode(checked)}
-            />
-          </div>
-        </div>
-      }
-    >
-      <div className="flex-1">
-        <CatalogView
-          groupedProducts={groupedProducts}
-          groups={paymentsConfig.catalogs}
-          existingItems={existingItemsList}
-          onSaveProduct={handleInlineSaveProduct}
-          onDeleteProduct={handleDeleteProduct}
-          onCreateNewItem={handleCreateItem}
-          onOpenProductDetails={(product) => {
+    <div className="flex-1">
+      <CatalogView
+        groupedProducts={groupedProducts}
+        groups={paymentsConfig.catalogs}
+        existingItems={existingItemsList}
+        onSaveProduct={handleInlineSaveProduct}
+        onDeleteProduct={handleDeleteProduct}
+        onCreateNewItem={handleCreateItem}
+        onOpenProductDetails={(product) => {
             setEditingProduct(product);
             setShowProductDialog(true);
-          }}
-          onSaveProductWithGroup={async (catalogId, productId, product) => {
-            await project.updateConfig({
-              [`payments.catalogs.${catalogId}`]: {},
-              [`payments.products.${productId}`]: product,
-            });
+        }}
+        onSaveProductWithGroup={async (catalogId, productId, product) => {
+          await project.updateConfig({
+            [`payments.catalogs.${catalogId}`]: {},
+            [`payments.products.${productId}`]: product,
+          });
             toast({ title: "Product created" });
-          }}
-        />
-      </div>
-    </PageLayout>
+        }}
+      />
+    </div>
   );
 
   return (
