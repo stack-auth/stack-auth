@@ -12,7 +12,7 @@ npx @stackframe/init-stack@latest
 
 ## Get Started
 
-[Create a new Stack Auth project](https://app.stack-auth.com) and set the environment variables in Convex to the project ID & API key environment variables from the Stack Auth dashboard.
+[Create a new Stack Auth project](https://app.stack-auth.com) and set the environment variables in Convex to the project ID & API key environment variables from the Stack Auth dashboard. Also, add the same values to the `.env.local` file.
 
 Next, update or create a file in `convex/auth.config.ts`:
 
