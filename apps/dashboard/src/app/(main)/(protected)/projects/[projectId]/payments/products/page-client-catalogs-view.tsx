@@ -39,7 +39,7 @@ import { Fragment, useEffect, useId, useMemo, useRef, useState } from "react";
 import { IllustratedInfo } from "../../../../../../../components/illustrated-info";
 import { PageLayout } from "../../page-layout";
 import { useAdminApp } from "../../use-admin-app";
-import { ItemDialog } from "./item-dialog";
+import { ItemDialog } from "@/components/payments/item-dialog";
 import { ProductDialog } from "./product-dialog";
 
 type Product = CompleteConfig['payments']['products'][keyof CompleteConfig['payments']['products']];
@@ -497,12 +497,14 @@ function ProductItemRow({
 
   if (isEditing) {
     return (
-      <div className="flex flex-col gap-1 mb-4">
-        <div className="flex flex-row">
+      <div className="flex flex-col gap-2 mb-4">
+        <div className="flex w-full items-center justify-between gap-2">
           <Popover open={itemSelectOpen} onOpenChange={setItemSelectOpen}>
             <PopoverTrigger>
               <div className="text-sm px-2 py-0.5 rounded bg-muted hover:bg-muted/70 cursor-pointer select-none flex items-center gap-1">
-                {itemId}
+                <span className="overflow-x-auto max-w-24">
+                  {itemDisplayName}
+                </span>
                 <ChevronsUpDown className="h-4 w-4" />
               </div>
             </PopoverTrigger>
@@ -554,16 +556,54 @@ function ProductItemRow({
               </div>
             </PopoverContent>
           </Popover>
-          <Input
-            className="ml-auto w-20 text-right tabular-nums mr-2"
-            inputMode="numeric"
-            value={quantity}
-            onChange={(e) => {
-              const v = e.target.value;
-              if (v === '' || /^\d*$/.test(v)) setQuantity(v);
-              if (!readOnly && (v === '' || /^\d*$/.test(v))) updateParent(v);
-            }}
-          />
+          <div className="flex items-center gap-2">
+            <Input
+              className="w-24 text-right tabular-nums"
+              inputMode="numeric"
+              value={quantity}
+              onChange={(e) => {
+                const v = e.target.value;
+                if (v === '' || /^\d*$/.test(v)) setQuantity(v);
+                if (!readOnly && (v === '' || /^\d*$/.test(v))) updateParent(v);
+              }}
+            />
+            {onRemove && (
+              <button className="text-muted-foreground hover:text-foreground" onClick={onRemove} aria-label="Remove item">
+                <X className="h-4 w-4" />
+              </button>
+            )}
+          </div>
+        </div>
+        <div className="flex w-full items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <div className="text-xs px-2 py-0.5 w-fit rounded bg-muted text-muted-foreground cursor-pointer select-none flex items-center gap-1">
+                  {item.expires === 'never' ? 'Never expires' : `${EXPIRES_OPTIONS.find(o => o.value === item.expires)?.label.toLowerCase()}`}
+                  <ChevronsUpDown className="h-4 w-4" />
+                </div>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="p-2">
+                <div className="flex flex-col gap-2">
+                  {EXPIRES_OPTIONS.map((option) => (
+                    <DropdownMenuItem key={option.value}>
+                      <Button
+                        key={option.value}
+                        variant="ghost"
+                        size="sm"
+                        className="flex flex-col items-start"
+                        onClick={() => {
+                          onSave(itemId, { ...item, expires: option.value });
+                        }}>
+                        {option.label}
+                        <span className="text-xs text-muted-foreground">{option.description}</span>
+                      </Button>
+                    </DropdownMenuItem>
+                  ))}
+                </div>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
           <IntervalPopover
             readOnly={readOnly}
             intervalText={repeatText}
@@ -583,41 +623,6 @@ function ProductItemRow({
               onSave(itemId, updated);
             }}
           />
-          {onRemove && (
-            <button className="ml-auto" onClick={onRemove} aria-label="Remove item">
-              <X className="h-4 w-4" />
-            </button>
-          )}
-        </div>
-        <div className="flex flex-row items-center gap-2">
-          <span className="text-xs text-muted-foreground">Expires:</span>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <div className="text-xs px-2 py-0.5 w-fit rounded bg-muted text-muted-foreground cursor-pointer select-none flex items-center gap-1">
-                {item.expires === 'never' ? 'Never expires' : `${EXPIRES_OPTIONS.find(o => o.value === item.expires)?.label.toLowerCase()}`}
-                <ChevronsUpDown className="h-4 w-4" />
-              </div>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="p-2">
-              <div className="flex flex-col gap-2">
-                {EXPIRES_OPTIONS.map((option) => (
-                  <DropdownMenuItem key={option.value}>
-                    <Button
-                      key={option.value}
-                      variant="ghost"
-                      size="sm"
-                      className="flex flex-col items-start"
-                      onClick={() => {
-                        onSave(itemId, { ...item, expires: option.value });
-                      }}>
-                      {option.label}
-                      <span className="text-xs text-muted-foreground">{option.description}</span>
-                    </Button>
-                  </DropdownMenuItem>
-                ))}
-              </div>
-            </DropdownMenuContent>
-          </DropdownMenu>
         </div>
       </div>
     );
@@ -633,7 +638,7 @@ function ProductItemRow({
                 <ChevronDown className={cn("h-4 w-4 transition-transform", isOpen ? "rotate-0" : "-rotate-90")} />
               </button>
             </CollapsibleTrigger >
-            <div className="text-sm">{itemId}</div>
+            <div className="text-sm">{itemDisplayName}</div>
             <div className="ml-auto w-16 text-right text-sm text-muted-foreground tabular-nums">{prettyPrintWithMagnitudes(item.quantity)}</div>
             <div className="ml-2">
               <div className="text-xs px-2 py-0.5 rounded bg-muted text-muted-foreground">{shortRepeatText}</div>
@@ -667,6 +672,7 @@ function ProductItemRow({
                   title="Example"
                   icon="code"
                   compact
+                  tooltip="Retrieves this item for the active customer and reads the current quantity they hold."
                 />
               </div>
             </div>
@@ -966,7 +972,7 @@ function ProductCard({ id, activeType, product, allProducts, existingItems, onSa
           <div className="space-y-2">
             {itemsList.map(([itemId, item]) => {
               const itemMeta = existingItems.find(i => i.id === itemId);
-              const itemLabel = itemMeta ? (itemMeta.displayName || itemMeta.id) : 'Select item';
+              const itemLabel = itemMeta ? itemMeta.id : 'Select item';
               return (
                 <ProductItemRow
                   key={itemId}
@@ -1072,6 +1078,7 @@ function ProductCard({ id, activeType, product, allProducts, existingItems, onSa
             title="Checkout"
             icon="code"
             compact
+            tooltip="Creates a checkout URL for this product and opens it so the customer can finish their purchase."
           />
         </div>
       )}

@@ -1,7 +1,7 @@
 'use client';
 
 import { useThemeWatcher } from '@/lib/theme';
-import { CopyButton } from "@stackframe/stack-ui";
+import { CopyButton, SimpleTooltip } from "@stackframe/stack-ui";
 import { Code, Terminal } from "lucide-react";
 import { PrismLight as SyntaxHighlighter } from 'react-syntax-highlighter';
 import bash from 'react-syntax-highlighter/dist/esm/languages/prism/bash';
@@ -9,21 +9,25 @@ import python from 'react-syntax-highlighter/dist/esm/languages/prism/python';
 import tsx from 'react-syntax-highlighter/dist/esm/languages/prism/tsx';
 import typescript from 'react-syntax-highlighter/dist/esm/languages/prism/typescript';
 import { dark, prism } from 'react-syntax-highlighter/dist/esm/styles/prism';
+import type { ReactNode } from 'react';
 import { cn } from '@/lib/utils';
 
 Object.entries({ tsx, bash, typescript, python }).forEach(([key, value]) => {
   SyntaxHighlighter.registerLanguage(key, value);
 });
 
-export function CodeBlock(props: {
+type CodeBlockProps = {
   language: string,
   content: string,
-  customRender?: React.ReactNode,
+  customRender?: ReactNode,
   title: string,
   icon: 'terminal' | 'code',
   maxHeight?: number,
   compact?: boolean,
-}) {
+  tooltip?: ReactNode,
+};
+
+export function CodeBlock(props: CodeBlockProps) {
   const { theme, mounted } = useThemeWatcher();
 
   let icon = null;
@@ -45,7 +49,12 @@ export function CodeBlock(props: {
           {icon}
           {props.title}
         </h5>
-        <CopyButton content={props.content} />
+        <div className="flex items-center gap-2">
+          {props.tooltip && (
+            <SimpleTooltip type="info" tooltip={props.tooltip} />
+          )}
+          <CopyButton content={props.content} />
+        </div>
       </div>
       <div>
         {props.customRender ?? <SyntaxHighlighter
