@@ -18,6 +18,8 @@
     "types/api-key",
     "types/project",
     "types/connected-account",
+    "types/item",
+    "types/customer",
     "---Hooks---",
     "hooks/use-stack-app",
     "hooks/use-user"

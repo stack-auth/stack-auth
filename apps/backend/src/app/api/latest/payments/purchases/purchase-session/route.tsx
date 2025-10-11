@@ -10,20 +10,43 @@ import { purchaseUrlVerificationCodeHandler } from "../verification-code-handler
 
 export const POST = createSmartRouteHandler({
   metadata: {
-    hidden: true,
+    hidden: false,
+    summary: "Create Purchase Session",
+    description: "Creates a purchase session for completing a purchase.",
+    tags: ["Payments"],
   },
   request: yupObject({
     body: yupObject({
-      full_code: yupString().defined(),
-      price_id: yupString().defined(),
-      quantity: yupNumber().integer().min(1).default(1),
+      full_code: yupString().defined().meta({
+        openapiField: {
+          description: "The verification code, given as a query parameter in the purchase URL",
+          exampleValue: "proj_abc123_def456ghi789"
+        }
+      }),
+      price_id: yupString().defined().meta({
+        openapiField: {
+          description: "The Stripe price ID to purchase",
+          exampleValue: "price_1234567890abcdef"
+        }
+      }),
+      quantity: yupNumber().integer().min(1).default(1).meta({
+        openapiField: {
+          description: "The quantity to purchase",
+          exampleValue: 1
+        }
+      }),
     }),
   }),
   response: yupObject({
     statusCode: yupNumber().oneOf([200]).defined(),
     bodyType: yupString().oneOf(["json"]).defined(),
     body: yupObject({
-      client_secret: yupString().defined(),
+      client_secret: yupString().defined().meta({
+        openapiField: {
+          description: "The Stripe client secret for completing the payment",
+          exampleValue: "1234567890abcdef_secret_xyz123"
+        }
+      }),
     }),
   }),
   async handler({ body }) {
