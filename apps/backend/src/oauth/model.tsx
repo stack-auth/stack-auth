@@ -97,6 +97,7 @@ export class OAuthModel implements AuthorizationCodeModel {
     assertScopeIsValid(scope);
     const tenancy = await getSoleTenancyFromProjectBranch(...getProjectBranchFromClientId(client.id));
 
+    console.log("generateAccessToken", client, user, scope);
     const refreshTokenObj = await this._getOrCreateRefreshTokenObj(client, user, scope);
 
     return await generateAccessTokenFromRefreshTokenIfValid({
@@ -235,6 +236,11 @@ export class OAuthModel implements AuthorizationCodeModel {
     const tenancy = await getTenancy(token.tenancyId);
 
     if (!tenancy) {
+      // this may trigger when the tenancy was deleted after the token was created
+      return false;
+    }
+
+    if (!(await isRefreshTokenValid({ tenancy, refreshTokenObj: token }))) {
       return false;
     }
 
@@ -311,6 +317,8 @@ export class OAuthModel implements AuthorizationCodeModel {
       },
     });
 
+    console.log("getAuthorizationCode", authorizationCode, code);
+
     if (!code) {
       return false;
     }
@@ -328,6 +336,7 @@ export class OAuthModel implements AuthorizationCodeModel {
       codeChallenge: code.codeChallenge,
       codeChallengeMethod: code.codeChallengeMethod,
       client: {
+        // TODO once we support branches, the branch ID should be included here
         id: tenancy.project.id,
         grants: ["authorization_code", "refresh_token"],
       },
