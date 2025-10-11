@@ -1,4 +1,5 @@
 import { createMfaRequiredError } from "@/app/api/latest/auth/mfa/sign-in/verification-code-handler";
+import { usersCrudHandlers } from "@/app/api/latest/users/crud";
 import { checkApiKeySet } from "@/lib/internal-api-keys";
 import { validateRedirectUrl } from "@/lib/redirect-urls";
 import { getSoleTenancyFromProjectBranch, getTenancy } from "@/lib/tenancies";
@@ -326,8 +327,24 @@ export class OAuthModel implements AuthorizationCodeModel {
     const tenancy = await getTenancy(code.tenancyId);
 
     if (!tenancy) {
+      // this may trigger when the tenancy was deleted after the code was created
       return false;
     }
+
+    try {
+      await usersCrudHandlers.adminRead({
+        tenancy,
+        user_id: code.projectUserId,
+        allowedErrorTypes: [KnownErrors.UserNotFound],
+      });
+    } catch (error) {
+      if (error instanceof KnownErrors.UserNotFound) {
+        // this may trigger when the user was deleted after the code was created
+        return false;
+      }
+      throw error;
+    }
+
     return {
       authorizationCode: code.authorizationCode,
       expiresAt: code.expiresAt,

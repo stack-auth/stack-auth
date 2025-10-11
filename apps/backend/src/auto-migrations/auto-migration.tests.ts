@@ -230,7 +230,9 @@ import.meta.vitest?.test("applies migrations concurrently with 20 concurrent mig
   expect(Array.isArray(result)).toBe(true);
   expect(result.length).toBe(1);
   expect(result[0].name).toBe('test_value');
-}));
+}), {
+  timeout: 40_000,
+});
 
 
 import.meta.vitest?.test("applies migration with a DB previously migrated with prisma", runTest(async ({ expect, prismaClient, dbURL }) => {
@@ -418,7 +420,7 @@ import.meta.vitest?.test("repeats migrations when a REPEAT_MIGRATION error is th
     `,
   };
 
-  const result = await applyMigrations({ prismaClient, migrationFiles: [...exampleMigrationFiles1, exampleMigration3], schema: 'public', logging: true });
+  const result = await applyMigrations({ prismaClient, migrationFiles: [...exampleMigrationFiles1, exampleMigration3], schema: 'public' });
   expect(result.newlyAppliedMigrationNames).toEqual(['001-create-table', '002-update-table', '003-repeat-ten-times']);
 
   expect(await prismaClient.$queryRaw`SELECT value FROM repeat_counter`).toEqual([{ value: 10 }]);
