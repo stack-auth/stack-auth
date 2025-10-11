@@ -799,6 +799,9 @@ importers:
       npm-run-all:
         specifier: ^4.1.5
         version: 4.1.5
+      postcss:
+        specifier: ^8
+        version: 8.5.3
       prettier:
         specifier: ^3.5.3
         version: 3.5.3
