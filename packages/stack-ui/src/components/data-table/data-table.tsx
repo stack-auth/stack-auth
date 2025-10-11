@@ -129,6 +129,7 @@ export function DataTable<TData, TValue>({
   defaultColumnFilters,
   defaultSorting,
   showDefaultToolbar = true,
+  onRowClick,
 }: DataTableProps<TData, TValue>) {
   const [sorting, setSorting] = React.useState<SortingState>(defaultSorting);
   const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>(defaultColumnFilters);
@@ -156,6 +157,7 @@ export function DataTable<TData, TValue>({
     globalFilter={globalFilter}
     setGlobalFilter={setGlobalFilter}
     showDefaultToolbar={showDefaultToolbar}
+    onRowClick={onRowClick}
   />;
 }
 

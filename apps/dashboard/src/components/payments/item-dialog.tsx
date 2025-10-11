@@ -1,79 +1,188 @@
 "use client";
 
-import { FormDialog } from "@/components/form-dialog";
-import { InputField, SelectField } from "@/components/form-fields";
-import { AdminProject } from "@stackframe/stack";
-import { branchPaymentsSchema } from "@stackframe/stack-shared/dist/config/schema";
-import { userSpecifiedIdSchema } from "@stackframe/stack-shared/dist/schema-fields";
-import { has } from "@stackframe/stack-shared/dist/utils/objects";
-import { toast } from "@stackframe/stack-ui";
-import * as yup from "yup";
+import { cn } from "@/lib/utils";
+import { Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, Input, Label, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SimpleTooltip, Typography } from "@stackframe/stack-ui";
+import { useEffect, useState } from "react";
 
-type Props = {
+type ItemDialogProps = {
   open: boolean,
   onOpenChange: (open: boolean) => void,
-  project: AdminProject,
-} & (
-    {
-      mode: "create",
-      initial?: undefined,
-    } | {
-      mode: "edit",
-      initial: {
-        id: string,
-        value: yup.InferType<typeof branchPaymentsSchema>["items"][string],
-      },
-    }
-  )
+  onSave: (item: { id: string, displayName: string, customerType: 'user' | 'team' | 'custom' }) => Promise<void>,
+  editingItem?: {
+    id: string,
+    displayName: string,
+    customerType: 'user' | 'team' | 'custom',
+  },
+  existingItemIds?: string[],
+  forceCustomerType?: 'user' | 'team' | 'custom',
+};
 
-export function ItemDialog({ open, onOpenChange, project, mode, initial }: Props) {
-  const itemSchema = yup.object({
-    itemId: userSpecifiedIdSchema("itemId").defined().label("Item ID"),
-    displayName: yup.string().optional().label("Display Name"),
-    customerType: yup.string().oneOf(["user", "team", "custom"]).defined().label("Customer Type"),
-  });
+export function ItemDialog({
+  open,
+  onOpenChange,
+  onSave,
+  editingItem,
+  existingItemIds = [],
+  forceCustomerType
+}: ItemDialogProps) {
+  const [itemId, setItemId] = useState(editingItem?.id || "");
+  const [displayName, setDisplayName] = useState(editingItem?.displayName || "");
+  const [customerType, setCustomerType] = useState<'user' | 'team' | 'custom'>(forceCustomerType || editingItem?.customerType || 'user');
+  const [errors, setErrors] = useState<Record<string, string>>({});
+
+  const validateAndSave = async () => {
+    const newErrors: Record<string, string> = {};
+
+    // Validate item ID
+    if (!itemId.trim()) {
+      newErrors.itemId = "Item ID is required";
+    } else if (!/^[a-z0-9-]+$/.test(itemId)) {
+      newErrors.itemId = "Item ID must contain only lowercase letters, numbers, and hyphens";
+    } else if (!editingItem && existingItemIds.includes(itemId)) {
+      newErrors.itemId = "This item ID already exists";
+    }
+
+    // Validate display name
+    if (!displayName.trim()) {
+      newErrors.displayName = "Display name is required";
+    }
+
+    if (Object.keys(newErrors).length > 0) {
+      setErrors(newErrors);
+      return;
+    }
+
+    await onSave({
+      id: itemId.trim(),
+      displayName: displayName.trim(),
+      customerType
+    });
+
+    handleClose();
+  };
+
+  useEffect(() => {
+    if (forceCustomerType || editingItem?.customerType) {
+      setCustomerType(forceCustomerType || editingItem?.customerType || 'user');
+    }
+  }, [forceCustomerType, editingItem]);
+
+  const handleClose = () => {
+    if (!editingItem) {
+      setItemId("");
+      setDisplayName("");
+      setCustomerType('user');
+    }
+    setErrors({});
+    onOpenChange(false);
+  };
 
   return (
-    <FormDialog
-      open={open}
-      onOpenChange={onOpenChange}
-      title={mode === "create" ? "Create New Item" : "Edit Item"}
-      formSchema={itemSchema}
-      okButton={{ label: mode === "create" ? "Create Item" : "Save" }}
-      cancelButton
-      defaultValues={initial?.value ? {
-        itemId: initial.id,
-        ...initial.value,
-      } : undefined}
-      onSubmit={async (values) => {
-        if (mode === "create") {
-          const config = await project.getConfig();
-          const itemId = values.itemId;
-          if (has(config.payments.items, itemId)) {
-            toast({ title: "An item with this ID already exists", variant: "destructive" });
-            return "prevent-close-and-prevent-reset";
-          }
-        }
-        await project.updateConfig({
-          [`payments.items.${values.itemId}`]: {
-            displayName: values.displayName,
-            customerType: values.customerType,
-          },
-        });
-      }}
-      render={(form) => (
-        <div className="space-y-4">
-          <InputField control={form.control} name={"itemId"} label="Item ID" required placeholder="pro-features" disabled={mode === "edit"} />
-          <SelectField control={form.control} name={"customerType"} label="Customer Type" required options={[
-            { value: "user", label: "User" },
-            { value: "team", label: "Team" },
-            { value: "custom", label: "Custom" },
-          ]} />
-          <InputField control={form.control} name={"displayName"} label="Display Name" placeholder="Pro Features" />
+    <Dialog open={open} onOpenChange={handleClose}>
+      <DialogContent className="sm:max-w-[425px]">
+        <DialogHeader>
+          <DialogTitle>{editingItem ? "Edit Item" : "Create Item"}</DialogTitle>
+          <DialogDescription>
+            Items are features or services that customers receive. They appear as rows in your pricing table.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="grid gap-4 py-4">
+          {/* Item ID */}
+          <div className="grid gap-2">
+            <Label htmlFor="item-id">
+              <SimpleTooltip tooltip="Unique identifier for this item, used in code">
+                Item ID
+              </SimpleTooltip>
+            </Label>
+            <Input
+              id="item-id"
+              value={itemId}
+              onChange={(e) => {
+                const nextValue = e.target.value.toLowerCase();
+                setItemId(nextValue);
+                if (errors.itemId) {
+                  setErrors(prev => {
+                    const newErrors = { ...prev };
+                    delete newErrors.itemId;
+                    return newErrors;
+                  });
+                }
+              }}
+              placeholder="e.g., api-calls"
+              disabled={!!editingItem}
+              className={cn(errors.itemId ? "border-destructive" : "")}
+            />
+            {errors.itemId && (
+              <Typography type="label" className="text-destructive">
+                {errors.itemId}
+              </Typography>
+            )}
+          </div>
+
+          {/* Display Name */}
+          <div className="grid gap-2">
+            <Label htmlFor="display-name">
+              <SimpleTooltip tooltip="How this item will be displayed to users">
+                Display Name
+              </SimpleTooltip>
+            </Label>
+            <Input
+              id="display-name"
+              value={displayName}
+              onChange={(e) => {
+                setDisplayName(e.target.value);
+                if (errors.displayName) {
+                  setErrors(prev => {
+                    const newErrors = { ...prev };
+                    delete newErrors.displayName;
+                    return newErrors;
+                  });
+                }
+              }}
+              placeholder="e.g., API Calls"
+              className={cn(errors.displayName ? "border-destructive" : "")}
+            />
+            {errors.displayName && (
+              <Typography type="label" className="text-destructive">
+                {errors.displayName}
+              </Typography>
+            )}
+          </div>
+
+          {/* Customer Type */}
+          <div className="grid gap-2">
+            <Label htmlFor="customer-type">
+              <SimpleTooltip tooltip="Which type of customer can hold this item">
+                Customer Type
+              </SimpleTooltip>
+            </Label>
+            <Select
+              value={customerType}
+              disabled={!!forceCustomerType}
+              onValueChange={(value) => setCustomerType(value as typeof customerType)}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="user">User</SelectItem>
+                <SelectItem value="team">Team</SelectItem>
+                <SelectItem value="custom">Custom</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
         </div>
-      )}
-    />
+
+        <DialogFooter>
+          <Button variant="outline" onClick={handleClose}>
+            Cancel
+          </Button>
+          <Button onClick={validateAndSave}>
+            {editingItem ? "Save Changes" : "Create Item"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
-
-

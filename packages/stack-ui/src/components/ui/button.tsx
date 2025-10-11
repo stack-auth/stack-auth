@@ -1,4 +1,4 @@
-import { Slot } from "@radix-ui/react-slot";
+import { Slot, Slottable } from "@radix-ui/react-slot";
 import { forwardRefIfNeeded } from "@stackframe/stack-shared/dist/utils/react";
 import { cva, type VariantProps } from "class-variance-authority";
 import React from "react";
@@ -82,7 +82,9 @@ const Button = forwardRefIfNeeded<HTMLButtonElement, ButtonProps>(
         className={cn("relative", loading && "[&>:not(.stack-button-do-not-hide-when-siblings-are)]:invisible", props.className)}
       >
         {loadingStyle === "spinner" && <Spinner className={cn("absolute inset-0 flex items-center justify-center stack-button-do-not-hide-when-siblings-are", !loading && "invisible")} />}
-        {typeof children === "string" ? <span>{children}</span> : children}
+        <Slottable>
+          {typeof children === "string" ? <span>{children}</span> : children}
+        </Slottable>
       </OriginalButton>
     );
   }

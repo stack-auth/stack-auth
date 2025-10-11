@@ -1,21 +1,12 @@
-import { getSubscriptions, isActiveSubscription } from "@/lib/payments";
+import { getSubscriptions, isActiveSubscription, productToInlineProduct } from "@/lib/payments";
 import { validateRedirectUrl } from "@/lib/redirect-urls";
 import { getTenancy } from "@/lib/tenancies";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { inlineProductSchema, urlSchema, yupArray, yupBoolean, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { SUPPORTED_CURRENCIES } from "@stackframe/stack-shared/dist/utils/currency-constants";
 import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
-import { filterUndefined, getOrUndefined, typedEntries, typedFromEntries } from "@stackframe/stack-shared/dist/utils/objects";
-import * as yup from "yup";
 import { purchaseUrlVerificationCodeHandler } from "../verification-code-handler";
-
-const productDataSchema = inlineProductSchema
-  .omit(["server_only", "included_items"])
-  .concat(yupObject({
-    stackable: yupBoolean().defined(),
-  }));
 
 export const POST = createSmartRouteHandler({
   metadata: {
@@ -31,7 +22,7 @@ export const POST = createSmartRouteHandler({
     statusCode: yupNumber().oneOf([200]).defined(),
     bodyType: yupString().oneOf(["json"]).defined(),
     body: yupObject({
-      product: productDataSchema,
+      product: inlineProductSchema,
       stripe_account_id: yupString().defined(),
       project_id: yupString().defined(),
       already_bought_non_stackable: yupBoolean().defined(),
@@ -52,16 +43,6 @@ export const POST = createSmartRouteHandler({
       throw new KnownErrors.RedirectUrlNotWhitelisted();
     }
     const product = verificationCode.data.product;
-    const productData: yup.InferType<typeof productDataSchema> = {
-      display_name: product.displayName ?? "Product",
-      customer_type: product.customerType,
-      stackable: product.stackable === true,
-      prices: product.prices === "include-by-default" ? {} : typedFromEntries(typedEntries(product.prices).map(([key, value]) => [key, filterUndefined({
-        ...typedFromEntries(SUPPORTED_CURRENCIES.map(c => [c.code, getOrUndefined(value, c.code)])),
-        interval: value.interval,
-        free_trial: value.freeTrial,
-      })])),
-    };
 
     // Compute purchase context info
     const prisma = await getPrismaClientForTenancy(tenancy);
@@ -98,7 +79,7 @@ export const POST = createSmartRouteHandler({
       statusCode: 200,
       bodyType: "json",
       body: {
-        product: productData,
+        product: productToInlineProduct(product),
         stripe_account_id: verificationCode.data.stripeAccountId,
         project_id: tenancy.project.id,
         already_bought_non_stackable: alreadyBoughtNonStackable,

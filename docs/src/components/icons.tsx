@@ -345,3 +345,52 @@ export const Code = createLucideIcon('code', [
 export const Zap = createLucideIcon('zap', [
   ['path', { d: 'M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z', key: 'za6gxh' }],
 ]);
+
+// Stack Auth Logo Component
+export const StackAuthIcon = forwardRef<SVGSVGElement, LucideProps>(
+  ({ className, size = 40, color = 'currentColor', ...props }, ref) => {
+    return (
+      <svg
+        ref={ref}
+        width={size}
+        height={size}
+        viewBox="0 0 200 242"
+        fill="none"
+        xmlns="http://www.w3.org/2000/svg"
+        className={cn('flex-shrink-0', className)}
+        {...props}
+      >
+        <path
+          d="M103.504 1.81227C101.251 0.68679 98.6002 0.687576 96.3483 1.81439L4.4201 47.8136C1.71103 49.1692 0 51.9387 0 54.968V130.55C0 133.581 1.7123 136.351 4.42292 137.706L96.4204 183.695C98.6725 184.82 101.323 184.82 103.575 183.694L168.422 151.271C173.742 148.611 180 152.479 180 158.426V168.879C180 171.91 178.288 174.68 175.578 176.035L103.577 212.036C101.325 213.162 98.6745 213.162 96.4224 212.036L11.5771 169.623C6.25791 166.964 0 170.832 0 176.779V187.073C0 190.107 1.71689 192.881 4.43309 194.234L96.5051 240.096C98.7529 241.216 101.396 241.215 103.643 240.094L195.571 194.235C198.285 192.881 200 190.109 200 187.076V119.512C200 113.565 193.741 109.697 188.422 112.356L131.578 140.778C126.258 143.438 120 139.57 120 133.623V123.17C120 120.14 121.712 117.37 124.422 116.014L195.578 80.4368C198.288 79.0817 200 76.3116 200 73.2814V54.9713C200 51.9402 198.287 49.1695 195.576 47.8148L103.504 1.81227Z"
+          fill={color}
+        />
+      </svg>
+    );
+  }
+);
+
+StackAuthIcon.displayName = 'StackAuthIcon';
+
+// Cursor Logo Component (actual Cursor logo)
+export const CursorIcon = forwardRef<SVGSVGElement, LucideProps>(
+  ({ className, size = 24, color = 'currentColor', ...props }, ref) => {
+    return (
+      <svg
+        ref={ref}
+        width={size}
+        height={size}
+        viewBox="0 0 24 24"
+        fill="none"
+        xmlns="http://www.w3.org/2000/svg"
+        className={cn('flex-shrink-0', className)}
+        {...props}
+      >
+        <path d="M12 2L2 7L12 12L22 7L12 2Z" fill={color}/>
+        <path d="M2 17L12 22L22 17" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+        <path d="M2 12L12 17L22 12" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+      </svg>
+    );
+  }
+);
+
+CursorIcon.displayName = 'CursorIcon';

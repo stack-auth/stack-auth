@@ -37,7 +37,7 @@ if [ "$STACK_SKIP_MIGRATIONS" = "true" ]; then
   echo "Skipping migrations."
 else
   echo "Running migrations..."
-  prisma migrate deploy --schema=./apps/backend/prisma/schema.prisma
+  pnpm run db:migrate
 fi
 
 if [ "$STACK_SKIP_SEED_SCRIPT" = "true" ]; then

@@ -55,22 +55,22 @@ it("should error for non-existent offer_id", async ({ expect }) => {
     },
   });
   expect(response).toMatchInlineSnapshot(`
-      NiceResponse {
-        "status": 400,
-        "body": {
-          "code": "PRODUCT_DOES_NOT_EXIST",
-          "details": {
-            "access_type": "client",
-            "product_id": "non-existent-offer",
-          },
-          "error": "Product with ID \\"non-existent-offer\\" does not exist or you don't have permissions to access it.",
+    NiceResponse {
+      "status": 400,
+      "body": {
+        "code": "PRODUCT_DOES_NOT_EXIST",
+        "details": {
+          "context": null,
+          "product_id": "non-existent-offer",
         },
-        "headers": Headers {
-          "x-stack-known-error": "PRODUCT_DOES_NOT_EXIST",
-          <some fields may have been hidden>,
-        },
-      }
-    `);
+        "error": "Product with ID \\"non-existent-offer\\" does not exist.",
+      },
+      "headers": Headers {
+        "x-stack-known-error": "PRODUCT_DOES_NOT_EXIST",
+        <some fields may have been hidden>,
+      },
+    }
+  `);
 });
 
 it("should error for invalid customer_id", async ({ expect }) => {
@@ -233,8 +233,18 @@ it("should error for server-only offer when calling from client", async ({ expec
   expect(response).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 400,
-      "body": "This product is marked as server-only and cannot be accessed client side!",
-      "headers": Headers { <some fields may have been hidden> },
+      "body": {
+        "code": "PRODUCT_DOES_NOT_EXIST",
+        "details": {
+          "context": "server_only",
+          "product_id": "test-offer",
+        },
+        "error": "Product with ID \\"test-offer\\" is marked as server-only and cannot be accessed client side.",
+      },
+      "headers": Headers {
+        "x-stack-known-error": "PRODUCT_DOES_NOT_EXIST",
+        <some fields may have been hidden>,
+      },
     }
   `);
 });

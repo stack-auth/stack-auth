@@ -2,7 +2,7 @@ import { KnownErrors } from "@stackframe/stack-shared";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import type { GenericQueryCtx } from "convex/server";
 import { AsyncStoreProperty, GetCurrentPartialUserOptions, GetCurrentUserOptions } from "../../common";
-import { ServerItem } from "../../customers";
+import { CustomerProductsList, CustomerProductsRequestOptions, InlineProduct, ServerItem } from "../../customers";
 import { DataVaultStore } from "../../data-vault";
 import { SendEmailOptions } from "../../email";
 import { ServerListUsersOptions, ServerTeam, ServerTeamCreateOptions } from "../../teams";
@@ -24,6 +24,11 @@ export type StackServerApp<HasTokenStore extends boolean = boolean, ProjectId ex
     getServerUser(): Promise<ProjectCurrentServerUser<ProjectId> | null>,
 
     createUser(options: ServerUserCreateOptions): Promise<ServerUser>,
+    grantProduct(options: (
+      ({ userId: string } | { teamId: string } | { customCustomerId: string }) &
+      ({ productId: string } | { product: InlineProduct }) &
+      { quantity?: number }
+    )): Promise<void>,
 
     // IF_PLATFORM react-like
     useUser(options: GetCurrentUserOptions<HasTokenStore> & { or: 'redirect' }): ProjectCurrentServerUser<ProjectId>,
@@ -83,6 +88,12 @@ export type StackServerApp<HasTokenStore extends boolean = boolean, ProjectId ex
     [{ itemId: string, userId: string } | { itemId: string, teamId: string } | { itemId: string, customCustomerId: string }],
     ServerItem,
     false
+  >
+  & AsyncStoreProperty<
+    "products",
+    [options: CustomerProductsRequestOptions],
+    CustomerProductsList,
+    true
   >
   & StackClientApp<HasTokenStore, ProjectId>
 );

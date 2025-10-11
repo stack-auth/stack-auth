@@ -1,4 +1,5 @@
 import { createMfaRequiredError } from "@/app/api/latest/auth/mfa/sign-in/verification-code-handler";
+import { usersCrudHandlers } from "@/app/api/latest/users/crud";
 import { checkApiKeySet } from "@/lib/internal-api-keys";
 import { validateRedirectUrl } from "@/lib/redirect-urls";
 import { getSoleTenancyFromProjectBranch, getTenancy } from "@/lib/tenancies";
@@ -97,6 +98,7 @@ export class OAuthModel implements AuthorizationCodeModel {
     assertScopeIsValid(scope);
     const tenancy = await getSoleTenancyFromProjectBranch(...getProjectBranchFromClientId(client.id));
 
+    console.log("generateAccessToken", client, user, scope);
     const refreshTokenObj = await this._getOrCreateRefreshTokenObj(client, user, scope);
 
     return await generateAccessTokenFromRefreshTokenIfValid({
@@ -235,6 +237,11 @@ export class OAuthModel implements AuthorizationCodeModel {
     const tenancy = await getTenancy(token.tenancyId);
 
     if (!tenancy) {
+      // this may trigger when the tenancy was deleted after the token was created
+      return false;
+    }
+
+    if (!(await isRefreshTokenValid({ tenancy, refreshTokenObj: token }))) {
       return false;
     }
 
@@ -311,6 +318,8 @@ export class OAuthModel implements AuthorizationCodeModel {
       },
     });
 
+    console.log("getAuthorizationCode", authorizationCode, code);
+
     if (!code) {
       return false;
     }
@@ -318,8 +327,24 @@ export class OAuthModel implements AuthorizationCodeModel {
     const tenancy = await getTenancy(code.tenancyId);
 
     if (!tenancy) {
+      // this may trigger when the tenancy was deleted after the code was created
       return false;
     }
+
+    try {
+      await usersCrudHandlers.adminRead({
+        tenancy,
+        user_id: code.projectUserId,
+        allowedErrorTypes: [KnownErrors.UserNotFound],
+      });
+    } catch (error) {
+      if (error instanceof KnownErrors.UserNotFound) {
+        // this may trigger when the user was deleted after the code was created
+        return false;
+      }
+      throw error;
+    }
+
     return {
       authorizationCode: code.authorizationCode,
       expiresAt: code.expiresAt,
@@ -328,6 +353,7 @@ export class OAuthModel implements AuthorizationCodeModel {
       codeChallenge: code.codeChallenge,
       codeChallengeMethod: code.codeChallengeMethod,
       client: {
+        // TODO once we support branches, the branch ID should be included here
         id: tenancy.project.id,
         grants: ["authorization_code", "refresh_token"],
       },

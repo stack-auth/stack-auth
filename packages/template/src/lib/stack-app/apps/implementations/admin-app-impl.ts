@@ -578,6 +578,7 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
         delta: options.quantity,
         expires_at: options.expiresAt,
         description: options.description,
+        allow_negative: true,
       }
     );
   }

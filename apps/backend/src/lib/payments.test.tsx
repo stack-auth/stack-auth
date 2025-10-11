@@ -1,4 +1,5 @@
 import type { PrismaClientTransaction } from '@/prisma-client';
+import { KnownErrors } from '@stackframe/stack-shared';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { getItemQuantityForCustomer, getSubscriptions, validatePurchaseSession } from './payments';
 import type { Tenancy } from './tenancies';
@@ -842,7 +843,7 @@ describe('validatePurchaseSession - one-time purchase rules', () => {
       },
       priceId: 'price-any',
       quantity: 1,
-    })).rejects.toThrowError('Customer already has purchased this product; this product is not stackable');
+    })).rejects.toThrowError(new KnownErrors.ProductAlreadyGranted('product-dup', 'cust-1'));
   });
 
   it('blocks one-time purchase when another one exists in the same group', async () => {
@@ -1003,7 +1004,7 @@ describe('validatePurchaseSession - one-time purchase rules', () => {
       },
       priceId: 'price-any',
       quantity: 1,
-    })).rejects.toThrowError('Customer already has purchased this product; this product is not stackable');
+    })).rejects.toThrowError(new KnownErrors.ProductAlreadyGranted('product-sub', 'cust-1'));
   });
 
   it('allows when subscription for same product exists and product is stackable', async () => {
@@ -1205,4 +1206,3 @@ describe('getSubscriptions - defaults behavior', () => {
     })).rejects.toThrowError('Multiple include-by-default products configured in the same catalog');
   });
 });
-

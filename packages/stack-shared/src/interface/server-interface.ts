@@ -1,5 +1,7 @@
+import * as yup from "yup";
 import { decryptValue, encryptValue, hashKey } from "../helpers/vault/client-side";
 import { KnownErrors } from "../known-errors";
+import { inlineProductSchema } from "../schema-fields";
 import { AccessToken, InternalSession, RefreshToken } from "../sessions";
 import { StackAssertionError } from "../utils/errors";
 import { filterUndefined } from "../utils/objects";
@@ -836,6 +838,37 @@ export class StackServerInterface extends StackClientInterface {
         body: JSON.stringify({ delta: data.delta, expires_at: data.expires_at, description: data.description }),
       },
       null
+    );
+  }
+
+  async grantProduct(
+    options: {
+      customerType: "user" | "team" | "custom",
+      customerId: string,
+      productId?: string,
+      product?: yup.InferType<typeof inlineProductSchema>,
+      quantity?: number,
+    },
+  ): Promise<void> {
+    if (!options.productId && !options.product) {
+      throw new StackAssertionError("grantProduct requires either productId or product");
+    }
+    if (options.productId && options.product) {
+      throw new StackAssertionError("grantProduct should not receive both productId and product");
+    }
+    const body = filterUndefined({
+      product_id: options.productId,
+      product_inline: options.product,
+      quantity: options.quantity,
+    });
+    await this.sendServerRequest(
+      urlString`/payments/products/${options.customerType}/${options.customerId}`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      },
+      null,
     );
   }
 

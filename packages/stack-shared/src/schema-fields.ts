@@ -594,7 +594,8 @@ export const inlineProductSchema = yupObject({
   display_name: yupString().defined(),
   customer_type: customerTypeSchema.defined(),
   free_trial: dayIntervalSchema.optional(),
-  server_only: yupBoolean().oneOf([true]).default(true),
+  server_only: yupBoolean().default(true),
+  stackable: yupBoolean().default(false),
   prices: yupRecord(
     userSpecifiedIdSchema("priceId"),
     yupObject({
