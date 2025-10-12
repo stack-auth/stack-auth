@@ -1,0 +1,255 @@
+---
+title: Customer
+full: true
+---
+
+The `Customer` interface provides payment and item management functionality that is shared between users and teams. Both [`CurrentUser`](../types/user.mdx#currentuser) and [`Team`](../types/team.mdx#team) types extend this interface, allowing them to create checkout URLs and manage items.
+
+On this page:
+- [Customer](#customer)
+
+---
+
+# `Customer`
+
+The `Customer` interface defines the payment-related functionality available to both users and teams. It provides methods for creating checkout URLs for purchases and managing quantifiable items like credits, API calls, or subscription allowances.
+
+This interface is automatically available on:
+- [`CurrentUser`](../types/user.mdx#currentuser) objects
+- [`Team`](../types/team.mdx#team) objects
+- [`ServerUser`](../types/user.mdx#serveruser) objects (with additional server-side capabilities)
+- [`ServerTeam`](../types/team.mdx#serverteam) objects (with additional server-side capabilities)
+
+### Table of Contents
+
+<ClickableTableOfContents code={`interface Customer {
+    readonly id: string; //$stack-link-to:#customerid
+    
+    createCheckoutUrl(options): Promise<string>; //$stack-link-to:#customercreatecheckouturl
+    getItem(itemId): Promise<Item>; //$stack-link-to:#customergetitem
+    // NEXT_LINE_PLATFORM react-like
+    ⤷ useItem(itemId): Item; //$stack-link-to:#customeruseitem
+};`} />
+
+<CollapsibleTypesSection type="customer" property="id" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      The unique identifier for the customer. For users, this is the user ID; for teams, this is the team ID.
+    </MethodContent>
+    <MethodAside title="Type Definition">
+
+      ```typescript
+      declare const id: string;
+      ```
+    </MethodAside>
+  </MethodLayout>
+</CollapsibleTypesSection>
+
+<CollapsibleTypesSection type="customer" property="createCheckoutUrl" signature="options" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Creates a secure checkout URL for purchasing a product. This method integrates with Stripe to generate a payment link that handles the entire purchase flow.
+
+      The checkout URL will redirect users to a Stripe-hosted payment page where they can complete their purchase. After successful payment, users will be redirected back to your application.
+
+      ### Parameters
+
+      <ParamField path="options" type="object" required>
+        Options for creating the checkout URL.
+        <Accordion title="Show Properties">
+          <ParamField path="productId" type="string" required>
+            The ID of the product to purchase, as configured in your Stack Auth project settings.
+          </ParamField>
+        </Accordion>
+      </ParamField>
+
+      ### Returns
+
+      `Promise<string>`: A secure URL that redirects to the Stripe checkout page for the specified product.
+    </MethodContent>
+    <MethodAside>
+      <AsideSection title="Signature">
+
+      ```typescript
+      declare function createCheckoutUrl(options: {
+        productId: string;
+      }): Promise<string>;
+      ```
+      </AsideSection>
+      <AsideSection title="Examples">
+      ```typescript User purchasing a subscription
+      const user = useUser({ or: "redirect" });
+      
+      const handleUpgrade = async () => {
+        try {
+          const checkoutUrl = await user.createCheckoutUrl({
+            productId: "prod_premium_monthly",
+          });
+          
+          // Redirect to Stripe checkout
+          window.location.href = checkoutUrl;
+        } catch (error) {
+          console.error("Failed to create checkout URL:", error);
+        }
+      };
+      ```
+
+      ```typescript Team purchasing additional seats
+      const team = await user.getTeam("team_123");
+      
+      const purchaseSeats = async () => {
+        const checkoutUrl = await team.createCheckoutUrl({
+          productId: "prod_additional_seats",
+        });
+        
+        // Open checkout in new tab
+        window.open(checkoutUrl, '_blank');
+      };
+      ```
+      </AsideSection>
+    </MethodAside>
+  </MethodLayout>
+</CollapsibleTypesSection>
+
+<CollapsibleTypesSection type="customer" property="getItem" signature="itemId" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Retrieves information about a specific item associated with this customer. Items represent quantifiable resources such as credits, API calls, storage quotas, or subscription allowances.
+
+      ### Parameters
+
+      <ParamField path="itemId" type="string" required>
+        The ID of the item to retrieve, as configured in your Stack Auth project settings.
+      </ParamField>
+
+      ### Returns
+
+      `Promise<Item>`: An [`Item`](../types/item.mdx#item) object containing the display name, current quantity, and other details.
+    </MethodContent>
+    <MethodAside>
+      <AsideSection title="Signature">
+
+      ```typescript
+      declare function getItem(itemId: string): Promise<Item>;
+      ```
+      </AsideSection>
+      <AsideSection title="Examples">
+      ```typescript Checking user credits
+      const user = useUser({ or: "redirect" });
+      
+      const checkCredits = async () => {
+        const credits = await user.getItem("credits");
+        console.log(`Available credits: ${credits.nonNegativeQuantity}`);
+        console.log(`Actual balance: ${credits.quantity}`);
+      };
+      ```
+
+      ```typescript Checking team API quota
+      const team = await user.getTeam("team_123");
+      const apiQuota = await team.getItem("api_calls");
+      
+      if (apiQuota.nonNegativeQuantity < 100) {
+        console.warn("Team is running low on API calls");
+      }
+      ```
+      </AsideSection>
+    </MethodAside>
+  </MethodLayout>
+</CollapsibleTypesSection>
+
+{/* IF_PLATFORM next */}
+<CollapsibleTypesSection type="customer" property="useItem" signature="itemId" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Retrieves information about a specific item associated with this customer, used as a React hook. This provides real-time updates when the item quantity changes.
+
+      ### Parameters
+
+      <ParamField path="itemId" type="string" required>
+        The ID of the item to retrieve.
+      </ParamField>
+
+      ### Returns
+
+      `Item`: An [`Item`](../types/item.mdx#item) object containing the display name, current quantity, and other details.
+    </MethodContent>
+    <MethodAside>
+      <AsideSection title="Signature">
+
+      ```typescript
+      declare function useItem(itemId: string): Item;
+      ```
+      </AsideSection>
+      <AsideSection title="Examples">
+      ```typescript Real-time credits display
+      function CreditsWidget() {
+        const user = useUser({ or: "redirect" });
+        const credits = user.useItem("credits");
+        
+        return (
+          <div className="credits-widget">
+            <h3>Available Credits</h3>
+            <div className="credits-count">
+              {credits.nonNegativeQuantity}
+            </div>
+            <small>{credits.displayName}</small>
+          </div>
+        );
+      }
+      ```
+
+      ```typescript Team quota monitoring
+      function TeamQuotaStatus({ teamId }: { teamId: string }) {
+        const user = useUser({ or: "redirect" });
+        const team = user.useTeam(teamId);
+        const apiCalls = team.useItem("api_calls");
+        
+        const usagePercentage = (apiCalls.quantity / 10000) * 100;
+        
+        return (
+          <div className="quota-status">
+            <div className="progress-bar">
+              <div 
+                className="progress-fill" 
+                style={{ width: `${Math.min(usagePercentage, 100)}%` }}
+              />
+            </div>
+            <p>
+              {apiCalls.quantity.toLocaleString()} / 10,000 API calls used
+            </p>
+          </div>
+        );
+      }
+      ```
+      </AsideSection>
+    </MethodAside>
+  </MethodLayout>
+</CollapsibleTypesSection>
+{/* END_PLATFORM */}
+
+## Usage Notes
+
+### Payment Flow
+
+When using `createCheckoutUrl()`, the typical flow is:
+
+1. **Create checkout URL**: Call `createCheckoutUrl()` with the desired product ID
+2. **Redirect to Stripe**: Direct the user to the returned URL
+3. **User completes payment**: Stripe handles the payment process
+4. **Webhook processing**: Stack Auth receives webhook notifications from Stripe
+5. **Item allocation**: Purchased items are automatically added to the customer's account
+6. **User returns**: User is redirected back to your application
+
+### Item Management
+
+Items are automatically managed through the payment system:
+
+- **Purchases**: When a user completes a purchase, associated items are automatically added
+- **Subscriptions**: Recurring subscriptions automatically replenish items at the specified intervals
+- **Manual allocation**: Server-side code can manually adjust item quantities using [`ServerItem`](../types/item.mdx#serveritem) methods
+
+### Security Considerations
+
+- **Client-side safety**: All payment operations are designed to be safe for client-side use
+- **Server validation**: Critical operations should always be validated on the server side
+- **Race conditions**: Use [`tryDecreaseQuantity()`](../types/item.mdx#serveritemtrydecreasequantity) for atomic, race-condition-free item consumption

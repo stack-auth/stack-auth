@@ -64,6 +64,11 @@ You can call `useUser()` or `stackServerApp.getUser()` to get the `CurrentUser` 
     listApiKeys(): Promise<UserApiKey[]>; //$stack-link-to:#currentuserlistapikeys
     // NEXT_LINE_PLATFORM react-like
     ⤷ useApiKeys(): UserApiKey[]; //$stack-link-to:#currentuseruseapikeys
+
+    createCheckoutUrl(options): Promise<string>; //$stack-link-to:#currentusercreatecheckouturl
+    getItem(itemId): Promise<Item>; //$stack-link-to:#currentusergetitem
+    // NEXT_LINE_PLATFORM react-like
+    ⤷ useItem(itemId): Item; //$stack-link-to:#currentuseruseitem
 };`} />
 
 <CollapsibleTypesSection type="currentUser" property="id" defaultOpen={false}>
@@ -1550,6 +1555,125 @@ The `ServerUser` object contains most `CurrentUser` properties and methods with 
                 </li>
               ))}
             </ul>
+          </div>
+        );
+      }
+      ```
+      </AsideSection>
+    </MethodAside>
+  </MethodLayout>
+</CollapsibleTypesSection>
+{/* END_PLATFORM */}
+
+<CollapsibleTypesSection type="currentUser" property="createCheckoutUrl" signature="options" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Creates a checkout URL for purchasing a product. This method integrates with Stripe to generate a secure payment link.
+
+      ### Parameters
+
+      <ParamField path="options" type="object" required>
+        Options for creating the checkout URL.
+        <Accordion title="Show Properties">
+          <ParamField path="productId" type="string" required>
+            The ID of the product to purchase.
+          </ParamField>
+        </Accordion>
+      </ParamField>
+
+      ### Returns
+
+      `Promise<string>`: A URL that redirects to the Stripe checkout page for the specified product.
+    </MethodContent>
+    <MethodAside>
+      <AsideSection title="Signature">
+
+      ```typescript
+      declare function createCheckoutUrl(options: {
+        productId: string;
+      }): Promise<string>;
+      ```
+      </AsideSection>
+      <AsideSection title="Examples">
+      ```typescript Creating a checkout URL
+      const checkoutUrl = await user.createCheckoutUrl({
+        productId: "prod_premium_plan",
+      });
+
+      // Redirect user to checkout
+      window.location.href = checkoutUrl;
+      ```
+      </AsideSection>
+    </MethodAside>
+  </MethodLayout>
+</CollapsibleTypesSection>
+
+<CollapsibleTypesSection type="currentUser" property="getItem" signature="itemId" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Retrieves information about a specific item (such as credits, subscription quantities, etc.) for the user.
+
+      ### Parameters
+
+      <ParamField path="itemId" type="string" required>
+        The ID of the item to retrieve.
+      </ParamField>
+
+      ### Returns
+
+      `Promise<Item>`: The item object containing display name, quantity, and other details.
+    </MethodContent>
+    <MethodAside>
+      <AsideSection title="Signature">
+
+      ```typescript
+      declare function getItem(itemId: string): Promise<Item>;
+      ```
+      </AsideSection>
+      <AsideSection title="Examples">
+      ```typescript Getting user credits
+      const credits = await user.getItem("credits");
+      console.log(`User has ${credits.quantity} credits`);
+      console.log(`Non-negative quantity: ${credits.nonNegativeQuantity}`);
+      ```
+      </AsideSection>
+    </MethodAside>
+  </MethodLayout>
+</CollapsibleTypesSection>
+
+{/* IF_PLATFORM next */}
+<CollapsibleTypesSection type="currentUser" property="useItem" signature="itemId" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Retrieves information about a specific item for the user, used as a React hook.
+
+      ### Parameters
+
+      <ParamField path="itemId" type="string" required>
+        The ID of the item to retrieve.
+      </ParamField>
+
+      ### Returns
+
+      `Item`: The item object containing display name, quantity, and other details.
+    </MethodContent>
+    <MethodAside>
+      <AsideSection title="Signature">
+
+      ```typescript
+      declare function useItem(itemId: string): Item;
+      ```
+      </AsideSection>
+      <AsideSection title="Examples">
+      ```typescript Using credits in a React component
+      function CreditsDisplay() {
+        const user = useUser();
+        const credits = user.useItem("credits");
+        
+        return (
+          <div>
+            <h3>Available Credits: {credits.quantity}</h3>
+            <p>Display Name: {credits.displayName}</p>
           </div>
         );
       }
