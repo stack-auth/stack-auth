@@ -532,6 +532,13 @@ const Steps = {
       return { error: `The project at ${projectPath} is using an unsupported version of Next.js (found ${nextVersionInPackageJson}).\n\nOnly Next.js 14 & 15 projects are currently supported. See Next's upgrade guide: https://nextjs.org/docs/app/building-your-application/upgrading/version-14` };
     }
 
+    const hasSrcAppFolder = fs.existsSync(path.join(projectPath, "src/app"));
+    const srcPath = path.join(projectPath, hasSrcAppFolder ? "src" : "");
+    const appPath = path.join(srcPath, "app");
+    if (!fs.existsSync(appPath)) {
+      return { error: `The app path ${appPath} does not exist. Only the Next.js App router is supported — are you maybe on the Pages router instead?` };
+    }
+
     const nextConfigPathWithoutExtension = path.join(projectPath, "next.config");
     const nextConfigFileExtension = await findJsExtension(
       nextConfigPathWithoutExtension
@@ -539,14 +546,7 @@ const Steps = {
     const nextConfigPath =
       nextConfigPathWithoutExtension + "." + (nextConfigFileExtension ?? "js");
     if (!fs.existsSync(nextConfigPath)) {
-      return { error: `Expected file at ${nextConfigPath}. Only Next.js projects are currently supported.` };
-    }
-
-    const hasSrcAppFolder = fs.existsSync(path.join(projectPath, "src/app"));
-    const srcPath = path.join(projectPath, hasSrcAppFolder ? "src" : "");
-    const appPath = path.join(srcPath, "app");
-    if (!fs.existsSync(appPath)) {
-      return { error: `The app path ${appPath} does not exist. Only the Next.js app router is supported.` };
+      return { error: `Expected file at ${nextConfigPath} for Next.js projects.` };
     }
 
     const dryUpdateNextLayoutFileResult = await Steps.dryUpdateNextLayoutFile({ appPath, defaultExtension: "jsx" });
