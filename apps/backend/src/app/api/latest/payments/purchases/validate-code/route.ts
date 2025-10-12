@@ -10,12 +10,25 @@ import { purchaseUrlVerificationCodeHandler } from "../verification-code-handler
 
 export const POST = createSmartRouteHandler({
   metadata: {
-    hidden: true,
+    hidden: false,
+    summary: "Validate Purchase Code",
+    description: "Validates a purchase verification code and returns purchase details including available prices.",
+    tags: ["Payments"],
   },
   request: yupObject({
     body: yupObject({
-      full_code: yupString().defined(),
-      return_url: urlSchema.optional(),
+      full_code: yupString().defined().meta({
+        openapiField: {
+          description: "The verification code, given as a query parameter in the purchase URL",
+          exampleValue: "proj_abc123_def456ghi789"
+        }
+      }),
+      return_url: urlSchema.optional().meta({
+        openapiField: {
+          description: "URL to redirect to after purchase completion",
+          exampleValue: "https://myapp.com/purchase-success"
+        }
+      }),
     }),
   }),
   response: yupObject({

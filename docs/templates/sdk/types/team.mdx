@@ -28,8 +28,8 @@ You can get `Team` objects with the
   clientMetadata: Json;  //$stack-link-to:#teamclientmetadata
   clientReadOnlyMetadata: Json;  //$stack-link-to:#teamclientreadonlymetadata
 
-  update(data): Promise<void>;  //$stack-link-to:#teamupdatedata
-  inviteUser(options): Promise<void>;  //$stack-link-to:#teaminviteuseroptions
+  update(data): Promise<void>;  //$stack-link-to:#teamupdate
+  inviteUser(options): Promise<void>;  //$stack-link-to:#teaminviteuser
   listUsers(): Promise<TeamUser[]>;  //$stack-link-to:#teamlistusers
   // NEXT_LINE_PLATFORM react-like
    ⤷ useUsers(): TeamUser[];  //$stack-link-to:#teamuseusers
@@ -37,10 +37,15 @@ You can get `Team` objects with the
   // NEXT_LINE_PLATFORM react-like
    ⤷ useInvitations(): { ... }[];  //$stack-link-to:#teamuseinvitations
   
-  createApiKey(options): Promise<TeamApiKeyFirstView>;  //$stack-link-to:#teamcreateapikeyoptions
+  createApiKey(options): Promise<TeamApiKeyFirstView>;  //$stack-link-to:#teamcreateapikey
   listApiKeys(): Promise<TeamApiKey[]>;  //$stack-link-to:#teamlistapikeys
   // NEXT_LINE_PLATFORM react-like
    ⤷ useApiKeys(): TeamApiKey[];  //$stack-link-to:#teamuseapikeys
+
+  createCheckoutUrl(options): Promise<string>;  //$stack-link-to:#teamcreatecheckouturl
+  getItem(itemId): Promise<Item>;  //$stack-link-to:#teamgetitem
+  // NEXT_LINE_PLATFORM react-like
+   ⤷ useItem(itemId): Item;  //$stack-link-to:#teamuseitem
 };`} />
 
 <CollapsibleTypesSection type="team" property="id" defaultOpen={false}>
@@ -469,6 +474,130 @@ You can get `Team` objects with the
       apiKeys.forEach(key => {
         console.log(key.id, key.name);
       });
+      ```
+      </AsideSection>
+    </MethodAside>
+  </MethodLayout>
+</CollapsibleTypesSection>
+{/* END_PLATFORM */}
+
+<CollapsibleTypesSection type="team" property="createCheckoutUrl" signature="options" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Creates a checkout URL for the team to purchase products. This method integrates with Stripe to generate a secure payment link for team-level purchases.
+
+      Note that this operation requires the current user to have appropriate permissions for team purchases. The specific permission requirements depend on your project configuration.
+
+      ### Parameters
+
+      <ParamField path="options" type="object" required>
+        Options for creating the checkout URL.
+        <Accordion title="Show Properties">
+          <ParamField path="productId" type="string" required>
+            The ID of the product to purchase.
+          </ParamField>
+        </Accordion>
+      </ParamField>
+
+      ### Returns
+
+      `Promise<string>`: A URL that redirects to the Stripe checkout page for the specified product.
+    </MethodContent>
+    <MethodAside>
+      <AsideSection title="Signature">
+
+      ```typescript
+      declare function createCheckoutUrl(options: {
+        productId: string;
+      }): Promise<string>;
+      ```
+      </AsideSection>
+      <AsideSection title="Examples">
+      ```typescript Team purchasing additional seats
+      const checkoutUrl = await team.createCheckoutUrl({
+        productId: "prod_team_seats",
+      });
+
+      // Redirect to checkout
+      window.location.href = checkoutUrl;
+      ```
+      </AsideSection>
+    </MethodAside>
+  </MethodLayout>
+</CollapsibleTypesSection>
+
+<CollapsibleTypesSection type="team" property="getItem" signature="itemId" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Retrieves information about a specific item (such as credits, API quotas, storage limits, etc.) for the team.
+
+      ### Parameters
+
+      <ParamField path="itemId" type="string" required>
+        The ID of the item to retrieve.
+      </ParamField>
+
+      ### Returns
+
+      `Promise<Item>`: The item object containing display name, quantity, and other details.
+    </MethodContent>
+    <MethodAside>
+      <AsideSection title="Signature">
+
+      ```typescript
+      declare function getItem(itemId: string): Promise<Item>;
+      ```
+      </AsideSection>
+      <AsideSection title="Examples">
+      ```typescript Checking team API quota
+      const apiQuota = await team.getItem("api_calls");
+      console.log(`Team has ${apiQuota.quantity} API calls remaining`);
+      
+      if (apiQuota.nonNegativeQuantity < 100) {
+        console.warn("Team is running low on API calls");
+      }
+      ```
+      </AsideSection>
+    </MethodAside>
+  </MethodLayout>
+</CollapsibleTypesSection>
+
+{/* IF_PLATFORM next */}
+<CollapsibleTypesSection type="team" property="useItem" signature="itemId" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Retrieves information about a specific item for the team, used as a React hook.
+
+      ### Parameters
+
+      <ParamField path="itemId" type="string" required>
+        The ID of the item to retrieve.
+      </ParamField>
+
+      ### Returns
+
+      `Item`: The item object containing display name, quantity, and other details.
+    </MethodContent>
+    <MethodAside>
+      <AsideSection title="Signature">
+
+      ```typescript
+      declare function useItem(itemId: string): Item;
+      ```
+      </AsideSection>
+      <AsideSection title="Examples">
+      ```typescript Team quota monitoring component
+      function TeamQuotaDisplay({ team }: { team: Team }) {
+        const storage = team.useItem("storage_gb");
+        
+        return (
+          <div>
+            <h3>Team Storage Usage</h3>
+            <p>{storage.quantity} GB used</p>
+            <p>Plan: {storage.displayName}</p>
+          </div>
+        );
+      }
       ```
       </AsideSection>
     </MethodAside>
