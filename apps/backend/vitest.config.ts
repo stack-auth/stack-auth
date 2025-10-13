@@ -8,6 +8,7 @@ export default mergeConfig(
   defineConfig({
     test: {
       testTimeout: 20000,
+      poolMatchGlobs: [["src/auto-migrations/**", "forks"]],
       env: {
         ...loadEnv('', process.cwd(), ''),
         ...loadEnv('development', process.cwd(), ''),
