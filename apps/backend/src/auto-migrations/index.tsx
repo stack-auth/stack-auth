@@ -134,7 +134,14 @@ export async function applyMigrations(options: {
 
           const txOrPrismaClient = runOutside ? options.prismaClient : tx;
           if (isSingleStatement) {
-            const res = await txOrPrismaClient.$queryRaw`${Prisma.raw(statement)}`;
+            const statementWithSearchPath = runOutside
+              ? (() => {
+                const trimmedStatement = statement.trimEnd();
+                const ensureSemicolon = trimmedStatement.endsWith(';') ? '' : ';';
+                return `SET search_path TO ${sqlQuoteIdent(options.schema)};\n${statement}${ensureSemicolon}`;
+              })()
+              : statement;
+            const res = await txOrPrismaClient.$queryRaw`${Prisma.raw(statementWithSearchPath)}`;
             if (isConditionallyRepeatMigration) {
               if (!Array.isArray(res)) {
                 throw new StackAssertionError("Expected an array as a return value of repeat condition", { res });
