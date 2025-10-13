@@ -52,7 +52,7 @@ STACK_SECRET_SERVER_KEY=<your-secret-server-key>`,
         code: `NEXT_PUBLIC_STACK_PROJECT_ID=<your-project-id>
 NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY=<your-publishable-client-key>
 STACK_SECRET_SERVER_KEY=<your-secret-server-key>`,
-        highlightLanguage: 'env',
+        highlightLanguage: 'bash',
         filename: '.env.local'
       },
       {
@@ -61,7 +61,7 @@ STACK_SECRET_SERVER_KEY=<your-secret-server-key>`,
         code: `# Store these in environment variables or directly in the client file during development
 VITE_STACK_PROJECT_ID=<your-project-id>
 VITE_STACK_PUBLISHABLE_CLIENT_KEY=<your-publishable-client-key>`,
-        highlightLanguage: 'env',
+        highlightLanguage: 'bash',
         filename: '.env'
       },
       {
@@ -70,7 +70,7 @@ VITE_STACK_PUBLISHABLE_CLIENT_KEY=<your-publishable-client-key>`,
         code: `STACK_PROJECT_ID=<your-project-id>
 STACK_PUBLISHABLE_CLIENT_KEY=<your-publishable-client-key>
 STACK_SECRET_SERVER_KEY=<your-secret-server-key>`,
-        highlightLanguage: 'env',
+        highlightLanguage: 'bash',
         filename: '.env'
       },
       {
@@ -79,7 +79,7 @@ STACK_SECRET_SERVER_KEY=<your-secret-server-key>`,
         code: `STACK_PROJECT_ID=<your-project-id>
 STACK_PUBLISHABLE_CLIENT_KEY=<your-publishable-client-key>
 STACK_SECRET_SERVER_KEY=<your-secret-server-key>`,
-        highlightLanguage: 'env',
+        highlightLanguage: 'bash',
         filename: '.env'
       },
       {

@@ -1,8 +1,8 @@
 import { CodeExample } from '../lib/code-examples';
-import { gettingStartedExamples } from './setup';
+import { setupExamples } from './setup';
 
 const allExamples: Record<string, Record<string, Record<string, CodeExample[]>>> = {
-  'getting-started': gettingStartedExamples,
+  'setup': setupExamples,
   // Add more sections here as needed:
   // 'auth': authExamples,
   // 'customization': customizationExamples,
