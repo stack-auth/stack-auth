@@ -62,7 +62,7 @@ jobs:
       - name: Remove auto-migration metadata
         run: |
           cd apps/backend
-          pnpm run prisma db execute --stdin <<'SQL'
+          pnpm run prisma db execute --url postgres://postgres:PASSWORD-PLACEHOLDER--uqfEC1hmmv@localhost:5432/stackframe --stdin <<'SQL'
           DROP TABLE IF EXISTS "SchemaMigration";
           SQL
 

@@ -71,8 +71,8 @@ RUN apt-get update && \
 ENV PNPM_HOME=/pnpm
 ENV PATH=$PNPM_HOME:$PATH
 
-# Install Prisma CLI globally so we can run migrations on startup
-RUN npm i -g prisma
+# Install CLIs we need at runtime to execute migrations and supporting scripts
+RUN npm i -g prisma tsx dotenv-cli
 
 RUN mkdir -p "$PNPM_HOME" && chown node:node "$PNPM_HOME"
 
