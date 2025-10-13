@@ -68,8 +68,12 @@ RUN apt-get update && \
     apt-get install -y openssl socat && \
     rm -rf /var/lib/apt/lists
 
+ENV PNPM_HOME=/pnpm
+ENV PATH=$PNPM_HOME:$PATH
+
 # Install Prisma CLI globally so we can run migrations on startup
 RUN npm i -g prisma
+RUN corepack enable && corepack prepare pnpm@10.0.0 --activate
 
 # Copy built backend
 COPY --from=builder --chown=node:node /app/apps/backend/.next/standalone ./
