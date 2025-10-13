@@ -73,7 +73,14 @@ ENV PATH=$PNPM_HOME:$PATH
 
 # Install Prisma CLI globally so we can run migrations on startup
 RUN npm i -g prisma
-RUN corepack enable && corepack prepare pnpm@10.0.0 --activate
+
+RUN mkdir -p "$PNPM_HOME" && chown node:node "$PNPM_HOME"
+
+RUN corepack enable
+
+USER node
+RUN corepack prepare pnpm@10.0.0 --activate && pnpm --version
+USER root
 
 # Copy built backend
 COPY --from=builder --chown=node:node /app/apps/backend/.next/standalone ./
