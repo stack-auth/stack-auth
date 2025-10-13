@@ -146,12 +146,18 @@ export function CustomSearchDialog({ open, onOpenChange }: CustomSearchDialogPro
   // Handle AI chat opening
   const handleOpenAIChat = () => {
     onOpenChange(false); // Close search dialog first
-    if (sidebarContext?.toggleChat) {
-      // Small delay to ensure search dialog closes smoothly
-      setTimeout(() => {
-        sidebarContext.toggleChat();
-      }, 100);
+    if (!sidebarContext) {
+      return;
     }
+
+    const { toggleChat } = sidebarContext;
+
+          // Small delay to ensure search dialog closes smoothly
+          setTimeout(() => {
+            if (!sidebarContext.isChatOpen) {
+              toggleChat();
+            }
+          }, 100);
   };
 
   // Close dropdown when clicking outside
@@ -461,10 +467,10 @@ export function CustomSearchDialog({ open, onOpenChange }: CustomSearchDialogPro
               )}
             </span>
           </div>
-          
+
           {/* AI Chat Fallback */}
           <div className="flex justify-center items-center gap-2">
-            <span className="text-fd-muted-foreground">Can't find what you're looking for?</span>
+            <span className="text-fd-muted-foreground">Can&apos;t find what you&apos;re looking for?</span>
             <button
               onClick={handleOpenAIChat}
               className="flex items-center gap-1 px-2 py-1 text-xs rounded-md transition-all duration-300 ease-out relative overflow-hidden text-white chat-gradient-active hover:scale-105 hover:brightness-110 hover:shadow-lg"
