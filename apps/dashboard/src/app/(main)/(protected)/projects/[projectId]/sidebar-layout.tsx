@@ -13,9 +13,7 @@ import {
   BreadcrumbItem,
   BreadcrumbList,
   BreadcrumbPage,
-  BreadcrumbSeparator,
-
-  Sheet,
+  BreadcrumbSeparator, Button, Sheet,
   SheetContent,
   SheetTitle,
   SheetTrigger,
@@ -41,6 +39,7 @@ import {
   ShieldEllipsis,
   User,
   Users,
+  UserRound,
   Webhook,
 } from "lucide-react";
 import { useTheme } from "next-themes";
@@ -251,6 +250,13 @@ const navigationItems: (Label | Item | Hidden)[] = [
     href: "/payments/products",
     regex: /^\/projects\/[^\/]+\/payments\/products$/,
     icon: CreditCard,
+    type: 'item',
+  },
+  {
+    name: "Customers",
+    href: "/payments/customers",
+    regex: /^\/projects\/[^\/]+\/payments\/customers$/,
+    icon: UserRound,
     type: 'item',
   },
   {
@@ -589,7 +595,12 @@ export default function SidebarLayout(props: { projectId: string, children?: Rea
             </div>
           </div>
 
-          <div className="flex gap-4 relative">
+          <div className="flex gap-2 relative items-center">
+            <Button asChild variant="ghost" size="icon" className="hidden lg:flex">
+              <Link href={`/projects/${props.projectId}/project-settings`}>
+                <Settings className="w-4 h-4" />
+              </Link>
+            </Button>
             {getPublicEnvVar("NEXT_PUBLIC_STACK_EMULATOR_ENABLED") === "true" ?
               <ThemeToggle /> :
               <UserButton colorModeToggle={() => setTheme(resolvedTheme === 'light' ? 'dark' : 'light')} />

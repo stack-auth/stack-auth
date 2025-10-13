@@ -12,7 +12,7 @@ import React, { ReactNode, useEffect, useId, useMemo, useRef, useState } from "r
 import { IllustratedInfo } from "../../../../../../../components/illustrated-info";
 import { PageLayout } from "../../page-layout";
 import { useAdminApp } from "../../use-admin-app";
-import { ItemDialog } from "./item-dialog";
+import { ItemDialog } from "@/components/payments/item-dialog";
 import { ListSection } from "./list-section";
 import { ProductDialog } from "./product-dialog";
 

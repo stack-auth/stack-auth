@@ -1495,15 +1495,20 @@ const CustomerDoesNotExist = createKnownErrorConstructor(
 const ProductDoesNotExist = createKnownErrorConstructor(
   KnownError,
   "PRODUCT_DOES_NOT_EXIST",
-  (productId: string, accessType: "client" | "server" | "admin") => [
+  (productId: string, context: "item_exists" | "server_only" | null) => [
     400,
-    `Product with ID ${JSON.stringify(productId)} does not exist${accessType === "client" ? " or you don't have permissions to access it." : "."}`,
+    `Product with ID ${JSON.stringify(productId)} ${context === "server_only"
+      ? "is marked as server-only and cannot be accessed client side."
+      : context === "item_exists"
+        ? "does not exist, but an item with this ID exists."
+        : "does not exist."
+    }`,
     {
       product_id: productId,
-      access_type: accessType,
-    },
+      context,
+    } as const,
   ] as const,
-  (json) => [json.product_id, json.access_type] as const,
+  (json) => [json.product_id, json.context] as const,
 );
 
 const ProductCustomerTypeDoesNotMatch = createKnownErrorConstructor(
@@ -1520,6 +1525,20 @@ const ProductCustomerTypeDoesNotMatch = createKnownErrorConstructor(
     },
   ] as const,
   (json) => [json.product_id ?? undefined, json.customer_id, json.product_customer_type ?? undefined, json.actual_customer_type] as const,
+);
+
+const ProductAlreadyGranted = createKnownErrorConstructor(
+  KnownError,
+  "PRODUCT_ALREADY_GRANTED",
+  (productId: string, customerId: string) => [
+    400,
+    `Customer with ID ${JSON.stringify(customerId)} already owns product ${JSON.stringify(productId)}.`,
+    {
+      product_id: productId,
+      customer_id: customerId,
+    },
+  ] as const,
+  (json) => [json.product_id, json.customer_id] as const,
 );
 
 const ItemQuantityInsufficientAmount = createKnownErrorConstructor(
@@ -1687,6 +1706,7 @@ export const KnownErrors = {
   CustomerDoesNotExist,
   ProductDoesNotExist,
   ProductCustomerTypeDoesNotMatch,
+  ProductAlreadyGranted,
   ItemQuantityInsufficientAmount,
   StripeAccountInfoNotFound,
   DataVaultStoreDoesNotExist,
