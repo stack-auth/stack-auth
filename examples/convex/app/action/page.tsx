@@ -4,6 +4,7 @@ import { useAction } from "convex/react";
 import { useState } from "react";
 import { api } from "@/convex/_generated/api";
 import { useUser } from "@stackframe/stack";
+import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 
 export default function Page() {
   const myAction = useAction(api.myActions.myAction);
@@ -22,9 +23,11 @@ export default function Page() {
       <input type="text" placeholder="test 123" className="border border-slate-300 rounded-md p-2" onChange={(e) => setData(e.target.value)} />
       <button
         className="bg-foreground text-background text-sm px-4 py-2 rounded-md"
-        onClick={async () => {
-          await myAction({ testMetadata: data ?? "" })
-          alert("User's client read-only metadata updated, refresh to see changes")
+        onClick={() => {
+          runAsynchronouslyWithAlert(async () => {
+            await myAction({ testMetadata: data ?? "" })
+            alert("User's client read-only metadata updated, refresh to see changes")
+          })
         }}
       >
         My Action

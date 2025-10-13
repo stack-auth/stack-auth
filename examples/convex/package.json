@@ -18,6 +18,7 @@
   },
   "dependencies": {
     "@stackframe/stack": "workspace:*",
+    "@stackframe/stack-shared": "workspace:*",
     "convex": "^1.27.0",
     "next": "15.2.3",
     "react": "^19.0.0",
