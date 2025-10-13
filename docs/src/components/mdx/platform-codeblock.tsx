@@ -2,8 +2,9 @@
 
 import { runAsynchronously } from '@stackframe/stack-shared/dist/utils/promises';
 import { ChevronDown } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { codeToHtml } from 'shiki';
+import { getExample, type CodeExample } from '../../../lib/code-examples';
 import { cn } from '../../lib/cn';
 
 // Global state management for platform and framework selection
@@ -72,10 +73,28 @@ function broadcastFrameworkChange(platform: string, framework: string): void {
 
 export type PlatformCodeblockProps = {
   /**
-   * Platform configurations with their frameworks and code examples
-   * Can include server/client variants for each framework
+   * Document path in the code-examples.ts file (e.g., "getting-started/setup")
    */
-  platforms: {
+  document: string,
+  /**
+   * Array of example names to include from the document
+   */
+  examples: string[],
+  /**
+   * Optional title for the code block
+   */
+  title?: string,
+  /**
+   * Additional CSS classes
+   */
+  className?: string,
+}
+
+/**
+ * Converts CodeExample[] from code-examples.ts to the platforms format
+ */
+function convertExamplesToPlatforms(examples: CodeExample[]) {
+  const platforms: {
     [platformName: string]: {
       [frameworkName: string]: {
         code: string,
@@ -88,43 +107,99 @@ export type PlatformCodeblockProps = {
           filename?: string,
         },
         client: {
-            code: string,
+          code: string,
           language?: string,
           filename?: string,
         },
       },
     },
-  },
-  /**
-   * Default platform to show
-   */
-  defaultPlatform?: string,
-  /**
-   * Default framework to show for each platform
-   */
-  defaultFrameworks?: { [platformName: string]: string },
-  /**
-   * Default server/client selection for each platform/framework
-   */
-  defaultVariants?: VariantSelections,
-  /**
-   * Optional title for the code block
-   */
-  title?: string,
-  /**
-   * Additional CSS classes
-   */
-  className?: string,
+  } = {};
+
+  const defaultFrameworks: { [platformName: string]: string } = {};
+  const defaultVariants: VariantSelections = {};
+
+  for (const example of examples) {
+    const { language, framework, variant, code, filename, highlightLanguage } = example;
+
+    // Initialize language if not exists
+    if (!(language in platforms)) {
+      platforms[language] = {};
+    }
+
+    // Set as default framework if first for this language
+    if (!(language in defaultFrameworks)) {
+      defaultFrameworks[language] = framework;
+    }
+
+    if (variant) {
+      // Has server/client variant - initialize if not already a variant config
+      // We check if 'server' exists to determine if it's already been initialized as a variant config
+      if (!('server' in (platforms[language][framework] ?? {}))) {
+        platforms[language][framework] = {
+          server: { code: '', language: highlightLanguage },
+          client: { code: '', language: highlightLanguage }
+        };
+      }
+
+      const variantConfig = platforms[language][framework] as {
+        server: { code: string, language?: string, filename?: string },
+        client: { code: string, language?: string, filename?: string },
+      };
+
+      // Explicitly narrow the variant type
+      const variantType: 'server' | 'client' = variant;
+      variantConfig[variantType] = {
+        code,
+        language: highlightLanguage,
+        filename
+      };
+
+      // Initialize default variants
+      if (!(language in defaultVariants)) {
+        defaultVariants[language] = {};
+      }
+      if (!defaultVariants[language]?.[framework]) {
+        defaultVariants[language]![framework] = 'server';
+      }
+    } else {
+      // No variant
+      platforms[language][framework] = {
+        code,
+        language: highlightLanguage,
+        filename
+      };
+    }
+  }
+
+  // Determine default platform (first one in the list)
+  const defaultPlatform = Object.keys(platforms)[0];
+
+  return { platforms, defaultPlatform, defaultFrameworks, defaultVariants };
 }
 
 export function PlatformCodeblock({
-  platforms,
-  defaultPlatform,
-  defaultFrameworks = {},
-  defaultVariants = {},
+  document: documentPath,
+  examples: exampleNames,
   title,
   className
 }: PlatformCodeblockProps) {
+  // Load and convert examples from the centralized code-examples.ts file
+  const allExamples: CodeExample[] = [];
+
+  for (const exampleName of exampleNames) {
+    const examples = getExample(documentPath, exampleName);
+    if (!examples) {
+      console.warn(`Example "${exampleName}" not found in document "${documentPath}"`);
+      continue;
+    }
+    allExamples.push(...examples);
+  }
+
+  // Convert to the internal platforms format
+  const { platforms, defaultPlatform, defaultFrameworks, defaultVariants } = allExamples.length > 0
+    ? convertExamplesToPlatforms(allExamples)
+    : { platforms: {}, defaultPlatform: '', defaultFrameworks: {}, defaultVariants: {} };
+
   const platformNames = Object.keys(platforms);
   const firstPlatform = defaultPlatform || platformNames[0];
 
@@ -180,7 +255,17 @@ export function PlatformCodeblock({
   const [highlightedCode, setHighlightedCode] = useState<string>('');
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [dropdownView, setDropdownView] = useState<'platform' | 'framework'>('platform');
-  const [componentId] = useState(() => Math.random().toString(36).substr(2, 9));
+  // Generate stable ID based on props to avoid hydration mismatches
+  const componentId = useMemo(() => {
+    const hashString = `${documentPath}-${exampleNames.join(',')}`;
+    let hash = 0;
+    for (let i = 0; i < hashString.length; i++) {
+      const char = hashString.charCodeAt(i);
+      hash = ((hash << 5) - hash) + char;
+      hash = hash & hash; // Convert to 32-bit integer
+    }
+    return Math.abs(hash).toString(36).substr(0, 9);
+  }, [documentPath, exampleNames]);
 
   // Get current framework options for selected platform
   const currentFrameworks = Object.keys(platforms[selectedPlatform] ?? {});
@@ -357,7 +442,10 @@ export function PlatformCodeblock({
 
   const handleDropdownToggle = () => {
     setIsDropdownOpen(!isDropdownOpen);
-    setDropdownView('platform');
+    // Don't reset dropdownView when just opening/closing
+    if (!isDropdownOpen) {
+      setDropdownView('platform');
+    }
   };
 
   const handleVariantChange = (variant: 'server' | 'client') => {
@@ -379,82 +467,64 @@ export function PlatformCodeblock({
       <div className="rounded-xl border bg-fd-secondary shadow-sm backdrop-blur-sm overflow-hidden">
         {title && (
           <div className="px-4 py-2 border-b bg-fd-muted/50">
-            <div className="text-xs font-medium text-fd-muted-foreground">{title}</div>
-          </div>
-        )}
-
-        {/* Server/Client Tabs and Cascading Dropdown */}
-        <div className="flex items-center justify-between p-1 text-fd-secondary-foreground overflow-x-auto backdrop-blur-sm not-prose border-b relative">
-          {/* Left Side: Server/Client Tabs or Current Selection */}
-          <div className="flex items-center gap-1">
-            {hasVariants(selectedPlatform, currentFramework) ? (
-              // Show Server/Client tabs when variants exist
-              <div className="flex items-center gap-1">
-                {(['server', 'client'] as const).map((variant) => (
+            <div className="flex items-center justify-between">
+              <div className="text-xs font-medium text-fd-muted-foreground">{title}</div>
+              <div className="flex items-center gap-2">
+                {/* File Title in Title Section */}
+                {currentCodeConfig?.filename && (
+                  <div className="text-xs font-mono text-fd-muted-foreground">
+                    {currentCodeConfig.filename}
+                  </div>
+                )}
+                {/* Dropdown Button with Current Selection */}
+                <div className="relative" data-dropdown-id={componentId}>
                   <button
-                    key={variant}
-                    onClick={() => handleVariantChange(variant)}
+                    onClick={handleDropdownToggle}
                     className={cn(
-                      "relative inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-lg px-3 py-1.5 text-sm font-medium transition-all duration-200 ease-out",
-                      "text-fd-muted-foreground hover:text-fd-accent-foreground disabled:pointer-events-none disabled:opacity-50",
+                      "relative inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-lg px-2 py-1 text-xs font-medium transition-all duration-200 ease-out",
+                      "text-fd-muted-foreground hover:text-fd-accent-foreground",
                       "before:absolute before:inset-0 before:rounded-lg before:opacity-0 before:transition-opacity before:duration-200",
                       "hover:before:opacity-5",
-                      getCurrentVariant() === variant && "bg-fd-background text-fd-primary shadow-sm"
+                      "bg-fd-primary/10 text-fd-primary font-semibold"
                     )}
                   >
-                    {variant.charAt(0).toUpperCase() + variant.slice(1)}
+                    <span className="text-xs">
+                      {selectedPlatform} / {currentFramework}
+                    </span>
+                    <ChevronDown className={cn(
+                      "h-3 w-3 transition-transform duration-200",
+                      isDropdownOpen && "rotate-180"
+                    )} />
                   </button>
-                ))}
+                </div>
               </div>
-            ) : (
-              // Show current selection when no variants
-              <div className="flex items-center gap-2 text-sm text-fd-muted-foreground">
-                <span className="font-medium text-fd-primary">{selectedPlatform}</span>
-                <span>/</span>
-                <span>{currentFramework}</span>
-              </div>
-            )}
-          </div>
-
-          {/* Right Side: Cascading Dropdown */}
-          <div className="relative" data-dropdown-id={componentId}>
-            <button
-              onClick={handleDropdownToggle}
-              className={cn(
-                "relative inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-lg px-3 py-1.5 text-sm font-medium transition-all duration-200 ease-out",
-                "text-fd-muted-foreground hover:text-fd-accent-foreground",
-                "before:absolute before:inset-0 before:rounded-lg before:opacity-0 before:transition-opacity before:duration-200",
-                "hover:before:opacity-5",
-                "bg-fd-primary/10 text-fd-primary font-semibold"
-              )}
-            >
-              {hasVariants(selectedPlatform, currentFramework) ? (
-                // Show platform/framework when tabs are visible
-                <span className="text-xs">
-                  {selectedPlatform} / {currentFramework}
-                </span>
-              ) : (
-                "Change"
-              )}
-              <ChevronDown className={cn(
-                "h-4 w-4 transition-transform duration-200",
-                isDropdownOpen && "rotate-180"
-              )} />
-            </button>
-          </div>
-        </div>
-
-        {/* File Title Bar */}
-        {currentCodeConfig?.filename && (
-          <div className="px-4 py-2 bg-fd-muted/30 border-b border-fd-border/30">
-            <div className="text-xs font-mono text-fd-muted-foreground">
-              {currentCodeConfig.filename}
             </div>
           </div>
         )}
 
         {/* Code Content */}
-        <div className="relative p-3 text-sm bg-fd-background outline-none">
+        <div className="relative p-3 text-sm bg-fd-background outline-none dark:bg-[#0A0A0A]">
+          {/* Server/Client Tabs (if variants exist) */}
+          {hasVariants(selectedPlatform, currentFramework) && (
+            <div className="flex items-center gap-1 mb-2">
+              {(['server', 'client'] as const).map((variant) => (
+                <button
+                  key={variant}
+                  onClick={() => handleVariantChange(variant)}
+                  className={cn(
+                    "relative inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-lg px-2 py-1 text-xs font-medium transition-all duration-200 ease-out",
+                    "text-fd-muted-foreground hover:text-fd-accent-foreground disabled:pointer-events-none disabled:opacity-50",
+                    "before:absolute before:inset-0 before:rounded-lg before:opacity-0 before:transition-opacity before:duration-200",
+                    "hover:before:opacity-5",
+                    getCurrentVariant() === variant && "bg-fd-background text-fd-primary shadow-sm"
+                  )}
+                >
+                  {variant.charAt(0).toUpperCase() + variant.slice(1)}
+                </button>
+              ))}
+            </div>
+          )}
+
           <div className="rounded-lg overflow-auto max-h-[500px]">
             <div
               className="[&_*]:!bg-transparent [&_pre]:!bg-transparent [&_code]:!bg-transparent [&_pre]:!p-0 [&_pre]:!m-0"
@@ -468,7 +538,10 @@ export function PlatformCodeblock({
       {isDropdownOpen && (
         <div
           className="absolute right-3 z-50 min-w-[160px] rounded-lg border bg-fd-background shadow-lg"
-          style={{ top: title ? '85px' : '53px' }}
+          style={{
+            top: title ? '65px' : '125px',
+            right: '12px'
+          }}
           data-dropdown-id={componentId}
         >
           {dropdownView === 'platform' ? (
