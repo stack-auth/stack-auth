@@ -199,3 +199,9 @@ button:not(.chat-gradient-active)::before {
   mask: radial-gradient(circle at 20% 80%, transparent 0%, transparent 100%);
   transition: mask 0.3s ease-out;
 }
+
+/* Ensure EnhancedAPIPage components fill their container */
+.api-content-container {
+  width: 100%;
+  max-width: none !important;
+}

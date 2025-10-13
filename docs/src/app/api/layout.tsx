@@ -98,10 +98,8 @@ export default function ApiLayout({ children }: { children: React.ReactNode }) {
               showSearch={false}
               apiPages={apiPages}
             />
-
-            {/* Main layout container with centered content */}
             <div>
-              <main className="flex flex-1 flex-row min-w-0 items-start mx-auto w-full max-w-[var(--spacing-fd-container)]">
+              <main className="flex flex-1 flex-row min-w-0 items-start mx-auto w-full">
                 {/* Custom API Sidebar - positioned under header, hidden on mobile */}
                 <div className="hidden md:block sticky left-0 top-14 lg:top-26 z-30 transition-all duration-300 ease-out w-64">
                   <div className="h-[calc(100vh-3.5rem)] lg:h-[calc(100vh-6.5rem)] flex flex-col">
@@ -111,19 +109,20 @@ export default function ApiLayout({ children }: { children: React.ReactNode }) {
 
                 {/* Main content area */}
                 <div className="flex-1 transition-all duration-300 min-w-0">
-                  <SharedContentLayout className="prose prose-neutral dark:prose-invert max-w-none">
+                  <SharedContentLayout variant="default" className="prose prose-neutral dark:prose-invert !max-w-none">
                     {children}
                   </SharedContentLayout>
                 </div>
               </main>
             </div>
 
-            {/* AI Chat Drawer */}
-            <AIChatDrawer />
-
-            {/* Auth Panel */}
-            <AuthPanel />
           </div>
+
+          {/* AI Chat Drawer */}
+          <AIChatDrawer />
+
+          {/* Auth Panel */}
+          <AuthPanel />
         </div>
       </APIPageWrapper>
     </SidebarProvider>
