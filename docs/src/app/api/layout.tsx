@@ -1,6 +1,7 @@
 import { APIPageWrapper } from '@/components/api/api-page-wrapper';
 import { AuthPanel } from '@/components/api/auth-panel';
 import { AIChatDrawer } from '@/components/chat/ai-chat';
+import { ApiLayoutWrapper } from '@/components/layouts/api-layout-wrapper';
 import { ApiSidebar } from '@/components/layouts/api/api-sidebar-server';
 import { DocsHeaderWrapper } from '@/components/layouts/docs-header-wrapper';
 import { SharedContentLayout } from '@/components/layouts/shared-content-layout';
@@ -91,7 +92,7 @@ export default function ApiLayout({ children }: { children: React.ReactNode }) {
   return (
     <SidebarProvider>
       <APIPageWrapper>
-        <div className="mx-auto">
+        <ApiLayoutWrapper>
           <div className="flex flex-col min-h-screen bg-fd-background">
             {/* Full-width header with Stack Auth branding */}
             <DocsHeaderWrapper
@@ -123,7 +124,7 @@ export default function ApiLayout({ children }: { children: React.ReactNode }) {
 
           {/* Auth Panel */}
           <AuthPanel />
-        </div>
+        </ApiLayoutWrapper>
       </APIPageWrapper>
     </SidebarProvider>
   );

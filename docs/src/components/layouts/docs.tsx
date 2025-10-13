@@ -838,6 +838,7 @@ export function DocsLayout({
   const pageStyles: PageStyles = {
     tocNav: cn('xl:hidden'),
     toc: cn('max-xl:hidden'),
+    article: cn('max-w-none'),
   };
 
   return (
@@ -1083,4 +1084,3 @@ function CodeOverlayRenderer() {
 
 export { getSidebarTabsFromOptions } from './docs/shared';
 export { CollapsibleControl, Navbar, NavbarSidebarTrigger, type LinkItemType };
-
