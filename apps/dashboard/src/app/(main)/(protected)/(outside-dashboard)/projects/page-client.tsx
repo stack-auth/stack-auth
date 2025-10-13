@@ -100,7 +100,7 @@ export default function PageClient(props: { inviteUser: (origin: string, teamId:
         const team = teamId ? teams.find((t) => t.id === teamId) : undefined;
         return (
           <div key={teamId} className="mb-4">
-            <div className="mb-2 flex items-center gap-2">
+            <div className="mb-2 flex items-center gap-1">
               <Typography>
                 {teamId ? teamIdMap.get(teamId) : "No Team"}
               </Typography>
