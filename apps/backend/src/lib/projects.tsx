@@ -8,7 +8,7 @@ import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { filterUndefined, typedFromEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
-import { getPrismaClientForTenancy, RawQuery, globalPrismaClient, rawQuery, retryTransaction } from "../prisma-client";
+import { RawQuery, getPrismaClientForTenancy, globalPrismaClient, rawQuery, retryTransaction } from "../prisma-client";
 import { overrideEnvironmentConfigOverride, overrideProjectConfigOverride } from "./config";
 import { DEFAULT_BRANCH_ID, getSoleTenancyFromProjectBranch } from "./tenancies";
 
@@ -223,6 +223,11 @@ export async function createOrUpdateProjectWithLegacyConfig(
     'rbac.defaultPermissions.teamMember': translateDefaultPermissions(dataOptions.team_member_default_permissions),
     'rbac.defaultPermissions.teamCreator': translateDefaultPermissions(dataOptions.team_creator_default_permissions),
     'rbac.defaultPermissions.signUp': translateDefaultPermissions(dataOptions.user_default_permissions),
+    // ======================= apps =======================
+    'apps.installed': {
+      authentication: { enabled: true },
+      emails: { enabled: true },
+    },
   });
 
   if (options.type === "create") {

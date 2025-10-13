@@ -1,4 +1,5 @@
 import { KnownErrors, StackServerInterface } from "@stackframe/stack-shared";
+import type { CustomerProductsListResponse } from "@stackframe/stack-shared/dist/interface/crud/products";
 import { ContactChannelsCrud } from "@stackframe/stack-shared/dist/interface/crud/contact-channels";
 import { ItemCrud } from "@stackframe/stack-shared/dist/interface/crud/items";
 import { NotificationPreferenceCrud } from "@stackframe/stack-shared/dist/interface/crud/notification-preferences";
@@ -21,10 +22,10 @@ import { useMemo } from "react"; // THIS_LINE_PLATFORM react-like
 import * as yup from "yup";
 import { constructRedirectUrl } from "../../../../utils/url";
 import { ApiKey, ApiKeyCreationOptions, ApiKeyUpdateOptions, apiKeyCreationOptionsToCrud, apiKeyUpdateOptionsToCrud } from "../../api-keys";
-import { GetCurrentUserOptions, HandlerUrls, OAuthScopesOnSignIn, TokenStoreInit, ConvexCtx } from "../../common";
+import { ConvexCtx, GetCurrentUserOptions, HandlerUrls, OAuthScopesOnSignIn, TokenStoreInit } from "../../common";
 import { OAuthConnection } from "../../connected-accounts";
 import { ServerContactChannel, ServerContactChannelCreateOptions, ServerContactChannelUpdateOptions, serverContactChannelCreateOptionsToCrud, serverContactChannelUpdateOptionsToCrud } from "../../contact-channels";
-import { InlineOffer, ServerItem } from "../../customers";
+import { Customer, CustomerProductsList, CustomerProductsListOptions, CustomerProductsRequestOptions, InlineProduct, ServerItem } from "../../customers";
 import { DataVaultStore } from "../../data-vault";
 import { SendEmailOptions } from "../../email";
 import { NotificationCategory } from "../../notification-categories";
@@ -192,6 +193,76 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
       return await this._interface.getItem({ customCustomerId, itemId }, null);
     }
   );
+
+  private readonly _serverUserProductsCache = createCache<[string, string | null, number | null], CustomerProductsListResponse>(
+    async ([userId, cursor, limit]) => {
+      return await this._interface.listProducts({
+        customer_type: "user",
+        customer_id: userId,
+        cursor: cursor ?? undefined,
+        limit: limit ?? undefined,
+      }, null);
+    }
+  );
+
+  private readonly _serverTeamProductsCache = createCache<[string, string | null, number | null], CustomerProductsListResponse>(
+    async ([teamId, cursor, limit]) => {
+      return await this._interface.listProducts({
+        customer_type: "team",
+        customer_id: teamId,
+        cursor: cursor ?? undefined,
+        limit: limit ?? undefined,
+      }, null);
+    }
+  );
+
+  private readonly _serverCustomProductsCache = createCache<[string, string | null, number | null], CustomerProductsListResponse>(
+    async ([customCustomerId, cursor, limit]) => {
+      return await this._interface.listProducts({
+        customer_type: "custom",
+        customer_id: customCustomerId,
+        cursor: cursor ?? undefined,
+        limit: limit ?? undefined,
+      }, null);
+    }
+  );
+
+  protected _createServerCustomer(userIdOrTeamId: string, type: "user" | "team"): Omit<Customer<true>, "id"> {
+    const app = this;
+    const productsCache = type === "user" ? app._serverUserProductsCache : app._serverTeamProductsCache;
+    const customerOptions = type === "user" ? { userId: userIdOrTeamId } : { teamId: userIdOrTeamId };
+    return {
+      ...this._createCustomer(userIdOrTeamId, type, null),
+      async getItem(itemId: string) {
+        return await app.getItem({ itemId, ...customerOptions });
+      },
+      // IF_PLATFORM react-like
+      useItem(itemId: string) {
+        return app.useItem({ itemId, ...customerOptions });
+      },
+      // END_PLATFORM
+      async grantProduct(productOptions: { productId: string, quantity?: number } | { product: InlineProduct, quantity?: number }) {
+        if (type === "user") {
+          if ("productId" in productOptions) {
+            await app.grantProduct({ userId: userIdOrTeamId, productId: productOptions.productId, quantity: productOptions.quantity });
+          } else {
+            await app.grantProduct({ userId: userIdOrTeamId, product: productOptions.product, quantity: productOptions.quantity });
+          }
+        } else {
+          if ("productId" in productOptions) {
+            await app.grantProduct({ teamId: userIdOrTeamId, productId: productOptions.productId, quantity: productOptions.quantity });
+          } else {
+            await app.grantProduct({ teamId: userIdOrTeamId, product: productOptions.product, quantity: productOptions.quantity });
+          }
+        }
+        await productsCache.refresh([userIdOrTeamId, null, null]);
+      },
+      async createCheckoutUrl(options: { productId: string, returnUrl?: string } | { product: InlineProduct, returnUrl?: string }) {
+        const productIdOrInline = "productId" in options ? options.productId : options.product;
+        return await app._interface.createCheckoutUrl(type, userIdOrTeamId, productIdOrInline, null, options.returnUrl);
+      },
+    };
+  }
 
   private async _updateServerUser(userId: string, update: ServerUserUpdateOptions): Promise<UsersCrud['Server']['Read']> {
     const result = await this._interface.updateServerUser(userId, serverUserUpdateOptionsToCrud(update));
@@ -653,20 +724,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
         const providers = await this.listOAuthProviders();
         return providers.find((p) => p.id === id) ?? null;
       },
-      async createCheckoutUrl(options: { offerId: string } | { offer: InlineOffer }) {
-        const offerIdOrInline = "offerId" in options ? options.offerId : options.offer;
-        return await app._interface.createCheckoutUrl("user", crud.id, offerIdOrInline, null);
-      },
-      async getItem(itemId: string) {
-        const result = Result.orThrow(await app._serverUserItemsCache.getOrWait([crud.id, itemId], "write-only"));
-        return app._serverItemFromCrud({ type: "user", id: crud.id }, result);
-      },
-      // IF_PLATFORM react-like
-      useItem(itemId: string) {
-        const result = useAsyncCache(app._serverUserItemsCache, [crud.id, itemId] as const, "user.useItem()");
-        return useMemo(() => app._serverItemFromCrud({ type: "user", id: crud.id }, result), [result]);
-      },
-      // END_PLATFORM
+      ...app._createServerCustomer(crud.id, "user"),
     };
   }
 
@@ -782,20 +840,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
         await app._serverTeamApiKeysCache.refresh([crud.id]);
         return app._serverApiKeyFromCrud(result);
       },
-      async getItem(itemId: string) {
-        const result = Result.orThrow(await app._serverTeamItemsCache.getOrWait([crud.id, itemId], "write-only"));
-        return app._serverItemFromCrud({ type: "team", id: crud.id }, result);
-      },
-      // IF_PLATFORM react-like
-      useItem(itemId: string) {
-        const result = useAsyncCache(app._serverTeamItemsCache, [crud.id, itemId] as const, "team.useItem()");
-        return useMemo(() => app._serverItemFromCrud({ type: "team", id: crud.id }, result), [result]);
-      },
-      // END_PLATFORM
-      async createCheckoutUrl(options: { offerId: string } | { offer: InlineOffer }) {
-        const offerIdOrInline = "offerId" in options ? options.offerId : options.offer;
-        return await app._interface.createCheckoutUrl("team", crud.id, offerIdOrInline, null);
-      },
+      ...app._createServerCustomer(crud.id, "team"),
     };
   }
 
@@ -1146,6 +1191,39 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
     return useMemo(() => this._serverItemFromCrud({ type, id }, result), [result]);
   }
   // END_PLATFORM
+  async grantProduct(options: (
+    ({ userId: string } | { teamId: string } | { customCustomerId: string }) &
+    ({ productId: string } | { product: InlineProduct }) &
+    { quantity?: number }
+  )): Promise<void> {
+    let customerType: "user" | "team" | "custom";
+    let customerId: string;
+    if ("userId" in options) {
+      customerType = "user";
+      customerId = options.userId;
+    } else if ("teamId" in options) {
+      customerType = "team";
+      customerId = options.teamId;
+    } else {
+      customerType = "custom";
+      customerId = options.customCustomerId;
+    }
+
+    await this._interface.grantProduct({
+      customerType,
+      customerId,
+      productId: "productId" in options ? options.productId : undefined,
+      product: "product" in options ? options.product : undefined,
+      quantity: options.quantity,
+    });
+
+    const cache = customerType === "user"
+      ? this._serverUserProductsCache
+      : customerType === "team"
+        ? this._serverTeamProductsCache
+        : this._serverCustomProductsCache;
+    await cache.refresh([customerId, null, null]);
+  }
 
   async createTeam(data: ServerTeamCreateOptions): Promise<ServerTeam> {
     const team = await this._interface.createServerTeam(serverTeamCreateOptionsToCrud(data));

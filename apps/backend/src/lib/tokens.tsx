@@ -1,8 +1,8 @@
 import { usersCrudHandlers } from '@/app/api/latest/users/crud';
 import { globalPrismaClient } from '@/prisma-client';
-import { Prisma } from '@prisma/client';
 import { KnownErrors } from '@stackframe/stack-shared';
 import { yupBoolean, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+import { AccessTokenPayload } from '@stackframe/stack-shared/dist/sessions';
 import { generateSecureRandomString } from '@stackframe/stack-shared/dist/utils/crypto';
 import { getEnvVariable } from '@stackframe/stack-shared/dist/utils/env';
 import { StackAssertionError, throwErr } from '@stackframe/stack-shared/dist/utils/errors';
@@ -13,7 +13,6 @@ import * as jose from 'jose';
 import { JOSEError, JWTExpired } from 'jose/errors';
 import { SystemEventTypes, logEvent } from './events';
 import { Tenancy } from './tenancies';
-import { AccessTokenPayload } from '@stackframe/stack-shared/dist/sessions';
 
 export const authorizationHeaderSchema = yupString().matches(/^StackSession [^ ]+$/);
 
@@ -116,25 +115,45 @@ export async function decodeAccessToken(accessToken: string, { allowAnonymous }:
   });
 }
 
-export async function generateAccessToken(options: {
+export async function isRefreshTokenValid(options: {
   tenancy: Tenancy,
-  userId: string,
-  refreshTokenId: string,
+  refreshTokenObj: null | {
+    projectUserId: string,
+    id: string,
+    expiresAt: Date | null,
+  },
 }) {
+  return !!await generateAccessTokenFromRefreshTokenIfValid(options);
+}
+
+export async function generateAccessTokenFromRefreshTokenIfValid(options: {
+  tenancy: Tenancy,
+  refreshTokenObj: null | {
+    projectUserId: string,
+    id: string,
+    expiresAt: Date | null,
+  },
+}) {
+  if (!options.refreshTokenObj) {
+    return null;
+  }
+
+  if (options.refreshTokenObj.expiresAt && options.refreshTokenObj.expiresAt < new Date()) {
+    return null;
+  }
+
   let user;
   try {
     user = await usersCrudHandlers.adminRead({
       tenancy: options.tenancy,
-      user_id: options.userId,
+      user_id: options.refreshTokenObj.projectUserId,
       allowedErrorTypes: [KnownErrors.UserNotFound],
     });
   } catch (error) {
     if (error instanceof KnownErrors.UserNotFound) {
-      throw new StackAssertionError(`User not found in generateAccessToken. Was the user's account deleted?`, {
-        userId: options.userId,
-        refreshTokenId: options.refreshTokenId,
-        tenancy: options.tenancy,
-      });
+      // The user was deleted — their refresh token still exists because we don't cascade deletes across source-of-truth/global tables.
+      // => refresh token is invalid
+      return null;
     }
     throw error;
   }
@@ -144,17 +163,17 @@ export async function generateAccessToken(options: {
     {
       projectId: options.tenancy.project.id,
       branchId: options.tenancy.branchId,
-      userId: options.userId,
-      sessionId: options.refreshTokenId,
+      userId: options.refreshTokenObj.projectUserId,
+      sessionId: options.refreshTokenObj.id,
       isAnonymous: user.is_anonymous,
     }
   );
 
   const payload: Omit<AccessTokenPayload, "iss" | "aud"> = {
-    sub: options.userId,
+    sub: options.refreshTokenObj.projectUserId,
     project_id: options.tenancy.project.id,
     branch_id: options.tenancy.branchId,
-    refresh_token_id: options.refreshTokenId,
+    refresh_token_id: options.refreshTokenObj.id,
     role: 'authenticated',
     name: user.display_name,
     email: user.primary_email,
@@ -171,44 +190,39 @@ export async function generateAccessToken(options: {
   });
 }
 
-export async function createAuthTokens(options: {
+type CreateRefreshTokenOptions = {
   tenancy: Tenancy,
   projectUserId: string,
   expiresAt?: Date,
   isImpersonation?: boolean,
-}) {
+}
+
+export async function createRefreshTokenObj(options: CreateRefreshTokenOptions) {
   options.expiresAt ??= new Date(Date.now() + 1000 * 60 * 60 * 24 * 365);
   options.isImpersonation ??= false;
 
   const refreshToken = generateSecureRandomString();
 
-  try {
-    const refreshTokenObj = await globalPrismaClient.projectUserRefreshToken.create({
-      data: {
-        tenancyId: options.tenancy.id,
-        projectUserId: options.projectUserId,
-        refreshToken: refreshToken,
-        expiresAt: options.expiresAt,
-        isImpersonation: options.isImpersonation,
-      },
-    });
+  const refreshTokenObj = await globalPrismaClient.projectUserRefreshToken.create({
+    data: {
+      tenancyId: options.tenancy.id,
+      projectUserId: options.projectUserId,
+      refreshToken: refreshToken,
+      expiresAt: options.expiresAt,
+      isImpersonation: options.isImpersonation,
+    },
+  });
 
-    const accessToken = await generateAccessToken({
-      tenancy: options.tenancy,
-      userId: options.projectUserId,
-      refreshTokenId: refreshTokenObj.id,
-    });
+  return refreshTokenObj;
+}
 
+export async function createAuthTokens(options: CreateRefreshTokenOptions) {
+  const refreshTokenObj = await createRefreshTokenObj(options);
 
-    return { refreshToken, accessToken };
+  const accessToken = await generateAccessTokenFromRefreshTokenIfValid({
+    tenancy: options.tenancy,
+    refreshTokenObj: refreshTokenObj,
+  }) ?? throwErr("Newly generated refresh token is not valid; this should never happen!", { refreshTokenObj });
 
-  } catch (error) {
-    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2003') {
-      throwErr(new Error(
-        `Auth token creation failed for tenancyId ${options.tenancy.id} and projectUserId ${options.projectUserId}: ${error.message}`,
-        { cause: error }
-      ));
-    }
-    throw error;
-  }
+  return { refreshToken: refreshTokenObj.refreshToken, accessToken };
 }

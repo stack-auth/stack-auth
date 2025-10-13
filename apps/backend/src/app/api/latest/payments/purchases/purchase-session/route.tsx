@@ -10,20 +10,43 @@ import { purchaseUrlVerificationCodeHandler } from "../verification-code-handler
 
 export const POST = createSmartRouteHandler({
   metadata: {
-    hidden: true,
+    hidden: false,
+    summary: "Create Purchase Session",
+    description: "Creates a purchase session for completing a purchase.",
+    tags: ["Payments"],
   },
   request: yupObject({
     body: yupObject({
-      full_code: yupString().defined(),
-      price_id: yupString().defined(),
-      quantity: yupNumber().integer().min(1).default(1),
+      full_code: yupString().defined().meta({
+        openapiField: {
+          description: "The verification code, given as a query parameter in the purchase URL",
+          exampleValue: "proj_abc123_def456ghi789"
+        }
+      }),
+      price_id: yupString().defined().meta({
+        openapiField: {
+          description: "The Stripe price ID to purchase",
+          exampleValue: "price_1234567890abcdef"
+        }
+      }),
+      quantity: yupNumber().integer().min(1).default(1).meta({
+        openapiField: {
+          description: "The quantity to purchase",
+          exampleValue: 1
+        }
+      }),
     }),
   }),
   response: yupObject({
     statusCode: yupNumber().oneOf([200]).defined(),
     bodyType: yupString().oneOf(["json"]).defined(),
     body: yupObject({
-      client_secret: yupString().defined(),
+      client_secret: yupString().defined().meta({
+        openapiField: {
+          description: "The Stripe client secret for completing the payment",
+          exampleValue: "1234567890abcdef_secret_xyz123"
+        }
+      }),
     }),
   }),
   async handler({ body }) {
@@ -35,7 +58,7 @@ export const POST = createSmartRouteHandler({
     }
     const stripe = await getStripeForAccount({ accountId: data.stripeAccountId });
     const prisma = await getPrismaClientForTenancy(tenancy);
-    const { selectedPrice, conflictingGroupSubscriptions } = await validatePurchaseSession({
+    const { selectedPrice, conflictingCatalogSubscriptions } = await validatePurchaseSession({
       prisma,
       tenancy,
       codeData: data,
@@ -46,12 +69,12 @@ export const POST = createSmartRouteHandler({
       throw new StackAssertionError("Price not resolved for purchase session");
     }
 
-    if (conflictingGroupSubscriptions.length > 0) {
-      const conflicting = conflictingGroupSubscriptions[0];
+    if (conflictingCatalogSubscriptions.length > 0) {
+      const conflicting = conflictingCatalogSubscriptions[0];
       if (conflicting.stripeSubscriptionId) {
         const existingStripeSub = await stripe.subscriptions.retrieve(conflicting.stripeSubscriptionId);
         const existingItem = existingStripeSub.items.data[0];
-        const product = await stripe.products.create({ name: data.offer.displayName ?? "Subscription" });
+        const product = await stripe.products.create({ name: data.product.displayName ?? "Subscription" });
         if (selectedPrice.interval) {
           const updated = await stripe.subscriptions.update(conflicting.stripeSubscriptionId, {
             payment_behavior: 'default_incomplete',
@@ -71,8 +94,8 @@ export const POST = createSmartRouteHandler({
               quantity,
             }],
             metadata: {
-              offerId: data.offerId ?? null,
-              offer: JSON.stringify(data.offer),
+              productId: data.productId ?? null,
+              product: JSON.stringify(data.product),
               priceId: price_id,
             },
           });
@@ -108,10 +131,10 @@ export const POST = createSmartRouteHandler({
         customer: data.stripeCustomerId,
         automatic_payment_methods: { enabled: true },
         metadata: {
-          offerId: data.offerId || "",
-          offer: JSON.stringify(data.offer),
+          productId: data.productId || "",
+          product: JSON.stringify(data.product),
           customerId: data.customerId,
-          customerType: data.offer.customerType,
+          customerType: data.product.customerType,
           purchaseQuantity: String(quantity),
           purchaseKind: "ONE_TIME",
           tenancyId: data.tenancyId,
@@ -127,7 +150,7 @@ export const POST = createSmartRouteHandler({
     }
 
     const product = await stripe.products.create({
-      name: data.offer.displayName ?? "Subscription",
+      name: data.product.displayName ?? "Subscription",
     });
     const created = await stripe.subscriptions.create({
       customer: data.stripeCustomerId,
@@ -147,8 +170,8 @@ export const POST = createSmartRouteHandler({
         quantity,
       }],
       metadata: {
-        offerId: data.offerId ?? null,
-        offer: JSON.stringify(data.offer),
+        productId: data.productId ?? null,
+        product: JSON.stringify(data.product),
         priceId: price_id,
       },
     });

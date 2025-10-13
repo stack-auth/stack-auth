@@ -1,6 +1,6 @@
 {
   "name": "@stackframe/stack-dashboard",
-  "version": "2.8.39",
+  "version": "2.8.42",
   "private": true,
   "scripts": {
     "clean": "rimraf .next && rimraf node_modules",
@@ -73,7 +73,7 @@
     "@types/react-syntax-highlighter": "^15.5.13",
     "autoprefixer": "^10.4.17",
     "glob": "^10.4.1",
-    "import-in-the-middle": "^1.12.0",
+    "import-in-the-middle": "1.14.2",
     "postcss": "^8.4.38",
     "require-in-the-middle": "^7.4.0",
     "rimraf": "^5.0.5",

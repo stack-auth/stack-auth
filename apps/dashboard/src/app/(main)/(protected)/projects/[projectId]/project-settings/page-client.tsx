@@ -3,10 +3,10 @@ import { InputField } from "@/components/form-fields";
 import { StyledLink } from "@/components/link";
 import { LogoUpload } from "@/components/logo-upload";
 import { FormSettingCard, SettingCard, SettingSwitch, SettingText } from "@/components/settings";
-import { getPublicEnvVar } from '@/lib/env';
+import { getPublicEnvVar } from "@/lib/env";
 import { TeamSwitcher, useUser } from "@stackframe/stack";
 import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
-import { ActionDialog, Alert, Button, Typography } from "@stackframe/stack-ui";
+import { ActionDialog, Alert, Button, SimpleTooltip, Typography } from "@stackframe/stack-ui";
 import { useState } from "react";
 import * as yup from "yup";
 import { PageLayout } from "../page-layout";
@@ -25,6 +25,18 @@ export default function PageClient() {
   const teams = user.useTeams();
   const [selectedTeamId, setSelectedTeamId] = useState<string | null>(null);
   const [isTransferring, setIsTransferring] = useState(false);
+  const baseApiUrl = getPublicEnvVar('NEXT_PUBLIC_STACK_API_URL');
+  const jwksUrl = `${baseApiUrl}/api/v1/projects/${project.id}/.well-known/jwks.json`;
+  const anonymousJwksUrl = `${jwksUrl}?include_anonymous=true`;
+
+  const renderInfoLabel = (label: string, tooltip: string) => (
+    <div className="flex items-center gap-2">
+      <span>{label}</span>
+      <SimpleTooltip type="info" tooltip={tooltip}>
+        <span className="sr-only">{`More info about ${label}`}</span>
+      </SimpleTooltip>
+    </div>
+  );
 
   // Get current owner team
   const currentOwnerTeam = teams.find(team => team.id === project.ownerTeamId) ?? throwErr(`Owner team of project ${project.id} not found in user's teams?`, { projectId: project.id, teams });
@@ -41,7 +53,7 @@ export default function PageClient() {
 
     setIsTransferring(true);
     try {
-      await project.transfer(user, selectedTeamId);
+      await user.transferProject(project.id, selectedTeamId);
 
       // Reload the page to reflect changes
       // we don't actually need this, but it's a nicer UX as it clearly indicates to the user that a "big" change was made
@@ -63,8 +75,12 @@ export default function PageClient() {
           {project.id}
         </SettingText>
 
-        <SettingText label="JWKS URL">
-          {`${getPublicEnvVar('NEXT_PUBLIC_STACK_API_URL')}/api/v1/projects/${project.id}/.well-known/jwks.json`}
+        <SettingText label={renderInfoLabel("JWKS URL", "Use this url to allow other services to verify Stack Auth-issued sessions for this project.")}>
+          {jwksUrl}
+        </SettingText>
+
+        <SettingText label={renderInfoLabel("Anonymous JWKS URL", "Includes keys for anonymous sessions when you treat them as authenticated users.")}>
+          {anonymousJwksUrl}
         </SettingText>
       </SettingCard>
       <FormSettingCard

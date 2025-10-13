@@ -75,10 +75,10 @@ it("deduplicates one-time purchase on payment_intent.succeeded retry", async ({ 
   await Project.createAndSwitch();
   await Payments.setup();
 
-  // Configure an offer that grants 1 unit of an item via one-time purchase
+  // Configure an product that grants 1 unit of an item via one-time purchase
   const itemId = "one-time-credits";
-  const offerId = "ot";
-  const offer = {
+  const productId = "ot";
+  const product = {
     displayName: "One-time Credits Pack",
     customerType: "user",
     serverOnly: false,
@@ -92,8 +92,8 @@ it("deduplicates one-time purchase on payment_intent.succeeded retry", async ({ 
       items: {
         [itemId]: { displayName: "Credits", customerType: "user" },
       },
-      offers: {
-        [offerId]: offer,
+      products: {
+        [productId]: product,
       },
     },
   });
@@ -123,7 +123,7 @@ it("deduplicates one-time purchase on payment_intent.succeeded retry", async ({ 
     body: {
       customer_type: "user",
       customer_id: userId,
-      offer_id: offerId,
+      product_id: productId,
     },
   });
   expect(createUrlResponse.status).toBe(200);
@@ -144,8 +144,8 @@ it("deduplicates one-time purchase on payment_intent.succeeded retry", async ({ 
           "subscriptions.list": { data: [] },
         },
         metadata: {
-          offerId,
-          offer: JSON.stringify(offer),
+          productId,
+          product: JSON.stringify(product),
           customerId: userId,
           customerType: "user",
           purchaseQuantity: "1",
@@ -177,8 +177,8 @@ it("syncs subscriptions from webhook and is idempotent", async ({ expect }) => {
   await Payments.setup();
 
   const itemId = "subscription-credits";
-  const offerId = "sub-monthly";
-  const offer = {
+  const productId = "sub-monthly";
+  const product = {
     displayName: "Monthly Subscription",
     customerType: "user",
     serverOnly: false,
@@ -192,8 +192,8 @@ it("syncs subscriptions from webhook and is idempotent", async ({ expect }) => {
       items: {
         [itemId]: { displayName: "Credits", customerType: "user" },
       },
-      offers: {
-        [offerId]: offer,
+      products: {
+        [productId]: product,
       },
     },
   });
@@ -218,7 +218,7 @@ it("syncs subscriptions from webhook and is idempotent", async ({ expect }) => {
     body: {
       customer_type: "user",
       customer_id: userId,
-      offer_id: offerId,
+      product_id: productId,
     },
   });
   expect(createUrlResponse.status).toBe(200);
@@ -240,8 +240,8 @@ it("syncs subscriptions from webhook and is idempotent", async ({ expect }) => {
       ],
     },
     metadata: {
-      offerId,
-      offer: JSON.stringify(offer),
+      productId,
+      product: JSON.stringify(product),
       priceId: "monthly",
     },
     cancel_at_period_end: false,
@@ -290,8 +290,8 @@ it("updates a user's subscriptions via webhook (add then remove)", async ({ expe
   await Payments.setup();
 
   const itemId = "subscription-seat";
-  const offerId = "pro-monthly";
-  const offer = {
+  const productId = "pro-monthly";
+  const product = {
     displayName: "Pro Monthly",
     customerType: "user",
     serverOnly: false,
@@ -305,8 +305,8 @@ it("updates a user's subscriptions via webhook (add then remove)", async ({ expe
       items: {
         [itemId]: { displayName: "Seat", customerType: "user" },
       },
-      offers: {
-        [offerId]: offer,
+      products: {
+        [productId]: product,
       },
     },
   });
@@ -331,7 +331,7 @@ it("updates a user's subscriptions via webhook (add then remove)", async ({ expe
     body: {
       customer_type: "user",
       customer_id: userId,
-      offer_id: offerId,
+      product_id: productId,
     },
   });
   expect(createUrlResponse.status).toBe(200);
@@ -353,8 +353,8 @@ it("updates a user's subscriptions via webhook (add then remove)", async ({ expe
       ],
     },
     metadata: {
-      offerId,
-      offer: JSON.stringify(offer),
+      productId,
+      product: JSON.stringify(product),
       priceId: "monthly",
     },
     cancel_at_period_end: false,
@@ -426,4 +426,3 @@ it("updates a user's subscriptions via webhook (add then remove)", async ({ expe
   expect(afterRemove.status).toBe(200);
   expect(afterRemove.body.quantity).toBe(0);
 });
-

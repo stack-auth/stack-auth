@@ -24,6 +24,51 @@ const jsLikeFileExtensions: string[] = [
   "js",
 ];
 
+class UserError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "UserError";
+  }
+}
+
+class UnansweredQuestionError extends UserError {
+  constructor(message: string) {
+    super(message + ", or use --on-question <guess|ask> to answer questions automatically or interactively");
+    this.name = "UnansweredQuestionError";
+  }
+}
+
+type OnQuestionMode = "ask" | "guess" | "error";
+
+function isTruthyEnv(name: string): boolean {
+  const v = process.env[name];
+  if (!v) return false;
+  const s = String(v).toLowerCase();
+  return s === "1" || s === "true" || s === "yes";
+}
+
+function isNonInteractiveEnv(): boolean {
+  if (isTruthyEnv("CI")) return true;
+  if (isTruthyEnv("GITHUB_ACTIONS")) return true;
+  if (isTruthyEnv("NONINTERACTIVE")) return true;
+  if (isTruthyEnv("NO_INTERACTIVE")) return true;
+  if (isTruthyEnv("PNPM_NON_INTERACTIVE")) return true;
+  if (isTruthyEnv("YARN_ENABLE_NON_INTERACTIVE")) return true;
+  if (isTruthyEnv("CURSOR_AGENT")) return true;
+  if (isTruthyEnv("CLAUDECODE")) return true;
+  return false;
+}
+
+function resolveOnQuestionMode(opt: string): OnQuestionMode {
+  if (!opt || opt === "default") {
+    return isNonInteractiveEnv() ? "error" : "ask";
+  }
+  if (opt === "ask" || opt === "guess" || opt === "error") {
+    return opt;
+  }
+  throw new UserError(`Invalid argument for --on-question: "${opt}". Valid modes are: "ask", "guess", "error", "default".`);
+}
+
 // Setup command line parsing
 const program = new Command();
 program
@@ -46,7 +91,7 @@ program
   .option("--project-id <project-id>", "Project ID to use in setup")
   .option("--publishable-client-key <publishable-client-key>", "Publishable client key to use in setup")
   .option("--no-browser", "Don't open browser for environment variable setup")
-  .option("--agent-mode", "Run without prompting for any input")
+  .option("--on-question <mode>", "How to handle interactive questions: ask | guess | error | default", "default")
   .addHelpText('after', `
 For more information, please visit https://docs.stack-auth.com/getting-started/setup`);
 
@@ -64,17 +109,11 @@ const isClient: boolean = options.client || false;
 const isServer: boolean = options.server || false;
 const projectIdFromArgs: string | undefined = options.projectId;
 const publishableClientKeyFromArgs: string | undefined = options.publishableClientKey;
-const agentMode = !!options.agentMode;
+const onQuestionMode: OnQuestionMode = resolveOnQuestionMode(options.onQuestion);
+
 // Commander negates the boolean options with prefix `--no-`
 // so `--no-browser` becomes `browser: false`
 const noBrowser: boolean = !options.browser;
-
-class UserError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "UserError";
-  }
-}
 
 type Ansis = {
   red: string,
@@ -436,8 +475,11 @@ const Steps = {
     if (packageJson.dependencies?.["react"] || packageJson.dependencies?.["react-dom"]) {
       return "react";
     }
-    if (agentMode) {
+    if (onQuestionMode === "guess") {
       return "js";
+    }
+    if (onQuestionMode === "error") {
+      throw new UnansweredQuestionError("Unable to auto-detect project type (checked for Next.js and React dependencies). Re-run with one of: --js, --react, or --next.");
     }
 
     const { type } = await inquirer.prompt([
@@ -490,6 +532,13 @@ const Steps = {
       return { error: `The project at ${projectPath} is using an unsupported version of Next.js (found ${nextVersionInPackageJson}).\n\nOnly Next.js 14 & 15 projects are currently supported. See Next's upgrade guide: https://nextjs.org/docs/app/building-your-application/upgrading/version-14` };
     }
 
+    const hasSrcAppFolder = fs.existsSync(path.join(projectPath, "src/app"));
+    const srcPath = path.join(projectPath, hasSrcAppFolder ? "src" : "");
+    const appPath = path.join(srcPath, "app");
+    if (!fs.existsSync(appPath)) {
+      return { error: `The app path ${appPath} does not exist. Only the Next.js App router is supported — are you maybe on the Pages router instead?` };
+    }
+
     const nextConfigPathWithoutExtension = path.join(projectPath, "next.config");
     const nextConfigFileExtension = await findJsExtension(
       nextConfigPathWithoutExtension
@@ -497,14 +546,7 @@ const Steps = {
     const nextConfigPath =
       nextConfigPathWithoutExtension + "." + (nextConfigFileExtension ?? "js");
     if (!fs.existsSync(nextConfigPath)) {
-      return { error: `Expected file at ${nextConfigPath}. Only Next.js projects are currently supported.` };
-    }
-
-    const hasSrcAppFolder = fs.existsSync(path.join(projectPath, "src/app"));
-    const srcPath = path.join(projectPath, hasSrcAppFolder ? "src" : "");
-    const appPath = path.join(srcPath, "app");
-    if (!fs.existsSync(appPath)) {
-      return { error: `The app path ${appPath} does not exist. Only the Next.js app router is supported.` };
+      return { error: `Expected file at ${nextConfigPath} for Next.js projects.` };
     }
 
     const dryUpdateNextLayoutFileResult = await Steps.dryUpdateNextLayoutFile({ appPath, defaultExtension: "jsx" });
@@ -625,14 +667,24 @@ const Steps = {
 
     const tokenStore = type === "next" ? '"nextjs-cookie"' : (clientOrServer === "client" ? '"cookie"' : '"memory"');
     const publishableClientKeyWrite = clientOrServer === "server"
-      ? `process.env.STACK_PUBLISHABLE_CLIENT_KEY ${publishableClientKeyFromArgs ? `|| '${publishableClientKeyFromArgs}'` : ""}`
+      ? `process.env.STACK_PUBLISHABLE_CLIENT_KEY ${publishableClientKeyFromArgs ? `|| ${JSON.stringify(publishableClientKeyFromArgs)}` : ""}`
       : `'${publishableClientKeyFromArgs ?? 'INSERT_YOUR_PUBLISHABLE_CLIENT_KEY_HERE'}'`;
     const jsOptions = type === "js" ? [
       `\n\n${indentation}// get your Stack Auth API keys from https://app.stack-auth.com${clientOrServer === "client" ? ` and store them in a safe place (eg. environment variables)` : ""}`,
-      `${projectIdFromArgs ? `${indentation}projectId: '${projectIdFromArgs}',` : ""}`,
+      `${projectIdFromArgs ? `${indentation}projectId: ${JSON.stringify(projectIdFromArgs)},` : ""}`,
       `${indentation}publishableClientKey: ${publishableClientKeyWrite},`,
       `${clientOrServer === "server" ? `${indentation}secretServerKey: process.env.STACK_SECRET_SERVER_KEY,` : ""}`,
     ].filter(Boolean).join("\n") : "";
+
+    const nextClientOptions = (type === "next" && clientOrServer === "client")
+      ? (() => {
+        const lines = [
+          projectIdFromArgs ? `${indentation}projectId: process.env.NEXT_PUBLIC_STACK_PROJECT_ID ?? ${JSON.stringify(projectIdFromArgs)},` : "",
+          publishableClientKeyFromArgs ? `${indentation}publishableClientKey: process.env.NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY ?? ${JSON.stringify(publishableClientKeyFromArgs)},` : "",
+        ].filter(Boolean).join("\n");
+        return lines ? `\n${lines}` : "";
+      })()
+      : "";
 
 
     laterWriteFileIfNotExists(
@@ -643,7 +695,7 @@ ${type === "next" && clientOrServer === "server" ? `import "server-only";` : ""}
 import { Stack${clientOrServerCap}App } from ${JSON.stringify(packageName)};
 
 export const stack${clientOrServerCap}App = new Stack${clientOrServerCap}App({
-${indentation}tokenStore: ${tokenStore},${jsOptions}
+${indentation}tokenStore: ${tokenStore},${jsOptions}${nextClientOptions}
 });
       `.trim() + "\n"
     );
@@ -741,7 +793,7 @@ ${indentation}tokenStore: ${tokenStore},${jsOptions}
       react: "React",
     } as const;
     const typeString = typeStringMap[type];
-    const isReady = agentMode || (await inquirer.prompt([
+    const isReady = (onQuestionMode !== "ask") || (await inquirer.prompt([
       {
         type: "confirm",
         name: "ready",
@@ -759,8 +811,9 @@ ${indentation}tokenStore: ${tokenStore},${jsOptions}
     if (isServer) return ["server"];
     if (isClient) return ["client"];
 
-    if (agentMode) {
-      throw new UserError("Please specify the installation type using the --server or --client argument.");
+    if (onQuestionMode === "guess") return ["server", "client"];
+    if (onQuestionMode === "error") {
+      throw new UnansweredQuestionError("Ambiguous installation type. Re-run with --server, --client, or both.");
     }
 
     return (await inquirer.prompt([{
@@ -816,7 +869,7 @@ async function getUpdatedLayout(originalLayout: string): Promise<LayoutResult | 
   const importInsertLocationM1 =
     firstImportLocationM1 ?? (hasStringAsFirstLine ? layout.indexOf("\n") : -1);
   const importInsertLocation = importInsertLocationM1 + 1;
-  const importStatement = `import { StackProvider, StackTheme } from "@stackframe/stack";\nimport { stackServerApp } from "../stack/server";\n`;
+  const importStatement = `import { StackProvider, StackTheme } from "@stackframe/stack";\nimport { stackClientApp } from "../stack/client";\n`;
   layout =
     layout.slice(0, importInsertLocation) +
     importStatement +
@@ -843,7 +896,7 @@ async function getUpdatedLayout(originalLayout: string): Promise<LayoutResult | 
     bodyCloseStartIndex
   );
 
-  const insertOpen = "<StackProvider app={stackServerApp}><StackTheme>";
+  const insertOpen = "<StackProvider app={stackClientApp}><StackTheme>";
   const insertClose = "</StackTheme></StackProvider>";
 
   layout =
@@ -899,8 +952,8 @@ async function getProjectPath(): Promise<string> {
       path.join(savedProjectPath, "package.json")
     );
     if (askForPathModification) {
-      if (agentMode) {
-        throw new UserError(`No package.json file found in the project directory ${savedProjectPath}. Please specify the correct project path using the --project-path argument, or create a new project before running the wizard.`);
+      if (onQuestionMode === "guess" || onQuestionMode === "error") {
+        throw new UserError(`No package.json file found in ${savedProjectPath}. Re-run providing the project path argument (e.g. 'init-stack <project-path>').`);
       }
       savedProjectPath = (
         await inquirer.prompt([
@@ -932,7 +985,7 @@ async function promptPackageManager(): Promise<string> {
   const yarnLock = fs.existsSync(path.join(projectPath, "yarn.lock"));
   const pnpmLock = fs.existsSync(path.join(projectPath, "pnpm-lock.yaml"));
   const npmLock = fs.existsSync(path.join(projectPath, "package-lock.json"));
-  const bunLock = fs.existsSync(path.join(projectPath, "bun.lockb"));
+  const bunLock = fs.existsSync(path.join(projectPath, "bun.lockb")) || fs.existsSync(path.join(projectPath, "bun.lock"));
 
   if (yarnLock && !pnpmLock && !npmLock && !bunLock) {
     return "yarn";
@@ -944,8 +997,9 @@ async function promptPackageManager(): Promise<string> {
     return "bun";
   }
 
-  if (agentMode) {
-    throw new UserError("Unable to determine which package manager to use. Please rerun the init command and specify the package manager using exactly one of the following arguments: --npm, --yarn, --pnpm, or --bun.");
+  if (onQuestionMode === "guess") return "npm";
+  if (onQuestionMode === "error") {
+    throw new UnansweredQuestionError("Unable to determine the package manager. Re-run with one of: --npm, --yarn, --pnpm, or --bun.");
   }
 
   const answers = await inquirer.prompt([

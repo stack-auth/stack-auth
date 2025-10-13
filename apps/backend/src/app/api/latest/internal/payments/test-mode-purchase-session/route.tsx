@@ -1,24 +1,17 @@
 import { purchaseUrlVerificationCodeHandler } from "@/app/api/latest/payments/purchases/verification-code-handler";
-import { validatePurchaseSession } from "@/lib/payments";
+import { grantProductToCustomer } from "@/lib/payments";
+import { getTenancy } from "@/lib/tenancies";
 import { getStripeForAccount } from "@/lib/stripe";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { SubscriptionStatus } from "@prisma/client";
-import { adaptSchema, adminAuthTypeSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { addInterval } from "@stackframe/stack-shared/dist/utils/dates";
+import { yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { StackAssertionError, StatusError } from "@stackframe/stack-shared/dist/utils/errors";
-import { typedToUppercase } from "@stackframe/stack-shared/dist/utils/strings";
 
 export const POST = createSmartRouteHandler({
   metadata: {
     hidden: true,
   },
   request: yupObject({
-    auth: yupObject({
-      type: adminAuthTypeSchema.defined(),
-      project: adaptSchema.defined(),
-      tenancy: adaptSchema.defined(),
-    }).defined(),
     body: yupObject({
       full_code: yupString().defined(),
       price_id: yupString().defined(),
@@ -29,77 +22,32 @@ export const POST = createSmartRouteHandler({
     statusCode: yupNumber().oneOf([200]).defined(),
     bodyType: yupString().oneOf(["success"]).defined(),
   }),
-  handler: async ({ auth, body }) => {
+  handler: async ({ body }) => {
     const { full_code, price_id, quantity } = body;
     const { data, id: codeId } = await purchaseUrlVerificationCodeHandler.validateCode(full_code);
-    if (auth.tenancy.id !== data.tenancyId) {
-      throw new StatusError(400, "Tenancy id does not match value from code data");
-    }
-    const prisma = await getPrismaClientForTenancy(auth.tenancy);
 
-    const { selectedPrice, conflictingGroupSubscriptions } = await validatePurchaseSession({
+    const tenancy = await getTenancy(data.tenancyId);
+    if (!tenancy) {
+      throw new StackAssertionError("Tenancy not found for test mode purchase session");
+    }
+    if (tenancy.config.payments.testMode !== true) {
+      throw new StatusError(403, "Test mode is not enabled for this project");
+    }
+    const prisma = await getPrismaClientForTenancy(tenancy);
+
+    await grantProductToCustomer({
       prisma,
-      tenancy: auth.tenancy,
-      codeData: data,
+      tenancy,
+      customerType: data.product.customerType,
+      customerId: data.customerId,
+      product: data.product,
+      productId: data.productId,
       priceId: price_id,
       quantity,
+      creationSource: "TEST_MODE",
     });
-    if (!selectedPrice) {
-      throw new StackAssertionError("Price not resolved for test mode purchase session");
-    }
-
-    if (!selectedPrice.interval) {
-      await prisma.oneTimePurchase.create({
-        data: {
-          tenancyId: auth.tenancy.id,
-          customerId: data.customerId,
-          customerType: typedToUppercase(data.offer.customerType),
-          offerId: data.offerId,
-          priceId: price_id,
-          offer: data.offer,
-          quantity,
-          creationSource: "TEST_MODE",
-        },
-      });
-    } else {
-      // Cancel conflicting subscriptions for TEST_MODE as well, then create new TEST_MODE subscription
-      if (conflictingGroupSubscriptions.length > 0) {
-        const conflicting = conflictingGroupSubscriptions[0];
-        if (conflicting.stripeSubscriptionId) {
-          const stripe = await getStripeForAccount({ tenancy: auth.tenancy });
-          await stripe.subscriptions.cancel(conflicting.stripeSubscriptionId);
-        } else if (conflicting.id) {
-          await prisma.subscription.update({
-            where: {
-              tenancyId_id: {
-                tenancyId: auth.tenancy.id,
-                id: conflicting.id,
-              },
-            },
-            data: { status: SubscriptionStatus.canceled },
-          });
-        }
-      }
-
-      await prisma.subscription.create({
-        data: {
-          tenancyId: auth.tenancy.id,
-          customerId: data.customerId,
-          customerType: typedToUppercase(data.offer.customerType),
-          status: "active",
-          offerId: data.offerId,
-          priceId: price_id,
-          offer: data.offer,
-          quantity,
-          currentPeriodStart: new Date(),
-          currentPeriodEnd: addInterval(new Date(), selectedPrice.interval!),
-          cancelAtPeriodEnd: false,
-          creationSource: "TEST_MODE",
-        },
-      });
-    }
     await purchaseUrlVerificationCodeHandler.revokeCode({
-      tenancy: auth.tenancy,
+      tenancy,
       id: codeId,
     });
 

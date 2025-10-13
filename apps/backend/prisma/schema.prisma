@@ -756,6 +756,7 @@ enum SubscriptionStatus {
 enum PurchaseCreationSource {
   PURCHASE_PAGE
   TEST_MODE
+  API_GRANT
 }
 
 model Subscription {
@@ -763,9 +764,9 @@ model Subscription {
   tenancyId    String       @db.Uuid
   customerId   String
   customerType CustomerType
-  offerId      String?
+  productId    String?
   priceId      String?
-  offer        Json
+  product      Json
   quantity     Int          @default(1)
 
   stripeSubscriptionId String?
@@ -802,9 +803,9 @@ model OneTimePurchase {
   tenancyId             String                 @db.Uuid
   customerId            String
   customerType          CustomerType
-  offerId               String?
+  productId             String?
   priceId               String?
-  offer                 Json
+  product               Json
   quantity              Int
   stripePaymentIntentId String?
   createdAt             DateTime               @default(now())
