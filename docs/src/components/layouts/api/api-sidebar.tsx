@@ -835,97 +835,100 @@ export function ApiSidebarContent({ pages = [] }: { pages?: PageData[] }) {
 
   return (
     <AccordionProvider>
-      <div className="h-full flex flex-col">
-        <ScrollArea className="flex-1">
-          <ScrollViewport className={`space-y-1 ${isMainSidebarCollapsed ? 'p-2' : 'p-4'}`}>
-            <ApiSidebarLink href="/api/overview" isCollapsed={isMainSidebarCollapsed}>
-              Overview
-            </ApiSidebarLink>
+      <>
+        {/* Scrollable content area */}
+        <div className="flex-1 min-h-0 pt-4 overflow-hidden">
+          <ScrollArea className="h-full">
+            <ScrollViewport className={isMainSidebarCollapsed ? "p-2" : "p-4"}>
+              <ApiSidebarLink href="/api/overview" isCollapsed={isMainSidebarCollapsed}>
+                Overview
+              </ApiSidebarLink>
 
-            {isMainSidebarCollapsed ? (
+              {isMainSidebarCollapsed ? (
               // Collapsed view - hierarchical dots
-              <div className="flex flex-col items-start space-y-2 py-4 w-full">
-                <div className="flex flex-col space-y-1 w-full">
-                  {hierarchicalItems.map((item, index) => (
-                    <CollapsedHierarchicalItem
-                      key={item.href || `${item.title}-${index}`}
-                      item={item}
-                      nextItems={hierarchicalItems.slice(index + 1)}
-                    />
-                  ))}
-                </div>
-              </div>
-            ) : (
-              // Expanded view - original layout
-              Object.entries(organizedPages)
-                .filter(([sectionKey]) => sectionKey !== 'admin')
-                .sort(([aKey], [bKey]) => {
-                  const sectionOrder = ['client', 'server', 'webhooks'];
-                  const aIndex = sectionOrder.indexOf(aKey);
-                  const bIndex = sectionOrder.indexOf(bKey);
-                  if (aIndex !== -1 && bIndex !== -1) return aIndex - bIndex;
-                  if (aIndex !== -1) return -1;
-                  if (bIndex !== -1) return 1;
-                  // eslint-disable-next-line no-restricted-syntax
-                  return aKey.localeCompare(bKey);
-                })
-                .map(([sectionKey, section]) => (
-                  <div key={sectionKey} className="mb-4">
-                    <ApiSeparator isCollapsed={isMainSidebarCollapsed}>{section.title}</ApiSeparator>
-
-                    {section.pages.length > 0 && section.pages.map((page: PageData) => (
-                      <ApiSidebarLink
-                        key={page.url}
-                        href={page.url}
-                        method={getHttpMethod(page)}
-                        isCollapsed={isMainSidebarCollapsed}
-                      >
-                        {page.data.title || formatTitle(page.slugs[page.slugs.length - 1])}
-                      </ApiSidebarLink>
+                <div className="flex flex-col items-start space-y-2 py-4 w-full">
+                  <div className="flex flex-col space-y-1 w-full">
+                    {hierarchicalItems.map((item, index) => (
+                      <CollapsedHierarchicalItem
+                        key={item.href || `${item.title}-${index}`}
+                        item={item}
+                        nextItems={hierarchicalItems.slice(index + 1)}
+                      />
                     ))}
+                  </div>
+                </div>
+              ) : (
+                    // Expanded view - original layout
+                    Object.entries(organizedPages)
+                      .filter(([sectionKey]) => sectionKey !== 'admin')
+                      .sort(([aKey], [bKey]) => {
+                        const sectionOrder = ['client', 'server', 'webhooks'];
+                        const aIndex = sectionOrder.indexOf(aKey);
+                        const bIndex = sectionOrder.indexOf(bKey);
+                        if (aIndex !== -1 && bIndex !== -1) return aIndex - bIndex;
+                        if (aIndex !== -1) return -1;
+                        if (bIndex !== -1) return 1;
+                        // eslint-disable-next-line no-restricted-syntax
+                        return aKey.localeCompare(bKey);
+                      })
+                      .map(([sectionKey, section]) => (
+                        <div key={sectionKey} className="mb-4">
+                          <ApiSeparator isCollapsed={isMainSidebarCollapsed}>{section.title}</ApiSeparator>
 
-                    {Object.entries(section.groups).map(([groupKey, group]: [string, OrganizedGroup]) => (
-                      <CollapsibleSection key={groupKey} title={group.title} isCollapsed={isMainSidebarCollapsed} sectionKey={sectionKey}>
-                        {group.pages.map((page: PageData) => {
-                          const method = getHttpMethod(page);
-                          const title = page.data.title || formatTitle(page.slugs[page.slugs.length - 1]);
-
-                          if (sectionKey === 'webhooks') {
-                            return (
-                              <ApiSidebarLink key={page.url} href={page.url} isCollapsed={isMainSidebarCollapsed}>
-                                {/* eslint-disable-next-line @typescript-eslint/no-unnecessary-condition */}
-                                {!isMainSidebarCollapsed ? (
-                                  <div className="flex items-center gap-2">
-                                    <span className="inline-flex items-center justify-center px-1.5 py-0.5 rounded bg-gradient-to-r from-purple-500 to-purple-600 text-white shadow-purple-500/25 font-mono font-bold text-[9px] tracking-wide leading-none w-10 flex-shrink-0">
-                                      EVENT
-                                    </span>
-                                    <span>{title}</span>
-                                  </div>
-                                ) : (
-                                  '🔔'
-                                )}
-                              </ApiSidebarLink>
-                            );
-                          }
-
-                          return (
+                          {section.pages.length > 0 && section.pages.map((page: PageData) => (
                             <ApiSidebarLink
                               key={page.url}
                               href={page.url}
-                              method={method}
+                              method={getHttpMethod(page)}
                               isCollapsed={isMainSidebarCollapsed}
                             >
-                              {title}
+                              {page.data.title || formatTitle(page.slugs[page.slugs.length - 1])}
                             </ApiSidebarLink>
-                          );
-                        })}
-                      </CollapsibleSection>
-                    ))}
-                  </div>
-                ))
-            )}
-          </ScrollViewport>
-        </ScrollArea>
+                          ))}
+
+                          {Object.entries(section.groups).map(([groupKey, group]: [string, OrganizedGroup]) => (
+                            <CollapsibleSection key={groupKey} title={group.title} isCollapsed={isMainSidebarCollapsed} sectionKey={sectionKey}>
+                              {group.pages.map((page: PageData) => {
+                                const method = getHttpMethod(page);
+                                const title = page.data.title || formatTitle(page.slugs[page.slugs.length - 1]);
+
+                                if (sectionKey === 'webhooks') {
+                                  return (
+                                    <ApiSidebarLink key={page.url} href={page.url} isCollapsed={isMainSidebarCollapsed}>
+                                      {/* eslint-disable-next-line @typescript-eslint/no-unnecessary-condition */}
+                                      {!isMainSidebarCollapsed ? (
+                                        <div className="flex items-center gap-2">
+                                          <span className="inline-flex items-center justify-center px-1.5 py-0.5 rounded bg-gradient-to-r from-purple-500 to-purple-600 text-white shadow-purple-500/25 font-mono font-bold text-[9px] tracking-wide leading-none w-10 flex-shrink-0">
+                                            EVENT
+                                          </span>
+                                          <span>{title}</span>
+                                        </div>
+                                      ) : (
+                                        '🔔'
+                                      )}
+                                    </ApiSidebarLink>
+                                  );
+                                }
+
+                                return (
+                                  <ApiSidebarLink
+                                    key={page.url}
+                                    href={page.url}
+                                    method={method}
+                                    isCollapsed={isMainSidebarCollapsed}
+                                  >
+                                    {title}
+                                  </ApiSidebarLink>
+                                );
+                              })}
+                            </CollapsibleSection>
+                          ))}
+                        </div>
+                      ))
+              )}
+            </ScrollViewport>
+          </ScrollArea>
+        </div>
 
         {/* Footer with theme toggle and collapse button */}
         <div className="border-t border-fd-border p-4 flex-shrink-0">
@@ -944,7 +947,7 @@ export function ApiSidebarContent({ pages = [] }: { pages?: PageData[] }) {
             </div>
           )}
         </div>
-      </div>
+      </>
     </AccordionProvider>
   );
 }

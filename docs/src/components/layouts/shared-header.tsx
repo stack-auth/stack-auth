@@ -261,7 +261,7 @@ export function SharedHeader({
       <header className="sticky top-0 w-full h-14 lg:h-26 z-49 flex flex-col space-around bg-fd-background">
 
         {/* First row */}
-        <div className="flex items-center justify-between h-14 border-b border-fd-border px-4">
+        <div className="flex items-center justify-between h-14 border-b border-fd-border px-4 md:px-6">
           {/* Left side - Stack Auth Logo and Navigation */}
           <div className="flex items-center gap-6 relative z-10">
             {/* Stack Auth Logo - Always visible */}
@@ -314,7 +314,7 @@ export function SharedHeader({
         </div>
 
         {/* Second row */}
-        <div className="h-12 hidden lg:flex items-center justify-stretch border-b border-fd-border px-4">
+        <div className="h-12 hidden lg:flex items-center justify-stretch border-b border-fd-border px-4 md:px-6">
           {/* Desktop Navigation Links - Hidden on mobile */}
           <div className="flex items-center gap-6">
             {navLinks.map((link, index) => {
