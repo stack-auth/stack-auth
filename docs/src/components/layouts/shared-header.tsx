@@ -86,7 +86,7 @@ function AIChatToggleButton() {
   return (
     <button
       className={cn(
-        'flex items-center gap-2 rounded-md px-2 py-1 text-xs transition-all duration-500 ease-out relative overflow-hidden',
+       'flex items-center gap-2 rounded-md px-2 py-1 text-xs transition-all duration-500 ease-out relative overflow-hidden',
         isChatOpen
           ? 'text-white chat-gradient-active hover:scale-105 hover:brightness-110 hover:shadow-lg'
           : 'text-white chat-gradient-active hover:scale-105 hover:brightness-110 hover:shadow-lg'
