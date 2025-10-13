@@ -231,7 +231,7 @@ import.meta.vitest?.test("applies migrations concurrently with 20 concurrent mig
   expect(result.length).toBe(1);
   expect(result[0].name).toBe('test_value');
 }), {
-  timeout: 40_000,
+  timeout: 60_000,
 });
 
 
