@@ -1,4 +1,4 @@
-import { sqlQuoteIdent } from '@/prisma-client';
+import { sqlQuoteIdent, sqlQuoteIdentToString } from '@/prisma-client';
 import { Prisma, PrismaClient } from '@prisma/client';
 import { StackAssertionError } from '@stackframe/stack-shared/dist/utils/errors';
 import { MIGRATION_FILES } from './../generated/migration-files';
