@@ -135,11 +135,6 @@ export async function applyMigrations(options: {
 
           const txOrPrismaClient = runOutside ? options.prismaClient : tx;
           if (isSingleStatement) {
-            if (runOutside) {
-              await txOrPrismaClient.$executeRaw(Prisma.sql`
-                SET search_path TO ${sqlQuoteIdent(options.schema)};
-              `);
-            }
             const res = await txOrPrismaClient.$queryRaw`${Prisma.raw(statement)}`;
             if (isConditionallyRepeatMigration) {
               if (!Array.isArray(res)) {
