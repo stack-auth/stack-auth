@@ -1,11 +1,11 @@
 import { WebAuthnError, startAuthentication, startRegistration } from "@simplewebauthn/browser";
 import { KnownErrors, StackClientInterface } from "@stackframe/stack-shared";
-import type { CustomerProductsListResponse } from "@stackframe/stack-shared/dist/interface/crud/products";
 import { ContactChannelsCrud } from "@stackframe/stack-shared/dist/interface/crud/contact-channels";
 import { CurrentUserCrud } from "@stackframe/stack-shared/dist/interface/crud/current-user";
 import { ItemCrud } from "@stackframe/stack-shared/dist/interface/crud/items";
 import { NotificationPreferenceCrud } from "@stackframe/stack-shared/dist/interface/crud/notification-preferences";
 import { OAuthProviderCrud } from "@stackframe/stack-shared/dist/interface/crud/oauth-providers";
+import type { CustomerProductsListResponse } from "@stackframe/stack-shared/dist/interface/crud/products";
 import { TeamApiKeysCrud, UserApiKeysCrud, teamApiKeysCreateOutputSchema, userApiKeysCreateOutputSchema } from "@stackframe/stack-shared/dist/interface/crud/project-api-keys";
 import { ProjectPermissionsCrud } from "@stackframe/stack-shared/dist/interface/crud/project-permissions";
 import { ClientProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
@@ -1749,7 +1749,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
   // END_PLATFORM
   getConvexClientAuth(options: { tokenStore: TokenStoreInit }): (args: { forceRefreshToken: boolean }) => Promise<string | null> {
     return async (args: { forceRefreshToken: boolean }) => {
-      const session = await this._getSession(options.tokenStore);
+      const session = await this._getSession(options.tokenStore ?? this._tokenStoreInit);
       if (!args.forceRefreshToken) {
         const tokens = await session.getOrFetchLikelyValidTokens(20_000);
         return tokens?.accessToken.token ?? null;
