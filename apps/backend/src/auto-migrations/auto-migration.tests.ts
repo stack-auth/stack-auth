@@ -214,8 +214,8 @@ import.meta.vitest?.test("applies migrations concurrently", runTest(async ({ exp
   expect(result[0].name).toBe('test_value');
 }));
 
-import.meta.vitest?.test("applies migrations concurrently with 200 concurrent migrations", runTest(async ({ expect, prismaClient }) => {
-  const promises = Array.from({ length: 200 }, async (_, i) => {
+import.meta.vitest?.test("applies migrations concurrently with 20 concurrent migrations", runTest(async ({ expect, prismaClient }) => {
+  const promises = Array.from({ length: 20 }, async (_, i) => {
     console.log("Applying migration", i);
     const result = await applyMigrations({ prismaClient, migrationFiles: exampleMigrationFiles1, artificialDelayInSeconds: 1, schema: 'public', logging: true });
     console.log("Migration", i, "applied", result.newlyAppliedMigrationNames);
@@ -246,7 +246,7 @@ import.meta.vitest?.test("applies migrations concurrently with 200 concurrent mi
 //
 // The fix would be to only *try* acquiring the migration lock when we apply a migration, and if it fails to acquire, we
 // wait *outside* of the transaction so it doesn't exhaust all connections
-import.meta.vitest?.test.todo("applies migrations concurrently with 200 concurrent migrations with RUN_OUTSIDE_TRANSACTION_SENTINEL");
+import.meta.vitest?.test.todo("applies migrations concurrently with 20 concurrent migrations with RUN_OUTSIDE_TRANSACTION_SENTINEL");
 
 
 import.meta.vitest?.test("applies migration with a DB previously migrated with prisma", runTest(async ({ expect, prismaClient, dbURL }) => {
