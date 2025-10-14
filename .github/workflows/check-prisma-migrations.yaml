@@ -53,6 +53,9 @@ jobs:
       - name: Build packages
         run: pnpm run build:packages
 
+      - name: Codegen
+        run: pnpm run codegen
+
       - name: Initialize database
         run: pnpm run db:init
 
