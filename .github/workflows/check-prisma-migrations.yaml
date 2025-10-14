@@ -50,8 +50,11 @@ jobs:
       - name: Wait on Postgres
         run: pnpm run wait-until-postgres-is-ready:pg_isready
       
-      - name: Build
-        run: pnpm run build
+      - name: Build packages
+        run: pnpm run build:packages
+
+      - name: Codegen
+        run: pnpm run codegen
 
       - name: Initialize database
         run: pnpm run db:init
