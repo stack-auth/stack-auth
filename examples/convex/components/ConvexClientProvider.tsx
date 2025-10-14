@@ -1,12 +1,12 @@
 "use client";
 
-import { ReactNode } from "react";
-import { ConvexProvider, ConvexReactClient } from "convex/react";
 import { stackClientApp } from "@/stack/client";
+import { ConvexProvider, ConvexReactClient } from "convex/react";
+import { ReactNode } from "react";
 
 const convex = new ConvexReactClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
 convex.setAuth(
-  stackClientApp.getConvexClientAuth({ tokenStore: "nextjs-cookie" })
+  stackClientApp.getConvexClientAuth({})
 );
 
 export default function ConvexClientProvider({
