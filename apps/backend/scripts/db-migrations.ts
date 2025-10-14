@@ -4,16 +4,13 @@ import { globalPrismaClient, globalPrismaSchema, sqlQuoteIdent } from "@/prisma-
 import { Prisma } from "@prisma/client";
 import { execSync } from "child_process";
 import * as readline from 'readline';
+import { seed } from "../prisma/seed";
 
 const dropSchema = async () => {
   await globalPrismaClient.$executeRaw(Prisma.sql`DROP SCHEMA ${sqlQuoteIdent(globalPrismaSchema)} CASCADE`);
   await globalPrismaClient.$executeRaw(Prisma.sql`CREATE SCHEMA ${sqlQuoteIdent(globalPrismaSchema)}`);
   await globalPrismaClient.$executeRaw(Prisma.sql`GRANT ALL ON SCHEMA ${sqlQuoteIdent(globalPrismaSchema)} TO postgres`);
   await globalPrismaClient.$executeRaw(Prisma.sql`GRANT ALL ON SCHEMA ${sqlQuoteIdent(globalPrismaSchema)} TO public`);
-};
-
-const seed = async () => {
-  execSync('pnpm run db-seed-script', { stdio: 'inherit' });
 };
 
 const promptDropDb = async () => {
