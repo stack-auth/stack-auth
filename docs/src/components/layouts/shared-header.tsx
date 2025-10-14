@@ -115,7 +115,7 @@ function TOCToggleButtonInner(props: { className: string }) {
   return (
     <button
       className={cn(
-        'flex items-center gap-2 rounded-md px-2 py-1 text-xs transition-colors',
+        'flex items-center gap-2 rounded-md px-2 py-1 text-xs transition-colors border border-fd-border',
         isTocEffectivelyVisible
           ? 'bg-fd-primary/10 text-fd-primary hover:bg-fd-primary/20'
           : 'text-fd-muted-foreground hover:text-fd-foreground hover:bg-fd-muted/50',
@@ -136,8 +136,8 @@ function TOCToggleButtonInner(props: { className: string }) {
 function TOCToggleButton(props: { className: string }) {
   const pathname = usePathname();
 
-  // Only show on docs pages (not API pages)
-  const isDocsPage = pathname.startsWith('/docs') && !isInApiSection(pathname);
+  // Only show on docs pages (not API pages or SDK pages)
+  const isDocsPage = pathname.startsWith('/docs') && !isInApiSection(pathname) && !isInSdkSection(pathname);
 
   if (!isDocsPage) return null;
 
@@ -227,13 +227,25 @@ export function SharedHeader({
   sidebarContent
 }: SharedHeaderProps) {
   const pathname = usePathname();
+  const sidebarContext = useSidebar();
   const [showMobileNav, setShowMobileNav] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
+  const isTocOpen = sidebarContext?.isTocOpen ?? false;
+  const setTocOpen = sidebarContext?.setTocOpen;
 
   // Close mobile nav when pathname changes
   useEffect(() => {
     setShowMobileNav(false);
   }, [pathname]);
+
+  // Close TOC when navigating to SDK pages (but don't affect chat)
+  useEffect(() => {
+    if (!setTocOpen) return;
+    if (!isInSdkSection(pathname)) return;
+    if (isTocOpen) {
+      setTocOpen(false);
+    }
+  }, [pathname, isTocOpen, setTocOpen]);
 
   // Prevent body scroll when mobile nav is open
   useEffect(() => {

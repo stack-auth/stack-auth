@@ -243,7 +243,7 @@ export function PlatformCodeblock({
   // Initialize global state on first render
   useEffect(() => {
     initializeGlobalFrameworks();
-  });
+  }, []);
 
   const [selectedPlatform, setSelectedPlatform] = useState(getInitialPlatform);
   const [selectedFrameworks, setSelectedFrameworks] = useState<{ [platform: string]: string }>(() => {
