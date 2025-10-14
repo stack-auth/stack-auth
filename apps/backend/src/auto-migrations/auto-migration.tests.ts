@@ -14,8 +14,8 @@ const getTestDbURL = (testDbName: string) => {
   };
 };
 
-const applySql = async (options: { sql: string | string[], fullDbURL: string }) => {
-  const sql = postgres(options.fullDbURL);
+const applySql = async (options: { sql: string | string[], dbUrl: string }) => {
+  const sql = postgres(options.dbUrl);
 
   try {
     for (const query of Array.isArray(options.sql) ? options.sql : [options.sql]) {
@@ -31,12 +31,12 @@ const setupTestDatabase = async () => {
   const randomSuffix = Math.random().toString(16).substring(2, 12);
   const testDbName = `${TEST_DB_PREFIX}_${randomSuffix}`;
   const dbURL = getTestDbURL(testDbName);
-  await applySql({ sql: `CREATE DATABASE ${testDbName}`, fullDbURL: dbURL.base });
+  await applySql({ sql: `CREATE DATABASE ${testDbName}`, dbUrl: dbURL.base });
 
   const prismaClient = new PrismaClient({
     datasources: {
       db: {
-        url: dbURL.full,
+        url: `${dbURL.full}?connection_limit=1`,
       },
     },
   });
@@ -63,7 +63,7 @@ const teardownTestDatabase = async (prismaClient: PrismaClient, testDbName: stri
       `,
       `DROP DATABASE IF EXISTS ${testDbName}`
     ],
-    fullDbURL: dbURL.base
+    dbUrl: dbURL.base
   });
 
   // Wait a bit to ensure connections are terminated
@@ -239,7 +239,7 @@ import.meta.vitest?.test("applies migrations concurrently with 20 concurrent mig
 
 
 import.meta.vitest?.test("applies migration with a DB previously migrated with prisma", runTest(async ({ expect, prismaClient, dbURL }) => {
-  await applySql({ sql: examplePrismaBasedInitQueries, fullDbURL: dbURL.full });
+  await applySql({ sql: examplePrismaBasedInitQueries, dbUrl: dbURL.full });
   const result = await applyMigrations({ prismaClient, migrationFiles: examplePrismaBasedMigrationFiles, schema: 'public' });
   expect(result.newlyAppliedMigrationNames).toEqual(['20250314215050_age']);
 
@@ -302,6 +302,7 @@ import.meta.vitest?.test("applies migration while running an interactive transac
     expect(result[0].name).toBe('test_value');
   }, {
     isolationLevel: undefined,
+    timeout: 15_000,
   });
 }));
 
