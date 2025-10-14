@@ -75,7 +75,7 @@ RUN apt-get update && \
 COPY --from=builder --chown=node:node /app/apps/backend/.next/standalone ./
 COPY --from=builder --chown=node:node /app/apps/backend/.next/static ./apps/backend/.next/static
 COPY --from=builder --chown=node:node /app/apps/backend/prisma ./apps/backend/prisma
-COPY --from=builder --chown=node:node /app/apps/backend/dist ./apps/backend
+COPY --from=builder --chown=node:node /app/apps/backend/dist ./apps/backend/dist
 
 # Copy built dashboard
 COPY --from=builder --chown=node:node /app/apps/dashboard/.next/standalone ./
