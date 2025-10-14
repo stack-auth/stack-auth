@@ -214,7 +214,7 @@ import.meta.vitest?.test("applies migrations concurrently", runTest(async ({ exp
 import.meta.vitest?.test("applies migrations concurrently with 20 concurrent migrations", runTest(async ({ expect, prismaClient }) => {
   const promises = Array.from({ length: 20 }, async (_, i) => {
     console.log("Applying migration", i);
-    const result = await applyMigrations({ prismaClient, migrationFiles: exampleMigrationFiles1, artificialDelayInSeconds: 1, schema: 'public' });
+    const result = await applyMigrations({ prismaClient, migrationFiles: exampleMigrationFiles1, artificialDelayInSeconds: 1, schema: 'public', logging: true });
     console.log("Migration", i, "applied", result.newlyAppliedMigrationNames);
     return result;
   });

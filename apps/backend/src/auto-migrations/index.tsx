@@ -197,6 +197,7 @@ export async function runMigrationNeeded(options: {
   schema: string,
   migrationFiles?: { migrationName: string, sql: string }[],
   artificialDelayInSeconds?: number,
+  logging?: boolean,
 }): Promise<void> {
   const migrationFiles = options.migrationFiles ?? MIGRATION_FILES;
 
@@ -217,7 +218,7 @@ export async function runMigrationNeeded(options: {
         migrationFiles: options.migrationFiles,
         artificialDelayInSeconds: options.artificialDelayInSeconds,
         schema: options.schema,
-        logging: true,
+        logging: options.logging,
       });
     } else {
       throw e;

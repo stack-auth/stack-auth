@@ -93,12 +93,12 @@ export async function getPrismaClientForSourceOfTruth(sourceOfTruth: CompleteCon
       const entry = sourceOfTruth.connectionStrings[branchId];
       const connectionString = await resolveNeonConnectionString(entry);
       const neonPrismaClient = getNeonPrismaClient(connectionString);
-      await runMigrationNeeded({ prismaClient: neonPrismaClient, schema: getSchemaFromConnectionString(connectionString) });
+      await runMigrationNeeded({ prismaClient: neonPrismaClient, schema: getSchemaFromConnectionString(connectionString), logging: true });
       return neonPrismaClient;
     }
     case 'postgres': {
       const postgresPrismaClient = getPostgresPrismaClient(sourceOfTruth.connectionString);
-      await runMigrationNeeded({ prismaClient: postgresPrismaClient.client, schema: getSchemaFromConnectionString(sourceOfTruth.connectionString) });
+      await runMigrationNeeded({ prismaClient: postgresPrismaClient.client, schema: getSchemaFromConnectionString(sourceOfTruth.connectionString), logging: true });
       return postgresPrismaClient.client;
     }
     case 'hosted': {
