@@ -38,7 +38,9 @@ if [ "$STACK_SKIP_MIGRATIONS" = "true" ]; then
   echo "Skipping migrations."
 else
   echo "Running migrations..."
-  node apps/backend/db-migrations.js migrate
+  cd apps/backend
+  node db-migrations.js migrate
+  cd ../..
 fi
 
 if [ "$STACK_SKIP_SEED_SCRIPT" = "true" ]; then
