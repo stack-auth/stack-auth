@@ -237,6 +237,10 @@ async function main(): Promise<void> {
   if (isNeon) packagesToInstall.push('@neondatabase/serverless');
 
   await Steps.writeEnvVars(type);
+  const convexIntegration = await Steps.maybeInstallConvexIntegration({ packageJson: projectPackageJson, type });
+  if (convexIntegration) {
+    nextSteps.push(...convexIntegration.instructions);
+  }
 
   if (type === "next") {
     const projectInfo = await Steps.getNextProjectInfo({ packageJson: projectPackageJson });
@@ -440,6 +444,10 @@ type StackAppFileResult = {
   fileName: string,
 }
 
+type ConvexIntegrationResult = {
+  instructions: string[],
+}
+
 const Steps = {
   async getProject(): Promise<{ packageJson: PackageJson }> {
     let projectPath = await getProjectPath();
@@ -597,6 +605,65 @@ const Steps = {
     }
 
     return false;
+  },
+
+  async maybeInstallConvexIntegration({ packageJson, type }: { packageJson: PackageJson, type: "js" | "next" | "react" }): Promise<ConvexIntegrationResult | null> {
+    const hasConvexDependency = Boolean(packageJson.dependencies?.["convex"] || packageJson.devDependencies?.["convex"]);
+    if (!hasConvexDependency) {
+      return null;
+    }
+
+    const projectPath = await getProjectPath();
+    const convexDir = path.join(projectPath, "convex");
+    if (!fs.existsSync(convexDir)) {
+      return null;
+    }
+
+    const stackPackageName = await Steps.getStackPackageName(type);
+    const instructions: string[] = [];
+
+    const authConfigPath = path.join(convexDir, "auth.config.ts");
+    const desiredAuthConfig = createConvexAuthConfigContent({ stackPackageName, type });
+    const existingAuthConfig = await readFile(authConfigPath);
+    if (!existingAuthConfig || (!existingAuthConfig.includes("getConvexProvidersConfig") && !existingAuthConfig.includes("@stackframe/"))) {
+      laterWriteFile(authConfigPath, desiredAuthConfig);
+    }
+
+    const convexConfigPath = path.join(convexDir, "convex.config.ts");
+    const existingConvexConfig = await readFile(convexConfigPath);
+    const desiredConvexConfig = createConvexIntegrationConvexConfigContent(stackPackageName);
+    let needsManualConvexConfig = false;
+
+    if (!existingConvexConfig) {
+      laterWriteFile(convexConfigPath, desiredConvexConfig);
+    } else if (existingConvexConfig.includes("app.use(stackAuthComponent") && existingConvexConfig.includes("/convex.config") && existingConvexConfig.includes("stackframe")) {
+      // already integrated
+    } else {
+      const integratedContent = integrateConvexConfig(existingConvexConfig, stackPackageName);
+      if (integratedContent) {
+        laterWriteFile(convexConfigPath, integratedContent);
+      } else if (isSimpleConvexConfig(existingConvexConfig)) {
+        laterWriteFile(convexConfigPath, desiredConvexConfig);
+      } else {
+        needsManualConvexConfig = true;
+      }
+    }
+
+    if (needsManualConvexConfig) {
+      instructions.push(`Update convex/convex.config.ts to import ${stackPackageName}/convex.config and call app.use(stackAuthComponent).`);
+    }
+
+    const convexClientUpdateResult = await updateConvexClients({ projectPath, type });
+    if (convexClientUpdateResult.skippedFiles.length > 0) {
+      instructions.push("Review your Convex client setup and call stackClientApp.getConvexClientAuth({}) or stackServerApp.getConvexClientAuth({}) manually where needed.");
+    }
+
+    instructions.push(
+      "Set the Stack Auth environment variables in Convex (Deployment → Settings → Environment Variables).",
+      "Verify your Convex clients call stackClientApp.getConvexClientAuth({}) or stackServerApp.getConvexClientAuth({}) so they share authentication with Stack Auth."
+    );
+
+    return { instructions };
   },
 
   async dryUpdateNextLayoutFile({ appPath, defaultExtension }: { appPath: string, defaultExtension: string }): Promise<{
@@ -1129,6 +1196,403 @@ function laterWriteFileIfNotExists(fullPath: string, content: string): void {
   writeFileHandlers.push(async () => {
     await writeFileIfNotExists(fullPath, content);
   });
+}
+
+function createConvexAuthConfigContent(options: { stackPackageName: string, type: "js" | "next" | "react" }): string {
+  const envVarName = getPublicProjectEnvVarName(options.type);
+  return `import { getConvexProvidersConfig } from ${JSON.stringify(options.stackPackageName)};
+
+export default {
+  providers: getConvexProvidersConfig({
+    projectId: process.env.${envVarName},
+  }),
+};
+`;
+}
+
+function createConvexIntegrationConvexConfigContent(stackPackageName: string): string {
+  const importPath = `${stackPackageName}/convex.config`;
+  return `import stackAuthComponent from ${JSON.stringify(importPath)};
+import { defineApp } from "convex/server";
+
+const app = defineApp();
+app.use(stackAuthComponent);
+
+export default app;
+`;
+}
+
+function integrateConvexConfig(existingContent: string, stackPackageName: string): string | null {
+  if (!existingContent.includes("defineApp")) {
+    return null;
+  }
+
+  const newline = existingContent.includes("\r\n") ? "\r\n" : "\n";
+  const normalizedLines = existingContent.replace(/\r\n/g, "\n").split("\n");
+  const importPath = `${stackPackageName}/convex.config`;
+
+  const hasImport = normalizedLines.some((line) => line.includes(importPath));
+  if (!hasImport) {
+    let insertIndex = 0;
+    while (insertIndex < normalizedLines.length && normalizedLines[insertIndex].trim() === "") {
+      insertIndex++;
+    }
+    while (insertIndex < normalizedLines.length && normalizedLines[insertIndex].trim().startsWith("import")) {
+      insertIndex++;
+    }
+    normalizedLines.splice(insertIndex, 0, `import stackAuthComponent from "${importPath}";`);
+  }
+
+  let lastImportIndex = -1;
+  for (let i = 0; i < normalizedLines.length; i++) {
+    if (normalizedLines[i].trim().startsWith("import")) {
+      lastImportIndex = i;
+      continue;
+    }
+    if (normalizedLines[i].trim() === "") {
+      continue;
+    }
+    break;
+  }
+  if (lastImportIndex >= 0) {
+    const nextIndex = lastImportIndex + 1;
+    if (!normalizedLines[nextIndex] || normalizedLines[nextIndex].trim() !== "") {
+      normalizedLines.splice(nextIndex, 0, "");
+    }
+  }
+
+  const hasStackUse = normalizedLines.some((line) => line.includes("app.use(stackAuthComponent"));
+  if (!hasStackUse) {
+    const appLineIndex = normalizedLines.findIndex((line) => /const\s+app\s*=\s*defineApp/.test(line));
+    if (appLineIndex === -1) {
+      return null;
+    }
+    const indent = normalizedLines[appLineIndex].match(/^\s*/)?.[0] ?? "";
+    const insertIndexForUse = appLineIndex + 1;
+    normalizedLines.splice(insertIndexForUse, 0, `${indent}app.use(stackAuthComponent);`);
+    const nextLineIndex = insertIndexForUse + 1;
+    if (!normalizedLines[nextLineIndex] || normalizedLines[nextLineIndex].trim() !== "") {
+      normalizedLines.splice(nextLineIndex, 0, "");
+    }
+  }
+
+  let updated = normalizedLines.join(newline);
+  if (!updated.endsWith(newline)) {
+    updated += newline;
+  }
+  return updated;
+}
+
+function isSimpleConvexConfig(content: string): boolean {
+  const normalized = content
+    .replace(/\r\n/g, "\n")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+  if (normalized.length !== 3) {
+    return false;
+  }
+  const [line1, line2, line3] = normalized;
+  const importRegex = /^import\s+\{\s*defineApp\s*\}\s+from\s+['"]convex\/server['"];?$/;
+  const appRegex = /^const\s+app\s*=\s*defineApp\(\s*\);?$/;
+  const exportRegex = /^export\s+default\s+app;?$/;
+  return importRegex.test(line1) && appRegex.test(line2) && exportRegex.test(line3);
+}
+
+function getPublicProjectEnvVarName(type: "js" | "next" | "react"): string {
+  if (type === "react") {
+    return "VITE_PUBLIC_STACK_PROJECT_ID";
+  }
+  if (type === "next") {
+    return "NEXT_PUBLIC_STACK_PROJECT_ID";
+  }
+  return "STACK_PROJECT_ID";
+}
+
+type ConvexClientUpdateResult = {
+  updatedFiles: string[],
+  skippedFiles: string[],
+};
+
+type AddSetAuthResult = {
+  updatedContent: string,
+  changed: boolean,
+  usedClientApp: boolean,
+  usedServerApp: boolean,
+  instantiationCount: number,
+  skippedHttpCount: number,
+};
+
+async function updateConvexClients({ projectPath, type }: { projectPath: string, type: "js" | "next" | "react" }): Promise<ConvexClientUpdateResult> {
+  const files = collectConvexClientCandidateFiles(projectPath);
+  const updatedFiles: string[] = [];
+  const skippedFiles: string[] = [];
+
+  for (const filePath of files) {
+    const fileContent = await readFile(filePath);
+    if (!fileContent) continue;
+    if (!/new\s+Convex(?:React|Http)?Client\b/.test(fileContent)) continue;
+
+    const addResult = addSetAuthToConvexClients(fileContent, type);
+    if (!addResult.changed) {
+      if (addResult.instantiationCount > 0 && addResult.skippedHttpCount > 0) {
+        skippedFiles.push(filePath);
+      }
+      continue;
+    }
+
+    let finalContent = addResult.updatedContent;
+    if (addResult.usedClientApp) {
+      finalContent = await ensureStackAppImport(finalContent, filePath, "client");
+    }
+    if (addResult.usedServerApp) {
+      finalContent = await ensureStackAppImport(finalContent, filePath, "server");
+    }
+
+    if (finalContent !== fileContent) {
+      laterWriteFile(filePath, finalContent);
+      updatedFiles.push(filePath);
+    }
+  }
+
+  return {
+    updatedFiles,
+    skippedFiles,
+  };
+}
+
+type StackAppKind = "client" | "server";
+
+async function ensureStackAppImport(content: string, filePath: string, kind: StackAppKind): Promise<string> {
+  const identifier = kind === "client" ? "stackClientApp" : "stackServerApp";
+  if (new RegExp(`import\\s+[^;]*\\b${identifier}\\b`).test(content)) {
+    return content;
+  }
+
+  const stackBasePath = await getStackAppBasePath(kind);
+  const relativeImportPath = convertToModuleSpecifier(path.relative(path.dirname(filePath), stackBasePath));
+  const newline = content.includes("\r\n") ? "\r\n" : "\n";
+
+  const lines = content.split(/\r?\n/);
+  const importLine = `import { ${identifier} } from "${relativeImportPath}";`;
+
+  let insertIndex = 0;
+  while (insertIndex < lines.length) {
+    const line = lines[insertIndex];
+    if (/^\s*['"]use (client|server)['"];?\s*$/.test(line)) {
+      insertIndex += 1;
+      continue;
+    }
+    if (/^\s*import\b/.test(line)) {
+      insertIndex += 1;
+      continue;
+    }
+    if (line.trim() === "") {
+      insertIndex += 1;
+      continue;
+    }
+    break;
+  }
+
+  lines.splice(insertIndex, 0, importLine);
+  const nextLine = lines[insertIndex + 1];
+  if (nextLine && nextLine.trim() !== "" && !/^\s*import\b/.test(nextLine)) {
+    lines.splice(insertIndex + 1, 0, "");
+  }
+
+  return lines.join(newline);
+}
+
+function convertToModuleSpecifier(relativePath: string): string {
+  let specifier = relativePath.replace(/\\/g, "/");
+  if (!specifier.startsWith(".")) {
+    specifier = "./" + specifier;
+  }
+  return specifier;
+}
+
+async function getStackAppBasePath(kind: StackAppKind): Promise<string> {
+  const srcPath = await Steps.guessSrcPath();
+  return path.join(srcPath, "stack", kind);
+}
+
+function addSetAuthToConvexClients(content: string, type: "js" | "next" | "react"): AddSetAuthResult {
+  const newline = content.includes("\r\n") ? "\r\n" : "\n";
+  const instantiationRegex = /^[ \t]*(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*new\s+(Convex(?:React|Http)?Client)\b([\s\S]*?);/gm;
+  const replacements: Array<{ start: number, end: number, text: string }> = [];
+  let instantiationCount = 0;
+  let skippedHttpCount = 0;
+  let usedClientApp = false;
+  let usedServerApp = false;
+
+  let match: RegExpExecArray | null;
+  while ((match = instantiationRegex.exec(content)) !== null) {
+    instantiationCount += 1;
+    const fullMatch = match[0];
+    const variableName = match[1];
+    const className = match[2];
+
+    if (className === "ConvexHttpClient") {
+      skippedHttpCount += 1;
+      continue;
+    }
+
+    const remainder = content.slice(match.index + fullMatch.length);
+    const setAuthRegex = new RegExp(`\\b${escapeRegExp(variableName)}\\s*\\.setAuth\\s*\\(`);
+    if (setAuthRegex.test(remainder)) {
+      continue;
+    }
+
+    const indentation = fullMatch.match(/^[\t ]*/)?.[0] ?? "";
+    const authCall = determineAuthCallExpression({ type, className, content });
+
+    if (authCall.identifier === "stackClientApp") {
+      usedClientApp = true;
+    } else {
+      usedServerApp = true;
+    }
+
+    const replacementText = `${fullMatch}${newline}${indentation}${variableName}.setAuth(${authCall.expression});`;
+    replacements.push({
+      start: match.index,
+      end: match.index + fullMatch.length,
+      text: replacementText,
+    });
+  }
+
+  if (replacements.length === 0) {
+    return {
+      updatedContent: content,
+      changed: false,
+      usedClientApp,
+      usedServerApp,
+      instantiationCount,
+      skippedHttpCount,
+    };
+  }
+
+  let updatedContent = content;
+  for (let i = replacements.length - 1; i >= 0; i--) {
+    const replacement = replacements[i];
+    updatedContent = `${updatedContent.slice(0, replacement.start)}${replacement.text}${updatedContent.slice(replacement.end)}`;
+  }
+
+  return {
+    updatedContent,
+    changed: true,
+    usedClientApp,
+    usedServerApp,
+    instantiationCount,
+    skippedHttpCount,
+  };
+}
+
+function determineAuthCallExpression({ type, className, content }: { type: "js" | "next" | "react", className: string, content: string }): { expression: string, identifier: "stackClientApp" | "stackServerApp" } {
+  const hasClientAppReference = /\bstackClientApp\b/.test(content);
+  const hasServerAppReference = /\bstackServerApp\b/.test(content);
+
+  if (type === "js") {
+    return { expression: "stackServerApp.getConvexClientAuth({})", identifier: "stackServerApp" };
+  }
+
+  if (hasClientAppReference) {
+    return { expression: getClientAuthCall(type), identifier: "stackClientApp" };
+  }
+  if (hasServerAppReference && className !== "ConvexReactClient") {
+    return { expression: "stackServerApp.getConvexClientAuth({})", identifier: "stackServerApp" };
+  }
+
+  return { expression: getClientAuthCall(type), identifier: "stackClientApp" };
+}
+
+function getClientAuthCall(type: "js" | "next" | "react"): string {
+  return "stackClientApp.getConvexClientAuth({})";
+}
+
+function collectConvexClientCandidateFiles(projectPath: string): string[] {
+  const roots = getConvexSearchRoots(projectPath);
+  const files = new Set<string>();
+  const visited = new Set<string>();
+
+  for (const root of roots) {
+    walkDirectory(root, files, visited);
+  }
+
+  return Array.from(files);
+}
+
+function getConvexSearchRoots(projectPath: string): string[] {
+  const candidateDirs = ["convex", "src", "app", "components"];
+  const existing = candidateDirs
+    .map((dir) => path.join(projectPath, dir))
+    .filter((dirPath) => {
+      try {
+        return fs.existsSync(dirPath) && fs.statSync(dirPath).isDirectory();
+      } catch {
+        return false;
+      }
+    });
+  if (existing.length > 0) {
+    return existing;
+  }
+  return [projectPath];
+}
+
+const directorySkipList = new Set([
+  "node_modules",
+  ".git",
+  ".next",
+  ".turbo",
+  ".output",
+  ".vercel",
+  "dist",
+  "build",
+  "coverage",
+  ".cache",
+  ".storybook",
+  "storybook-static",
+]);
+
+function walkDirectory(currentDir: string, files: Set<string>, visited: Set<string>): void {
+  const realPath = (() => {
+    try {
+      return fs.realpathSync(currentDir);
+    } catch {
+      return currentDir;
+    }
+  })();
+
+  if (visited.has(realPath)) return;
+  visited.add(realPath);
+
+  let dirEntries: fs.Dirent[];
+  try {
+    dirEntries = fs.readdirSync(realPath, { withFileTypes: true });
+  } catch {
+    return;
+  }
+
+  for (const entry of dirEntries) {
+    const entryName = entry.name;
+    if (entry.isDirectory()) {
+      if (directorySkipList.has(entryName)) continue;
+      if (entryName.startsWith(".") || entryName.startsWith("_")) continue;
+      walkDirectory(path.join(realPath, entryName), files, visited);
+      continue;
+    }
+    if (!entry.isFile()) continue;
+    if (entryName.endsWith(".d.ts")) continue;
+    if (!hasJsLikeExtension(entryName)) continue;
+    files.add(path.join(realPath, entryName));
+  }
+}
+
+function hasJsLikeExtension(fileName: string): boolean {
+  return jsLikeFileExtensions.some((ext) => fileName.endsWith(`.${ext}`));
+}
+
+function escapeRegExp(str: string): string {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function throwErr(message: string): never {
