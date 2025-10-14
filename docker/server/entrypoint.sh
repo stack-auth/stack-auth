@@ -38,7 +38,7 @@ if [ "$STACK_SKIP_MIGRATIONS" = "true" ]; then
   echo "Skipping migrations."
 else
   echo "Running migrations..."
-  pnpm run db:migrate
+  node apps/backend/db-migrations.js migrate
 fi
 
 if [ "$STACK_SKIP_SEED_SCRIPT" = "true" ]; then
