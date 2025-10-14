@@ -983,7 +983,7 @@ You can call `useUser()` or `stackServerApp.getUser()` to get the `CurrentUser` 
 
       ### Returns
 
-      `Promise<void>`
+      `Promise<void | KnownErrors["PasswordConfirmationMismatch"] | KnownErrors["PasswordRequirementsNotMet"]>`: Returns an error object if the operation fails, otherwise returns `void`.
     </MethodContent>
     <MethodAside>
       <AsideSection title="Signature">
@@ -992,19 +992,19 @@ You can call `useUser()` or `stackServerApp.getUser()` to get the `CurrentUser` 
       declare function updatePassword(data: {
         oldPassword: string;
         newPassword: string;
-      }): Promise<void>;
+      }): Promise<KnownErrors["PasswordConfirmationMismatch"] | KnownErrors["PasswordRequirementsNotMet"] | void>;
       ```
       </AsideSection>
       <AsideSection title="Examples">
       ```typescript Updating user password
-      const result = await user.updatePassword({
+      const error = await user.updatePassword({
         oldPassword: "currentPassword",
         newPassword: "newPassword",
       });
-      if (result.status === "error") {
-        console.error("Error updating password", result.error);
+      if (error) {
+        console.error("Error updating password", error);
       } else {
-        console.log("Password updated");
+        console.log("Password updated successfully");
       }
       ```
       </AsideSection>
