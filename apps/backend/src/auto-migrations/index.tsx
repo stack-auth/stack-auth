@@ -1,4 +1,4 @@
-import { sqlQuoteIdent } from '@/prisma-client';
+import { sqlQuoteIdent, sqlQuoteIdentToString } from '@/prisma-client';
 import { Prisma, PrismaClient } from '@prisma/client';
 import { StackAssertionError } from '@stackframe/stack-shared/dist/utils/errors';
 import { MIGRATION_FILES } from './../generated/migration-files';
@@ -125,7 +125,8 @@ export async function applyMigrations(options: {
           return;
         }
 
-        for (const statement of migration.sql.split('SPLIT_STATEMENT_SENTINEL')) {
+        for (const statementRaw of migration.sql.split('SPLIT_STATEMENT_SENTINEL')) {
+          const statement = statementRaw.replace('/* SCHEMA_NAME_SENTINEL */', sqlQuoteIdentToString(options.schema));
           const runOutside = statement.includes('RUN_OUTSIDE_TRANSACTION_SENTINEL');
           const isSingleStatement = statement.includes('SINGLE_STATEMENT_SENTINEL');
           const isConditionallyRepeatMigration = statement.includes('CONDITIONALLY_REPEAT_MIGRATION_SENTINEL');
@@ -197,6 +198,7 @@ export async function runMigrationNeeded(options: {
   schema: string,
   migrationFiles?: { migrationName: string, sql: string }[],
   artificialDelayInSeconds?: number,
+  logging?: boolean,
 }): Promise<void> {
   const migrationFiles = options.migrationFiles ?? MIGRATION_FILES;
 
@@ -217,7 +219,7 @@ export async function runMigrationNeeded(options: {
         migrationFiles: options.migrationFiles,
         artificialDelayInSeconds: options.artificialDelayInSeconds,
         schema: options.schema,
-        logging: true,
+        logging: options.logging,
       });
     } else {
       throw e;

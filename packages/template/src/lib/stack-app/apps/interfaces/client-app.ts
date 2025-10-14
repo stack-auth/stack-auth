@@ -56,7 +56,7 @@ export type StackClientApp<HasTokenStore extends boolean = boolean, ProjectId ex
 
     redirectToOAuthCallback(): Promise<void>,
 
-    getConvexClientAuth(options: { tokenStore: TokenStoreInit }): (args: { forceRefreshToken: boolean }) => Promise<string | null>,
+    getConvexClientAuth(options: HasTokenStore extends false ? { tokenStore: TokenStoreInit } : { tokenStore?: TokenStoreInit }): (args: { forceRefreshToken: boolean }) => Promise<string | null>,
     getConvexHttpClientAuth(options: { tokenStore: TokenStoreInit }): Promise<string>,
 
     // IF_PLATFORM react-like
