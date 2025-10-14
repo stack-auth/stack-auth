@@ -2,7 +2,7 @@
 
 import { runAsynchronously } from '@stackframe/stack-shared/dist/utils/promises';
 import { ChevronDown } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { codeToHtml } from 'shiki';
 import { getExample, type CodeExample } from '../../../lib/code-examples';
 import { cn } from '../../lib/cn';
@@ -212,7 +212,7 @@ export function PlatformCodeblock({
   };
 
   // Initialize global frameworks with defaults if not already set
-  const initializeGlobalFrameworks = () => {
+  const initializeGlobalFrameworks = useCallback(() => {
     // Load from sessionStorage if available (only on client)
     if (typeof window !== 'undefined') {
       const stored = sessionStorage.getItem('stack-docs-selected-frameworks');
@@ -238,12 +238,12 @@ export function PlatformCodeblock({
         }
       }
     });
-  };
+  }, [platformNames, platforms, defaultFrameworks]);
 
   // Initialize global state on first render
   useEffect(() => {
     initializeGlobalFrameworks();
-  }, []);
+  }, [initializeGlobalFrameworks]);
 
   const [selectedPlatform, setSelectedPlatform] = useState(getInitialPlatform);
   const [selectedFrameworks, setSelectedFrameworks] = useState<{ [platform: string]: string }>(() => {

@@ -202,6 +202,8 @@ function TOCItem({ item }: { item: TOCItemType }) {
           // no-op if history manipulation is not allowed
         }
       });
+    }).catch(() => {
+      // Handle promise rejection silently
     });
   };
 

@@ -4,7 +4,7 @@ import * as React from "react";
 import { cn } from "../../lib/cn";
 
 type TabsRootProps = React.ComponentPropsWithoutRef<typeof TabsPrimitive.Root> & {
-  "data-tabs-root-id"?: string;
+  "data-tabs-root-id"?: string,
 };
 
 const Tabs = React.forwardRef<
