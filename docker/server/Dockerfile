@@ -29,6 +29,7 @@ RUN tsx ./scripts/generate-sdks.ts
 RUN turbo prune --scope=@stackframe/stack-backend --scope=@stackframe/stack-dashboard --docker
 
 
+
 # Build stage
 FROM base AS builder
 
@@ -55,7 +56,9 @@ ENV NEXT_CONFIG_OUTPUT=standalone
 RUN pnpm turbo run docker-build --filter=@stackframe/stack-backend... --filter=@stackframe/stack-dashboard...
 
 # Build the self-host seed script
-RUN cd apps/backend && pnpm build-self-host-seed-script
+RUN cd apps/backend && pnpm build-self-host-migration-script
+
+
 
 # Final image
 FROM node:${NODE_VERSION}-slim
@@ -68,14 +71,11 @@ RUN apt-get update && \
     apt-get install -y openssl socat && \
     rm -rf /var/lib/apt/lists
 
-# Install Prisma CLI globally so we can run migrations on startup
-RUN npm i -g prisma
-
 # Copy built backend
 COPY --from=builder --chown=node:node /app/apps/backend/.next/standalone ./
 COPY --from=builder --chown=node:node /app/apps/backend/.next/static ./apps/backend/.next/static
 COPY --from=builder --chown=node:node /app/apps/backend/prisma ./apps/backend/prisma
-COPY --from=builder --chown=node:node /app/apps/backend/dist/seed.js ./apps/backend
+COPY --from=builder --chown=node:node /app/apps/backend/dist/db-migrations.js ./apps/backend
 
 # Copy built dashboard
 COPY --from=builder --chown=node:node /app/apps/dashboard/.next/standalone ./

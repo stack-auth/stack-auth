@@ -10,7 +10,7 @@
     "dev": "concurrently -n \"dev,codegen,prisma-studio\" -k \"next dev --turbopack --port 8102\" \"pnpm run codegen:watch\" \"pnpm run prisma-studio\"",
     "build": "pnpm run codegen && next build",
     "docker-build": "pnpm run codegen && next build --experimental-build-mode compile",
-    "build-self-host-seed-script": "tsup --config prisma/tsup.config.ts",
+    "build-self-host-migration-script": "tsup --config scripts/db-migrations.tsup.config.ts",
     "analyze-bundle": "ANALYZE_BUNDLE=1 pnpm run build",
     "start": "next start --port 8102",
     "codegen-prisma": "pnpm run prisma generate",
