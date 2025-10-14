@@ -93,12 +93,12 @@ export async function getPrismaClientForSourceOfTruth(sourceOfTruth: CompleteCon
       const entry = sourceOfTruth.connectionStrings[branchId];
       const connectionString = await resolveNeonConnectionString(entry);
       const neonPrismaClient = getNeonPrismaClient(connectionString);
-      await runMigrationNeeded({ prismaClient: neonPrismaClient, schema: getSchemaFromConnectionString(connectionString) });
+      await runMigrationNeeded({ prismaClient: neonPrismaClient, schema: getSchemaFromConnectionString(connectionString), logging: true });
       return neonPrismaClient;
     }
     case 'postgres': {
       const postgresPrismaClient = getPostgresPrismaClient(sourceOfTruth.connectionString);
-      await runMigrationNeeded({ prismaClient: postgresPrismaClient.client, schema: getSchemaFromConnectionString(sourceOfTruth.connectionString) });
+      await runMigrationNeeded({ prismaClient: postgresPrismaClient.client, schema: getSchemaFromConnectionString(sourceOfTruth.connectionString), logging: true });
       return postgresPrismaClient.client;
     }
     case 'hosted': {
@@ -365,11 +365,14 @@ export function isPrismaUniqueConstraintViolation(error: unknown, modelName: str
   return error.meta.modelName === modelName && deepPlainEquals(error.meta.target, target);
 }
 
-export function sqlQuoteIdent(id: string) {
-  // accept letters, numbers, underscore, $, and dash (adjust as needed)
+export function sqlQuoteIdentToString(id: string) {
   if (!/^[A-Za-z_][A-Za-z0-9_\-$]*$/.test(id)) {
     throw new Error(`Invalid identifier: ${id}`);
   }
   // escape embedded double quotes just in case
-  return Prisma.raw(`"${id.replace(/"/g, '""')}"`);
+  return `"${id.replace(/"/g, '""')}"`;
+}
+
+export function sqlQuoteIdent(id: string) {
+  return Prisma.raw(sqlQuoteIdentToString(id));
 }
