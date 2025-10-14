@@ -1,0 +1,236 @@
+---
+title: Item
+full: true
+---
+
+Items represent quantifiable resources in your application, such as credits, API calls, storage quotas, or subscription allowances. They can be associated with users, teams, or custom customers and are managed through Stack Auth's payment system.
+
+On this page:
+- [Item](#item)
+- [ServerItem](#serveritem)
+
+---
+
+# `Item`
+
+The `Item` type represents a quantifiable resource that can be consumed or managed within your application. Items are typically obtained through purchases, subscriptions, or manual allocation.
+
+Items can be retrieved through:
+- [`user.getItem()`](../types/user.mdx#currentusergetitem)
+- [`user.useItem()`](../types/user.mdx#currentuseruseitem) (React hook)
+- [`team.getItem()`](../types/team.mdx#teamgetitem)
+- [`team.useItem()`](../types/team.mdx#teamuseitem) (React hook)
+
+### Table of Contents
+
+<ClickableTableOfContents code={`type Item = {
+    displayName: string; //$stack-link-to:#itemdisplayname
+    quantity: number; //$stack-link-to:#itemquantity
+    nonNegativeQuantity: number; //$stack-link-to:#itemnonnegativequantity
+};`} />
+
+<CollapsibleTypesSection type="item" property="displayName" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      The human-readable name of the item as configured in your Stack Auth project settings.
+    </MethodContent>
+    <MethodAside title="Type Definition">
+
+      ```typescript
+      declare const displayName: string;
+      ```
+    </MethodAside>
+  </MethodLayout>
+</CollapsibleTypesSection>
+
+<CollapsibleTypesSection type="item" property="quantity" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      The current quantity of the item. This value can be negative, which is useful for tracking overdrafts or pending charges.
+
+      For example, if a user has 100 credits but makes a purchase that costs 150 credits, the quantity might temporarily be -50 until the purchase is processed.
+    </MethodContent>
+    <MethodAside title="Type Definition">
+
+      ```typescript
+      declare const quantity: number;
+      ```
+    </MethodAside>
+  </MethodLayout>
+</CollapsibleTypesSection>
+
+<CollapsibleTypesSection type="item" property="nonNegativeQuantity" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      The quantity clamped to a minimum of 0. This is equivalent to `Math.max(0, quantity)` and is useful for display purposes when you don't want to show negative values to users.
+
+      Use this when you want to display available resources without confusing users with negative numbers.
+    </MethodContent>
+    <MethodAside title="Type Definition">
+
+      ```typescript
+      declare const nonNegativeQuantity: number;
+      ```
+    </MethodAside>
+  </MethodLayout>
+</CollapsibleTypesSection>
+
+---
+
+<div className="mt-16"></div>
+
+# `ServerItem`
+
+The `ServerItem` type extends `Item` with additional server-side methods for modifying quantities. This type is only available in server-side contexts and provides race-condition-safe operations for managing item quantities.
+
+Server items can be retrieved through:
+- [`serverUser.getItem()`](../types/user.mdx#serverusergetitem)
+- [`serverUser.useItem()`](../types/user.mdx#serveruseruseitem) (React hook)
+- [`serverTeam.getItem()`](../types/team.mdx#serverteamgetitem)
+- [`serverTeam.useItem()`](../types/team.mdx#serverteamuseitem) (React hook)
+
+### Table of Contents
+
+<ClickableTableOfContents code={`type ServerItem = 
+    // Inherits all functionality from Item
+    & Item //$stack-link-to:#item
+    & {
+      increaseQuantity(amount): Promise<void>; //$stack-link-to:#serveritemincreasequantity
+      decreaseQuantity(amount): Promise<void>; //$stack-link-to:#serveritemdecreasequantity
+      tryDecreaseQuantity(amount): Promise<boolean>; //$stack-link-to:#serveritemtrydecreasequantity
+    };`} />
+
+<CollapsibleTypesSection type="serverItem" property="increaseQuantity" signature="amount" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Increases the item quantity by the specified amount. This operation is atomic and safe for concurrent use.
+
+      ### Parameters
+
+      <ParamField path="amount" type="number" required>
+        The amount to increase the quantity by. Must be a positive number.
+      </ParamField>
+
+      ### Returns
+
+      `Promise<void>`
+    </MethodContent>
+    <MethodAside>
+      <AsideSection title="Signature">
+
+      ```typescript
+      declare function increaseQuantity(amount: number): Promise<void>;
+      ```
+      </AsideSection>
+      <AsideSection title="Examples">
+      ```typescript Adding credits to a user
+      const user = await stackServerApp.getUser({ userId: "user_123" });
+      const credits = await user.getItem("credits");
+
+      // Add 100 credits
+      await credits.increaseQuantity(100);
+      ```
+      </AsideSection>
+    </MethodAside>
+  </MethodLayout>
+</CollapsibleTypesSection>
+
+<CollapsibleTypesSection type="serverItem" property="decreaseQuantity" signature="amount" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Decreases the item quantity by the specified amount. This operation allows the quantity to go negative.
+
+      **Note**: If you want to prevent the quantity from going below zero, use [`tryDecreaseQuantity()`](#serveritemtrydecreasequantity) instead, as it provides race-condition-free protection against negative quantities.
+
+      ### Parameters
+
+      <ParamField path="amount" type="number" required>
+        The amount to decrease the quantity by. Must be a positive number.
+      </ParamField>
+
+      ### Returns
+
+      `Promise<void>`
+    </MethodContent>
+    <MethodAside>
+      <AsideSection title="Signature">
+
+      ```typescript
+      declare function decreaseQuantity(amount: number): Promise<void>;
+      ```
+      </AsideSection>
+      <AsideSection title="Examples">
+      ```typescript Consuming user credits
+      const user = await stackServerApp.getUser({ userId: "user_123" });
+      const credits = await user.getItem("credits");
+
+      // Consume 50 credits (allows negative balance)
+      await credits.decreaseQuantity(50);
+      ```
+      </AsideSection>
+    </MethodAside>
+  </MethodLayout>
+</CollapsibleTypesSection>
+
+<CollapsibleTypesSection type="serverItem" property="tryDecreaseQuantity" signature="amount" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Attempts to decrease the item quantity by the specified amount, but only if the result would be non-negative. Returns `true` if the operation succeeded, `false` if it would result in a negative quantity.
+
+      This method is race-condition-safe and is ideal for implementing prepaid credit systems where you need to ensure sufficient balance before allowing an operation.
+
+      ### Parameters
+
+      <ParamField path="amount" type="number" required>
+        The amount to decrease the quantity by. Must be a positive number.
+      </ParamField>
+
+      ### Returns
+
+      `Promise<boolean>`: `true` if the quantity was successfully decreased, `false` if the operation would result in a negative quantity.
+    </MethodContent>
+    <MethodAside>
+      <AsideSection title="Signature">
+
+      ```typescript
+      declare function tryDecreaseQuantity(amount: number): Promise<boolean>;
+      ```
+      </AsideSection>
+      <AsideSection title="Examples">
+      ```typescript Safe credit consumption
+      const user = await stackServerApp.getUser({ userId: "user_123" });
+      const credits = await user.getItem("credits");
+
+      // Try to consume 50 credits, only if sufficient balance
+      const success = await credits.tryDecreaseQuantity(50);
+
+      if (success) {
+        console.log("Credits consumed successfully");
+        // Proceed with the operation
+      } else {
+        console.log("Insufficient credits");
+        // Handle insufficient balance
+        throw new Error("Not enough credits available");
+      }
+      ```
+
+      ```typescript API rate limiting with credits
+      async function handleApiCall(userId: string) {
+        const user = await stackServerApp.getUser({ userId });
+        const apiCalls = await user.getItem("api_calls");
+        
+        // Check if user has API calls remaining
+        const canProceed = await apiCalls.tryDecreaseQuantity(1);
+        
+        if (!canProceed) {
+          throw new Error("API rate limit exceeded. Please upgrade your plan.");
+        }
+        
+        // Process the API call
+        return processApiRequest();
+      }
+      ```
+      </AsideSection>
+    </MethodAside>
+  </MethodLayout>
+</CollapsibleTypesSection>
