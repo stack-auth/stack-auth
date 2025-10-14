@@ -72,7 +72,7 @@ ENV PNPM_HOME=/pnpm
 ENV PATH=$PNPM_HOME:$PATH
 
 # Install CLIs we need at runtime to execute migrations and supporting scripts
-RUN npm i -g prisma tsx dotenv-cli
+RUN npm i -g prisma
 
 RUN mkdir -p "$PNPM_HOME" && chown node:node "$PNPM_HOME"
 

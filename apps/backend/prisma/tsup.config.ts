@@ -6,6 +6,8 @@ const customNoExternal = new Set([
   ...Object.keys(packageJson.dependencies),
 ]);
 
+customNoExternal.delete('sharp');
+
 // tsup config to build the self-hosting seed script and the database migration
 // script so they can be run in the Docker container with no extra dependencies.
 export default defineConfig({
