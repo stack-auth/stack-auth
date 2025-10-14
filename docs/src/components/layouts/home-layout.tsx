@@ -45,20 +45,33 @@ function StackAuthLogo() {
 }
 
 // AI Chat Toggle Button for Home Layout
-function HomeAIChatToggleButton() {
+function HomeAIChatToggleButton({ compact = false }: { compact?: boolean }) {
   const sidebarContext = useSidebar();
   const { isChatOpen, toggleChat } = sidebarContext || {
     isChatOpen: false,
     toggleChat: () => {},
   };
 
+  if (compact) {
+    return (
+      <button
+        onClick={toggleChat}
+        className="flex items-center justify-center transition-all duration-500 ease-out w-8 h-8 rounded-lg text-sm font-medium relative overflow-hidden text-white chat-gradient-active hover:scale-105 hover:brightness-110 hover:shadow-lg"
+        title={isChatOpen ? 'Close AI chat' : 'Open AI chat'}
+      >
+        <Sparkles className="h-4 w-4 relative z-10" />
+      </button>
+    );
+  }
+
   return (
     <button
       onClick={toggleChat}
-      className="flex items-center justify-center transition-all duration-500 ease-out w-8 h-8 rounded-lg text-sm font-medium relative overflow-hidden text-white chat-gradient-active hover:scale-105 hover:brightness-110 hover:shadow-lg"
+      className="flex items-center gap-2 transition-all duration-500 ease-out px-2 py-1 rounded-lg text-xs font-medium relative overflow-hidden text-white chat-gradient-active hover:scale-105 hover:brightness-110 hover:shadow-lg"
       title={isChatOpen ? 'Close AI chat' : 'Open AI chat'}
     >
-      <Sparkles className="h-4 w-4 relative z-10" />
+      <Sparkles className="h-3 w-3 relative z-10" />
+      <span className="font-medium relative z-10">AI Chat</span>
     </button>
   );
 }
@@ -248,7 +261,7 @@ function HomeNavbar() {
             <ThemeToggle compact />
 
             {/* Compact AI Chat Toggle */}
-            <HomeAIChatToggleButton />
+            <HomeAIChatToggleButton compact />
 
             {/* Compact User Button */}
             <UserButton />
