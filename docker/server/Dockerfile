@@ -86,6 +86,12 @@ USER root
 COPY --from=builder --chown=node:node /app/apps/backend/.next/standalone ./
 COPY --from=builder --chown=node:node /app/apps/backend/.next/static ./apps/backend/.next/static
 COPY --from=builder --chown=node:node /app/apps/backend/prisma ./apps/backend/prisma
+# Copy backend source files needed for runtime scripts and migrations
+COPY --from=builder --chown=node:node /app/apps/backend/package.json ./apps/backend/package.json
+COPY --from=builder --chown=node:node /app/apps/backend/tsconfig.json ./apps/backend/tsconfig.json
+COPY --from=builder --chown=node:node /app/apps/backend/scripts ./apps/backend/scripts
+COPY --from=builder --chown=node:node /app/apps/backend/src ./apps/backend/src
+# Copy built scripts
 COPY --from=builder --chown=node:node /app/apps/backend/dist/seed.js ./apps/backend
 
 # Copy built dashboard
