@@ -10,7 +10,7 @@ import { errorToNiceString, throwErr } from '@stackframe/stack-shared/dist/utils
 
 const globalPrisma = new PrismaClient();
 
-async function seed() {
+export async function seed() {
   console.log('Seeding database...');
 
   // Optional default admin user
@@ -473,9 +473,11 @@ async function seed() {
 
 process.env.STACK_SEED_MODE = 'true';
 
-seed().catch(async (e) => {
-  console.error(errorToNiceString(e));
-  await globalPrisma.$disconnect();
-  process.exit(1);
-  // eslint-disable-next-line @typescript-eslint/no-misused-promises
-}).finally(async () => await globalPrisma.$disconnect());
+if (require.main === module) {
+  seed().catch(async (e) => {
+    console.error(errorToNiceString(e));
+    await globalPrisma.$disconnect();
+    process.exit(1);
+    // eslint-disable-next-line @typescript-eslint/no-misused-promises
+  }).finally(async () => await globalPrisma.$disconnect());
+}

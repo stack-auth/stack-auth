@@ -34,7 +34,7 @@
     "watch-docs": "pnpm run with-env bash -c 'tsx watch --clear-screen=false scripts/generate-openapi-fumadocs.ts && pnpm run --filter=@stackframe/stack-docs generate-openapi-docs'",
     "generate-openapi-fumadocs": "pnpm run with-env tsx scripts/generate-openapi-fumadocs.ts",
     "generate-keys": "pnpm run with-env tsx scripts/generate-keys.ts",
-    "db-seed-script": "pnpm run with-env tsx prisma/seed.ts",
+    "db-seed-script": "pnpm run db:seed",
     "verify-data-integrity": "pnpm run with-env tsx scripts/verify-data-integrity.ts"
   },
   "prisma": {
