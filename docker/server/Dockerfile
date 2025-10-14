@@ -52,6 +52,7 @@ COPY docs ./docs
 ENV NEXT_CONFIG_OUTPUT=standalone
 
 # Build the backend NextJS app
+ENV NODE_OPTIONS="--max-old-space-size=4096"
 RUN pnpm turbo run docker-build --filter=@stackframe/stack-backend... --filter=@stackframe/stack-dashboard...
 
 # Build the self-host seed script
@@ -86,8 +87,8 @@ USER root
 COPY --from=builder --chown=node:node /app/apps/backend/.next/standalone ./
 COPY --from=builder --chown=node:node /app/apps/backend/.next/static ./apps/backend/.next/static
 COPY --from=builder --chown=node:node /app/apps/backend/prisma ./apps/backend/prisma
-COPY --from=builder --chown=node:node /app/apps/backend/dist/seed.js ./apps/backend
-COPY --from=builder --chown=node:node /app/apps/backend/dist/db-migrations.js ./apps/backend
+COPY --from=builder --chown=node:node /app/apps/backend/dist/prisma/seed.js ./apps/backend
+COPY --from=builder --chown=node:node /app/apps/backend/dist/scripts/db-migrations.js ./apps/backend
 
 # Copy built dashboard
 COPY --from=builder --chown=node:node /app/apps/dashboard/.next/standalone ./
