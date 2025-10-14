@@ -14,7 +14,7 @@
     "build:backend": "pnpm pre && turbo run build --filter=@stackframe/stack-backend...",
     "build:dashboard": "pnpm pre && turbo run build --filter=@stackframe/stack-dashboard...",
     "build:demo": "pnpm pre && turbo run build --filter=demo-app...",
-    "build:docs": "pnpm run build:packages-only && pnpm run build:backend && turbo run generate-openapi-fumadocs && pnpm run --filter=@stackframe/stack-docs generate-openapi-docs && turbo run build --filter=@stackframe/stack-docs",
+    "build:docs": "pnpm run build:packages && pnpm run build:backend && turbo run generate-openapi-fumadocs && pnpm run --filter=@stackframe/stack-docs generate-openapi-docs && turbo run build --filter=@stackframe/stack-docs",
     "build:packages": "pnpm pre && turbo run build --filter=./packages/*",
     "claude-code": "pnpm pre && npx -y @anthropic-ai/claude-code@latest",
     "cmux": "pnpm pre && npx -y cmux@latest",
