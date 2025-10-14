@@ -53,8 +53,8 @@ jobs:
       - name: Build packages
         run: pnpm run build:packages
 
-      - name: Generate Prisma client
-        run: pnpm run --filter=@stackframe/stack-backend codegen
+      - name: Codegen
+        run: pnpm run codegen
 
       - name: Initialize database
         run: pnpm run db:init
