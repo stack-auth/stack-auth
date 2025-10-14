@@ -32,15 +32,6 @@ if [ -z "${NEXT_PUBLIC_STACK_SVIX_SERVER_URL}" ]; then
   export NEXT_PUBLIC_STACK_SVIX_SERVER_URL=${STACK_SVIX_SERVER_URL}
 fi
 
-# ============= MIGRATIONS =============
-
-if [ "$STACK_SKIP_MIGRATIONS" = "true" ]; then
-  echo "Skipping migrations."
-else
-  echo "Running migrations..."
-  pnpm run db:migrate
-fi
-
 if [ "$STACK_SKIP_SEED_SCRIPT" = "true" ]; then
   echo "Skipping seed script."
 else
