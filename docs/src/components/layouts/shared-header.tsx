@@ -81,14 +81,15 @@ function AIChatToggleButton(props: { className: string }) {
   return (
     <button
       className={cn(
-        'flex items-center justify-center rounded-md w-8 h-8 text-xs transition-all duration-500 ease-out relative overflow-hidden',
+        'flex items-center gap-2 rounded-md px-2 py-1 text-xs transition-all duration-500 ease-out relative overflow-hidden',
         'text-white chat-gradient-active hover:scale-105 hover:brightness-110 hover:shadow-lg',
         props.className,
       )}
       onClick={toggleChat}
       title="AI Chat"
     >
-      <Sparkles className="h-4 w-4 relative z-10" />
+      <Sparkles className="h-3 w-3 relative z-10" />
+      <span className="font-medium relative z-10">AI Chat</span>
     </button>
   );
 }
