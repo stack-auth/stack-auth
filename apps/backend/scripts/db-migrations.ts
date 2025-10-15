@@ -31,7 +31,6 @@ const promptDropDb = async () => {
 };
 
 const migrate = async () => {
-  console.log("db-migrations running migrate");
   const startTime = performance.now();
   const migrationFiles = getMigrationFiles(MIGRATION_FILES_DIR);
   const totalMigrations = migrationFiles.length;
@@ -88,7 +87,6 @@ Commands:
 const main = async () => {
   const args = process.argv.slice(2);
   const command = args[0];
-  console.log('db-migrations command:', command);
 
   switch (command) {
     case 'reset': {
