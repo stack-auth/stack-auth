@@ -2,7 +2,7 @@
 import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { describe } from "vitest";
 import { it, localRedirectUrl } from "../../../../../../helpers";
-import { Auth, backendContext, niceBackendFetch } from "../../../../../backend-helpers";
+import { Auth, InternalApiKey, Project, backendContext, niceBackendFetch } from "../../../../../backend-helpers";
 
 describe("with grant_type === 'authorization_code'", async () => {
   it("should sign in a user when called as part of the OAuth flow", async ({ expect }) => {
@@ -54,8 +54,14 @@ describe("with grant_type === 'authorization_code'", async () => {
           "primary_email_verified": true,
           "profile_image_url": null,
           "requires_totp_mfa": false,
-          "selected_team": null,
-          "selected_team_id": null,
+          "selected_team": {
+            "client_metadata": null,
+            "client_read_only_metadata": null,
+            "display_name": "default-mailbox--<stripped UUID>@stack-generated.example.com's Team",
+            "id": "<stripped UUID>",
+            "profile_image_url": null,
+          },
+          "selected_team_id": "<stripped UUID>",
           "signed_up_at_millis": <stripped field 'signed_up_at_millis'>,
         },
         "headers": Headers { <some fields may have been hidden> },
@@ -87,6 +93,66 @@ describe("with grant_type === 'authorization_code'", async () => {
       }
     `);
     await Auth.expectToBeSignedIn();
+  });
+
+  it("should sign in a user even when the same OAuth account has been used with a previous user that has been deleted since", async ({ expect }) => {
+    const response = await Auth.OAuth.signIn();
+    expect(response.tokenResponse).toMatchInlineSnapshot(`
+      NiceResponse {
+        "status": 200,
+        "body": {
+          "access_token": <stripped field 'access_token'>,
+          "afterCallbackRedirectUrl": null,
+          "after_callback_redirect_url": null,
+          "expires_in": 3599,
+          "is_new_user": true,
+          "newUser": true,
+          "refresh_token": <stripped field 'refresh_token'>,
+          "scope": "legacy",
+          "token_type": "Bearer",
+        },
+        "headers": Headers {
+          "pragma": "no-cache",
+          <some fields may have been hidden>,
+        },
+      }
+    `);
+
+    // delete the user
+    const deleteUserResponse = await niceBackendFetch("/api/v1/users/me", {
+      method: "DELETE",
+      accessType: "server",
+    });
+    expect(deleteUserResponse).toMatchInlineSnapshot(`
+      NiceResponse {
+        "status": 200,
+        "body": { "success": true },
+        "headers": Headers { <some fields may have been hidden> },
+      }
+    `);
+
+    // sign in again
+    const response2 = await Auth.OAuth.signIn();
+    expect(response2.tokenResponse).toMatchInlineSnapshot(`
+      NiceResponse {
+        "status": 200,
+        "body": {
+          "access_token": <stripped field 'access_token'>,
+          "afterCallbackRedirectUrl": null,
+          "after_callback_redirect_url": null,
+          "expires_in": 3599,
+          "is_new_user": true,
+          "newUser": true,
+          "refresh_token": <stripped field 'refresh_token'>,
+          "scope": "legacy",
+          "token_type": "Bearer",
+        },
+        "headers": Headers {
+          "pragma": "no-cache",
+          <some fields may have been hidden>,
+        },
+      }
+    `);
   });
 
   it("should fail when called with an invalid code_challenge", async ({ expect }) => {
@@ -143,14 +209,53 @@ describe("with grant_type === 'authorization_code'", async () => {
     expect(tokenResponse).toMatchInlineSnapshot(`
       NiceResponse {
         "status": 400,
-        "body": {
-          "code": "REDIRECT_URL_NOT_WHITELISTED",
-          "error": "Redirect URL not whitelisted. Did you forget to add this domain to the trusted domains list on the Stack Auth dashboard?",
-        },
-        "headers": Headers {
-          "x-stack-known-error": "REDIRECT_URL_NOT_WHITELISTED",
-          <some fields may have been hidden>,
-        },
+        "body": "Invalid redirect URI. Your redirect URI must be the same as the one used to get the authorization code.",
+        "headers": Headers { <some fields may have been hidden> },
+      }
+    `);
+  });
+
+  it("should fail when called with an invalid redirect_uri that is trusted but not the same as the one used to get the authorization code", async ({ expect }) => {
+    await Project.createAndSwitch({
+      config: {
+        oauth_providers: [
+          {
+            id: "spotify",
+            type: "shared",
+          },
+        ],
+        domains: [
+          {
+            domain: "https://trusted-domain.com",
+            handler_path: "/api/v1/auth/oauth/callback/spotify",
+          },
+        ],
+        allow_localhost: true,
+      },
+    });
+    await InternalApiKey.createAndSetProjectKeys();
+    const getAuthorizationCodeResult = await Auth.OAuth.getAuthorizationCode();
+
+    const projectKeys = backendContext.value.projectKeys;
+    if (projectKeys === "no-project") throw new Error("No project keys found in the backend context");
+
+    const tokenResponse = await niceBackendFetch("/api/v1/auth/oauth/token", {
+      method: "POST",
+      accessType: "client",
+      body: {
+        client_id: projectKeys.projectId,
+        client_secret: projectKeys.publishableClientKey ?? throwErr("No publishable client key found in the backend context"),
+        code: getAuthorizationCodeResult.authorizationCode,
+        redirect_uri: "https://trusted-domain.com",
+        code_verifier: "some-code-challenge",
+        grant_type: "authorization_code",
+      },
+    });
+    expect(tokenResponse).toMatchInlineSnapshot(`
+      NiceResponse {
+        "status": 400,
+        "body": "Invalid redirect URI. Your redirect URI must be the same as the one used to get the authorization code.",
+        "headers": Headers { <some fields may have been hidden> },
       }
     `);
   });

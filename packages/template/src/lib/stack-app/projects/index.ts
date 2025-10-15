@@ -1,7 +1,8 @@
 import { ProductionModeError } from "@stackframe/stack-shared/dist/helpers/production-mode";
 import { AdminUserProjectsCrud, ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
 
-import { EnvironmentConfigOverrideOverride, OrganizationRenderedConfig } from "@stackframe/stack-shared/dist/config/schema";
+import { CompleteConfig, EnvironmentConfigOverrideOverride } from "@stackframe/stack-shared/dist/config/schema";
+import { CurrentUser } from "..";
 import { StackAdminApp } from "../apps/interfaces/admin-app";
 import { AdminProjectConfig, AdminProjectConfigUpdateOptions, ProjectConfig } from "../project-configs";
 
@@ -18,14 +19,18 @@ export type AdminProject = {
   readonly description: string | null,
   readonly createdAt: Date,
   readonly isProductionMode: boolean,
+  readonly ownerTeamId: string | null,
+  readonly logoUrl: string | null | undefined,
+  readonly fullLogoUrl: string | null | undefined,
+
   readonly config: AdminProjectConfig,
 
   update(this: AdminProject, update: AdminProjectUpdateOptions): Promise<void>,
   delete(this: AdminProject): Promise<void>,
 
-  getConfig(this: AdminProject): Promise<OrganizationRenderedConfig>,
+  getConfig(this: AdminProject): Promise<CompleteConfig>,
   // NEXT_LINE_PLATFORM react-like
-  useConfig(this: AdminProject): OrganizationRenderedConfig,
+  useConfig(this: AdminProject): CompleteConfig,
   updateConfig(this: AdminProject, config: EnvironmentConfigOverrideOverride): Promise<void>,
 
   getProductionModeErrors(this: AdminProject): Promise<ProductionModeError[]>,
@@ -41,6 +46,8 @@ export type AdminProjectUpdateOptions = {
   displayName?: string,
   description?: string,
   isProductionMode?: boolean,
+  logoUrl?: string | null,
+  fullLogoUrl?: string | null,
   config?: AdminProjectConfigUpdateOptions,
 };
 export function adminProjectUpdateOptionsToCrud(options: AdminProjectUpdateOptions): ProjectsCrud["Admin"]["Update"] {
@@ -48,6 +55,8 @@ export function adminProjectUpdateOptionsToCrud(options: AdminProjectUpdateOptio
     display_name: options.displayName,
     description: options.description,
     is_production_mode: options.isProductionMode,
+    logo_url: options.logoUrl,
+    full_logo_url: options.fullLogoUrl,
     config: {
       domains: options.config?.domains?.map((d) => ({
         domain: d.domain,
@@ -97,10 +106,12 @@ export function adminProjectUpdateOptionsToCrud(options: AdminProjectUpdateOptio
 
 export type AdminProjectCreateOptions = Omit<AdminProjectUpdateOptions, 'displayName'> & {
   displayName: string,
+  teamId: string,
 };
 export function adminProjectCreateOptionsToCrud(options: AdminProjectCreateOptions): AdminUserProjectsCrud["Server"]["Create"] {
   return {
     ...adminProjectUpdateOptionsToCrud(options),
     display_name: options.displayName,
+    owner_team_id: options.teamId,
   };
 }

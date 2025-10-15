@@ -50,7 +50,8 @@ We recommend using our **setup wizard** for a seamless installation experience. 
       - `app/handler/[...stack]/page.tsx`: This file contains the default pages for sign-in, sign-out, account settings, and more. If you prefer, later you will learn how to [use custom pages](../customization/custom-pages.mdx) instead.
       - `app/layout.tsx`: The layout file was updated to wrap the entire body with `StackProvider` and `StackTheme`.
       - `app/loading.tsx`: If not yet found, Stack automatically adds a Suspense boundary to your app. This is shown to the user while Stack's async hooks, like `useUser`, are loading.
-      - `stack.ts`: This file contains the `stackServerApp` which you can use to access Stack from Server Components, Server Actions, API routes, and middleware.
+      - `stack/server.ts`: This file contains the `stackServerApp` which you can use to access Stack from Server Components, Server Actions, API routes, and middleware.
+      - `stack/client.ts`: This file contains the `stackClientApp` which you can use to access Stack from Client Components
     </Steps>
   </TabsContent>
   
@@ -82,11 +83,11 @@ We recommend using our **setup wizard** for a seamless installation experience. 
       ```
 
       <Step>
-      ### Create `stack.ts` file
+      ### Create `stack/server.ts` file
       </Step>
-      Create a new file `stack.ts` in your root directory and fill it with the following:
+      Create a new file `stack/server.ts` in your root directory and fill it with the following:
       
-      ```tsx title="stack.ts"
+      ```tsx title="stack/server.ts"
       import "server-only";
       import { StackServerApp } from "@stackframe/stack";
 
@@ -106,7 +107,7 @@ We recommend using our **setup wizard** for a seamless installation experience. 
 
       ```tsx title="app/handler/[...stack]/page.tsx"
       import { StackHandler } from "@stackframe/stack";
-      import { stackServerApp } from "@/stack";
+      import { stackServerApp } from "@/stack/server";
 
       export default function Handler(props: unknown) {
         return <StackHandler fullPage app={stackServerApp} routeProps={props} />;
@@ -123,7 +124,7 @@ We recommend using our **setup wizard** for a seamless installation experience. 
       ```tsx title="app/layout.tsx"
       import React from "react";
       import { StackProvider, StackTheme } from "@stackframe/stack";
-      import { stackServerApp } from "@/stack";
+      import { stackServerApp } from "@/stack/server";
 
       export default function RootLayout({ children }: { children: React.ReactNode }) {
         return (
@@ -184,97 +185,164 @@ Next up, we will show you how to [retrieve and update user information](./users.
 Welcome to the React SDK setup guide! If you're looking for guides for other frameworks, check out the [Next.js SDK Setup](/docs/next/getting-started/setup), or the [JavaScript SDK Setup](/docs/js/getting-started/setup).
 </Info>
 
-Before getting started, make sure you have a [React project](https://react.dev/learn/creating-a-react-app) setup. We show an example here of a Vite React project with React Router.
+Before getting started, make sure you have a [React project](https://react.dev/learn/creating-a-react-app) setup. We show an example here of a Vite React project.
 
-<Steps>
-  <Step>
-    ### Install npm package
-  </Step>
+We recommend using our **setup wizard** for a seamless installation experience. The wizard automatically detects your project structure and walks you through the setup process. If you encounter any issues with the wizard, you can follow our manual installation steps instead.
 
-  ```bash title="Terminal"
-  npm install @stackframe/react
-  ```
+<Tabs defaultValue="wizard">
+  <TabsList>
+    <TabsTrigger value="wizard">Setup wizard (recommended)</TabsTrigger>
+    <TabsTrigger value="manual">Manual installation</TabsTrigger>
+  </TabsList>
 
-  <Step>
-    ### Create API keys
-  </Step>
+  <TabsContent value="wizard">
+    <Steps>
+      <Step>
+      ### Run installation wizard
+      </Step>
+      Run Stack's installation wizard with the following command:
 
-  If you haven't already, [register a new account on Stack](https://app.stack-auth.com/projects), create a project in the dashboard, create a new API key from the left sidebar, and copy the project ID, publishable client key, and secret server key into a new file called `.env.local` in the root of your React project:
+      ```sh title="Terminal"
+      npx @stackframe/init-stack@latest
+      ```
 
-  <Step>
-    ### Create `stack.ts` file
-  </Step>
-  Create a new file `stack.ts` in your root directory and fill it with the following Stack app initialization code:
+      <Step>
+      ### Update API keys
+      </Step>
+      Then, create an account on [the Stack Auth dashboard](https://app.stack-auth.com/projects), create a new project with an API key, and copy its values into the `stack/client.ts` file created by the wizard.
 
-  ```tsx title="stack.ts"
-  import { StackClientApp } from "@stackframe/react";
-  import { useNavigate } from "react-router-dom";
+      <Step>
+      ### Wrap your app
+      </Step>
+      This example uses react-router, but all React apps should wrap the app with `StackProvider` and `StackTheme`.
 
-  export const stackClientApp = new StackClientApp({
-    // You should store these in environment variables based on your project setup
-    projectId: "your-project-id",
-    publishableClientKey: "your-publishable-client-key",
-    tokenStore: "cookie",
-    redirectMethod: {
-      useNavigate,
-    }
-  });
-  ```
+      ```tsx title="App.tsx"
+      import { StackHandler, StackProvider, StackTheme } from "@stackframe/react";
+      import { Suspense } from "react";
+      import { BrowserRouter, Route, Routes, useLocation } from "react-router-dom";
+      import { stackClientApp } from "./stack/client";
 
-  <Step>
-    ### Update `App.tsx`
-  </Step>
+      function HandlerRoutes() {
+        const location = useLocation();
+        return (
+          <StackHandler app={stackClientApp} location={location.pathname} fullPage />
+        );
+      }
 
-  Update your `App.tsx` file to wrap the entire app with a `StackProvider` and `StackTheme` and add a `StackHandler` component to handle the authentication flow.
+      export default function App() {
+        return (
+          <Suspense fallback={null}>
+            <BrowserRouter>
+              <StackProvider app={stackClientApp}>
+                <StackTheme>
+                  <Routes>
+                    <Route path="/handler/*" element={<HandlerRoutes />} />
+                    <Route path="/" element={<div>hello world</div>} />
+                  </Routes>
+                </StackTheme>
+              </StackProvider>
+            </BrowserRouter>
+          </Suspense>
+        );
+      }
+      ```
 
-  ```tsx title="App.tsx"
-  import { StackHandler, StackProvider, StackTheme } from "@stackframe/react";
-  import { Suspense } from "react";
-  import { BrowserRouter, Route, Routes, useLocation } from "react-router-dom";
-  import { stackClientApp } from "./stack";
+      <Step>
+      ### Done!
+      </Step>
+      That's it! Stack is now configured in your React project. If you start your app and navigate to [http://localhost:5173/handler/sign-up](http://localhost:5173/handler/sign-up), you will see the sign-up page.
 
-  function HandlerRoutes() {
-    const location = useLocation();
-    
-    return (
-      <StackHandler app={stackClientApp} location={location.pathname} fullPage />
-    );
-  }
+      <div className="stack-white-image-showcase stack-350h">
+        <img src="/imgs/sign-in.png" alt="SignIn" />
+      </div>
 
-  export default function App() {
-    return (
-      <Suspense fallback={null}>
-        <BrowserRouter>
-          <StackProvider app={stackClientApp}>
-            <StackTheme>
-              <Routes>
-                <Route path="/handler/*" element={<HandlerRoutes />} />
-                <Route path="/" element={<div>hello world</div>} />
-              </Routes>
-            </StackTheme>
-          </StackProvider>
-        </BrowserRouter>
-      </Suspense>
-    );
-  }
-  ```
-  
-  <Step>
-    ### Done!
-  </Step>
+      After signing up/in, you will be redirected back to the home page. You can also check out the [http://localhost:5173/handler/account-settings](http://localhost:5173/handler/account-settings) page.
+    </Steps>
+  </TabsContent>
 
-  That's it! Stack is now configured in your React project. If you start your React app and navigate to [http://localhost:5173/handler/sign-up](http://localhost:5173/handler/sign-up), you will see the sign-up page.
+  <TabsContent value="manual">
+    <Steps>
+      <Step>
+      ### Install npm package
+      </Step>
 
+      ```bash title="Terminal"
+      npm install @stackframe/react
+      ```
 
-  <div className="stack-white-image-showcase stack-350h">
-    <img src="/imgs/sign-in.png" alt="SignIn" />
-  </div>
+      <Step>
+      ### Create API keys
+      </Step>
+      If you haven't already, [register a new account on Stack](https://app.stack-auth.com/projects), create a project in the dashboard, create a new API key from the left sidebar, and copy the project ID and publishable client key. Store them based on your project setup (environment variables or directly in the client file during development).
 
-  After signing up/in, you will be redirected back to the home page. We will show you how to add user information to it in the next section. You can also check out the [http://localhost:5173/handler/account-settings](http://localhost:5173/handler/account-settings) page which looks like this:
+      <Step>
+      ### Create `stack/client.ts` file
+      </Step>
+      Create a new file `stack/client.ts` in your root directory and fill it with the following Stack app initialization code:
 
-  ![Stack account settings page](/imgs/account-settings.png)
-  
-</Steps>
+      ```tsx title="stack/client.ts"
+      import { StackClientApp } from "@stackframe/react";
+      // If you use React Router, uncomment the next line and the redirectMethod below
+      // import { useNavigate } from "react-router-dom";
+
+      export const stackClientApp = new StackClientApp({
+        // You should store these in environment variables based on your project setup
+        projectId: "your-project-id",
+        publishableClientKey: "your-publishable-client-key",
+        tokenStore: "cookie",
+        // redirectMethod: { useNavigate }, // Optional: only if using react-router-dom
+      });
+      ```
+
+      <Step>
+      ### Update `App.tsx`
+      </Step>
+      If you're using React Router, update your `App.tsx` file to wrap the entire app with a `StackProvider` and `StackTheme` and add a `StackHandler` route to handle the authentication flow.
+
+      ```tsx title="App.tsx"
+      import { StackHandler, StackProvider, StackTheme } from "@stackframe/react";
+      import { Suspense } from "react";
+      import { BrowserRouter, Route, Routes, useLocation } from "react-router-dom";
+      import { stackClientApp } from "./stack/client";
+
+      function HandlerRoutes() {
+        const location = useLocation();
+        return (
+          <StackHandler app={stackClientApp} location={location.pathname} fullPage />
+        );
+      }
+
+      export default function App() {
+        return (
+          <Suspense fallback={null}>
+            <BrowserRouter>
+              <StackProvider app={stackClientApp}>
+                <StackTheme>
+                  <Routes>
+                    <Route path="/handler/*" element={<HandlerRoutes />} />
+                    <Route path="/" element={<div>hello world</div>} />
+                  </Routes>
+                </StackTheme>
+              </StackProvider>
+            </BrowserRouter>
+          </Suspense>
+        );
+      }
+      ```
+
+      <Step>
+      ### Done!
+      </Step>
+      That's it! Stack is now configured in your React project. If you start your app and navigate to [http://localhost:5173/handler/sign-up](http://localhost:5173/handler/sign-up), you will see the sign-up page.
+
+      <div className="stack-white-image-showcase stack-350h">
+        <img src="/imgs/sign-in.png" alt="SignIn" />
+      </div>
+
+      After signing up/in, you will be redirected back to the home page. You can also check out the [http://localhost:5173/handler/account-settings](http://localhost:5173/handler/account-settings) page.
+    </Steps>
+  </TabsContent>
+</Tabs>
 
 
 {/* ELSE_IF_PLATFORM js */}

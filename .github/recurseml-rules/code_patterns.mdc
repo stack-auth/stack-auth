@@ -8,7 +8,6 @@ The following conventions MUST be followed in new code.
 DON'T report code patterns outside of the examples explicitly listed below:
 
 - Never use `void asyncFunction()` or `asyncFunction().catch(console.error)` - use `runAsynchronously(asyncFunction)` instead
-- Use `parseJson`/`stringifyJson` from `stack-shared/utils/json` instead of `JSON.parse`/`JSON.stringify`
 - Instead of Vercel `waitUntil`, use `runAsynchronously(promise, { promiseCallback: waitUntil })`
 - Don't concatenate URLs as strings - avoid patterns like `/users/${userId}`
 - Replace non-null assertions with `?? throwErr("message", { extraData })` pattern

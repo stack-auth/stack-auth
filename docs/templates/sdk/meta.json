@@ -14,9 +14,12 @@
     "types/team-permission",
     "types/team-profile",
     "types/contact-channel",
+    "types/email",
     "types/api-key",
     "types/project",
     "types/connected-account",
+    "types/item",
+    "types/customer",
     "---Hooks---",
     "hooks/use-stack-app",
     "hooks/use-user"

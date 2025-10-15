@@ -1,6 +1,6 @@
 {
   "name": "@stackframe/stack-shared",
-  "version": "2.8.27",
+  "version": "2.8.43",
   "scripts": {
     "build": "rimraf dist && tsup-node",
     "typecheck": "tsc --noEmit",
@@ -32,10 +32,10 @@
     }
   },
   "peerDependencies": {
-    "@types/react": ">=18.2 || >=19.0.0-rc.0",
-    "@types/react-dom": ">=18.2 || >=19.0.0-rc.0",
-    "react": ">=18.2 || >=19.0.0-rc.0",
-    "react-dom": ">=18.2 || >=19.0.0-rc.0",
+    "@types/react": ">=19.0.0",
+    "@types/react-dom": ">=19.0.0",
+    "react": ">=19.0.0",
+    "react-dom": ">=19.0.0",
     "yup": "^1.4.0"
   },
   "peerDependenciesMeta": {
@@ -53,8 +53,10 @@
     }
   },
   "dependencies": {
+    "@aws-sdk/client-kms": "^3.876.0",
     "@opentelemetry/api": "^1.9.0",
     "@simplewebauthn/browser": "^11.0.0",
+    "@vercel/functions": "^2.0.0",
     "async-mutex": "^0.5.0",
     "bcryptjs": "^3.0.2",
     "crc": "^4.3.2",
@@ -67,14 +69,14 @@
     "uuid": "^9.0.1"
   },
   "devDependencies": {
-    "@sentry/nextjs": "^8.40.0",
+    "@sentry/nextjs": "^10.11.0",
     "@simplewebauthn/types": "^11.0.0",
     "@types/bcryptjs": "^3.0.0",
     "@types/elliptic": "^6.4.18",
     "@types/semver": "^7.5.8",
     "@types/uuid": "^9.0.8",
-    "react": "^18.2",
-    "react-dom": "^18.2",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
     "rimraf": "^5.0.5"
   }
 }

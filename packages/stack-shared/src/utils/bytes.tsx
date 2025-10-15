@@ -112,9 +112,7 @@ import.meta.vitest?.test("decodeBase32", ({ expect }) => {
 });
 
 export function encodeBase64(input: Uint8Array): string {
-  const res = btoa(String.fromCharCode(...input));
-
-  return res;
+  return btoa([...input].map((b) => String.fromCharCode(b)).join(""));
 }
 
 export function decodeBase64(input: string): Uint8Array {
@@ -126,17 +124,49 @@ import.meta.vitest?.test("encodeBase64/decodeBase64", ({ expect }) => {
     { input: new Uint8Array([0, 1, 2, 3, 4]), expected: "AAECAwQ=" },
     { input: new Uint8Array([255, 254, 253, 252]), expected: "//79/A==" },
     { input: new Uint8Array([]), expected: "" },
+    {
+      input: (() => {
+        // make sure huge inputs are supported; 48MB array of every possible triple-byte combination
+        const input = new Uint8Array(3 * (2 ** 24));
+        for (let i = 0; i < input.length / 3; i++) {
+          input[3 * i] = Math.floor(i / 256 / 256);
+          input[3 * i + 1] = Math.floor(i / 256) % 256;
+          input[3 * i + 2] = i % 256;
+        }
+        return input;
+      })(),
+      expected: (() => {
+        const base64Alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+        const output = [];
+        for (let i = 0; i < 2 ** 24; i++) {
+          output.push(
+            base64Alphabet[Math.floor(i / 64 / 64 / 64)]
+              + base64Alphabet[Math.floor(i / 64 / 64) % 64]
+              + base64Alphabet[Math.floor(i / 64) % 64]
+              + base64Alphabet[i % 64]
+          );
+        }
+        return output.join("");
+      })(),
+    },
   ];
 
-  for (const { input, expected } of testCases) {
+  for (const [i, { input, expected }] of testCases.entries()) {
+    // expect(...) is pretty slow with long inputs, so we throw our own assertions
     const encoded = encodeBase64(input);
-    expect(encoded).toBe(expected);
+    if (encoded !== expected) {
+      throw new StackAssertionError(`encodeBase64 test case ${i} failed`);
+    }
     const decoded = decodeBase64(encoded);
-    expect(decoded).toEqual(input);
+    if (decoded.some((b, i) => b !== input[i])) {
+      throw new StackAssertionError(`decodeBase64 test case ${i} failed`);
+    }
   }
 
   // Test invalid input for decodeBase64
   expect(() => decodeBase64("invalid!")).toThrow();
+}, {
+  timeout: 30000,
 });
 
 export function encodeBase64Url(input: Uint8Array): string {

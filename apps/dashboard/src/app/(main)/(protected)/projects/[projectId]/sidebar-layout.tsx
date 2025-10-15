@@ -1,21 +1,19 @@
 'use client';
 
-import { FeedbackDialog } from "@/components/feedback-dialog";
 import { Link } from "@/components/link";
 import { Logo } from "@/components/logo";
 import { ProjectSwitcher } from "@/components/project-switcher";
+import { StackCompanion } from "@/components/stack-companion";
 import ThemeToggle from "@/components/theme-toggle";
 import { getPublicEnvVar } from '@/lib/env';
-import { cn } from "@/lib/utils";
+import { cn, devFeaturesEnabledForProject } from "@/lib/utils";
 import { AdminProject, UserButton, useUser } from "@stackframe/stack";
 import {
   Breadcrumb,
   BreadcrumbItem,
   BreadcrumbList,
   BreadcrumbPage,
-  BreadcrumbSeparator,
-  Button,
-  Sheet,
+  BreadcrumbSeparator, Button, Sheet,
   SheetContent,
   SheetTitle,
   SheetTrigger,
@@ -24,20 +22,24 @@ import {
 } from "@stackframe/stack-ui";
 import {
   Book,
+  CreditCard,
+  FilePen,
   Globe,
   KeyRound,
+  LayoutTemplate,
   Link as LinkIcon,
   LockKeyhole,
   LucideIcon,
   Mail,
   Menu,
   Palette,
+  Receipt,
   Settings,
   Settings2,
   ShieldEllipsis,
-  SquarePen,
   User,
   Users,
+  UserRound,
   Webhook,
 } from "lucide-react";
 import { useTheme } from "next-themes";
@@ -50,6 +52,7 @@ type BreadcrumbItem = { item: React.ReactNode, href: string }
 type Label = {
   name: React.ReactNode,
   type: 'label',
+  requiresDevFeatureFlag?: boolean,
 };
 
 type Item = {
@@ -178,10 +181,17 @@ const navigationItems: (Label | Item | Hidden)[] = [
     type: 'item'
   },
   {
+    name: "Drafts",
+    href: "/email-drafts",
+    regex: /^\/projects\/[^\/]+\/email-drafts$/,
+    icon: FilePen,
+    type: 'item',
+  },
+  {
     name: "Templates",
     href: "/email-templates",
     regex: /^\/projects\/[^\/]+\/email-templates$/,
-    icon: SquarePen,
+    icon: LayoutTemplate,
     type: 'item'
   },
   {
@@ -190,6 +200,26 @@ const navigationItems: (Label | Item | Hidden)[] = [
     regex: /^\/projects\/[^\/]+\/email-themes$/,
     icon: Palette,
     type: 'item',
+  },
+  {
+    name: (pathname: string) => {
+      const match = pathname.match(/^\/projects\/[^\/]+\/email-drafts\/([^\/]+)$/);
+      let item;
+      let href;
+      if (match) {
+        item = <DraftBreadcrumbItem key='draft-display-name' draftId={match[1]} />;
+        href = `/email-drafts/${match[1]}`;
+      } else {
+        item = "Draft";
+        href = "";
+      }
+      return [
+        { item: "Drafts", href: "/email-drafts" },
+        { item, href },
+      ];
+    },
+    regex: /^\/projects\/[^\/]+\/email-drafts\/[^\/]+$/,
+    type: 'hidden',
   },
   {
     name: (pathname: string) => {
@@ -210,6 +240,31 @@ const navigationItems: (Label | Item | Hidden)[] = [
     },
     regex: /^\/projects\/[^\/]+\/email-themes\/[^\/]+$/,
     type: 'hidden',
+  },
+  {
+    name: "Payments",
+    type: 'label',
+  },
+  {
+    name: "Products",
+    href: "/payments/products",
+    regex: /^\/projects\/[^\/]+\/payments\/products$/,
+    icon: CreditCard,
+    type: 'item',
+  },
+  {
+    name: "Customers",
+    href: "/payments/customers",
+    regex: /^\/projects\/[^\/]+\/payments\/customers$/,
+    icon: UserRound,
+    type: 'item',
+  },
+  {
+    name: "Transactions",
+    href: "/payments/transactions",
+    regex: /^\/projects\/[^\/]+\/payments\/transactions$/,
+    icon: Receipt,
+    type: 'item',
   },
   {
     name: "Configuration",
@@ -321,6 +376,16 @@ function TemplateBreadcrumbItem(props: { templateId: string }) {
   return template.displayName;
 }
 
+function DraftBreadcrumbItem(props: { draftId: string }) {
+  const stackAdminApp = useAdminApp();
+  const drafts = stackAdminApp.useEmailDrafts();
+  const draft = drafts.find((d) => d.id === props.draftId);
+  if (!draft) {
+    return null;
+  }
+  return draft.displayName;
+}
+
 function NavItem({ item, href, onClick }: { item: Item, href: string, onClick?: () => void }) {
   const pathname = usePathname();
   const selected = useMemo(() => {
@@ -360,14 +425,14 @@ function SidebarContent({ projectId, onNavigate }: { projectId: string, onNaviga
       <div className="flex flex-grow flex-col gap-1 pt-2 overflow-y-auto">
         {navigationItems.map((item, index) => {
           if (item.type === 'label') {
+            if (item.requiresDevFeatureFlag && !devFeaturesEnabledForProject(projectId)) {
+              return null;
+            }
             return <Typography key={index} className="pl-2 mt-3" type="label" variant="secondary">
               {item.name}
             </Typography>;
           } else if (item.type === 'item') {
-            if (
-              item.requiresDevFeatureFlag &&
-              !JSON.parse(getPublicEnvVar("NEXT_PUBLIC_STACK_ENABLE_DEVELOPMENT_FEATURES_PROJECT_IDS") || "[]").includes(projectId)
-            ) {
+            if (item.requiresDevFeatureFlag && !devFeaturesEnabledForProject(projectId)) {
               return null;
             }
             return <div key={index} className="flex px-2">
@@ -492,15 +557,20 @@ function HeaderBreadcrumb({
 
 export default function SidebarLayout(props: { projectId: string, children?: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [companionExpanded, setCompanionExpanded] = useState(false);
   const { resolvedTheme, setTheme } = useTheme();
 
   return (
     <div className="w-full flex">
-      <div className="flex-col border-r min-w-[240px] h-screen sticky top-0 hidden md:flex backdrop-blur-md bg-white/20 dark:bg-black/20 z-[10]">
+      {/* Left Sidebar */}
+      <div className="flex-col border-r min-w-[240px] h-screen sticky top-0 hidden md:flex backdrop-blur-md bg-slate-200/20 dark:bg-black/20 z-[10]">
         <SidebarContent projectId={props.projectId} />
       </div>
+
+      {/* Main Content Area */}
       <div className="flex flex-col flex-grow w-0">
-        <div className="h-14 border-b flex items-center justify-between sticky top-0 backdrop-blur-md bg-white/20 dark:bg-black/20 z-10 px-4 md:px-6">
+        {/* Header */}
+        <div className="h-14 border-b flex items-center justify-between sticky top-0 backdrop-blur-md bg-slate-200/20 dark:bg-black/20 z-10 px-4 md:px-6">
           <div className="hidden md:flex">
             <HeaderBreadcrumb projectId={props.projectId} />
           </div>
@@ -525,19 +595,28 @@ export default function SidebarLayout(props: { projectId: string, children?: Rea
             </div>
           </div>
 
-          <div className="flex gap-4">
-            <FeedbackDialog
-              trigger={<Button variant="outline" size='sm'>Feedback</Button>}
-            />
+          <div className="flex gap-2 relative items-center">
+            <Button asChild variant="ghost" size="icon" className="hidden lg:flex">
+              <Link href={`/projects/${props.projectId}/project-settings`}>
+                <Settings className="w-4 h-4" />
+              </Link>
+            </Button>
             {getPublicEnvVar("NEXT_PUBLIC_STACK_EMULATOR_ENABLED") === "true" ?
               <ThemeToggle /> :
               <UserButton colorModeToggle={() => setTheme(resolvedTheme === 'light' ? 'dark' : 'light')} />
             }
           </div>
         </div>
-        <div className="flex-grow relative">
+
+        {/* Content Body - Normal scrolling */}
+        <div className="flex-grow relative flex flex-col">
           {props.children}
         </div>
+      </div>
+
+      {/* Stack Companion - Sticky positioned like left sidebar */}
+      <div className="h-screen sticky top-0 backdrop-blur-md bg-slate-200/20 dark:bg-black/20 z-[10]">
+        <StackCompanion onExpandedChange={setCompanionExpanded} />
       </div>
     </div>
   );

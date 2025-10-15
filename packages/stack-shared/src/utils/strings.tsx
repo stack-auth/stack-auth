@@ -558,7 +558,8 @@ export function nicify(
       if (Array.isArray(value)) {
         const extraLines = getNicifiedObjectExtraLines(value);
         const resValueLength = value.length + extraLines.length;
-        if (maxDepth <= 0 && resValueLength === 0) return "[...]";
+        if (resValueLength === 0) return "[]";  // early return in case maxDepth <= 0
+        if (maxDepth <= 0) return `[...]`;
         const resValues = value.map((v, i) => nestedNicify(v, `${path}[${i}]`, i));
         resValues.push(...extraLines);
         if (resValues.length !== resValueLength) throw new StackAssertionError("nicify of object: resValues.length !== resValueLength", { value, resValues, resValueLength });
@@ -569,11 +570,17 @@ export function nicify(
           return `[${resValues.join(", ")}]`;
         }
       }
+      if (value instanceof Date) {
+        return `Date(${nestedNicify(value.toISOString(), `${path}.toISOString()`, null)})`;
+      }
       if (value instanceof URL) {
         return `URL(${nestedNicify(value.toString(), `${path}.toString()`, null)})`;
       }
       if (ArrayBuffer.isView(value)) {
         return `${value.constructor.name}([${value.toString()}])`;
+      }
+      if (value instanceof ArrayBuffer) {
+        return `ArrayBuffer [${new Uint8Array(value).toString()}]`;
       }
       if (value instanceof Error) {
         let stack = value.stack ?? "";

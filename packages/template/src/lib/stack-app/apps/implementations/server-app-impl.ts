@@ -1,6 +1,9 @@
 import { KnownErrors, StackServerInterface } from "@stackframe/stack-shared";
+import type { CustomerProductsListResponse } from "@stackframe/stack-shared/dist/interface/crud/products";
 import { ContactChannelsCrud } from "@stackframe/stack-shared/dist/interface/crud/contact-channels";
+import { ItemCrud } from "@stackframe/stack-shared/dist/interface/crud/items";
 import { NotificationPreferenceCrud } from "@stackframe/stack-shared/dist/interface/crud/notification-preferences";
+import { OAuthProviderCrud } from "@stackframe/stack-shared/dist/interface/crud/oauth-providers";
 import { TeamApiKeysCrud, UserApiKeysCrud, teamApiKeysCreateOutputSchema, userApiKeysCreateOutputSchema } from "@stackframe/stack-shared/dist/interface/crud/project-api-keys";
 import { ProjectPermissionDefinitionsCrud, ProjectPermissionsCrud } from "@stackframe/stack-shared/dist/interface/crud/project-permissions";
 import { TeamInvitationCrud } from "@stackframe/stack-shared/dist/interface/crud/team-invitation";
@@ -9,6 +12,7 @@ import { TeamPermissionDefinitionsCrud, TeamPermissionsCrud } from "@stackframe/
 import { TeamsCrud } from "@stackframe/stack-shared/dist/interface/crud/teams";
 import { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
 import { InternalSession } from "@stackframe/stack-shared/dist/sessions";
+import type { AsyncCache } from "@stackframe/stack-shared/dist/utils/caches";
 import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { ProviderType } from "@stackframe/stack-shared/dist/utils/oauth";
 import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
@@ -18,23 +22,23 @@ import { useMemo } from "react"; // THIS_LINE_PLATFORM react-like
 import * as yup from "yup";
 import { constructRedirectUrl } from "../../../../utils/url";
 import { ApiKey, ApiKeyCreationOptions, ApiKeyUpdateOptions, apiKeyCreationOptionsToCrud, apiKeyUpdateOptionsToCrud } from "../../api-keys";
-import { GetUserOptions, HandlerUrls, OAuthScopesOnSignIn, TokenStoreInit } from "../../common";
+import { ConvexCtx, GetCurrentUserOptions, HandlerUrls, OAuthScopesOnSignIn, TokenStoreInit } from "../../common";
 import { OAuthConnection } from "../../connected-accounts";
 import { ServerContactChannel, ServerContactChannelCreateOptions, ServerContactChannelUpdateOptions, serverContactChannelCreateOptionsToCrud, serverContactChannelUpdateOptionsToCrud } from "../../contact-channels";
+import { Customer, CustomerProductsList, CustomerProductsListOptions, CustomerProductsRequestOptions, InlineProduct, ServerItem } from "../../customers";
+import { DataVaultStore } from "../../data-vault";
+import { SendEmailOptions } from "../../email";
 import { NotificationCategory } from "../../notification-categories";
 import { AdminProjectPermissionDefinition, AdminTeamPermission, AdminTeamPermissionDefinition } from "../../permissions";
 import { EditableTeamMemberProfile, ServerListUsersOptions, ServerTeam, ServerTeamCreateOptions, ServerTeamUpdateOptions, ServerTeamUser, Team, TeamInvitation, serverTeamCreateOptionsToCrud, serverTeamUpdateOptionsToCrud } from "../../teams";
-import { ProjectCurrentServerUser, ServerUser, ServerUserCreateOptions, ServerUserUpdateOptions, serverUserCreateOptionsToCrud, serverUserUpdateOptionsToCrud } from "../../users";
+import { ProjectCurrentServerUser, ServerOAuthProvider, ServerUser, ServerUserCreateOptions, ServerUserUpdateOptions, serverUserCreateOptionsToCrud, serverUserUpdateOptionsToCrud } from "../../users";
 import { StackServerAppConstructorOptions } from "../interfaces/server-app";
 import { _StackClientAppImplIncomplete } from "./client-app-impl";
-import { clientVersion, createCache, createCacheBySession, getBaseUrl, getDefaultProjectId, getDefaultPublishableClientKey, getDefaultSecretServerKey } from "./common";
-import { SendEmailOptions } from "../../email";
+import { clientVersion, createCache, createCacheBySession, getBaseUrl, getDefaultExtraRequestHeaders, getDefaultProjectId, getDefaultPublishableClientKey, getDefaultSecretServerKey } from "./common";
 
-// NEXT_LINE_PLATFORM react-like
-import { useAsyncCache } from "./common";
+import { useAsyncCache } from "./common"; // THIS_LINE_PLATFORM react-like
 
-export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, ProjectId extends string> extends _StackClientAppImplIncomplete<HasTokenStore, ProjectId>
-{
+export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, ProjectId extends string> extends _StackClientAppImplIncomplete<HasTokenStore, ProjectId> {
   declare protected _interface: StackServerInterface;
 
   // TODO override the client user cache to use the server user cache, so we save some requests
@@ -51,8 +55,9 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
     orderBy?: 'signedUpAt',
     desc?: boolean,
     query?: string,
-  ], UsersCrud['Server']['List']>(async ([cursor, limit, orderBy, desc, query]) => {
-    return await this._interface.listServerUsers({ cursor, limit, orderBy, desc, query });
+    includeAnonymous?: boolean,
+  ], UsersCrud['Server']['List']>(async ([cursor, limit, orderBy, desc, query, includeAnonymous]) => {
+    return await this._interface.listServerUsers({ cursor, limit, orderBy, desc, query, includeAnonymous });
   });
   private readonly _serverUserCache = createCache<string[], UsersCrud['Server']['Read'] | null>(async ([userId]) => {
     const user = await this._interface.getServerUserById(userId);
@@ -126,6 +131,9 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
       return await this._interface.listServerNotificationCategories(userId);
     }
   );
+  private readonly _serverDataVaultStoreValueCache = createCache<[string, string, string], string | null>(async ([storeId, key, secret]) => {
+    return await this._interface.getDataVaultStoreValue(secret, storeId, key);
+  });
 
   private readonly _serverUserApiKeysCache = createCache<[string], UserApiKeysCrud['Server']['Read'][]>(
     async ([userId]) => {
@@ -145,6 +153,13 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
     }
   );
 
+  private readonly _convexIdentitySubjectCache = createCache<[ConvexCtx], string | null>(
+    async ([ctx]) => {
+      const identity = await ctx.auth.getUserIdentity();
+      return identity ? identity.subject : null;
+    }
+  );
+
   private readonly _serverCheckApiKeyCache = createCache<["user" | "team", string], UserApiKeysCrud['Server']['Read'] | TeamApiKeysCrud['Server']['Read'] | null>(async ([type, apiKey]) => {
     const result = await this._interface.checkProjectApiKey(
       type,
@@ -154,6 +169,100 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
     );
     return result;
   });
+
+  private readonly _serverOAuthProvidersCache = createCache<[string], OAuthProviderCrud['Server']['Read'][]>(
+    async ([userId]) => {
+      return await this._interface.listServerOAuthProviders({ user_id: userId });
+    }
+  );
+
+  private readonly _serverTeamItemsCache = createCache<[string, string], ItemCrud['Client']['Read']>(
+    async ([teamId, itemId]) => {
+      return await this._interface.getItem({ teamId, itemId }, null);
+    }
+  );
+
+  private readonly _serverUserItemsCache = createCache<[string, string], ItemCrud['Client']['Read']>(
+    async ([userId, itemId]) => {
+      return await this._interface.getItem({ userId, itemId }, null);
+    }
+  );
+
+  private readonly _serverCustomItemsCache = createCache<[string, string], ItemCrud['Client']['Read']>(
+    async ([customCustomerId, itemId]) => {
+      return await this._interface.getItem({ customCustomerId, itemId }, null);
+    }
+  );
+
+  private readonly _serverUserProductsCache = createCache<[string, string | null, number | null], CustomerProductsListResponse>(
+    async ([userId, cursor, limit]) => {
+      return await this._interface.listProducts({
+        customer_type: "user",
+        customer_id: userId,
+        cursor: cursor ?? undefined,
+        limit: limit ?? undefined,
+      }, null);
+    }
+  );
+
+  private readonly _serverTeamProductsCache = createCache<[string, string | null, number | null], CustomerProductsListResponse>(
+    async ([teamId, cursor, limit]) => {
+      return await this._interface.listProducts({
+        customer_type: "team",
+        customer_id: teamId,
+        cursor: cursor ?? undefined,
+        limit: limit ?? undefined,
+      }, null);
+    }
+  );
+
+  private readonly _serverCustomProductsCache = createCache<[string, string | null, number | null], CustomerProductsListResponse>(
+    async ([customCustomerId, cursor, limit]) => {
+      return await this._interface.listProducts({
+        customer_type: "custom",
+        customer_id: customCustomerId,
+        cursor: cursor ?? undefined,
+        limit: limit ?? undefined,
+      }, null);
+    }
+  );
+
+  protected _createServerCustomer(userIdOrTeamId: string, type: "user" | "team"): Omit<Customer<true>, "id"> {
+    const app = this;
+    const productsCache = type === "user" ? app._serverUserProductsCache : app._serverTeamProductsCache;
+    const customerOptions = type === "user" ? { userId: userIdOrTeamId } : { teamId: userIdOrTeamId };
+    return {
+      ...this._createCustomer(userIdOrTeamId, type, null),
+      async getItem(itemId: string) {
+        return await app.getItem({ itemId, ...customerOptions });
+      },
+      // IF_PLATFORM react-like
+      useItem(itemId: string) {
+        return app.useItem({ itemId, ...customerOptions });
+      },
+      // END_PLATFORM
+      async grantProduct(productOptions: { productId: string, quantity?: number } | { product: InlineProduct, quantity?: number }) {
+        if (type === "user") {
+          if ("productId" in productOptions) {
+            await app.grantProduct({ userId: userIdOrTeamId, productId: productOptions.productId, quantity: productOptions.quantity });
+          } else {
+            await app.grantProduct({ userId: userIdOrTeamId, product: productOptions.product, quantity: productOptions.quantity });
+          }
+        } else {
+          if ("productId" in productOptions) {
+            await app.grantProduct({ teamId: userIdOrTeamId, productId: productOptions.productId, quantity: productOptions.quantity });
+          } else {
+            await app.grantProduct({ teamId: userIdOrTeamId, product: productOptions.product, quantity: productOptions.quantity });
+          }
+        }
+        await productsCache.refresh([userIdOrTeamId, null, null]);
+      },
+      async createCheckoutUrl(options: { productId: string, returnUrl?: string } | { product: InlineProduct, returnUrl?: string }) {
+        const productIdOrInline = "productId" in options ? options.productId : options.product;
+        return await app._interface.createCheckoutUrl(type, userIdOrTeamId, productIdOrInline, null, options.returnUrl);
+      },
+    };
+  }
 
   private async _updateServerUser(userId: string, update: ServerUserUpdateOptions): Promise<UsersCrud['Server']['Read']> {
     const result = await this._interface.updateServerUser(userId, serverUserUpdateOptionsToCrud(update));
@@ -224,6 +333,44 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
     };
   }
 
+  protected _serverOAuthProviderFromCrud(crud: OAuthProviderCrud['Server']['Read']) {
+    const app = this;
+    return {
+      id: crud.id,
+      type: crud.type,
+      userId: crud.user_id,
+      accountId: crud.account_id,
+      email: crud.email,
+      allowSignIn: crud.allow_sign_in,
+      allowConnectedAccounts: crud.allow_connected_accounts,
+
+      async update(data: { accountId?: string, email?: string, allowSignIn?: boolean, allowConnectedAccounts?: boolean }): Promise<Result<void,
+        InstanceType<typeof KnownErrors.OAuthProviderAccountIdAlreadyUsedForSignIn>
+      >> {
+        try {
+          await app._interface.updateServerOAuthProvider(crud.user_id, crud.id, {
+            account_id: data.accountId,
+            email: data.email,
+            allow_sign_in: data.allowSignIn,
+            allow_connected_accounts: data.allowConnectedAccounts,
+          });
+          await app._serverOAuthProvidersCache.refresh([crud.user_id]);
+          return Result.ok(undefined);
+        } catch (error) {
+          if (KnownErrors.OAuthProviderAccountIdAlreadyUsedForSignIn.isInstance(error)) {
+            return Result.error(error);
+          }
+          throw error;
+        }
+      },
+
+      async delete() {
+        await app._interface.deleteServerOAuthProvider(crud.user_id, crud.id);
+        await app._serverOAuthProvidersCache.refresh([crud.user_id]);
+      },
+    };
+  }
+
   constructor(options:
     | StackServerAppConstructorOptions<HasTokenStore, ProjectId>
     | {
@@ -242,7 +389,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
       interface: new StackServerInterface({
         getBaseUrl: () => getBaseUrl(options.baseUrl),
         projectId: options.projectId ?? getDefaultProjectId(),
-        extraRequestHeaders: options.extraRequestHeaders ?? {},
+        extraRequestHeaders: options.extraRequestHeaders ?? getDefaultExtraRequestHeaders(),
         clientVersion,
         publishableClientKey: options.publishableClientKey ?? getDefaultPublishableClientKey(),
         secretServerKey: options.secretServerKey ?? getDefaultSecretServerKey(),
@@ -488,7 +635,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
       async sendVerificationEmail() {
         return await app._checkFeatureSupport("sendVerificationEmail() on ServerUser", {});
       },
-      async updatePassword(options: { oldPassword: string, newPassword: string}) {
+      async updatePassword(options: { oldPassword: string, newPassword: string }) {
         const result = await app._interface.updatePassword(options);
         await app._serverUserCache.refresh([crud.id]);
         return result;
@@ -555,6 +702,29 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
         await app._serverUserApiKeysCache.refresh([crud.id]);
         return app._serverApiKeyFromCrud(result);
       },
+      // IF_PLATFORM react-like
+      useOAuthProviders() {
+        const results = useAsyncCache(app._serverOAuthProvidersCache, [crud.id] as const, "user.useOAuthProviders()");
+        return useMemo(() => results.map((oauthCrud) => app._serverOAuthProviderFromCrud(oauthCrud)), [results]);
+      },
+      // END_PLATFORM
+
+      async listOAuthProviders() {
+        const results = Result.orThrow(await app._serverOAuthProvidersCache.getOrWait([crud.id], "write-only"));
+        return results.map((oauthCrud) => app._serverOAuthProviderFromCrud(oauthCrud));
+      },
+
+      // IF_PLATFORM react-like
+      useOAuthProvider(id: string) {
+        const providers = this.useOAuthProviders();
+        return useMemo(() => providers.find((p) => p.id === id) ?? null, [providers, id]);
+      },
+      // END_PLATFORM
+      async getOAuthProvider(id: string) {
+        const providers = await this.listOAuthProviders();
+        return providers.find((p) => p.id === id) ?? null;
+      },
+      ...app._createServerCustomer(crud.id, "user"),
     };
   }
 
@@ -670,6 +840,57 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
         await app._serverTeamApiKeysCache.refresh([crud.id]);
         return app._serverApiKeyFromCrud(result);
       },
+      ...app._createServerCustomer(crud.id, "team"),
+    };
+  }
+
+  protected _serverItemFromCrud(customer: { type: "user" | "team" | "custom", id: string }, crud: ItemCrud['Client']['Read']): ServerItem {
+    const app = this;
+    return {
+      displayName: crud.display_name,
+      quantity: crud.quantity,
+      nonNegativeQuantity: Math.max(0, crud.quantity),
+      increaseQuantity: async (delta: number) => {
+        const updateOptions = customer.type === "user"
+          ? { itemId: crud.id, userId: customer.id }
+          : customer.type === "team"
+            ? { itemId: crud.id, teamId: customer.id }
+            : { itemId: crud.id, customCustomerId: customer.id };
+        await app._interface.updateItemQuantity(updateOptions, { delta });
+        if (customer.type === "user") await app._serverUserItemsCache.refresh([customer.id, crud.id]);
+        else if (customer.type === "team") await app._serverTeamItemsCache.refresh([customer.id, crud.id]);
+        else await app._serverCustomItemsCache.refresh([customer.id, crud.id]);
+      },
+      decreaseQuantity: async (delta: number) => {
+        const updateOptions = customer.type === "user"
+          ? { itemId: crud.id, userId: customer.id }
+          : customer.type === "team"
+            ? { itemId: crud.id, teamId: customer.id }
+            : { itemId: crud.id, customCustomerId: customer.id };
+        await app._interface.updateItemQuantity(updateOptions, { delta: -delta, allow_negative: true });
+        if (customer.type === "user") await app._serverUserItemsCache.refresh([customer.id, crud.id]);
+        else if (customer.type === "team") await app._serverTeamItemsCache.refresh([customer.id, crud.id]);
+        else await app._serverCustomItemsCache.refresh([customer.id, crud.id]);
+      },
+      tryDecreaseQuantity: async (delta: number) => {
+        try {
+          const updateOptions = customer.type === "user"
+            ? { itemId: crud.id, userId: customer.id }
+            : customer.type === "team"
+              ? { itemId: crud.id, teamId: customer.id }
+              : { itemId: crud.id, customCustomerId: customer.id };
+          await app._interface.updateItemQuantity(updateOptions, { delta: -delta });
+          if (customer.type === "user") await app._serverUserItemsCache.refresh([customer.id, crud.id]);
+          else if (customer.type === "team") await app._serverTeamItemsCache.refresh([customer.id, crud.id]);
+          else await app._serverCustomItemsCache.refresh([customer.id, crud.id]);
+          return true;
+        } catch (error) {
+          if (error instanceof KnownErrors.ItemQuantityInsufficientAmount) {
+            return false;
+          }
+          throw error;
+        }
+      },
     };
   }
 
@@ -701,6 +922,31 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
     }
     return await this.getServerUserById(apiKeyObject.userId);
   }
+
+  protected async _getUserByConvex(ctx: ConvexCtx, includeAnonymous: boolean): Promise<ServerUser | null> {
+    const identity = await ctx.auth.getUserIdentity();
+    if (identity === null) {
+      return null;
+    }
+    const user = await this.getServerUserById(identity.subject);
+    if (user?.isAnonymous && !includeAnonymous) {
+      return null;
+    }
+    return user;
+  }
+  // IF_PLATFORM react-like
+  protected _useUserByConvex(ctx: ConvexCtx, includeAnonymous: boolean): ServerUser | null {
+    const subject = useAsyncCache(this._convexIdentitySubjectCache, [ctx] as const, "useUserByConvex()");
+    if (subject === null) {
+      return null;
+    }
+    const user = this.useUserById(subject);
+    if (user?.isAnonymous && !includeAnonymous) {
+      return null;
+    }
+    return user;
+  }
+  // END_PLATFORM
   // IF_PLATFORM react-like
   protected _useUserByApiKey(apiKey: string): ServerUser | null {
     const apiKeyObject = this._useUserApiKey({ apiKey });
@@ -734,23 +980,27 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
     return this._serverUserFromCrud(crud);
   }
 
-  async getUser(options: GetUserOptions<HasTokenStore> & { or: 'redirect' }): Promise<ProjectCurrentServerUser<ProjectId>>;
-  async getUser(options: GetUserOptions<HasTokenStore> & { or: 'throw' }): Promise<ProjectCurrentServerUser<ProjectId>>;
-  async getUser(options: GetUserOptions<HasTokenStore> & { or: 'anonymous' }): Promise<ProjectCurrentServerUser<ProjectId>>;
-  async getUser(options?: GetUserOptions<HasTokenStore>): Promise<ProjectCurrentServerUser<ProjectId> | null>;
+  async getUser(options: GetCurrentUserOptions<HasTokenStore> & { or: 'redirect' }): Promise<ProjectCurrentServerUser<ProjectId>>;
+  async getUser(options: GetCurrentUserOptions<HasTokenStore> & { or: 'throw' }): Promise<ProjectCurrentServerUser<ProjectId>>;
+  async getUser(options: GetCurrentUserOptions<HasTokenStore> & { or: 'anonymous' }): Promise<ProjectCurrentServerUser<ProjectId>>;
+  async getUser(options?: GetCurrentUserOptions<HasTokenStore>): Promise<ProjectCurrentServerUser<ProjectId> | null>;
   async getUser(id: string): Promise<ServerUser | null>;
   async getUser(options: { apiKey: string }): Promise<ServerUser | null>;
-  async getUser(options?: string | GetUserOptions<HasTokenStore> | { apiKey: string }): Promise<ProjectCurrentServerUser<ProjectId> | ServerUser | null> {
+  async getUser(options: { from: "convex", ctx: ConvexCtx, or?: "return-null" | "anonymous" }): Promise<ServerUser | null>;
+  async getUser(options?: string | GetCurrentUserOptions<HasTokenStore> | { apiKey: string } | { from: "convex", ctx: ConvexCtx }): Promise<ProjectCurrentServerUser<ProjectId> | ServerUser | null> {
     if (typeof options === "string") {
       return await this.getServerUserById(options);
     } else if (typeof options === "object" && "apiKey" in options) {
       return await this._getUserByApiKey(options.apiKey);
+    } else if (typeof options === "object" && "from" in options && options.from as string === "convex") {
+      return await this._getUserByConvex(options.ctx, "or" in options && options.or === "anonymous");
     } else {
+      options = options as GetCurrentUserOptions<HasTokenStore> | undefined;
       // TODO this code is duplicated from the client app; fix that
       this._ensurePersistentTokenStore(options?.tokenStore);
       const session = await this._getSession(options?.tokenStore);
       let crud = Result.orThrow(await this._currentServerUserCache.getOrWait([session], "write-only"));
-      if (crud?.is_anonymous && options?.or !== "anonymous" && options?.or !== "anonymous-if-exists") {
+      if (crud?.is_anonymous && options?.or !== "anonymous" && options?.or !== "anonymous-if-exists[deprecated]") {
         crud = null;
       }
 
@@ -765,10 +1015,10 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
           }
           case 'anonymous': {
             const tokens = await this._signUpAnonymously();
-            return await this.getUser({ tokenStore: tokens, or: "anonymous-if-exists" }) ?? throwErr("Something went wrong while signing up anonymously");
+            return await this.getUser({ tokenStore: tokens, or: "anonymous-if-exists[deprecated]" }) ?? throwErr("Something went wrong while signing up anonymously");
           }
           case undefined:
-          case "anonymous-if-exists":
+          case "anonymous-if-exists[deprecated]":
           case "return-null": {
             return null;
           }
@@ -790,24 +1040,28 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
   }
 
   // IF_PLATFORM react-like
-  useUser(options: GetUserOptions<HasTokenStore> & { or: 'redirect' }): ProjectCurrentServerUser<ProjectId>;
-  useUser(options: GetUserOptions<HasTokenStore> & { or: 'throw' }): ProjectCurrentServerUser<ProjectId>;
-  useUser(options: GetUserOptions<HasTokenStore> & { or: 'anonymous' }): ProjectCurrentServerUser<ProjectId>;
-  useUser(options?: GetUserOptions<HasTokenStore>): ProjectCurrentServerUser<ProjectId> | null;
+  useUser(options: GetCurrentUserOptions<HasTokenStore> & { or: 'redirect' }): ProjectCurrentServerUser<ProjectId>;
+  useUser(options: GetCurrentUserOptions<HasTokenStore> & { or: 'throw' }): ProjectCurrentServerUser<ProjectId>;
+  useUser(options: GetCurrentUserOptions<HasTokenStore> & { or: 'anonymous' }): ProjectCurrentServerUser<ProjectId>;
+  useUser(options?: GetCurrentUserOptions<HasTokenStore>): ProjectCurrentServerUser<ProjectId> | null;
   useUser(id: string): ServerUser | null;
   useUser(options: { apiKey: string }): ServerUser | null;
-  useUser(options?: GetUserOptions<HasTokenStore> | string | { apiKey: string }): ProjectCurrentServerUser<ProjectId> | ServerUser | null {
+  useUser(options: { from: "convex", ctx: ConvexCtx, or?: "return-null" | "anonymous" }): ServerUser | null;
+  useUser(options?: GetCurrentUserOptions<HasTokenStore> | string | { apiKey: string } | { from: "convex", ctx: ConvexCtx }): ProjectCurrentServerUser<ProjectId> | ServerUser | null {
     if (typeof options === "string") {
       return this.useUserById(options);
     } else if (typeof options === "object" && "apiKey" in options) {
       return this._useUserByApiKey(options.apiKey);
+    } else if (typeof options === "object" && "from" in options && options.from as string === "convex") {
+      return this._useUserByConvex(options.ctx, "or" in options && options.or === "anonymous");
     } else {
+      options = options as GetCurrentUserOptions<HasTokenStore> | undefined;
       // TODO this code is duplicated from the client app; fix that
       this._ensurePersistentTokenStore(options?.tokenStore);
 
       const session = this._useSession(options?.tokenStore);
       let crud = useAsyncCache(this._currentServerUserCache, [session] as const, "useUser()");
-      if (crud?.is_anonymous && options?.or !== "anonymous" && options?.or !== "anonymous-if-exists") {
+      if (crud?.is_anonymous && options?.or !== "anonymous" && options?.or !== "anonymous-if-exists[deprecated]") {
         crud = null;
       }
 
@@ -834,7 +1088,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
             throw new StackAssertionError("suspend should never return");
           }
           case undefined:
-          case "anonymous-if-exists":
+          case "anonymous-if-exists[deprecated]":
           case "return-null": {
             // do nothing
           }
@@ -857,7 +1111,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
   // END_PLATFORM
 
   async listUsers(options?: ServerListUsersOptions): Promise<ServerUser[] & { nextCursor: string | null }> {
-    const crud = Result.orThrow(await this._serverUsersCache.getOrWait([options?.cursor, options?.limit, options?.orderBy, options?.desc, options?.query], "write-only"));
+    const crud = Result.orThrow(await this._serverUsersCache.getOrWait([options?.cursor, options?.limit, options?.orderBy, options?.desc, options?.query, options?.includeAnonymous], "write-only"));
     const result: any = crud.items.map((j) => this._serverUserFromCrud(j));
     result.nextCursor = crud.pagination?.next_cursor ?? null;
     return result as any;
@@ -897,6 +1151,78 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
   async listTeams(): Promise<ServerTeam[]> {
     const teams = Result.orThrow(await this._serverTeamsCache.getOrWait([undefined], "write-only"));
     return teams.map((t) => this._serverTeamFromCrud(t));
+  }
+
+  async getItem(options: { itemId: string, userId: string } | { itemId: string, teamId: string } | { itemId: string, customCustomerId: string }): Promise<ServerItem> {
+    if ("userId" in options) {
+      const result = Result.orThrow(await this._serverUserItemsCache.getOrWait([options.userId, options.itemId], "write-only"));
+      return this._serverItemFromCrud({ type: "user", id: options.userId }, result);
+    } else if ("teamId" in options) {
+      const result = Result.orThrow(await this._serverTeamItemsCache.getOrWait([options.teamId, options.itemId], "write-only"));
+      return this._serverItemFromCrud({ type: "team", id: options.teamId }, result);
+    } else {
+      const result = Result.orThrow(await this._serverCustomItemsCache.getOrWait([options.customCustomerId, options.itemId], "write-only"));
+      return this._serverItemFromCrud({ type: "custom", id: options.customCustomerId }, result);
+    }
+  }
+
+  // IF_PLATFORM react-like
+  useItem(options: { itemId: string, userId: string } | { itemId: string, teamId: string } | { itemId: string, customCustomerId: string }): ServerItem {
+    let type: "user" | "team" | "custom";
+    let id: string;
+    let cache: AsyncCache<[string, string], Result<ItemCrud['Client']['Read']>>;
+    if ("userId" in options) {
+      type = "user";
+      id = options.userId;
+      cache = this._serverUserItemsCache;
+    } else if ("teamId" in options) {
+      type = "team";
+      id = options.teamId;
+      cache = this._serverTeamItemsCache;
+    } else {
+      type = "custom";
+      id = options.customCustomerId;
+      cache = this._serverCustomItemsCache;
+    }
+
+    const cacheKey = [id, options.itemId] as [string, string];
+    const debugLabel = `app.useItem(${type})`;
+    const result = useAsyncCache(cache, cacheKey, debugLabel);
+    return useMemo(() => this._serverItemFromCrud({ type, id }, result), [result]);
+  }
+  // END_PLATFORM
+  async grantProduct(options: (
+    ({ userId: string } | { teamId: string } | { customCustomerId: string }) &
+    ({ productId: string } | { product: InlineProduct }) &
+    { quantity?: number }
+  )): Promise<void> {
+    let customerType: "user" | "team" | "custom";
+    let customerId: string;
+    if ("userId" in options) {
+      customerType = "user";
+      customerId = options.userId;
+    } else if ("teamId" in options) {
+      customerType = "team";
+      customerId = options.teamId;
+    } else {
+      customerType = "custom";
+      customerId = options.customCustomerId;
+    }
+
+    await this._interface.grantProduct({
+      customerType,
+      customerId,
+      productId: "productId" in options ? options.productId : undefined,
+      product: "product" in options ? options.product : undefined,
+      quantity: options.quantity,
+    });
+
+    const cache = customerType === "user"
+      ? this._serverUserProductsCache
+      : customerType === "team"
+        ? this._serverTeamProductsCache
+        : this._serverCustomProductsCache;
+    await cache.refresh([customerId, null, null]);
   }
 
   async createTeam(data: ServerTeamCreateOptions): Promise<ServerTeam> {
@@ -942,8 +1268,41 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
   }
   // END_PLATFORM
 
-  async sendEmail(options: SendEmailOptions): Promise<Result<void, KnownErrors["RequiresCustomEmailServer"] | KnownErrors["SchemaError"] | KnownErrors["UserIdDoesNotExist"]>> {
-    return await this._interface.sendEmail(options);
+  protected _createServerDataVaultStore(id: string): DataVaultStore {
+    const validateOptions = (options: { secret: string }) => {
+      if (typeof options.secret !== "string") throw new Error("secret must be a string, got " + typeof options.secret);
+    };
+    return {
+      id,
+      setValue: async (key, value, options) => {
+        validateOptions(options);
+        await this._interface.setDataVaultStoreValue(options.secret, id, key, value);
+      },
+      getValue: async (key, options) => {
+        validateOptions(options);
+        return Result.orThrow(await this._serverDataVaultStoreValueCache.getOrWait([id, key, options.secret], "write-only"));
+      },
+      // IF_PLATFORM react-like
+      useValue: (key, options) => {
+        validateOptions(options);
+        return useAsyncCache(this._serverDataVaultStoreValueCache, [id, key, options.secret] as const, `app.useDataVaultStoreValue()`);
+      },
+      // END_PLATFORM
+    };
+  }
+
+  async getDataVaultStore(id: string): Promise<DataVaultStore> {
+    return this._createServerDataVaultStore(id);
+  }
+
+  // IF_PLATFORM react-like
+  useDataVaultStore(id: string): DataVaultStore {
+    return useMemo(() => this._createServerDataVaultStore(id), [id]);
+  }
+  // END_PLATFORM
+
+  async sendEmail(options: SendEmailOptions): Promise<void> {
+    await this._interface.sendEmail(options);
   }
 
   protected override async _refreshSession(session: InternalSession) {
@@ -959,6 +1318,35 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
       this._serverUserCache.refreshWhere(() => true),
       this._serverUsersCache.refreshWhere(() => true),
       this._serverContactChannelsCache.refreshWhere(() => true),
+      this._serverOAuthProvidersCache.refreshWhere(() => true),
     ]);
+  }
+
+  async createOAuthProvider(options: {
+    userId: string,
+    providerConfigId: string,
+    accountId: string,
+    email: string,
+    allowSignIn: boolean,
+    allowConnectedAccounts: boolean,
+  }): Promise<Result<ServerOAuthProvider, InstanceType<typeof KnownErrors.OAuthProviderAccountIdAlreadyUsedForSignIn>>> {
+    try {
+      const crud = await this._interface.createServerOAuthProvider({
+        user_id: options.userId,
+        provider_config_id: options.providerConfigId,
+        account_id: options.accountId,
+        email: options.email,
+        allow_sign_in: options.allowSignIn,
+        allow_connected_accounts: options.allowConnectedAccounts,
+      });
+
+      await this._serverOAuthProvidersCache.refresh([options.userId]);
+      return Result.ok(this._serverOAuthProviderFromCrud(crud));
+    } catch (error) {
+      if (KnownErrors.OAuthProviderAccountIdAlreadyUsedForSignIn.isInstance(error)) {
+        return Result.error(error);
+      }
+      throw error;
+    }
   }
 }

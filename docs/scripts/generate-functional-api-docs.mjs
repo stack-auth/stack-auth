@@ -13,9 +13,11 @@ const FUNCTIONAL_TAGS = [
   'API Keys', 
   'CLI Authentication',
   'Contact Channels',
+  'Emails',
   'Oauth', // Note: OpenAPI uses "Oauth" not "OAuth"
   'OTP',
   'Password',
+  'Payments',
   'Permissions',
   'Projects', 
   'Sessions',

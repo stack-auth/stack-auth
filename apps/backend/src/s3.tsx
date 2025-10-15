@@ -36,7 +36,7 @@ export function getS3PublicUrl(key: string): string {
 
 async function uploadBase64Image({
   input,
-  maxBytes = 1024 * 300,
+  maxBytes = 1_000_000, // 1MB
   folderName,
 }: {
   input: string,
@@ -85,7 +85,7 @@ export function checkImageString(input: string) {
 
 export async function uploadAndGetUrl(
   input: string | null | undefined,
-  folderName: 'user-profile-images' | 'team-profile-images' | 'team-member-profile-images'
+  folderName: 'user-profile-images' | 'team-profile-images' | 'team-member-profile-images' | 'project-logos'
 ) {
   if (input) {
     const checkResult = checkImageString(input);
@@ -97,7 +97,6 @@ export async function uploadAndGetUrl(
     } else {
       throw new StatusError(StatusError.BadRequest, "Invalid profile image URL");
     }
-
   } else if (input === null) {
     return null;
   } else {

@@ -1,3 +1,4 @@
+import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { it, localRedirectUrl } from "../../../../../../helpers";
 import { Auth, backendContext, niceBackendFetch } from "../../../../../backend-helpers";
 
@@ -20,21 +21,24 @@ it("should send a password reset code per e-mail", async ({ expect }) => {
       "headers": Headers { <some fields may have been hidden> },
     }
   `);
-  expect(await backendContext.value.mailbox.fetchMessages({ noBody: true })).toMatchInlineSnapshot(`
-    [
-      MailboxMessage {
-        "from": "Stack Dashboard <noreply@example.com>",
-        "subject": "Mock subject, <Subject value={\`Verify your email at \${project.displayName}\`} />",
-        "to": ["<default-mailbox--<stripped UUID>@stack-generated.example.com>"],
-        <some fields may have been hidden>,
-      },
-      MailboxMessage {
-        "from": "Stack Dashboard <noreply@example.com>",
-        "subject": "Mock subject, <Subject value=\\"{\\"Reset your password at \\" + project.displayName} />\\"",
-        "to": ["<default-mailbox--<stripped UUID>@stack-generated.example.com>"],
-        <some fields may have been hidden>,
-      },
-    ]
+  await wait(1000);
+  const messages = await backendContext.value.mailbox.fetchMessages({ noBody: true });
+  expect(messages.length).toBe(2);
+  expect(messages.find(m => m.subject.includes("Verify your email at Stack Dashboard"))).toMatchInlineSnapshot(`
+    MailboxMessage {
+      "from": "Stack Dashboard <noreply@example.com>",
+      "subject": "Verify your email at Stack Dashboard",
+      "to": ["<default-mailbox--<stripped UUID>@stack-generated.example.com>"],
+      <some fields may have been hidden>,
+    }
+  `);
+  expect(messages.find(m => m.subject.includes("Reset your password at Stack Dashboard"))).toMatchInlineSnapshot(`
+    MailboxMessage {
+      "from": "Stack Dashboard <noreply@example.com>",
+      "subject": "Reset your password at Stack Dashboard",
+      "to": ["<default-mailbox--<stripped UUID>@stack-generated.example.com>"],
+      <some fields may have been hidden>,
+    }
   `);
 });
 

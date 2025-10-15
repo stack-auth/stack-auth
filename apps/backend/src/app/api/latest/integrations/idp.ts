@@ -4,7 +4,7 @@ import { decodeBase64OrBase64Url, toHexString } from '@stackframe/stack-shared/d
 import { getEnvVariable } from '@stackframe/stack-shared/dist/utils/env';
 import { StackAssertionError, captureError, throwErr } from '@stackframe/stack-shared/dist/utils/errors';
 import { sha512 } from '@stackframe/stack-shared/dist/utils/hashes';
-import { getPerAudienceSecret, getPrivateJwk, getPublicJwkSet } from '@stackframe/stack-shared/dist/utils/jwt';
+import { getPrivateJwks, getPublicJwkSet } from '@stackframe/stack-shared/dist/utils/jwt';
 import { deindent } from '@stackframe/stack-shared/dist/utils/strings';
 import { generateUuid } from '@stackframe/stack-shared/dist/utils/uuids';
 import Provider, { Adapter, AdapterConstructor, AdapterPayload } from 'oidc-provider';
@@ -163,16 +163,13 @@ function createPrismaAdapter(idpId: string) {
 }
 
 export async function createOidcProvider(options: { id: string, baseUrl: string, clientInteractionUrl: string }) {
-  const privateJwk = await getPrivateJwk(getPerAudienceSecret({
+  const privateJwks = await getPrivateJwks({
     audience: `https://idp-jwk-audience.stack-auth.com/${encodeURIComponent(options.id)}`,
-    secret: getEnvVariable("STACK_SERVER_SECRET"),
-  }));
-  const privateJwks = {
-    keys: [
-      privateJwk,
-    ],
+  });
+  const privateJwkSet = {
+    keys: privateJwks,
   };
-  const publicJwks = await getPublicJwkSet(privateJwk);
+  const publicJwkSet = await getPublicJwkSet(privateJwks);
 
   const oidc = new Provider(options.baseUrl, {
     adapter: createPrismaAdapter(options.id),
@@ -183,7 +180,7 @@ export async function createOidcProvider(options: { id: string, baseUrl: string,
         toHexString(await sha512(`oidc-idp-cookie-encryption-key:${getEnvVariable("STACK_SERVER_SECRET")}`)),
       ],
     },
-    jwks: privateJwks,
+    jwks: privateJwkSet,
     features: {
       devInteractions: {
         enabled: false,
@@ -243,7 +240,7 @@ export async function createOidcProvider(options: { id: string, baseUrl: string,
   // .well-known/jwks.json
   middleware(async (ctx, next) => {
     if (ctx.path === '/.well-known/jwks.json') {
-      ctx.body = publicJwks;
+      ctx.body = publicJwkSet;
       ctx.type = 'application/json';
       return;
     }

@@ -151,6 +151,21 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+
+
+  # ================= LocalStack =================
+  localstack:
+    image: localstack/localstack:4.7
+    ports:
+      - "8124:4566"            # LocalStack Gateway
+      - "8150-8199:4510-4559"  # external services port range
+    environment:
+      # LocalStack configuration: https://docs.localstack.cloud/references/configuration/
+      - DEBUG=${DEBUG:-0}
+    volumes:
+      - localstack-data:/var/lib/localstack
+      - "/var/run/docker.sock:/var/run/docker.sock"
+
   # ================= Freestyle mock =================
 
   freestyle-mock:
@@ -161,10 +176,50 @@ services:
     container_name: freestyle-mock
     ports:
       - "8122:8080"       # POST http://localhost:8119/execute/v1/script
+    extra_hosts:
+      - "host.docker.internal:host-gateway"  # noop on Docker Desktop/Orbstack, enables host.docker.internal on Linux
     environment:
       DENO_DIR: /deno-cache
+      HOST_ON_HOST: host.docker.internal
     volumes:
       - deno-cache:/deno-cache
+
+  # ================= Stripe =================
+  
+  stripe-mock:
+    image: stripe/stripe-mock:v0.195.0
+    ports:
+      - 8123:12111
+    environment:
+      - STRIPE_API_KEY=sk_test_1234567890
+
+  # ================= QStash =================
+
+  qstash:
+    image: public.ecr.aws/upstash/qstash:latest
+    ports:
+      - 8125:8080
+    command: qstash dev
+    extra_hosts:
+      - "host.docker.internal:host-gateway"  # noop on Docker Desktop/Orbstack, enables host.docker.internal on Linux
+    environment:
+      HOST_ON_HOST: host.docker.internal
+
+  # ================= MCPJam Inspector =================
+
+  mcpjam-inspector:
+    image: node:20-alpine
+    ports:
+      - "8126:3001"
+    command: >
+      sh -c "echo '{\"mcpServers\":{\"local-stack-auth-docs\":{\"url\":\"http://host.docker.internal:8104/api/internal/mcp\"}}}' > /app/mcp.json && npx -y @mcpjam/inspector@latest --port 3001 --config /app/mcp.json"
+    working_dir: /app
+    volumes:
+      - mcpjam-inspector-data:/root
+    extra_hosts:
+      - "host.docker.internal:host-gateway"  # noop on Docker Desktop/Orbstack, enables host.docker.internal on Linux
+    environment:
+      HOST_ON_HOST: host.docker.internal
 
 
 # ================= volumes =================
@@ -176,6 +231,8 @@ volumes:
   svix-postgres-data:
   s3mock-data:
   deno-cache:
+  localstack-data:
+  mcpjam-inspector-data:
 
 # ================= configs =================
 

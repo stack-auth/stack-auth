@@ -1,18 +1,25 @@
 'use client';
 
+import { FormDialog } from "@/components/form-dialog";
+import { InputField } from "@/components/form-fields";
 import { ProjectCard } from "@/components/project-card";
 import { useRouter } from "@/components/router";
 import { SearchBar } from "@/components/search-bar";
-import { useUser } from "@stackframe/stack";
+import { AdminOwnedProject, Team, useUser } from "@stackframe/stack";
+import { strictEmailSchema, yupObject } from "@stackframe/stack-shared/dist/schema-fields";
+import { groupBy } from "@stackframe/stack-shared/dist/utils/arrays";
 import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
-import { Button, Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@stackframe/stack-ui";
-import { useEffect, useMemo, useState } from "react";
+import { Button, Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue, Typography, toast } from "@stackframe/stack-ui";
+import { UserPlus } from "lucide-react";
+import { Suspense, useEffect, useMemo, useState } from "react";
+import * as yup from "yup";
 
 
-export default function PageClient() {
+export default function PageClient(props: { inviteUser: (origin: string, teamId: string, email: string) => Promise<void> }) {
   const user = useUser({ or: 'redirect', projectIdMustMatch: "internal" });
   const rawProjects = user.useOwnedProjects();
+  const teams = user.useTeams();
   const [sort, setSort] = useState<"recency" | "name">("recency");
   const [search, setSearch] = useState<string>("");
   const router = useRouter();
@@ -23,19 +30,38 @@ export default function PageClient() {
     }
   }, [router, rawProjects]);
 
-  const projects = useMemo(() => {
-    let newProjects = [...rawProjects];
+  const teamIdMap = useMemo(() => {
+    return new Map(teams.map((team) => [team.id, team.displayName]));
+  }, [teams]);
 
+  const projectsByTeam = useMemo(() => {
+    let newProjects = [...rawProjects];
     if (search) {
       newProjects = newProjects.filter((project) => project.displayName.toLowerCase().includes(search.toLowerCase()));
     }
 
-    return newProjects.sort((a, b) => {
+    const projectSort = (a: AdminOwnedProject, b: AdminOwnedProject) => {
       if (sort === "recency") {
         return a.createdAt > b.createdAt ? -1 : 1;
       } else {
         return stringCompare(a.displayName, b.displayName);
       }
+    };
+
+    const grouped = groupBy(newProjects, (project) => project.ownerTeamId);
+    return [...grouped.entries()].sort((a, b) => {
+      if (a[0] === null) return -1;
+      if (b[0] === null) return 1;
+      if (sort === "recency") {
+        return a[1][0].createdAt > b[1][0].createdAt ? -1 : 1;
+      } else {
+        return stringCompare(a[1][0].displayName, b[1][0].displayName);
+      }
+    }).map(([teamId, projects]) => {
+      return {
+        teamId,
+        projects: projects.sort(projectSort),
+      };
     });
   }, [rawProjects, sort, search]);
 
@@ -70,11 +96,61 @@ export default function PageClient() {
         </div>
       </div>
 
-      <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4">
-        {projects.map((project) => (
-          <ProjectCard key={project.id} project={project} />
-        ))}
-      </div>
+      {projectsByTeam.map(({ teamId, projects }) => (
+        <div key={teamId} className="mb-4">
+          <Typography type="label" className="flex items-center">
+            {teamId && teams.find(t => t.id === teamId) && (
+              <Suspense fallback={<Button size="icon" variant="ghost" disabled><UserPlus className="w-4 h-4" /></Button>}>
+                <TeamAddUserDialog
+                  team={teams.find(t => t.id === teamId)!}
+                  onSubmit={(email) => props.inviteUser(window.location.origin, teamId, email)}
+                />
+              </Suspense>
+            )}
+            {teamId ? teamIdMap.get(teamId) : "No Team"}
+          </Typography>
+          <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4">
+            {projects.map((project) => (
+              <ProjectCard key={project.id} project={project} />
+            ))}
+          </div>
+        </div>
+      ))}
     </div>
   );
+}
+
+const inviteFormSchema = yupObject({
+  email: strictEmailSchema("Please enter a valid email address").defined(),
+});
+
+function TeamAddUserDialog(props: {
+  team: Team,
+  onSubmit: (email: string) => Promise<void>,
+}) {
+  const users = props.team.useUsers();
+  const { quantity } = props.team.useItem("dashboard_admins");
+
+  const onSubmit = async (values: yup.InferType<typeof inviteFormSchema>) => {
+    if (users.length + 1 > quantity) {
+      alert("You have reached the maximum number of dashboard admins. Please upgrade your plan to add more admins.");
+      const checkoutUrl = await props.team.createCheckoutUrl({
+        productId: "team",
+        returnUrl: window.location.href,
+      });
+      window.location.assign(checkoutUrl);
+      return "prevent-close-and-prevent-reset";
+    }
+    await props.onSubmit(values.email);
+    toast({ variant: "success", title: "Team invitation sent" });
+  };
+
+  return <FormDialog
+    title={"Invite a new user"}
+    formSchema={inviteFormSchema}
+    okButton={{ label: "Invite" }}
+    onSubmit={onSubmit}
+    trigger={<Button size="icon" variant="ghost"><UserPlus className="w-4 h-4" /></Button>}
+    render={(form) => <InputField control={form.control} name="email" placeholder="Email" />}
+  />;
 }

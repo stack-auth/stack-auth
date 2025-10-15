@@ -28,7 +28,9 @@ export {
   stackAppInternalsSymbol
 } from "./common";
 export type {
-  GetUserOptions,
+  GetCurrentUserOptions,
+  /** @deprecated Use GetCurrentUserOptions instead */
+  GetCurrentUserOptions as GetUserOptions,
   HandlerUrls,
   OAuthScopesOnSignIn
 } from "./common";
@@ -48,14 +50,13 @@ export type {
 } from "./email";
 
 export type {
-  AdminTeamPermission,
-  AdminTeamPermissionDefinition,
-  AdminTeamPermissionDefinitionCreateOptions,
-  AdminTeamPermissionDefinitionUpdateOptions,
   AdminProjectPermission,
   AdminProjectPermissionDefinition,
   AdminProjectPermissionDefinitionCreateOptions,
-  AdminProjectPermissionDefinitionUpdateOptions,
+  AdminProjectPermissionDefinitionUpdateOptions, AdminTeamPermission,
+  AdminTeamPermissionDefinition,
+  AdminTeamPermissionDefinitionCreateOptions,
+  AdminTeamPermissionDefinitionUpdateOptions
 } from "./permissions";
 
 export type {
@@ -97,6 +98,8 @@ export type {
   CurrentInternalUser,
   CurrentServerUser,
   CurrentUser,
+  OAuthProvider,
+  ServerOAuthProvider,
   ServerUser,
   Session,
   User

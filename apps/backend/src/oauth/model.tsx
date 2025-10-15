@@ -1,19 +1,22 @@
 import { createMfaRequiredError } from "@/app/api/latest/auth/mfa/sign-in/verification-code-handler";
+import { usersCrudHandlers } from "@/app/api/latest/users/crud";
 import { checkApiKeySet } from "@/lib/internal-api-keys";
 import { validateRedirectUrl } from "@/lib/redirect-urls";
 import { getSoleTenancyFromProjectBranch, getTenancy } from "@/lib/tenancies";
-import { decodeAccessToken, generateAccessToken } from "@/lib/tokens";
+import { createRefreshTokenObj, decodeAccessToken, generateAccessTokenFromRefreshTokenIfValid, isRefreshTokenValid } from "@/lib/tokens";
 import { getPrismaClientForTenancy, globalPrismaClient } from "@/prisma-client";
 import { AuthorizationCode, AuthorizationCodeModel, Client, Falsey, RefreshToken, Token, User } from "@node-oauth/oauth2-server";
 import { PrismaClientKnownRequestError } from "@prisma/client/runtime/library";
 import { KnownErrors } from "@stackframe/stack-shared";
-import { generateSecureRandomString } from "@stackframe/stack-shared/dist/utils/crypto";
 import { captureError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { getProjectBranchFromClientId } from ".";
 
 declare module "@node-oauth/oauth2-server" {
   // eslint-disable-next-line @typescript-eslint/consistent-type-definitions
   interface Client {}
+
+  // eslint-disable-next-line @typescript-eslint/consistent-type-definitions
+  interface User {}
 }
 
 const enabledScopes = ["legacy"];
@@ -52,9 +55,13 @@ export class OAuthModel implements AuthorizationCodeModel {
 
     let redirectUris: string[] = [];
     try {
-      redirectUris = Object.entries(tenancy.config.domains.trustedDomains).map(
-        ([_, domain]) => new URL(domain.handlerPath, domain.baseUrl).toString()
-      );
+      redirectUris = Object.entries(tenancy.config.domains.trustedDomains)
+        // note that this may include wildcard domains, which is fine because we correctly account for them in
+        // model.validateRedirectUri(...)
+        .filter(([_, domain]) => {
+          return domain.baseUrl;
+        })
+        .map(([_, domain]) => new URL(domain.handlerPath, domain.baseUrl).toString());
     } catch (e) {
       captureError("get-oauth-redirect-urls", {
         error: e,
@@ -91,35 +98,21 @@ export class OAuthModel implements AuthorizationCodeModel {
     assertScopeIsValid(scope);
     const tenancy = await getSoleTenancyFromProjectBranch(...getProjectBranchFromClientId(client.id));
 
-    if (!user.refreshTokenId) {
-      // create new refresh token
-      const refreshToken = await this.generateRefreshToken(client, user, scope);
-      // save it in user, then we just access it in refresh
-      // HACK: This is a hack to ensure the refresh token is already there so we can associate the access token with it
-      const newRefreshToken = await globalPrismaClient.projectUserRefreshToken.create({
-        data: {
-          refreshToken,
-          tenancyId: tenancy.id,
-          projectUserId: user.id,
-          expiresAt: new Date(),
-        },
-      });
-      user.refreshTokenId = newRefreshToken.id;
-    }
+    console.log("generateAccessToken", client, user, scope);
+    const refreshTokenObj = await this._getOrCreateRefreshTokenObj(client, user, scope);
 
-    return await generateAccessToken({
+    return await generateAccessTokenFromRefreshTokenIfValid({
       tenancy,
-      userId: user.id,
-      refreshTokenId: user.refreshTokenId ?? throwErr("Refresh token ID not found on OAuth user"),
-    });
+      refreshTokenObj,
+    }) ?? throwErr("Get or create refresh token failed; returned refreshTokenObj that's invalid (or maybe it's an ultra-rare race condition and it became invalid in since the function call?)", { refreshTokenObj });  // TODO fix the ultra-rare race condition — although unless we're at gigascale this should basically never happen
   }
 
-  async generateRefreshToken(client: Client, user: User, scope: string[]): Promise<string> {
-    assertScopeIsValid(scope);
+  async _getOrCreateRefreshTokenObj(client: Client, user: User, scope: string[]) {
+    const tenancy = await getSoleTenancyFromProjectBranch(...getProjectBranchFromClientId(client.id));
 
+    // if refresh token already exists and is valid, return it
     if (user.refreshTokenId) {
-      const tenancy = await getSoleTenancyFromProjectBranch(...getProjectBranchFromClientId(client.id));
-      const refreshToken = await globalPrismaClient.projectUserRefreshToken.findUniqueOrThrow({
+      const refreshTokenObj = await globalPrismaClient.projectUserRefreshToken.findUnique({
         where: {
           tenancyId_id: {
             tenancyId: tenancy.id,
@@ -127,10 +120,25 @@ export class OAuthModel implements AuthorizationCodeModel {
           },
         },
       });
-      return refreshToken.refreshToken;
+      if (refreshTokenObj && await isRefreshTokenValid({ tenancy, refreshTokenObj })) {
+        return refreshTokenObj;
+      }
     }
 
-    return generateSecureRandomString();
+    // otherwise, create a new refresh token and set its ID on the user
+    const refreshTokenObj = await createRefreshTokenObj({
+      tenancy,
+      projectUserId: user.id,
+    });
+    user.refreshTokenId = refreshTokenObj.id;
+    return refreshTokenObj;
+  }
+
+  async generateRefreshToken(client: Client, user: User, scope: string[]): Promise<string> {
+    assertScopeIsValid(scope);
+
+    const tokenObj = await this._getOrCreateRefreshTokenObj(client, user, scope);
+    return tokenObj.refreshToken;
   }
 
   async saveToken(token: Token, client: Client, user: User): Promise<Token | Falsey> {
@@ -194,7 +202,7 @@ export class OAuthModel implements AuthorizationCodeModel {
   }
 
   async getAccessToken(accessToken: string): Promise<Token | Falsey> {
-    const result = await decodeAccessToken(accessToken);
+    const result = await decodeAccessToken(accessToken, { allowAnonymous: true });
     if (result.status === "error") {
       captureError("getAccessToken", result.error);
       return false;
@@ -229,6 +237,11 @@ export class OAuthModel implements AuthorizationCodeModel {
     const tenancy = await getTenancy(token.tenancyId);
 
     if (!tenancy) {
+      // this may trigger when the tenancy was deleted after the token was created
+      return false;
+    }
+
+    if (!(await isRefreshTokenValid({ tenancy, refreshTokenObj: token }))) {
       return false;
     }
 
@@ -305,6 +318,8 @@ export class OAuthModel implements AuthorizationCodeModel {
       },
     });
 
+    console.log("getAuthorizationCode", authorizationCode, code);
+
     if (!code) {
       return false;
     }
@@ -312,8 +327,24 @@ export class OAuthModel implements AuthorizationCodeModel {
     const tenancy = await getTenancy(code.tenancyId);
 
     if (!tenancy) {
+      // this may trigger when the tenancy was deleted after the code was created
       return false;
     }
+
+    try {
+      await usersCrudHandlers.adminRead({
+        tenancy,
+        user_id: code.projectUserId,
+        allowedErrorTypes: [KnownErrors.UserNotFound],
+      });
+    } catch (error) {
+      if (error instanceof KnownErrors.UserNotFound) {
+        // this may trigger when the user was deleted after the code was created
+        return false;
+      }
+      throw error;
+    }
+
     return {
       authorizationCode: code.authorizationCode,
       expiresAt: code.expiresAt,
@@ -322,6 +353,7 @@ export class OAuthModel implements AuthorizationCodeModel {
       codeChallenge: code.codeChallenge,
       codeChallengeMethod: code.codeChallengeMethod,
       client: {
+        // TODO once we support branches, the branch ID should be included here
         id: tenancy.project.id,
         grants: ["authorization_code", "refresh_token"],
       },

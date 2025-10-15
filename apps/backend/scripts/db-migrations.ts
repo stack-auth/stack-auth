@@ -4,16 +4,13 @@ import { globalPrismaClient, globalPrismaSchema, sqlQuoteIdent } from "@/prisma-
 import { Prisma } from "@prisma/client";
 import { execSync } from "child_process";
 import * as readline from 'readline';
+import { seed } from "../prisma/seed";
 
 const dropSchema = async () => {
   await globalPrismaClient.$executeRaw(Prisma.sql`DROP SCHEMA ${sqlQuoteIdent(globalPrismaSchema)} CASCADE`);
   await globalPrismaClient.$executeRaw(Prisma.sql`CREATE SCHEMA ${sqlQuoteIdent(globalPrismaSchema)}`);
   await globalPrismaClient.$executeRaw(Prisma.sql`GRANT ALL ON SCHEMA ${sqlQuoteIdent(globalPrismaSchema)} TO postgres`);
   await globalPrismaClient.$executeRaw(Prisma.sql`GRANT ALL ON SCHEMA ${sqlQuoteIdent(globalPrismaSchema)} TO public`);
-};
-
-const seed = async () => {
-  execSync('pnpm run db-seed-script', { stdio: 'inherit' });
 };
 
 const promptDropDb = async () => {
@@ -34,12 +31,42 @@ const promptDropDb = async () => {
 };
 
 const migrate = async () => {
-  await applyMigrations({
+  const startTime = performance.now();
+  const migrationFiles = getMigrationFiles(MIGRATION_FILES_DIR);
+  const totalMigrations = migrationFiles.length;
+
+  const result = await applyMigrations({
     prismaClient: globalPrismaClient,
-    migrationFiles: getMigrationFiles(MIGRATION_FILES_DIR),
+    migrationFiles,
     logging: true,
     schema: globalPrismaSchema,
   });
+
+  const endTime = performance.now();
+  const duration = ((endTime - startTime) / 1000).toFixed(2);
+
+  // Print summary
+  console.log('\n' + '='.repeat(60));
+  console.log('📊 MIGRATION SUMMARY');
+  console.log('='.repeat(60));
+  console.log(`✅ Migrations completed successfully`);
+  console.log(`⏱️  Duration: ${duration} seconds`);
+  console.log(`📁 Total migrations in folder: ${totalMigrations}`);
+  console.log(`🆕 Newly applied migrations: ${result.newlyAppliedMigrationNames.length}`);
+  console.log(`✓  Already applied migrations: ${totalMigrations - result.newlyAppliedMigrationNames.length}`);
+
+  if (result.newlyAppliedMigrationNames.length > 0) {
+    console.log('\n📝 Newly applied migrations:');
+    result.newlyAppliedMigrationNames.forEach((name, index) => {
+      console.log(`   ${index + 1}. ${name}`);
+    });
+  } else {
+    console.log('\n✨ Database is already up to date!');
+  }
+
+  console.log('='.repeat(60) + '\n');
+
+  return result;
 };
 
 const showHelp = () => {

@@ -111,6 +111,12 @@ pages:
   - path: concepts/backend-integration.mdx
     platforms: ["next", "react", "js", "python"]
 
+  - path: concepts/jwt.mdx
+    platforms: ["next", "react", "js", "python"]
+  
+  - path: concepts/emails.mdx
+    platforms: ["next", "react", "js"]  # No Python (server-side email functionality)
+
   # Components (React-like only)
   - path: components/overview.mdx
     platforms: ["next", "react"]
@@ -227,6 +233,15 @@ pages:
   
   - path: sdk/types/user.mdx
     platforms: ["next", "react", "js"]  # No Python
+  
+  - path: sdk/types/email.mdx
+    platforms: ["next", "react", "js"]  # No Python
+
+  - path: sdk/types/customer.mdx
+    platforms: ["next", "react", "js"]  # No Python
+
+  - path: sdk/types/item.mdx
+    platforms: ["next", "react", "js"]  # No Python
 
   # SDK Hooks (React-like only)
   - path: sdk/hooks/use-stack-app.mdx
@@ -264,8 +279,14 @@ pages:
   - path: others/self-host.mdx
     platforms: ["next", "react", "js", "python"] # All platforms
 
+  - path: others/mcp-setup.mdx
+    platforms: ["next", "react", "js", "python"] # All platforms
+
   - path: others/supabase.mdx
     platforms: ["next"] # Next only
+
+  - path: others/convex.mdx
+    platforms: ["next", "react", "js"] # No Python
 
   - path: others/cli-authentication.mdx
     platforms: ["python"] # Python only

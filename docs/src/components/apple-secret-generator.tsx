@@ -100,6 +100,7 @@ const Input = ({
             <button
               type="button"
               onClick={() => {
+                // eslint-disable-next-line no-restricted-syntax
                 handleCopy().catch((error) => {
                   console.error('Failed to copy:', error);
                 });
@@ -270,6 +271,7 @@ const AppleSecretGenerator = () => {
         color="primary"
         disabled={!(teamID.length === 10 && serviceID && file)}
         onClick={() => {
+          // eslint-disable-next-line no-restricted-syntax
           (async () => {
             setError('');
 

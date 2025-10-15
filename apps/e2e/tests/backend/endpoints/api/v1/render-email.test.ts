@@ -66,8 +66,43 @@ it("should return 400 when both theme_id and theme_tsx_source are provided", asy
   expect(response).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 400,
-      "body": "Exactly one of theme_id or theme_tsx_source must be provided",
-      "headers": Headers { <some fields may have been hidden> },
+      "body": {
+        "code": "SCHEMA_ERROR",
+        "details": {
+          "message": deindent\`
+            Request validation failed on POST /api/v1/emails/render-email:
+              - body is not matched by any of the provided schemas:
+                Schema 0:
+                  body.template_id must be defined
+                  body contains unknown properties: theme_tsx_source, template_tsx_source
+                Schema 1:
+                  body.template_id must be defined
+                  body contains unknown properties: theme_id, template_tsx_source
+                Schema 2:
+                  body contains unknown properties: theme_tsx_source
+                Schema 3:
+                  body contains unknown properties: theme_id
+          \`,
+        },
+        "error": deindent\`
+          Request validation failed on POST /api/v1/emails/render-email:
+            - body is not matched by any of the provided schemas:
+              Schema 0:
+                body.template_id must be defined
+                body contains unknown properties: theme_tsx_source, template_tsx_source
+              Schema 1:
+                body.template_id must be defined
+                body contains unknown properties: theme_id, template_tsx_source
+              Schema 2:
+                body contains unknown properties: theme_tsx_source
+              Schema 3:
+                body contains unknown properties: theme_id
+        \`,
+      },
+      "headers": Headers {
+        "x-stack-known-error": "SCHEMA_ERROR",
+        <some fields may have been hidden>,
+      },
     }
   `);
 });

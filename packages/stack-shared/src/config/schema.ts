@@ -1,13 +1,14 @@
 // TODO: rename this file to spaghetti.ts because that's the kind of code here
 
 import * as yup from "yup";
+import { ALL_APPS } from "../apps/apps-config";
 import { DEFAULT_EMAIL_TEMPLATES, DEFAULT_EMAIL_THEMES, DEFAULT_EMAIL_THEME_ID } from "../helpers/emails";
 import * as schemaFields from "../schema-fields";
-import { yupBoolean, yupDate, yupMixed, yupNever, yupNumber, yupObject, yupRecord, yupString, yupTuple, yupUnion } from "../schema-fields";
-import { isShallowEqual } from "../utils/arrays";
+import { productSchema, userSpecifiedIdSchema, yupBoolean, yupDate, yupMixed, yupNever, yupNumber, yupObject, yupRecord, yupString, yupTuple, yupUnion } from "../schema-fields";
+import { SUPPORTED_CURRENCIES } from "../utils/currency-constants";
 import { StackAssertionError } from "../utils/errors";
 import { allProviders } from "../utils/oauth";
-import { DeepFilterUndefined, DeepMerge, DeepRequiredOrUndefined, deleteKey, filterUndefined, get, has, isObjectLike, mapValues, set, typedAssign, typedFromEntries } from "../utils/objects";
+import { DeepFilterUndefined, DeepMerge, DeepRequiredOrUndefined, filterUndefined, get, has, isObjectLike, mapValues, set, typedAssign, typedEntries, typedFromEntries } from "../utils/objects";
 import { Result } from "../utils/results";
 import { CollapseObjectUnion, Expand, IntersectAll, IsUnion, typeAssert, typeAssertExtends, typeAssertIs } from "../utils/types";
 import { Config, NormalizationError, NormalizesTo, assertNormalized, getInvalidConfigReason, normalize } from "./format";
@@ -41,7 +42,7 @@ export const projectConfigSchema = yupObject({
     yupObject({
       type: yupString().oneOf(['neon']).defined(),
       connectionStrings: yupRecord(
-        yupString().defined(),
+        userSpecifiedIdSchema("connectionStringId").defined(),
         yupString().defined(),
       ).defined(),
     }),
@@ -87,6 +88,32 @@ const branchApiKeysSchema = yupObject({
 });
 // --- END NEW API Keys Schema ---
 
+// --- NEW Apps Schema ---
+const appIds = Object.keys(ALL_APPS) as (keyof typeof ALL_APPS)[];
+const branchAppsSchema = yupObject({
+  installed: yupRecord(
+    yupString().oneOf(appIds),
+    yupObject({
+      enabled: yupBoolean(),
+    }),
+  ).test(
+    'authentication-and-emails-enabled',
+    'authentication and emails must be installed and enabled',
+    function(value) {
+      const hasAuthentication = value['authentication'].enabled === true;
+      const hasEmails = value['emails'].enabled === true;
+      if (!hasAuthentication || !hasEmails) {
+        return this.createError({
+          message: 'authentication and emails must be installed and enabled',
+          path: this.path,
+        });
+      }
+      return true;
+    }
+  ),
+});
+// --- END NEW Apps Schema ---
+
 
 const branchAuthSchema = yupObject({
   allowSignUp: yupBoolean(),
@@ -112,8 +139,43 @@ const branchAuthSchema = yupObject({
   }),
 });
 
+export const branchPaymentsSchema = yupObject({
+  autoPay: yupObject({
+    interval: schemaFields.dayIntervalSchema,
+  }).optional(),
+  testMode: yupBoolean(),
+  catalogs: yupRecord(
+    userSpecifiedIdSchema("catalogId"),
+    yupObject({
+      displayName: yupString().optional(),
+    }),
+  ).meta({ openapiField: { description: 'The catalogs that products can be in. All products in a catalog (besides add-ons) are mutually exclusive.', exampleValue: { "catalog-id": { displayName: "My Catalog" } } } }),
+  products: yupRecord(
+    userSpecifiedIdSchema("productId"),
+    productSchema,
+  ),
+  items: yupRecord(
+    userSpecifiedIdSchema("itemId"),
+    yupObject({
+      displayName: yupString().optional(),
+      customerType: schemaFields.customerTypeSchema,
+    }),
+  ),
+});
+
 const branchDomain = yupObject({
   allowLocalhost: yupBoolean(),
+});
+
+const branchWorkflowsSchema = yupObject({
+  availableWorkflows: yupRecord(
+    userSpecifiedIdSchema("workflowId"),
+    yupObject({
+      displayName: yupString(),
+      tsSource: yupString(),
+      enabled: yupBoolean(),
+    }),
+  ),
 });
 
 export const branchConfigSchema = canNoLongerBeOverridden(projectConfigSchema, ["sourceOfTruth"]).concat(yupObject({
@@ -130,6 +192,8 @@ export const branchConfigSchema = canNoLongerBeOverridden(projectConfigSchema, [
 
   apiKeys: branchApiKeysSchema,
 
+  apps: branchAppsSchema,
+
   domains: branchDomain,
 
   auth: branchAuthSchema,
@@ -139,6 +203,19 @@ export const branchConfigSchema = canNoLongerBeOverridden(projectConfigSchema, [
     themes: schemaFields.emailThemeListSchema,
     templates: schemaFields.emailTemplateListSchema,
   }),
+
+  payments: branchPaymentsSchema,
+
+  dataVault: yupObject({
+    stores: yupRecord(
+      userSpecifiedIdSchema("storeId"),
+      yupObject({
+        displayName: yupString(),
+      }),
+    ),
+  }),
+
+  workflows: branchWorkflowsSchema,
 }));
 
 
@@ -164,6 +241,7 @@ export const environmentConfigSchema = branchConfigSchema.concat(yupObject({
   emails: branchConfigSchema.getNested("emails").concat(yupObject({
     server: yupObject({
       isShared: yupBoolean(),
+      provider: yupString().oneOf(['resend', 'smtp']).optional(),
       host: schemaFields.emailHostSchema.optional().nonEmpty(),
       port: schemaFields.emailPortSchema.optional(),
       username: schemaFields.emailUsernameSchema.optional().nonEmpty(),
@@ -175,10 +253,10 @@ export const environmentConfigSchema = branchConfigSchema.concat(yupObject({
 
   domains: branchConfigSchema.getNested("domains").concat(yupObject({
     trustedDomains: yupRecord(
-      yupString(),
+      userSpecifiedIdSchema("trustedDomainId"),
       yupObject({
-        baseUrl: schemaFields.urlSchema,
-        handlerPath: schemaFields.handlerPathSchema,
+        baseUrl: schemaFields.wildcardUrlSchema.max(300),
+        handlerPath: schemaFields.handlerPathSchema.max(300),
       }),
     ),
   })),
@@ -206,13 +284,13 @@ export function migrateConfigOverride(type: "project" | "branch" | "environment"
 
   // BEGIN 2025-07-28: emails.theme is now emails.selectedThemeId
   if (isBranchOrHigher) {
-    res = renameProperty(res, "emails.theme", "emails.selectedThemeId");
+    res = renameProperty(res, "emails.theme", "selectedThemeId");
   }
   // END
 
   // BEGIN 2025-07-28: domains.trustedDomains can no longer be an array
   if (isEnvironmentOrHigher) {
-    res = mapProperty(res, "domains.trustedDomains", (value) => {
+    res = mapProperty(res, p => p.join(".") === "domains.trustedDomains", (value) => {
       if (Array.isArray(value)) {
         return typedFromEntries(value.map((v, i) => [`${i}`, v]));
       }
@@ -223,14 +301,45 @@ export function migrateConfigOverride(type: "project" | "branch" | "environment"
 
   // BEGIN 2025-07-28: themeList and templateList have been renamed (this was before the email release, so they're safe to remove)
   if (isBranchOrHigher) {
-    res = removeProperty(res, "emails.themeList");
-    res = removeProperty(res, "emails.templateList");
+    res = removeProperty(res, p => p.join(".") === "emails.themeList");
+    res = removeProperty(res, p => p.join(".") === "emails.templateList");
   }
   // END
 
   // BEGIN 2025-07-28: sourceOfTruth was mistakenly written to the environment config in some cases, so let's remove it
   if (type === "environment") {
-    res = removeProperty(res, "sourceOfTruth");
+    res = removeProperty(res, p => p.join(".") === "sourceOfTruth");
+  }
+  // END
+
+  // BEGIN 2025-08-25: stripeAccountId and stripeAccountSetupComplete are unused, so let's remove them
+  if (type === "environment") {
+    res = removeProperty(res, p => p.join(".") === "payments.stripeAccountId");
+    res = removeProperty(res, p => p.join(".") === "payments.stripeAccountSetupComplete");
+  }
+  // END
+
+  // BEGIN 2025-08-25: payments.items.default is no longer used, so let's remove it
+  if (isBranchOrHigher) {
+    res = removeProperty(res, p => p.length === 4 && p[0] === "payments" && p[1] === "items" && p[3] === "default");
+  }
+  // END
+
+  // BEGIN 2025-09-23: payments.offers is now payments.products
+  if (isBranchOrHigher) {
+    res = renameProperty(res, "payments.offers", "products");
+  }
+  // END
+
+  // BEGIN 2025-09-23: payments.groups is now payments.catalogs
+  if (isBranchOrHigher) {
+    res = renameProperty(res, "payments.groups", "catalogs");
+  }
+  // END
+
+  // BEGIN 2025-09-23: payments.products.*.groupId is now payments.products.*.catalogId
+  if (isBranchOrHigher) {
+    res = renameProperty(res, (p) => p.length === 4 && p[0] === "payments" && p[1] === "products" && p[3] === "groupId", (p) => "catalogId");
   }
   // END
 
@@ -238,66 +347,80 @@ export function migrateConfigOverride(type: "project" | "branch" | "environment"
   return res;
 };
 
-function removeProperty(obj: any, path: string): any {
-  return mapProperty(obj, path, () => undefined);
+function removeProperty(obj: Record<string, any>, pathCond: (path: (string | symbol)[]) => boolean): any {
+  return mapProperty(obj, pathCond, () => undefined);
 }
 
-function mapProperty(obj: any, path: string, mapper: (value: any) => any): any {
-  const keyParts = path.split(".");
-
-  for (let i = 0; i < keyParts.length; i++) {
-    const pathPrefix = keyParts.slice(0, i).join(".");
-    const pathSuffix = keyParts.slice(i).join(".");
-    if (has(obj, pathPrefix) && isObjectLike(get(obj, pathPrefix))) {
-      const newValue = mapProperty(get(obj, pathPrefix), pathSuffix, mapper);
-      set(obj, pathPrefix, newValue);
-    }
-  }
-  if (has(obj, path)) {
-    const newValue = mapper(get(obj, path));
-    if (newValue !== undefined) {
-      set(obj, path, newValue);
+function mapProperty(obj: Record<string, any>, pathCond: (path: string[]) => boolean, mapper: (value: any) => any): any {
+  const res: Record<string, any> = Array.isArray(obj) ? [] : {};
+  for (const [key, value] of typedEntries(obj)) {
+    const path = key.split(".");
+    if (pathCond(path)) {
+      const newValue = mapper(value);
+      if (newValue !== undefined) {
+        set(res, key, newValue);
+      } else {
+        // do nothing
+      }
+    } else if (isObjectLike(value)) {
+      set(res, key, mapProperty(value, p => pathCond([...path, ...p]), mapper));
     } else {
-      deleteKey(obj, path);
+      set(res, key, value);
     }
   }
-
-  return obj;
+  return res;
 }
 import.meta.vitest?.test("mapProperty - basic property mapping", ({ expect }) => {
-  expect(mapProperty({ a: { b: { c: 1 } } }, "a.b.c", (value) => value + 1)).toEqual({ a: { b: { c: 2 } } });
-  expect(mapProperty({ a: { b: { c: 1 } } }, "a.b.d", (value) => value + 1)).toEqual({ a: { b: { c: 1 } } });
-  expect(mapProperty({ x: 5 }, "x", (value) => value * 2)).toEqual({ x: 10 });
-  expect(mapProperty({ a: { b: { c: 1 } } }, "b.c", (value) => value * 10)).toEqual({ a: { b: { c: 1 } } });
-  expect(mapProperty({ a: 1 }, "b.c", (value) => value)).toEqual({ a: 1 });
+  expect(mapProperty({ a: { b: { c: 1 } } }, p => p.join(".") === "a.b.c", (value) => value + 1)).toEqual({ a: { b: { c: 2 } } });
+  expect(mapProperty({ a: { b: { c: 1 } } }, p => p.join(".") === "a.b.d", (value) => value + 1)).toEqual({ a: { b: { c: 1 } } });
+  expect(mapProperty({ x: 5 }, p => p.join(".") === "x", (value) => value * 2)).toEqual({ x: 10 });
+  expect(mapProperty({ a: { b: { c: 1 } } }, p => p.join(".") === "b.c", (value) => value * 10)).toEqual({ a: { b: { c: 1 } } });
+  expect(mapProperty({ a: 1 }, p => p.join(".") === "b.c", (value) => value)).toEqual({ a: 1 });
+  expect(mapProperty({ "a.b": { c: 1 } }, p => p.join(".") === "a.b.c", (value) => value + 1)).toEqual({ "a.b": { c: 2 } });
+
+  expect(mapProperty({ a: { b: { c: 1 } } }, p => p.length === 3 && p[0] === "a" && p[1] === "b", (value) => value + 1)).toEqual({ a: { b: { c: 2 } } });
 });
 
-function renameProperty(obj: any, oldPath: string, newPath: string): any {
-  const oldKeyParts = oldPath.split(".");
-  const newKeyParts = newPath.split(".");
-  if (!isShallowEqual(oldKeyParts.slice(0, -1), newKeyParts.slice(0, -1))) throw new StackAssertionError(`oldPath and newPath must have the same prefix. Provided: ${oldPath} and ${newPath}`);
+function renameProperty(obj: Record<string, any>, oldPath: string | ((path: string[]) => boolean), newName: string | ((path: string[]) => string)): any {
+  const pathCond = typeof oldPath === "function" ? oldPath : (p: string[]) => p.join(".") === oldPath;
+  const pathMapper = typeof newName === "function" ? newName : (p: string[]) => (newName as string);
 
-  for (let i = 0; i < oldKeyParts.length; i++) {
-    const pathPrefix = oldKeyParts.slice(0, i).join(".");
-    const oldPathSuffix = oldKeyParts.slice(i).join(".");
-    const newPathSuffix = newKeyParts.slice(i).join(".");
-    if (has(obj, pathPrefix) && isObjectLike(get(obj, pathPrefix))) {
-      set(obj, pathPrefix, renameProperty(get(obj, pathPrefix), oldPathSuffix, newPathSuffix));
+  const res: Record<string, any> = Array.isArray(obj) ? [] : {};
+  for (const [key, originalValue] of typedEntries(obj)) {
+    const path = key.split(".");
+
+    for (let i = 0; i < path.length; i++) {
+      const pathPrefix = path.slice(0, i + 1);
+      if (pathCond(pathPrefix)) {
+        const name = pathMapper(pathPrefix);
+        if (name.includes(".")) throw new StackAssertionError(`newName must not contain a dot. Provided: ${name}`);
+        path[i] = name;
+      }
     }
-  }
-  if (has(obj, oldPath)) {
-    set(obj, newPath, get(obj, oldPath));
-    deleteKey(obj, oldPath);
+
+    const value = isObjectLike(originalValue) ? renameProperty(originalValue, p => pathCond([...path, ...p]), p => pathMapper([...path, ...p])) : originalValue;
+    set(res, path.join("."), value);
   }
 
-  return obj;
+  return res;
 }
 import.meta.vitest?.test("renameProperty", ({ expect }) => {
   // Basic
   expect(renameProperty({ a: 1 }, "a", "b")).toEqual({ b: 1 });
-  expect(renameProperty({ b: { c: 1 } }, "b.c", "b.d")).toEqual({ b: { d: 1 } });
-  expect(renameProperty({ a: { b: { c: 1 } } }, "a.b.c", "a.b.d")).toEqual({ a: { b: { d: 1 } } });
-  expect(renameProperty({ a: { b: { c: 1 } } }, "a.b.c.d", "a.b.c.e")).toEqual({ a: { b: { c: 1 } } });
+  expect(renameProperty({ b: { c: 1 } }, "b.c", "d")).toEqual({ b: { d: 1 } });
+  expect(renameProperty({ a: { b: { c: 1 } } }, "a.b.c", "d")).toEqual({ a: { b: { d: 1 } } });
+  expect(renameProperty({ a: { b: { c: 1 } } }, "a.b.c.d", "e")).toEqual({ a: { b: { c: 1 } } });
+  expect(renameProperty({ a: { b: { c: 1 }, "b.c": 2 } }, "b.c", "d")).toEqual({ a: { b: { c: 1 }, "b.c": 2 } });
+  expect(renameProperty({ a: { "b.c.d": 2 } }, "a.b.c", "e")).toEqual({ a: { "b.e.d": 2 } });
+  expect(renameProperty({ a: { b: { c: 1 }, "b.c": 2 } }, "a.b.c", "d")).toEqual({ a: { b: { d: 1 }, "b.d": 2 } });
+  expect(renameProperty({ a: { b: { c: 1, d: 2 } } }, "a.b.c", "d")).toEqual({ a: { b: { d: 2 } } });
+  expect(renameProperty({ a: { b: { d: 2, c: 1 } } }, "a.b.c", "d")).toEqual({ a: { b: { d: 1 } } });
+
+  // Functions
+  expect(renameProperty({ a: 1 }, (p) => p.length === 1 && p[0] === "a", (p) => "b")).toEqual({ b: 1 });
+  expect(renameProperty({ a: { b: { c: 1 } } }, (p) => p.length === 3 && p[0] === "a" && p[1] === "b" && p[2] === "c", (p) => "d")).toEqual({ a: { b: { d: 1 } } });
+  expect(renameProperty({ a: { b: { c: 1 } } }, (p) => false, (p) => "e")).toEqual({ a: { b: { c: 1 } } });
+  expect(renameProperty({ a: { b: { a: 1 } } }, (p) => p[p.length - 1] === "a", (p) => "c")).toEqual({ c: { b: { c: 1 } } });
 
   // Errors
   expect(() => renameProperty({ a: 1 }, "a", "b.c")).toThrow();
@@ -340,6 +463,10 @@ const organizationConfigDefaults = {
       team: false,
       user: false,
     },
+  },
+
+  apps: {
+    installed: typedFromEntries(appIds.map(appId => [appId, { enabled: false }])),
   },
 
   teams: {
@@ -388,6 +515,7 @@ const organizationConfigDefaults = {
   emails: {
     server: {
       isShared: true,
+      provider: "smtp",
       host: undefined,
       port: undefined,
       username: undefined,
@@ -406,6 +534,52 @@ const organizationConfigDefaults = {
       themeId: undefined,
     }), DEFAULT_EMAIL_TEMPLATES),
   },
+
+  payments: {
+    testMode: false,
+    autoPay: undefined,
+    catalogs: (key: string) => ({
+      displayName: undefined,
+    }),
+    products: (key: string) => ({
+      displayName: key,
+      catalogId: undefined,
+      customerType: "user",
+      freeTrial: undefined,
+      serverOnly: false,
+      stackable: undefined,
+      isAddOnTo: false,
+      prices: (key: string) => ({
+        ...typedFromEntries(SUPPORTED_CURRENCIES.map(currency => [currency.code, undefined])),
+        interval: undefined,
+        serverOnly: false,
+        freeTrial: undefined,
+      }),
+      includedItems: (key: string) => ({
+        quantity: 0,
+        repeat: "never",
+        expires: "when-repeated",
+      }),
+    } as const),
+    items: (key: string) => ({
+      displayName: key,
+      customerType: "user",
+    } as const)
+  },
+
+  dataVault: {
+    stores: (key: string) => ({
+      displayName: "Unnamed Vault",
+    }),
+  },
+
+  workflows: {
+    availableWorkflows: (key: string) => ({
+      displayName: "Unnamed Workflow",
+      tsSource: "Error: Workflow config is missing TypeScript source code.",
+      enabled: false,
+    }),
+  },
 } as const satisfies DefaultsType<OrganizationRenderedConfigBeforeDefaults, [typeof environmentConfigDefaults, typeof branchConfigDefaults, typeof projectConfigDefaults]>;
 
 type _DeepOmitDefaultsImpl<T, U> = T extends object ? (
@@ -420,12 +594,12 @@ typeAssertIs<DefaultsType<{ a: { b: Record<string, 123>, c: 456 } }, [{ a: { c: 
 
 type DeepReplaceAllowFunctionsForObjects<T> = T extends object
   ? (
-      string extends keyof T
-        ? ((arg: Exclude<keyof T, number>) => DeepReplaceAllowFunctionsForObjects<T[keyof T]>) & ({ [K in keyof T]?: DeepReplaceAllowFunctionsForObjects<T[K]> } | {})
-        : { [K in keyof T]: DeepReplaceAllowFunctionsForObjects<T[K]> }
-    )
+    string extends keyof T
+    ? ((arg: Exclude<keyof T, number>) => DeepReplaceAllowFunctionsForObjects<T[keyof T]>) & ({ [K in keyof T]?: DeepReplaceAllowFunctionsForObjects<T[K]> } | {})
+    : { [K in keyof T]: DeepReplaceAllowFunctionsForObjects<T[K]> }
+  )
   :
-    T;
+  T;
 type ReplaceFunctionsWithObjects<T> = T & (T extends (arg: infer K extends string) => infer R ? Record<K, R> & object : unknown);
 type DeepReplaceFunctionsWithObjects<T> = T extends object ? { [K in keyof ReplaceFunctionsWithObjects<T>]: DeepReplaceFunctionsWithObjects<ReplaceFunctionsWithObjects<T>[K]> } : T;
 typeAssertIs<DeepReplaceFunctionsWithObjects<{ a: { b: 123 } & ((key: string) => number) }>, { a: { b: 123, [key: string]: number } }>()();
@@ -434,7 +608,7 @@ function deepReplaceFunctionsWithObjects(obj: any): any {
   return mapValues({ ...obj }, v => (isObjectLike(v) ? deepReplaceFunctionsWithObjects(v as any) : v));
 }
 import.meta.vitest?.test("deepReplaceFunctionsWithObjects", ({ expect }) => {
-  expect(deepReplaceFunctionsWithObjects(() => {})).toEqual({});
+  expect(deepReplaceFunctionsWithObjects(() => { })).toEqual({});
   expect(deepReplaceFunctionsWithObjects({ a: 3 })).toEqual({ a: 3 });
   expect(deepReplaceFunctionsWithObjects({ a: () => ({ b: 1 }) })).toEqual({ a: {} });
   expect(deepReplaceFunctionsWithObjects({ a: typedAssign(() => ({}), { b: { c: 1 } }) })).toEqual({ a: { b: { c: 1 } } });
@@ -445,26 +619,28 @@ function applyDefaults<D extends object | ((key: string) => unknown), C extends 
   const res: any = deepReplaceFunctionsWithObjects(defaults);
 
   outer: for (const [key, mergeValue] of Object.entries(config)) {
-    if (mergeValue === undefined) continue;
-    const keyParts = key.split(".");
-    let baseValue: any = defaults;
-    let currentRes: any = res;
-    for (const [index, part] of keyParts.entries()) {
-      baseValue = has(baseValue, part) ? get(baseValue, part) : (typeof baseValue === 'function' ? (baseValue as any)(part) : undefined);
-      if (baseValue === undefined || !isObjectLike(baseValue)) {
-        set(res, key, mergeValue);
-        continue outer;
+    if (mergeValue == null) continue;
+    if (!isObjectLike(mergeValue)) {
+      set(res, key, mergeValue);
+    } else {
+      const keyParts = key.split(".");
+      let baseValue: any = defaults;
+      for (const [index, part] of keyParts.entries()) {
+        baseValue = has(baseValue, part) ? get(baseValue, part) : (typeof baseValue === 'function' ? (baseValue as any)(part) : undefined);
+        if (baseValue === undefined || !isObjectLike(baseValue)) {
+          set(res, key, mergeValue);
+          continue outer;
+        }
       }
-      if (!has(currentRes, part)) set(currentRes, part, deepReplaceFunctionsWithObjects(baseValue) as never);
-      currentRes = get(currentRes, part);
+      set(res, key, applyDefaults(baseValue, mergeValue));
     }
-    set(res, key, isObjectLike(mergeValue) ? applyDefaults(baseValue, mergeValue) : mergeValue);
   }
   return res as any;
 }
 import.meta.vitest?.test("applyDefaults", ({ expect }) => {
   // Basic
   expect(applyDefaults({ a: 1 }, { a: 2 })).toEqual({ a: 2 });
+  expect(applyDefaults({ a: 1 }, { a: null })).toEqual({ a: 1 });
   expect(applyDefaults({}, { a: 1 })).toEqual({ a: 1 });
   expect(applyDefaults({ a: { b: 1 } }, { a: { b: 2 } })).toEqual({ a: { b: 2 } });
   expect(applyDefaults({ a: { b: 1 } }, { a: { c: 2 } })).toEqual({ a: { b: 1, c: 2 } });
@@ -472,22 +648,26 @@ import.meta.vitest?.test("applyDefaults", ({ expect }) => {
 
   // Functions
   expect(applyDefaults((key: string) => ({ b: key }), { a: {} })).toEqual({ a: { b: "a" } });
+  expect(applyDefaults((key: string) => ({ b: key }), { a: null })).toEqual({});
   expect(applyDefaults((key1: string) => (key2: string) => ({ a: key1, b: key2 }), { c: { d: {} } })).toEqual({ c: { d: { a: "c", b: "d" } } });
   expect(applyDefaults({ a: (key: string) => ({ b: key }) }, { a: { c: { d: 1 } } })).toEqual({ a: { c: { b: "c", d: 1 } } });
   expect(applyDefaults({ a: (key: string) => ({ b: key }) }, {})).toEqual({ a: {} });
+  expect(applyDefaults({ a: (key: string) => ({ b: key }) }, { a: null })).toEqual({ a: {} });
   expect(applyDefaults({ a: { b: (key: string) => ({ b: key }) } }, {})).toEqual({ a: { b: {} } });
   expect(applyDefaults(typedAssign(() => ({ b: 1 }), { a: { b: 1, c: 2 } }), { a: {} })).toEqual({ a: { b: 1, c: 2 } });
   expect(applyDefaults(typedAssign(() => ({ b: 1 }), { a: { b: 1, c: 2 } }), { d: {} })).toEqual({ a: { b: 1, c: 2 }, d: { b: 1 } });
 
   // Dot notation
   expect(applyDefaults({ a: { b: 1 } }, { "a.c": 2 })).toEqual({ a: { b: 1 }, "a.c": 2 });
+  expect(applyDefaults({ a: { b: 1 } }, { "a.c": null })).toEqual({ a: { b: 1 } });
   expect(applyDefaults({ a: 1 }, { "a.b": 2 })).toEqual({ a: 1, "a.b": 2 });
   expect(applyDefaults({ a: null }, { "a.b": 2 })).toEqual({ a: null, "a.b": 2 });
   expect(applyDefaults({ a: { b: { c: 1 } } }, { "a.b": { d: 2 } })).toEqual({ a: { b: { c: 1 } }, "a.b": { c: 1, d: 2 } });
+  expect(applyDefaults({ a: { b: { c: 1 } } }, { "a.b": null })).toEqual({ a: { b: { c: 1 } } });
   expect(applyDefaults({ a: { b: { c: { d: 1 } } } }, { "a.b.c": {} })).toEqual({ a: { b: { c: { d: 1 } } }, "a.b.c": { d: 1 } });
-  expect(applyDefaults({ a: () => ({ c: 1 }) }, { "a.b": { d: 2 } })).toEqual({ a: { b: { c: 1 } }, "a.b": { c: 1, d: 2 } });
-  expect(applyDefaults({ a: () => () => ({ d: 1 }) }, { "a.b.c": {} })).toEqual({ a: { b: { c: { d: 1 } } }, "a.b.c": { d: 1 } });
-  expect(applyDefaults({ a: { b: () => ({ c: 1, d: 2 }) } }, { "a.b.x-y.c": 3 })).toEqual({ a: { b: { "x-y": { c: 1, d: 2 } } }, "a.b.x-y.c": 3 });
+  expect(applyDefaults({ a: () => ({ c: 1 }) }, { "a.b": { d: 2 } })).toEqual({ a: {}, "a.b": { c: 1, d: 2 } });
+  expect(applyDefaults({ a: () => () => ({ d: 1 }) }, { "a.b.c": {} })).toEqual({ a: {}, "a.b.c": { d: 1 } });
+  expect(applyDefaults({ a: { b: () => ({ c: 1, d: 2 }) } }, { "a.b.x-y.c": 3 })).toEqual({ a: { b: {} }, "a.b.x-y.c": 3 });
 });
 
 export function applyProjectDefaults<T extends ProjectRenderedConfigBeforeDefaults>(config: T) {
@@ -583,6 +763,22 @@ export async function sanitizeOrganizationConfig(config: OrganizationRenderedCon
     ...DEFAULT_EMAIL_TEMPLATES,
     ...prepared.emails.templates,
   };
+  const products = typedFromEntries(typedEntries(prepared.payments.products).map(([key, product]) => {
+    const isAddOnTo = product.isAddOnTo === false ?
+      false as const :
+      typedFromEntries(Object.keys(product.isAddOnTo).map((key) => [key, true as const]));
+    const prices = product.prices === "include-by-default" ?
+      "include-by-default" as const :
+      typedFromEntries(typedEntries(product.prices).map(([key, value]) => {
+        const data = { serverOnly: false, ...(value ?? {}) };
+        return [key, data];
+      }));
+    return [key, {
+      ...product,
+      isAddOnTo,
+      prices,
+    }];
+  }));
   return {
     ...prepared,
     emails: {
@@ -591,8 +787,13 @@ export async function sanitizeOrganizationConfig(config: OrganizationRenderedCon
       themes,
       templates,
     },
+    payments: {
+      ...prepared.payments,
+      products
+    }
   };
 }
+
 
 /**
  * Does not require a base config, and hence solely relies on the override itself to validate the config. If it returns
@@ -724,7 +925,16 @@ export async function getConfigOverrideErrors<T extends yup.AnySchema>(schema: T
     if (value === undefined) continue;
     const subSchema = getSubSchema(schema, key);
     if (!subSchema) {
-      return Result.error(`The key ${JSON.stringify(key)} is not valid for the schema.`);
+      // find smallest key prefix that is invalid
+      const keySplit = key.split(".");
+      for (let i = 0; i < keySplit.length; i++) {
+        const prefix = keySplit.slice(0, i + 1).join(".");
+        const subSchema = getSubSchema(schema, prefix);
+        if (!subSchema) {
+          return Result.error(`The key ${JSON.stringify(key)} is not valid (nested object not found in schema: ${JSON.stringify(prefix)}).`);
+        }
+      }
+      throw new StackAssertionError("Something weird happened? Sub-schema for key is invalid but no prefix is invalid??", { key, subSchema });
     }
     let restrictedSchema = getRestrictedSchema(key, subSchema);
     try {
@@ -749,7 +959,7 @@ export async function getConfigOverrideErrors<T extends yup.AnySchema>(schema: T
 }
 export async function assertNoConfigOverrideErrors<T extends yup.AnySchema>(schema: T, config: unknown, options: { allowPropertiesThatCanNoLongerBeOverridden?: boolean, extraInfo?: any } = {}): Promise<void> {
   const res = await getConfigOverrideErrors(schema, config, options);
-  if (res.status === "error") throw new StackAssertionError(`Config override is invalid — at a place where it should have already been validated! ${res.error}`, { options, config, schema });
+  if (res.status === "error") throw new StackAssertionError(`Config override is invalid — at a place where it should have already been validated! ${res.error}`, { options, config });
 }
 type _ValidatedToHaveNoConfigOverrideErrorsImpl<T> =
   IsUnion<T & object> extends true ? _ValidatedToHaveNoConfigOverrideErrorsImpl<CollapseObjectUnion<T & object> | Exclude<T, object>>
@@ -803,10 +1013,11 @@ export type ValidatedToHaveNoIncompleteConfigWarnings<T extends yup.AnySchema> =
 
 // Normalized overrides
 // ex.: { a?: { b?: number, c?: string }, d?: number }
-type ProjectConfigNormalizedOverride = Expand<ValidatedToHaveNoConfigOverrideErrors<typeof projectConfigSchema>>;
-type BranchConfigNormalizedOverride = Expand<ValidatedToHaveNoConfigOverrideErrors<typeof branchConfigSchema>>;
-type EnvironmentConfigNormalizedOverride = Expand<ValidatedToHaveNoConfigOverrideErrors<typeof environmentConfigSchema>>;
-type OrganizationConfigNormalizedOverride = Expand<ValidatedToHaveNoConfigOverrideErrors<typeof organizationConfigSchema>>;
+export type ProjectConfigNormalizedOverride = Expand<ValidatedToHaveNoConfigOverrideErrors<typeof projectConfigSchema>>;
+export type BranchConfigNormalizedOverride = Expand<ValidatedToHaveNoConfigOverrideErrors<typeof branchConfigSchema>>;
+export type EnvironmentConfigNormalizedOverride = Expand<ValidatedToHaveNoConfigOverrideErrors<typeof environmentConfigSchema>>;
+export type OrganizationConfigNormalizedOverride = Expand<ValidatedToHaveNoConfigOverrideErrors<typeof organizationConfigSchema>>;
+
 
 // Overrides
 // ex.: { a?: null | { b?: null | number, c: string }, d?: null | number, "a.b"?: number, "a.c"?: string }
@@ -830,6 +1041,7 @@ export type BranchIncompleteConfig = Expand<ProjectIncompleteConfig & BranchConf
 export type EnvironmentIncompleteConfig = Expand<BranchIncompleteConfig & EnvironmentConfigNormalizedOverride>;
 export type OrganizationIncompleteConfig = Expand<EnvironmentIncompleteConfig & OrganizationConfigNormalizedOverride>;
 
+
 // Rendered configs before defaults, normalization, and sanitization
 type ProjectRenderedConfigBeforeDefaults = Omit<ProjectIncompleteConfig,
   | keyof BranchConfigNormalizedOverride
@@ -845,6 +1057,7 @@ type EnvironmentRenderedConfigBeforeDefaults = Omit<EnvironmentIncompleteConfig,
 >;
 type OrganizationRenderedConfigBeforeDefaults = OrganizationIncompleteConfig;
 
+
 // Rendered configs before sanitization
 type ProjectRenderedConfigBeforeSanitization = Expand<Awaited<ReturnType<typeof applyProjectDefaults<ProjectRenderedConfigBeforeDefaults>>>>;
 type BranchRenderedConfigBeforeSanitization = Expand<Awaited<ReturnType<typeof applyBranchDefaults<BranchRenderedConfigBeforeDefaults>>>>;
@@ -857,6 +1070,8 @@ export type BranchRenderedConfig = Expand<Awaited<ReturnType<typeof sanitizeBran
 export type EnvironmentRenderedConfig = Expand<Awaited<ReturnType<typeof sanitizeEnvironmentConfig<EnvironmentRenderedConfigBeforeSanitization>>>>;
 export type OrganizationRenderedConfig = Expand<Awaited<ReturnType<typeof sanitizeOrganizationConfig>>>;
 
+// Complete config
+export type CompleteConfig = OrganizationRenderedConfig;
 
 // Type assertions (just to make sure the types are correct)
 const __assertEmptyObjectIsValidProjectOverride: ProjectConfigOverride = {};

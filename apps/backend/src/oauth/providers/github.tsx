@@ -1,5 +1,6 @@
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { StackAssertionError, StatusError } from "@stackframe/stack-shared/dist/utils/errors";
+import { getJwtInfo } from "@stackframe/stack-shared/dist/utils/jwt";
 import { OAuthUserInfo, validateUserInfo } from "../utils";
 import { OAuthBaseProvider, TokenSet } from "./base";
 
@@ -39,9 +40,11 @@ export class GithubProvider extends OAuthBaseProvider {
     if (!rawUserInfoRes.ok) {
       throw new StackAssertionError("Error fetching user info from GitHub provider: Status code " + rawUserInfoRes.status, {
         rawUserInfoRes,
+        rawUserInfoResText: await rawUserInfoRes.text(),
         hasAccessToken: !!tokenSet.accessToken,
         hasRefreshToken: !!tokenSet.refreshToken,
         accessTokenExpiredAt: tokenSet.accessTokenExpiredAt,
+        jwtInfo: await getJwtInfo({ jwt: tokenSet.accessToken }),
       });
     }
     const rawUserInfo = await rawUserInfoRes.json();

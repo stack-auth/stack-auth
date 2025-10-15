@@ -3,6 +3,7 @@ import { CustomSearchDialog } from '@/components/layout/custom-search-dialog';
 import { SearchInputToggle } from '@/components/layout/custom-search-toggle';
 import Waves from '@/components/layouts/api/waves';
 import { type NavLink } from '@/lib/navigation-utils';
+import { UserButton } from '@stackframe/stack';
 import { Key, Menu, Sparkles, TableOfContents, X } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
@@ -80,18 +81,21 @@ function AIChatToggleButton() {
     return null;
   }
 
-  const { toggleChat } = sidebarContext;
+  const { toggleChat, isChatOpen } = sidebarContext;
 
   return (
     <button
       className={cn(
-        'flex items-center justify-center rounded-md w-8 h-8 text-xs transition-all duration-500 ease-out relative overflow-hidden',
-        'text-white chat-gradient-active hover:scale-105 hover:brightness-110 hover:shadow-lg'
+       'flex items-center gap-2 rounded-md px-2 py-1 text-xs transition-all duration-500 ease-out relative overflow-hidden',
+        isChatOpen
+          ? 'text-white chat-gradient-active hover:scale-105 hover:brightness-110 hover:shadow-lg'
+          : 'text-white chat-gradient-active hover:scale-105 hover:brightness-110 hover:shadow-lg'
       )}
       onClick={toggleChat}
       title="AI Chat"
     >
-      <Sparkles className="h-4 w-4 relative z-10" />
+      <Sparkles className="h-3 w-3 relative z-10" />
+      <span className="font-medium relative z-10">AI Chat</span>
     </button>
   );
 }
@@ -311,7 +315,7 @@ export function SharedHeader({
         </div>
 
         {/* Right side - Mobile Menu and Search */}
-        <div className="flex items-center gap-4 relative z-10">
+        <div className="flex items-center gap-3 relative z-10">
           {/* Search Bar - Responsive sizing */}
           {showSearch && (
             <>
@@ -340,6 +344,11 @@ export function SharedHeader({
           {/* AI Chat Toggle Button */}
           <div className="hidden md:block">
             <AIChatToggleButton />
+          </div>
+
+          {/* User Button */}
+          <div className="hidden md:block ml-2">
+            <UserButton />
           </div>
 
           {/* Mobile Hamburger Menu - Shown on mobile */}
@@ -392,6 +401,14 @@ export function SharedHeader({
                       </Link>
                     );
                   })}
+                </div>
+              </div>
+
+              {/* User Authentication */}
+              <div>
+                <h2 className="text-lg font-semibold text-fd-foreground mb-4">Account</h2>
+                <div className="flex justify-center">
+                  <UserButton />
                 </div>
               </div>
 

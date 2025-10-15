@@ -56,7 +56,7 @@ export function parseWebhookOpenAPI(options: {
             ...parseOverload({
               metadata: webhook.metadata,
               method: 'POST',
-              path: webhook.type,
+              path: `/webhooks/${webhook.type}`,
               requestBodyDesc: undefinedIfMixed(yupObject({
                 type: yupString().defined().meta({ openapiField: { description: webhook.type, exampleValue: webhook.type } }),
                 data: webhook.schema.defined(),
@@ -206,6 +206,17 @@ function getFieldSchema(field: yup.SchemaFieldDescription, crudOperation?: Capit
     case 'array': {
       return { type: 'array', items: getFieldSchema((field as any).innerType, crudOperation), ...openapiFieldExtra };
     }
+    case 'tuple': {
+      // For OpenAPI, treat tuples as arrays since OpenAPI doesn't have native tuple support
+      // This is commonly used for headers which are arrays of strings
+      const tupleField = field as any;
+      if (tupleField.innerType && tupleField.innerType.length > 0) {
+        // Use the first element's schema as the array item type
+        return { type: 'array', items: getFieldSchema(tupleField.innerType[0], crudOperation), ...openapiFieldExtra };
+      }
+      // Fallback to string array if no inner type
+      return { type: 'array', items: { type: 'string' }, ...openapiFieldExtra };
+    }
     default: {
       throw new Error(`Unsupported field type: ${field.type}`);
     }
@@ -354,6 +365,7 @@ export function parseOverload(options: {
     parameters: [...queryParameters, ...pathParameters, ...headerParameters],
     requestBody,
     tags: endpointDocumentation.tags ?? ["Others"],
+    'x-full-url': `https://api.stack-auth.com/api/v1${options.path}`,
   } as const;
 
   if (!isSchemaStringDescription(options.responseTypeDesc)) {

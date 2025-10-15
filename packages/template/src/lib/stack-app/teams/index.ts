@@ -3,6 +3,7 @@ import { ReadonlyJson } from "@stackframe/stack-shared/dist/utils/json";
 
 import { ApiKeyCreationOptions, TeamApiKey, TeamApiKeyFirstView } from "../api-keys";
 import { AsyncStoreProperty } from "../common";
+import { Customer } from "../customers";
 import { ServerUser } from "../users";
 
 
@@ -46,7 +47,7 @@ export type Team = {
   update(update: TeamUpdateOptions): Promise<void>,
   delete(): Promise<void>,
   createApiKey(options: ApiKeyCreationOptions<"team">): Promise<TeamApiKeyFirstView>,
-} & AsyncStoreProperty<"apiKeys", [], TeamApiKey[], true>;
+} & AsyncStoreProperty<"apiKeys", [], TeamApiKey[], true> & Customer;
 
 export type TeamUpdateOptions = {
   displayName?: string,
@@ -98,6 +99,7 @@ export type ServerListUsersOptions = {
   orderBy?: 'signedUpAt',
   desc?: boolean,
   query?: string,
+  includeAnonymous?: boolean,
 };
 
 export type ServerTeamCreateOptions = TeamCreateOptions & {

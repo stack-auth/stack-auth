@@ -1,31 +1,41 @@
+import { uploadAndGetUrl } from "@/s3";
 import { Prisma } from "@prisma/client";
 import { KnownErrors } from "@stackframe/stack-shared";
-import { EnvironmentConfigOverrideOverride, OrganizationRenderedConfig, ProjectConfigOverrideOverride } from "@stackframe/stack-shared/dist/config/schema";
+import { CompleteConfig, EnvironmentConfigOverrideOverride, ProjectConfigOverrideOverride } from "@stackframe/stack-shared/dist/config/schema";
 import { AdminUserProjectsCrud, ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
 import { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
-import { StackAssertionError, captureError } from "@stackframe/stack-shared/dist/utils/errors";
+import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { filterUndefined, typedFromEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
-import { RawQuery, getPrismaClientForSourceOfTruth, globalPrismaClient, rawQuery, retryTransaction } from "../prisma-client";
-import { getRenderedEnvironmentConfigQuery, overrideEnvironmentConfigOverride, overrideProjectConfigOverride } from "./config";
-import { DEFAULT_BRANCH_ID } from "./tenancies";
+import { RawQuery, getPrismaClientForTenancy, globalPrismaClient, rawQuery, retryTransaction } from "../prisma-client";
+import { overrideEnvironmentConfigOverride, overrideProjectConfigOverride } from "./config";
+import { DEFAULT_BRANCH_ID, getSoleTenancyFromProjectBranch } from "./tenancies";
 
-function isStringArray(value: any): value is string[] {
-  return Array.isArray(value) && value.every((id) => typeof id === "string");
-}
-
-export function listManagedProjectIds(projectUser: UsersCrud["Admin"]["Read"]) {
-  const serverMetadata = projectUser.server_metadata;
-  if (typeof serverMetadata !== "object") {
-    throw new StackAssertionError("Invalid server metadata, did something go wrong?", { serverMetadata });
-  }
-  const managedProjectIds = (serverMetadata as any)?.managedProjectIds ?? [];
-  if (!isStringArray(managedProjectIds)) {
-    throw new StackAssertionError("Invalid server metadata, did something go wrong? Expected string array", { managedProjectIds });
-  }
-
-  return managedProjectIds;
+export async function listManagedProjectIds(projectUser: UsersCrud["Admin"]["Read"]) {
+  const internalTenancy = await getSoleTenancyFromProjectBranch("internal", DEFAULT_BRANCH_ID);
+  const internalPrisma = await getPrismaClientForTenancy(internalTenancy);
+  const teams = await internalPrisma.team.findMany({
+    where: {
+      tenancyId: internalTenancy.id,
+      teamMembers: {
+        some: {
+          projectUserId: projectUser.id,
+        }
+      }
+    },
+  });
+  const projectIds = await globalPrismaClient.project.findMany({
+    where: {
+      ownerTeamId: {
+        in: teams.map((team) => team.teamId),
+      },
+    },
+    select: {
+      id: true,
+    },
+  });
+  return projectIds.map((project) => project.id);
 }
 
 export function getProjectQuery(projectId: string): RawQuery<Promise<Omit<ProjectsCrud["Admin"]["Read"], "config"> | null>> {
@@ -48,8 +58,11 @@ export function getProjectQuery(projectId: string): RawQuery<Promise<Omit<Projec
         id: row.id,
         display_name: row.displayName,
         description: row.description,
+        logo_url: row.logoUrl,
+        full_logo_url: row.fullLogoUrl,
         created_at_millis: new Date(row.createdAt + "Z").getTime(),
         is_production_mode: row.isProductionMode,
+        owner_team_id: row.ownerTeamId,
       };
     },
   };
@@ -62,12 +75,11 @@ export async function getProject(projectId: string): Promise<Omit<ProjectsCrud["
 
 export async function createOrUpdateProjectWithLegacyConfig(
   options: {
-    ownerIds?: string[],
     sourceOfTruth?: ProjectConfigOverrideOverride["sourceOfTruth"],
   } & ({
     type: "create",
     projectId?: string,
-    data: AdminUserProjectsCrud["Admin"]["Create"],
+    data: Omit<AdminUserProjectsCrud["Admin"]["Create"], "owner_team_id"> & { owner_team_id: string | null },
   } | {
     type: "update",
     projectId: string,
@@ -76,6 +88,16 @@ export async function createOrUpdateProjectWithLegacyConfig(
     data: ProjectsCrud["Admin"]["Update"],
   })
 ) {
+  let logoUrl: string | null | undefined;
+  if (options.data.logo_url !== undefined) {
+    logoUrl = await uploadAndGetUrl(options.data.logo_url, "project-logos");
+  }
+
+  let fullLogoUrl: string | null | undefined;
+  if (options.data.full_logo_url !== undefined) {
+    fullLogoUrl = await uploadAndGetUrl(options.data.full_logo_url, "project-logos");
+  }
+
   const [projectId, branchId] = await retryTransaction(globalPrismaClient, async (tx) => {
     let project: Prisma.ProjectGetPayload<{}>;
     let branchId: string;
@@ -87,6 +109,9 @@ export async function createOrUpdateProjectWithLegacyConfig(
           displayName: options.data.display_name,
           description: options.data.description ?? "",
           isProductionMode: options.data.is_production_mode ?? false,
+          ownerTeamId: options.data.owner_team_id,
+          logoUrl,
+          fullLogoUrl,
         },
       });
 
@@ -117,6 +142,8 @@ export async function createOrUpdateProjectWithLegacyConfig(
           displayName: options.data.display_name,
           description: options.data.description === null ? "" : options.data.description,
           isProductionMode: options.data.is_production_mode,
+          logoUrl,
+          fullLogoUrl,
         },
       });
       branchId = options.branchId;
@@ -158,7 +185,7 @@ export async function createOrUpdateProjectWithLegacyConfig(
             microsoftTenantId: provider.microsoft_tenant_id,
             allowSignIn: true,
             allowConnectedAccounts: true,
-          } satisfies OrganizationRenderedConfig['auth']['oauth']['providers'][string]
+          } satisfies CompleteConfig['auth']['oauth']['providers'][string]
         ];
       })) : undefined,
     // ======================= users =======================
@@ -174,7 +201,7 @@ export async function createOrUpdateProjectWithLegacyConfig(
         {
           baseUrl: domain.domain,
           handlerPath: domain.handler_path,
-        } satisfies OrganizationRenderedConfig['domains']['trustedDomains'][string],
+        } satisfies CompleteConfig['domains']['trustedDomains'][string],
       ];
     })) : undefined,
     // ======================= api keys =======================
@@ -189,12 +216,18 @@ export async function createOrUpdateProjectWithLegacyConfig(
       password: dataOptions.email_config.password,
       senderName: dataOptions.email_config.sender_name,
       senderEmail: dataOptions.email_config.sender_email,
-    } satisfies OrganizationRenderedConfig['emails']['server'] : undefined,
+      provider: "smtp",
+    } satisfies CompleteConfig['emails']['server'] : undefined,
     'emails.selectedThemeId': dataOptions.email_theme,
     // ======================= rbac =======================
     'rbac.defaultPermissions.teamMember': translateDefaultPermissions(dataOptions.team_member_default_permissions),
     'rbac.defaultPermissions.teamCreator': translateDefaultPermissions(dataOptions.team_creator_default_permissions),
     'rbac.defaultPermissions.signUp': translateDefaultPermissions(dataOptions.user_default_permissions),
+    // ======================= apps =======================
+    'apps.installed': {
+      authentication: { enabled: true },
+      emails: { enabled: true },
+    },
   });
 
   if (options.type === "create") {
@@ -205,7 +238,7 @@ export async function createOrUpdateProjectWithLegacyConfig(
         '$read_members': true,
         '$invite_members': true,
       },
-    } satisfies OrganizationRenderedConfig['rbac']['permissions'][string];
+    } satisfies CompleteConfig['rbac']['permissions'][string];
     configOverrideOverride['rbac.permissions.team_admin'] ??= {
       description: "Default permission for team admins",
       scope: "team",
@@ -217,7 +250,7 @@ export async function createOrUpdateProjectWithLegacyConfig(
         '$invite_members': true,
         '$manage_api_keys': true,
       },
-    } satisfies OrganizationRenderedConfig['rbac']['permissions'][string];
+    } satisfies CompleteConfig['rbac']['permissions'][string];
 
     configOverrideOverride['rbac.defaultPermissions.teamCreator'] ??= { 'team_admin': true };
     configOverrideOverride['rbac.defaultPermissions.teamMember'] ??= { 'team_member': true };
@@ -231,53 +264,9 @@ export async function createOrUpdateProjectWithLegacyConfig(
   });
 
 
-  // Update owner metadata
-  const internalEnvironmentConfig = await rawQuery(globalPrismaClient, getRenderedEnvironmentConfigQuery({ projectId: "internal", branchId: DEFAULT_BRANCH_ID }));
-  const prisma = await getPrismaClientForSourceOfTruth(internalEnvironmentConfig.sourceOfTruth, DEFAULT_BRANCH_ID);
-  await retryTransaction(prisma, async (tx) => {
-    for (const userId of options.ownerIds ?? []) {
-      const projectUserTx = await tx.projectUser.findUnique({
-        where: {
-          mirroredProjectId_mirroredBranchId_projectUserId: {
-            mirroredProjectId: "internal",
-            mirroredBranchId: DEFAULT_BRANCH_ID,
-            projectUserId: userId,
-          },
-        },
-      });
-      if (!projectUserTx) {
-        captureError("project-creation-owner-not-found", new StackAssertionError(`Attempted to create project, but owner user ID ${userId} not found. Did they delete their account? Continuing silently, but if the user is coming from an owner pack you should probably update it.`, { ownerIds: options.ownerIds }));
-        continue;
-      }
-
-      const serverMetadataTx: any = projectUserTx.serverMetadata ?? {};
-
-      await tx.projectUser.update({
-        where: {
-          mirroredProjectId_mirroredBranchId_projectUserId: {
-            mirroredProjectId: "internal",
-            mirroredBranchId: DEFAULT_BRANCH_ID,
-            projectUserId: projectUserTx.projectUserId,
-          },
-        },
-        data: {
-          serverMetadata: {
-            ...serverMetadataTx ?? {},
-            managedProjectIds: [
-              ...serverMetadataTx?.managedProjectIds ?? [],
-              projectId,
-            ],
-          },
-        },
-      });
-    }
-  });
-
   const result = await getProject(projectId);
-
   if (!result) {
     throw new StackAssertionError("Project not found after creation/update", { projectId });
   }
-
   return result;
 }

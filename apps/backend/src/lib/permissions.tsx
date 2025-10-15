@@ -1,5 +1,5 @@
 import { KnownErrors } from "@stackframe/stack-shared";
-import { OrganizationRenderedConfig } from "@stackframe/stack-shared/dist/config/schema";
+import { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
 import { ProjectPermissionsCrud } from "@stackframe/stack-shared/dist/interface/crud/project-permissions";
 import { TeamPermissionDefinitionsCrud, TeamPermissionsCrud } from "@stackframe/stack-shared/dist/interface/crud/team-permissions";
 import { groupBy } from "@stackframe/stack-shared/dist/utils/arrays";
@@ -158,15 +158,13 @@ export async function revokeTeamPermission(
   });
 }
 
-export async function listPermissionDefinitions(
+export function listPermissionDefinitionsFromConfig(
   options: {
+    config: CompleteConfig,
     scope: "team" | "project",
-    tenancy: Tenancy,
-  }
-): Promise<(TeamPermissionDefinitionsCrud["Admin"]["Read"])[]> {
-  const renderedConfig = options.tenancy.config;
-
-  const permissions = typedEntries(renderedConfig.rbac.permissions).filter(([_, p]) => p.scope === options.scope);
+  },
+) {
+  const permissions = typedEntries(options.config.rbac.permissions).filter(([_, p]) => p.scope === options.scope);
 
   return [
     ...permissions.map(([id, p]) => ({
@@ -180,6 +178,18 @@ export async function listPermissionDefinitions(
       contained_permission_ids: [],
     })) : []),
   ].sort((a, b) => stringCompare(a.id, b.id));
+}
+
+export async function listPermissionDefinitions(
+  options: {
+    scope: "team" | "project",
+    tenancy: Tenancy,
+  }
+): Promise<(TeamPermissionDefinitionsCrud["Admin"]["Read"])[]> {
+  return listPermissionDefinitionsFromConfig({
+    config: options.tenancy.config,
+    scope: options.scope,
+  });
 }
 
 export async function createPermissionDefinition(
@@ -196,7 +206,7 @@ export async function createPermissionDefinition(
 ) {
   const oldConfig = options.tenancy.config;
 
-  const existingPermission = oldConfig.rbac.permissions[options.data.id] as OrganizationRenderedConfig['rbac']['permissions'][string] | undefined;
+  const existingPermission = oldConfig.rbac.permissions[options.data.id] as CompleteConfig['rbac']['permissions'][string] | undefined;
   const allIds = Object.keys(oldConfig.rbac.permissions)
     .filter(id => oldConfig.rbac.permissions[id].scope === options.scope)
     .concat(Object.keys(options.scope === "team" ? teamSystemPermissionMap : {}));
@@ -249,7 +259,7 @@ export async function updatePermissionDefinition(
   const newId = options.data.id ?? options.oldId;
   const oldConfig = options.tenancy.config;
 
-  const existingPermission = oldConfig.rbac.permissions[options.oldId] as OrganizationRenderedConfig['rbac']['permissions'][string] | undefined;
+  const existingPermission = oldConfig.rbac.permissions[options.oldId] as CompleteConfig['rbac']['permissions'][string] | undefined;
 
   if (!existingPermission) {
     throw new KnownErrors.PermissionNotFound(options.oldId);
@@ -335,7 +345,7 @@ export async function deletePermissionDefinition(
 ) {
   const oldConfig = options.tenancy.config;
 
-  const existingPermission = oldConfig.rbac.permissions[options.permissionId] as OrganizationRenderedConfig['rbac']['permissions'][string] | undefined;
+  const existingPermission = oldConfig.rbac.permissions[options.permissionId] as CompleteConfig['rbac']['permissions'][string] | undefined;
 
   if (!existingPermission || existingPermission.scope !== options.scope) {
     throw new KnownErrors.PermissionNotFound(options.permissionId);

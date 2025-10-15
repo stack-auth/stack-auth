@@ -1,4 +1,6 @@
-import { InternalSession } from "../sessions";
+import { KnownErrors } from "../known-errors";
+import { AccessToken, InternalSession, RefreshToken } from "../sessions";
+import { Result } from "../utils/results";
 import { ConfigCrud, ConfigOverrideCrud } from "./crud/config";
 import { InternalEmailsCrud } from "./crud/emails";
 import { InternalApiKeysCrud } from "./crud/internal-api-keys";
@@ -6,7 +8,9 @@ import { ProjectPermissionDefinitionsCrud } from "./crud/project-permissions";
 import { ProjectsCrud } from "./crud/projects";
 import { SvixTokenCrud } from "./crud/svix-token";
 import { TeamPermissionDefinitionsCrud } from "./crud/team-permissions";
+import type { AdminTransaction } from "./crud/transactions";
 import { ServerAuthApplicationOptions, StackServerInterface } from "./server-interface";
+
 
 export type ChatContent = Array<
   | { type: "text", text: string }
@@ -54,6 +58,32 @@ export class StackAdminInterface extends StackServerInterface {
       session,
       requestType,
     );
+  }
+
+  protected async sendAdminRequestAndCatchKnownError<E extends typeof KnownErrors[keyof KnownErrors]>(
+    path: string,
+    requestOptions: RequestInit,
+    tokenStoreOrNull: InternalSession | null,
+    errorsToCatch: readonly E[],
+  ): Promise<Result<
+    Response & {
+      usedTokens: {
+        accessToken: AccessToken,
+        refreshToken: RefreshToken | null,
+      } | null,
+    },
+    InstanceType<E>
+  >> {
+    try {
+      return Result.ok(await this.sendAdminRequest(path, requestOptions, tokenStoreOrNull));
+    } catch (e) {
+      for (const errorType of errorsToCatch) {
+        if (errorType.isInstance(e)) {
+          return Result.error(e as InstanceType<E>);
+        }
+      }
+      throw e;
+    }
   }
 
   async getProject(): Promise<ProjectsCrud["Admin"]["Read"]> {
@@ -129,6 +159,41 @@ export class StackAdminInterface extends StackServerInterface {
     const response = await this.sendAdminRequest(`/internal/email-templates`, {}, null);
     const result = await response.json() as { templates: { id: string, display_name: string, theme_id?: string, tsx_source: string }[] };
     return result.templates;
+  }
+
+  async listInternalEmailDrafts(): Promise<{ id: string, display_name: string, theme_id?: string | undefined | false, tsx_source: string, sent_at_millis?: number | null }[]> {
+    const response = await this.sendAdminRequest(`/internal/email-drafts`, {}, null);
+    const result = await response.json() as { drafts: { id: string, display_name: string, theme_id?: string | undefined | false, tsx_source: string, sent_at_millis?: number | null }[] };
+    return result.drafts;
+  }
+
+  async createEmailDraft(options: { display_name?: string, theme_id?: string | false, tsx_source?: string }): Promise<{ id: string }> {
+    const response = await this.sendAdminRequest(
+      `/internal/email-drafts`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify(options),
+      },
+      null,
+    );
+    return await response.json();
+  }
+
+  async updateEmailDraft(id: string, data: { display_name?: string, theme_id?: string | null | false, tsx_source?: string, sent_at_millis?: number | null }): Promise<void> {
+    await this.sendAdminRequest(
+      `/internal/email-drafts/${id}`,
+      {
+        method: "PATCH",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify(data),
+      },
+      null,
+    );
   }
 
   async listEmailThemes(): Promise<{ id: string, display_name: string }[]> {
@@ -252,9 +317,14 @@ export class StackAdminInterface extends StackServerInterface {
     );
   }
 
-  async getMetrics(): Promise<any> {
+  async getMetrics(includeAnonymous: boolean = false): Promise<any> {
+    const params = new URLSearchParams();
+    if (includeAnonymous) {
+      params.append('include_anonymous', 'true');
+    }
+    const queryString = params.toString();
     const response = await this.sendAdminRequest(
-      "/internal/metrics",
+      `/internal/metrics${queryString ? `?${queryString}` : ''}`,
       {
         method: "GET",
       },
@@ -314,7 +384,7 @@ export class StackAdminInterface extends StackServerInterface {
 
   async sendChatMessage(
     threadId: string,
-    contextType: "email-theme" | "email-template",
+    contextType: "email-theme" | "email-template" | "email-draft",
     messages: Array<{ role: string, content: any }>,
     abortSignal?: AbortSignal,
   ): Promise<{ content: ChatContent }> {
@@ -468,4 +538,63 @@ export class StackAdminInterface extends StackServerInterface {
     );
     return await response.json();
   }
+
+  async setupPayments(): Promise<{ url: string }> {
+    const response = await this.sendAdminRequest(
+      "/internal/payments/setup",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({}),
+      },
+      null,
+    );
+    return await response.json();
+  }
+
+  async getStripeAccountInfo(): Promise<null | { account_id: string, charges_enabled: boolean, details_submitted: boolean, payouts_enabled: boolean }> {
+    const response = await this.sendAdminRequestAndCatchKnownError(
+      "/internal/payments/stripe/account-info",
+      {},
+      null,
+      [KnownErrors.StripeAccountInfoNotFound],
+    );
+    if (response.status === "error") {
+      return null;
+    }
+    return await response.data.json();
+  }
+
+  async createStripeWidgetAccountSession(): Promise<{ client_secret: string }> {
+    const response = await this.sendAdminRequest(
+      "/internal/payments/stripe-widgets/account-session",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({}),
+      },
+      null,
+    );
+    return await response.json();
+  }
+
+  async listTransactions(params?: { cursor?: string, limit?: number, type?: 'subscription' | 'one_time' | 'item_quantity_change', customerType?: 'user' | 'team' | 'custom' }): Promise<{ transactions: AdminTransaction[], nextCursor: string | null }> {
+    const qs = new URLSearchParams();
+    if (params?.cursor) qs.set('cursor', params.cursor);
+    if (typeof params?.limit === 'number') qs.set('limit', String(params.limit));
+    if (params?.type) qs.set('type', params.type);
+    if (params?.customerType) qs.set('customer_type', params.customerType);
+    const response = await this.sendAdminRequest(
+      `/internal/payments/transactions${qs.size ? `?${qs.toString()}` : ''}`,
+      { method: 'GET' },
+      null,
+    );
+    const json = await response.json() as { transactions: AdminTransaction[], next_cursor: string | null };
+    return { transactions: json.transactions, nextCursor: json.next_cursor };
+  }
+
 }

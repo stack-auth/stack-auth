@@ -36,8 +36,8 @@
 
     --border: 240 5.9% 90%;
     --border-in-card: 240 5.9% 90%;
-    --input: 240 5.9% 90%;
-    --input-in-card: 240 5.9% 90%;
+    --input: 240 5.9% 80%;
+    --input-in-card: 240 5.9% 80%;
     --ring: 240 10% 3.9%;
 
     --radius: 0.5rem;
@@ -74,12 +74,52 @@
     --success: 120 40% 50%;
     --success-foreground: 0 0% 98%;
 
-    --border: 240 3.7% 15.9%;
-    --border-in-card: 240 3.7% 23.9%;
-    --input: 240 3.7% 15.9%;
-    --input-in-card: 240 3.7% 23.9%;
+    --border: 240 3.7% 35.9%;
+    --border-in-card: 240 3.7% 43.9%;
+    --input: 240 3.7% 25.9%;
+    --input-in-card: 240 3.7% 43.9%;
     --ring: 240 4.9% 83.9%;
   }
+}
+
+.stack-scope {
+  --background: inherit !important;
+  --foreground: inherit !important;
+
+  --card: inherit !important;
+  --card-foreground: inherit !important;
+
+  --popover: inherit !important;
+  --popover-foreground: inherit !important;
+
+  --primary: inherit !important;
+  --primary-foreground: inherit !important;
+
+  --secondary: inherit !important;
+  --secondary-in-card: inherit !important;
+  --secondary-foreground: inherit !important;
+
+  --muted: inherit !important;
+  --muted-in-card: inherit !important;
+  --muted-foreground: inherit !important;
+
+  --accent: inherit !important;
+  --accent-in-card: inherit !important;
+  --accent-foreground: inherit !important;
+
+  --destructive: inherit !important;
+  --destructive-foreground: inherit !important;
+
+  --success: inherit !important;
+  --success-foreground: inherit !important;
+
+  --border: inherit !important;
+  --border-in-card: inherit !important;
+  --input: inherit !important;
+  --input-in-card: inherit !important;
+  --ring: inherit !important;
+
+  --radius: inherit !important;
 }
 
 @layer base {
@@ -125,10 +165,12 @@
   pointer-events: none;
   touch-action: none;
   user-select: none;
-  display: none;
+  opacity: 0;
+  transition: opacity 0.2s ease-in-out;
 }
 body:has(.show-site-loading-indicator) .site-loading-indicator {
-  display: block;
+  opacity: 1;
+  transition: none;
 }
 .site-loading-indicator > .site-loading-indicator-inner {
   width: 40%;

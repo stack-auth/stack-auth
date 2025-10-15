@@ -36,6 +36,9 @@ const stripFields = [
   "access_token",
   "refresh_token",
   "refreshTokenId",
+  "refresh_token_id",
+  "exp",
+  "iat",
   "date",
   "last_active_at_millis",
   "signed_up_at_millis",
@@ -69,6 +72,7 @@ const stripFieldsIfString = [
   "publishable_client_key",
   "secret_server_key",
   "super_secret_admin_key",
+  "stripe_account_id",
 ] as const;
 
 const stripCookies = [

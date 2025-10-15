@@ -29,10 +29,10 @@ export const POST = createSmartRouteHandler({
     const [clientId] = decodeBasicAuthorizationHeader(req.headers.authorization[0])!;
 
     const createdProject = await createOrUpdateProjectWithLegacyConfig({
-      ownerIds: [],
       type: 'create',
       data: {
         display_name: req.body.display_name,
+        owner_team_id: null,
         description: "Project created by an external integration",
         config: {
           oauth_providers: [

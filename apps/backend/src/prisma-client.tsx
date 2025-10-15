@@ -1,7 +1,8 @@
+import { stackServerApp } from "@/stack";
 import { PrismaNeon } from "@prisma/adapter-neon";
 import { PrismaPg } from '@prisma/adapter-pg';
 import { Prisma, PrismaClient } from "@prisma/client";
-import { OrganizationRenderedConfig } from "@stackframe/stack-shared/dist/config/schema";
+import { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
 import { getEnvVariable, getNodeEnvironment } from '@stackframe/stack-shared/dist/utils/env';
 import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { globalVar } from "@stackframe/stack-shared/dist/utils/globals";
@@ -9,6 +10,7 @@ import { deepPlainEquals, filterUndefined, typedFromEntries, typedKeys } from "@
 import { concatStacktracesIfRejected, ignoreUnhandledRejection } from "@stackframe/stack-shared/dist/utils/promises";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { traceSpan } from "@stackframe/stack-shared/dist/utils/telemetry";
+import { isUuid } from "@stackframe/stack-shared/dist/utils/uuids";
 import { isPromise } from "util/types";
 import { runMigrationNeeded } from "./auto-migrations";
 import { Tenancy } from "./lib/tenancies";
@@ -32,14 +34,15 @@ export const globalPrismaClient = prismaClientsStore.global;
 const dbString = getEnvVariable("STACK_DIRECT_DATABASE_CONNECTION_STRING", "");
 export const globalPrismaSchema = dbString === "" ? "public" : getSchemaFromConnectionString(dbString);
 
+
 function getNeonPrismaClient(connectionString: string) {
   let neonPrismaClient = prismaClientsStore.neon.get(connectionString);
   if (!neonPrismaClient) {
-    const adapter = new PrismaNeon({ connectionString });
+    const schema = getSchemaFromConnectionString(connectionString);
+    const adapter = new PrismaNeon({ connectionString }, { schema });
     neonPrismaClient = new PrismaClient({ adapter });
     prismaClientsStore.neon.set(connectionString, neonPrismaClient);
   }
-
   return neonPrismaClient;
 }
 
@@ -47,13 +50,25 @@ function getSchemaFromConnectionString(connectionString: string) {
   return (new URL(connectionString)).searchParams.get('schema') ?? "public";
 }
 
+async function resolveNeonConnectionString(entry: string): Promise<string> {
+  if (!isUuid(entry)) {
+    return entry;
+  }
+  const store = await stackServerApp.getDataVaultStore('neon-connection-strings');
+  const secret = "no client side encryption";
+  const value = await store.getValue(entry, { secret });
+  if (!value) throw new Error('No Neon connection string found for UUID');
+  return value;
+}
+
 export async function getPrismaClientForTenancy(tenancy: Tenancy) {
   return await getPrismaClientForSourceOfTruth(tenancy.config.sourceOfTruth, tenancy.branchId);
 }
 
-export function getPrismaSchemaForTenancy(tenancy: Tenancy) {
-  return getPrismaSchemaForSourceOfTruth(tenancy.config.sourceOfTruth, tenancy.branchId);
+export async function getPrismaSchemaForTenancy(tenancy: Tenancy) {
+  return await getPrismaSchemaForSourceOfTruth(tenancy.config.sourceOfTruth, tenancy.branchId);
 }
+
 
 function getPostgresPrismaClient(connectionString: string) {
   let postgresPrismaClient = prismaClientsStore.postgres.get(connectionString);
@@ -69,20 +84,21 @@ function getPostgresPrismaClient(connectionString: string) {
   return postgresPrismaClient;
 }
 
-export async function getPrismaClientForSourceOfTruth(sourceOfTruth: OrganizationRenderedConfig["sourceOfTruth"], branchId: string) {
+export async function getPrismaClientForSourceOfTruth(sourceOfTruth: CompleteConfig["sourceOfTruth"], branchId: string) {
   switch (sourceOfTruth.type) {
     case 'neon': {
       if (!(branchId in sourceOfTruth.connectionStrings)) {
         throw new Error(`No connection string provided for Neon source of truth for branch ${branchId}`);
       }
-      const connectionString = sourceOfTruth.connectionStrings[branchId];
+      const entry = sourceOfTruth.connectionStrings[branchId];
+      const connectionString = await resolveNeonConnectionString(entry);
       const neonPrismaClient = getNeonPrismaClient(connectionString);
-      await runMigrationNeeded({ prismaClient: neonPrismaClient, schema: getSchemaFromConnectionString(connectionString) });
+      await runMigrationNeeded({ prismaClient: neonPrismaClient, schema: getSchemaFromConnectionString(connectionString), logging: true });
       return neonPrismaClient;
     }
     case 'postgres': {
       const postgresPrismaClient = getPostgresPrismaClient(sourceOfTruth.connectionString);
-      await runMigrationNeeded({ prismaClient: postgresPrismaClient.client, schema: getSchemaFromConnectionString(sourceOfTruth.connectionString) });
+      await runMigrationNeeded({ prismaClient: postgresPrismaClient.client, schema: getSchemaFromConnectionString(sourceOfTruth.connectionString), logging: true });
       return postgresPrismaClient.client;
     }
     case 'hosted': {
@@ -91,13 +107,21 @@ export async function getPrismaClientForSourceOfTruth(sourceOfTruth: Organizatio
   }
 }
 
-export function getPrismaSchemaForSourceOfTruth(sourceOfTruth: OrganizationRenderedConfig["sourceOfTruth"], branchId: string) {
+export async function getPrismaSchemaForSourceOfTruth(sourceOfTruth: CompleteConfig["sourceOfTruth"], branchId: string) {
   switch (sourceOfTruth.type) {
     case 'postgres': {
       return getSchemaFromConnectionString(sourceOfTruth.connectionString);
     }
     case 'neon': {
-      return getSchemaFromConnectionString(sourceOfTruth.connectionStrings[branchId]);
+      if (!(branchId in sourceOfTruth.connectionStrings)) {
+        throw new Error(`No connection string provided for Neon source of truth for branch ${branchId}`);
+      }
+      const entry = sourceOfTruth.connectionStrings[branchId];
+      if (isUuid(entry)) {
+        const connectionString = await resolveNeonConnectionString(entry);
+        return getSchemaFromConnectionString(connectionString);
+      }
+      return getSchemaFromConnectionString(entry);
     }
     case 'hosted': {
       return globalPrismaSchema;
@@ -120,9 +144,19 @@ class TransactionErrorThatShouldNotBeRetried extends Error {
   }
 }
 
-export async function retryTransaction<T>(client: PrismaClient, fn: (tx: PrismaClientTransaction) => Promise<T>): Promise<T> {
-  // disable serializable transactions for now, later we may re-add them
-  const enableSerializable = false as boolean;
+export async function retryTransaction<T>(client: PrismaClient, fn: (tx: PrismaClientTransaction) => Promise<T>, options: { level?: "default" | "serializable" } = {}): Promise<T> {
+  // serializable transactions are currently off by default, later we may turn them on
+  const enableSerializable = options.level === "serializable";
+
+  const isRetryablePrismaError = (e: unknown) => {
+    if (e instanceof Prisma.PrismaClientKnownRequestError) {
+      return [
+        "P2028", // Serializable/repeatable read conflict
+        "P2034", // Transaction already closed (eg. timeout)
+      ];
+    }
+    return false;
+  };
 
   return await traceSpan('Prisma transaction', async (span) => {
     const res = await Result.retry(async (attemptIndex) => {
@@ -139,7 +173,7 @@ export async function retryTransaction<T>(client: PrismaClient, fn: (tx: PrismaC
                 // to other (nested) transactions failing
                 // however, we make an exception for "Transaction already closed", as those are (annoyingly) thrown on
                 // the actual query, not the $transaction function itself
-                if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2028") { // Transaction already closed
+                if (isRetryablePrismaError(e)) {
                   throw new TransactionErrorThatShouldBeRetried(e);
                 }
                 throw new TransactionErrorThatShouldNotBeRetried(e);
@@ -153,7 +187,7 @@ export async function retryTransaction<T>(client: PrismaClient, fn: (tx: PrismaC
               }
               return res;
             }, {
-              isolationLevel: enableSerializable && attemptIndex < 4 ? Prisma.TransactionIsolationLevel.Serializable : undefined,
+              isolationLevel: enableSerializable ? Prisma.TransactionIsolationLevel.Serializable : undefined,
             }));
           } catch (e) {
             // we don't want to retry too aggressively here, because the error may have been thrown after the transaction was already committed
@@ -164,11 +198,7 @@ export async function retryTransaction<T>(client: PrismaClient, fn: (tx: PrismaC
             if (e instanceof TransactionErrorThatShouldNotBeRetried) {
               throw e.cause;
             }
-            if ([
-              "Transaction failed due to a write conflict or a deadlock. Please retry your transaction",
-              "Transaction already closed: A commit cannot be executed on an expired transaction. The timeout for this transaction",
-            ].some(s => e instanceof Prisma.PrismaClientKnownRequestError && e.message.includes(s))) {
-              // transaction timeout, retry
+            if (isRetryablePrismaError(e)) {
               return Result.error(e);
             }
             throw e;
@@ -222,19 +252,19 @@ export const RawQuery = {
       supportedPrismaClients,
       sql: Prisma.sql`
         WITH ${Prisma.join(queries.map((q, index) => {
-          return Prisma.sql`${Prisma.raw("q" + index)} AS (
+        return Prisma.sql`${Prisma.raw("q" + index)} AS (
             ${q.sql}
           )`;
-        }), ",\n")}
+      }), ",\n")}
 
         ${Prisma.join(queries.map((q, index) => {
-          return Prisma.sql`
+        return Prisma.sql`
             SELECT
               ${"q" + index} AS type,
               row_to_json(c) AS json
             FROM (SELECT * FROM ${Prisma.raw("q" + index)}) c
           `;
-        }), "\nUNION ALL\n")}
+      }), "\nUNION ALL\n")}
       `,
       postProcess: (rows) => {
         const unprocessed = new Array(queries.length).fill(null).map(() => [] as any[]);
@@ -335,11 +365,14 @@ export function isPrismaUniqueConstraintViolation(error: unknown, modelName: str
   return error.meta.modelName === modelName && deepPlainEquals(error.meta.target, target);
 }
 
-export function sqlQuoteIdent(id: string) {
-  // accept letters, numbers, underscore, $, and dash (adjust as needed)
+export function sqlQuoteIdentToString(id: string) {
   if (!/^[A-Za-z_][A-Za-z0-9_\-$]*$/.test(id)) {
     throw new Error(`Invalid identifier: ${id}`);
   }
   // escape embedded double quotes just in case
-  return Prisma.raw(`"${id.replace(/"/g, '""')}"`);
+  return `"${id.replace(/"/g, '""')}"`;
+}
+
+export function sqlQuoteIdent(id: string) {
+  return Prisma.raw(sqlQuoteIdentToString(id));
 }

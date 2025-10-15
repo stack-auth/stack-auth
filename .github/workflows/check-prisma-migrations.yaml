@@ -32,11 +32,32 @@ jobs:
         with:
             version: 9.1.2
 
+      # Even just starting the Docker Compose as a daemon is slow because we have to download and build the images
+      # so, we run it in the background
+      - name: Start Docker Compose in background
+        uses: JarvusInnovations/background-action@v1.0.7
+        with:
+          run: docker compose -f docker/dependencies/docker.compose.yaml up -d &
+          # we don't need to wait on anything, just need to start the daemon
+          wait-on: /dev/null
+          tail: true
+          wait-for: 3s
+          log-output-if: true
+
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      - name: Wait on Postgres
+        run: pnpm run wait-until-postgres-is-ready:pg_isready
       
-      - name: Start Postgres shadow DB
-        run: docker run -d --name postgres-prisma-diff-shadow -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=PLACEHOLDER-PASSWORD--dfaBC1hm1v -e POSTGRES_DB=postgres -p 5432:5432 postgres:latest
-      
-      - name: Check for differences in Prisma schema and migrations
-        run: cd apps/backend && pnpm run prisma migrate diff --from-migrations ./prisma/migrations --to-schema-datamodel ./prisma/schema.prisma --shadow-database-url postgres://postgres:PLACEHOLDER-PASSWORD--dfaBC1hm1v@localhost:5432/postgres --exit-code
+      - name: Build packages
+        run: pnpm run build:packages
+
+      - name: Codegen
+        run: pnpm run codegen
+
+      - name: Initialize database
+        run: pnpm run db:init
+
+      - name: Check for differences in Prisma schema and current DB
+        run: cd apps/backend && pnpm run prisma migrate diff --from-url postgres://postgres:PASSWORD-PLACEHOLDER--uqfEC1hmmv@localhost:5432/stackframe --to-schema-datamodel ./prisma/schema.prisma --shadow-database-url postgres://postgres:PASSWORD-PLACEHOLDER--uqfEC1hmmv@localhost:5432/shadow_db --exit-code

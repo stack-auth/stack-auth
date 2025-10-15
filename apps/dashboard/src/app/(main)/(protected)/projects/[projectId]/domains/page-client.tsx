@@ -5,7 +5,7 @@ import { SettingCard, SettingSwitch } from "@/components/settings";
 import { AdminDomainConfig, AdminProject } from "@stackframe/stack";
 import { yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
-import { isValidHostname, isValidUrl } from "@stackframe/stack-shared/dist/utils/urls";
+import { isValidHostnameWithWildcards, isValidUrl } from "@stackframe/stack-shared/dist/utils/urls";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger, ActionCell, ActionDialog, Alert, Button, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, Typography } from "@stackframe/stack-ui";
 import React from "react";
 import * as yup from "yup";
@@ -35,7 +35,7 @@ function EditDialog(props: {
       .test({
         name: 'domain',
         message: (params) => `Invalid domain`,
-        test: (value) => value == null || isValidHostname(value)
+        test: (value) => value == null || isValidHostnameWithWildcards(value)
       })
       .test({
         name: 'unique-domain',
@@ -74,6 +74,11 @@ function EditDialog(props: {
 
   const canAddWww = (domain: string | undefined) => {
     if (!domain) {
+      return false;
+    }
+
+    // Don't allow adding www. to wildcard domains
+    if (domain.includes('*')) {
       return false;
     }
 
@@ -153,7 +158,16 @@ function EditDialog(props: {
     render={(form) => (
       <>
         <Alert>
-          Please ensure you own or have control over this domain. Also note that each subdomain (e.g. blog.example.com, app.example.com) is treated as a distinct domain.
+          <div className="space-y-2">
+            <p>Please ensure you own or have control over this domain. Also note that each subdomain (e.g. blog.example.com, app.example.com) is treated as a distinct domain.</p>
+            <p><strong>Wildcard domains:</strong> You can use wildcards to match multiple domains:</p>
+            <ul className="list-disc list-inside ml-2 space-y-1">
+              <li><code>*.example.com</code> - matches any single subdomain (e.g., api.example.com, www.example.com)</li>
+              <li><code>**.example.com</code> - matches any subdomain level (e.g., api.v2.example.com)</li>
+              <li><code>api-*.example.com</code> - matches api-v1.example.com, api-prod.example.com, etc.</li>
+              <li><code>*.*.org</code> - matches mail.example.org, but not example.org</li>
+            </ul>
+          </div>
         </Alert>
         <InputField
           label="Domain"

@@ -1,80 +1,11 @@
 'use client';
 
-import { ArrowRight, Check, Code, Copy, Play, Send, Settings, Sparkles, Zap } from 'lucide-react';
+import { ArrowRight, Check, Code, Copy, Play, Send, Settings, Zap } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
+import type { OpenAPIOperation, OpenAPIParameter, OpenAPISchema, OpenAPISpec } from '../../lib/openapi-types';
+import { resolveSchema } from '../../lib/openapi-utils';
 import { useAPIPageContext } from './api-page-wrapper';
 import { Button } from './button';
-
-// Types for OpenAPI specification
-type OpenAPISchema = {
-  type?: 'string' | 'number' | 'integer' | 'boolean' | 'array' | 'object' | 'null',
-  properties?: Record<string, OpenAPISchema>,
-  items?: OpenAPISchema,
-  required?: string[],
-  example?: unknown,
-  description?: string,
-  $ref?: string,
-  allOf?: OpenAPISchema[],
-  oneOf?: OpenAPISchema[],
-  anyOf?: OpenAPISchema[],
-  enum?: unknown[],
-  format?: string,
-  minimum?: number,
-  maximum?: number,
-  minLength?: number,
-  maxLength?: number,
-  pattern?: string,
-  additionalProperties?: boolean | OpenAPISchema,
-}
-
-type OpenAPISpec = {
-  openapi: string,
-  info: {
-    title: string,
-    version: string,
-    description?: string,
-  },
-  servers: Array<{
-    url: string,
-    description?: string,
-  }>,
-  paths: Record<string, Record<string, OpenAPIOperation>>,
-  webhooks?: Record<string, Record<string, OpenAPIOperation>>,
-  components?: {
-    schemas?: Record<string, OpenAPISchema>,
-    securitySchemes?: Record<string, unknown>,
-  },
-}
-
-type OpenAPIOperation = {
-  summary?: string,
-  description?: string,
-  operationId?: string,
-  tags?: string[],
-  parameters?: OpenAPIParameter[],
-  requestBody?: {
-    required?: boolean,
-    content: Record<string, {
-      schema: OpenAPISchema,
-    }>,
-  },
-  responses: Record<string, {
-    description: string,
-    content?: Record<string, {
-      schema: OpenAPISchema,
-    }>,
-  }>,
-  security?: Array<Record<string, string[]>>,
-}
-
-type OpenAPIParameter = {
-  name: string,
-  in: 'query' | 'path' | 'header' | 'cookie',
-  required?: boolean,
-  description?: string,
-  schema: OpenAPISchema,
-  example?: unknown,
-}
 
 type EnhancedAPIPageProps = {
   document: string,
@@ -88,7 +19,7 @@ type EnhancedAPIPageProps = {
 type RequestState = {
   parameters: Record<string, unknown>,
   headers: Record<string, string>,
-  body: string,
+  bodyFields: Record<string, unknown>, // Changed from 'body: string' to individual fields
   response: {
     status?: number,
     data?: unknown,
@@ -124,7 +55,7 @@ export function EnhancedAPIPage({ document, operations, description }: EnhancedA
   const [requestState, setRequestState] = useState<RequestState>({
     parameters: {},
     headers: {},
-    body: '{}',
+    bodyFields: {}, // Changed from body: '{}'
     response: {
       loading: false,
     },
@@ -181,8 +112,8 @@ export function EnhancedAPIPage({ document, operations, description }: EnhancedA
         if (prop.example !== undefined) {
           example[key] = prop.example;
         } else {
-          // Just use the field name as the value
-          example[key] = key;
+          // Use OpenAPI type information to show type instead of generated values
+          example[key] = `<${prop.type || 'unknown'}>`;
         }
       });
 
@@ -209,7 +140,7 @@ export function EnhancedAPIPage({ document, operations, description }: EnhancedA
     return "";
   }, []);
 
-  // Auto-populate request body based on OpenAPI schema
+  // Auto-populate request body fields based on OpenAPI schema
   useEffect(() => {
     if (operations.length > 0 && spec) {
       const firstOperation = operations[0];
@@ -217,16 +148,21 @@ export function EnhancedAPIPage({ document, operations, description }: EnhancedA
 
       if (operation.requestBody?.content['application/json']?.schema) {
         const { schema: jsonSchema } = operation.requestBody.content['application/json'];
-        //console.log('OpenAPI Schema for', firstOperation.path, ':', jsonSchema);
-        const exampleBody = generateExampleFromSchema(jsonSchema, spec);
-        //console.log('Generated example body:', exampleBody);
-        setRequestState(prev => ({
-          ...prev,
-          body: JSON.stringify(exampleBody, null, 2)
-        }));
+        // Initialize body fields from schema properties
+        if (jsonSchema.type === 'object' && jsonSchema.properties) {
+          const initialFields: Record<string, unknown> = {};
+          Object.entries(jsonSchema.properties).forEach(([key, prop]: [string, OpenAPISchema]) => {
+            if (prop.example !== undefined) {
+              initialFields[key] = prop.example;
+            } else {
+              initialFields[key] = '';
+            }
+          });
+          setRequestState(prev => ({ ...prev, bodyFields: initialFields }));
+        }
       }
     }
-  }, [spec, operations, generateExampleFromSchema]);
+  }, [spec, operations]);
 
   // Load OpenAPI specification
   useEffect(() => {
@@ -269,7 +205,7 @@ export function EnhancedAPIPage({ document, operations, description }: EnhancedA
     }));
 
     try {
-      const baseUrl = spec?.servers[0]?.url || '';
+      const baseUrl = spec?.servers?.[0]?.url || '';
       let url = baseUrl + path;
 
       // Replace path parameters
@@ -303,8 +239,15 @@ export function EnhancedAPIPage({ document, operations, description }: EnhancedA
         headers: filteredHeaders,
       };
 
-      if (['POST', 'PUT', 'PATCH'].includes(method.toUpperCase()) && requestState.body) {
-        requestOptions.body = requestState.body;
+      // Build request body from individual fields
+      if (['POST', 'PUT', 'PATCH'].includes(method.toUpperCase()) && Object.keys(requestState.bodyFields).length > 0) {
+        // Filter out empty values and build JSON body
+        const bodyData = Object.fromEntries(
+          Object.entries(requestState.bodyFields).filter(([, value]) => value !== '' && value !== undefined)
+        );
+        if (Object.keys(bodyData).length > 0) {
+          requestOptions.body = JSON.stringify(bodyData);
+        }
       }
 
       const response = await fetch(url, requestOptions);
@@ -343,7 +286,7 @@ export function EnhancedAPIPage({ document, operations, description }: EnhancedA
         }
       }));
     }
-  }, [spec, requestState.parameters, requestState.headers, requestState.body, reportError]);
+  }, [spec, requestState.parameters, requestState.headers, requestState.bodyFields, reportError]); // Changed from requestState.body
 
   if (loading) {
     return (
@@ -392,14 +335,17 @@ export function EnhancedAPIPage({ document, operations, description }: EnhancedA
             requestState={requestState}
             setRequestState={setRequestState}
             onExecute={() => {
+              // eslint-disable-next-line no-restricted-syntax
               executeRequest(operation, path, method)
                 .catch(error => console.error('Failed to execute request:', error));
             }}
             onCopy={(text: string) => {
+              // eslint-disable-next-line no-restricted-syntax
               copyToClipboard(text)
                 .catch(error => console.error('Failed to copy to clipboard:', error));
             }}
             description={description || operation.description}
+            generateExample={generateExampleFromSchema}
           />
         );
       })}
@@ -428,6 +374,7 @@ function ModernAPIPlayground({
   onExecute: () => void,
   onCopy: (text: string) => void,
   description?: string,
+  generateExample: (schema: OpenAPISchema, spec?: OpenAPISpec) => unknown,
 }) {
   const [copied, setCopied] = useState(false);
   const [activeCodeTab, setActiveCodeTab] = useState<'curl' | 'javascript' | 'python'>('curl');
@@ -440,7 +387,7 @@ function ModernAPIPlayground({
   };
 
   const generateCurlCommand = useCallback(() => {
-    const baseUrl = spec.servers[0]?.url || '';
+    const baseUrl = spec.servers?.[0]?.url || '';
     let url = baseUrl + path;
 
     // Replace path parameters
@@ -473,16 +420,20 @@ function ModernAPIPlayground({
       }
     });
 
-    // Add body for POST/PUT/PATCH
-    if (['POST', 'PUT', 'PATCH'].includes(method) && requestState.body !== '{}') {
-      curlCommand += ` \\\n  -d '${requestState.body}'`;
+    // Add body for POST/PUT/PATCH - build from fields
+    if (['POST', 'PUT', 'PATCH'].includes(method) && Object.keys(requestState.bodyFields).length > 0) {
+      const bodyData = Object.fromEntries(
+        Object.entries(requestState.bodyFields).filter(([, value]) => value !== '' && value !== undefined)
+      );
+      if (Object.keys(bodyData).length > 0) {
+        curlCommand += ` \\\n  -d '${JSON.stringify(bodyData)}'`;
+      }
     }
 
     return curlCommand;
   }, [operation, path, method, spec, requestState]);
-
   const generateJavaScriptCode = useCallback(() => {
-    const baseUrl = spec.servers[0]?.url || '';
+    const baseUrl = spec.servers?.[0]?.url || '';
     let url = baseUrl + path;
 
     // Replace path parameters
@@ -516,8 +467,14 @@ function ModernAPIPlayground({
       jsCode += `,\n  headers: ${JSON.stringify(headers, null, 4).replace(/^/gm, '  ')}`;
     }
 
-    if (['POST', 'PUT', 'PATCH'].includes(method) && requestState.body !== '{}') {
-      jsCode += `,\n  body: ${requestState.body}`;
+    // Add body for POST/PUT/PATCH - build from fields
+    if (['POST', 'PUT', 'PATCH'].includes(method) && Object.keys(requestState.bodyFields).length > 0) {
+      const bodyData = Object.fromEntries(
+        Object.entries(requestState.bodyFields).filter(([, value]) => value !== '' && value !== undefined)
+      );
+      if (Object.keys(bodyData).length > 0) {
+        jsCode += `,\n  body: ${JSON.stringify(bodyData, null, 2)}`;
+      }
     }
 
     jsCode += `\n});\n\nconst data = await response.json();\nconsole.log(data);`;
@@ -526,7 +483,7 @@ function ModernAPIPlayground({
   }, [operation, path, method, spec, requestState]);
 
   const generatePythonCode = useCallback(() => {
-    const baseUrl = spec.servers[0]?.url || '';
+    const baseUrl = spec.servers?.[0]?.url || '';
     let url = baseUrl + path;
 
     // Replace path parameters
@@ -561,9 +518,17 @@ function ModernAPIPlayground({
       pythonCode += `headers = ${JSON.stringify(headers, null, 2).replace(/"/g, "'")}\n`;
     }
 
-    if (['POST', 'PUT', 'PATCH'].includes(method) && requestState.body !== '{}') {
-      pythonCode += `data = ${requestState.body}\n\n`;
-      pythonCode += `response = requests.${method.toLowerCase()}(url${Object.keys(headers).length > 0 ? ', headers=headers' : ''}${requestState.body !== '{}' ? ', json=data' : ''})\n`;
+    // Add body for POST/PUT/PATCH - build from fields
+    if (['POST', 'PUT', 'PATCH'].includes(method) && Object.keys(requestState.bodyFields).length > 0) {
+      const bodyData = Object.fromEntries(
+        Object.entries(requestState.bodyFields).filter(([, value]) => value !== '' && value !== undefined)
+      );
+      if (Object.keys(bodyData).length > 0) {
+        pythonCode += `data = ${JSON.stringify(bodyData)}\n\n`;
+        pythonCode += `response = requests.${method.toLowerCase()}(url${Object.keys(headers).length > 0 ? ', headers=headers' : ''}, json=data)\n`;
+      } else {
+        pythonCode += `\nresponse = requests.${method.toLowerCase()}(url${Object.keys(headers).length > 0 ? ', headers=headers' : ''})\n`;
+      }
     } else {
       pythonCode += `\nresponse = requests.${method.toLowerCase()}(url${Object.keys(headers).length > 0 ? ', headers=headers' : ''})\n`;
     }
@@ -671,19 +636,24 @@ function ModernAPIPlayground({
               />
             )}
 
-            {/* Request Body */}
+            {/* Request Body Fields */}
             {operation.requestBody && (
-              <RequestBodySection
+              <RequestBodyFieldsSection
                 requestBody={operation.requestBody}
-                value={requestState.body}
-                onChange={(body) => setRequestState(prev => ({ ...prev, body }))}
+                spec={spec}
+                values={requestState.bodyFields}
+                onChange={(bodyFields) => setRequestState(prev => ({ ...prev, bodyFields }))}
               />
             )}
           </div>
         </div>
 
         {/* Response Panel */}
-        <ResponsePanel response={requestState.response} />
+        <ResponsePanel
+          response={requestState.response}
+          operation={operation}
+          spec={spec}
+        />
 
         {/* Code Examples */}
         <div className="bg-fd-card border border-fd-border rounded-lg">
@@ -697,6 +667,7 @@ function ModernAPIPlayground({
                 variant="outline"
                 size="sm"
                 onClick={() => {
+                  // eslint-disable-next-line no-restricted-syntax
                   handleCopy(getCodeExample())
                     .catch(error => {
                       console.error('Failed to copy code example', error);
@@ -813,141 +784,475 @@ function ParametersSection({
   );
 }
 
-// Request Body Section - Clean design
-function RequestBodySection({
-  requestBody,
-  value,
-  onChange,
+// Response Schema Section - styled like parameters but read-only
+function ResponseSchemaSection({
+  operation,
+  spec,
 }: {
-  requestBody: OpenAPIOperation['requestBody'],
-  value: string,
-  onChange: (value: string) => void,
+  operation: OpenAPIOperation,
+  spec: OpenAPISpec,
 }) {
-  if (!requestBody) return null;
+
+  // Get response schema
+  const getResponseSchema = () => {
+    try {
+      const responses = operation.responses;
+      // Find first available success response
+      const successCodes = ['200', '201', '202'] as const;
+      const successResponse = successCodes.map(code => responses[code]).find(Boolean);
+      if (!successResponse) return null;
+
+      const jsonContent = successResponse.content?.['application/json'];
+      return jsonContent?.schema;
+    } catch (error) {
+      console.error('Error getting response schema:', error);
+      return null;
+    }
+  };
+
+  // Render schema field recursively
+  const renderSchemaField = (
+    fieldName: string,
+    fieldSchema: OpenAPISchema,
+    isRequired: boolean = false,
+    depth: number = 0,
+    parentPath: string = ''
+  ): React.ReactNode => {
+    const resolvedFieldSchema = resolveSchema(fieldSchema, spec);
+    const fullPath = parentPath ? `${parentPath}.${fieldName}` : fieldName;
+    const indentClass = depth > 0 ? `ml-${depth * 4}` : '';
+
+    // Get type display
+    const getTypeDisplay = (schema: OpenAPISchema): string => {
+      if (schema.type === 'array' && schema.items) {
+        const itemType = schema.items.type || 'object';
+        return `array<${itemType}>`;
+      }
+      return schema.type || 'unknown';
+    };
+
+    // Use consistent down-right arrow for all nested items
+    const ArrowIcon = depth > 0 ? '↳' : '';
+
+    return (
+      <div key={fullPath} className={`${indentClass}`}>
+        {/* Field info line */}
+        <div className="flex items-baseline gap-2 flex-wrap leading-normal">
+          {ArrowIcon && (
+            <span className="text-fd-muted-foreground text-sm select-none font-mono leading-none">
+              {ArrowIcon}
+            </span>
+          )}
+          <span className="text-sm font-semibold text-fd-foreground">
+            {fieldName}
+          </span>
+          <span className="text-xs bg-fd-muted text-fd-muted-foreground px-2 py-0.5 rounded font-mono">
+            {getTypeDisplay(resolvedFieldSchema)}
+          </span>
+          {isRequired && (
+            <span className="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded dark:bg-red-900/30 dark:text-red-300">
+              required
+            </span>
+          )}
+          {/* Show format if available */}
+          {resolvedFieldSchema.format && (
+            <span className="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded dark:bg-purple-900/30 dark:text-purple-300">
+              {resolvedFieldSchema.format}
+            </span>
+          )}
+          {/* Show enum values if available */}
+          {resolvedFieldSchema.enum && (
+            <span className="text-xs bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded dark:bg-yellow-900/30 dark:text-yellow-300">
+              enum: {resolvedFieldSchema.enum.map(String).join(' | ')}
+            </span>
+          )}
+          {/* Show constraints */}
+          {(resolvedFieldSchema.minLength !== undefined || resolvedFieldSchema.maxLength !== undefined) && (
+            <span className="text-xs bg-gray-100 text-gray-700 px-2 py-0.5 rounded dark:bg-gray-900/30 dark:text-gray-300">
+              {resolvedFieldSchema.minLength !== undefined && `min: ${resolvedFieldSchema.minLength}`}
+              {resolvedFieldSchema.minLength !== undefined && resolvedFieldSchema.maxLength !== undefined && ', '}
+              {resolvedFieldSchema.maxLength !== undefined && `max: ${resolvedFieldSchema.maxLength}`}
+            </span>
+          )}
+          {(resolvedFieldSchema.minimum !== undefined || resolvedFieldSchema.maximum !== undefined) && (
+            <span className="text-xs bg-gray-100 text-gray-700 px-2 py-0.5 rounded dark:bg-gray-900/30 dark:text-gray-300">
+              {resolvedFieldSchema.minimum !== undefined && `min: ${resolvedFieldSchema.minimum}`}
+              {resolvedFieldSchema.minimum !== undefined && resolvedFieldSchema.maximum !== undefined && ', '}
+              {resolvedFieldSchema.maximum !== undefined && `max: ${resolvedFieldSchema.maximum}`}
+            </span>
+          )}
+          {/* Show pattern if available */}
+          {resolvedFieldSchema.pattern && (
+            <span className="text-xs bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded dark:bg-indigo-900/30 dark:text-indigo-300 font-mono">
+              pattern: {resolvedFieldSchema.pattern}
+            </span>
+          )}
+          {resolvedFieldSchema.example !== undefined && (
+            <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded dark:bg-blue-900/30 dark:text-blue-300 font-mono">
+              {String(resolvedFieldSchema.example)}
+            </span>
+          )}
+          {resolvedFieldSchema.description && (
+            <span className="text-xs text-fd-muted-foreground">
+              - {resolvedFieldSchema.description}
+            </span>
+          )}
+        </div>
+
+        {/* Handle nested structures */}
+        {resolvedFieldSchema.type === 'array' && resolvedFieldSchema.items ? (
+          <div className="mt-2 ml-4">
+            {resolvedFieldSchema.items.type === 'object' && resolvedFieldSchema.items.properties ? (
+              <div className="space-y-2">
+                {Object.entries(resolvedFieldSchema.items.properties).map(([itemFieldName, itemFieldSchema]) => {
+                  const itemRequired = resolvedFieldSchema.items?.required?.includes(itemFieldName) || false;
+                  return renderSchemaField(itemFieldName, itemFieldSchema as OpenAPISchema, itemRequired, depth + 1, fullPath);
+                })}
+              </div>
+            ) : (
+              // Simple array items
+              <div className="flex items-baseline gap-2 flex-wrap leading-normal text-sm text-fd-muted-foreground">
+                <span className="text-fd-muted-foreground select-none font-mono leading-none">↳</span>
+                <span>Items:</span>
+                <span className="text-xs bg-fd-muted text-fd-muted-foreground px-2 py-0.5 rounded font-mono">
+                  {resolvedFieldSchema.items.type || 'unknown'}
+                </span>
+                {resolvedFieldSchema.items.example !== undefined && (
+                  <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded dark:bg-blue-900/30 dark:text-blue-300 font-mono">
+                    {String(resolvedFieldSchema.items.example)}
+                  </span>
+                )}
+                {resolvedFieldSchema.items.description && (
+                  <span className="text-xs text-fd-muted-foreground">
+                    - {resolvedFieldSchema.items.description}
+                  </span>
+                )}
+              </div>
+            )}
+          </div>
+        ) : resolvedFieldSchema.type === 'object' && resolvedFieldSchema.properties ? (
+          <div className="mt-2 ml-4 space-y-2">
+            {Object.entries(resolvedFieldSchema.properties).map(([nestedFieldName, nestedFieldSchema]) => {
+              const nestedRequired = resolvedFieldSchema.required?.includes(nestedFieldName) || false;
+              return renderSchemaField(nestedFieldName, nestedFieldSchema as OpenAPISchema, nestedRequired, depth + 1, fullPath);
+            })}
+          </div>
+        ) : null}
+      </div>
+    );
+  };
+
+  const responseSchema = getResponseSchema();
+  if (!responseSchema) {
+    return (
+      <div className="flex flex-col items-center justify-center py-12">
+        <div className="w-12 h-12 rounded-full bg-fd-muted/30 flex items-center justify-center mb-4">
+          <Zap className="w-6 h-6 text-fd-muted-foreground" />
+        </div>
+        <p className="text-fd-muted-foreground text-center text-sm leading-relaxed m-0">
+          No response schema available
+        </p>
+      </div>
+    );
+  }
+
+  const resolvedSchema = resolveSchema(responseSchema, spec);
+
+  // Check if schema is empty (like {}) or has no meaningful content
+  const isEmpty = !resolvedSchema.type && !resolvedSchema.properties && Object.keys(resolvedSchema).length === 0;
+  const hasNoProperties = resolvedSchema.type === 'object' && (!resolvedSchema.properties || Object.keys(resolvedSchema.properties).length === 0);
+
+  if (isEmpty || hasNoProperties) {
+    return (
+      <div className="flex items-center gap-3">
+        <span className="inline-flex items-center px-3 py-1 rounded-md bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300 font-mono font-bold text-xs leading-none">
+          200
+        </span>
+        <span className="text-sm text-fd-muted-foreground">
+          Success response (no body)
+        </span>
+      </div>
+    );
+  }
+
+  // Handle non-object schemas or simple types
+  if (resolvedSchema.type !== 'object' || !resolvedSchema.properties) {
+    return (
+      <div className="space-y-4">
+        <div>
+          <div className="flex items-center gap-3 mb-2">
+            <span className="inline-flex items-center px-3 py-1 rounded-md bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300 font-mono font-bold text-xs leading-none">
+              200
+            </span>
+            <span className="text-sm text-fd-muted-foreground">Expected Response</span>
+          </div>
+          <div className="h-px bg-fd-border"></div>
+        </div>
+        <div>
+          {renderSchemaField('Response', resolvedSchema, false, 0)}
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="space-y-3">
-      <div className="font-semibold text-fd-foreground leading-none">Request Body</div>
-      <textarea
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder="Enter JSON request body"
-        rows={8}
-        className="w-full px-3 py-2 border border-fd-border rounded-lg bg-fd-background text-fd-foreground font-mono text-sm focus:outline-none focus:ring-2 focus:ring-fd-primary focus:border-fd-primary"
-      />
+    <div className="space-y-4">
+      <div>
+        <div className="flex items-center gap-3 mb-2">
+          <span className="inline-flex items-center px-3 py-1 rounded-md bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300 font-mono font-bold text-xs leading-none">
+            200
+          </span>
+          <span className="text-sm text-fd-muted-foreground">Expected Response</span>
+        </div>
+        <div className="h-px bg-fd-border"></div>
+      </div>
+      <div className="space-y-3">
+        {Object.entries(resolvedSchema.properties).map(([fieldName, fieldSchema]) => {
+          const isRequired = resolvedSchema.required?.includes(fieldName) || false;
+          return renderSchemaField(fieldName, fieldSchema as OpenAPISchema, isRequired, 0);
+        })}
+      </div>
     </div>
   );
 }
 
-// Response Panel - Clean design
-function ResponsePanel({ response }: { response: RequestState['response'] }) {
-  if (response.loading) {
-    return (
-      <div className="bg-fd-card border border-fd-border rounded-lg">
-        <div className="px-6 py-4 border-b border-fd-border bg-fd-muted/30">
-          <div className="flex items-center gap-2">
-            <Sparkles className="w-4 h-4 text-purple-600 dark:text-purple-400" />
-            <div className="font-semibold text-fd-foreground text-base leading-none">Response</div>
-          </div>
-        </div>
-        <div className="p-12 flex flex-col items-center justify-center">
-          <div className="relative mb-4">
-            <div className="animate-spin rounded-full h-8 w-8 border-2 border-fd-muted"></div>
-            <div className="animate-spin rounded-full h-8 w-8 border-2 border-t-purple-500 absolute top-0"></div>
-          </div>
-          <p className="text-fd-muted-foreground text-sm text-center leading-relaxed m-0">Sending request...</p>
-        </div>
-      </div>
-    );
+// Request Body Fields Section - styled like parameters
+function RequestBodyFieldsSection({
+  requestBody,
+  spec,
+  values,
+  onChange,
+}: {
+  requestBody: OpenAPIOperation['requestBody'],
+  spec: OpenAPISpec,
+  values: Record<string, unknown>,
+  onChange: (values: Record<string, unknown>) => void,
+}) {
+  if (!requestBody?.content['application/json']?.schema) return null;
+
+  const schema = requestBody.content['application/json'].schema;
+
+  const resolvedSchema = resolveSchema(schema, spec);
+
+  // Only handle object schemas with properties
+  if (resolvedSchema.type !== 'object' || !resolvedSchema.properties) {
+    return null;
   }
 
-  if (response.error) {
-    return (
-      <div className="bg-fd-card border border-fd-border rounded-lg">
-        <div className="px-6 py-4 border-b border-fd-border bg-fd-muted/30">
-          <div className="flex items-center gap-2">
-            <span className="text-red-600 dark:text-red-400 text-base leading-none">❌</span>
-            <div className="font-semibold text-fd-foreground text-base leading-none">Error</div>
-          </div>
-        </div>
-        <div className="p-6">
-          <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4">
-            <p className="text-red-800 dark:text-red-300 font-medium mb-2 leading-none">Request Failed</p>
-            <p className="text-red-600 dark:text-red-400 text-sm whitespace-pre-wrap break-words leading-relaxed m-0">{response.error}</p>
-          </div>
-        </div>
+  return (
+    <div className="space-y-4">
+      <div className="font-semibold text-fd-foreground flex items-center gap-2 leading-none">
+        <Settings className="w-4 h-4" />
+        Request Body
       </div>
-    );
-  }
+      <div className="space-y-4">
+        {Object.entries(resolvedSchema.properties).map(([fieldName, fieldSchema]: [string, OpenAPISchema]) => {
+          const resolvedFieldSchema = resolveSchema(fieldSchema, spec);
+          const isRequired = resolvedSchema.required?.includes(fieldName);
 
-  if (!response.status) {
-    return (
-      <div className="bg-fd-card border border-fd-border rounded-lg">
-        <div className="px-6 py-4 border-b border-fd-border bg-fd-muted/30">
-          <div className="flex items-center gap-2">
-            <ArrowRight className="w-4 h-4 text-gray-600 dark:text-gray-400" />
-            <div className="font-semibold text-fd-foreground text-base leading-none">Response</div>
-          </div>
-        </div>
-        <div className="p-12 flex flex-col items-center justify-center">
-          <div className="w-12 h-12 rounded-full bg-fd-muted/30 flex items-center justify-center mb-4">
-            <Zap className="w-6 h-6 text-fd-muted-foreground" />
-          </div>
-          <p className="text-fd-muted-foreground text-center text-sm leading-relaxed m-0">
-            Click &quot;Try it out&quot; to see the API response
-          </p>
-        </div>
+          return (
+            <div key={fieldName}>
+              {/* Single line with all info */}
+              <div className="flex items-center gap-2 flex-wrap mb-2">
+                <span className="text-sm font-semibold text-fd-foreground leading-none">
+                  {fieldName}
+                </span>
+                <span className="text-xs bg-fd-muted text-fd-muted-foreground px-2 py-0.5 rounded font-mono leading-none">
+                  {resolvedFieldSchema.type || 'unknown'}
+                </span>
+                {isRequired && (
+                  <span className="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded dark:bg-red-900/30 dark:text-red-300 leading-none">
+                    required
+                  </span>
+                )}
+                {resolvedFieldSchema.description && (
+                  <>
+                    <span className="text-fd-muted-foreground">-</span>
+                    <span className="text-xs text-fd-muted-foreground leading-relaxed">
+                      {resolvedFieldSchema.description}
+                    </span>
+                  </>
+                )}
+              </div>
+
+              {/* Input Field */}
+              <input
+                type={resolvedFieldSchema.type === 'number' || resolvedFieldSchema.type === 'integer' ? 'number' : 'text'}
+                placeholder={resolvedFieldSchema.example ? String(resolvedFieldSchema.example) : `Enter ${fieldName}`}
+                value={String(values[fieldName] || '')}
+                onChange={(e) => {
+                  const inputValue = e.target.value;
+                  let value: string | number = inputValue;
+
+                  // Convert to number for number/integer types, but keep as string if invalid
+                  if (resolvedFieldSchema.type === 'number' || resolvedFieldSchema.type === 'integer') {
+                    if (inputValue === '') {
+                      value = '';
+                    } else {
+                      const numValue = Number(inputValue);
+                      value = !isNaN(numValue) ? numValue : inputValue;
+                    }
+                  }
+                  onChange({ ...values, [fieldName]: value });
+                }}
+                className="w-full px-3 py-2 border border-fd-border rounded-md bg-fd-background text-fd-foreground text-sm focus:outline-none focus:ring-2 focus:ring-fd-primary focus:border-fd-primary"
+              />
+            </div>
+          );
+        })}
       </div>
-    );
-  }
+    </div>
+  );
+}
 
-  const statusColor = response.status < 300
-    ? 'from-green-500 to-green-600'
-    : response.status < 400
-      ? 'from-yellow-500 to-yellow-600'
-      : 'from-red-500 to-red-600';
+// Response Panel - Clean design with tabbed interface
+function ResponsePanel({
+  response,
+  operation,
+  spec,
+}: {
+  response: RequestState['response'],
+  operation: OpenAPIOperation,
+  spec: OpenAPISpec,
+}) {
+  const [activeTab, setActiveTab] = useState<'expected' | 'live'>('expected');
+
+  // Auto-switch to live tab when request starts
+  useEffect(() => {
+    if (response.loading && activeTab === 'expected') {
+      setActiveTab('live');
+    }
+  }, [response.loading, activeTab]);
 
   return (
     <div className="bg-fd-card border border-fd-border rounded-lg">
+      {/* Tabs Header */}
       <div className="px-6 py-4 border-b border-fd-border bg-fd-muted/30">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <span className="text-green-600 dark:text-green-400 text-base leading-none">✓</span>
+            <ArrowRight className="w-4 h-4 text-blue-600 dark:text-blue-400" />
             <div className="font-semibold text-fd-foreground text-base leading-none">Response</div>
-          </div>
-          <div className="flex items-center gap-2">
-            {response.duration && (
-              <span className="text-xs text-fd-muted-foreground bg-fd-muted px-2 py-1 rounded flex items-center leading-none">
-                {response.duration}ms
-              </span>
-            )}
-            <span className={`inline-flex items-center px-3 py-1 rounded-md bg-gradient-to-r ${statusColor} text-white font-mono font-bold text-xs leading-none`}>
-              {response.status}
-            </span>
           </div>
         </div>
       </div>
 
-      <div className="p-6 space-y-4">
-        {response.headers && Object.keys(response.headers).length > 0 && (
+      {/* Tab Navigation */}
+      <div className="flex border-b border-fd-border">
+        <button
+          onClick={() => setActiveTab('expected')}
+          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors leading-none ${
+            activeTab === 'expected'
+              ? 'border-fd-primary text-fd-primary bg-fd-primary/5'
+              : 'border-transparent text-fd-muted-foreground hover:text-fd-foreground'
+          }`}
+        >
+          Expected Response
+        </button>
+        <button
+          onClick={() => setActiveTab('live')}
+          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors leading-none ${
+            activeTab === 'live'
+              ? 'border-fd-primary text-fd-primary bg-fd-primary/5'
+              : 'border-transparent text-fd-muted-foreground hover:text-fd-foreground'
+          }`}
+        >
+          Live Response
+          {response.status && (
+            <span className={`ml-2 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-mono ${
+              response.status < 300
+                ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300'
+                : response.status < 400
+                  ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300'
+                  : 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300'
+            }`}>
+              {response.status}
+            </span>
+          )}
+        </button>
+      </div>
+
+      {/* Tab Content */}
+      <div className="p-6">
+        {/* Expected Response Tab */}
+        {activeTab === 'expected' && (
           <div>
-            <div className="text-sm font-semibold text-fd-foreground mb-2 leading-none">Response Headers</div>
-            <div className="bg-fd-muted rounded-lg p-3 border">
-              <pre className="text-xs font-mono overflow-auto max-h-32 whitespace-pre-wrap break-words text-fd-foreground m-0">
-                {JSON.stringify(response.headers, null, 2)}
-              </pre>
-            </div>
+            <ResponseSchemaSection
+              operation={operation}
+              spec={spec}
+            />
           </div>
         )}
 
-        {response.data !== undefined && (
+        {/* Live Response Tab */}
+        {activeTab === 'live' && (
           <div>
-            <div className="text-sm font-semibold text-fd-foreground mb-2 leading-none">Response Body</div>
-            <div className="bg-fd-muted rounded-lg p-3 border">
-              <pre className="text-sm font-mono overflow-auto max-h-96 text-fd-foreground whitespace-pre-wrap break-words m-0">
-                {typeof response.data === 'string' ? response.data : JSON.stringify(response.data, null, 2)}
-              </pre>
-            </div>
+            {response.loading ? (
+              <div className="flex flex-col items-center justify-center py-12">
+                <div className="relative mb-4">
+                  <div className="animate-spin rounded-full h-8 w-8 border-2 border-fd-muted"></div>
+                  <div className="animate-spin rounded-full h-8 w-8 border-2 border-t-purple-500 absolute top-0"></div>
+                </div>
+                <p className="text-fd-muted-foreground text-sm text-center leading-relaxed m-0">Sending request...</p>
+              </div>
+            ) : response.error ? (
+              <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4">
+                <p className="text-red-800 dark:text-red-300 font-medium mb-2 leading-none">Request Failed</p>
+                <p className="text-red-600 dark:text-red-400 text-sm whitespace-pre-wrap break-words leading-relaxed m-0">{response.error}</p>
+              </div>
+            ) : response.status ? (
+              <div className="space-y-4">
+                {/* Response metadata */}
+                <div className="flex items-center gap-4">
+                  {response.duration && (
+                    <span className="text-xs text-fd-muted-foreground bg-fd-muted px-2 py-1 rounded flex items-center leading-none">
+                      {response.duration}ms
+                    </span>
+                  )}
+                  <span className={`inline-flex items-center px-3 py-1 rounded-md font-mono font-bold text-xs leading-none ${
+                    response.status < 300
+                      ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300'
+                      : response.status < 400
+                        ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300'
+                        : 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300'
+                  }`}>
+                    {response.status}
+                  </span>
+                </div>
+
+                {/* Response Headers */}
+                {response.headers && Object.keys(response.headers).length > 0 && (
+                  <div>
+                    <div className="text-sm font-semibold text-fd-foreground mb-2 leading-none">Response Headers</div>
+                    <div className="bg-fd-muted rounded-lg p-3 border">
+                      <pre className="text-xs font-mono overflow-auto max-h-32 whitespace-pre-wrap break-words text-fd-foreground m-0">
+                        {JSON.stringify(response.headers, null, 2)}
+                      </pre>
+                    </div>
+                  </div>
+                )}
+
+                {/* Response Body */}
+                {response.data !== undefined && (
+                  <div>
+                    <div className="text-sm font-semibold text-fd-foreground mb-2 leading-none">Response Body</div>
+                    <div className="bg-fd-muted rounded-lg p-3 border">
+                      <pre className="text-sm font-mono overflow-auto max-h-96 text-fd-foreground whitespace-pre-wrap break-words m-0">
+                        {typeof response.data === 'string' ? response.data : JSON.stringify(response.data, null, 2)}
+                      </pre>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="flex flex-col items-center justify-center py-12">
+                <div className="w-12 h-12 rounded-full bg-fd-muted/30 flex items-center justify-center mb-4">
+                  <Zap className="w-6 h-6 text-fd-muted-foreground" />
+                </div>
+                <p className="text-fd-muted-foreground text-center text-sm leading-relaxed m-0">
+                  Click &quot;Try it out&quot; to see the live response
+                </p>
+              </div>
+            )}
           </div>
         )}
       </div>

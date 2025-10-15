@@ -1,5 +1,6 @@
 'use client';
 
+import { UserButton } from '@stackframe/stack';
 import { Github, Menu, Sparkles, X } from 'lucide-react';
 import Link from 'next/link';
 import { useEffect, useState, type ReactNode } from 'react';
@@ -44,20 +45,33 @@ function StackAuthLogo() {
 }
 
 // AI Chat Toggle Button for Home Layout
-function HomeAIChatToggleButton() {
+function HomeAIChatToggleButton({ compact = false }: { compact?: boolean }) {
   const sidebarContext = useSidebar();
   const { isChatOpen, toggleChat } = sidebarContext || {
     isChatOpen: false,
     toggleChat: () => {},
   };
 
+  if (compact) {
+    return (
+      <button
+        onClick={toggleChat}
+        className="flex items-center justify-center transition-all duration-500 ease-out w-8 h-8 rounded-lg text-sm font-medium relative overflow-hidden text-white chat-gradient-active hover:scale-105 hover:brightness-110 hover:shadow-lg"
+        title={isChatOpen ? 'Close AI chat' : 'Open AI chat'}
+      >
+        <Sparkles className="h-4 w-4 relative z-10" />
+      </button>
+    );
+  }
+
   return (
     <button
       onClick={toggleChat}
-      className="flex items-center justify-center transition-all duration-500 ease-out w-8 h-8 rounded-lg text-sm font-medium relative overflow-hidden text-white chat-gradient-active hover:scale-105 hover:brightness-110 hover:shadow-lg"
+      className="flex items-center gap-2 transition-all duration-500 ease-out px-2 py-1 rounded-lg text-xs font-medium relative overflow-hidden text-white chat-gradient-active hover:scale-105 hover:brightness-110 hover:shadow-lg"
       title={isChatOpen ? 'Close AI chat' : 'Open AI chat'}
     >
-      <Sparkles className="h-4 w-4 relative z-10" />
+      <Sparkles className="h-3 w-3 relative z-10" />
+      <span className="font-medium relative z-10">AI Chat</span>
     </button>
   );
 }
@@ -95,7 +109,7 @@ function HomeNavbar() {
     <>
       {/* Full Navbar */}
       <header className={`sticky top-0 z-50 w-full border-b border-fd-border bg-fd-background/95 backdrop-blur supports-[backdrop-filter]:bg-fd-background/60 transition-all duration-300 ${isScrolled ? 'opacity-0 pointer-events-none' : 'opacity-100'} ${(isChatOpen || isChatExpanded) ? 'fixed left-0 right-0 z-[80]' : ''}`}>
-        <div className={`flex h-14 items-center justify-between px-4 md:px-6 ${(isChatOpen || isChatExpanded) ? '' : 'container max-w-screen-2xl'}`}>
+        <div className="flex h-14 items-center justify-between px-4 md:px-6 container max-w-screen-2xl">
           {/* Left - Logo + Social Links */}
           <div className="flex items-center gap-4">
             <StackAuthLogo />
@@ -138,6 +152,9 @@ function HomeNavbar() {
 
             {/* Theme Toggle */}
             <ThemeToggle className="p-0" />
+
+            {/* User Sign in */}
+            <UserButton />
 
             {/* Mobile Search */}
             <div className="md:hidden">
@@ -189,26 +206,9 @@ function HomeNavbar() {
 
       {/* Compact Pill Navbar */}
       <div className={`fixed top-4 left-1/2 -translate-x-1/2 transition-all duration-300 ${isScrolled ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-4 pointer-events-none'} ${isChatExpanded ? 'z-[80]' : 'z-50'}`}>
-        <div className="flex items-center gap-2 px-4 py-2 bg-fd-background/95 backdrop-blur border border-fd-border rounded-full shadow-lg supports-[backdrop-filter]:bg-fd-background/80">
-          {/* Compact Logo */}
-          <Link href="https://stack-auth.com" className="flex items-center gap-2 text-fd-foreground hover:text-fd-foreground/80 transition-colors">
-            <svg
-              width="20"
-              height="16"
-              viewBox="0 0 200 242"
-              fill="none"
-              xmlns="http://www.w3.org/2000/svg"
-              aria-label="Stack Logo"
-              className="flex-shrink-0"
-            >
-              <path d="M103.504 1.81227C101.251 0.68679 98.6002 0.687576 96.3483 1.81439L4.4201 47.8136C1.71103 49.1692 0 51.9387 0 54.968V130.55C0 133.581 1.7123 136.351 4.42292 137.706L96.4204 183.695C98.6725 184.82 101.323 184.82 103.575 183.694L168.422 151.271C173.742 148.611 180 152.479 180 158.426V168.879C180 171.91 178.288 174.68 175.578 176.035L103.577 212.036C101.325 213.162 98.6745 213.162 96.4224 212.036L11.5771 169.623C6.25791 166.964 0 170.832 0 176.779V187.073C0 190.107 1.71689 192.881 4.43309 194.234L96.5051 240.096C98.7529 241.216 101.396 241.215 103.643 240.094L195.571 194.235C198.285 192.881 200 190.109 200 187.076V119.512C200 113.565 193.741 109.697 188.422 112.356L131.578 140.778C126.258 143.438 120 139.57 120 133.623V123.17C120 120.14 121.712 117.37 124.422 116.014L195.578 80.4368C198.288 79.0817 200 76.3116 200 73.2814V54.9713C200 51.9402 198.287 49.1695 195.576 47.8148L103.504 1.81227Z" fill="currentColor"/>
-            </svg>
-            <span className="hidden sm:inline font-medium text-sm">Stack Auth</span>
-          </Link>
-
-          {/* Compact Actions */}
-          <div className="flex items-center gap-1 ml-2">
-            {/* Compact Social Links */}
+        <div className="flex items-center gap-3 px-4 py-2 bg-fd-background/95 backdrop-blur border border-fd-border rounded-full shadow-lg supports-[backdrop-filter]:bg-fd-background/80">
+          {/* Left Side - Social Links and Search */}
+          <div className="flex items-center gap-1">
             <Link
               href="https://github.com/stack-auth/stack"
               target="_blank"
@@ -216,7 +216,7 @@ function HomeNavbar() {
               className="inline-flex h-8 w-8 items-center justify-center rounded-full text-fd-muted-foreground transition-colors hover:bg-fd-muted hover:text-fd-foreground"
               title="GitHub"
             >
-              <Github className="h-3.5 w-3.5" />
+              <Github className="h-4 w-4" />
             </Link>
             <Link
               href="https://discord.stack-auth.com"
@@ -225,7 +225,7 @@ function HomeNavbar() {
               className="inline-flex h-8 w-8 items-center justify-center rounded-full text-fd-muted-foreground transition-colors hover:bg-fd-muted hover:text-fd-foreground"
               title="Discord"
             >
-              <DiscordIcon className="h-3.5 w-3.5" />
+              <DiscordIcon className="h-4 w-4" />
             </Link>
 
             {/* Compact Search */}
@@ -234,16 +234,37 @@ function HomeNavbar() {
               className="inline-flex h-8 w-8 items-center justify-center rounded-full text-fd-muted-foreground transition-colors hover:bg-fd-muted hover:text-fd-foreground"
               title="Search (⌘K)"
             >
-              <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
               </svg>
             </button>
+          </div>
 
+          {/* Center - Much Larger Logo */}
+          <Link href="https://stack-auth.com" className="flex items-center text-fd-foreground hover:text-fd-foreground/80 transition-colors">
+            <svg
+              width="40"
+              height="32"
+              viewBox="0 0 200 242"
+              fill="none"
+              xmlns="http://www.w3.org/2000/svg"
+              aria-label="Stack Logo"
+              className="flex-shrink-0"
+            >
+              <path d="M103.504 1.81227C101.251 0.68679 98.6002 0.687576 96.3483 1.81439L4.4201 47.8136C1.71103 49.1692 0 51.9387 0 54.968V130.55C0 133.581 1.7123 136.351 4.42292 137.706L96.4204 183.695C98.6725 184.82 101.323 184.82 103.575 183.694L168.422 151.271C173.742 148.611 180 152.479 180 158.426V168.879C180 171.91 178.288 174.68 175.578 176.035L103.577 212.036C101.325 213.162 98.6745 213.162 96.4224 212.036L11.5771 169.623C6.25791 166.964 0 170.832 0 176.779V187.073C0 190.107 1.71689 192.881 4.43309 194.234L96.5051 240.096C98.7529 241.216 101.396 241.215 103.643 240.094L195.571 194.235C198.285 192.881 200 190.109 200 187.076V119.512C200 113.565 193.741 109.697 188.422 112.356L131.578 140.778C126.258 143.438 120 139.57 120 133.623V123.17C120 120.14 121.712 117.37 124.422 116.014L195.578 80.4368C198.288 79.0817 200 76.3116 200 73.2814V54.9713C200 51.9402 198.287 49.1695 195.576 47.8148L103.504 1.81227Z" fill="currentColor"/>
+            </svg>
+          </Link>
+
+          {/* Right Side - Actions */}
+          <div className="flex items-center gap-1">
             {/* Compact Theme Toggle */}
             <ThemeToggle compact />
 
             {/* Compact AI Chat Toggle */}
-            <HomeAIChatToggleButton />
+            <HomeAIChatToggleButton compact />
+
+            {/* Compact User Button */}
+            <UserButton />
           </div>
         </div>
       </div>

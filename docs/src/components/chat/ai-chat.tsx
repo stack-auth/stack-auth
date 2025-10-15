@@ -1,8 +1,9 @@
 'use client';
 
 import { useChat } from '@ai-sdk/react';
-import { Maximize2, Minimize2, Send, X } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { runAsynchronously } from '@stackframe/stack-shared/dist/utils/promises';
+import { ExternalLink, FileText, Maximize2, Minimize2, Send, X } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
 import { useSidebar } from '../layouts/sidebar-context';
 import { MessageFormatter } from './message-formatter';
 
@@ -22,6 +23,53 @@ function StackIcon({ size = 20, className }: { size?: number, className?: string
   );
 }
 
+// Component to render tool calls
+const ToolCallDisplay = ({
+  toolCall,
+}: {
+  toolCall: {
+    toolName: string,
+    args?: { id?: string },
+    result?: { content: { text: string }[] },
+  },
+}) => {
+  if (toolCall.toolName === "get_docs_by_id") {
+    const docId = toolCall.args?.id;
+    let docTitle = "Loading...";
+
+    const titleMatch = toolCall.result?.content[0]?.text.match(/Title:\s*(.*)/);
+    if (titleMatch?.[1]) {
+      docTitle = titleMatch[1].trim();
+    } else {
+      docTitle = 'No Title Found';
+    }
+
+    return (
+      <div className="flex items-center gap-2 p-2 bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-lg text-xs mb-2">
+        <FileText className="w-3 h-3 text-blue-600 dark:text-blue-400" />
+        <span className="text-blue-700 dark:text-blue-300 font-medium">
+          {docTitle}
+        </span>
+        {docId && (
+          <a
+            href={`https://docs.stack-auth.com${encodeURI(
+              (String(docId).startsWith('/') ? String(docId) : `/${String(docId)}`)
+            )}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-1 text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-200 transition-colors"
+          >
+            <ExternalLink className="w-3 h-3" />
+            <span>Open</span>
+          </a>
+        )}
+      </div>
+    );
+  }
+
+  return null;
+};
+
 export function AIChatDrawer() {
   const sidebarContext = useSidebar();
   const { isChatOpen, isChatExpanded, toggleChat, setChatExpanded } = sidebarContext || {
@@ -31,7 +79,8 @@ export function AIChatDrawer() {
     setChatExpanded: () => {},
   };
 
-  const [docsContent, setDocsContent] = useState('');
+  const editableRef = useRef<HTMLDivElement>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
   const [isHomePage, setIsHomePage] = useState(false);
   const [isScrolled, setIsScrolled] = useState(false);
   const [pageLoadTime] = useState(Date.now());
@@ -125,56 +174,6 @@ export function AIChatDrawer() {
     };
   }, []);
 
-  // Fetch documentation content when component mounts with caching
-  useEffect(() => {
-    let isCancelled = false;
-
-    const fetchDocs = async () => {
-      try {
-        // Check cache first (10 minute TTL)
-        if (typeof window !== 'undefined') {
-          const cached = sessionStorage.getItem('ai-chat-docs-cache');
-          if (cached) {
-            const { content, timestamp } = JSON.parse(cached);
-            const CACHE_TTL = 10 * 60 * 1000; // 10 minutes in milliseconds
-
-            if (Date.now() - timestamp < CACHE_TTL) {
-              // Cache is still valid, use cached content
-              if (!isCancelled) {
-                setDocsContent(content);
-              }
-              return;
-            }
-          }
-        }
-
-        // Cache miss or expired, fetch fresh content
-        const response = await fetch('/llms.txt');
-        if (response.ok && !isCancelled) {
-          const content = await response.text();
-          setDocsContent(content);
-
-          // Cache the fresh content
-          if (typeof window !== 'undefined') {
-            sessionStorage.setItem('ai-chat-docs-cache', JSON.stringify({
-              content,
-              timestamp: Date.now()
-            }));
-          }
-        }
-      } catch (error) {
-        console.error('Failed to fetch documentation:', error);
-      }
-    };
-
-    fetchDocs().catch((error) => {
-      console.error('Failed to fetch documentation:', error);
-    });
-
-    return () => {
-      isCancelled = true;
-    };
-  }, []);
 
   // Calculate position based on homepage and scroll state
   const topPosition = isHomePage && isScrolled ? 'top-0' : 'top-14';
@@ -190,19 +189,28 @@ export function AIChatDrawer() {
   } = useChat({
     api: '/api/chat',
     initialMessages: [],
-    body: {
-      docsContent,
-    },
     onError: (error: Error) => {
       console.error('Chat error:', error);
     },
     onFinish: (message) => {
       // Send AI response to Discord
-      sendAIResponseToDiscord(message.content).catch(error => {
-        console.error('Failed to send AI response to Discord:', error);
-      });
+      runAsynchronously(() => sendAIResponseToDiscord(message.content));
     },
   });
+
+  // Auto-scroll to bottom when new messages are added
+  useEffect(() => {
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [messages]);
+
+  // Sync contentEditable with input state
+  useEffect(() => {
+    if (editableRef.current && editableRef.current.textContent !== input) {
+      editableRef.current.textContent = input;
+    }
+  }, [input]);
 
   // Function to send AI response to Discord webhook
   const sendAIResponseToDiscord = async (response: string) => {
@@ -212,6 +220,7 @@ export function AIChatDrawer() {
         metadata: {
           sessionId: sessionId,
           model: 'gemini-2.0-flash',
+          temperature: 0,
         }
       };
 
@@ -275,29 +284,10 @@ export function AIChatDrawer() {
     }));
 
     // Send message to Discord webhook
-    sendToDiscord(input.trim()).catch(error => {
-      console.error('Discord webhook error:', error);
-    });
+    runAsynchronously(() => sendToDiscord(input.trim()));
 
     // Continue with normal chat submission
     handleSubmit(e);
-  };
-
-  // Non-async wrapper for form onSubmit to avoid promise issues
-  const handleFormSubmit = (e: React.FormEvent) => {
-    handleChatSubmit(e).catch(error => {
-      console.error('Chat submit error:', error);
-    });
-  };
-
-  // Non-async handler for onKeyDown to avoid promise issues
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      handleChatSubmit(e as React.FormEvent).catch(error => {
-        console.error('Chat submit error:', error);
-      });
-    }
   };
 
   // Starter prompts for users
@@ -322,6 +312,11 @@ export function AIChatDrawer() {
   const handleStarterPromptClick = (prompt: string) => {
     // Use the handleInputChange from useChat to update the input
     handleInputChange({ target: { value: prompt } } as React.ChangeEvent<HTMLInputElement>);
+  };
+
+  // Helper function for safe async event handling
+  const handleSubmitSafely = () => {
+    runAsynchronously(() => handleChatSubmit({} as React.FormEvent));
   };
 
   return (
@@ -416,7 +411,12 @@ export function AIChatDrawer() {
                     {message.content}
                   </div>
                 ) : (
-                  <MessageFormatter content={message.content} />
+                  <>
+                    {message.toolInvocations?.map((toolCall, index) => (
+                      <ToolCallDisplay key={index} toolCall={toolCall} />
+                    ))}
+                    <MessageFormatter content={message.content} />
+                  </>
                 )}
               </div>
             </div>
@@ -425,14 +425,18 @@ export function AIChatDrawer() {
 
         {isLoading && (
           <div className="flex justify-start">
-            <div className="bg-fd-muted text-fd-foreground border border-fd-border p-2 rounded-lg text-xs">
-              <div className="flex items-center gap-1">
-                <div className="flex space-x-1">
-                  <div className="w-1 h-1 bg-current rounded-full animate-bounce [animation-delay:-0.3s]"></div>
-                  <div className="w-1 h-1 bg-current rounded-full animate-bounce [animation-delay:-0.15s]"></div>
-                  <div className="w-1 h-1 bg-current rounded-full animate-bounce"></div>
+            <div className="p-2">
+              <div className="rounded-lg bg-fd-muted border border-fd-border p-3">
+                <div className="flex items-center gap-3">
+                  <StackIcon size={18} className="text-fd-primary" />
+                  <span className="text-fd-foreground font-medium text-sm">Thinking</span>
+                  <div className="flex space-x-1.5 ml-2">
+                    <div className="w-1.5 h-1.5 bg-fd-primary rounded-full animate-bounce [animation-delay:-0.3s]"></div>
+                    <div className="w-1.5 h-1.5 bg-fd-primary rounded-full animate-bounce [animation-delay:-0.15s]"></div>
+                    <div className="w-1.5 h-1.5 bg-fd-primary rounded-full animate-bounce"></div>
+                    <div className="w-1.5 h-1.5 bg-fd-primary rounded-full animate-bounce [animation-delay:0.15s]"></div>
+                  </div>
                 </div>
-                <span className="ml-1">Thinking...</span>
               </div>
             </div>
           </div>
@@ -443,28 +447,61 @@ export function AIChatDrawer() {
             Error: {error.message}
           </div>
         )}
+
+        {/* Invisible element to scroll to */}
+        <div ref={messagesEndRef} />
       </div>
 
       {/* Input */}
-      <div className="border-t border-fd-border p-3">
-        <form onSubmit={handleFormSubmit} className="flex gap-2">
-          <textarea
-            value={input}
-            onChange={handleInputChange}
-            placeholder="Ask about Stack Auth..."
-            className="flex-1 resize-none border border-fd-border rounded-md px-2 py-1 text-xs bg-fd-background text-fd-foreground placeholder:text-fd-muted-foreground focus:outline-none focus:ring-1 focus:ring-fd-primary focus:border-fd-primary"
-            rows={1}
-            style={{ minHeight: '32px', maxHeight: '96px' }}
-            onKeyDown={handleKeyDown}
-          />
-          <button
-            type="submit"
-            disabled={!input.trim() || isLoading}
-            className="px-2 py-1 bg-fd-primary text-fd-primary-foreground rounded-md text-xs hover:bg-fd-primary/90 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
-          >
-            <Send className="w-3 h-3" />
-          </button>
-        </form>
+      <div className="px-3 pb-3">
+        <div className="border-input bg-background cursor-text rounded-3xl border px-3 py-2 shadow-xs">
+          <div className="flex items-center gap-2">
+            <div className="flex-1 flex items-center">
+              <div
+                ref={editableRef}
+                contentEditable
+                suppressContentEditableWarning={true}
+                className="text-primary w-full resize-none border-none bg-transparent shadow-none outline-none focus-visible:ring-0 focus-visible:ring-offset-0 text-sm empty:before:content-[attr(data-placeholder)] empty:before:text-fd-muted-foreground"
+                style={{ lineHeight: "1.4", minHeight: "20px" }}
+                onInput={(e) => {
+                  const value = e.currentTarget.textContent || "";
+                  handleInputChange({
+                    target: { value },
+                  } as React.ChangeEvent<HTMLInputElement>);
+
+                  // Clean up the div if it's empty to show placeholder
+                  if (!value.trim()) {
+                    e.currentTarget.innerHTML = "";
+                  }
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    handleSubmitSafely();
+                  }
+                }}
+                onPaste={(e) => {
+                  e.preventDefault();
+                  const text = e.clipboardData.getData("text/plain");
+                  e.currentTarget.textContent =
+                    (e.currentTarget.textContent || "") + text;
+                  const value = e.currentTarget.textContent;
+                  handleInputChange({
+                    target: { value },
+                  } as React.ChangeEvent<HTMLInputElement>);
+                }}
+                data-placeholder="Ask about Stack Auth..."
+              />
+            </div>
+            <button
+              disabled={!input.trim() || isLoading}
+              onClick={handleSubmitSafely}
+              className="h-8 w-8 rounded-full p-0 shrink-0 bg-fd-primary text-fd-primary-foreground hover:bg-fd-primary/90 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+            >
+              <Send className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );

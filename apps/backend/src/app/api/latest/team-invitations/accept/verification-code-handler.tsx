@@ -1,5 +1,6 @@
 import { teamMembershipsCrudHandlers } from "@/app/api/latest/team-memberships/crud";
 import { sendEmailFromTemplate } from "@/lib/emails";
+import { getItemQuantityForCustomer } from "@/lib/payments";
 import { getSoleTenancyFromProjectBranch } from "@/lib/tenancies";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createVerificationCodeHandler } from "@/route-handlers/verification-code-handler";
@@ -68,8 +69,31 @@ export const teamInvitationCodeHandler = createVerificationCodeHandler({
   },
   async handler(tenancy, {}, data, body, user) {
     if (!user) throw new KnownErrors.UserAuthenticationRequired;
-
     const prisma = await getPrismaClientForTenancy(tenancy);
+
+    if (tenancy.project.id === "internal") {
+      const currentMemberCount = await prisma.teamMember.count({
+        where: {
+          tenancyId: tenancy.id,
+          teamId: data.team_id,
+        },
+      });
+      const item = tenancy.config.payments.items["dashboard_admins"] as any;
+      if (!item) {
+        throw new KnownErrors.ItemNotFound("dashboard_admins");
+      }
+      const maxDashboardAdmins = await getItemQuantityForCustomer({
+        prisma,
+        tenancy,
+        customerId: data.team_id,
+        itemId: "dashboard_admins",
+        customerType: "team",
+      });
+      if (currentMemberCount + 1 > maxDashboardAdmins) {
+        throw new KnownErrors.ItemQuantityInsufficientAmount("dashboard_admins", data.team_id, -1);
+      }
+    }
+
 
     const oldMembership = await prisma.teamMember.findUnique({
       where: {

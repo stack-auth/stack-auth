@@ -1,6 +1,5 @@
 import { AdminTeamPermission } from "../permissions";
 
-
 export type ProjectConfig = {
   readonly signUpEnabled: boolean,
   readonly credentialEnabled: boolean,
@@ -40,7 +39,7 @@ export type AdminProjectConfig = {
 
 export type AdminEmailConfig = (
   {
-    type: "standard",
+    type: "standard" | "resend",
     senderName: string,
     senderEmail: string,
     host: string,
@@ -61,15 +60,15 @@ export type AdminDomainConfig = {
 export type AdminOAuthProviderConfig = {
   id: string,
 } & (
-  | { type: 'shared' }
-  | {
-    type: 'standard',
-    clientId: string,
-    clientSecret: string,
-    facebookConfigId?: string,
-    microsoftTenantId?: string,
-  }
-) & OAuthProviderConfig;
+    | { type: 'shared' }
+    | {
+      type: 'standard',
+      clientId: string,
+      clientSecret: string,
+      facebookConfigId?: string,
+      microsoftTenantId?: string,
+    }
+  ) & OAuthProviderConfig;
 
 export type AdminProjectConfigUpdateOptions = {
   domains?: {

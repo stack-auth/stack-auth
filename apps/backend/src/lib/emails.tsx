@@ -10,6 +10,7 @@ import { traceSpan } from '@stackframe/stack-shared/dist/utils/telemetry';
 import nodemailer from 'nodemailer';
 import { getEmailThemeForTemplate, renderEmailWithTemplate } from './email-rendering';
 import { Tenancy, getTenancy } from './tenancies';
+import { Resend } from 'resend';
 
 
 function getDefaultEmailTemplate(tenancy: Tenancy, type: keyof typeof DEFAULT_TEMPLATE_IDS) {
@@ -78,34 +79,42 @@ async function _sendEmailWithoutRetries(options: SendEmailOptions): Promise<Resu
     if (options.emailConfig.type === 'shared' && emailableApiKey) {
       await traceSpan('verifying email addresses with Emailable', async () => {
         toArray = (await Promise.all(toArray.map(async (to) => {
-          const emailableResponseResult = await Result.retry(async (attempt) => {
-            const res = await fetch(`https://api.emailable.com/v1/verify?email=${encodeURIComponent(options.to as string)}&api_key=${emailableApiKey}`);
-            if (res.status === 249) {
-              const text = await res.text();
-              console.log('Emailable is taking longer than expected, retrying...', text, { to: options.to });
-              return Result.error(new Error("Emailable API returned a 249 error for " + options.to + ". This means it takes some more time to verify the email address. Response body: " + text));
+          try {
+            const emailableResponseResult = await Result.retry(async (attempt) => {
+              const res = await fetch(`https://api.emailable.com/v1/verify?email=${encodeURIComponent(options.to as string)}&api_key=${emailableApiKey}`);
+              if (res.status === 249) {
+                const text = await res.text();
+                console.log('Emailable is taking longer than expected, retrying...', text, { to: options.to });
+                return Result.error(new Error("Emailable API returned a 249 error for " + options.to + ". This means it takes some more time to verify the email address. Response body: " + text));
+              }
+              return Result.ok(res);
+            }, 4, { exponentialDelayBase: 4000 });
+            if (emailableResponseResult.status === 'error') {
+              throw new StackAssertionError("Timed out while verifying email address with Emailable", {
+                to: options.to,
+                emailableResponseResult,
+              });
             }
-            return Result.ok(res);
-          }, 4, { exponentialDelayBase: 4000 });
-          if (emailableResponseResult.status === 'error') {
-            captureError("emailable-api-timeout", emailableResponseResult.error);
+            const emailableResponse = emailableResponseResult.data;
+            if (!emailableResponse.ok) {
+              throw new StackAssertionError("Failed to verify email address with Emailable", {
+                to: options.to,
+                emailableResponse,
+                emailableResponseText: await emailableResponse.text(),
+              });
+            }
+            const json = await emailableResponse.json();
+            console.log('emailableResponse', json);
+            if (json.state === 'undeliverable' || json.disposable) {
+              console.log('email not deliverable', to, json);
+              return null;
+            }
+            return to;
+          } catch (error) {
+            // if something goes wrong with the Emailable API (eg. 500, ran out of credits, etc.), we just send the email anyway
+            captureError("emailable-api-error", error);
             return to;
           }
-          const emailableResponse = emailableResponseResult.data;
-          if (!emailableResponse.ok) {
-            throw new StackAssertionError("Failed to verify email address with Emailable", {
-              to: options.to,
-              emailableResponse,
-              emailableResponseText: await emailableResponse.text(),
-            });
-          }
-          const json = await emailableResponse.json();
-          console.log('emailableResponse', json);
-          if (json.state === 'undeliverable' || json.disposable) {
-            console.log('email not deliverable', to, json);
-            return null;
-          }
-          return to;
         }))).filter((to): to is string => to !== null);
       });
     }
@@ -273,6 +282,54 @@ export async function sendEmailWithoutRetries(options: SendEmailOptions): Promis
     },
   });
   return res;
+}
+
+export async function sendEmailResendBatched(resendApiKey: string, emailOptions: SendEmailOptions[]) {
+  if (emailOptions.length === 0) {
+    return Result.ok([]);
+  }
+  if (emailOptions.length > 100) {
+    throw new StackAssertionError("sendEmailResendBatched expects at most 100 emails to be sent at once", { emailOptions });
+  }
+  if (emailOptions.some(option => option.tenancyId !== emailOptions[0].tenancyId)) {
+    throw new StackAssertionError("sendEmailResendBatched expects all emails to be sent from the same tenancy", { emailOptions });
+  }
+  const tenancy = await getTenancy(emailOptions[0].tenancyId);
+  if (!tenancy) {
+    throw new StackAssertionError("Tenancy not found");
+  }
+  const prisma = await getPrismaClientForTenancy(tenancy);
+  const resend = new Resend(resendApiKey);
+  const result = await Result.retry(async (_) => {
+    const { data, error } = await resend.batch.send(emailOptions.map((option) => ({
+      from: option.emailConfig.senderEmail,
+      to: option.to,
+      subject: option.subject,
+      html: option.html ?? "",
+      text: option.text,
+    })));
+
+    if (data) {
+      return Result.ok(data.data);
+    }
+    if (error.name === "rate_limit_exceeded" || error.name === "internal_server_error") {
+      return Result.error(error);
+    }
+    return Result.ok(null);
+  }, 3, { exponentialDelayBase: 2000 });
+
+  await prisma.sentEmail.createMany({
+    data: emailOptions.map((options) => ({
+      tenancyId: options.tenancyId,
+      to: typeof options.to === 'string' ? [options.to] : options.to,
+      subject: options.subject,
+      html: options.html,
+      text: options.text,
+      senderConfig: omit(options.emailConfig, ['password']),
+      error: result.status === 'error' ? result.error.message : undefined,
+    })),
+  });
+  return result;
 }
 
 export async function sendEmail(options: SendEmailOptions) {

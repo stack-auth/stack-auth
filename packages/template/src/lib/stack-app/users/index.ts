@@ -11,10 +11,39 @@ import { ApiKeyCreationOptions, UserApiKey, UserApiKeyFirstView } from "../api-k
 import { AsyncStoreProperty } from "../common";
 import { OAuthConnection } from "../connected-accounts";
 import { ContactChannel, ContactChannelCreateOptions, ServerContactChannel, ServerContactChannelCreateOptions } from "../contact-channels";
-import { AdminTeamPermission, TeamPermission } from "../permissions";
-import { AdminOwnedProject, AdminProjectUpdateOptions } from "../projects";
-import { EditableTeamMemberProfile, ServerTeam, ServerTeamCreateOptions, Team, TeamCreateOptions } from "../teams";
+import { Customer } from "../customers";
 import { NotificationCategory } from "../notification-categories";
+import { AdminTeamPermission, TeamPermission } from "../permissions";
+import { AdminOwnedProject, AdminProjectCreateOptions } from "../projects";
+import { EditableTeamMemberProfile, ServerTeam, ServerTeamCreateOptions, Team, TeamCreateOptions } from "../teams";
+
+export type OAuthProvider = {
+  readonly id: string,
+  readonly type: string,
+  readonly userId: string,
+  readonly accountId?: string,
+  readonly email?: string,
+  readonly allowSignIn: boolean,
+  readonly allowConnectedAccounts: boolean,
+  update(data: { allowSignIn?: boolean, allowConnectedAccounts?: boolean }): Promise<Result<void,
+    InstanceType<typeof KnownErrors.OAuthProviderAccountIdAlreadyUsedForSignIn>
+  >>,
+  delete(): Promise<void>,
+};
+
+export type ServerOAuthProvider = {
+  readonly id: string,
+  readonly type: string,
+  readonly userId: string,
+  readonly accountId: string,
+  readonly email?: string,
+  readonly allowSignIn: boolean,
+  readonly allowConnectedAccounts: boolean,
+  update(data: { accountId?: string, email?: string, allowSignIn?: boolean, allowConnectedAccounts?: boolean }): Promise<Result<void,
+    InstanceType<typeof KnownErrors.OAuthProviderAccountIdAlreadyUsedForSignIn>
+  >>,
+  delete(): Promise<void>,
+};
 
 
 export type Session = {
@@ -220,6 +249,12 @@ export type UserExtra = {
   useTeamProfile(team: Team): EditableTeamMemberProfile, // THIS_LINE_PLATFORM react-like
 
   createApiKey(options: ApiKeyCreationOptions<"user">): Promise<UserApiKeyFirstView>,
+
+  useOAuthProviders(): OAuthProvider[], // THIS_LINE_PLATFORM react-like
+  listOAuthProviders(): Promise<OAuthProvider[]>,
+
+  useOAuthProvider(id: string): OAuthProvider | null, // THIS_LINE_PLATFORM react-like
+  getOAuthProvider(id: string): Promise<OAuthProvider | null>,
 }
 & AsyncStoreProperty<"apiKeys", [], UserApiKey[], true>
 & AsyncStoreProperty<"team", [id: string], Team | null, false>
@@ -229,17 +264,41 @@ export type UserExtra = {
 
 export type InternalUserExtra =
   & {
-    createProject(newProject: AdminProjectUpdateOptions & { displayName: string }): Promise<AdminOwnedProject>,
+    createProject(newProject: AdminProjectCreateOptions): Promise<AdminOwnedProject>,
+    transferProject(projectIdToTransfer: string, newTeamId: string): Promise<void>,
   }
   & AsyncStoreProperty<"ownedProjects", [], AdminOwnedProject[], true>
 
 export type User = BaseUser;
 
-export type CurrentUser = BaseUser & Auth & UserExtra;
+export type CurrentUser = BaseUser & Auth & UserExtra & Customer;
 
 export type CurrentInternalUser = CurrentUser & InternalUserExtra;
 
 export type ProjectCurrentUser<ProjectId> = ProjectId extends "internal" ? CurrentInternalUser : CurrentUser;
+
+export type TokenPartialUser = Pick<
+  User,
+  | "id"
+  | "displayName"
+  | "primaryEmail"
+  | "primaryEmailVerified"
+  | "isAnonymous"
+>
+
+export type SyncedPartialUser = TokenPartialUser & Pick<
+  User,
+  | "id"
+  | "displayName"
+  | "primaryEmail"
+  | "primaryEmailVerified"
+  | "profileImageUrl"
+  | "signedUpAt"
+  | "clientMetadata"
+  | "clientReadOnlyMetadata"
+  | "isAnonymous"
+  | "hasPassword"
+>;
 
 
 export type ActiveSession = {
@@ -314,6 +373,12 @@ export type ServerBaseUser = {
   usePermission(permissionId: string): TeamPermission | null,
   // END_PLATFORM
 
+  useOAuthProviders(): ServerOAuthProvider[], // THIS_LINE_PLATFORM react-like
+  listOAuthProviders(): Promise<ServerOAuthProvider[]>,
+
+  useOAuthProvider(id: string): ServerOAuthProvider | null, // THIS_LINE_PLATFORM react-like
+  getOAuthProvider(id: string): Promise<ServerOAuthProvider | null>,
+
   /**
    * Creates a new session object with a refresh token for this user. Can be used to impersonate them.
    */
@@ -328,7 +393,7 @@ export type ServerBaseUser = {
  * A user including sensitive fields that should only be used on the server, never sent to the client
  * (such as sensitive information and serverMetadata).
  */
-export type ServerUser = ServerBaseUser & BaseUser & UserExtra;
+export type ServerUser = ServerBaseUser & BaseUser & UserExtra & Customer<true>;
 
 export type CurrentServerUser = Auth & ServerUser;
 
@@ -336,6 +401,10 @@ export type CurrentInternalServerUser = CurrentServerUser & InternalUserExtra;
 
 export type ProjectCurrentServerUser<ProjectId> = ProjectId extends "internal" ? CurrentInternalServerUser : CurrentServerUser;
 
+export type SyncedPartialServerUser = SyncedPartialUser & Pick<
+  ServerUser,
+  | "serverMetadata"
+>;
 
 export type ServerUserUpdateOptions = {
   primaryEmail?: string | null,

@@ -1,15 +1,16 @@
 import { Prisma } from "@prisma/client";
 import { Config, getInvalidConfigReason, normalize, override } from "@stackframe/stack-shared/dist/config/format";
-import { BranchConfigOverride, BranchConfigOverrideOverride, BranchIncompleteConfig, BranchRenderedConfig, EnvironmentConfigOverride, EnvironmentConfigOverrideOverride, EnvironmentIncompleteConfig, EnvironmentRenderedConfig, OrganizationConfigOverride, OrganizationConfigOverrideOverride, OrganizationIncompleteConfig, OrganizationRenderedConfig, ProjectConfigOverride, ProjectConfigOverrideOverride, ProjectIncompleteConfig, ProjectRenderedConfig, applyBranchDefaults, applyEnvironmentDefaults, applyOrganizationDefaults, applyProjectDefaults, assertNoConfigOverrideErrors, branchConfigSchema, environmentConfigSchema, getConfigOverrideErrors, getIncompleteConfigWarnings, migrateConfigOverride, organizationConfigSchema, projectConfigSchema, sanitizeBranchConfig, sanitizeEnvironmentConfig, sanitizeOrganizationConfig, sanitizeProjectConfig } from "@stackframe/stack-shared/dist/config/schema";
+import { BranchConfigOverride, BranchConfigOverrideOverride, BranchIncompleteConfig, BranchRenderedConfig, CompleteConfig, EnvironmentConfigOverride, EnvironmentConfigOverrideOverride, EnvironmentIncompleteConfig, EnvironmentRenderedConfig, OrganizationConfigOverride, OrganizationConfigOverrideOverride, OrganizationIncompleteConfig, ProjectConfigOverride, ProjectConfigOverrideOverride, ProjectIncompleteConfig, ProjectRenderedConfig, applyBranchDefaults, applyEnvironmentDefaults, applyOrganizationDefaults, applyProjectDefaults, assertNoConfigOverrideErrors, branchConfigSchema, environmentConfigSchema, getConfigOverrideErrors, getIncompleteConfigWarnings, migrateConfigOverride, organizationConfigSchema, projectConfigSchema, sanitizeBranchConfig, sanitizeEnvironmentConfig, sanitizeOrganizationConfig, sanitizeProjectConfig } from "@stackframe/stack-shared/dist/config/schema";
 import { ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
 import { yupBoolean, yupMixed, yupObject, yupRecord, yupString, yupUnion } from "@stackframe/stack-shared/dist/schema-fields";
 import { isTruthy } from "@stackframe/stack-shared/dist/utils/booleans";
-import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { StackAssertionError, captureError } from "@stackframe/stack-shared/dist/utils/errors";
 import { filterUndefined, typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { deindent, stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
 import * as yup from "yup";
-import { PrismaClientTransaction, RawQuery, globalPrismaClient, rawQuery } from "../prisma-client";
+import { RawQuery, globalPrismaClient, rawQuery } from "../prisma-client";
+import { listPermissionDefinitionsFromConfig } from "./permissions";
 import { DEFAULT_BRANCH_ID } from "./tenancies";
 
 type ProjectOptions = { projectId: string };
@@ -46,7 +47,7 @@ export function getRenderedEnvironmentConfigQuery(options: EnvironmentOptions): 
   );
 }
 
-export function getRenderedOrganizationConfigQuery(options: OrganizationOptions): RawQuery<Promise<OrganizationRenderedConfig>> {
+export function getRenderedOrganizationConfigQuery(options: OrganizationOptions): RawQuery<Promise<CompleteConfig>> {
   return RawQuery.then(
     getIncompleteOrganizationConfigQuery(options),
     async (incompleteConfig) => await sanitizeOrganizationConfig(normalize(applyOrganizationDefaults(await incompleteConfig), { onDotIntoNonObject: "ignore" }) as any),
@@ -204,10 +205,21 @@ export async function overrideProjectConfigOverride(options: {
 
   // TODO put this in a serializable transaction (or a single SQL query) to prevent race conditions
   const oldConfig = await rawQuery(globalPrismaClient, getProjectConfigOverrideQuery(options));
-  const newConfig = override(
+  const newConfigUnmigrated = override(
     oldConfig,
     options.projectConfigOverrideOverride,
   );
+  const newConfig = migrateConfigOverride("project", newConfigUnmigrated);
+
+  // large configs make our DB slow; let's prevent them early
+  const newConfigString = JSON.stringify(newConfig);
+  if (newConfigString.length > 1_000_000) {
+    captureError("override-project-config-too-large", new StackAssertionError(`Project config override for ${options.projectId} is ${(newConfigString.length/1_000_000).toFixed(1)}MB long!`));
+  }
+  if (newConfigString.length > 5_000_000) {
+    throw new StackAssertionError(`Project config override for ${options.projectId} is too large.`);
+  }
+
   await assertNoConfigOverrideErrors(projectConfigSchema, newConfig);
   await globalPrismaClient.project.update({
     where: {
@@ -238,10 +250,21 @@ export async function overrideEnvironmentConfigOverride(options: {
 
   // TODO put this in a serializable transaction (or a single SQL query) to prevent race conditions
   const oldConfig = await rawQuery(globalPrismaClient, getEnvironmentConfigOverrideQuery(options));
-  const newConfig = override(
+  const newConfigUnmigrated = override(
     oldConfig,
     options.environmentConfigOverrideOverride,
   );
+  const newConfig = migrateConfigOverride("environment", newConfigUnmigrated);
+
+  // large configs make our DB slow; let's prevent them early
+  const newConfigString = JSON.stringify(newConfig);
+  if (newConfigString.length > 1_000_000) {
+    captureError("override-environment-config-too-large", new StackAssertionError(`Environment config override for ${options.projectId}/${options.branchId} is ${(newConfigString.length/1_000_000).toFixed(1)}MB long!`));
+  }
+  if (newConfigString.length > 5_000_000) {
+    throw new StackAssertionError(`Environment config override for ${options.projectId}/${options.branchId} is too large.`);
+  }
+
   await assertNoConfigOverrideErrors(environmentConfigSchema, newConfig);
   await globalPrismaClient.environmentConfigOverride.upsert({
     where: {
@@ -413,8 +436,10 @@ import.meta.vitest?.test('_validateConfigOverrideSchemaImpl(...)', async ({ expe
   expect(await validateConfigOverrideSchema(yupObject({ a: yupObject({ b: yupObject({ c: yupString().defined() }).defined() }).defined() }), { a: { b: {} } }, { "a.b": { c: 123 } })).toEqual(Result.error("[ERROR] a.b.c must be a `string` type, but the final value was: `123`."));
   expect(await validateConfigOverrideSchema(yupObject({ a: yupString().defined().oneOf(['b']) }), {}, { a: 'c' })).toEqual(Result.error("[ERROR] a must be one of the following values: b"));
   expect(await validateConfigOverrideSchema(yupObject({ a: yupString().defined() }), {}, {})).toEqual(Result.error("[WARNING] a must be defined"));
-  expect(await validateConfigOverrideSchema(yupObject({ a: yupMixed() }), {}, { "a.b": "c" })).toEqual(Result.error(`[ERROR] The key \"a.b\" is not valid for the schema.`));
-  expect(await validateConfigOverrideSchema(yupObject({ a: yupMixed() }), { a: 'str' }, { "a.b": "c" })).toEqual(Result.error(`[ERROR] The key \"a.b\" is not valid for the schema.`));
+  expect(await validateConfigOverrideSchema(yupObject({}), {}, { "a.b": "c" })).toEqual(Result.error(`[ERROR] The key \"a.b\" is not valid (nested object not found in schema: "a").`));
+  expect(await validateConfigOverrideSchema(yupObject({ a: yupMixed() }), {}, { "a.b": "c" })).toEqual(Result.error(`[ERROR] The key \"a.b\" is not valid (nested object not found in schema: "a.b").`));
+  expect(await validateConfigOverrideSchema(yupObject({ a: yupMixed() }), { a: 'str' }, { "a.b": "c" })).toEqual(Result.error(`[ERROR] The key \"a.b\" is not valid (nested object not found in schema: "a.b").`));
+  expect(await validateConfigOverrideSchema(yupObject({ a: yupObject({ c: yupString().optional() }) }), { a: 'str' }, { "a.b": "c" })).toEqual(Result.error(`[ERROR] The key \"a.b\" is not valid (nested object not found in schema: "a.b").`));
   expect(await validateConfigOverrideSchema(schema1, {}, { a: 123 })).toEqual(Result.error('[ERROR] a must be a `string` type, but the final value was: `123`.'));
   expect(await validateConfigOverrideSchema(unionSchema, { a: { "time": "now" } }, { "a.morning": true })).toMatchInlineSnapshot(`
     {
@@ -469,7 +494,7 @@ import.meta.vitest?.test('_validateConfigOverrideSchemaImpl(...)', async ({ expe
 // ---------------------------------------------------------------------------------------------------------------------
 
 // C -> A
-export const renderedOrganizationConfigToProjectCrud = (renderedConfig: OrganizationRenderedConfig): ProjectsCrud["Admin"]["Read"]['config'] => {
+export const renderedOrganizationConfigToProjectCrud = (renderedConfig: CompleteConfig): ProjectsCrud["Admin"]["Read"]['config'] => {
   const oauthProviders = typedEntries(renderedConfig.auth.oauth.providers)
     .map(([oauthProviderId, oauthProvider]) => {
       if (!oauthProvider.type) {
@@ -490,6 +515,15 @@ export const renderedOrganizationConfigToProjectCrud = (renderedConfig: Organiza
     })
     .filter(isTruthy)
     .sort((a, b) => stringCompare(a.id, b.id));
+
+  const teamPermissionDefinitions = listPermissionDefinitionsFromConfig({
+    config: renderedConfig,
+    scope: "team",
+  });
+  const projectPermissionDefinitions = listPermissionDefinitionsFromConfig({
+    config: renderedConfig,
+    scope: "project",
+  });
 
   return {
     allow_localhost: renderedConfig.domains.allowLocalhost,
@@ -527,15 +561,15 @@ export const renderedOrganizationConfigToProjectCrud = (renderedConfig: Organiza
     email_theme: renderedConfig.emails.selectedThemeId,
 
     team_creator_default_permissions: typedEntries(renderedConfig.rbac.defaultPermissions.teamCreator)
-      .filter(([_, perm]) => perm)
+      .filter(([id, perm]) => perm && teamPermissionDefinitions.some((p) => p.id === id))
       .map(([id, perm]) => ({ id }))
       .sort((a, b) => stringCompare(a.id, b.id)),
     team_member_default_permissions: typedEntries(renderedConfig.rbac.defaultPermissions.teamMember)
-      .filter(([_, perm]) => perm)
+      .filter(([id, perm]) => perm && teamPermissionDefinitions.some((p) => p.id === id))
       .map(([id, perm]) => ({ id }))
       .sort((a, b) => stringCompare(a.id, b.id)),
     user_default_permissions: typedEntries(renderedConfig.rbac.defaultPermissions.signUp)
-      .filter(([_, perm]) => perm)
+      .filter(([id, perm]) => perm && projectPermissionDefinitions.some((p) => p.id === id))
       .map(([id, perm]) => ({ id }))
       .sort((a, b) => stringCompare(a.id, b.id)),
 

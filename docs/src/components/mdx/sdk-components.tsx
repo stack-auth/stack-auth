@@ -193,6 +193,7 @@ function ClickableCodeblock({
       }
     };
 
+    // eslint-disable-next-line no-restricted-syntax
     updateHighlightedCode().catch(error => {
       console.error('Error updating highlighted code:', error);
     });
@@ -201,6 +202,7 @@ function ClickableCodeblock({
     const observer = new MutationObserver((mutations) => {
       mutations.forEach((mutation) => {
         if (mutation.type === 'attributes' && mutation.attributeName === 'class') {
+          // eslint-disable-next-line no-restricted-syntax
           updateHighlightedCode().catch(error => {
             console.error('Error updating highlighted code on theme change:', error);
           });
