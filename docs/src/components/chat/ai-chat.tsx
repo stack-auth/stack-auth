@@ -176,7 +176,7 @@ export function AIChatDrawer() {
 
 
   // Calculate position based on homepage and scroll state
-  const topPosition = isHomePage && isScrolled ? 'top-0' : 'top-0';
+  const topPosition = 'top-0';
   const height = isHomePage && isScrolled ? 'h-screen' : 'h-[calc(100vh)]';
 
   const {

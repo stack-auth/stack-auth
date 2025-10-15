@@ -243,7 +243,14 @@ export function PlatformCodeblock({
   // Initialize global state on first render
   useEffect(() => {
     initializeGlobalFrameworks();
-  }, [initializeGlobalFrameworks]);
+    if (typeof window !== 'undefined') {
+      const storedPlatform = sessionStorage.getItem('stack-docs-selected-platform');
+      if (storedPlatform && platformNames.includes(storedPlatform)) {
+        globalSelectedPlatform = storedPlatform;
+            setSelectedPlatform(storedPlatform);
+      }
+    }
+  }, [initializeGlobalFrameworks, platformNames]);
 
   const [selectedPlatform, setSelectedPlatform] = useState(getInitialPlatform);
   const [selectedFrameworks, setSelectedFrameworks] = useState<{ [platform: string]: string }>(() => {
@@ -266,7 +273,7 @@ export function PlatformCodeblock({
       hash = ((hash << 5) - hash) + char;
       hash = hash & hash; // Convert to 32-bit integer
     }
-    return Math.abs(hash).toString(36).substr(0, 9);
+    return Math.abs(hash).toString(36).slice(0, 9);
   }, [documentPath, exampleNames]);
 
   // Get current framework options for selected platform
