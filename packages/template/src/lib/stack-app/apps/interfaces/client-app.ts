@@ -16,6 +16,7 @@ export type StackClientAppConstructorOptions<HasTokenStore extends boolean, Proj
   oauthScopesOnSignIn?: Partial<OAuthScopesOnSignIn>,
   tokenStore: TokenStoreInit<HasTokenStore>,
   redirectMethod?: RedirectMethod,
+  inheritsFrom?: StackClientApp<any, any>,
 
   /**
    * By default, the Stack app will automatically prefetch some data from Stack's server when this app is first
@@ -85,6 +86,7 @@ export type StackClientApp<HasTokenStore extends boolean = boolean, ProjectId ex
     [stackAppInternalsSymbol]: {
       toClientJson(): StackClientAppJson<HasTokenStore, ProjectId>,
       setCurrentUser(userJsonPromise: Promise<CurrentUserCrud['Client']['Read'] | null>): void,
+      getConstructorOptions(): StackClientAppConstructorOptions<HasTokenStore, ProjectId>,
     },
   }
   & AsyncStoreProperty<"project", [], Project, false>
