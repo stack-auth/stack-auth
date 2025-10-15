@@ -282,9 +282,7 @@ export default function PageClient({ code }: { code: string }) {
               setupSubscription={setupSubscription}
               returnUrl={returnUrl ?? undefined}
               disabled={quantityNumber < 1 || isTooLarge || data.already_bought_non_stackable === true}
-              testMode
               onTestModeBypass={handleBypass}
-              testModeBypassDisabled={!selectedPriceId || quantityNumber < 1 || isTooLarge}
             />
           </StripeElementsProvider>
         )}
