@@ -37,7 +37,9 @@ if [ "$STACK_SKIP_MIGRATIONS" = "true" ]; then
   echo "Skipping migrations."
 else
   echo "Running migrations..."
-  prisma migrate deploy --schema=./apps/backend/prisma/schema.prisma
+  cd apps/backend
+  node dist/db-migrations.js migrate
+  cd ../..
 fi
 
 if [ "$STACK_SKIP_SEED_SCRIPT" = "true" ]; then
@@ -45,7 +47,7 @@ if [ "$STACK_SKIP_SEED_SCRIPT" = "true" ]; then
 else
   echo "Running seed script..."
   cd apps/backend
-  node seed.js
+  node dist/db-migrations.js seed
   cd ../..
 fi
 

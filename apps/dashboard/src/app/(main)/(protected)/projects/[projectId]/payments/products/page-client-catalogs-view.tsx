@@ -39,7 +39,7 @@ import { Fragment, useEffect, useId, useMemo, useRef, useState } from "react";
 import { IllustratedInfo } from "../../../../../../../components/illustrated-info";
 import { PageLayout } from "../../page-layout";
 import { useAdminApp } from "../../use-admin-app";
-import { ItemDialog } from "./item-dialog";
+import { ItemDialog } from "@/components/payments/item-dialog";
 import { ProductDialog } from "./product-dialog";
 
 type Product = CompleteConfig['payments']['products'][keyof CompleteConfig['payments']['products']];
