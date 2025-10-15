@@ -17,6 +17,9 @@ env:
 jobs:
   restart-dev-and-test:
     runs-on: ubicloud-standard-8
+    env:
+      STACK_DIRECT_DATABASE_CONNECTION_STRING: "postgres://postgres:PASSWORD-PLACEHOLDER--uqfEC1hmmv@localhost:5432/stackframe"
+
     steps:
       - uses: actions/checkout@v3
 

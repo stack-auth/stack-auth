@@ -6,10 +6,10 @@ const customNoExternal = new Set([
   ...Object.keys(packageJson.dependencies),
 ]);
 
-// tsup config to build the self-hosting seed script so it can be
+// tsup config to build the self-hosting migration script so it can be
 // run in the Docker container with no extra dependencies.
 export default defineConfig({
-  entry: ['prisma/seed.ts'],
+  entry: ['scripts/db-migrations.ts'],
   format: ['cjs'],
   outDir: 'dist',
   target: 'node22',
