@@ -472,12 +472,3 @@ export async function seed() {
 }
 
 process.env.STACK_SEED_MODE = 'true';
-
-if (require.main === module) {
-  seed().catch(async (e) => {
-    console.error(errorToNiceString(e));
-    await globalPrisma.$disconnect();
-    process.exit(1);
-    // eslint-disable-next-line @typescript-eslint/no-misused-promises
-  }).finally(async () => await globalPrisma.$disconnect());
-}
