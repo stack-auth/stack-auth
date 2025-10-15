@@ -97,6 +97,10 @@ export async function applyMigrations(options: {
     }
   };
 
+  await options.prismaClient.$executeRaw(Prisma.sql`
+    SET search_path TO ${sqlQuoteIdent(options.schema)};
+  `);
+
   const newlyAppliedMigrationNames: string[] = [];
   for (const migration of newMigrationFiles) {
 
