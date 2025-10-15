@@ -10,8 +10,12 @@ import { action, mutation, query } from "./_generated/server";
 
 export const getUserInfo = query({
   handler: async (ctx, args) => {
-    const obj = await stackServerApp.getPartialUser({ from: "convex", ctx });
-    return JSON.stringify(obj);
+
+    const user = await stackServerApp.getPartialUser({ from: "convex", ctx });
+
+    if (!user) return "The user is not logged in";
+    return "The user's name is: " obj.displayName;
+
   },
 });
 
