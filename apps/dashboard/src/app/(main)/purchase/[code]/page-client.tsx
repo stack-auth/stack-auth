@@ -282,7 +282,7 @@ export default function PageClient({ code }: { code: string }) {
               setupSubscription={setupSubscription}
               returnUrl={returnUrl ?? undefined}
               disabled={quantityNumber < 1 || isTooLarge || data.already_bought_non_stackable === true}
-              onTestModeBypass={handleBypass}
+              onTestModeBypass={data.test_mode ? handleBypass : undefined}
             />
           </StripeElementsProvider>
         )}
