@@ -3,13 +3,11 @@
 import { CheckoutForm } from "@/components/payments/checkout";
 import { StripeElementsProvider } from "@/components/payments/stripe-elements-provider";
 import { getPublicEnvVar } from "@/lib/env";
-import { StackAdminApp, useUser } from "@stackframe/stack";
 import { inlineProductSchema } from "@stackframe/stack-shared/dist/schema-fields";
 import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
-import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { Alert, AlertDescription, AlertTitle, Button, Card, CardContent, Input, Skeleton, Typography } from "@stackframe/stack-ui";
-import { ArrowRight, Minus, Plus } from "lucide-react";
+import { Minus, Plus } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import * as yup from "yup";
@@ -272,11 +270,6 @@ export default function PageClient({ code }: { code: string }) {
         )}
       </div>
       <div className="grow relative flex justify-center items-center bg-primary/5">
-        {data?.test_mode && (
-          <div className="absolute top-4 right-4 max-w-xs">
-            <BypassInfo handleBypass={handleBypass} disabled={!selectedPriceId || quantityNumber < 1 || isTooLarge} />
-          </div>
-        )}
         {data && (
           <StripeElementsProvider
             stripeAccountId={data.stripe_account_id}
@@ -289,27 +282,13 @@ export default function PageClient({ code }: { code: string }) {
               setupSubscription={setupSubscription}
               returnUrl={returnUrl ?? undefined}
               disabled={quantityNumber < 1 || isTooLarge || data.already_bought_non_stackable === true}
+              testMode
+              onTestModeBypass={handleBypass}
+              testModeBypassDisabled={!selectedPriceId || quantityNumber < 1 || isTooLarge}
             />
           </StripeElementsProvider>
         )}
       </div>
     </div>
-  );
-}
-
-function BypassInfo({ handleBypass, disabled }: { handleBypass: () => Promise<void>, disabled: boolean }) {
-  return (
-    <Card className="border-primary/30 bg-secondary animate-fade-in">
-      <CardContent className="p-3">
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex flex-col">
-            <Typography type="label">Test mode bypass</Typography>
-          </div>
-          <Button onClick={handleBypass} size="icon" variant="ghost" disabled={disabled}>
-            <ArrowRight className="w-4 h-4" />
-          </Button>
-        </div>
-      </CardContent>
-    </Card>
   );
 }
