@@ -45,7 +45,7 @@ import { NotificationCategory } from "../../notification-categories";
 import { TeamPermission } from "../../permissions";
 import { AdminOwnedProject, AdminProjectUpdateOptions, Project, adminProjectCreateOptionsToCrud } from "../../projects";
 import { EditableTeamMemberProfile, Team, TeamCreateOptions, TeamInvitation, TeamUpdateOptions, TeamUser, teamCreateOptionsToCrud, teamUpdateOptionsToCrud } from "../../teams";
-import { ActiveSession, Auth, BaseUser, CurrentUser, InternalUserExtra, OAuthProvider, ProjectCurrentUser, SyncedPartialUser, TokenPartialUser, UserExtra, UserUpdateOptions, userUpdateOptionsToCrud } from "../../users";
+import { ActiveSession, Auth, BaseUser, CurrentUser, InternalUserExtra, OAuthProvider, ProjectCurrentUser, SyncedPartialUser, TokenPartialUser, UserExtra, UserUpdateOptions, attachUserDestructureGuard, userUpdateOptionsToCrud } from "../../users";
 import { StackClientApp, StackClientAppConstructorOptions, StackClientAppJson } from "../interfaces/client-app";
 import { _StackAdminAppImplIncomplete } from "./admin-app-impl";
 import { TokenObject, clientVersion, createCache, createCacheBySession, createEmptyTokenStore, getBaseUrl, getDefaultExtraRequestHeaders, getDefaultProjectId, getDefaultPublishableClientKey, getUrls } from "./common";
@@ -70,6 +70,8 @@ const process = (globalThis as any).process ?? { env: {} }; // THIS_LINE_PLATFOR
 
 const allClientApps = new Map<string, [checkString: string | undefined, app: StackClientApp<any, any>]>();
 
+type StackClientAppImplConstructorOptionsResolved<HasTokenStore extends boolean, ProjectId extends string> = Omit<StackClientAppConstructorOptions<HasTokenStore, ProjectId>, "inheritsFrom">;
+
 export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, ProjectId extends string = string> implements StackClientApp<HasTokenStore, ProjectId> {
   /**
    * There is a circular dependency between the admin app and the client app, as the former inherits from the latter and
@@ -80,6 +82,8 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
    */
   static readonly LazyStackAdminAppImpl: { value: typeof import("./admin-app-impl")._StackAdminAppImplIncomplete | undefined } = { value: undefined };
 
+  protected readonly _options: StackClientAppImplConstructorOptionsResolved<HasTokenStore, ProjectId>;
+  protected readonly _extraOptions: { uniqueIdentifier?: string, checkString?: string, interface?: StackClientInterface } | undefined;
   protected _uniqueIdentifier: string | undefined = undefined;
   protected _interface: StackClientInterface;
   protected readonly _tokenStoreInit: TokenStoreInit<HasTokenStore>;
@@ -341,45 +345,42 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     };
   }
 
-  constructor(protected readonly _options:
-    & {
-      uniqueIdentifier?: string,
-      checkString?: string,
-    }
-    & (
-      | StackClientAppConstructorOptions<HasTokenStore, ProjectId>
-      | Exclude<StackClientAppConstructorOptions<HasTokenStore, ProjectId>, "baseUrl" | "projectId" | "publishableClientKey"> & {
-        interface: StackClientInterface,
-      }
-    )
-  ) {
+  constructor(options: StackClientAppConstructorOptions<HasTokenStore, ProjectId>, extraOptions?: { uniqueIdentifier?: string, checkString?: string, interface?: StackClientInterface }) {
+    const resolvedOptions = {
+      ...options.inheritsFrom?.[stackAppInternalsSymbol].getConstructorOptions() ?? {},
+      ...omit(options, ["inheritsFrom"]),
+    };
+
     if (!_StackClientAppImplIncomplete.LazyStackAdminAppImpl.value) {
       throw new StackAssertionError("Admin app implementation not initialized. Did you import the _StackClientApp from stack-app/apps/implementations/index.ts? You can't import it directly from ./apps/implementations/client-app-impl.ts as that causes a circular dependency (see the comment at _LazyStackAdminAppImpl for more details).");
     }
 
-    if ("interface" in _options) {
-      this._interface = _options.interface;
+    this._options = resolvedOptions;
+    this._extraOptions = extraOptions;
+
+    if (extraOptions && extraOptions.interface) {
+      this._interface = extraOptions.interface;
     } else {
       this._interface = new StackClientInterface({
-        getBaseUrl: () => getBaseUrl(_options.baseUrl),
-        extraRequestHeaders: _options.extraRequestHeaders ?? getDefaultExtraRequestHeaders(),
-        projectId: _options.projectId ?? getDefaultProjectId(),
+        getBaseUrl: () => getBaseUrl(resolvedOptions.baseUrl),
+        extraRequestHeaders: resolvedOptions.extraRequestHeaders ?? getDefaultExtraRequestHeaders(),
+        projectId: resolvedOptions.projectId ?? getDefaultProjectId(),
         clientVersion,
-        publishableClientKey: _options.publishableClientKey ?? getDefaultPublishableClientKey(),
+        publishableClientKey: resolvedOptions.publishableClientKey ?? getDefaultPublishableClientKey(),
         prepareRequest: async () => {
           await cookies?.(); // THIS_LINE_PLATFORM next
         }
       });
     }
 
-    this._tokenStoreInit = _options.tokenStore;
-    this._redirectMethod = _options.redirectMethod || "none";
-    this._redirectMethod = _options.redirectMethod || "nextjs"; // THIS_LINE_PLATFORM next
-    this._urlOptions = _options.urls ?? {};
-    this._oauthScopesOnSignIn = _options.oauthScopesOnSignIn ?? {};
+    this._tokenStoreInit = resolvedOptions.tokenStore;
+    this._redirectMethod = resolvedOptions.redirectMethod || "none";
+    this._redirectMethod = resolvedOptions.redirectMethod || "nextjs"; // THIS_LINE_PLATFORM next
+    this._urlOptions = resolvedOptions.urls ?? {};
+    this._oauthScopesOnSignIn = resolvedOptions.oauthScopesOnSignIn ?? {};
 
-    if (_options.uniqueIdentifier) {
-      this._uniqueIdentifier = _options.uniqueIdentifier;
+    if (extraOptions && extraOptions.uniqueIdentifier) {
+      this._uniqueIdentifier = extraOptions.uniqueIdentifier;
       this._initUniqueIdentifier();
     }
   }
@@ -391,7 +392,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     if (allClientApps.has(this._uniqueIdentifier)) {
       throw new StackAssertionError("A Stack client app with the same unique identifier already exists");
     }
-    allClientApps.set(this._uniqueIdentifier, [this._options.checkString ?? undefined, this]);
+    allClientApps.set(this._uniqueIdentifier, [this._extraOptions?.checkString ?? undefined, this]);
   }
 
   /**
@@ -1391,6 +1392,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       ...this._createCustomer(crud.id, "user", session),
     } satisfies CurrentUser;
 
+    attachUserDestructureGuard(currentUser);
     Object.freeze(currentUser);
     return currentUser as ProjectCurrentUser<ProjectId>;
   }
@@ -1762,7 +1764,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
   async getConvexHttpClientAuth(options: { tokenStore: TokenStoreInit }): Promise<string> {
     const session = await this._getSession(options.tokenStore);
     const tokens = await session.getOrFetchLikelyValidTokens(20_000);
-    return tokens?.accessToken.token ?? throwErr("No access token available");
+    return tokens?.accessToken.token ?? "";
   }
 
   protected async _updateClientUser(update: UserUpdateOptions, session: InternalSession) {
@@ -2234,6 +2236,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
 
         return new _StackClientAppImplIncomplete<HasTokenStore, ProjectId>({
           ...json,
+        }, {
           checkString: providedCheckString,
         });
       }
@@ -2269,6 +2272,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
           await this._currentUserCache.forceSetCachedValueAsync([await this._getSession()], Result.fromPromise(userJsonPromise));
         });
       },
+      getConstructorOptions: () => this._options,
       sendRequest: async (
         path: string,
         requestOptions: RequestInit,
