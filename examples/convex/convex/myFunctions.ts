@@ -14,7 +14,7 @@ export const getUserInfo = query({
     const user = await stackServerApp.getPartialUser({ from: "convex", ctx });
 
     if (!user) return "The user is not logged in";
-    return "The user's name is: " obj.displayName;
+    return "The user's name is: " + user.displayName;
 
   },
 });
