@@ -81,18 +81,21 @@ function AIChatToggleButton() {
     return null;
   }
 
-  const { toggleChat } = sidebarContext;
+  const { toggleChat, isChatOpen } = sidebarContext;
 
   return (
     <button
       className={cn(
-        'flex items-center justify-center rounded-md w-8 h-8 text-xs transition-all duration-500 ease-out relative overflow-hidden',
-        'text-white chat-gradient-active hover:scale-105 hover:brightness-110 hover:shadow-lg'
+       'flex items-center gap-2 rounded-md px-2 py-1 text-xs transition-all duration-500 ease-out relative overflow-hidden',
+        isChatOpen
+          ? 'text-white chat-gradient-active hover:scale-105 hover:brightness-110 hover:shadow-lg'
+          : 'text-white chat-gradient-active hover:scale-105 hover:brightness-110 hover:shadow-lg'
       )}
       onClick={toggleChat}
       title="AI Chat"
     >
-      <Sparkles className="h-4 w-4 relative z-10" />
+      <Sparkles className="h-3 w-3 relative z-10" />
+      <span className="font-medium relative z-10">AI Chat</span>
     </button>
   );
 }
@@ -312,7 +315,7 @@ export function SharedHeader({
         </div>
 
         {/* Right side - Mobile Menu and Search */}
-        <div className="flex items-center gap-4 relative z-10">
+        <div className="flex items-center gap-3 relative z-10">
           {/* Search Bar - Responsive sizing */}
           {showSearch && (
             <>
@@ -344,7 +347,7 @@ export function SharedHeader({
           </div>
 
           {/* User Button */}
-          <div className="hidden md:block">
+          <div className="hidden md:block ml-2">
             <UserButton />
           </div>
 
