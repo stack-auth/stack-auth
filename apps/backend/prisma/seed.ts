@@ -11,6 +11,7 @@ import { errorToNiceString, throwErr } from '@stackframe/stack-shared/dist/utils
 const globalPrisma = new PrismaClient();
 
 export async function seed() {
+  process.env.STACK_SEED_MODE = 'true';
   console.log('Seeding database...');
 
   // Optional default admin user
@@ -471,4 +472,3 @@ export async function seed() {
   console.log('Seeding complete!');
 }
 
-process.env.STACK_SEED_MODE = 'true';
