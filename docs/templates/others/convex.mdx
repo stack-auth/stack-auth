@@ -52,7 +52,7 @@ Then, update your Convex client to use Stack Auth:
 ```ts
 convexClient.setAuth(stackClientApp.getConvexClientAuth({}));  // browser JS
 convexReactClient.setAuth(stackClientApp.getConvexClientAuth({}));  // React
-convexHttpClient.setAuth(stackClientApp.getAuthForConvexHttpClient({ tokenStore: requestObject }));  // HTTP, see Stack Auth docs for more information on tokenStore
+convexHttpClient.setAuth(stackClientApp.getConvexHttpClientAuth({ tokenStore: requestObject }));  // HTTP, see Stack Auth docs for more information on tokenStore
 ```
 
 ### 5) Done!
