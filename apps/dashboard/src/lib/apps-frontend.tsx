@@ -67,8 +67,7 @@ export const ALL_APPS_FRONTEND = {
     navigationItems: [
       { displayName: "Users", href: ".", getBreadcrumbItems: getUserBreadcrumbItems },
       { displayName: "Auth Methods", href: "../auth-methods" },
-      { displayName: "Project Permissions", href: "../project-permissions" },
-      { displayName: "Domains", href: "../domains" },
+      { displayName: "Trusted Domains", href: "../domains" },
     ],
     screenshots: [
       LogoBright,
@@ -81,17 +80,17 @@ export const ALL_APPS_FRONTEND = {
     href: "teams",
     navigationItems: [
       { displayName: "Teams", href: ".", getBreadcrumbItems: getTeamBreadcrumbItems },
-      { displayName: "Permissions", href: "../team-permissions" },
-      { displayName: "Settings", href: "../team-settings" },
+      { displayName: "Team Settings", href: "../team-settings" },
     ],
     screenshots: [],
     storeDescription: <></>,
   },
   rbac: {
     icon: UserCog,
-    href: "rbac",
+    href: "./project-permissions",
     navigationItems: [
-      { displayName: "RBAC", href: "." },
+      { displayName: "Project Permissions", href: "../project-permissions" },
+      { displayName: "Team Permissions", href: "../team-permissions" },
     ],
     screenshots: [],
     storeDescription: <></>,
