@@ -22,7 +22,7 @@ import { useMemo } from "react"; // THIS_LINE_PLATFORM react-like
 import * as yup from "yup";
 import { constructRedirectUrl } from "../../../../utils/url";
 import { ApiKey, ApiKeyCreationOptions, ApiKeyUpdateOptions, apiKeyCreationOptionsToCrud, apiKeyUpdateOptionsToCrud } from "../../api-keys";
-import { ConvexCtx, GetCurrentUserOptions, stackAppInternalsSymbol } from "../../common";
+import { ConvexCtx, GetCurrentUserOptions } from "../../common";
 import { OAuthConnection } from "../../connected-accounts";
 import { ServerContactChannel, ServerContactChannelCreateOptions, ServerContactChannelUpdateOptions, serverContactChannelCreateOptionsToCrud, serverContactChannelUpdateOptionsToCrud } from "../../contact-channels";
 import { Customer, InlineProduct, ServerItem } from "../../customers";
@@ -34,9 +34,8 @@ import { EditableTeamMemberProfile, ServerListUsersOptions, ServerTeam, ServerTe
 import { ProjectCurrentServerUser, ServerOAuthProvider, ServerUser, ServerUserCreateOptions, ServerUserUpdateOptions, attachUserDestructureGuard, serverUserCreateOptionsToCrud, serverUserUpdateOptionsToCrud } from "../../users";
 import { StackServerAppConstructorOptions } from "../interfaces/server-app";
 import { _StackClientAppImplIncomplete } from "./client-app-impl";
-import { clientVersion, createCache, createCacheBySession, getBaseUrl, getDefaultExtraRequestHeaders, getDefaultProjectId, getDefaultPublishableClientKey, getDefaultSecretServerKey } from "./common";
+import { clientVersion, createCache, createCacheBySession, getBaseUrl, getDefaultExtraRequestHeaders, getDefaultProjectId, getDefaultPublishableClientKey, getDefaultSecretServerKey, resolveConstructorOptions } from "./common";
 
-import { omit } from "@stackframe/stack-shared/dist/utils/objects";
 import { useAsyncCache } from "./common"; // THIS_LINE_PLATFORM react-like
 
 export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, ProjectId extends string> extends _StackClientAppImplIncomplete<HasTokenStore, ProjectId> {
@@ -373,10 +372,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
   }
 
   constructor(options: StackServerAppConstructorOptions<HasTokenStore, ProjectId>, extraOptions?: { uniqueIdentifier?: string, checkString?: string, interface?: StackServerInterface }) {
-    const resolvedOptions = {
-      ...options.inheritsFrom?.[stackAppInternalsSymbol].getConstructorOptions() ?? {},
-      ...omit(options, ["inheritsFrom"]),
-    };
+    const resolvedOptions = resolveConstructorOptions(options);
 
     super(resolvedOptions, {
       ...extraOptions,

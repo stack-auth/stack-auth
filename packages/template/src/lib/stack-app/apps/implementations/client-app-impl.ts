@@ -48,7 +48,7 @@ import { EditableTeamMemberProfile, Team, TeamCreateOptions, TeamInvitation, Tea
 import { ActiveSession, Auth, BaseUser, CurrentUser, InternalUserExtra, OAuthProvider, ProjectCurrentUser, SyncedPartialUser, TokenPartialUser, UserExtra, UserUpdateOptions, attachUserDestructureGuard, userUpdateOptionsToCrud } from "../../users";
 import { StackClientApp, StackClientAppConstructorOptions, StackClientAppJson } from "../interfaces/client-app";
 import { _StackAdminAppImplIncomplete } from "./admin-app-impl";
-import { TokenObject, clientVersion, createCache, createCacheBySession, createEmptyTokenStore, getBaseUrl, getDefaultExtraRequestHeaders, getDefaultProjectId, getDefaultPublishableClientKey, getUrls } from "./common";
+import { TokenObject, clientVersion, createCache, createCacheBySession, createEmptyTokenStore, getBaseUrl, getDefaultExtraRequestHeaders, getDefaultProjectId, getDefaultPublishableClientKey, getUrls, resolveConstructorOptions } from "./common";
 
 // IF_PLATFORM react-like
 import { useAsyncCache } from "./common";
@@ -70,7 +70,7 @@ const process = (globalThis as any).process ?? { env: {} }; // THIS_LINE_PLATFOR
 
 const allClientApps = new Map<string, [checkString: string | undefined, app: StackClientApp<any, any>]>();
 
-type StackClientAppImplConstructorOptionsResolved<HasTokenStore extends boolean, ProjectId extends string> = Omit<StackClientAppConstructorOptions<HasTokenStore, ProjectId>, "inheritsFrom">;
+type StackClientAppImplConstructorOptionsResolved<HasTokenStore extends boolean, ProjectId extends string> = StackClientAppConstructorOptions<HasTokenStore, ProjectId> & { inheritsFrom?: undefined };
 
 export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, ProjectId extends string = string> implements StackClientApp<HasTokenStore, ProjectId> {
   /**
@@ -346,10 +346,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
   }
 
   constructor(options: StackClientAppConstructorOptions<HasTokenStore, ProjectId>, extraOptions?: { uniqueIdentifier?: string, checkString?: string, interface?: StackClientInterface }) {
-    const resolvedOptions = {
-      ...options.inheritsFrom?.[stackAppInternalsSymbol].getConstructorOptions() ?? {},
-      ...omit(options, ["inheritsFrom"]),
-    };
+    const resolvedOptions = resolveConstructorOptions(options);
 
     if (!_StackClientAppImplIncomplete.LazyStackAdminAppImpl.value) {
       throw new StackAssertionError("Admin app implementation not initialized. Did you import the _StackClientApp from stack-app/apps/implementations/index.ts? You can't import it directly from ./apps/implementations/client-app-impl.ts as that causes a circular dependency (see the comment at _LazyStackAdminAppImpl for more details).");
