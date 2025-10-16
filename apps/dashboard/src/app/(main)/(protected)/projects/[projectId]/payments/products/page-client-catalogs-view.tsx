@@ -1112,14 +1112,16 @@ type CatalogViewProps = {
   onCreateNewItem: () => void,
   onOpenProductDetails: (product: Product) => void,
   onSaveProductWithGroup: (catalogId: string, productId: string, product: Product) => Promise<void>,
+  onCreateFirstProduct?: () => void,
 };
 
-function CatalogView({ groupedProducts, groups, existingItems, onSaveProduct, onDeleteProduct, onCreateNewItem, onOpenProductDetails, onSaveProductWithGroup }: CatalogViewProps) {
+function CatalogView({ groupedProducts, groups, existingItems, onSaveProduct, onDeleteProduct, onCreateNewItem, onOpenProductDetails, onSaveProductWithGroup, onCreateFirstProduct }: CatalogViewProps) {
   const [activeType, setActiveType] = useState<'user' | 'team' | 'custom'>('user');
   const [drafts, setDrafts] = useState<Array<{ key: string, catalogId: string | undefined, product: Product }>>([]);
   const [creatingGroupKey, setCreatingGroupKey] = useState<string | undefined>(undefined);
   const [newCatalogId, setNewCatalogId] = useState("");
   const newGroupInputRef = useRef<HTMLInputElement | null>(null);
+  const [firstProductCreated, setFirstProductCreated] = useState(false);
 
   const filtered = useMemo(() => {
     const res = new Map<string | undefined, Array<{ id: string, product: Product }>>();
@@ -1163,6 +1165,26 @@ function CatalogView({ groupedProducts, groups, existingItems, onSaveProduct, on
     while (usedIds.has(id)) id = `${base}-${i++}`;
     return id;
   };
+
+  // If onCreateFirstProduct is provided, create a draft product immediately
+  useEffect(() => {
+    if (onCreateFirstProduct && !firstProductCreated) {
+      const key = generateProductId("product");
+      const newProduct: Product = {
+        displayName: 'New Product',
+        customerType: activeType,
+        catalogId: undefined,
+        isAddOnTo: false,
+        stackable: false,
+        prices: {},
+        includedItems: {},
+        serverOnly: false,
+        freeTrial: undefined,
+      };
+      setDrafts([{ key, catalogId: undefined, product: newProduct }]);
+      setFirstProductCreated(true);
+    }
+  }, [onCreateFirstProduct, activeType, firstProductCreated, generateProductId]);
 
   const catalogIdsToRender = useMemo(() => {
     const s = new Set<string | undefined>();
@@ -1426,7 +1448,7 @@ function WelcomeScreen({ onCreateProduct }: { onCreateProduct: () => void }) {
   );
 }
 
-export default function PageClient({ onViewChange }: { onViewChange: (view: "list" | "catalogs") => void }) {
+export default function PageClient({ onViewChange, showWelcomeScreen }: { onViewChange: (view: "list" | "catalogs") => void, showWelcomeScreen?: boolean }) {
   const [showProductDialog, setShowProductDialog] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [showItemDialog, setShowItemDialog] = useState(false);
@@ -1588,6 +1610,11 @@ export default function PageClient({ onViewChange }: { onViewChange: (view: "lis
   };
 
 
+  // Handler for creating first product (for welcome screen)
+  const handleCreateFirstProduct = () => {
+    // This is just a placeholder - the actual draft creation happens in CatalogView
+  };
+
   // If no products and items, show welcome screen instead of everything
   const innerContent = (
     <PageLayout
@@ -1631,6 +1658,7 @@ export default function PageClient({ onViewChange }: { onViewChange: (view: "lis
             });
             toast({ title: "Product created" });
           }}
+          onCreateFirstProduct={showWelcomeScreen ? handleCreateFirstProduct : undefined}
         />
       </div>
     </PageLayout>
