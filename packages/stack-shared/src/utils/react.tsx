@@ -174,13 +174,17 @@ export class NoSuspenseBoundaryError extends Error {
 
   constructor(options: { caller?: string }) {
     super(deindent`
+      Suspense boundary not found! Read the error message below carefully on how to fix it.
+
       ${options.caller ?? "This code path"} attempted to display a loading indicator, but didn't find a Suspense boundary above it. Please read the error message below carefully.
       
-      The fix depends on which of the 3 scenarios caused it:
+      The fix depends on which of the 4 scenarios caused it:
       
-      1. You are missing a loading.tsx file in your app directory. Fix it by adding a loading.tsx file in your app directory.
+      1. [Next.js] You are missing a loading.tsx file in your app directory. Fix it by adding a loading.tsx file in your app directory.
 
-      2. The component is rendered in the root (outermost) layout.tsx or template.tsx file. Next.js does not wrap those files in a Suspense boundary, even if there is a loading.tsx file in the same folder. To fix it, wrap your layout inside a route group like this:
+      2. [React] You are missing a <Suspense> boundary in your component. Fix it by wrapping your component (or the entire app) in a <Suspense> component.
+
+      3. [Next.js] The component is rendered in the root (outermost) layout.tsx or template.tsx file. Next.js does not wrap those files in a Suspense boundary, even if there is a loading.tsx file in the same folder. To fix it, wrap your layout inside a route group like this:
 
         - app
         - - layout.tsx  // contains <html> and <body>, alongside providers and other components that don't need ${options.caller ?? "this code path"}
@@ -192,7 +196,7 @@ export class NoSuspenseBoundaryError extends Error {
 
         For more information on this approach, see Next's documentation on route groups: https://nextjs.org/docs/app/building-your-application/routing/route-groups
       
-      3. You caught this error with try-catch or a custom error boundary. Fix this by rethrowing the error or not catching it in the first place.
+      4. You caught this error with try-catch or a custom error boundary. Fix this by rethrowing the error or not catching it in the first place.
 
       See: https://nextjs.org/docs/messages/missing-suspense-with-csr-bailout
 

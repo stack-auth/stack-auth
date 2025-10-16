@@ -536,7 +536,7 @@ const organizationConfigDefaults = {
   },
 
   payments: {
-    testMode: false,
+    testMode: true,
     autoPay: undefined,
     catalogs: (key: string) => ({
       displayName: undefined,
