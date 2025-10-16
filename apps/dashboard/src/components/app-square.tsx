@@ -37,7 +37,7 @@ export function AppIcon({ appId, className, disabled, style }: {
   return <div style={style} className={cn(
     "relative w-24 h-24 rounded-[24.154%] overflow-hidden select-none",
     !disabled && "bg-[linear-gradient(45deg,#dde,#fff)] dark:bg-[linear-gradient(45deg,#222,#666)]",
-    disabled && 'border border-gray-400/70 border-dashed border-4',
+    disabled && 'border-gray-400/70 border-dashed border-4',
     className,
   )}>
     <div className={cn(

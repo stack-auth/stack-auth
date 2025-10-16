@@ -7,13 +7,11 @@ import { StackCompanion } from "@/components/stack-companion";
 import ThemeToggle from "@/components/theme-toggle";
 import { getPublicEnvVar } from '@/lib/env';
 import { cn } from "@/lib/utils";
-// import { UserButton, useUser } from "@stackframe/stack";
-import { useRouter } from "@/components/router";
-import { ALL_APPS_FRONTEND, AppFrontend, getAppPath, getItemPath, testAppPath, testItemPath } from "@/lib/apps-frontend";
+import { ALL_APPS_FRONTEND, AppFrontend, DUMMY_ORIGIN, getAppPath, getItemPath, testAppPath, testItemPath } from "@/lib/apps-frontend";
 import { UserButton, useUser } from "@stackframe/stack";
 import { ALL_APPS, type AppId } from "@stackframe/stack-shared/dist/apps/apps-config";
-import { useHover } from "@stackframe/stack-shared/dist/hooks/use-hover";
 import { typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
+import { getRelativePart } from "@stackframe/stack-shared/dist/utils/urls";
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -31,42 +29,22 @@ import {
   Globe,
   LucideIcon,
   Menu,
-  Palette,
-  Receipt,
   Settings,
-  Settings2,
-  ShieldEllipsis,
-  User,
-  Users,
-  UserRound,
-  Webhook,
 } from "lucide-react";
 import { useTheme } from "next-themes";
 import { usePathname } from "next/navigation";
-import { Fragment, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { useAdminApp } from "./use-admin-app";
+import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
 
 type BreadcrumbItem = { item: React.ReactNode, href: string };
-
-type Label = {
-  name: React.ReactNode,
-  type: 'label',
-  requiresDevFeatureFlag?: boolean,
-};
 
 type Item = {
   name: React.ReactNode,
   href: string,
   icon: LucideIcon,
-  regex: RegExp,
+  regex?: RegExp,
   type: 'item',
-  requiresDevFeatureFlag?: boolean,
-};
-
-type Hidden = {
-  name: BreadcrumbItem[] | ((pathname: string) => BreadcrumbItem[]),
-  regex: RegExp,
-  type: 'hidden',
 };
 
 type AppSection = {
@@ -76,16 +54,16 @@ type AppSection = {
   items: {
     name: string,
     href: string,
-    match: (fullUrn,
-  regex: RegExpl: URL) => boolean,
+    match: (fullUrl: URL) => boolean,
   }[],
 };
 
 type BottomItem = {
   name: string,
   href: string,
-  icon: LucideIco,
+  icon: LucideIcon,
   external?: boolean,
+  regex?: RegExp,
 };
 
 // Bottom navigation items (always visible)
@@ -117,32 +95,24 @@ function NavItem({
   item,
   href,
   onClick,
-  projectId,
   isExpanded,
   onToggle,
-  onNavigate
 }: {
   item: Item | AppSection,
   href?: string,
   onClick?: () => void,
-  projectId?: string,
   isExpanded?: boolean,
   onToggle?: () => void,
-  onNavigate?: () => void,
 }) {
   const pathname = usePathname();
-  const ref = useRef<any>(null);
-  const isHovered = useHover(ref);
-
   const isSection = 'items' in item;
-
-  const subItemsRef = useRef<any>(null);
+  const subItemsRef = useRef<HTMLDivElement>(null);
 
   // If this is a collapsible section
   const IconComponent = item.icon;
   const ButtonComponent: any = isSection ? "button" : Link;
 
-  const isActive = "type" in item && item.regex.test(pathname);
+  const isActive = "type" in item && item.regex?.test(pathname);
 
   return (
     <div className={cn(
@@ -150,11 +120,9 @@ function NavItem({
       isExpanded && "my-1",
     )}>
       <ButtonComponent
-        ref={ref}
         {...(isSection ? { onClick: onToggle } : { href })}
         className={cn(
-          "flex items-center w-full py-1.5 px-4 text-left",
-          isHovered && "bg-foreground/5",
+          "flex items-center w-full py-1.5 px-4 text-left hover:bg-foreground/5",
           isActive && "bg-foreground/5",
           isSection && "cursor-default"
         )}
@@ -183,11 +151,9 @@ function NavItem({
             !isExpanded && "h-0",  // hidden, but still rendered, so we correctly prefetch the pages
           )}
         >
-          {item.items.map((item) => {
-            return (
-              <NavSubItem key={item.href} item={item} href={item.href} onClick={onClick} />
-            );
-          })}
+          {item.items.map((item) => (
+            <NavSubItem key={item.href} item={item} href={item.href} onClick={onClick} />
+          ))}
         </div>
       )}
     </div>
@@ -203,18 +169,21 @@ function NavSubItem({
   href: string,
   onClick?: () => void,
 }) {
-  const ref = useRef<any>(null);
-  const hover = useHover(ref);
-  const isActive = item.match(new URL(window.location.href));
+  const pathname = usePathname();
+  const isActive = useMemo(() => {
+    try {
+      return item.match(new URL(pathname, DUMMY_ORIGIN));
+    } catch {
+      return false;
+    }
+  }, [item, pathname]);
   return (
     <Link
-      ref={ref}
       href={href}
       onClick={onClick}
       className={cn(
-        "flex items-center pl-10 pr-2 py-1 text-sm text-muted-foreground",
-        isActive && "bg-foreground/5 text-foreground",
-        hover && "bg-foreground/5 text-foreground"
+        "flex items-center pl-10 pr-2 py-1 text-sm text-muted-foreground hover:bg-foreground/5 hover:text-foreground",
+        isActive && "bg-foreground/5 text-foreground"
       )}
     >
       <span>{item.name}</span>
@@ -224,16 +193,13 @@ function NavSubItem({
 
 function SidebarContent({ projectId, onNavigate }: { projectId: string, onNavigate?: () => void }) {
   const stackAdminApp = useAdminApp();
+  const pathname = usePathname();
   const project = stackAdminApp.useProject();
   const config = project.useConfig();
-  const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(["authentication"]));
-
-  const router = useRouter();
-
-  // Get enabled apps with error handling and fallback
   const enabledApps = typedEntries(config.apps.installed).filter(([_, appConfig]) => appConfig.enabled).map(([appId]) => appId);
+  const [expandedSections, setExpandedSections] = useState<Set<AppId>>(getDefaultExpandedSections());
 
-  const toggleSection = (appId: string) => {
+  const toggleSection = (appId: AppId) => {
     setExpandedSections(prev => {
       const newSet = new Set(prev);
       if (newSet.has(appId)) {
@@ -243,6 +209,16 @@ function SidebarContent({ projectId, onNavigate }: { projectId: string, onNaviga
       }
       return newSet;
     });
+  };
+
+  function getDefaultExpandedSections(): Set<AppId> {
+    for (const enabledApp of enabledApps) {
+      const appFrontend = ALL_APPS_FRONTEND[enabledApp];
+      if (testAppPath(projectId, appFrontend, new URL(pathname, DUMMY_ORIGIN))) {
+        return new Set([enabledApp]);
+      }
+    }
+    return new Set(["authentication"]);
   };
 
   return (
@@ -274,18 +250,16 @@ function SidebarContent({ projectId, onNavigate }: { projectId: string, onNaviga
               item={{
                 name: app.displayName,
                 appId,
-                items: appFrontend.navigationItems.map((item) => ({
-                  name: item.displayName,
-                  href: getItemPath(projectId, appFrontend, item),
-                  match: (fullUrl: URL) => testItemPath(projectId, appFrontend, item, fullUrl),
+                items: appFrontend.navigationItems.map((navItem) => ({
+                  name: navItem.displayName,
+                  href: getItemPath(projectId, appFrontend, navItem),
+                  match: (fullUrl: URL) => testItemPath(projectId, appFrontend, navItem, fullUrl),
                 })),
                 href: getAppPath(projectId, appFrontend),
                 icon: appFrontend.icon,
               }}
-              projectId={projectId}
               isExpanded={expandedSections.has(appId)}
               onToggle={() => toggleSection(appId)}
-              onNavigate={onNavigate}
             />
           );
         })}
@@ -322,65 +296,135 @@ function HeaderBreadcrumb({
   mobile?: boolean,
 }) {
   const pathname = usePathname();
+  const stackAdminApp = useAdminApp();
 
   const user = useUser({ or: 'redirect', projectIdMustMatch: "internal" });
   const projects = user.useOwnedProjects();
+  const [breadcrumbItems, setBreadcrumbItems] = useState<BreadcrumbItem[]>([]);
 
-  const breadcrumbItems: BreadcrumbItem[] = useMemo(() => {
-    try {
-      // Check overview item
-      if (overviewItem.regex.test(pathname)) {
-        return [{
-          item: overviewItem.name,
-          href: `/projects/${projectId}${overviewItem.href}`,
-        }];
+  useEffect(() => {
+    let cancelled = false;
+
+    const getRelativePath = (path: string, base: string) => {
+      const normalizedBase = base.endsWith('/') ? base : `${base}/`;
+      const baseWithoutSlash = normalizedBase.slice(0, -1);
+      if (path === baseWithoutSlash || path === normalizedBase) {
+        return "/";
       }
+      if (path.startsWith(normalizedBase)) {
+        const rest = path.slice(normalizedBase.length);
+        return rest ? `/${rest}` : "/";
+      }
+      return path;
+    };
 
-      // Check bottom items
-      for (const item of bottomItems) {
-        if (item.regex.test(pathname)) {
-          return [{
-            item: item.name,
-            href: item.external ? item.href : `/projects/${projectId}${item.href}`,
+    const projectBasePath = `/projects/${projectId}`;
+    const projectBaseUrl = new URL(
+      (projectBasePath.endsWith("/") ? projectBasePath : `${projectBasePath}/`),
+      DUMMY_ORIGIN
+    );
+
+    const cleanupHref = (href: string) => href !== "/" && href.endsWith("/") ? href.slice(0, -1) : href;
+
+    const toProjectHref = (href: string) => cleanupHref(getRelativePart(new URL(href, projectBaseUrl)));
+    const toHrefRelativeTo = (baseHref: string, href: string) => {
+      const normalizedBase = baseHref.endsWith("/") ? baseHref : `${baseHref}/`;
+      const baseUrl = new URL(normalizedBase, DUMMY_ORIGIN);
+      return cleanupHref(getRelativePart(new URL(href, baseUrl)));
+    };
+
+    const buildBreadcrumbs = async () => {
+      try {
+        if (overviewItem.regex?.test(pathname)) {
+          const overview = [{
+            item: overviewItem.name,
+            href: `/projects/${projectId}${overviewItem.href}`,
           }];
+          if (!cancelled) setBreadcrumbItems(overview);
+          return;
         }
-      }
 
-      // Check apps
-      for (const [appId, app] of typedEntries(ALL_APPS)) {
-        const appFrontend: AppFrontend = ALL_APPS_FRONTEND[appId];
-        if (testAppPath(projectId, appFrontend, new URL(pathname, `https://example.com`))) {
-          // TODO app.getBreadcrumbItems returns a relative href to the project, so we need to convert it first
-          const appBreadcrumbs = appFrontend.getBreadcrumbItems?.(pathname) ?? [{
-            item: app.displayName,
-            href: getAppPath(projectId, appFrontend),
-          }];
-          for (const item of appFrontend.navigationItems) {
-            if (testItemPath(projectId, appFrontend, item, new URL(pathname, `https://example.com`))) {
-              // TODO item.getBreadcrumbItems returns a relative href to the app, so we need to convert it first
-              const itemBreadcrumbs = item.getBreadcrumbItems?.(pathname) ?? [{
-                item: item.displayName,
-                href: getItemPath(projectId, appFrontend, item),
-              }];
-              return [...appBreadcrumbs, ...itemBreadcrumbs];
-            }
+        for (const item of bottomItems) {
+          if (item.regex?.test(pathname)) {
+            const crumbs = [{
+              item: item.name,
+              href: item.external ? item.href : `/projects/${projectId}${item.href}`,
+            }];
+            if (!cancelled) setBreadcrumbItems(crumbs);
+            return;
           }
-          return [...appBreadcrumbs];
         }
-      }
 
-      return [];
-    } catch (error) {
-      console.error('Breadcrumb error:', error);
-      return [];
-    }
-  }, [pathname, projectId]);
+        const currentUrl = new URL(pathname, DUMMY_ORIGIN);
+        const projectRelativePart = getRelativePath(pathname, projectBasePath);
+
+        for (const [appId, app] of typedEntries(ALL_APPS)) {
+          const appFrontend: AppFrontend = ALL_APPS_FRONTEND[appId];
+          if (!testAppPath(projectId, appFrontend, currentUrl)) {
+            continue;
+          }
+
+          const appBreadcrumbsSource = appFrontend.getBreadcrumbItems
+            ? await appFrontend.getBreadcrumbItems(stackAdminApp, projectRelativePart)
+            : null;
+          const appBreadcrumbs = appBreadcrumbsSource && appBreadcrumbsSource.length
+            ? appBreadcrumbsSource.map((crumb) => ({
+              item: crumb.item,
+              href: toProjectHref(crumb.href),
+            }))
+            : [{
+              item: app.displayName,
+              href: getAppPath(projectId, appFrontend),
+            }];
+
+          for (const navItem of appFrontend.navigationItems) {
+            if (!testItemPath(projectId, appFrontend, navItem, currentUrl)) {
+              continue;
+            }
+
+            const baseHref = getItemPath(projectId, appFrontend, navItem);
+            const itemRelativePart = getRelativePath(pathname, baseHref);
+
+            const itemBreadcrumbsSource = navItem.getBreadcrumbItems
+              ? await navItem.getBreadcrumbItems(stackAdminApp, itemRelativePart)
+              : null;
+            const itemBreadcrumbs = itemBreadcrumbsSource && itemBreadcrumbsSource.length
+              ? itemBreadcrumbsSource.map((crumb) => ({
+                item: crumb.item,
+                href: toHrefRelativeTo(baseHref, crumb.href),
+              }))
+              : [{
+                item: navItem.displayName,
+                href: baseHref,
+              }];
+
+            if (!cancelled) setBreadcrumbItems([...appBreadcrumbs, ...itemBreadcrumbs]);
+            return;
+          }
+
+          if (!cancelled) setBreadcrumbItems([...appBreadcrumbs]);
+          return;
+        }
+
+        if (!cancelled) setBreadcrumbItems([]);
+      } catch (error) {
+        console.error('Breadcrumb error:', error);
+        if (!cancelled) setBreadcrumbItems([]);
+      }
+    };
+
+    runAsynchronously(buildBreadcrumbs());
+
+    return () => {
+      cancelled = true;
+    };
+  }, [pathname, projectId, stackAdminApp]);
 
   const selectedProject = projects.find((project) => project.id === projectId);
 
   if (mobile) {
     return (
-      <Link href="/projects"><Logo full height={24} /></Link>
+      <Logo full height={24} href="/projects" />
     );
   } else {
     return (
