@@ -4,6 +4,7 @@ import { UserButton, useUser } from "@stackframe/stack";
 import { useMutation, useQuery } from "convex/react";
 import Link from "next/link";
 import { api } from "../convex/_generated/api";
+import { getUserInfoConvexClient, getUserInfoConvexHttpClient } from "./user-info";
 
 export default function Home() {
   const user = useUser();
@@ -41,11 +42,27 @@ function Content() {
   return (
     <div className="flex flex-col gap-8 max-w-lg mx-auto">
       <p>Welcome {viewer ?? "Anonymous"}!</p>
-      <button className="bg-foreground text-background text-sm px-4 py-2 rounded-md" onClick={() => {
-        alert(getUserInfo);
-      }}>
-        View user info
-      </button>
+      <div className="flex flex-col gap-2">
+        <button className="bg-foreground text-background text-sm px-4 py-2 rounded-md" onClick={() => {
+          alert(getUserInfo);
+        }}>
+          View user info
+        </button>
+        <button className="bg-foreground text-background text-sm px-4 py-2 rounded-md" onClick={() => {
+          getUserInfoConvexHttpClient().then(userInfo => {
+            alert(userInfo);
+          });
+        }}>
+          View user info (http client)
+        </button>
+        <button className="bg-foreground text-background text-sm px-4 py-2 rounded-md" onClick={() => {
+          getUserInfoConvexClient().then(userInfo => {
+            alert(userInfo);
+          });
+        }}>
+          View user info (js client)
+        </button>
+      </div>
       <p>
         Click the button below and open this page in another window - this data
         is persisted in the Convex cloud database!
@@ -86,6 +103,13 @@ function Content() {
           /server route
         </Link>{" "}
         for an example of loading data in a server component
+      </p>
+      <p>
+        See the{" "}
+        <Link href="/action" className="underline hover:no-underline">
+          /action route
+        </Link>{" "}
+        for an example of using a convex action to update user data in stack auth
       </p>
       <div className="flex flex-col">
         <p className="text-lg font-bold">Useful resources:</p>
