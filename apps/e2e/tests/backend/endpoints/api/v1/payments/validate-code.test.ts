@@ -327,7 +327,7 @@ it("should reject untrusted return_url and accept trusted return_url", async ({ 
         },
         "project_id": "<stripped UUID>",
         "stripe_account_id": <stripped field 'stripe_account_id'>,
-        "test_mode": false,
+        "test_mode": true,
       },
       "headers": Headers { <some fields may have been hidden> },
     }

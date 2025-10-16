@@ -14,8 +14,9 @@ export type StackClientAppConstructorOptions<HasTokenStore extends boolean, Proj
   publishableClientKey?: string,
   urls?: Partial<HandlerUrls>,
   oauthScopesOnSignIn?: Partial<OAuthScopesOnSignIn>,
-  tokenStore: TokenStoreInit<HasTokenStore>,
+  tokenStore?: TokenStoreInit<HasTokenStore>,
   redirectMethod?: RedirectMethod,
+  inheritsFrom?: StackClientApp<any, any>,
 
   /**
    * By default, the Stack app will automatically prefetch some data from Stack's server when this app is first
@@ -23,10 +24,14 @@ export type StackClientAppConstructorOptions<HasTokenStore extends boolean, Proj
    * the app is never used or disposed of immediately. To disable this behavior, set this option to true.
    */
   noAutomaticPrefetch?: boolean,
-};
+} & (
+  { tokenStore: TokenStoreInit<HasTokenStore> } | { tokenStore?: undefined, inheritsFrom: StackClientApp<HasTokenStore, any> }
+) & (
+  string extends ProjectId ? unknown : ({ projectId: ProjectId } | { inheritsFrom: StackClientApp<any, ProjectId> })
+);
 
 
-export type StackClientAppJson<HasTokenStore extends boolean, ProjectId extends string> = StackClientAppConstructorOptions<HasTokenStore, ProjectId> & {
+export type StackClientAppJson<HasTokenStore extends boolean, ProjectId extends string> = StackClientAppConstructorOptions<HasTokenStore, ProjectId> & { inheritsFrom?: undefined } & {
   uniqueIdentifier: string,
   // note: if you add more fields here, make sure to ensure the checkString in the constructor has/doesn't have them
 };
@@ -85,6 +90,7 @@ export type StackClientApp<HasTokenStore extends boolean = boolean, ProjectId ex
     [stackAppInternalsSymbol]: {
       toClientJson(): StackClientAppJson<HasTokenStore, ProjectId>,
       setCurrentUser(userJsonPromise: Promise<CurrentUserCrud['Client']['Read'] | null>): void,
+      getConstructorOptions(): StackClientAppConstructorOptions<HasTokenStore, ProjectId> & { inheritsFrom?: undefined },
     },
   }
   & AsyncStoreProperty<"project", [], Project, false>

@@ -314,6 +314,7 @@ import.meta.vitest?.test("applies migration while running an interactive transac
   }, {
     isolationLevel: undefined,
     timeout: 15_000,
+    maxWait: 5_000,
   });
 }));
 

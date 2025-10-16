@@ -1449,6 +1449,7 @@ export namespace Payments {
     await Payments.setup();
     await Project.updateConfig({
       payments: {
+        testMode: false,
         products: {
           "test-product": {
             displayName: "Test Product",

@@ -16,7 +16,7 @@ import { InternalApiKey, InternalApiKeyBase, InternalApiKeyBaseCrudRead, Interna
 import { AdminProjectPermission, AdminProjectPermissionDefinition, AdminProjectPermissionDefinitionCreateOptions, AdminProjectPermissionDefinitionUpdateOptions, AdminTeamPermission, AdminTeamPermissionDefinition, AdminTeamPermissionDefinitionCreateOptions, AdminTeamPermissionDefinitionUpdateOptions, adminProjectPermissionDefinitionCreateOptionsToCrud, adminProjectPermissionDefinitionUpdateOptionsToCrud, adminTeamPermissionDefinitionCreateOptionsToCrud, adminTeamPermissionDefinitionUpdateOptionsToCrud } from "../../permissions";
 import { AdminOwnedProject, AdminProject, AdminProjectUpdateOptions, adminProjectUpdateOptionsToCrud } from "../../projects";
 import { StackAdminApp, StackAdminAppConstructorOptions } from "../interfaces/admin-app";
-import { clientVersion, createCache, getBaseUrl, getDefaultExtraRequestHeaders, getDefaultProjectId, getDefaultPublishableClientKey, getDefaultSecretServerKey, getDefaultSuperSecretAdminKey } from "./common";
+import { clientVersion, createCache, getBaseUrl, getDefaultExtraRequestHeaders, getDefaultProjectId, getDefaultPublishableClientKey, getDefaultSecretServerKey, getDefaultSuperSecretAdminKey, resolveConstructorOptions } from "./common";
 import { _StackServerAppImplIncomplete } from "./server-app-impl";
 
 import { CompleteConfig, EnvironmentConfigOverrideOverride } from "@stackframe/stack-shared/dist/config/schema";
@@ -78,28 +78,24 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
     return await this._interface.listTransactions({ cursor, limit, type, customerType });
   });
 
-  constructor(options: StackAdminAppConstructorOptions<HasTokenStore, ProjectId>) {
-    super({
-      interface: new StackAdminInterface({
-        getBaseUrl: () => getBaseUrl(options.baseUrl),
-        projectId: options.projectId ?? getDefaultProjectId(),
-        extraRequestHeaders: options.extraRequestHeaders ?? getDefaultExtraRequestHeaders(),
+  constructor(options: StackAdminAppConstructorOptions<HasTokenStore, ProjectId>, extraOptions?: { uniqueIdentifier?: string, checkString?: string, interface?: StackAdminInterface }) {
+    const resolvedOptions = resolveConstructorOptions(options);
+
+    super(resolvedOptions, {
+      ...extraOptions,
+      interface: extraOptions?.interface ?? new StackAdminInterface({
+        getBaseUrl: () => getBaseUrl(resolvedOptions.baseUrl),
+        projectId: resolvedOptions.projectId ?? getDefaultProjectId(),
+        extraRequestHeaders: resolvedOptions.extraRequestHeaders ?? getDefaultExtraRequestHeaders(),
         clientVersion,
-        ..."projectOwnerSession" in options ? {
-          projectOwnerSession: options.projectOwnerSession,
+        ...resolvedOptions.projectOwnerSession ? {
+          projectOwnerSession: resolvedOptions.projectOwnerSession,
         } : {
-          publishableClientKey: options.publishableClientKey ?? getDefaultPublishableClientKey(),
-          secretServerKey: options.secretServerKey ?? getDefaultSecretServerKey(),
-          superSecretAdminKey: options.superSecretAdminKey ?? getDefaultSuperSecretAdminKey(),
+          publishableClientKey: resolvedOptions.publishableClientKey ?? getDefaultPublishableClientKey(),
+          secretServerKey: resolvedOptions.secretServerKey ?? getDefaultSecretServerKey(),
+          superSecretAdminKey: resolvedOptions.superSecretAdminKey ?? getDefaultSuperSecretAdminKey(),
         },
       }),
-      baseUrl: options.baseUrl,
-      extraRequestHeaders: options.extraRequestHeaders,
-      projectId: options.projectId,
-      tokenStore: options.tokenStore,
-      urls: options.urls,
-      oauthScopesOnSignIn: options.oauthScopesOnSignIn,
-      redirectMethod: options.redirectMethod,
     });
   }
 
