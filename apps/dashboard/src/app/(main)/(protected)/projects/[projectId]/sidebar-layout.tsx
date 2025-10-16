@@ -11,7 +11,6 @@ import { cn } from "@/lib/utils";
 import { UserButton, useUser } from "@stackframe/stack";
 import { ALL_APPS, type AppId } from "@stackframe/stack-shared/dist/apps/apps-config";
 import { typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
-import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
 import { getRelativePart } from "@stackframe/stack-shared/dist/utils/urls";
 import {
   Breadcrumb,
@@ -36,6 +35,7 @@ import { useTheme } from "next-themes";
 import { usePathname } from "next/navigation";
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { useAdminApp } from "./use-admin-app";
+import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
 
 type BreadcrumbItem = { item: React.ReactNode, href: string };
 
@@ -66,6 +66,11 @@ type BottomItem = {
   regex?: RegExp,
 };
 
+type BreadcrumbSource = {
+  item: string,
+  href: string,
+};
+
 // Bottom navigation items (always visible)
 const bottomItems: BottomItem[] = [
   {
@@ -90,6 +95,104 @@ const overviewItem: Item = {
   icon: Globe,
   type: 'item'
 };
+
+const normalizePath = (path: string) => {
+  if (!path) return "/";
+  return path !== "/" && path.endsWith("/") ? path.slice(0, -1) : path;
+};
+
+const resolveWithin = (basePath: string, href: string) => {
+  const normalizedBase = basePath.endsWith("/") ? basePath : `${basePath}/`;
+  const baseUrl = new URL(normalizedBase, DUMMY_ORIGIN);
+  const target = href === "/" ? "./" : href;
+  const resolved = new URL(target, baseUrl);
+  return normalizePath(getRelativePart(resolved));
+};
+
+const relativeTo = (path: string, base: string) => {
+  const normalizedBase = base.endsWith("/") ? base.slice(0, -1) : base;
+  if (!path.startsWith(normalizedBase)) return path;
+  const rest = path.slice(normalizedBase.length);
+  if (!rest) return "/";
+  return rest.startsWith("/") ? rest : `/${rest}`;
+};
+
+async function resolveBreadcrumbs({
+  pathname,
+  projectId,
+  stackAdminApp,
+}: {
+  pathname: string,
+  projectId: string,
+  stackAdminApp: ReturnType<typeof useAdminApp>,
+}): Promise<BreadcrumbItem[]> {
+  const projectBasePath = `/projects/${projectId}`;
+
+  if (overviewItem.regex?.test(pathname)) {
+    return [{
+      item: overviewItem.name,
+      href: resolveWithin(projectBasePath, overviewItem.href),
+    }];
+  }
+
+  const bottomMatch = bottomItems.find((item) => item.regex?.test(pathname));
+  if (bottomMatch) {
+    return [{
+      item: bottomMatch.name,
+      href: bottomMatch.external
+        ? bottomMatch.href
+        : resolveWithin(projectBasePath, bottomMatch.href),
+    }];
+  }
+
+  const currentUrl = new URL(pathname, DUMMY_ORIGIN);
+  const projectRelativePart = relativeTo(pathname, projectBasePath);
+
+  const matchedAppEntry = typedEntries(ALL_APPS).find(([appId]) => {
+    const appFrontend = ALL_APPS_FRONTEND[appId];
+    return testAppPath(projectId, appFrontend, currentUrl);
+  });
+
+  if (!matchedAppEntry) {
+    return [];
+  }
+
+  const [matchedAppId, app] = matchedAppEntry;
+  const appFrontend: AppFrontend = ALL_APPS_FRONTEND[matchedAppId];
+  const appBreadcrumbsRaw = await appFrontend.getBreadcrumbItems?.(stackAdminApp, projectRelativePart);
+  const appBreadcrumbs = appBreadcrumbsRaw?.length
+    ? appBreadcrumbsRaw.map((crumb: BreadcrumbSource) => ({
+      item: crumb.item,
+      href: resolveWithin(projectBasePath, crumb.href),
+    }))
+    : [{
+      item: app.displayName,
+      href: getAppPath(projectId, appFrontend),
+    }];
+
+  const navItem = appFrontend.navigationItems.find((item) =>
+    testItemPath(projectId, appFrontend, item, currentUrl)
+  );
+
+  if (!navItem) {
+    return appBreadcrumbs;
+  }
+
+  const itemHref = getItemPath(projectId, appFrontend, navItem);
+  const itemRelativePart = relativeTo(pathname, itemHref);
+  const itemBreadcrumbsRaw = await navItem.getBreadcrumbItems?.(stackAdminApp, itemRelativePart);
+  const itemBreadcrumbs = itemBreadcrumbsRaw?.length
+    ? itemBreadcrumbsRaw.map((crumb: BreadcrumbSource) => ({
+      item: crumb.item,
+      href: resolveWithin(itemHref, crumb.href),
+    }))
+    : [{
+      item: navItem.displayName,
+      href: itemHref,
+    }];
+
+  return [...appBreadcrumbs, ...itemBreadcrumbs];
+}
 
 function NavItem({
   item,
@@ -304,116 +407,10 @@ function HeaderBreadcrumb({
 
   useEffect(() => {
     let cancelled = false;
-
-    const getRelativePath = (path: string, base: string) => {
-      const normalizedBase = base.endsWith('/') ? base : `${base}/`;
-      const baseWithoutSlash = normalizedBase.slice(0, -1);
-      if (path === baseWithoutSlash || path === normalizedBase) {
-        return "/";
-      }
-      if (path.startsWith(normalizedBase)) {
-        const rest = path.slice(normalizedBase.length);
-        return rest ? `/${rest}` : "/";
-      }
-      return path;
-    };
-
-    const projectBasePath = `/projects/${projectId}`;
-    const projectBaseUrl = new URL(
-      (projectBasePath.endsWith("/") ? projectBasePath : `${projectBasePath}/`),
-      DUMMY_ORIGIN
-    );
-
-    const cleanupHref = (href: string) => href !== "/" && href.endsWith("/") ? href.slice(0, -1) : href;
-
-    const toProjectHref = (href: string) => cleanupHref(getRelativePart(new URL(href, projectBaseUrl)));
-    const toHrefRelativeTo = (baseHref: string, href: string) => {
-      const normalizedBase = baseHref.endsWith("/") ? baseHref : `${baseHref}/`;
-      const baseUrl = new URL(normalizedBase, DUMMY_ORIGIN);
-      return cleanupHref(getRelativePart(new URL(href, baseUrl)));
-    };
-
-    const buildBreadcrumbs = async () => {
-      try {
-        if (overviewItem.regex?.test(pathname)) {
-          const overview = [{
-            item: overviewItem.name,
-            href: `/projects/${projectId}${overviewItem.href}`,
-          }];
-          if (!cancelled) setBreadcrumbItems(overview);
-          return;
-        }
-
-        for (const item of bottomItems) {
-          if (item.regex?.test(pathname)) {
-            const crumbs = [{
-              item: item.name,
-              href: item.external ? item.href : `/projects/${projectId}${item.href}`,
-            }];
-            if (!cancelled) setBreadcrumbItems(crumbs);
-            return;
-          }
-        }
-
-        const currentUrl = new URL(pathname, DUMMY_ORIGIN);
-        const projectRelativePart = getRelativePath(pathname, projectBasePath);
-
-        for (const [appId, app] of typedEntries(ALL_APPS)) {
-          const appFrontend: AppFrontend = ALL_APPS_FRONTEND[appId];
-          if (!testAppPath(projectId, appFrontend, currentUrl)) {
-            continue;
-          }
-
-          const appBreadcrumbsSource = appFrontend.getBreadcrumbItems
-            ? await appFrontend.getBreadcrumbItems(stackAdminApp, projectRelativePart)
-            : null;
-          const appBreadcrumbs = appBreadcrumbsSource && appBreadcrumbsSource.length
-            ? appBreadcrumbsSource.map((crumb) => ({
-              item: crumb.item,
-              href: toProjectHref(crumb.href),
-            }))
-            : [{
-              item: app.displayName,
-              href: getAppPath(projectId, appFrontend),
-            }];
-
-          for (const navItem of appFrontend.navigationItems) {
-            if (!testItemPath(projectId, appFrontend, navItem, currentUrl)) {
-              continue;
-            }
-
-            const baseHref = getItemPath(projectId, appFrontend, navItem);
-            const itemRelativePart = getRelativePath(pathname, baseHref);
-
-            const itemBreadcrumbsSource = navItem.getBreadcrumbItems
-              ? await navItem.getBreadcrumbItems(stackAdminApp, itemRelativePart)
-              : null;
-            const itemBreadcrumbs = itemBreadcrumbsSource && itemBreadcrumbsSource.length
-              ? itemBreadcrumbsSource.map((crumb) => ({
-                item: crumb.item,
-                href: toHrefRelativeTo(baseHref, crumb.href),
-              }))
-              : [{
-                item: navItem.displayName,
-                href: baseHref,
-              }];
-
-            if (!cancelled) setBreadcrumbItems([...appBreadcrumbs, ...itemBreadcrumbs]);
-            return;
-          }
-
-          if (!cancelled) setBreadcrumbItems([...appBreadcrumbs]);
-          return;
-        }
-
-        if (!cancelled) setBreadcrumbItems([]);
-      } catch (error) {
-        console.error('Breadcrumb error:', error);
-        if (!cancelled) setBreadcrumbItems([]);
-      }
-    };
-
-    runAsynchronously(buildBreadcrumbs());
+    runAsynchronously(async () => {
+      const items = await resolveBreadcrumbs({ pathname, projectId, stackAdminApp });
+      if (!cancelled) setBreadcrumbItems(items);
+    });
 
     return () => {
       cancelled = true;
