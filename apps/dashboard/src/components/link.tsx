@@ -1,6 +1,7 @@
 'use client';
 
 import NextLink from 'next/link'; // eslint-disable-line no-restricted-imports
+import React from "react";
 
 import { UrlPrefetcher } from '@/lib/prefetch/url-prefetcher';
 import { cn } from "../lib/utils";
