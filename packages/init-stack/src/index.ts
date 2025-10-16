@@ -245,8 +245,8 @@ async function main(): Promise<void> {
   if (type === "next") {
     const projectInfo = await Steps.getNextProjectInfo({ packageJson: projectPackageJson });
     await Steps.updateNextLayoutFile(projectInfo);
-    await Steps.writeStackAppFile(projectInfo, "client");
-    await Steps.writeStackAppFile(projectInfo, "server");
+    await Steps.writeStackAppFile(projectInfo, "client", true);
+    await Steps.writeStackAppFile(projectInfo, "server", true);
     await Steps.writeNextHandlerFile(projectInfo);
     await Steps.writeNextLoadingFile(projectInfo);
     nextSteps.push(`Copy the environment variables from the new API key into your .env.local file`);
@@ -274,7 +274,7 @@ async function main(): Promise<void> {
         defaultExtension,
         indentation: "  ",
         srcPath,
-      }, w);
+      }, w, where.includes("client"));
       appFiles.push(fileName);
     }
     nextSteps.push(
@@ -706,7 +706,7 @@ const Steps = {
     return res;
   },
 
-  async writeStackAppFile({ type, srcPath, defaultExtension, indentation }: StackAppFileOptions, clientOrServer: "server" | "client"): Promise<StackAppFileResult> {
+  async writeStackAppFile({ type, srcPath, defaultExtension, indentation }: StackAppFileOptions, clientOrServer: "server" | "client", alsoHasClient: boolean): Promise<StackAppFileResult> {
     const packageName = await Steps.getStackPackageName(type);
 
     const clientOrServerCap = {
@@ -753,16 +753,14 @@ const Steps = {
       })()
       : "";
 
+    const shouldInheritFromClient = clientOrServer === "server" && alsoHasClient;
 
     laterWriteFileIfNotExists(
       stackAppPath,
       `
-${type === "next" && clientOrServer === "server" ? `import "server-only";` : ""}
-
-import { Stack${clientOrServerCap}App } from ${JSON.stringify(packageName)};
-
-export const stack${clientOrServerCap}App = new Stack${clientOrServerCap}App({
-${indentation}tokenStore: ${tokenStore},${jsOptions}${nextClientOptions}
+${type === "next" && clientOrServer === "server" ? `import "server-only";\n\n` : ""}import { Stack${clientOrServerCap}App } from ${JSON.stringify(packageName)};
+${shouldInheritFromClient ? `import { stackClientApp } from "./client";\n\n` : "\n"}export const stack${clientOrServerCap}App = new Stack${clientOrServerCap}App({
+${shouldInheritFromClient ? `${indentation}inheritsFrom: stackClientApp,` : `${indentation}tokenStore: ${tokenStore},${jsOptions}${nextClientOptions}`}
 });
       `.trim() + "\n"
     );
