@@ -1,7 +1,6 @@
 'use client';
 
 import NextLink from 'next/link'; // eslint-disable-line no-restricted-imports
-import React from "react";
 
 import { UrlPrefetcher } from '@/lib/prefetch/url-prefetcher';
 import { cn } from "../lib/utils";
@@ -15,32 +14,32 @@ type LinkProps = {
   onClick?: () => void,
   style?: React.CSSProperties,
   prefetch?: boolean,
-  scroll?: boolean,
 };
 
-export const Link = React.forwardRef<HTMLAnchorElement, LinkProps>(({ onClick, href, ...rest }, ref) => {
+export function Link(props: LinkProps) {
   const router = useRouter();
   const { needConfirm } = useRouterConfirm();
 
   return <NextLink
-    ref={ref}
-    href={href}
-    {...rest}
+    href={props.href}
+    target={props.target}
+    className={props.className}
+    prefetch={props.prefetch}
+    style={props.style}
     onClick={(e: React.MouseEvent<HTMLAnchorElement>) => {
       if (needConfirm) {
         e.preventDefault();
-        onClick?.();
-        router.push(href.toString());
+        props.onClick?.();
+        router.push(props.href.toString());
       }
-      onClick?.();
+      props.onClick?.();
     }}
   >
-    <UrlPrefetcher href={href} />
-    {rest.children}
+    <UrlPrefetcher href={props.href} />
+    {props.children}
   </NextLink>;
 
-});
-Link.displayName = 'Link';
+}
 
 export function StyledLink(props: LinkProps) {
   return (
