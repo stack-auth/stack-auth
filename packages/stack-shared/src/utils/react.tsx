@@ -170,7 +170,7 @@ export function mapRefState<T, R>(refState: RefState<T>, mapper: (value: T) => R
   };
 }
 
-export function useQueryState(key: string, defaultValue?: string) {
+export function useQueryState(key: string, defaultValue?: string): readonly [string | typeof defaultValue,  (next: string | undefined) => void] {
   const getValue = () => new URLSearchParams(window.location.search).get(key) ?? defaultValue ?? "";
 
   const [value, setValue] = React.useState(getValue);
@@ -181,12 +181,16 @@ export function useQueryState(key: string, defaultValue?: string) {
     return () => window.removeEventListener("popstate", onPopState);
   }, []);
 
-  const update = (next: string) => {
+  const update = (next: string | undefined) => {
     const params = new URLSearchParams(window.location.search);
-    params.set(key, next);
-    const newUrl = `${window.location.pathname}?${params.toString()}`;
+    if (next == null) {
+      params.delete(key);
+    } else {
+      params.set(key, next);
+    }
+    const newUrl = `${window.location.pathname}${params.size > 0 ? `?${params.toString()}` : ""}`;
     window.history.pushState(null, "", newUrl);
-    setValue(next);
+    setValue(next ?? defaultValue ?? "");
   };
 
   return [value, update] as const;

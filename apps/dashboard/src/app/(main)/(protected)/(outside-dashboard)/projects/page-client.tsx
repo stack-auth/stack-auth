@@ -9,6 +9,7 @@ import { AdminOwnedProject, Team, useUser } from "@stackframe/stack";
 import { strictEmailSchema, yupObject } from "@stackframe/stack-shared/dist/schema-fields";
 import { groupBy } from "@stackframe/stack-shared/dist/utils/arrays";
 import { wait } from "@stackframe/stack-shared/dist/utils/promises";
+import { useQueryState } from "@stackframe/stack-shared/dist/utils/react";
 import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
 import { Button, Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue, Typography, toast } from "@stackframe/stack-ui";
 import { Settings } from "lucide-react";
@@ -149,8 +150,14 @@ function TeamAddUserDialog(props: {
     toast({ variant: "success", title: "Team invitation sent" });
   };
 
+  const [teamSettingsId, setTeamSettingsId] = useQueryState("team_settings");
+
   return <FormDialog
     title={`Invite a new user to ${JSON.stringify(props.team.displayName)}`}
+    open={teamSettingsId === props.team.id}
+    onOpenChange={(open) => {
+      setTeamSettingsId(open ? props.team.id : undefined);
+    }}
     formSchema={inviteFormSchema}
     okButton={{ label: "Invite" }}
     onSubmit={onSubmit}
