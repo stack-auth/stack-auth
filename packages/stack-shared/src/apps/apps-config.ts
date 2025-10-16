@@ -94,7 +94,7 @@ export const ALL_APPS = {
     displayName: "Data Vault",
     subtitle: "Secure storage for sensitive user data",
     tags: ["security", "storage"],
-    stage: "stable",
+    stage: "beta",
   },
   "workflows": {
     displayName: "Workflows",
@@ -118,7 +118,7 @@ export const ALL_APPS = {
     displayName: "Launch Checklist",
     subtitle: "Pre-launch verification and readiness checks",
     tags: ["various"],
-    stage: "alpha",
+    stage: "stable",
   },
   "catalyst": {
     displayName: "Catalyst",
@@ -130,7 +130,7 @@ export const ALL_APPS = {
     displayName: "Neon",
     subtitle: "Serverless Postgres database integration",
     tags: ["integration", "storage"],
-    stage: "stable",
+    stage: "alpha",
   },
   "convex": {
     displayName: "Convex",
