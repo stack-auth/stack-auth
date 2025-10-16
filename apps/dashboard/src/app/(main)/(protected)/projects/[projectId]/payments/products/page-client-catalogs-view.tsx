@@ -1443,7 +1443,7 @@ function CatalogView({ groupedProducts, groups, existingItems, onSaveProduct, on
         return (
           <div key={catalogId || 'ungrouped'}>
             {isNewGroupPlaceholder ? (
-              <div className="mb-3 flex items-center gap-2">
+              <div className="flex items-center gap-2">
                 <Input
                   ref={newGroupInputRef}
                   value={newCatalogId}
@@ -1464,8 +1464,13 @@ function CatalogView({ groupedProducts, groups, existingItems, onSaveProduct, on
                 </button>
               </div>
             ) : (
-              <h3 className="text-lg font-semibold mb-3">{groupName}</h3>
+              <h3 className="text-lg font-semibold mb-2">{groupName}</h3>
             )}
+            <div className="mb-3 text-xs text-muted-foreground">
+              {catalogId === undefined
+                ? "Multiple of these products can be owned at the same time."
+                : "A customer can have at most one of these products active at the same time, except for add-ons (which require the base product to be active)."}
+            </div>
             <div className="relative rounded-xl bg-slate-100 dark:bg-muted border-slate-100 dark:border-muted border-2">
               <div className="flex gap-4 justify-start overflow-x-auto p-4 min-h-20 pr-16">
                 <div className="flex max-w-max gap-4 items-start">
