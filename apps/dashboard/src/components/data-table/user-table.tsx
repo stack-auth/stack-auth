@@ -6,7 +6,7 @@ import { deepPlainEquals } from '@stackframe/stack-shared/dist/utils/objects';
 import { deindent } from '@stackframe/stack-shared/dist/utils/strings';
 import { ActionCell, AvatarCell, BadgeCell, DataTableColumnHeader, DataTableManualPagination, DateCell, SearchToolbarItem, SimpleTooltip, TextCell } from "@stackframe/stack-ui";
 import { ColumnDef, ColumnFiltersState, Row, SortingState, Table } from "@tanstack/react-table";
-import React, { useState } from "react";
+import { useState } from "react";
 import { Link } from '../link';
 import { CreateCheckoutDialog } from '../payments/create-checkout-dialog';
 import { DeleteUserDialog, ImpersonateUserDialog } from '../user-dialogs';
@@ -186,18 +186,12 @@ export function extendUsers(users: ServerUser[] & { nextCursor?: string | null }
 export function UserTable() {
   const stackAdminApp = useAdminApp();
   const router = useRouter();
-  const [showAnonymous, setShowAnonymous] = useState(false);
   const [filters, setFilters] = useState<Parameters<typeof stackAdminApp.listUsers>[0]>({
     limit: 10,
     orderBy: "signedUpAt",
     desc: true,
     includeAnonymous: false,
   });
-
-  // Update filters when showAnonymous changes
-  React.useEffect(() => {
-    setFilters(prev => ({ ...prev, includeAnonymous: showAnonymous }));
-  }, [showAnonymous]);
 
   const users = extendUsers(stackAdminApp.useUsers(filters));
 
@@ -235,7 +229,7 @@ export function UserTable() {
   return <DataTableManualPagination
     columns={columns}
     data={users}
-    toolbarRender={(table) => userToolbarRender(table, showAnonymous, setShowAnonymous)}
+    toolbarRender={(table) => userToolbarRender(table, filters?.includeAnonymous ?? false, (value) => setFilters(prev => ({ ...prev, includeAnonymous: value })))}
     onUpdate={onUpdate}
     defaultVisibility={{ emailVerified: false }}
     defaultColumnFilters={[]}

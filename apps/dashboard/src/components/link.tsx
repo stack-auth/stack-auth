@@ -1,13 +1,13 @@
 'use client';
 
+import NextLink from 'next/link'; // eslint-disable-line no-restricted-imports
+
+import { UrlPrefetcher } from '@/lib/prefetch/url-prefetcher';
 import { cn } from "../lib/utils";
-// eslint-disable-next-line
-import NextLink from 'next/link';
-import React from "react";
 import { useRouter, useRouterConfirm } from "./router";
 
 type LinkProps = {
-  href: string,
+  href: string | URL,
   children: React.ReactNode,
   className?: string,
   target?: string,
@@ -29,11 +29,14 @@ export const Link = React.forwardRef<HTMLAnchorElement, LinkProps>(({ onClick, h
       if (needConfirm) {
         e.preventDefault();
         onClick?.();
-        router.push(href);
+        router.push(href.toString());
       }
       onClick?.();
     }}
-  />;
+  >
+    <UrlPrefetcher href={href} />
+    {rest.children}
+  </NextLink>;
 
 });
 Link.displayName = 'Link';

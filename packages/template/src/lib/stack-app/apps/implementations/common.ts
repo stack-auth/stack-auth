@@ -2,6 +2,7 @@ import { InternalSession } from "@stackframe/stack-shared/dist/sessions";
 import { AsyncCache } from "@stackframe/stack-shared/dist/utils/caches";
 import { isBrowserLike } from "@stackframe/stack-shared/dist/utils/env";
 import { StackAssertionError, concatStacktraces, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { getGlobal } from "@stackframe/stack-shared/dist/utils/globals";
 import { filterUndefined, omit } from "@stackframe/stack-shared/dist/utils/objects";
 import { ReactPromise } from "@stackframe/stack-shared/dist/utils/promises";
 import { suspendIfSsr } from "@stackframe/stack-shared/dist/utils/react";
@@ -155,6 +156,12 @@ const cachePromiseByHookId = new Map<string, ReactPromise<Result<unknown>>>();
 export function useAsyncCache<D extends any[], T>(cache: AsyncCache<D, Result<T>>, dependencies: D, caller: string): T {
   // we explicitly don't want to run this hook in SSR
   suspendIfSsr(caller);
+
+  // on the dashboard, we do some perf monitoring for pre-fetching which should hook right in here
+  const asyncCacheHooks: any[] = getGlobal("use-async-cache-execution-hooks") ?? [];
+  for (const hook of asyncCacheHooks) {
+    hook({ cache, caller, dependencies });
+  }
 
   const id = React.useId();
 
