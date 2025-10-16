@@ -1,9 +1,9 @@
 import { KnownErrors, StackServerInterface } from "@stackframe/stack-shared";
-import type { CustomerProductsListResponse } from "@stackframe/stack-shared/dist/interface/crud/products";
 import { ContactChannelsCrud } from "@stackframe/stack-shared/dist/interface/crud/contact-channels";
 import { ItemCrud } from "@stackframe/stack-shared/dist/interface/crud/items";
 import { NotificationPreferenceCrud } from "@stackframe/stack-shared/dist/interface/crud/notification-preferences";
 import { OAuthProviderCrud } from "@stackframe/stack-shared/dist/interface/crud/oauth-providers";
+import type { CustomerProductsListResponse } from "@stackframe/stack-shared/dist/interface/crud/products";
 import { TeamApiKeysCrud, UserApiKeysCrud, teamApiKeysCreateOutputSchema, userApiKeysCreateOutputSchema } from "@stackframe/stack-shared/dist/interface/crud/project-api-keys";
 import { ProjectPermissionDefinitionsCrud, ProjectPermissionsCrud } from "@stackframe/stack-shared/dist/interface/crud/project-permissions";
 import { TeamInvitationCrud } from "@stackframe/stack-shared/dist/interface/crud/team-invitation";
@@ -22,10 +22,10 @@ import { useMemo } from "react"; // THIS_LINE_PLATFORM react-like
 import * as yup from "yup";
 import { constructRedirectUrl } from "../../../../utils/url";
 import { ApiKey, ApiKeyCreationOptions, ApiKeyUpdateOptions, apiKeyCreationOptionsToCrud, apiKeyUpdateOptionsToCrud } from "../../api-keys";
-import { ConvexCtx, GetCurrentUserOptions, HandlerUrls, OAuthScopesOnSignIn, TokenStoreInit } from "../../common";
+import { ConvexCtx, GetCurrentUserOptions, stackAppInternalsSymbol } from "../../common";
 import { OAuthConnection } from "../../connected-accounts";
 import { ServerContactChannel, ServerContactChannelCreateOptions, ServerContactChannelUpdateOptions, serverContactChannelCreateOptionsToCrud, serverContactChannelUpdateOptionsToCrud } from "../../contact-channels";
-import { Customer, CustomerProductsList, CustomerProductsListOptions, CustomerProductsRequestOptions, InlineProduct, ServerItem } from "../../customers";
+import { Customer, InlineProduct, ServerItem } from "../../customers";
 import { DataVaultStore } from "../../data-vault";
 import { SendEmailOptions } from "../../email";
 import { NotificationCategory } from "../../notification-categories";
@@ -36,6 +36,7 @@ import { StackServerAppConstructorOptions } from "../interfaces/server-app";
 import { _StackClientAppImplIncomplete } from "./client-app-impl";
 import { clientVersion, createCache, createCacheBySession, getBaseUrl, getDefaultExtraRequestHeaders, getDefaultProjectId, getDefaultPublishableClientKey, getDefaultSecretServerKey } from "./common";
 
+import { omit } from "@stackframe/stack-shared/dist/utils/objects";
 import { useAsyncCache } from "./common"; // THIS_LINE_PLATFORM react-like
 
 export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, ProjectId extends string> extends _StackClientAppImplIncomplete<HasTokenStore, ProjectId> {
@@ -371,37 +372,22 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
     };
   }
 
-  constructor(options:
-    | StackServerAppConstructorOptions<HasTokenStore, ProjectId>
-    | {
-      interface: StackServerInterface,
-      tokenStore: TokenStoreInit<HasTokenStore>,
-      urls: Partial<HandlerUrls> | undefined,
-      oauthScopesOnSignIn?: Partial<OAuthScopesOnSignIn> | undefined,
-    }
-  ) {
-    super("interface" in options ? {
-      interface: options.interface,
-      tokenStore: options.tokenStore,
-      urls: options.urls,
-      oauthScopesOnSignIn: options.oauthScopesOnSignIn,
-    } : {
-      interface: new StackServerInterface({
-        getBaseUrl: () => getBaseUrl(options.baseUrl),
-        projectId: options.projectId ?? getDefaultProjectId(),
-        extraRequestHeaders: options.extraRequestHeaders ?? getDefaultExtraRequestHeaders(),
+  constructor(options: StackServerAppConstructorOptions<HasTokenStore, ProjectId>, extraOptions?: { uniqueIdentifier?: string, checkString?: string, interface?: StackServerInterface }) {
+    const resolvedOptions = {
+      ...options.inheritsFrom?.[stackAppInternalsSymbol].getConstructorOptions() ?? {},
+      ...omit(options, ["inheritsFrom"]),
+    };
+
+    super(resolvedOptions, {
+      ...extraOptions,
+      interface: extraOptions?.interface ?? new StackServerInterface({
+        getBaseUrl: () => getBaseUrl(resolvedOptions.baseUrl),
+        projectId: resolvedOptions.projectId ?? getDefaultProjectId(),
+        extraRequestHeaders: resolvedOptions.extraRequestHeaders ?? getDefaultExtraRequestHeaders(),
         clientVersion,
-        publishableClientKey: options.publishableClientKey ?? getDefaultPublishableClientKey(),
-        secretServerKey: options.secretServerKey ?? getDefaultSecretServerKey(),
+        publishableClientKey: resolvedOptions.publishableClientKey ?? getDefaultPublishableClientKey(),
+        secretServerKey: resolvedOptions.secretServerKey ?? getDefaultSecretServerKey(),
       }),
-      baseUrl: options.baseUrl,
-      extraRequestHeaders: options.extraRequestHeaders,
-      projectId: options.projectId,
-      publishableClientKey: options.publishableClientKey,
-      tokenStore: options.tokenStore,
-      urls: options.urls,
-      oauthScopesOnSignIn: options.oauthScopesOnSignIn,
-      redirectMethod: options.redirectMethod,
     });
   }
 
