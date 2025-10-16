@@ -131,7 +131,6 @@ export function AppSquare({ appId }: {
             style={{
               padding: appSquarePaddingExpression,
             }}
-            scroll={isEnabled}
           >
             <AppIcon
               appId={appId}
