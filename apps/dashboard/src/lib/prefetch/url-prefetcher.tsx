@@ -1,18 +1,17 @@
 "use client";
 
 import { useAdminApp } from "@/app/(main)/(protected)/projects/[projectId]/use-admin-app";
-import { stackAppInternalsSymbol, useStackApp, useUser } from "@stackframe/stack";
+import { stackAppInternalsSymbol, useUser } from "@stackframe/stack";
 import { previewTemplateSource } from "@stackframe/stack-shared/dist/helpers/emails";
 import { createCachedRegex } from "@stackframe/stack-shared/dist/utils/regex";
 import { useEffect, useState } from "react";
 import { HookPrefetcher } from "./hook-prefetcher";
 
-const urlPrefetchers: Record<string, ((match: RegExpMatchArray) => void)[]> = {
+const urlPrefetchers: Record<string, ((match: RegExpMatchArray, query: URLSearchParams, hash: string) => void)[]> = {
   "/projects/*": [
     ([_, projectId]) => (useAdminApp(projectId) as any)[stackAppInternalsSymbol].useMetrics(false),
   ],
   "/projects/*/**": [
-    ([_, projectId]) => useStackApp().useProject(),
     ([_, projectId]) => useAdminApp(projectId).useProject().useConfig(),
   ],
   "/projects/*/users": [
@@ -26,79 +25,60 @@ const urlPrefetchers: Record<string, ((match: RegExpMatchArray) => void)[]> = {
     }),
   ],
   "/projects/*/users/*": [
+    ([_, projectId, userId]) => useAdminApp(projectId).useUser(userId),
     ([_, projectId, userId]) => {
-      const adminApp = useAdminApp(projectId);
-      const user = adminApp.useUser(userId);
+      const user = useAdminApp(projectId).useUser(userId);
       user?.useContactChannels();
+    },
+    ([_, projectId, userId]) => {
+      const user = useAdminApp(projectId).useUser(userId);
       user?.useTeams();
+    },
+    ([_, projectId, userId]) => {
+      const user = useAdminApp(projectId).useUser(userId);
       user?.useOAuthProviders();
     },
   ],
   "/projects/*/team-settings": [
-    ([_, projectId]) => {
-      const adminApp = useAdminApp(projectId);
-      adminApp.useTeamPermissionDefinitions();
-    },
+    ([_, projectId]) => useAdminApp(projectId).useTeamPermissionDefinitions(),
   ],
   "/projects/*/team-permissions": [
-    ([_, projectId]) => {
-      const adminApp = useAdminApp(projectId);
-      adminApp.useTeamPermissionDefinitions();
-      adminApp.useProjectPermissionDefinitions();
-    },
+    ([_, projectId]) => useAdminApp(projectId).useTeamPermissionDefinitions(),
+    ([_, projectId]) => useAdminApp(projectId).useProjectPermissionDefinitions(),
   ],
   "/projects/*/project-permissions": [
-    ([_, projectId]) => {
-      const adminApp = useAdminApp(projectId);
-      adminApp.useProjectPermissionDefinitions();
-      adminApp.useTeamPermissionDefinitions();
-    },
+    ([_, projectId]) => useAdminApp(projectId).useProjectPermissionDefinitions(),
+    ([_, projectId]) => useAdminApp(projectId).useTeamPermissionDefinitions(),
   ],
   "/projects/*/teams": [
-    ([_, projectId]) => {
-      const adminApp = useAdminApp(projectId);
-      adminApp.useTeams();
-    },
+    ([_, projectId]) => useAdminApp(projectId).useTeams(),
   ],
   "/projects/*/teams/*": [
+    ([_, projectId]) => useAdminApp(projectId).useTeamPermissionDefinitions(),
+    ([_, projectId]) => useAdminApp(projectId).useUsers({ limit: 10 }),
     ([_, projectId, teamId]) => {
-      const adminApp = useAdminApp(projectId);
-      adminApp.useTeamPermissionDefinitions();
-      adminApp.useUsers({ limit: 10 });
-      const team = adminApp.useTeam(teamId);
+      const team = useAdminApp(projectId).useTeam(teamId);
       team?.useUsers();
     },
   ],
   "/projects/*/api-keys": [
-    ([_, projectId]) => {
-      const adminApp = useAdminApp(projectId);
-      adminApp.useInternalApiKeys();
-    },
+    ([_, projectId]) => useAdminApp(projectId).useInternalApiKeys(),
   ],
   "/projects/*/webhooks": [
-    ([_, projectId]) => {
-      const adminApp = useAdminApp(projectId);
-      adminApp.useSvixToken();
-    },
+    ([_, projectId]) => useAdminApp(projectId).useSvixToken(),
   ],
   "/projects/*/webhooks/*": [
-    ([_, projectId]) => {
-      const adminApp = useAdminApp(projectId);
-      adminApp.useSvixToken();
-    },
+    ([_, projectId]) => useAdminApp(projectId).useSvixToken(),
   ],
   "/projects/*/email-drafts": [
-    ([_, projectId]) => {
-      const adminApp = useAdminApp(projectId);
-      adminApp.useEmailDrafts();
-    },
+    ([_, projectId]) => useAdminApp(projectId).useEmailDrafts(),
   ],
   "/projects/*/email-drafts/*": [
+    ([_, projectId]) => useAdminApp(projectId).useEmailDrafts(),
+    ([_, projectId]) => useAdminApp(projectId).useEmailThemes(),
     ([_, projectId, draftId]) => {
       const adminApp = useAdminApp(projectId);
-      const drafts = adminApp.useEmailDrafts();
-      adminApp.useEmailThemes();
-      const draft = drafts.find((d) => d.id === draftId);
+      const draft = adminApp.useEmailDrafts().find((d) => d.id === draftId);
       if (draft) {
         adminApp.useEmailPreview({
           themeId: draft.themeId,
@@ -108,23 +88,17 @@ const urlPrefetchers: Record<string, ((match: RegExpMatchArray) => void)[]> = {
     },
   ],
   "/projects/*/emails": [
-    ([_, projectId]) => {
-      const adminApp = useAdminApp(projectId);
-      adminApp.useUsers({ limit: 10 });
-    },
+    ([_, projectId]) => useAdminApp(projectId).useUsers({ limit: 10 }),
   ],
   "/projects/*/email-templates": [
-    ([_, projectId]) => {
-      const adminApp = useAdminApp(projectId);
-      adminApp.useEmailTemplates();
-    },
+    ([_, projectId]) => useAdminApp(projectId).useEmailTemplates(),
   ],
   "/projects/*/email-templates/*": [
+    ([_, projectId]) => useAdminApp(projectId).useEmailTemplates(),
+    ([_, projectId]) => useAdminApp(projectId).useEmailThemes(),
     ([_, projectId, templateId]) => {
       const adminApp = useAdminApp(projectId);
-      const templates = adminApp.useEmailTemplates();
-      adminApp.useEmailThemes();
-      const template = templates.find((t) => t.id === templateId);
+      const template = adminApp.useEmailTemplates().find((t) => t.id === templateId);
       if (template) {
         adminApp.useEmailPreview({
           themeId: template.themeId,
@@ -134,11 +108,11 @@ const urlPrefetchers: Record<string, ((match: RegExpMatchArray) => void)[]> = {
     },
   ],
   "/projects/*/email-themes": [
+    ([_, projectId]) => useAdminApp(projectId).useProject().useConfig(),
+    ([_, projectId]) => useAdminApp(projectId).useEmailThemes(),
     ([_, projectId]) => {
       const adminApp = useAdminApp(projectId);
-      const project = adminApp.useProject();
       const themes = adminApp.useEmailThemes();
-      project.useConfig();
       themes.forEach((theme) => {
         adminApp.useEmailPreview({
           themeId: theme.id,
@@ -148,6 +122,7 @@ const urlPrefetchers: Record<string, ((match: RegExpMatchArray) => void)[]> = {
     },
   ],
   "/projects/*/email-themes/*": [
+    ([_, projectId, themeId]) => useAdminApp(projectId).useEmailTheme(themeId),
     ([_, projectId, themeId]) => {
       const adminApp = useAdminApp(projectId);
       const theme = adminApp.useEmailTheme(themeId);
@@ -158,27 +133,21 @@ const urlPrefetchers: Record<string, ((match: RegExpMatchArray) => void)[]> = {
     },
   ],
   "/projects/*/project-settings": [
+    ([_, projectId]) => useAdminApp(projectId).useProject(),
+    ([_, projectId]) => useAdminApp(projectId).useProject().useProductionModeErrors(),
+    () => useUser({ or: "redirect", projectIdMustMatch: "internal" }),
     ([_, projectId]) => {
-      const adminApp = useAdminApp(projectId);
-      const project = adminApp.useProject();
-      project.useProductionModeErrors();
-      const user = useUser({ or: "redirect", projectIdMustMatch: "internal" });
-      const teams = user.useTeams();
+      const project = useAdminApp(projectId).useProject();
+      const teams = useUser({ or: "redirect", projectIdMustMatch: "internal" }).useTeams();
       const ownerTeam = teams.find((team) => team.id === project.ownerTeamId);
       ownerTeam?.useUsers();
     },
   ],
   "/projects/*/payments/**": [
-    ([_, projectId]) => {
-      const adminApp = useAdminApp(projectId);
-      adminApp.useStripeAccountInfo();
-    },
+    ([_, projectId]) => useAdminApp(projectId).useStripeAccountInfo(),
   ],
   "/projects/*/payments/transactions": [
-    ([_, projectId]) => {
-      const adminApp = useAdminApp(projectId);
-      adminApp.useTransactions({ limit: 10 });
-    },
+    ([_, projectId]) => useAdminApp(projectId).useTransactions({ limit: 10 }),
   ],
 };
 
@@ -200,7 +169,7 @@ function getMatchingPrefetchers(url: URL) {
   if (url.origin !== window.location.origin) return [];
   return Object.entries(urlPrefetchers)
     .map(([pattern, prefetchers]) => [pattern, prefetchers, matchPrefetcherPattern(pattern, url.pathname)] as const)
-    .flatMap(([_, prefetchers, match]) => match ? prefetchers.map((prefetcher) => () => prefetcher(match)) : []);
+    .flatMap(([_, prefetchers, match]) => match ? prefetchers.map((prefetcher) => () => prefetcher(match, url.searchParams, url.hash)) : []);
 }
 
 export function UrlPrefetcher(props: { href: string | URL }) {
