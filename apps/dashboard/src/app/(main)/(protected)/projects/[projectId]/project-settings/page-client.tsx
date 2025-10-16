@@ -1,12 +1,12 @@
 "use client";
 import { InputField } from "@/components/form-fields";
-import { StyledLink } from "@/components/link";
+import { Link, StyledLink } from "@/components/link";
 import { LogoUpload } from "@/components/logo-upload";
 import { FormSettingCard, SettingCard, SettingSwitch, SettingText } from "@/components/settings";
 import { getPublicEnvVar } from "@/lib/env";
 import { TeamSwitcher, useUser } from "@stackframe/stack";
 import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
-import { ActionDialog, Alert, Button, SimpleTooltip, Typography } from "@stackframe/stack-ui";
+import { ActionDialog, Alert, Avatar, AvatarFallback, AvatarImage, Button, SimpleTooltip, Typography } from "@stackframe/stack-ui";
 import { useState } from "react";
 import * as yup from "yup";
 import { PageLayout } from "../page-layout";
@@ -47,6 +47,8 @@ export default function PageClient() {
   // Check if user has team_admin permission for teams
   // We'll check permissions in the backend, but for UI we can check if user is in the team
   const selectedTeam = teams.find(team => team.id === selectedTeamId);
+  const currentTeamMembers = currentOwnerTeam.useUsers();
+  const teamSettingsPath = `/projects?team_settings=${encodeURIComponent(currentOwnerTeam.id)}`;
 
   const handleTransfer = async () => {
     if (!selectedTeamId || selectedTeamId === project.ownerTeamId) return;
@@ -142,6 +144,124 @@ export default function PageClient() {
       </SettingCard>
 
       <SettingCard
+        title="Project Access"
+        description="See who can manage this project and transfer ownership if needed."
+      >
+        <div className="flex flex-col gap-6">
+          <div className="flex flex-col gap-2">
+            <Typography className="text-base font-semibold">
+              {currentOwnerTeam.displayName || "Unnamed team"}
+            </Typography>
+            <Typography variant="secondary" type="footnote">
+              Everyone in this team can access and manage the project.
+            </Typography>
+          </div>
+
+          <div className="flex flex-col gap-4">
+            <div className="flex items-center justify-between">
+              <Typography variant="secondary">
+                Team members
+              </Typography>
+              <Button asChild variant="secondary" size="sm">
+                <Link href={teamSettingsPath}>
+                  Manage team members
+                </Link>
+              </Button>
+            </div>
+            {currentTeamMembers.length === 0 ? (
+              <div className="rounded-lg border border-border/50 bg-muted/40 p-4">
+                <Typography variant="secondary" type="footnote">
+                  This team has no members yet.
+                </Typography>
+              </div>
+            ) : (
+              <div className="rounded-lg border border-border bg-card">
+                <ul className="divide-y divide-border/60">
+                  {currentTeamMembers.map((member) => {
+                    const displayName = member.teamProfile.displayName?.trim() || "Name not set";
+                    const avatarFallback = displayName === "Name not set"
+                      ? "?"
+                      : displayName.charAt(0).toUpperCase();
+                    return (
+                      <li key={member.id} className="flex items-center gap-3 p-3">
+                        <Avatar className="h-10 w-10">
+                          <AvatarImage src={member.teamProfile.profileImageUrl || undefined} alt={displayName} />
+                          <AvatarFallback>{avatarFallback}</AvatarFallback>
+                        </Avatar>
+                        <div className="flex flex-col">
+                          <Typography className="font-medium">
+                            {displayName}
+                          </Typography>
+                          {displayName === "Name not set" && (
+                            <Typography variant="secondary" type="footnote">
+                              Display name not set
+                            </Typography>
+                          )}
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            )}
+            <Typography variant="secondary" type="footnote">
+              Invite new people or adjust roles in the team settings page.
+            </Typography>
+          </div>
+
+          <div className="flex flex-col gap-3">
+            <Typography variant="secondary">
+              Transfer to a different team
+            </Typography>
+            {!hasAdminPermissionForCurrentTeam ? (
+              <Alert variant="destructive">
+                {`You need to be a team admin of "${currentOwnerTeam.displayName || 'the current team'}" to transfer this project.`}
+              </Alert>
+            ) : (
+              <div className="flex flex-col gap-3 sm:flex-row">
+                <div className="sm:w-full sm:max-w-sm">
+                  <TeamSwitcher
+                    triggerClassName="w-full"
+                    teamId={selectedTeamId || ""}
+                    onChange={async (team) => {
+                      setSelectedTeamId(team.id);
+                    }}
+                  />
+                </div>
+                <ActionDialog
+                  trigger={
+                    <Button
+                      variant="secondary"
+                      disabled={
+                        !selectedTeam ||
+                        selectedTeam.id === project.ownerTeamId ||
+                        isTransferring
+                      }
+                    >
+                      Transfer
+                    </Button>
+                  }
+                  title="Transfer Project"
+                  okButton={{
+                    label: "Transfer Project",
+                    onClick: handleTransfer
+                  }}
+                  cancelButton
+                >
+                  <Typography>
+                    {`Are you sure you want to transfer "${project.displayName}" to ${teams.find(t => t.id === selectedTeamId)?.displayName}?`}
+                  </Typography>
+                  <Typography className="mt-2" variant="secondary">
+                    This will change the ownership of the project. Only team admins of the new team will be able to manage project settings.
+                  </Typography>
+                </ActionDialog>
+              </div>
+            )}
+          </div>
+        </div>
+      </SettingCard>
+
+      <SettingCard
         title="API Key Settings"
         description="Configure which types of API keys are allowed in your project."
       >
@@ -211,61 +331,6 @@ export default function PageClient() {
             </ul>
           </Alert>
         )}
-      </SettingCard>
-
-      <SettingCard
-        title="Transfer Project"
-        description="Transfer this project to another team"
-      >
-        <div className="flex flex-col gap-4">
-          {!hasAdminPermissionForCurrentTeam ? (
-            <Alert variant="destructive">
-              {`You need to be a team admin of "${currentOwnerTeam.displayName || 'the current team'}" to transfer this project.`}
-            </Alert>
-          ) : (
-            <>
-              <div>
-                <Typography variant="secondary" className="mb-2">
-                  Current owner team: {currentOwnerTeam.displayName || "Unknown"}
-                </Typography>
-              </div>
-              <div className="flex gap-2">
-                <div className="flex-1">
-                  <TeamSwitcher
-                    triggerClassName="w-full"
-                    teamId={selectedTeamId || ""}
-                    onChange={async (team) => {
-                      setSelectedTeamId(team.id);
-                    }}
-                  />
-                </div>
-                <ActionDialog
-                  trigger={
-                    <Button
-                      variant="secondary"
-                      disabled={!selectedTeam || isTransferring}
-                    >
-                      Transfer
-                    </Button>
-                  }
-                  title="Transfer Project"
-                  okButton={{
-                    label: "Transfer Project",
-                    onClick: handleTransfer
-                  }}
-                  cancelButton
-                >
-                  <Typography>
-                    {`Are you sure you want to transfer "${project.displayName}" to ${teams.find(t => t.id === selectedTeamId)?.displayName}?`}
-                  </Typography>
-                  <Typography className="mt-2" variant="secondary">
-                    This will change the ownership of the project. Only team admins of the new team will be able to manage project settings.
-                  </Typography>
-                </ActionDialog>
-              </div>
-            </>
-          )}
-        </div>
       </SettingCard>
 
       <SettingCard

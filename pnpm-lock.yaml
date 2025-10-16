@@ -762,6 +762,9 @@ importers:
       '@stackframe/stack':
         specifier: workspace:*
         version: link:../../packages/stack
+      '@stackframe/stack-shared':
+        specifier: workspace:*
+        version: link:../../packages/stack-shared
       convex:
         specifier: ^1.27.0
         version: 1.27.0(react@19.0.0)
@@ -814,6 +817,9 @@ importers:
       typescript:
         specifier: 5.3.3
         version: 5.3.3
+      wait-on:
+        specifier: ^8.0.1
+        version: 8.0.1
 
   examples/demo:
     dependencies:
