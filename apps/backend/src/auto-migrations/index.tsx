@@ -186,6 +186,10 @@ export async function applyMigrations(options: {
         //
         // if you have a migration that's slower, consider using CONDITIONALLY_REPEAT_MIGRATION_SENTINEL
         timeout: 80_000,
+        // Allow waiting longer to acquire a connection so bursts of concurrent migration attempts don't
+        // immediately fail with P2028 ("Unable to start a transaction in the given time"). This keeps the
+        // migration logic resilient under high contention, which can happen in CI where many workers race at once.
+        maxWait: 30_000,
       });
     }
   }
