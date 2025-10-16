@@ -168,6 +168,10 @@ export function mapRefState<T, R>(refState: RefState<T>, mapper: (value: T) => R
   };
 }
 
+export function shouldRethrowRenderingError(error: unknown): boolean {
+  return !!error && typeof error === "object" && "digest" in error && error.digest === "BAILOUT_TO_CLIENT_SIDE_RENDERING";
+}
+
 export class NoSuspenseBoundaryError extends Error {
   digest: string;
   reason: string;

@@ -1,23 +1,24 @@
 'use client';
 
-import { cn } from "../lib/utils";
-// eslint-disable-next-line
-import NextLink from 'next/link';
+import NextLink from 'next/link'; // eslint-disable-line no-restricted-imports
+
+import { UrlPrefetcher } from '@/lib/prefetch/url-prefetcher';
 import React from "react";
+import { cn } from "../lib/utils";
 import { useRouter, useRouterConfirm } from "./router";
 
 type LinkProps = {
-  href: string,
+  href: string | URL,
   children: React.ReactNode,
   className?: string,
   target?: string,
   onClick?: () => void,
   style?: React.CSSProperties,
-  prefetch?: boolean,
   scroll?: boolean,
+  prefetch?: boolean | "auto",
 };
 
-export const Link = React.forwardRef<HTMLAnchorElement, LinkProps>(({ onClick, href, ...rest }, ref) => {
+export const Link = React.forwardRef<HTMLAnchorElement, LinkProps>(({ onClick, href, children, ...rest }, ref) => {
   const router = useRouter();
   const { needConfirm } = useRouterConfirm();
 
@@ -29,11 +30,14 @@ export const Link = React.forwardRef<HTMLAnchorElement, LinkProps>(({ onClick, h
       if (needConfirm) {
         e.preventDefault();
         onClick?.();
-        router.push(href);
+        router.push(href.toString());
       }
       onClick?.();
     }}
-  />;
+  >
+    <UrlPrefetcher href={href} />
+    {children}
+  </NextLink>;
 
 });
 Link.displayName = 'Link';
