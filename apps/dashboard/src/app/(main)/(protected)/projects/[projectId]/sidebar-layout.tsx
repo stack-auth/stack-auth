@@ -31,15 +31,7 @@ import {
   Globe,
   LucideIcon,
   Menu,
-  Palette,
-  Receipt,
-  Settings,
-  Settings2,
-  ShieldEllipsis,
-  User,
-  Users,
-  UserRound,
-  Webhook,
+  Settings
 } from "lucide-react";
 import { useTheme } from "next-themes";
 import { usePathname } from "next/navigation";
@@ -76,15 +68,14 @@ type AppSection = {
   items: {
     name: string,
     href: string,
-    match: (fullUrn,
-  regex: RegExpl: URL) => boolean,
+    match: (fullUrl: URL) => boolean,
   }[],
 };
 
 type BottomItem = {
   name: string,
   href: string,
-  icon: LucideIco,
+  icon: LucideIcon,
   external?: boolean,
 };
 
