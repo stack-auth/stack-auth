@@ -6,7 +6,7 @@ import { InternalApiKeysCrud } from "@stackframe/stack-shared/dist/interface/cru
 import { ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
 import type { AdminTransaction } from "@stackframe/stack-shared/dist/interface/crud/transactions";
 import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
-import { omit, pick } from "@stackframe/stack-shared/dist/utils/objects";
+import { pick } from "@stackframe/stack-shared/dist/utils/objects";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { useMemo } from "react"; // THIS_LINE_PLATFORM react-like
 import { AdminSentEmail } from "../..";
@@ -16,7 +16,7 @@ import { InternalApiKey, InternalApiKeyBase, InternalApiKeyBaseCrudRead, Interna
 import { AdminProjectPermission, AdminProjectPermissionDefinition, AdminProjectPermissionDefinitionCreateOptions, AdminProjectPermissionDefinitionUpdateOptions, AdminTeamPermission, AdminTeamPermissionDefinition, AdminTeamPermissionDefinitionCreateOptions, AdminTeamPermissionDefinitionUpdateOptions, adminProjectPermissionDefinitionCreateOptionsToCrud, adminProjectPermissionDefinitionUpdateOptionsToCrud, adminTeamPermissionDefinitionCreateOptionsToCrud, adminTeamPermissionDefinitionUpdateOptionsToCrud } from "../../permissions";
 import { AdminOwnedProject, AdminProject, AdminProjectUpdateOptions, adminProjectUpdateOptionsToCrud } from "../../projects";
 import { StackAdminApp, StackAdminAppConstructorOptions } from "../interfaces/admin-app";
-import { clientVersion, createCache, getBaseUrl, getDefaultExtraRequestHeaders, getDefaultProjectId, getDefaultPublishableClientKey, getDefaultSecretServerKey, getDefaultSuperSecretAdminKey } from "./common";
+import { clientVersion, createCache, getBaseUrl, getDefaultExtraRequestHeaders, getDefaultProjectId, getDefaultPublishableClientKey, getDefaultSecretServerKey, getDefaultSuperSecretAdminKey, resolveConstructorOptions } from "./common";
 import { _StackServerAppImplIncomplete } from "./server-app-impl";
 
 import { CompleteConfig, EnvironmentConfigOverrideOverride } from "@stackframe/stack-shared/dist/config/schema";
@@ -79,10 +79,7 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
   });
 
   constructor(options: StackAdminAppConstructorOptions<HasTokenStore, ProjectId>, extraOptions?: { uniqueIdentifier?: string, checkString?: string, interface?: StackAdminInterface }) {
-    const resolvedOptions: StackAdminAppConstructorOptions<HasTokenStore, ProjectId> = {
-      ...options.inheritsFrom?.[stackAppInternalsSymbol].getConstructorOptions() ?? {},
-      ...omit(options, ["inheritsFrom"]),
-    };
+    const resolvedOptions = resolveConstructorOptions(options);
 
     super(resolvedOptions, {
       ...extraOptions,
