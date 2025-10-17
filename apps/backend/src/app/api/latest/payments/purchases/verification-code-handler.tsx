@@ -1,6 +1,6 @@
 import { createVerificationCodeHandler } from "@/route-handlers/verification-code-handler";
 import { VerificationCodeType } from "@prisma/client";
-import { productSchema, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+import { productSchema, yupBoolean, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 
 export const purchaseUrlVerificationCodeHandler = createVerificationCodeHandler({
   type: VerificationCodeType.PURCHASE_URL,
@@ -12,6 +12,7 @@ export const purchaseUrlVerificationCodeHandler = createVerificationCodeHandler(
     product: productSchema,
     stripeCustomerId: yupString().defined(),
     stripeAccountId: yupString().defined(),
+    chargesEnabled: yupBoolean().defined(),
   }),
   // @ts-ignore TODO: fix this
   async handler(_, __, data) {

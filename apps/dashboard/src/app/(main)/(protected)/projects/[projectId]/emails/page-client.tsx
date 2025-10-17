@@ -6,18 +6,19 @@ import { InputField, SelectField, TextAreaField } from "@/components/form-fields
 import { SettingCard, SettingText } from "@/components/settings";
 import { getPublicEnvVar } from "@/lib/env";
 import { AdminEmailConfig, AdminProject, AdminSentEmail, ServerUser, UserAvatar } from "@stackframe/stack";
+import { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
 import { strictEmailSchema } from "@stackframe/stack-shared/dist/schema-fields";
 import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { deepPlainEquals } from "@stackframe/stack-shared/dist/utils/objects";
 import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
-import { ActionDialog, Alert, Button, DataTable, SimpleTooltip, Typography, useToast, TooltipProvider, TooltipTrigger, TooltipContent, Tooltip, AlertDescription, AlertTitle } from "@stackframe/stack-ui";
+import { ActionDialog, Alert, AlertDescription, AlertTitle, Button, DataTable, SimpleTooltip, Tooltip, TooltipContent, TooltipProvider, TooltipTrigger, Typography, useToast } from "@stackframe/stack-ui";
 import { ColumnDef } from "@tanstack/react-table";
 import { AlertCircle, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import * as yup from "yup";
+import { AppEnabledGuard } from "../app-enabled-guard";
 import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";
-import { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
 
 export default function PageClient() {
   const stackAdminApp = useAdminApp();
@@ -25,55 +26,57 @@ export default function PageClient() {
   const emailConfig = project.useConfig().emails.server;
 
   return (
-    <PageLayout
-      title="Emails"
-      description="Manage email server and logs"
-      actions={
-        <SendEmailDialog
-          trigger={<Button>Send Email</Button>}
-          emailConfig={emailConfig}
-        />
-      }
-    >
-      {getPublicEnvVar('NEXT_PUBLIC_STACK_EMULATOR_ENABLED') === 'true' ? (
-        <SettingCard
-          title="Mock Emails"
-          description="View all emails sent through the emulator in Inbucket"
-        >
-          <Button variant='secondary' onClick={() => {
-            window.open(getPublicEnvVar('NEXT_PUBLIC_STACK_INBUCKET_WEB_URL') + '/monitor', '_blank');
-          }}>
-            Open Inbox
-          </Button>
+    <AppEnabledGuard appId="emails">
+      <PageLayout
+        title="Emails"
+        description="Manage email server and logs"
+        actions={
+          <SendEmailDialog
+            trigger={<Button>Send Email</Button>}
+            emailConfig={emailConfig}
+          />
+        }
+      >
+        {getPublicEnvVar('NEXT_PUBLIC_STACK_EMULATOR_ENABLED') === 'true' ? (
+          <SettingCard
+            title="Mock Emails"
+            description="View all emails sent through the emulator in Inbucket"
+          >
+            <Button variant='secondary' onClick={() => {
+              window.open(getPublicEnvVar('NEXT_PUBLIC_STACK_INBUCKET_WEB_URL') + '/monitor', '_blank');
+            }}>
+              Open Inbox
+            </Button>
+          </SettingCard>
+        ) : (
+          <SettingCard
+            title="Email Server"
+            description="Configure the email server and sender address for outgoing emails"
+            actions={
+              <div className="flex items-center gap-2">
+                {!emailConfig.isShared && <TestSendingDialog trigger={<Button variant='secondary' className="w-full">Send Test Email</Button>} />}
+                <EditEmailServerDialog trigger={<Button variant='secondary' className="w-full">Configure</Button>} />
+              </div>
+            }
+          >
+            <SettingText label="Server">
+              <div className="flex items-center gap-2">
+                {emailConfig.isShared ?
+                  <>Shared <SimpleTooltip tooltip="When you use the shared email server, all the emails are sent from Stack's email address" type='info' /></>
+                  : (emailConfig.provider === 'resend' ? "Resend" : "Custom SMTP server")
+                }
+              </div>
+            </SettingText>
+            <SettingText label="Sender Email">
+              {emailConfig.isShared ? 'noreply@stackframe.co' : emailConfig.senderEmail}
+            </SettingText>
+          </SettingCard>
+        )}
+        <SettingCard title="Email Log" description="Manage email sending history" >
+          <EmailSendDataTable />
         </SettingCard>
-      ) : (
-        <SettingCard
-          title="Email Server"
-          description="Configure the email server and sender address for outgoing emails"
-          actions={
-            <div className="flex items-center gap-2">
-              {!emailConfig.isShared && <TestSendingDialog trigger={<Button variant='secondary' className="w-full">Send Test Email</Button>} />}
-              <EditEmailServerDialog trigger={<Button variant='secondary' className="w-full">Configure</Button>} />
-            </div>
-          }
-        >
-          <SettingText label="Server">
-            <div className="flex items-center gap-2">
-              {emailConfig.isShared ?
-                <>Shared <SimpleTooltip tooltip="When you use the shared email server, all the emails are sent from Stack's email address" type='info' /></>
-                : (emailConfig.provider === 'resend' ? "Resend" : "Custom SMTP server")
-              }
-            </div>
-          </SettingText>
-          <SettingText label="Sender Email">
-            {emailConfig.isShared ? 'noreply@stackframe.co' : emailConfig.senderEmail}
-          </SettingText>
-        </SettingCard>
-      )}
-      <SettingCard title="Email Log" description="Manage email sending history" >
-        <EmailSendDataTable />
-      </SettingCard>
-    </PageLayout>
+      </PageLayout>
+    </AppEnabledGuard>
   );
 }
 

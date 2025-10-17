@@ -159,7 +159,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         getUser: async () => Result.orThrow(await this._currentUserCache.getOrWait([session], "write-only")),
         getOrWaitOAuthToken: async () => Result.orThrow(await this._currentUserOAuthConnectionAccessTokensCache.getOrWait([session, providerId, scope || ""] as const, "write-only")),
         // IF_PLATFORM react-like
-        useOAuthToken: () => useAsyncCache(this._currentUserOAuthConnectionAccessTokensCache, [session, providerId, scope || ""] as const, "useOAuthToken"),
+        useOAuthToken: () => useAsyncCache(this._currentUserOAuthConnectionAccessTokensCache, [session, providerId, scope || ""] as const, "connection.useAccessToken()"),
         // END_PLATFORM
         providerId,
         scope,
@@ -1373,7 +1373,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
   useProducts(options: CustomerProductsRequestOptions): CustomerProductsList {
     const session = this._useSession();
     const cache = "userId" in options ? this._userProductsCache : "teamId" in options ? this._teamProductsCache : this._customProductsCache;
-    const debugLabel = "userId" in options ? "app.useProducts(user)" : "teamId" in options ? "app.useProducts(team)" : "app.useProducts(custom)";
+    const debugLabel = "clientApp.useProducts()";
     const customerId = "userId" in options ? options.userId : "teamId" in options ? options.teamId : options.customCustomerId;
     const response = useAsyncCache(cache, [session, customerId, options.cursor ?? null, options.limit ?? null] as const, debugLabel);
     return this._customerProductsFromResponse(response);
@@ -1634,7 +1634,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     this._ensurePersistentTokenStore(options?.tokenStore);
 
     const session = this._useSession(options?.tokenStore);
-    let crud = useAsyncCache(this._currentUserCache, [session] as const, "useUser()");
+    let crud = useAsyncCache(this._currentUserCache, [session] as const, "clientApp.useUser()");
     if (crud?.is_anonymous && options?.or !== "anonymous" && options?.or !== "anonymous-if-exists[deprecated]") {
       crud = null;
     }
@@ -1736,7 +1736,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         return this._getTokenPartialUserFromSession(session, options);
       }
       case "convex": {
-        const result = useAsyncCache(this._convexPartialUserCache, [options.ctx] as const, "usePartialUser(convex)");
+        const result = useAsyncCache(this._convexPartialUserCache, [options.ctx] as const, "clientApp.usePartialUser()");
         return result;
       }
       default: {
@@ -2160,7 +2160,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
 
   // IF_PLATFORM react-like
   useProject(): Project {
-    const crud = useAsyncCache(this._currentProjectCache, [], "useProject()");
+    const crud = useAsyncCache(this._currentProjectCache, [], "clientApp.useProject()");
     return useMemo(() => this._clientProjectFromCrud(crud), [crud]);
   }
   // END_PLATFORM
@@ -2177,7 +2177,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
   // IF_PLATFORM react-like
   protected _useOwnedProjects(session: InternalSession): AdminOwnedProject[] {
     this._ensureInternalProject();
-    const projects = useAsyncCache(this._ownedProjectsCache, [session], "useOwnedProjects()");
+    const projects = useAsyncCache(this._ownedProjectsCache, [session], "clientApp.useOwnedProjects()");
     return useMemo(() => projects.map((j) => this._getOwnedAdminApp(j.id, session)._adminOwnedProjectFromCrud(
       j,
       () => this._refreshOwnedProjects(session),
