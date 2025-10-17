@@ -7,8 +7,8 @@ export function mergeRefs<T>(
     refs.forEach((ref) => {
       if (typeof ref === 'function') {
         ref(value);
-      } else if (ref) {
-        ref.current = value;
+      } else if (ref && 'current' in ref) {
+        (ref as React.MutableRefObject<T | null>).current = value;
       }
     });
   };
