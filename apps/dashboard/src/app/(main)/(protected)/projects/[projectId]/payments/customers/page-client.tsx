@@ -5,10 +5,9 @@ import { TeamSearchTable } from "@/components/data-table/team-search-table";
 import { SmartFormDialog } from "@/components/form-dialog";
 import { NumberField, SelectField } from "@/components/form-fields";
 import { ItemDialog } from "@/components/payments/item-dialog";
-import { PageLayout } from "../../page-layout";
-import { useAdminApp } from "../../use-admin-app";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
+import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import {
   ActionDialog,
@@ -34,7 +33,8 @@ import { ChevronsUpDown } from "lucide-react";
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { useWatch } from "react-hook-form";
 import * as yup from "yup";
-import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
+import { PageLayout } from "../../page-layout";
+import { useAdminApp } from "../../use-admin-app";
 
 const DISABLED_GRANT_TOOLTIP = "Select a customer to grant products.";
 
@@ -127,8 +127,8 @@ export default function PageClient() {
         <Select
           value={customerType}
           onValueChange={(value: CustomerType) => {
-            setCustomerType(value);
-            setSelectedCustomer(null);
+              setCustomerType(value);
+              setSelectedCustomer(null);
           }}
         >
           <SelectTrigger id="customer-type" className="w-full sm:w-52">

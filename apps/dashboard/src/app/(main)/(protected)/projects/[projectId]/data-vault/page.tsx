@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 
-export default function Page() {
-  redirect("./data-vault/stores");
+export default async function Page({ params }: { params: Promise<{ projectId: string }> }) {
+  const { projectId } = await params;
+  redirect(`/projects/${projectId}/data-vault/stores`);
 }

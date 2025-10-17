@@ -7,6 +7,7 @@ import { ActionDialog, Badge, BrandIcons, BrowserFrame, Button, DropdownMenu, Dr
 import { AsteriskSquare, CirclePlus, Key, Link2, MoreHorizontal } from "lucide-react";
 import { useState } from "react";
 import { CardSubtitle } from "../../../../../../../../../packages/stack-ui/dist/components/ui/card";
+import { AppEnabledGuard } from "../app-enabled-guard";
 import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";
 import { ProviderIcon, ProviderSettingDialog, ProviderSettingSwitch, TurnOffProviderDialog } from "./providers";
@@ -213,175 +214,177 @@ export default function PageClient() {
     .filter(([, provider]) => !!provider);
 
   return (
-    <PageLayout title="Auth Methods" description="Configure how users can sign in to your app">
-      <div className="flex gap-4">
-        <SettingCard className="flex-grow">
-          <SettingSwitch
-            label={
-              <div className="flex items-center gap-2">
-                <AsteriskSquare size={20} aria-hidden="true" />
-                <span>Email/password authentication</span>
-              </div>
-            }
-            checked={project.config.credentialEnabled}
-            onCheckedChange={async (checked) => {
-              await project.update({
-                config: {
-                  credentialEnabled: checked,
-                },
-              });
-            }}
-          />
-          <SettingSwitch
-            label={
-              <div className="flex items-center gap-2">
-                <Link2 size={20} />
-                <span>Magic link (Email OTP)</span>
-              </div>
-            }
-            checked={project.config.magicLinkEnabled}
-            onCheckedChange={async (checked) => {
-              await project.update({
-                config: {
-                  magicLinkEnabled: checked,
-                },
-              });
-            }}
-          />
-          <SettingSwitch
-            label={
-              <div className="flex items-center gap-2">
-                <Key size={20} />
-                <span>Passkey</span>
-              </div>
-            }
-            checked={project.config.passkeyEnabled}
-            onCheckedChange={async (checked) => {
-              await project.update({
-                config: {
-                  passkeyEnabled: checked,
-                },
-              });
-            }}
-          />
-          <CardSubtitle className="mt-2">
-            SSO Providers
-          </CardSubtitle>
-
-          {enabledProviders.map(([, provider]) => provider)
-            .filter((provider): provider is AdminOAuthProviderConfig => !!provider).map(provider => {
-              return <div key={provider.id} className="flex h-10 items-center justify-between">
+    <AppEnabledGuard appId="authentication">
+      <PageLayout title="Auth Methods" description="Configure how users can sign in to your app">
+        <div className="flex gap-4">
+          <SettingCard className="flex-grow">
+            <SettingSwitch
+              label={
                 <div className="flex items-center gap-2">
-                  <ProviderIcon id={provider.id} />
-                  <span className="text-sm font-semibold">{BrandIcons.toTitle(provider.id)}</span>
-                  {provider.type === 'shared' && <SimpleTooltip tooltip={SHARED_TOOLTIP}>
-                    <Badge variant="secondary">Shared keys</Badge>
-                  </SimpleTooltip>}
+                  <AsteriskSquare size={20} aria-hidden="true" />
+                  <span>Email/password authentication</span>
                 </div>
+              }
+              checked={project.config.credentialEnabled}
+              onCheckedChange={async (checked) => {
+                await project.update({
+                  config: {
+                    credentialEnabled: checked,
+                  },
+                });
+              }}
+            />
+            <SettingSwitch
+              label={
+                <div className="flex items-center gap-2">
+                  <Link2 size={20} />
+                  <span>Magic link (Email OTP)</span>
+                </div>
+              }
+              checked={project.config.magicLinkEnabled}
+              onCheckedChange={async (checked) => {
+                await project.update({
+                  config: {
+                    magicLinkEnabled: checked,
+                  },
+                });
+              }}
+            />
+            <SettingSwitch
+              label={
+                <div className="flex items-center gap-2">
+                  <Key size={20} />
+                  <span>Passkey</span>
+                </div>
+              }
+              checked={project.config.passkeyEnabled}
+              onCheckedChange={async (checked) => {
+                await project.update({
+                  config: {
+                    passkeyEnabled: checked,
+                  },
+                });
+              }}
+            />
+            <CardSubtitle className="mt-2">
+              SSO Providers
+            </CardSubtitle>
 
-                <OAuthActionCell config={provider} />
-              </div>;
-            }) }
+            {enabledProviders.map(([, provider]) => provider)
+              .filter((provider): provider is AdminOAuthProviderConfig => !!provider).map(provider => {
+                return <div key={provider.id} className="flex h-10 items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <ProviderIcon id={provider.id} />
+                    <span className="text-sm font-semibold">{BrandIcons.toTitle(provider.id)}</span>
+                    {provider.type === 'shared' && <SimpleTooltip tooltip={SHARED_TOOLTIP}>
+                      <Badge variant="secondary">Shared keys</Badge>
+                    </SimpleTooltip>}
+                  </div>
 
-          <Button
-            className="mt-4"
-            onClick={() => {
+                  <OAuthActionCell config={provider} />
+                </div>;
+              }) }
+
+            <Button
+              className="mt-4"
+              onClick={() => {
               setDisabledProvidersDialogOpen(true);
-            }}
-            variant="secondary"
-          >
-            <CirclePlus size={16}/>
-            <span className="ml-2">Add SSO providers</span>
-          </Button>
-          <DisabledProvidersDialog
-            open={disabledProvidersDialogOpen}
-            onOpenChange={(x) => {
+              }}
+              variant="secondary"
+            >
+              <CirclePlus size={16}/>
+              <span className="ml-2">Add SSO providers</span>
+            </Button>
+            <DisabledProvidersDialog
+              open={disabledProvidersDialogOpen}
+              onOpenChange={(x) => {
               setDisabledProvidersDialogOpen(x);
+              }}
+            />
+          </SettingCard>
+          <SettingCard className="hidden lg:flex">
+            <div className="self-stretch py-4 px-4 min-w-[400px] items-center">
+              <div className="w-full">
+                <BrowserFrame url="your-website.com/signin">
+                  <div className="flex flex-col items-center justify-center min-h-[400px]">
+                    <div className='w-full sm:max-w-xs m-auto scale-90 pointer-events-none' inert>
+                      {/* a transparent cover that prevents the card from being clicked, even when pointer-events is overridden */}
+                      <div className="absolute inset-0 bg-transparent z-10"></div>
+                      <AuthPage
+                        type="sign-in"
+                        mockProject={{
+                          config: {
+                            ...project.config,
+                            oauthProviders: enabledProviders
+                              .map(([, provider]) => provider)
+                              .filter((provider): provider is AdminOAuthProviderConfig => !!provider),
+                          },
+                        }}
+                      />
+                    </div>
+                  </div>
+                </BrowserFrame>
+              </div>
+            </div>
+          </SettingCard>
+        </div>
+        <SettingCard title="Sign-up">
+          <SettingSwitch
+            label="Allow new user sign-ups"
+            checked={project.config.signUpEnabled}
+            onCheckedChange={async (checked) => {
+              if (checked) {
+              setConfirmSignUpEnabled(true);
+              } else {
+              setConfirmSignUpDisabled(true);
+              }
+            }}
+            hint="Existing users can still sign in when sign-up is disabled. You can always create new accounts manually via the dashboard."
+          />
+          <SettingSelect
+            label="Sign-up mode when logging in with same email on multiple providers"
+            value={project.config.oauthAccountMergeStrategy}
+            onValueChange={async (value) => {
+              await project.update({
+                config: {
+                  oauthAccountMergeStrategy: value as OAuthAccountMergeStrategy,
+                },
+              });
+            }}
+            hint="Determines what happens when a user tries to sign in with a different OAuth provider using the same email address"
+          >
+            <SelectItem value="link_method">Link - Connect multiple providers to the same account</SelectItem>
+            <SelectItem value="allow_duplicates">Allow - Create separate accounts for each provider</SelectItem>
+            <SelectItem value="raise_error">Block - Show an error and prevent sign-in with multiple providers</SelectItem>
+          </SettingSelect>
+        </SettingCard>
+
+        <SettingCard title="User deletion">
+          <SettingSwitch
+            label="Allow users to delete their own accounts on the client-side"
+            checked={project.config.clientUserDeletionEnabled}
+            onCheckedChange={async (checked) => {
+              await project.update({
+                config: {
+                  clientUserDeletionEnabled: checked,
+                },
+              });
             }}
           />
+          <Typography variant="secondary" type="footnote">
+            A delete button will also be added to the account settings page.
+          </Typography>
         </SettingCard>
-        <SettingCard className="hidden lg:flex">
-          <div className="self-stretch py-4 px-4 min-w-[400px] items-center">
-            <div className="w-full">
-              <BrowserFrame url="your-website.com/signin">
-                <div className="flex flex-col items-center justify-center min-h-[400px]">
-                  <div className='w-full sm:max-w-xs m-auto scale-90 pointer-events-none' inert>
-                    {/* a transparent cover that prevents the card from being clicked, even when pointer-events is overridden */}
-                    <div className="absolute inset-0 bg-transparent z-10"></div>
-                    <AuthPage
-                      type="sign-in"
-                      mockProject={{
-                        config: {
-                          ...project.config,
-                          oauthProviders: enabledProviders
-                            .map(([, provider]) => provider)
-                            .filter((provider): provider is AdminOAuthProviderConfig => !!provider),
-                        },
-                      }}
-                    />
-                  </div>
-                </div>
-              </BrowserFrame>
-            </div>
-          </div>
-        </SettingCard>
-      </div>
-      <SettingCard title="Sign-up">
-        <SettingSwitch
-          label="Allow new user sign-ups"
-          checked={project.config.signUpEnabled}
-          onCheckedChange={async (checked) => {
-            if (checked) {
-              setConfirmSignUpEnabled(true);
-            } else {
-              setConfirmSignUpDisabled(true);
-            }
-          }}
-          hint="Existing users can still sign in when sign-up is disabled. You can always create new accounts manually via the dashboard."
-        />
-        <SettingSelect
-          label="Sign-up mode when logging in with same email on multiple providers"
-          value={project.config.oauthAccountMergeStrategy}
-          onValueChange={async (value) => {
-            await project.update({
-              config: {
-                oauthAccountMergeStrategy: value as OAuthAccountMergeStrategy,
-              },
-            });
-          }}
-          hint="Determines what happens when a user tries to sign in with a different OAuth provider using the same email address"
-        >
-          <SelectItem value="link_method">Link - Connect multiple providers to the same account</SelectItem>
-          <SelectItem value="allow_duplicates">Allow - Create separate accounts for each provider</SelectItem>
-          <SelectItem value="raise_error">Block - Show an error and prevent sign-in with multiple providers</SelectItem>
-        </SettingSelect>
-      </SettingCard>
 
-      <SettingCard title="User deletion">
-        <SettingSwitch
-          label="Allow users to delete their own accounts on the client-side"
-          checked={project.config.clientUserDeletionEnabled}
-          onCheckedChange={async (checked) => {
-            await project.update({
-              config: {
-                clientUserDeletionEnabled: checked,
-              },
-            });
-          }}
+        <ConfirmSignUpEnabledDialog
+          open={confirmSignUpEnabled}
+          onOpenChange={setConfirmSignUpEnabled}
         />
-        <Typography variant="secondary" type="footnote">
-          A delete button will also be added to the account settings page.
-        </Typography>
-      </SettingCard>
-
-      <ConfirmSignUpEnabledDialog
-        open={confirmSignUpEnabled}
-        onOpenChange={setConfirmSignUpEnabled}
-      />
-      <ConfirmSignUpDisabledDialog
-        open={confirmSignUpDisabled}
-        onOpenChange={setConfirmSignUpDisabled}
-      />
-    </PageLayout>
+        <ConfirmSignUpDisabledDialog
+          open={confirmSignUpDisabled}
+          onOpenChange={setConfirmSignUpDisabled}
+        />
+      </PageLayout>
+    </AppEnabledGuard>
   );
 }
