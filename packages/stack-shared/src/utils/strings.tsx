@@ -388,7 +388,7 @@ import.meta.vitest?.test("mergeScopeStrings", ({ expect }) => {
 });
 
 export function escapeTemplateLiteral(s: string): string {
-  return s.replaceAll("`", "\\`").replaceAll("\\", "\\\\").replaceAll("${", "\\${");
+  return s.replaceAll("\\", "\\\\").replaceAll("`", "\\`").replaceAll("${", "\\${");
 }
 import.meta.vitest?.test("escapeTemplateLiteral", ({ expect }) => {
   // Test with empty string
@@ -418,19 +418,16 @@ import.meta.vitest?.test("escapeTemplateLiteral", ({ expect }) => {
   expect(output3).toBe("hello $world");
 
   // Test with dollar sign in interpolation
-  const input4 = "hello ${$world}";
+  const input4 = "hello ${$world";
   const output4 = escapeTemplateLiteral(input4);
   // Verify dollar signs are escaped
-  expect(output4).toBe("hello \${$world}");
+  expect(output4).toBe("hello \\${$world");
 
   // Test with multiple special characters
-  const input5 = "`hello` $world\\";
+  const input5 = "`hello` ${world\\";
   const output5 = escapeTemplateLiteral(input5);
   // Verify all special characters are escaped
-  expect(output5.includes("\\`")).toBe(true);
-  expect(output5.includes("\\$")).toBe(true);
-  expect(output5.includes("\\\\")).toBe(true);
-  expect(output5).not.toBe(input5);
+  expect(output5).toBe("\\`hello\\` \\${world\\\\");
 
   // Test with already escaped characters
   const input6 = "\\`hello\\`";
