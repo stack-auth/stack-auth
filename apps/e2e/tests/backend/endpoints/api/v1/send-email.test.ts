@@ -1,9 +1,8 @@
-import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { randomUUID } from "crypto";
 import { describe } from "vitest";
 import { it } from "../../../../helpers";
-import { localhostUrl, withPortPrefix } from "../../../helpers/ports";
-import { niceBackendFetch, Project, User } from "../../../backend-helpers";
+import { localhostUrl, withPortPrefix } from "../../../../helpers/ports";
+import { Project, User, niceBackendFetch } from "../../../backend-helpers";
 
 const testEmailConfig = {
   type: "standard",

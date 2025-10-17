@@ -1,6 +1,6 @@
 import { it } from "../../../../../../helpers";
+import { withPortPrefix } from "../../../../../../helpers/ports";
 import { Auth, Payments, Project, User, niceBackendFetch } from "../../../../../backend-helpers";
-import { withPortPrefix } from "../../../helpers/ports";
 
 it("should error on invalid code", async ({ expect }) => {
   await Project.createAndSwitch();

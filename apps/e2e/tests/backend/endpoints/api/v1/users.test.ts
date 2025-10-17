@@ -1,7 +1,7 @@
 import { generateSecureRandomString } from "@stackframe/stack-shared/dist/utils/crypto";
 import { describe } from "vitest";
 import { STACK_BACKEND_BASE_URL, it } from "../../../../helpers";
-import { localhostUrl } from "../../../helpers/ports";
+import { localhostUrl } from "../../../../helpers/ports";
 import { Auth, InternalProjectKeys, Project, Team, Webhook, backendContext, bumpEmailAddress, createMailbox, niceBackendFetch } from "../../../backend-helpers";
 
 describe("without project access", () => {

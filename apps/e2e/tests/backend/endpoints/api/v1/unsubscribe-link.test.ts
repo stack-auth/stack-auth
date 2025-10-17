@@ -1,6 +1,6 @@
 import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { it } from "../../../../helpers";
-import { localhostUrl, withPortPrefix } from "../../../helpers/ports";
+import { localhostUrl, withPortPrefix } from "../../../../helpers/ports";
 import { niceBackendFetch, Project, User } from "../../../backend-helpers";
 
 it("unsubscribe link should be sent and update notification preference", async ({ expect }) => {

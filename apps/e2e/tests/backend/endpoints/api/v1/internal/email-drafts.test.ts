@@ -1,6 +1,6 @@
-import { it } from "../../../../../helpers";
+import { it } from "../../../../helpers";
 import { Project, niceBackendFetch } from "../../../../backend-helpers";
-import { withPortPrefix } from "../../../../../helpers/ports";
+import { withPortPrefix } from "../../../../helpers/ports";
 
 const customEmailConfig = {
   type: "standard",

@@ -1,7 +1,7 @@
 import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
 import { it } from "../../../../../helpers";
+import { withPortPrefix } from "../../../../../helpers/ports";
 import { Auth, niceBackendFetch, Payments, Project, User } from "../../../../backend-helpers";
-import { withPortPrefix } from "../../../helpers/ports";
 
 it("should not be able to create purchase URL without product_id or product_inline", async ({ expect }) => {
   await Project.createAndSwitch();

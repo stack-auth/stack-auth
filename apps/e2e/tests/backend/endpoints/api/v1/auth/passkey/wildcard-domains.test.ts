@@ -1,3 +1,4 @@
+import { Buffer } from "node:buffer";
 import { describe } from "vitest";
 import { it } from "../../../../../../helpers";
 import { localhostUrl, withPortPrefix } from "../../../../../../helpers/ports";

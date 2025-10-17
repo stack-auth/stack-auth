@@ -1,7 +1,7 @@
 import { describe } from "vitest";
 import { it } from "../../../../../../helpers";
+import { withPortPrefix } from "../../../../../../helpers/ports";
 import { Auth, InternalApiKey, Project, niceBackendFetch } from "../../../../../backend-helpers";
-import { withPortPrefix } from "../../../helpers/ports";
 
 const oauthMockServerPort = withPortPrefix("07");
 
