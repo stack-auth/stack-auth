@@ -139,9 +139,7 @@ export function useRefState<T>(initialValue: T): RefState<T> {
   const ref = React.useRef(initialValue);
   const setValue = React.useCallback((updater: SetStateAction<T>) => {
     const value: T = typeof updater === "function" ? (updater as any)(ref.current) : updater;
-    console.log("setValue", ref.current);
     ref.current = value;
-    console.log("setValue", ref.current);
     setState(value);
   }, []);
   const res = React.useMemo(() => ({

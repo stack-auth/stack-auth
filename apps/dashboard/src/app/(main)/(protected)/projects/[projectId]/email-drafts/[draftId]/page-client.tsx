@@ -5,12 +5,13 @@ import EmailPreview from "@/components/email-preview";
 import { EmailThemeSelector } from "@/components/email-theme-selector";
 import { useRouterConfirm } from "@/components/router";
 import { AssistantChat, CodeEditor, VibeCodeLayout } from "@/components/vibe-coding";
-import { createChatAdapter, createHistoryAdapter, ToolCallContent } from "@/components/vibe-coding/chat-adapters";
-import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
-import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Skeleton, toast, Typography, useToast } from "@stackframe/stack-ui";
-import { Suspense, useEffect, useMemo, useState } from "react";
-import { useAdminApp } from "../../use-admin-app";
+import { ToolCallContent, createChatAdapter, createHistoryAdapter } from "@/components/vibe-coding/chat-adapters";
 import { EmailDraftUI } from "@/components/vibe-coding/draft-tool-components";
+import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
+import { Badge, Button, Card, CardContent, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Skeleton, Typography, toast, useToast } from "@stackframe/stack-ui";
+import { Suspense, useEffect, useMemo, useState } from "react";
+import { AppEnabledGuard } from "../../app-enabled-guard";
+import { useAdminApp } from "../../use-admin-app";
 
 export default function PageClient({ draftId }: { draftId: string }) {
   const stackAdminApp = useAdminApp();
@@ -51,7 +52,7 @@ export default function PageClient({ draftId }: { draftId: string }) {
   };
 
   return (
-    <>
+    <AppEnabledGuard appId="emails">
       {stage === "edit" ? (
         <VibeCodeLayout
           previewComponent={
@@ -84,7 +85,7 @@ export default function PageClient({ draftId }: { draftId: string }) {
       ) : (
         <SendStage draftId={draftId} />
       )}
-    </>
+    </AppEnabledGuard>
   );
 }
 
