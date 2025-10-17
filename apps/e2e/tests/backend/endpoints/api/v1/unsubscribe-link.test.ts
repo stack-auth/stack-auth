@@ -9,7 +9,7 @@ it("unsubscribe link should be sent and update notification preference", async (
       email_config: {
         type: "standard",
         host: "localhost",
-        port: 2500,
+        port: 8129,
         username: "test",
         password: "test",
         sender_name: "Test Project",
@@ -102,7 +102,7 @@ it("unsubscribe link should not be sent for emails with transactional notificati
       email_config: {
         type: "standard",
         host: "localhost",
-        port: 2500,
+        port: 8129,
         username: "test",
         password: "test",
         sender_name: "Test Project",

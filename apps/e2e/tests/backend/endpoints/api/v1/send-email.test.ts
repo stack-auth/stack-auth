@@ -7,7 +7,7 @@ import { niceBackendFetch, Project, User } from "../../../backend-helpers";
 const testEmailConfig = {
   type: "standard",
   host: "localhost",
-  port: 2500,
+  port: 8129,
   username: "test",
   password: "test",
   sender_name: "Test Project",
@@ -367,7 +367,7 @@ it("should send email using a draft_id and mark draft as sent", async ({ expect 
       email_config: {
         type: "standard",
         host: "localhost",
-        port: 2500,
+        port: 8129,
         username: "test",
         password: "test",
         sender_name: "Test Project",

@@ -10,7 +10,7 @@ services:
       POSTGRES_DB: stackframe
       POSTGRES_DELAY_MS: ${POSTGRES_DELAY_MS:-0}
     ports:
-      - 5432:5432
+      - 8128:5432
     volumes:
       - postgres-data:/var/lib/postgresql/data
     cap_add:
@@ -21,7 +21,7 @@ services:
   pghero:
     image: ankane/pghero:latest
     environment:
-      DATABASE_URL: postgres://postgres:PASSWORD-PLACEHOLDER--uqfEC1hmmv@db:5432/stackframe
+      DATABASE_URL: postgres://postgres:PASSWORD-PLACEHOLDER--uqfEC1hmmv@db:8128/stackframe
     ports:
       - 8116:8080
 
@@ -73,7 +73,7 @@ services:
     environment:
       PG_META_PORT: 8080
       PG_META_DB_HOST: db
-      PG_META_DB_PORT: 5432
+      PG_META_DB_PORT: 8128
       PG_META_DB_NAME: stackframe
       PG_META_DB_USER: postgres
       PG_META_DB_PASSWORD: PASSWORD-PLACEHOLDER--uqfEC1hmmv
@@ -84,9 +84,9 @@ services:
   inbucket:
     image: inbucket/inbucket:3.1.0
     ports:
-      - 2500:2500
+      - 8129:2500
       - 8105:9000
-      - 1100:1100
+      - 8130:1100
     volumes:
       - inbucket-data:/data
 
@@ -98,7 +98,7 @@ services:
       - COLLECTOR_OTLP_ENABLED=true
     ports:
       - 8107:16686  # Jaeger UI
-      - 4318:4318    # OTLP Endpoint
+      - 8131:4318    # OTLP Endpoint
     restart: always
 
   # ================= svix =================
@@ -123,7 +123,7 @@ services:
     environment:
       WAIT_FOR: 'true'
       SVIX_REDIS_DSN: redis://:PASSWORD-PLACEHOLDER--oVn8GSD6b9@svix-redis:6379
-      SVIX_DB_DSN: postgres://postgres:PASSWORD-PLACEHOLDER--KsoIMcchtp@svix-db:5432/svix
+      SVIX_DB_DSN: postgres://postgres:PASSWORD-PLACEHOLDER--KsoIMcchtp@svix-db:8128/svix
       SVIX_CACHE_TYPE: memory
       SVIX_JWT_SECRET: secret
       SVIX_LOG_LEVEL: trace
@@ -245,7 +245,7 @@ configs:
             "Name": "Local Postgres DB",
             "Group": "Servers",
             "Host": "db",
-            "Port": 5432,
+            "Port": 8129,
             "Username": "postgres",
             "PasswordExecCommand": "echo 'PASSWORD-PLACEHOLDER--uqfEC1hmmv'",
             "MaintenanceDB": "stackframe"

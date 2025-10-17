@@ -17,9 +17,9 @@ jobs:
     env:
       NODE_ENV: test
       STACK_ENABLE_HARDCODED_PASSKEY_CHALLENGE_FOR_TESTING: yes
-      STACK_OVERRIDE_SOURCE_OF_TRUTH: '{"type": "postgres", "connectionString": "postgres://postgres:PASSWORD-PLACEHOLDER--uqfEC1hmmv@localhost:5432/source-of-truth-db?schema=sot-schema"}'
+      STACK_OVERRIDE_SOURCE_OF_TRUTH: '{"type": "postgres", "connectionString": "postgres://postgres:PASSWORD-PLACEHOLDER--uqfEC1hmmv@localhost:8128/source-of-truth-db?schema=sot-schema"}'
       STACK_TEST_SOURCE_OF_TRUTH: true
-      STACK_DIRECT_DATABASE_CONNECTION_STRING: "postgres://postgres:PASSWORD-PLACEHOLDER--uqfEC1hmmv@localhost:5432/stackframe"
+      STACK_DIRECT_DATABASE_CONNECTION_STRING: "postgres://postgres:PASSWORD-PLACEHOLDER--uqfEC1hmmv@localhost:8128/stackframe"
 
     strategy:
       matrix:
@@ -96,15 +96,15 @@ jobs:
         run: pnpm run wait-until-postgres-is-ready:pg_isready
 
       - name: Wait on Inbucket
-        run: npx wait-on tcp:localhost:2500
+        run: npx wait-on tcp:localhost:8129
 
       - name: Wait on Svix
         run: npx wait-on tcp:localhost:8113
 
       - name: Create source-of-truth database and schema
         run: |
-          psql postgres://postgres:PASSWORD-PLACEHOLDER--uqfEC1hmmv@localhost:5432/postgres -c "CREATE DATABASE \"source-of-truth-db\";"
-          psql postgres://postgres:PASSWORD-PLACEHOLDER--uqfEC1hmmv@localhost:5432/source-of-truth-db -c "CREATE SCHEMA \"sot-schema\";"
+          psql postgres://postgres:PASSWORD-PLACEHOLDER--uqfEC1hmmv@localhost:8128/postgres -c "CREATE DATABASE \"source-of-truth-db\";"
+          psql postgres://postgres:PASSWORD-PLACEHOLDER--uqfEC1hmmv@localhost:8128/source-of-truth-db -c "CREATE SCHEMA \"sot-schema\";"
 
       - name: Initialize database
         run: pnpm run db:init

@@ -26,7 +26,7 @@
     "codegen": "pnpm pre && turbo run codegen && pnpm run generate-sdks && pnpm run generate-openapi-fumadocs",
     "deps-compose": "docker compose -p stack-dependencies -f docker/dependencies/docker.compose.yaml",
     "stop-deps": "POSTGRES_DELAY_MS=0 pnpm run deps-compose kill && POSTGRES_DELAY_MS=0 pnpm run deps-compose down -v",
-    "wait-until-postgres-is-ready:pg_isready": "until pg_isready -h localhost -p 5432; do sleep 1; done",
+    "wait-until-postgres-is-ready:pg_isready": "until pg_isready -h localhost -p 8128; do sleep 1; done",
     "wait-until-postgres-is-ready": "command -v pg_isready >/dev/null 2>&1 && pnpm run wait-until-postgres-is-ready:pg_isready || sleep 10  # not everyone has pg_isready installed, so we fallback to sleeping",
     "start-deps:no-delay": "pnpm pre && pnpm run deps-compose up --detach --build && pnpm run wait-until-postgres-is-ready && pnpm run db:init && echo \"\\nDependencies started in the background as Docker containers. 'pnpm run stop-deps' to stop them\"n",
     "start-deps": "POSTGRES_DELAY_MS=${POSTGRES_DELAY_MS:-20} pnpm run start-deps:no-delay",

@@ -21,8 +21,8 @@ services:
     environment:
       NEXT_PUBLIC_STACK_API_URL: "http://localhost:32102"
       NEXT_PUBLIC_STACK_DASHBOARD_URL: "http://localhost:32101"
-      STACK_DATABASE_CONNECTION_STRING: "postgres://postgres:PASSWORD-PLACEHOLDER--uqfEC1hmmv@db:5432/stackframe"
-      STACK_DIRECT_DATABASE_CONNECTION_STRING: "postgres://postgres:PASSWORD-PLACEHOLDER--uqfEC1hmmv@db:5432/stackframe"
+      STACK_DATABASE_CONNECTION_STRING: "postgres://postgres:PASSWORD-PLACEHOLDER--uqfEC1hmmv@db:8128/stackframe"
+      STACK_DIRECT_DATABASE_CONNECTION_STRING: "postgres://postgres:PASSWORD-PLACEHOLDER--uqfEC1hmmv@db:8128/stackframe"
       STACK_SERVER_SECRET: "23-wuNpik0gIW4mruTz25rbIvhuuvZFrLOLtL7J4tyo"
       STACK_SEED_INTERNAL_PROJECT_ALLOW_LOCALHOST: "true"
       STACK_RUN_MIGRATIONS: "true"
@@ -36,7 +36,7 @@ services:
       STACK_SVIX_API_KEY: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpYXQiOjE2NTUxNDA2MzksImV4cCI6MTk3MDUwMDYzOSwibmJmIjoxNjU1MTQwNjM5LCJpc3MiOiJzdml4LXNlcnZlciIsInN1YiI6Im9yZ18yM3JiOFlkR3FNVDBxSXpwZ0d3ZFhmSGlyTXUifQ.En8w77ZJWbd0qrMlHHupHUB-4cx17RfzFykseg95SUk"
       NEXT_PUBLIC_STACK_INBUCKET_WEB_URL: "http://localhost:32203"
       STACK_EMAIL_HOST: "inbucket"
-      STACK_EMAIL_PORT: 2500
+      STACK_EMAIL_PORT: 8129
       STACK_EMAIL_SECURE: "false"
       STACK_EMAIL_USERNAME: "none"
       STACK_EMAIL_PASSWORD: "none"
@@ -81,6 +81,7 @@ services:
 
   db:
     image: postgres:15
+    command: ["postgres", "-c", "port=8128"]
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: PASSWORD-PLACEHOLDER--uqfEC1hmmv
@@ -88,7 +89,7 @@ services:
     volumes:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready", "-d", "stackframe"]
+      test: ["CMD-SHELL", "pg_isready -p 8128 -d stackframe"]
       interval: 5s
       timeout: 10s
       retries: 5
@@ -97,6 +98,9 @@ services:
   # ================= Inbucket =================
   inbucket:
     image: inbucket/inbucket:latest
+    environment:
+      INBUCKET_SMTP_ADDR: ":8129"
+      INBUCKET_POP3_ADDR: ":8130"
     ports:
       - 32203:9000
     volumes:
@@ -124,7 +128,7 @@ services:
     environment:
       WAIT_FOR: 'true'
       SVIX_REDIS_DSN: redis://:PASSWORD-PLACEHOLDER--oVn8GSD6b9@svix-redis:6379
-      SVIX_DB_DSN: postgres://postgres:PASSWORD-PLACEHOLDER--KsoIMcchtp@svix-db:5432/svix
+      SVIX_DB_DSN: postgres://postgres:PASSWORD-PLACEHOLDER--KsoIMcchtp@svix-db:8128/svix
       SVIX_CACHE_TYPE: memory
       SVIX_JWT_SECRET: secret
       SVIX_LOG_LEVEL: trace
@@ -177,4 +181,3 @@ volumes:
   svix-postgres-data:
   s3mock-data:
   deno-cache:
-

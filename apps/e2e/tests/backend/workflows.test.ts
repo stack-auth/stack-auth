@@ -8,7 +8,7 @@ async function configureEmailAndWorkflow(workflowId: string, tsSource: string, e
       server: {
         isShared: false,
         host: "localhost",
-        port: 2500,
+        port: 8129,
         username: "test",
         password: "test",
         senderEmail: "test@example.com",
