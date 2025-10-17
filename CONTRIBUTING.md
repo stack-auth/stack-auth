@@ -11,6 +11,7 @@ Due to the nature of authentication, this may not be the easiest project to cont
 
 - [How to contribute](#how-to-contribute)
 - [Security & bug bounties](#security--bug-bounties)
+- [Vibecoding setup](#vibecoding-setup)
 - [Before creating a pull request](#before-creating-a-pull-request)
 
 <!-- END doctoc generated TOC please keep comment here to allow auto update -->
