@@ -23,7 +23,7 @@ import { CursorIcon, StackAuthIcon } from './components/icons';
 import { Button } from './components/mdx/button';
 import { JWTViewer } from './components/mdx/jwt-viewer';
 import { Mermaid } from './components/mdx/mermaid';
-import { Accordion, AccordionGroup, ClickableTableOfContents, CodeBlocks, Icon, Markdown, ParamField } from './components/mdx/sdk-components';
+import { Accordion, AccordionGroup, ClickableTableOfContents, Icon, Markdown, ParamField } from './components/mdx/sdk-components';
 import { PropTable } from './components/prop-table';
 
 import { ImageZoom } from 'fumadocs-ui/components/image-zoom';
@@ -69,7 +69,6 @@ export function getMDXComponents(components?: MDXComponents): MDXComponents {
     ParamField,
     Accordion,
     AccordionGroup,
-    CodeBlocks,
     Icon,
     DynamicCodeblock,
     PlatformCodeblock,

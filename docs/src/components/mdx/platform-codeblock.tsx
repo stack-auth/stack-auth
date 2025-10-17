@@ -1,11 +1,10 @@
 'use client';
 
-import { runAsynchronously } from '@stackframe/stack-shared/dist/utils/promises';
 import { ChevronDown } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { codeToHtml } from 'shiki';
 import { getExample, type CodeExample } from '../../../lib/code-examples';
 import { cn } from '../../lib/cn';
+import { BaseCodeblock } from './base-codeblock';
 
 // Global state management for platform and framework selection
 type PlatformChangeListener = (platform: string) => void;
@@ -261,7 +260,6 @@ export function PlatformCodeblock({
     return { ...defaultVariants };
   });
 
-  const [highlightedCode, setHighlightedCode] = useState<string>('');
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [dropdownView, setDropdownView] = useState<'platform' | 'framework'>('platform');
   // Generate stable ID based on props to avoid hydration mismatches
@@ -368,67 +366,6 @@ export function PlatformCodeblock({
     }
   }, [isDropdownOpen, componentId]);
 
-  // Update highlighted code when selection changes
-  useEffect(() => {
-    if (!currentCodeConfig) return;
-
-    const updateHighlightedCode = async () => {
-      try {
-        // Detect if we're in dark mode
-        const isDarkMode = document.documentElement.classList.contains('dark') ||
-                          getComputedStyle(document.documentElement).getPropertyValue('--fd-background').includes('0 0% 3.9%');
-
-        const theme = isDarkMode ? 'github-dark' : 'github-light';
-
-        const codeToHighlight = currentCodeConfig.code.startsWith(' ')
-          ? currentCodeConfig.code.slice(1)
-          : currentCodeConfig.code;
-
-        const html = await codeToHtml(codeToHighlight, {
-          lang: currentCodeConfig.language || 'typescript',
-          theme,
-          transformers: [{
-            pre(node) {
-              // Remove background styles from pre element
-              if (node.properties.style) {
-                node.properties.style = (node.properties.style as string).replace(/background[^;]*;?/g, '');
-              }
-            },
-            code(node) {
-              // Remove background styles from code element
-              if (node.properties.style) {
-                node.properties.style = (node.properties.style as string).replace(/background[^;]*;?/g, '');
-              }
-              // Add consistent styling
-              const existingStyle = (node.properties.style as string) || '';
-              node.properties.style = `${existingStyle}; line-height: 1.5; font-family: ui-monospace, 'Cascadia Code', 'Source Code Pro', Menlo, Consolas, 'DejaVu Sans Mono', monospace; white-space: pre;`;
-            }
-          }]
-        });
-        setHighlightedCode(html);
-      } catch (error) {
-        console.error('Error highlighting code:', error);
-        const sanitized = currentCodeConfig.code.startsWith(' ')
-          ? currentCodeConfig.code.slice(1)
-          : currentCodeConfig.code;
-        setHighlightedCode(`<pre><code>${sanitized}</code></pre>`);
-      }
-    };
-
-    runAsynchronously(updateHighlightedCode);
-
-    // Listen for theme changes
-    const observer = new MutationObserver(() => {
-      runAsynchronously(updateHighlightedCode);
-    });
-
-    observer.observe(document.documentElement, {
-      attributes: true,
-      attributeFilter: ['class']
-    });
-
-    return () => observer.disconnect();
-  }, [currentCodeConfig]);
 
   const handlePlatformSelect = (platform: string) => {
     broadcastPlatformChange(platform);
@@ -465,32 +402,16 @@ export function PlatformCodeblock({
     return <div className="text-fd-muted-foreground">No platforms configured</div>;
   }
 
-  const showMetadata = Boolean(title || currentCodeConfig?.filename);
-
   return (
-    <div className={cn("my-4 relative", className)} data-dropdown-id={componentId}>
-      <div className="rounded-xl border border-fd-border/60 bg-fd-card shadow-sm overflow-visible">
-        <div
-          className={cn(
-            "flex flex-wrap items-center gap-3 border-b border-fd-border/60 bg-fd-muted/20 px-4 py-3",
-            showMetadata ? "justify-between" : "justify-end"
-          )}
-        >
-          {showMetadata && (
-            <div className="flex flex-col gap-1 min-w-[160px]">
-              {title && (
-                <div className="text-xs font-semibold uppercase tracking-wide text-fd-muted-foreground">
-                  {title}
-                </div>
-              )}
-              {currentCodeConfig?.filename && (
-                <div className="text-[11px] font-mono text-fd-muted-foreground/80">
-                  {currentCodeConfig.filename}
-                </div>
-              )}
-            </div>
-          )}
-
+    <div data-dropdown-id={componentId}>
+      <BaseCodeblock
+        code={currentCodeConfig?.code || ''}
+        language={currentCodeConfig?.language || 'typescript'}
+        className={className}
+        showMetadata={true}
+        title={title}
+        filename={currentCodeConfig?.filename}
+        headerContent={
           <div className="relative ml-auto">
             <button
               onClick={toggleDropdown}
@@ -577,12 +498,9 @@ export function PlatformCodeblock({
               </div>
             )}
           </div>
-        </div>
-
-        {/* Code Content */}
-        <div className="relative bg-fd-background px-4 py-4 text-sm outline-none dark:bg-[#0A0A0A] rounded-b-xl">
-          {/* Server/Client Tabs (if variants exist) */}
-          {hasVariants(selectedPlatform, currentFramework) && (
+        }
+        beforeCodeContent={
+          hasVariants(selectedPlatform, currentFramework) ? (
             <div className="mb-3 flex">
               <div className="inline-flex items-center gap-1 rounded-full border border-fd-border/60 bg-fd-muted/20 p-1">
                 {(['server', 'client'] as const).map((variant) => (
@@ -601,16 +519,9 @@ export function PlatformCodeblock({
                 ))}
               </div>
             </div>
-          )}
-
-          <div className="rounded-lg overflow-auto max-h-[500px]">
-            <div
-              className="[&_*]:!bg-transparent [&_pre]:!bg-transparent [&_code]:!bg-transparent [&_pre]:!p-0 [&_pre]:!m-0"
-              dangerouslySetInnerHTML={{ __html: highlightedCode }}
-            />
-          </div>
-        </div>
-      </div>
+          ) : undefined
+        }
+      />
     </div>
   );
 }

@@ -3,7 +3,7 @@
 import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
 import { Check, ChevronDown, ChevronUp, Code, Copy, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { codeToHtml } from "shiki";
+import { codeToHtml } from 'shiki';
 import { cn } from "../../lib/cn";
 import { useSidebar } from "../layouts/sidebar-context";
 
@@ -22,7 +22,7 @@ export function DynamicCodeblockOverlay({
   isOpen = false,
   onToggle
 }: DynamicCodeblockOverlayProps) {
-  const [highlightedCode, setHighlightedCode] = useState<string>("");
+  const [highlightedCode, setHighlightedCode] = useState<string>('');
   const [isExpanded, setIsExpanded] = useState(false);
   const [copied, setCopied] = useState(false);
   const [windowSize, setWindowSize] = useState({ width: 0, height: 0 });
@@ -72,6 +72,58 @@ export function DynamicCodeblockOverlay({
     return `${Math.max(optimalHeight, minHeight)}px`;
   };
 
+  // Update syntax highlighted code when code changes - matching BaseCodeblock logic
+  useEffect(() => {
+    const updateHighlightedCode = async () => {
+      try {
+        // Detect dark mode - same logic as BaseCodeblock
+        const isDarkMode = document.documentElement.classList.contains('dark') ||
+                          getComputedStyle(document.documentElement).getPropertyValue('--fd-background').includes('0 0% 3.9%');
+        const theme = isDarkMode ? 'github-dark' : 'github-light';
+
+        const codeToHighlight = code.startsWith(' ') ? code.slice(1) : code;
+
+        const html = await codeToHtml(codeToHighlight, {
+          lang: language,
+          theme,
+          transformers: [{
+            pre(node) {
+              if (node.properties.style) {
+                node.properties.style = (node.properties.style as string).replace(/background[^;]*;?/g, '');
+              }
+            },
+            code(node) {
+              if (node.properties.style) {
+                node.properties.style = (node.properties.style as string).replace(/background[^;]*;?/g, '');
+              }
+              const existingStyle = (node.properties.style as string) || '';
+              node.properties.style = `${existingStyle}; line-height: 1.5; font-family: ui-monospace, 'Cascadia Code', 'Source Code Pro', Menlo, Consolas, 'DejaVu Sans Mono', monospace; white-space: pre;`;
+            }
+          }]
+        });
+        setHighlightedCode(html);
+      } catch (error) {
+        console.error('Error highlighting code:', error);
+        const sanitized = code.startsWith(' ') ? code.slice(1) : code;
+        setHighlightedCode(`<pre><code>${sanitized}</code></pre>`);
+      }
+    };
+
+    runAsynchronously(updateHighlightedCode);
+
+    // Listen for theme changes
+    const observer = new MutationObserver(() => {
+      runAsynchronously(updateHighlightedCode);
+    });
+
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ['class']
+    });
+
+    return () => observer.disconnect();
+  }, [code, language]);
+
   // Handle window resize to recalculate optimal height
   useEffect(() => {
     const updateWindowSize = () => {
@@ -89,55 +141,16 @@ export function DynamicCodeblockOverlay({
     return () => window.removeEventListener('resize', updateWindowSize);
   }, []);
 
-  // Update syntax highlighted code when code changes
-  useEffect(() => {
-    const updateHighlightedCode = async () => {
-      try {
-        const html = await codeToHtml(code, {
-          lang: language,
-          theme: 'github-dark',
-          transformers: [{
-            pre(node) {
-              // Remove background styles from pre element
-              if (node.properties.style) {
-                node.properties.style = (node.properties.style as string).replace(/background[^;]*;?/g, '');
-              }
-            },
-            code(node) {
-              // Remove background styles from code element
-              if (node.properties.style) {
-                node.properties.style = (node.properties.style as string).replace(/background[^;]*;?/g, '');
-              }
-            }
-          }]
-        });
-        setHighlightedCode(html);
-      } catch (error) {
-        console.error('Error highlighting code:', error);
-        setHighlightedCode(`<pre><code>${code}</code></pre>`);
-      }
-    };
-
-    // Run async function - all errors are handled within the function
-    runAsynchronously(updateHighlightedCode());
-  }, [code, language]);
 
   // Handle copy to clipboard
-  const handleCopy = () => {
-    const copyToClipboard = async () => {
-      try {
-        await navigator.clipboard.writeText(code);
-        setCopied(true);
-        setTimeout(() => setCopied(false), 2000);
-      } catch (error) {
-        // Handle clipboard error gracefully
-        console.error('Failed to copy code:', error instanceof Error ? error.message : 'Unknown error');
-        // Could show a toast notification here in the future
-      }
-    };
-
-    // Run async function - all errors are handled within the function
-    runAsynchronously(copyToClipboard);
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(code);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (error) {
+      console.error('Failed to copy code:', error instanceof Error ? error.message : 'Unknown error');
+    }
   };
 
   // Handle escape key to close
@@ -158,29 +171,29 @@ export function DynamicCodeblockOverlay({
     <>
       {/* No backdrop - just the overlay */}
 
-      {/* Overlay - positioned to not overlap sidebar */}
+      {/* Overlay - positioned to not overlap sidebar, matching BaseCodeblock styling */}
       <div
         className={cn(
-          "sticky bottom-0 mx-2 bg-fd-background border-t border-r border-l rounded-tl-xl rounded-tr-xl border-fd-border z-50",
+          "sticky bottom-0 mx-2 rounded-tl-xl rounded-tr-xl border border-fd-border/60 bg-fd-card shadow-sm z-50",
           "transition-all duration-300 ease-out",
-          "shadow-2xl shadow-black/20 dark:shadow-white/20",
-          "flex flex-col", // Add flex container
+          "shadow-2xl",
+          "flex flex-col overflow-hidden",
           // Position to avoid sidebar overlap - adjust based on sidebar state
           "left-0 right-0",
           isMainSidebarCollapsed ? "md:left-16" : "md:left-64"
         )}
         style={{
-          maxHeight: getOptimalHeight(), // Use maxHeight instead of fixed height
+          maxHeight: getOptimalHeight(),
         }}
       >
-        {/* Header */}
-        <div className="flex items-center justify-between p-2 bg-fd-muted/30 flex-shrink-0">
-          <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
-            <div className="flex items-center gap-2 min-w-0">
-              <Code className="h-4 w-4 text-fd-primary flex-shrink-0" />
-              <h3 className="font-semibold text-fd-foreground text-sm sm:text-base truncate">{title}</h3>
+        {/* Header - matching BaseCodeblock styling */}
+        <div className="flex flex-wrap items-center gap-3 border-b border-fd-border/60 bg-fd-muted/20 px-4 py-3 flex-shrink-0">
+          <div className="flex flex-col gap-1 min-w-[160px] flex-1">
+            <div className="text-xs font-semibold uppercase tracking-wide text-fd-muted-foreground flex items-center gap-2">
+              <Code className="h-4 w-4 text-fd-primary" />
+              {title}
             </div>
-            <div className="text-xs text-fd-muted-foreground bg-fd-muted px-2 py-1 rounded flex-shrink-0">
+            <div className="text-[11px] font-mono text-fd-muted-foreground/80">
               {language}
             </div>
           </div>
@@ -188,7 +201,7 @@ export function DynamicCodeblockOverlay({
           <div className="flex items-center gap-1 sm:gap-2 flex-shrink-0">
             {/* Copy button */}
             <button
-              onClick={handleCopy}
+              onClick={() => runAsynchronously(() => handleCopy())}
               className="flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1.5 text-xs sm:text-sm text-fd-muted-foreground hover:text-fd-foreground bg-fd-muted/50 hover:bg-fd-muted rounded-md transition-colors"
               title="Copy code"
             >
@@ -219,16 +232,11 @@ export function DynamicCodeblockOverlay({
           </div>
         </div>
 
-        {/* Content */}
-        <div className="overflow-auto">
-          <div
-            className="p-3 sm:p-4"
-            style={{
-              background: '#0a0a0a'
-            }}
-          >
+        {/* Code Content - matching BaseCodeblock internal styling */}
+        <div className="relative bg-fd-background px-4 py-4 text-sm outline-none dark:bg-[#0A0A0A] overflow-auto flex-1">
+          <div className="rounded-lg overflow-auto max-h-[500px]">
             <div
-              className="[&_*]:!bg-transparent [&_pre]:!bg-transparent [&_code]:!bg-transparent text-xs sm:text-sm leading-[1.4] sm:leading-[1.5] [&_pre]:text-xs [&_pre]:sm:text-sm [&_code]:text-xs [&_code]:sm:text-sm [&_pre]:leading-[1.4] [&_pre]:sm:leading-[1.5] [&_code]:leading-[1.4] [&_code]:sm:leading-[1.5] [&_pre]:m-0 [&_pre]:p-0 [&_pre]:overflow-visible"
+              className="[&_*]:!bg-transparent [&_pre]:!bg-transparent [&_code]:!bg-transparent [&_pre]:!p-0 [&_pre]:!m-0"
               dangerouslySetInnerHTML={{ __html: highlightedCode }}
             />
           </div>
