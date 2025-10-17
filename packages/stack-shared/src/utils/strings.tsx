@@ -421,7 +421,7 @@ import.meta.vitest?.test("escapeTemplateLiteral", ({ expect }) => {
   const input4 = "hello ${$world}";
   const output4 = escapeTemplateLiteral(input4);
   // Verify dollar signs are escaped
-  expect(output4).toBe("hello ${$world}");
+  expect(output4).toBe("hello \${$world}");
 
   // Test with multiple special characters
   const input5 = "`hello` $world\\";
