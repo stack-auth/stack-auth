@@ -11,6 +11,7 @@ import { notFound } from 'next/navigation';
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import * as yup from 'yup';
+import { AppEnabledGuard } from '../../app-enabled-guard';
 import { PageLayout } from '../../page-layout';
 import { useAdminApp } from '../../use-admin-app';
 
@@ -107,14 +108,16 @@ export default function PageClient(props: { teamId: string }) {
   }
 
   return (
-    <PageLayout
-      title="Team Members"
-      description={`Manage team members of "${team.displayName}"`}
-      actions={
-        <AddUserDialog trigger={<Button>Add a user</Button>} team={team} />
-      }
-    >
-      <TeamMemberTable users={users || []} team={team} />
-    </PageLayout>
+    <AppEnabledGuard appId="teams">
+      <PageLayout
+        title="Team Members"
+        description={`Manage team members of "${team.displayName}"`}
+        actions={
+          <AddUserDialog trigger={<Button>Add a user</Button>} team={team} />
+        }
+      >
+        <TeamMemberTable users={users || []} team={team} />
+      </PageLayout>
+    </AppEnabledGuard>
   );
 }

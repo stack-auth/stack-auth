@@ -11,9 +11,18 @@ import { ConnectNotificationBanner } from "@stripe/react-connect-js";
 import { AlertTriangle, ArrowRight, BarChart3, Repeat, Shield, Wallet, Webhook } from "lucide-react";
 import { useState } from "react";
 import * as yup from "yup";
+import { AppEnabledGuard } from "../../app-enabled-guard";
 import { useAdminApp } from "../../use-admin-app";
 
 export default function PaymentsLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <AppEnabledGuard appId="payments">
+      <PaymentsLayoutInner>{children}</PaymentsLayoutInner>
+    </AppEnabledGuard>
+  );
+}
+
+function PaymentsLayoutInner({ children }: { children: React.ReactNode }) {
   const [bannerHasItems, setBannerHasItems] = useState(false);
   const stackAdminApp = useAdminApp();
   const stripeAccountInfo = stackAdminApp.useStripeAccountInfo();
