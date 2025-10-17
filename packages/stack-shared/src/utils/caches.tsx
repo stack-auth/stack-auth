@@ -119,6 +119,7 @@ export class AsyncCache<D extends any[], T> {
   readonly refresh = this._createKeyed("refresh");
   readonly invalidate = this._createKeyed("invalidate");
   readonly onStateChange = this._createKeyed("onStateChange");
+  readonly isDirty = this._createKeyed("isDirty");
 }
 
 class AsyncValueCache<T> {
@@ -205,8 +206,8 @@ class AsyncValueCache<T> {
   }
 
   /**
-   * Invalidates the cache, marking it to refresh on the next read. If anyone was listening to it, it will refresh
-   * immediately.
+   * Invalidates the cache, marking it dirty (ie. it will be refreshed on the next read). If anyone was listening to it,
+   * it will refresh immediately.
    */
   invalidate(): void {
     this._store.setUnavailable();
@@ -214,6 +215,10 @@ class AsyncValueCache<T> {
     if (this._subscriptionsCount > 0) {
       runAsynchronously(this.refresh());
     }
+  }
+
+  isDirty(): boolean {
+    return this._pendingPromise === undefined;
   }
 
   onStateChange(callback: (value: T, oldValue: T | undefined) => void): { unsubscribe: () => void } {

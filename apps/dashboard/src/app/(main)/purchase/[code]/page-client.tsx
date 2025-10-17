@@ -19,6 +19,7 @@ type ProductData = {
   already_bought_non_stackable?: boolean,
   conflicting_products?: { product_id: string, display_name: string }[],
   test_mode: boolean,
+  charges_enabled: boolean,
 };
 
 const apiUrl = getPublicEnvVar("NEXT_PUBLIC_STACK_API_URL") ?? throwErr("NEXT_PUBLIC_STACK_API_URL is not set");
@@ -282,6 +283,7 @@ export default function PageClient({ code }: { code: string }) {
               setupSubscription={setupSubscription}
               returnUrl={returnUrl ?? undefined}
               disabled={quantityNumber < 1 || isTooLarge || data.already_bought_non_stackable === true}
+              chargesEnabled={data.charges_enabled}
               onTestModeBypass={data.test_mode ? handleBypass : undefined}
             />
           </StripeElementsProvider>
