@@ -27,7 +27,7 @@ API keys can be obtained through:
 
 ### Table of Contents
 
-<ClickableTableOfContents code={`type ApiKey<Type extends "user" | "team" = "user" | "team", IsFirstView extends boolean = false> = {
+<ClickableTableOfContents title="ApiKey Table of Contents" code={`type ApiKey<Type extends "user" | "team" = "user" | "team", IsFirstView extends boolean = false> = {
     id: string;  //$stack-link-to:#apikeyid
     description: string;  //$stack-link-to:#apikeydescription
     expiresAt?: Date;  //$stack-link-to:#apikeyexpiresat
@@ -412,7 +412,6 @@ When creating an API key using [`user.createApiKey()`](../types/user.mdx#current
     ```
     </AsideSection>
     <AsideSection title="Examples">
-    <CodeBlocks>
     ```typescript Creating a user API key
     // Get the current user
     const user = await stackApp.getUser();
@@ -431,7 +430,6 @@ When creating an API key using [`user.createApiKey()`](../types/user.mdx#current
       isPublic: true,
     });
     ```
-    </CodeBlocks>
     </AsideSection>
   </MethodAside>
 </MethodLayout>

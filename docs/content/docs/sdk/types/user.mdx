@@ -16,7 +16,9 @@ Use `useUser()` to get `CurrentUser` (client). Use `stackServerApp.getUser()` to
 
 ### Table of Contents
 
-<ClickableTableOfContents code={`type CurrentUser = {
+<ClickableTableOfContents 
+title="CurrentUser Table of Contents"
+code={`type CurrentUser = {
     id: string; //$stack-link-to:#currentuserid
     displayName: string | null; //$stack-link-to:#currentuserdisplayname
     primaryEmail: string | null; //$stack-link-to:#currentuserprimaryemail
@@ -1305,7 +1307,9 @@ The `ServerUser` object contains most `CurrentUser` properties and methods with 
 
 ### Table of Contents
 
-<ClickableTableOfContents code={`type ServerUser = 
+<ClickableTableOfContents 
+title="ServerUser Table of Contents"
+code={`type ServerUser = 
     // Inherits most functionality from CurrentUser
     & Omit<CurrentUser, "getAuthJson" | "signOut">  //$stack-link-to:#currentuser
     & {
@@ -1694,7 +1698,7 @@ The `CurrentServerUser` object combines all the properties and methods of both `
 
 ### Table of Contents
 
-<ClickableTableOfContents code={`type CurrentServerUser =
+<ClickableTableOfContents title="CurrentServerUser Table of Contents" code={`type CurrentServerUser =
   // Inherits all functionality from CurrentUser
   & CurrentUser  //$stack-link-to:#currentuser
   // Inherits all functionality from ServerUser
