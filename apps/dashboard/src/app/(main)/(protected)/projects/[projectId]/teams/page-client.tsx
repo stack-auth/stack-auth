@@ -4,6 +4,7 @@ import { SmartFormDialog } from "@/components/form-dialog";
 import { Button } from "@stackframe/stack-ui";
 import React from "react";
 import * as yup from "yup";
+import { AppEnabledGuard } from "../app-enabled-guard";
 import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";
 
@@ -19,19 +20,21 @@ export default function PageClient() {
   const [createTeamsOpen, setCreateTeamsOpen] = React.useState(false);
 
   return (
-    <PageLayout
-      title="Teams"
-      actions={
-        <Button onClick={() => setCreateTeamsOpen(true)}>
-          Create Team
-        </Button>
-      }>
-      <TeamTable teams={teams} />
-      <CreateDialog
-        open={createTeamsOpen}
-        onOpenChange={setCreateTeamsOpen}
-      />
-    </PageLayout>
+    <AppEnabledGuard appId="teams">
+      <PageLayout
+        title="Teams"
+        actions={
+          <Button onClick={() => setCreateTeamsOpen(true)}>
+            Create Team
+          </Button>
+        }>
+        <TeamTable teams={teams} />
+        <CreateDialog
+          open={createTeamsOpen}
+          onOpenChange={setCreateTeamsOpen}
+        />
+      </PageLayout>
+    </AppEnabledGuard>
   );
 }
 

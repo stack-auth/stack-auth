@@ -3,7 +3,7 @@ import { useRouter } from "@/components/router";
 import { useUser } from "@stackframe/stack";
 import { Button, Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@stackframe/stack-ui";
 import { PlusIcon } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo } from "react";
 
 export function ProjectAvatar(props: { displayName: string }) {
   return (
@@ -32,10 +32,12 @@ export function ProjectSwitcher(props: { currentProjectId: string }) {
         aria-label="Select account"
       >
         <SelectValue placeholder="Select an account">
-          <ProjectAvatar displayName={currentProject?.displayName || ""} />
-          <span className="truncate">
-            { currentProject?.displayName }
-          </span>
+          <div className="flex items-center gap-1">
+            <ProjectAvatar displayName={currentProject?.displayName || ""} />
+            <span className="truncate">
+              { currentProject?.displayName }
+            </span>
+          </div>
         </SelectValue>
       </SelectTrigger>
       <SelectContent>

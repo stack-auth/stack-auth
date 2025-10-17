@@ -6,6 +6,7 @@ import { Button, Card, CardContent, Dialog, DialogContent, DialogFooter, DialogH
 import { Plus } from "lucide-react";
 import { useState } from "react";
 import { IllustratedInfo } from "../../../../../../components/illustrated-info";
+import { AppEnabledGuard } from "../app-enabled-guard";
 import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";
 import { WorkflowList } from "./workflow-list";
@@ -220,20 +221,16 @@ export default function WorkflowsPage() {
     });
   };
 
-  if (workflows.length === 0) {
-    return (
-      <>
-        <EmptyState onCreateWorkflow={handleCreateWorkflow} />
-        <CreateWorkflowDialog
-          open={showCreateDialog}
-          onOpenChange={setShowCreateDialog}
-          onSave={handleSaveWorkflow}
-        />
-      </>
-    );
-  }
-
-  return (
+  const content = workflows.length === 0 ? (
+    <>
+      <EmptyState onCreateWorkflow={handleCreateWorkflow} />
+      <CreateWorkflowDialog
+        open={showCreateDialog}
+        onOpenChange={setShowCreateDialog}
+        onSave={handleSaveWorkflow}
+      />
+    </>
+  ) : (
     <>
       <PageLayout title="Workflows">
         <div className="flex gap-6 flex-1" style={{ flexBasis: "0px", overflow: "scroll" }}>
@@ -289,6 +286,12 @@ export default function WorkflowsPage() {
         </Dialog>
       )}
     </>
+  );
+
+  return (
+    <AppEnabledGuard appId="workflows">
+      {content}
+    </AppEnabledGuard>
   );
 }
 

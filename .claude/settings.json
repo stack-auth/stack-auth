@@ -37,7 +37,7 @@
         ]
       }
     ],
-    "Stop": [
+    "no-longer-used-Stop": [
       {
         "hooks": [
           {

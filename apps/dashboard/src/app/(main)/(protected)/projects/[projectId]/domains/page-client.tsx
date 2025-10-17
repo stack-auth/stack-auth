@@ -9,6 +9,7 @@ import { isValidHostnameWithWildcards, isValidUrl } from "@stackframe/stack-shar
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger, ActionCell, ActionDialog, Alert, Button, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, Typography } from "@stackframe/stack-ui";
 import React from "react";
 import * as yup from "yup";
+import { AppEnabledGuard } from "../app-enabled-guard";
 import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";
 
@@ -298,67 +299,69 @@ export default function PageClient() {
 
 
   return (
-    <PageLayout title="Domains">
-      <SettingCard
-        title="Trusted domains"
-        description="Features that will redirect to your app, such as SSO and e-mail verification, will refuse to redirect to domains other than the ones listed here. Please make sure that you trust all domains listed here, as they can be used to access user data."
-        actions={
-          <EditDialog
-            trigger={<Button>Add new domain</Button>}
-            domains={domains}
-            project={project}
-            type="create"
-          />
-        }
-      >
-        {domains.length > 0 ? (
-          <div className="border rounded-md">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-[200px]">Domain</TableHead>
-                  <TableHead>&nbsp;</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {domains.map(({ domain, handlerPath }, i) => (
-                  <TableRow key={domain}>
-                    <TableCell>{domain}</TableCell>
-                    <TableCell className="flex justify-end gap-4">
-                      <ActionMenu
-                        domains={domains}
-                        project={project}
-                        editIndex={i}
-                        targetDomain={domain}
-                        defaultHandlerPath={handlerPath}
-                      />
-                    </TableCell>
+    <AppEnabledGuard appId="authentication">
+      <PageLayout title="Domains">
+        <SettingCard
+          title="Trusted domains"
+          description="Features that will redirect to your app, such as SSO and e-mail verification, will refuse to redirect to domains other than the ones listed here. Please make sure that you trust all domains listed here, as they can be used to access user data."
+          actions={
+            <EditDialog
+              trigger={<Button>Add new domain</Button>}
+              domains={domains}
+              project={project}
+              type="create"
+            />
+          }
+        >
+          {domains.length > 0 ? (
+            <div className="border rounded-md">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-[200px]">Domain</TableHead>
+                    <TableHead>&nbsp;</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-        ) : (
-          <Alert>
-            No domains added yet.
-          </Alert>
-        )}
-      </SettingCard>
+                </TableHeader>
+                <TableBody>
+                  {domains.map(({ domain, handlerPath }, i) => (
+                    <TableRow key={domain}>
+                      <TableCell>{domain}</TableCell>
+                      <TableCell className="flex justify-end gap-4">
+                        <ActionMenu
+                          domains={domains}
+                          project={project}
+                          editIndex={i}
+                          targetDomain={domain}
+                          defaultHandlerPath={handlerPath}
+                        />
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          ) : (
+            <Alert>
+              No domains added yet.
+            </Alert>
+          )}
+        </SettingCard>
 
-      <SettingCard title="Development settings">
-        <SettingSwitch
-          checked={project.config.allowLocalhost}
-          onCheckedChange={async (checked) => {
-            await project.update({
-              config: { allowLocalhost: checked },
-            });
-          }}
-          label="Allow all localhost callbacks for development"
-          hint={<>
-            When enabled, allow access from all localhost URLs by default. This makes development easier but <b>should be disabled in production.</b>
-          </>}
-        />
-      </SettingCard>
-    </PageLayout>
+        <SettingCard title="Development settings">
+          <SettingSwitch
+            checked={project.config.allowLocalhost}
+            onCheckedChange={async (checked) => {
+              await project.update({
+                config: { allowLocalhost: checked },
+              });
+            }}
+            label="Allow all localhost callbacks for development"
+            hint={<>
+              When enabled, allow access from all localhost URLs by default. This makes development easier but <b>should be disabled in production.</b>
+            </>}
+          />
+        </SettingCard>
+      </PageLayout>
+    </AppEnabledGuard>
   );
 }

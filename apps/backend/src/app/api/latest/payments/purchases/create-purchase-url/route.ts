@@ -1,6 +1,6 @@
 import { ensureProductIdOrInlineProduct, getCustomerPurchaseContext } from "@/lib/payments";
 import { validateRedirectUrl } from "@/lib/redirect-urls";
-import { getStripeForAccount } from "@/lib/stripe";
+import { getStackStripe, getStripeForAccount } from "@/lib/stripe";
 import { getPrismaClientForTenancy, globalPrismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { CustomerType } from "@prisma/client";
@@ -106,7 +106,9 @@ export const POST = createSmartRouteHandler({
       where: { id: tenancy.project.id },
       select: { stripeAccountId: true },
     });
-
+    const stripeAccountId = project?.stripeAccountId ?? throwErr("Stripe account not configured");
+    const stackStripe = getStackStripe();
+    const connectedAccount = await stackStripe.accounts.retrieve(stripeAccountId);
     const { code } = await purchaseUrlVerificationCodeHandler.createCode({
       tenancy,
       expiresInMs: 1000 * 60 * 60 * 24,
@@ -116,7 +118,8 @@ export const POST = createSmartRouteHandler({
         productId: req.body.product_id,
         product: productConfig,
         stripeCustomerId: stripeCustomer.id,
-        stripeAccountId: project?.stripeAccountId ?? throwErr("Stripe account not configured"),
+        stripeAccountId,
+        chargesEnabled: connectedAccount.charges_enabled,
       },
       method: {},
       callbackUrl: undefined,

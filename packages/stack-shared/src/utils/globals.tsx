@@ -21,3 +21,11 @@ export function createGlobal<T>(key: string, init: () => T) {
   }
   return globalVar[stackGlobalsSymbol][key] as T;
 }
+
+export function getGlobal(key: string): any {
+  return globalVar[stackGlobalsSymbol][key];
+}
+
+export function setGlobal(key: string, value: any) {
+  globalVar[stackGlobalsSymbol][key] = value;
+}

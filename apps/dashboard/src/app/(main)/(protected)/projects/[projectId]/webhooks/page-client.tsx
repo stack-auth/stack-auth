@@ -10,6 +10,7 @@ import { ActionCell, ActionDialog, Alert, Button, Table, TableBody, TableCell, T
 import { useState } from "react";
 import { SvixProvider, useEndpoints, useSvix } from "svix-react";
 import * as yup from "yup";
+import { AppEnabledGuard } from "../app-enabled-guard";
 import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";
 import { getSvixResult } from "./utils";
@@ -197,18 +198,20 @@ export default function PageClient() {
   const [updateCounter, setUpdateCounter] = useState(0);
 
   return (
-    <PageLayout
-      title="Webhooks"
-      description="Webhooks are used to sync users and teams events from Stack to your own server."
-    >
-      <SvixProvider
-        key={updateCounter}
-        token={svixToken}
-        appId={stackAdminApp.projectId}
-        options={{ serverUrl: getPublicEnvVar('NEXT_PUBLIC_STACK_SVIX_SERVER_URL') }}
+    <AppEnabledGuard appId="webhooks">
+      <PageLayout
+        title="Webhooks"
+        description="Webhooks are used to sync users and teams events from Stack to your own server."
       >
-        <Endpoints updateFn={() => setUpdateCounter(x => x + 1)} />
-      </SvixProvider>
-    </PageLayout>
+        <SvixProvider
+          key={updateCounter}
+          token={svixToken}
+          appId={stackAdminApp.projectId}
+          options={{ serverUrl: getPublicEnvVar('NEXT_PUBLIC_STACK_SVIX_SERVER_URL') }}
+        >
+          <Endpoints updateFn={() => setUpdateCounter(x => x + 1)} />
+        </SvixProvider>
+      </PageLayout>
+    </AppEnabledGuard>
   );
 }

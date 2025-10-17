@@ -7,6 +7,7 @@ import { ActionDialog, Alert, AlertDescription, AlertTitle, Button, Card, Typogr
 import { AlertCircle } from "lucide-react";
 import { useState } from "react";
 import * as yup from "yup";
+import { AppEnabledGuard } from "../app-enabled-guard";
 import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";
 
@@ -19,63 +20,65 @@ export default function PageClient() {
   const [sharedSmtpWarningDialogOpen, setSharedSmtpWarningDialogOpen] = useState<string | null>(null);
 
   return (
-    <PageLayout
-      title="Email Templates"
-      description="Customize the emails sent to your users"
-      actions={<NewTemplateButton />}
-    >
-      {emailConfig?.type === 'shared' && <Alert variant="default">
-        <AlertCircle className="h-4 w-4" />
-        <AlertTitle>Warning</AlertTitle>
-        <AlertDescription>
-          You are using a shared email server. If you want to customize the email templates, you need to configure a custom SMTP server.
-        </AlertDescription>
-      </Alert>}
-      {emailTemplates.map((template) => (
-        <Card key={template.id} className="p-4">
-          <div className="flex justify-between gap-2 items-center">
-            <Typography className="font-medium">
-              {template.displayName}
-            </Typography>
-            <div className="flex justify-start items-end gap-2">
-              <Button
-                variant='secondary'
-                onClick={() => {
-                  if (emailConfig?.type === 'shared') {
-                    setSharedSmtpWarningDialogOpen(template.id);
-                  } else {
-                    router.push(`email-templates/${template.id}`);
-                  }
-                }}
-              >
-                Edit Template
-              </Button>
-            </div>
-          </div>
-        </Card>
-      ))}
-
-      <ActionDialog
-        open={sharedSmtpWarningDialogOpen !== null}
-        onClose={() => setSharedSmtpWarningDialogOpen(null)}
-        title="Shared Email Server"
-        okButton={{
-          label: "Edit Templates Anyway", onClick: async () => {
-            router.push(`email-templates/${sharedSmtpWarningDialogOpen}`);
-          }
-        }}
-        cancelButton={{ label: "Cancel" }}
+    <AppEnabledGuard appId="emails">
+      <PageLayout
+        title="Email Templates"
+        description="Customize the emails sent to your users"
+        actions={<NewTemplateButton />}
       >
-        <Alert variant="default">
+        {emailConfig?.type === 'shared' && <Alert variant="default">
           <AlertCircle className="h-4 w-4" />
           <AlertTitle>Warning</AlertTitle>
           <AlertDescription>
             You are using a shared email server. If you want to customize the email templates, you need to configure a custom SMTP server.
-            You can edit the templates anyway, but you will not be able to save them.
           </AlertDescription>
-        </Alert>
-      </ActionDialog>
-    </PageLayout>
+        </Alert>}
+        {emailTemplates.map((template) => (
+          <Card key={template.id} className="p-4">
+            <div className="flex justify-between gap-2 items-center">
+              <Typography className="font-medium">
+                {template.displayName}
+              </Typography>
+              <div className="flex justify-start items-end gap-2">
+                <Button
+                  variant='secondary'
+                  onClick={() => {
+                    if (emailConfig?.type === 'shared') {
+                      setSharedSmtpWarningDialogOpen(template.id);
+                    } else {
+                      router.push(`email-templates/${template.id}`);
+                    }
+                  }}
+                >
+                  Edit Template
+                </Button>
+              </div>
+            </div>
+          </Card>
+        ))}
+
+        <ActionDialog
+          open={sharedSmtpWarningDialogOpen !== null}
+          onClose={() => setSharedSmtpWarningDialogOpen(null)}
+          title="Shared Email Server"
+          okButton={{
+            label: "Edit Templates Anyway", onClick: async () => {
+              router.push(`email-templates/${sharedSmtpWarningDialogOpen}`);
+            }
+          }}
+          cancelButton={{ label: "Cancel" }}
+        >
+          <Alert variant="default">
+            <AlertCircle className="h-4 w-4" />
+            <AlertTitle>Warning</AlertTitle>
+            <AlertDescription>
+              You are using a shared email server. If you want to customize the email templates, you need to configure a custom SMTP server.
+              You can edit the templates anyway, but you will not be able to save them.
+            </AlertDescription>
+          </Alert>
+        </ActionDialog>
+      </PageLayout>
+    </AppEnabledGuard>
   );
 }
 

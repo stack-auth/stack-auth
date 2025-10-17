@@ -6,6 +6,7 @@ import { Button, Dialog, DialogContent, DialogDescription, DialogHeader, DialogT
 import { ArrowLeft, Check, Copy, Edit2, Trash2, X } from "lucide-react";
 import { useState } from "react";
 import { useRouter } from "../../../../../../../../components/router";
+import { AppEnabledGuard } from "../../../app-enabled-guard";
 import { PageLayout } from "../../../page-layout";
 import { useAdminApp } from "../../../use-admin-app";
 
@@ -28,15 +29,17 @@ export default function PageClient({ storeId }: PageClientProps) {
 
   if (!(storeId in config.dataVault.stores)) {
     return (
-      <PageLayout title="Store Not Found">
-        <div className="flex flex-col items-center justify-center py-12">
-          <p className="text-muted-foreground mb-4">This data vault store does not exist.</p>
-          <Button onClick={() => router.push(`/projects/${project.id}/data-vault/stores`)}>
-            <ArrowLeft className="h-4 w-4 mr-2" />
-            Back to Stores
-          </Button>
-        </div>
-      </PageLayout>
+      <AppEnabledGuard appId="data-vault">
+        <PageLayout title="Store Not Found">
+          <div className="flex flex-col items-center justify-center py-12">
+            <p className="text-muted-foreground mb-4">This data vault store does not exist.</p>
+            <Button onClick={() => router.push(`/projects/${project.id}/data-vault/stores`)}>
+              <ArrowLeft className="h-4 w-4 mr-2" />
+              Back to Stores
+            </Button>
+          </div>
+        </PageLayout>
+      </AppEnabledGuard>
     );
   }
 
@@ -106,140 +109,142 @@ export default function PageClient({ storeId }: PageClientProps) {
 
 
   return (
-    <PageLayout
-      title={`Data Vault Store`}
-    >
-      <div className="space-y-6">
-        <div className="flex flex-row gap-4 justify-between items-center">
-          <div>
-            <Label>Store ID</Label>
-            <div className="flex items-center gap-2 mt-1">
-              <code className="text-sm bg-muted px-2 py-1 rounded">{storeId}</code>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => copyToClipboard(storeId)}
-              >
-                <Copy className="h-4 w-4" />
-              </Button>
+    <AppEnabledGuard appId="data-vault">
+      <PageLayout
+        title={`Data Vault Store`}
+      >
+        <div className="space-y-6">
+          <div className="flex flex-row gap-4 justify-between items-center">
+            <div>
+              <Label>Store ID</Label>
+              <div className="flex items-center gap-2 mt-1">
+                <code className="text-sm bg-muted px-2 py-1 rounded">{storeId}</code>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => copyToClipboard(storeId)}
+                >
+                  <Copy className="h-4 w-4" />
+                </Button>
+              </div>
             </div>
+
+            <div>
+              <Label>Display Name</Label>
+              {isEditingName ? (
+                <div className="flex items-center gap-2 mt-1">
+                  <Input
+                    value={editedDisplayName}
+                    onChange={(e) => setEditedDisplayName(e.target.value)}
+                    placeholder="Enter display name"
+                    className="max-w-sm"
+                  />
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleUpdateDisplayName}
+                  >
+                    <Check className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setIsEditingName(false)}
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 mt-1">
+                  <p className="text-sm text-muted-foreground">
+                    {store.displayName || "No display name set"}
+                  </p>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={startEditingName}
+                  >
+                    <Edit2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              )}
+            </div>
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={() => setIsDeleteDialogOpen(true)}
+            >
+              <Trash2 className="h-4 w-4 mr-2" />
+              Delete Store
+            </Button>
           </div>
 
-          <div>
-            <Label>Display Name</Label>
-            {isEditingName ? (
-              <div className="flex items-center gap-2 mt-1">
-                <Input
-                  value={editedDisplayName}
-                  onChange={(e) => setEditedDisplayName(e.target.value)}
-                  placeholder="Enter display name"
-                  className="max-w-sm"
-                />
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={handleUpdateDisplayName}
-                >
-                  <Check className="h-4 w-4" />
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setIsEditingName(false)}
-                >
-                  <X className="h-4 w-4" />
-                </Button>
-              </div>
-            ) : (
-              <div className="flex items-center gap-2 mt-1">
-                <p className="text-sm text-muted-foreground">
-                  {store.displayName || "No display name set"}
-                </p>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={startEditingName}
-                >
-                  <Edit2 className="h-4 w-4" />
-                </Button>
-              </div>
-            )}
+          <div className="flex flex-col gap-2 text-muted-foreground text-sm">
+            <p>
+              Your data vault store has been created.
+            </p>
+            <p>
+              A store securely saves key-value pairs with Stack Auth. Plaintext keys and values are never written to a database; instead, they&apos;re encrypted and decrypted on-the-fly using envelope encryption with a rotating master key.
+            </p>
+            <p>
+              To use the store, you&apos;ll need a random, unguessable secret. It can be any format, but for strong security it should be at least 32 characters long and provide 256 bits of entropy. <b>Even Stack Auth</b> can&apos;t access your data if you lose it, so keep it safe.
+            </p>
+            <p>
+              Stack Auth only stores hashes of your keys, so you can&apos;t list all keys in a store. Each value is encrypted with its key, the provided secret, and an additional encryption secret that is kept safe by Stack Auth.
+            </p>
           </div>
-          <Button
-            variant="destructive"
-            size="sm"
-            onClick={() => setIsDeleteDialogOpen(true)}
-          >
-            <Trash2 className="h-4 w-4 mr-2" />
-            Delete Store
-          </Button>
-        </div>
 
-        <div className="flex flex-col gap-2 text-muted-foreground text-sm">
-          <p>
-            Your data vault store has been created.
-          </p>
-          <p>
-            A store securely saves key-value pairs with Stack Auth. Plaintext keys and values are never written to a database; instead, they&apos;re encrypted and decrypted on-the-fly using envelope encryption with a rotating master key.
-          </p>
-          <p>
-            To use the store, you&apos;ll need a random, unguessable secret. It can be any format, but for strong security it should be at least 32 characters long and provide 256 bits of entropy. <b>Even Stack Auth</b> can&apos;t access your data if you lose it, so keep it safe.
-          </p>
-          <p>
-            Stack Auth only stores hashes of your keys, so you can&apos;t list all keys in a store. Each value is encrypted with its key, the provided secret, and an additional encryption secret that is kept safe by Stack Auth.
-          </p>
-        </div>
+          <CodeBlock
+            language="typescript"
+            content={serverExample}
+            title="Example Implementation"
+            icon="code"
+          />
 
-        <CodeBlock
-          language="typescript"
-          content={serverExample}
-          title="Example Implementation"
-          icon="code"
-        />
-
-        <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Delete Data Vault Store</DialogTitle>
-              <DialogDescription>
-                This action cannot be undone. All encrypted data in this store will be permanently deleted.
-              </DialogDescription>
-            </DialogHeader>
-            <div className="space-y-4 pt-4">
-              <div className="space-y-2">
-                <Label htmlFor="confirmation">
-                  Type <strong>{storeId}</strong> to confirm deletion
-                </Label>
-                <Input
-                  id="confirmation"
-                  value={deleteConfirmation}
-                  onChange={(e) => setDeleteConfirmation(e.target.value)}
-                  placeholder={storeId}
-                />
-              </div>
-              <div className="flex justify-end gap-2">
-                <Button
-                  variant="outline"
-                  onClick={() => {
+          <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Delete Data Vault Store</DialogTitle>
+                <DialogDescription>
+                  This action cannot be undone. All encrypted data in this store will be permanently deleted.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4 pt-4">
+                <div className="space-y-2">
+                  <Label htmlFor="confirmation">
+                    Type <strong>{storeId}</strong> to confirm deletion
+                  </Label>
+                  <Input
+                    id="confirmation"
+                    value={deleteConfirmation}
+                    onChange={(e) => setDeleteConfirmation(e.target.value)}
+                    placeholder={storeId}
+                  />
+                </div>
+                <div className="flex justify-end gap-2">
+                  <Button
+                    variant="outline"
+                    onClick={() => {
                     setIsDeleteDialogOpen(false);
                     setDeleteConfirmation("");
-                  }}
-                  disabled={isDeleting}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  variant="destructive"
-                  onClick={handleDeleteStore}
-                  disabled={isDeleting || deleteConfirmation !== storeId}
-                >
-                  {isDeleting ? "Deleting..." : "Delete Store"}
-                </Button>
+                    }}
+                    disabled={isDeleting}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    variant="destructive"
+                    onClick={handleDeleteStore}
+                    disabled={isDeleting || deleteConfirmation !== storeId}
+                  >
+                    {isDeleting ? "Deleting..." : "Delete Store"}
+                  </Button>
+                </div>
               </div>
-            </div>
-          </DialogContent>
-        </Dialog>
-      </div>
-    </PageLayout>
+            </DialogContent>
+          </Dialog>
+        </div>
+      </PageLayout>
+    </AppEnabledGuard>
   );
 }

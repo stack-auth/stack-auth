@@ -98,7 +98,6 @@ export class OAuthModel implements AuthorizationCodeModel {
     assertScopeIsValid(scope);
     const tenancy = await getSoleTenancyFromProjectBranch(...getProjectBranchFromClientId(client.id));
 
-    console.log("generateAccessToken", client, user, scope);
     const refreshTokenObj = await this._getOrCreateRefreshTokenObj(client, user, scope);
 
     return await generateAccessTokenFromRefreshTokenIfValid({

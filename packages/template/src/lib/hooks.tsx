@@ -33,6 +33,9 @@ export function useUser(options: GetUserOptions = {}): CurrentUser | CurrentInte
  * @returns the current Stack app
  */
 export function useStackApp<ProjectId extends string>(options: { projectIdMustMatch?: ProjectId } = {}): StackClientApp<true, ProjectId> {
+  if (typeof useContext !== "function") {
+    throw new Error("useStackApp() can only be used in a React Client Component. Make sure you're not calling it from a Server Component, or any other environment.");
+  }
   const context = useContext(StackContext);
   if (context === null) {
     throw new Error("useStackApp must be used within a StackProvider");

@@ -36,7 +36,6 @@ import {
 } from "@stackframe/stack-ui";
 import { ChevronDown, ChevronsUpDown, Layers, MoreVertical, Pencil, PencilIcon, Plus, Puzzle, Server, Trash2, X } from "lucide-react";
 import { Fragment, useEffect, useId, useMemo, useRef, useState } from "react";
-import { IllustratedInfo } from "../../../../../../../components/illustrated-info";
 import { PageLayout } from "../../page-layout";
 import { useAdminApp } from "../../use-admin-app";
 import { ItemDialog } from "@/components/payments/item-dialog";
@@ -721,8 +720,10 @@ function ProductCard({ id, activeType, product, allProducts, existingItems, onSa
   }, [isDraft, hasAutoScrolled]);
 
   const pricesObject: PricesObject = typeof draft.prices === 'object' ? draft.prices : {};
+  const priceCount = Object.keys(pricesObject).length;
+  const hasExistingPrices = priceCount > 0;
 
-  const canSaveProduct = draft.prices === 'include-by-default' || (typeof draft.prices === 'object' && Object.keys(pricesObject).length > 0);
+  const canSaveProduct = draft.prices === 'include-by-default' || (typeof draft.prices === 'object' && hasExistingPrices);
   const saveDisabledReason = canSaveProduct ? undefined : "Add at least one price or set Include by default";
 
   const handleRemovePrice = (priceId: string) => {
@@ -942,7 +943,7 @@ function ProductCard({ id, activeType, product, allProducts, existingItems, onSa
         {renderPrimaryPrices()}
         {isEditing && draft.prices !== 'include-by-default' && (
           <>
-            {Object.keys(draft.prices).length > 0 && <OrSeparator />}
+            {hasExistingPrices && <OrSeparator />}
             <Button
               variant="outline"
               className="w-full h-20 border-dashed border"
@@ -959,7 +960,7 @@ function ProductCard({ id, activeType, product, allProducts, existingItems, onSa
                 setEditingPriceId(tempId);
               }}
             >
-              + Add Price
+              {hasExistingPrices ? "Add Alternative Price" : "+ Add Price"}
             </Button>
           </>
         )}
@@ -1112,9 +1113,12 @@ type CatalogViewProps = {
   onCreateNewItem: () => void,
   onOpenProductDetails: (product: Product) => void,
   onSaveProductWithGroup: (catalogId: string, productId: string, product: Product) => Promise<void>,
+  createDraftRequestId?: string,
+  draftCustomerType: 'user' | 'team' | 'custom',
+  onDraftHandled?: () => void,
 };
 
-function CatalogView({ groupedProducts, groups, existingItems, onSaveProduct, onDeleteProduct, onCreateNewItem, onOpenProductDetails, onSaveProductWithGroup }: CatalogViewProps) {
+function CatalogView({ groupedProducts, groups, existingItems, onSaveProduct, onDeleteProduct, onCreateNewItem, onOpenProductDetails, onSaveProductWithGroup, createDraftRequestId, draftCustomerType, onDraftHandled }: CatalogViewProps) {
   const [activeType, setActiveType] = useState<'user' | 'team' | 'custom'>('user');
   const [drafts, setDrafts] = useState<Array<{ key: string, catalogId: string | undefined, product: Product }>>([]);
   const [creatingGroupKey, setCreatingGroupKey] = useState<string | undefined>(undefined);
@@ -1156,6 +1160,36 @@ function CatalogView({ groupedProducts, groups, existingItems, onSaveProduct, on
     drafts.forEach(d => all.push(d.key));
     return new Set(all);
   }, [groupedProducts, drafts]);
+  const lastHandledDraftRequestRef = useRef<string | undefined>(undefined);
+
+  useEffect(() => {
+    if (!createDraftRequestId) return;
+    if (lastHandledDraftRequestRef.current === createDraftRequestId) return;
+
+    lastHandledDraftRequestRef.current = createDraftRequestId;
+
+    let candidate = "product";
+    let counter = 2;
+    while (usedIds.has(candidate)) {
+      candidate = `product-${counter++}`;
+    }
+
+    const newProduct: Product = {
+      displayName: 'New Product',
+      customerType: draftCustomerType,
+      catalogId: undefined,
+      isAddOnTo: false,
+      stackable: false,
+      prices: {},
+      includedItems: {},
+      serverOnly: false,
+      freeTrial: undefined,
+    };
+
+    setActiveType(draftCustomerType);
+    setDrafts((prev) => [...prev, { key: candidate, catalogId: undefined, product: newProduct }]);
+    onDraftHandled?.();
+  }, [createDraftRequestId, draftCustomerType, onDraftHandled, usedIds]);
 
   const generateProductId = (base: string) => {
     let id = base;
@@ -1374,59 +1408,14 @@ function CatalogView({ groupedProducts, groups, existingItems, onSaveProduct, on
   );
 }
 
-function WelcomeScreen({ onCreateProduct }: { onCreateProduct: () => void }) {
-  return (
-    <div className="flex flex-col items-center justify-center h-full px-4 py-12 max-w-3xl mx-auto">
-      <IllustratedInfo
-        illustration={(
-          <div className="grid grid-cols-3 gap-2">
-            {/* Simple pricing table representation */}
-            <div className="bg-background rounded p-3 shadow-sm">
-              <div className="h-2 bg-muted rounded mb-2"></div>
-              <div className="h-8 bg-primary/20 rounded mb-2"></div>
-              <div className="space-y-1">
-                <div className="h-1.5 bg-muted rounded"></div>
-                <div className="h-1.5 bg-muted rounded"></div>
-                <div className="h-1.5 bg-muted rounded"></div>
-              </div>
-            </div>
-            <div className="bg-background rounded p-3 shadow-sm border-2 border-primary">
-              <div className="h-2 bg-muted rounded mb-2"></div>
-              <div className="h-8 bg-primary/40 rounded mb-2"></div>
-              <div className="space-y-1">
-                <div className="h-1.5 bg-muted rounded"></div>
-                <div className="h-1.5 bg-muted rounded"></div>
-                <div className="h-1.5 bg-muted rounded"></div>
-              </div>
-            </div>
-            <div className="bg-background rounded p-3 shadow-sm">
-              <div className="h-2 bg-muted rounded mb-2"></div>
-              <div className="h-8 bg-primary/20 rounded mb-2"></div>
-              <div className="space-y-1">
-                <div className="h-1.5 bg-muted rounded"></div>
-                <div className="h-1.5 bg-muted rounded"></div>
-                <div className="h-1.5 bg-muted rounded"></div>
-              </div>
-            </div>
-          </div>
-        )}
-        title="Welcome to Payments!"
-        description={[
-          <>Stack Auth Payments is built on two primitives: products and items.</>,
-          <>Products are what customers buy — the columns of your pricing table. Each product has one or more prices and may or may not include items.</>,
-          <>Items are what customers receive — the rows of your pricing table. A user can hold multiple of the same item. Items are powerful; they can unlock feature access, raise limits, or meter consumption for usage-based billing.</>,
-          <>Create your first product to get started!</>,
-        ]}
-      />
-      <Button onClick={onCreateProduct}>
-        <Plus className="h-4 w-4 mr-2" />
-        Create Your First Product
-      </Button>
-    </div>
-  );
-}
+type CatalogViewPageProps = {
+  onViewChange: (view: "list" | "catalogs") => void,
+  createDraftRequestId?: string,
+  draftCustomerType?: 'user' | 'team' | 'custom',
+  onDraftHandled?: () => void,
+};
 
-export default function PageClient({ onViewChange }: { onViewChange: (view: "list" | "catalogs") => void }) {
+export default function PageClient({ onViewChange, createDraftRequestId, draftCustomerType = 'user', onDraftHandled }: CatalogViewPageProps) {
   const [showProductDialog, setShowProductDialog] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [showItemDialog, setShowItemDialog] = useState(false);
@@ -1434,10 +1423,8 @@ export default function PageClient({ onViewChange }: { onViewChange: (view: "lis
   const stackAdminApp = useAdminApp();
   const project = stackAdminApp.useProject();
   const config = project.useConfig();
-  const [shouldUseDummyData, setShouldUseDummyData] = useState(false);
   const switchId = useId();
   const testModeSwitchId = useId();
-  const [isUpdatingTestMode, setIsUpdatingTestMode] = useState(false);
   const paymentsConfig: CompleteConfig['payments'] = config.payments;
 
 
@@ -1522,10 +1509,7 @@ export default function PageClient({ onViewChange }: { onViewChange: (view: "lis
     return sortedGroups;
   }, [paymentsConfig]);
 
-
   // Check if there are no products and no items
-  const hasNoProductsAndNoItems = Object.keys(paymentsConfig.products).length === 0 && Object.keys(paymentsConfig.items).length === 0;
-
   // Handler for create product button
   const handleCreateProduct = () => {
     setShowProductDialog(true);
@@ -1576,15 +1560,8 @@ export default function PageClient({ onViewChange }: { onViewChange: (view: "lis
   };
 
   const handleToggleTestMode = async (enabled: boolean) => {
-    setIsUpdatingTestMode(true);
-    try {
-      await project.updateConfig({ "payments.testMode": enabled });
-      toast({ title: enabled ? "Test mode enabled" : "Test mode disabled" });
-    } catch (_error) {
-      toast({ title: "Failed to update test mode", variant: "destructive" });
-    } finally {
-      setIsUpdatingTestMode(false);
-    }
+    await project.updateConfig({ "payments.testMode": enabled });
+    toast({ title: enabled ? "Test mode enabled" : "Test mode disabled" });
   };
 
 
@@ -1605,8 +1582,7 @@ export default function PageClient({ onViewChange }: { onViewChange: (view: "lis
             <Switch
               id={testModeSwitchId}
               checked={paymentsConfig.testMode === true}
-              disabled={isUpdatingTestMode}
-              onCheckedChange={(checked) => void handleToggleTestMode(checked)}
+              onCheckedChange={(checked) => handleToggleTestMode(checked)}
             />
           </div>
         </div>
@@ -1631,6 +1607,9 @@ export default function PageClient({ onViewChange }: { onViewChange: (view: "lis
             });
             toast({ title: "Product created" });
           }}
+          createDraftRequestId={createDraftRequestId}
+          draftCustomerType={draftCustomerType}
+          onDraftHandled={onDraftHandled}
         />
       </div>
     </PageLayout>

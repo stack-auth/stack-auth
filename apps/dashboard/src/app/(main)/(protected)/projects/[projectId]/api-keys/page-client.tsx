@@ -8,6 +8,7 @@ import { ActionDialog, Button, Typography } from "@stackframe/stack-ui";
 import { useSearchParams } from "next/navigation";
 import { useState } from "react";
 import * as yup from "yup";
+import { AppEnabledGuard } from "../app-enabled-guard";
 import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";
 
@@ -22,27 +23,29 @@ export default function PageClient() {
   const [returnedApiKey, setReturnedApiKey] = useState<InternalApiKeyFirstView | null>(null);
 
   return (
-    <PageLayout
-      title="Stack Auth Keys"
-      actions={
-        <Button onClick={() => setIsNewApiKeyDialogOpen(true)}>
-          Create Stack Auth Keys
-        </Button>
-      }
-    >
-      <InternalApiKeyTable apiKeys={apiKeySets} />
+    <AppEnabledGuard appId="api-keys">
+      <PageLayout
+        title="Stack Auth Keys"
+        actions={
+          <Button onClick={() => setIsNewApiKeyDialogOpen(true)}>
+            Create Stack Auth Keys
+          </Button>
+        }
+      >
+        <InternalApiKeyTable apiKeys={apiKeySets} />
 
-      <CreateDialog
-        open={isNewApiKeyDialogOpen}
-        onOpenChange={setIsNewApiKeyDialogOpen}
-        onKeyCreated={setReturnedApiKey}
-      />
-      <ShowKeyDialog
-        apiKey={returnedApiKey || undefined}
-        onClose={() => setReturnedApiKey(null)}
-      />
+        <CreateDialog
+          open={isNewApiKeyDialogOpen}
+          onOpenChange={setIsNewApiKeyDialogOpen}
+          onKeyCreated={setReturnedApiKey}
+        />
+        <ShowKeyDialog
+          apiKey={returnedApiKey || undefined}
+          onClose={() => setReturnedApiKey(null)}
+        />
 
-    </PageLayout>
+      </PageLayout>
+    </AppEnabledGuard>
   );
 }
 
