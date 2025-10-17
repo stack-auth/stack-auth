@@ -3,8 +3,8 @@
 import { useRouter } from "@/components/router";
 import { AppId } from "@stackframe/stack-shared/dist/apps/apps-config";
 import { Typography } from "@stackframe/stack-ui";
-import { useEffect } from "react";
 import type { ReactNode } from "react";
+import { useEffect } from "react";
 import { PageLayout } from "./page-layout";
 import { useAdminApp } from "./use-admin-app";
 
@@ -24,13 +24,10 @@ export function AppEnabledGuard(props: { appId: AppId, children: ReactNode }) {
 
   if (!isEnabled) {
     return (
-      <PageLayout title="App not enabled">
+      <PageLayout>
         <div className="rounded-lg border border-dashed border-border bg-muted/20 p-6 text-center">
           <Typography className="font-medium">
             App is not enabled
-          </Typography>
-          <Typography variant="secondary" className="mt-2">
-            Redirecting to the app details page so you can enable it.
           </Typography>
         </div>
       </PageLayout>
