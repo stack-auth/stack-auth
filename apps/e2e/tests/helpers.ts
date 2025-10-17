@@ -265,6 +265,21 @@ export class MailboxMessage {
   };
 }
 
+
+function expandStackPortPrefix(value?: string | null) {
+  if (!value) return value ?? undefined;
+  const prefix = getEnvVariable("NEXT_PUBLIC_STACK_PORT_PREFIX", "81");
+  return prefix ? value.replace(/\$\{NEXT_PUBLIC_STACK_PORT_PREFIX:-81\}/g, prefix) : value;
+}
+for (const [key, value] of Object.entries(process.env)) {
+  if (key.startsWith("STACK_") || key.startsWith("NEXT_PUBLIC_STACK_")) {
+    const replaced = expandStackPortPrefix(value ?? undefined);
+    if (replaced !== undefined) {
+      // eslint-disable-next-line no-restricted-syntax
+      process.env[key] = replaced;
+    }
+  }
+}
 export const STACK_DASHBOARD_BASE_URL = getEnvVariable("STACK_DASHBOARD_BASE_URL");
 export const STACK_BACKEND_BASE_URL = getEnvVariable("STACK_BACKEND_BASE_URL");
 export const STACK_INTERNAL_PROJECT_ID = getEnvVariable("STACK_INTERNAL_PROJECT_ID");

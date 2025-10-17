@@ -3,7 +3,7 @@ import { getEnvVariable, getNodeEnvironment } from "@stackframe/stack-shared/dis
 import { captureError, registerErrorSink } from "@stackframe/stack-shared/dist/utils/errors";
 import * as util from "util";
 
-export function expandStackPortPrefix(value?: string | null) {
+function expandStackPortPrefix(value?: string | null) {
   if (!value) return value ?? undefined;
   const prefix = getEnvVariable("NEXT_PUBLIC_STACK_PORT_PREFIX", "81");
   return prefix ? value.replace(/\$\{NEXT_PUBLIC_STACK_PORT_PREFIX:-81\}/g, prefix) : value;
