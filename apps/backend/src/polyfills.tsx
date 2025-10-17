@@ -14,16 +14,12 @@ const sentryErrorSink = (location: string, error: unknown) => {
 };
 
 export function ensurePolyfilled() {
-  if (!getEnvVariable("STACK_PORT_PREFIX_EXPANDED", "")) {
-    // eslint-disable-next-line no-restricted-syntax
-    process.env.STACK_PORT_PREFIX_EXPANDED = "true";
-    for (const [key, value] of Object.entries(process.env)) {
-      if (key.startsWith("STACK_") || key.startsWith("NEXT_PUBLIC_STACK_")) {
-        const replaced = expandStackPortPrefix(value ?? undefined);
-        if (replaced !== undefined) {
-          // eslint-disable-next-line no-restricted-syntax
-          process.env[key] = replaced;
-        }
+  for (const [key, value] of Object.entries(process.env)) {
+    if (key.startsWith("STACK_") || key.startsWith("NEXT_PUBLIC_STACK_")) {
+      const replaced = expandStackPortPrefix(value ?? undefined);
+      if (replaced !== undefined) {
+        // eslint-disable-next-line no-restricted-syntax
+        process.env[key] = replaced;
       }
     }
   }

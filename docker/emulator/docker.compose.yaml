@@ -21,8 +21,8 @@ services:
     environment:
       NEXT_PUBLIC_STACK_API_URL: "http://localhost:32102"
       NEXT_PUBLIC_STACK_DASHBOARD_URL: "http://localhost:32101"
-      STACK_DATABASE_CONNECTION_STRING: "postgres://postgres:PASSWORD-PLACEHOLDER--uqfEC1hmmv@db:8128/stackframe"
-      STACK_DIRECT_DATABASE_CONNECTION_STRING: "postgres://postgres:PASSWORD-PLACEHOLDER--uqfEC1hmmv@db:8128/stackframe"
+      STACK_DATABASE_CONNECTION_STRING: "postgres://postgres:PASSWORD-PLACEHOLDER--uqfEC1hmmv@db:5432/stackframe"
+      STACK_DIRECT_DATABASE_CONNECTION_STRING: "postgres://postgres:PASSWORD-PLACEHOLDER--uqfEC1hmmv@db:5432/stackframe"
       STACK_SERVER_SECRET: "23-wuNpik0gIW4mruTz25rbIvhuuvZFrLOLtL7J4tyo"
       STACK_SEED_INTERNAL_PROJECT_ALLOW_LOCALHOST: "true"
       STACK_RUN_MIGRATIONS: "true"
@@ -128,7 +128,7 @@ services:
     environment:
       WAIT_FOR: 'true'
       SVIX_REDIS_DSN: redis://:PASSWORD-PLACEHOLDER--oVn8GSD6b9@svix-redis:6379
-      SVIX_DB_DSN: postgres://postgres:PASSWORD-PLACEHOLDER--KsoIMcchtp@svix-db:8128/svix
+      SVIX_DB_DSN: postgres://postgres:PASSWORD-PLACEHOLDER--KsoIMcchtp@svix-db:5432/svix
       SVIX_CACHE_TYPE: memory
       SVIX_JWT_SECRET: secret
       SVIX_LOG_LEVEL: trace

@@ -1,10 +1,10 @@
 import * as Sentry from "@sentry/nextjs";
-import { getEnvVariable, getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
+import { getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
 import { captureError, registerErrorSink } from "@stackframe/stack-shared/dist/utils/errors";
 import * as util from "util";
 import { getPublicEnvVar } from "./lib/env";
 
-export function expandStackPortPrefix(value?: string | null) {
+function expandStackPortPrefix(value?: string | null) {
   if (!value) return value ?? undefined;
   const prefix = getPublicEnvVar("NEXT_PUBLIC_STACK_PORT_PREFIX", "81");
   return prefix ? value.replace(/\$\{NEXT_PUBLIC_STACK_PORT_PREFIX:-81\}/g, prefix as string) : value;
@@ -15,15 +15,11 @@ const sentryErrorSink = (location: string, error: unknown) => {
 };
 
 export function ensurePolyfilled() {
-  if (!getEnvVariable("STACK_PORT_PREFIX_EXPANDED", "")) {
-    // eslint-disable-next-line no-restricted-syntax
-    process.env.STACK_PORT_PREFIX_EXPANDED = "true";
-    for (const [key, value] of Object.entries(process.env)) {
-      if (key.startsWith("STACK_") || key.startsWith("NEXT_PUBLIC_STACK_")) {
-        const replaced = expandStackPortPrefix(value ?? undefined);
-        if (replaced !== undefined) {
-          process.env[key] = replaced;
-        }
+  for (const [key, value] of Object.entries(process.env)) {
+    if (key.startsWith("STACK_") || key.startsWith("NEXT_PUBLIC_STACK_")) {
+      const replaced = expandStackPortPrefix(value ?? undefined);
+      if (replaced !== undefined) {
+        process.env[key] = replaced;
       }
     }
   }
