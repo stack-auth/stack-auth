@@ -18,7 +18,6 @@ jobs:
   restart-dev-and-test-with-custom-base-port:
     runs-on: ubicloud-standard-8
     env:
-      STACK_DIRECT_DATABASE_CONNECTION_STRING: "postgres://postgres:PASSWORD-PLACEHOLDER--uqfEC1hmmv@localhost:8128/stackframe"
       NEXT_PUBLIC_STACK_PORT_PREFIX: "69"
 
     steps:
