@@ -401,15 +401,13 @@ import.meta.vitest?.test("escapeTemplateLiteral", ({ expect }) => {
   const input1 = "hello `world`";
   const output1 = escapeTemplateLiteral(input1);
   // Verify backticks are escaped
-  expect(output1.includes("\\`")).toBe(true);
-  expect(output1).not.toBe(input1);
+  expect(output1).toBe("hello \\`world\\`");
 
   // Test with backslash
   const input2 = "hello \\world";
   const output2 = escapeTemplateLiteral(input2);
   // Verify backslashes are escaped
-  expect(output2.includes("\\\\")).toBe(true);
-  expect(output2).not.toBe(input2);
+  expect(output2).toBe("hello \\\\world");
 
   // Test with dollar sign
   const input3 = "hello $world";
@@ -432,8 +430,7 @@ import.meta.vitest?.test("escapeTemplateLiteral", ({ expect }) => {
   // Test with already escaped characters
   const input6 = "\\`hello\\`";
   const output6 = escapeTemplateLiteral(input6);
-  // Verify already escaped characters are properly escaped
-  expect(output6).not.toBe(input6);
+  expect(output6).toBe("\\\\\\`hello\\\\\\`");
 });
 
 /**
