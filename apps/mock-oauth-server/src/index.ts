@@ -3,7 +3,7 @@ import express from 'express';
 import handlebars from 'handlebars';
 import Provider, { errors } from 'oidc-provider';
 
-const stackPortPrefix = process.env.STACK_PORT_PREFIX ?? "81";
+const stackPortPrefix = process.env.NEXT_PUBLIC_STACK_PORT_PREFIX ?? "81";
 const defaultMockOAuthPort = Number(`${stackPortPrefix}14`);
 const port = Number(process.env.PORT ?? defaultMockOAuthPort);
 const backendPortForRedirects = `${stackPortPrefix}02`;

@@ -300,8 +300,8 @@ it("should return 200 and send email successfully", async ({ expect }) => {
       MailboxMessage {
         "attachments": [],
         "body": {
-          "html": "http://localhost:<$STACK_PORT_PREFIX>02/api/v1/emails/unsubscribe-link?code=%3Cstripped+query+param%3E",
-          "text": "http://localhost:<$STACK_PORT_PREFIX>02/api/v1/emails/unsubscribe-link?code=%3Cstripped+query+param%3E",
+          "html": "http://localhost:<$NEXT_PUBLIC_STACK_PORT_PREFIX>02/api/v1/emails/unsubscribe-link?code=%3Cstripped+query+param%3E",
+          "text": "http://localhost:<$NEXT_PUBLIC_STACK_PORT_PREFIX>02/api/v1/emails/unsubscribe-link?code=%3Cstripped+query+param%3E",
         },
         "from": "Test Project <test@example.com>",
         "subject": "Custom Test Email Subject",

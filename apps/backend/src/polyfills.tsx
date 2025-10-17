@@ -5,8 +5,8 @@ import * as util from "util";
 
 export function expandStackPortPrefix(value?: string | null) {
   if (!value) return value ?? undefined;
-  const prefix = getEnvVariable("STACK_PORT_PREFIX");
-  return prefix ? value.replace(/<\$STACK_PORT_PREFIX>/g, prefix) : value;
+  const prefix = getEnvVariable("NEXT_PUBLIC_STACK_PORT_PREFIX");
+  return prefix ? value.replace(/<\$NEXT_PUBLIC_STACK_PORT_PREFIX>/g, prefix) : value;
 }
 
 const sentryErrorSink = (location: string, error: unknown) => {

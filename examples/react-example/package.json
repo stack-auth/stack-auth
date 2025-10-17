@@ -4,7 +4,7 @@
   "version": "2.8.43",
   "type": "module",
   "scripts": {
-    "dev": "vite --force --port ${STACK_PORT_PREFIX:-81}20",
+    "dev": "vite --force --port ${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}20",
     "build": "tsc -b && vite build",
     "clean": "rimraf dist && rimraf node_modules",
     "lint": "eslint .",

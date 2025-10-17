@@ -108,8 +108,8 @@
         if (!port || port.length < 2) return "81";
         return port.slice(0, -2);
       };
-      const stackPortPrefix = window.STACK_PORT_PREFIX || derivePrefixFromLocation();
-      window.STACK_PORT_PREFIX = stackPortPrefix;
+      const stackPortPrefix = window.NEXT_PUBLIC_STACK_PORT_PREFIX || derivePrefixFromLocation();
+      window.NEXT_PUBLIC_STACK_PORT_PREFIX = stackPortPrefix;
       const withPrefix = (suffix) => `${stackPortPrefix}${suffix}`;
 
       const backgroundServices = [

@@ -6,9 +6,9 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "clean": "rimraf .next && rimraf node_modules",
-    "dev": "next dev --turbopack --port ${STACK_PORT_PREFIX:-81}03",
+    "dev": "next dev --turbopack --port ${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}03",
     "build": "next build",
-    "start": "next start --port ${STACK_PORT_PREFIX:-81}03",
+    "start": "next start --port ${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}03",
     "lint": "next lint",
     "analyze": "ANALYZE=true pnpm build"
   },

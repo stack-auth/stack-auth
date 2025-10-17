@@ -7,8 +7,8 @@
   "type": "module",
   "scripts": {
     "build": "npm run generate-platform-nav && next build",
-    "dev": "npm run generate-platform-nav && next dev --port ${STACK_PORT_PREFIX:-81}04 --hostname 0.0.0.0",
-    "start": "next start --port ${STACK_PORT_PREFIX:-81}04",
+    "dev": "npm run generate-platform-nav && next dev --port ${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}04 --hostname 0.0.0.0",
+    "start": "next start --port ${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}04",
     "lint": "next lint",
     "lint:fix": "next lint --fix",
     "postinstall": "fumadocs-mdx",

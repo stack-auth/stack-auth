@@ -5,7 +5,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "dev": "dotenv -e .env.development -e .env.local -- vite --port ${STACK_PORT_PREFIX:-81}19 --force",
+    "dev": "dotenv -e .env.development -e .env.local -- vite --port ${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}19 --force",
     "clean": "rimraf dist && rimraf node_modules"
   },
   "keywords": [],

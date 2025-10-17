@@ -1,4 +1,4 @@
-export const getPortPrefix = () => process.env.STACK_PORT_PREFIX ?? "81";
+export const getPortPrefix = () => process.env.NEXT_PUBLIC_STACK_PORT_PREFIX ?? "81";
 
 /**
  * Returns the port with the configured prefix and provided suffix.

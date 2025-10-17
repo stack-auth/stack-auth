@@ -13,6 +13,7 @@ const _inlineEnvVars = {
   NEXT_PUBLIC_STACK_INBUCKET_WEB_URL: process.env.NEXT_PUBLIC_STACK_INBUCKET_WEB_URL,
   NEXT_PUBLIC_STACK_ENABLE_DEVELOPMENT_FEATURES_PROJECT_IDS: process.env.NEXT_PUBLIC_STACK_ENABLE_DEVELOPMENT_FEATURES_PROJECT_IDS,
   NEXT_PUBLIC_STACK_STRIPE_PUBLISHABLE_KEY: process.env.NEXT_PUBLIC_STACK_STRIPE_PUBLISHABLE_KEY,
+  NEXT_PUBLIC_STACK_PORT_PREFIX: process.env.NEXT_PUBLIC_STACK_PORT_PREFIX,
 
 
   // TODO: NEXT_PUBLIC_BROWSER_STACK_API_URL should be renamed to NEXT_PUBLIC_STACK_BROWSER_API_URL
@@ -51,12 +52,13 @@ const _postBuildEnvVars = {
   NEXT_PUBLIC_STACK_INBUCKET_WEB_URL: "STACK_ENV_VAR_SENTINEL_NEXT_PUBLIC_STACK_INBUCKET_WEB_URL",
   NEXT_PUBLIC_STACK_ENABLE_DEVELOPMENT_FEATURES_PROJECT_IDS: "STACK_ENV_VAR_SENTINEL_NEXT_PUBLIC_STACK_ENABLE_DEVELOPMENT_FEATURES_PROJECT_IDS",
   NEXT_PUBLIC_STACK_STRIPE_PUBLISHABLE_KEY: "STACK_ENV_VAR_SENTINEL_NEXT_PUBLIC_STACK_STRIPE_PUBLISHABLE_KEY",
+  NEXT_PUBLIC_STACK_PORT_PREFIX: "STACK_ENV_VAR_SENTINEL_NEXT_PUBLIC_STACK_PORT_PREFIX",
 } satisfies typeof _inlineEnvVars;
 
 // If this is not replaced with "true", then we will not use inline env vars
 const _usePostBuildEnvVars = 'STACK_ENV_VAR_SENTINEL_USE_INLINE_ENV_VARS';
 
-export function getPublicEnvVar(name: keyof typeof _inlineEnvVars) {
+export function getPublicEnvVar(name: keyof typeof _inlineEnvVars): string | undefined {
   // This is a hack to force the compiler not to do any smart optimizations
   const _ = _usePostBuildEnvVars.toString() + _inlineEnvVars.toString(); // Force runtime evaluation
 
@@ -65,5 +67,5 @@ export function getPublicEnvVar(name: keyof typeof _inlineEnvVars) {
   if (_usePostBuildEnvVars.slice(0) === 'true' && value && value.startsWith('STACK_ENV_VAR_SENTINEL')) {
     return undefined;
   }
-  return expandStackPortPrefix(value);
+  return name === 'NEXT_PUBLIC_STACK_PORT_PREFIX' || !name.startsWith('NEXT_PUBLIC_STACK_') ? value : expandStackPortPrefix(value);
 }

@@ -6,9 +6,9 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "clean": "rimraf .next && rimraf node_modules",
-    "dev": "next dev --port ${STACK_PORT_PREFIX:-81}08",
+    "dev": "next dev --port ${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}08",
     "build": "next build",
-    "start": "next start --port ${STACK_PORT_PREFIX:-81}08",
+    "start": "next start --port ${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}08",
     "lint": "next lint"
   },
   "dependencies": {

@@ -50,7 +50,7 @@ it("unsubscribe link should be sent and update notification preference", async (
   // Verify the email was actually sent by checking the mailbox
   const messages = await user.mailbox.waitForMessagesWithSubject("Custom Test Email Subject");
   const sentEmail = messages[0];
-  expect(sentEmail!.body?.html).toMatchInlineSnapshot(`"http://localhost:<$STACK_PORT_PREFIX>02/api/v1/emails/unsubscribe-link?code=%3Cstripped+query+param%3E"`);
+  expect(sentEmail!.body?.html).toMatchInlineSnapshot(`"http://localhost:<$NEXT_PUBLIC_STACK_PORT_PREFIX>02/api/v1/emails/unsubscribe-link?code=%3Cstripped+query+param%3E"`);
 
   // Extract the unsubscribe link and fetch it
   const unsubscribeLinkMatch = sentEmail!.body?.html.match(/href="([^"]+)"/);

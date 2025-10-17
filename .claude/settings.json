@@ -21,7 +21,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "PORT=${STACK_PORT_PREFIX:-81}02; if ! curl -s --connect-timeout 1 \"http://localhost:$PORT\" >/dev/null 2>&1; then echo -e \"\\n\\n\\033[1;31mCannot reach backend on port $PORT! Please run \\`pnpm run dev\\` before querying Claude Code\\033[0m\\n\\n\" >&2; exit 2; fi"
+            "command": "PORT=${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}02; if ! curl -s --connect-timeout 1 \"http://localhost:$PORT\" >/dev/null 2>&1; then echo -e \"\\n\\n\\033[1;31mCannot reach backend on port $PORT! Please run \\`pnpm run dev\\` before querying Claude Code\\033[0m\\n\\n\" >&2; exit 2; fi"
           }
         ]
       }

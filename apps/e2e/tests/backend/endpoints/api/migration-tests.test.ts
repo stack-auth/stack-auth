@@ -22,7 +22,7 @@ describe("SmartRouteHandler", () => {
             
             Please see the API documentation at https://docs.stack-auth.com, or visit the Stack Auth dashboard at https://app.stack-auth.com.
             
-            URL: http://localhost:<$STACK_PORT_PREFIX>02/api/v1/migration-tests/smart-route-handler
+            URL: http://localhost:<$NEXT_PUBLIC_STACK_PORT_PREFIX>02/api/v1/migration-tests/smart-route-handler
           \`,
           "headers": Headers { <some fields may have been hidden> },
         }

@@ -36,26 +36,26 @@ For any security-related concerns & bug bounties, please email us at [security@s
 
 NOTE: Every line of code should be reviewed by a human BEFORE you submit a PR. DO NOT waste our time by creating an AI-generated PR; we won't fall for that.
 
-For vibecoding, it can help to have multiple parallel copies of the codebase open in different windows. For this, you can set the environment variable `STACK_PORT_PREFIX` to a different value (default 81). You may want to do this in your VSCode settings:
+For vibecoding, it can help to have multiple parallel copies of the codebase open in different windows. For this, you can set the environment variable `NEXT_PUBLIC_STACK_PORT_PREFIX` to a different value (default 81). You may want to do this in your VSCode settings:
 
 ```json
 {
   "terminal.integrated.env.osx": {
-    "STACK_PORT_PREFIX": "181"
+    "NEXT_PUBLIC_STACK_PORT_PREFIX": "181"
   },
   "terminal.integrated.env.linux": {
-    "STACK_PORT_PREFIX": "181"
+    "NEXT_PUBLIC_STACK_PORT_PREFIX": "181"
   },
   "terminal.integrated.env.windows": {
-    "STACK_PORT_PREFIX": "181"
+    "NEXT_PUBLIC_STACK_PORT_PREFIX": "181"
   },
   "claude-code.environmentVariables": [
-    "STACK_PORT_PREFIX=181"
+    "NEXT_PUBLIC_STACK_PORT_PREFIX=181"
   ]
 }
 ```
 
-When you do this, it is recommended that you give all workspaces a port prefix other than 81, to prevent accidental conflicts when you forgot to make a feature support the $STACK_PORT_PREFIX environment variable. (for example: first workspace at 181, second workspace at 182, etc.)
+When you do this, it is recommended that you give all workspaces a port prefix other than 81, to prevent accidental conflicts when you forgot to make a feature support the $NEXT_PUBLIC_STACK_PORT_PREFIX environment variable. (for example: first workspace at 181, second workspace at 182, etc.)
 
 ## Before creating a pull request
 

@@ -17,7 +17,7 @@ async function initiateTransfer(projectId: string) {
   expect(response).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 200,
-      "body": { "confirmation_url": "http://localhost:<$STACK_PORT_PREFIX>01/integrations/custom/projects/transfer/confirm?code=%3Cstripped+query+param%3E" },
+      "body": { "confirmation_url": "http://localhost:<$NEXT_PUBLIC_STACK_PORT_PREFIX>01/integrations/custom/projects/transfer/confirm?code=%3Cstripped+query+param%3E" },
       "headers": Headers { <some fields may have been hidden> },
     }
   `);
