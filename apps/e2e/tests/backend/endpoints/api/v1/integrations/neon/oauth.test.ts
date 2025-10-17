@@ -138,7 +138,7 @@ async function authorize(projectId: string) {
         "status": 303,
         "body": "http://localhost:30000/api/v2/auth/authorize?code=%3Cstripped+query+param%3E&amp=",
         "headers": Headers {
-          "location": "http://localhost:30000/api/v2/auth/authorize?code=%3Cstripped+query+param%3E&state=%3Cstripped+query+param%3E&iss=http%3A%2F%2Flocalhost%3A8102%2Fapi%2Fv1%2Fintegrations%2Fneon%2Foauth%2Fidp",
+          "location": "http://localhost:30000/api/v2/auth/authorize?code=%3Cstripped+query+param%3E&state=%3Cstripped+query+param%3E&iss=http%3A%2F%2Flocalhost%3A%3C%24STACK_PORT_PREFIX%3E02%2Fapi%2Fv1%2Fintegrations%2Fneon%2Foauth%2Fidp",
           "set-cookie": <setting cookie "_interaction_resume" at path "/api/v1/integrations/neon/oauth/idp/auth/<stripped auth UID>" to <stripped cookie value>>,
           "set-cookie": <setting cookie "_interaction_resume.sig" at path "/api/v1/integrations/neon/oauth/idp/auth/<stripped auth UID>" to <stripped cookie value>>,
           <some fields may have been hidden>,
