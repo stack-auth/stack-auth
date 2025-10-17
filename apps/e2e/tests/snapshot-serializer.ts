@@ -65,6 +65,7 @@ const stripFields = [
   "prevIterator",
   "nextAttempt",
   "lastFour",
+  "port",
 ] as const;
 
 const stripFieldsIfString = [
@@ -100,7 +101,9 @@ const keyedCookieNamePrefixes = [
 
 const stringRegexReplacements = [
   [/(\/integrations\/(neon|custom)\/oauth\/idp\/(interaction|auth)\/)[a-zA-Z0-9_-]+/gi, "$1<stripped $3 UID>"],
+  [/localhost\:(\d+)(\d\d)/gi, "localhost:<$$STACK_PORT_PREFIX>$2"],
 ] as const;
+
 
 function addAll<T>(set: Set<T>, values: readonly T[]) {
   for (const value of values) {

@@ -2,12 +2,13 @@ import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { randomUUID } from "crypto";
 import { describe } from "vitest";
 import { it } from "../../../../helpers";
+import { localhostUrl, withPortPrefix } from "../../../helpers/ports";
 import { niceBackendFetch, Project, User } from "../../../backend-helpers";
 
 const testEmailConfig = {
   type: "standard",
   host: "localhost",
-  port: 8129,
+  port: Number(withPortPrefix("29")),
   username: "test",
   password: "test",
   sender_name: "Test Project",
@@ -295,21 +296,11 @@ it("should return 200 and send email successfully", async ({ expect }) => {
 
   // Verify the email was actually sent by checking the mailbox
   const messages = await user.mailbox.waitForMessagesWithSubject("Custom Test Email Subject");
-  expect(messages).toMatchInlineSnapshot(`
-    [
-      MailboxMessage {
-        "attachments": [],
-        "body": {
-          "html": "http://localhost:8102/api/v1/emails/unsubscribe-link?code=%3Cstripped+query+param%3E",
-          "text": "http://localhost:8102/api/v1/emails/unsubscribe-link?code=%3Cstripped+query+param%3E",
-        },
-        "from": "Test Project <test@example.com>",
-        "subject": "Custom Test Email Subject",
-        "to": ["<unindexed-mailbox--<stripped UUID>@stack-generated.example.com>"],
-        <some fields may have been hidden>,
-      },
-    ]
-  `);
+  expect(messages).toHaveLength(1);
+  const [sentMessage] = messages;
+  const expectedUnsubscribeLink = localhostUrl("02", "/api/v1/emails/unsubscribe-link?code=%3Cstripped+query+param%3E");
+  expect(sentMessage.body?.html).toBe(expectedUnsubscribeLink);
+  expect(sentMessage.body?.text).toBe(expectedUnsubscribeLink);
 });
 
 it("should handle user that does not exist", async ({ expect }) => {
@@ -367,7 +358,7 @@ it("should send email using a draft_id and mark draft as sent", async ({ expect 
       email_config: {
         type: "standard",
         host: "localhost",
-        port: 8129,
+        port: Number(withPortPrefix("29")),
         username: "test",
         password: "test",
         sender_name: "Test Project",

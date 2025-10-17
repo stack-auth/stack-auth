@@ -3,7 +3,11 @@ import express from 'express';
 import handlebars from 'handlebars';
 import Provider, { errors } from 'oidc-provider';
 
-const port = process.env.PORT || 8114;
+const stackPortPrefix = process.env.STACK_PORT_PREFIX ?? "81";
+const defaultMockOAuthPort = Number(`${stackPortPrefix}14`);
+const port = Number(process.env.PORT ?? defaultMockOAuthPort);
+const backendPortForRedirects = `${stackPortPrefix}02`;
+const emulatorBackendPort = process.env.STACK_EMULATOR_BACKEND_PORT ?? "32102";
 const providerIds = [
   'github',
   'facebook',
@@ -19,9 +23,7 @@ const clients = providerIds.map((id) => ({
   client_id: id,
   client_secret: 'MOCK-SERVER-SECRET',
   redirect_uris: [
-    ...([8102, 32102].map(port =>
-      `http://localhost:${port}/api/v1/auth/oauth/callback/${id}`
-    )),
+    `http://localhost:${backendPortForRedirects}/api/v1/auth/oauth/callback/${id}`,
     ...(process.env.STACK_MOCK_OAUTH_REDIRECT_URIS ? [process.env.STACK_MOCK_OAUTH_REDIRECT_URIS.replace("{id}", id)] : [])
   ],
   grant_types: ['authorization_code', 'refresh_token'],

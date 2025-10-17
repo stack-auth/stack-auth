@@ -1,5 +1,6 @@
 import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { it } from "../../../../helpers";
+import { localhostUrl, withPortPrefix } from "../../../helpers/ports";
 import { niceBackendFetch, Project, User } from "../../../backend-helpers";
 
 it("unsubscribe link should be sent and update notification preference", async ({ expect }) => {
@@ -9,7 +10,7 @@ it("unsubscribe link should be sent and update notification preference", async (
       email_config: {
         type: "standard",
         host: "localhost",
-        port: 8129,
+        port: Number(withPortPrefix("29")),
         username: "test",
         password: "test",
         sender_name: "Test Project",
@@ -50,7 +51,8 @@ it("unsubscribe link should be sent and update notification preference", async (
   // Verify the email was actually sent by checking the mailbox
   const messages = await user.mailbox.waitForMessagesWithSubject("Custom Test Email Subject");
   const sentEmail = messages[0];
-  expect(sentEmail!.body?.html).toMatchInlineSnapshot(`"http://localhost:8102/api/v1/emails/unsubscribe-link?code=%3Cstripped+query+param%3E"`);
+  const expectedUnsubscribeLink = localhostUrl("02", "/api/v1/emails/unsubscribe-link?code=%3Cstripped+query+param%3E");
+  expect(sentEmail!.body?.html).toBe(expectedUnsubscribeLink);
 
   // Extract the unsubscribe link and fetch it
   const unsubscribeLinkMatch = sentEmail!.body?.html.match(/href="([^"]+)"/);
@@ -102,7 +104,7 @@ it("unsubscribe link should not be sent for emails with transactional notificati
       email_config: {
         type: "standard",
         host: "localhost",
-        port: 8129,
+        port: Number(withPortPrefix("29")),
         username: "test",
         password: "test",
         sender_name: "Test Project",

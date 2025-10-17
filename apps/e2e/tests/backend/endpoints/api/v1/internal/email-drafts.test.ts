@@ -1,10 +1,11 @@
 import { it } from "../../../../../helpers";
 import { Project, niceBackendFetch } from "../../../../backend-helpers";
+import { withPortPrefix } from "../../../../../helpers/ports";
 
 const customEmailConfig = {
   type: "standard",
   host: "localhost",
-  port: 8129,
+  port: Number(withPortPrefix("29")),
   username: "test",
   password: "test",
   sender_name: "Test Project",
@@ -401,4 +402,3 @@ it("should fail rendering with non-existent theme id", async ({ expect }) => {
     }
   `);
 });
-

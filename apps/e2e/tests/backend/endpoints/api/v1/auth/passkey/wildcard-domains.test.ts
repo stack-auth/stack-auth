@@ -1,6 +1,25 @@
 import { describe } from "vitest";
 import { it } from "../../../../../../helpers";
+import { localhostUrl, withPortPrefix } from "../../../../../../helpers/ports";
 import { Auth, InternalApiKey, Project, niceBackendFetch } from "../../../../../backend-helpers";
+
+const passkeyPort = withPortPrefix("03");
+const passkeyOrigin = localhostUrl("03");
+
+const createClientDataJSON = (
+  origin: string,
+  type: "webauthn.get" | "webauthn.create" = "webauthn.get"
+) =>
+  Buffer.from(
+    JSON.stringify({
+      type,
+      challenge: "TU9DSw",
+      origin,
+      crossOrigin: false,
+      other_keys_can_be_added_here:
+        "do not compare clientDataJSON against a template. See https://goo.gl/yabPex",
+    })
+  ).toString("base64");
 
 describe("Passkey with wildcard domains", () => {
   it("should store wildcard domains in config correctly", async ({ expect }) => {
@@ -98,7 +117,7 @@ describe("Passkey with wildcard domains", () => {
       body: {
         config_override_string: JSON.stringify({
           'domains.trustedDomains.wildcard': {
-            baseUrl: 'http://*:8103', // Will match http://localhost:8103 and any host on port 8103
+            baseUrl: `http://*:${passkeyPort}`, // Will match http://localhost:${passkeyPort} and any host on that port
             handlerPath: '/',
           },
           'domains.allowLocalhost': false, // Disable default localhost to test wildcard
@@ -126,12 +145,7 @@ describe("Passkey with wildcard domains", () => {
           "rawId": "WILDCARD_TEST_ID",
           "response": {
             "attestationObject": "o2NmbXRkbm9uZWdhdHRTdG10oGhhdXRoRGF0YViYSZYN5YgOjGh0NBcPZHZgW4_krrmihjLHmVzzuoMdl2NdAAAAAAAAAAAAAAAAAAAAAAAAAAAAFAQWGAfwysz2R5taOiCxqOkpP3AXpQECAyYgASFYIO7JJihe93CDhZOPFp9pVefZyBvy62JMjSs47id1q0vpIlggNMjLAQG7ESYqRZsBQbX07WWIImEzYFDsJgBOSYiQZL8",
-            "clientDataJSON": btoa(JSON.stringify({
-              type: "webauthn.create",
-              challenge: "TU9DSw",
-              origin: "http://localhost:8103", // Matches wildcard *:8103
-              crossOrigin: false
-            })),
+            "clientDataJSON": createClientDataJSON(passkeyOrigin, "webauthn.create"),
             "transports": ["hybrid", "internal"],
             "publicKeyAlgorithm": -7,
             "publicKey": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE7skmKF73cIOFk48Wn2lV59nIG_LrYkyNKzjuJ3WrS-k0yMsBAbsRJipFmwFBtfTtZYgiYTNgUOwmAE5JiJBkvw",
@@ -164,17 +178,17 @@ describe("Passkey with wildcard domains", () => {
     // Sign up and register passkey with default localhost allowed
     const res = await Auth.Password.signUpWithEmail();
     const expectedUserId = res.userId;
-    await Auth.Passkey.register(); // This uses http://localhost:8103
+    await Auth.Passkey.register(); // This uses the computed passkeyOrigin
     await Auth.signOut();
 
-    // Configure double wildcard domain that matches localhost:8103
+    // Configure double wildcard domain that matches passkeyOrigin
     const configResponse = await niceBackendFetch("/api/v1/internal/config/override", {
       method: "PATCH",
       accessType: "admin",
       body: {
         config_override_string: JSON.stringify({
           'domains.trustedDomains.double': {
-            baseUrl: 'http://**host:8103', // Will match localhost:8103
+            baseUrl: `http://**host:${passkeyPort}`, // Will match localhost:passkeyPort
             handlerPath: '/',
           },
           'domains.allowLocalhost': false,
@@ -202,7 +216,7 @@ describe("Passkey with wildcard domains", () => {
           "rawId": "BBYYB_DKzPZHm1o6ILGo6Sk_cBc",
           "response": {
             "authenticatorData": "SZYN5YgOjGh0NBcPZHZgW4_krrmihjLHmVzzuoMdl2MdAAAAAA",
-            "clientDataJSON": "eyJ0eXBlIjoid2ViYXV0aG4uZ2V0IiwiY2hhbGxlbmdlIjoiVFU5RFN3Iiwib3JpZ2luIjoiaHR0cDovL2xvY2FsaG9zdDo4MTAzIiwiY3Jvc3NPcmlnaW4iOmZhbHNlLCJvdGhlcl9rZXlzX2Nhbl9iZV9hZGRlZF9oZXJlIjoiZG8gbm90IGNvbXBhcmUgY2xpZW50RGF0YUpTT04gYWdhaW5zdCBhIHRlbXBsYXRlLiBTZWUgaHR0cHM6Ly9nb28uZ2wveWFiUGV4In0", // Matches **host:8103
+            "clientDataJSON": createClientDataJSON(passkeyOrigin), // Matches **host:passkeyPort
             "signature": "MEUCIQDPFYXxm-ALPZVuP4YdXBr1INrfObXR6hukxTttYNnegAIgEfy5MlnIi10VwmilOmuT1TuuDBLw9GDSv9DQuIRZXRE",
             "userHandle": "YzE3YzJjNjMtMTkxZi00MWZmLTlkNjEtYzBjOGVlMmVlMGQ0"
           },
@@ -267,7 +281,7 @@ describe("Passkey with wildcard domains", () => {
             "clientDataJSON": btoa(JSON.stringify({
               type: "webauthn.create",
               challenge: "TU9DSw",
-              origin: "http://localhost:8103", // Doesn't match https://app.production.com
+              origin: passkeyOrigin, // Doesn't match https://app.production.com
               crossOrigin: false
             })),
             "transports": ["hybrid", "internal"],
@@ -345,7 +359,7 @@ describe("Passkey with wildcard domains", () => {
             "clientDataJSON": btoa(JSON.stringify({
               type: "webauthn.get",
               challenge: "TU9DSw",
-              origin: "http://localhost:8103", // Doesn't match *.example.com
+              origin: passkeyOrigin, // Doesn't match *.example.com
               crossOrigin: false
             })),
             "signature": "MEUCIQDPFYXxm-ALPZVuP4YdXBr1INrfObXR6hukxTttYNnegAIgEfy5MlnIi10VwmilOmuT1TuuDBLw9GDSv9DQuIRZXRE",
@@ -376,7 +390,7 @@ describe("Passkey with wildcard domains", () => {
 
     // Sign up and register passkey with default localhost allowed
     const res = await Auth.Password.signUpWithEmail();
-    await Auth.Passkey.register(); // This uses http://localhost:8103
+    await Auth.Passkey.register(); // This uses the computed passkeyOrigin
     await Auth.signOut();
 
     // Configure wildcard that matches localhost
@@ -386,7 +400,7 @@ describe("Passkey with wildcard domains", () => {
       body: {
         config_override_string: JSON.stringify({
           'domains.trustedDomains.wildcard': {
-            baseUrl: 'http://*:8103', // Will match localhost:8103
+            baseUrl: `http://*:${passkeyPort}`, // Will match localhost:passkeyPort
             handlerPath: '/',
           },
           'domains.allowLocalhost': false,
@@ -414,7 +428,7 @@ describe("Passkey with wildcard domains", () => {
           "rawId": "BBYYB_DKzPZHm1o6ILGo6Sk_cBc",
           "response": {
             "authenticatorData": "SZYN5YgOjGh0NBcPZHZgW4_krrmihjLHmVzzuoMdl2MdAAAAAA",
-            "clientDataJSON": "eyJ0eXBlIjoid2ViYXV0aG4uZ2V0IiwiY2hhbGxlbmdlIjoiVFU5RFN3Iiwib3JpZ2luIjoiaHR0cDovL2xvY2FsaG9zdDo4MTAzIiwiY3Jvc3NPcmlnaW4iOmZhbHNlLCJvdGhlcl9rZXlzX2Nhbl9iZV9hZGRlZF9oZXJlIjoiZG8gbm90IGNvbXBhcmUgY2xpZW50RGF0YUpTT04gYWdhaW5zdCBhIHRlbXBsYXRlLiBTZWUgaHR0cHM6Ly9nb28uZ2wveWFiUGV4In0", // Matches *:8103
+            "clientDataJSON": createClientDataJSON(passkeyOrigin), // Matches *:passkeyPort
             "signature": "MEUCIQDPFYXxm-ALPZVuP4YdXBr1INrfObXR6hukxTttYNnegAIgEfy5MlnIi10VwmilOmuT1TuuDBLw9GDSv9DQuIRZXRE",
             "userHandle": "YzE3YzJjNjMtMTkxZi00MWZmLTlkNjEtYzBjOGVlMmVlMGQ0"
           },

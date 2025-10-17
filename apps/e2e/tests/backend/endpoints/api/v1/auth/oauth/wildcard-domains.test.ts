@@ -1,6 +1,9 @@
 import { describe } from "vitest";
 import { it } from "../../../../../../helpers";
 import { Auth, InternalApiKey, Project, niceBackendFetch } from "../../../../../backend-helpers";
+import { withPortPrefix } from "../../../helpers/ports";
+
+const oauthMockServerPort = withPortPrefix("07");
 
 describe("OAuth with wildcard domains", () => {
   it("should work with exact domain configuration", async ({ expect }) => {
@@ -284,7 +287,7 @@ describe("OAuth with wildcard domains", () => {
       body: {
         config_override_string: JSON.stringify({
           'domains.trustedDomains.prefix': {
-            baseUrl: 'http://api-*:8107', // Won't match localhost
+            baseUrl: `http://api-*:${oauthMockServerPort}`, // Won't match localhost
             handlerPath: '/handler',
           },
           'domains.allowLocalhost': false,

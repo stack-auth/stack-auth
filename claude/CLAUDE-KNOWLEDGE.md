@@ -1,4 +1,4 @@
 # CLAUDE Knowledge Base
 
-Q: Which ports should I expect the local Postgres, Inbucket (SMTP/POP3), and OTLP collector services to expose in the default dev setup?
-A: Postgres is on localhost:8128, Inbucket SMTP is on 8129, Inbucket POP3 is on 8130, and the OTLP collector is available at 8131.
+Q: How are the development ports derived now that STACK_PORT_PREFIX exists?
+A: Host ports use `${STACK_PORT_PREFIX:-81}` plus the two-digit suffix (e.g., Postgres is `${STACK_PORT_PREFIX:-81}28`, Inbucket SMTP `${STACK_PORT_PREFIX:-81}29`, POP3 `${STACK_PORT_PREFIX:-81}30`, and OTLP `${STACK_PORT_PREFIX:-81}31` by default).

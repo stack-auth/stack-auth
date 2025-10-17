@@ -75,15 +75,15 @@ async function authorize(projectId: string) {
       NiceResponse {
         "status": 307,
         "headers": Headers {
-          "location": "http://localhost:8102/api/v1/integrations/neon/oauth/idp/auth?response_type=code&client_id=neon-local&redirect_uri=%3Cstripped+query+param%3E&state=%3Cstripped+query+param%3E&code_challenge=%3Cstripped+query+param%3E&code_challenge_method=S256&scope=openid",
+          "location": "http://localhost:STACK_PORT_PREFIX02/api/v1/integrations/neon/oauth/idp/auth?response_type=code&client_id=neon-local&redirect_uri=%3Cstripped+query+param%3E&state=%3Cstripped+query+param%3E&code_challenge=%3Cstripped+query+param%3E&code_challenge_method=S256&scope=openid",
           <some fields may have been hidden>,
         },
       },
       NiceResponse {
         "status": 303,
-        "body": "Redirecting to <a href=\\"http://localhost:8102/api/v1/integrations/neon/oauth/idp/interaction/<stripped interaction UID>\\">http://localhost:8102/api/v1/integrations/neon/oauth/idp/interaction/<stripped interaction UID></a>.",
+        "body": "Redirecting to <a href=\\"http://localhost:STACK_PORT_PREFIX02/api/v1/integrations/neon/oauth/idp/interaction/<stripped interaction UID>\\">http://localhost:STACK_PORT_PREFIX02/api/v1/integrations/neon/oauth/idp/interaction/<stripped interaction UID></a>.",
         "headers": Headers {
-          "location": "http://localhost:8102/api/v1/integrations/neon/oauth/idp/interaction/<stripped interaction UID>",
+          "location": "http://localhost:STACK_PORT_PREFIX02/api/v1/integrations/neon/oauth/idp/interaction/<stripped interaction UID>",
           "set-cookie": <setting cookie "_interaction" at path "/api/v1/integrations/neon/oauth/idp/interaction/<stripped interaction UID>" to <stripped cookie value>>,
           "set-cookie": <setting cookie "_interaction.sig" at path "/api/v1/integrations/neon/oauth/idp/interaction/<stripped interaction UID>" to <stripped cookie value>>,
           "set-cookie": <setting cookie "_interaction_resume" at path "/api/v1/integrations/neon/oauth/idp/auth/<stripped auth UID>" to <stripped cookie value>>,
@@ -93,9 +93,9 @@ async function authorize(projectId: string) {
       },
       NiceResponse {
         "status": 307,
-        "body": "http://localhost:8101/integrations/neon/confirm?interaction_uid=%3Cstripped+query+param%3E&amp=",
+        "body": "http://localhost:STACK_PORT_PREFIX01/integrations/neon/confirm?interaction_uid=%3Cstripped+query+param%3E&amp=",
         "headers": Headers {
-          "location": "http://localhost:8101/integrations/neon/confirm?interaction_uid=%3Cstripped+query+param%3E&external_project_name=neon-project",
+          "location": "http://localhost:STACK_PORT_PREFIX01/integrations/neon/confirm?interaction_uid=%3Cstripped+query+param%3E&external_project_name=neon-project",
           <some fields may have been hidden>,
         },
       },
@@ -130,7 +130,7 @@ async function authorize(projectId: string) {
       NiceResponse {
         "status": 303,
         "headers": Headers {
-          "location": "http://localhost:8102/api/v1/integrations/neon/oauth/idp/auth/<stripped auth UID>",
+          "location": "http://localhost:STACK_PORT_PREFIX02/api/v1/integrations/neon/oauth/idp/auth/<stripped auth UID>",
           <some fields may have been hidden>,
         },
       },
@@ -169,7 +169,7 @@ it(`should not redirect to the incorrect callback URL`, async ({}) => {
         NiceResponse {
           "status": 307,
           "headers": Headers {
-            "location": "http://localhost:8102/api/v1/integrations/neon/oauth/idp/auth?response_type=code&client_id=neon-local&redirect_uri=%3Cstripped+query+param%3E&state=%3Cstripped+query+param%3E&code_challenge=%3Cstripped+query+param%3E&code_challenge_method=S256&scope=openid",
+            "location": "http://localhost:STACK_PORT_PREFIX02/api/v1/integrations/neon/oauth/idp/auth?response_type=code&client_id=neon-local&redirect_uri=%3Cstripped+query+param%3E&state=%3Cstripped+query+param%3E&code_challenge=%3Cstripped+query+param%3E&code_challenge_method=S256&scope=openid",
             <some fields may have been hidden>,
           },
         },
@@ -178,7 +178,7 @@ it(`should not redirect to the incorrect callback URL`, async ({}) => {
           "body": {
             "error": "invalid_redirect_uri",
             "error_description": "redirect_uri did not match any of the client's registered redirect_uris",
-            "iss": "http://localhost:8102/api/v1/integrations/neon/oauth/idp",
+            "iss": "http://localhost:STACK_PORT_PREFIX02/api/v1/integrations/neon/oauth/idp",
             "state": "eyJkZXRhaWxzIjp7Im5lb25fcHJvamVjdF9uYW1lIjoibmVvbi1wcm9qZWN0In19",
           },
           "headers": Headers { <some fields may have been hidden> },

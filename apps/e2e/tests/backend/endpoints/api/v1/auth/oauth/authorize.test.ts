@@ -1,17 +1,26 @@
 import { it } from "../../../../../../helpers";
+import { localhostUrl } from "../../../../../../helpers/ports";
 import { Auth, niceBackendFetch } from "../../../../../backend-helpers";
 
 it("should redirect the user to the OAuth provider with the right arguments", async ({ expect }) => {
   const response = await Auth.OAuth.authorize();
   expect(response.authorizeResponse.status).toBe(307);
-  expect(response.authorizeResponse.headers.get("location")).toMatch(/^http:\/\/localhost:8114\/auth\?.*$/);
+  const firstLocation = response.authorizeResponse.headers.get("location");
+  expect(firstLocation).toBeTruthy();
+  const firstLocationUrl = new URL(firstLocation!);
+  expect(firstLocationUrl.origin).toBe(localhostUrl("14"));
+  expect(firstLocationUrl.pathname).toBe("/auth");
   expect(response.authorizeResponse.headers.get("set-cookie")).toMatch(/^stack-oauth-inner-[^;]+=[^;]+; Path=\/; Expires=[^;]+; Max-Age=\d+;( Secure;)? HttpOnly$/);
 });
 
 it("should redirect the user to the OAuth provider with the right arguments even when forcing a branch id", async ({ expect }) => {
   const response = await Auth.OAuth.authorize({ forceBranchId: "main" });
   expect(response.authorizeResponse.status).toBe(307);
-  expect(response.authorizeResponse.headers.get("location")).toMatch(/^http:\/\/localhost:8114\/auth\?.*$/);
+  const secondLocation = response.authorizeResponse.headers.get("location");
+  expect(secondLocation).toBeTruthy();
+  const secondLocationUrl = new URL(secondLocation!);
+  expect(secondLocationUrl.origin).toBe(localhostUrl("14"));
+  expect(secondLocationUrl.pathname).toBe("/auth");
   expect(response.authorizeResponse.headers.get("set-cookie")).toMatch(/^stack-oauth-inner-[^;]+=[^;]+; Path=\/; Expires=[^;]+; Max-Age=\d+;( Secure;)? HttpOnly$/);
 });
 
@@ -41,7 +50,7 @@ it("should not redirect the user to the OAuth provider with the right arguments 
 
 it("should be able to fetch the inner callback URL by following the OAuth provider redirects", async ({ expect }) => {
   const { innerCallbackUrl } = await Auth.OAuth.getInnerCallbackUrl();
-  expect(innerCallbackUrl.origin).toBe("http://localhost:8102");
+  expect(innerCallbackUrl.origin).toBe("http://localhost:STACK_PORT_PREFIX02");
   expect(innerCallbackUrl.pathname).toBe("/api/v1/auth/oauth/callback/spotify");
 });
 

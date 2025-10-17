@@ -388,7 +388,7 @@ import.meta.vitest?.test("mergeScopeStrings", ({ expect }) => {
 });
 
 export function escapeTemplateLiteral(s: string): string {
-  return s.replaceAll("`", "\\`").replaceAll("\\", "\\\\").replaceAll("$", "\\$");
+  return s.replaceAll("`", "\\`").replaceAll("\\", "\\\\").replaceAll("${", "\\${");
 }
 import.meta.vitest?.test("escapeTemplateLiteral", ({ expect }) => {
   // Test with empty string

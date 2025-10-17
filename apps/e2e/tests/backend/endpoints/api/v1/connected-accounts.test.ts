@@ -1,5 +1,8 @@
 import { it, niceFetch } from "../../../../helpers";
+import { localhostUrl } from "../../../../helpers/ports";
 import { Auth, niceBackendFetch } from "../../../backend-helpers";
+
+const mockOAuthUrl = (path: string) => localhostUrl("14", path);
 
 it("should use the connected account access token to access the userinfo endpoint of the oauth provider", async ({ expect }) => {
   await Auth.OAuth.signIn();
@@ -21,7 +24,7 @@ it("should use the connected account access token to access the userinfo endpoin
 
   const accessToken = response2.body.access_token;
 
-  const response3 = await niceFetch('http://localhost:8114/me', {
+  const response3 = await niceFetch(mockOAuthUrl("/me"), {
     headers: {
       Authorization: `Bearer ${accessToken}`,
     },
@@ -52,7 +55,7 @@ it("should refresh the connected account access token when it is revoked from th
 
   const accessToken = response2.body.access_token;
 
-  const response3 = await niceFetch('http://localhost:8114/me', {
+  const response3 = await niceFetch(mockOAuthUrl("/me"), {
     headers: {
       Authorization: `Bearer ${accessToken}`,
     },
@@ -60,7 +63,7 @@ it("should refresh the connected account access token when it is revoked from th
   expect(response3.status).toBe(200);
 
   // revoke the access token
-  const response4 = await niceFetch("http://localhost:8114/revoke-access-token", {
+  const response4 = await niceFetch(mockOAuthUrl("/revoke-access-token"), {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -84,7 +87,7 @@ it("should refresh the connected account access token when it is revoked from th
   `);
 
   // try to use the access token again, should fail
-  const response5 = await niceFetch('http://localhost:8114/me', {
+  const response5 = await niceFetch(mockOAuthUrl("/me"), {
     headers: {
       Authorization: `Bearer ${accessToken}`,
     },
@@ -102,7 +105,7 @@ it("should refresh the connected account access token when it is revoked from th
   expect(response6.status).toBe(201);
 
   // use the new access token to fetch the userinfo endpoint
-  const response7 = await niceFetch('http://localhost:8114/me', {
+  const response7 = await niceFetch(mockOAuthUrl("/me"), {
     headers: {
       Authorization: `Bearer ${response6.body.access_token}`,
     },
@@ -133,7 +136,7 @@ it("should prompt the user to re-authorize the connected account when the refres
 
   const accessToken = response2.body.access_token;
 
-  const response3 = await niceFetch('http://localhost:8114/me', {
+  const response3 = await niceFetch(mockOAuthUrl("/me"), {
     headers: {
       Authorization: `Bearer ${accessToken}`,
     },
@@ -141,7 +144,7 @@ it("should prompt the user to re-authorize the connected account when the refres
   expect(response3.status).toBe(200);
 
   // revoke the refresh token
-  const response4 = await niceFetch("http://localhost:8114/revoke-refresh-token", {
+  const response4 = await niceFetch(mockOAuthUrl("/revoke-refresh-token"), {
     method: "POST",
     headers: {
       "Content-Type": "application/json",

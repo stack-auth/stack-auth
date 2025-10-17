@@ -1,5 +1,6 @@
 import { it } from "../../../../../helpers";
 import { Auth, Payments, Project, User, niceBackendFetch } from "../../../../backend-helpers";
+import { withPortPrefix } from "../../../helpers/ports";
 
 it("should error on invalid code", async ({ expect }) => {
   await Project.createAndSwitch();
@@ -326,7 +327,7 @@ it("should create purchase URL with inline product, validate code, and create pu
   });
   expect(response.status).toBe(200);
   const body = response.body as { url: string };
-  expect(body.url).toMatch(/^https?:\/\/localhost:8101\/purchase\/[a-z0-9-_]+$/);
+  expect(body.url).toMatch(new RegExp(`^https?:\\\\/\\\\/localhost:${withPortPrefix(\"01\")}\\/purchase\\/[a-z0-9-_]+$`));
   const codeMatch = body.url.match(/\/purchase\/([a-z0-9-_]+)/);
   const code = codeMatch ? codeMatch[1] : undefined;
   expect(code).toBeDefined();
