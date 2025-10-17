@@ -463,7 +463,7 @@ it("should list inline product metadata after completing test-mode purchase", as
           },
         },
         included_items: {},
-        metadata: {
+        server_metadata: {
           correlation_id: "inline-test-123",
           attributes: {
             seats: 5,
@@ -495,10 +495,10 @@ it("should list inline product metadata after completing test-mode purchase", as
   });
   expect(listResponse.status).toBe(200);
   const listBody = listResponse.body as {
-    items: Array<{ product: { metadata?: Record<string, unknown> } }>,
+    items: Array<{ product: { server_metadata?: Record<string, unknown> } }>,
   };
   expect(listBody.items).toHaveLength(1);
-  expect(listBody.items[0].product.metadata).toMatchInlineSnapshot(`
+  expect(listBody.items[0].product.server_metadata).toMatchInlineSnapshot(`
     {
       "attributes": {
         "seats": 5,

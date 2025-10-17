@@ -591,9 +591,17 @@ export const productSchema = yupObject({
   ),
 });
 
-const productMetadata = jsonSchema.optional().meta({ openapiField: { description: 'Optional metadata that Stack Auth will store and return with this product. Use this to attach custom data needed by your application.', exampleValue: { featureFlag: true, source: 'marketing-campaign' } } });
+const productMetadataExample = { featureFlag: true, source: 'marketing-campaign' } as const;
 
-export const productSchemaWithMetadata = productSchema.concat(yupObject({ metadata: productMetadata }));
+export const productClientMetadataSchema = jsonSchema.meta({ openapiField: { description: _clientMetaDataDescription('product'), exampleValue: productMetadataExample } });
+export const productClientReadOnlyMetadataSchema = jsonSchema.meta({ openapiField: { description: _clientReadOnlyMetaDataDescription('product'), exampleValue: productMetadataExample } });
+export const productServerMetadataSchema = jsonSchema.meta({ openapiField: { description: _serverMetaDataDescription('product'), exampleValue: productMetadataExample } });
+
+export const productSchemaWithMetadata = productSchema.concat(yupObject({
+  clientMetadata: productClientMetadataSchema.optional(),
+  clientReadOnlyMetadata: productClientReadOnlyMetadataSchema.optional(),
+  serverMetadata: productServerMetadataSchema.optional(),
+}));
 
 export const inlineProductSchema = yupObject({
   display_name: yupString().defined(),
@@ -617,7 +625,9 @@ export const inlineProductSchema = yupObject({
       expires: yupString().oneOf(['never', 'when-purchase-expires', 'when-repeated']).optional(),
     }),
   ),
-  metadata: productMetadata,
+  client_metadata: productClientMetadataSchema.optional(),
+  client_read_only_metadata: productClientReadOnlyMetadataSchema.optional(),
+  server_metadata: productServerMetadataSchema.optional(),
 });
 
 // Users

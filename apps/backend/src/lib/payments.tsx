@@ -62,7 +62,9 @@ export async function ensureProductIdOrInlineProduct(
         freeTrial: value.free_trial,
         serverOnly: true,
       }])),
-      metadata: inlineProduct.metadata,
+      clientMetadata: inlineProduct.client_metadata ?? undefined,
+      clientReadOnlyMetadata: inlineProduct.client_read_only_metadata ?? undefined,
+      serverMetadata: inlineProduct.server_metadata ?? undefined,
       includedItems: typedFromEntries(Object.entries(inlineProduct.included_items).map(([key, value]) => [key, {
         repeat: value.repeat ?? "never",
         quantity: value.quantity ?? 0,
@@ -429,7 +431,9 @@ export function productToInlineProduct(product: ProductWithMetadata): yup.InferT
     stackable: product.stackable === true,
     server_only: product.serverOnly === true,
     included_items: product.includedItems,
-    metadata: product.metadata,
+    client_metadata: product.clientMetadata ?? null,
+    client_read_only_metadata: product.clientReadOnlyMetadata ?? null,
+    server_metadata: product.serverMetadata ?? null,
     prices: product.prices === "include-by-default" ? {} : typedFromEntries(typedEntries(product.prices).map(([key, value]) => [key, filterUndefined({
       ...typedFromEntries(SUPPORTED_CURRENCIES.map(c => [c.code, getOrUndefined(value, c.code)])),
       interval: value.interval,

@@ -300,7 +300,7 @@ it("should return inline product metadata when validating purchase code", async 
           },
         },
         included_items: {},
-        metadata: {
+        server_metadata: {
           reference_id: "ref-123",
           features: ["priority-support", "analytics"],
         },
@@ -320,15 +320,43 @@ it("should return inline product metadata when validating purchase code", async 
       full_code: fullCode,
     },
   });
-  expect(validateResponse.status).toBe(200);
-  const validateBody = validateResponse.body;
-  expect(validateBody.product.metadata).toMatchInlineSnapshot(`
-    {
-      "features": [
-        "priority-support",
-        "analytics",
-      ],
-      "reference_id": "ref-123",
+  expect(validateResponse).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": {
+        "already_bought_non_stackable": false,
+        "charges_enabled": false,
+        "conflicting_products": [],
+        "product": {
+          "client_metadata": null,
+          "client_read_only_metadata": null,
+          "customer_type": "user",
+          "display_name": "Metadata Inline Product",
+          "included_items": {},
+          "prices": {
+            "monthly-metadata": {
+              "USD": "1500",
+              "interval": [
+                1,
+                "month",
+              ],
+            },
+          },
+          "server_metadata": {
+            "features": [
+              "priority-support",
+              "analytics",
+            ],
+            "reference_id": "ref-123",
+          },
+          "server_only": true,
+          "stackable": false,
+        },
+        "project_id": "<stripped UUID>",
+        "stripe_account_id": <stripped field 'stripe_account_id'>,
+        "test_mode": true,
+      },
+      "headers": Headers { <some fields may have been hidden> },
     }
   `);
 });
