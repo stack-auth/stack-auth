@@ -6,7 +6,7 @@ import { getPublicEnvVar } from "./lib/env";
 
 export function expandStackPortPrefix(value?: string | null) {
   if (!value) return value ?? undefined;
-  const prefix = getPublicEnvVar("NEXT_PUBLIC_STACK_PORT_PREFIX");
+  const prefix = getPublicEnvVar("NEXT_PUBLIC_STACK_PORT_PREFIX", "81");
   return prefix ? value.replace(/\$\{NEXT_PUBLIC_STACK_PORT_PREFIX:-81\}/g, prefix as string) : value;
 }
 
