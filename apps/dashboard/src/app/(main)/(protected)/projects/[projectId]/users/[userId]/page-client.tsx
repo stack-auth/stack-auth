@@ -43,6 +43,7 @@ import {
 import { AtSign, Calendar, Check, Hash, Mail, MoreHorizontal, Shield, SquareAsterisk, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import * as yup from "yup";
+import { AppEnabledGuard } from "../../app-enabled-guard";
 import { PageLayout } from "../../page-layout";
 import { useAdminApp } from "../../use-admin-app";
 
@@ -158,14 +159,20 @@ export default function PageClient({ userId }: { userId: string }) {
   const user = stackAdminApp.useUser(userId);
 
   if (user === null) {
-    return <PageLayout
-      title="User Not Found"
-    >
-      User Not Found
-    </PageLayout>;
+    return (
+      <AppEnabledGuard appId="authentication">
+        <PageLayout title="User Not Found">
+          User Not Found
+        </PageLayout>
+      </AppEnabledGuard>
+    );
   }
 
-  return <UserPage user={user}/>;
+  return (
+    <AppEnabledGuard appId="authentication">
+      <UserPage user={user} />
+    </AppEnabledGuard>
+  );
 }
 
 type UserHeaderProps = {

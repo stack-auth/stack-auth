@@ -12,6 +12,7 @@ import { ActionDialog, Button, Typography } from "@stackframe/stack-ui";
 import { Check, Pencil } from "lucide-react";
 import { useState } from "react";
 import * as yup from "yup";
+import { AppEnabledGuard } from "../app-enabled-guard";
 import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";
 
@@ -41,42 +42,44 @@ export default function PageClient() {
   const selectedThemeData = themes.find(t => t.id === activeTheme) ?? throwErr(`Unknown theme ${activeTheme}`, { activeTheme });
 
   return (
-    <PageLayout
-      title="Email Themes"
-      description="Customize email themes for your project"
-      actions={<NewThemeButton />}
-    >
-      <SettingCard
-        title="Active Theme"
-        description={`Currently using ${selectedThemeData.displayName}`}
+    <AppEnabledGuard appId="emails">
+      <PageLayout
+        title="Email Themes"
+        description="Customize email themes for your project"
+        actions={<NewThemeButton />}
       >
-        <div className="h-72">
-          <EmailPreview themeId={selectedThemeData.id} templateTsxSource={previewTemplateSource} />
-        </div>
-        <ActionDialog
-          trigger={<Button onClick={handleOpenDialog} className="ml-auto w-min">Set Theme</Button>}
-          open={dialogOpen}
-          onOpenChange={setDialogOpen}
-          title="Select Email Theme"
-          cancelButton
-          okButton={{
-            label: "Save Theme",
-            onClick: handleSaveTheme
-          }}
+        <SettingCard
+          title="Active Theme"
+          description={`Currently using ${selectedThemeData.displayName}`}
         >
-          <div className="grid grid-cols-2 gap-6">
-            {themes.map((theme) => (
-              <ThemeOption
-                key={theme.id}
-                theme={theme}
-                isSelected={dialogSelectedThemeId === theme.id}
-                onSelect={handleThemeSelect}
-              />
-            ))}
+          <div className="h-72">
+            <EmailPreview themeId={selectedThemeData.id} templateTsxSource={previewTemplateSource} />
           </div>
-        </ActionDialog>
-      </SettingCard>
-    </PageLayout>
+          <ActionDialog
+            trigger={<Button onClick={handleOpenDialog} className="ml-auto w-min">Set Theme</Button>}
+            open={dialogOpen}
+            onOpenChange={setDialogOpen}
+            title="Select Email Theme"
+            cancelButton
+            okButton={{
+              label: "Save Theme",
+              onClick: handleSaveTheme
+            }}
+          >
+            <div className="grid grid-cols-2 gap-6">
+              {themes.map((theme) => (
+                <ThemeOption
+                  key={theme.id}
+                  theme={theme}
+                  isSelected={dialogSelectedThemeId === theme.id}
+                  onSelect={handleThemeSelect}
+                />
+              ))}
+            </div>
+          </ActionDialog>
+        </SettingCard>
+      </PageLayout>
+    </AppEnabledGuard>
   );
 }
 
