@@ -752,6 +752,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
       expiresAt: new Date(crud.expires_at_millis),
       revoke: async () => {
         await this._interface.revokeServerTeamInvitation(crud.id, crud.team_id);
+        await this._serverTeamInvitationsCache.refresh([crud.team_id]);
       },
     };
   }
