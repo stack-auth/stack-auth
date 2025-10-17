@@ -7,19 +7,6 @@ export const metadata = {
   title: "Projects",
 };
 
-// internal users don't have team permission to invite users, so we use server function instead
-async function inviteUser(origin: string, teamId: string, email: string) {
-  "use server";
-  const team = await stackServerApp.getTeam(teamId);
-  if (!team) {
-    throw new Error("Team not found");
-  }
-  await team.inviteUser({
-    email,
-    callbackUrl: new URL(stackServerApp.urls.teamInvitation, origin).toString()
-  });
-}
-
 export default async function Page() {
   const user = await stackServerApp.getUser({ or: "redirect" });
   const projects = await user.listOwnedProjects();
@@ -39,8 +26,7 @@ export default async function Page() {
           backgroundSize: '10px 10px',
         }}
       />
-
-      <PageClient inviteUser={inviteUser} />
+      <PageClient />
       <Footer />
     </>
   );

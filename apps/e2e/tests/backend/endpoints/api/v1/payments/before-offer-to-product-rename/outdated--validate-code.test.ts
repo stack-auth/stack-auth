@@ -38,6 +38,7 @@ it("should allow valid code and return offer data", async ({ expect }) => {
       "status": 200,
       "body": {
         "already_bought_non_stackable": false,
+        "charges_enabled": false,
         "conflicting_products": [],
         "product": {
           "customer_type": "user",
@@ -212,6 +213,7 @@ it("should include conflicting_group_offers when switching within the same group
       "status": 200,
       "body": {
         "already_bought_non_stackable": false,
+        "charges_enabled": false,
         "conflicting_products": [
           {
             "display_name": "Offer A",
