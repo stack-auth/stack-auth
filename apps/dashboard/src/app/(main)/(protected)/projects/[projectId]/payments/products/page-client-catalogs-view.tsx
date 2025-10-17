@@ -721,8 +721,10 @@ function ProductCard({ id, activeType, product, allProducts, existingItems, onSa
   }, [isDraft, hasAutoScrolled]);
 
   const pricesObject: PricesObject = typeof draft.prices === 'object' ? draft.prices : {};
+  const priceCount = Object.keys(pricesObject).length;
+  const hasExistingPrices = priceCount > 0;
 
-  const canSaveProduct = draft.prices === 'include-by-default' || (typeof draft.prices === 'object' && Object.keys(pricesObject).length > 0);
+  const canSaveProduct = draft.prices === 'include-by-default' || (typeof draft.prices === 'object' && hasExistingPrices);
   const saveDisabledReason = canSaveProduct ? undefined : "Add at least one price or set Include by default";
 
   const handleRemovePrice = (priceId: string) => {
@@ -942,7 +944,7 @@ function ProductCard({ id, activeType, product, allProducts, existingItems, onSa
         {renderPrimaryPrices()}
         {isEditing && draft.prices !== 'include-by-default' && (
           <>
-            {Object.keys(draft.prices).length > 0 && <OrSeparator />}
+            {hasExistingPrices && <OrSeparator />}
             <Button
               variant="outline"
               className="w-full h-20 border-dashed border"
@@ -959,7 +961,7 @@ function ProductCard({ id, activeType, product, allProducts, existingItems, onSa
                 setEditingPriceId(tempId);
               }}
             >
-              + Add Price
+              {hasExistingPrices ? "Add Alternative Price" : "+ Add Price"}
             </Button>
           </>
         )}
@@ -1434,7 +1436,6 @@ export default function PageClient({ onViewChange }: { onViewChange: (view: "lis
   const stackAdminApp = useAdminApp();
   const project = stackAdminApp.useProject();
   const config = project.useConfig();
-  const [shouldUseDummyData, setShouldUseDummyData] = useState(false);
   const switchId = useId();
   const testModeSwitchId = useId();
   const [isUpdatingTestMode, setIsUpdatingTestMode] = useState(false);
@@ -1521,15 +1522,6 @@ export default function PageClient({ onViewChange }: { onViewChange: (view: "lis
 
     return sortedGroups;
   }, [paymentsConfig]);
-
-
-  // Check if there are no products and no items
-  const hasNoProductsAndNoItems = Object.keys(paymentsConfig.products).length === 0 && Object.keys(paymentsConfig.items).length === 0;
-
-  // Handler for create product button
-  const handleCreateProduct = () => {
-    setShowProductDialog(true);
-  };
 
   // Handler for create item button
   const handleCreateItem = () => {

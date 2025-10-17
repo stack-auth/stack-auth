@@ -1,9 +1,9 @@
 import { KnownErrors, StackServerInterface } from "@stackframe/stack-shared";
-import type { CustomerProductsListResponse } from "@stackframe/stack-shared/dist/interface/crud/products";
 import { ContactChannelsCrud } from "@stackframe/stack-shared/dist/interface/crud/contact-channels";
 import { ItemCrud } from "@stackframe/stack-shared/dist/interface/crud/items";
 import { NotificationPreferenceCrud } from "@stackframe/stack-shared/dist/interface/crud/notification-preferences";
 import { OAuthProviderCrud } from "@stackframe/stack-shared/dist/interface/crud/oauth-providers";
+import type { CustomerProductsListResponse } from "@stackframe/stack-shared/dist/interface/crud/products";
 import { TeamApiKeysCrud, UserApiKeysCrud, teamApiKeysCreateOutputSchema, userApiKeysCreateOutputSchema } from "@stackframe/stack-shared/dist/interface/crud/project-api-keys";
 import { ProjectPermissionDefinitionsCrud, ProjectPermissionsCrud } from "@stackframe/stack-shared/dist/interface/crud/project-permissions";
 import { TeamInvitationCrud } from "@stackframe/stack-shared/dist/interface/crud/team-invitation";
@@ -22,10 +22,10 @@ import { useMemo } from "react"; // THIS_LINE_PLATFORM react-like
 import * as yup from "yup";
 import { constructRedirectUrl } from "../../../../utils/url";
 import { ApiKey, ApiKeyCreationOptions, ApiKeyUpdateOptions, apiKeyCreationOptionsToCrud, apiKeyUpdateOptionsToCrud } from "../../api-keys";
-import { ConvexCtx, GetCurrentUserOptions, HandlerUrls, OAuthScopesOnSignIn, TokenStoreInit } from "../../common";
+import { ConvexCtx, GetCurrentUserOptions } from "../../common";
 import { OAuthConnection } from "../../connected-accounts";
 import { ServerContactChannel, ServerContactChannelCreateOptions, ServerContactChannelUpdateOptions, serverContactChannelCreateOptionsToCrud, serverContactChannelUpdateOptionsToCrud } from "../../contact-channels";
-import { Customer, CustomerProductsList, CustomerProductsListOptions, CustomerProductsRequestOptions, InlineProduct, ServerItem } from "../../customers";
+import { Customer, InlineProduct, ServerItem } from "../../customers";
 import { DataVaultStore } from "../../data-vault";
 import { SendEmailOptions } from "../../email";
 import { NotificationCategory } from "../../notification-categories";
@@ -34,7 +34,7 @@ import { EditableTeamMemberProfile, ServerListUsersOptions, ServerTeam, ServerTe
 import { ProjectCurrentServerUser, ServerOAuthProvider, ServerUser, ServerUserCreateOptions, ServerUserUpdateOptions, attachUserDestructureGuard, serverUserCreateOptionsToCrud, serverUserUpdateOptionsToCrud } from "../../users";
 import { StackServerAppConstructorOptions } from "../interfaces/server-app";
 import { _StackClientAppImplIncomplete } from "./client-app-impl";
-import { clientVersion, createCache, createCacheBySession, getBaseUrl, getDefaultExtraRequestHeaders, getDefaultProjectId, getDefaultPublishableClientKey, getDefaultSecretServerKey } from "./common";
+import { clientVersion, createCache, createCacheBySession, getBaseUrl, getDefaultExtraRequestHeaders, getDefaultProjectId, getDefaultPublishableClientKey, getDefaultSecretServerKey, resolveConstructorOptions } from "./common";
 
 import { useAsyncCache } from "./common"; // THIS_LINE_PLATFORM react-like
 
@@ -371,37 +371,19 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
     };
   }
 
-  constructor(options:
-    | StackServerAppConstructorOptions<HasTokenStore, ProjectId>
-    | {
-      interface: StackServerInterface,
-      tokenStore: TokenStoreInit<HasTokenStore>,
-      urls: Partial<HandlerUrls> | undefined,
-      oauthScopesOnSignIn?: Partial<OAuthScopesOnSignIn> | undefined,
-    }
-  ) {
-    super("interface" in options ? {
-      interface: options.interface,
-      tokenStore: options.tokenStore,
-      urls: options.urls,
-      oauthScopesOnSignIn: options.oauthScopesOnSignIn,
-    } : {
-      interface: new StackServerInterface({
-        getBaseUrl: () => getBaseUrl(options.baseUrl),
-        projectId: options.projectId ?? getDefaultProjectId(),
-        extraRequestHeaders: options.extraRequestHeaders ?? getDefaultExtraRequestHeaders(),
+  constructor(options: StackServerAppConstructorOptions<HasTokenStore, ProjectId>, extraOptions?: { uniqueIdentifier?: string, checkString?: string, interface?: StackServerInterface }) {
+    const resolvedOptions = resolveConstructorOptions(options);
+
+    super(resolvedOptions, {
+      ...extraOptions,
+      interface: extraOptions?.interface ?? new StackServerInterface({
+        getBaseUrl: () => getBaseUrl(resolvedOptions.baseUrl),
+        projectId: resolvedOptions.projectId ?? getDefaultProjectId(),
+        extraRequestHeaders: resolvedOptions.extraRequestHeaders ?? getDefaultExtraRequestHeaders(),
         clientVersion,
-        publishableClientKey: options.publishableClientKey ?? getDefaultPublishableClientKey(),
-        secretServerKey: options.secretServerKey ?? getDefaultSecretServerKey(),
+        publishableClientKey: resolvedOptions.publishableClientKey ?? getDefaultPublishableClientKey(),
+        secretServerKey: resolvedOptions.secretServerKey ?? getDefaultSecretServerKey(),
       }),
-      baseUrl: options.baseUrl,
-      extraRequestHeaders: options.extraRequestHeaders,
-      projectId: options.projectId,
-      publishableClientKey: options.publishableClientKey,
-      tokenStore: options.tokenStore,
-      urls: options.urls,
-      oauthScopesOnSignIn: options.oauthScopesOnSignIn,
-      redirectMethod: options.redirectMethod,
     });
   }
 
@@ -913,13 +895,13 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
   }
   // IF_PLATFORM react-like
   protected _useUserApiKey(options: { apiKey: string }): ApiKey<"user"> | null {
-    const crud = useAsyncCache(this._serverCheckApiKeyCache, ["user", options.apiKey] as const, "useUserApiKey()") as UserApiKeysCrud['Server']['Read'] | null;
+    const crud = useAsyncCache(this._serverCheckApiKeyCache, ["user", options.apiKey] as const, "serverApp.useUserApiKey()") as UserApiKeysCrud['Server']['Read'] | null;
     return useMemo(() => crud ? this._serverApiKeyFromCrud(crud) : null, [crud]);
   }
   // END_PLATFORM
   // IF_PLATFORM react-like
   protected _useTeamApiKey(options: { apiKey: string }): ApiKey<"team"> | null {
-    const crud = useAsyncCache(this._serverCheckApiKeyCache, ["team", options.apiKey] as const, "useTeamApiKey()") as TeamApiKeysCrud['Server']['Read'] | null;
+    const crud = useAsyncCache(this._serverCheckApiKeyCache, ["team", options.apiKey] as const, "serverApp.useTeamApiKey()") as TeamApiKeysCrud['Server']['Read'] | null;
     return useMemo(() => crud ? this._serverApiKeyFromCrud(crud) : null, [crud]);
   }
   // END_PLATFORM
@@ -944,7 +926,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
   }
   // IF_PLATFORM react-like
   protected _useUserByConvex(ctx: ConvexCtx, includeAnonymous: boolean): ServerUser | null {
-    const subject = useAsyncCache(this._convexIdentitySubjectCache, [ctx] as const, "useUserByConvex()");
+    const subject = useAsyncCache(this._convexIdentitySubjectCache, [ctx] as const, "serverApp.useUserByConvex()");
     if (subject === null) {
       return null;
     }
@@ -1068,7 +1050,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
       this._ensurePersistentTokenStore(options?.tokenStore);
 
       const session = this._useSession(options?.tokenStore);
-      let crud = useAsyncCache(this._currentServerUserCache, [session] as const, "useUser()");
+      let crud = useAsyncCache(this._currentServerUserCache, [session] as const, "serverApp.useUser()");
       if (crud?.is_anonymous && options?.or !== "anonymous" && options?.or !== "anonymous-if-exists[deprecated]") {
         crud = null;
       }
@@ -1111,7 +1093,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
   // END_PLATFORM
   // IF_PLATFORM react-like
   useUserById(userId: string): ServerUser | null {
-    const crud = useAsyncCache(this._serverUserCache, [userId], "useUserById()");
+    const crud = useAsyncCache(this._serverUserCache, [userId], "serverApp.useUserById()");
     return useMemo(() => {
       return crud && this._serverUserFromCrud(crud);
     }, [crud]);
@@ -1127,7 +1109,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
 
   // IF_PLATFORM react-like
   useUsers(options?: ServerListUsersOptions): ServerUser[] & { nextCursor: string | null } {
-    const crud = useAsyncCache(this._serverUsersCache, [options?.cursor, options?.limit, options?.orderBy, options?.desc, options?.query] as const, "useServerUsers()");
+    const crud = useAsyncCache(this._serverUsersCache, [options?.cursor, options?.limit, options?.orderBy, options?.desc, options?.query] as const, "serverApp.useUsers()");
     const result: any = crud.items.map((j) => this._serverUserFromCrud(j));
     result.nextCursor = crud.pagination?.next_cursor ?? null;
     return result as any;
@@ -1194,7 +1176,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
     }
 
     const cacheKey = [id, options.itemId] as [string, string];
-    const debugLabel = `app.useItem(${type})`;
+    const debugLabel = "serverApp.useItem()";
     const result = useAsyncCache(cache, cacheKey, debugLabel);
     return useMemo(() => this._serverItemFromCrud({ type, id }, result), [result]);
   }
@@ -1241,7 +1223,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
 
   // IF_PLATFORM react-like
   useTeams(): ServerTeam[] {
-    const teams = useAsyncCache(this._serverTeamsCache, [undefined], "useServerTeams()");
+    const teams = useAsyncCache(this._serverTeamsCache, [undefined], "serverApp.useTeams()");
     return useMemo(() => {
       return teams.map((t) => this._serverTeamFromCrud(t));
     }, [teams]);
@@ -1293,7 +1275,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
       // IF_PLATFORM react-like
       useValue: (key, options) => {
         validateOptions(options);
-        return useAsyncCache(this._serverDataVaultStoreValueCache, [id, key, options.secret] as const, `app.useDataVaultStoreValue()`);
+        return useAsyncCache(this._serverDataVaultStoreValueCache, [id, key, options.secret] as const, "store.useValue()");
       },
       // END_PLATFORM
     };

@@ -1,3 +1,4 @@
+import { UrlPrefetcher } from "@/lib/prefetch/url-prefetcher";
 import SidebarLayout from "./sidebar-layout";
 import { AdminAppProvider } from "./use-admin-app";
 
@@ -6,6 +7,10 @@ export default async function Layout(
 ) {
   return (
     <AdminAppProvider projectId={(await props.params).projectId}>
+
+      {/* Pre-fetch the current URL to prevent request waterfalls */}
+      <UrlPrefetcher href="" />
+
       <SidebarLayout projectId={(await props.params).projectId}>
         {props.children}
       </SidebarLayout>
