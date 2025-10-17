@@ -14,6 +14,10 @@ import { isUuid } from "@stackframe/stack-shared/dist/utils/uuids";
 import { isPromise } from "util/types";
 import { runMigrationNeeded } from "./auto-migrations";
 import { Tenancy } from "./lib/tenancies";
+import { ensurePolyfilled } from "./polyfills";
+
+// just ensure we're polyfilled because this file relies on envvars being expanded
+ensurePolyfilled();
 
 export type PrismaClientTransaction = PrismaClient | Parameters<Parameters<PrismaClient['$transaction']>[0]>[0];
 
@@ -47,6 +51,7 @@ function getNeonPrismaClient(connectionString: string) {
 }
 
 function getSchemaFromConnectionString(connectionString: string) {
+  console.log(connectionString, process.env);
   return (new URL(connectionString)).searchParams.get('schema') ?? "public";
 }
 

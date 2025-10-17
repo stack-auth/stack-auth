@@ -24,7 +24,7 @@
     "stop-dev-environment": "pnpm pre && pnpm run kill-dev:named && pnpm run stop-deps",
     "clean": "pnpm pre-no-codegen && turbo run clean && rimraf --glob **/.next && rimraf --glob **/.turbo && rimraf .turbo && rimraf --glob **/node_modules",
     "codegen": "pnpm pre && turbo run codegen && pnpm run generate-sdks && pnpm run generate-openapi-fumadocs",
-    "deps-compose": "docker compose -p stack-dependencies -f docker/dependencies/docker.compose.yaml",
+    "deps-compose": "docker compose -p stack-dependencies-${NEXT_PUBLIC_STACK_PORT_PREFIX:-81} -f docker/dependencies/docker.compose.yaml",
     "stop-deps": "POSTGRES_DELAY_MS=0 pnpm run deps-compose kill && POSTGRES_DELAY_MS=0 pnpm run deps-compose down -v",
     "wait-until-postgres-is-ready:pg_isready": "until pg_isready -h localhost -p ${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}28; do sleep 1; done",
     "wait-until-postgres-is-ready": "command -v pg_isready >/dev/null 2>&1 && pnpm run wait-until-postgres-is-ready:pg_isready || sleep 10  # not everyone has pg_isready installed, so we fallback to sleeping",

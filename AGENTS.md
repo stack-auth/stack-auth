@@ -34,11 +34,11 @@ You should ALWAYS add new E2E tests when you change the API or SDK interface. Ge
 Stack Auth is a monorepo using Turbo for build orchestration. The main components are:
 
 ### Apps (`/apps`)
-- **backend** (`/apps/backend`): Next.js API backend running on port `<$NEXT_PUBLIC_STACK_PORT_PREFIX>02` (defaults to 8102)
+- **backend** (`/apps/backend`): Next.js API backend running on port `$NEXT_PUBLIC_STACK_PORT_PREFIX02` (defaults to 8102)
   - Main API routes in `/apps/backend/src/app/api/latest`
   - Database models using Prisma
-- **dashboard** (`/apps/dashboard`): Admin dashboard on port `<$NEXT_PUBLIC_STACK_PORT_PREFIX>01` (defaults to 8101)
-- **dev-launchpad**: Development portal on port `<$NEXT_PUBLIC_STACK_PORT_PREFIX>00` (defaults to 8100)
+- **dashboard** (`/apps/dashboard`): Admin dashboard on port `$NEXT_PUBLIC_STACK_PORT_PREFIX01` (defaults to 8101)
+- **dev-launchpad**: Development portal on port `$NEXT_PUBLIC_STACK_PORT_PREFIX00` (defaults to 8100)
 - **e2e**: End-to-end tests
 
 ### Packages (`/packages`)

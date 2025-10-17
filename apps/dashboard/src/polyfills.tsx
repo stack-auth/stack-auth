@@ -7,7 +7,7 @@ import { getPublicEnvVar } from "./lib/env";
 export function expandStackPortPrefix(value?: string | null) {
   if (!value) return value ?? undefined;
   const prefix = getPublicEnvVar("NEXT_PUBLIC_STACK_PORT_PREFIX");
-  return prefix ? value.replace(/<\$NEXT_PUBLIC_STACK_PORT_PREFIX>/g, prefix as string) : value;
+  return prefix ? value.replace(/\$NEXT_PUBLIC_STACK_PORT_PREFIX/g, prefix as string) : value;
 }
 
 const sentryErrorSink = (location: string, error: unknown) => {

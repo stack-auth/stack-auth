@@ -173,7 +173,6 @@ services:
       context: ./freestyle-mock
       dockerfile: Dockerfile
     image: freestyle-mock
-    container_name: freestyle-mock
     ports:
       - "${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}22:8080"       # POST http://localhost:${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}19/execute/v1/script
     extra_hosts:
