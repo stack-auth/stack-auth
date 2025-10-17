@@ -315,7 +315,7 @@ it("should allow valid product_id", async ({ expect }) => {
   });
   expect(response.status).toBe(200);
   const body = response.body as { url: string };
-  expect(body.url).toMatch(new RegExp(`^https?:\\/\\/localhost:${withPortPrefix("01")}\/purchase\/[a-z0-9-_]+\?return_url=`));
+  expect(body.url).toMatch(new RegExp(`^https?:\/\/localhost:${withPortPrefix("01")}\/purchase\/[a-z0-9-_]+\\?return_url=`));
   const urlObj = new URL(body.url);
   const returnUrl = urlObj.searchParams.get("return_url");
   expect(returnUrl).toBe("http://stack-test.localhost/after-purchase");

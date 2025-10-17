@@ -50,7 +50,7 @@ it("should not redirect the user to the OAuth provider with the right arguments 
 
 it("should be able to fetch the inner callback URL by following the OAuth provider redirects", async ({ expect }) => {
   const { innerCallbackUrl } = await Auth.OAuth.getInnerCallbackUrl();
-  expect(innerCallbackUrl.origin).toBe("http://localhost:STACK_PORT_PREFIX02");
+  expect(innerCallbackUrl.origin).toBe("http://localhost:<$STACK_PORT_PREFIX>02");
   expect(innerCallbackUrl.pathname).toBe("/api/v1/auth/oauth/callback/spotify");
 });
 

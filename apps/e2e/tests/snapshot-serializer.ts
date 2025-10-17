@@ -3,6 +3,7 @@ import { typedIncludes } from "@stackframe/stack-shared/dist/utils/arrays";
 import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { nicify } from "@stackframe/stack-shared/dist/utils/strings";
 import { SnapshotSerializer } from "vitest";
+import { getPortPrefix } from "./helpers/ports";
 
 const hideHeaders = [
   "access-control-allow-headers",
@@ -101,7 +102,7 @@ const keyedCookieNamePrefixes = [
 
 const stringRegexReplacements = [
   [/(\/integrations\/(neon|custom)\/oauth\/idp\/(interaction|auth)\/)[a-zA-Z0-9_-]+/gi, "$1<stripped $3 UID>"],
-  [/localhost\:(\d+)(\d\d)/gi, "localhost:<$$STACK_PORT_PREFIX>$2"],
+  [new RegExp(`localhost\:${getPortPrefix()}`, "gi"), "localhost:<$$STACK_PORT_PREFIX>"],
 ] as const;
 
 
@@ -161,7 +162,7 @@ const snapshotSerializer: SnapshotSerializer = {
         }
 
         // Strip URL query params
-        const urlRegexHeuristic = /(?:(?:https?|ftp|file):\/\/|www\.|ftp\.)(?:\([-A-Z0-9+&@#\/%=~_|$?!:,.]*\)|[-A-Z0-9+&@#\/%=~_|$?!:,.])*(?:\([-A-Z0-9+&@#\/%=~_|$?!:,.]*\)|[A-Z0-9+&@#\/%=~_|$])/igm;
+        const urlRegexHeuristic = /(?:(?:https?|ftp|file):\/\/|www\.|ftp\.)(?:\([-A-Z0-9+&@#\/%=~_|$<>?!:,.]*\)|[-A-Z0-9+&@#\/%=~_|<>$?!:,.])*(?:\([-A-Z0-9+&@#\/%=~_|$?!:,.]*\)|[A-Z0-9+&@#\/%=~_|$])/igm;
         if (typeof value === "string") {
           for (const urlMatch of value.matchAll(urlRegexHeuristic)) {
             const questionMarkIndex = urlMatch[0].indexOf("?");

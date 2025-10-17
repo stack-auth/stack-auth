@@ -720,7 +720,7 @@ describe("with client access", () => {
         profile_image_url: "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==",
       },
     });
-    expect(response.body.profile_image_url).toMatchInlineSnapshot(`"http://localhost:STACK_PORT_PREFIX21/stack-storage/user-profile-images/<stripped UUID>.gif"`);
+    expect(response.body.profile_image_url).toMatchInlineSnapshot(`"http://localhost:<$STACK_PORT_PREFIX>21/stack-storage/user-profile-images/<stripped UUID>.gif"`);
   });
 
   it("should not be able to update profile image url with invalid base64", async ({ expect }) => {
