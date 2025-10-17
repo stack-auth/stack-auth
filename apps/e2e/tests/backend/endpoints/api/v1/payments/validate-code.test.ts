@@ -38,6 +38,7 @@ it("should allow valid code and return product data", async ({ expect }) => {
       "status": 200,
       "body": {
         "already_bought_non_stackable": false,
+        "charges_enabled": false,
         "conflicting_products": [],
         "product": {
           "customer_type": "user",
@@ -212,6 +213,7 @@ it("should include conflicting_products when switching within the same group", a
       "status": 200,
       "body": {
         "already_bought_non_stackable": false,
+        "charges_enabled": false,
         "conflicting_products": [
           {
             "display_name": "Product A",
@@ -308,6 +310,7 @@ it("should reject untrusted return_url and accept trusted return_url", async ({ 
       "status": 200,
       "body": {
         "already_bought_non_stackable": false,
+        "charges_enabled": false,
         "conflicting_products": [],
         "product": {
           "customer_type": "user",
