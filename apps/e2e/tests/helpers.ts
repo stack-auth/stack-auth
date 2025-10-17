@@ -1,4 +1,5 @@
 import { generateSecureRandomString } from "@stackframe/stack-shared/dist/utils/crypto";
+import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { filterUndefined, omit } from "@stackframe/stack-shared/dist/utils/objects";
 import { wait } from "@stackframe/stack-shared/dist/utils/promises";
@@ -94,14 +95,6 @@ export class Context<R, T> {
     }
     this._yetToReduce = new Set();
   }
-}
-
-function getEnvVar(name: string): string {
-  const value = process.env[name];
-  if (!value) {
-    throw new Error(`Missing environment variable: ${name}`);
-  }
-  return value;
 }
 
 export function updateCookie(cookieString: string, cookieName: string, cookieValue: string) {
@@ -272,11 +265,11 @@ export class MailboxMessage {
   };
 }
 
-export const STACK_DASHBOARD_BASE_URL = getEnvVar("STACK_DASHBOARD_BASE_URL");
-export const STACK_BACKEND_BASE_URL = getEnvVar("STACK_BACKEND_BASE_URL");
-export const STACK_INTERNAL_PROJECT_ID = getEnvVar("STACK_INTERNAL_PROJECT_ID");
-export const STACK_INTERNAL_PROJECT_CLIENT_KEY = getEnvVar("STACK_INTERNAL_PROJECT_CLIENT_KEY");
-export const STACK_INTERNAL_PROJECT_SERVER_KEY = getEnvVar("STACK_INTERNAL_PROJECT_SERVER_KEY");
-export const STACK_INTERNAL_PROJECT_ADMIN_KEY = getEnvVar("STACK_INTERNAL_PROJECT_ADMIN_KEY");
-export const STACK_INBUCKET_API_URL = getEnvVar("STACK_INBUCKET_API_URL");
-export const STACK_SVIX_SERVER_URL = getEnvVar("STACK_SVIX_SERVER_URL");
+export const STACK_DASHBOARD_BASE_URL = getEnvVariable("STACK_DASHBOARD_BASE_URL");
+export const STACK_BACKEND_BASE_URL = getEnvVariable("STACK_BACKEND_BASE_URL");
+export const STACK_INTERNAL_PROJECT_ID = getEnvVariable("STACK_INTERNAL_PROJECT_ID");
+export const STACK_INTERNAL_PROJECT_CLIENT_KEY = getEnvVariable("STACK_INTERNAL_PROJECT_CLIENT_KEY");
+export const STACK_INTERNAL_PROJECT_SERVER_KEY = getEnvVariable("STACK_INTERNAL_PROJECT_SERVER_KEY");
+export const STACK_INTERNAL_PROJECT_ADMIN_KEY = getEnvVariable("STACK_INTERNAL_PROJECT_ADMIN_KEY");
+export const STACK_INBUCKET_API_URL = getEnvVariable("STACK_INBUCKET_API_URL");
+export const STACK_SVIX_SERVER_URL = getEnvVariable("STACK_SVIX_SERVER_URL");
