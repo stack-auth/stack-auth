@@ -23,6 +23,7 @@ import {
 } from "@stackframe/stack-ui";
 import { CheckCircle2, Circle } from "lucide-react";
 import { useState } from "react";
+import { AppEnabledGuard } from "../app-enabled-guard";
 import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";
 
@@ -565,63 +566,65 @@ export default function PageClient() {
   };
 
   return (
-    <PageLayout
-      title="Launch Checklist"
-      description="Finish these quick checks before turning on production mode."
-    >
-      <div className="rounded-xl border border-blue-500/40 bg-blue-500/10 p-5">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div className="space-y-2">
-            <Typography className="text-xs font-medium uppercase tracking-wide text-blue-700">
-              Launch readiness
-            </Typography>
-            <Typography className="text-2xl font-semibold text-blue-900">
-              {checklistProgress.completed === checklistProgress.total
-                ? "Everything is ready to launch."
-                : `${checklistProgress.completed}/${checklistProgress.total} checks complete`}
-            </Typography>
-          </div>
-          <Badge variant="default" className="bg-blue-600 text-white">
-            Launch Checklist
-          </Badge>
-        </div>
-        <Progress
-          value={Math.round(checklistProgress.value)}
-          className="mt-4 h-2 bg-white/40"
-        />
-        <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-          {checklistProgress.next ? (
-            <>
-              <Typography variant="secondary" className="text-sm text-blue-900">
-                Up next: {checklistProgress.next.item.title}
+    <AppEnabledGuard appId="launch-checklist">
+      <PageLayout
+        title="Launch Checklist"
+        description="Finish these quick checks before turning on production mode."
+      >
+        <div className="rounded-xl border border-blue-500/40 bg-blue-500/10 p-5">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div className="space-y-2">
+              <Typography className="text-xs font-medium uppercase tracking-wide text-blue-700">
+                Launch readiness
               </Typography>
-              <Button
-                size="sm"
-                onClick={checklistProgress.next.task.onAction}
-              >
-                Go to {checklistProgress.next.task.title}
-              </Button>
-            </>
-          ) : (
-            <Typography variant="secondary" className="text-sm text-blue-900">
-              All checks are green. Enable production mode when you are ready.
-            </Typography>
-          )}
+              <Typography className="text-2xl font-semibold text-blue-900">
+                {checklistProgress.completed === checklistProgress.total
+                  ? "Everything is ready to launch."
+                  : `${checklistProgress.completed}/${checklistProgress.total} checks complete`}
+              </Typography>
+            </div>
+            <Badge variant="default" className="bg-blue-600 text-white">
+              Launch Checklist
+            </Badge>
+          </div>
+          <Progress
+            value={Math.round(checklistProgress.value)}
+            className="mt-4 h-2 bg-white/40"
+          />
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+            {checklistProgress.next ? (
+              <>
+                <Typography variant="secondary" className="text-sm text-blue-900">
+                  Up next: {checklistProgress.next.item.title}
+                </Typography>
+                <Button
+                  size="sm"
+                  onClick={checklistProgress.next.task.onAction}
+                >
+                  Go to {checklistProgress.next.task.title}
+                </Button>
+              </>
+            ) : (
+              <Typography variant="secondary" className="text-sm text-blue-900">
+                All checks are green. Enable production mode when you are ready.
+              </Typography>
+            )}
+          </div>
         </div>
-      </div>
 
-      <div className="grid gap-4">
-        {orderedTasks.map((task) => {
-          const extras = taskExtras[task.id] ?? {};
-          return (
-            <TaskCard
-              key={task.id}
-              task={task}
-              {...extras}
-            />
-          );
-        })}
-      </div>
-    </PageLayout>
+        <div className="grid gap-4">
+          {orderedTasks.map((task) => {
+            const extras = taskExtras[task.id] ?? {};
+            return (
+              <TaskCard
+                key={task.id}
+                task={task}
+                {...extras}
+              />
+            );
+          })}
+        </div>
+      </PageLayout>
+    </AppEnabledGuard>
   );
 }

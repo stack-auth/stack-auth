@@ -7,6 +7,7 @@ import { NumberField, SelectField } from "@/components/form-fields";
 import { ItemDialog } from "@/components/payments/item-dialog";
 import { PageLayout } from "../../page-layout";
 import { useAdminApp } from "../../use-admin-app";
+import { AppEnabledGuard } from "../../app-enabled-guard";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
@@ -104,86 +105,88 @@ export default function PageClient() {
   const grantButtonDisabled = !selectedCustomer;
 
   return (
-    <PageLayout
-      title="Customers"
-      description="Inspect customer items and make adjustments"
-      actions={(
-        <div className="flex gap-2">
-          <SimpleTooltip tooltip={grantButtonDisabled ? DISABLED_GRANT_TOOLTIP : undefined}>
-            <div className="inline-flex">
-              <Button
-                onClick={() => setShowGrantProductDialog(true)}
-                disabled={grantButtonDisabled}
-              >
-                Grant Product
-              </Button>
-            </div>
-          </SimpleTooltip>
-          <Button onClick={() => setShowItemDialog(true)}>{itemDialogTitle}</Button>
+    <AppEnabledGuard appId="payments">
+      <PageLayout
+        title="Customers"
+        description="Inspect customer items and make adjustments"
+        actions={(
+          <div className="flex gap-2">
+            <SimpleTooltip tooltip={grantButtonDisabled ? DISABLED_GRANT_TOOLTIP : undefined}>
+              <div className="inline-flex">
+                <Button
+                  onClick={() => setShowGrantProductDialog(true)}
+                  disabled={grantButtonDisabled}
+                >
+                  Grant Product
+                </Button>
+              </div>
+            </SimpleTooltip>
+            <Button onClick={() => setShowItemDialog(true)}>{itemDialogTitle}</Button>
+          </div>
+        )}
+      >
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-3 mt-4">
+          <Select
+            value={customerType}
+            onValueChange={(value: CustomerType) => {
+              setCustomerType(value);
+              setSelectedCustomer(null);
+            }}
+          >
+            <SelectTrigger id="customer-type" className="w-full sm:w-52">
+              <SelectValue placeholder="Select type" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="user">User</SelectItem>
+              <SelectItem value="team">Team</SelectItem>
+              <SelectItem value="custom">Custom</SelectItem>
+            </SelectContent>
+          </Select>
+
+          <CustomerSelector
+            customerType={customerType}
+            selectedCustomer={selectedCustomer}
+            onSelect={setSelectedCustomer}
+          />
         </div>
-      )}
-    >
-      <div className="flex flex-col sm:flex-row items-center justify-between gap-3 mt-4">
-        <Select
-          value={customerType}
-          onValueChange={(value: CustomerType) => {
-            setCustomerType(value);
-            setSelectedCustomer(null);
-          }}
-        >
-          <SelectTrigger id="customer-type" className="w-full sm:w-52">
-            <SelectValue placeholder="Select type" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="user">User</SelectItem>
-            <SelectItem value="team">Team</SelectItem>
-            <SelectItem value="custom">Custom</SelectItem>
-          </SelectContent>
-        </Select>
 
-        <CustomerSelector
-          customerType={customerType}
-          selectedCustomer={selectedCustomer}
-          onSelect={setSelectedCustomer}
+        {!paymentsConfigured && (
+          <Typography variant="secondary">
+            Payments are not configured for this project yet. Set up payments to define items.
+          </Typography>
+        )}
+
+        {paymentsConfigured && itemsForType.length === 0 && (
+          <Typography variant="secondary" className="text-center mt-4">
+            {customerType === "user" && "No user items are configured yet."}
+            {customerType === "team" && "No team items are configured yet."}
+            {customerType === "custom" && "No custom items are configured yet."}
+          </Typography>
+        )}
+
+        {paymentsConfigured && itemsForType.length > 0 && (
+          <Suspense fallback={<ItemTableSkeleton rows={Math.min(itemsForType.length, 5)} />}>
+            <ItemTable items={itemsForType} customer={selectedCustomer} />
+          </Suspense>
+        )}
+
+        <ItemDialog
+          open={showItemDialog}
+          onOpenChange={setShowItemDialog}
+          onSave={handleSaveItem}
+          existingItemIds={items.map(([id]) => id)}
+          forceCustomerType={customerType}
         />
-      </div>
-
-      {!paymentsConfigured && (
-        <Typography variant="secondary">
-          Payments are not configured for this project yet. Set up payments to define items.
-        </Typography>
-      )}
-
-      {paymentsConfigured && itemsForType.length === 0 && (
-        <Typography variant="secondary" className="text-center mt-4">
-          {customerType === "user" && "No user items are configured yet."}
-          {customerType === "team" && "No team items are configured yet."}
-          {customerType === "custom" && "No custom items are configured yet."}
-        </Typography>
-      )}
-
-      {paymentsConfigured && itemsForType.length > 0 && (
-        <Suspense fallback={<ItemTableSkeleton rows={Math.min(itemsForType.length, 5)} />}>
-          <ItemTable items={itemsForType} customer={selectedCustomer} />
-        </Suspense>
-      )}
-
-      <ItemDialog
-        open={showItemDialog}
-        onOpenChange={setShowItemDialog}
-        onSave={handleSaveItem}
-        existingItemIds={items.map(([id]) => id)}
-        forceCustomerType={customerType}
-      />
-      {selectedCustomer && (
-        <GrantProductDialog
-          open={showGrantProductDialog}
-          onOpenChange={setShowGrantProductDialog}
-          customer={selectedCustomer}
-          products={productsForType}
-        />
-      )}
-    </PageLayout>
+        {selectedCustomer && (
+          <GrantProductDialog
+            open={showGrantProductDialog}
+            onOpenChange={setShowGrantProductDialog}
+            customer={selectedCustomer}
+            products={productsForType}
+          />
+        )}
+      </PageLayout>
+    </AppEnabledGuard>
   );
 }
 

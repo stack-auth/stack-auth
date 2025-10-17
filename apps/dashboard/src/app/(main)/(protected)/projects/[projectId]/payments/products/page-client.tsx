@@ -1,14 +1,20 @@
 "use client";
 
 import { useState } from "react";
-import PageClientListView from "./page-client-list-view";
+import { AppEnabledGuard } from "../../app-enabled-guard";
 import PageClientCatalogsView from "./page-client-catalogs-view";
+import PageClientListView from "./page-client-list-view";
 
 export default function PageClient() {
   const [view, setView] = useState<"list" | "catalogs">("catalogs");
 
-  if (view === "catalogs") {
-    return <PageClientCatalogsView onViewChange={setView} />;
-  }
-  return <PageClientListView onViewChange={setView} />;
+  return (
+    <AppEnabledGuard appId="payments">
+      {view === "catalogs" ? (
+        <PageClientCatalogsView onViewChange={setView} />
+      ) : (
+        <PageClientListView onViewChange={setView} />
+      )}
+    </AppEnabledGuard>
+  );
 }
