@@ -278,6 +278,61 @@ it("should allow product_inline when calling from server", async ({ expect }) =>
   expect(response.body.url).toMatch(/^https?:\/\/localhost:8101\/purchase\/[a-z0-9-_]+$/);
 });
 
+it("should return inline product metadata when validating purchase code", async ({ expect }) => {
+  await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+  await Payments.setup();
+
+  const { userId } = await Auth.Otp.signIn();
+  const createResponse = await niceBackendFetch("/api/latest/payments/purchases/create-purchase-url", {
+    method: "POST",
+    accessType: "server",
+    body: {
+      customer_type: "user",
+      customer_id: userId,
+      product_inline: {
+        display_name: "Metadata Inline Product",
+        customer_type: "user",
+        server_only: true,
+        prices: {
+          "monthly-metadata": {
+            USD: "1500",
+            interval: [1, "month"],
+          },
+        },
+        included_items: {},
+        metadata: {
+          reference_id: "ref-123",
+          features: ["priority-support", "analytics"],
+        },
+      },
+    },
+  });
+  expect(createResponse.status).toBe(200);
+  const url = (createResponse.body as { url: string }).url;
+  const codeMatch = url.match(/\/purchase\/([a-z0-9-_]+)/);
+  const fullCode = codeMatch ? codeMatch[1] : undefined;
+  expect(fullCode).toBeDefined();
+
+  const validateResponse = await niceBackendFetch("/api/latest/payments/purchases/validate-code", {
+    method: "POST",
+    accessType: "client",
+    body: {
+      full_code: fullCode,
+    },
+  });
+  expect(validateResponse.status).toBe(200);
+  const validateBody = validateResponse.body;
+  expect(validateBody.product.metadata).toMatchInlineSnapshot(`
+    {
+      "features": [
+        "priority-support",
+        "analytics",
+      ],
+      "reference_id": "ref-123",
+    }
+  `);
+});
+
 it("should allow valid product_id", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
   await Payments.setup();

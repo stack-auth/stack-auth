@@ -590,6 +590,11 @@ export const productSchema = yupObject({
     }),
   ),
 });
+
+const productMetadata = jsonSchema.optional().meta({ openapiField: { description: 'Optional metadata that Stack Auth will store and return with this product. Use this to attach custom data needed by your application.', exampleValue: { featureFlag: true, source: 'marketing-campaign' } } });
+
+export const productSchemaWithMetadata = productSchema.concat(yupObject({ metadata: productMetadata }));
+
 export const inlineProductSchema = yupObject({
   display_name: yupString().defined(),
   customer_type: customerTypeSchema.defined(),
@@ -612,6 +617,7 @@ export const inlineProductSchema = yupObject({
       expires: yupString().oneOf(['never', 'when-purchase-expires', 'when-repeated']).optional(),
     }),
   ),
+  metadata: productMetadata,
 });
 
 // Users

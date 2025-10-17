@@ -1,7 +1,7 @@
 import { PrismaClientTransaction } from "@/prisma-client";
 import { PurchaseCreationSource, SubscriptionStatus } from "@prisma/client";
 import { KnownErrors } from "@stackframe/stack-shared";
-import type { inlineProductSchema, productSchema } from "@stackframe/stack-shared/dist/schema-fields";
+import type { inlineProductSchema, productSchema, productSchemaWithMetadata } from "@stackframe/stack-shared/dist/schema-fields";
 import { SUPPORTED_CURRENCIES } from "@stackframe/stack-shared/dist/utils/currency-constants";
 import { FAR_FUTURE_DATE, addInterval, getIntervalsElapsed } from "@stackframe/stack-shared/dist/utils/dates";
 import { StackAssertionError, StatusError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
@@ -16,6 +16,7 @@ import { getStripeForAccount } from "./stripe";
 const DEFAULT_PRODUCT_START_DATE = new Date("1973-01-01T12:00:00.000Z"); // monday
 
 type Product = yup.InferType<typeof productSchema>;
+type ProductWithMetadata = yup.InferType<typeof productSchemaWithMetadata>;
 type SelectedPrice = Exclude<Product["prices"], "include-by-default">[string];
 
 export async function ensureProductIdOrInlineProduct(
@@ -23,7 +24,7 @@ export async function ensureProductIdOrInlineProduct(
   accessType: "client" | "server" | "admin",
   productId: string | undefined,
   inlineProduct: yup.InferType<typeof inlineProductSchema> | undefined
-): Promise<Tenancy["config"]["payments"]["products"][string]> {
+): Promise<ProductWithMetadata> {
   if (productId && inlineProduct) {
     throw new StatusError(400, "Cannot specify both product_id and product_inline!");
   }
@@ -61,6 +62,7 @@ export async function ensureProductIdOrInlineProduct(
         freeTrial: value.free_trial,
         serverOnly: true,
       }])),
+      metadata: inlineProduct.metadata,
       includedItems: typedFromEntries(Object.entries(inlineProduct.included_items).map(([key, value]) => [key, {
         repeat: value.repeat ?? "never",
         quantity: value.quantity ?? 0,
@@ -420,13 +422,14 @@ export async function ensureCustomerExists(options: {
   }
 }
 
-export function productToInlineProduct(product: Product): yup.InferType<typeof inlineProductSchema> {
+export function productToInlineProduct(product: ProductWithMetadata): yup.InferType<typeof inlineProductSchema> {
   return {
     display_name: product.displayName ?? "Product",
     customer_type: product.customerType,
     stackable: product.stackable === true,
     server_only: product.serverOnly === true,
     included_items: product.includedItems,
+    metadata: product.metadata,
     prices: product.prices === "include-by-default" ? {} : typedFromEntries(typedEntries(product.prices).map(([key, value]) => [key, filterUndefined({
       ...typedFromEntries(SUPPORTED_CURRENCIES.map(c => [c.code, getOrUndefined(value, c.code)])),
       interval: value.interval,
@@ -552,7 +555,7 @@ export async function grantProductToCustomer(options: {
   tenancy: Tenancy,
   customerType: "user" | "team" | "custom",
   customerId: string,
-  product: Product,
+  product: ProductWithMetadata,
   quantity: number,
   productId: string | undefined,
   priceId: string | undefined,
@@ -691,7 +694,7 @@ export async function getOwnedProductsForCustomer(options: {
   }
 
   for (const purchase of oneTimePurchases) {
-    const product = purchase.product as Product;
+    const product = purchase.product as ProductWithMetadata;
     ownedProducts.push({
       id: purchase.productId ?? null,
       type: "one_time",

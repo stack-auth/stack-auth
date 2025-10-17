@@ -372,6 +372,10 @@ it("should grant inline product without needing configuration", async ({ expect 
           },
         },
         included_items: {},
+        metadata: {
+          cohort: "beta",
+          flags: ["inline-grant"],
+        },
       },
     },
   });
@@ -392,6 +396,10 @@ it("should grant inline product without needing configuration", async ({ expect 
               "customer_type": "user",
               "display_name": "Inline Access",
               "included_items": {},
+              "metadata": {
+                "cohort": "beta",
+                "flags": ["inline-grant"],
+              },
               "prices": {
                 "quarterly": {
                   "USD": "2400",
