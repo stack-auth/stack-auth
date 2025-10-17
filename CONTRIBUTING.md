@@ -55,6 +55,23 @@ For vibecoding, it can help to have multiple parallel copies of the codebase ope
 }
 ```
 
+This will work for Claude Code and everything that runs inside the integrated terminal, but it does not work with Cursor Agent or the Codex VSCode extension. To make it work for these, the recommendation is that instead you use `direnv` with a `.envrc` file:
+
+```sh
+# .envrc
+# make sure to install direnv and add it to your shell rc file (e.g. ~/.bashrc or ~/.zshrc)
+export NEXT_PUBLIC_STACK_PORT_PREFIX=181
+```
+
+And make sure that `direnv` works in non-interactive login shells, make sure you added it to your ~/.bash_profile as well as your ~/.bashrc:
+
+```sh
+# ~/.bash_profile, ~/.bashrc, ~/.zprofile, ~/.zshrc, ~/.zshenv, etc.
+# note that different coding agents use a different shell in a different mode (login, non-login, interactive, non-interactive, etc.); from my experimentation, as of 2025-10-17 on a Mac, Cursor uses non-interactive zsh (requiring ~/.zshenv), whereas Codex uses a non-interactive login bash (requiring ~/.bash_profile). It's easiest to just add these lines of code to all of your shell configs.
+eval "$(direnv hook <bash|zsh>)"
+eval "$(direnv export <bash|zsh>)"
+```
+
 When you do this, it is recommended that you give all workspaces a port prefix other than 81, to prevent accidental conflicts when you forgot to make a feature support the $NEXT_PUBLIC_STACK_PORT_PREFIX environment variable. (for example: first workspace at 181, second workspace at 182, etc.)
 
 ## Before creating a pull request
