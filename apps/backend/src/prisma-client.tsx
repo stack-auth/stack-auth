@@ -51,7 +51,6 @@ function getNeonPrismaClient(connectionString: string) {
 }
 
 function getSchemaFromConnectionString(connectionString: string) {
-  console.log(connectionString, process.env);
   return (new URL(connectionString)).searchParams.get('schema') ?? "public";
 }
 
