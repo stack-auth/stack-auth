@@ -1,7 +1,7 @@
 import { randomUUID } from "crypto";
 import { describe } from "vitest";
 import { it } from "../../../../helpers";
-import { localhostUrl, withPortPrefix } from "../../../../helpers/ports";
+import { withPortPrefix } from "../../../../helpers/ports";
 import { Project, User, niceBackendFetch } from "../../../backend-helpers";
 
 const testEmailConfig = {
@@ -295,11 +295,21 @@ it("should return 200 and send email successfully", async ({ expect }) => {
 
   // Verify the email was actually sent by checking the mailbox
   const messages = await user.mailbox.waitForMessagesWithSubject("Custom Test Email Subject");
-  expect(messages).toHaveLength(1);
-  const [sentMessage] = messages;
-  const expectedUnsubscribeLink = localhostUrl("02", "/api/v1/emails/unsubscribe-link?code=%3Cstripped+query+param%3E");
-  expect(sentMessage.body?.html).toBe(expectedUnsubscribeLink);
-  expect(sentMessage.body?.text).toBe(expectedUnsubscribeLink);
+  expect(messages).toMatchInlineSnapshot(`
+    [
+      MailboxMessage {
+        "attachments": [],
+        "body": {
+          "html": "http://localhost:<$STACK_PORT_PREFIX>02/api/v1/emails/unsubscribe-link?code=%3Cstripped+query+param%3E",
+          "text": "http://localhost:<$STACK_PORT_PREFIX>02/api/v1/emails/unsubscribe-link?code=%3Cstripped+query+param%3E",
+        },
+        "from": "Test Project <test@example.com>",
+        "subject": "Custom Test Email Subject",
+        "to": ["<unindexed-mailbox--<stripped UUID>@stack-generated.example.com>"],
+        <some fields may have been hidden>,
+      },
+    ]
+  `);
 });
 
 it("should handle user that does not exist", async ({ expect }) => {

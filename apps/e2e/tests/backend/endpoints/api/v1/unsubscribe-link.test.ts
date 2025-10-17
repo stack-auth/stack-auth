@@ -1,7 +1,6 @@
-import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { it } from "../../../../helpers";
-import { localhostUrl, withPortPrefix } from "../../../../helpers/ports";
-import { niceBackendFetch, Project, User } from "../../../backend-helpers";
+import { withPortPrefix } from "../../../../helpers/ports";
+import { Project, User, niceBackendFetch } from "../../../backend-helpers";
 
 it("unsubscribe link should be sent and update notification preference", async ({ expect }) => {
   await Project.createAndSwitch({
@@ -51,8 +50,7 @@ it("unsubscribe link should be sent and update notification preference", async (
   // Verify the email was actually sent by checking the mailbox
   const messages = await user.mailbox.waitForMessagesWithSubject("Custom Test Email Subject");
   const sentEmail = messages[0];
-  const expectedUnsubscribeLink = localhostUrl("02", "/api/v1/emails/unsubscribe-link?code=%3Cstripped+query+param%3E");
-  expect(sentEmail!.body?.html).toBe(expectedUnsubscribeLink);
+  expect(sentEmail!.body?.html).toMatchInlineSnapshot(`"http://localhost:<$STACK_PORT_PREFIX>02/api/v1/emails/unsubscribe-link?code=%3Cstripped+query+param%3E"`);
 
   // Extract the unsubscribe link and fetch it
   const unsubscribeLinkMatch = sentEmail!.body?.html.match(/href="([^"]+)"/);

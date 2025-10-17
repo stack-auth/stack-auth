@@ -1944,7 +1944,7 @@ describe("with server access", () => {
         profile_image_url: localhostUrl("01", "/open-graph-image.png"),
       },
     });
-    expect(response.body.profile_image_url).toEqual(localhostUrl("01", "/open-graph-image.png"));
+    expect(response.body.profile_image_url).toMatchInlineSnapshot(`"http://localhost:<$STACK_PORT_PREFIX>01/open-graph-image.png"`);
   });
 
   it("should be able to update primary email", async ({ expect }) => {

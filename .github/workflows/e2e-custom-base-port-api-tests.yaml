@@ -95,10 +95,10 @@ jobs:
         run: pnpm run wait-until-postgres-is-ready:pg_isready
 
       - name: Wait on Inbucket
-        run: npx wait-on tcp:localhost:8129
+        run: npx wait-on tcp:localhost:6729
 
       - name: Wait on Svix
-        run: npx wait-on tcp:localhost:8113
+        run: npx wait-on tcp:localhost:6713
 
       - name: Initialize database
         run: pnpm run db:init
@@ -108,7 +108,7 @@ jobs:
         with:
           run: pnpm run start:backend --log-order=stream &
           wait-on: |
-            http://localhost:8102
+            http://localhost:6702
           tail: true
           wait-for: 30s
           log-output-if: true
@@ -117,7 +117,7 @@ jobs:
         with:
           run: pnpm run start:dashboard --log-order=stream &
           wait-on: |
-            http://localhost:8102
+            http://localhost:6702
           tail: true
           wait-for: 30s
           log-output-if: true
@@ -126,7 +126,7 @@ jobs:
         with:
           run: pnpm run start:mock-oauth-server --log-order=stream &
           wait-on: |
-            http://localhost:8102
+            http://localhost:6702
           tail: true
           wait-for: 30s
           log-output-if: true

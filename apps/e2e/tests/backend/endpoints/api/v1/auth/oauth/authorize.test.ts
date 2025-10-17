@@ -18,9 +18,7 @@ it("should redirect the user to the OAuth provider with the right arguments even
   expect(response.authorizeResponse.status).toBe(307);
   const secondLocation = response.authorizeResponse.headers.get("location");
   expect(secondLocation).toBeTruthy();
-  const secondLocationUrl = new URL(secondLocation!);
-  expect(secondLocationUrl.origin).toBe(localhostUrl("14"));
-  expect(secondLocationUrl.pathname).toBe("/auth");
+  expect(secondLocation).toMatchInlineSnapshot(`"http://localhost:<$STACK_PORT_PREFIX>14/auth?client_id=spotify&scope=openid+offline_access&response_type=code&redirect_uri=%3Cstripped+query+param%3E&code_challenge_method=S256&code_challenge=%3Cstripped+query+param%3E&state=%3Cstripped+query+param%3E&access_type=offline&prompt=consent"`);
   expect(response.authorizeResponse.headers.get("set-cookie")).toMatch(/^stack-oauth-inner-[^;]+=[^;]+; Path=\/; Expires=[^;]+; Max-Age=\d+;( Secure;)? HttpOnly$/);
 });
 
@@ -50,7 +48,7 @@ it("should not redirect the user to the OAuth provider with the right arguments 
 
 it("should be able to fetch the inner callback URL by following the OAuth provider redirects", async ({ expect }) => {
   const { innerCallbackUrl } = await Auth.OAuth.getInnerCallbackUrl();
-  expect(innerCallbackUrl.origin).toBe("http://localhost:<$STACK_PORT_PREFIX>02");
+  expect(innerCallbackUrl.origin).toMatchInlineSnapshot(`"http://localhost:<$STACK_PORT_PREFIX>02"`);
   expect(innerCallbackUrl.pathname).toBe("/api/v1/auth/oauth/callback/spotify");
 });
 
