@@ -1438,7 +1438,6 @@ export default function PageClient({ onViewChange }: { onViewChange: (view: "lis
   const config = project.useConfig();
   const switchId = useId();
   const testModeSwitchId = useId();
-  const [isUpdatingTestMode, setIsUpdatingTestMode] = useState(false);
   const paymentsConfig: CompleteConfig['payments'] = config.payments;
 
 
@@ -1568,15 +1567,8 @@ export default function PageClient({ onViewChange }: { onViewChange: (view: "lis
   };
 
   const handleToggleTestMode = async (enabled: boolean) => {
-    setIsUpdatingTestMode(true);
-    try {
-      await project.updateConfig({ "payments.testMode": enabled });
-      toast({ title: enabled ? "Test mode enabled" : "Test mode disabled" });
-    } catch (_error) {
-      toast({ title: "Failed to update test mode", variant: "destructive" });
-    } finally {
-      setIsUpdatingTestMode(false);
-    }
+    await project.updateConfig({ "payments.testMode": enabled });
+    toast({ title: enabled ? "Test mode enabled" : "Test mode disabled" });
   };
 
 
@@ -1597,8 +1589,7 @@ export default function PageClient({ onViewChange }: { onViewChange: (view: "lis
             <Switch
               id={testModeSwitchId}
               checked={paymentsConfig.testMode === true}
-              disabled={isUpdatingTestMode}
-              onCheckedChange={(checked) => void handleToggleTestMode(checked)}
+              onCheckedChange={(checked) => handleToggleTestMode(checked)}
             />
           </div>
         </div>
