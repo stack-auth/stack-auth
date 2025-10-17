@@ -22,7 +22,7 @@ if (clientVersion.startsWith("STACK_COMPILE_TIME")) {
 const replaceStackPortPrefix = <T extends string | undefined>(input: T): T => {
   if (!input) return input;
   const prefix = process.env.NEXT_PUBLIC_STACK_PORT_PREFIX;
-  return prefix ? input.replace(/\$NEXT_PUBLIC_STACK_PORT_PREFIX/g, prefix) as T : input;
+  return prefix ? input.replace(/\$\{NEXT_PUBLIC_STACK_PORT_PREFIX:-81\}/g, prefix) as T : input;
 };
 
 
