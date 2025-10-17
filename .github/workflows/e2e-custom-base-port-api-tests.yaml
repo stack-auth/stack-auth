@@ -1,4 +1,4 @@
-name: Runs E2E API Tests
+name: Runs E2E API Tests with custom port prefix
 
 on:
   push:
