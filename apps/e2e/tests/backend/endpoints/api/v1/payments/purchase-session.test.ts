@@ -327,7 +327,7 @@ it("should create purchase URL with inline product, validate code, and create pu
   });
   expect(response.status).toBe(200);
   const body = response.body as { url: string };
-  expect(body.url).toMatch(new RegExp(`^https?:\\\\/\\\\/localhost:${withPortPrefix("01")}\\/purchase\\/[a-z0-9-_]+$`));
+  expect(body.url).toMatch(new RegExp(`^https?:\/\/localhost:${withPortPrefix("01")}\/purchase\/[a-z0-9-_]+$`));
   const codeMatch = body.url.match(/\/purchase\/([a-z0-9-_]+)/);
   const code = codeMatch ? codeMatch[1] : undefined;
   expect(code).toBeDefined();

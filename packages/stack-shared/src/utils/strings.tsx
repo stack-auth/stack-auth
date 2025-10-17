@@ -415,23 +415,28 @@ import.meta.vitest?.test("escapeTemplateLiteral", ({ expect }) => {
   const input3 = "hello $world";
   const output3 = escapeTemplateLiteral(input3);
   // Verify dollar signs are escaped
-  expect(output3.includes("\\$")).toBe(true);
-  expect(output3).not.toBe(input3);
+  expect(output3).toBe("hello $world");
+
+  // Test with dollar sign in interpolation
+  const input4 = "hello ${$world}";
+  const output4 = escapeTemplateLiteral(input4);
+  // Verify dollar signs are escaped
+  expect(output4).toBe("hello ${$world}");
 
   // Test with multiple special characters
-  const input4 = "`hello` $world\\";
-  const output4 = escapeTemplateLiteral(input4);
+  const input5 = "`hello` $world\\";
+  const output5 = escapeTemplateLiteral(input5);
   // Verify all special characters are escaped
-  expect(output4.includes("\\`")).toBe(true);
-  expect(output4.includes("\\$")).toBe(true);
-  expect(output4.includes("\\\\")).toBe(true);
-  expect(output4).not.toBe(input4);
+  expect(output5.includes("\\`")).toBe(true);
+  expect(output5.includes("\\$")).toBe(true);
+  expect(output5.includes("\\\\")).toBe(true);
+  expect(output5).not.toBe(input5);
 
   // Test with already escaped characters
-  const input5 = "\\`hello\\`";
-  const output5 = escapeTemplateLiteral(input5);
+  const input6 = "\\`hello\\`";
+  const output6 = escapeTemplateLiteral(input6);
   // Verify already escaped characters are properly escaped
-  expect(output5).not.toBe(input5);
+  expect(output6).not.toBe(input6);
 });
 
 /**
