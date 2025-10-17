@@ -734,6 +734,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
       expiresAt: new Date(crud.expires_at_millis),
       revoke: async () => {
         await this._interface.revokeServerTeamInvitation(crud.id, crud.team_id);
+        await this._serverTeamInvitationsCache.refresh([crud.team_id]);
       },
     };
   }
@@ -894,13 +895,13 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
   }
   // IF_PLATFORM react-like
   protected _useUserApiKey(options: { apiKey: string }): ApiKey<"user"> | null {
-    const crud = useAsyncCache(this._serverCheckApiKeyCache, ["user", options.apiKey] as const, "useUserApiKey()") as UserApiKeysCrud['Server']['Read'] | null;
+    const crud = useAsyncCache(this._serverCheckApiKeyCache, ["user", options.apiKey] as const, "serverApp.useUserApiKey()") as UserApiKeysCrud['Server']['Read'] | null;
     return useMemo(() => crud ? this._serverApiKeyFromCrud(crud) : null, [crud]);
   }
   // END_PLATFORM
   // IF_PLATFORM react-like
   protected _useTeamApiKey(options: { apiKey: string }): ApiKey<"team"> | null {
-    const crud = useAsyncCache(this._serverCheckApiKeyCache, ["team", options.apiKey] as const, "useTeamApiKey()") as TeamApiKeysCrud['Server']['Read'] | null;
+    const crud = useAsyncCache(this._serverCheckApiKeyCache, ["team", options.apiKey] as const, "serverApp.useTeamApiKey()") as TeamApiKeysCrud['Server']['Read'] | null;
     return useMemo(() => crud ? this._serverApiKeyFromCrud(crud) : null, [crud]);
   }
   // END_PLATFORM
@@ -925,7 +926,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
   }
   // IF_PLATFORM react-like
   protected _useUserByConvex(ctx: ConvexCtx, includeAnonymous: boolean): ServerUser | null {
-    const subject = useAsyncCache(this._convexIdentitySubjectCache, [ctx] as const, "useUserByConvex()");
+    const subject = useAsyncCache(this._convexIdentitySubjectCache, [ctx] as const, "serverApp.useUserByConvex()");
     if (subject === null) {
       return null;
     }
@@ -1049,7 +1050,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
       this._ensurePersistentTokenStore(options?.tokenStore);
 
       const session = this._useSession(options?.tokenStore);
-      let crud = useAsyncCache(this._currentServerUserCache, [session] as const, "useUser()");
+      let crud = useAsyncCache(this._currentServerUserCache, [session] as const, "serverApp.useUser()");
       if (crud?.is_anonymous && options?.or !== "anonymous" && options?.or !== "anonymous-if-exists[deprecated]") {
         crud = null;
       }
@@ -1092,7 +1093,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
   // END_PLATFORM
   // IF_PLATFORM react-like
   useUserById(userId: string): ServerUser | null {
-    const crud = useAsyncCache(this._serverUserCache, [userId], "useUserById()");
+    const crud = useAsyncCache(this._serverUserCache, [userId], "serverApp.useUserById()");
     return useMemo(() => {
       return crud && this._serverUserFromCrud(crud);
     }, [crud]);
@@ -1108,7 +1109,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
 
   // IF_PLATFORM react-like
   useUsers(options?: ServerListUsersOptions): ServerUser[] & { nextCursor: string | null } {
-    const crud = useAsyncCache(this._serverUsersCache, [options?.cursor, options?.limit, options?.orderBy, options?.desc, options?.query] as const, "useServerUsers()");
+    const crud = useAsyncCache(this._serverUsersCache, [options?.cursor, options?.limit, options?.orderBy, options?.desc, options?.query] as const, "serverApp.useUsers()");
     const result: any = crud.items.map((j) => this._serverUserFromCrud(j));
     result.nextCursor = crud.pagination?.next_cursor ?? null;
     return result as any;
@@ -1175,7 +1176,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
     }
 
     const cacheKey = [id, options.itemId] as [string, string];
-    const debugLabel = `app.useItem(${type})`;
+    const debugLabel = "serverApp.useItem()";
     const result = useAsyncCache(cache, cacheKey, debugLabel);
     return useMemo(() => this._serverItemFromCrud({ type, id }, result), [result]);
   }
@@ -1222,7 +1223,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
 
   // IF_PLATFORM react-like
   useTeams(): ServerTeam[] {
-    const teams = useAsyncCache(this._serverTeamsCache, [undefined], "useServerTeams()");
+    const teams = useAsyncCache(this._serverTeamsCache, [undefined], "serverApp.useTeams()");
     return useMemo(() => {
       return teams.map((t) => this._serverTeamFromCrud(t));
     }, [teams]);
@@ -1274,7 +1275,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
       // IF_PLATFORM react-like
       useValue: (key, options) => {
         validateOptions(options);
-        return useAsyncCache(this._serverDataVaultStoreValueCache, [id, key, options.secret] as const, `app.useDataVaultStoreValue()`);
+        return useAsyncCache(this._serverDataVaultStoreValueCache, [id, key, options.secret] as const, "store.useValue()");
       },
       // END_PLATFORM
     };

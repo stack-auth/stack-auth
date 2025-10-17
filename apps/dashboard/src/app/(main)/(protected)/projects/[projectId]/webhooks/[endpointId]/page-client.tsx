@@ -6,6 +6,7 @@ import { Alert, Badge, Button, CopyButton, Label, Table, TableBody, TableCell, T
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useMemo, useState } from "react";
 import { SvixProvider, useEndpoint, useEndpointMessageAttempts, useEndpointSecret } from "svix-react";
+import { AppEnabledGuard } from "../../app-enabled-guard";
 import { PageLayout } from "../../page-layout";
 import { useAdminApp } from "../../use-admin-app";
 import { getSvixResult } from "../utils";
@@ -115,12 +116,14 @@ export default function PageClient(props: { endpointId: string }) {
   }, [svixToken, updateCounter]);
 
   return (
-    <SvixProvider
-      token={svixTokenUpdated}
-      appId={stackAdminApp.projectId}
-      options={{ serverUrl: getPublicEnvVar('NEXT_PUBLIC_STACK_SVIX_SERVER_URL') }}
-    >
-      <PageInner endpointId={props.endpointId} />
-    </SvixProvider>
+    <AppEnabledGuard appId="webhooks">
+      <SvixProvider
+        token={svixTokenUpdated}
+        appId={stackAdminApp.projectId}
+        options={{ serverUrl: getPublicEnvVar('NEXT_PUBLIC_STACK_SVIX_SERVER_URL') }}
+      >
+        <PageInner endpointId={props.endpointId} />
+      </SvixProvider>
+    </AppEnabledGuard>
   );
 }
