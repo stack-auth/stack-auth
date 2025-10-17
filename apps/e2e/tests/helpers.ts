@@ -209,13 +209,13 @@ export class Mailbox {
     const fullMessageCache = new Map<string, any>();
 
     this.fetchMessages = async ({ noBody } = {}) => {
-      const res = await niceFetch(new URL(`/api/v1/mailbox/${encodeURIComponent(mailboxName)}`, INBUCKET_API_URL));
+      const res = await niceFetch(new URL(`/api/v1/mailbox/${encodeURIComponent(mailboxName)}`, STACK_INBUCKET_API_URL));
       return await Promise.all((res.body as any[]).map(async (message) => {
         let fullMessage: any;
         if (fullMessageCache.has(message.id)) {
           fullMessage = fullMessageCache.get(message.id);
         } else {
-          const fullMessageRes = await niceFetch(new URL(`/api/v1/mailbox/${encodeURIComponent(mailboxName)}/${message.id}`, INBUCKET_API_URL));
+          const fullMessageRes = await niceFetch(new URL(`/api/v1/mailbox/${encodeURIComponent(mailboxName)}/${message.id}`, STACK_INBUCKET_API_URL));
           fullMessage = fullMessageRes.body;
           fullMessageCache.set(message.id, fullMessage);
         }
@@ -278,5 +278,5 @@ export const STACK_INTERNAL_PROJECT_ID = getEnvVar("STACK_INTERNAL_PROJECT_ID");
 export const STACK_INTERNAL_PROJECT_CLIENT_KEY = getEnvVar("STACK_INTERNAL_PROJECT_CLIENT_KEY");
 export const STACK_INTERNAL_PROJECT_SERVER_KEY = getEnvVar("STACK_INTERNAL_PROJECT_SERVER_KEY");
 export const STACK_INTERNAL_PROJECT_ADMIN_KEY = getEnvVar("STACK_INTERNAL_PROJECT_ADMIN_KEY");
-export const INBUCKET_API_URL = getEnvVar("INBUCKET_API_URL");
+export const STACK_INBUCKET_API_URL = getEnvVar("STACK_INBUCKET_API_URL");
 export const STACK_SVIX_SERVER_URL = getEnvVar("STACK_SVIX_SERVER_URL");
