@@ -1,0 +1,31 @@
+---
+name: type-safe-config-values
+description: Enforce strict typing for configuration values
+globs: ['*.ts', '*.tsx'] 
+alwaysApply: true
+---
+
+Configuration values should have strict typing without null values. Use undefined for optional values.
+
+BAD:
+```typescript
+type ConfigValue = string | number | boolean | null | Config;
+
+function getConfig(key: string): string | null {
+  return config[key] ?? null;
+}
+```
+
+GOOD:
+```typescript
+type ConfigValue = string | number | boolean | Config | undefined;
+
+function getConfig(key: string): string | undefined {
+  return config[key];
+}
+```
+
+WHY:
+- Prevents mixing null/undefined semantics
+- Makes optional values explicit
+- Ensures type safety across config usage
