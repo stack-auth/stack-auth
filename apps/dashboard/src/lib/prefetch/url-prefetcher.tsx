@@ -1,7 +1,7 @@
 "use client";
 
 import { useAdminApp } from "@/app/(main)/(protected)/projects/[projectId]/use-admin-app";
-import { stackAppInternalsSymbol, useUser } from "@stackframe/stack";
+import { useUser } from "@stackframe/stack";
 import { previewTemplateSource } from "@stackframe/stack-shared/dist/helpers/emails";
 import { createCachedRegex } from "@stackframe/stack-shared/dist/utils/regex";
 import { useEffect, useState } from "react";
@@ -9,13 +9,15 @@ import { HookPrefetcher } from "./hook-prefetcher";
 
 const urlPrefetchers: Record<string, ((match: RegExpMatchArray, query: URLSearchParams, hash: string) => void)[]> = {
   "/projects/*": [
-    ([_, projectId]) => (useAdminApp(projectId) as any)[stackAppInternalsSymbol].useMetrics(false),
+    // TODO: we currently don't prefetch metrics as they are pretty slow to fetch
+    // ([_, projectId]) => (useAdminApp(projectId) as any)[stackAppInternalsSymbol].useMetrics(false),
   ],
   "/projects/*/**": [
     ([_, projectId]) => useAdminApp(projectId).useProject().useConfig(),
   ],
   "/projects/*/users": [
-    ([_, projectId]) => (useAdminApp(projectId) as any)[stackAppInternalsSymbol].useMetrics(),
+    // TODO: we currently don't prefetch metrics as they are pretty slow to fetch
+    // ([_, projectId]) => (useAdminApp(projectId) as any)[stackAppInternalsSymbol].useMetrics(),
     ([_, projectId]) => useAdminApp(projectId).useUsers({ limit: 1 }),
     ([_, projectId]) => useAdminApp(projectId).useUsers({
       limit: 10,
