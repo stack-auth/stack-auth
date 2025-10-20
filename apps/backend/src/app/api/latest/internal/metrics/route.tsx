@@ -1,13 +1,14 @@
-import { KnownErrors } from "@stackframe/stack-shared";
 import { Tenancy } from "@/lib/tenancies";
 import { getOrSetCacheValue } from "@/lib/cache";
 import { getPrismaClientForTenancy, getPrismaSchemaForTenancy, globalPrismaClient, PrismaClientTransaction, sqlQuoteIdent } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
+import { KnownErrors } from "@stackframe/stack-shared";
 import { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
 import { adaptSchema, adminAuthTypeSchema, yupArray, yupMixed, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import yup from 'yup';
 import { userFullInclude, userPrismaToCrud } from "../../users/crud";
 import { usersCrudHandlers } from "../../users/crud";
+import { Prisma } from "@prisma/client";
 
 type DataPoints = yup.InferType<typeof DataPointsSchema>;
 
@@ -30,41 +31,43 @@ const DataPointsSchema = yupArray(yupObject({
 }).defined()).defined();
 
 
-async function loadUsersByCountry(tenancy: Tenancy, includeAnonymous: boolean = false): Promise<Record<string, number>> {
-  const schema = await getPrismaSchemaForTenancy(tenancy);
-  const rows = await globalPrismaClient.$queryRaw<{ countryCode: string | null, userCount: bigint }[]>`
-    WITH tenancy_users AS (
-      SELECT pu."projectUserId"::text AS "userId"
-      FROM ${sqlQuoteIdent(schema)}."ProjectUser" pu
-      WHERE pu."tenancyId" = ${tenancy.id}::uuid
-        AND (${includeAnonymous} OR pu."isAnonymous" = false)
-    ),
-    latest_ip AS (
-      SELECT
-        tu."userId",
-        latest."countryCode"
-      FROM tenancy_users tu
-      LEFT JOIN LATERAL (
-        SELECT eip."countryCode"
-        FROM "Event" e
-        JOIN "EventIpInfo" eip
-          ON eip.id = e."endUserIpInfoGuessId"
-        WHERE '$user-activity' = ANY(e."systemEventTypeIds"::text[])
-          AND e."data"->>'projectId' = ${tenancy.project.id}
-          AND COALESCE(e."data"->>'branchId', 'main') = ${tenancy.branchId}
-          AND e."data"->>'userId' = tu."userId"
-          AND e."endUserIpInfoGuessId" IS NOT NULL
-          AND eip."countryCode" IS NOT NULL
-        ORDER BY e."eventStartedAt" DESC
-        LIMIT 1
-      ) latest ON TRUE
-      WHERE latest."countryCode" IS NOT NULL
+async function loadUsersByCountry(tenancy: Tenancy, prisma: PrismaClientTransaction, includeAnonymous: boolean = false): Promise<Record<string, number>> {
+  const users = await prisma.projectUser.findMany({
+    where: {
+      tenancyId: tenancy.id,
+      ...(includeAnonymous ? {} : { isAnonymous: false }),
+    },
+    select: { projectUserId: true },
+  });
+
+  if (users.length === 0) {
+    return {};
+  }
+
+  const userIds = users.map((user) => user.projectUserId);
+  const userIdArray = Prisma.sql`ARRAY[${Prisma.join(userIds.map((id) => Prisma.sql`${id}`))}]::text[]`;
+
+  const rows = await globalPrismaClient.$queryRaw<{ countryCode: string | null, userCount: bigint }[]>(Prisma.sql`
+    WITH latest_ip AS (
+      SELECT DISTINCT ON (e."data"->>'userId')
+        e."data"->>'userId' AS "userId",
+        eip."countryCode" AS "countryCode"
+      FROM "Event" e
+      JOIN "EventIpInfo" eip
+        ON eip.id = e."endUserIpInfoGuessId"
+      WHERE '$user-activity' = ANY(e."systemEventTypeIds"::text[])
+        AND e."data"->>'projectId' = ${tenancy.project.id}
+        AND COALESCE(e."data"->>'branchId', 'main') = ${tenancy.branchId}
+        AND e."data"->>'userId' = ANY(${userIdArray})
+        AND e."endUserIpInfoGuessId" IS NOT NULL
+        AND eip."countryCode" IS NOT NULL
+      ORDER BY e."data"->>'userId', e."eventStartedAt" DESC
     )
     SELECT "countryCode", COUNT("userId") AS "userCount"
     FROM latest_ip
     GROUP BY "countryCode"
     ORDER BY "userCount" DESC;
-  `;
+  `);
 
   return Object.fromEntries(
     rows.map(({ userCount, countryCode }) => [countryCode, Number(userCount)])
@@ -280,7 +283,7 @@ export const GET = createSmartRouteHandler({
         "users_by_country",
         prisma,
         includeAnonymous,
-        () => loadUsersByCountry(req.auth.tenancy, includeAnonymous)
+        () => loadUsersByCountry(req.auth.tenancy, prisma, includeAnonymous)
       ),
       usersCrudHandlers.adminList({
         tenancy: req.auth.tenancy,
