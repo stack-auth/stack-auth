@@ -1,18 +1,31 @@
-import { EmbeddedLinkInterceptor } from '@/components/embedded-link-interceptor';
-import { PlatformChangeNotifier } from '@/components/platform-change-notifier';
+import { DocsHeaderWrapper } from '@/components/layouts/docs-header-wrapper';
+import { DynamicDocsLayout } from '@/components/layouts/docs-layout-router';
+import { DocsLayoutWrapper } from '@/components/layouts/docs-layout-wrapper';
+import { SidebarProvider } from '@/components/layouts/sidebar-context';
+import { source } from 'lib/source';
+import type { ReactNode } from 'react';
 
-// Embedded layout for main docs - no navbar, optimized for iframe
-export default function DocsEmbedLayout({ children }: { children: React.ReactNode }) {
+// Embedded layout for main docs - includes full header and sidebar for iframe
+export default function DocsEmbedLayout({ children }: { children: ReactNode }) {
   return (
-    <div className="min-h-screen bg-fd-background">
-      <EmbeddedLinkInterceptor />
-      <PlatformChangeNotifier />
-      {/* Main content area - no header, no padding, prevent horizontal overflow */}
-      <main className="overflow-hidden">
-        <div className="flex-1 overflow-y-auto overflow-x-hidden scrollbar-hide">
-          {children}
+    <SidebarProvider>
+      <DocsLayoutWrapper>
+        {/* Docs Header Wrapper - provides navigation and platform selector */}
+        <DocsHeaderWrapper
+          showSearch={false}
+          pageTree={source.pageTree}
+          hideMobileAccountSection={true}
+        />
+
+        {/* Docs Layout Content - with full sidebar */}
+        <div>
+          <DynamicDocsLayout
+            tree={source.pageTree}
+          >
+            {children}
+          </DynamicDocsLayout>
         </div>
-      </main>
-    </div>
+      </DocsLayoutWrapper>
+    </SidebarProvider>
   );
 }

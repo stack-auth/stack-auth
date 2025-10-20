@@ -22,6 +22,7 @@ type DocsHeaderWrapperProps = {
   showSearch?: boolean,
   pageTree?: PageTree.Root,
   apiPages?: PageData[],
+  hideMobileAccountSection?: boolean,
 }
 
 // Custom Link Component for mobile sidebar - matches the styling from docs.tsx
@@ -246,7 +247,7 @@ function GeneralDocsSidebarContent({ pageTree }: { pageTree?: PageTree.Root }) {
  * that can use hooks to determine the current section and provide
  * appropriate sidebar content for mobile navigation.
  */
-export function DocsHeaderWrapper({ showSearch = true, pageTree, apiPages }: DocsHeaderWrapperProps) {
+export function DocsHeaderWrapper({ showSearch = true, pageTree, apiPages, hideMobileAccountSection = false }: DocsHeaderWrapperProps) {
   const pathname = usePathname();
   const navLinks = useMemo(() => generateNavLinks(), []);
   const docsSection = resolveDocsSection(pathname);
@@ -271,6 +272,7 @@ export function DocsHeaderWrapper({ showSearch = true, pageTree, apiPages }: Doc
       navLinks={navLinks}
       showSearch={showSearch}
       sidebarContent={sidebarContent}
+      hideMobileAccountSection={hideMobileAccountSection}
     />
   );
 }

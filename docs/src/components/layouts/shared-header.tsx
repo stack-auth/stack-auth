@@ -2,7 +2,7 @@
 import { CustomSearchDialog } from '@/components/layout/custom-search-dialog';
 import { SearchInputToggle } from '@/components/layout/custom-search-toggle';
 import { type NavLink } from '@/lib/navigation-utils';
-import { UserButton } from '@stackframe/stack';
+import { UserButton, useUser } from '@stackframe/stack';
 import { Key, Menu, Sparkles, TableOfContents, X } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
@@ -203,6 +203,66 @@ function StackAuthLogo() {
 }
 
 /**
+ * Account menu wrapper to keep the UserButton styling consistent
+ * across desktop and mobile layouts.
+ */
+function DocsAccountMenu({
+  variant = 'compact',
+  className,
+}: {
+  variant?: 'compact' | 'full',
+  className?: string,
+}) {
+  const user = useUser();
+  const isSignedIn = Boolean(user);
+  const displayName = user?.displayName ?? 'Stack Auth';
+
+  if (variant === 'full') {
+    return (
+      <div
+        className={cn(
+          'flex items-center justify-between gap-4 rounded-xl border border-fd-border/80 bg-fd-muted/30 px-4 py-3',
+          className,
+        )}
+      >
+        <div className="space-y-1">
+          <p className="text-sm font-semibold text-fd-foreground">
+            {isSignedIn ? displayName : 'Account'}
+          </p>
+          <p className="text-xs text-fd-muted-foreground">
+            {isSignedIn ? 'Manage your Stack Auth profile and settings.' : 'Sign in to manage your Stack Auth account.'}
+          </p>
+        </div>
+        <div className="flex-shrink-0">
+          <UserButton />
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className={cn(
+        'flex items-center gap-3 rounded-full border border-fd-border/80 bg-fd-muted/30 px-3 py-1 text-xs text-fd-muted-foreground',
+        className,
+      )}
+    >
+      <div className="flex flex-col leading-tight">
+        <span className="text-fd-foreground font-medium">
+          {isSignedIn ? 'Account' : 'Sign in'}
+        </span>
+        <span className="text-[11px] text-fd-muted-foreground">
+          {isSignedIn ? 'Access settings' : 'Manage account'}
+        </span>
+      </div>
+      <div className="flex-shrink-0">
+        <UserButton />
+      </div>
+    </div>
+  );
+}
+
+/**
  * SHARED HEADER COMPONENT
  *
  * Reusable header with Waves background used across docs and API layouts.
@@ -309,9 +369,7 @@ export function SharedHeader({
             <AIChatToggleButton className='hidden md:flex' />
 
             {/* User Button */}
-            <div className="hidden md:block">
-              <UserButton />
-            </div>
+            <DocsAccountMenu className="hidden md:flex" />
 
             {/* Mobile Hamburger Menu - Shown on mobile */}
             <div className="flex lg:hidden">
@@ -406,9 +464,7 @@ export function SharedHeader({
               {/* User Authentication */}
               <div>
                 <h2 className="text-lg font-semibold text-fd-foreground mb-4">Account</h2>
-                <div className="flex justify-center">
-                  <UserButton />
-                </div>
+                <DocsAccountMenu variant="full" />
               </div>
 
               {/* Sidebar Content */}
