@@ -26,7 +26,7 @@ const getEmbeddedUrl = (href: string, currentPath?: string): string => {
     if (href.startsWith('/docs-embed/') || href.startsWith('/api-embed/')) {
       return href;
     }
-    
+
     // Convert regular doc routes to embedded routes
     if (href.startsWith('/docs/')) {
       return href.replace('/docs/', '/docs-embed/');
@@ -37,7 +37,7 @@ const getEmbeddedUrl = (href: string, currentPath?: string): string => {
     if (href.startsWith('/dashboard/')) {
       return href.replace('/dashboard/', '/dashboard-embed/');
     }
-    
+
     // Other absolute paths - leave as is
     return href;
   }
@@ -47,10 +47,10 @@ const getEmbeddedUrl = (href: string, currentPath?: string): string => {
   if (currentPath && currentPath.startsWith('/docs-embed/')) {
     // Remove .mdx extension if present
     const cleanHref = href.replace(/\.mdx$/, '');
-    
+
     // Get current directory
     const currentDir = currentPath.substring(0, currentPath.lastIndexOf('/'));
-    
+
     // Resolve relative path
     if (cleanHref.startsWith('./')) {
       return `${currentDir}/${cleanHref.substring(2)}`;
@@ -70,7 +70,7 @@ const getEmbeddedUrl = (href: string, currentPath?: string): string => {
 
 export function EmbeddedLink({ href, isEmbedded, children, ...props }: EmbeddedLinkProps) {
   const currentPath = usePathname();
-  
+
   // If not embedded or no href, use regular link behavior
   if (!isEmbedded || !href) {
     return <a href={href} {...props}>{children}</a>;
