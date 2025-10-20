@@ -12,12 +12,36 @@ import { getUserLastActiveAtMillis, getUsersLastActiveAtMillis, userFullInclude,
 
 const fullInclude = { projectUser: { include: userFullInclude } };
 
-function prismaToCrud(prisma: Prisma.TeamMemberGetPayload<{ include: typeof fullInclude }>, lastActiveAtMillis: number) {
+// Helper function to fetch permissions for team members
+async function fetchTeamMemberPermissions(tx: any, tenancyId: string, teamId: string, projectUserIds: string[]) {
+  const permissions = await tx.teamMemberDirectPermission.findMany({
+    where: {
+      tenancyId,
+      teamId,
+      projectUserId: { in: projectUserIds },
+    },
+    select: { projectUserId: true, permissionId: true },
+  });
+  
+  // Group permissions by projectUserId
+  const permissionMap = new Map<string, string[]>();
+  for (const perm of permissions) {
+    if (!permissionMap.has(perm.projectUserId)) {
+      permissionMap.set(perm.projectUserId, []);
+    }
+    permissionMap.get(perm.projectUserId)!.push(perm.permissionId);
+  }
+  
+  return permissionMap;
+}
+
+function prismaToCrud(prisma: Prisma.TeamMemberGetPayload<{ include: typeof fullInclude }>, lastActiveAtMillis: number, permissionIds: string[]) {
   return {
     team_id: prisma.teamId,
     user_id: prisma.projectUserId,
     display_name: prisma.displayName ?? prisma.projectUser.displayName,
     profile_image_url: prisma.profileImageUrl ?? prisma.projectUser.profileImageUrl,
+    permission_ids: permissionIds,
     user: userPrismaToCrud(prisma.projectUser, lastActiveAtMillis),
   };
 }
@@ -78,10 +102,22 @@ export const teamMemberProfilesCrudHandlers = createLazyProxy(() => createCrudHa
         include: fullInclude,
       });
 
+      // Fetch all permissions in a single query to avoid N+1 pattern
+      const permissionMap = await fetchTeamMemberPermissions(
+        tx,
+        auth.tenancy.id,
+        query.team_id!,
+        db.map(member => member.projectUserId)
+      );
+
       const lastActiveAtMillis = await getUsersLastActiveAtMillis(auth.project.id, auth.branchId, db.map(user => user.projectUserId), db.map(user => user.createdAt));
 
       return {
-        items: db.map((user, index) => prismaToCrud(user, lastActiveAtMillis[index])),
+        items: db.map((user, index) => prismaToCrud(
+          user,
+          lastActiveAtMillis[index],
+          permissionMap.get(user.projectUserId) || []
+        )),
         is_paginated: false,
       };
     });
@@ -121,7 +157,19 @@ export const teamMemberProfilesCrudHandlers = createLazyProxy(() => createCrudHa
         throw new KnownErrors.TeamMembershipNotFound(params.team_id, params.user_id);
       }
 
-      return prismaToCrud(db, await getUserLastActiveAtMillis(auth.project.id, auth.branchId, db.projectUser.projectUserId) ?? db.projectUser.createdAt.getTime());
+      // Use helper function to fetch permissions
+      const permissionMap = await fetchTeamMemberPermissions(
+        tx,
+        auth.tenancy.id,
+        db.teamId,
+        [db.projectUserId]
+      );
+
+      return prismaToCrud(
+        db,
+        await getUserLastActiveAtMillis(auth.project.id, auth.branchId, db.projectUserId) ?? db.projectUser.createdAt.getTime(),
+        permissionMap.get(db.projectUserId) || []
+      );
     });
   },
   onUpdate: async ({ auth, data, params }) => {
@@ -155,7 +203,16 @@ export const teamMemberProfilesCrudHandlers = createLazyProxy(() => createCrudHa
         include: fullInclude,
       });
 
-      return prismaToCrud(db, await getUserLastActiveAtMillis(auth.project.id, auth.branchId, db.projectUser.projectUserId) ?? db.projectUser.createdAt.getTime());
+      const perms = await tx.teamMemberDirectPermission.findMany({
+        where: {
+          tenancyId: auth.tenancy.id,
+          projectUserId: db.projectUserId,
+          teamId: db.teamId,
+        },
+        select: { permissionId: true },
+      });
+
+      return prismaToCrud(db, await getUserLastActiveAtMillis(auth.project.id, auth.branchId, db.projectUser.projectUserId) ?? db.projectUser.createdAt.getTime(), perms.map(p => p.permissionId));
     });
   },
 }));

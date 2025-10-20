@@ -658,6 +658,7 @@ export class StackServerInterface extends StackClientInterface {
     email: string,
     teamId: string,
     callbackUrl: string,
+    permissionIds?: string[],
   }): Promise<void> {
     await this.sendServerRequest(
       "/team-invitations/send-code",
@@ -670,6 +671,7 @@ export class StackServerInterface extends StackClientInterface {
           email: options.email,
           team_id: options.teamId,
           callback_url: options.callbackUrl,
+          permission_ids: options.permissionIds,
         }),
       },
       null,

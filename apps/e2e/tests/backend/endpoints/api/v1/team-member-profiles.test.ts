@@ -307,3 +307,16 @@ it("can do several operations when granted $read_members permission", async ({ e
     }
   `);
 });
+
+it("includes permission_ids in team member profiles response", async ({ expect }) => {
+  const { teamId } = await signInAndCreateTeam();
+  
+  // Test reading own profile includes permission_ids field
+  const ownProfileResponse = await niceBackendFetch(`/api/v1/team-member-profiles/${teamId}/me`, {
+    accessType: "client",
+    method: "GET",
+  });
+  expect(ownProfileResponse.status).toBe(200);
+  expect(ownProfileResponse.body).toHaveProperty('permission_ids');
+  expect(Array.isArray(ownProfileResponse.body.permission_ids)).toBe(true);
+});
