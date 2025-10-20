@@ -54,15 +54,26 @@ export function SidebarProvider({ children }: { children: ReactNode }) {
   const [isFullPage, setIsFullPage] = useState(false);
   const [isMainSidebarCollapsed, setIsMainSidebarCollapsed] = useState(false);
 
-  // Load state from localStorage on mount
+  // Load state from localStorage on mount and set defaults
   useEffect(() => {
+    const savedToc = localStorage.getItem('toc-open');
     const savedChat = localStorage.getItem('ai-chat-open');
     const savedExpanded = localStorage.getItem('ai-chat-expanded');
     const savedMainSidebarCollapsed = localStorage.getItem('main-sidebar-collapsed');
 
+    // Check if on large screen (768px+)
+    const isLargeScreen = window.innerWidth >= 768;
+
+    // Priority: saved state > default TOC on large screens > nothing
     if (savedChat === 'true') {
       setActiveSidebar('chat');
+    } else if (savedToc === 'true') {
+      setActiveSidebar('toc');
+    } else if (isLargeScreen && savedToc !== 'false') {
+      // Default to TOC on large screens if no preference is saved
+      setActiveSidebar('toc');
     }
+
     if (savedExpanded === 'true') {
       setIsChatExpanded(true);
     }
@@ -102,7 +113,13 @@ export function SidebarProvider({ children }: { children: ReactNode }) {
 
   // Individual controls
   const setTocOpen = (open: boolean) => {
-    setActiveSidebar(open ? 'toc' : null);
+    if (open) {
+      setActiveSidebar('toc');
+      localStorage.setItem('toc-open', 'true');
+    } else {
+      setActiveSidebar(null);
+      localStorage.setItem('toc-open', 'false');
+    }
   };
 
   const setChatOpen = (open: boolean) => {
