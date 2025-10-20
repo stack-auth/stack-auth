@@ -17,7 +17,7 @@ jobs:
     env:
       NODE_ENV: test
       STACK_ENABLE_HARDCODED_PASSKEY_CHALLENGE_FOR_TESTING: yes
-      STACK_DIRECT_DATABASE_CONNECTION_STRING: "postgres://postgres:PASSWORD-PLACEHOLDER--uqfEC1hmmv@localhost:5432/stackframe"
+      STACK_DIRECT_DATABASE_CONNECTION_STRING: "postgres://postgres:PASSWORD-PLACEHOLDER--uqfEC1hmmv@localhost:8128/stackframe"
 
     strategy:
       matrix:
@@ -91,7 +91,7 @@ jobs:
         run: pnpm run wait-until-postgres-is-ready:pg_isready
 
       - name: Wait on Inbucket
-        run: npx wait-on tcp:localhost:2500
+        run: npx wait-on tcp:localhost:8129
 
       - name: Wait on Svix
         run: npx wait-on tcp:localhost:8113

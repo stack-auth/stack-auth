@@ -1,5 +1,6 @@
 import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
 import { it } from "../../../../../helpers";
+import { withPortPrefix } from "../../../../../helpers/ports";
 import { Auth, niceBackendFetch, Payments, Project, User } from "../../../../backend-helpers";
 
 it("should not be able to create purchase URL without product_id or product_inline", async ({ expect }) => {
@@ -275,7 +276,7 @@ it("should allow product_inline when calling from server", async ({ expect }) =>
     },
   });
   expect(response.status).toBe(200);
-  expect(response.body.url).toMatch(/^https?:\/\/localhost:8101\/purchase\/[a-z0-9-_]+$/);
+  expect(response.body.url).toMatch(new RegExp(`^https?:\\/\\/localhost:${withPortPrefix("01")}\/purchase\/[a-z0-9-_]+$`));
 });
 
 it("should allow valid product_id", async ({ expect }) => {
@@ -314,7 +315,7 @@ it("should allow valid product_id", async ({ expect }) => {
   });
   expect(response.status).toBe(200);
   const body = response.body as { url: string };
-  expect(body.url).toMatch(/^https?:\/\/localhost:8101\/purchase\/[a-z0-9-_]+\?return_url=/);
+  expect(body.url).toMatch(new RegExp(`^https?:\/\/localhost:${withPortPrefix("01")}\/purchase\/[a-z0-9-_]+\\?return_url=`));
   const urlObj = new URL(body.url);
   const returnUrl = urlObj.searchParams.get("return_url");
   expect(returnUrl).toBe("http://stack-test.localhost/after-purchase");
