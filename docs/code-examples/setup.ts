@@ -26,7 +26,7 @@ export const stackClientApp = new StackClientApp({
       },
       {
         language: 'JavaScript',
-        framework: 'JavaScript',
+        framework: 'Vanilla JavaScript',
         code: `STACK_PROJECT_ID=<your-project-id>
 STACK_PUBLISHABLE_CLIENT_KEY=<your-publishable-client-key>
 STACK_SECRET_SERVER_KEY=<your-secret-server-key>`,
@@ -94,8 +94,7 @@ stack_secret_server_key = os.getenv("STACK_SECRET_SERVER_KEY")`,
         filename: 'settings.py'
       },
       {
-        language: 'Python',
-        framework: 'FastAPI',
+        language: 'Python',        framework: 'FastAPI',
         code: `import os
 
 stack_project_id = os.getenv("STACK_PROJECT_ID")

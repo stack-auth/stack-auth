@@ -9,6 +9,7 @@ import { usePathname } from 'next/navigation';
 import type { ReactNode } from 'react';
 import { useEffect, useState } from 'react';
 import { cn } from '../../lib/cn';
+import { PlatformIndicator } from './platform-indicator';
 import { useSidebar } from './sidebar-context';
 
 type SharedHeaderProps = {
@@ -327,7 +328,7 @@ export function SharedHeader({
         </div>
 
         {/* Second row */}
-        <div className="h-12 hidden lg:flex items-center justify-stretch border-b border-fd-border px-4 md:px-6">
+        <div className="h-12 hidden lg:flex items-center justify-between border-b border-fd-border px-4 md:px-6">
           {/* Desktop Navigation Links - Hidden on mobile */}
           <div className="flex items-center gap-6">
             {navLinks.map((link, index) => {
@@ -354,6 +355,11 @@ export function SharedHeader({
               );
             })}
             {children}
+          </div>
+
+          {/* Platform/Framework Indicator - Right side */}
+          <div className="flex items-center">
+            <PlatformIndicator />
           </div>
         </div>
       </header>

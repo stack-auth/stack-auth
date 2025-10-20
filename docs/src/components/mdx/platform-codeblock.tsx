@@ -3,6 +3,7 @@
 import { ChevronDown } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { getExample, type CodeExample } from '../../../lib/code-examples';
+import { DEFAULT_FRAMEWORK, DEFAULT_PLATFORM, PLATFORMS } from '../../../lib/platform-config';
 import { cn } from '../../lib/cn';
 import { BaseCodeblock } from './base-codeblock';
 
@@ -15,8 +16,40 @@ type VariantSelections = Partial<Record<string, Partial<Record<string, 'server' 
 const platformListeners = new Map<string, PlatformChangeListener[]>();
 const frameworkListeners = new Map<string, FrameworkChangeListener[]>();
 
-let globalSelectedPlatform: string | null = null;
-let globalSelectedFrameworks: { [platform: string]: string } = {};
+// Initialize with defaults from global config
+// Always start with defaults to ensure SSR/client hydration match
+let globalSelectedPlatform: string = DEFAULT_PLATFORM;
+let globalSelectedFrameworks: { [platform: string]: string } = {
+  [DEFAULT_PLATFORM]: DEFAULT_FRAMEWORK
+};
+
+// Flag to track if we've loaded from sessionStorage yet
+let hasLoadedFromStorage = false;
+
+/**
+ * Load stored selections from sessionStorage (client-only)
+ * This is called after component mount to avoid hydration mismatches
+ */
+function loadFromSessionStorage(): void {
+  if (hasLoadedFromStorage || typeof window === 'undefined') return;
+
+  const storedPlatform = sessionStorage.getItem('stack-docs-selected-platform');
+  if (storedPlatform) {
+    globalSelectedPlatform = storedPlatform;
+  }
+
+  const storedFrameworks = sessionStorage.getItem('stack-docs-selected-frameworks');
+  if (storedFrameworks) {
+    try {
+      const parsed = JSON.parse(storedFrameworks);
+      globalSelectedFrameworks = { ...globalSelectedFrameworks, ...parsed };
+    } catch (e) {
+      // Ignore parsing errors
+    }
+  }
+
+  hasLoadedFromStorage = true;
+}
 
 function addPlatformListener(id: string, listener: PlatformChangeListener): void {
   const list = platformListeners.get(id) ?? [];
@@ -51,6 +84,8 @@ function broadcastPlatformChange(platform: string): void {
   // Store in sessionStorage for persistence across page loads
   if (typeof window !== 'undefined') {
     sessionStorage.setItem('stack-docs-selected-platform', platform);
+    // Dispatch custom event for external listeners (e.g., header)
+    window.dispatchEvent(new CustomEvent('stack-platform-change', { detail: { platform } }));
   }
   // Notify all listeners
   for (const listeners of platformListeners.values()) {
@@ -63,6 +98,8 @@ function broadcastFrameworkChange(platform: string, framework: string): void {
   // Store in sessionStorage for persistence across page loads
   if (typeof window !== 'undefined') {
     sessionStorage.setItem('stack-docs-selected-frameworks', JSON.stringify(globalSelectedFrameworks));
+    // Dispatch custom event for external listeners (e.g., header)
+    window.dispatchEvent(new CustomEvent('stack-framework-change', { detail: { platform, framework } }));
   }
   // Notify all listeners
   for (const listeners of frameworkListeners.values()) {
@@ -91,6 +128,7 @@ export type PlatformCodeblockProps = {
 
 /**
  * Converts CodeExample[] from code-examples.ts to the platforms format
+ * Only includes platforms/frameworks defined in the global config
  */
 function convertExamplesToPlatforms(examples: CodeExample[]) {
   const platforms: {
@@ -117,17 +155,28 @@ function convertExamplesToPlatforms(examples: CodeExample[]) {
   const defaultFrameworks: { [platformName: string]: string } = {};
   const defaultVariants: VariantSelections = {};
 
+  // Initialize default frameworks from global config
+  for (const platformConfig of PLATFORMS) {
+    defaultFrameworks[platformConfig.name] = platformConfig.defaultFramework;
+  }
+
   for (const example of examples) {
     const { language, framework, variant, code, filename, highlightLanguage } = example;
+
+    // Skip if this platform/framework is not in our global config
+    const platformConfig = PLATFORMS.find(p => p.name === language);
+    if (!platformConfig) {
+      console.warn(`Platform "${language}" not found in global config, skipping`);
+      continue;
+    }
+    if (!platformConfig.frameworks.includes(framework)) {
+      console.warn(`Framework "${framework}" not found in platform "${language}" config, skipping`);
+      continue;
+    }
 
     // Initialize language if not exists
     if (!(language in platforms)) {
       platforms[language] = {};
-    }
-
-    // Set as default framework if first for this language
-    if (!(language in defaultFrameworks)) {
-      defaultFrameworks[language] = framework;
     }
 
     if (variant) {
@@ -170,10 +219,21 @@ function convertExamplesToPlatforms(examples: CodeExample[]) {
     }
   }
 
-  // Determine default platform (first one in the list)
-  const defaultPlatform = Object.keys(platforms)[0];
+  // Sort platforms according to global config order - only include platforms with examples
+  const sortedPlatforms: typeof platforms = {};
+  for (const platformConfig of PLATFORMS) {
+    const platform = platforms[platformConfig.name] as typeof platforms[string] | undefined;
+    // Only include platforms that have examples in this code block
+    if (platform) {
+      sortedPlatforms[platformConfig.name] = platform;
+    }
+  }
+  // Use the global default platform, or fallback to first available
+  const defaultPlatform = DEFAULT_PLATFORM in sortedPlatforms
+    ? DEFAULT_PLATFORM
+    : Object.keys(sortedPlatforms)[0];
 
-  return { platforms, defaultPlatform, defaultFrameworks, defaultVariants };
+  return { platforms: sortedPlatforms, defaultPlatform, defaultFrameworks, defaultVariants };
 }
 
 export function PlatformCodeblock({
@@ -203,65 +263,93 @@ export function PlatformCodeblock({
   const firstPlatform = defaultPlatform || platformNames[0];
 
   // Initialize with global platform or default
+  // Important: This must return the same value on server and client for hydration
   const getInitialPlatform = () => {
-    // Use consistent default during SSR and initial render
-    return globalSelectedPlatform && platformNames.includes(globalSelectedPlatform)
-      ? globalSelectedPlatform
-      : firstPlatform;
+    // Always prefer the global default if available in this component
+    if (platformNames.includes(DEFAULT_PLATFORM)) {
+      return DEFAULT_PLATFORM;
+    }
+
+    // Fallback to first available platform
+    return firstPlatform;
   };
+
+  // ALL useState HOOKS MUST BE AT THE TOP
+  const [selectedPlatform, setSelectedPlatform] = useState(getInitialPlatform);
+  const [selectedFrameworks, setSelectedFrameworks] = useState<{ [platform: string]: string }>(() => {
+    // Initialize with defaults from config to ensure SSR/client hydration match
+    const initial: { [platform: string]: string } = {};
+    platformNames.forEach(platform => {
+      const frameworks = Object.keys(platforms[platform] ?? {});
+      if (frameworks.length > 0) {
+        initial[platform] = defaultFrameworks[platform] || frameworks[0];
+      }
+    });
+    return initial;
+  });
+  const [selectedVariants, setSelectedVariants] = useState<VariantSelections>(() => {
+    return { ...defaultVariants };
+  });
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const [dropdownView, setDropdownView] = useState<'platform' | 'framework'>('platform');
 
   // Initialize global frameworks with defaults if not already set
   const initializeGlobalFrameworks = useCallback(() => {
-    // Load from sessionStorage if available (only on client)
-    if (typeof window !== 'undefined') {
-      const stored = sessionStorage.getItem('stack-docs-selected-frameworks');
-      if (stored) {
-        try {
-          const parsed = JSON.parse(stored);
-          globalSelectedFrameworks = { ...globalSelectedFrameworks, ...parsed };
-        } catch (e) {
-          // Ignore parsing errors
-        }
-      }
-    }
-
-    // Only set defaults for platforms that have stored selections or if explicitly needed
-    // Don't auto-select frameworks during initialization
+    // Set defaults for platforms that don't have selections
     platformNames.forEach(platform => {
       if (!globalSelectedFrameworks[platform]) {
         const frameworks = Object.keys(platforms[platform]);
         if (frameworks.length > 0) {
-          // Set first framework as default but don't broadcast the change
-          // This allows manual selection without auto-selection
+          // Use default from global config first, then fall back to first available
           globalSelectedFrameworks[platform] = defaultFrameworks[platform] || frameworks[0];
         }
       }
     });
   }, [platformNames, platforms, defaultFrameworks]);
 
-  // Initialize global state on first render
+  // Initialize global state on first render (client-only to avoid hydration issues)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
+    // Load from sessionStorage first
+    loadFromSessionStorage();
+
+    // Then initialize frameworks
     initializeGlobalFrameworks();
-    if (typeof window !== 'undefined') {
-      const storedPlatform = sessionStorage.getItem('stack-docs-selected-platform');
-      if (storedPlatform && platformNames.includes(storedPlatform)) {
-        globalSelectedPlatform = storedPlatform;
-            setSelectedPlatform(storedPlatform);
-      }
+
+    // Check if the globally selected platform exists in this code block
+    let platformToUse = getInitialPlatform();
+    if (globalSelectedPlatform && platformNames.includes(globalSelectedPlatform)) {
+      platformToUse = globalSelectedPlatform;
+    } else if (globalSelectedPlatform && !platformNames.includes(globalSelectedPlatform)) {
+      // Global selection doesn't exist in this code block, use first available
+      platformToUse = getInitialPlatform();
     }
-  }, [initializeGlobalFrameworks, platformNames]);
 
-  const [selectedPlatform, setSelectedPlatform] = useState(getInitialPlatform);
-  const [selectedFrameworks, setSelectedFrameworks] = useState<{ [platform: string]: string }>(() => {
-    // Don't initialize with defaults - let users manually select frameworks
-    return { ...globalSelectedFrameworks };
-  });
-  const [selectedVariants, setSelectedVariants] = useState<VariantSelections>(() => {
-    return { ...defaultVariants };
-  });
+    // Update platform if different from initial
+    const initialPlatform = getInitialPlatform();
+    if (platformToUse !== initialPlatform) {
+      setSelectedPlatform(platformToUse);
+    }
 
-  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
-  const [dropdownView, setDropdownView] = useState<'platform' | 'framework'>('platform');
+    // Check if the selected framework exists for this platform
+    const availableFrameworks = Object.keys(platforms[platformToUse] ?? {});
+    let frameworkToUse = globalSelectedFrameworks[platformToUse];
+
+    // If the global framework doesn't exist for this platform, use first available
+    if (!frameworkToUse || !availableFrameworks.includes(frameworkToUse)) {
+      frameworkToUse = defaultFrameworks[platformToUse] || availableFrameworks[0];
+    }
+
+    // Update framework selections
+    const storedFrameworks = { ...globalSelectedFrameworks };
+    if (frameworkToUse && storedFrameworks[platformToUse] !== frameworkToUse) {
+      storedFrameworks[platformToUse] = frameworkToUse;
+    }
+    setSelectedFrameworks(storedFrameworks);
+    // Only run once on mount
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Generate stable ID based on props to avoid hydration mismatches
   const componentId = useMemo(() => {
     const hashString = `${documentPath}-${exampleNames.join(',')}`;
@@ -295,16 +383,17 @@ export function PlatformCodeblock({
   };
 
   const getCurrentCodeConfig = () => {
-    if (!Object.prototype.hasOwnProperty.call(platforms, selectedPlatform)) {
+    // Get platform config - may be undefined if platform was switched to one not in this block
+    const platformConfig = platforms[selectedPlatform] as typeof platforms[string] | undefined;
+    if (!platformConfig) {
       return null;
     }
 
-    const platformConfig = platforms[selectedPlatform];
-    if (!Object.prototype.hasOwnProperty.call(platformConfig, currentFramework)) {
+    // Get the config for the current framework - may be undefined
+    const config = platformConfig[currentFramework] as typeof platformConfig[string] | undefined;
+    if (!config) {
       return null;
     }
-
-    const config = platformConfig[currentFramework];
 
     if (hasVariants(selectedPlatform, currentFramework)) {
       const variant = getCurrentVariant();
@@ -319,17 +408,31 @@ export function PlatformCodeblock({
   // Set up global platform synchronization
   useEffect(() => {
     const onPlatformChange = (platform: string) => {
+      // Check if the new platform exists in this code block
       if (platformNames.includes(platform) && platform !== selectedPlatform) {
+        // Platform exists, switch to it
         setSelectedPlatform(platform);
+      } else if (!platformNames.includes(platform) && selectedPlatform !== firstPlatform) {
+        // Platform doesn't exist in this code block, fall back to first available
+        setSelectedPlatform(firstPlatform);
       }
     };
 
+    // Listen to internal callback system (from other codeblocks)
     addPlatformListener(componentId, onPlatformChange);
+
+    // Also listen to window events (from header or other sources)
+    const handleWindowPlatformChange = ((e: CustomEvent) => {
+      onPlatformChange(e.detail.platform);
+    }) as EventListener;
+
+    window.addEventListener('stack-platform-change', handleWindowPlatformChange);
 
     return () => {
       removePlatformListener(componentId, onPlatformChange);
+      window.removeEventListener('stack-platform-change', handleWindowPlatformChange);
     };
-  }, [componentId, platformNames, selectedPlatform]);
+  }, [componentId, platformNames, selectedPlatform, firstPlatform]);
 
   // Set up global framework synchronization
   useEffect(() => {
@@ -343,10 +446,19 @@ export function PlatformCodeblock({
       }
     };
 
+    // Listen to internal callback system (from other codeblocks)
     addFrameworkListener(componentId, onFrameworkChange);
+
+    // Also listen to window events (from header or other sources)
+    const handleWindowFrameworkChange = ((e: CustomEvent) => {
+      onFrameworkChange(e.detail.platform, e.detail.framework);
+    }) as EventListener;
+
+    window.addEventListener('stack-framework-change', handleWindowFrameworkChange);
 
     return () => {
       removeFrameworkListener(componentId, onFrameworkChange);
+      window.removeEventListener('stack-framework-change', handleWindowFrameworkChange);
     };
   }, [componentId, platforms]);
 

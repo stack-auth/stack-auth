@@ -8,7 +8,6 @@ import { createContext, useContext, useEffect, useMemo, useRef, useState } from 
 import { createPortal } from 'react-dom';
 import { cn } from '../../../lib/cn';
 import { ThemeToggle } from '../../layout/theme-toggle';
-import { buttonVariants } from '../../ui/button';
 import { ScrollArea, ScrollViewport } from '../../ui/scroll-area';
 import { useSidebar } from '../sidebar-context';
 
@@ -150,7 +149,7 @@ function HttpMethodBadge({ method }: { method: 'GET' | 'POST' | 'PATCH' | 'DELET
   );
 }
 
-// Collapse trigger button
+// Collapse trigger button - small "Zen" button
 function ApiSidebarCollapseTrigger() {
   const sidebarContext = useSidebar();
   const { isMainSidebarCollapsed, toggleMainSidebar } = sidebarContext || {
@@ -163,16 +162,13 @@ function ApiSidebarCollapseTrigger() {
       type="button"
       onClick={toggleMainSidebar}
       className={cn(
-        buttonVariants({
-          size: 'sm',
-          color: 'outline',
-        }),
-        'w-full justify-center hover:scale-105 active:scale-95',
+        'px-2 py-1 text-xs font-medium rounded-md transition-colors',
+        'bg-fd-muted/50 hover:bg-fd-muted text-fd-muted-foreground hover:text-fd-foreground',
+        'border border-fd-border/50'
       )}
-      title={isMainSidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+      title={isMainSidebarCollapsed ? 'Expand sidebar' : 'Zen mode'}
     >
-      <SidebarIcon className="h-4 w-4" />
-      {!isMainSidebarCollapsed && <span className="ml-2">Collapse</span>}
+      {isMainSidebarCollapsed ? <SidebarIcon className="h-3 w-3" /> : 'Zen'}
     </button>
   );
 }
@@ -930,7 +926,7 @@ export function ApiSidebarContent({ pages = [] }: { pages?: PageData[] }) {
           </ScrollArea>
         </div>
 
-        {/* Footer with theme toggle and collapse button */}
+        {/* Footer with zen button and theme toggle */}
         <div className="border-t border-fd-border p-4 flex-shrink-0">
           {isMainSidebarCollapsed ? (
             <div className="flex flex-col items-center gap-2">
@@ -938,10 +934,10 @@ export function ApiSidebarContent({ pages = [] }: { pages?: PageData[] }) {
               <ThemeToggle mode="light-dark" />
             </div>
           ) : (
-            <div className="space-y-2">
-              <ApiSidebarCollapseTrigger />
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-fd-muted-foreground">Stack Auth API</span>
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-xs text-fd-muted-foreground flex-1">Stack Auth API</span>
+              <div className="flex items-center gap-2">
+                <ApiSidebarCollapseTrigger />
                 <ThemeToggle mode="light-dark" />
               </div>
             </div>

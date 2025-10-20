@@ -936,16 +936,13 @@ function DocsSidebarCollapseTrigger() {
       type="button"
       onClick={toggleMainSidebar}
       className={cn(
-        buttonVariants({
-          size: 'sm',
-          color: 'outline',
-        }),
-        'w-full justify-center hover:scale-105 active:scale-95',
+        'px-2 py-1 text-xs font-medium rounded-md transition-colors',
+        'bg-fd-muted/50 hover:bg-fd-muted text-fd-muted-foreground hover:text-fd-foreground',
+        'border border-fd-border/50'
       )}
-      title={isMainSidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+      title={isMainSidebarCollapsed ? 'Expand sidebar' : 'Zen mode'}
     >
-      <SidebarIcon className="h-4 w-4" />
-      {!isMainSidebarCollapsed && <span className="ml-2">Collapse</span>}
+      {isMainSidebarCollapsed ? <SidebarIcon className="h-3 w-3" /> : 'Zen'}
     </button>
   );
 }
@@ -1000,7 +997,7 @@ export function DocsLayoutSidebar({
             </ScrollArea>
           </div>
 
-          {/* Footer - with collapse button */}
+          {/* Footer - with zen button and theme toggle */}
           <div className="border-t border-fd-border p-4 flex-shrink-0">
             {isMainSidebarCollapsed ? (
               <div className="flex flex-col items-center gap-2">
@@ -1008,10 +1005,10 @@ export function DocsLayoutSidebar({
                 <ThemeToggle mode="light-dark" />
               </div>
             ) : (
-              <div className="space-y-2">
-                <DocsSidebarCollapseTrigger />
-                <div className="flex items-center justify-between">
-                  <span className="text-xs text-fd-muted-foreground">Stack Auth Docs</span>
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-xs text-fd-muted-foreground flex-1">Stack Auth Docs</span>
+                <div className="flex items-center gap-2">
+                  <DocsSidebarCollapseTrigger />
                   <ThemeToggle mode="light-dark" />
                 </div>
               </div>
@@ -1084,3 +1081,4 @@ function CodeOverlayRenderer() {
 
 export { getSidebarTabsFromOptions } from './docs/shared';
 export { CollapsibleControl, Navbar, NavbarSidebarTrigger, type LinkItemType };
+

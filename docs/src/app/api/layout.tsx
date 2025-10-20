@@ -3,6 +3,7 @@ import { AuthPanel } from '@/components/api/auth-panel';
 import { AIChatDrawer } from '@/components/chat/ai-chat';
 import { ApiLayoutWrapper } from '@/components/layouts/api-layout-wrapper';
 import { ApiSidebar } from '@/components/layouts/api/api-sidebar-server';
+import { ApiSidebarWrapper } from '@/components/layouts/api/api-sidebar-wrapper';
 import { DocsHeaderWrapper } from '@/components/layouts/docs-header-wrapper';
 import { SharedContentLayout } from '@/components/layouts/shared-content-layout';
 import { SidebarProvider } from '@/components/layouts/sidebar-context';
@@ -102,11 +103,9 @@ export default function ApiLayout({ children }: { children: React.ReactNode }) {
             <div>
               <main className="flex flex-1 flex-row min-w-0 items-start mx-auto w-full">
                 {/* Custom API Sidebar - positioned under header, hidden on mobile */}
-                <div className="hidden md:block sticky left-0 top-14 lg:top-26 z-30 transition-all duration-300 ease-out w-64">
-                  <div className="h-[calc(100vh-3.5rem)] lg:h-[calc(100vh-6.5rem)] flex flex-col">
-                    <ApiSidebar />
-                  </div>
-                </div>
+                <ApiSidebarWrapper>
+                  <ApiSidebar />
+                </ApiSidebarWrapper>
 
                 {/* Main content area */}
                 <div className="flex-1 transition-all duration-300 min-w-0">
