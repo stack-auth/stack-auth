@@ -24,12 +24,13 @@ const getDocsBaseUrl = (): string => {
   if (docsBaseUrl) {
     return docsBaseUrl;
   }
-  
+
   // Fallback logic for when env var is not set
-  if (process.env.NODE_ENV === 'development' || window.location.hostname === 'localhost') {
+  if (process.env.NODE_ENV === 'development' || (typeof window !== 'undefined' &&
+    window.location.hostname === 'localhost')) {
     return 'http://localhost:8104';
   }
-  
+
   // Production fallback
   return 'https://docs.stack-auth.com';
 };
@@ -48,7 +49,8 @@ const DASHBOARD_ROUTE_PATTERNS = [
   // Emails
   { pattern: /\/emails(?:\/.*)?$/, docPage: 'emails' },
 
-  // Payments - Need docs for this first
+  // Payments
+  // TODO: Add Docs for payments here
 
   // Configuration
   { pattern: /\/domains(?:\/.*)?$/, docPage: 'domains' },
