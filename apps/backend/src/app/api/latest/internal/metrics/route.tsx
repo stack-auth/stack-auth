@@ -1,6 +1,7 @@
 import { KnownErrors } from "@stackframe/stack-shared";
 import { Tenancy } from "@/lib/tenancies";
-import { getPrismaClientForTenancy, getPrismaSchemaForTenancy, globalPrismaClient, sqlQuoteIdent } from "@/prisma-client";
+import { getOrSetCacheValue } from "@/lib/cache";
+import { getPrismaClientForTenancy, getPrismaSchemaForTenancy, globalPrismaClient, PrismaClientTransaction, sqlQuoteIdent } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
 import { adaptSchema, adminAuthTypeSchema, yupArray, yupMixed, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
@@ -10,6 +11,19 @@ import { usersCrudHandlers } from "../../users/crud";
 
 type DataPoints = yup.InferType<typeof DataPointsSchema>;
 
+const METRICS_CACHE_NAMESPACE = "metrics";
+const ONE_HOUR_MS = 60 * 60 * 1000;
+
+async function withMetricsCache<T>(tenancy: Tenancy, suffix: string, prisma: PrismaClientTransaction, includeAnonymous: boolean = false, loader: () => Promise<T>): Promise<T> {
+  return await getOrSetCacheValue<T>({
+    namespace: METRICS_CACHE_NAMESPACE,
+    cacheKey: `${tenancy.id}:${suffix}:${includeAnonymous ? "anon" : "non_anon"}`,
+    ttlMs: ONE_HOUR_MS,
+    prisma,
+    loader,
+  });
+}
+
 const DataPointsSchema = yupArray(yupObject({
   date: yupString().defined(),
   activity: yupNumber().defined(),
@@ -18,7 +32,7 @@ const DataPointsSchema = yupArray(yupObject({
 
 async function loadUsersByCountry(tenancy: Tenancy, includeAnonymous: boolean = false): Promise<Record<string, number>> {
   const schema = await getPrismaSchemaForTenancy(tenancy);
-  const a = await globalPrismaClient.$queryRaw<{ countryCode: string | null, userCount: bigint }[]>`
+  const rows = await globalPrismaClient.$queryRaw<{ countryCode: string | null, userCount: bigint }[]>`
     WITH tenancy_users AS (
       SELECT pu."projectUserId"::text AS "userId"
       FROM ${sqlQuoteIdent(schema)}."ProjectUser" pu
@@ -52,11 +66,10 @@ async function loadUsersByCountry(tenancy: Tenancy, includeAnonymous: boolean = 
     ORDER BY "userCount" DESC;
   `;
 
-  const rec = Object.fromEntries(
-    a.map(({ userCount, countryCode }) => [countryCode, Number(userCount)])
-      .filter(([countryCode, userCount]) => countryCode)
+  return Object.fromEntries(
+    rows.map(({ userCount, countryCode }) => [countryCode, Number(userCount)])
+      .filter(([countryCode]) => countryCode)
   );
-  return rec;
 }
 
 async function loadTotalUsers(tenancy: Tenancy, now: Date, includeAnonymous: boolean = false): Promise<DataPoints> {
@@ -131,7 +144,7 @@ async function loadDailyActiveUsers(tenancy: Tenancy, now: Date, includeAnonymou
   return res.map(x => ({
     date: x.day.toISOString().split('T')[0],
     activity: Number(x.dau),
-  }));
+  })) as DataPoints;
 }
 
 async function loadLoginMethods(tenancy: Tenancy): Promise<{ method: string, count: number }[]> {
@@ -253,8 +266,20 @@ export const GET = createSmartRouteHandler({
         where: { tenancyId: req.auth.tenancy.id, ...(includeAnonymous ? {} : { isAnonymous: false }) },
       }),
       loadTotalUsers(req.auth.tenancy, now, includeAnonymous),
-      loadDailyActiveUsers(req.auth.tenancy, now, includeAnonymous),
-      loadUsersByCountry(req.auth.tenancy, includeAnonymous),
+      withMetricsCache(
+        req.auth.tenancy,
+        "daily_active_users",
+        prisma,
+        includeAnonymous,
+        () => loadDailyActiveUsers(req.auth.tenancy, now, includeAnonymous)
+      ),
+      withMetricsCache(
+        req.auth.tenancy,
+        "users_by_country",
+        prisma,
+        includeAnonymous,
+        () => loadUsersByCountry(req.auth.tenancy, includeAnonymous)
+      ),
       usersCrudHandlers.adminList({
         tenancy: req.auth.tenancy,
         query: {
@@ -267,7 +292,13 @@ export const GET = createSmartRouteHandler({
           KnownErrors.UserNotFound,
         ],
       }).then(res => res.items),
-      loadRecentlyActiveUsers(req.auth.tenancy, includeAnonymous),
+      withMetricsCache(
+        req.auth.tenancy,
+        "recently_active_users",
+        prisma,
+        includeAnonymous,
+        () => loadRecentlyActiveUsers(req.auth.tenancy, includeAnonymous)
+      ),
       loadLoginMethods(req.auth.tenancy),
     ] as const);
 

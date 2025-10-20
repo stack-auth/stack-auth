@@ -9,6 +9,16 @@ datasource db {
   directUrl = env("STACK_DIRECT_DATABASE_CONNECTION_STRING")
 }
 
+model SchemaMigration {
+  id             String   @id @default(dbgenerated("gen_random_uuid()"))
+  finishedAt     DateTime
+  migrationName  String   @unique
+
+  @@ignore
+}
+
+
+
 model Project {
   // Note that the project with ID `internal` is handled as a special case. All other project IDs are UUIDs.
   id String @id
@@ -827,6 +837,19 @@ model DataVaultEntry {
   @@id([tenancyId, id])
   @@unique([tenancyId, storeId, hashedKey])
   @@index([tenancyId, storeId])
+}
+
+/// Stores serialized results for expensive computations with per-entry TTLs.
+model CacheEntry {
+  id        String   @id @default(uuid()) @db.Uuid
+  namespace String
+  cacheKey  String
+  payload   Json
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([namespace, cacheKey])
 }
 
 model WorkflowTriggerToken {

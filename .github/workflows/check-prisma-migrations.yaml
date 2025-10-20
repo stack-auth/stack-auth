@@ -59,12 +59,5 @@ jobs:
       - name: Initialize database
         run: pnpm run db:init
 
-      - name: Remove auto-migration metadata
-        run: |
-          cd apps/backend
-          pnpm run prisma db execute --url postgres://postgres:PASSWORD-PLACEHOLDER--uqfEC1hmmv@localhost:5432/stackframe --stdin <<'SQL'
-          DROP TABLE IF EXISTS "SchemaMigration";
-          SQL
-
       - name: Check for differences in Prisma schema and current DB
         run: cd apps/backend && pnpm run prisma migrate diff --from-url postgres://postgres:PASSWORD-PLACEHOLDER--uqfEC1hmmv@localhost:5432/stackframe --to-schema-datamodel ./prisma/schema.prisma --shadow-database-url postgres://postgres:PASSWORD-PLACEHOLDER--uqfEC1hmmv@localhost:5432/shadow_db --exit-code
