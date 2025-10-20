@@ -6,7 +6,6 @@ import { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
 import { adaptSchema, adminAuthTypeSchema, yupArray, yupMixed, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import yup from 'yup';
 import { userFullInclude, userPrismaToCrud } from "../../users/crud";
-import { traceSpan } from "@stackframe/stack-shared/dist/utils/telemetry";
 import { usersCrudHandlers } from "../../users/crud";
 
 type DataPoints = yup.InferType<typeof DataPointsSchema>;
@@ -162,8 +161,6 @@ async function loadLoginMethods(tenancy: Tenancy): Promise<{ method: string, cou
 }
 
 async function loadRecentlyActiveUsers(tenancy: Tenancy, includeAnonymous: boolean = false): Promise<UsersCrud["Admin"]["Read"][]> {
-  // use the Events table to get the most recent activity
-  const windowStart = new Date(Date.now() - 365 * 24 * 60 * 60 * 1000);
   const events = await globalPrismaClient.$queryRaw<{ userId: string, lastActiveAt: Date }[]>`
     WITH filtered_events AS (
       SELECT
@@ -175,7 +172,6 @@ async function loadRecentlyActiveUsers(tenancy: Tenancy, includeAnonymous: boole
         AND (${includeAnonymous} OR COALESCE("data"->>'isAnonymous', 'false') != 'true')
         AND '$user-activity' = ANY("systemEventTypeIds"::text[])
         AND "data"->>'userId' IS NOT NULL
-        AND "eventStartedAt" >= ${windowStart}
     ),
     latest_events AS (
       SELECT DISTINCT ON ("userId")
