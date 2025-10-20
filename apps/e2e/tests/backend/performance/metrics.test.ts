@@ -10,9 +10,6 @@ describe.skip("/api/v1/users performance", () => {
   });
 
   it("lists users within the expected response time", async ({ expect }) => {
-    // Create a few users to ensure the list endpoint does real work
-    // await User.createMultiple(10);
-
     // Warm up the endpoint so that caches/connection pools are ready
     await niceBackendFetch("/api/v1/users?limit=10", { accessType: "server" });
 
