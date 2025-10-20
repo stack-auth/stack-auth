@@ -1,11 +1,12 @@
+import { KnownErrors } from "@stackframe/stack-shared";
 import { Tenancy } from "@/lib/tenancies";
 import { getPrismaClientForTenancy, getPrismaSchemaForTenancy, globalPrismaClient, sqlQuoteIdent } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { KnownErrors } from "@stackframe/stack-shared";
 import { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
 import { adaptSchema, adminAuthTypeSchema, yupArray, yupMixed, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { traceSpan } from "@stackframe/stack-shared/dist/utils/telemetry";
 import yup from 'yup';
+import { userFullInclude, userPrismaToCrud } from "../../users/crud";
+import { traceSpan } from "@stackframe/stack-shared/dist/utils/telemetry";
 import { usersCrudHandlers } from "../../users/crud";
 
 type DataPoints = yup.InferType<typeof DataPointsSchema>;
@@ -15,251 +16,200 @@ const DataPointsSchema = yupArray(yupObject({
   activity: yupNumber().defined(),
 }).defined()).defined();
 
-function withDurationLogging<T extends (...args: any[]) => Promise<any>>(label: string, fn: T): T {
-  return (async (...args: Parameters<T>): Promise<Awaited<ReturnType<T>>> => {
-    return await traceSpan({
-      description: `metrics.${label}`,
-      attributes: {
-        "metrics.name": label,
-      },
-    }, async (span) => {
-      const start = performance.now();
-      try {
-        return await fn(...args);
-      } finally {
-        const durationMs = performance.now() - start;
-        span.setAttribute("metrics.duration_ms", durationMs);
-        console.log(`[metrics] ${label} took ${durationMs.toFixed(2)}ms`);
-      }
-    });
-  }) as T;
+
+async function loadUsersByCountry(tenancy: Tenancy, includeAnonymous: boolean = false): Promise<Record<string, number>> {
+  const schema = await getPrismaSchemaForTenancy(tenancy);
+  const a = await globalPrismaClient.$queryRaw<{ countryCode: string | null, userCount: bigint }[]>`
+    WITH tenancy_users AS (
+      SELECT pu."projectUserId"::text AS "userId"
+      FROM ${sqlQuoteIdent(schema)}."ProjectUser" pu
+      WHERE pu."tenancyId" = ${tenancy.id}::uuid
+        AND (${includeAnonymous} OR pu."isAnonymous" = false)
+    ),
+    latest_ip AS (
+      SELECT
+        tu."userId",
+        latest."countryCode"
+      FROM tenancy_users tu
+      LEFT JOIN LATERAL (
+        SELECT eip."countryCode"
+        FROM "Event" e
+        JOIN "EventIpInfo" eip
+          ON eip.id = e."endUserIpInfoGuessId"
+        WHERE '$user-activity' = ANY(e."systemEventTypeIds"::text[])
+          AND e."data"->>'projectId' = ${tenancy.project.id}
+          AND COALESCE(e."data"->>'branchId', 'main') = ${tenancy.branchId}
+          AND e."data"->>'userId' = tu."userId"
+          AND e."endUserIpInfoGuessId" IS NOT NULL
+          AND eip."countryCode" IS NOT NULL
+        ORDER BY e."eventStartedAt" DESC
+        LIMIT 1
+      ) latest ON TRUE
+      WHERE latest."countryCode" IS NOT NULL
+    )
+    SELECT "countryCode", COUNT("userId") AS "userCount"
+    FROM latest_ip
+    GROUP BY "countryCode"
+    ORDER BY "userCount" DESC;
+  `;
+
+  const rec = Object.fromEntries(
+    a.map(({ userCount, countryCode }) => [countryCode, Number(userCount)])
+      .filter(([countryCode, userCount]) => countryCode)
+  );
+  return rec;
 }
 
-const loadUsersByCountry = withDurationLogging(
-  "loadUsersByCountry",
-  async (tenancy: Tenancy, includeAnonymous: boolean = false): Promise<Record<string, number>> => {
-    const a = await globalPrismaClient.$queryRaw<{ countryCode: string | null, userCount: bigint }[]>`
-      WITH filtered_events AS (
-        SELECT
-          "Event"."eventStartedAt",
-          "Event"."data"->>'userId' AS "userId",
-          eip."countryCode"
-        FROM "Event"
-        JOIN "EventIpInfo" eip
-          ON "Event"."endUserIpInfoGuessId" = eip.id
-        WHERE '$user-activity' = ANY("Event"."systemEventTypeIds"::text[])
-          AND "Event"."data" @> jsonb_build_object('projectId', ${tenancy.project.id})
-          AND (
-            ${includeAnonymous}
-            OR NOT (
-              "Event"."data" @> jsonb_build_object('isAnonymous', true)
-              OR "Event"."data" @> jsonb_build_object('isAnonymous', 'true')
-            )
-          )
-          AND (
-            "Event"."data" @> jsonb_build_object('branchId', ${tenancy.branchId})
-            OR (${tenancy.branchId} = 'main' AND NOT ("Event"."data" ? 'branchId'))
-          )
-          AND eip."countryCode" IS NOT NULL
-      ),
-      LatestEventWithCountryCode AS (
-        SELECT DISTINCT ON (fe."userId")
-          fe."userId",
-          fe."countryCode"
-        FROM filtered_events fe
-        ORDER BY fe."userId", fe."eventStartedAt" DESC
-      )
-      SELECT "countryCode", COUNT("userId") AS "userCount"
-      FROM LatestEventWithCountryCode
-      GROUP BY "countryCode"
-      ORDER BY "userCount" DESC;
-    `;
-
-    const rec = Object.fromEntries(
-      a.map(({ userCount, countryCode }) => [countryCode, Number(userCount)])
-        .filter(([countryCode, userCount]) => countryCode)
-    );
-    return rec;
-  }
-);
-
-const loadTotalUsers = withDurationLogging(
-  "loadTotalUsers",
-  async (tenancy: Tenancy, now: Date, includeAnonymous: boolean = false): Promise<DataPoints> => {
-    const schema = await getPrismaSchemaForTenancy(tenancy);
-    const prisma = await getPrismaClientForTenancy(tenancy);
-    return (await prisma.$queryRaw<{ date: Date, dailyUsers: bigint, cumUsers: bigint }[]>`
-      WITH date_series AS (
-          SELECT GENERATE_SERIES(
-            ${now}::date - INTERVAL '30 days',
-            ${now}::date,
-            '1 day'
-          )
-          AS registration_day
-      )
-      SELECT 
-        ds.registration_day AS "date",
-        COALESCE(COUNT(pu."projectUserId"), 0) AS "dailyUsers",
-        SUM(COALESCE(COUNT(pu."projectUserId"), 0)) OVER (ORDER BY ds.registration_day) AS "cumUsers"
-      FROM date_series ds
-      LEFT JOIN ${sqlQuoteIdent(schema)}."ProjectUser" pu
-      ON DATE(pu."createdAt") = ds.registration_day 
-        AND pu."tenancyId" = ${tenancy.id}::UUID
-        AND (${includeAnonymous} OR pu."isAnonymous" = false)
-      GROUP BY ds.registration_day
-      ORDER BY ds.registration_day
-    `).map((x) => ({
-      date: x.date.toISOString().split('T')[0],
-      activity: Number(x.dailyUsers),
-    }));
-  }
-);
-
-const loadDailyActiveUsers = withDurationLogging(
-  "loadDailyActiveUsers",
-  async (tenancy: Tenancy, now: Date, includeAnonymous: boolean = false) => {
-    const res = await globalPrismaClient.$queryRaw<{ day: Date, dau: bigint }[]>`
-      WITH date_series AS (
+async function loadTotalUsers(tenancy: Tenancy, now: Date, includeAnonymous: boolean = false): Promise<DataPoints> {
+  const schema = await getPrismaSchemaForTenancy(tenancy);
+  const prisma = await getPrismaClientForTenancy(tenancy);
+  return (await prisma.$queryRaw<{ date: Date, dailyUsers: bigint, cumUsers: bigint }[]>`
+    WITH date_series AS (
         SELECT GENERATE_SERIES(
           ${now}::date - INTERVAL '30 days',
           ${now}::date,
           '1 day'
         )
-        AS "day"
-      ),
-      filtered_events AS (
-        SELECT
-          DATE_TRUNC('day', "Event"."eventStartedAt") AS "day",
-          "Event"."data"->>'userId' AS "userId"
-        FROM "Event"
-        WHERE "Event"."eventStartedAt" >= ${now}::date - INTERVAL '30 days'
-          AND '$user-activity' = ANY("Event"."systemEventTypeIds"::text[])
-          AND "Event"."data" @> jsonb_build_object('projectId', ${tenancy.project.id})
-          AND (
-            ${includeAnonymous}
-            OR NOT (
-              "Event"."data" @> jsonb_build_object('isAnonymous', true)
-              OR "Event"."data" @> jsonb_build_object('isAnonymous', 'true')
-            )
-          )
-          AND (
-            "Event"."data" @> jsonb_build_object('branchId', ${tenancy.branchId})
-            OR (${tenancy.branchId} = 'main' AND NOT ("Event"."data" ? 'branchId'))
-          )
-      ),
-      daily_users AS (
-        SELECT
-          fe."day",
-          COUNT(DISTINCT fe."userId") AS "dau"
-        FROM filtered_events fe
-        WHERE fe."userId" IS NOT NULL
-        GROUP BY fe."day"
+        AS registration_day
+    )
+    SELECT 
+      ds.registration_day AS "date",
+      COALESCE(COUNT(pu."projectUserId"), 0) AS "dailyUsers",
+      SUM(COALESCE(COUNT(pu."projectUserId"), 0)) OVER (ORDER BY ds.registration_day) AS "cumUsers"
+    FROM date_series ds
+    LEFT JOIN ${sqlQuoteIdent(schema)}."ProjectUser" pu
+    ON DATE(pu."createdAt") = ds.registration_day 
+      AND pu."tenancyId" = ${tenancy.id}::UUID
+      AND (${includeAnonymous} OR pu."isAnonymous" = false)
+    GROUP BY ds.registration_day
+    ORDER BY ds.registration_day
+  `).map((x) => ({
+    date: x.date.toISOString().split('T')[0],
+    activity: Number(x.dailyUsers),
+  }));
+}
+
+async function loadDailyActiveUsers(tenancy: Tenancy, now: Date, includeAnonymous: boolean = false) {
+  const res = await globalPrismaClient.$queryRaw<{ day: Date, dau: bigint }[]>`
+    WITH date_series AS (
+      SELECT GENERATE_SERIES(
+        ${now}::date - INTERVAL '30 days',
+        ${now}::date,
+        '1 day'
       )
-      SELECT ds."day", COALESCE(du.dau, 0) AS dau
-      FROM date_series ds
-      LEFT JOIN daily_users du 
-      ON ds."day" = du."day"
-      ORDER BY ds."day"
-    `;
+      AS "day"
+    ),
+    filtered_events AS (
+      SELECT
+        ("eventStartedAt"::date) AS "day",
+        "data"->>'userId' AS "userId"
+      FROM "Event"
+      WHERE "eventStartedAt" >= ${now}::date - INTERVAL '30 days'
+        AND "eventStartedAt" < ${now}::date + INTERVAL '1 day'
+        AND '$user-activity' = ANY("systemEventTypeIds"::text[])
+        AND "data"->>'projectId' = ${tenancy.project.id}
+        AND COALESCE("data"->>'branchId', 'main') = ${tenancy.branchId}
+        AND (${includeAnonymous} OR COALESCE("data"->>'isAnonymous', 'false') != 'true')
+        AND "data"->>'userId' IS NOT NULL
+    ),
+    unique_daily_users AS (
+      SELECT "day", "userId"
+      FROM filtered_events
+      GROUP BY "day", "userId"
+    ),
+    daily_users AS (
+      SELECT "day", COUNT(*) AS "dau"
+      FROM unique_daily_users
+      GROUP BY "day"
+    )
+    SELECT ds."day", COALESCE(du.dau, 0) AS dau
+    FROM date_series ds
+    LEFT JOIN daily_users du 
+    ON ds."day" = du."day"
+    ORDER BY ds."day"
+  `;
 
-    return res.map(x => ({
-      date: x.day.toISOString().split('T')[0],
-      activity: Number(x.dau),
-    }));
-  }
-);
+  return res.map(x => ({
+    date: x.day.toISOString().split('T')[0],
+    activity: Number(x.dau),
+  }));
+}
 
-const loadLoginMethods = withDurationLogging(
-  "loadLoginMethods",
-  async (tenancy: Tenancy): Promise<{ method: string, count: number }[]> => {
-    const schema = await getPrismaSchemaForTenancy(tenancy);
-    const prisma = await getPrismaClientForTenancy(tenancy);
-    return prisma.$queryRaw<{ method: string, count: number }[]>`
-      WITH tab AS (
-        SELECT
-          COALESCE(
-            CASE WHEN oaam IS NOT NULL THEN oaam."configOAuthProviderId"::text ELSE NULL END,
-            CASE WHEN pam IS NOT NULL THEN 'password' ELSE NULL END,
-            CASE WHEN pkm IS NOT NULL THEN 'passkey' ELSE NULL END,
-            CASE WHEN oam IS NOT NULL THEN 'otp' ELSE NULL END,
-            'other'
-          ) AS "method",
-          method.id AS id
-        FROM
-          ${sqlQuoteIdent(schema)}."AuthMethod" method
-        LEFT JOIN ${sqlQuoteIdent(schema)}."OAuthAuthMethod" oaam ON method.id = oaam."authMethodId"
-        LEFT JOIN ${sqlQuoteIdent(schema)}."PasswordAuthMethod" pam ON method.id = pam."authMethodId"
-        LEFT JOIN ${sqlQuoteIdent(schema)}."PasskeyAuthMethod" pkm ON method.id = pkm."authMethodId"
-        LEFT JOIN ${sqlQuoteIdent(schema)}."OtpAuthMethod" oam ON method.id = oam."authMethodId"
-        WHERE method."tenancyId" = ${tenancy.id}::UUID)
-      SELECT LOWER("method") AS method, COUNT(id)::int AS "count" FROM tab
-      GROUP BY "method"
-    `;
-  }
-);
+async function loadLoginMethods(tenancy: Tenancy): Promise<{ method: string, count: number }[]> {
+  const schema = await getPrismaSchemaForTenancy(tenancy);
+  const prisma = await getPrismaClientForTenancy(tenancy);
+  return await prisma.$queryRaw<{ method: string, count: number }[]>`
+    WITH tab AS (
+      SELECT
+        COALESCE(
+          CASE WHEN oaam IS NOT NULL THEN oaam."configOAuthProviderId"::text ELSE NULL END,
+          CASE WHEN pam IS NOT NULL THEN 'password' ELSE NULL END,
+          CASE WHEN pkm IS NOT NULL THEN 'passkey' ELSE NULL END,
+          CASE WHEN oam IS NOT NULL THEN 'otp' ELSE NULL END,
+          'other'
+        ) AS "method",
+        method.id AS id
+      FROM
+        ${sqlQuoteIdent(schema)}."AuthMethod" method
+      LEFT JOIN ${sqlQuoteIdent(schema)}."OAuthAuthMethod" oaam ON method.id = oaam."authMethodId"
+      LEFT JOIN ${sqlQuoteIdent(schema)}."PasswordAuthMethod" pam ON method.id = pam."authMethodId"
+      LEFT JOIN ${sqlQuoteIdent(schema)}."PasskeyAuthMethod" pkm ON method.id = pkm."authMethodId"
+      LEFT JOIN ${sqlQuoteIdent(schema)}."OtpAuthMethod" oam ON method.id = oam."authMethodId"
+      WHERE method."tenancyId" = ${tenancy.id}::UUID)
+    SELECT LOWER("method") AS method, COUNT(id)::int AS "count" FROM tab
+    GROUP BY "method"
+  `;
+}
 
-const loadRecentlyActiveUsers = withDurationLogging(
-  "loadRecentlyActiveUsers",
-  async (tenancy: Tenancy, includeAnonymous: boolean = false): Promise<UsersCrud["Admin"]["Read"][]> => {
-    // use the Events table to get the most recent activity
-    const events = await globalPrismaClient.$queryRaw<{ data: any, userId: string | null, eventStartedAt: Date }[]>`
-      WITH filtered_events AS (
-        SELECT
-          "Event"."data",
-          "Event"."data"->>'userId' AS "userId",
-          "Event"."eventStartedAt"
-        FROM "Event"
-        WHERE "Event"."data" @> jsonb_build_object('projectId', ${tenancy.project.id})
-          AND (
-            ${includeAnonymous}
-            OR NOT (
-              "Event"."data" @> jsonb_build_object('isAnonymous', true)
-              OR "Event"."data" @> jsonb_build_object('isAnonymous', 'true')
-            )
-          )
-          AND (
-            "Event"."data" @> jsonb_build_object('branchId', ${tenancy.branchId})
-            OR (${tenancy.branchId} = 'main' AND NOT ("Event"."data" ? 'branchId'))
-          )
-          AND '$user-activity' = ANY("Event"."systemEventTypeIds"::text[])
-      ),
-      latest_events AS (
-        SELECT DISTINCT ON (fe."userId")
-          fe."data",
-          fe."userId",
-          fe."eventStartedAt"
-        FROM filtered_events fe
-        WHERE fe."userId" IS NOT NULL
-        ORDER BY fe."userId", fe."eventStartedAt" DESC
-      )
-      SELECT "data", "userId", "eventStartedAt"
-      FROM latest_events
-      ORDER BY "eventStartedAt" DESC
-      LIMIT 5
-    `;
-    const users = await Promise.all(events.map(async (event) => {
-      if (!event.userId) {
-        return null;
-      }
-      try {
-        return await usersCrudHandlers.adminRead({
-          tenancy,
-          user_id: event.userId,
-          allowedErrorTypes: [
-            KnownErrors.UserNotFound,
-          ],
-        });
-      } catch (e) {
-        if (KnownErrors.UserNotFound.isInstance(e)) {
-          // user probably deleted their account, skip
-          return null;
-        }
-        throw e;
-      }
-    }));
-    return users.filter((user): user is UsersCrud["Admin"]["Read"] => Boolean(user));
+async function loadRecentlyActiveUsers(tenancy: Tenancy, includeAnonymous: boolean = false): Promise<UsersCrud["Admin"]["Read"][]> {
+  // use the Events table to get the most recent activity
+  const windowStart = new Date(Date.now() - 365 * 24 * 60 * 60 * 1000);
+  const events = await globalPrismaClient.$queryRaw<{ userId: string, lastActiveAt: Date }[]>`
+    WITH filtered_events AS (
+      SELECT
+        "data"->>'userId' AS "userId",
+        "eventStartedAt" AS "lastActiveAt"
+      FROM "Event"
+      WHERE "data"->>'projectId' = ${tenancy.project.id}
+        AND COALESCE("data"->>'branchId', 'main') = ${tenancy.branchId}
+        AND (${includeAnonymous} OR COALESCE("data"->>'isAnonymous', 'false') != 'true')
+        AND '$user-activity' = ANY("systemEventTypeIds"::text[])
+        AND "data"->>'userId' IS NOT NULL
+        AND "eventStartedAt" >= ${windowStart}
+    ),
+    latest_events AS (
+      SELECT DISTINCT ON ("userId")
+        "userId",
+        "lastActiveAt"
+      FROM filtered_events
+      ORDER BY "userId", "lastActiveAt" DESC
+    )
+    SELECT "userId", "lastActiveAt"
+    FROM latest_events
+    ORDER BY "lastActiveAt" DESC
+    LIMIT 5
+  `;
+  if (events.length === 0) {
+    return [];
   }
-);
+
+  const prisma = await getPrismaClientForTenancy(tenancy);
+  const dbUsers = await prisma.projectUser.findMany({
+    where: {
+      tenancyId: tenancy.id,
+      projectUserId: {
+        in: events.map((event) => event.userId),
+      },
+    },
+    include: userFullInclude,
+  });
+
+  const userObjects = events.map((event) => {
+    const user = dbUsers.find((user) => user.projectUserId === event.userId);
+    return user ? userPrismaToCrud(user, event.lastActiveAt.getTime()) : null;
+  });
+  return userObjects.filter((user) => user !== null);
+}
 
 export const GET = createSmartRouteHandler({
   metadata: {
@@ -329,13 +279,13 @@ export const GET = createSmartRouteHandler({
       statusCode: 200,
       bodyType: "json",
       body: {
-        total_users: totalUsers,
-        daily_users: dailyUsers,
-        daily_active_users: dailyActiveUsers,
-        users_by_country: usersByCountry,
-        recently_registered: recentlyRegistered,
-        recently_active: recentlyActive,
-        login_methods: loginMethods,
+        total_users: totalUsers ?? 0,
+        daily_users: dailyUsers ?? [],
+        daily_active_users: dailyActiveUsers ?? [],
+        users_by_country: usersByCountry ?? {},
+        recently_registered: recentlyRegistered ?? [],
+        recently_active: recentlyActive ?? [],
+        login_methods: loginMethods ?? [],
       }
     };
   },
