@@ -80,9 +80,6 @@ jobs:
       - name: Create .env.test.local file for examples/middleware
         run: cp examples/middleware/.env.development examples/middleware/.env.test.local
 
-      - name: Create .env.test.local file for examples/partial-prerendering
-        run: cp examples/partial-prerendering/.env.development examples/partial-prerendering/.env.test.local
-
       - name: Create .env.test.local file for examples/supabase
         run: cp examples/supabase/.env.development examples/supabase/.env.test.local
       

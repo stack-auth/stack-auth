@@ -2232,8 +2232,9 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         }
 
         return new _StackClientAppImplIncomplete<HasTokenStore, ProjectId>({
-          ...json,
+          ...omit(json, ["uniqueIdentifier"]) as any,
         }, {
+          uniqueIdentifier: json.uniqueIdentifier,
           checkString: providedCheckString,
         });
       }

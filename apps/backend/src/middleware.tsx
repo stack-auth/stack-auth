@@ -84,7 +84,6 @@ export async function middleware(request: NextRequest) {
     while (devRateLimitTimestamps.length > 0 && now - devRateLimitTimestamps[0] > DEV_RATE_LIMIT_WINDOW_MS) {
       devRateLimitTimestamps.shift();
     }
-    console.log('devRateLimitTimestamps', devRateLimitTimestamps.length);
     if (devRateLimitTimestamps.length >= DEV_RATE_LIMIT_MAX_REQUESTS) {
       const waitMs = Math.max(0, DEV_RATE_LIMIT_WINDOW_MS - (now - devRateLimitTimestamps[0]));
       const retryAfterSeconds = Math.max(1, Math.ceil(waitMs / 1000));
