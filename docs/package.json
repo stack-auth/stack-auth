@@ -7,8 +7,8 @@
   "type": "module",
   "scripts": {
     "build": "next build",
-    "dev": "next dev --port 8104 --hostname 0.0.0.0",
-    "start": "next start --port 8104",
+    "dev": "next dev --port ${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}04",
+    "start": "next start --port ${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}04",
     "lint": "next lint",
     "lint:fix": "next lint --fix",
     "postinstall": "fumadocs-mdx",

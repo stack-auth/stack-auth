@@ -3,6 +3,7 @@ import { typedIncludes } from "@stackframe/stack-shared/dist/utils/arrays";
 import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { nicify } from "@stackframe/stack-shared/dist/utils/strings";
 import { SnapshotSerializer } from "vitest";
+import { getPortPrefix } from "./helpers/ports";
 
 const hideHeaders = [
   "access-control-allow-headers",
@@ -65,6 +66,7 @@ const stripFields = [
   "prevIterator",
   "nextAttempt",
   "lastFour",
+  "port",
 ] as const;
 
 const stripFieldsIfString = [
@@ -100,7 +102,10 @@ const keyedCookieNamePrefixes = [
 
 const stringRegexReplacements = [
   [/(\/integrations\/(neon|custom)\/oauth\/idp\/(interaction|auth)\/)[a-zA-Z0-9_-]+/gi, "$1<stripped $3 UID>"],
+  [new RegExp(`localhost\:${getPortPrefix()}`, "gi"), "localhost:<$$NEXT_PUBLIC_STACK_PORT_PREFIX>"],
+  [new RegExp(`localhost\%3A${getPortPrefix()}`, "gi"), "localhost%3A%3C%24NEXT_PUBLIC_STACK_PORT_PREFIX%3E"],
 ] as const;
+
 
 function addAll<T>(set: Set<T>, values: readonly T[]) {
   for (const value of values) {
@@ -158,7 +163,7 @@ const snapshotSerializer: SnapshotSerializer = {
         }
 
         // Strip URL query params
-        const urlRegexHeuristic = /(?:(?:https?|ftp|file):\/\/|www\.|ftp\.)(?:\([-A-Z0-9+&@#\/%=~_|$?!:,.]*\)|[-A-Z0-9+&@#\/%=~_|$?!:,.])*(?:\([-A-Z0-9+&@#\/%=~_|$?!:,.]*\)|[A-Z0-9+&@#\/%=~_|$])/igm;
+        const urlRegexHeuristic = /(?:(?:https?|ftp|file):\/\/|www\.|ftp\.)(?:\([-A-Z0-9+&@#\/%=~_|$<>?!:,.]*\)|[-A-Z0-9+&@#\/%=~_|<>$?!:,.])*(?:\([-A-Z0-9+&@#\/%=~_|$?!:,.]*\)|[A-Z0-9+&@#\/%=~_|$])/igm;
         if (typeof value === "string") {
           for (const urlMatch of value.matchAll(urlRegexHeuristic)) {
             const questionMarkIndex = urlMatch[0].indexOf("?");

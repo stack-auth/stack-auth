@@ -7,11 +7,11 @@
     "typecheck": "tsc --noEmit",
     "with-env": "dotenv -c development --",
     "with-env:prod": "dotenv -c --",
-    "dev": "next dev --turbopack --port 8101",
+    "dev": "next dev --turbopack --port ${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}01",
     "build": "next build",
     "docker-build": "next build --experimental-build-mode compile",
     "analyze-bundle": "ANALYZE_BUNDLE=1 pnpm run build",
-    "start": "next start --port 8101",
+    "start": "next start --port ${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}01",
     "psql": "pnpm run with-env bash -c 'psql $STACK_DATABASE_CONNECTION_STRING'",
     "lint": "next lint"
   },

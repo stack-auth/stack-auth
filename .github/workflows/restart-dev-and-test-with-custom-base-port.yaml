@@ -1,4 +1,4 @@
-name: "Dev Environment Test"
+name: "Dev Environment Test With Custom Base Port"
 
 on:
   push:
@@ -15,8 +15,10 @@ env:
   SHELL: /usr/bin/bash
 
 jobs:
-  restart-dev-and-test:
+  restart-dev-and-test-with-custom-base-port:
     runs-on: ubicloud-standard-8
+    env:
+      NEXT_PUBLIC_STACK_PORT_PREFIX: "69"
 
     steps:
       - uses: actions/checkout@v3

@@ -15,7 +15,8 @@ export class Freestyle {
       if (!["development", "test"].includes(getNodeEnvironment())) {
         throw new StackAssertionError("Mock Freestyle key used in production; please set the STACK_FREESTYLE_API_KEY environment variable.");
       }
-      baseUrl = "http://localhost:8122";
+      const prefix = getEnvVariable("NEXT_PUBLIC_STACK_PORT_PREFIX", "81");
+      baseUrl = `http://localhost:${prefix}22`;
     }
     this.freestyle = new FreestyleSandboxes({
       apiKey,
