@@ -1,12 +1,7 @@
 import React, { Suspense } from 'react';
 import { StackAdminApp, StackClientApp, StackServerApp, stackAppInternalsSymbol } from '../lib/stack-app';
-import { StackProviderClient, UserSetter } from './stack-provider-client';
+import { StackProviderClient } from './stack-provider-client';
 import { TranslationProvider } from './translation-provider';
-
-function UserFetcher(props: { app: StackClientApp<true> }) {
-  const userPromise = props.app.getUser({ or: "anonymous-if-exists[deprecated]" }).then((user) => user?.toClientJson() ?? null);
-  return <UserSetter userJsonPromise={userPromise} />;
-}
 
 // IF_PLATFORM next
 function NextStackProvider({
@@ -29,9 +24,7 @@ function NextStackProvider({
 }) {
   return (
     <StackProviderClient app={app[stackAppInternalsSymbol].toClientJson()} serialized={true}>
-      <Suspense fallback={null}>
-        <UserFetcher app={app} />
-      </Suspense>
+      <Suspense fallback={null} />
       <TranslationProvider lang={lang} translationOverrides={translationOverrides}>
         {children}
       </TranslationProvider>
@@ -59,9 +52,7 @@ function ReactStackProvider({
 }) {
   return (
     <StackProviderClient app={app as any} serialized={false}>
-      <Suspense fallback={null}>
-        <UserFetcher app={app} />
-      </Suspense>
+      <Suspense fallback={null} />
       <TranslationProvider lang={lang} translationOverrides={translationOverrides}>
         {children}
       </TranslationProvider>
