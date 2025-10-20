@@ -1853,11 +1853,15 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     email: string,
     password: string,
     noRedirect?: boolean,
+    noVerificationCallback?: boolean,
     verificationCallbackUrl?: string,
   }): Promise<Result<undefined, KnownErrors["UserWithEmailAlreadyExists"] | KnownErrors['PasswordRequirementsNotMet']>> {
+    if (options.noVerificationCallback && options.verificationCallbackUrl) {
+      throw new StackAssertionError("verificationCallbackUrl is not allowed when noVerificationCallback is true");
+    }
     this._ensurePersistentTokenStore();
     const session = await this._getSession();
-    const emailVerificationRedirectUrl = options.verificationCallbackUrl ?? constructRedirectUrl(this.urls.emailVerification, "verificationCallbackUrl");
+    const emailVerificationRedirectUrl = options.noVerificationCallback ? undefined : options.verificationCallbackUrl ?? constructRedirectUrl(this.urls.emailVerification, "verificationCallbackUrl");
     const result = await this._interface.signUpWithCredential(
       options.email,
       options.password,

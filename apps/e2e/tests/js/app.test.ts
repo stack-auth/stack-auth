@@ -35,6 +35,48 @@ it("should sign up with credential", async ({ expect }) => {
   `);
 });
 
+it("should sign up without a verification callback when disabled", async ({ expect }) => {
+  const { clientApp } = await createApp();
+  const signUpResult = await clientApp.signUpWithCredential({
+    email: "no-verification@test.com",
+    password: "password",
+    noVerificationCallback: true,
+  });
+
+  expect(signUpResult).toMatchInlineSnapshot(`
+    {
+      "data": undefined,
+      "status": "ok",
+    }
+  `);
+
+  const signInResult = await clientApp.signInWithCredential({
+    email: "no-verification@test.com",
+    password: "password",
+  });
+
+  expect(signInResult).toMatchInlineSnapshot(`
+    {
+      "data": undefined,
+      "status": "ok",
+    }
+  `);
+});
+
+it("should throw when disabling verification with a callback url provided", async ({ expect }) => {
+  const { clientApp } = await createApp();
+
+  await expect(clientApp.signUpWithCredential({
+    email: "no-verification-conflict@test.com",
+    password: "password",
+    noVerificationCallback: true,
+    verificationCallbackUrl: "http://localhost:3000",
+  })).rejects.toMatchObject({
+    message: expect.stringContaining("verificationCallbackUrl is not allowed when noVerificationCallback is true"),
+    name: "StackAssertionError",
+  });
+});
+
 it("should create user on the server", async ({ expect }) => {
   const { serverApp } = await createApp();
   const user = await serverApp.createUser({
