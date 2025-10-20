@@ -404,6 +404,29 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       }
     ] as CodeExample[],
 
+    'suspense-boundary': [
+      {
+        language: 'JavaScript',
+        framework: 'React',
+        code: `import { Suspense } from "react";
+import { StackProvider } from "@stackframe/react";
+import { stackClientApp } from "./stack/client";
+
+export default function App() {
+  return (
+    // Wrap your StackProvider with Suspense for async hooks to work
+    <Suspense fallback={<div>Loading...</div>}>
+      <StackProvider app={stackClientApp}>
+        {/* Your app content */}
+      </StackProvider>
+    </Suspense>
+  );
+}`,
+        highlightLanguage: 'typescript',
+        filename: 'App.tsx'
+      }
+    ] as CodeExample[],
+
     'test-setup': [
       {
         language: 'JavaScript',
