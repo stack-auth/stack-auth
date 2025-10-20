@@ -175,7 +175,7 @@ async function loadLoginMethods(tenancy: Tenancy): Promise<{ method: string, cou
 
 async function loadRecentlyActiveUsers(tenancy: Tenancy, includeAnonymous: boolean = false): Promise<UsersCrud["Admin"]["Read"][]> {
   const events = await globalPrismaClient.$queryRaw<{ userId: string, lastActiveAt: Date }[]>`
-    WITH filtered_events AS (
+    WITH ordered_events AS (
       SELECT
         "data"->>'userId' AS "userId",
         "eventStartedAt" AS "lastActiveAt"
@@ -185,12 +185,14 @@ async function loadRecentlyActiveUsers(tenancy: Tenancy, includeAnonymous: boole
         AND (${includeAnonymous} OR COALESCE("data"->>'isAnonymous', 'false') != 'true')
         AND '$user-activity' = ANY("systemEventTypeIds"::text[])
         AND "data"->>'userId' IS NOT NULL
+      ORDER BY "eventStartedAt" DESC
+      LIMIT 4000
     ),
     latest_events AS (
       SELECT DISTINCT ON ("userId")
         "userId",
         "lastActiveAt"
-      FROM filtered_events
+      FROM ordered_events
       ORDER BY "userId", "lastActiveAt" DESC
     )
     SELECT "userId", "lastActiveAt"
@@ -292,13 +294,7 @@ export const GET = createSmartRouteHandler({
           KnownErrors.UserNotFound,
         ],
       }).then(res => res.items),
-      withMetricsCache(
-        req.auth.tenancy,
-        "recently_active_users",
-        prisma,
-        includeAnonymous,
-        () => loadRecentlyActiveUsers(req.auth.tenancy, includeAnonymous)
-      ),
+      loadRecentlyActiveUsers(req.auth.tenancy, includeAnonymous),
       loadLoginMethods(req.auth.tenancy),
     ] as const);
 
