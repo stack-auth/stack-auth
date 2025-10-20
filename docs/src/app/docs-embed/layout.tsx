@@ -16,7 +16,6 @@ export default function DocsEmbedLayout({ children }: { children: ReactNode }) {
         <DocsHeaderWrapper
           showSearch={false}
           pageTree={source.pageTree}
-          hideMobileAccountSection={true}
         />
 
         {/* Docs Layout Content - with full sidebar */}
