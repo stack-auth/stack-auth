@@ -17,14 +17,6 @@ type DocContent = {
 
 type DocType = 'dashboard' | 'docs' | 'api';
 
-// Platform options
-const PLATFORM_OPTIONS = [
-  { value: 'next', label: 'Next.js', color: 'rgb(59, 130, 246)' },
-  { value: 'react', label: 'React', color: 'rgb(16, 185, 129)' },
-  { value: 'js', label: 'JavaScript', color: 'rgb(245, 158, 11)' },
-  { value: 'python', label: 'Python', color: 'rgb(168, 85, 247)' },
-];
-
 // Get the docs base URL from environment variable with fallback
 const getDocsBaseUrl = (): string => {
   // Use centralized environment variable system
@@ -96,23 +88,23 @@ const getDashboardPage = (path: string): string => {
 };
 
 // Get documentation URL and title for the current page and doc type
-const getDocContentForPath = (path: string, docType: DocType, platform: string = 'next'): DocContent => {
+const getDocContentForPath = (path: string, docType: DocType): DocContent => {
   switch (docType) {
     case 'dashboard': {
       const page = getDashboardPage(path);
 
-      // Map dashboard pages to existing docs pages
+      // Map dashboard pages to existing docs pages (no platform subdirectories)
       const dashboardToDocsMap: Record<string, { path: string, title: string }> = {
-        'overview': { path: `${platform}/overview`, title: 'Stack Auth Overview' },
-        'users': { path: `${platform}/getting-started/users`, title: 'User Management' },
-        'auth-methods': { path: `${platform}/concepts/auth-providers`, title: 'Authentication Providers' },
-        'orgs-and-teams': { path: `${platform}/concepts/orgs-and-teams`, title: 'Teams & Organizations' },
-        'team-permissions': { path: `${platform}/concepts/permissions#team-permissions`, title: 'Team Permissions' },
-        'emails': { path: `${platform}/concepts/emails`, title: 'Emails' },
-        'domains': { path: `${platform}/getting-started/production#domains`, title: 'Domains' },
-        'webhooks': { path: `${platform}/concepts/webhooks`, title: 'Webhooks' },
-        'stack-auth-keys': { path: `${platform}/getting-started/setup#update-api-keys`, title: 'Stack Auth Keys' },
-        'project-settings': { path: `${platform}/getting-started/production#enabling-production-mode`, title: 'Project Configuration' },
+        'overview': { path: 'overview', title: 'Stack Auth Overview' },
+        'users': { path: 'getting-started/users', title: 'User Management' },
+        'auth-methods': { path: 'concepts/auth-providers', title: 'Authentication Providers' },
+        'orgs-and-teams': { path: 'concepts/orgs-and-teams', title: 'Teams & Organizations' },
+        'team-permissions': { path: 'concepts/permissions#team-permissions', title: 'Team Permissions' },
+        'emails': { path: 'concepts/emails', title: 'Emails' },
+        'domains': { path: 'getting-started/production#domains', title: 'Domains' },
+        'webhooks': { path: 'concepts/webhooks', title: 'Webhooks' },
+        'stack-auth-keys': { path: 'getting-started/setup#update-api-keys', title: 'Stack Auth Keys' },
+        'project-settings': { path: 'getting-started/production#enabling-production-mode', title: 'Project Configuration' },
       };
 
       const docMapping = dashboardToDocsMap[page];
@@ -122,7 +114,7 @@ const getDocContentForPath = (path: string, docType: DocType, platform: string =
     }
     case 'docs': {
       // Default to getting started for main docs
-      const url = `${getDocsBaseUrl()}/docs-embed/${platform}/getting-started/setup`;
+      const url = `${getDocsBaseUrl()}/docs-embed/getting-started/setup`;
       const title = 'Stack Auth Documentation';
       return { title, url, type: 'docs' };
     }
@@ -141,7 +133,6 @@ const getDocContentForPath = (path: string, docType: DocType, platform: string =
 export function UnifiedDocsWidget({ isActive }: UnifiedDocsWidgetProps) {
   const pathname = usePathname();
   const [selectedDocType, setSelectedDocType] = useState<DocType>('dashboard');
-  const [selectedPlatform, setSelectedPlatform] = useState<string>('next');
   const [docContent, setDocContent] = useState<DocContent | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -151,16 +142,14 @@ export function UnifiedDocsWidget({ isActive }: UnifiedDocsWidgetProps) {
   const [canGoBack, setCanGoBack] = useState(false);
   const [iframeRef, setIframeRef] = useState<HTMLIFrameElement | null>(null);
   const [isSidebarVisible, setIsSidebarVisible] = useState(false);
-  const [platformChangeSource, setPlatformChangeSource] = useState<'manual' | 'iframe'>('manual');
 
-  // Load documentation when the component becomes active, doc type changes, platform changes, or pathname changes
+  // Load documentation when the component becomes active, doc type changes, or pathname changes
   useEffect(() => {
     if (isActive) {
       const newPageDoc = getDashboardPage(pathname);
 
-      // If this is the first time opening, doc type changed, or platform changed manually (not from iframe)
-      if (!docContent || docContent.type !== selectedDocType ||
-          (selectedDocType !== 'api' && !docContent.url.includes(`/${selectedPlatform}/`) && platformChangeSource === 'manual')) {
+      // If this is the first time opening or doc type changed
+      if (!docContent || docContent.type !== selectedDocType) {
         setLoading(true);
         setError(null);
         setIframeLoaded(false);
@@ -171,11 +160,10 @@ export function UnifiedDocsWidget({ isActive }: UnifiedDocsWidgetProps) {
           console.log('Debug mapping:', {
             pathname,
             normalizedPath: pathname.replace(/^\/projects\/[^/]+/, ''),
-            detectedPage: page,
-            platform: selectedPlatform
+            detectedPage: page
           });
-          const content = getDocContentForPath(pathname, selectedDocType, selectedPlatform);
-          console.log('Loading docs:', { page, platform: selectedPlatform, url: content.url });
+          const content = getDocContentForPath(pathname, selectedDocType);
+          console.log('Loading docs:', { page, url: content.url });
           setDocContent(content);
         } catch (err) {
           console.error('Failed to load documentation:', err);
@@ -188,9 +176,9 @@ export function UnifiedDocsWidget({ isActive }: UnifiedDocsWidgetProps) {
         setShowSwitchPrompt(true);
       }
     }
-  }, [isActive, pathname, selectedDocType, selectedPlatform, docContent, currentPageDoc, platformChangeSource]);
+  }, [isActive, pathname, selectedDocType, docContent, currentPageDoc]);
 
-  // Monitor iframe for back button capability and platform detection
+  // Monitor iframe for back button capability
   useEffect(() => {
     // Simple heuristic: assume we can go back after the iframe has been loaded for a while
     // and user has had time to navigate
@@ -202,48 +190,6 @@ export function UnifiedDocsWidget({ isActive }: UnifiedDocsWidgetProps) {
       return () => clearTimeout(timer);
     }
   }, [iframeLoaded]);
-
-  // Listen for platform changes from embedded docs via postMessage
-  useEffect(() => {
-    const handleMessage = (event: MessageEvent) => {
-      // Verify origin for security - allow localhost in dev and configured docs URL
-      const isLocalhost = event.origin.includes('localhost') || event.origin.includes('127.0.0.1');
-      const expectedDocsOrigin = new URL(getDocsBaseUrl()).origin;
-      const isValidDocsOrigin = event.origin === expectedDocsOrigin;
-      
-      if (!isLocalhost && !isValidDocsOrigin) return;
-
-      if (event.data?.type === 'PLATFORM_CHANGE') {
-        const detectedPlatform = event.data.platform;
-        const validPlatforms = PLATFORM_OPTIONS.map(p => p.value);
-        
-        if (validPlatforms.includes(detectedPlatform) && detectedPlatform !== selectedPlatform) {
-          console.log('Received platform change from iframe:', detectedPlatform);
-          
-          // Mark this as an iframe-driven platform change
-          setPlatformChangeSource('iframe');
-          
-          // Update the platform selector but also update the docContent URL to reflect the current iframe URL
-          setSelectedPlatform(detectedPlatform);
-          
-          // Update docContent to reflect the new URL without reloading the iframe
-          if (docContent && event.data.pathname) {
-            const newUrl = `${getDocsBaseUrl()}${event.data.pathname}`;
-            setDocContent({
-              ...docContent,
-              url: newUrl
-            });
-          }
-          
-          // Reset the platform change source after a short delay
-          setTimeout(() => setPlatformChangeSource('manual'), 100);
-        }
-      }
-    };
-
-    window.addEventListener('message', handleMessage);
-    return () => window.removeEventListener('message', handleMessage);
-  }, [selectedPlatform, docContent]);
 
   // Handle iframe load events
   const handleIframeLoad = (event: React.SyntheticEvent<HTMLIFrameElement>) => {
@@ -269,12 +215,12 @@ export function UnifiedDocsWidget({ isActive }: UnifiedDocsWidgetProps) {
     setShowSwitchPrompt(false);
 
     try {
-      const content = getDocContentForPath(pathname, selectedDocType, selectedPlatform);
-          setDocContent(content);
+      const content = getDocContentForPath(pathname, selectedDocType);
+      setDocContent(content);
     } catch (err) {
-          console.error('Failed to load documentation:', err);
-          setError(err instanceof Error ? err.message : 'Failed to load documentation');
-          setLoading(false);
+      console.error('Failed to load documentation:', err);
+      setError(err instanceof Error ? err.message : 'Failed to load documentation');
+      setLoading(false);
     }
   };
 
@@ -289,15 +235,6 @@ export function UnifiedDocsWidget({ isActive }: UnifiedDocsWidgetProps) {
       setSelectedDocType(docType);
       setShowSwitchPrompt(false);
       setIsSidebarVisible(false); // Hide sidebar when switching doc types
-    }
-  };
-
-  // Handle platform selection
-  const handlePlatformChange = (platform: string) => {
-    if (platform !== selectedPlatform) {
-      setPlatformChangeSource('manual');
-      setSelectedPlatform(platform);
-      // Sidebar will automatically update to show new platform content
     }
   };
 
@@ -361,7 +298,7 @@ export function UnifiedDocsWidget({ isActive }: UnifiedDocsWidgetProps) {
               setError(null);
               setIframeLoaded(false);
               try {
-                const content = getDocContentForPath(pathname, selectedDocType, selectedPlatform);
+                const content = getDocContentForPath(pathname, selectedDocType);
                 setDocContent(content);
               } catch (err) {
                 console.error('Retry failed:', err);
@@ -432,29 +369,6 @@ export function UnifiedDocsWidget({ isActive }: UnifiedDocsWidgetProps) {
                 <ExternalLink className="h-3 w-3" />
               </a>
             </div>
-
-            {/* Platform selector row - only show for docs and dashboard types */}
-            {(selectedDocType === 'docs' || selectedDocType === 'dashboard') && (
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-muted-foreground">Platform:</span>
-                <div className="flex gap-1">
-                  {PLATFORM_OPTIONS.map((platform) => (
-                    <button
-                      key={platform.value}
-                      onClick={() => handlePlatformChange(platform.value)}
-                      className={`px-2 py-1 text-xs rounded transition-colors ${
-                        selectedPlatform === platform.value
-                          ? 'bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 font-medium'
-                          : 'text-muted-foreground hover:text-foreground hover:bg-muted'
-                      }`}
-                      title={`Switch to ${platform.label} documentation`}
-                    >
-                      {platform.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
           </div>
 
           {/* Iframe */}
