@@ -1,3 +1,4 @@
+import { EmbeddedDocsMessageBridge } from '@/components/embedded-docs-message-bridge';
 import { DocsHeaderWrapper } from '@/components/layouts/docs-header-wrapper';
 import { DynamicDocsLayout } from '@/components/layouts/docs-layout-router';
 import { DocsLayoutWrapper } from '@/components/layouts/docs-layout-wrapper';
@@ -10,6 +11,7 @@ export default function DocsEmbedLayout({ children }: { children: ReactNode }) {
   return (
     <SidebarProvider>
       <DocsLayoutWrapper>
+        <EmbeddedDocsMessageBridge />
         {/* Docs Header Wrapper - provides navigation and platform selector */}
         <DocsHeaderWrapper
           showSearch={false}

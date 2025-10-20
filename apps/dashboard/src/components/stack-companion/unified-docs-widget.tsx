@@ -1,6 +1,6 @@
 'use client';
 
-import { ArrowLeft, BookOpen, ExternalLink, Loader2, Menu } from 'lucide-react';
+import { ArrowLeft, BookOpen, ExternalLink, Loader2 } from 'lucide-react';
 import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { getPublicEnvVar } from '../../lib/env';
@@ -32,20 +32,6 @@ const getDocsBaseUrl = (): string => {
   
   // Production fallback
   return 'https://docs.stack-auth.com';
-};
-
-// Function to toggle sidebar in embedded docs via postMessage
-const toggleEmbeddedSidebar = (iframe: HTMLIFrameElement, visible: boolean) => {
-  try {
-    const src = iframe.getAttribute("src") ?? "";
-    const targetOrigin = new URL(src, window.location.origin).origin;
-    iframe.contentWindow?.postMessage(
-      { type: "TOGGLE_SIDEBAR", visible },
-      targetOrigin
-    )
-  } catch (error) {
-    console.warn('Failed to communicate with embedded docs:', error);
-  }
 };
 
 // Route patterns for matching dashboard pages
@@ -136,12 +122,10 @@ export function UnifiedDocsWidget({ isActive }: UnifiedDocsWidgetProps) {
   const [docContent, setDocContent] = useState<DocContent | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [iframeLoaded, setIframeLoaded] = useState(false);
   const [showSwitchPrompt, setShowSwitchPrompt] = useState(false);
   const [currentPageDoc, setCurrentPageDoc] = useState<string>('');
   const [canGoBack, setCanGoBack] = useState(false);
   const [iframeRef, setIframeRef] = useState<HTMLIFrameElement | null>(null);
-  const [isSidebarVisible, setIsSidebarVisible] = useState(false);
 
   // Load documentation when the component becomes active, doc type changes, or pathname changes
   useEffect(() => {
@@ -152,8 +136,8 @@ export function UnifiedDocsWidget({ isActive }: UnifiedDocsWidgetProps) {
       if (!docContent || docContent.type !== selectedDocType) {
         setLoading(true);
         setError(null);
-        setIframeLoaded(false);
         setCurrentPageDoc(newPageDoc);
+        setCanGoBack(false);
 
         try {
           const page = getDashboardPage(pathname);
@@ -178,22 +162,33 @@ export function UnifiedDocsWidget({ isActive }: UnifiedDocsWidgetProps) {
     }
   }, [isActive, pathname, selectedDocType, docContent, currentPageDoc]);
 
-  // Monitor iframe for back button capability
+  // Listen for navigation state updates from the embedded docs iframe
   useEffect(() => {
-    // Simple heuristic: assume we can go back after the iframe has been loaded for a while
-    // and user has had time to navigate
-    if (iframeLoaded) {
-      const timer = setTimeout(() => {
-        setCanGoBack(true);
-      }, 2000); // Show back button after 2 seconds of iframe being loaded
+    if (typeof window === 'undefined') return;
 
-      return () => clearTimeout(timer);
+    let expectedOrigin: string | null = null;
+    try {
+      expectedOrigin = new URL(getDocsBaseUrl()).origin;
+    } catch (error) {
+      console.debug('Unable to resolve docs origin', error);
     }
-  }, [iframeLoaded]);
+
+    const handleMessage = (event: MessageEvent) => {
+      if (expectedOrigin && event.origin !== expectedOrigin) return;
+      if (!event.data || typeof event.data !== 'object') return;
+
+      const data = event.data as { type?: unknown, canGoBack?: unknown };
+      if (data.type === 'DOCS_HISTORY_STATE' && typeof data.canGoBack === 'boolean') {
+        setCanGoBack(data.canGoBack);
+      }
+    };
+
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, []);
 
   // Handle iframe load events
   const handleIframeLoad = (event: React.SyntheticEvent<HTMLIFrameElement>) => {
-    setIframeLoaded(true);
     setLoading(false);
     setError(null);
     setIframeRef(event.currentTarget);
@@ -202,7 +197,7 @@ export function UnifiedDocsWidget({ isActive }: UnifiedDocsWidgetProps) {
   const handleIframeError = () => {
     setError('Failed to load documentation');
     setLoading(false);
-    setIframeLoaded(false);
+    setCanGoBack(false);
   };
 
   // Handle switching to current page's documentation
@@ -210,9 +205,9 @@ export function UnifiedDocsWidget({ isActive }: UnifiedDocsWidgetProps) {
     const newPageDoc = getDashboardPage(pathname);
     setLoading(true);
     setError(null);
-    setIframeLoaded(false);
     setCurrentPageDoc(newPageDoc);
     setShowSwitchPrompt(false);
+    setCanGoBack(false);
 
     try {
       const content = getDocContentForPath(pathname, selectedDocType);
@@ -229,29 +224,24 @@ export function UnifiedDocsWidget({ isActive }: UnifiedDocsWidgetProps) {
     setShowSwitchPrompt(false);
   };
 
-  // Handle doc type selection
-  const handleDocTypeChange = (docType: DocType) => {
-    if (docType !== selectedDocType) {
-      setSelectedDocType(docType);
-      setShowSwitchPrompt(false);
-      setIsSidebarVisible(false); // Hide sidebar when switching doc types
-    }
-  };
-
   // Handle back button click
   const handleGoBack = () => {
+    if (!iframeRef?.contentWindow) {
+      setCanGoBack(false);
+      return;
+    }
+
+    setCanGoBack(false);
+
     try {
-      if (iframeRef?.contentWindow) {
-        // Try to go back in iframe history
-        iframeRef.contentWindow.history.back();
-      }
+      const src = iframeRef.getAttribute('src') ?? docContent?.url ?? getDocsBaseUrl();
+      const targetOrigin = new URL(src, window.location.href).origin;
+      iframeRef.contentWindow.postMessage(
+        { type: 'NAVIGATE_BACK' },
+        targetOrigin
+      );
     } catch (error) {
-      // If we can't access iframe history, try to reload the previous page
-      // This is a fallback that at least resets the iframe
-      console.warn('Cannot access iframe history, reloading current page');
-      if (iframeRef) {
-        iframeRef.src = iframeRef.src;
-      }
+      console.warn('Failed to request docs back navigation', error);
     }
   };
 
@@ -296,7 +286,7 @@ export function UnifiedDocsWidget({ isActive }: UnifiedDocsWidgetProps) {
             onClick={() => {
               setLoading(true);
               setError(null);
-              setIframeLoaded(false);
+              setCanGoBack(false);
               try {
                 const content = getDocContentForPath(pathname, selectedDocType);
                 setDocContent(content);
@@ -328,34 +318,18 @@ export function UnifiedDocsWidget({ isActive }: UnifiedDocsWidgetProps) {
 
           {/* Header with controls */}
           <div className="pb-2 mb-3 border-b space-y-2">
-            {/* Top row: drawer toggle, back button, title, external link */}
+            {/* Top row: back button, title, external link */}
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                {/* Sidebar toggle - only show for docs and dashboard types */}
-                {(selectedDocType === 'docs' || selectedDocType === 'dashboard') && (
-                  <button
-                    onClick={() => {
-                      const newVisibility = !isSidebarVisible;
-                      setIsSidebarVisible(newVisibility);
-                      if (iframeRef) {
-                        toggleEmbeddedSidebar(iframeRef, newVisibility);
-                      }
-                    }}
-                    className="flex items-center justify-center w-6 h-6 rounded hover:bg-muted transition-colors"
-                    title="Toggle navigation sidebar"
-                  >
-                    <Menu className="h-3 w-3 text-muted-foreground hover:text-foreground" />
-                  </button>
-                )}
-                {canGoBack && (
-                  <button
-                    onClick={handleGoBack}
-                    className="flex items-center justify-center w-6 h-6 rounded hover:bg-muted transition-colors"
-                    title="Go back to previous page"
-                  >
-                    <ArrowLeft className="h-3 w-3 text-muted-foreground hover:text-foreground" />
-                  </button>
-                )}
+                <button
+                  onClick={handleGoBack}
+                  className="flex items-center gap-1 px-2 py-1 text-xs font-medium rounded hover:bg-muted transition-colors text-muted-foreground hover:text-foreground disabled:opacity-50 disabled:cursor-not-allowed"
+                  title="Go back to previous page"
+                  disabled={!canGoBack}
+                >
+                  <ArrowLeft className="h-3 w-3" />
+                  <span>Back</span>
+                </button>
                 <BookOpen className="h-3 w-3 text-muted-foreground" />
                 <h4 className="text-xs font-medium text-muted-foreground">{docContent.title}</h4>
               </div>
