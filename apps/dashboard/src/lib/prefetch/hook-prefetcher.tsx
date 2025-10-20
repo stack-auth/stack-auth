@@ -25,7 +25,9 @@ export function HookPrefetcher(props: {
         if (options.cache.isDirty(options.dependencies)) {
           if (isPrefetching) {
             // all good, continue
-            console.log(`Prefetched ${options.caller}`);
+            if (process.env.NODE_ENV === "development") {
+              console.info(`Prefetching ${options.caller}...`);
+            }
           } else {
             console.warn(deindent`
               Fetched ${options.caller} on ${window.location.pathname} without prefetching! Could you maybe add a HookPrefetcher to make this transition faster?
