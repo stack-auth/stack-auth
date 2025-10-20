@@ -414,12 +414,12 @@ export function SharedHeader({
               {/* Top-level Navigation */}
               <div>
                 {/* User Authentication */}
-              <div>
-                <h2 className="text-lg font-semibold text-fd-foreground mb-4">Account</h2>
-                <DocsAccountMenu />
-                    <br />
-                  </div>
-                
+                <div>
+                  <h2 className="text-lg font-semibold text-fd-foreground mb-4">Account</h2>
+                  <DocsAccountMenu />
+                  <br />
+                </div>
+
                 <h2 className="text-lg font-semibold text-fd-foreground mb-4">Navigation</h2>
                 <div className="space-y-2">
                   {navLinks.map((link, index) => {
@@ -445,7 +445,6 @@ export function SharedHeader({
                 </div>
               </div>
 
-              
 
               {/* Sidebar Content */}
               {sidebarContent && (

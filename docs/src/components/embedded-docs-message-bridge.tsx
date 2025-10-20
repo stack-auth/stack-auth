@@ -1,7 +1,7 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 
 type HistoryStateMessage = {
   type: 'DOCS_HISTORY_STATE',
@@ -9,9 +9,9 @@ type HistoryStateMessage = {
   pathname: string,
 };
 
-type ParentCommandMessage = {
-  type: 'NAVIGATE_BACK',
-};
+type ParentMessage =
+  | { type: 'NAVIGATE_BACK' }
+  | { type: string }; // Allow for future message types
 
 const getAllowedParentOrigins = (): string[] => {
   if (process.env.NODE_ENV === 'development') {
@@ -101,23 +101,24 @@ export function EmbeddedDocsMessageBridge() {
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
-    const handleMessage = (event: MessageEvent<ParentCommandMessage>) => {
+    const handleMessage = (event: MessageEvent) => {
       if (event.source !== window.parent) return;
       if (!allowedOrigins.includes(event.origin)) return;
-      if (!event.data || typeof event.data !== 'object') return;
+      if (!event.data) return;
+      if (typeof event.data !== 'object') return;
 
-      if (event.data.type === 'NAVIGATE_BACK') {
+      const messageData = event.data as ParentMessage;
+      if (messageData.type === 'NAVIGATE_BACK') {
         if (indexRef.current > 0) {
           indexRef.current -= 1;
           const targetPath = historyRef.current[indexRef.current];
           if (targetPath) {
-            router.push(targetPath);
-            notifyParent(indexRef.current > 0);
+          router.push(targetPath);
           } else {
-            notifyParent(false);
+          notifyParent(false);
           }
         } else {
-          notifyParent(false);
+        notifyParent(false);
         }
       }
     };
