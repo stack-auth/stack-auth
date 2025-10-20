@@ -1,6 +1,7 @@
 *.untracked
 *.untracked.*
 node-compile-cache/
+.envrc
 
 
 *.cpuprofile

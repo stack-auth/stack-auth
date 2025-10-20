@@ -19,6 +19,12 @@ if (clientVersion.startsWith("STACK_COMPILE_TIME")) {
   throw new StackAssertionError("Client version was not replaced. Something went wrong during build!");
 }
 
+const replaceStackPortPrefix = <T extends string | undefined>(input: T): T => {
+  if (!input) return input;
+  const prefix = process.env.NEXT_PUBLIC_STACK_PORT_PREFIX;
+  return prefix ? input.replace(/\$\{NEXT_PUBLIC_STACK_PORT_PREFIX:-81\}/g, prefix) as T : input;
+};
+
 
 export const createCache = <D extends any[], T>(fetcher: (dependencies: D) => Promise<T>) => {
   return new AsyncCache<D, Result<T>>(
@@ -134,7 +140,7 @@ export function getBaseUrl(userSpecifiedBaseUrl: string | { browser: string, ser
     url = url || process.env.NEXT_PUBLIC_STACK_API_URL || process.env.STACK_API_URL || process.env.NEXT_PUBLIC_STACK_URL || defaultBaseUrl;
   }
 
-  return url.endsWith('/') ? url.slice(0, -1) : url;
+  return replaceStackPortPrefix(url.endsWith('/') ? url.slice(0, -1) : url);
 }
 export const defaultBaseUrl = "https://api.stack-auth.com";
 

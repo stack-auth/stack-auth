@@ -2,12 +2,28 @@ import * as Sentry from "@sentry/nextjs";
 import { getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
 import { captureError, registerErrorSink } from "@stackframe/stack-shared/dist/utils/errors";
 import * as util from "util";
+import { getPublicEnvVar } from "./lib/env";
+
+function expandStackPortPrefix(value?: string | null) {
+  if (!value) return value ?? undefined;
+  const prefix = getPublicEnvVar("NEXT_PUBLIC_STACK_PORT_PREFIX") ?? "81";
+  return prefix ? value.replace(/\$\{NEXT_PUBLIC_STACK_PORT_PREFIX:-81\}/g, prefix as string) : value;
+}
 
 const sentryErrorSink = (location: string, error: unknown) => {
   Sentry.captureException(error, { extra: { location } });
 };
 
 export function ensurePolyfilled() {
+  for (const [key, value] of Object.entries(process.env)) {
+    if (key.startsWith("STACK_") || key.startsWith("NEXT_PUBLIC_STACK_")) {
+      const replaced = expandStackPortPrefix(value ?? undefined);
+      if (replaced !== undefined) {
+        process.env[key] = replaced;
+      }
+    }
+  }
+
   registerErrorSink(sentryErrorSink);
 
   if ("addEventListener" in globalThis) {
