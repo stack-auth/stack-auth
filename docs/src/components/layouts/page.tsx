@@ -4,22 +4,22 @@ import type { TableOfContents } from 'fumadocs-core/server';
 import { AnchorProvider, type AnchorProviderProps } from 'fumadocs-core/toc';
 import { I18nLabel } from 'fumadocs-ui/contexts/i18n';
 import { Edit, Text } from 'lucide-react';
-import { type ComponentProps, forwardRef, lazy, type ReactNode, useEffect } from 'react';
+import { forwardRef, lazy, useEffect, type ComponentProps, type ReactNode } from 'react';
 import { cn } from '../../lib/cn';
 import {
-  Toc,
   TOCItems,
-  type TOCProps,
   TOCScrollArea,
+  Toc,
+  type TOCProps,
 } from '../layout/toc';
 import {
   Breadcrumb,
-  type BreadcrumbProps,
   Footer,
-  type FooterProps,
   LastUpdate,
   PageArticle,
-  PageBody
+  PageBody,
+  type BreadcrumbProps,
+  type FooterProps
 } from '../page-client';
 import { BackToTop } from '../ui/back-to-top';
 import { buttonVariants } from '../ui/button';
@@ -156,7 +156,7 @@ export function DocsPage({
           className={cn('relative', props.article?.className)}
         >
           {slot(props.breadcrumb, <Breadcrumb {...props.breadcrumb} />)}
-          <div className="mb-12">
+          <div className="mt-6 mb-12">
             {props.children}
           </div>
           <div role="none" className="flex-1" />

@@ -388,7 +388,7 @@ import.meta.vitest?.test("mergeScopeStrings", ({ expect }) => {
 });
 
 export function escapeTemplateLiteral(s: string): string {
-  return s.replaceAll("`", "\\`").replaceAll("\\", "\\\\").replaceAll("$", "\\$");
+  return s.replaceAll("\\", "\\\\").replaceAll("`", "\\`").replaceAll("${", "\\${");
 }
 import.meta.vitest?.test("escapeTemplateLiteral", ({ expect }) => {
   // Test with empty string
@@ -401,37 +401,36 @@ import.meta.vitest?.test("escapeTemplateLiteral", ({ expect }) => {
   const input1 = "hello `world`";
   const output1 = escapeTemplateLiteral(input1);
   // Verify backticks are escaped
-  expect(output1.includes("\\`")).toBe(true);
-  expect(output1).not.toBe(input1);
+  expect(output1).toBe("hello \\`world\\`");
 
   // Test with backslash
   const input2 = "hello \\world";
   const output2 = escapeTemplateLiteral(input2);
   // Verify backslashes are escaped
-  expect(output2.includes("\\\\")).toBe(true);
-  expect(output2).not.toBe(input2);
+  expect(output2).toBe("hello \\\\world");
 
   // Test with dollar sign
   const input3 = "hello $world";
   const output3 = escapeTemplateLiteral(input3);
   // Verify dollar signs are escaped
-  expect(output3.includes("\\$")).toBe(true);
-  expect(output3).not.toBe(input3);
+  expect(output3).toBe("hello $world");
+
+  // Test with dollar sign in interpolation
+  const input4 = "hello ${$world";
+  const output4 = escapeTemplateLiteral(input4);
+  // Verify dollar signs are escaped
+  expect(output4).toBe("hello \\${$world");
 
   // Test with multiple special characters
-  const input4 = "`hello` $world\\";
-  const output4 = escapeTemplateLiteral(input4);
+  const input5 = "`hello` ${world\\";
+  const output5 = escapeTemplateLiteral(input5);
   // Verify all special characters are escaped
-  expect(output4.includes("\\`")).toBe(true);
-  expect(output4.includes("\\$")).toBe(true);
-  expect(output4.includes("\\\\")).toBe(true);
-  expect(output4).not.toBe(input4);
+  expect(output5).toBe("\\`hello\\` \\${world\\\\");
 
   // Test with already escaped characters
-  const input5 = "\\`hello\\`";
-  const output5 = escapeTemplateLiteral(input5);
-  // Verify already escaped characters are properly escaped
-  expect(output5).not.toBe(input5);
+  const input6 = "\\`hello\\`";
+  const output6 = escapeTemplateLiteral(input6);
+  expect(output6).toBe("\\\\\\`hello\\\\\\`");
 });
 
 /**
