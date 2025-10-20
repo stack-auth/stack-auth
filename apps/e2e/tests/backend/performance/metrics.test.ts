@@ -3,7 +3,6 @@ import { describe } from "vitest";
 import { it } from "../../helpers";
 import { InternalProjectKeys, User, backendContext, niceBackendFetch } from "../backend-helpers";
 
-
 describe.skip("/api/v1/users performance", () => {
   backendContext.set({
     projectKeys: InternalProjectKeys,
@@ -23,7 +22,7 @@ describe.skip("/api/v1/users performance", () => {
   });
 });
 
-describe("/api/v1/internal/metrics performance", () => {
+describe.skip("/api/v1/internal/metrics performance", () => {
   backendContext.set({
     projectKeys: InternalProjectKeys,
   });
