@@ -17,22 +17,58 @@ type DocContent = {
 
 type DocType = 'dashboard' | 'docs' | 'api';
 
+const PROD_DOCS_ORIGIN = 'https://docs.stack-auth.com';
+const LOCAL_DOCS_ORIGIN = 'http://localhost:8104';
+
+const isLocalHostname = (hostname: string): boolean => {
+  return hostname === 'localhost' || hostname === '127.0.0.1';
+};
+
+const isAllowedDocsUrl = (url: URL): boolean => {
+  if (isLocalHostname(url.hostname)) {
+    // Permit localhost/127.0.0.1 for local development regardless of port
+    return url.protocol === 'http:' || url.protocol === 'https:';
+  }
+
+  if (url.protocol !== 'https:') return false;
+  const hostname = url.hostname.toLowerCase();
+  if (hostname === 'docs.stack-auth.com') return true;
+  return hostname.endsWith('.stack-auth.com');
+};
+
+const isLocalEnvironment = (): boolean => {
+  if (typeof window !== 'undefined') {
+    return isLocalHostname(window.location.hostname);
+  }
+
+  return process.env.NODE_ENV === 'development';
+};
+
 // Get the docs base URL from environment variable with fallback
 const getDocsBaseUrl = (): string => {
+  const fallbackOrigin = isLocalEnvironment() ? LOCAL_DOCS_ORIGIN : PROD_DOCS_ORIGIN;
+
   // Use centralized environment variable system
   const docsBaseUrl = getPublicEnvVar('NEXT_PUBLIC_STACK_DOCS_BASE_URL');
   if (docsBaseUrl) {
-    return docsBaseUrl;
+    try {
+      const parsedUrl = new URL(docsBaseUrl);
+
+      if (isAllowedDocsUrl(parsedUrl)) {
+        return parsedUrl.origin;
+      }
+
+      console.warn(
+        '[UnifiedDocsWidget] Ignoring untrusted docs base URL from env:',
+        parsedUrl.origin
+      );
+    } catch (error) {
+      console.warn('[UnifiedDocsWidget] Invalid docs base URL provided via env:', error);
+    }
   }
 
   // Fallback logic for when env var is not set
-  if (process.env.NODE_ENV === 'development' || (typeof window !== 'undefined' &&
-    window.location.hostname === 'localhost')) {
-    return 'http://localhost:8104';
-  }
-
-  // Production fallback
-  return 'https://docs.stack-auth.com';
+  return fallbackOrigin;
 };
 
 // Route patterns for matching dashboard pages
