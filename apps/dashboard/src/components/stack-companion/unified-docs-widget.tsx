@@ -112,26 +112,28 @@ const getDashboardPage = (path: string): string => {
 };
 
 // Get documentation URL and title for the current page and doc type
+const DASHBOARD_TO_DOCS_MAP = new Map<string, { path: string, title: string }>([
+  ['overview', { path: 'overview', title: 'Stack Auth Overview' }],
+  ['users', { path: 'getting-started/users', title: 'User Management' }],
+  ['auth-methods', { path: 'concepts/auth-providers', title: 'Authentication Providers' }],
+  ['orgs-and-teams', { path: 'concepts/orgs-and-teams', title: 'Teams & Organizations' }],
+  ['team-permissions', { path: 'concepts/permissions#team-permissions', title: 'Team Permissions' }],
+  ['emails', { path: 'concepts/emails', title: 'Emails' }],
+  ['domains', { path: 'getting-started/production#domains', title: 'Domains' }],
+  ['webhooks', { path: 'concepts/webhooks', title: 'Webhooks' }],
+  ['stack-auth-keys', { path: 'getting-started/setup#update-api-keys', title: 'Stack Auth Keys' }],
+  ['project-settings', { path: 'getting-started/production#enabling-production-mode', title: 'Project Configuration' }],
+]);
+
 const getDocContentForPath = (path: string, docType: DocType): DocContent => {
   switch (docType) {
     case 'dashboard': {
       const page = getDashboardPage(path);
 
-      // Map dashboard pages to existing docs pages (no platform subdirectories)
-      const dashboardToDocsMap: Record<string, { path: string, title: string }> = {
-        'overview': { path: 'overview', title: 'Stack Auth Overview' },
-        'users': { path: 'getting-started/users', title: 'User Management' },
-        'auth-methods': { path: 'concepts/auth-providers', title: 'Authentication Providers' },
-        'orgs-and-teams': { path: 'concepts/orgs-and-teams', title: 'Teams & Organizations' },
-        'team-permissions': { path: 'concepts/permissions#team-permissions', title: 'Team Permissions' },
-        'emails': { path: 'concepts/emails', title: 'Emails' },
-        'domains': { path: 'getting-started/production#domains', title: 'Domains' },
-        'webhooks': { path: 'concepts/webhooks', title: 'Webhooks' },
-        'stack-auth-keys': { path: 'getting-started/setup#update-api-keys', title: 'Stack Auth Keys' },
-        'project-settings': { path: 'getting-started/production#enabling-production-mode', title: 'Project Configuration' },
-      };
-
-      const docMapping = dashboardToDocsMap[page];
+      const docMapping = DASHBOARD_TO_DOCS_MAP.get(page);
+      if (!docMapping) {
+        throw new Error(`No documentation mapping found for dashboard page: ${page}`);
+      }
       const url = `${getDocsBaseUrl()}/docs-embed/${docMapping.path}`;
       const title = docMapping.title;
       return { title, url, type: 'dashboard' };
