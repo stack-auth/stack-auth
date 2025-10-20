@@ -79,12 +79,11 @@ export async function middleware(request: NextRequest) {
   } : undefined;
 
   // ensure our clients can handle 429 responses
-  if (isApiRequest && getNodeEnvironment() === 'development' && request.method !== 'OPTIONS') {
+  if (isApiRequest && !request.headers.get('x-stack-disable-artificial-development-delay') && getNodeEnvironment() === 'development' && request.method !== 'OPTIONS' && !request.url.includes(".well-known")) {
     const now = Date.now();
     while (devRateLimitTimestamps.length > 0 && now - devRateLimitTimestamps[0] > DEV_RATE_LIMIT_WINDOW_MS) {
       devRateLimitTimestamps.shift();
     }
-    console.log('devRateLimitTimestamps', devRateLimitTimestamps.length);
     if (devRateLimitTimestamps.length >= DEV_RATE_LIMIT_MAX_REQUESTS) {
       const waitMs = Math.max(0, DEV_RATE_LIMIT_WINDOW_MS - (now - devRateLimitTimestamps[0]));
       const retryAfterSeconds = Math.max(1, Math.ceil(waitMs / 1000));

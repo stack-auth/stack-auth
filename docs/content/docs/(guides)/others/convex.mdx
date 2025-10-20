@@ -1,0 +1,81 @@
+---
+title: Convex
+description: Integrate Stack Auth with Convex
+---
+
+This guide shows how to integrate Stack Auth with Convex.
+
+### 1) Create a Convex + Next.js app
+
+First, initialize a new Convex + Next.js app:
+
+```bash title="Terminal"
+npm create convex@latest # make sure to choose "Next.js" and "No auth" when asked — we will add auth later
+```
+
+Then, run `npx convex dev` to start the Convex backend, and `npm run dev` to start the development server.
+
+### 2) Install Stack Auth
+
+Next, install Stack Auth using the setup wizard:
+
+```bash
+cd my-app/  # replace with your app name
+npx @stackframe/init-stack@latest
+```
+
+### 3) Create a Stack Auth project
+
+[Create a new Stack Auth project](https://app.stack-auth.com). Get the project ID & API key environment variables from the dashboard.
+
+- Set the `.env.local` file to the environment variables.
+- In Convex, go to the dashboard of your project's deployment, and also set the environment variables there.
+
+### 4) Update code
+
+Next, update or create a file in `convex/auth.config.ts`:
+
+```ts
+import { getConvexProvidersConfig } from "@stackframe/js";  // Vanilla JS
+// or: import { getConvexProvidersConfig } from "@stackframe/react";  // React
+// or: import { getConvexProvidersConfig } from "@stackframe/stack";  // Next.js
+
+export default {
+  providers: getConvexProvidersConfig({
+    projectId: process.env.STACK_PROJECT_ID,  // or: process.env.NEXT_PUBLIC_STACK_PROJECT_ID
+  }),
+}
+```
+
+Then, update your Convex client to use Stack Auth:
+
+```ts
+convexClient.setAuth(stackClientApp.getConvexClientAuth({}));  // browser JS
+convexReactClient.setAuth(stackClientApp.getConvexClientAuth({}));  // React
+convexHttpClient.setAuth(stackClientApp.getConvexHttpClientAuth({ tokenStore: requestObject }));  // HTTP, see Stack Auth docs for more information on tokenStore
+```
+
+### 5) Done!
+
+Done! Now, you'll be able to access Stack Auth's functionality from your frontend & backend:
+
+```ts
+// MyPage.tsx
+export function MyPage() {
+  // see https://docs.stack-auth.com for more information on how to use Stack Auth
+  const user = useUser();
+  return <div>Your email is {user.email}</div>;
+}
+
+// myFunctions.ts
+export const myQuery = query({
+  handler: async (ctx, args) => {
+    // In queries & mutations, use the special `getPartialUser` function to get user info
+    const obj = await stackServerApp.getPartialUser({ from: "convex", ctx });
+    return JSON.stringify(obj);
+  },
+});
+```
+
+You can find the full example [here on GitHub](https://github.com/stack-auth/convex-next-template).
+
