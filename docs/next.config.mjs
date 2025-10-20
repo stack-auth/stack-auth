@@ -1,6 +1,7 @@
 import { createMDX } from 'fumadocs-mdx/next';
 
 const withMDX = createMDX();
+const dashboardUrl = process.env.NEXT_PUBLIC_STACK_DASHBOARD_URL || 'http://localhost:8101';
 
 /** @type {import('next').NextConfig} */
 const config = {
@@ -17,7 +18,7 @@ const config = {
         headers: [
           {
             key: 'Access-Control-Allow-Origin',
-            value: 'http://localhost:8101', // Dashboard app origin
+            value: dashboardUrl, // Dashboard app origin
           },
           {
             key: 'Access-Control-Allow-Methods',
@@ -35,7 +36,7 @@ const config = {
         headers: [
           {
             key: 'Access-Control-Allow-Origin',
-            value: 'http://localhost:8101', // Dashboard app origin
+            value: dashboardUrl, // Dashboard app origin
           },
           {
             key: 'Access-Control-Allow-Methods',
