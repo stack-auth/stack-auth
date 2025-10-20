@@ -208,7 +208,7 @@ async function loadRecentlyActiveUsers(tenancy: Tenancy, includeAnonymous: boole
     const user = dbUsers.find((user) => user.projectUserId === event.userId);
     return user ? userPrismaToCrud(user, event.lastActiveAt.getTime()) : null;
   });
-  return userObjects.filter((user) => user !== null);
+  return userObjects.filter((user): user is UsersCrud["Admin"]["Read"] => user !== null);
 }
 
 export const GET = createSmartRouteHandler({
@@ -279,13 +279,13 @@ export const GET = createSmartRouteHandler({
       statusCode: 200,
       bodyType: "json",
       body: {
-        total_users: totalUsers ?? 0,
-        daily_users: dailyUsers ?? [],
-        daily_active_users: dailyActiveUsers ?? [],
-        users_by_country: usersByCountry ?? {},
-        recently_registered: recentlyRegistered ?? [],
-        recently_active: recentlyActive ?? [],
-        login_methods: loginMethods ?? [],
+        total_users: totalUsers,
+        daily_users: dailyUsers,
+        daily_active_users: dailyActiveUsers,
+        users_by_country: usersByCountry,
+        recently_registered: recentlyRegistered,
+        recently_active: recentlyActive,
+        login_methods: loginMethods,
       }
     };
   },
