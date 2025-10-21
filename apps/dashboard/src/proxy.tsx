@@ -34,7 +34,7 @@ const corsAllowedResponseHeaders = [
   'x-stack-known-error',
 ];
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const delay = Number.parseInt(getEnvVariable('STACK_ARTIFICIAL_DEVELOPMENT_DELAY_MS', '0'));
   if (delay) {
     if (getNodeEnvironment().includes('production')) {
@@ -52,12 +52,12 @@ export async function middleware(request: NextRequest) {
   const responseInit: ResponseInit = {
     headers: {
       // CORS headers
-      ...!isApiRequest ? {} : {
+      ...(!isApiRequest ? {} : {
         "Access-Control-Allow-Origin": "*",
         "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
         "Access-Control-Allow-Headers": corsAllowedRequestHeaders.join(', '),
         "Access-Control-Expose-Headers": corsAllowedResponseHeaders.join(', '),
-      },
+      }),
     },
   };
 
