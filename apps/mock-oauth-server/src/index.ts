@@ -71,10 +71,11 @@ const loginTemplateSource = `
   <body class="min-h-screen flex items-center justify-center p-4">
     <div class="card w-full max-w-md p-8">
       <h1 class="text-2xl font-bold mb-6 text-center">Mock OAuth Sign-in</h1>
+      <p class="text-gray-500 mb-4 text-center">This is a mock OAuth server for testing. It accepts any email without a password.</p>
       <form method="post" action="/interaction/{{uid}}/login" class="space-y-4">
         <div>
           <label for="login" class="block text-gray-700">Email</label>
-          <input id="login" type="email" name="login" required
+          <input id="login" type="email" name="login" required placeholder="eg.: email@example.com"
             class="mt-1 block w-full border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring focus:border-blue-300" />
         </div>
         <button type="submit"
