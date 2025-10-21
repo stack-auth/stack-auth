@@ -1,4 +1,4 @@
-import { Button } from "@stackframe/stack-ui";
+import { Button, Typography } from "@stackframe/stack-ui";
 import {
   PaymentElement,
   useElements,
@@ -23,9 +23,19 @@ type Props = {
   fullCode: string,
   returnUrl?: string,
   disabled?: boolean,
+  onTestModeBypass?: () => Promise<void>,
+  chargesEnabled: boolean,
 };
 
-export function CheckoutForm({ setupSubscription, stripeAccountId, fullCode, returnUrl, disabled }: Props) {
+export function CheckoutForm({
+  setupSubscription,
+  stripeAccountId,
+  fullCode,
+  returnUrl,
+  disabled,
+  onTestModeBypass,
+  chargesEnabled,
+}: Props) {
   const stripe = useStripe();
   const elements = useElements();
   const [message, setMessage] = useState<string | null>(null);
@@ -65,11 +75,47 @@ export function CheckoutForm({ setupSubscription, stripeAccountId, fullCode, ret
     }
   };
 
+  if (onTestModeBypass) {
+    return (
+      <div className="flex flex-col gap-4 max-w-md w-full p-6 rounded-md bg-background">
+        <div className="space-y-1">
+          <Typography type="h3">Test mode active</Typography>
+          <p className="text-sm text-muted-foreground">
+            This project is in test mode. Use the bypass button to simulate a purchase.
+          </p>
+        </div>
+        <Button
+          disabled={disabled}
+          onClick={onTestModeBypass}
+          className="mt-2"
+        >
+          Complete test purchase
+        </Button>
+        {message && (
+          <div className="text-destructive text-sm">{message}</div>
+        )}
+      </div>
+    );
+  }
+
+  if (!chargesEnabled) {
+    return (
+      <div className="flex flex-col gap-4 max-w-md w-full p-6 rounded-md bg-background">
+        <div className="space-y-1">
+          <Typography type="h3" variant="destructive">Payments not enabled</Typography>
+          <p className="text-sm text-muted-foreground">
+            This project does not have payments enabled yet. Please contact the app developer to finish setting up payments.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col gap-6 max-w-md w-full p-6 rounded-md bg-background">
       <PaymentElement options={paymentElementOptions} />
       <Button
-        disabled={!stripe || !elements || disabled}
+        disabled={!stripe || !elements || disabled || !chargesEnabled}
         onClick={handleSubmit}
       >
         Submit

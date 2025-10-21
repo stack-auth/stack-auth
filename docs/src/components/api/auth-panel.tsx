@@ -72,8 +72,8 @@ export function AuthPanel() {
   }, []);
 
   // Calculate position based on homepage and scroll state (same as AIChatDrawer)
-  const topPosition = isHomePage && isScrolled ? 'top-0' : 'top-14';
-  const height = isHomePage && isScrolled ? 'h-screen' : 'h-[calc(100vh-3.5rem)]';
+  const topPosition = isHomePage && isScrolled ? 'top-0' : 'top-0';
+  const height = isHomePage && isScrolled ? 'h-screen' : 'h-[calc(100vh)]';
 
   const stackAuthHeaders = [
     { key: 'Content-Type', label: 'Content Type', placeholder: 'application/json', required: true },

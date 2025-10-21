@@ -12,18 +12,11 @@ import { StackServerApp, StackServerAppConstructorOptions } from "./server-app";
 
 
 export type StackAdminAppConstructorOptions<HasTokenStore extends boolean, ProjectId extends string> = (
-  | (
-    & StackServerAppConstructorOptions<HasTokenStore, ProjectId>
-    & {
-      superSecretAdminKey?: string,
-    }
-  )
-  | (
-    & Omit<StackServerAppConstructorOptions<HasTokenStore, ProjectId>, "publishableClientKey" | "secretServerKey">
-    & {
-      projectOwnerSession: InternalSession,
-    }
-  )
+  & StackServerAppConstructorOptions<HasTokenStore, ProjectId>
+  & {
+    superSecretAdminKey?: string,
+    projectOwnerSession?: InternalSession,
+  }
 );
 
 

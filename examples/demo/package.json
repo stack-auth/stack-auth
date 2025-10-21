@@ -1,14 +1,14 @@
 {
   "name": "@stackframe/example-demo-app",
-  "version": "2.8.42",
+  "version": "2.8.44",
   "description": "",
   "private": true,
   "scripts": {
     "typecheck": "tsc --noEmit",
     "clean": "rimraf .next && rimraf node_modules",
-    "dev": "next dev --turbopack --port 8103",
+    "dev": "next dev --turbopack --port ${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}03",
     "build": "next build",
-    "start": "next start --port 8103",
+    "start": "next start --port ${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}03",
     "lint": "next lint",
     "analyze": "ANALYZE=true pnpm build"
   },
