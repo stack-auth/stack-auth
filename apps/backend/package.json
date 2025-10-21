@@ -31,7 +31,7 @@
     "generate-migration-imports": "pnpm run with-env tsx scripts/generate-migration-imports.ts",
     "generate-migration-imports:watch": "chokidar 'prisma/migrations/**/*.sql' -c 'pnpm run generate-migration-imports'",
     "lint": "next lint",
-    "watch-docs": "pnpm run with-env bash -c 'tsx watch --clear-screen=false scripts/generate-openapi-fumadocs.ts && pnpm run --filter=@stackframe/stack-docs generate-openapi-docs'",
+    "watch-docs": "pnpm run with-env tsx watch --exclude '**/node_modules/**' --clear-screen=false scripts/generate-openapi-fumadocs.ts",
     "generate-openapi-fumadocs": "pnpm run with-env tsx scripts/generate-openapi-fumadocs.ts",
     "generate-keys": "pnpm run with-env tsx scripts/generate-keys.ts",
     "db-seed-script": "pnpm run db:seed",

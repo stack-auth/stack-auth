@@ -25,7 +25,11 @@ module.exports = {
     ],
     "no-restricted-syntax": [
       ...defaults.rules["no-restricted-syntax"].filter(e => typeof e !== "object" || !e.message.includes("yupXyz")),
-      publicVars['no-next-public-env']
+      publicVars['no-next-public-env'],
+      {
+        selector: "Program:not(:has(:matches(ExportSpecifier[exported.name=generateStaticParams], VariableDeclaration > VariableDeclarator[id.name=generateStaticParams]))):has(ExportDefaultDeclaration > FunctionDeclaration[id.name=Layout])",
+        message: 'Layouts must have a generateStaticParams function to be statically generated. Please add `export { generateStaticParams } from "@/lib/generate-empty-static-params";"` to your layout. For more information, see the comment in generate-empty-static-params.tsx.'
+      }
     ],
   },
 };
