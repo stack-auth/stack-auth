@@ -1,5 +1,6 @@
 import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { Mailbox, test } from "../helpers";
+import { withPortPrefix } from "../helpers/ports";
 import { Auth, InternalApiKey, Project, bumpEmailAddress, createMailbox, niceBackendFetch } from "./backend-helpers";
 
 async function configureEmailAndWorkflow(workflowId: string, tsSource: string, enabled = true) {
@@ -8,7 +9,7 @@ async function configureEmailAndWorkflow(workflowId: string, tsSource: string, e
       server: {
         isShared: false,
         host: "localhost",
-        port: 2500,
+        port: Number(withPortPrefix("29")),
         username: "test",
         password: "test",
         senderEmail: "test@example.com",
