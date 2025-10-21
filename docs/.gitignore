@@ -27,8 +27,7 @@ yarn-error.log*
 .vercel
 next-env.d.ts
 
-# ignore all generated docs content
-/content/docs/
+# ignore generated API content
 /content/api/
 /public/openapi/
 /openapi/

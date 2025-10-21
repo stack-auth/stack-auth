@@ -32,7 +32,7 @@ Stack Auth provides a [pre-configured Docker](https://hub.docker.com/r/stackauth
 
 1. Use a cloud hosted Postgres or start a example Postgres database. Don't use this setting in production:
   ```sh
-  docker run -d --name db -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=password -e POSTGRES_DB=stackframe -p 5432:5432 postgres:latest
+  docker run -d --name db -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=password -e POSTGRES_DB=stackframe -p 8128:5432 postgres:latest
   ```
 
 2. Get the [example environment file](https://github.com/stack-auth/stack-auth/tree/main/docker/server/.env.example) and modify it to your needs (for security, you MUST edit at least the `STACK_SERVER_SECRET` value). You must also supply a `STACK_FREESTYLE_API_KEY` in order to send emails with Stack Auth (can be generated on [freestyle](https://freestyle.sh)). See the [full template here](https://github.com/stack-auth/stack-auth/blob/dev/docker/server/.env).

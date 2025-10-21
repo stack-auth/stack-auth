@@ -11,18 +11,6 @@ type SearchResult = {
   score: number, // Add scoring for prioritization
 };
 
-// Helper function to get platform priority for tie-breaking
-function getPlatformPriority(url: string): number {
-  // Higher number = higher priority
-  if (url.includes('/docs/next/')) return 100;
-  if (url.includes('/docs/react/')) return 90;
-  if (url.includes('/docs/js/')) return 80;
-  if (url.includes('/docs/python/')) return 70;
-  // API and other pages
-  if (url.includes('/api/')) return 60;
-  return 50; // Default priority
-}
-
 // Helper function to calculate search relevance score
 function calculateScore(query: string, text: string, type: 'title' | 'description' | 'heading' | 'content'): number {
   const queryLower = query.toLowerCase().trim();
@@ -202,18 +190,11 @@ export async function GET(request: NextRequest) {
     });
 
     // Sort results by score in descending order (highest score first)
-    // Use platform priority as tie-breaker when scores are equal
-    results.sort((a, b) => {
-      if (b.score !== a.score) {
-        return b.score - a.score; // Primary sort by score
-      }
-      return getPlatformPriority(b.url) - getPlatformPriority(a.url); // Tie-breaker by platform priority
-    });
+    results.sort((a, b) => b.score - a.score);
 
     console.log(`\n=== RAW RESULTS FOR "${query}" ===`);
     results.slice(0, 10).forEach((result, i) => {
-      const priority = getPlatformPriority(result.url);
-      console.log(`${i + 1}. "${result.content}" (${result.type}) - Score: ${result.score.toFixed(1)} - Priority: ${priority} - URL: ${result.url}`);
+      console.log(`${i + 1}. "${result.content}" (${result.type}) - Score: ${result.score.toFixed(1)} - URL: ${result.url}`);
     });
 
     // Remove duplicate URLs and keep only the highest scoring result per URL
@@ -229,17 +210,11 @@ export async function GET(request: NextRequest) {
     });
 
     // Re-sort after deduplication using the same logic
-    uniqueResults.sort((a, b) => {
-      if (b.score !== a.score) {
-        return b.score - a.score; // Primary sort by score
-      }
-      return getPlatformPriority(b.url) - getPlatformPriority(a.url); // Tie-breaker by platform priority
-    });
+    uniqueResults.sort((a, b) => b.score - a.score);
 
     console.log(`\n=== FINAL RESULTS FOR "${query}" ===`);
     uniqueResults.slice(0, 10).forEach((result, i) => {
-      const priority = getPlatformPriority(result.url);
-      console.log(`${i + 1}. "${result.content}" (${result.type}) - Score: ${result.score.toFixed(1)} - Priority: ${priority} - URL: ${result.url}`);
+      console.log(`${i + 1}. "${result.content}" (${result.type}) - Score: ${result.score.toFixed(1)} - URL: ${result.url}`);
     });
 
     console.log(`\nFound ${uniqueResults.length} unique search results for "${query}"`);

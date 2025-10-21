@@ -227,6 +227,7 @@ export async function createOrUpdateProjectWithLegacyConfig(
     'apps.installed': {
       authentication: { enabled: true },
       emails: { enabled: true },
+      "launch-checklist": { enabled: true },
     },
   });
 

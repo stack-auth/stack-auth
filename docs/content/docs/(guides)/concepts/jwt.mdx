@@ -1,0 +1,224 @@
+---
+title: JWT Tokens
+---
+
+JSON Web Tokens (JWT) are a compact, URL-safe means of representing claims to be transferred between two parties. Stack Auth uses JWTs for secure authentication and authorization.
+
+## What is a JWT?
+
+A JWT is a string that consists of three parts separated by dots (`.`):
+
+1. **Header**: Contains metadata about the token, such as the signing algorithm
+2. **Payload**: Contains the claims (data) about the user or entity
+3. **Signature**: Used to verify the token's authenticity
+
+The structure looks like this: `header.payload.signature`
+
+## JWT Viewer
+
+Use the interactive JWT viewer below to decode and inspect JWT tokens. If you're signed in, it will automatically load and display your current session token:
+
+<JWTViewer />
+
+## Stack Auth JWT Structure
+
+Stack Auth JWTs contain standardized headers and claims that power authentication throughout the platform.
+
+### Header
+
+- **`alg`**: Always `ES256`
+- **`kid`**: Identifies which public key from the JWKS should be used for verification
+
+### Standard Claims
+
+- **`iss` (Issuer)**: `https://api.stack-auth.com/api/v1/projects/<project-id>` for regular users, or `https://api.stack-auth.com/api/v1/projects-anonymous-users/<project-id>` for anonymous sessions
+- **`sub` (Subject)**: The user ID this token represents
+- **`aud` (Audience)**: The intended recipient of the token — `<project-id>` for regular sessions, `<project-id>:anon` for anonymous sessions
+- **`exp` (Expiration)**: When the token expires (Unix timestamp)
+- **`iat` (Issued At)**: When the token was issued (Unix timestamp)
+
+### Stack Auth Specific Claims
+
+- **`project_id`**: Your Stack Auth project ID
+- **`branch_id`**: The project branch (currently always `main`)
+- **`refresh_token_id`**: ID of the associated refresh token
+- **`role`**: Always set to `authenticated` for valid users
+- **`name`**: The user's display name (nullable)
+- **`email`**: The user's primary email address (nullable)
+- **`email_verified`**: Whether the user's email has been verified
+- **`selected_team_id`**: The currently selected team ID (nullable)
+- **`is_anonymous`**: Whether this is an anonymous user session
+
+## Example JWT Payload
+
+Here's what a typical Stack Auth JWT payload looks like:
+
+```json
+{
+  "iss": "https://api.stack-auth.com/api/v1/projects/project_abcdef",
+  "sub": "user_123456",
+  "aud": "project_abcdef",
+  "exp": 1735689600,
+  "iat": 1735603200,
+  "project_id": "project_abcdef",
+  "branch_id": "main",
+  "refresh_token_id": "refresh_xyz789",
+  "role": "authenticated",
+  "name": "John Doe",
+  "email": "john@example.com",
+  "email_verified": true,
+  "selected_team_id": "team_789",
+  "is_anonymous": false
+}
+```
+
+Anonymous user tokens have the same shape, but:
+
+- `iss` becomes `https://api.stack-auth.com/api/v1/projects-anonymous-users/<project-id>`
+- `aud` becomes `<project-id>:anon`
+- `is_anonymous` is `true`
+
+## Working with JWTs
+
+### Client-Side Usage
+
+Stack Auth automatically handles JWT tokens for you. When you use hooks like `useUser()`, the JWT is automatically included in API requests:
+
+```tsx
+import { useUser } from '@stackframe/stack';
+
+export function UserProfile() {
+  const user = useUser();
+  
+  if (!user) {
+    return <div>Please sign in</div>;
+  }
+  
+  return <div>Welcome, {user.displayName}!</div>;
+}
+```
+
+### Server-Side Usage
+
+On the server side, you can access the JWT and its claims through the Stack Auth API:
+
+```tsx
+import { stackServerApp } from '@/stack';
+
+export async function GET() {
+  const user = await stackServerApp.getUser();
+  
+  if (!user) {
+    return new Response('Unauthorized', { status: 401 });
+  }
+  
+  // Access user information from the JWT
+  return Response.json({
+    id: user.id,
+    displayName: user.displayName,
+    primaryEmail: user.primaryEmail,
+    selectedTeamId: user.selectedTeamId,
+    // Other user properties...
+  });
+}
+```
+
+### Manual JWT Verification
+
+If you need to manually verify a JWT (for example, in a different service), fetch the public keys from Stack Auth's JWKS endpoint. Keys are derived per audience so the `kid` in the JWT header always matches one of the published keys.
+
+```typescript
+import * as jose from 'jose';
+
+// Get the public key set from Stack Auth
+const jwks = jose.createRemoteJWKSet(
+  new URL('https://api.stack-auth.com/api/v1/projects/YOUR_PROJECT_ID/.well-known/jwks.json')
+);
+
+// Verify a regular (non-anonymous) access token
+try {
+  const { payload } = await jose.jwtVerify(token, jwks, {
+    issuer: 'https://api.stack-auth.com/api/v1/projects/YOUR_PROJECT_ID',
+    audience: 'YOUR_PROJECT_ID',
+  });
+
+  console.log('JWT is valid:', payload);
+} catch (error) {
+  console.error('JWT verification failed:', error);
+}
+```
+
+To support anonymous sessions, include those keys and allow both issuers and audiences:
+
+```typescript
+const jwks = jose.createRemoteJWKSet(
+  new URL('https://api.stack-auth.com/api/v1/projects/YOUR_PROJECT_ID/.well-known/jwks.json?include_anonymous=true')
+);
+
+const { payload } = await jose.jwtVerify(token, jwks, {
+  issuer: [
+    'https://api.stack-auth.com/api/v1/projects/YOUR_PROJECT_ID',
+    'https://api.stack-auth.com/api/v1/projects-anonymous-users/YOUR_PROJECT_ID',
+  ],
+  audience: ['YOUR_PROJECT_ID', 'YOUR_PROJECT_ID:anon'],
+});
+```
+
+### Signing Keys
+
+- Private keys are deterministically derived from your project ID, optional anonymous audience, and the `STACK_SERVER_SECRET` environment variable. This means no key material is ever stored in the database.
+- The JWKS currently exposes both the latest key pair and a legacy compatibility key. Verification libraries automatically pick the correct key by matching the `kid` provided in the JWT header.
+- Tokens are always signed server-side; client SDKs never receive the private keys.
+
+## Security Considerations
+
+### Token Storage
+
+- **Never store JWTs in localStorage** for sensitive applications
+- Use secure, httpOnly cookies when possible
+- Stack Auth handles secure token storage automatically
+
+### Token Expiration
+
+- JWTs have a limited lifetime (default is 10 minutes via `STACK_ACCESS_TOKEN_EXPIRATION_TIME`)
+- Stack Auth automatically refreshes tokens before they expire
+- Always check the `exp` claim when manually handling JWTs
+
+### Signature Verification
+
+- Always verify JWT signatures using the public key
+- Never trust the contents of a JWT without verification
+- Stack Auth SDKs handle verification automatically
+
+## Troubleshooting
+
+### Common Issues
+
+1. **"JWT is expired"**: The token has passed its expiration time. Stack Auth will automatically refresh it.
+
+2. **"Invalid signature"**: The token was tampered with or signed with a different key.
+
+3. **"Invalid audience"**: The token was issued for a different project or environment.
+
+### Debugging JWTs
+
+Use the JWT viewer above to inspect tokens and verify their contents. Pay special attention to:
+
+- Expiration times (`exp` claim)
+- Audience (`aud` claim) matching your project
+- Required claims are present
+
+## Best Practices
+
+1. **Let Stack Auth handle tokens**: Use the provided SDKs instead of manual JWT handling
+2. **Validate on the server**: Always verify JWTs on your backend
+3. **Check expiration**: Ensure tokens haven't expired before using them
+4. **Use HTTPS**: Always transmit JWTs over secure connections
+5. **Monitor token usage**: Log authentication events for security monitoring
+
+## Related Concepts
+
+- [API Keys](/docs/concepts/api-keys) - Alternative authentication method for server-to-server communication
+- [Backend Integration](/docs/concepts/backend-integration) - How to verify JWTs in your backend
+- [Permissions](/docs/concepts/permissions) - Understanding user permissions (not included in JWTs)
+- [Teams](/docs/concepts/teams) - Understanding team context in JWTs

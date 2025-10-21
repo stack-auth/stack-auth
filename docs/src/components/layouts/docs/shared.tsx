@@ -3,8 +3,7 @@ import {
   getSidebarTabs,
   type GetSidebarTabsOptions,
 } from 'fumadocs-ui/utils/get-sidebar-tabs';
-import type { ReactNode } from 'react';
-import type { Option } from '../../layout/root-toggle';
+import type { ComponentProps, ReactNode } from 'react';
 import {
   type SidebarComponents,
   SidebarFolder,
@@ -18,6 +17,24 @@ import type { LinkItemType } from '../links';
 
 export const layoutVariables = {
   '--fd-layout-offset': 'max(calc(50vw - var(--fd-layout-width) / 2), 0px)',
+};
+
+// Local copy of the fumadocs RootToggle option type to avoid depending on the removed component.
+export type Option = {
+  /**
+   * Redirect URL of the folder, usually the index page
+   */
+  url: string,
+  icon?: ReactNode,
+  title: ReactNode,
+  description?: ReactNode,
+
+  /**
+   * Detect from a list of urls
+   */
+  urls?: Set<string>,
+
+  props?: ComponentProps<'a'>,
 };
 
 export type SidebarOptions = {

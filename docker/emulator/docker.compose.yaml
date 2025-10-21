@@ -81,6 +81,7 @@ services:
 
   db:
     image: postgres:15
+    command: ["postgres", "-c"]
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: PASSWORD-PLACEHOLDER--uqfEC1hmmv
@@ -88,7 +89,7 @@ services:
     volumes:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready", "-d", "stackframe"]
+      test: ["CMD-SHELL", "pg_isready -p 5432 -d stackframe"]
       interval: 5s
       timeout: 10s
       retries: 5
@@ -97,6 +98,9 @@ services:
   # ================= Inbucket =================
   inbucket:
     image: inbucket/inbucket:latest
+    environment:
+      INBUCKET_SMTP_ADDR: ":2500"
+      INBUCKET_POP3_ADDR: ":1100"
     ports:
       - 32203:9000
     volumes:
@@ -177,4 +181,3 @@ volumes:
   svix-postgres-data:
   s3mock-data:
   deno-cache:
-

@@ -12,6 +12,7 @@ export default mergeConfig(
         ...loadEnv('', process.cwd(), ''),
         ...loadEnv('development', process.cwd(), ''),
       },
+      setupFiles: ['./vitest.setup.ts'],
     },
     resolve: {
       alias: {

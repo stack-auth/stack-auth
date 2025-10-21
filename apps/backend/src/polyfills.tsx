@@ -1,13 +1,29 @@
 import * as Sentry from "@sentry/nextjs";
-import { getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
+import { getEnvVariable, getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
 import { captureError, registerErrorSink } from "@stackframe/stack-shared/dist/utils/errors";
 import * as util from "util";
+
+function expandStackPortPrefix(value?: string | null) {
+  if (!value) return value ?? undefined;
+  const prefix = getEnvVariable("NEXT_PUBLIC_STACK_PORT_PREFIX", "81");
+  return prefix ? value.replace(/\$\{NEXT_PUBLIC_STACK_PORT_PREFIX:-81\}/g, prefix) : value;
+}
 
 const sentryErrorSink = (location: string, error: unknown) => {
   Sentry.captureException(error, { extra: { location } });
 };
 
 export function ensurePolyfilled() {
+  for (const [key, value] of Object.entries(process.env)) {
+    if (key.startsWith("STACK_") || key.startsWith("NEXT_PUBLIC_STACK_")) {
+      const replaced = expandStackPortPrefix(value ?? undefined);
+      if (replaced !== undefined) {
+        // eslint-disable-next-line no-restricted-syntax
+        process.env[key] = replaced;
+      }
+    }
+  }
+
   registerErrorSink(sentryErrorSink);
 
   if ("addEventListener" in globalThis) {

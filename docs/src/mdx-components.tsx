@@ -13,6 +13,7 @@ import { Card, CardGroup, Info } from './components/mdx';
 import ApiSequenceDiagram from './components/mdx/api-sequence-diagram';
 import { AuthCard } from './components/mdx/auth-card';
 import { DynamicCodeblock } from './components/mdx/dynamic-code-block';
+import { PlatformCodeblock } from './components/mdx/platform-codeblock';
 
 import { AsideSection, CollapsibleMethodSection, CollapsibleTypesSection, MethodAside, MethodContent, MethodLayout, MethodSection, MethodTitle } from './components/ui/method-layout';
 
@@ -22,9 +23,10 @@ import { CursorIcon, StackAuthIcon } from './components/icons';
 import { Button } from './components/mdx/button';
 import { JWTViewer } from './components/mdx/jwt-viewer';
 import { Mermaid } from './components/mdx/mermaid';
-import { Accordion, AccordionGroup, ClickableTableOfContents, CodeBlocks, Icon, Markdown, ParamField } from './components/mdx/sdk-components';
+import { Accordion, AccordionGroup, ClickableTableOfContents, Icon, Markdown, ParamField } from './components/mdx/sdk-components';
 import { PropTable } from './components/prop-table';
 
+import { ImageZoom } from 'fumadocs-ui/components/image-zoom';
 import { SignInDemo, SignInExtraInfo, SignInPasswordFirstTab, SignInStackAuth } from './components/stack-auth/sign-in';
 import { AccountSettingsStackAuth } from './components/stack-auth/stack-account-settings';
 import { TeamSwitcherDemo } from './components/stack-auth/stack-team-switcher';
@@ -67,9 +69,9 @@ export function getMDXComponents(components?: MDXComponents): MDXComponents {
     ParamField,
     Accordion,
     AccordionGroup,
-    CodeBlocks,
     Icon,
     DynamicCodeblock,
+    PlatformCodeblock,
     Mermaid,
     MethodLayout,
     MethodContent,
@@ -87,6 +89,8 @@ export function getMDXComponents(components?: MDXComponents): MDXComponents {
     CursorIcon,
     // UI Components
     Button,
-    JWTViewer
+    JWTViewer,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    img: (props) => <ImageZoom {...(props as any)} />,
   } as MDXComponents;
 }

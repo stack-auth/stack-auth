@@ -1,6 +1,7 @@
 import { generateSecureRandomString } from "@stackframe/stack-shared/dist/utils/crypto";
 import { describe } from "vitest";
 import { STACK_BACKEND_BASE_URL, it } from "../../../../helpers";
+import { localhostUrl } from "../../../../helpers/ports";
 import { Auth, InternalProjectKeys, Project, Team, Webhook, backendContext, bumpEmailAddress, createMailbox, niceBackendFetch } from "../../../backend-helpers";
 
 describe("without project access", () => {
@@ -698,7 +699,7 @@ describe("with client access", () => {
       accessType: "client",
       method: "PATCH",
       body: {
-        profile_image_url: "http://localhost:8101/open-graph-image.png",
+        profile_image_url: localhostUrl("01", "/open-graph-image.png"),
       },
     });
     expect(response).toMatchInlineSnapshot(`
@@ -719,7 +720,7 @@ describe("with client access", () => {
         profile_image_url: "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==",
       },
     });
-    expect(response.body.profile_image_url).toMatchInlineSnapshot(`"http://localhost:8121/stack-storage/user-profile-images/<stripped UUID>.gif"`);
+    expect(response.body.profile_image_url).toMatchInlineSnapshot(`"http://localhost:<$NEXT_PUBLIC_STACK_PORT_PREFIX>21/stack-storage/user-profile-images/<stripped UUID>.gif"`);
   });
 
   it("should not be able to update profile image url with invalid base64", async ({ expect }) => {
@@ -1940,10 +1941,10 @@ describe("with server access", () => {
       accessType: "server",
       method: "PATCH",
       body: {
-        profile_image_url: "http://localhost:8101/open-graph-image.png",
+        profile_image_url: localhostUrl("01", "/open-graph-image.png"),
       },
     });
-    expect(response.body.profile_image_url).toEqual("http://localhost:8101/open-graph-image.png");
+    expect(response.body.profile_image_url).toMatchInlineSnapshot(`"http://localhost:<$NEXT_PUBLIC_STACK_PORT_PREFIX>01/open-graph-image.png"`);
   });
 
   it("should be able to update primary email", async ({ expect }) => {

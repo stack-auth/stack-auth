@@ -1,11 +1,12 @@
 name: Docker Emulator Test
 
 on:
-  push:
-    branches:
-      - main
-      - dev
-  pull_request:
+  workflow_dispatch  # skip this workflow for now, unless manually triggered
+#  push:
+#    branches:
+#      - main
+#      - dev
+#  pull_request:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}

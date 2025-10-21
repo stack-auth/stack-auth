@@ -321,7 +321,7 @@ export function EnhancedAPIPage({ document, operations, description }: EnhancedA
   }
 
   return (
-    <div className="min-h-screen bg-fd-background">
+    <div className="not-prose w-full space-y-12 api-content-container">
       {/* Operations */}
       {operations.map(({ path, method }) => {
         const operation = spec.paths[path][method.toLowerCase()];

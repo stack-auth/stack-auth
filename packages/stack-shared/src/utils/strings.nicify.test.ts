@@ -151,6 +151,14 @@ describe("nicify", () => {
     test("multiline with trailing newline", () => {
       expect(nicify("line1\nline2\n")).toBe('deindent`\n  line1\n  line2\n` + "\\n"');
     });
+
+    test("multiline with dollar sign", () => {
+      expect(nicify("a\n$b\nc")).toBe('deindent`\n  a\n  $b\n  c\n`');
+    });
+
+    test("multiline with dollar sign interpolation", () => {
+      expect(nicify("a\n${b\nc")).toBe('deindent`\n  a\n  \\${b\n  c\n`');
+    });
   });
 
   describe("circular references", () => {

@@ -17,7 +17,7 @@ export function register() {
   });
 
   if (getNextRuntime() === "nodejs") {
-    process.title = "stack-backend (node/nextjs)";
+    process.title = `stack-backend:${getEnvVariable("NEXT_PUBLIC_STACK_PORT_PREFIX", "81")} (node/nextjs)`;
   }
 
   if (getNextRuntime() === "nodejs" || getNextRuntime() === "edge") {

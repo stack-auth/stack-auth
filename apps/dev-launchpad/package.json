@@ -1,9 +1,9 @@
 {
   "name": "@stackframe/dev-launchpad",
-  "version": "2.8.43",
+  "version": "2.8.44",
   "private": true,
   "scripts": {
-    "dev": "serve -p 8100 -s public",
+    "dev": "node scripts/write-env-config.js && serve -p ${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}00 -s public",
     "clean": "rimraf node_modules"
   },
   "dependencies": {

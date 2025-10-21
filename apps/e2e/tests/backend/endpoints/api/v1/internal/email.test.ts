@@ -1,5 +1,5 @@
 import { it } from "../../../../../helpers";
-import { Auth, InternalProjectKeys, Project, backendContext, niceBackendFetch } from "../../../../backend-helpers";
+import { Auth, Project, niceBackendFetch } from "../../../../backend-helpers";
 
 // Test the internal emails CRUD endpoint for listing sent emails
 it("should list sent emails for the current project", async ({ expect }) => {
@@ -33,7 +33,7 @@ it("should list sent emails for the current project", async ({ expect }) => {
             "id": "<stripped UUID>",
             "sender_config": {
               "host": "127.0.0.1",
-              "port": 2500,
+              "port": <stripped field 'port'>,
               "sender_email": "noreply@example.com",
               "sender_name": "New Project",
               "type": "shared",
@@ -48,7 +48,7 @@ it("should list sent emails for the current project", async ({ expect }) => {
             "id": "<stripped UUID>",
             "sender_config": {
               "host": "127.0.0.1",
-              "port": 2500,
+              "port": <stripped field 'port'>,
               "sender_email": "noreply@example.com",
               "sender_name": "New Project",
               "type": "shared",
@@ -95,7 +95,7 @@ it("should not allow two different projects to see the same send log", async ({ 
             "id": "<stripped UUID>",
             "sender_config": {
               "host": "127.0.0.1",
-              "port": 2500,
+              "port": <stripped field 'port'>,
               "sender_email": "noreply@example.com",
               "sender_name": "New Project",
               "type": "shared",

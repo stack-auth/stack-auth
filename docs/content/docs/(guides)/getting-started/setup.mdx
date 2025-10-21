@@ -1,0 +1,223 @@
+---
+title: Setup
+---
+
+### Prerequisites
+
+Before getting started, make sure you have a project set up for your chosen platform:
+
+- **Next.js**: A [Next.js project](https://nextjs.org/docs/getting-started/installation) using the app router (Stack Auth does not support the pages router on Next.js)
+- **React**: A [React project](https://react.dev/learn/creating-a-react-app) (we show examples with Vite)
+- **JavaScript**: A Node.js project with Express
+- **Python**: A Python environment with your chosen framework (Django, FastAPI, or Flask)
+
+We recommend using our **setup wizard** for JavaScript frameworks for a seamless installation experience. For Python, we recommend using the REST API approach.
+
+### Setup Wizard / Manual Installation
+<Tabs defaultValue="wizard">
+  <TabsList>
+    <TabsTrigger value="wizard">Setup wizard (recommended for JS)</TabsTrigger>
+    <TabsTrigger value="manual">Manual installation</TabsTrigger>
+  </TabsList>
+  
+  <TabsContent value="wizard">
+    <Steps>
+      <Step>
+      ### Run installation wizard
+      </Step>
+      
+      <Info>
+        The setup wizard is available for JavaScript/TypeScript frameworks. For Python projects, please use the manual installation method.
+      </Info>
+
+      Run Stack's installation wizard with the following command:
+
+      ```sh title="Terminal"
+      npx @stackframe/init-stack@latest
+      ```
+
+      <Step>
+      ### Update API keys
+      </Step>
+      
+      Create an account on [the Stack Auth dashboard](https://app.stack-auth.com/projects), create a new project with an API key, and copy its environment variables into the appropriate configuration file:
+
+      <PlatformCodeblock
+        document="setup/setup"
+        examples={["env-wizard"]}
+        title="Environment Configuration"
+      />
+
+      <Step>
+      ### Done!
+      </Step>
+      That's it! The wizard should have created or updated the following files in your project:
+
+      **For Next.js:**
+      - `app/handler/[...stack]/page.tsx`: Default pages for sign-in, sign-out, account settings, and more
+      - `app/layout.tsx`: Updated to wrap the entire body with `StackProvider` and `StackTheme`
+      - `app/loading.tsx`: Suspense boundary for Stack's async hooks
+      - `stack/server.ts`: Contains the `stackServerApp` for server-side usage
+      - `stack/client.ts`: Contains the `stackClientApp` for client-side usage
+
+      **For React:**
+      - `stack/client.ts`: Contains the `stackClientApp` configuration
+      - Your app should be wrapped with `StackProvider` and `StackTheme`
+
+      **For Node.js/Express:**
+      - `stack/server.ts`: Contains the `stackServerApp` configuration
+    </Steps>
+  </TabsContent>
+  
+  <TabsContent value="manual">
+    <Info>
+      Note: The setup wizard also supports existing, complicated projects. Cases where manual installation is necessary are rare for JavaScript frameworks.
+    </Info>
+
+    <Steps>
+      <Step>
+      ### Install package
+      </Step>
+      
+      First, install the appropriate Stack package:
+
+      <PlatformCodeblock
+        document="setup/setup"
+        examples={["install-package"]}
+        title="Package Installation"
+      />
+
+      <Step>
+      ### Create API keys
+      </Step>
+      
+      [Register a new account on Stack](https://app.stack-auth.com/handler/sign-up), create a project in the dashboard, create a new API key from the left sidebar, and copy the project ID, publishable client key, and secret server key.
+
+      <Step>
+      ### Configure environment variables
+      </Step>
+      
+      Set up your environment variables or configuration:
+
+      <PlatformCodeblock
+        document="setup/setup"
+        examples={["env-config"]}
+        title="Environment Configuration"
+      />
+
+      <Step>
+      ### Create Stack configuration
+      </Step>
+      
+      Create the Stack app configuration:
+
+      <PlatformCodeblock
+        document="setup/setup"
+        examples={["stack-config"]}
+        title="Stack Configuration"
+      />
+
+      <Step>
+      ### Set up authentication handlers (Frontend frameworks only)
+      </Step>
+      
+      For JavaScript frameworks, create the authentication handler:
+
+      <PlatformCodeblock
+        document="setup/setup"
+        examples={["auth-handlers"]}
+        title="Authentication Handlers"
+      />
+
+      <Step>
+      ### Add providers (Next.js and React only)
+      </Step>
+
+      For Next.js and React, wrap your app with Stack providers:
+
+      <PlatformCodeblock
+        document="setup/setup"
+        examples={["app-providers"]}
+        title="App Providers"
+      />
+
+      <Step>
+      ### Add loading boundary (Next.js only)
+      </Step>
+      
+      For Next.js, add a Suspense boundary:
+
+      <PlatformCodeblock
+        document="setup/setup"
+        examples={["loading-boundary"]}
+        title="Loading Component"
+      />
+
+      <Step>
+      ### Add suspense boundary (React only)
+      </Step>
+
+      For React, add a suspense boundary:
+
+      <PlatformCodeblock
+        document="setup/setup"
+        examples={["suspense-boundary"]}
+        title="Suspense Boundary"
+      />
+
+      <Step>
+      ### Done!
+      </Step>
+    </Steps>
+  </TabsContent>
+</Tabs>
+
+## Post-setup
+
+That's it! Stack is now configured in your project. 
+
+### Testing your setup
+
+<PlatformCodeblock
+  document="setup/setup"
+  examples={["test-setup"]}
+  title="Testing Your Setup"
+/>
+
+### What you'll see
+
+For JavaScript frameworks with built-in UI components, you'll see the Stack Auth sign-up page:
+
+<img
+  src="/imgs/sign-in.png"
+  alt="Stack sign-in page"
+  width={350}
+  height={350}
+  className="mx-auto block rounded-lg"
+/>
+
+After signing up/in, you will be redirected back to the home page. You can also check out the account settings page.
+
+<img
+  src="/imgs/account-settings.png"
+  alt="Stack account settings page"
+  className="mx-auto block rounded-lg"
+/>
+
+For Python and backend-only JavaScript setups, you'll interact with Stack Auth through the REST API.
+
+## Example usage
+
+Here are some basic usage examples for each platform:
+
+<PlatformCodeblock
+  document="setup/setup"
+  examples={["basic-usage"]}
+  title="Basic Usage Examples"
+/>
+
+## Next steps
+
+Next up, we will show you how to [retrieve and update user information](./users.mdx), and how to [protect a page](./users.mdx#protecting-a-page) from unauthorized access.
+
+For Python developers, check out the [REST API documentation](../rest-api/overview.mdx) to learn more about the available endpoints and how to use them in your Python application.

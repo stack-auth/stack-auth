@@ -11,6 +11,7 @@ import { cn } from "@/lib/utils";
 import { UserButton, useUser } from "@stackframe/stack";
 import { ALL_APPS, type AppId } from "@stackframe/stack-shared/dist/apps/apps-config";
 import { typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
+import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
 import { getRelativePart } from "@stackframe/stack-shared/dist/utils/urls";
 import {
   Breadcrumb,
@@ -34,8 +35,7 @@ import {
 import { useTheme } from "next-themes";
 import { usePathname } from "next/navigation";
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
-import { useAdminApp } from "./use-admin-app";
-import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
+import { useAdminApp, useProjectId } from "./use-admin-app";
 
 type BreadcrumbItem = { item: React.ReactNode, href: string };
 
@@ -463,10 +463,11 @@ function HeaderBreadcrumb({
   }
 }
 
-export default function SidebarLayout(props: { projectId: string, children?: React.ReactNode }) {
+export default function SidebarLayout(props: { children?: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [companionExpanded, setCompanionExpanded] = useState(false);
   const { resolvedTheme, setTheme } = useTheme();
+  const projectId = useProjectId();
 
   return (
     <div className="w-full flex">
@@ -482,7 +483,7 @@ export default function SidebarLayout(props: { projectId: string, children?: Rea
         */}
         <div className="absolute inset-0 backdrop-blur-md z-[-1]"></div>
 
-        <SidebarContent projectId={props.projectId} />
+        <SidebarContent projectId={projectId} />
       </div>
 
       {/* Main Content Area */}
@@ -490,7 +491,7 @@ export default function SidebarLayout(props: { projectId: string, children?: Rea
         {/* Header */}
         <div className="h-14 border-b flex items-center justify-between sticky top-0 backdrop-blur-md bg-slate-200/20 dark:bg-black/20 z-10 px-4 lg:px-6">
           <div className="hidden lg:flex">
-            <HeaderBreadcrumb projectId={props.projectId} />
+            <HeaderBreadcrumb projectId={projectId} />
           </div>
 
           <div className="flex lg:hidden items-center">
@@ -504,18 +505,18 @@ export default function SidebarLayout(props: { projectId: string, children?: Rea
               <SheetContent
                 aria-describedby={undefined}
                 side='left' className="w-[240px] p-0" hasCloseButton={false}>
-                <SidebarContent projectId={props.projectId} onNavigate={() => setSidebarOpen(false)} />
+                <SidebarContent projectId={projectId} onNavigate={() => setSidebarOpen(false)} />
               </SheetContent>
             </Sheet>
 
             <div className="ml-4 flex lg:hidden">
-              <HeaderBreadcrumb projectId={props.projectId} mobile />
+              <HeaderBreadcrumb projectId={projectId} mobile />
             </div>
           </div>
 
           <div className="flex gap-2 relative items-center">
             <Button asChild variant="ghost" size="icon" className="hidden lg:flex">
-              <Link href={`/projects/${props.projectId}/project-settings`}>
+              <Link href={`/projects/${projectId}/project-settings`}>
                 <Settings className="w-4 h-4" />
               </Link>
             </Button>

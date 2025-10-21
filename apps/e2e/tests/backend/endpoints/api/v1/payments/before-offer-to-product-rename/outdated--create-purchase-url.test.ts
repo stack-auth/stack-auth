@@ -1,5 +1,6 @@
 import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
 import { it } from "../../../../../../helpers";
+import { withPortPrefix } from "../../../../../../helpers/ports";
 import { Auth, Payments, Project, User, niceBackendFetch } from "../../../../../backend-helpers";
 
 it("should not be able to create purchase URL without offer_id or offer_inline", async ({ expect }) => {
@@ -275,7 +276,7 @@ it("should allow offer_inline when calling from server", async ({ expect }) => {
     },
   });
   expect(response.status).toBe(200);
-  expect(response.body.url).toMatch(/^https?:\/\/localhost:8101\/purchase\/[a-z0-9-_]+$/);
+  expect(response.body.url).toMatch(new RegExp(`^https?:\\/\\/localhost:${withPortPrefix("01")}\/purchase\/[a-z0-9-_]+$`));
 });
 
 it("should allow valid offer_id", async ({ expect }) => {
@@ -313,5 +314,5 @@ it("should allow valid offer_id", async ({ expect }) => {
   });
   expect(response.status).toBe(200);
   const body = response.body as { url: string };
-  expect(body.url).toMatch(/^https?:\/\/localhost:8101\/purchase\/[a-z0-9-_]+$/);
+  expect(body.url).toMatch(new RegExp(`^https?:\\/\\/localhost:${withPortPrefix("01")}\/purchase\/[a-z0-9-_]+$`));
 });

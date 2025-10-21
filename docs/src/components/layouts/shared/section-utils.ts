@@ -3,12 +3,14 @@
  */
 
 // Helper functions to detect sections
+const PLATFORM_PREFIX = '(?:[a-z-]+/)?';
+
 export function isInSdkSection(pathname: string): boolean {
-  return /\/docs\/[a-z]+\/sdk(?:\/.*)?$/.test(pathname);
+  return new RegExp(`^/docs/${PLATFORM_PREFIX}sdk(?:/.*)?$`).test(pathname);
 }
 
 export function isInComponentsSection(pathname: string): boolean {
-  return /\/docs\/[a-z]+\/components(?:\/.*)?$/.test(pathname);
+  return new RegExp(`^/docs/${PLATFORM_PREFIX}components(?:/.*)?$`).test(pathname);
 }
 
 export function isInApiSection(pathname: string): boolean {
@@ -16,16 +18,5 @@ export function isInApiSection(pathname: string): boolean {
 }
 
 export function isInCustomizationSection(pathname: string): boolean {
-  return /\/docs\/[a-z]+\/customization(?:\/.*)?$/.test(pathname);
-}
-
-// Platform display name mapping
-export function getPlatformDisplayName(platform: string): string {
-  const platformNames: Record<string, string> = {
-    'next': 'Next.js',
-    'react': 'React',
-    'js': 'JavaScript',
-    'python': 'Python'
-  };
-  return platformNames[platform] || platform;
+  return new RegExp(`^/docs/${PLATFORM_PREFIX}customization(?:/.*)?$`).test(pathname);
 }

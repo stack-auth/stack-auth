@@ -11,6 +11,19 @@ import { source } from 'lib/source';
 import { Metadata } from 'next';
 import { redirect } from 'next/navigation';
 
+function getDefaultDocsRedirectUrl(): string | null {
+  const pages = source.getPages();
+  // Prefer an overview page if one exists without platform prefix
+  const overviewPage = pages.find(page => page.url === '/docs/overview');
+  if (overviewPage) {
+    return overviewPage.url;
+  }
+
+  // Fall back to the first docs page in the collection
+  const firstDocsPage = pages.find(page => page.url.startsWith('/docs/'));
+  return firstDocsPage?.url ?? null;
+}
+
 export default async function Page(props: {
   params: Promise<{ slug?: string[] }>,
 }) {
@@ -18,7 +31,12 @@ export default async function Page(props: {
 
   // Handle redirect when no slug is provided (i.e., accessing /docs directly)
   if (!params.slug || params.slug.length === 0) {
-    redirect("/docs/next/overview");
+    const fallbackUrl = getDefaultDocsRedirectUrl();
+    if (fallbackUrl) {
+      redirect(fallbackUrl);
+    }
+
+    redirect("/");
   }
 
   const page = source.getPage(params.slug);

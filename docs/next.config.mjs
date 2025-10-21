@@ -15,6 +15,12 @@ const config = {
   },
   async redirects() {
     return [
+      // Redirect root to docs overview
+      {
+        source: '/',
+        destination: '/docs/overview',
+        permanent: false,
+      },
       // Redirect /docs/api to the overview page
       {
         source: '/docs/api',

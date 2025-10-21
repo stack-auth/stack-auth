@@ -302,20 +302,6 @@ it("test name", async ({ expect }) => {
 ### Q: Where is project ownership stored in the database?
 A: Projects have an `ownerTeamId` field in the Project model (see `/apps/backend/prisma/schema.prisma`). This links to a team in the internal project.
 
-### Q: How do I make authenticated API calls from dashboard server actions?
-A: Get the session cookie and include it in the request headers:
-```typescript
-const cookieStore = await cookies();
-const sessionCookie = cookieStore.get("stack-refresh-internal");
-const response = await fetch(url, {
-  headers: {
-    'X-Stack-Access-Type': 'server',
-    'X-Stack-Project-Id': 'internal',
-    'X-Stack-Secret-Server-Key': getEnvVariable('STACK_SECRET_SERVER_KEY'),
-    ...(sessionCookie ? { 'Cookie': `${sessionCookie.name}=${sessionCookie.value}` } : {})
-  }
-});
-```
 
 ### Q: What's the difference between ensureTeamMembershipExists and ensureUserTeamPermissionExists?
 A: `ensureTeamMembershipExists` only checks if a user is a member of a team. `ensureUserTeamPermissionExists` checks if a user has a specific permission (like `team_admin`) within that team. The latter also calls `ensureTeamMembershipExists` internally.

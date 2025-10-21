@@ -1,0 +1,47 @@
+name: "Dev Environment Test With Custom Base Port"
+
+on:
+  push:
+    branches:
+      - main
+      - dev
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' && github.ref != 'refs/heads/dev' }}
+
+env:
+  SHELL: /usr/bin/bash
+
+jobs:
+  restart-dev-and-test-with-custom-base-port:
+    runs-on: ubicloud-standard-8
+    env:
+      NEXT_PUBLIC_STACK_PORT_PREFIX: "69"
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Setup Node.js v20
+        uses: actions/setup-node@v3
+        with:
+          node-version: 20
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v3
+        with:
+            version: 9.1.2
+
+      - name: Install packages
+        run: pnpm install
+
+      - name: Start dev environment
+        run: pnpm run restart-dev-environment
+
+      - name: Run tests
+        run: pnpm run test --reporter=verbose
+      
+      - name: Print dev server logs
+        run: cat dev-server.log.untracked.txt
+        if: always()

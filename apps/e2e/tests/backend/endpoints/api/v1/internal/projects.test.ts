@@ -289,7 +289,7 @@ it("creates a new project with different configurations", async ({ expect }) => 
           "email_config": {
             "host": "smtp.example.com",
             "password": "test password",
-            "port": 587,
+            "port": <stripped field 'port'>,
             "sender_email": "test@email.com",
             "sender_name": "Test Sender",
             "type": "standard",

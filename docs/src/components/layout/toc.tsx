@@ -3,18 +3,17 @@ import type { TOCItemType } from 'fumadocs-core/server';
 import * as Primitive from 'fumadocs-core/toc';
 import { useI18n } from 'fumadocs-ui/contexts/i18n';
 import { usePageStyles } from 'fumadocs-ui/contexts/layout';
-import { X } from 'lucide-react';
 import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
   type ComponentProps,
   type HTMLAttributes,
-  type ReactNode,
-  useEffect,
-  useRef,
-  useState
+  type ReactNode
 } from 'react';
 import { cn } from '../../lib/cn';
 import { useSidebar } from '../layouts/sidebar-context';
-import { TocThumb } from './toc-thumb';
 
 export type TOCProps = {
   /**
@@ -73,46 +72,33 @@ export function Toc(props: HTMLAttributes<HTMLDivElement>) {
   }, []);
 
   // Calculate position based on homepage and scroll state (same as AI Chat and Auth Panel)
-  const topPosition = isHomePage && isScrolled ? 'top-0' : 'top-14';
-  const height = isHomePage && isScrolled ? 'h-screen' : 'h-[calc(100vh-3.5rem)]';
+  const topPosition = isHomePage && isScrolled ? 'top-0' : 'top-0';
+  const height = isHomePage && isScrolled ? 'h-screen' : 'h-[calc(100vh)]';
 
   return (
     <div
       id="nd-toc"
       {...props}
       className={cn(
-        `hidden md:block fixed ${topPosition} right-0 ${height} bg-fd-background border-l border-fd-border flex flex-col transition-all duration-300 ease-out z-50 w-64`,
+        `hidden md:block fixed ${topPosition} right-0 ${height} bg-fd-background flex flex-col transition-all duration-300 ease-out z-50 w-64`,
         isTocOpen ? 'translate-x-0' : 'translate-x-full',
         toc,
         props.className,
       )}
     >
-      {/* Header - Matching AI Chat and Auth Panel */}
-      <div className="flex items-center justify-between p-3 border-b border-fd-border bg-fd-background">
-        <div className="flex items-center gap-2">
-          <div className="w-5 h-5 rounded flex items-center justify-center bg-blue-100 dark:bg-blue-900/30">
-            <svg className="w-3 h-3 text-blue-600 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-            </svg>
-          </div>
-          <div>
-            <h3 className="font-medium text-fd-foreground text-sm">Table of Contents</h3>
-            <p className="text-xs text-fd-muted-foreground">Navigate this page</p>
-          </div>
-        </div>
+      <div className="flex items-center justify-end px-4 py-3">
         <button
           onClick={toggleToc}
-          className="p-1 text-fd-muted-foreground hover:text-fd-foreground hover:bg-fd-muted rounded transition-colors"
+          className="text-xs font-medium text-fd-muted-foreground hover:text-fd-foreground transition-colors"
           title="Close table of contents"
           aria-label="Close table of contents"
         >
-          <X className="w-3 h-3" />
+          Close
         </button>
       </div>
 
-      {/* Content */}
-      <div className="flex-1 overflow-y-auto">
-        <div className="p-4">
+      <div className="flex-1 overflow-y-auto pb-5">
+        <div className="px-4">
           {props.children}
         </div>
       </div>
@@ -124,7 +110,7 @@ export function TocItemsEmpty() {
   const { text } = useI18n();
 
   return (
-    <div className="rounded-lg border bg-fd-card p-3 text-xs text-fd-muted-foreground">
+    <div className="rounded-md bg-fd-muted/20 p-3 text-xs text-fd-muted-foreground">
       {text.tocNoHeadings}
     </div>
   );
@@ -151,20 +137,42 @@ export function TOCScrollArea(props: ComponentProps<'div'>) {
 
 export function TOCItems({ items }: { items: TOCItemType[] }) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const [hiddenTabUrls, setHiddenTabUrls] = useState<Set<string>>(() => new Set());
 
-  if (items.length === 0) return <TocItemsEmpty />;
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const hiddenUrls = new Set<string>();
+
+    for (const item of items) {
+      const targetId = extractHash(item.url);
+      if (!targetId) continue;
+
+      const targetElement = document.getElementById(targetId);
+      if (!targetElement) continue;
+
+      if (isInsideTabs(targetElement)) {
+        hiddenUrls.add(item.url);
+      }
+    }
+
+    setHiddenTabUrls(hiddenUrls);
+  }, [items]);
+
+  const visibleItems = useMemo(
+    () => items.filter((item) => !hiddenTabUrls.has(item.url)),
+    [items, hiddenTabUrls],
+  );
+
+  if (visibleItems.length === 0) return <TocItemsEmpty />;
 
   return (
     <>
-      <TocThumb
-        containerRef={containerRef}
-        className="absolute top-(--fd-top) h-(--fd-height) w-px bg-fd-primary transition-all"
-      />
       <div
         ref={containerRef}
-        className="flex flex-col border-s border-fd-foreground/10"
+        className="flex flex-col gap-1.5"
       >
-        {items.map((item) => (
+        {visibleItems.map((item) => (
           <TOCItem key={item.url} item={item} />
         ))}
       </div>
@@ -173,11 +181,40 @@ export function TOCItems({ items }: { items: TOCItemType[] }) {
 }
 
 function TOCItem({ item }: { item: TOCItemType }) {
+  const handleClick = (event: React.MouseEvent<HTMLAnchorElement>) => {
+    if (typeof window === 'undefined') return;
+
+    const targetId = extractHash(item.url);
+    if (!targetId) return;
+
+    const initialTarget = document.getElementById(targetId);
+    if (!initialTarget) return;
+
+    event.preventDefault();
+    ensureTabsVisible(initialTarget).then(() => {
+      requestAnimationFrame(() => {
+        const visibleTarget = document.getElementById(targetId);
+        if (!visibleTarget) return;
+        visibleTarget.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        try {
+          window.history.replaceState(null, '', `#${targetId}`);
+        } catch {
+          // no-op if history manipulation is not allowed
+        }
+      });
+    }).catch(() => {
+      // Handle promise rejection silently
+    });
+  };
+
   return (
     <Primitive.TOCItem
       href={item.url}
+      onClick={handleClick}
       className={cn(
-        'prose py-1.5 text-sm text-fd-muted-foreground transition-colors [overflow-wrap:anywhere] first:pt-0 last:pb-0 data-[active=true]:text-fd-primary',
+        'relative py-1.5 text-sm text-fd-muted-foreground transition-colors [overflow-wrap:anywhere]',
+        'hover:text-fd-foreground',
+        'data-[active=true]:text-fd-foreground data-[active=true]:font-semibold',
         item.depth <= 2 && 'ps-3',
         item.depth === 3 && 'ps-6',
         item.depth >= 4 && 'ps-8',
@@ -186,4 +223,77 @@ function TOCItem({ item }: { item: TOCItemType }) {
       {item.title}
     </Primitive.TOCItem>
   );
+}
+
+function extractHash(url: string): string | null {
+  const hashIndex = url.lastIndexOf('#');
+  if (hashIndex === -1) return null;
+  const hash = url.slice(hashIndex + 1);
+  return hash.length > 0 ? decodeURIComponent(hash) : null;
+}
+
+async function ensureTabsVisible(element: HTMLElement | null): Promise<void> {
+  if (!element) return;
+
+  const tabChain: HTMLElement[] = [];
+  let current = element.closest<HTMLElement>('[data-tabs-content]');
+  while (current) {
+    tabChain.push(current);
+    current = current.parentElement?.closest<HTMLElement>('[data-tabs-content]') ?? null;
+  }
+
+  for (let i = tabChain.length - 1; i >= 0; i--) {
+    await activateTabContent(tabChain[i]);
+  }
+}
+
+async function activateTabContent(tabContent: HTMLElement): Promise<void> {
+  if (tabContent.getAttribute('data-state') === 'active') {
+    return;
+  }
+
+  const tabValue = tabContent.getAttribute('data-tab-value');
+  if (!tabValue) return;
+
+  const tabsRoot = tabContent.closest<HTMLElement>('[data-tabs-root]');
+  if (!tabsRoot) return;
+
+  const trigger = findTabTrigger(tabsRoot, tabValue);
+  if (!trigger) return;
+
+  trigger.click();
+  await waitFor(() => tabContent.getAttribute('data-state') === 'active');
+}
+
+function waitFor(condition: () => boolean, timeout = 250): Promise<void> {
+  return new Promise((resolve) => {
+    const start = performance.now();
+
+    const check = () => {
+      if (condition() || performance.now() - start > timeout) {
+        resolve();
+        return;
+      }
+
+      requestAnimationFrame(check);
+    };
+
+    check();
+  });
+}
+
+function isInsideTabs(element: HTMLElement): boolean {
+  return Boolean(element.closest<HTMLElement>('[data-tabs-content]'));
+}
+
+function findTabTrigger(tabsRoot: HTMLElement, tabValue: string): HTMLElement | null {
+  const triggers = tabsRoot.querySelectorAll<HTMLElement>('[data-tabs-trigger]');
+
+  for (const trigger of triggers) {
+    if (trigger.getAttribute('data-tab-value') === tabValue) {
+      return trigger;
+    }
+  }
+
+  return null;
 }

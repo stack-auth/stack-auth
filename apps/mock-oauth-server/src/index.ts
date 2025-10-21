@@ -3,7 +3,11 @@ import express from 'express';
 import handlebars from 'handlebars';
 import Provider, { errors } from 'oidc-provider';
 
-const port = process.env.PORT || 8114;
+const stackPortPrefix = process.env.NEXT_PUBLIC_STACK_PORT_PREFIX ?? "81";
+const defaultMockOAuthPort = Number(`${stackPortPrefix}14`);
+const port = Number(process.env.PORT ?? defaultMockOAuthPort);
+const backendPortForRedirects = `${stackPortPrefix}02`;
+const emulatorBackendPort = process.env.STACK_EMULATOR_BACKEND_PORT ?? "32102";
 const providerIds = [
   'github',
   'facebook',
@@ -19,9 +23,7 @@ const clients = providerIds.map((id) => ({
   client_id: id,
   client_secret: 'MOCK-SERVER-SECRET',
   redirect_uris: [
-    ...([8102, 32102].map(port =>
-      `http://localhost:${port}/api/v1/auth/oauth/callback/${id}`
-    )),
+    `http://localhost:${backendPortForRedirects}/api/v1/auth/oauth/callback/${id}`,
     ...(process.env.STACK_MOCK_OAUTH_REDIRECT_URIS ? [process.env.STACK_MOCK_OAUTH_REDIRECT_URIS.replace("{id}", id)] : [])
   ],
   grant_types: ['authorization_code', 'refresh_token'],
@@ -69,10 +71,11 @@ const loginTemplateSource = `
   <body class="min-h-screen flex items-center justify-center p-4">
     <div class="card w-full max-w-md p-8">
       <h1 class="text-2xl font-bold mb-6 text-center">Mock OAuth Sign-in</h1>
+      <p class="text-gray-500 mb-4 text-center">This is a mock OAuth server for testing. It accepts any email without a password.</p>
       <form method="post" action="/interaction/{{uid}}/login" class="space-y-4">
         <div>
           <label for="login" class="block text-gray-700">Email</label>
-          <input id="login" type="email" name="login" required
+          <input id="login" type="email" name="login" required placeholder="eg.: email@example.com"
             class="mt-1 block w-full border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring focus:border-blue-300" />
         </div>
         <button type="submit"

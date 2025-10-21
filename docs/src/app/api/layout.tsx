@@ -1,8 +1,11 @@
 import { APIPageWrapper } from '@/components/api/api-page-wrapper';
 import { AuthPanel } from '@/components/api/auth-panel';
 import { AIChatDrawer } from '@/components/chat/ai-chat';
+import { ApiLayoutWrapper } from '@/components/layouts/api-layout-wrapper';
 import { ApiSidebar } from '@/components/layouts/api/api-sidebar-server';
+import { ApiSidebarWrapper } from '@/components/layouts/api/api-sidebar-wrapper';
 import { DocsHeaderWrapper } from '@/components/layouts/docs-header-wrapper';
+import { SharedContentLayout } from '@/components/layouts/shared-content-layout';
 import { SidebarProvider } from '@/components/layouts/sidebar-context';
 import { apiSource } from '../../../lib/source';
 
@@ -90,25 +93,29 @@ export default function ApiLayout({ children }: { children: React.ReactNode }) {
   return (
     <SidebarProvider>
       <APIPageWrapper>
-        <div className="flex min-h-screen bg-fd-background">
-          {/* Full-width header with Stack Auth branding */}
-          <DocsHeaderWrapper
-            showSearch={false}
-            className="fixed top-0 left-0 right-0 z-50 h-14 border-b border-fd-border flex items-center justify-between px-4 md:px-6 bg-fd-background"
-            apiPages={apiPages}
-          />
+        <ApiLayoutWrapper>
+          <div className="flex flex-col min-h-screen bg-fd-background">
+            {/* Full-width header with Stack Auth branding */}
+            <DocsHeaderWrapper
+              showSearch={false}
+              apiPages={apiPages}
+            />
+            <div>
+              <main className="flex flex-1 flex-row min-w-0 items-start mx-auto w-full">
+                {/* Custom API Sidebar - positioned under header, hidden on mobile */}
+                <ApiSidebarWrapper>
+                  <ApiSidebar />
+                </ApiSidebarWrapper>
 
-          {/* Custom API Sidebar - positioned under header, hidden on mobile */}
-          <div className="api-sidebar hidden md:block w-64 flex-shrink-0 border-r border-fd-border fixed left-0 top-14 h-[calc(100vh-3.5rem)] z-30">
-            <ApiSidebar />
-          </div>
+                {/* Main content area */}
+                <div className="flex-1 transition-all duration-300 min-w-0">
+                  <SharedContentLayout variant="default" className="prose prose-neutral dark:prose-invert !max-w-none">
+                    {children}
+                  </SharedContentLayout>
+                </div>
+              </main>
+            </div>
 
-          {/* Main content area - responsive margin based on sidebar state */}
-          <div className="flex-1 flex flex-col min-w-0 md:ml-64 pt-14" id="api-main-content">
-            {/* Page content */}
-            <main className="flex-1 overflow-auto">
-              {children}
-            </main>
           </div>
 
           {/* AI Chat Drawer */}
@@ -116,7 +123,7 @@ export default function ApiLayout({ children }: { children: React.ReactNode }) {
 
           {/* Auth Panel */}
           <AuthPanel />
-        </div>
+        </ApiLayoutWrapper>
       </APIPageWrapper>
     </SidebarProvider>
   );

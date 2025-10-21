@@ -145,7 +145,7 @@ it("creates and updates the email config of a project", async ({ expect }) => {
           "email_config": {
             "host": "smtp.example.com",
             "password": "this-is-a-placeholder-password",
-            "port": 587,
+            "port": <stripped field 'port'>,
             "sender_email": "from@example.com",
             "sender_name": "Test Sender",
             "type": "standard",
