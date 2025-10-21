@@ -70,6 +70,7 @@ it("should throw when disabling verification with a callback url provided", asyn
     email: "no-verification-conflict@test.com",
     password: "password",
     noVerificationCallback: true,
+    // @ts-expect-error - testing the error case
     verificationCallbackUrl: "http://localhost:3000",
   })).rejects.toMatchObject({
     message: expect.stringContaining("verificationCallbackUrl is not allowed when noVerificationCallback is true"),

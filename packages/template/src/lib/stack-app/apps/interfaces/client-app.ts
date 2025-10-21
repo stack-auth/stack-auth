@@ -44,7 +44,7 @@ export type StackClientApp<HasTokenStore extends boolean = boolean, ProjectId ex
 
     signInWithOAuth(provider: string, options?: { returnTo?: string }): Promise<void>,
     signInWithCredential(options: { email: string, password: string, noRedirect?: boolean }): Promise<Result<undefined, KnownErrors["EmailPasswordMismatch"] | KnownErrors["InvalidTotpCode"]>>,
-    signUpWithCredential(options: { email: string, password: string, noRedirect?: boolean, noVerificationCallback?: boolean, verificationCallbackUrl?: string }): Promise<Result<undefined, KnownErrors["UserWithEmailAlreadyExists"] | KnownErrors["PasswordRequirementsNotMet"]>>,
+    signUpWithCredential(options: { email: string, password: string, noRedirect?: boolean } & ({ noVerificationCallback: true } | { noVerificationCallback?: false, verificationCallbackUrl?: string })): Promise<Result<undefined, KnownErrors["UserWithEmailAlreadyExists"] | KnownErrors["PasswordRequirementsNotMet"]>>,
     signInWithPasskey(): Promise<Result<undefined, KnownErrors["PasskeyAuthenticationFailed"] | KnownErrors["InvalidTotpCode"] | KnownErrors["PasskeyWebAuthnError"]>>,
     callOAuthCallback(): Promise<boolean>,
     promptCliLogin(options: { appUrl: string, expiresInMillis?: number }): Promise<Result<string, KnownErrors["CliAuthError"] | KnownErrors["CliAuthExpiredError"] | KnownErrors["CliAuthUsedError"]>>,
