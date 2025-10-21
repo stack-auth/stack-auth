@@ -9,7 +9,7 @@ type Params = {
   projectId: string,
 };
 
-export default async function Page({ params }: { params: Promise<Params> }) {
+export default async function Page() {
   return (
     <PageClient />
   );

@@ -1,11 +1,13 @@
+"use client";
+
 import { SiteLoadingIndicator } from "@/components/site-loading-indicator";
 import { UrlPrefetcher } from "@/lib/prefetch/url-prefetcher";
 import { Suspense } from "react";
 import SidebarLayout from "./sidebar-layout";
 import { AdminAppProvider } from "./use-admin-app";
 
-export default async function Layout(
-  props: { children: React.ReactNode, modal?: React.ReactNode, params: Promise<{ projectId: string }> }
+export default function Layout(
+  props: { children: React.ReactNode, modal?: React.ReactNode }
 ) {
   return (
     <AdminAppProvider>
