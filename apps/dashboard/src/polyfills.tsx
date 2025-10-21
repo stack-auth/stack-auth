@@ -38,7 +38,8 @@ export function ensurePolyfilled() {
     util.inspect.defaultOptions.depth = 8;
   }
 
-  if (typeof process !== "undefined" && typeof process.on === "function") {
+  // @ts-expect-error EdgeRuntime does not have its types defined, just assume it exists
+  if (typeof EdgeRuntime === "undefined" && typeof process !== "undefined" && typeof process.on === "function") {
     process.on("unhandledRejection", (reason, promise) => {
       captureError("unhandled-promise-rejection", reason);
       if (getNodeEnvironment() === "development") {
