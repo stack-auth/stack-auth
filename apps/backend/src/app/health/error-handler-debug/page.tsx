@@ -2,6 +2,7 @@
 
 import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 
+
 export default function Page() {
   return <div>
     This page is useful for testing error handling.<br />

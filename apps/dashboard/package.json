@@ -13,7 +13,7 @@
     "analyze-bundle": "ANALYZE_BUNDLE=1 pnpm run build",
     "start": "next start --port ${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}01",
     "psql": "pnpm run with-env bash -c 'psql $STACK_DATABASE_CONNECTION_STRING'",
-    "lint": "next lint"
+    "lint": "eslint ."
   },
   "dependencies": {
     "@assistant-ui/react": "^0.10.24",
