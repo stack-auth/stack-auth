@@ -79,7 +79,7 @@ export async function middleware(request: NextRequest) {
   } : undefined;
 
   // ensure our clients can handle 429 responses
-  if (isApiRequest && getNodeEnvironment() === 'development' && request.method !== 'OPTIONS') {
+  if (isApiRequest && !request.headers.get('x-stack-disable-artificial-development-delay') && getNodeEnvironment() === 'development' && request.method !== 'OPTIONS' && !request.url.includes(".well-known")) {
     const now = Date.now();
     while (devRateLimitTimestamps.length > 0 && now - devRateLimitTimestamps[0] > DEV_RATE_LIMIT_WINDOW_MS) {
       devRateLimitTimestamps.shift();

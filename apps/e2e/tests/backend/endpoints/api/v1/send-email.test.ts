@@ -1,13 +1,13 @@
-import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { randomUUID } from "crypto";
 import { describe } from "vitest";
 import { it } from "../../../../helpers";
-import { niceBackendFetch, Project, User } from "../../../backend-helpers";
+import { withPortPrefix } from "../../../../helpers/ports";
+import { Project, User, niceBackendFetch } from "../../../backend-helpers";
 
 const testEmailConfig = {
   type: "standard",
   host: "localhost",
-  port: 2500,
+  port: Number(withPortPrefix("29")),
   username: "test",
   password: "test",
   sender_name: "Test Project",
@@ -300,8 +300,8 @@ it("should return 200 and send email successfully", async ({ expect }) => {
       MailboxMessage {
         "attachments": [],
         "body": {
-          "html": "http://localhost:8102/api/v1/emails/unsubscribe-link?code=%3Cstripped+query+param%3E",
-          "text": "http://localhost:8102/api/v1/emails/unsubscribe-link?code=%3Cstripped+query+param%3E",
+          "html": "http://localhost:<$NEXT_PUBLIC_STACK_PORT_PREFIX>02/api/v1/emails/unsubscribe-link?code=%3Cstripped+query+param%3E",
+          "text": "http://localhost:<$NEXT_PUBLIC_STACK_PORT_PREFIX>02/api/v1/emails/unsubscribe-link?code=%3Cstripped+query+param%3E",
         },
         "from": "Test Project <test@example.com>",
         "subject": "Custom Test Email Subject",
@@ -367,7 +367,7 @@ it("should send email using a draft_id and mark draft as sent", async ({ expect 
       email_config: {
         type: "standard",
         host: "localhost",
-        port: 2500,
+        port: Number(withPortPrefix("29")),
         username: "test",
         password: "test",
         sender_name: "Test Project",

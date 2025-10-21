@@ -33,6 +33,8 @@
  * - PageTreeItem: Recursive page tree rendering
  */
 
+"use client";
+
 import Link from 'fumadocs-core/link';
 import type { PageTree } from 'fumadocs-core/server';
 import {
@@ -41,16 +43,12 @@ import {
   type PageStyles,
 } from 'fumadocs-ui/contexts/layout';
 import { TreeContextProvider } from 'fumadocs-ui/contexts/tree';
-import { ArrowLeft, ChevronDown, ChevronRight, Languages, Sidebar as SidebarIcon } from 'lucide-react';
+import { ChevronDown, ChevronRight, Languages, Sidebar as SidebarIcon } from 'lucide-react';
 import { usePathname, useRouter } from 'next/navigation';
-import { createContext, useContext, useEffect, useMemo, useRef, useState, type HTMLAttributes, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useRef, useState, type HTMLAttributes, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { CodeOverlayProvider, useCodeOverlay } from '../../hooks/use-code-overlay';
-import { usePlatformPreference } from '../../hooks/use-platform-preference';
 import { cn } from '../../lib/cn';
-import { getSmartRedirectUrl } from '../../lib/navigation-utils';
-import { getSmartPlatformRedirect } from '../../lib/platform-navigation';
-import { getCurrentPlatform, type Platform } from '../../lib/platform-utils';
 import { AIChatDrawer } from '../chat/ai-chat';
 import { CustomSearchDialog } from '../layout/custom-search-dialog';
 import {
@@ -60,7 +58,6 @@ import {
   LanguageToggle,
   LanguageToggleText,
 } from '../layout/language-toggle';
-import { RootToggle } from '../layout/root-toggle';
 import { ThemeToggle } from '../layout/theme-toggle';
 import { DynamicCodeblockOverlay } from '../mdx/dynamic-code-block-overlay';
 import { buttonVariants } from '../ui/button';
@@ -72,7 +69,6 @@ import {
   NavbarSidebarTrigger,
 } from './docs-client';
 import {
-  getSidebarTabsFromOptions,
   layoutVariables,
   type SidebarOptions
 } from './docs/shared';
@@ -266,37 +262,8 @@ function ClickableCollapsibleSection({
   );
 }
 
-// Function to find platform-specific content in the page tree
-function findPlatformContent(tree: PageTree.Root, platform: string): PageTree.Node[] {
-  // Platform folder name mappings
-  const platformMappings: Record<string, string[]> = {
-    'next': ['next.js', 'nextjs'],
-    'react': ['react'],
-    'js': ['javascript'],
-    'python': ['python']
-  };
-
-  const platformKey = platform.toLowerCase();
-  const possibleNames = platformKey in platformMappings ? platformMappings[platformKey] : [platformKey];
-
-  for (const item of tree.children) {
-    if (item.type === 'folder') {
-      const itemName = String(item.name).toLowerCase();
-
-      if (possibleNames.some(name => {
-        const normalizedName = name.trim().toLowerCase();
-        return itemName === normalizedName || itemName.includes(normalizedName);
-      })) {
-        return item.children;
-      }
-    }
-  }
-
-  return [];
-}
-
 // Recursive component to render page tree items with API styling
-function PageTreeItem({ item, currentPlatform }: { item: PageTree.Node, currentPlatform?: string }) {
+function PageTreeItem({ item }: { item: PageTree.Node }) {
   const pathname = usePathname();
 
   if (item.type === 'separator') {
@@ -318,7 +285,7 @@ function PageTreeItem({ item, currentPlatform }: { item: PageTree.Node, currentP
           defaultOpen={!!isCurrentPath}
         >
           {item.children.map((child, index) => (
-            <PageTreeItem key={child.type === 'page' ? child.url : index} item={child} currentPlatform={currentPlatform} />
+            <PageTreeItem key={child.type === 'page' ? child.url : index} item={child} />
           ))}
         </ClickableCollapsibleSection>
       );
@@ -331,7 +298,7 @@ function PageTreeItem({ item, currentPlatform }: { item: PageTree.Node, currentP
         defaultOpen={!!isCurrentPath}
       >
         {item.children.map((child, index) => (
-          <PageTreeItem key={child.type === 'page' ? child.url : index} item={child} currentPlatform={currentPlatform} />
+          <PageTreeItem key={child.type === 'page' ? child.url : index} item={child} />
         ))}
       </CollapsibleSection>
     );
@@ -346,192 +313,16 @@ function PageTreeItem({ item, currentPlatform }: { item: PageTree.Node, currentP
 
 // Function to render sidebar content based on context
 function renderSidebarContent(tree: PageTree.Root, pathname: string) {
-  const currentPlatform = getCurrentPlatform(pathname) || undefined;
-
-  // For API section, don't show anything (API has its own sidebar)
   if (isInApiSection(pathname)) {
     return null;
   }
 
-  // For platform-specific docs, show the platform folder's content
-  if (currentPlatform) {
-    const platformContent = findPlatformContent(tree, currentPlatform);
-    if (platformContent.length > 0) {
-      return (
-        <>
-          {platformContent.map((item, index) => (
-            <PageTreeItem key={item.type === 'page' ? item.url : index} item={item} currentPlatform={currentPlatform} />
-          ))}
-        </>
-      );
-    }
-  }
-
-  // For general docs or when no platform content found, show root level content
   return (
     <>
       {tree.children.map((item, index) => (
-        <PageTreeItem key={item.type === 'page' ? item.url : index} item={item} currentPlatform={currentPlatform} />
+        <PageTreeItem key={item.type === 'page' ? item.url : index} item={item} />
       ))}
     </>
-  );
-}
-
-// Function to get platform icon and color (now matches the open sidebar colors)
-function getPlatformIcon(platform: string): { icon: string, color: string } {
-  const platformInfo: Record<string, { icon: string, color: string }> = {
-    'next': { icon: 'N', color: 'rgb(59, 130, 246)' }, // Blue - matches homepage/sidebar
-    'react': { icon: 'R', color: 'rgb(16, 185, 129)' }, // Green - matches homepage/sidebar
-    'js': { icon: 'J', color: 'rgb(245, 158, 11)' }, // Yellow - matches homepage/sidebar
-    'python': { icon: 'P', color: 'rgb(168, 85, 247)' } // Purple - matches homepage/sidebar
-  };
-  return platform in platformInfo ? platformInfo[platform] : { icon: '?', color: 'rgb(100, 116, 139)' };
-}
-
-// Get platform display name
-function getPlatformDisplayName(platform: string): string {
-  const platformNames: Record<string, string> = {
-    'next': 'Next.js',
-    'react': 'React',
-    'js': 'JavaScript',
-    'python': 'Python'
-  };
-  return platform in platformNames ? platformNames[platform] : platform;
-}
-
-// Collapsed Platform Switcher Component
-function CollapsedPlatformSwitcher({ currentPlatform }: { currentPlatform?: string }) {
-  const [isOpen, setIsOpen] = useState(false);
-  const [hoveredPlatform, setHoveredPlatform] = useState<string | null>(null);
-  const dropdownRef = useRef<HTMLDivElement>(null);
-  const buttonRef = useRef<HTMLButtonElement>(null);
-  const [buttonRect, setButtonRect] = useState<DOMRect | null>(null);
-  const pathname = usePathname();
-  const router = useRouter();
-  const { setPreferredPlatform } = usePlatformPreference();
-
-  // Update button position when opened
-  useEffect(() => {
-    if (isOpen && buttonRef.current) {
-      setButtonRect(buttonRef.current.getBoundingClientRect());
-    }
-  }, [isOpen]);
-
-  // Click outside to close dropdown
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node) &&
-          buttonRef.current && !buttonRef.current.contains(event.target as Node)) {
-        setIsOpen(false);
-        setHoveredPlatform(null);
-      }
-    };
-
-    if (isOpen) {
-      document.addEventListener('mousedown', handleClickOutside);
-    }
-
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
-  }, [isOpen]);
-
-  if (!currentPlatform) return null;
-
-  const { icon, color } = getPlatformIcon(currentPlatform);
-  const platforms = ['next', 'react', 'js', 'python'];
-
-  const handlePlatformChange = (platform: string) => {
-    setPreferredPlatform(platform as Platform);
-    setIsOpen(false);
-    setHoveredPlatform(null);
-
-    // Use smart navigation like the open sidebar
-    const smartUrl = getSmartRedirectUrl(pathname, platform as Platform);
-    router.push(smartUrl);
-  };
-
-  const dropdownContent = isOpen && buttonRect ? (
-    <div
-      ref={dropdownRef}
-      className="fixed bg-fd-background/95 backdrop-blur-lg border-2 border-fd-border rounded-lg shadow-2xl min-w-[140px] overflow-hidden"
-      style={{
-        left: buttonRect.right + 8,
-        top: buttonRect.top,
-        zIndex: 9999,
-      }}
-    >
-      {platforms.map((platform) => {
-        const isSelected = currentPlatform === platform;
-        const isHovered = hoveredPlatform === platform;
-        const isHighlighted = isSelected || isHovered;
-        const { icon: platformIcon, color: platformColor } = getPlatformIcon(platform);
-
-        return (
-          <button
-            key={platform}
-            onClick={() => handlePlatformChange(platform)}
-            onMouseEnter={() => setHoveredPlatform(platform)}
-            onMouseLeave={() => setHoveredPlatform(null)}
-            className={cn(
-              'w-full px-3 py-2 text-left transition-all duration-200 border-l-4 border-transparent flex items-center gap-2',
-              isHighlighted ? 'bg-fd-muted/70' : 'hover:bg-fd-muted/30',
-            )}
-            style={{
-              borderLeftColor: isHighlighted ? platformColor : 'transparent',
-              backgroundColor: isHighlighted ? `${platformColor}15` : undefined,
-            }}
-          >
-            <span
-              className="text-sm font-bold w-4 flex-shrink-0"
-              style={{ color: platformColor }}
-            >
-              {platformIcon}
-            </span>
-            <span
-              className="text-xs font-medium"
-              style={{
-                color: isHighlighted ? platformColor : undefined,
-              }}
-            >
-              {getPlatformDisplayName(platform)}
-            </span>
-          </button>
-        );
-      })}
-    </div>
-  ) : null;
-
-  return (
-    <div className="group relative">
-      <button
-        ref={buttonRef}
-        onClick={() => setIsOpen(!isOpen)}
-        className={cn(
-          "flex items-center justify-center w-8 h-8 rounded-lg border transition-all duration-200",
-          "hover:scale-110 hover:border-fd-primary/50 hover:bg-fd-primary/5",
-          isOpen && "scale-110 border-fd-primary/50 bg-fd-primary/5"
-        )}
-        style={{
-          color: color,
-          borderColor: isOpen ? color : undefined,
-          backgroundColor: isOpen ? `${color}15` : undefined
-        }}
-        title={`Platform: ${getPlatformDisplayName(currentPlatform)}`}
-      >
-        <span className="text-sm font-bold">{icon}</span>
-      </button>
-
-      {/* Render dropdown as portal to avoid clipping */}
-      {typeof window !== 'undefined' && dropdownContent && createPortal(dropdownContent, document.body)}
-
-      {/* Tooltip - only show when not open */}
-      {!isOpen && (
-        <div className="absolute left-full ml-2 px-2 py-1 bg-fd-popover text-fd-popover-foreground text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50">
-          {getPlatformDisplayName(currentPlatform)} Docs
-        </div>
-      )}
-    </div>
   );
 }
 
@@ -539,11 +330,9 @@ function CollapsedPlatformSwitcher({ currentPlatform }: { currentPlatform?: stri
 function CollapsedPageDot({
   href,
   title,
-  currentPlatform
 }: {
   href: string,
   title: string,
-  currentPlatform?: string,
 }) {
   const [isHovered, setIsHovered] = useState(false);
   const [dotRect, setDotRect] = useState<DOMRect | null>(null);
@@ -554,8 +343,7 @@ function CollapsedPageDot({
   // Determine if this page is currently active based on current pathname
   const isCurrentlyActive = pathname === href;
 
-  // Get platform color, fallback to muted if no platform
-  const platformColor = currentPlatform ? getPlatformIcon(currentPlatform).color : 'rgb(100, 116, 139)';
+  const platformColor = 'rgb(59, 130, 246)';
 
   // Update dot position when hovered
   useEffect(() => {
@@ -565,17 +353,7 @@ function CollapsedPageDot({
   }, [isHovered]);
 
   const handleClick = () => {
-    // Use smart navigation with fallback logic for page dots too
-    try {
-      router.push(href);
-    } catch (error) {
-      // If that fails, use smart platform redirect
-      const currentPlatform = getCurrentPlatform(href);
-      if (currentPlatform) {
-        const fallbackUrl = getSmartPlatformRedirect(href, currentPlatform as Platform);
-        router.push(fallbackUrl);
-      }
-    }
+    router.push(href);
   };
 
   // Enhanced tooltip with more context
@@ -619,7 +397,7 @@ function CollapsedPageDot({
           )}
           style={{
             backgroundColor: isCurrentlyActive ? platformColor : 'rgb(100, 116, 139)',
-            opacity: isCurrentlyActive ? 1 : 0.6
+            opacity: isCurrentlyActive ? 1 : 0.6,
           }}
         />
       </button>
@@ -647,14 +425,12 @@ function CollapsedSectionDot({
   href,
   level = 0,
   items = [],
-  currentPlatform,
   defaultOpen = false
 }: {
   title: string,
   href?: string,
   level?: number,
   items?: CollapsedItem[],
-  currentPlatform?: string,
   defaultOpen?: boolean,
 }) {
   const [isOpen, setIsOpen] = useState(defaultOpen);
@@ -667,7 +443,7 @@ function CollapsedSectionDot({
   // Determine if this section is currently active based on current pathname
   const isActive = href ? pathname === href : false;
 
-  const platformColor = currentPlatform ? getPlatformIcon(currentPlatform).color : 'rgb(100, 116, 139)';
+  const platformColor = 'rgb(59, 130, 246)';
 
   useEffect(() => {
     if (isHovered && dotRef.current) {
@@ -676,22 +452,10 @@ function CollapsedSectionDot({
   }, [isHovered]);
 
   const handleNavigation = () => {
-    // Expand the section when navigating to it
     setIsOpen(true);
 
-    // Use smart navigation with fallback logic
     if (href) {
-      try {
-        // Try the direct href first
-        router.push(href);
-      } catch (error) {
-        // If that fails, use smart platform redirect
-        const currentPlatform = getCurrentPlatform(href);
-        if (currentPlatform) {
-          const fallbackUrl = getSmartPlatformRedirect(href, currentPlatform as Platform);
-          router.push(fallbackUrl);
-        }
-      }
+      router.push(href);
     }
   };
 
@@ -814,7 +578,6 @@ function CollapsedSectionDot({
         <CollapsedHierarchicalItem
           key={child.href || `${child.title}-${index}`}
           item={child}
-          currentPlatform={currentPlatform}
           nextItems={[]}
         />
       ))}
@@ -826,19 +589,17 @@ function CollapsedSectionDot({
 function CollapsedSeparatorDot({
   title,
   level = 0,
-  currentPlatform,
   sectionItems = []
 }: {
   title: string,
   level?: number,
-  currentPlatform?: string,
   sectionItems?: string[],
 }) {
   const [isHovered, setIsHovered] = useState(false);
   const [dotRect, setDotRect] = useState<DOMRect | null>(null);
   const dotRef = useRef<HTMLDivElement>(null);
 
-  const platformColor = currentPlatform ? getPlatformIcon(currentPlatform).color : 'rgb(100, 116, 139)';
+  const platformColor = 'rgb(59, 130, 246)';
 
   // Update position when hovered
   useEffect(() => {
@@ -907,11 +668,9 @@ function CollapsedSeparatorDot({
 // Main hierarchical item renderer
 function CollapsedHierarchicalItem({
   item,
-  currentPlatform,
   nextItems = []
 }: {
   item: CollapsedItem,
-  currentPlatform?: string,
   nextItems?: CollapsedItem[],
 }) {
 
@@ -940,7 +699,6 @@ function CollapsedHierarchicalItem({
       <CollapsedSeparatorDot
         title={item.title}
         level={item.level}
-        currentPlatform={currentPlatform}
         sectionItems={sectionItems}
       />
     );
@@ -953,7 +711,6 @@ function CollapsedHierarchicalItem({
         href={item.href}
         level={item.level}
         items={item.children}
-        currentPlatform={currentPlatform}
         defaultOpen={item.defaultOpen}
       />
     );
@@ -965,7 +722,6 @@ function CollapsedHierarchicalItem({
       <CollapsedPageDot
         href={item.href!}
         title={item.title}
-        currentPlatform={currentPlatform}
       />
     </div>
   );
@@ -1027,42 +783,15 @@ function convertToHierarchicalStructure(nodes: PageTree.Node[], currentPath: str
 
 // Updated collapsed sidebar renderer - uses platform content
 function renderCollapsedSidebarContent(tree: PageTree.Root, pathname: string) {
-  const currentPlatform = getCurrentPlatform(pathname) || undefined;
-
-  if (!currentPlatform) return null;
-
-  let hierarchicalItems: CollapsedItem[] = [];
-
-  // For platform-specific content, use the platform folder
-  const platformContent = findPlatformContent(tree, currentPlatform);
-  if (platformContent.length > 0) {
-    hierarchicalItems = convertToHierarchicalStructure(platformContent, pathname);
-  } else {
-    // Fallback to root tree if no platform-specific content found
-    hierarchicalItems = convertToHierarchicalStructure(tree.children, pathname);
-  }
+  const hierarchicalItems = convertToHierarchicalStructure(tree.children, pathname);
 
   return (
     <div className="flex flex-col items-start space-y-2 py-4 w-full">
-      {/* Platform switcher at the top */}
-      <div className="flex justify-center w-full">
-        <CollapsedPlatformSwitcher currentPlatform={currentPlatform} />
-      </div>
-
-      {/* Separator */}
-      {currentPlatform && (
-        <div className="flex justify-center w-full">
-          <div className="w-4 h-px bg-fd-border" />
-        </div>
-      )}
-
-      {/* Hierarchical navigation */}
       <div className="flex flex-col space-y-1 w-full">
         {hierarchicalItems.map((item, index) => (
           <CollapsedHierarchicalItem
             key={item.href || `${item.title}-${index}`}
             item={item}
-            currentPlatform={currentPlatform}
             nextItems={hierarchicalItems.slice(index + 1)}
           />
         ))}
@@ -1097,10 +826,6 @@ export function DocsLayout({
 }: DocsLayoutProps): ReactNode {
   const [searchOpen, setSearchOpen] = useState(false);
 
-  const tabs = useMemo(
-    () => getSidebarTabsFromOptions(sidebar.tabs, props.tree) ?? [],
-    [sidebar.tabs, props.tree],
-  );
   const links = getLinks(props.links ?? [], props.githubUrl);
 
   const variables = cn(
@@ -1113,6 +838,7 @@ export function DocsLayout({
   const pageStyles: PageStyles = {
     tocNav: cn('xl:hidden'),
     toc: cn('max-xl:hidden'),
+    article: cn('max-w-none'),
   };
 
   return (
@@ -1142,7 +868,7 @@ export function DocsLayout({
               id="nd-docs-layout"
               {...props.containerProps}
               className={cn(
-                'flex flex-1 flex-row md:ml-64 pt-14 min-w-0',
+                'flex flex-1 flex-row min-w-0 items-start',
                 variables,
                 props.containerProps?.className,
               )}
@@ -1169,12 +895,7 @@ export function DocsLayout({
                       {nav.children}
                     </>
                   }
-                  banner={
-                    <>
-                      {tabs.length > 0 ? <RootToggle options={tabs} /> : null}
-                      {sidebar.banner}
-                    </>
-                  }
+                  banner={sidebar.banner}
                   footer={
                     <>
                       <DocsLayoutSidebarFooter
@@ -1191,10 +912,10 @@ export function DocsLayout({
                 'flex-1 transition-all duration-300 min-w-0'
               )}>
                 <StylesProvider {...pageStyles}>{children}</StylesProvider>
+                <CodeOverlayRenderer />
               </div>
             </main>
             <AIChatDrawer />
-            <CodeOverlayRenderer />
           </NavProvider>
         </TreeContextProvider>
       </AccordionProvider>
@@ -1215,16 +936,13 @@ function DocsSidebarCollapseTrigger() {
       type="button"
       onClick={toggleMainSidebar}
       className={cn(
-        buttonVariants({
-          size: 'sm',
-          color: 'outline',
-        }),
-        'w-full justify-center hover:scale-105 active:scale-95',
+        'px-2 py-1 text-xs font-medium rounded-md transition-colors',
+        'bg-fd-muted/50 hover:bg-fd-muted text-fd-muted-foreground hover:text-fd-foreground',
+        'border border-fd-border/50'
       )}
-      title={isMainSidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+      title={isMainSidebarCollapsed ? 'Expand sidebar' : 'Zen mode'}
     >
-      <SidebarIcon className="h-4 w-4" />
-      {!isMainSidebarCollapsed && <span className="ml-2">Collapse</span>}
+      {isMainSidebarCollapsed ? <SidebarIcon className="h-3 w-3" /> : 'Zen'}
     </button>
   );
 }
@@ -1251,24 +969,14 @@ export function DocsLayoutSidebar({
       {collapsible ? <CollapsibleControl onSearchOpen={onSearchOpen} /> : null}
       {/* Sidebar positioned under the header */}
       <div className={cn(
-        "hidden md:block fixed left-0 top-14 border-r border-fd-border bg-fd-background z-30 transition-all duration-300 ease-out",
+        "hidden md:block sticky left-0 top-14 lg:top-26 z-30 transition-all duration-300 ease-out",
         isMainSidebarCollapsed ? "w-16" : "w-64"
       )}>
-        <div className="h-[calc(100vh-3.5rem)] flex flex-col">
+        <div className="h-[calc(100vh-3.5rem)] lg:h-[calc(100vh-6.5rem)] flex flex-col">
           {/* Scrollable content area */}
-          <div className="flex-1 min-h-0 overflow-hidden">
+          <div className="flex-1 min-h-0 pt-4 overflow-hidden">
             <ScrollArea className="h-full">
               <ScrollViewport className={isMainSidebarCollapsed ? "p-2" : "p-4"}>
-                {!isMainSidebarCollapsed && (
-                  <Link
-                    href="/"
-                    className="flex items-center gap-2 px-2 py-1.5 mb-2 text-sm text-fd-muted-foreground hover:text-fd-foreground transition-colors"
-                  >
-                    <ArrowLeft className="h-3 w-3" />
-                    Back to home
-                  </Link>
-                )}
-
                 {/* Platform tabs/banner */}
                 {banner && !isMainSidebarCollapsed && (
                   <div className="mb-4">
@@ -1289,7 +997,7 @@ export function DocsLayoutSidebar({
             </ScrollArea>
           </div>
 
-          {/* Footer - with collapse button */}
+          {/* Footer - with zen button and theme toggle */}
           <div className="border-t border-fd-border p-4 flex-shrink-0">
             {isMainSidebarCollapsed ? (
               <div className="flex flex-col items-center gap-2">
@@ -1297,10 +1005,10 @@ export function DocsLayoutSidebar({
                 <ThemeToggle mode="light-dark" />
               </div>
             ) : (
-              <div className="space-y-2">
-                <DocsSidebarCollapseTrigger />
-                <div className="flex items-center justify-between">
-                  <span className="text-xs text-fd-muted-foreground">Stack Auth Docs</span>
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-xs text-fd-muted-foreground flex-1">Stack Auth Docs</span>
+                <div className="flex items-center gap-2">
+                  <DocsSidebarCollapseTrigger />
                   <ThemeToggle mode="light-dark" />
                 </div>
               </div>

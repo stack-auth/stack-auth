@@ -1,14 +1,15 @@
 "use client";
 
 import { StackAdminApp, useUser } from "@stackframe/stack";
-import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
-import { notFound } from "next/navigation";
+import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { notFound, usePathname } from "next/navigation";
 import React from "react";
 
 const StackAdminAppContext = React.createContext<StackAdminApp<false> | null>(null);
 
-export function AdminAppProvider(props: { projectId: string, children: React.ReactNode }) {
-  const app = useAdminApp(props.projectId);
+export function AdminAppProvider(props: { children: React.ReactNode }) {
+  const projectId = useProjectId();
+  const app = useAdminApp(projectId);
   return (
     <StackAdminAppContext.Provider value={app}>
       {props.children}
@@ -40,4 +41,13 @@ export function useAdminApp(projectId?: string) {
   } else {
     return providedApp ?? throwErr("useAdminApp must be used within an AdminInterfaceProvider");
   }
+}
+
+export function useProjectId() {
+  const pathname = usePathname();
+  if (!pathname.startsWith("/projects/")) {
+    throw new StackAssertionError("useProjectId must be used within a project route");
+  }
+  const projectId = pathname.split("/")[2];
+  return projectId;
 }

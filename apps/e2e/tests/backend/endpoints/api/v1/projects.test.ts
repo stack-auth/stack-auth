@@ -396,7 +396,7 @@ it("updates the project email configuration", async ({ expect }) => {
           "email_config": {
             "host": "smtp.example.com",
             "password": "test password",
-            "port": 587,
+            "port": <stripped field 'port'>,
             "sender_email": "test@email.com",
             "sender_name": "Test Sender",
             "type": "standard",
@@ -456,7 +456,7 @@ it("updates the project email configuration", async ({ expect }) => {
           "email_config": {
             "host": "smtp.example2.com",
             "password": "test password2",
-            "port": 587,
+            "port": <stripped field 'port'>,
             "sender_email": "test@email.com2",
             "sender_name": "Test Sender2",
             "type": "standard",
@@ -608,7 +608,7 @@ it("updates the project email configuration", async ({ expect }) => {
           "email_config": {
             "host": "smtp.control-group.com",
             "password": "control group",
-            "port": 587,
+            "port": <stripped field 'port'>,
             "sender_email": "control-group@email.com",
             "sender_name": "Control Group",
             "type": "standard",
