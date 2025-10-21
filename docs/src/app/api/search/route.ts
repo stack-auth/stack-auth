@@ -5,12 +5,18 @@ type SearchResult = {
   type: 'page' | 'heading' | 'text' | 'api',
   content: string,
   url: string,
+  title?: string,
 };
 
 // Helper function to call MCP server
 async function callMcpServer(search_query: string): Promise<SearchResult[]> {
   try {
-    const response = await fetch('https://mcp.stack-auth.com/api/internal/mcp', {
+    // Use localhost during development, production URL otherwise
+    const mcpUrl = process.env.NODE_ENV === 'development'
+      ? 'http://localhost:8104/api/internal/mcp'
+      : 'https://mcp.stack-auth.com/api/internal/mcp';
+
+    const response = await fetch(mcpUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -92,6 +98,7 @@ async function callMcpServer(search_query: string): Promise<SearchResult[]> {
           type: type === 'api' ? 'api' : 'page',
           content: snippet || description || title,
           url: url,
+          title: title,
         });
       }
     }
