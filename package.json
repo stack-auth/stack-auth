@@ -62,7 +62,8 @@
     "generate-keys": "pnpm pre && turbo run generate-keys",
     "generate-sdks": "npx --package=tsx tsx ./scripts/generate-sdks.ts",
     "generate-sdks:watch": "chokidar --silent -c 'pnpm run generate-sdks' './packages/template' --ignore './packages/template/package.json' --ignore '**/node_modules/**' --ignore '**/dist/**' --ignore '**/.turbo/**' --throttle 2000",
-    "generate-openapi-docs:watch": "chokidar --silent -c 'pnpm run --filter=@stackframe/stack-docs generate-openapi-docs' './docs/public/openapi/{admin,client,server,webhooks}.json' --throttle 2000"
+    "generate-openapi-docs:watch": "chokidar --silent -c 'pnpm run --filter=@stackframe/stack-docs generate-openapi-docs' './docs/public/openapi/{admin,client,server,webhooks}.json' --throttle 2000",
+    "changelog:update": "npx tsx scripts/changelog-manager.ts"
   },
   "devDependencies": {
     "@changesets/cli": "^2.27.9",
