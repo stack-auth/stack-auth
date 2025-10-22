@@ -195,7 +195,7 @@ services:
   # ================= QStash =================
 
   qstash:
-    image: public.ecr.aws/upstash/qstash:latest
+    image: bgodil/qstash:latest
     ports:
       - "${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}25:8080"
     command: qstash dev
