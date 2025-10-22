@@ -8,21 +8,104 @@ import { useSidebar } from '../layouts/sidebar-context';
 
 type SearchResult = {
   id: string,
-  type: 'page' | 'heading' | 'text',
+  type: 'page' | 'heading' | 'text' | 'api',
   content: string,
   url: string,
+  title?: string,
 };
+
+type DocumentCategory = 'api' | 'sdk' | 'component' | 'guide' | 'webhook';
 
 type GroupedResult = {
   basePath: string,
   title: string,
+  category: DocumentCategory,
+  categories: DocumentCategory[], // Support multiple categories (e.g., API + Webhook)
   results: SearchResult[],
 };
 
+function categorizeUrl(url: string): { primary: DocumentCategory, all: DocumentCategory[] } {
+  const categories: DocumentCategory[] = [];
+
+  // Check for API
+  if (url.startsWith('/api/')) {
+    categories.push('api');
+
+    // Check if it's also a webhook
+    if (url.includes('/webhook')) {
+      categories.push('webhook');
+      return { primary: 'webhook', all: categories };
+    }
+
+    return { primary: 'api', all: categories };
+  }
+
+  // Check for SDK
+  if (url.includes('/docs/sdk/') || url.includes('/sdk/')) {
+    categories.push('sdk');
+    return { primary: 'sdk', all: categories };
+  }
+
+  // Check for Component
+  if (url.includes('/docs/components/') || url.includes('/components/')) {
+    categories.push('component');
+    return { primary: 'component', all: categories };
+  }
+
+  // Default to guide
+  categories.push('guide');
+  return { primary: 'guide', all: categories };
+}
+
 function extractBasePathFromUrl(url: string): string {
-  // Extract everything after the platform but before any hash
+  // Handle API URLs
+  if (url.startsWith('/api/')) {
+    const match = url.match(/\/api\/([^#]+)/);
+    return match?.[1] || '';
+  }
+  // Handle docs URLs
   const match = url.match(/\/docs\/(.+?)(?:#|$)/);
   return match?.[1] || '';
+}
+
+function getCategoryLabel(category: DocumentCategory): string {
+  switch (category) {
+    case 'api': {
+      return 'API';
+    }
+    case 'sdk': {
+      return 'SDK';
+    }
+    case 'component': {
+      return 'COMP';
+    }
+    case 'guide': {
+      return 'GUIDE';
+    }
+    case 'webhook': {
+      return 'EVENT';
+    }
+  }
+}
+
+function getCategoryStyles(category: DocumentCategory): string {
+  switch (category) {
+    case 'api': {
+      return 'bg-red-500/10 text-red-700 dark:text-red-400 border border-red-500/20';
+    }
+    case 'sdk': {
+      return 'bg-blue-500/10 text-blue-700 dark:text-blue-400 border border-blue-500/20';
+    }
+    case 'component': {
+      return 'bg-cyan-500/10 text-cyan-700 dark:text-cyan-400 border border-cyan-500/20';
+    }
+    case 'guide': {
+      return 'bg-green-500/10 text-green-700 dark:text-green-400 border border-green-500/20';
+    }
+    case 'webhook': {
+      return 'bg-purple-500/10 text-purple-700 dark:text-purple-400 border border-purple-500/20';
+    }
+  }
 }
 
 function groupResultsByPage(results: SearchResult[]): GroupedResult[] {
@@ -32,15 +115,46 @@ function groupResultsByPage(results: SearchResult[]): GroupedResult[] {
   for (const result of results) {
     const basePath = extractBasePathFromUrl(result.url);
     const baseUrl = result.url.split('#')[0];
+    const { primary: category, all: categories } = categorizeUrl(result.url);
 
     if (!grouped.has(baseUrl)) {
-      // Find the page title from page-type results, fallback to path-based title
-      const pageResult = results.find(r => r.url === baseUrl && r.type === 'page');
-      const title = pageResult?.content || basePath.split('/').pop()?.replace(/-/g, ' ') || 'Unknown';
+      // Try to get title from the result itself first, then from other results with same base URL
+      let title = result.title;
+
+      if (!title) {
+        // Try to find a page-type result with this base URL that has a title
+        const pageResult = results.find(r => r.url.split('#')[0] === baseUrl && r.title);
+        title = pageResult?.title;
+      }
+
+      // Fallback to formatting the path
+      if (!title) {
+        // For API URLs, create readable titles
+        if (categories.includes('api')) {
+          const parts = basePath.split('/').filter(Boolean);
+          if (parts.length > 0) {
+            title = parts.map(part =>
+              part.split('-').map(word =>
+                word.charAt(0).toUpperCase() + word.slice(1)
+              ).join(' ')
+            ).join(' - ');
+          } else {
+            title = 'API Documentation';
+          }
+        } else {
+          // For docs URLs, format the last part of the path
+          const lastPart = basePath.split('/').pop() || basePath;
+          title = lastPart.split('-').map(word =>
+            word.charAt(0).toUpperCase() + word.slice(1)
+          ).join(' ');
+        }
+      }
 
       grouped.set(baseUrl, {
         basePath,
-        title,
+        title: title || 'Documentation',
+        category,
+        categories,
         results: []
       });
 
@@ -153,8 +267,18 @@ export function CustomSearchDialog({ open, onOpenChange }: CustomSearchDialogPro
 
   const groupedResults = groupResultsByPage(results);
 
-  // Use all results (no platform filtering)
-  const filteredResults = groupedResults;
+  // Sort results by category: guides first, then SDK, then API, then webhooks, then components
+  const categoryOrder: Record<DocumentCategory, number> = {
+    'guide': 1,
+    'sdk': 2,
+    'api': 3,
+    'webhook': 4,
+    'component': 5,
+  };
+
+  const filteredResults = groupedResults.sort((a, b) => {
+    return categoryOrder[a.category] - categoryOrder[b.category];
+  });
 
   // Flatten results for keyboard navigation
   const flatResults = filteredResults.flatMap(group =>
@@ -254,14 +378,26 @@ export function CustomSearchDialog({ open, onOpenChange }: CustomSearchDialogPro
           )}
 
           {!loading && filteredResults.map((group, groupIndex) => (
-            <div key={group.basePath || groupIndex} className="mb-6">
-              {/* Group Header */}
-              <div className="flex items-center gap-3 px-3 py-2 mb-3 bg-fd-muted/30 rounded-lg">
-                <h3 className="text-sm font-semibold text-fd-foreground">
+            <div key={group.basePath || groupIndex} className="mb-4">
+              {/* Group Header - grid layout for consistent badge alignment */}
+              <div className="grid grid-cols-[1fr_auto_auto] items-center gap-3 px-3 py-2.5 mb-2 bg-fd-muted/20 rounded-lg">
+                <h3 className="text-sm font-semibold text-fd-foreground truncate">
                   {group.title}
                 </h3>
-                <div className="flex-1" />
-                <span className="text-xs text-fd-muted-foreground">
+                <div className="flex items-center gap-1 flex-shrink-0">
+                  {group.categories.map((cat, idx) => (
+                    <span
+                      key={idx}
+                      className={cn(
+                        "inline-flex items-center justify-center px-2 py-0.5 rounded-md text-[10px] font-medium tracking-wide leading-none",
+                        getCategoryStyles(cat)
+                      )}
+                    >
+                      {getCategoryLabel(cat)}
+                    </span>
+                  ))}
+                </div>
+                <span className="text-xs text-fd-muted-foreground flex-shrink-0">
                   {group.results.length} result{group.results.length !== 1 ? 's' : ''}
                 </span>
               </div>
@@ -314,6 +450,11 @@ export function CustomSearchDialog({ open, onOpenChange }: CustomSearchDialogPro
                   );
                 })}
               </div>
+
+              {/* Separator between groups (except for last group) */}
+              {groupIndex < filteredResults.length - 1 && (
+                <div className="mt-4 mb-4 mx-3 border-t border-fd-border/30" />
+              )}
             </div>
           ))}
 
