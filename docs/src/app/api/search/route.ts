@@ -1,229 +1,158 @@
-import fs from 'fs';
-import { source } from 'lib/source';
 import type { NextRequest } from 'next/server';
-import path from 'path';
 
 type SearchResult = {
   id: string,
-  type: 'page' | 'heading' | 'text',
+  type: 'page' | 'heading' | 'text' | 'api',
   content: string,
   url: string,
-  score: number, // Add scoring for prioritization
+  title?: string,
 };
 
-// Helper function to calculate search relevance score
-function calculateScore(query: string, text: string, type: 'title' | 'description' | 'heading' | 'content'): number {
-  const queryLower = query.toLowerCase().trim();
-  const textLower = text.toLowerCase().trim();
-  // Base scores by type (higher = more important)
-  const baseScores = {
-    title: 100,
-    description: 70,
-    heading: 50,
-    content: 20
-  };
+// Helper function to call MCP server
+async function callMcpServer(search_query: string): Promise<SearchResult[]> {
+  try {
+    // Use localhost during development, production URL otherwise
+    const mcpUrl = process.env.NODE_ENV === 'development'
+      ? 'http://localhost:8104/api/internal/mcp'
+      : 'https://mcp.stack-auth.com/api/internal/mcp';
 
-  let score = 0;
-  let matchType = '';
+    const response = await fetch(mcpUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json, text/event-stream',
+      },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        method: 'tools/call',
+        params: {
+          name: 'search_docs',
+          arguments: { search_query, result_limit: 20 },
+        },
+        id: Date.now(),
+      }),
+    });
 
-  // Exact match bonus (highest priority)
-  if (textLower === queryLower) {
-    score += baseScores[type] * 3; // Triple score for exact matches
-    matchType = 'exact';
-  }
-  // Starts with query bonus
-  else if (textLower.startsWith(queryLower)) {
-    score += baseScores[type] * 2; // Double score for starts with
-    matchType = 'starts-with';
-  }
-  // Contains as whole word bonus
-  else if (new RegExp(`\\b${queryLower.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`).test(textLower)) {
-    score += baseScores[type] * 1.5;
-    matchType = 'whole-word';
-  }
-  // Contains query bonus
-  else if (textLower.includes(queryLower)) {
-    score += baseScores[type];
-    matchType = 'contains';
-  }
-  else {
-    return 0; // No match
-  }
+    if (!response.ok) {
+      throw new Error(`MCP server error: ${response.status}`);
+    }
 
-  // Length penalty - shorter text with match is more relevant
-  const lengthPenalty = Math.min(text.length / 100, 0.3);
-  score -= lengthPenalty * 5;
+    // Parse Server-Sent Events format response
+    const text = await response.text();
+    const lines = text.split('\n');
+    let jsonData = null;
 
-  // Multiple occurrence bonus
-  const occurrences = (textLower.match(new RegExp(queryLower.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g')) || []).length;
-  if (occurrences > 1) {
-    score += (occurrences - 1) * 15;
+    for (const line of lines) {
+      if (line.startsWith('data: ')) {
+        try {
+          jsonData = JSON.parse(line.substring(6));
+          break;
+        } catch (e) {
+          // Continue looking for valid JSON data
+        }
+      }
+    }
+
+    if (!jsonData) {
+      throw new Error('Invalid MCP response format');
+    }
+
+    if (jsonData.error) {
+      throw new Error(jsonData.error.message || 'MCP search failed');
+    }
+
+    // Parse the search results from the text response
+    const searchResultText = jsonData.result?.content?.[0]?.text || '';
+    if (searchResultText.includes('No results found')) {
+      return [];
+    }
+
+    const results: SearchResult[] = [];
+    const resultBlocks = searchResultText.split('\n---\n');
+
+    for (const block of resultBlocks) {
+      const lines = block.trim().split('\n');
+      let title = '';
+      let description = '';
+      let url = '';
+      let type = '';
+      let snippet = '';
+
+      for (const line of lines) {
+        if (line.startsWith('Title: ')) {
+          title = line.substring(7);
+        } else if (line.startsWith('Description: ')) {
+          description = line.substring(13);
+        } else if (line.startsWith('URL: ')) {
+          url = line.substring(5);
+        } else if (line.startsWith('Type: ')) {
+          type = line.substring(6);
+        } else if (line.startsWith('Snippet: ')) {
+          snippet = line.substring(9);
+        }
+      }
+
+      if (title && url) {
+        results.push({
+          id: `${url}-${type}`,
+          type: type === 'api' ? 'api' : 'page',
+          content: snippet || description || title,
+          url: url,
+          title: title,
+        });
+      }
+    }
+
+    return results;
+  } catch (error) {
+    console.error('MCP server call failed:', error);
+    // Fallback to empty results
+    return [];
   }
-
-  // Log scoring details for debugging
-  if (score > 0) {
-    console.log(`Score calculation: "${text}" (${type}) = ${score.toFixed(1)} [${matchType}, ${occurrences} occurrences]`);
-  }
-
-  return Math.max(score, 0);
 }
 
-// Helper function to extract text content from MDX
-function extractTextFromMDX(filePath: string): string {
-  try {
-    const content = fs.readFileSync(filePath, 'utf-8');
-    // Remove frontmatter
-    const withoutFrontmatter = content.replace(/^---[\s\S]*?---/, '');
-    // Remove JSX components and keep only text content
-    const textOnly = withoutFrontmatter
-      .replace(/<[^>]*>/g, ' ') // Remove JSX tags
-      .replace(/\{[^}]*\}/g, ' ') // Remove JSX expressions
-      .replace(/```[a-zA-Z]*\n/g, ' ') // Remove code block language markers
-      .replace(/```/g, ' ') // Remove code block delimiters but keep content
-      .replace(/`([^`]*)`/g, '$1') // Remove inline code backticks but keep content
-      .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1') // Extract link text
-      .replace(/[#*_~]/g, '') // Remove markdown formatting (but keep backticks for now)
-      .replace(/\s+/g, ' ') // Normalize whitespace
-      .trim();
-    return textOnly;
-  } catch (error) {
-    console.error(`Error reading file ${filePath}:`, error);
-    return '';
-  }
+// Helper function to get platform priority for tie-breaking
+function getPlatformPriority(url: string): number {
+  // Higher number = higher priority
+  if (url.includes('/api/')) return 100; // API docs get highest priority
+  if (url.includes('/docs/next/')) return 90;
+  if (url.includes('/docs/react/')) return 80;
+  if (url.includes('/docs/js/')) return 70;
+  if (url.includes('/docs/python/')) return 60;
+  return 50; // Default priority
 }
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
-  const query = searchParams.get('q');
+  const search_query = searchParams.get('q');
 
-  console.log('Search API called with query:', query);
+  console.log('Search API called with query:', search_query);
 
-  if (!query) {
+  if (!search_query) {
     return Response.json([]);
   }
 
   try {
-    // Get all pages from the source
-    const pages = source.getPages();
-    console.log(`Found ${pages.length} pages in source`);
+    // Call MCP server for search results
+    const results = await callMcpServer(search_query);
 
-    const results: SearchResult[] = [];
-    const queryLower = query.toLowerCase();
+    console.log(`Found ${results.length} search results from MCP server for "${search_query}"`);
 
-    // Search through all pages
-    pages.forEach((page, pageIndex) => {
-      const url = page.url;
-      const title = page.data.title || '';
-      const description = page.data.description || '';
+    // Filter out admin API endpoints as an additional safety measure
+    const filteredResults = results.filter(result => !result.url.startsWith('/api/admin'));
 
-      // Check if page title matches
-      const titleScore = calculateScore(query, title, 'title');
-      if (titleScore > 0) {
-        console.log(`Page title match: "${title}" at ${url} - Score: ${titleScore.toFixed(1)}`);
-        results.push({
-          id: `${url}-page`,
-          type: 'page',
-          content: title,
-          url: url,
-          score: titleScore
-        });
-      }
-
-      // Check if description matches
-      const descriptionScore = calculateScore(query, description, 'description');
-      if (descriptionScore > 0) {
-        results.push({
-          id: `${url}-description`,
-          type: 'text',
-          content: description,
-          url: url,
-          score: descriptionScore
-        });
-      }
-
-      // Search through TOC items (headings)
-      page.data.toc.forEach((tocItem, tocIndex) => {
-        const tocTitle = tocItem.title;
-        if (typeof tocTitle === 'string') {
-          const headingScore = calculateScore(query, tocTitle, 'heading');
-          if (headingScore > 0) {
-            results.push({
-              id: `${url}-${tocIndex}`,
-              type: 'heading',
-              content: tocTitle,
-              url: `${url}#${tocItem.url.slice(1)}`, // Remove the # from tocItem.url and add it back
-              score: headingScore
-            });
-          }
-        }
-      });
-
-      // Full content search by reading the actual MDX file
-      try {
-        // Construct file path from URL
-        const relativePath = url.replace('/docs/', './content/docs/') + '.mdx';
-        const fullPath = path.resolve(relativePath);
-
-        if (fs.existsSync(fullPath)) {
-          const textContent = extractTextFromMDX(fullPath);
-          const contentScore = calculateScore(query, textContent, 'content');
-
-          if (contentScore > 0) {
-            // Find a snippet around the match for better context
-            const matchIndex = textContent.toLowerCase().indexOf(queryLower);
-            const start = Math.max(0, matchIndex - 50);
-            const end = Math.min(textContent.length, matchIndex + 100);
-            const snippet = textContent.slice(start, end);
-
-            results.push({
-              id: `${url}-content-${pageIndex}`,
-              type: 'text',
-              content: `...${snippet}...`,
-              url: url,
-              score: contentScore
-            });
-          }
-        }
-      } catch (error) {
-        // Silently ignore file reading errors
-      }
+    // Sort by platform priority since MCP server already handles relevance
+    const sortedResults = filteredResults.sort((a, b) => {
+      return getPlatformPriority(b.url) - getPlatformPriority(a.url);
     });
 
-    // Sort results by score in descending order (highest score first)
-    results.sort((a, b) => b.score - a.score);
-
-    console.log(`\n=== RAW RESULTS FOR "${query}" ===`);
-    results.slice(0, 10).forEach((result, i) => {
-      console.log(`${i + 1}. "${result.content}" (${result.type}) - Score: ${result.score.toFixed(1)} - URL: ${result.url}`);
+    console.log(`\n=== MCP SEARCH RESULTS FOR "${search_query}" ===`);
+    sortedResults.slice(0, 10).forEach((result, i) => {
+      const priority = getPlatformPriority(result.url);
+      console.log(`${i + 1}. "${result.content}" (${result.type}) - Priority: ${priority} - URL: ${result.url}`);
     });
 
-    // Remove duplicate URLs and keep only the highest scoring result per URL
-    const seenUrls = new Set<string>();
-    const uniqueResults = results.filter(result => {
-      const baseUrl = result.url.split('#')[0]; // Remove fragment for deduplication
-      if (seenUrls.has(baseUrl)) {
-        console.log(`Duplicate URL filtered: ${result.content} (${result.score.toFixed(1)}) for ${baseUrl}`);
-        return false;
-      }
-      seenUrls.add(baseUrl);
-      return true;
-    });
-
-    // Re-sort after deduplication using the same logic
-    uniqueResults.sort((a, b) => b.score - a.score);
-
-    console.log(`\n=== FINAL RESULTS FOR "${query}" ===`);
-    uniqueResults.slice(0, 10).forEach((result, i) => {
-      console.log(`${i + 1}. "${result.content}" (${result.type}) - Score: ${result.score.toFixed(1)} - URL: ${result.url}`);
-    });
-
-    console.log(`\nFound ${uniqueResults.length} unique search results for "${query}"`);
-
-    // Remove score from response (internal use only)
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars -- score is used internally for sorting.
-    const responseResults = uniqueResults.map(({ score, ...result }) => result);
-
-    return Response.json(responseResults);
+    return Response.json(sortedResults);
 
   } catch (error) {
     console.error('Search error:', error);
