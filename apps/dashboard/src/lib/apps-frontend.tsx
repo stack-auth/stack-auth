@@ -73,7 +73,13 @@ export const ALL_APPS_FRONTEND = {
       LogoBright,
       OpenGraphImage,
     ],
-    storeDescription: <></>,
+    storeDescription: (
+      <>
+        <p>Authentication centralizes everything you need to operate your Stack Auth user directory.</p>
+        <p>Browse and create users, tune sign-up behavior, and configure auth methods without leaving the dashboard.</p>
+        <p>When it is time to harden production, manage trusted domains and other guardrails in the same place.</p>
+      </>
+    ),
   },
   teams: {
     icon: Users,
@@ -83,7 +89,13 @@ export const ALL_APPS_FRONTEND = {
       { displayName: "Team Settings", href: "../team-settings" },
     ],
     screenshots: [],
-    storeDescription: <></>,
+    storeDescription: (
+      <>
+        <p>Teams gives your project first-class multi-tenancy without extra plumbing.</p>
+        <p>Create organizations in seconds, keep their metadata tidy with inline edits, and invite teammates or add existing users while memberships stay in sync.</p>
+        <p>Whenever you need deeper context, you can jump straight into team settings, billing, or permissions from the same place.</p>
+      </>
+    ),
   },
   rbac: {
     icon: UserCog,
@@ -93,7 +105,13 @@ export const ALL_APPS_FRONTEND = {
       { displayName: "Team Permissions", href: "../team-permissions" },
     ],
     screenshots: [],
-    storeDescription: <></>,
+    storeDescription: (
+      <>
+        <p>RBAC helps you model the authorization surface of your product in a structured, auditable way.</p>
+        <p>Define project and team permissions with IDs that map directly into your code and compose them into higher-level roles.</p>
+        <p>The Stack SDK exposes those definitions everywhere so each environment enforces the same checks.</p>
+      </>
+    ),
   },
   "api-keys": {
     icon: KeyRound,
@@ -102,7 +120,13 @@ export const ALL_APPS_FRONTEND = {
       { displayName: "API Keys", href: "." },
     ],
     screenshots: [],
-    storeDescription: <></>,
+    storeDescription: (
+      <>
+        <p>API Keys keeps every environment credentialized without sacrificing control.</p>
+        <p>Issue publishable client keys or secret server keys with configurable expirations and copy the values before they disappear.</p>
+        <p>When a credential is no longer trusted, revoke or rotate it instantly from the dashboard.</p>
+      </>
+    ),
   },
   payments: {
     icon: CreditCard,
@@ -113,7 +137,13 @@ export const ALL_APPS_FRONTEND = {
       { displayName: "Transactions", href: "./transactions" },
     ],
     screenshots: [],
-    storeDescription: "",
+    storeDescription: (
+      <>
+        <p>Payments brings Stack&apos;s product-first pricing model into the dashboard.</p>
+        <p>Design catalogs of products, prices, and entitlements, segment user or team customers, and generate checkout URLs with the right guardrails.</p>
+        <p>Purchase history and transactions stay visible without leaving the console.</p>
+      </>
+    ),
   },
   emails: {
     icon: Mail,
@@ -125,7 +155,13 @@ export const ALL_APPS_FRONTEND = {
       { displayName: "Themes", href: "../email-themes", getBreadcrumbItems: getEmailThemeBreadcrumbItems },
     ],
     screenshots: [],
-    storeDescription: <></>,
+    storeDescription: (
+      <>
+        <p>Emails gives you a full control room for transactional communication.</p>
+        <p>Configure shared delivery, Resend, or custom SMTP without touching code, then send test or operational messages whenever you need.</p>
+        <p>Draft, templatize, and theme email content so every notification stays on brand while delivery logs remain close by.</p>
+      </>
+    ),
   },
   "email-api": {
     icon: Mails,
@@ -134,7 +170,13 @@ export const ALL_APPS_FRONTEND = {
       { displayName: "Email API", href: "." },
     ],
     screenshots: [],
-    storeDescription: <></>,
+    storeDescription: (
+      <>
+        <p>The Email API unlocks programmatic messaging flows directly from the Stack SDK.</p>
+        <p>Trigger transactional emails from your server code, reuse the templates and themes you author in the dashboard, and capture delivery results in the same log.</p>
+        <p>It is the fastest path from an automation idea to a production-ready notification.</p>
+      </>
+    ),
   },
   "data-vault": {
     icon: Vault,
@@ -143,7 +185,13 @@ export const ALL_APPS_FRONTEND = {
       { displayName: "Data Vault", href: "." },
     ],
     screenshots: [],
-    storeDescription: <></>,
+    storeDescription: (
+      <>
+        <p>Data Vault is an encrypted key-value store for the secrets your app should never expose.</p>
+        <p>Create isolated stores for API tokens, recovery codes, or other sensitive values, all protected by your own vault secret.</p>
+        <p>Stack only keeps hashed keys and ciphertext, and the SDK ships with examples for reading and writing data safely.</p>
+      </>
+    ),
   },
   workflows: {
     icon: Workflow,
@@ -152,7 +200,13 @@ export const ALL_APPS_FRONTEND = {
       { displayName: "Workflows", href: "." },
     ],
     screenshots: [],
-    storeDescription: <></>,
+    storeDescription: (
+      <>
+        <p>Workflows let you orchestrate onboarding, lifecycle touchpoints, and bespoke automation in TypeScript.</p>
+        <p>Author event-driven handlers that run inside Stack, schedule follow-up callbacks, and keep business logic alongside your auth data.</p>
+        <p>Duplication, and toggles live in the dashboard so iteration stays fast.</p>
+      </>
+    ),
   },
   webhooks: {
     icon: Webhook,
@@ -161,7 +215,13 @@ export const ALL_APPS_FRONTEND = {
       { displayName: "Webhooks", href: "." },
     ],
     screenshots: [],
-    storeDescription: <></>,
+    storeDescription: (
+      <>
+        <p>Webhooks are used to sync users and teams events from Stack to your own servers.</p>
+        <p>Create and manage Svix-powered endpoints without leaving the dashboard, edit descriptions as your integrations evolve, and retire endpoints safely when they are no longer needed.</p>
+        <p>Every notification keeps billing, analytics, and downstream services in sync.</p>
+      </>
+    ),
   },
   "tv-mode": {
     icon: Tv,
@@ -179,7 +239,13 @@ export const ALL_APPS_FRONTEND = {
       { displayName: "Launch Checklist", href: "." },
     ],
     screenshots: [],
-    storeDescription: <></>,
+    storeDescription: (
+      <>
+        <p>The Launch Checklist keeps your go-live to-dos inside the product.</p>
+        <p>Track implementation progress across the tasks that matter, follow guided instructions for each requirement, and keep teammates aligned as you move from sandbox to production.</p>
+        <p>It becomes the shared source of truth when launch day approaches.</p>
+      </>
+    ),
   },
   catalyst: {
     icon: Sparkles,
