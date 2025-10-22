@@ -4,8 +4,8 @@ import { StackAssertionError } from '@stackframe/stack-shared/dist/utils/errors'
 import Cookies from "js-cookie";
 import { calculatePKCECodeChallenge, generateRandomCodeVerifier, generateRandomState } from "oauth4webapi";
 
-type SetCookieOptions = { maxAge?: number, noOpIfServerComponent?: boolean };
-type DeleteCookieOptions = { noOpIfServerComponent?: boolean };
+type SetCookieOptions = { maxAge?: number, noOpIfServerComponent?: boolean, domain?: string };
+type DeleteCookieOptions = { noOpIfServerComponent?: boolean, domain?: string };
 
 function ensureClient() {
   if (!isBrowserLike()) {
@@ -117,6 +117,7 @@ function createNextCookieHelper(
         rscCookiesAwaited.set(name, value, {
           secure: isSecureCookie,
           maxAge: options.maxAge,
+          domain: options.domain,
         });
       } catch (e) {
         handleCookieError(e, options);
@@ -131,7 +132,11 @@ function createNextCookieHelper(
     },
     delete(name: string, options: DeleteCookieOptions = {}) {
       try {
-        rscCookiesAwaited.delete(name);
+        if (options.domain !== undefined) {
+          rscCookiesAwaited.delete({ name, domain: options.domain });
+        } else {
+          rscCookiesAwaited.delete(name);
+        }
       } catch (e) {
         handleCookieError(e, options);
       }
@@ -169,6 +174,9 @@ export async function setOrDeleteCookie(name: string, value: string | null, opti
 
 export function deleteCookieClient(name: string, options: DeleteCookieOptions = {}) {
   ensureClient();
+  if (options.domain !== undefined) {
+    Cookies.remove(name, { domain: options.domain });
+  }
   Cookies.remove(name);
 }
 
@@ -181,6 +189,7 @@ export function setCookieClient(name: string, value: string, options: SetCookieO
   ensureClient();
   Cookies.set(name, value, {
     expires: options.maxAge === undefined ? undefined : new Date(Date.now() + (options.maxAge) * 1000),
+    domain: options.domain,
   });
 }
 

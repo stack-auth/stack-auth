@@ -27,7 +27,7 @@ import { suspend, suspendIfSsr } from "@stackframe/stack-shared/dist/utils/react
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { Store, storeLock } from "@stackframe/stack-shared/dist/utils/stores";
 import { deindent, mergeScopeStrings } from "@stackframe/stack-shared/dist/utils/strings";
-import { getRelativePart, isRelative } from "@stackframe/stack-shared/dist/utils/urls";
+import { extractBaseDomainFromHost, getRelativePart, isRelative } from "@stackframe/stack-shared/dist/utils/urls";
 import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
 import * as cookie from "cookie";
 import * as NextNavigationUnscrambled from "next/navigation"; // import the entire module to get around some static compiler warnings emitted by Next.js in some cases | THIS_LINE_PLATFORM next
@@ -57,7 +57,7 @@ import { useAsyncCache } from "./common";
 let isReactServer = false;
 // IF_PLATFORM next
 import * as sc from "@stackframe/stack-sc";
-import { cookies } from '@stackframe/stack-sc';
+import { cookies, headers as nextHeaders } from "@stackframe/stack-sc";
 isReactServer = sc.isReactServer;
 
 // NextNavigation.useRouter does not exist in react-server environments and some bundlers try to be helpful and throw a warning. Ignore the warning.
@@ -90,6 +90,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
   protected readonly _redirectMethod: RedirectMethod | undefined;
   protected readonly _urlOptions: Partial<HandlerUrls>;
   protected readonly _oauthScopesOnSignIn: Partial<OAuthScopesOnSignIn>;
+  protected readonly _shareCookiesAcrossSubdomains: boolean;
 
   private __DEMO_ENABLE_SLIGHT_FETCH_DELAY = false;
   private readonly _ownedAdminApps = new DependenciesMap<[InternalSession, string], _StackAdminAppImplIncomplete<false, string>>();
@@ -375,6 +376,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     this._redirectMethod = resolvedOptions.redirectMethod || "nextjs"; // THIS_LINE_PLATFORM next
     this._urlOptions = resolvedOptions.urls ?? {};
     this._oauthScopesOnSignIn = resolvedOptions.oauthScopesOnSignIn ?? {};
+    this._shareCookiesAcrossSubdomains = resolvedOptions.shareCookiesAcrossSubdomains ?? false;
 
     if (extraOptions && extraOptions.uniqueIdentifier) {
       this._uniqueIdentifier = extraOptions.uniqueIdentifier;
@@ -418,6 +420,29 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
   protected _nextServerCookiesTokenStores = new WeakMap<object, Store<TokenObject>>();
   protected _requestTokenStores = new WeakMap<RequestLike, Store<TokenObject>>();
   protected _storedBrowserCookieTokenStore: Store<TokenObject> | null = null;
+  protected _getBrowserCookieDomain(): string | undefined {
+    if (!this._shareCookiesAcrossSubdomains || !isBrowserLike()) {
+      return undefined;
+    }
+    const host = window.location.host;
+    const domain = extractBaseDomainFromHost(host);
+    return domain;
+  }
+  protected async _getServerCookieDomain(): Promise<string | undefined> {
+    if (!this._shareCookiesAcrossSubdomains) {
+      return undefined;
+    }
+    // IF_PLATFORM next
+    try {
+      const resolvedHeaders = typeof nextHeaders === "function" ? await nextHeaders() : nextHeaders;
+      const hostHeader = resolvedHeaders?.get("x-forwarded-host") ?? resolvedHeaders?.get("host");
+      return hostHeader ? extractBaseDomainFromHost(hostHeader) : undefined;
+    } catch {
+      return undefined;
+    }
+    // END_PLATFORM
+    return undefined;
+  }
   protected get _refreshTokenCookieName() {
     return `stack-refresh-${this.projectId}`;
   }
@@ -467,8 +492,12 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       }, 100);
       this._storedBrowserCookieTokenStore.onChange((value) => {
         try {
-          setOrDeleteCookieClient(this._refreshTokenCookieName, value.refreshToken, { maxAge: 60 * 60 * 24 * 365 });
-          setOrDeleteCookieClient(this._accessTokenCookieName, value.accessToken ? JSON.stringify([value.refreshToken, value.accessToken]) : null, { maxAge: 60 * 60 * 24 });
+          const domain = this._getBrowserCookieDomain();
+          setOrDeleteCookieClient(this._refreshTokenCookieName, value.refreshToken, { maxAge: 60 * 60 * 24 * 365, domain });
+          setOrDeleteCookieClient(this._accessTokenCookieName, value.accessToken ? JSON.stringify([value.refreshToken, value.accessToken]) : null, { maxAge: 60 * 60 * 24, domain });
+          if (domain !== undefined) {
+            deleteCookieClient('stack-refresh', { domain });
+          }
           deleteCookieClient('stack-refresh');  // delete cookie name from previous versions (for backwards-compatibility)
           hasSucceededInWriting = true;
         } catch (e) {
@@ -502,6 +531,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
           const store = new Store<TokenObject>(tokens);
           store.onChange((value) => {
             runAsynchronously(async () => {
+              const domain = await this._getServerCookieDomain();
               // TODO HACK this is a bit of a hack; while the order happens to work in practice (because the only actual
               // async operation is waiting for the `cookies()` to resolve which always happens at the same time during
               // the same request), it's not guaranteed to be free of race conditions if there are many updates happening
@@ -514,8 +544,8 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
               //
               // so hack it is
               await Promise.all([
-                setOrDeleteCookie(this._refreshTokenCookieName, value.refreshToken, { maxAge: 60 * 60 * 24 * 365, noOpIfServerComponent: true }),
-                setOrDeleteCookie(this._accessTokenCookieName, value.accessToken ? JSON.stringify([value.refreshToken, value.accessToken]) : null, { maxAge: 60 * 60 * 24, noOpIfServerComponent: true }),
+                setOrDeleteCookie(this._refreshTokenCookieName, value.refreshToken, { maxAge: 60 * 60 * 24 * 365, noOpIfServerComponent: true, domain }),
+                setOrDeleteCookie(this._accessTokenCookieName, value.accessToken ? JSON.stringify([value.refreshToken, value.accessToken]) : null, { maxAge: 60 * 60 * 24, noOpIfServerComponent: true, domain }),
               ]);
             });
           });
