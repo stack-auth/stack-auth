@@ -1,6 +1,6 @@
 import { Freestyle } from '@/lib/freestyle';
 import { emptyEmailTheme } from '@stackframe/stack-shared/dist/helpers/emails';
-import { StackAssertionError } from '@stackframe/stack-shared/dist/utils/errors';
+import { captureError, StackAssertionError } from '@stackframe/stack-shared/dist/utils/errors';
 import { bundleJavaScript } from '@stackframe/stack-shared/dist/utils/esbuild';
 import { get, has } from '@stackframe/stack-shared/dist/utils/objects';
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
@@ -120,11 +120,20 @@ export async function renderEmailWithTemplate(
     "@react-email/components": "0.1.1",
     "arktype": "2.1.20",
   };
-  const output = await freestyle.executeScript(result.data, { nodeModules });
-  if (output.status === "error") {
-    return Result.error(`${output.error}`);
+  const executeResult = await freestyle.executeScript(result.data, { nodeModules });
+  if (executeResult.status === "error") {
+    return Result.error(`${executeResult.error}`);
   }
-  return Result.ok(output.data.result as { html: string, text: string, subject: string, notificationCategory: string });
+  if (!executeResult.data.result) {
+    captureError("freestyle-no-result", new StackAssertionError("No result from Freestyle", {
+      executeResult,
+      templateOrDraftComponent,
+      themeComponent,
+      options,
+    }));
+    return Result.error("An unknown error occurred while rendering this email. Please try again");
+  }
+  return Result.ok(executeResult.data.result as { html: string, text: string, subject: string, notificationCategory: string });
 }
 
 export async function renderEmailsWithTemplateBatched(
@@ -204,6 +213,15 @@ export async function renderEmailsWithTemplateBatched(
   const executeResult = await freestyle.executeScript(result.data, { nodeModules });
   if (executeResult.status === "error") {
     return Result.error(executeResult.error);
+  }
+  if (!executeResult.data.result) {
+    captureError("freestyle-no-result", new StackAssertionError("No result from Freestyle", {
+      executeResult,
+      templateOrDraftComponent,
+      themeComponent,
+      inputs,
+    }));
+    return Result.error("An unknown error occurred while rendering this email. Please try again");
   }
   return Result.ok(executeResult.data.result as Array<{ html: string, text: string, subject?: string, notificationCategory?: string }>);
 }
