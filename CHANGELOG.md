@@ -27,7 +27,7 @@ This changelog contains all changes across all packages and applications in the 
 
 #### @stackframe/stack-docs
 
-- Merged our docs into a single source of truth with new layout primitives and platform aware components
+- Merged our docs into a single source of truth with new layout primitives and platform-aware components
 - Corrected inaccurate content and refreshed code blocks for payments and platform guides
 
 #### @stackframe/e2e-tests
@@ -40,7 +40,7 @@ This changelog contains all changes across all packages and applications in the 
 
 #### @stackframe/stack-ui
 
-- Added optional close-less dialogs to support new full screen flows
+- Added optional close-less dialogs to support new full-screen flows
 - Updated skeleton and typography components for tighter spacing in dashboard loaders
 
 #### @stackframe/template
