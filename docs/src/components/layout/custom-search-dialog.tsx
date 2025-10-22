@@ -123,7 +123,7 @@ function groupResultsByPage(results: SearchResult[]): GroupedResult[] {
 
       if (!title) {
         // Try to find a page-type result with this base URL that has a title
-        const pageResult = results.find(r => r.url.startsWith(baseUrl) && r.title);
+        const pageResult = results.find(r => r.url.split('#')[0] === baseUrl && r.title);
         title = pageResult?.title;
       }
 
