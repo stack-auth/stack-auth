@@ -1,11 +1,8 @@
-import { vi, afterEach } from "vitest";
+import { vi } from "vitest";
 import { isUuid } from "@stackframe/stack-shared/dist/utils/uuids";
 import { it } from "../helpers";
 import { createApp, scaffoldProject } from "./js-helpers";
 
-afterEach(() => {
-  vi.unstubAllGlobals();
-});
 
 it("should scaffold the project", async ({ expect }) => {
   const { project } = await scaffoldProject();
