@@ -1862,12 +1862,30 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     this._ensurePersistentTokenStore();
     const session = await this._getSession();
     const emailVerificationRedirectUrl = options.noVerificationCallback ? undefined : options.verificationCallbackUrl ?? constructRedirectUrl(this.urls.emailVerification, "verificationCallbackUrl");
-    const result = await this._interface.signUpWithCredential(
+    
+    let result = await this._interface.signUpWithCredential(
       options.email,
       options.password,
       emailVerificationRedirectUrl,
       session
     );
+    
+    // If the redirect URL is not whitelisted and we didn't explicitly opt out of verification,
+    // retry with undefined (no email verification) and log a warning
+    if (result.status === 'error' && 
+        result.error instanceof KnownErrors.RedirectUrlNotWhitelisted && 
+        !options.noVerificationCallback && 
+        emailVerificationRedirectUrl !== undefined) {
+      console.error("Warning: The verification callback URL is not trusted. Proceeding with signup without email verification. Please add your domain to the trusted domains list in your Stack Auth dashboard.", { url: emailVerificationRedirectUrl });
+      
+      result = await this._interface.signUpWithCredential(
+        options.email,
+        options.password,
+        undefined, // No email verification
+        session
+      );
+    }
+    
     if (result.status === 'ok') {
       await this._signInToAccountWithTokens(result.data);
       if (!options.noRedirect) {
