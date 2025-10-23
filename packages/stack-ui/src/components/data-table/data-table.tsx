@@ -212,7 +212,7 @@ export function DataTableManualPagination<TData, TValue>({
   React.useEffect(() => {
     const timer = setTimeout(() => {
       setRefreshCounter(x => x + 1);
-    }, 500);
+    }, 3_000);
     return () => clearTimeout(timer);
   }, [globalFilter]);
 
