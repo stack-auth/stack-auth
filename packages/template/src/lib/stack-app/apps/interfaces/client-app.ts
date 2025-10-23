@@ -15,7 +15,6 @@ export type StackClientAppConstructorOptions<HasTokenStore extends boolean, Proj
   urls?: Partial<HandlerUrls>,
   oauthScopesOnSignIn?: Partial<OAuthScopesOnSignIn>,
   tokenStore?: TokenStoreInit<HasTokenStore>,
-  shareCookiesAcrossSubdomains?: boolean,
   redirectMethod?: RedirectMethod,
   inheritsFrom?: StackClientApp<any, any>,
 

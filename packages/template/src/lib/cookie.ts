@@ -4,7 +4,7 @@ import { StackAssertionError } from '@stackframe/stack-shared/dist/utils/errors'
 import Cookies from "js-cookie";
 import { calculatePKCECodeChallenge, generateRandomCodeVerifier, generateRandomState } from "oauth4webapi";
 
-type SetCookieOptions = { maxAge?: number, noOpIfServerComponent?: boolean, domain?: string };
+type SetCookieOptions = { maxAge?: number, noOpIfServerComponent?: boolean, domain?: string, secure?: boolean };
 type DeleteCookieOptions = { noOpIfServerComponent?: boolean, domain?: string };
 
 function ensureClient() {
@@ -15,6 +15,7 @@ function ensureClient() {
 
 export type CookieHelper = {
   get: (name: string) => string | null,
+  getAll: () => Record<string, string>,
   set: (name: string, value: string, options: SetCookieOptions) => void,
   setOrDelete: (name: string, value: string | null, options: SetCookieOptions & DeleteCookieOptions) => void,
   delete: (name: string, options: DeleteCookieOptions) => void,
@@ -27,6 +28,7 @@ export async function createPlaceholderCookieHelper(): Promise<CookieHelper> {
   }
   return {
     get: throwError,
+    getAll: throwError,
     set: throwError,
     setOrDelete: throwError,
     delete: throwError,
@@ -51,6 +53,9 @@ export async function createCookieHelper(): Promise<CookieHelper> {
 export function createBrowserCookieHelper(): CookieHelper {
   return {
     get: getCookieClient,
+    getAll: () => {
+      return Cookies.get();
+    },
     set: setCookieClient,
     setOrDelete: setOrDeleteCookieClient,
     delete: deleteCookieClient,
@@ -93,6 +98,13 @@ function createNextCookieHelper(
         }
       }
       return rscCookiesAwaited.get(name)?.value ?? null;
+    },
+    getAll: () => {
+      const all = rscCookiesAwaited.getAll();
+      return all.reduce((acc, entry) => {
+        acc[entry.name] = entry.value;
+        return acc;
+      }, {} as Record<string, string>);
     },
     set: (name: string, value: string, options: SetCookieOptions) => {
       // Whenever the client is on HTTPS, we want to set the Secure flag on the cookie.
@@ -158,6 +170,23 @@ export async function getCookie(name: string): Promise<string | null> {
   return cookieHelper.get(name);
 }
 
+export async function isSecure(): Promise<boolean> {
+  if (isBrowserLike()) {
+    return typeof window !== "undefined" && window.location.protocol === "https:";
+  }
+  // IF_PLATFORM next
+  const cookies = await rscCookies();
+  const headers = await rscHeaders();
+  if (headers.get("x-forwarded-proto") === "https") {
+    return true;
+  }
+  if (cookies.get("stack-is-https")) {
+    return true;
+  }
+  // END_PLATFORM
+  return false;
+}
+
 export function setOrDeleteCookieClient(name: string, value: string | null, options: SetCookieOptions & DeleteCookieOptions = {}) {
   ensureClient();
   if (value === null) {
@@ -190,6 +219,7 @@ export function setCookieClient(name: string, value: string, options: SetCookieO
   Cookies.set(name, value, {
     expires: options.maxAge === undefined ? undefined : new Date(Date.now() + (options.maxAge) * 1000),
     domain: options.domain,
+    secure: options.secure,
   });
 }
 

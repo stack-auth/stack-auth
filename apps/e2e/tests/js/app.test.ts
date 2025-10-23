@@ -1,5 +1,8 @@
-import { vi } from "vitest";
+import { encodeBase32 } from "@stackframe/stack-shared/dist/utils/bytes";
+import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { isUuid } from "@stackframe/stack-shared/dist/utils/uuids";
+import { TextEncoder } from "util";
+import { vi } from "vitest";
 import { it } from "../helpers";
 import { createApp, scaffoldProject } from "./js-helpers";
 
@@ -94,8 +97,9 @@ it("should throw a helpful error when destructuring user", async ({ expect }) =>
   expect(accessServerUser).toThrowError("Stack Auth: useUser() already returns the user object. Use `const user = useUser()` (or `const user = await app.getUser()`) instead of destructuring it like `const { user } = ...`.");
 });
 
-it("should share auth cookies across subdomains when enabled", async ({ expect }) => {
+it("should set refresh token cookies for trusted parent domains", async ({ expect }) => {
   const cookieWrites: string[] = [];
+  const cookieStore = new Map<string, string>();
 
   const fakeSessionStorage = {
     getItem: () => null,
@@ -109,6 +113,7 @@ it("should share auth cookies across subdomains when enabled", async ({ expect }
     hostname: "app.example.com",
     href: "https://app.example.com/",
     origin: "https://app.example.com",
+    protocol: "https:",
   };
 
   const fakeWindow = {
@@ -121,9 +126,21 @@ it("should share auth cookies across subdomains when enabled", async ({ expect }
   };
   Object.defineProperty(fakeDocument, "cookie", {
     configurable: true,
-    get: () => cookieWrites.join("; "),
+    get: () => Array.from(cookieStore.entries()).map(([name, value]) => `${name}=${value}`).join("; "),
     set: (value: string) => {
       cookieWrites.push(value);
+      const [pair] = value.split(";").map((part) => part.trim()).filter(Boolean);
+      if (!pair) {
+        return;
+      }
+      const [rawName, ...rawValueParts] = pair.split("=");
+      const name = rawName.trim();
+      const storedValue = rawValueParts.join("=");
+      if (storedValue === "") {
+        cookieStore.delete(name);
+      } else {
+        cookieStore.set(name, storedValue);
+      }
     },
   });
 
@@ -131,14 +148,24 @@ it("should share auth cookies across subdomains when enabled", async ({ expect }
   vi.stubGlobal("document", fakeDocument);
   vi.stubGlobal("sessionStorage", fakeSessionStorage);
 
-  const { clientApp } = await createApp(undefined, {
-    client: {
-      tokenStore: "cookie",
-      shareCookiesAcrossSubdomains: true,
-      noAutomaticPrefetch: true,
+  const { clientApp } = await createApp(
+    {
+      config: {
+        domains: [
+          { domain: "https://example.com", handlerPath: "/handler" },
+          { domain: "https://*.example.com", handlerPath: "/handler" },
+        ],
+      }
     },
-  });
-  const email = `${crypto.randomUUID()}@share-cookie.test`;
+    {
+      client: {
+        tokenStore: "cookie",
+        noAutomaticPrefetch: true,
+      },
+    }
+  );
+
+  const email = `${crypto.randomUUID()}@trusted-cookie.test`;
   const password = "password";
   const signUpResult = await clientApp.signUpWithCredential({
     email,
@@ -155,6 +182,38 @@ it("should share auth cookies across subdomains when enabled", async ({ expect }
   });
   expect(signInResult.status).toBe("ok");
 
+  const defaultCookieName = `__Host-stack-refresh-${clientApp.projectId}--default`;
+  const customCookieName = `stack-refresh-${clientApp.projectId}--custom-${encodeBase32(new TextEncoder().encode("example.com"))}`;
+
+  const waitUntil = async (predicate: () => boolean, timeoutMs: number) => {
+    const startedAt = Date.now();
+    while (!predicate()) {
+      if (Date.now() - startedAt > timeoutMs) {
+        return false;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    return true;
+  };
+
+  const defaultReady = await waitUntil(() => cookieStore.has(defaultCookieName), 2_000);
+  expect(defaultReady).toBe(true);
+
+  const customReady = await waitUntil(() => cookieStore.has(customCookieName), 10_000);
+  expect(customReady).toBe(true);
+
+  expect(cookieStore.has(defaultCookieName)).toBe(true);
+  expect(cookieStore.has(customCookieName)).toBe(true);
+
+  const valuesEqual = await waitUntil(() => cookieStore.get(customCookieName) === cookieStore.get(defaultCookieName), 10_000);
+  expect(valuesEqual).toBe(true);
+
+  const defaultValue = cookieStore.get(defaultCookieName)!;
+  const parsedValue = JSON.parse(decodeURIComponent(defaultValue));
+  expect(typeof parsedValue.refresh_token).toBe("string");
+  expect(parsedValue.refresh_token.length).toBeGreaterThan(10);
+  expect(typeof parsedValue.updated_at).toBe("number");
+
   const parseCookieAttributes = (name: string) => {
     const raw = [...cookieWrites].reverse().find((entry) => entry.trim().toLowerCase().startsWith(`${name.toLowerCase()}=`));
     if (!raw) {
@@ -169,12 +228,15 @@ it("should share auth cookies across subdomains when enabled", async ({ expect }
     return attrs;
   };
 
-  const refreshAttrs = parseCookieAttributes(`stack-refresh-${clientApp.projectId}`);
-  expect(refreshAttrs?.domain).toBe("example.com");
+  const defaultAttrs = parseCookieAttributes(defaultCookieName);
+  expect(defaultAttrs?.domain).toBeUndefined();
+  expect(defaultAttrs).not.toBeNull();
+  expect(Object.prototype.hasOwnProperty.call(defaultAttrs!, "secure")).toBe(true);
 
-  const accessAttrs = parseCookieAttributes("stack-access");
-  expect(accessAttrs?.domain).toBe("example.com");
+  const customAttrs = parseCookieAttributes(customCookieName);
+  expect(customAttrs?.domain).toBe("example.com");
 
-  const legacyDelete = cookieWrites.find((entry) => entry.toLowerCase().startsWith("stack-refresh=") && entry.toLowerCase().includes("domain=example.com") && entry.toLowerCase().includes("expires="));
-  expect(legacyDelete).toBeTruthy();
+  const legacyProjectCookie = `stack-refresh-${clientApp.projectId}`;
+  expect(cookieWrites.some((entry) => entry.toLowerCase().startsWith(`${legacyProjectCookie.toLowerCase()}=`) && entry.toLowerCase().includes("expires="))).toBe(true);
+  expect(cookieWrites.some((entry) => entry.toLowerCase().startsWith("stack-refresh=") && entry.toLowerCase().includes("expires="))).toBe(true);
 });
