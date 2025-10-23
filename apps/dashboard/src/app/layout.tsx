@@ -119,8 +119,8 @@ function DevelopmentPortDisplay() {
   if (!prefix) return null;
   const color = ({
     "91": "#eee",
-    "92": "#e0e0ff",
-    "93": "#fff8e0",
+    "92": "#fff8e0",
+    "93": "#e0e0ff",
   } as any)[prefix as any] || undefined;
   return (
     <div inert className="fixed top-0 left-0 p-2 text-lg text-red-700 animate-[dev-port-slide_120s_linear_infinite] hover:hidden" style={{
