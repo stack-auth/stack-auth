@@ -1,6 +1,6 @@
+import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { it, localRedirectUrl } from "../../../../../../helpers";
 import { Auth, backendContext, niceBackendFetch } from "../../../../../backend-helpers";
-import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 
 it("should send a password reset code per e-mail", async ({ expect }) => {
   await Auth.Password.signUpWithEmail();
