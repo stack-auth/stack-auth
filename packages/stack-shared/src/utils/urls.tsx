@@ -1,5 +1,5 @@
+import { getDomain, parse } from "tldts";
 import { generateSecureRandomString } from "./crypto";
-import { isIpAddress } from "./ips";
 import { templateIdentity } from "./strings";
 
 export function createUrlIfValid(...args: ConstructorParameters<typeof URL>) {
@@ -227,15 +227,19 @@ import.meta.vitest?.test("isLocalhost", ({ expect }) => {
 });
 
 export function extractBaseDomainFromHost(host: string): string {
-  const hostWithoutPort = host.split(':')[0];
-  if (hostWithoutPort === 'localhost' || isIpAddress(hostWithoutPort)) {
+  const hostWithoutPort = host.split(":")[0];
+  if (!hostWithoutPort) {
     return hostWithoutPort;
   }
-  const parts = hostWithoutPort.split('.');
-  if (parts.length < 2) {
+  if (hostWithoutPort === "localhost") {
     return hostWithoutPort;
   }
-  return parts.slice(-2).join('.');
+  const parsed = parse(hostWithoutPort, { allowPrivateDomains: true });
+  if (parsed.isIp) {
+    return hostWithoutPort;
+  }
+  const domain = getDomain(hostWithoutPort, { allowPrivateDomains: true });
+  return domain ?? hostWithoutPort;
 }
 import.meta.vitest?.test("extractBaseDomainFromHost", ({ expect }) => {
   expect(extractBaseDomainFromHost("app.example.com")).toBe("example.com");
@@ -244,6 +248,7 @@ import.meta.vitest?.test("extractBaseDomainFromHost", ({ expect }) => {
   expect(extractBaseDomainFromHost("localhost:3000")).toBe("localhost");
   expect(extractBaseDomainFromHost("127.0.0.1")).toBe("127.0.0.1");
   expect(extractBaseDomainFromHost("127.0.0.1:3000")).toBe("127.0.0.1");
+  expect(extractBaseDomainFromHost("app.example.co.uk")).toBe("example.co.uk");
 });
 
 export function isRelative(url: string) {
