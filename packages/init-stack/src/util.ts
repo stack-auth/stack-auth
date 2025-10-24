@@ -43,7 +43,10 @@ export function templateIdentity(strings: TemplateStringsArray, ...values: any[]
     throw new Error("Invalid number of values; must be one less than strings");
   }
 
-  return strings.slice(1).reduce((result, string, i) => `${result}${values[i] ?? "n/a"}${string}`, strings[0]);
+  return strings.slice(1).reduce(
+    (result, string, i) => `${result}${String(values[i])}${string}`,
+    strings[0]
+  );
 }
 
 export function omit(object: Record<string, any>, keys: string[]): Record<string, any> {
