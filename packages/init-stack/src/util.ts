@@ -55,7 +55,7 @@ export function getCommandPath(command: string): string | null {
 
   const checker = process.platform === "win32" ? "where" : "which";
   const commands = [
-    [process.env.SHELL ?? "bash", ["-ic", checker, command]],
+    [process.env.SHELL ?? "bash", ["-ic", `${checker} ${command}`]],
     [checker, [command]],
   ] as const;
   for (const spawnArgs of commands) {
