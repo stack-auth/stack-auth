@@ -867,7 +867,7 @@ const Steps = {
       ? `process.env.STACK_PUBLISHABLE_CLIENT_KEY ${publishableClientKeyFromArgs ? `|| ${JSON.stringify(publishableClientKeyFromArgs)}` : ""}`
       : `'${publishableClientKeyFromArgs ?? 'INSERT_YOUR_PUBLISHABLE_CLIENT_KEY_HERE'}'`;
     const jsOptions = type === "js" ? [
-      `\n\n${indentation}// get your Stack Auth API keys from https://app.stack-auth.com${clientOrServer === "client" ? ` and store them in a safe place (eg. environment variables)` : ""}`,
+      `\n\n${indentation}// get your Stack Auth API keys from https://app.stack-auth.com${clientOrServer === "client" ? ` and store them in a safe place (e.g. environment variables)` : ""}`,
       `${projectIdFromArgs ? `${indentation}projectId: ${JSON.stringify(projectIdFromArgs)},` : ""}`,
       `${indentation}publishableClientKey: ${publishableClientKeyWrite},`,
       `${clientOrServer === "server" ? `${indentation}secretServerKey: process.env.STACK_SECRET_SERVER_KEY,` : ""}`,
@@ -1042,9 +1042,9 @@ ${shouldInheritFromClient ? `${indentation}inheritsFrom: stackClientApp,` : `${i
       name: "type",
       message: "Do you want to use Stack Auth on the server, or on the client?",
       choices: [
-        { name: "Client (eg. Vite, HTML)", value: ["client"] },
-        { name: "Server (eg. Node.js)", value: ["server"] },
-        { name: "Both (eg. Next.js)", value: ["server", "client"] }
+        { name: "Client (e.g. Vite, HTML)", value: ["client"] },
+        { name: "Server (e.g. Node.js)", value: ["server"] },
+        { name: "Both (e.g. Next.js)", value: ["server", "client"] }
       ]
     }])).type;
     logVerbose("Steps.getServerOrClientOrBoth received user selection", { selection });
@@ -1052,7 +1052,7 @@ ${shouldInheritFromClient ? `${indentation}inheritsFrom: stackClientApp,` : `${i
   },
 
   /**
-   * note: this is a heuristic, specific frameworks may have better heuristics (eg. the Next.js code uses the extension of the global layout file)
+   * note: this is a heuristic, specific frameworks may have better heuristics (e.g. the Next.js code uses the extension of the global layout file)
   */
   async guessDefaultFileExtension(): Promise<string> {
     const projectPath = await getProjectPath();
@@ -1065,7 +1065,7 @@ ${shouldInheritFromClient ? `${indentation}inheritsFrom: stackClientApp,` : `${i
   },
 
   /**
-   * note: this is a heuristic, specific frameworks may have better heuristics (eg. the Next.js code uses the location of the app folder)
+   * note: this is a heuristic, specific frameworks may have better heuristics (e.g. the Next.js code uses the location of the app folder)
    */
   async guessSrcPath(): Promise<string> {
     const projectPath = await getProjectPath();
