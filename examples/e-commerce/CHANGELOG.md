@@ -1,5 +1,12 @@
 # @stackframe/e-commerce-demo
 
+## 2.8.45
+
+### Patch Changes
+
+- Various changes
+  - @stackframe/stack@2.8.45
+
 ## 2.8.44
 
 ### Patch Changes
