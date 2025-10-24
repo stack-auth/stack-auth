@@ -1,6 +1,6 @@
 {
   "name": "@stackframe/dev-launchpad",
-  "version": "2.8.44",
+  "version": "2.8.45",
   "private": true,
   "scripts": {
     "dev": "node scripts/write-env-config.js && serve -p ${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}00 -s public",
