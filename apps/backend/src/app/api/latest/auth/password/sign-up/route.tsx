@@ -1,3 +1,4 @@
+import { normalizeEmail } from "@/lib/emails";
 import { validateRedirectUrl } from "@/lib/redirect-urls";
 import { createAuthTokens } from "@/lib/tokens";
 import { createOrUpgradeAnonymousUser } from "@/lib/users";
@@ -36,7 +37,7 @@ export const POST = createSmartRouteHandler({
       user_id: yupString().defined(),
     }).defined(),
   }),
-  async handler({ auth: { tenancy, user: currentUser }, body: { email, password, verification_callback_url: verificationCallbackUrl } }, fullReq) {
+  async handler({ auth: { tenancy, user: currentUser }, body: { email: rawEmail, password, verification_callback_url: verificationCallbackUrl } }, fullReq) {
     if (!tenancy.config.auth.password.allowSignIn) {
       throw new KnownErrors.PasswordAuthenticationNotEnabled();
     }
@@ -53,6 +54,8 @@ export const POST = createSmartRouteHandler({
     if (passwordError) {
       throw passwordError;
     }
+
+    const email = normalizeEmail(rawEmail);
 
     const createdUser = await createOrUpgradeAnonymousUser(
       tenancy,
