@@ -87,7 +87,7 @@ export function AppStoreEntry({
               IMPORTANT: This app is in beta. You may still experience some bugs and issues.
             </p>
           )}
-          {appFrontend.storeDescription || <p>No additional information available.</p>}
+          {appFrontend.storeDescription}
         </div>
       </ScrollArea>
     </div>
