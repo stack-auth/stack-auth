@@ -1,5 +1,13 @@
 # @stackframe/example-middleware-demo
 
+## 2.8.47
+
+### Patch Changes
+
+- Various changes
+- Updated dependencies
+  - @stackframe/stack@2.8.47
+
 ## 2.8.46
 
 ### Patch Changes

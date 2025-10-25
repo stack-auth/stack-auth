@@ -632,11 +632,7 @@ const Steps = {
       logVerbose("Steps.maybeGetNextProjectInfo missing Next dependency");
       return { error: `The project at ${projectPath} does not appear to be a Next.js project, or does not have 'next' installed as a dependency.` };
     }
-    if (
-      !nextVersionInPackageJson.includes("14") &&
-      !nextVersionInPackageJson.includes("15") &&
-      nextVersionInPackageJson !== "latest"
-    ) {
+    if (!nextVersionInPackageJson) {
       logVerbose("Steps.maybeGetNextProjectInfo found unsupported Next version", { version: nextVersionInPackageJson });
       return { error: `The project at ${projectPath} is using an unsupported version of Next.js (found ${nextVersionInPackageJson}).\n\nOnly Next.js 14 & 15 projects are currently supported. See Next's upgrade guide: https://nextjs.org/docs/app/building-your-application/upgrading/version-14` };
     }
