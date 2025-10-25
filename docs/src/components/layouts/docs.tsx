@@ -91,7 +91,7 @@ type AccordionContextType = {
 
 const AccordionContext = createContext<AccordionContextType | null>(null);
 
-function AccordionProvider({ children }: { children: ReactNode }) {
+export function AccordionProvider({ children }: { children: ReactNode }) {
   const [accordionState, setAccordionStateInternal] = useState<Record<string, boolean>>({});
 
   const setAccordionState = (key: string, isOpen: boolean) => {
@@ -105,7 +105,7 @@ function AccordionProvider({ children }: { children: ReactNode }) {
   );
 }
 
-function useAccordionState(key: string, defaultValue: boolean) {
+export function useAccordionState(key: string, defaultValue: boolean) {
   const context = useContext(AccordionContext);
   if (!context) {
     throw new Error('useAccordionState must be used within AccordionProvider');
