@@ -121,13 +121,11 @@ module.exports = {
       {
         patterns: [
           {
-            group: ["react"],
+            group: ["^react$"],
             importNames: ["use"],
             message:
-              'Directly importing "use" from react will cause next.js middlewares to break on compile time. do import React from "react" and use React.use instead.',
+              'Use `use` from @stack-shared/dist/utils/react instead (as it also supports React 18).',
           },
-        ],
-        patterns: [
           {
             group: ["@vercel/functions"],
             importNames: ["waitUntil"],
