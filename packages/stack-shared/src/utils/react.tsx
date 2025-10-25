@@ -1,6 +1,7 @@
 import React, { SetStateAction } from "react";
 import { isBrowserLike } from "./env";
-import { neverResolve } from "./promises";
+import { neverResolve, runAsynchronously } from "./promises";
+import { AsyncResult } from "./results";
 import { deindent } from "./strings";
 
 export function componentWrapper<
@@ -13,6 +14,35 @@ export function componentWrapper<
 }
 type RefFromComponent<C extends React.ComponentType<any> | keyof React.JSX.IntrinsicElements> = NonNullable<RefFromComponentDistCond<React.ComponentPropsWithRef<C>["ref"]>>;
 type RefFromComponentDistCond<A> = A extends React.RefObject<infer T> ? T : never;  // distributive conditional type; see https://www.typescriptlang.org/docs/handbook/2/conditional-types.html#distributive-conditional-types
+
+const react18PromiseCache = new WeakMap<Promise<unknown>, AsyncResult<unknown, unknown>>();
+export function use<T>(promise: Promise<T>): T {
+  if ("use" in React) {
+    return React.use(promise);
+  } else {
+    if (react18PromiseCache.has(promise)) {
+      const result = react18PromiseCache.get(promise)!;
+      if (result.status === "pending") {
+        throw promise;
+      } else if (result.status === "ok") {
+        return result.data as T;
+      } else {
+        throw result.error;
+      }
+    } else {
+      react18PromiseCache.set(promise, { "status": "pending", progress: undefined });
+      runAsynchronously(async () => {
+        try {
+          const res = await promise;
+          react18PromiseCache.set(promise, { "status": "ok", data: res });
+        } catch (e) {
+          react18PromiseCache.set(promise, { "status": "error", error: e });
+        }
+      });
+      throw promise;
+    }
+  }
+}
 
 export function forwardRefIfNeeded<T, P = {}>(render: React.ForwardRefRenderFunction<T, P>): React.FC<P & { ref?: React.Ref<T> }> {
   // TODO: when we drop support for react 18, remove this
