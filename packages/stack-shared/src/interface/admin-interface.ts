@@ -354,6 +354,19 @@ export class StackAdminInterface extends StackServerInterface {
     return await response.json();
   }
 
+  async sendTestWebhook(data: {
+    endpoint_id: string,
+  }): Promise<{ success: boolean, error_message?: string }> {
+    const response = await this.sendAdminRequest(`/internal/send-test-webhook`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: JSON.stringify(data),
+    }, null);
+    return await response.json();
+  }
+
   async listSentEmails(): Promise<InternalEmailsCrud["Admin"]["List"]> {
     const response = await this.sendAdminRequest("/internal/emails", {
       method: "GET",
