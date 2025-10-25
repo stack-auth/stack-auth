@@ -1,3 +1,4 @@
+import { getDomain, parse } from "tldts";
 import { generateSecureRandomString } from "./crypto";
 import { templateIdentity } from "./strings";
 
@@ -225,6 +226,31 @@ import.meta.vitest?.test("isLocalhost", ({ expect }) => {
   expect(isLocalhost("")).toBe(false);
 });
 
+export function extractBaseDomainFromHost(host: string): string {
+  const hostWithoutPort = host.split(":")[0];
+  if (!hostWithoutPort) {
+    return hostWithoutPort;
+  }
+  if (hostWithoutPort === "localhost") {
+    return hostWithoutPort;
+  }
+  const parsed = parse(hostWithoutPort, { allowPrivateDomains: true });
+  if (parsed.isIp) {
+    return hostWithoutPort;
+  }
+  const domain = getDomain(hostWithoutPort, { allowPrivateDomains: true });
+  return domain ?? hostWithoutPort;
+}
+import.meta.vitest?.test("extractBaseDomainFromHost", ({ expect }) => {
+  expect(extractBaseDomainFromHost("app.example.com")).toBe("example.com");
+  expect(extractBaseDomainFromHost("sub.app.example.com")).toBe("example.com");
+  expect(extractBaseDomainFromHost("example.com")).toBe("example.com");
+  expect(extractBaseDomainFromHost("localhost:3000")).toBe("localhost");
+  expect(extractBaseDomainFromHost("127.0.0.1")).toBe("127.0.0.1");
+  expect(extractBaseDomainFromHost("127.0.0.1:3000")).toBe("127.0.0.1");
+  expect(extractBaseDomainFromHost("app.example.co.uk")).toBe("example.co.uk");
+});
+
 export function isRelative(url: string) {
   const randomDomain = `${generateSecureRandomString()}.stack-auth.example.com`;
   const u = createUrlIfValid(url, `https://${randomDomain}`);
@@ -275,7 +301,7 @@ import.meta.vitest?.test("getRelativePart", ({ expect }) => {
  *
  * Any values passed are encoded.
  */
-export function url(strings: TemplateStringsArray | readonly string[], ...values: (string|number|boolean)[]): URL {
+export function url(strings: TemplateStringsArray | readonly string[], ...values: (string | number | boolean)[]): URL {
   return new URL(urlString(strings, ...values));
 }
 import.meta.vitest?.test("url", ({ expect }) => {
@@ -311,7 +337,7 @@ import.meta.vitest?.test("url", ({ expect }) => {
  *
  * Any values passed are encoded.
  */
-export function urlString(strings: TemplateStringsArray | readonly string[], ...values: (string|number|boolean)[]): string {
+export function urlString(strings: TemplateStringsArray | readonly string[], ...values: (string | number | boolean)[]): string {
   return templateIdentity(strings, ...values.map(encodeURIComponent));
 }
 import.meta.vitest?.test("urlString", ({ expect }) => {
@@ -378,4 +404,3 @@ import.meta.vitest?.test("isSubPath", ({ expect }) => {
   expect(isChildPath("/path/", "/path-abc")).toBe(false);
   expect(isChildPath("/path/", "/path-abc/")).toBe(false);
 });
-
