@@ -123,7 +123,7 @@ import.meta.vitest?.test("getNodeText", ({ expect }) => {
  * You can use this to translate older query- or AsyncResult-based code to new the Suspense system, for example: `if (query.isLoading) suspend();`
  */
 export function suspend(): never {
-  React.use(neverResolve());
+  use(neverResolve());
   throw new Error("Somehow a Promise that never resolves was resolved?");
 }
 

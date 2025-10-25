@@ -1,10 +1,15 @@
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { ArrowRight, Sparkles, Zap, Shield, Rocket } from "lucide-react";
+import { UserButton } from "@stackframe/react";
+import { ArrowRight, Rocket, Shield, Sparkles, Zap } from "lucide-react";
 
 const Index = () => {
   return (
     <div className="min-h-screen">
+      <div className="flex justify-center align-center bg-black p-2">
+        User button:
+        <UserButton />
+      </div>
       {/* Hero Section */}
       <section className="container mx-auto px-4 pt-20 pb-32 text-center">
         <div className="max-w-4xl mx-auto space-y-8">

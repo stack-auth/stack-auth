@@ -1672,7 +1672,7 @@ function isSimpleConvexConfig(content: string): boolean {
 
 function getPublicProjectEnvVarName(type: "js" | "next" | "react"): string {
   if (type === "react") {
-    return "VITE_PUBLIC_STACK_PROJECT_ID";
+    return "VITE_STACK_PROJECT_ID";
   }
   if (type === "next") {
     return "NEXT_PUBLIC_STACK_PROJECT_ID";

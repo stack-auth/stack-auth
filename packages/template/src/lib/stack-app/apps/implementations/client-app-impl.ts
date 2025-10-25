@@ -355,13 +355,18 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     this._options = resolvedOptions;
     this._extraOptions = extraOptions;
 
+    const projectId = resolvedOptions.projectId ?? getDefaultProjectId();
+    if (projectId !== "internal" && !(projectId.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[089ab][0-9a-f]{3}-[0-9a-f]{12}$/i))) {
+      throw new Error(`Invalid project ID: ${projectId}. Project IDs must be UUIDs. Please check your environment variables and/or your StackApp.`);
+    }
+
     if (extraOptions && extraOptions.interface) {
       this._interface = extraOptions.interface;
     } else {
       this._interface = new StackClientInterface({
         getBaseUrl: () => getBaseUrl(resolvedOptions.baseUrl),
         extraRequestHeaders: resolvedOptions.extraRequestHeaders ?? getDefaultExtraRequestHeaders(),
-        projectId: resolvedOptions.projectId ?? getDefaultProjectId(),
+        projectId,
         clientVersion,
         publishableClientKey: resolvedOptions.publishableClientKey ?? getDefaultPublishableClientKey(),
         prepareRequest: async () => {

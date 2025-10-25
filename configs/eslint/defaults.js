@@ -121,13 +121,11 @@ module.exports = {
       {
         patterns: [
           {
-            group: ["react"],
+            group: ["^react$"],
             importNames: ["use"],
             message:
               'Use `use` from @stack-shared/dist/utils/react instead (as it also supports React 18).',
           },
-        ],
-        patterns: [
           {
             group: ["@vercel/functions"],
             importNames: ["waitUntil"],
