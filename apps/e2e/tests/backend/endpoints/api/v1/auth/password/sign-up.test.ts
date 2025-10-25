@@ -1,7 +1,7 @@
 import { generateSecureRandomString } from "@stackframe/stack-shared/dist/utils/crypto";
 import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { it } from "../../../../../../helpers";
-import { Auth, Project, backendContext, niceBackendFetch } from "../../../../../backend-helpers";
+import { Auth, Project, backendContext, bumpEmailAddress, niceBackendFetch } from "../../../../../backend-helpers";
 
 it("should sign up new users", async ({ expect }) => {
   const res = await Auth.Password.signUpWithEmail();
@@ -60,6 +60,35 @@ it("should sign up new users", async ({ expect }) => {
       "headers": Headers { <some fields may have been hidden> },
     }
   `);
+});
+
+it("should sign up without verification callback and not send email", async ({ expect }) => {
+  await bumpEmailAddress();
+  const mailbox = backendContext.value.mailbox;
+  const email = mailbox.emailAddress;
+  const password = generateSecureRandomString();
+
+  const response = await niceBackendFetch("/api/v1/auth/password/sign-up", {
+    method: "POST",
+    accessType: "client",
+    body: {
+      email,
+      password,
+    },
+  });
+
+  expect(response).toMatchObject({
+    status: 200,
+    body: {
+      access_token: expect.any(String),
+      refresh_token: expect.any(String),
+      user_id: expect.any(String),
+    },
+  });
+
+  await wait(5000);
+  const messages = await mailbox.fetchMessages({ noBody: true });
+  expect(messages).toMatchInlineSnapshot(`[]`);
 });
 
 it("should not sign up new users if verification callback url is not valid", async ({ expect }) => {
