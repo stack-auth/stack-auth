@@ -7,7 +7,6 @@ const Index = () => {
   return (
     <div className="min-h-screen">
       <div className="flex justify-center align-center bg-black p-2">
-        User button:
         <UserButton />
       </div>
       {/* Hero Section */}
