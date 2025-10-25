@@ -108,6 +108,8 @@ it("should grant configured subscription product and expose it via listing", asy
           {
             "id": "pro-plan",
             "product": {
+              "client_metadata": null,
+              "client_read_only_metadata": null,
               "customer_type": "user",
               "display_name": "Pro Plan",
               "included_items": {},
@@ -120,6 +122,7 @@ it("should grant configured subscription product and expose it via listing", asy
                   ],
                 },
               },
+              "server_metadata": null,
               "server_only": false,
               "stackable": false,
             },
@@ -200,6 +203,8 @@ it("should hide server-only products from clients while exposing them to servers
           {
             "id": "server-plan",
             "product": {
+              "client_metadata": null,
+              "client_read_only_metadata": null,
               "customer_type": "user",
               "display_name": "Server Plan",
               "included_items": {},
@@ -212,6 +217,7 @@ it("should hide server-only products from clients while exposing them to servers
                   ],
                 },
               },
+              "server_metadata": null,
               "server_only": true,
               "stackable": false,
             },
@@ -327,6 +333,8 @@ it("should allow granting stackable product with custom quantity", async ({ expe
           {
             "id": "stackable-plan",
             "product": {
+              "client_metadata": null,
+              "client_read_only_metadata": null,
               "customer_type": "user",
               "display_name": "Stackable Plan",
               "included_items": {},
@@ -339,6 +347,7 @@ it("should allow granting stackable product with custom quantity", async ({ expe
                   ],
                 },
               },
+              "server_metadata": null,
               "server_only": false,
               "stackable": true,
             },
@@ -372,6 +381,10 @@ it("should grant inline product without needing configuration", async ({ expect 
           },
         },
         included_items: {},
+        server_metadata: {
+          cohort: "beta",
+          flags: ["inline-grant"],
+        },
       },
     },
   });
@@ -389,6 +402,8 @@ it("should grant inline product without needing configuration", async ({ expect 
           {
             "id": null,
             "product": {
+              "client_metadata": null,
+              "client_read_only_metadata": null,
               "customer_type": "user",
               "display_name": "Inline Access",
               "included_items": {},
@@ -400,6 +415,10 @@ it("should grant inline product without needing configuration", async ({ expect 
                     "month",
                   ],
                 },
+              },
+              "server_metadata": {
+                "cohort": "beta",
+                "flags": ["inline-grant"],
               },
               "server_only": true,
               "stackable": false,
@@ -685,6 +704,8 @@ it("listing products should list both subscription and one-time products", async
           {
             "id": "subscription-plan",
             "product": {
+              "client_metadata": null,
+              "client_read_only_metadata": null,
               "customer_type": "user",
               "display_name": "Subscription Plan",
               "included_items": {},
@@ -697,6 +718,7 @@ it("listing products should list both subscription and one-time products", async
                   ],
                 },
               },
+              "server_metadata": null,
               "server_only": false,
               "stackable": false,
             },
@@ -705,10 +727,13 @@ it("listing products should list both subscription and one-time products", async
           {
             "id": "lifetime-addon",
             "product": {
+              "client_metadata": null,
+              "client_read_only_metadata": null,
               "customer_type": "user",
               "display_name": "Lifetime Add-on",
               "included_items": {},
               "prices": { "lifetime": { "USD": "5000" } },
+              "server_metadata": null,
               "server_only": false,
               "stackable": false,
             },
@@ -813,6 +838,8 @@ it("listing products should support cursor pagination", async ({ expect }) => {
           {
             "id": "subscription-plan",
             "product": {
+              "client_metadata": null,
+              "client_read_only_metadata": null,
               "customer_type": "user",
               "display_name": "Subscription Plan",
               "included_items": {},
@@ -825,6 +852,7 @@ it("listing products should support cursor pagination", async ({ expect }) => {
                   ],
                 },
               },
+              "server_metadata": null,
               "server_only": false,
               "stackable": false,
             },
@@ -850,10 +878,13 @@ it("listing products should support cursor pagination", async ({ expect }) => {
           {
             "id": "lifetime-addon",
             "product": {
+              "client_metadata": null,
+              "client_read_only_metadata": null,
               "customer_type": "user",
               "display_name": "Lifetime Add-on",
               "included_items": {},
               "prices": { "lifetime": { "USD": "5000" } },
+              "server_metadata": null,
               "server_only": false,
               "stackable": false,
             },
@@ -862,10 +893,13 @@ it("listing products should support cursor pagination", async ({ expect }) => {
           {
             "id": "pro-addon",
             "product": {
+              "client_metadata": null,
+              "client_read_only_metadata": null,
               "customer_type": "user",
               "display_name": "Pro Add-on",
               "included_items": {},
               "prices": { "standard": { "USD": "7000" } },
+              "server_metadata": null,
               "server_only": false,
               "stackable": false,
             },
