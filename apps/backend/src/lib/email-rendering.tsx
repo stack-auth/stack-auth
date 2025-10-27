@@ -125,13 +125,14 @@ export async function renderEmailWithTemplate(
     return Result.error(`${executeResult.error}`);
   }
   if (!executeResult.data.result) {
-    captureError("freestyle-no-result", new StackAssertionError("No result from Freestyle", {
+    const noResultError = new StackAssertionError("No result from Freestyle", {
       executeResult,
       templateOrDraftComponent,
       themeComponent,
       options,
-    }));
-    return Result.error("An unknown error occurred while rendering this email. Please try again");
+    });
+    captureError("freestyle-no-result", noResultError);
+    throw noResultError;
   }
   return Result.ok(executeResult.data.result as { html: string, text: string, subject: string, notificationCategory: string });
 }
@@ -215,13 +216,14 @@ export async function renderEmailsWithTemplateBatched(
     return Result.error(executeResult.error);
   }
   if (!executeResult.data.result) {
-    captureError("freestyle-no-result", new StackAssertionError("No result from Freestyle", {
+    const noResultError = new StackAssertionError("No result from Freestyle", {
       executeResult,
       templateOrDraftComponent,
       themeComponent,
       inputs,
-    }));
-    return Result.error("An unknown error occurred while rendering this email. Please try again");
+    });
+    captureError("freestyle-no-result", noResultError);
+    throw noResultError;
   }
   return Result.ok(executeResult.data.result as Array<{ html: string, text: string, subject?: string, notificationCategory?: string }>);
 }
