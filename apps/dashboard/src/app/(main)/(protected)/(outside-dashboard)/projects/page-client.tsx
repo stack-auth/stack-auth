@@ -103,10 +103,7 @@ export default function PageClient() {
                 {teamId ? teamIdMap.get(teamId) : "No Team"}
               </Typography>
               {team && (
-                <TeamAddUserDialog
-                  team={team}
-                  adminApp={projects[0].app}
-                />
+                <TeamAddUserDialog team={team} />
               )}
             </div>
             <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4">
@@ -126,10 +123,7 @@ const inviteFormSchema = yupObject({
 });
 
 
-function TeamAddUserDialog(props: {
-  team: Team,
-  adminApp: StackAdminApp<false>,
-}) {
+function TeamAddUserDialog(props: { team: Team }) {
   const [open, setOpen] = useState(false);
 
   return (
@@ -152,7 +146,6 @@ function TeamAddUserDialog(props: {
           <Suspense fallback={<TeamAddUserDialogContentSkeleton />}>
             <TeamAddUserDialogContent
               team={props.team}
-              adminApp={props.adminApp}
               onClose={() => setOpen(false)}
             />
           </Suspense>
@@ -164,7 +157,6 @@ function TeamAddUserDialog(props: {
 
 function TeamAddUserDialogContent(props: {
   team: Team,
-  adminApp: StackAdminApp<false>,
   onClose: () => void,
 }) {
   const [invitations, setInvitations] = useState<Awaited<ReturnType<typeof listInvitations>>>();
