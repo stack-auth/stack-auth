@@ -2,11 +2,15 @@ import { StackAdminApp } from "@stackframe/stack";
 import { AppId } from "@stackframe/stack-shared/dist/apps/apps-config";
 import { getRelativePart, isChildUrl } from "@stackframe/stack-shared/dist/utils/urls";
 import { CreditCard, KeyRound, Mail, Mails, Rocket, ShieldEllipsis, Sparkles, Tv, UserCog, Users, Vault, Webhook, Workflow } from "lucide-react";
-import Image from "next/image";
+import Image, { StaticImageData } from "next/image";
 import ConvexLogo from "../../public/convex-logo.png";
 import LogoBright from "../../public/logo-bright.svg";
 import NeonLogo from "../../public/neon-logo.png";
 import OpenGraphImage from "../../public/open-graph-image.png";
+
+// Images used in app store
+import WebhooksScreenshot1 from "../../public/storeDesc-webhooks-1.png";
+import WebhooksScreenshot2 from "../../public/storeDesc-webhooks-2.png";
 
 export const DUMMY_ORIGIN = "https://example.com";
 
@@ -29,7 +33,7 @@ export type AppFrontend = {
   matchPath?: (relativePart: string) => boolean,
   getBreadcrumbItems?: (stackAdminApp: StackAdminApp<false>, relativePart: string) => Promise<BreadcrumbDefinition | null | undefined>,
   navigationItems: AppNavigationItem[],
-  screenshots: string[],
+  screenshots: (string | StaticImageData)[],
   storeDescription: React.ReactNode,
 };
 
@@ -204,7 +208,7 @@ export const ALL_APPS_FRONTEND = {
       <>
         <p>Workflows let you orchestrate onboarding, lifecycle touchpoints, and bespoke automation in TypeScript.</p>
         <p>Author event-driven handlers that run inside Stack, schedule follow-up callbacks, and keep business logic alongside your auth data.</p>
-        <p>Duplication, and toggles live in the dashboard so iteration stays fast.</p>
+        <p>Duplication and toggles live in the dashboard so iteration stays fast.</p>
       </>
     ),
   },
@@ -214,10 +218,13 @@ export const ALL_APPS_FRONTEND = {
     navigationItems: [
       { displayName: "Webhooks", href: "." },
     ],
-    screenshots: [],
+    screenshots: [
+      WebhooksScreenshot1,
+      WebhooksScreenshot2,
+    ],
     storeDescription: (
       <>
-        <p>Webhooks are used to sync users and teams events from Stack to your own servers.</p>
+        <p>Webhooks keep user and team events in sync between Stack and your own servers.</p>
         <p>Create and manage Svix-powered endpoints without leaving the dashboard, edit descriptions as your integrations evolve, and retire endpoints safely when they are no longer needed.</p>
         <p>Every notification keeps billing, analytics, and downstream services in sync.</p>
       </>

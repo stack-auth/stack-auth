@@ -53,7 +53,7 @@ export function AppStoreEntry({
       <div className="border-b">
         <ScrollArea className="w-full">
           <div className="flex gap-4 p-6">
-            {appFrontend.screenshots.map((screenshot: string, index: number) => (
+            {appFrontend.screenshots.map((screenshot, index) => (
               <div
                 key={index}
                 className="relative h-48 w-72 rounded-lg shadow-md flex-shrink-0 overflow-hidden"
