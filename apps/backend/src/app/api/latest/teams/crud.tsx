@@ -212,6 +212,11 @@ export const teamsCrudHandlers = createLazyProxy(() => createCrudHandlers(teamsC
     }));
   },
   onList: async ({ query, auth }) => {
+    console.log(JSON.stringify({
+      "auth-type": auth.type,
+      "query": query,
+      "tenancyId": auth.tenancy.id,
+    }));
     if (auth.type === 'client') {
       const currentUserId = auth.user?.id || throwErr(new KnownErrors.CannotGetOwnUserWithoutUser());
 
@@ -236,6 +241,7 @@ export const teamsCrudHandlers = createLazyProxy(() => createCrudHandlers(teamsC
         createdAt: 'asc',
       },
     });
+    console.log("item.length", db.length);
 
     return {
       items: db.map(teamPrismaToCrud),
