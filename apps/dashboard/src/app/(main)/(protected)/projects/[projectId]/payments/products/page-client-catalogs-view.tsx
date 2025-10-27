@@ -804,8 +804,10 @@ function ProductCard({ id, activeType, product, allProducts, existingItems, onSa
   }, [currentHash, hashAnchor, isHashTarget]);
 
   const pricesObject: PricesObject = typeof draft.prices === 'object' ? draft.prices : {};
+  const priceCount = Object.keys(pricesObject).length;
+  const hasExistingPrices = priceCount > 0;
 
-  const canSaveProduct = draft.prices === 'include-by-default' || (typeof draft.prices === 'object' && Object.keys(pricesObject).length > 0);
+  const canSaveProduct = draft.prices === 'include-by-default' || (typeof draft.prices === 'object' && hasExistingPrices);
   const saveDisabledReason = canSaveProduct ? undefined : "Add at least one price or set Include by default";
 
   const handleRemovePrice = (priceId: string) => {
@@ -1103,7 +1105,7 @@ function ProductCard({ id, activeType, product, allProducts, existingItems, onSa
               }}
             >
               <Plus className="h-4 w-4" />
-              Add Price
+              {hasExistingPrices ? "Add alternative price" : "Add price"}
             </Button>
           )}
         </div>
@@ -1355,9 +1357,12 @@ type CatalogViewProps = {
   onCreateNewItem: () => void,
   onOpenProductDetails: (product: Product) => void,
   onSaveProductWithGroup: (catalogId: string, productId: string, product: Product) => Promise<void>,
+  createDraftRequestId?: string,
+  draftCustomerType: 'user' | 'team' | 'custom',
+  onDraftHandled?: () => void,
 };
 
-function CatalogView({ groupedProducts, groups, existingItems, onSaveProduct, onDeleteProduct, onCreateNewItem, onOpenProductDetails, onSaveProductWithGroup }: CatalogViewProps) {
+function CatalogView({ groupedProducts, groups, existingItems, onSaveProduct, onDeleteProduct, onCreateNewItem, onOpenProductDetails, onSaveProductWithGroup, createDraftRequestId, draftCustomerType, onDraftHandled }: CatalogViewProps) {
   const [activeTypeUnfiltered, setActiveType] = useQueryState('catalog_type', 'user');
   const activeType = typedIncludes(['user', 'team', 'custom'] as const, activeTypeUnfiltered) ? activeTypeUnfiltered : 'user';
   const [drafts, setDrafts] = useState<Array<{ key: string, catalogId: string | undefined, product: Product }>>([]);
@@ -1400,6 +1405,36 @@ function CatalogView({ groupedProducts, groups, existingItems, onSaveProduct, on
     drafts.forEach(d => all.push(d.key));
     return new Set(all);
   }, [groupedProducts, drafts]);
+  const lastHandledDraftRequestRef = useRef<string | undefined>(undefined);
+
+  useEffect(() => {
+    if (!createDraftRequestId) return;
+    if (lastHandledDraftRequestRef.current === createDraftRequestId) return;
+
+    lastHandledDraftRequestRef.current = createDraftRequestId;
+
+    let candidate = "product";
+    let counter = 2;
+    while (usedIds.has(candidate)) {
+      candidate = `product-${counter++}`;
+    }
+
+    const newProduct: Product = {
+      displayName: 'New Product',
+      customerType: draftCustomerType,
+      catalogId: undefined,
+      isAddOnTo: false,
+      stackable: false,
+      prices: {},
+      includedItems: {},
+      serverOnly: false,
+      freeTrial: undefined,
+    };
+
+    setActiveType(draftCustomerType);
+    setDrafts((prev) => [...prev, { key: candidate, catalogId: undefined, product: newProduct }]);
+    onDraftHandled?.();
+  }, [createDraftRequestId, draftCustomerType, onDraftHandled, usedIds, setActiveType]);
 
   const generateProductId = (base: string) => {
     let id = base;
@@ -1613,7 +1648,13 @@ function CatalogView({ groupedProducts, groups, existingItems, onSaveProduct, on
   );
 }
 
-export default function PageClient() {
+type CatalogViewPageProps = {
+  createDraftRequestId?: string,
+  draftCustomerType?: 'user' | 'team' | 'custom',
+  onDraftHandled?: () => void,
+};
+
+export default function PageClient({ createDraftRequestId, draftCustomerType = 'user', onDraftHandled }: CatalogViewPageProps) {
   const [showProductDialog, setShowProductDialog] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [showItemDialog, setShowItemDialog] = useState(false);
@@ -1759,16 +1800,19 @@ export default function PageClient() {
         onDeleteProduct={handleDeleteProduct}
         onCreateNewItem={handleCreateItem}
         onOpenProductDetails={(product) => {
-            setEditingProduct(product);
-            setShowProductDialog(true);
+          setEditingProduct(product);
+          setShowProductDialog(true);
         }}
         onSaveProductWithGroup={async (catalogId, productId, product) => {
           await project.updateConfig({
             [`payments.catalogs.${catalogId}`]: {},
             [`payments.products.${productId}`]: product,
           });
-            toast({ title: "Product created" });
+          toast({ title: "Product created" });
         }}
+        createDraftRequestId={createDraftRequestId}
+        draftCustomerType={draftCustomerType}
+        onDraftHandled={onDraftHandled}
       />
     </div>
   );

@@ -38,8 +38,11 @@ it("should allow valid code and return offer data", async ({ expect }) => {
       "status": 200,
       "body": {
         "already_bought_non_stackable": false,
+        "charges_enabled": false,
         "conflicting_products": [],
         "product": {
+          "client_metadata": null,
+          "client_read_only_metadata": null,
           "customer_type": "user",
           "display_name": "Test Product",
           "included_items": {},
@@ -52,6 +55,7 @@ it("should allow valid code and return offer data", async ({ expect }) => {
               ],
             },
           },
+          "server_metadata": null,
           "server_only": false,
           "stackable": false,
         },
@@ -212,6 +216,7 @@ it("should include conflicting_group_offers when switching within the same group
       "status": 200,
       "body": {
         "already_bought_non_stackable": false,
+        "charges_enabled": false,
         "conflicting_products": [
           {
             "display_name": "Offer A",
@@ -219,6 +224,8 @@ it("should include conflicting_group_offers when switching within the same group
           },
         ],
         "product": {
+          "client_metadata": null,
+          "client_read_only_metadata": null,
           "customer_type": "user",
           "display_name": "Offer B",
           "included_items": {},
@@ -231,6 +238,7 @@ it("should include conflicting_group_offers when switching within the same group
               ],
             },
           },
+          "server_metadata": null,
           "server_only": false,
           "stackable": false,
         },

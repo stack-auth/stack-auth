@@ -1,16 +1,16 @@
 {
   "name": "@stackframe/convex-example",
-  "version": "2.8.42",
+  "version": "2.8.47",
   "private": true,
   "scripts": {
     "convex": "convex",
     "dev": "pnpm run predev && npm-run-all --parallel dev:frontend dev:backend",
-    "dev:frontend": "next dev --port 8127",
+    "dev:frontend": "next dev --port ${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}27",
     "dev:backend": "convex dev --typecheck=disable --env-file .env.development",
     "dev:backend:until-success": "pnpm run dev:backend --until-success",
-    "set-up-env-vars": "wait-on http://localhost:3210 && pnpm run convex env set NEXT_PUBLIC_STACK_API_URL=http://localhost:8102 && pnpm run convex env set NEXT_PUBLIC_STACK_PROJECT_ID=internal && pnpm run convex env set NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY=this-publishable-client-key-is-for-local-development-only && pnpm run convex env set STACK_SECRET_SERVER_KEY=this-secret-server-key-is-for-local-development-only",
+    "set-up-env-vars": "PREFIX=${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}; wait-on http://localhost:3210 && pnpm run convex env set NEXT_PUBLIC_STACK_API_URL=http://localhost:${PREFIX}02 && pnpm run convex env set NEXT_PUBLIC_STACK_PROJECT_ID=internal && pnpm run convex env set NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY=this-publishable-client-key-is-for-local-development-only && pnpm run convex env set STACK_SECRET_SERVER_KEY=this-secret-server-key-is-for-local-development-only",
     "predev": "npm-run-all --parallel dev:backend:until-success set-up-env-vars",
-    "start": "next start --port 8127",
+    "start": "next start --port ${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}27",
     "build": "next build",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
@@ -18,6 +18,7 @@
   },
   "dependencies": {
     "@stackframe/stack": "workspace:*",
+    "@stackframe/stack-shared": "workspace:*",
     "convex": "^1.27.0",
     "next": "15.2.3",
     "react": "^19.0.0",
@@ -31,11 +32,12 @@
     "@types/react-dom": "^19",
     "eslint": "^8",
     "eslint-config-next": "14.2.5",
-    "rimraf": "^5.0.5",
-    "typescript": "5.3.3",
     "npm-run-all": "^4.1.5",
+    "postcss": "^8",
     "prettier": "^3.5.3",
+    "rimraf": "^5.0.5",
     "tailwindcss": "^4",
-    "postcss": "^8"
+    "typescript": "5.3.3",
+    "wait-on": "^8.0.1"
   }
 }

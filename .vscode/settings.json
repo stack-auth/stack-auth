@@ -73,6 +73,8 @@
     "pooler",
     "posthog",
     "preconfigured",
+    "Prefetcher",
+    "Prefetchers",
     "Proxied",
     "psql",
     "qrcode",

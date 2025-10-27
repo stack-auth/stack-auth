@@ -21,9 +21,13 @@ export STACK_SECRET_SERVER_KEY=${STACK_SEED_INTERNAL_PROJECT_SECRET_SERVER_KEY}
 export STACK_SUPER_SECRET_ADMIN_KEY=${STACK_SEED_INTERNAL_PROJECT_SUPER_SECRET_ADMIN_KEY}
 
 export NEXT_PUBLIC_BROWSER_STACK_DASHBOARD_URL=${NEXT_PUBLIC_STACK_DASHBOARD_URL}
-export NEXT_PUBLIC_SERVER_STACK_DASHBOARD_URL="http://localhost:8101"
+export NEXT_PUBLIC_STACK_PORT_PREFIX=${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}
+PORT_PREFIX=${NEXT_PUBLIC_STACK_PORT_PREFIX}
+export NEXT_PUBLIC_SERVER_STACK_DASHBOARD_URL="http://localhost:${PORT_PREFIX}01"
 export NEXT_PUBLIC_BROWSER_STACK_API_URL=${NEXT_PUBLIC_STACK_API_URL}
-export NEXT_PUBLIC_SERVER_STACK_API_URL="http://localhost:8102"
+export NEXT_PUBLIC_SERVER_STACK_API_URL="http://localhost:${PORT_PREFIX}02"
+export BACKEND_PORT=${BACKEND_PORT:-${PORT_PREFIX}02}
+export DASHBOARD_PORT=${DASHBOARD_PORT:-${PORT_PREFIX}01}
 
 export USE_INLINE_ENV_VARS=true
 
@@ -37,7 +41,9 @@ if [ "$STACK_SKIP_MIGRATIONS" = "true" ]; then
   echo "Skipping migrations."
 else
   echo "Running migrations..."
-  pnpm run db:migrate
+  cd apps/backend
+  node dist/db-migrations.js migrate
+  cd ../..
 fi
 
 if [ "$STACK_SKIP_SEED_SCRIPT" = "true" ]; then
@@ -45,7 +51,7 @@ if [ "$STACK_SKIP_SEED_SCRIPT" = "true" ]; then
 else
   echo "Running seed script..."
   cd apps/backend
-  node seed.js
+  node dist/db-migrations.js seed
   cd ../..
 fi
 

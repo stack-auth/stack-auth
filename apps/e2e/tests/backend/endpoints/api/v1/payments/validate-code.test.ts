@@ -38,8 +38,11 @@ it("should allow valid code and return product data", async ({ expect }) => {
       "status": 200,
       "body": {
         "already_bought_non_stackable": false,
+        "charges_enabled": false,
         "conflicting_products": [],
         "product": {
+          "client_metadata": null,
+          "client_read_only_metadata": null,
           "customer_type": "user",
           "display_name": "Test Product",
           "included_items": {},
@@ -52,6 +55,7 @@ it("should allow valid code and return product data", async ({ expect }) => {
               ],
             },
           },
+          "server_metadata": null,
           "server_only": false,
           "stackable": false,
         },
@@ -212,6 +216,7 @@ it("should include conflicting_products when switching within the same group", a
       "status": 200,
       "body": {
         "already_bought_non_stackable": false,
+        "charges_enabled": false,
         "conflicting_products": [
           {
             "display_name": "Product A",
@@ -219,6 +224,8 @@ it("should include conflicting_products when switching within the same group", a
           },
         ],
         "product": {
+          "client_metadata": null,
+          "client_read_only_metadata": null,
           "customer_type": "user",
           "display_name": "Product B",
           "included_items": {},
@@ -231,6 +238,7 @@ it("should include conflicting_products when switching within the same group", a
               ],
             },
           },
+          "server_metadata": null,
           "server_only": false,
           "stackable": false,
         },
@@ -308,8 +316,11 @@ it("should reject untrusted return_url and accept trusted return_url", async ({ 
       "status": 200,
       "body": {
         "already_bought_non_stackable": false,
+        "charges_enabled": false,
         "conflicting_products": [],
         "product": {
+          "client_metadata": null,
+          "client_read_only_metadata": null,
           "customer_type": "user",
           "display_name": "Test Product",
           "included_items": {},
@@ -322,12 +333,13 @@ it("should reject untrusted return_url and accept trusted return_url", async ({ 
               ],
             },
           },
+          "server_metadata": null,
           "server_only": false,
           "stackable": false,
         },
         "project_id": "<stripped UUID>",
         "stripe_account_id": <stripped field 'stripe_account_id'>,
-        "test_mode": false,
+        "test_mode": true,
       },
       "headers": Headers { <some fields may have been hidden> },
     }

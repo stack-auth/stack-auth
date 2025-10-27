@@ -1,22 +1,19 @@
 'use client';
 
-import { FormDialog } from "@/components/form-dialog";
-import { InputField } from "@/components/form-fields";
 import { ProjectCard } from "@/components/project-card";
 import { useRouter } from "@/components/router";
 import { SearchBar } from "@/components/search-bar";
-import { AdminOwnedProject, Team, useUser } from "@stackframe/stack";
+import { AdminOwnedProject, StackAdminApp, Team, useUser } from "@stackframe/stack";
 import { strictEmailSchema, yupObject } from "@stackframe/stack-shared/dist/schema-fields";
 import { groupBy } from "@stackframe/stack-shared/dist/utils/arrays";
 import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
-import { Button, Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue, Typography, toast } from "@stackframe/stack-ui";
-import { UserPlus } from "lucide-react";
-import { Suspense, useEffect, useMemo, useState } from "react";
+import { Button, Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, Input, Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue, Skeleton, Spinner, Typography, toast } from "@stackframe/stack-ui";
+import { Settings } from "lucide-react";
+import { useEffect, useMemo, useState, Suspense } from "react";
 import * as yup from "yup";
 
-
-export default function PageClient(props: { inviteUser: (origin: string, teamId: string, email: string) => Promise<void> }) {
+export default function PageClient() {
   const user = useUser({ or: 'redirect', projectIdMustMatch: "internal" });
   const rawProjects = user.useOwnedProjects();
   const teams = user.useTeams();
@@ -96,26 +93,29 @@ export default function PageClient(props: { inviteUser: (origin: string, teamId:
         </div>
       </div>
 
-      {projectsByTeam.map(({ teamId, projects }) => (
-        <div key={teamId} className="mb-4">
-          <Typography type="label" className="flex items-center">
-            {teamId && teams.find(t => t.id === teamId) && (
-              <Suspense fallback={<Button size="icon" variant="ghost" disabled><UserPlus className="w-4 h-4" /></Button>}>
+      {projectsByTeam.map(({ teamId, projects }) => {
+        const team = teamId ? teams.find((t) => t.id === teamId) : undefined;
+        return (
+          <div key={teamId} className="mb-4">
+            <div className="mb-2 flex items-center gap-1">
+              <Typography>
+                {teamId ? teamIdMap.get(teamId) : "No Team"}
+              </Typography>
+              {team && (
                 <TeamAddUserDialog
-                  team={teams.find(t => t.id === teamId)!}
-                  onSubmit={(email) => props.inviteUser(window.location.origin, teamId, email)}
+                  team={team}
+                  adminApp={projects[0].app}
                 />
-              </Suspense>
-            )}
-            {teamId ? teamIdMap.get(teamId) : "No Team"}
-          </Typography>
-          <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4">
-            {projects.map((project) => (
-              <ProjectCard key={project.id} project={project} />
-            ))}
+              )}
+            </div>
+            <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4">
+              {projects.map((project) => (
+                <ProjectCard key={project.id} project={project} />
+              ))}
+            </div>
           </div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
@@ -124,33 +124,208 @@ const inviteFormSchema = yupObject({
   email: strictEmailSchema("Please enter a valid email address").defined(),
 });
 
+
 function TeamAddUserDialog(props: {
   team: Team,
-  onSubmit: (email: string) => Promise<void>,
+  adminApp: StackAdminApp<false>,
 }) {
-  const users = props.team.useUsers();
-  const { quantity } = props.team.useItem("dashboard_admins");
+  const [open, setOpen] = useState(false);
 
-  const onSubmit = async (values: yup.InferType<typeof inviteFormSchema>) => {
-    if (users.length + 1 > quantity) {
-      alert("You have reached the maximum number of dashboard admins. Please upgrade your plan to add more admins.");
-      const checkoutUrl = await props.team.createCheckoutUrl({
+  return (
+    <>
+      <Button
+        variant="ghost"
+        size="icon"
+        aria-label={`Invite teammates to ${props.team.displayName}`}
+        title={`Invite teammates to ${props.team.displayName}`}
+        onClick={() => setOpen(true)}
+      >
+        <Settings className="h-4 w-4" />
+      </Button>
+
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="sm:max-w-[480px]">
+          <DialogHeader>
+            <DialogTitle>Invite a new user to {props.team.displayName}</DialogTitle>
+          </DialogHeader>
+          <Suspense fallback={<TeamAddUserDialogContentSkeleton />}>
+            <TeamAddUserDialogContent
+              teamId={props.team.id}
+              adminApp={props.adminApp}
+              onClose={() => setOpen(false)}
+            />
+          </Suspense>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
+function TeamAddUserDialogContent(props: {
+  teamId: string,
+  adminApp: StackAdminApp<false>,
+  onClose: () => void,
+}) {
+  const team = props.adminApp.useTeam(props.teamId)!;
+  const invitations = team.useInvitations();
+  const users = team.useUsers();
+  const admins = team.useItem("dashboard_admins");
+
+  const [email, setEmail] = useState("");
+  const [formError, setFormError] = useState<string | null>(null);
+
+  const activeSeats = users.length + invitations.length;
+  const seatLimit = admins.quantity;
+  const atCapacity = activeSeats >= seatLimit;
+
+  const handleInvite = async () => {
+    if (atCapacity) {
+      return;
+    }
+
+    try {
+      setFormError(null);
+      const values = await inviteFormSchema.validate({ email: email.trim() });
+      await team.inviteUser({ email: values.email });
+      toast({ variant: "success", title: "Team invitation sent" });
+      setEmail("");
+    } catch (error) {
+      if (error instanceof yup.ValidationError) {
+        setFormError(error.errors[0] ?? error.message);
+      } else {
+        const message = error instanceof Error ? error.message : "Unknown error";
+        toast({ variant: "destructive", title: "Failed to send invitation", description: message });
+      }
+    }
+  };
+
+  const handleUpgrade = async () => {
+    try {
+      const checkoutUrl = await team.createCheckoutUrl({
         productId: "team",
         returnUrl: window.location.href,
       });
       window.location.assign(checkoutUrl);
-      return "prevent-close-and-prevent-reset";
-    }
-    await props.onSubmit(values.email);
-    toast({ variant: "success", title: "Team invitation sent" });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown error";
+      toast({ variant: "destructive", title: "Failed to start upgrade", description: message });
+    };
   };
 
-  return <FormDialog
-    title={"Invite a new user"}
-    formSchema={inviteFormSchema}
-    okButton={{ label: "Invite" }}
-    onSubmit={onSubmit}
-    trigger={<Button size="icon" variant="ghost"><UserPlus className="w-4 h-4" /></Button>}
-    render={(form) => <InputField control={form.control} name="email" placeholder="Email" />}
-  />;
+  return (
+    <>
+      <div className="space-y-4 py-2">
+        <div className="flex items-center justify-between rounded-md border border-border px-3 py-2">
+          <Typography type="label">Dashboard admin seats</Typography>
+          <Typography variant="secondary">
+            {activeSeats}/{seatLimit}
+          </Typography>
+        </div>
+        {atCapacity && (
+          <Typography variant="secondary" className="text-destructive">
+            You are at capacity. Upgrade your plan to add more admins.
+          </Typography>
+        )}
+        <div className="space-y-2">
+          <Input
+            value={email}
+            onChange={(event) => {
+              setEmail(event.target.value);
+              if (formError) {
+                setFormError(null);
+              }
+            }}
+            placeholder="Email"
+            type="email"
+            autoFocus
+          />
+          {formError && (
+            <Typography type="label" className="text-destructive">
+              {formError}
+            </Typography>
+          )}
+        </div>
+
+        <div className="space-y-2">
+          <Typography type="label">Pending invitations</Typography>
+          {invitations.length === 0 ? (
+            <Typography variant="secondary">None</Typography>
+          ) : (
+            <div className="space-y-2 max-h-48 overflow-y-auto">
+              {invitations.map((invitation) => (
+                <div
+                  key={invitation.id}
+                  className="flex items-center justify-between rounded-md border border-border px-3 py-2"
+                >
+                  <div className="flex flex-col">
+                    <Typography>{invitation.recipientEmail ?? "Pending invitation"}</Typography>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={invitation.revoke}
+                  >
+                    Revoke
+                  </Button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      <DialogFooter className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
+        <Button variant="outline" onClick={props.onClose}>
+          Close
+        </Button>
+        {atCapacity ? (
+          <Button onClick={handleUpgrade} variant="default">
+            Upgrade plan
+          </Button>
+        ) : (
+          <Button onClick={handleInvite}>
+            Invite
+          </Button>
+        )}
+      </DialogFooter>
+    </>
+  );
+}
+
+function TeamAddUserDialogContentSkeleton() {
+  return (
+    <>
+      <div className="space-y-4 py-2">
+        <div className="flex items-center justify-between rounded-md border border-border px-3 py-2">
+          <Typography type="label">Dashboard admin seats</Typography>
+          <div className="stack-scope text-md text-zinc-600 dark:text-zinc-400">
+            <Skeleton className="h-4 w-16" />
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          <Input
+            disabled
+            placeholder="Email"
+            type="email"
+            autoFocus
+          />
+        </div>
+
+        <div className="space-y-2">
+          <Typography type="label">Pending invitations</Typography>
+          <Skeleton className="h-8 w-full" />
+        </div>
+      </div>
+
+      <DialogFooter className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
+        <Button variant="outline" disabled>
+          Close
+        </Button>
+        <Button disabled>
+          Invite
+        </Button>
+      </DialogFooter>
+    </>
+  );
 }

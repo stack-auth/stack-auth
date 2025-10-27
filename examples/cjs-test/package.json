@@ -1,11 +1,11 @@
 {
   "name": "@stackframe/example-cjs-test",
-  "version": "2.8.42",
+  "version": "2.8.47",
   "private": true,
   "scripts": {
-    "dev": "next dev --port 8110",
+    "dev": "next dev --port ${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}10",
     "build": "next build",
-    "start": "next start --port 8110",
+    "start": "next start --port ${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}10",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
     "clean": "rimraf .next && rimraf node_modules"

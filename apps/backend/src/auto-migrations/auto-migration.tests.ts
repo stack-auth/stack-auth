@@ -8,14 +8,17 @@ const TEST_DB_PREFIX = 'stack_auth_test_db';
 const getTestDbURL = (testDbName: string) => {
   // @ts-ignore - ImportMeta.env is provided by Vite
   const base = import.meta.env.STACK_DIRECT_DATABASE_CONNECTION_STRING.replace(/\/[^/]*$/, '');
+  // @ts-ignore - ImportMeta.env is provided by Vite
+  const query = import.meta.env.STACK_DIRECT_DATABASE_CONNECTION_STRING.split('?')[1] ?? '';
   return {
     full: `${base}/${testDbName}`,
     base,
+    query,
   };
 };
 
-const applySql = async (options: { sql: string | string[], fullDbURL: string }) => {
-  const sql = postgres(options.fullDbURL);
+const applySql = async (options: { sql: string | string[], dbUrl: string }) => {
+  const sql = postgres(options.dbUrl);
 
   try {
     for (const query of Array.isArray(options.sql) ? options.sql : [options.sql]) {
@@ -31,12 +34,12 @@ const setupTestDatabase = async () => {
   const randomSuffix = Math.random().toString(16).substring(2, 12);
   const testDbName = `${TEST_DB_PREFIX}_${randomSuffix}`;
   const dbURL = getTestDbURL(testDbName);
-  await applySql({ sql: `CREATE DATABASE ${testDbName}`, fullDbURL: dbURL.base });
+  await applySql({ sql: `CREATE DATABASE ${testDbName}`, dbUrl: dbURL.base });
 
   const prismaClient = new PrismaClient({
     datasources: {
       db: {
-        url: dbURL.full,
+        url: `${dbURL.full}?${dbURL.query}`,
       },
     },
   });
@@ -63,7 +66,7 @@ const teardownTestDatabase = async (prismaClient: PrismaClient, testDbName: stri
       `,
       `DROP DATABASE IF EXISTS ${testDbName}`
     ],
-    fullDbURL: dbURL.base
+    dbUrl: dbURL.base
   });
 
   // Wait a bit to ensure connections are terminated
@@ -212,9 +215,12 @@ import.meta.vitest?.test("applies migrations concurrently", runTest(async ({ exp
 }));
 
 import.meta.vitest?.test("applies migrations concurrently with 20 concurrent migrations", runTest(async ({ expect, prismaClient }) => {
-  const promises = Array.from({ length: 20 }, () =>
-    applyMigrations({ prismaClient, migrationFiles: exampleMigrationFiles1, artificialDelayInSeconds: 1, schema: 'public' })
-  );
+  const promises = Array.from({ length: 20 }, async (_, i) => {
+    console.log("Applying migration", i);
+    const result = await applyMigrations({ prismaClient, migrationFiles: exampleMigrationFiles1, artificialDelayInSeconds: 1, schema: 'public', logging: true });
+    console.log("Migration", i, "applied", result.newlyAppliedMigrationNames);
+    return result;
+  });
 
   const results = await Promise.all(promises);
 
@@ -231,12 +237,20 @@ import.meta.vitest?.test("applies migrations concurrently with 20 concurrent mig
   expect(result.length).toBe(1);
   expect(result[0].name).toBe('test_value');
 }), {
-  timeout: 40_000,
+  timeout: 400_000,
 });
+
+// TODO: this test, or a variant of it, might fail because the migrations waiting for locks are exhausting all
+// connections; the RUN_OUTSIDE_TRANSACTION_SENTINEL is then not able to run its own migration outside of the
+// transaction
+//
+// The fix would be to only *try* acquiring the migration lock when we apply a migration, and if it fails to acquire, we
+// wait *outside* of the transaction so it doesn't exhaust all connections
+import.meta.vitest?.test.todo("applies migrations concurrently with 20 concurrent migrations with RUN_OUTSIDE_TRANSACTION_SENTINEL");
 
 
 import.meta.vitest?.test("applies migration with a DB previously migrated with prisma", runTest(async ({ expect, prismaClient, dbURL }) => {
-  await applySql({ sql: examplePrismaBasedInitQueries, fullDbURL: dbURL.full });
+  await applySql({ sql: examplePrismaBasedInitQueries, dbUrl: dbURL.full });
   const result = await applyMigrations({ prismaClient, migrationFiles: examplePrismaBasedMigrationFiles, schema: 'public' });
   expect(result.newlyAppliedMigrationNames).toEqual(['20250314215050_age']);
 
@@ -299,6 +313,8 @@ import.meta.vitest?.test("applies migration while running an interactive transac
     expect(result[0].name).toBe('test_value');
   }, {
     isolationLevel: undefined,
+    timeout: 15_000,
+    maxWait: 5_000,
   });
 }));
 

@@ -35,6 +35,49 @@ it("should sign up with credential", async ({ expect }) => {
   `);
 });
 
+it("should sign up without a verification callback when disabled", async ({ expect }) => {
+  const { clientApp } = await createApp();
+  const signUpResult = await clientApp.signUpWithCredential({
+    email: "no-verification@test.com",
+    password: "password",
+    noVerificationCallback: true,
+  });
+
+  expect(signUpResult).toMatchInlineSnapshot(`
+    {
+      "data": undefined,
+      "status": "ok",
+    }
+  `);
+
+  const signInResult = await clientApp.signInWithCredential({
+    email: "no-verification@test.com",
+    password: "password",
+  });
+
+  expect(signInResult).toMatchInlineSnapshot(`
+    {
+      "data": undefined,
+      "status": "ok",
+    }
+  `);
+});
+
+it("should throw when disabling verification with a callback url provided", async ({ expect }) => {
+  const { clientApp } = await createApp();
+
+  await expect(clientApp.signUpWithCredential({
+    email: "no-verification-conflict@test.com",
+    password: "password",
+    noVerificationCallback: true,
+    // @ts-expect-error - testing the error case
+    verificationCallbackUrl: "http://localhost:3000",
+  })).rejects.toMatchObject({
+    message: expect.stringContaining("verificationCallbackUrl is not allowed when noVerificationCallback is true"),
+    name: "StackAssertionError",
+  });
+});
+
 it("should create user on the server", async ({ expect }) => {
   const { serverApp } = await createApp();
   const user = await serverApp.createUser({
@@ -59,4 +102,35 @@ it("should create user on the server", async ({ expect }) => {
       "status": "ok",
     }
   `);
+});
+
+it("should throw a helpful error when destructuring user", async ({ expect }) => {
+  const { clientApp, serverApp } = await createApp();
+
+  const email = "user-destructure@test.com";
+  const password = "password";
+
+  const signUpResult = await clientApp.signUpWithCredential({
+    email,
+    password,
+    verificationCallbackUrl: "http://localhost:3000",
+  });
+  expect(signUpResult.status).toBe("ok");
+
+  const signInResult = await clientApp.signInWithCredential({
+    email,
+    password,
+  });
+  expect(signInResult.status).toBe("ok");
+
+  const currentUser = await clientApp.getUser({ or: "throw" });
+  const accessClientUser = () => (currentUser as any).user;
+  expect(accessClientUser).toThrowError("Stack Auth: useUser() already returns the user object. Use `const user = useUser()` (or `const user = await app.getUser()`) instead of destructuring it like `const { user } = ...`.");
+
+  const serverUser = await serverApp.getUser(currentUser.id);
+  if (!serverUser) {
+    throw new Error("Expected server user to exist for destructure guard test");
+  }
+  const accessServerUser = () => (serverUser as any).user;
+  expect(accessServerUser).toThrowError("Stack Auth: useUser() already returns the user object. Use `const user = useUser()` (or `const user = await app.getUser()`) instead of destructuring it like `const { user } = ...`.");
 });

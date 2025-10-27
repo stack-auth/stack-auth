@@ -10,7 +10,7 @@ services:
       POSTGRES_DB: stackframe
       POSTGRES_DELAY_MS: ${POSTGRES_DELAY_MS:-0}
     ports:
-      - 5432:5432
+      - "${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}28:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
     cap_add:
@@ -23,7 +23,7 @@ services:
     environment:
       DATABASE_URL: postgres://postgres:PASSWORD-PLACEHOLDER--uqfEC1hmmv@db:5432/stackframe
     ports:
-      - 8116:8080
+      - "${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}16:8080"
 
   # ================= PgAdmin =================
 
@@ -38,7 +38,7 @@ services:
       - source: pgadmin_servers
         target: /pgadmin4/servers.json
     ports:
-      - 8117:80
+      - "${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}17:80"
 
   # ================= Supabase Studio =================
 
@@ -65,7 +65,7 @@ services:
       NEXT_PUBLIC_ENABLE_LOGS: true
       NEXT_ANALYTICS_BACKEND_PROVIDER: postgres
     ports:
-      - 8118:3000
+      - "${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}18:3000"
   
   supabase-meta:
     image: supabase/postgres-meta:v0.84.2
@@ -73,7 +73,7 @@ services:
     environment:
       PG_META_PORT: 8080
       PG_META_DB_HOST: db
-      PG_META_DB_PORT: 5432
+      PG_META_DB_PORT: 8128
       PG_META_DB_NAME: stackframe
       PG_META_DB_USER: postgres
       PG_META_DB_PASSWORD: PASSWORD-PLACEHOLDER--uqfEC1hmmv
@@ -84,9 +84,9 @@ services:
   inbucket:
     image: inbucket/inbucket:3.1.0
     ports:
-      - 2500:2500
-      - 8105:9000
-      - 1100:1100
+      - "${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}29:2500"
+      - "${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}05:9000"
+      - "${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}30:1100"
     volumes:
       - inbucket-data:/data
 
@@ -97,8 +97,8 @@ services:
     environment:
       - COLLECTOR_OTLP_ENABLED=true
     ports:
-      - 8107:16686  # Jaeger UI
-      - 4318:4318    # OTLP Endpoint
+      - "${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}07:16686"  # Jaeger UI
+      - "${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}31:4318"    # OTLP Endpoint
     restart: always
 
   # ================= svix =================
@@ -129,7 +129,7 @@ services:
       SVIX_LOG_LEVEL: trace
       SVIX_QUEUE_TYPE: redis
     ports:
-      - 8113:8071
+      - "${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}13:8071"
     depends_on:
     - svix-redis
     - svix-db
@@ -139,7 +139,7 @@ services:
   s3mock:
     image: adobe/s3mock:latest
     ports:
-      - 8121:9090
+      - "${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}21:9090"
     environment:
       - initialBuckets=stack-storage
       - root=s3mockroot
@@ -157,8 +157,8 @@ services:
   localstack:
     image: localstack/localstack:4.7
     ports:
-      - "8124:4566"            # LocalStack Gateway
-      - "8150-8199:4510-4559"  # external services port range
+      - "${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}24:4566"            # LocalStack Gateway
+      - "${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}50-${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}99:4510-4559"  # external services port range
     environment:
       # LocalStack configuration: https://docs.localstack.cloud/references/configuration/
       - DEBUG=${DEBUG:-0}
@@ -173,9 +173,8 @@ services:
       context: ./freestyle-mock
       dockerfile: Dockerfile
     image: freestyle-mock
-    container_name: freestyle-mock
     ports:
-      - "8122:8080"       # POST http://localhost:8119/execute/v1/script
+      - "${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}22:8080"       # POST http://localhost:${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}19/execute/v1/script
     extra_hosts:
       - "host.docker.internal:host-gateway"  # noop on Docker Desktop/Orbstack, enables host.docker.internal on Linux
     environment:
@@ -189,16 +188,16 @@ services:
   stripe-mock:
     image: stripe/stripe-mock:v0.195.0
     ports:
-      - 8123:12111
+      - "${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}23:12111"
     environment:
       - STRIPE_API_KEY=sk_test_1234567890
 
   # ================= QStash =================
 
   qstash:
-    image: public.ecr.aws/upstash/qstash:latest
+    image: bgodil/qstash:latest
     ports:
-      - 8125:8080
+      - "${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}25:8080"
     command: qstash dev
     extra_hosts:
       - "host.docker.internal:host-gateway"  # noop on Docker Desktop/Orbstack, enables host.docker.internal on Linux
@@ -210,9 +209,9 @@ services:
   mcpjam-inspector:
     image: node:20-alpine
     ports:
-      - "8126:3001"
+      - "${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}26:3001"
     command: >
-      sh -c "echo '{\"mcpServers\":{\"local-stack-auth-docs\":{\"url\":\"http://host.docker.internal:8104/api/internal/mcp\"}}}' > /app/mcp.json && npx -y @mcpjam/inspector@latest --port 3001 --config /app/mcp.json"
+      sh -c "echo '{\"mcpServers\":{\"local-stack-auth-docs\":{\"url\":\"http://host.docker.internal:${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}04/api/internal/mcp\"}}}' > /app/mcp.json && npx -y @mcpjam/inspector@latest --port 3001 --config /app/mcp.json"
     working_dir: /app
     volumes:
       - mcpjam-inspector-data:/root

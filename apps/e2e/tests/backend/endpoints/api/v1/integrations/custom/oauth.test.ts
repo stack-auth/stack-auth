@@ -75,15 +75,15 @@ async function authorize(projectId: string) {
       NiceResponse {
         "status": 307,
         "headers": Headers {
-          "location": "http://localhost:8102/api/v1/integrations/custom/oauth/idp/auth?response_type=code&client_id=custom-local&redirect_uri=%3Cstripped+query+param%3E&state=%3Cstripped+query+param%3E&code_challenge=%3Cstripped+query+param%3E&code_challenge_method=S256&scope=openid",
+          "location": "http://localhost:<$NEXT_PUBLIC_STACK_PORT_PREFIX>02/api/v1/integrations/custom/oauth/idp/auth?response_type=code&client_id=custom-local&redirect_uri=%3Cstripped+query+param%3E&state=%3Cstripped+query+param%3E&code_challenge=%3Cstripped+query+param%3E&code_challenge_method=S256&scope=openid",
           <some fields may have been hidden>,
         },
       },
       NiceResponse {
         "status": 303,
-        "body": "Redirecting to <a href=\\"http://localhost:8102/api/v1/integrations/custom/oauth/idp/interaction/<stripped interaction UID>\\">http://localhost:8102/api/v1/integrations/custom/oauth/idp/interaction/<stripped interaction UID></a>.",
+        "body": "Redirecting to <a href=\\"http://localhost:<$NEXT_PUBLIC_STACK_PORT_PREFIX>02/api/v1/integrations/custom/oauth/idp/interaction/<stripped interaction UID>\\">http://localhost:<$NEXT_PUBLIC_STACK_PORT_PREFIX>02/api/v1/integrations/custom/oauth/idp/interaction/<stripped interaction UID></a>.",
         "headers": Headers {
-          "location": "http://localhost:8102/api/v1/integrations/custom/oauth/idp/interaction/<stripped interaction UID>",
+          "location": "http://localhost:<$NEXT_PUBLIC_STACK_PORT_PREFIX>02/api/v1/integrations/custom/oauth/idp/interaction/<stripped interaction UID>",
           "set-cookie": <setting cookie "_interaction" at path "/api/v1/integrations/custom/oauth/idp/interaction/<stripped interaction UID>" to <stripped cookie value>>,
           "set-cookie": <setting cookie "_interaction.sig" at path "/api/v1/integrations/custom/oauth/idp/interaction/<stripped interaction UID>" to <stripped cookie value>>,
           "set-cookie": <setting cookie "_interaction_resume" at path "/api/v1/integrations/custom/oauth/idp/auth/<stripped auth UID>" to <stripped cookie value>>,
@@ -93,9 +93,9 @@ async function authorize(projectId: string) {
       },
       NiceResponse {
         "status": 307,
-        "body": "http://localhost:8101/integrations/custom/confirm?interaction_uid=%3Cstripped+query+param%3E&amp=",
+        "body": "http://localhost:<$NEXT_PUBLIC_STACK_PORT_PREFIX>01/integrations/custom/confirm?interaction_uid=%3Cstripped+query+param%3E&amp=",
         "headers": Headers {
-          "location": "http://localhost:8101/integrations/custom/confirm?interaction_uid=%3Cstripped+query+param%3E&external_project_name=custom-project",
+          "location": "http://localhost:<$NEXT_PUBLIC_STACK_PORT_PREFIX>01/integrations/custom/confirm?interaction_uid=%3Cstripped+query+param%3E&external_project_name=custom-project",
           <some fields may have been hidden>,
         },
       },
@@ -130,7 +130,7 @@ async function authorize(projectId: string) {
       NiceResponse {
         "status": 303,
         "headers": Headers {
-          "location": "http://localhost:8102/api/v1/integrations/custom/oauth/idp/auth/<stripped auth UID>",
+          "location": "http://localhost:<$NEXT_PUBLIC_STACK_PORT_PREFIX>02/api/v1/integrations/custom/oauth/idp/auth/<stripped auth UID>",
           <some fields may have been hidden>,
         },
       },
@@ -138,7 +138,7 @@ async function authorize(projectId: string) {
         "status": 303,
         "body": "http://localhost:30000/api/v2/auth/authorize?code=%3Cstripped+query+param%3E&amp=",
         "headers": Headers {
-          "location": "http://localhost:30000/api/v2/auth/authorize?code=%3Cstripped+query+param%3E&state=%3Cstripped+query+param%3E&iss=http%3A%2F%2Flocalhost%3A8102%2Fapi%2Fv1%2Fintegrations%2Fcustom%2Foauth%2Fidp",
+          "location": "http://localhost:30000/api/v2/auth/authorize?code=%3Cstripped+query+param%3E&state=%3Cstripped+query+param%3E&iss=http%3A%2F%2Flocalhost%3A%3C%24NEXT_PUBLIC_STACK_PORT_PREFIX%3E02%2Fapi%2Fv1%2Fintegrations%2Fcustom%2Foauth%2Fidp",
           "set-cookie": <setting cookie "_interaction_resume" at path "/api/v1/integrations/custom/oauth/idp/auth/<stripped auth UID>" to <stripped cookie value>>,
           "set-cookie": <setting cookie "_interaction_resume.sig" at path "/api/v1/integrations/custom/oauth/idp/auth/<stripped auth UID>" to <stripped cookie value>>,
           <some fields may have been hidden>,
@@ -169,7 +169,7 @@ it(`should not redirect to the incorrect callback URL`, async ({}) => {
         NiceResponse {
           "status": 307,
           "headers": Headers {
-            "location": "http://localhost:8102/api/v1/integrations/custom/oauth/idp/auth?response_type=code&client_id=custom-local&redirect_uri=%3Cstripped+query+param%3E&state=%3Cstripped+query+param%3E&code_challenge=%3Cstripped+query+param%3E&code_challenge_method=S256&scope=openid",
+            "location": "http://localhost:<$NEXT_PUBLIC_STACK_PORT_PREFIX>02/api/v1/integrations/custom/oauth/idp/auth?response_type=code&client_id=custom-local&redirect_uri=%3Cstripped+query+param%3E&state=%3Cstripped+query+param%3E&code_challenge=%3Cstripped+query+param%3E&code_challenge_method=S256&scope=openid",
             <some fields may have been hidden>,
           },
         },
@@ -178,7 +178,7 @@ it(`should not redirect to the incorrect callback URL`, async ({}) => {
           "body": {
             "error": "invalid_redirect_uri",
             "error_description": "redirect_uri did not match any of the client's registered redirect_uris",
-            "iss": "http://localhost:8102/api/v1/integrations/custom/oauth/idp",
+            "iss": "http://localhost:<$NEXT_PUBLIC_STACK_PORT_PREFIX>02/api/v1/integrations/custom/oauth/idp",
             "state": "eyJkZXRhaWxzIjp7ImV4dGVybmFsX3Byb2plY3RfbmFtZSI6ImN1c3RvbS1wcm9qZWN0In19",
           },
           "headers": Headers { <some fields may have been hidden> },

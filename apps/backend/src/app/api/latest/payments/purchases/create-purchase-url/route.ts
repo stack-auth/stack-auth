@@ -1,6 +1,6 @@
 import { ensureProductIdOrInlineProduct, getCustomerPurchaseContext } from "@/lib/payments";
 import { validateRedirectUrl } from "@/lib/redirect-urls";
-import { getStripeForAccount } from "@/lib/stripe";
+import { getStackStripe, getStripeForAccount } from "@/lib/stripe";
 import { getPrismaClientForTenancy, globalPrismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { CustomerType } from "@prisma/client";
@@ -12,7 +12,10 @@ import { purchaseUrlVerificationCodeHandler } from "../verification-code-handler
 
 export const POST = createSmartRouteHandler({
   metadata: {
-    hidden: true,
+    hidden: false,
+    summary: "Create Purchase URL",
+    description: "Creates a secure checkout URL for purchasing a product.",
+    tags: ["Payments"],
   },
   request: yupObject({
     auth: yupObject({
@@ -21,18 +24,46 @@ export const POST = createSmartRouteHandler({
       tenancy: adaptSchema.defined(),
     }).defined(),
     body: yupObject({
-      customer_type: yupString().oneOf(["user", "team", "custom"]).defined(),
-      customer_id: yupString().defined(),
-      product_id: yupString().optional(),
-      product_inline: inlineProductSchema.optional(),
-      return_url: urlSchema.optional(),
+      customer_type: yupString().oneOf(["user", "team", "custom"]).defined().meta({
+        openapiField: {
+          description: "The type of customer making the purchase",
+          exampleValue: "user"
+        }
+      }),
+      customer_id: yupString().defined().meta({
+        openapiField: {
+          description: "The ID of the customer (user ID, team ID, or custom customer ID)",
+          exampleValue: "user_1234567890abcdef"
+        }
+      }),
+      product_id: yupString().optional().meta({
+        openapiField: {
+          description: "The ID of the product to purchase. Either this or product_inline should be given.",
+          exampleValue: "prod_premium_monthly"
+        }
+      }),
+      product_inline: inlineProductSchema.optional().meta({
+        openapiField: {
+          description: "Inline product definition. Either this or product_id should be given."
+        }
+      }),
+      return_url: urlSchema.optional().meta({
+        openapiField: {
+          description: "URL to redirect to after purchase completion. Must be configured as a trusted domain in the project configuration.",
+          exampleValue: "https://myapp.com/purchase-success"
+        }
+      }),
     }),
   }),
   response: yupObject({
     statusCode: yupNumber().oneOf([200]).defined(),
     bodyType: yupString().oneOf(["json"]).defined(),
     body: yupObject({
-      url: yupString().defined(),
+      url: yupString().defined().meta({
+        openapiField: {
+          description: "The secure checkout URL for completing the purchase"
+        }
+      }),
     }).defined(),
   }),
   handler: async (req) => {
@@ -75,7 +106,9 @@ export const POST = createSmartRouteHandler({
       where: { id: tenancy.project.id },
       select: { stripeAccountId: true },
     });
-
+    const stripeAccountId = project?.stripeAccountId ?? throwErr("Stripe account not configured");
+    const stackStripe = getStackStripe();
+    const connectedAccount = await stackStripe.accounts.retrieve(stripeAccountId);
     const { code } = await purchaseUrlVerificationCodeHandler.createCode({
       tenancy,
       expiresInMs: 1000 * 60 * 60 * 24,
@@ -85,7 +118,8 @@ export const POST = createSmartRouteHandler({
         productId: req.body.product_id,
         product: productConfig,
         stripeCustomerId: stripeCustomer.id,
-        stripeAccountId: project?.stripeAccountId ?? throwErr("Stripe account not configured"),
+        stripeAccountId,
+        chargesEnabled: connectedAccount.charges_enabled,
       },
       method: {},
       callbackUrl: undefined,

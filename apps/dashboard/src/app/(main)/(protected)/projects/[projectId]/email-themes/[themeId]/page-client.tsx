@@ -4,14 +4,15 @@ import EmailPreview from "@/components/email-preview";
 import { useRouterConfirm } from "@/components/router";
 import { AssistantChat, CodeEditor, EmailThemeUI, VibeCodeLayout } from "@/components/vibe-coding";
 import {
+  ToolCallContent,
   createChatAdapter,
-  createHistoryAdapter,
-  ToolCallContent
+  createHistoryAdapter
 } from "@/components/vibe-coding/chat-adapters";
 import { previewTemplateSource } from "@stackframe/stack-shared/dist/helpers/emails";
 import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
 import { Button, toast } from "@stackframe/stack-ui";
 import { useEffect, useState } from "react";
+import { AppEnabledGuard } from "../../app-enabled-guard";
 import { useAdminApp } from "../../use-admin-app";
 
 
@@ -45,36 +46,36 @@ export default function PageClient({ themeId }: { themeId: string }) {
   };
 
   return (
-    <VibeCodeLayout
-      previewComponent={
-        <EmailPreview
-          themeTsxSource={currentCode}
-          templateTsxSource={previewTemplateSource}
-        />
-      }
-      editorComponent={
-        <CodeEditor
-          code={currentCode}
-          onCodeChange={setCurrentCode}
-          action={
-            <Button
-              disabled={currentCode === theme.tsxSource}
-              onClick={handleSaveTheme}
-            >
-              Save
-            </Button>
-          }
-        />
-      }
-      chatComponent={
-        <AssistantChat
-          chatAdapter={createChatAdapter(stackAdminApp, themeId, "email-theme", handleThemeUpdate)}
-          historyAdapter={createHistoryAdapter(stackAdminApp, themeId)}
-          toolComponents={<EmailThemeUI setCurrentCode={setCurrentCode} />}
-        />
-      }
-    />
+    <AppEnabledGuard appId="emails">
+      <VibeCodeLayout
+        previewComponent={
+          <EmailPreview
+            themeTsxSource={currentCode}
+            templateTsxSource={previewTemplateSource}
+          />
+        }
+        editorComponent={
+          <CodeEditor
+            code={currentCode}
+            onCodeChange={setCurrentCode}
+            action={
+              <Button
+                disabled={currentCode === theme.tsxSource}
+                onClick={handleSaveTheme}
+              >
+                Save
+              </Button>
+            }
+          />
+        }
+        chatComponent={
+          <AssistantChat
+            chatAdapter={createChatAdapter(stackAdminApp, themeId, "email-theme", handleThemeUpdate)}
+            historyAdapter={createHistoryAdapter(stackAdminApp, themeId)}
+            toolComponents={<EmailThemeUI setCurrentCode={setCurrentCode} />}
+          />
+        }
+      />
+    </AppEnabledGuard>
   );
 }
-
-

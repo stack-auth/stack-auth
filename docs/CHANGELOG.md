@@ -1,5 +1,49 @@
 # @stackframe/stack-docs
 
+## 2.8.47
+
+### Patch Changes
+
+- Various changes
+- Updated dependencies
+  - @stackframe/stack@2.8.47
+  - @stackframe/stack-shared@2.8.47
+
+## 2.8.46
+
+### Patch Changes
+
+- Various changes
+- Updated dependencies
+  - @stackframe/stack@2.8.46
+  - @stackframe/stack-shared@2.8.46
+
+## 2.8.45
+
+### Patch Changes
+
+- Various changes
+- Updated dependencies
+  - @stackframe/stack-shared@2.8.45
+  - @stackframe/stack@2.8.45
+
+## 2.8.44
+
+### Patch Changes
+
+- Various changes
+- Updated dependencies
+  - @stackframe/stack-shared@2.8.44
+  - @stackframe/stack@2.8.44
+
+## 2.8.43
+
+### Patch Changes
+
+- Various changes
+  - @stackframe/stack@2.8.43
+  - @stackframe/stack-shared@2.8.43
+
 ## 2.8.42
 
 ### Patch Changes

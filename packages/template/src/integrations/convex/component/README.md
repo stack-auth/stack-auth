@@ -12,7 +12,7 @@ npx @stackframe/init-stack@latest
 
 ## Get Started
 
-[Create a new Stack Auth project](https://app.stack-auth.com) and set the environment variables in Convex to the project ID & API key environment variables from the Stack Auth dashboard.
+[Create a new Stack Auth project](https://app.stack-auth.com) and set the environment variables in Convex to the project ID & API key environment variables from the Stack Auth dashboard. Also, add the same values to the `.env.local` file.
 
 Next, update or create a file in `convex/auth.config.ts`:
 
@@ -31,9 +31,9 @@ export default {
 Then, update your Convex client to use Stack Auth:
 
 ```ts
-convexClient.setAuth(stackServerApp.getConvexClientAuth());  // browser JS
-convexReactClient.setAuth(stackServerApp.getConvexClientAuth());  // React
-convexHttpClient.setAuth(stackServerApp.getAuthForConvexHttpClient({ tokenStore: requestObject }));  // HTTP, see Stack Auth docs for more information on tokenStore
+convexClient.setAuth(stackClientApp.getConvexClientAuth({}));  // browser JS
+convexReactClient.setAuth(stackClientApp.getConvexClientAuth({}));  // React
+convexHttpClient.setAuth(stackClientApp.getConvexHttpClientAuth({ tokenStore: requestObject }));  // HTTP, see Stack Auth docs for more information on tokenStore
 ```
 
 Now, you'll be able to access Stack Auth's functionality from your frontend & backend:
