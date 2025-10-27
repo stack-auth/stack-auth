@@ -8,7 +8,7 @@ import * as os from 'os';
 import * as path from "path";
 import { PostHog } from 'posthog-node';
 import packageJson from '../package.json';
-import { notifyTelegramOnCompletion } from "./telegram";
+import { invokeCallback } from "./telegram";
 
 const jsLikeFileExtensions: string[] = [
   "mtsx",
@@ -355,7 +355,7 @@ async function main(): Promise<void> {
     commandsExecuted,
   });
 
-  await notifyTelegramOnCompletion({
+  await invokeCallback({
     success: true,
     distinctId,
     options,
@@ -428,7 +428,7 @@ main().catch(async (err) => {
       return "Unknown error";
     }
   })();
-  await notifyTelegramOnCompletion({
+  await invokeCallback({
     success: false,
     distinctId,
     options,
