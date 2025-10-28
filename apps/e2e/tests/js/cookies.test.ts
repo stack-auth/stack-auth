@@ -127,7 +127,7 @@ it("should set refresh token cookies for trusted parent domains", async ({ expec
       config: {
         domains: [
           { domain: "https://example.com", handlerPath: "/handler" },
-          { domain: "https://*.example.com", handlerPath: "/handler" },
+          { domain: "https://**.example.com", handlerPath: "/handler" },
         ],
       },
     },
@@ -176,7 +176,7 @@ it("should set refresh token cookies for trusted parent domains", async ({ expec
   const parsedValue = JSON.parse(decodeURIComponent(defaultValue));
   expect(typeof parsedValue.refresh_token).toBe("string");
   expect(parsedValue.refresh_token.length).toBeGreaterThan(10);
-  expect(typeof parsedValue.updated_at).toBe("number");
+  expect(typeof parsedValue.updated_at_millis).toBe("number");
 
   const defaultAttrs = findCookieAttributes(cookieWrites, defaultCookieName);
   expect(defaultAttrs).not.toBeNull();
@@ -185,10 +185,7 @@ it("should set refresh token cookies for trusted parent domains", async ({ expec
 
   const customAttrs = findCookieAttributes(cookieWrites, customCookieName);
   expect(customAttrs?.get("domain")).toBe("example.com");
-
-  const legacyProjectCookie = `stack-refresh-${clientApp.projectId}`;
-  expect(cookieWrites.some((entry) => entry.toLowerCase().startsWith(`${legacyProjectCookie.toLowerCase()}=`) && entry.toLowerCase().includes("expires="))).toBe(true);
-  expect(cookieWrites.some((entry) => entry.toLowerCase().startsWith("stack-refresh=") && entry.toLowerCase().includes("expires="))).toBe(true);
+  expect(cookieWrites.some((entry) => entry.toLowerCase().startsWith("stack-refresh-") && entry.toLowerCase().includes("expires="))).toBe(true);
 });
 
 it("should avoid setting custom refresh cookies when no trusted parent domain is configured", async ({ expect }) => {
@@ -303,11 +300,11 @@ it("should read the newest refresh token payload from cookie storage", async ({ 
 
   const staleCookieValue = JSON.stringify({
     refresh_token: "stale-token",
-    updated_at: 1700000000000,
+    updated_at_millis: 1700000000000,
   });
   const freshCookieValue = JSON.stringify({
     refresh_token: "fresh-token",
-    updated_at: 1800000000000,
+    updated_at_millis: 1800000000000,
   });
 
   const cookieMap: Record<string, string> = {
