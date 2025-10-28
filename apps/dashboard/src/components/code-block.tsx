@@ -1,16 +1,16 @@
 'use client';
 
 import { useThemeWatcher } from '@/lib/theme';
+import { cn } from '@/lib/utils';
 import { CopyButton, SimpleTooltip } from "@stackframe/stack-ui";
 import { Code, Terminal } from "lucide-react";
+import type { ReactNode } from 'react';
 import { PrismLight as SyntaxHighlighter } from 'react-syntax-highlighter';
 import bash from 'react-syntax-highlighter/dist/esm/languages/prism/bash';
 import python from 'react-syntax-highlighter/dist/esm/languages/prism/python';
 import tsx from 'react-syntax-highlighter/dist/esm/languages/prism/tsx';
 import typescript from 'react-syntax-highlighter/dist/esm/languages/prism/typescript';
 import { dark, prism } from 'react-syntax-highlighter/dist/esm/styles/prism';
-import type { ReactNode } from 'react';
-import { cn } from '@/lib/utils';
 
 Object.entries({ tsx, bash, typescript, python }).forEach(([key, value]) => {
   SyntaxHighlighter.registerLanguage(key, value);
@@ -26,6 +26,8 @@ type CodeBlockProps = {
   compact?: boolean,
   tooltip?: ReactNode,
   fullWidth?: boolean,
+  neutralBackground?: boolean,
+  noSeparator?: boolean,
 };
 
 export function CodeBlock(props: CodeBlockProps) {
@@ -44,8 +46,8 @@ export function CodeBlock(props: CodeBlockProps) {
   }
 
   return (
-    <div className={cn("bg-muted overflow-hidden", !props.fullWidth && "rounded-xl")}>
-      <div className={cn("text-muted-foreground font-medium py-2 pl-4 pr-2 border-b dark:border-black text-sm flex justify-between items-center", props.compact && "py-1")}>
+    <div className={cn("overflow-hidden", !props.fullWidth && "rounded-xl", props.neutralBackground ? "bg-background" : "bg-muted")}>
+      <div className={cn("text-muted-foreground font-medium pl-4 pr-2 text-sm flex justify-between items-center", props.compact && !props.noSeparator && "py-1", !props.compact && !props.noSeparator && "py-2", props.noSeparator && "pt-1 pb-0", !props.noSeparator && "border-b")}>
         <h5 className={cn("font-medium flex items-center gap-2", props.compact && "text-xs")}>
           {icon}
           {props.title}
@@ -54,7 +56,7 @@ export function CodeBlock(props: CodeBlockProps) {
           {props.tooltip && (
             <SimpleTooltip type="info" tooltip={props.tooltip} />
           )}
-          <CopyButton content={props.content} />
+          <CopyButton content={props.content} variant={props.neutralBackground ? "ghost" : "secondary"} />
         </div>
       </div>
       <div>

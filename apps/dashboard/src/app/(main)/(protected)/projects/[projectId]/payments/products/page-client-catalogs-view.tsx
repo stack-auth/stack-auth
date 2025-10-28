@@ -1528,7 +1528,7 @@ function ProductCard({ id, activeType, product, allProducts, existingItems, onSa
 
       <div className="px-4 py-3">
         {itemsList.length === 0 ? (
-          <div className="text-center text-sm text-muted-foreground">No items yet</div>
+          <div className="text-center text-sm text-muted-foreground">Grants no items</div>
         ) : (
           <div className="space-y-2">
             {itemsList.map(([itemId, item]) => {
@@ -1556,7 +1556,7 @@ function ProductCard({ id, activeType, product, allProducts, existingItems, onSa
         )}
       </div>
       {activeType !== "custom" && (
-        <>
+        <div className="border-t">
           <CodeBlock
             language="typescript"
             content={`const checkoutUrl = await ${activeType === "user" ? "user" : "team"}.createCheckoutUrl({ productId: "${id}" });\nwindow.open(checkoutUrl, "_blank");`}
@@ -1564,9 +1564,11 @@ function ProductCard({ id, activeType, product, allProducts, existingItems, onSa
             icon="code"
             compact
             fullWidth
+            neutralBackground
+            noSeparator
             tooltip="Creates a checkout URL for this product and opens it so the customer can finish their purchase."
           />
-        </>
+        </div>
       )}
     </div>
   );
