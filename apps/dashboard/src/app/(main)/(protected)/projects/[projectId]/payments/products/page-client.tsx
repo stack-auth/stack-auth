@@ -136,14 +136,13 @@ export default function PageClient() {
       }
     >
       {isViewList ? (
+        <PageClientListView />
+      ) : (
         <PageClientCatalogsView
           createDraftRequestId={draftRequestId}
           draftCustomerType={draftCustomerType}
           onDraftHandled={handleDraftHandled}
         />
-
-      ) : (
-        <PageClientListView />
       )}
     </PageLayout>
   );

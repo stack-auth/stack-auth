@@ -5,10 +5,10 @@ import { SelectField } from "@/components/form-fields";
 import { Link } from "@/components/link";
 import { StripeConnectProvider } from "@/components/payments/stripe-connect-provider";
 import { cn } from "@/lib/utils";
-import { runAsynchronouslyWithAlert, wait } from "@stackframe/stack-shared/dist/utils/promises";
+import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { ActionDialog, Button, Card, CardContent, Typography } from "@stackframe/stack-ui";
 import { ConnectNotificationBanner } from "@stripe/react-connect-js";
-import { AlertTriangle, ArrowRight, BarChart3, Repeat, Shield, Wallet, Webhook } from "lucide-react";
+import { AlertTriangle, ArrowRight, BarChart3, FlaskConical, Repeat, Shield, Wallet, Webhook } from "lucide-react";
 import { useState } from "react";
 import * as yup from "yup";
 import { AppEnabledGuard } from "../../app-enabled-guard";
@@ -26,11 +26,17 @@ function PaymentsLayoutInner({ children }: { children: React.ReactNode }) {
   const [bannerHasItems, setBannerHasItems] = useState(false);
   const stackAdminApp = useAdminApp();
   const stripeAccountInfo = stackAdminApp.useStripeAccountInfo();
+  const project = stackAdminApp.useProject();
+  const paymentsConfig = project.useConfig().payments;
 
   const setupPayments = async () => {
     const { url } = await stackAdminApp.setupPayments();
     window.location.href = url;
     await wait(2000);
+  };
+
+  const handleDisableTestMode = async () => {
+    await project.updateConfig({ "payments.testMode": false });
   };
 
   if (!stripeAccountInfo) {
@@ -74,7 +80,35 @@ function PaymentsLayoutInner({ children }: { children: React.ReactNode }) {
 
   return (
     <StripeConnectProvider>
-      {!stripeAccountInfo.details_submitted && (
+      {paymentsConfig.testMode ? (
+        <div className="flex justify-center px-4 py-6">
+          <div className="w-full max-w-[1250px] rounded-xl border border-blue-200 dark:border-blue-500 bg-blue-50 dark:bg-blue-900/20 p-6 shadow-sm">
+            <div className="flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
+              <div className="space-y-3">
+                <div className="flex items-center gap-2 text-blue-900 dark:text-blue-300">
+                  <FlaskConical className="h-5 w-5" />
+                  <Typography type="h4" className="font-semibold">
+                    You are currently in test mode
+                  </Typography>
+                </div>
+                <Typography type="p" variant="secondary" className="text-blue-900/80 dark:text-blue-300/80">
+                  All purchases are currently free and no money will be deducted.
+                </Typography>
+              </div>
+              <div className="flex flex-col items-start self-stretch">
+                <Button
+                  size="lg"
+                  variant="outline"
+                  onClick={() => handleDisableTestMode()}
+                  className="inline-flex items-center gap-2 mb-auto border-blue-300 dark:border-blue-600 text-blue-900 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900/40"
+                >
+                  Disable test mode
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : !stripeAccountInfo.details_submitted && (
         <div className="flex justify-center px-4 py-6">
           <div className="w-full max-w-[1250px] rounded-xl border border-amber-200 dark:border-amber-500 bg-amber-50 dark:bg-amber-900/20 p-6 shadow-sm">
             <div className="flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
@@ -103,7 +137,7 @@ function PaymentsLayoutInner({ children }: { children: React.ReactNode }) {
               <div className="flex flex-col items-start self-stretch">
                 <Button
                   size="lg"
-                  onClick={() => runAsynchronouslyWithAlert(setupPayments)}
+                  onClick={() => setupPayments()}
                   className="inline-flex items-center gap-2 mb-auto"
                 >
                   Continue setup

@@ -37,7 +37,7 @@ import {
   SimpleTooltip,
   toast
 } from "@stackframe/stack-ui";
-import { ChevronDown, ChevronsUpDown, Layers, MoreVertical, Pencil, PencilIcon, Plus, Puzzle, Server, Trash2, X } from "lucide-react";
+import { ChevronDown, ChevronsUpDown, Gift, Layers, MoreVertical, Pencil, PencilIcon, Plus, Puzzle, Server, Trash2, X } from "lucide-react";
 import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useAdminApp } from "../../use-admin-app";
 import { ProductDialog } from "./product-dialog";
@@ -461,7 +461,7 @@ const EXPIRES_OPTIONS: Array<{ value: Product["includedItems"][string]["expires"
   {
     value: 'when-purchase-expires' as const,
     label: 'When purchase expires',
-    description: 'items granted are removed when subscription ends'
+    description: 'Items granted are removed when subscription ends'
   },
   {
     value: 'when-repeated' as const,
@@ -626,7 +626,7 @@ function ProductItemRow({
                   <ChevronsUpDown className="h-4 w-4 text-muted-foreground" />
                 </button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" className="w-64 p-2">
+              <DropdownMenuContent align="start" className="p-2">
                 <div className="flex flex-col gap-2">
                   {EXPIRES_OPTIONS.map((option) => (
                     <DropdownMenuItem key={option.value} className="p-0">
@@ -1067,16 +1067,18 @@ function ProductCard({ id, activeType, product, allProducts, existingItems, onSa
             <Label className="text-[11px] font-medium uppercase tracking-[0.24em] text-muted-foreground">
               Offer ID
             </Label>
-            <Input
-              className="h-10 rounded-xl border border-border bg-background px-3 text-sm"
-              value={localProductId}
-              onChange={(event) => {
-                const value = event.target.value.toLowerCase().replace(/[^a-z0-9_\-]/g, '-');
-                setLocalProductId(value);
-              }}
-              placeholder="offer-id"
-              readOnly={!isDraft}
-            />
+            <SimpleTooltip tooltip={isDraft ? undefined : "Offer IDs cannot be changed after creation"}>
+              <Input
+                className="h-10 rounded-xl border border-border bg-background px-3 text-sm"
+                value={localProductId}
+                onChange={(event) => {
+                  const value = event.target.value.toLowerCase().replace(/[^a-z0-9_\-]/g, '-');
+                    setLocalProductId(value);
+                }}
+                placeholder="offer-id"
+                disabled={!isDraft}
+              />
+            </SimpleTooltip>
           </div>
         </div>
 
@@ -1088,25 +1090,53 @@ function ProductCard({ id, activeType, product, allProducts, existingItems, onSa
         <div className="flex flex-col gap-3">
           {renderPrimaryPrices('editing')}
           {draft.prices !== 'include-by-default' && (
-            <Button
-              variant="outline"
-              className="flex h-10 w-full items-center justify-center gap-2 rounded-xl border border-dashed border-border/70 bg-background/80 text-sm font-medium"
-              onClick={() => {
-                const tempId = `price-${Date.now().toString(36).slice(2, 8)}`;
-                const newPrice: Price = { USD: '0.00', serverOnly: false };
-                setDraft(prev => {
-                  const nextPrices: PricesObject = {
-                    ...(typeof prev.prices === 'object' ? prev.prices : {}),
-                    [tempId]: newPrice,
-                  };
-                  return { ...prev, prices: nextPrices };
-                });
-                setEditingPriceId(tempId);
-              }}
-            >
-              <Plus className="h-4 w-4" />
-              {hasExistingPrices ? "Add alternative price" : "Add price"}
-            </Button>
+            <div className="flex flex-row gap-4 items-center">
+              <Button
+                variant="outline"
+                className="flex h-10 w-full items-center justify-center gap-2 rounded-xl border border-dashed border-border/70 bg-background/80 text-sm font-medium"
+                onClick={() => {
+                  const tempId = `price-${Date.now().toString(36).slice(2, 8)}`;
+                  const newPrice: Price = { USD: '0.00', serverOnly: false };
+                  setDraft(prev => {
+                    const nextPrices: PricesObject = {
+                      ...(typeof prev.prices === 'object' ? prev.prices : {}),
+                      [tempId]: newPrice,
+                    };
+                    return { ...prev, prices: nextPrices };
+                  });
+                  setEditingPriceId(tempId);
+                }}
+              >
+                <Plus className="h-4 w-4" />
+                {hasExistingPrices ? "Add alternative price" : "Add price"}
+              </Button>
+              {
+                !hasExistingPrices && (
+                  <>
+                    <span className="text-sm text-muted-foreground">OR</span>
+                    <Button
+                      variant="outline"
+                      className="flex h-10 w-full items-center justify-center gap-2 rounded-xl border border-dashed border-border/70 bg-background/80 text-sm font-medium"
+                      onClick={() => {
+                        const tempId = `price-${Date.now().toString(36).slice(2, 8)}`;
+                        const newPrice: Price = { USD: '0.00', serverOnly: false };
+                        setDraft(prev => {
+                          const nextPrices: PricesObject = {
+                            ...(typeof prev.prices === 'object' ? prev.prices : {}),
+                            [tempId]: newPrice,
+                          };
+                          return { ...prev, prices: nextPrices };
+                        });
+                        setEditingPriceId(tempId);
+                      }}
+                    >
+                      <Gift className="h-4 w-4" />
+                      Make free
+                    </Button>
+                  </>
+                )
+              }
+            </div>
           )}
         </div>
 
@@ -1454,7 +1484,7 @@ function CatalogView({ groupedProducts, groups, existingItems, onSaveProduct, on
 
   return (
     <div className="space-y-10">
-      <div className="flex items-center justify-center">
+      <div className="flex items-center">
         <div className="inline-flex rounded-md bg-muted p-1">
           {(['user', 'team', 'custom'] as const).map(t => (
             <button
