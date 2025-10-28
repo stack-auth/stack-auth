@@ -406,11 +406,8 @@ function ProductPriceRow({
                     Amount
                   </Label>
                   <div className="relative">
-                    <span className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 font-semibold text-base text-muted-foreground">
-                      $
-                    </span>
                     <Input
-                      className="h-10 w-full rounded-xl border border-border bg-background pl-7 pr-3 text-base font-semibold tabular-nums"
+                      className="h-10 w-full rounded-xl border border-border bg-background !pl-5 pr-3 text-base font-semibold tabular-nums"
                       tabIndex={0}
                       inputMode="decimal"
                       value={amount}
@@ -435,6 +432,9 @@ function ProductPriceRow({
                         }
                       }}
                     />
+                    <span className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 font-semibold text-base text-muted-foreground">
+                      $
+                    </span>
                   </div>
                 </div>
                 <div className="flex flex-col gap-1">
