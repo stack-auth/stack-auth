@@ -946,18 +946,16 @@ function ProductItemRow({
               }
             </div >
             <CollapsibleContent>
-              <div className="mt-2 space-y-2">
-                <div className="text-xs pl-7 text-muted-foreground">{item.expires !== 'never' ? `Expires: ${String(item.expires).replace(/-/g, ' ')}` : 'Never expires'}</div>
-                <div className="text-xs">
-                  <CodeBlock
-                    language="typescript"
-                    content={`const item = await ${activeType === "user" ? "user" : "team"}.getItem("${itemId}");\nconst count = item.quantity;\n`}
-                    title="Example"
-                    icon="code"
-                    compact
-                    tooltip="Retrieves this item for the active customer and reads the current quantity they hold."
-                  />
-                </div>
+              <div className="space-y-2">
+                <div className="text-xs px-4 pt-2 text-muted-foreground">{item.expires !== 'never' ? `Expires: ${String(item.expires).replace(/-/g, ' ')}` : 'Never expires'}</div>
+                <CodeBlock
+                  language="typescript"
+                  content={`const item = await ${activeType === "user" ? "user" : "team"}.getItem("${itemId}");\nconst count = item.quantity;\n`}
+                  title="Item example"
+                  icon="code"
+                  compact
+                  tooltip="Retrieves this item for the active customer and reads the current quantity they hold."
+                />
               </div>
             </CollapsibleContent>
           </Collapsible >
@@ -1465,7 +1463,7 @@ function ProductCard({ id, activeType, product, allProducts, existingItems, onSa
   );
 
   const viewingContent = (
-    <div className={cn("group relative flex flex-col rounded-2xl border bg-background pb-4 transition-colors",
+    <div className={cn("group relative flex flex-col rounded-2xl border bg-background transition-colors overflow-hidden",
       isHashTarget && "border-primary shadow-[0_0_0_1px_rgba(59,130,246,0.35)]"
     )}>
       <div className="flex flex-col items-center justify-center px-4 pt-4">
@@ -1558,16 +1556,17 @@ function ProductCard({ id, activeType, product, allProducts, existingItems, onSa
         )}
       </div>
       {activeType !== "custom" && (
-        <div className="border-t p-4">
+        <>
           <CodeBlock
             language="typescript"
             content={`const checkoutUrl = await ${activeType === "user" ? "user" : "team"}.createCheckoutUrl({ productId: "${id}" });\nwindow.open(checkoutUrl, "_blank");`}
-            title="Checkout"
+            title="Checkout example"
             icon="code"
             compact
+            fullWidth
             tooltip="Creates a checkout URL for this product and opens it so the customer can finish their purchase."
           />
-        </div>
+        </>
       )}
     </div>
   );

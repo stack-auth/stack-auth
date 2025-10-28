@@ -25,6 +25,7 @@ type CodeBlockProps = {
   maxHeight?: number,
   compact?: boolean,
   tooltip?: ReactNode,
+  fullWidth?: boolean,
 };
 
 export function CodeBlock(props: CodeBlockProps) {
@@ -43,7 +44,7 @@ export function CodeBlock(props: CodeBlockProps) {
   }
 
   return (
-    <div className="bg-muted rounded-xl overflow-hidden">
+    <div className={cn("bg-muted overflow-hidden", !props.fullWidth && "rounded-xl")}>
       <div className={cn("text-muted-foreground font-medium py-2 pl-4 pr-2 border-b dark:border-black text-sm flex justify-between items-center", props.compact && "py-1")}>
         <h5 className={cn("font-medium flex items-center gap-2", props.compact && "text-xs")}>
           {icon}
