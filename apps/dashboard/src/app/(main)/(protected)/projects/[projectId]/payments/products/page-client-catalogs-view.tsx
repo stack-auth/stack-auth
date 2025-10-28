@@ -58,7 +58,7 @@ function intervalLabel(tuple: DayInterval | undefined): string | null {
     return unit === 'year' ? 'yearly' : unit === 'month' ? 'monthly' : unit === 'week' ? 'weekly' : 'daily';
   }
   const plural = unit + 's';
-  return `/ ${count} ${plural}`;
+  return `Every ${count} ${plural}`;
 }
 
 
