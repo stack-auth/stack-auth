@@ -1366,11 +1366,22 @@ type ShellOptions = {
   [key: string]: any,
 }
 
+function createOutputWriter(ui: inquirer.ui.BottomBar | undefined, quiet?: boolean): (message: string) => void {
+  if (ui) {
+    return (message: string) => ui.updateBottomBar(message);
+  }
+  if (!quiet) {
+    return (message: string) => console.log(message);
+  }
+  return () => {};
+}
+
 async function shellNicelyFormatted(command: string, { quiet, ...options }: ShellOptions): Promise<void> {
   logVerbose("shellNicelyFormatted invoked", { command, options: { ...options, quiet } });
-  let ui: any;
+  let ui: inquirer.ui.BottomBar | undefined;
   let interval: NodeJS.Timeout | undefined;
-  if (!quiet) {
+  const interactive = !quiet && process.stdin.isTTY && !isNonInteractiveEnv();
+  if (interactive) {
     console.log();
     ui = new inquirer.ui.BottomBar();
     let dots = 4;
@@ -1379,22 +1390,23 @@ async function shellNicelyFormatted(command: string, { quiet, ...options }: Shel
     );
     interval = setInterval(() => {
       if (!isDryRun) {
-        ui.updateBottomBar(
+        ui?.updateBottomBar(
           colorize.blue`Running command: ${command}${".".repeat(dots++ % 5)}`
         );
       }
     }, 700);
   }
+  const writeOutput = createOutputWriter(ui, quiet);
+  writeOutput(colorize.blue`Running command: ${command}...`);
 
   try {
     if (!isDryRun) {
       const child = child_process.spawn(command, options);
       logVerbose("shellNicelyFormatted spawned process", { pid: child.pid, command });
-      if (!quiet) {
+      if (ui) {
         child.stdout.pipe(ui.log);
         child.stderr.pipe(ui.log);
       }
-
       await new Promise<void>((resolve, reject) => {
         child.on("exit", (code) => {
           if (code === 0) {
@@ -1412,25 +1424,27 @@ async function shellNicelyFormatted(command: string, { quiet, ...options }: Shel
 
     if (!quiet) {
       commandsExecuted.push(command);
-      ui.updateBottomBar(
-        `${colorize.green`√`} Command ${command} succeeded\n`
-      );
+      const successMessage = ui
+        ? `${colorize.green`√`} Command ${command} succeeded\n`
+        : `${colorize.green`√`} Command ${command} succeeded`;
+      writeOutput(successMessage);
     }
     logVerbose("shellNicelyFormatted completed", { command });
   } catch (e) {
     logVerbose("shellNicelyFormatted encountered error", { command, error: e instanceof Error ? { message: e.message, stack: e.stack } : e });
     if (!quiet) {
-      ui.updateBottomBar(
-        `${colorize.red`X`} Command ${command} failed\n`
-      );
+      const failureMessage = ui
+        ? `${colorize.red`X`} Command ${command} failed\n`
+        : `${colorize.red`X`} Command ${command} failed`;
+      writeOutput(failureMessage);
     }
     throw e;
   } finally {
     if (interval) {
       clearTimeout(interval);
     }
-    if (!quiet) {
-      ui.close();
+    if (ui) {
+      (ui as any).close();
     }
   }
 }
