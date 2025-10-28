@@ -23,29 +23,27 @@ export default function PageClient() {
   const [returnedApiKey, setReturnedApiKey] = useState<InternalApiKeyFirstView | null>(null);
 
   return (
-    <AppEnabledGuard appId="api-keys">
-      <PageLayout
-        title="Stack Auth Keys"
-        actions={
-          <Button onClick={() => setIsNewApiKeyDialogOpen(true)}>
-            Create Stack Auth Keys
-          </Button>
-        }
-      >
-        <InternalApiKeyTable apiKeys={apiKeySets} />
+    <PageLayout
+      title="Project Keys"
+      actions={
+        <Button onClick={() => setIsNewApiKeyDialogOpen(true)}>
+          Create Project Keys
+        </Button>
+      }
+    >
+      <InternalApiKeyTable apiKeys={apiKeySets} />
 
-        <CreateDialog
-          open={isNewApiKeyDialogOpen}
-          onOpenChange={setIsNewApiKeyDialogOpen}
-          onKeyCreated={setReturnedApiKey}
-        />
-        <ShowKeyDialog
-          apiKey={returnedApiKey || undefined}
-          onClose={() => setReturnedApiKey(null)}
-        />
+      <CreateDialog
+        open={isNewApiKeyDialogOpen}
+        onOpenChange={setIsNewApiKeyDialogOpen}
+        onKeyCreated={setReturnedApiKey}
+      />
+      <ShowKeyDialog
+        apiKey={returnedApiKey || undefined}
+        onClose={() => setReturnedApiKey(null)}
+      />
 
-      </PageLayout>
-    </AppEnabledGuard>
+    </PageLayout>
   );
 }
 
@@ -80,7 +78,7 @@ function CreateDialog(props: {
   return <SmartFormDialog
     open={props.open}
     onOpenChange={props.onOpenChange}
-    title="Create Stack Auth Keys"
+    title="Create Project Keys"
     formSchema={formSchema}
     okButton={{ label: "Create" }}
     onSubmit={async (values) => {
@@ -110,7 +108,7 @@ function ShowKeyDialog(props: {
   return (
     <ActionDialog
       open={!!props.apiKey}
-      title="Stack Auth Keys"
+      title="Project Keys"
       okButton={{ label: "Close" }}
       onClose={props.onClose}
       preventClose
@@ -118,7 +116,7 @@ function ShowKeyDialog(props: {
     >
       <div className="flex flex-col gap-4">
         <Typography>
-          Here are your Stack Auth keys.{" "}
+          Here are your project keys.{" "}
           <span className="font-bold">
             Copy them to a safe place. You will not be able to view them again.
           </span>
