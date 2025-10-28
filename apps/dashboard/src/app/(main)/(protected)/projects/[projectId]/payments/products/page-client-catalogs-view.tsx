@@ -438,9 +438,13 @@ function ProductCard({ id, activeType, product, allProducts, existingItems, onSa
   const isHashTarget = currentHash === hashAnchor;
 
   useEffect(() => {
-    setDraft(product);
-    setLocalProductId(id);
-  }, [product, id]);
+    // Only sync draft with product prop when not actively editing
+    // This prevents losing unsaved changes when other parts of the config update
+    if (!isEditing) {
+      setDraft(product);
+      setLocalProductId(id);
+    }
+  }, [product, id, isEditing]);
 
   useEffect(() => {
     if (isDraft && !hasAutoScrolled && cardRef.current) {
