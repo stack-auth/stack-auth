@@ -447,6 +447,9 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       updated_at_millis: updatedAt,
     });
   }
+  private _formatAccessCookieValue(refreshToken: string | null, accessToken: string | null): string | null {
+    return refreshToken && accessToken ? JSON.stringify([refreshToken, accessToken]) : null;
+  }
   private _parseStructuredRefreshCookie(value: string | null): { refreshToken: string, updatedAt: number | null } | null {
     if (!value) {
       return null;
@@ -468,16 +471,17 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
 
   }
   private _extractRefreshTokenFromCookieMap(cookies: Record<string, string>): { refreshToken: string | null, updatedAt: number | null } {
-    const legacyToken = cookies[this._refreshTokenCookieName] ?? cookies["stack-refresh"];
-    if (legacyToken) {
-      return { refreshToken: legacyToken, updatedAt: null };
+    const { legacyNames, structuredPrefixes } = this._getRefreshTokenCookieNamePatterns();
+    for (const name of legacyNames) {
+      const value = cookies[name];
+      if (value) {
+        return { refreshToken: value, updatedAt: null };
+      }
     }
 
-    const prefix = `${this._refreshTokenCookieName}--`;
-    const hostPrefix = `__Host-${this._refreshTokenCookieName}--`;
     let selected: { refreshToken: string, updatedAt: number | null } | null = null;
     for (const [name, value] of Object.entries(cookies)) {
-      if (!(name.startsWith(prefix) || name.startsWith(hostPrefix))) continue;
+      if (!structuredPrefixes.some(prefix => name.startsWith(prefix))) continue;
       const parsed = this._parseStructuredRefreshCookie(value);
       if (!parsed) continue;
       const candidateUpdatedAt = parsed.updatedAt ?? Number.NEGATIVE_INFINITY;
@@ -533,13 +537,47 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     }
     return cookie.parse(document.cookie || "");
   }
-  private _deleteLegacyBrowserRefreshCookies() {
-    deleteCookieClient(this._legacyRefreshTokenCookieName);
-    deleteCookieClient("stack-refresh");
+  private _getRefreshTokenCookieNamePatterns(): { legacyNames: string[], structuredPrefixes: string[] } {
+    return {
+      legacyNames: [this._legacyRefreshTokenCookieName, "stack-refresh"],
+      structuredPrefixes: [
+        `${this._refreshTokenCookieName}--`,
+        `__Host-${this._refreshTokenCookieName}--`,
+      ],
+    };
   }
-  private async _deleteLegacyServerRefreshCookies() {
-    await setOrDeleteCookie(this._legacyRefreshTokenCookieName, null, { noOpIfServerComponent: true });
-    await setOrDeleteCookie("stack-refresh", null, { noOpIfServerComponent: true });
+  private _collectRefreshTokenCookieNames(cookies: Record<string, string>): Set<string> {
+    const { legacyNames, structuredPrefixes } = this._getRefreshTokenCookieNamePatterns();
+    const names = new Set<string>();
+    for (const name of legacyNames) {
+      if (cookies[name]) {
+        names.add(name);
+      }
+    }
+    for (const name of Object.keys(cookies)) {
+      if (structuredPrefixes.some(prefix => name.startsWith(prefix))) {
+        names.add(name);
+      }
+    }
+    return names;
+  }
+  private _prepareRefreshCookieUpdate(
+    existingCookies: Record<string, string>,
+    refreshToken: string | null,
+    accessToken: string | null,
+    defaultCookieName: string,
+  ) {
+    const cookieNames = this._collectRefreshTokenCookieNames(existingCookies);
+    cookieNames.delete(defaultCookieName);
+    const updatedAt = refreshToken ? Date.now() : null;
+    const refreshCookieValue = refreshToken && updatedAt !== null ? this._formatRefreshCookieValue(refreshToken, updatedAt) : null;
+    const accessTokenPayload = this._formatAccessCookieValue(refreshToken, accessToken);
+    return {
+      updatedAt,
+      refreshCookieValue,
+      accessTokenPayload,
+      cookieNamesToDelete: [...cookieNames],
+    };
   }
   private _queueCustomRefreshCookieUpdate(refreshToken: string | null, updatedAt: number | null, context: "browser" | "server") {
     runAsynchronously(async () => {
@@ -547,7 +585,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       const updateIndex = this._mostRecentQueuedCookieRefreshIndex;
       const domain = await this._trustedParentDomainCache.getOrWait([window.location.hostname], "read-write");
 
-      const setCookie = async (targetDomain: string, value: string) => {
+      const setCookie = async (targetDomain: string, value: string | null) => {
         const name = this._getCustomRefreshCookieName(targetDomain);
         const options = { maxAge: 60 * 60 * 24 * 365, domain: targetDomain, noOpIfServerComponent: true };
         if (context === "browser") {
@@ -557,14 +595,11 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         }
       };
 
-      if (domain.status === "error") {
+      if (domain.status === "error" || !domain.data || updateIndex !== this._mostRecentQueuedCookieRefreshIndex) {
         return;
       }
-      if (updateIndex !== this._mostRecentQueuedCookieRefreshIndex) {
-        return;
-      }
-      const value = this._formatRefreshCookieValue(refreshToken, updatedAt);
-      await setCookie(domain, value);
+      const value = refreshToken && updatedAt ? this._formatRefreshCookieValue(refreshToken, updatedAt) : null;
+      await setCookie(domain.data, value);
     });
   }
   private async _getTrustedParentDomain(currentDomain: string): Promise<string | null> {
@@ -610,14 +645,17 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       this._storedBrowserCookieTokenStore.onChange((value) => {
         try {
           const refreshToken = value.refreshToken;
-          const updatedAt = refreshToken ? Date.now() : null;
-          const refreshCookieValue = refreshToken && updatedAt !== null ? this._formatRefreshCookieValue(refreshToken, updatedAt) : null;
           const secure = window.location.protocol === "https:";
           const defaultName = this._getRefreshTokenDefaultCookieNameForSecure(secure);
+          const { updatedAt, refreshCookieValue, accessTokenPayload, cookieNamesToDelete } = this._prepareRefreshCookieUpdate(
+            this._getAllBrowserCookies(),
+            refreshToken,
+            value.accessToken ?? null,
+            defaultName,
+          );
           setOrDeleteCookieClient(defaultName, refreshCookieValue, { maxAge: 60 * 60 * 24 * 365, secure });
-          const accessTokenPayload = refreshToken && value.accessToken ? JSON.stringify([refreshToken, value.accessToken]) : null;
           setOrDeleteCookieClient(this._accessTokenCookieName, accessTokenPayload, { maxAge: 60 * 60 * 24 });
-          this._deleteLegacyBrowserRefreshCookies();
+          cookieNamesToDelete.forEach((name) => deleteCookieClient(name));
           this._queueCustomRefreshCookieUpdate(refreshToken, updatedAt, "browser");
           hasSucceededInWriting = true;
         } catch (e) {
@@ -660,15 +698,25 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
               //
               // so hack it is
               const refreshToken = value.refreshToken;
-              const updatedAt = refreshToken ? Date.now() : null;
-              const refreshCookieValue = refreshToken ? this._formatRefreshCookieValue(refreshToken, updatedAt!) : null;
               const secure = await isSecureCookieContext();
               const defaultName = this._getRefreshTokenDefaultCookieNameForSecure(secure);
+              const { updatedAt, refreshCookieValue, accessTokenPayload, cookieNamesToDelete } = this._prepareRefreshCookieUpdate(
+                cookieHelper.getAll(),
+                refreshToken,
+                value.accessToken ?? null,
+                defaultName,
+              );
               await Promise.all([
                 setOrDeleteCookie(defaultName, refreshCookieValue, { maxAge: 60 * 60 * 24 * 365, noOpIfServerComponent: true }),
-                setOrDeleteCookie(this._accessTokenCookieName, refreshToken && value.accessToken ? JSON.stringify([refreshToken, value.accessToken]) : null, { maxAge: 60 * 60 * 24, noOpIfServerComponent: true }),
+                setOrDeleteCookie(this._accessTokenCookieName, accessTokenPayload, { maxAge: 60 * 60 * 24, noOpIfServerComponent: true }),
               ]);
-              await this._deleteLegacyServerRefreshCookies();
+              if (cookieNamesToDelete.length > 0) {
+                await Promise.all(
+                  cookieNamesToDelete.map((name) =>
+                    setOrDeleteCookie(name, null, { noOpIfServerComponent: true }),
+                  ),
+                );
+              }
               this._queueCustomRefreshCookieUpdate(refreshToken, updatedAt, "server");
             });
           });

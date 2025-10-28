@@ -184,7 +184,7 @@ export async function isSecure(): Promise<boolean> {
 function determineSecureFromClientContext(): boolean {
   return typeof window !== "undefined" && window.location.protocol === "https:";
 }
-
+// IF_PLATFORM next
 function determineSecureFromServerContext(
   cookies: Awaited<ReturnType<typeof rscCookies>>,
   headers: Awaited<ReturnType<typeof rscHeaders>>,
@@ -195,6 +195,7 @@ function determineSecureFromServerContext(
   }
   return isSecureCookie;
 }
+// END_PLATFORM
 
 function setCookieClientInternal(name: string, value: string, options: SetCookieOptions = {}) {
   const secure = options.secure ?? determineSecureFromClientContext();
