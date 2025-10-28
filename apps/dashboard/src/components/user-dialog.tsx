@@ -6,6 +6,9 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger, Button, T
 import * as yup from "yup";
 import { FormDialog } from "./form-dialog";
 import { DateField, InputField, SwitchField, TextAreaField } from "./form-fields";
+import { StyledLink } from "./link";
+
+const metadataDocsUrl = "https://docs.stack-auth.com/docs/concepts/custom-user-data";
 
 export function UserDialog(props: {
   open?: boolean,
@@ -149,9 +152,48 @@ export function UserDialog(props: {
           <AccordionItem value="item-1">
             <AccordionTrigger>Metadata</AccordionTrigger>
             <AccordionContent className="space-y-4">
-              <TextAreaField rows={3} control={form.control} label="Client metadata" name="clientMetadata" placeholder="null" monospace />
-              <TextAreaField rows={3} control={form.control} label="Client read only metadata" name="clientReadOnlyMetadata" placeholder="null" monospace />
-              <TextAreaField rows={3} control={form.control} label="Server metadata" name="serverMetadata" placeholder="null" monospace />
+              <TextAreaField
+                rows={3}
+                control={form.control}
+                label="Client metadata"
+                name="clientMetadata"
+                placeholder="null"
+                monospace
+                helperText={
+                  <>
+                    Custom JSON clients can read and update; avoid sensitive data.{" "}
+                    <StyledLink href={metadataDocsUrl} target="_blank">Learn more in the docs</StyledLink>.
+                  </>
+                }
+              />
+              <TextAreaField
+                rows={3}
+                control={form.control}
+                label="Client read only metadata"
+                name="clientReadOnlyMetadata"
+                placeholder="null"
+                monospace
+                helperText={
+                  <>
+                    Custom JSON clients can read but only your backend can change.{" "}
+                    <StyledLink href={metadataDocsUrl} target="_blank">Learn more in the docs</StyledLink>.
+                  </>
+                }
+              />
+              <TextAreaField
+                rows={3}
+                control={form.control}
+                label="Server metadata"
+                name="serverMetadata"
+                placeholder="null"
+                monospace
+                helperText={
+                  <>
+                    Custom JSON reserved for server-side logic and never exposed to clients.{" "}
+                    <StyledLink href={metadataDocsUrl} target="_blank">Learn more in the docs</StyledLink>.
+                  </>
+                }
+              />
             </AccordionContent>
           </AccordionItem>
         </Accordion>
