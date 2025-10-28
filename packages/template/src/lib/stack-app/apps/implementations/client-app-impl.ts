@@ -583,7 +583,17 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     runAsynchronously(async () => {
       this._mostRecentQueuedCookieRefreshIndex++;
       const updateIndex = this._mostRecentQueuedCookieRefreshIndex;
-      const domain = await this._trustedParentDomainCache.getOrWait([window.location.hostname], "read-write");
+      let hostname;
+      if (isBrowserLike()) {
+        hostname = window.location.hostname;
+      }
+      // IF_PLATFORM next
+      hostname = (await sc.headers?.())?.get("host");
+      // END_PLATFORM
+      if (!hostname) {
+        return;
+      }
+      const domain = await this._trustedParentDomainCache.getOrWait([hostname], "read-write");
 
       const setCookie = async (targetDomain: string, value: string | null) => {
         const name = this._getCustomRefreshCookieName(targetDomain);
@@ -2071,9 +2081,9 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     // If the redirect URL is not whitelisted and we didn't explicitly opt out of verification,
     // retry with undefined (no email verification) and log a warning
     if (result.status === 'error' &&
-        result.error instanceof KnownErrors.RedirectUrlNotWhitelisted &&
-        !options.noVerificationCallback &&
-        emailVerificationRedirectUrl !== undefined) {
+      result.error instanceof KnownErrors.RedirectUrlNotWhitelisted &&
+      !options.noVerificationCallback &&
+      emailVerificationRedirectUrl !== undefined) {
       console.error("Warning: The verification callback URL is not trusted. Proceeding with signup without email verification. Please add your domain to the trusted domains list in your Stack Auth dashboard.", { url: emailVerificationRedirectUrl });
 
       result = await this._interface.signUpWithCredential(
