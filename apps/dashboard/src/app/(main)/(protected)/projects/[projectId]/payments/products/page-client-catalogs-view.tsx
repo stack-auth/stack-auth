@@ -14,6 +14,7 @@ import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
 import {
   ActionDialog,
   Button,
+  Checkbox,
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
@@ -71,7 +72,7 @@ function shortIntervalLabel(interval: DayInterval | 'never'): string {
 
 function OrSeparator() {
   return (
-    <div className="flex items-center justify-center stack-scope mx-2">
+    <div className="flex items-center justify-center stack-scope mx-8">
       <div className="flex-1">
         <Separator />
       </div>
@@ -317,6 +318,8 @@ function ProductPriceRow({
   priceId,
   price,
   readOnly,
+  includeByDefault,
+  isFree,
   startEditing,
   onSave,
   onRemove,
@@ -324,9 +327,11 @@ function ProductPriceRow({
 }: {
   priceId: string,
   price: (Product['prices'] & object)[string],
+  includeByDefault: boolean,
+  isFree: boolean,
   readOnly?: boolean,
   startEditing?: boolean,
-  onSave: (newId: string | undefined, price: (Product['prices'] & object)[string]) => void,
+  onSave: (newId: string | undefined, price: "include-by-default" | (Product['prices'] & object)[string]) => void,
   onRemove?: () => void,
   existingPriceIds: string[],
 }) {
@@ -367,69 +372,100 @@ function ProductPriceRow({
       {isEditing ? (
         <>
           <div className="grid gap-4">
-            <div className="flex flex-col gap-1">
-              <Label className="text-[11px] font-medium uppercase tracking-[0.24em] text-muted-foreground">
-                Amount
-              </Label>
-              <div className="relative">
-                <span className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 font-semibold text-base text-muted-foreground">
-                  $
+            {isFree ? (
+              <div className="flex flex-col gap-4">
+                <span className="text-xl font-semibold">
+                  Free
                 </span>
-                <Input
-                  className="h-10 w-full rounded-xl border border-border bg-background pl-7 pr-3 text-base font-semibold tabular-nums"
-                  tabIndex={0}
-                  inputMode="decimal"
-                  value={amount}
-                  readOnly={false}
-                  placeholder="0.00"
-                  aria-label="Amount in USD"
-                  onChange={(e) => {
-                    const v = e.target.value;
-                    if (v === '' || /^\d*(?:\.?\d{0,2})?$/.test(v)) setAmount(v);
-                    if (!readOnly) {
-                      const normalized = v === '' ? '0.00' : (Number.isNaN(parseFloat(v)) ? '0.00' : parseFloat(v).toFixed(2));
-                      const intervalObj = intervalSelection === 'one-time' ? undefined : ([
-                        intervalSelection === 'custom' ? intervalCount : 1,
-                        (intervalSelection === 'custom' ? (priceInterval || 'month') : intervalSelection) as DayInterval[1]
-                      ] as DayInterval);
+                <div className="flex flex-col gap-1">
+                  <div className="flex items-center space-x-2 rounded-xl">
+                    <Checkbox
+                      id={`include-by-default-${priceId}`}
+                      checked={includeByDefault}
+                      onCheckedChange={(checked) => {
+                        if (readOnly) return;
+                        onSave(undefined, checked ? "include-by-default" : price);
+                      }}
+                    />
+                    <label
+                      htmlFor={`include-by-default-${priceId}`}
+                      className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
+                    >
+                      Include by default
+                    </label>
+                  </div>
+                  <div className="text-xs text-muted-foreground mt-1">
+                    If enabled, customers get this product automatically when created
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <>
+                <div className="flex flex-col gap-1">
+                  <Label className="text-[11px] font-medium uppercase tracking-[0.24em] text-muted-foreground">
+                    Amount
+                  </Label>
+                  <div className="relative">
+                    <span className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 font-semibold text-base text-muted-foreground">
+                      $
+                    </span>
+                    <Input
+                      className="h-10 w-full rounded-xl border border-border bg-background pl-7 pr-3 text-base font-semibold tabular-nums"
+                      tabIndex={0}
+                      inputMode="decimal"
+                      value={amount}
+                      readOnly={false}
+                      placeholder="eg. 9.99"
+                      aria-label="Amount in USD"
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        if (v === '' || /^\d*(?:\.?\d{0,2})?$/.test(v)) setAmount(v);
+                        if (!readOnly) {
+                          const normalized = v === '' ? '0.00' : (Number.isNaN(parseFloat(v)) ? '0.00' : parseFloat(v).toFixed(2));
+                          const intervalObj = intervalSelection === 'one-time' ? undefined : ([
+                            intervalSelection === 'custom' ? intervalCount : 1,
+                          (intervalSelection === 'custom' ? (priceInterval || 'month') : intervalSelection) as DayInterval[1]
+                          ] as DayInterval);
+                          const updated: Price = {
+                            USD: normalized,
+                            serverOnly: !!price.serverOnly,
+                            ...(intervalObj ? { interval: intervalObj } : {}),
+                          };
+                        onSave(undefined, updated);
+                        }
+                      }}
+                    />
+                  </div>
+                </div>
+                <div className="flex flex-col gap-1">
+                  <Label className="text-[11px] font-medium uppercase tracking-[0.24em] text-muted-foreground">
+                    Billing Frequency
+                  </Label>
+                  <IntervalPopover
+                    readOnly={readOnly}
+                    intervalText={intervalText}
+                    intervalSelection={intervalSelection}
+                    unit={priceInterval}
+                    count={intervalCount}
+                    setIntervalSelection={setIntervalSelection}
+                    setUnit={setPriceInterval}
+                    setCount={setIntervalCount}
+                    allowedUnits={PRICE_INTERVAL_UNITS}
+                    triggerClassName="flex h-10 w-full items-center justify-between rounded-xl border border-border bg-background px-3 text-sm font-medium capitalize text-foreground shadow-sm"
+                    onChange={(interval) => {
+                      if (readOnly) return;
+                      const normalized = amount === '' ? '0.00' : (Number.isNaN(parseFloat(amount)) ? '0.00' : parseFloat(amount).toFixed(2));
                       const updated: Price = {
                         USD: normalized,
                         serverOnly: !!price.serverOnly,
-                        ...(intervalObj ? { interval: intervalObj } : {}),
+                        ...(interval ? { interval } : {}),
                       };
-                      onSave(undefined, updated);
-                    }
-                  }}
-                />
-              </div>
-            </div>
-            <div className="flex flex-col gap-1">
-              <Label className="text-[11px] font-medium uppercase tracking-[0.24em] text-muted-foreground">
-                Billing Frequency
-              </Label>
-              <IntervalPopover
-                readOnly={readOnly}
-                intervalText={intervalText}
-                intervalSelection={intervalSelection}
-                unit={priceInterval}
-                count={intervalCount}
-                setIntervalSelection={setIntervalSelection}
-                setUnit={setPriceInterval}
-                setCount={setIntervalCount}
-                allowedUnits={PRICE_INTERVAL_UNITS}
-                triggerClassName="flex h-10 w-full items-center justify-between rounded-xl border border-border bg-background px-3 text-sm font-medium capitalize text-foreground shadow-sm"
-                onChange={(interval) => {
-                  if (readOnly) return;
-                  const normalized = amount === '' ? '0.00' : (Number.isNaN(parseFloat(amount)) ? '0.00' : parseFloat(amount).toFixed(2));
-                  const updated: Price = {
-                    USD: normalized,
-                    serverOnly: !!price.serverOnly,
-                    ...(interval ? { interval } : {}),
-                  };
-                  onSave(undefined, updated);
-                }}
-              />
-            </div>
+                    onSave(undefined, updated);
+                    }}
+                  />
+                </div>
+              </>
+            )}
           </div>
 
           {onRemove && (
@@ -763,6 +799,7 @@ function ProductCard({ id, activeType, product, allProducts, existingItems, onSa
   const [draft, setDraft] = useState<Product>(product);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [editingPriceId, setEditingPriceId] = useState<string | undefined>(undefined);
+  const [editingPricesIsFreeMode, setEditingPricesIsFreeMode] = useState(false);
   const cardRef = useRef<HTMLDivElement | null>(null);
   const [hasAutoScrolled, setHasAutoScrolled] = useState(false);
   const [localProductId, setLocalProductId] = useState<string>(id);
@@ -803,17 +840,32 @@ function ProductCard({ id, activeType, product, allProducts, existingItems, onSa
     };
   }, [currentHash, hashAnchor, isHashTarget]);
 
-  const pricesObject: PricesObject = typeof draft.prices === 'object' ? draft.prices : {};
+  const getPricesObject = (draft: Product): PricesObject => {
+    if (draft.prices === 'include-by-default') {
+      return {
+        "free": {
+          USD: '0.00',
+          serverOnly: false,
+        },
+      };
+    }
+    return draft.prices;
+  };
+
+  const pricesObject: PricesObject = getPricesObject(draft);
   const priceCount = Object.keys(pricesObject).length;
   const hasExistingPrices = priceCount > 0;
+
+  useEffect(() => {
+    setEditingPricesIsFreeMode(hasExistingPrices && (editingPricesIsFreeMode || draft.prices === 'include-by-default'));
+  }, [editingPricesIsFreeMode, draft.prices, hasExistingPrices]);
 
   const canSaveProduct = draft.prices === 'include-by-default' || (typeof draft.prices === 'object' && hasExistingPrices);
   const saveDisabledReason = canSaveProduct ? undefined : "Add at least one price or set Include by default";
 
   const handleRemovePrice = (priceId: string) => {
     setDraft(prev => {
-      if (typeof prev.prices !== 'object') return prev;
-      const nextPrices: PricesObject = { ...prev.prices };
+      const nextPrices: PricesObject = typeof prev.prices !== 'object' ? {} : { ...prev.prices };
       delete nextPrices[priceId];
       return { ...prev, prices: nextPrices };
     });
@@ -839,21 +891,10 @@ function ProductCard({ id, activeType, product, allProducts, existingItems, onSa
   };
 
   const renderPrimaryPrices = (mode: 'editing' | 'view') => {
-    if (draft.prices === 'include-by-default') {
-      return (
-        <div className={cn(
-          "text-xl font-semibold",
-          mode === 'view' ? "text-center" : ""
-        )}>
-          Free
-        </div>
-      );
-    }
     const entries = Object.entries(pricesObject);
     if (entries.length === 0) {
       return null;
     }
-    const showSeparators = mode === 'view';
     return (
       <div className={cn(
         "shrink-0",
@@ -865,13 +906,18 @@ function ProductCard({ id, activeType, product, allProducts, existingItems, onSa
               key={pid}
               priceId={pid}
               price={price}
+              isFree={editingPricesIsFreeMode}
+              includeByDefault={draft.prices === 'include-by-default'}
               readOnly={mode !== 'editing'}
               startEditing={mode === 'editing'}
               existingPriceIds={entries.map(([k]) => k).filter(k => k !== pid)}
               onSave={(newId, newPrice) => {
                 const finalId = newId || pid;
                 setDraft(prev => {
-                  const prevPrices: PricesObject = typeof prev.prices === 'object' ? prev.prices : {};
+                  if (newPrice === 'include-by-default') {
+                    return { ...prev, prices: 'include-by-default' };
+                  }
+                  const prevPrices: PricesObject = getPricesObject(prev);
                   const nextPrices: PricesObject = { ...prevPrices };
                   if (newId && newId !== pid) {
                     if (Object.prototype.hasOwnProperty.call(nextPrices, newId)) {
@@ -889,7 +935,7 @@ function ProductCard({ id, activeType, product, allProducts, existingItems, onSa
               }}
               onRemove={() => handleRemovePrice(pid)}
             />
-            {showSeparators && index < entries.length - 1 && <OrSeparator />}
+            {((mode !== "view" && draft.prices !== "include-by-default") || index < entries.length - 1) && <OrSeparator />}
           </Fragment>
         ))}
       </div>
@@ -1089,7 +1135,7 @@ function ProductCard({ id, activeType, product, allProducts, existingItems, onSa
         <SectionHeading label="Prices" />
         <div className="flex flex-col gap-3">
           {renderPrimaryPrices('editing')}
-          {draft.prices !== 'include-by-default' && (
+          {!editingPricesIsFreeMode && (
             <div className="flex flex-row gap-4 items-center">
               <Button
                 variant="outline"
@@ -1099,7 +1145,7 @@ function ProductCard({ id, activeType, product, allProducts, existingItems, onSa
                   const newPrice: Price = { USD: '0.00', serverOnly: false };
                   setDraft(prev => {
                     const nextPrices: PricesObject = {
-                      ...(typeof prev.prices === 'object' ? prev.prices : {}),
+                      ...getPricesObject(prev),
                       [tempId]: newPrice,
                     };
                     return { ...prev, prices: nextPrices };
@@ -1118,16 +1164,8 @@ function ProductCard({ id, activeType, product, allProducts, existingItems, onSa
                       variant="outline"
                       className="flex h-10 w-full items-center justify-center gap-2 rounded-xl border border-dashed border-border/70 bg-background/80 text-sm font-medium"
                       onClick={() => {
-                        const tempId = `price-${Date.now().toString(36).slice(2, 8)}`;
-                        const newPrice: Price = { USD: '0.00', serverOnly: false };
-                        setDraft(prev => {
-                          const nextPrices: PricesObject = {
-                            ...(typeof prev.prices === 'object' ? prev.prices : {}),
-                            [tempId]: newPrice,
-                          };
-                          return { ...prev, prices: nextPrices };
-                        });
-                        setEditingPriceId(tempId);
+                        setDraft(prev => ({ ...prev, prices: { free: { USD: '0.00', serverOnly: false } } }));
+                        setEditingPricesIsFreeMode(true);
                       }}
                     >
                       <Gift className="h-4 w-4" />
@@ -1512,7 +1550,10 @@ function CatalogView({ groupedProducts, groups, existingItems, onSaveProduct, on
                 <Input
                   ref={newGroupInputRef}
                   value={newCatalogId}
-                  onChange={(e) => setNewCatalogId(e.target.value)}
+                  onChange={(e) => {
+                    const value = e.target.value.toLowerCase().replace(/[^a-z0-9_\-]/g, '-');
+                    setNewCatalogId(value);
+                  }}
                   placeholder="catalog-id"
                   className="w-56"
                 />
