@@ -10,7 +10,7 @@ import * as yup from "yup";
 
 export function SettingCard(props: {
   title?: string,
-  description?: string,
+  description?: React.ReactNode,
   actions?: React.ReactNode,
   children?: React.ReactNode,
   accordion?: string,

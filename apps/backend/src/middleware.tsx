@@ -9,7 +9,7 @@ import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 import { SmartRouter } from './smart-router';
 
-const DEV_RATE_LIMIT_MAX_REQUESTS = 30;
+const DEV_RATE_LIMIT_MAX_REQUESTS = 100;
 const DEV_RATE_LIMIT_WINDOW_MS = 10_000;
 const devRateLimitTimestamps: number[] = [];
 
