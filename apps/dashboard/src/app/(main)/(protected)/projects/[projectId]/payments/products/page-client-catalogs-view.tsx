@@ -1047,14 +1047,12 @@ function ProductCard({ id, activeType, product, allProducts, existingItems, onSa
     return mode === 'editing' ? (
       PRODUCT_TOGGLE_OPTIONS
         .filter(b => b.visible !== false)
-        .filter(b => b.active)
         .map((b) => {
           const wrap = b.wrapButton;
           return (
             <SimpleTooltip tooltip={b.description} key={b.key}>
               {wrap(
                 <button
-                  key={b.key}
                   className={cn(
                     "flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-medium transition-colors",
                     b.active
