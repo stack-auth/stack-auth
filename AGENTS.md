@@ -1,6 +1,6 @@
-# CLAUDE.md
+# AGENTS.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to coding agents when working with code in this repository.
 
 ## Development Commands
 
@@ -76,6 +76,9 @@ To see all development ports, refer to the index.html of `apps/dev-launchpad/pub
 - When writing tests, prefer .toMatchInlineSnapshot over other selectors, if possible. You can check (and modify) the snapshot-serializer.ts file to see how the snapshots are formatted and how non-deterministic values are handled.
 - Whenever you learn something new, or at the latest right before you call the `Stop` tool, write whatever you learned into the ./claude/CLAUDE-KNOWLEDGE.md file, in the Q&A format in there. You will later be able to look up knowledge from there (based on the question you asked).
 - Animations: Keep hover/click transitions snappy and fast. Don't delay the action with a pre-transition (e.g. no fade-in when hovering a button) — it makes the UI feel sluggish. Instead, apply transitions after the action, like a smooth fade-out when the hover ends.
+- Whenever you make changes in the dashboard, provide the user with a deep link to the dashboard page that you've just changed. Usually, this takes the form of `http://localhost:<whatever-is-in-$NEXT_PUBLIC_STACK_PORT_PREFIX>01/projects/-selector-/...`, although sometimes it's different. If $NEXT_PUBLIC_STACK_PORT_PREFIX is set to 91, 92, or 93, use `a.localhost`, `b.localhost`, and `c.localhost` for the domains, respectively.
+- To update the list of apps available, edit `apps-frontend.tsx` and `apps-config.ts`. When you're tasked to implement a new app or a new page, always check existing apps for inspiration on how you could implement the new app or page.
+- NEVER use Next.js dynamic functions if you can avoid them. Instead, prefer using a client component to make sure the page remains static (eg. prefer `usePathname` instead of `await params`).
 
 ### Code-related
 - Use ES6 maps instead of records wherever you can.

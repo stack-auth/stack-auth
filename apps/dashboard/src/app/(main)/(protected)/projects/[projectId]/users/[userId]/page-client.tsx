@@ -3,6 +3,7 @@
 import { EditableInput } from "@/components/editable-input";
 import { FormDialog, SmartFormDialog } from "@/components/form-dialog";
 import { InputField, SelectField } from "@/components/form-fields";
+import { StyledLink } from "@/components/link";
 import { SettingCard } from "@/components/settings";
 import { DeleteUserDialog, ImpersonateUserDialog } from "@/components/user-dialogs";
 import { useThemeWatcher } from '@/lib/theme';
@@ -46,6 +47,8 @@ import * as yup from "yup";
 import { AppEnabledGuard } from "../../app-enabled-guard";
 import { PageLayout } from "../../page-layout";
 import { useAdminApp } from "../../use-admin-app";
+
+const metadataDocsUrl = "https://docs.stack-auth.com/docs/concepts/custom-user-data";
 
 type UserInfoProps = {
   icon: React.ReactNode,
@@ -1131,12 +1134,17 @@ function MetadataSection({ user }: MetadataSectionProps) {
   return (
     <SettingCard
       title="Metadata"
-      description="Use metadata to store a custom JSON object on the user."
+      description={
+        <>
+          Use metadata to store a custom JSON object on the user.{" "}
+          <StyledLink href={metadataDocsUrl} target="_blank">Learn more in the docs</StyledLink>.
+        </>
+      }
     >
       <div className="grid gap-4 grid-cols-1 lg:grid-cols-3">
         <MetadataEditor
           title="Client"
-          hint="Readable and writable from both clients and servers."
+          hint="Custom JSON clients can read and update; avoid sensitive data."
           initialValue={JSON.stringify(user.clientMetadata)}
           onUpdate={async (value) => {
             await user.setClientMetadata(value);
@@ -1144,7 +1152,7 @@ function MetadataSection({ user }: MetadataSectionProps) {
         />
         <MetadataEditor
           title="Client Read-Only"
-          hint="Readable from clients, but only writable from servers."
+          hint="Custom JSON clients can read but only your backend can change."
           initialValue={JSON.stringify(user.clientReadOnlyMetadata)}
           onUpdate={async (value) => {
             await user.setClientReadOnlyMetadata(value);
@@ -1152,7 +1160,7 @@ function MetadataSection({ user }: MetadataSectionProps) {
         />
         <MetadataEditor
           title="Server"
-          hint="Readable and writable from servers. Not accessible to clients."
+          hint="Custom JSON reserved for server-side logic and never exposed to clients."
           initialValue={JSON.stringify(user.serverMetadata)}
           onUpdate={async (value) => {
             await user.setServerMetadata(value);

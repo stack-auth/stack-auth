@@ -1,6 +1,6 @@
 "use client";
 import { cn } from "@/lib/utils";
-import { Button, Calendar, Checkbox, FormControl, FormField, FormItem, FormLabel, FormMessage, Input, Popover, PopoverContent, PopoverTrigger, Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue, Switch, Textarea } from "@stackframe/stack-ui";
+import { Button, Calendar, Checkbox, FormControl, FormField, FormItem, FormLabel, FormMessage, Input, Popover, PopoverContent, PopoverTrigger, Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue, Switch, Textarea, Typography } from "@stackframe/stack-ui";
 import { CalendarIcon } from "lucide-react";
 import { Control, FieldValues, Path } from "react-hook-form";
 
@@ -48,6 +48,11 @@ export function TextAreaField<F extends FieldValues>(props: {
                 }}
               />
             </FormControl>
+            {props.helperText ? (
+              <Typography variant="secondary" className="text-sm leading-snug">
+                {props.helperText}
+              </Typography>
+            ) : null}
             <FormMessage />
           </label>
         </FormItem>

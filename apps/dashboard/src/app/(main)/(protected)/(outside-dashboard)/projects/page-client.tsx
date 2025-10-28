@@ -3,14 +3,14 @@
 import { ProjectCard } from "@/components/project-card";
 import { useRouter } from "@/components/router";
 import { SearchBar } from "@/components/search-bar";
-import { AdminOwnedProject, StackAdminApp, Team, useUser } from "@stackframe/stack";
+import { AdminOwnedProject, Team, useUser } from "@stackframe/stack";
 import { strictEmailSchema, yupObject } from "@stackframe/stack-shared/dist/schema-fields";
 import { groupBy } from "@stackframe/stack-shared/dist/utils/arrays";
 import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
-import { Button, Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, Input, Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue, Skeleton, Spinner, Typography, toast } from "@stackframe/stack-ui";
+import { Button, Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, Input, Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue, Skeleton, Typography, toast } from "@stackframe/stack-ui";
 import { Settings } from "lucide-react";
-import { useEffect, useMemo, useState, Suspense } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import * as yup from "yup";
 
 export default function PageClient() {
@@ -104,7 +104,6 @@ export default function PageClient() {
               {team && (
                 <TeamAddUserDialog
                   team={team}
-                  adminApp={projects[0].app}
                 />
               )}
             </div>
@@ -127,7 +126,6 @@ const inviteFormSchema = yupObject({
 
 function TeamAddUserDialog(props: {
   team: Team,
-  adminApp: StackAdminApp<false>,
 }) {
   const [open, setOpen] = useState(false);
 
@@ -151,7 +149,6 @@ function TeamAddUserDialog(props: {
           <Suspense fallback={<TeamAddUserDialogContentSkeleton />}>
             <TeamAddUserDialogContent
               teamId={props.team.id}
-              adminApp={props.adminApp}
               onClose={() => setOpen(false)}
             />
           </Suspense>
@@ -163,25 +160,31 @@ function TeamAddUserDialog(props: {
 
 function TeamAddUserDialogContent(props: {
   teamId: string,
-  adminApp: StackAdminApp<false>,
   onClose: () => void,
 }) {
-  const team = props.adminApp.useTeam(props.teamId)!;
-  const invitations = team.useInvitations();
-  const users = team.useUsers();
-  const admins = team.useItem("dashboard_admins");
-
   const [email, setEmail] = useState("");
   const [formError, setFormError] = useState<string | null>(null);
 
-  const activeSeats = users.length + invitations.length;
+  const user = useUser();
+  const team = user?.useTeam(props.teamId);
+  if (!team) {
+    setTimeout(() => {
+      props.onClose();
+    });
+    return null;
+  }
+  //const invitations = team.useInvitations();
+  const users = team.useUsers();
+  const admins = team.useItem("dashboard_admins");
+
+  //const activeSeats = users.length + invitations.length;
   const seatLimit = admins.quantity;
-  const atCapacity = activeSeats >= seatLimit;
+  //const atCapacity = activeSeats >= seatLimit;
 
   const handleInvite = async () => {
-    if (atCapacity) {
-      return;
-    }
+    //if (atCapacity) {
+    //  return;
+    //}
 
     try {
       setFormError(null);
@@ -215,17 +218,16 @@ function TeamAddUserDialogContent(props: {
   return (
     <>
       <div className="space-y-4 py-2">
-        <div className="flex items-center justify-between rounded-md border border-border px-3 py-2">
+        {/*<div className="flex items-center justify-between rounded-md border border-border px-3 py-2">
           <Typography type="label">Dashboard admin seats</Typography>
           <Typography variant="secondary">
             {activeSeats}/{seatLimit}
-          </Typography>
-        </div>
-        {atCapacity && (
+          </Typography>*/}
+        {/*{atCapacity && (
           <Typography variant="secondary" className="text-destructive">
             You are at capacity. Upgrade your plan to add more admins.
           </Typography>
-        )}
+        )}*/}
         <div className="space-y-2">
           <Input
             value={email}
@@ -246,7 +248,7 @@ function TeamAddUserDialogContent(props: {
           )}
         </div>
 
-        <div className="space-y-2">
+        {/*<div className="space-y-2">
           <Typography type="label">Pending invitations</Typography>
           {invitations.length === 0 ? (
             <Typography variant="secondary">None</Typography>
@@ -271,22 +273,23 @@ function TeamAddUserDialogContent(props: {
               ))}
             </div>
           )}
-        </div>
+        </div>*/}
       </div>
 
       <DialogFooter className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
         <Button variant="outline" onClick={props.onClose}>
           Close
         </Button>
-        {atCapacity ? (
+        {/*atCapacity ? (
           <Button onClick={handleUpgrade} variant="default">
             Upgrade plan
           </Button>
-        ) : (
-          <Button onClick={handleInvite}>
-            Invite
-          </Button>
-        )}
+        ) : */
+          (
+            <Button onClick={handleInvite}>
+              Invite
+            </Button>
+          )}
       </DialogFooter>
     </>
   );

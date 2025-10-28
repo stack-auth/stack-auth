@@ -223,12 +223,6 @@ export async function createOrUpdateProjectWithLegacyConfig(
     'rbac.defaultPermissions.teamMember': translateDefaultPermissions(dataOptions.team_member_default_permissions),
     'rbac.defaultPermissions.teamCreator': translateDefaultPermissions(dataOptions.team_creator_default_permissions),
     'rbac.defaultPermissions.signUp': translateDefaultPermissions(dataOptions.user_default_permissions),
-    // ======================= apps =======================
-    'apps.installed': {
-      authentication: { enabled: true },
-      emails: { enabled: true },
-      "launch-checklist": { enabled: true },
-    },
   });
 
   if (options.type === "create") {
@@ -257,6 +251,10 @@ export async function createOrUpdateProjectWithLegacyConfig(
     configOverrideOverride['rbac.defaultPermissions.teamMember'] ??= { 'team_member': true };
 
     configOverrideOverride['auth.password.allowSignIn'] ??= true;
+
+    configOverrideOverride['apps.installed.authentication.enabled'] ??= true;
+    configOverrideOverride['apps.installed.emails.enabled'] ??= true;
+    configOverrideOverride['apps.installed.api-keys.enabled'] ??= true;
   }
   await overrideEnvironmentConfigOverride({
     projectId: projectId,

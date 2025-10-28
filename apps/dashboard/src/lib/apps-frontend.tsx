@@ -97,7 +97,7 @@ export const ALL_APPS_FRONTEND = {
   },
   "api-keys": {
     icon: KeyRound,
-    href: "api-keys",
+    href: "api-keys-app",
     navigationItems: [
       { displayName: "API Keys", href: "." },
     ],
