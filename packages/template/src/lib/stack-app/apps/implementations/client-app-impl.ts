@@ -28,7 +28,7 @@ import { suspend, suspendIfSsr } from "@stackframe/stack-shared/dist/utils/react
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { Store, storeLock } from "@stackframe/stack-shared/dist/utils/stores";
 import { deindent, mergeScopeStrings, stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
-import { extractBaseDomainFromHost, getRelativePart, isRelative } from "@stackframe/stack-shared/dist/utils/urls";
+import { getRelativePart, isRelative } from "@stackframe/stack-shared/dist/utils/urls";
 import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
 import * as cookie from "cookie";
 import * as NextNavigationUnscrambled from "next/navigation"; // import the entire module to get around some static compiler warnings emitted by Next.js in some cases | THIS_LINE_PLATFORM next
@@ -50,6 +50,7 @@ import { ActiveSession, Auth, BaseUser, CurrentUser, InternalUserExtra, OAuthPro
 import { StackClientApp, StackClientAppConstructorOptions, StackClientAppJson } from "../interfaces/client-app";
 import { _StackAdminAppImplIncomplete } from "./admin-app-impl";
 import { TokenObject, clientVersion, createCache, createCacheBySession, createEmptyTokenStore, getBaseUrl, getDefaultExtraRequestHeaders, getDefaultProjectId, getDefaultPublishableClientKey, getUrls, resolveConstructorOptions } from "./common";
+import { parseJson } from "@stackframe/stack-shared/dist/utils/json";
 
 // IF_PLATFORM react-like
 import { useAsyncCache } from "./common";
@@ -58,7 +59,7 @@ import { useAsyncCache } from "./common";
 let isReactServer = false;
 // IF_PLATFORM next
 import * as sc from "@stackframe/stack-sc";
-import { cookies, headers as nextHeaders } from "@stackframe/stack-sc";
+import { cookies } from "@stackframe/stack-sc";
 isReactServer = sc.isReactServer;
 
 // NextNavigation.useRouter does not exist in react-server environments and some bundlers try to be helpful and throw a warning. Ignore the warning.
@@ -272,6 +273,10 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     async ([ctx]) => await this._getPartialUserFromConvex(ctx as any)
   );
 
+  private readonly _trustedParentDomainCache = createCache<[string], string | null>(
+    async ([domain]) => await this._getTrustedParentDomain(domain)
+  );
+
   private _anonymousSignUpInProgress: Promise<{ accessToken: string, refreshToken: string }> | null = null;
 
   protected async _createCookieHelper(): Promise<CookieHelper> {
@@ -419,8 +424,10 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
   protected _nextServerCookiesTokenStores = new WeakMap<object, Store<TokenObject>>();
   protected _requestTokenStores = new WeakMap<RequestLike, Store<TokenObject>>();
   protected _storedBrowserCookieTokenStore: Store<TokenObject> | null = null;
-  private _lastCustomRefreshCookieDomain: string | null = null;
-  private _lastCustomRefreshCookieUpdatedAt: number | null = null;
+  private _mostRecentQueuedCookieRefreshIndex: number = 0;
+  protected get _legacyRefreshTokenCookieName() {
+    return `stack-refresh-${this.projectId}`;
+  }
   protected get _refreshTokenCookieName() {
     return `stack-refresh-${this.projectId}`;
   }
@@ -437,30 +444,28 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
   private _formatRefreshCookieValue(refreshToken: string, updatedAt: number): string {
     return JSON.stringify({
       refresh_token: refreshToken,
-      updated_at: updatedAt,
+      updated_at_millis: updatedAt,
     });
   }
   private _parseStructuredRefreshCookie(value: string | null): { refreshToken: string, updatedAt: number | null } | null {
     if (!value) {
       return null;
     }
-    try {
-      const parsed = JSON.parse(value);
-      if (typeof parsed !== "object" || parsed === null) {
-        return null;
-      }
-      const refreshToken = typeof parsed.refresh_token === "string" ? parsed.refresh_token : null;
-      const updatedAt = typeof parsed.updated_at === "number" ? parsed.updated_at : null;
-      if (!refreshToken) {
-        return null;
-      }
-      return {
-        refreshToken,
-        updatedAt,
-      };
-    } catch {
+    const parsed = parseJson(value);
+    if (parsed.status !== "ok" || typeof parsed.data !== "object" || parsed.data === null) {
       return null;
     }
+    const data = parsed.data;
+    const refreshToken = "refresh_token" in data && typeof data.refresh_token === "string" ? data.refresh_token : null;
+    const updatedAt = "updated_at_millis" in data && typeof data.updated_at_millis === "number" ? data.updated_at_millis : null;
+    if (!refreshToken) {
+      return null;
+    }
+    return {
+      refreshToken,
+      updatedAt,
+    };
+
   }
   private _extractRefreshTokenFromCookieMap(cookies: Record<string, string>): { refreshToken: string | null, updatedAt: number | null } {
     const legacyToken = cookies[this._refreshTokenCookieName] ?? cookies["stack-refresh"];
@@ -496,19 +501,18 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     const accessTokenCookie = cookies[this._accessTokenCookieName] ?? null;
     let accessToken: string | null = null;
     if (accessTokenCookie && accessTokenCookie.startsWith('[\"')) {
-      try {
-        const parsed = JSON.parse(accessTokenCookie);
-        if (
-          Array.isArray(parsed) &&
-          parsed.length === 2 &&
-          typeof parsed[0] === "string" &&
-          typeof parsed[1] === "string" &&
-          parsed[0] === refreshToken
-        ) {
-          accessToken = parsed[1];
-        }
-      } catch {
-        // ignore invalid cookie contents
+      const parsed = parseJson(accessTokenCookie);
+      if (
+        parsed.status === "ok" &&
+        typeof parsed.data === "object" &&
+        parsed.data !== null &&
+        Array.isArray(parsed.data) &&
+        parsed.data.length === 2 &&
+        typeof parsed.data[0] === "string" &&
+        typeof parsed.data[1] === "string" &&
+        parsed.data[0] === refreshToken
+      ) {
+        accessToken = parsed.data[1];
       }
     }
     return {
@@ -525,127 +529,59 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
   }
   private _getAllBrowserCookies(): Record<string, string> {
     if (!isBrowserLike()) {
-      return {};
+      throw new StackAssertionError("Cannot get browser cookies on the server!");
     }
     return cookie.parse(document.cookie || "");
   }
-  private _getBrowserBaseDomain(): string | undefined {
-    if (!isBrowserLike()) {
-      return undefined;
-    }
-    const host = window.location.host;
-    return host ? extractBaseDomainFromHost(host) : undefined;
-  }
-  private async _getServerBaseDomain(): Promise<string | undefined> {
-    // IF_PLATFORM next
-    try {
-      const resolvedHeaders = typeof nextHeaders === "function" ? await nextHeaders() : nextHeaders;
-      const hostHeader = resolvedHeaders?.get("x-forwarded-host") ?? resolvedHeaders?.get("host");
-      return hostHeader ? extractBaseDomainFromHost(hostHeader) : undefined;
-    } catch {
-      return undefined;
-    }
-    // END_PLATFORM
-    return undefined;
-  }
   private _deleteLegacyBrowserRefreshCookies() {
-    deleteCookieClient(this._refreshTokenCookieName);
+    deleteCookieClient(this._legacyRefreshTokenCookieName);
     deleteCookieClient("stack-refresh");
-    const domain = this._getBrowserBaseDomain();
-    if (domain) {
-      deleteCookieClient(this._refreshTokenCookieName, { domain });
-      deleteCookieClient("stack-refresh", { domain });
-    }
   }
   private async _deleteLegacyServerRefreshCookies() {
-    const operations: Promise<unknown>[] = [
-      setOrDeleteCookie(this._refreshTokenCookieName, null, { noOpIfServerComponent: true }),
-      setOrDeleteCookie("stack-refresh", null, { noOpIfServerComponent: true }),
-    ];
-    const domain = await this._getServerBaseDomain();
-    if (domain) {
-      operations.push(
-        setOrDeleteCookie(this._refreshTokenCookieName, null, { domain, noOpIfServerComponent: true }),
-        setOrDeleteCookie("stack-refresh", null, { domain, noOpIfServerComponent: true }),
-      );
-    }
-    await Promise.all(operations);
+    await setOrDeleteCookie(this._legacyRefreshTokenCookieName, null, { noOpIfServerComponent: true });
+    await setOrDeleteCookie("stack-refresh", null, { noOpIfServerComponent: true });
   }
   private _queueCustomRefreshCookieUpdate(refreshToken: string | null, updatedAt: number | null, context: "browser" | "server") {
     runAsynchronously(async () => {
-      const domain = await this._fetchTrustedParentDomain();
-      const previousDomain = this._lastCustomRefreshCookieDomain;
-      const setOrDeleteCookieWrapper = context === "browser"
-        ? async (...args: Parameters<typeof setOrDeleteCookieClient>) => setOrDeleteCookieClient(...args)
-        : setOrDeleteCookie;
+      this._mostRecentQueuedCookieRefreshIndex++;
+      const updateIndex = this._mostRecentQueuedCookieRefreshIndex;
+      const domain = await this._trustedParentDomainCache.getOrWait([window.location.hostname], "read-write");
 
-      const deleteCookie = async (targetDomain: string) => {
-        const name = this._getCustomRefreshCookieName(targetDomain);
-        await setOrDeleteCookieWrapper(name, null, { domain: targetDomain, noOpIfServerComponent: true });
-      };
       const setCookie = async (targetDomain: string, value: string) => {
         const name = this._getCustomRefreshCookieName(targetDomain);
-        await setOrDeleteCookieWrapper(name, value, { maxAge: 60 * 60 * 24 * 365, domain: targetDomain, noOpIfServerComponent: true });
+        const options = { maxAge: 60 * 60 * 24 * 365, domain: targetDomain, noOpIfServerComponent: true };
+        if (context === "browser") {
+          setOrDeleteCookieClient(name, value, options);
+        } else {
+          await setOrDeleteCookie(name, value, options);
+        }
       };
 
-      if (!domain) {
-        if (previousDomain) {
-          await deleteCookie(previousDomain);
-          this._lastCustomRefreshCookieDomain = null;
-        }
+      if (domain.status === "error") {
         return;
       }
-
-      if (previousDomain && previousDomain !== domain) {
-        await deleteCookie(previousDomain);
+      if (updateIndex !== this._mostRecentQueuedCookieRefreshIndex) {
+        return;
       }
-
-      if (refreshToken && updatedAt !== null) {
-        if (this._lastCustomRefreshCookieUpdatedAt !== null && updatedAt < this._lastCustomRefreshCookieUpdatedAt) {
-          // Ignore stale writes
-          return;
-        }
-        const value = this._formatRefreshCookieValue(refreshToken, updatedAt);
-        await setCookie(domain, value);
-        this._lastCustomRefreshCookieDomain = domain;
-        this._lastCustomRefreshCookieUpdatedAt = updatedAt;
-      } else {
-        await deleteCookie(domain);
-        this._lastCustomRefreshCookieDomain = null;
-        this._lastCustomRefreshCookieUpdatedAt = null;
-      }
+      const value = this._formatRefreshCookieValue(refreshToken, updatedAt);
+      await setCookie(domain, value);
     });
   }
-  private async _fetchTrustedParentDomain(): Promise<string | null> {
+  private async _getTrustedParentDomain(currentDomain: string): Promise<string | null> {
     const project = Result.orThrow(await this._interface.getClientProject());
-    const domains = project.config.domains;
-    const direct = new Set<string>();
-    const wildcard = new Set<string>();
-    for (const domain of domains) {
-      const withoutProtocol = domain.domain.trim().replace(/^https?:\/\//, "");
-      const host = withoutProtocol.split("/")[0]?.toLowerCase();
-      if (host.startsWith("*.")) {
-        const candidate = host.slice(2);
-        if (candidate && !candidate.includes("*")) {
-          wildcard.add(candidate);
-        }
-      } else if (!host.includes("*")) {
-        direct.add(host);
+    const domains = project.config.domains.map(d => d.domain.trim().replace(/^https?:\/\//, "").split("/")[0]?.toLowerCase());
+    const trustedWildcards = domains.filter(d => d.startsWith("**."));
+    const parts = currentDomain.split('.');
+    for (let i = parts.length - 2; i >= 0; i--) {
+      const parentDomain = parts.slice(i).join('.');
+      if (domains.includes(parentDomain) && trustedWildcards.includes("**." + parentDomain)) {
+        return parentDomain;
       }
     }
-    const candidates = Array.from(direct).filter((domain) => wildcard.has(domain));
-    candidates.sort((a, b) => {
-      const aParts = a.split(".").length;
-      const bParts = b.split(".").length;
-      if (aParts !== bParts) {
-        return aParts - bParts;
-      }
-      return stringCompare(a, b);
-    });
-    const selected = candidates[0] ?? null;
-    return selected;
 
+    return null;
   }
+
   protected _getBrowserCookieTokenStore(): Store<TokenObject> {
     if (!isBrowserLike()) {
       throw new Error("Cannot use cookie token store on the server!");
@@ -712,6 +648,17 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
           const store = new Store<TokenObject>(tokens);
           store.onChange((value) => {
             runAsynchronously(async () => {
+              // TODO HACK this is a bit of a hack; while the order happens to work in practice (because the only actual
+              // async operation is waiting for the `cookies()` to resolve which always happens at the same time during
+              // the same request), it's not guaranteed to be free of race conditions if there are many updates happening
+              // at the same time
+              //
+              // instead, we should create a per-request cookie helper outside of the store onChange and reuse that
+              //
+              // but that's kinda hard to do because Next.js doesn't expose a documented way to find out which request
+              // we're currently processing, and hence we can't find out which per-request cookie helper to use
+              //
+              // so hack it is
               const refreshToken = value.refreshToken;
               const updatedAt = refreshToken ? Date.now() : null;
               const refreshCookieValue = refreshToken ? this._formatRefreshCookieValue(refreshToken, updatedAt!) : null;

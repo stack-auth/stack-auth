@@ -53,9 +53,7 @@ export async function createCookieHelper(): Promise<CookieHelper> {
 export function createBrowserCookieHelper(): CookieHelper {
   return {
     get: getCookieClient,
-    getAll: () => {
-      return Cookies.get();
-    },
+    getAll: getAllCookiesClient,
     set: setCookieClient,
     setOrDelete: setOrDeleteCookieClient,
     delete: deleteCookieClient,
@@ -81,25 +79,26 @@ function createNextCookieHelper(
 ): CookieHelper {
   const cookieHelper = {
     get: (name: string) => {
+      const all = cookieHelper.getAll();
+      return all[name] ?? null;
+    },
+    getAll: () => {
       // set a helper cookie, see comment in `NextCookieHelper.set` below
       try {
-          rscCookiesAwaited.set("stack-is-https", "true", { secure: true });
+        rscCookiesAwaited.set("stack-is-https", "true", { secure: true });
       } catch (e) {
         if (
           typeof e === 'object'
-            && e !== null
-            && 'message' in e
-            && typeof e.message === 'string'
-            && e.message.includes('Cookies can only be modified in a Server Action or Route Handler')
+          && e !== null
+          && 'message' in e
+          && typeof e.message === 'string'
+          && e.message.includes('Cookies can only be modified in a Server Action or Route Handler')
         ) {
           // ignore
         } else {
           throw e;
         }
       }
-      return rscCookiesAwaited.get(name)?.value ?? null;
-    },
-    getAll: () => {
       const all = rscCookiesAwaited.getAll();
       return all.reduce((acc, entry) => {
         acc[entry.name] = entry.value;
@@ -120,10 +119,7 @@ function createNextCookieHelper(
       // Note that malicious clients could theoretically manipulate the `stack-is-https` cookie or
       // the `X-Forwarded-Proto` header; that wouldn't cause any trouble except for themselves,
       // though.
-      let isSecureCookie = !!rscCookiesAwaited.get("stack-is-https");
-      if (rscHeadersAwaited.get("x-forwarded-proto") === "https") {
-        isSecureCookie = true;
-      }
+      const isSecureCookie = determineSecureFromServerContext(rscCookiesAwaited, rscHeadersAwaited);
 
       try {
         rscCookiesAwaited.set(name, value, {
@@ -159,10 +155,15 @@ function createNextCookieHelper(
 // END_PLATFORM
 
 export function getCookieClient(name: string): string | null {
+  const all = getAllCookiesClient();
+  return all[name] ?? null;
+}
+
+export function getAllCookiesClient(): Record<string, string> {
   ensureClient();
   // set a helper cookie, see comment in `NextCookieHelper.set` above
   Cookies.set("stack-is-https", "true", { secure: true });
-  return Cookies.get(name) ?? null;
+  return Cookies.get();
 }
 
 export async function getCookie(name: string): Promise<string | null> {
@@ -172,27 +173,51 @@ export async function getCookie(name: string): Promise<string | null> {
 
 export async function isSecure(): Promise<boolean> {
   if (isBrowserLike()) {
-    return typeof window !== "undefined" && window.location.protocol === "https:";
+    return determineSecureFromClientContext();
   }
   // IF_PLATFORM next
-  const cookies = await rscCookies();
-  const headers = await rscHeaders();
-  if (headers.get("x-forwarded-proto") === "https") {
-    return true;
-  }
-  if (cookies.get("stack-is-https")) {
-    return true;
-  }
+  return determineSecureFromServerContext(await rscCookies(), await rscHeaders());
   // END_PLATFORM
   return false;
+}
+
+function determineSecureFromClientContext(): boolean {
+  return typeof window !== "undefined" && window.location.protocol === "https:";
+}
+
+function determineSecureFromServerContext(
+  cookies: Awaited<ReturnType<typeof rscCookies>>,
+  headers: Awaited<ReturnType<typeof rscHeaders>>,
+): boolean {
+  let isSecureCookie = !!cookies.get("stack-is-https");
+  if (headers.get("x-forwarded-proto") === "https") {
+    isSecureCookie = true;
+  }
+  return isSecureCookie;
+}
+
+function setCookieClientInternal(name: string, value: string, options: SetCookieOptions = {}) {
+  const secure = options.secure ?? determineSecureFromClientContext();
+  Cookies.set(name, value, {
+    expires: options.maxAge === undefined ? undefined : new Date(Date.now() + (options.maxAge) * 1000),
+    domain: options.domain,
+    secure,
+  });
+}
+
+function deleteCookieClientInternal(name: string, options: DeleteCookieOptions = {}) {
+  if (options.domain !== undefined) {
+    Cookies.remove(name, { domain: options.domain });
+  }
+  Cookies.remove(name);
 }
 
 export function setOrDeleteCookieClient(name: string, value: string | null, options: SetCookieOptions & DeleteCookieOptions = {}) {
   ensureClient();
   if (value === null) {
-    deleteCookieClient(name, options);
+    deleteCookieClientInternal(name, options);
   } else {
-    setCookieClient(name, value, options);
+    setCookieClientInternal(name, value, options);
   }
 }
 
@@ -203,10 +228,7 @@ export async function setOrDeleteCookie(name: string, value: string | null, opti
 
 export function deleteCookieClient(name: string, options: DeleteCookieOptions = {}) {
   ensureClient();
-  if (options.domain !== undefined) {
-    Cookies.remove(name, { domain: options.domain });
-  }
-  Cookies.remove(name);
+  deleteCookieClientInternal(name, options);
 }
 
 export async function deleteCookie(name: string, options: DeleteCookieOptions = {}) {
@@ -216,11 +238,7 @@ export async function deleteCookie(name: string, options: DeleteCookieOptions = 
 
 export function setCookieClient(name: string, value: string, options: SetCookieOptions = {}) {
   ensureClient();
-  Cookies.set(name, value, {
-    expires: options.maxAge === undefined ? undefined : new Date(Date.now() + (options.maxAge) * 1000),
-    domain: options.domain,
-    secure: options.secure,
-  });
+  setCookieClientInternal(name, value, options);
 }
 
 export async function setCookie(name: string, value: string, options: SetCookieOptions = {}) {
