@@ -654,9 +654,11 @@ function ProductPriceRow({
           )}
           {includeByDefault && (
             <SimpleTooltip tooltip="Customers automatically receive this product when they are created">
+              <div className="flex-1" />
               <div className="text-xs text-muted-foreground mt-1">
                 Included by default
               </div>
+              <div className="flex-1" />
             </SimpleTooltip>
           )}
           {!isFree && price.freeTrial && (
@@ -718,7 +720,7 @@ function ProductItemRow({
   allItems: Array<{ id: string, displayName: string, customerType: string }>,
   existingIncludedItemIds: string[],
   onChangeItemId: (newItemId: string) => void,
-  onCreateNewItem: () => void,
+  onCreateNewItem: (customerType?: 'user' | 'team' | 'custom') => void,
 }) {
   const [isEditing, setIsEditing] = useState<boolean>(false);
   const [isOpen, setIsOpen] = useState<boolean>(false);
@@ -769,7 +771,7 @@ function ProductItemRow({
               </PopoverTrigger>
               <PopoverContent align="start" className="w-72 p-2">
                 <div className="flex max-h-64 flex-col gap-1 overflow-auto">
-                  {allItems.map((opt) => {
+                  {allItems.filter(opt => opt.customerType === activeType).map((opt) => {
                     const isSelected = opt.id === itemId;
                     const isUsed = existingIncludedItemIds.includes(opt.id) && !isSelected;
                     return (
@@ -806,7 +808,7 @@ function ProductItemRow({
                       className="justify-start text-primary"
                       onClick={() => {
                         setItemSelectOpen(false);
-                        onCreateNewItem();
+                        onCreateNewItem(activeType);
                       }}
                     >
                       <Plus className="mr-2 h-4 w-4" /> New Item
@@ -975,7 +977,7 @@ type ProductCardProps = {
   onSave: (id: string, product: Product) => Promise<void>,
   onDelete: (id: string) => Promise<void>,
   onDuplicate: (product: Product) => void,
-  onCreateNewItem: () => void,
+  onCreateNewItem: (customerType?: 'user' | 'team' | 'custom') => void,
   onOpenDetails: (product: Product) => void,
   isDraft?: boolean,
   onCancelDraft?: () => void,
@@ -1607,7 +1609,7 @@ type CatalogViewProps = {
   existingItems: Array<{ id: string, displayName: string, customerType: string }>,
   onSaveProduct: (id: string, product: Product) => Promise<void>,
   onDeleteProduct: (id: string) => Promise<void>,
-  onCreateNewItem: () => void,
+  onCreateNewItem: (customerType?: 'user' | 'team' | 'custom') => void,
   onOpenProductDetails: (product: Product) => void,
   onSaveProductWithGroup: (catalogId: string, productId: string, product: Product) => Promise<void>,
   createDraftRequestId?: string,
@@ -1915,6 +1917,7 @@ export default function PageClient({ createDraftRequestId, draftCustomerType = '
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [showItemDialog, setShowItemDialog] = useState(false);
   const [editingItem, setEditingItem] = useState<{ id: string, displayName: string, customerType: 'user' | 'team' | 'custom' } | null>(null);
+  const [newItemCustomerType, setNewItemCustomerType] = useState<'user' | 'team' | 'custom' | undefined>(undefined);
   const stackAdminApp = useAdminApp();
   const project = stackAdminApp.useProject();
   const config = project.useConfig();
@@ -2003,7 +2006,8 @@ export default function PageClient({ createDraftRequestId, draftCustomerType = '
   }, [paymentsConfig]);
 
   // Handler for create item button
-  const handleCreateItem = () => {
+  const handleCreateItem = (customerType?: 'user' | 'team' | 'custom') => {
+    setNewItemCustomerType(customerType);
     setShowItemDialog(true);
   };
 
@@ -2101,11 +2105,13 @@ export default function PageClient({ createDraftRequestId, draftCustomerType = '
           setShowItemDialog(open);
           if (!open) {
             setEditingItem(null);
+            setNewItemCustomerType(undefined);
           }
         }}
         onSave={async (item) => await handleSaveItem(item)}
         editingItem={editingItem ?? undefined}
         existingItemIds={Object.keys(paymentsConfig.items)}
+        forceCustomerType={newItemCustomerType}
       />
     </>
   );
