@@ -70,6 +70,13 @@ function shortIntervalLabel(interval: DayInterval | 'never'): string {
   return `/${count === 1 ? '' : count}${suffix}`;
 }
 
+function freeTrialLabel(tuple: DayInterval | undefined): string | null {
+  if (!tuple) return null;
+  const [count, unit] = tuple;
+  const plural = count === 1 ? unit : unit + 's';
+  return `${count} ${plural}`;
+}
+
 function OrSeparator() {
   return (
     <div className="flex items-center justify-center stack-scope mx-8">
@@ -108,6 +115,7 @@ function IntervalPopover({
   noneLabel = 'one time',
   allowedUnits,
   triggerClassName,
+  useDurationLabels = false,
 }: {
   readOnly?: boolean,
   intervalText: string | null,
@@ -121,9 +129,15 @@ function IntervalPopover({
   noneLabel?: string,
   allowedUnits?: DayInterval[1][],
   triggerClassName?: string,
+  useDurationLabels?: boolean,
 }) {
   const [open, setOpen] = useState(false);
-  const buttonLabels: Record<DayInterval[1], string> = {
+  const buttonLabels: Record<DayInterval[1], string> = useDurationLabels ? {
+    day: '1 day',
+    week: '1 week',
+    month: '1 month',
+    year: '1 year',
+  } : {
     day: 'daily',
     week: 'weekly',
     month: 'monthly',
@@ -342,6 +356,11 @@ function ProductPriceRow({
   const [intervalSelection, setIntervalSelection] = useState<'one-time' | 'custom' | DayInterval[1]>(
     price.interval ? (price.interval[0] === 1 ? price.interval[1] : 'custom') : 'one-time'
   );
+  const [freeTrialUnit, setFreeTrialUnit] = useState<DayInterval[1] | undefined>(price.freeTrial?.[1]);
+  const [freeTrialCount, setFreeTrialCount] = useState<number>(price.freeTrial?.[0] || 7);
+  const [freeTrialSelection, setFreeTrialSelection] = useState<'one-time' | 'custom' | DayInterval[1]>(
+    price.freeTrial ? (price.freeTrial[0] === 7 && price.freeTrial[1] === 'day' ? 'week' : price.freeTrial[0] === 1 ? price.freeTrial[1] : 'custom') : 'one-time'
+  );
 
   const niceAmount = +amount;
 
@@ -351,6 +370,9 @@ function ProductPriceRow({
     setPriceInterval(price.interval?.[1]);
     setIntervalCount(price.interval?.[0] || 1);
     setIntervalSelection(price.interval ? (price.interval[0] === 1 ? price.interval[1] : 'custom') : 'one-time');
+    setFreeTrialUnit(price.freeTrial?.[1]);
+    setFreeTrialCount(price.freeTrial?.[0] || 7);
+    setFreeTrialSelection(price.freeTrial ? (price.freeTrial[0] === 7 && price.freeTrial[1] === 'day' ? 'week' : price.freeTrial[0] === 1 ? price.freeTrial[1] : 'custom') : 'one-time');
   }, [price, isEditing]);
 
 
@@ -421,14 +443,19 @@ function ProductPriceRow({
                           const normalized = v === '' ? '0.00' : (Number.isNaN(parseFloat(v)) ? '0.00' : parseFloat(v).toFixed(2));
                           const intervalObj = intervalSelection === 'one-time' ? undefined : ([
                             intervalSelection === 'custom' ? intervalCount : 1,
-                          (intervalSelection === 'custom' ? (priceInterval || 'month') : intervalSelection) as DayInterval[1]
+                            (intervalSelection === 'custom' ? (priceInterval || 'month') : intervalSelection) as DayInterval[1]
+                          ] as DayInterval);
+                          const freeTrialObj = freeTrialSelection === 'one-time' ? undefined : ([
+                            freeTrialSelection === 'custom' ? freeTrialCount : 1,
+                            (freeTrialSelection === 'custom' ? (freeTrialUnit || 'day') : freeTrialSelection) as DayInterval[1]
                           ] as DayInterval);
                           const updated: Price = {
                             USD: normalized,
                             serverOnly: !!price.serverOnly,
                             ...(intervalObj ? { interval: intervalObj } : {}),
+                            ...(freeTrialObj ? { freeTrial: freeTrialObj } : {}),
                           };
-                        onSave(undefined, updated);
+                          onSave(undefined, updated);
                         }
                       }}
                     />
@@ -455,14 +482,153 @@ function ProductPriceRow({
                     onChange={(interval) => {
                       if (readOnly) return;
                       const normalized = amount === '' ? '0.00' : (Number.isNaN(parseFloat(amount)) ? '0.00' : parseFloat(amount).toFixed(2));
+                      const freeTrialObj = freeTrialSelection === 'one-time' ? undefined : ([
+                        freeTrialSelection === 'custom' ? freeTrialCount : 1,
+                        (freeTrialSelection === 'custom' ? (freeTrialUnit || 'day') : freeTrialSelection) as DayInterval[1]
+                      ] as DayInterval);
                       const updated: Price = {
                         USD: normalized,
                         serverOnly: !!price.serverOnly,
                         ...(interval ? { interval } : {}),
+                        ...(freeTrialObj ? { freeTrial: freeTrialObj } : {}),
                       };
-                    onSave(undefined, updated);
+                      onSave(undefined, updated);
                     }}
                   />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <div className="flex items-center space-x-2 rounded-xl">
+                    <Checkbox
+                      id={`free-trial-enabled-${priceId}`}
+                      checked={!!price.freeTrial}
+                      onCheckedChange={(checked) => {
+                        if (readOnly) return;
+                        const normalized = amount === '' ? '0.00' : (Number.isNaN(parseFloat(amount)) ? '0.00' : parseFloat(amount).toFixed(2));
+                        const intervalObj = intervalSelection === 'one-time' ? undefined : ([
+                          intervalSelection === 'custom' ? intervalCount : 1,
+                          (intervalSelection === 'custom' ? (priceInterval || 'month') : intervalSelection) as DayInterval[1]
+                        ] as DayInterval);
+                        if (checked) {
+                          const updated: Price = {
+                            USD: normalized,
+                            serverOnly: !!price.serverOnly,
+                            ...(intervalObj ? { interval: intervalObj } : {}),
+                            freeTrial: [freeTrialCount || 7, freeTrialUnit || 'day'],
+                          };
+                          onSave(undefined, updated);
+                        } else {
+                          const updated: Price = {
+                            USD: normalized,
+                            serverOnly: !!price.serverOnly,
+                            ...(intervalObj ? { interval: intervalObj } : {}),
+                          };
+                          onSave(undefined, updated);
+                        }
+                      }}
+                    />
+                    <label
+                      htmlFor={`free-trial-enabled-${priceId}`}
+                      className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
+                    >
+                      Free trial
+                    </label>
+                  </div>
+                  {price.freeTrial && (
+                    <div className="flex items-center gap-2 mt-2">
+                      <div className="w-20">
+                        <Input
+                          className="h-10 w-full rounded-xl border border-border bg-background text-right tabular-nums"
+                          inputMode="numeric"
+                          value={freeTrialCount}
+                          onChange={(e) => {
+                            const v = e.target.value;
+                            if (!/^\d*$/.test(v)) return;
+                            const n = v === '' ? 1 : parseInt(v, 10);
+                            if (n === 0) return; // Prevent setting to 0
+                            setFreeTrialCount(n);
+                            if (!readOnly) {
+                              const normalized = amount === '' ? '0.00' : (Number.isNaN(parseFloat(amount)) ? '0.00' : parseFloat(amount).toFixed(2));
+                              const intervalObj = intervalSelection === 'one-time' ? undefined : ([
+                                intervalSelection === 'custom' ? intervalCount : 1,
+                                (intervalSelection === 'custom' ? (priceInterval || 'month') : intervalSelection) as DayInterval[1]
+                              ] as DayInterval);
+                              const updated: Price = {
+                                USD: normalized,
+                                serverOnly: !!price.serverOnly,
+                                ...(intervalObj ? { interval: intervalObj } : {}),
+                                freeTrial: [n, freeTrialUnit || 'day'],
+                              };
+                              onSave(undefined, updated);
+                            }
+                          }}
+                          placeholder="7"
+                        />
+                      </div>
+                      <div className="flex-1">
+                        <Select
+                          value={freeTrialUnit || 'day'}
+                          onValueChange={(u) => {
+                            const newUnit = u as DayInterval[1];
+                            setFreeTrialUnit(newUnit);
+                            if (!readOnly) {
+                              const normalized = amount === '' ? '0.00' : (Number.isNaN(parseFloat(amount)) ? '0.00' : parseFloat(amount).toFixed(2));
+                              const intervalObj = intervalSelection === 'one-time' ? undefined : ([
+                                intervalSelection === 'custom' ? intervalCount : 1,
+                                (intervalSelection === 'custom' ? (priceInterval || 'month') : intervalSelection) as DayInterval[1]
+                              ] as DayInterval);
+                              const updated: Price = {
+                                USD: normalized,
+                                serverOnly: !!price.serverOnly,
+                                ...(intervalObj ? { interval: intervalObj } : {}),
+                                freeTrial: [freeTrialCount, newUnit],
+                              };
+                              onSave(undefined, updated);
+                            }
+                          }}
+                        >
+                          <SelectTrigger className="h-10 rounded-xl border border-border bg-background">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {DEFAULT_INTERVAL_UNITS.map((unitOption) => (
+                              <SelectItem key={unitOption} value={unitOption}>
+                                {unitOption}{freeTrialCount !== 1 ? 's' : ''}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                  )}
+                </div>
+                <div className="flex flex-col gap-1">
+                  <div className="flex items-center space-x-2 rounded-xl">
+                    <Checkbox
+                      id={`server-only-${priceId}`}
+                      checked={!!price.serverOnly}
+                      onCheckedChange={(checked) => {
+                        if (readOnly) return;
+                        const normalized = amount === '' ? '0.00' : (Number.isNaN(parseFloat(amount)) ? '0.00' : parseFloat(amount).toFixed(2));
+                        const intervalObj = intervalSelection === 'one-time' ? undefined : ([
+                          intervalSelection === 'custom' ? intervalCount : 1,
+                          (intervalSelection === 'custom' ? (priceInterval || 'month') : intervalSelection) as DayInterval[1]
+                        ] as DayInterval);
+                        const updated: Price = {
+                          USD: normalized,
+                          serverOnly: !!checked,
+                          ...(intervalObj ? { interval: intervalObj } : {}),
+                          ...(price.freeTrial ? { freeTrial: price.freeTrial } : {}),
+                        };
+                        onSave(undefined, updated);
+                      }}
+                    />
+                    <label
+                      htmlFor={`server-only-${priceId}`}
+                      className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
+                    >
+                      Server only
+                    </label>
+                  </div>
                 </div>
               </>
             )}
@@ -480,8 +646,29 @@ function ProductPriceRow({
         </>
       ) : (
         <>
-          <div className="text-xl font-semibold tabular-nums">${niceAmount}</div>
-          <div className="text-xs text-muted-foreground capitalize">{intervalText ?? 'one-time'}</div>
+          <div className="text-xl font-semibold tabular-nums">
+            {isFree ? 'Free' : `$${niceAmount}`}
+          </div>
+          {!isFree && (
+            <div className="text-xs text-muted-foreground capitalize">{intervalText ?? 'one-time'}</div>
+          )}
+          {includeByDefault && (
+            <SimpleTooltip tooltip="Customers automatically receive this product when they are created">
+              <div className="text-xs text-muted-foreground mt-1">
+                Included by default
+              </div>
+            </SimpleTooltip>
+          )}
+          {!isFree && price.freeTrial && (
+            <div className="text-xs text-muted-foreground mt-1">
+              Free trial: {freeTrialLabel(price.freeTrial)}
+            </div>
+          )}
+          {!isFree && price.serverOnly && (
+            <div className="text-xs text-muted-foreground mt-1">
+              Server only
+            </div>
+          )}
         </>
       )}
     </div>
@@ -935,7 +1122,7 @@ function ProductCard({ id, activeType, product, allProducts, existingItems, onSa
               }}
               onRemove={() => handleRemovePrice(pid)}
             />
-            {((mode !== "view" && draft.prices !== "include-by-default") || index < entries.length - 1) && <OrSeparator />}
+            {((mode !== "view" && !editingPricesIsFreeMode) || index < entries.length - 1) && <OrSeparator />}
           </Fragment>
         ))}
       </div>
