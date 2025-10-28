@@ -1793,8 +1793,10 @@ function CatalogView({ groupedProducts, groups, existingItems, onSaveProduct, on
                       allProducts={products}
                       existingItems={existingItems}
                       isDraft
-                      onSave={async (_ignoredId, product) => {
-                        const newId = generateProductId('product');
+                      onSave={async (specifiedId, product) => {
+                        const newId = specifiedId && specifiedId.trim() && /^[a-z0-9-]+$/.test(specifiedId.trim()) && !usedIds.has(specifiedId.trim())
+                          ? specifiedId.trim()
+                          : generateProductId('product');
                         if (isNewGroupPlaceholder) {
                           const id = newCatalogId.trim();
                           if (!id) {
