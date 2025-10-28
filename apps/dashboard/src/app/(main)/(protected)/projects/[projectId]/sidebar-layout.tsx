@@ -28,6 +28,7 @@ import {
   ChevronDown,
   ChevronRight,
   Globe,
+  KeyRound,
   LucideIcon,
   Menu,
   Settings,
@@ -78,6 +79,12 @@ const bottomItems: BottomItem[] = [
     href: '/apps',
     icon: Blocks,
     regex: /^\/projects\/[^\/]+\/apps(\/.*)?$/,
+  },
+  {
+    name: 'Project Keys',
+    href: '/project-keys',
+    icon: KeyRound,
+    regex: /^\/projects\/[^\/]+\/project-keys(\/.*)?$/,
   },
   {
     name: 'Project Settings',
