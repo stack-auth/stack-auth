@@ -590,6 +590,19 @@ export const productSchema = yupObject({
     }),
   ),
 });
+
+const productMetadataExample = { featureFlag: true, source: 'marketing-campaign' } as const;
+
+export const productClientMetadataSchema = jsonSchema.meta({ openapiField: { description: _clientMetaDataDescription('product'), exampleValue: productMetadataExample } });
+export const productClientReadOnlyMetadataSchema = jsonSchema.meta({ openapiField: { description: _clientReadOnlyMetaDataDescription('product'), exampleValue: productMetadataExample } });
+export const productServerMetadataSchema = jsonSchema.meta({ openapiField: { description: _serverMetaDataDescription('product'), exampleValue: productMetadataExample } });
+
+export const productSchemaWithMetadata = productSchema.concat(yupObject({
+  clientMetadata: productClientMetadataSchema.optional(),
+  clientReadOnlyMetadata: productClientReadOnlyMetadataSchema.optional(),
+  serverMetadata: productServerMetadataSchema.optional(),
+}));
+
 export const inlineProductSchema = yupObject({
   display_name: yupString().defined(),
   customer_type: customerTypeSchema.defined(),
@@ -612,6 +625,9 @@ export const inlineProductSchema = yupObject({
       expires: yupString().oneOf(['never', 'when-purchase-expires', 'when-repeated']).optional(),
     }),
   ),
+  client_metadata: productClientMetadataSchema.optional(),
+  client_read_only_metadata: productClientReadOnlyMetadataSchema.optional(),
+  server_metadata: productServerMetadataSchema.optional(),
 });
 
 // Users

@@ -88,7 +88,15 @@ jobs:
           if [[ -n $(git status --porcelain) ]]; then
             echo "Error: There are uncommitted changes after build/lint/typecheck."
             echo "Please commit all changes before pushing."
+            echo ""
+            echo "Files with uncommitted changes:"
+            git status --porcelain
+            echo ""
+            echo "Full git status:"
             git status
+            echo ""
+            echo "Diff of changes:"
+            git diff
             exit 1
           fi
       
@@ -97,6 +105,14 @@ jobs:
           if [[ -n $(git status --porcelain) ]]; then
             echo "Error: There are uncommitted changes after build/lint/typecheck."
             echo "Please commit all changes before pushing."
+            echo ""
+            echo "Files with uncommitted changes:"
+            git status --porcelain
+            echo ""
+            echo "Full git status:"
             git status
+            echo ""
+            echo "Diff of changes:"
+            git diff
             exit 1
           fi

@@ -24,7 +24,7 @@ export const POST = createSmartRouteHandler({
     body: yupObject({
       email: signInEmailSchema.defined(),
       password: passwordSchema.defined(),
-      verification_callback_url: emailVerificationCallbackUrlSchema.defined(),
+      verification_callback_url: emailVerificationCallbackUrlSchema.optional(),
     }).defined(),
   }),
   response: yupObject({
@@ -41,7 +41,7 @@ export const POST = createSmartRouteHandler({
       throw new KnownErrors.PasswordAuthenticationNotEnabled();
     }
 
-    if (!validateRedirectUrl(verificationCallbackUrl, tenancy)) {
+    if (verificationCallbackUrl && !validateRedirectUrl(verificationCallbackUrl, tenancy)) {
       throw new KnownErrors.RedirectUrlNotWhitelisted();
     }
 
@@ -66,20 +66,22 @@ export const POST = createSmartRouteHandler({
       [KnownErrors.UserWithEmailAlreadyExists]
     );
 
-    runAsynchronouslyAndWaitUntil((async () => {
-      await contactChannelVerificationCodeHandler.sendCode({
-        tenancy,
-        data: {
-          user_id: createdUser.id,
-        },
-        method: {
-          email,
-        },
-        callbackUrl: verificationCallbackUrl,
-      }, {
-        user: createdUser,
-      });
-    })());
+    if (verificationCallbackUrl) {
+      runAsynchronouslyAndWaitUntil((async () => {
+        await contactChannelVerificationCodeHandler.sendCode({
+          tenancy,
+          data: {
+            user_id: createdUser.id,
+          },
+          method: {
+            email,
+          },
+          callbackUrl: verificationCallbackUrl,
+        }, {
+          user: createdUser,
+        });
+      })());
+    }
 
     if (createdUser.requires_totp_mfa) {
       throw await createMfaRequiredError({
