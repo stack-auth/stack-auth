@@ -1,6 +1,8 @@
 'use client';
 
-import { useEffect } from 'react';
+import { runAsynchronously } from '@stackframe/stack-shared/dist/utils/promises';
+import { useRouter } from 'next/navigation';
+import { useCallback, useEffect } from 'react';
 
 // Map regular doc routes to embedded routes and resolve relative paths
 const getEmbeddedUrl = (href: string, currentPath: string): string => {
@@ -84,20 +86,21 @@ const getEmbeddedUrl = (href: string, currentPath: string): string => {
 };
 
 export function EmbeddedLinkInterceptor() {
+  const router = useRouter();
 
   // Function to check if a URL exists
-  const checkUrlExists = async (url: string): Promise<boolean> => {
+  const checkUrlExists = useCallback(async (url: string): Promise<boolean> => {
     try {
       const response = await fetch(url, { method: 'HEAD' });
       return response.ok;
     } catch {
       return false;
     }
-  };
+  }, []);
 
   useEffect(() => {
     const handleClick = (event: MouseEvent) => {
-      if (event.defaultPrevented || event.button !==0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
+      if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
         return;
       }
 
@@ -110,7 +113,7 @@ export function EmbeddedLinkInterceptor() {
       const href = anchor.getAttribute('href');
       if (!href) return;
 
-      if (anchor.target === "_blank" || anchor.hasAttribute('download')) {
+      if (anchor.target === '_blank' || anchor.hasAttribute('download')) {
         return;
       }
 
@@ -119,21 +122,25 @@ export function EmbeddedLinkInterceptor() {
       }
 
       // Intercept internal links that need to be rewritten OR relative links
-      if (href.startsWith('/docs/') || href.startsWith('/api/') || href.startsWith('/dashboard/') ||
-+          (!/^[a-zA-Z][a-zA-Z+\-.]*:/.test(href) && !href.startsWith('#'))) {
+      if (
+        href.startsWith('/docs/') ||
+        href.startsWith('/api/') ||
+        href.startsWith('/dashboard/') ||
+        (!/^[a-zA-Z][a-zA-Z+\-.]*:/.test(href) && !href.startsWith('#'))
+      ) {
         event.preventDefault();
 
         const currentPath = window.location.pathname;
         const embeddedHref = getEmbeddedUrl(href, currentPath);
+        const navigate = () => router.push(embeddedHref);
 
         // Check if the URL exists before navigating (async operation)
-        checkUrlExists(embeddedHref).then((urlExists) => {
-          if (urlExists) {
-            // Navigate to the embedded version
-            window.location.href = embeddedHref;
+        runAsynchronously(async () => {
+          const urlExists = await checkUrlExists(embeddedHref);
+          if (!urlExists) {
+            console.warn(`Embedded link not found, navigating anyway: ${embeddedHref}`);
           }
-        }).catch(() => {
-          // Network error or other issue - silently ignore
+          navigate();
         });
       }
     };
@@ -145,7 +152,7 @@ export function EmbeddedLinkInterceptor() {
     return () => {
       document.removeEventListener('click', handleClick);
     };
-  }, []);
+  }, [checkUrlExists, router]);
 
   return null;
 }

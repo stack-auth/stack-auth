@@ -23,7 +23,7 @@ const getEmbeddedUrl = (href: string, currentPath?: string): string => {
   // Handle absolute paths
   if (href.startsWith('/')) {
     // Already embedded - leave as is
-    if (href.startsWith('/docs-embed/') || href.startsWith('/api-embed/')) {
+    if (href.startsWith('/docs-embed/') || href.startsWith('/api-embed/') || href.startsWith('/dashboard-embed/')) {
       return href;
     }
 
@@ -44,32 +44,45 @@ const getEmbeddedUrl = (href: string, currentPath?: string): string => {
 
   // Handle relative links (like ./setup.mdx or users.mdx)
   // These need to be resolved relative to the current embedded path
-  if (currentPath && currentPath.startsWith('/docs-embed/')) {
+  if (currentPath && (currentPath.startsWith('/docs-embed/') || currentPath.startsWith('/api-embed/') || currentPath.startsWith('/dashboard-embed/'))) {
     // Remove .mdx extension if present
-    const cleanHref = href.replace(/\.mdx$/, '');
+    const cleanHref = href.replace(/\.mdx?$/, '');
+
+    const hashIndex = cleanHref.indexOf('#');
+    const queryIndex = cleanHref.indexOf('?');
+    const splitIndex = hashIndex !== -1 && queryIndex !== -1
+      ? Math.min(hashIndex, queryIndex)
+      : (hashIndex !== -1 ? hashIndex : queryIndex);
+    const pathPart = splitIndex !== -1 ? cleanHref.substring(0, splitIndex) : cleanHref;
+    const suffix = splitIndex !== -1 ? cleanHref.substring(splitIndex) : '';
 
     // Get current directory
     const currentDir = currentPath.substring(0, currentPath.lastIndexOf('/'));
 
     // Resolve relative path
-    if (cleanHref.startsWith('./')) {
-      return `${currentDir}/${cleanHref.substring(2)}`;
-    } else if (cleanHref.startsWith('../')) {
+    let resolvedPath: string;
+    if (pathPart.startsWith('./')) {
+      resolvedPath = `${currentDir}/${pathPart.substring(2)}`;
+    } else if (pathPart.startsWith('../')) {
       // Go up one directory
       const parentDir = currentDir.substring(0, currentDir.lastIndexOf('/'));
-      return `${parentDir}/${cleanHref.substring(3)}`;
+      resolvedPath = `${parentDir}/${pathPart.substring(3)}`;
     } else {
       // Same directory
-      return `${currentDir}/${cleanHref}`;
+      resolvedPath = `${currentDir}/${pathPart}`;
     }
+    return resolvedPath + suffix;
   }
 
   // Fallback - return as is
   return href;
 };
 
-export function EmbeddedLink({ href, isEmbedded, children, ...props }: EmbeddedLinkProps) {
+export function EmbeddedLink({ href, isEmbedded, children, ...restProps }: EmbeddedLinkProps) {
   const currentPath = usePathname();
+
+  // Explicitly type props to exclude already-destructured properties
+  const props = restProps as Omit<ComponentProps<'a'>, 'href' | 'children' | 'isEmbedded'>;
 
   // If not embedded or no href, use regular link behavior
   if (!isEmbedded || !href) {

@@ -110,15 +110,18 @@ export function EmbeddedDocsMessageBridge() {
       const messageData = event.data as ParentMessage;
       if (messageData.type === 'NAVIGATE_BACK') {
         if (indexRef.current > 0) {
-          indexRef.current -= 1;
-          const targetPath = historyRef.current[indexRef.current];
-          if (targetPath) {
-          router.push(targetPath);
-          } else {
-          notifyParent(false);
+          const nextIndex = indexRef.current - 1;
+          const targetPath = historyRef.current[nextIndex];
+
+          if (!targetPath) {
+            notifyParent(false);
+            return;
           }
+
+          indexRef.current = nextIndex;
+          router.push(targetPath);
         } else {
-        notifyParent(false);
+          notifyParent(false);
         }
       }
     };
