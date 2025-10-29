@@ -45,12 +45,12 @@ export function AppIcon({ appId, className, disabled, style }: {
     )}>
       {appFrontend.logo ? (
         <div
-          className="absolute inset-[20%] w-[60%] h-[60%] rounded-[24.154%] flex items-center justify-center border"
+          className="absolute inset-[20%] w-[60%] h-[60%] rounded-[24.154%] overflow-hidden flex items-center justify-center border"
           style={{
             opacity: disabled ? 0.6 : 1,
           }}
         >
-          <appFrontend.logo className="rounded-[24.154%]" />
+          <appFrontend.logo />
         </div>
       ) : (
         <>

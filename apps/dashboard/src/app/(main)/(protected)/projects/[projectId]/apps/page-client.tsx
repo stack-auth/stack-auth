@@ -47,11 +47,11 @@ export default function PageClient() {
       </section>
 
       {/* Apps by Tag Sections */}
-      {Array.from(appsByTag.entries()).filter(([_, apps]) => apps.some(appId => ALL_APPS[appId].stage !== "alpha")).map(([tag, apps]) => (
+      {Array.from(appsByTag.entries()).filter(([_, apps]) => apps.some(appId => process.env.NODE_ENV === "development" || ALL_APPS[appId].stage !== "alpha")).map(([tag, apps]) => (
         <section key={tag}>
           <h2 className="font-bold my-4">{ALL_APP_TAGS[tag as keyof typeof ALL_APP_TAGS].displayName}</h2>
           <div className="flex gap-1 lg:gap-8 flex-wrap">
-            {apps.filter(appId => ALL_APPS[appId].stage !== "alpha").map(appId => (
+            {apps.filter(appId => process.env.NODE_ENV === "development" || ALL_APPS[appId].stage !== "alpha").map(appId => (
               <AppSquare key={appId} appId={appId} />
             ))}
           </div>
