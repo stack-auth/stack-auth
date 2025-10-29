@@ -1532,3 +1532,64 @@ it("should increment and decrement userCount when a user is added to a project",
   expect(finalProjectResponse.body.total_users).toBe(0);
 
 });
+
+it("should preserve API Keys app enabled state when updating allowUserApiKeys config", async ({ expect }) => {
+  await Auth.Otp.signIn();
+  const { adminAccessToken } = await Project.createAndGetAdminToken();
+
+  // Enable the API Keys app
+  const enableAppResponse = await niceBackendFetch("/api/v1/internal/config/override", {
+    accessType: "admin",
+    method: "PATCH",
+    headers: {
+      'x-stack-admin-access-token': adminAccessToken,
+    },
+    body: {
+      config_override_string: JSON.stringify({
+        'apps.installed.api-keys': {
+          enabled: true,
+        },
+      }),
+    },
+  });
+  expect(enableAppResponse).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": {},
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+
+  // Verify the API Keys app is enabled
+  const getConfigResponse1 = await niceBackendFetch("/api/v1/internal/config", {
+    accessType: "admin",
+    headers: {
+      'x-stack-admin-access-token': adminAccessToken,
+    },
+  });
+  expect(getConfigResponse1.status).toBe(200);
+  expect(JSON.parse(getConfigResponse1.body.config_string).apps.installed["api-keys"]).toMatchInlineSnapshot(`
+    { "enabled": true }
+  `);
+
+  // Update allowUserApiKeys using the old project update endpoint
+  const { updateProjectResponse } = await Project.updateCurrent(adminAccessToken, {
+    config: {
+      allow_user_api_keys: true,
+    },
+  });
+  expect(updateProjectResponse.status).toBe(200);
+  expect(updateProjectResponse.body.config.allow_user_api_keys).toBe(true);
+
+  // Verify the API Keys app is still enabled after the update
+  const getConfigResponse2 = await niceBackendFetch("/api/v1/internal/config", {
+    accessType: "admin",
+    headers: {
+      'x-stack-admin-access-token': adminAccessToken,
+    },
+  });
+  expect(getConfigResponse2.status).toBe(200);
+  expect(JSON.parse(getConfigResponse2.body.config_string).apps.installed["api-keys"]).toMatchInlineSnapshot(`
+    { "enabled": true }
+  `);
+});
