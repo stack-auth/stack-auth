@@ -2,11 +2,10 @@
 import { useAdminApp } from '@/app/(main)/(protected)/projects/[projectId]/use-admin-app';
 import { useRouter } from "@/components/router";
 import { ServerUser } from '@stackframe/stack';
-import { deepPlainEquals } from '@stackframe/stack-shared/dist/utils/objects';
 import { deindent } from '@stackframe/stack-shared/dist/utils/strings';
-import { ActionCell, AvatarCell, BadgeCell, DataTableColumnHeader, DataTableManualPagination, DateCell, SearchToolbarItem, SimpleTooltip, TextCell } from "@stackframe/stack-ui";
-import { ColumnDef, ColumnFiltersState, Row, SortingState, Table } from "@tanstack/react-table";
-import { useState } from "react";
+import { ActionCell, AvatarCell, BadgeCell, DataTableColumnHeader, DataTableManualPagination, DateCell, SearchToolbarItem, SimpleTooltip, Skeleton, TableCell, TableRow, TextCell } from "@stackframe/stack-ui";
+import { ColumnDef, ColumnFiltersState, Row, SortingState, Table as TableType } from "@tanstack/react-table";
+import { useEffect, useCallback, useRef, useState } from "react";
 import { Link } from '../link';
 import { CreateCheckoutDialog } from '../payments/create-checkout-dialog';
 import { DeleteUserDialog, ImpersonateUserDialog } from '../user-dialogs';
@@ -16,7 +15,11 @@ export type ExtendedServerUser = ServerUser & {
   emailVerified: 'verified' | 'unverified',
 };
 
-function userToolbarRender<TData>(table: Table<TData>, showAnonymous: boolean, setShowAnonymous: (value: boolean) => void) {
+function userToolbarRender<TData>(
+  table: TableType<TData>,
+  showAnonymous: boolean,
+  onIncludeAnonymousChange: (value: boolean, table: TableType<TData>) => void,
+) {
   return (
     <>
       <SearchToolbarItem table={table} placeholder="Search table" />
@@ -25,7 +28,7 @@ function userToolbarRender<TData>(table: Table<TData>, showAnonymous: boolean, s
           <input
             type="checkbox"
             checked={showAnonymous}
-            onChange={(e) => setShowAnonymous(e.target.checked)}
+            onChange={(e) => onIncludeAnonymousChange(e.target.checked, table)}
             className="rounded border-gray-300"
           />
           Show anonymous users
@@ -117,7 +120,7 @@ export const getCommonUserColumns = <T extends ExtendedServerUser>() => [
   {
     accessorKey: "displayName",
     header: ({ column }) => <DataTableColumnHeader column={column} columnTitle="Display Name" />,
-    cell: ({ row }) =>  <TextCell size={120}>
+    cell: ({ row }) => <TextCell size={120}>
       <div className="flex items-center gap-2">
         <span className={row.original.displayName === null ? 'text-slate-400' : ''}>{row.original.displayName ?? '–'}</span>
         {row.original.isAnonymous && <span className="px-2 py-0.5 text-xs bg-gray-100 text-gray-600 rounded">Anonymous</span>}
@@ -130,7 +133,7 @@ export const getCommonUserColumns = <T extends ExtendedServerUser>() => [
     header: ({ column }) => <DataTableColumnHeader column={column} columnTitle="Primary Email" />,
     cell: ({ row }) => <TextCell
       size={180}
-      icon={row.original.primaryEmail && row.original.emailVerified === "unverified" && <SimpleTooltip tooltip='Email not verified' type='warning'/>}>
+      icon={row.original.primaryEmail && row.original.emailVerified === "unverified" && <SimpleTooltip tooltip='Email not verified' type='warning' />}>
       {row.original.primaryEmail ?? '–'}
     </TextCell>,
     enableSorting: false,
@@ -183,53 +186,101 @@ export function extendUsers(users: ServerUser[] & { nextCursor?: string | null }
   return Object.assign(extended, { nextCursor: users.nextCursor });
 }
 
+type ExtendedUsersResult = ReturnType<typeof extendUsers>;
+
 export function UserTable() {
   const stackAdminApp = useAdminApp();
   const router = useRouter();
-  const [filters, setFilters] = useState<Parameters<typeof stackAdminApp.listUsers>[0]>({
-    limit: 10,
-    orderBy: "signedUpAt",
-    desc: true,
-    includeAnonymous: false,
+  const [users, setUsers] = useState<ExtendedUsersResult>(() => {
+    const empty = [] as ExtendedUsersResult;
+    return empty;
   });
+  const [includeAnonymous, setIncludeAnonymous] = useState(false);
+  const [isFetching, setIsFetching] = useState(false);
 
-  const users = extendUsers(stackAdminApp.useUsers(filters));
+  const latestRequestIdRef = useRef(0);
+  const skeletonRows = isFetching ? (
+    <>
+      {Array.from({ length: 5 }).map((_, index) => (
+        <TableRow key={`user-table-skeleton-${index}`}>
+          <TableCell>
+            <Skeleton className="h-6 w-6 rounded-full" />
+          </TableCell>
+          <TableCell>
+            <Skeleton className="h-4 min-w-[60px]" />
+          </TableCell>
+          <TableCell>
+            <Skeleton className="h-4 min-w-[120px]" />
+          </TableCell>
+          <TableCell>
+            <Skeleton className="h-4 w-40" />
+          </TableCell>
+          <TableCell>
+            <Skeleton className="h-4 w-24" />
+          </TableCell>
+          <TableCell>
+            <Skeleton className="h-4 w-16" />
+          </TableCell>
+          <TableCell>
+            <Skeleton className="h-5 w-16" />
+          </TableCell>
+          <TableCell></TableCell>
+        </TableRow>
+      ))}
+    </>
+  ) : null;
+  const loadingState = skeletonRows ? { isLoading: true, skeleton: skeletonRows } : undefined;
 
-  const onUpdate = async (options: {
+  const onUpdate = useCallback(async ({
+    cursor,
+    limit,
+    sorting,
+    columnFilters: _columnFilters,
+    globalFilters,
+  }: {
     cursor: string,
     limit: number,
     sorting: SortingState,
     columnFilters: ColumnFiltersState,
     globalFilters: any,
   }) => {
-    let newFilters: Parameters<typeof stackAdminApp.listUsers>[0] = {
-      cursor: options.cursor,
-      limit: options.limit,
-      query: options.globalFilters,
+    const primarySort = sorting[0];
+    const nextFilters: Parameters<typeof stackAdminApp.listUsers>[0] = {
+      cursor,
+      limit,
+      query: globalFilters,
+      orderBy: "signedUpAt",
+      desc: primarySort?.id === "signedUpAt" ? primarySort.desc : true,
+      includeAnonymous,
     };
 
-    const orderMap = {
-      signedUpAt: "signedUpAt",
-    } as const;
-    if (options.sorting.length > 0 && options.sorting[0].id in orderMap) {
-      newFilters.orderBy = orderMap[options.sorting[0].id as keyof typeof orderMap];
-      newFilters.desc = options.sorting[0].desc;
+    const requestId = ++latestRequestIdRef.current;
+    setIsFetching(true);
+    try {
+      const freshUsers = extendUsers(await stackAdminApp.listUsers(nextFilters));
+      if (requestId === latestRequestIdRef.current) {
+        setUsers(freshUsers);
+      }
+      return { nextCursor: freshUsers.nextCursor ?? null };
+    } finally {
+      if (requestId === latestRequestIdRef.current) {
+        setIsFetching(false);
+      }
     }
+  }, [includeAnonymous, stackAdminApp]);
 
-    if (deepPlainEquals(newFilters, filters, { ignoreUndefinedValues: true })) {
-      // save ourselves a request if the filters didn't change
-      return { nextCursor: users.nextCursor };
-    } else {
-      setFilters(newFilters);
-      const users = await stackAdminApp.listUsers(newFilters);
-      return { nextCursor: users.nextCursor };
+  const handleIncludeAnonymousChange = useCallback((value: boolean, table: TableType<ExtendedServerUser>) => {
+    if (includeAnonymous === value) {
+      return;
     }
-  };
+    setIncludeAnonymous(value);
+    table.setPageIndex(0);
+  }, [includeAnonymous]);
 
   return <DataTableManualPagination
     columns={columns}
     data={users}
-    toolbarRender={(table) => userToolbarRender(table, filters?.includeAnonymous ?? false, (value) => setFilters(prev => ({ ...prev, includeAnonymous: value })))}
+    toolbarRender={(table) => userToolbarRender(table, includeAnonymous, handleIncludeAnonymousChange)}
     onUpdate={onUpdate}
     defaultVisibility={{ emailVerified: false }}
     defaultColumnFilters={[]}
@@ -237,5 +288,7 @@ export function UserTable() {
     onRowClick={(row) => {
       router.push(`/projects/${encodeURIComponent(stackAdminApp.projectId)}/users/${encodeURIComponent(row.id)}`);
     }}
+    loadingState={loadingState}
+    externalRefreshKey={includeAnonymous}
   />;
 }
