@@ -205,7 +205,7 @@ export function UserTable() {
   const [isFetching, setIsFetching] = useState(false);
 
   const latestRequestIdRef = useRef(0);
-  const loadingState = isFetching ? { isLoading: true, rowCount: 5 } : undefined;
+  const loadingState = isFetching ? { isLoading: true, rowCount: 10 } : undefined;
 
   const onUpdate = useCallback(async ({
     cursor,
