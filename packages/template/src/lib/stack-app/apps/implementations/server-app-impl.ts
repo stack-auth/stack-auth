@@ -1109,7 +1109,11 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
 
   // IF_PLATFORM react-like
   useUsers(options?: ServerListUsersOptions): ServerUser[] & { nextCursor: string | null } {
-    const crud = useAsyncCache(this._serverUsersCache, [options?.cursor, options?.limit, options?.orderBy, options?.desc, options?.query] as const, "serverApp.useUsers()");
+    const crud = useAsyncCache(
+      this._serverUsersCache,
+      [options?.cursor, options?.limit, options?.orderBy, options?.desc, options?.query, options?.includeAnonymous] as const,
+      "serverApp.useUsers()",
+    );
     const result: any = crud.items.map((j) => this._serverUserFromCrud(j));
     result.nextCursor = crud.pagination?.next_cursor ?? null;
     return result as any;

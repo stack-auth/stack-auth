@@ -5,7 +5,7 @@ import { ServerUser } from '@stackframe/stack';
 import { deindent } from '@stackframe/stack-shared/dist/utils/strings';
 import { ActionCell, AvatarCell, BadgeCell, DataTableColumnHeader, DataTableManualPagination, DateCell, SearchToolbarItem, SimpleTooltip, Skeleton, TextCell } from "@stackframe/stack-ui";
 import { ColumnDef, ColumnFiltersState, Row, SortingState, Table as TableType } from "@tanstack/react-table";
-import { useEffect, useCallback, useRef, useState } from "react";
+import { useEffect, useCallback, useMemo, useRef, useState } from "react";
 import { Link } from '../link';
 import { CreateCheckoutDialog } from '../payments/create-checkout-dialog';
 import { DeleteUserDialog, ImpersonateUserDialog } from '../user-dialogs';
@@ -203,6 +203,17 @@ export function UserTable() {
   });
   const [includeAnonymous, setIncludeAnonymous] = useState(false);
   const [isFetching, setIsFetching] = useState(false);
+  const liveUsersPreview = stackAdminApp.useUsers({
+    limit: 10,
+    orderBy: "signedUpAt",
+    desc: true,
+    includeAnonymous,
+  });
+
+  const externalRefreshKey = useMemo(() => {
+    const signature = JSON.stringify([...liveUsersPreview]);
+    return `${includeAnonymous}:${signature}:${liveUsersPreview.nextCursor ?? "null"}`;
+  }, [includeAnonymous, liveUsersPreview]);
 
   const latestRequestIdRef = useRef(0);
   const loadingState = isFetching ? { isLoading: true, rowCount: 10 } : undefined;
@@ -265,6 +276,6 @@ export function UserTable() {
       router.push(`/projects/${encodeURIComponent(stackAdminApp.projectId)}/users/${encodeURIComponent(row.id)}`);
     }}
     loadingState={loadingState}
-    externalRefreshKey={String(includeAnonymous)}
+    externalRefreshKey={externalRefreshKey}
   />;
 }
