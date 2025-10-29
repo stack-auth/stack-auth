@@ -23,6 +23,35 @@ export type ProductWithPrices = {
   prices?: Record<string, ProductPriceEntry> | "include-by-default",
 } | null | undefined;
 
+type ProductSnapshot = (TransactionEntry & { type: "product_grant" })["product"];
+
+function buildFallbackProductSnapshot(options: {
+  displayName: string,
+  customerType: "user" | "team" | "custom",
+}): ProductSnapshot {
+  return {
+    displayName: options.displayName,
+    customerType: options.customerType,
+    prices: "include-by-default",
+  } as ProductSnapshot;
+}
+
+function ensureProductSnapshot(product: ProductWithPrices, customerType: "user" | "team" | "custom"): ProductSnapshot {
+  if (product) {
+    const snapshot = product as Partial<ProductSnapshot>;
+    return {
+      ...snapshot,
+      customerType: snapshot.customerType ?? customerType,
+      prices: snapshot.prices ?? "include-by-default",
+      displayName: snapshot.displayName ?? "Unknown product",
+    } as ProductSnapshot;
+  }
+  return buildFallbackProductSnapshot({
+    displayName: "Unknown product",
+    customerType,
+  });
+}
+
 export function resolveSelectedPriceFromProduct(product: ProductWithPrices, priceId?: string | null): SelectedPrice | null {
   if (!product) return null;
   if (!priceId) return null;
@@ -120,7 +149,7 @@ function createProductGrantEntry(options: {
   customerType: "user" | "team" | "custom",
   customerId: string,
   productId: string | null,
-  product: Exclude<ProductWithPrices, null | undefined>,
+  product: ProductSnapshot,
   priceId: string | null,
   quantity: number,
   subscriptionId?: string,
@@ -133,7 +162,7 @@ function createProductGrantEntry(options: {
     customer_type: options.customerType,
     customer_id: options.customerId,
     product_id: options.productId,
-    product: options.product as (TransactionEntry & { type: "product_grant" })["product"],
+    product: options.product,
     price_id: options.priceId,
     quantity: options.quantity,
     subscription_id: options.subscriptionId,
@@ -141,8 +170,12 @@ function createProductGrantEntry(options: {
   };
 }
 
-function resolveItemCustomerType(tenancy: Tenancy, itemId: string): "user" | "team" | "custom" {
-  const itemCfg = getOrUndefined(tenancy.config.payments.items, itemId);
+function resolveItemCustomerType(change: ItemQuantityChange, tenancy: Tenancy): "user" | "team" | "custom" {
+  const recorded = typedToLowercase(change.customerType) as string;
+  if (recorded === "user" || recorded === "team" || recorded === "custom") {
+    return recorded;
+  }
+  const itemCfg = getOrUndefined(tenancy.config.payments.items, change.itemId);
   return itemCfg?.customerType ?? "custom";
 }
 
@@ -150,13 +183,11 @@ export function buildSubscriptionTransaction(options: {
   subscription: Subscription,
 }): Transaction {
   const { subscription } = options;
-  const product = subscription.product as ProductWithPrices;
-  if (!product) {
-    throw new Error(`Missing product payload for subscription ${subscription.id}`);
-  }
-  const selectedPrice = resolveSelectedPriceFromProduct(product, subscription.priceId ?? null);
-  const quantity = subscription.quantity;
   const customerType = typedToLowercase(subscription.customerType) as "user" | "team" | "custom";
+  const product = (subscription.product as ProductWithPrices) ?? null;
+  const productSnapshot = ensureProductSnapshot(product, customerType);
+  const selectedPrice = product ? resolveSelectedPriceFromProduct(product, subscription.priceId ?? null) : null;
+  const quantity = subscription.quantity;
   const chargedAmount = buildChargedAmount(selectedPrice, quantity);
   const testMode = subscription.creationSource === "TEST_MODE";
 
@@ -165,7 +196,7 @@ export function buildSubscriptionTransaction(options: {
       customerType,
       customerId: subscription.customerId,
       productId: subscription.productId ?? null,
-      product,
+      product: productSnapshot,
       priceId: subscription.priceId ?? null,
       quantity,
       subscriptionId: subscription.id,
@@ -197,13 +228,11 @@ export function buildOneTimePurchaseTransaction(options: {
   purchase: OneTimePurchase,
 }): Transaction {
   const { purchase } = options;
-  const product = purchase.product as ProductWithPrices;
-  if (!product) {
-    throw new Error(`Missing product payload for one-time purchase ${purchase.id}`);
-  }
-  const selectedPrice = resolveSelectedPriceFromProduct(product, purchase.priceId ?? null);
-  const quantity = purchase.quantity;
   const customerType = typedToLowercase(purchase.customerType) as "user" | "team" | "custom";
+  const product = (purchase.product as ProductWithPrices) ?? null;
+  const productSnapshot = ensureProductSnapshot(product, customerType);
+  const selectedPrice = product ? resolveSelectedPriceFromProduct(product, purchase.priceId ?? null) : null;
+  const quantity = purchase.quantity;
   const chargedAmount = buildChargedAmount(selectedPrice, quantity);
   const testMode = purchase.creationSource === "TEST_MODE";
 
@@ -212,7 +241,7 @@ export function buildOneTimePurchaseTransaction(options: {
       customerType,
       customerId: purchase.customerId,
       productId: purchase.productId ?? null,
-      product,
+      product: productSnapshot,
       priceId: purchase.priceId ?? null,
       quantity,
       oneTimePurchaseId: purchase.id,
@@ -245,7 +274,7 @@ export function buildItemQuantityChangeTransaction(options: {
   tenancy: Tenancy,
 }): Transaction {
   const { change, tenancy } = options;
-  const customerType = resolveItemCustomerType(tenancy, change.itemId);
+  const customerType = resolveItemCustomerType(change, tenancy);
 
   const entries: TransactionEntry[] = [
     {

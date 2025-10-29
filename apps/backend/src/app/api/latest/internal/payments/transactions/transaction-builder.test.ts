@@ -1,5 +1,5 @@
 import type { ItemQuantityChange, OneTimePurchase, Subscription } from "@prisma/client";
-import { PurchaseCreationSource } from "@prisma/client";
+import { CustomerType, PurchaseCreationSource } from "@prisma/client";
 import { describe, expect, it } from "vitest";
 import type { Tenancy } from "@/lib/tenancies";
 import { buildItemQuantityChangeTransaction, buildOneTimePurchaseTransaction, buildSubscriptionTransaction } from "./transaction-builder";
@@ -118,6 +118,7 @@ describe("transaction-builder", () => {
             "one_time_purchase_id": undefined,
             "price_id": "price_basic",
             "product": {
+              "customerType": "user",
               "displayName": "Basic Plan",
               "prices": {
                 "price_basic": {
@@ -174,6 +175,7 @@ describe("transaction-builder", () => {
         "one_time_purchase_id": undefined,
         "price_id": "price_basic",
         "product": {
+          "customerType": "user",
           "displayName": "Basic Plan",
           "prices": {
             "price_basic": {
@@ -212,6 +214,7 @@ describe("transaction-builder", () => {
             "one_time_purchase_id": "otp_999",
             "price_id": "price_onetime",
             "product": {
+              "customerType": "team",
               "displayName": "Add-on Pack",
               "prices": {
                 "price_onetime": {
@@ -269,6 +272,94 @@ describe("transaction-builder", () => {
         "id": "iqc_77",
         "test_mode": false,
         "type": "manual-item-quantity-change",
+      }
+    `);
+  });
+
+  it("builds subscription transactions when product snapshot is missing", () => {
+    const subscription = createSubscription({ product: null });
+    const transaction = buildSubscriptionTransaction({ subscription });
+
+    expect(transaction).toMatchInlineSnapshot(`
+      {
+        "adjustedBy": [],
+        "created_at_millis": 1735689600000,
+        "effective_at_millis": 1735689600000,
+        "entries": [
+          {
+            "adjusted_entry_index": null,
+            "adjusted_transaction_id": null,
+            "customer_id": "user_1",
+            "customer_type": "user",
+            "one_time_purchase_id": undefined,
+            "price_id": "price_basic",
+            "product": {
+              "customerType": "user",
+              "displayName": "Unknown product",
+              "prices": "include-by-default",
+            },
+            "product_id": "prod_basic",
+            "quantity": 3,
+            "subscription_id": "sub_123",
+            "type": "product_grant",
+          },
+        ],
+        "id": "sub_123",
+        "test_mode": false,
+        "type": "purchase",
+      }
+    `);
+  });
+
+  it("builds one-time purchase transactions when product snapshot is missing", () => {
+    const purchase = createOneTimePurchase({ product: null });
+    const transaction = buildOneTimePurchaseTransaction({ purchase });
+
+    expect(transaction).toMatchInlineSnapshot(`
+      {
+        "adjustedBy": [],
+        "created_at_millis": 1742042096000,
+        "effective_at_millis": 1742042096000,
+        "entries": [
+          {
+            "adjusted_entry_index": null,
+            "adjusted_transaction_id": null,
+            "customer_id": "team_5",
+            "customer_type": "team",
+            "one_time_purchase_id": "otp_999",
+            "price_id": "price_onetime",
+            "product": {
+              "customerType": "team",
+              "displayName": "Unknown product",
+              "prices": "include-by-default",
+            },
+            "product_id": "prod_addon",
+            "quantity": 4,
+            "subscription_id": undefined,
+            "type": "product_grant",
+          },
+        ],
+        "id": "otp_999",
+        "test_mode": false,
+        "type": "purchase",
+      }
+    `);
+  });
+
+  it("prefers the recorded customer type for item quantity changes", () => {
+    const change = createItemQuantityChange({ customerType: CustomerType.TEAM });
+    const tenancy = createTenancyWithItemConfig("user");
+    const transaction = buildItemQuantityChangeTransaction({ change, tenancy });
+
+    expect(transaction.entries[0]).toMatchInlineSnapshot(`
+      {
+        "adjusted_entry_index": null,
+        "adjusted_transaction_id": null,
+        "customer_id": "external_42",
+        "customer_type": "team",
+        "item_id": "seats",
+        "quantity": -2,
+        "type": "item_quantity_change",
       }
     `);
   });
