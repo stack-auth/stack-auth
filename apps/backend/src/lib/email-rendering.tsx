@@ -122,9 +122,11 @@ export async function renderEmailWithTemplate(
   };
   const executeResult = await freestyle.executeScript(result.data, { nodeModules });
   if (executeResult.status === "error") {
+    console.log("EXECUTE_RESULT_3");
     return Result.error(`${executeResult.error}`);
   }
   if (!executeResult.data.result) {
+    console.log("EXECUTE_RESULT_4");
     const noResultError = new StackAssertionError("No result from Freestyle", {
       executeResult,
       templateOrDraftComponent,
@@ -213,9 +215,11 @@ export async function renderEmailsWithTemplateBatched(
   };
   const executeResult = await freestyle.executeScript(result.data, { nodeModules });
   if (executeResult.status === "error") {
+    console.log("EXECUTE_RESULT_1");
     return Result.error(executeResult.error);
   }
   if (!executeResult.data.result) {
+    console.log("EXECUTE_RESULT_2");
     const noResultError = new StackAssertionError("No result from Freestyle", {
       executeResult,
       templateOrDraftComponent,

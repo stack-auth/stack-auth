@@ -1,5 +1,5 @@
 import { ChatContent } from "@stackframe/stack-shared/dist/interface/admin-interface";
-import type { AdminTransaction } from "@stackframe/stack-shared/dist/interface/crud/transactions";
+import type { Transaction } from "@stackframe/stack-shared/dist/interface/crud/transactions";
 import { InternalSession } from "@stackframe/stack-shared/dist/sessions";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { AsyncStoreProperty, EmailConfig } from "../../common";
@@ -35,7 +35,7 @@ export type StackAdminApp<HasTokenStore extends boolean = boolean, ProjectId ext
     [
       { cursor?: string, limit?: number, type?: 'subscription' | 'one_time' | 'item_quantity_change', customerType?: 'user' | 'team' | 'custom' }
     ],
-    { transactions: AdminTransaction[], nextCursor: string | null },
+    { transactions: Transaction[], nextCursor: string | null },
     true
   >
   & {

@@ -1,33 +1,12 @@
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { Prisma } from "@prisma/client";
-import { AdminTransaction, adminTransaction } from "@stackframe/stack-shared/dist/interface/crud/transactions";
+import { transactionSchema, type Transaction } from "@stackframe/stack-shared/dist/interface/crud/transactions";
 import { adaptSchema, adminAuthTypeSchema, yupArray, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { getOrUndefined } from "@stackframe/stack-shared/dist/utils/objects";
-import { typedToLowercase, typedToUppercase } from "@stackframe/stack-shared/dist/utils/strings";
+import { typedToUppercase } from "@stackframe/stack-shared/dist/utils/strings";
+import { buildItemQuantityChangeTransaction, buildOneTimePurchaseTransaction, buildSubscriptionTransaction } from "./transaction-builder";
 
-
-type SelectedPrice = NonNullable<AdminTransaction['price']>;
-type ProductWithPrices = {
-  displayName?: string,
-  prices?: Record<string, SelectedPrice & { serverOnly?: unknown, freeTrial?: unknown }> | "include-by-default",
-} | null | undefined;
-
-function resolveSelectedPriceFromProduct(product: ProductWithPrices, priceId?: string | null): SelectedPrice | null {
-  if (!product) return null;
-  if (!priceId) return null;
-  const prices = product.prices;
-  if (!prices || prices === "include-by-default") return null;
-  const selected = prices[priceId as keyof typeof prices] as (SelectedPrice & { serverOnly?: unknown, freeTrial?: unknown }) | undefined;
-  if (!selected) return null;
-  const { serverOnly: _serverOnly, freeTrial: _freeTrial, ...rest } = selected as any;
-  return rest as SelectedPrice;
-}
-
-function getProductDisplayName(product: ProductWithPrices): string | null {
-  return product?.displayName ?? null;
-}
-
+type TransactionSource = "subscription" | "item_quantity_change" | "one_time";
 
 export const GET = createSmartRouteHandler({
   metadata: {
@@ -50,7 +29,7 @@ export const GET = createSmartRouteHandler({
     statusCode: yupNumber().oneOf([200]).defined(),
     bodyType: yupString().oneOf(["json"]).defined(),
     body: yupObject({
-      transactions: yupArray(adminTransaction).defined(),
+      transactions: yupArray(transactionSchema).defined(),
       next_cursor: yupString().nullable().defined(),
     }).defined(),
   }),
@@ -109,7 +88,13 @@ export const GET = createSmartRouteHandler({
     const baseOrder = [{ createdAt: "desc" as const }, { id: "desc" as const }];
     const customerTypeFilter = query.customer_type ? { customerType: typedToUppercase(query.customer_type) } : {};
 
-    let merged: AdminTransaction[] = [];
+    type TransactionRow = {
+      source: TransactionSource,
+      id: string,
+      createdAt: Date,
+      transaction: Transaction,
+    };
+    let merged: TransactionRow[] = [];
 
     const [subs, iqcs, otps] = await Promise.all([
       (query.type === "subscription" || !query.type) ? prisma.subscription.findMany({
@@ -129,63 +114,40 @@ export const GET = createSmartRouteHandler({
       }) : [],
     ]);
 
-    const subRows: AdminTransaction[] = subs.map((s) => ({
-      id: s.id,
-      type: 'subscription',
-      created_at_millis: s.createdAt.getTime(),
-      customer_type: typedToLowercase(s.customerType),
-      customer_id: s.customerId,
-      quantity: s.quantity,
-      test_mode: s.creationSource === 'TEST_MODE',
-      product_display_name: getProductDisplayName(s.product as ProductWithPrices),
-      price: resolveSelectedPriceFromProduct(s.product as ProductWithPrices, s.priceId ?? null),
-      status: s.status,
-    }));
-
-    const iqcRows: AdminTransaction[] = iqcs.map((i) => {
-      const itemCfg = getOrUndefined(auth.tenancy.config.payments.items, i.itemId) as { customerType?: 'user' | 'team' | 'custom' } | undefined;
-      const customerType = (itemCfg && itemCfg.customerType) ? itemCfg.customerType : 'custom';
-      return {
-        id: i.id,
-        type: 'item_quantity_change',
-        created_at_millis: i.createdAt.getTime(),
-        customer_type: customerType,
-        customer_id: i.customerId,
-        quantity: i.quantity,
-        test_mode: false,
-        product_display_name: null,
-        price: null,
-        status: null,
-        item_id: i.itemId,
-        description: i.description ?? null,
-        expires_at_millis: i.expiresAt ? i.expiresAt.getTime() : null,
-      } as const;
+    merged = [
+      ...subs.map((subscription) => ({
+        source: "subscription" as const,
+        id: subscription.id,
+        createdAt: subscription.createdAt,
+        transaction: buildSubscriptionTransaction({ subscription }),
+      })),
+      ...iqcs.map((change) => ({
+        source: "item_quantity_change" as const,
+        id: change.id,
+        createdAt: change.createdAt,
+        transaction: buildItemQuantityChangeTransaction({ change, tenancy: auth.tenancy }),
+      })),
+      ...otps.map((purchase) => ({
+        source: "one_time" as const,
+        id: purchase.id,
+        createdAt: purchase.createdAt,
+        transaction: buildOneTimePurchaseTransaction({ purchase }),
+      })),
+    ].sort((a, b) => {
+      if (a.createdAt.getTime() === b.createdAt.getTime()) {
+        return a.id < b.id ? 1 : -1;
+      }
+      return a.createdAt.getTime() < b.createdAt.getTime() ? 1 : -1;
     });
-
-    const otpRows: AdminTransaction[] = otps.map((o) => ({
-      id: o.id,
-      type: 'one_time',
-      created_at_millis: o.createdAt.getTime(),
-      customer_type: typedToLowercase(o.customerType),
-      customer_id: o.customerId,
-      quantity: o.quantity,
-      test_mode: o.creationSource === 'TEST_MODE',
-      product_display_name: getProductDisplayName(o.product as ProductWithPrices),
-      price: resolveSelectedPriceFromProduct(o.product as ProductWithPrices, o.priceId ?? null),
-      status: null,
-    }));
-
-    merged = [...subRows, ...iqcRows, ...otpRows]
-      .sort((a, b) => (a.created_at_millis === b.created_at_millis ? (a.id < b.id ? 1 : -1) : (a.created_at_millis < b.created_at_millis ? 1 : -1)));
 
     const page = merged.slice(0, limit);
     let lastSubId = "";
     let lastIqcId = "";
     let lastOtpId = "";
     for (const r of page) {
-      if (r.type === 'subscription') lastSubId = r.id;
-      if (r.type === 'item_quantity_change') lastIqcId = r.id;
-      if (r.type === 'one_time') lastOtpId = r.id;
+      if (r.source === "subscription") lastSubId = r.id;
+      if (r.source === "item_quantity_change") lastIqcId = r.id;
+      if (r.source === "one_time") lastOtpId = r.id;
     }
 
     const nextCursor = page.length === limit
@@ -196,11 +158,10 @@ export const GET = createSmartRouteHandler({
       statusCode: 200,
       bodyType: "json",
       body: {
-        transactions: page,
+        transactions: page.map((row) => row.transaction),
         next_cursor: nextCursor,
       },
     };
   },
 });
-
 

@@ -4,7 +4,7 @@ import { InternalApiKeyCreateCrudResponse } from "@stackframe/stack-shared/dist/
 import { EmailTemplateCrud } from "@stackframe/stack-shared/dist/interface/crud/email-templates";
 import { InternalApiKeysCrud } from "@stackframe/stack-shared/dist/interface/crud/internal-api-keys";
 import { ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
-import type { AdminTransaction } from "@stackframe/stack-shared/dist/interface/crud/transactions";
+import type { Transaction } from "@stackframe/stack-shared/dist/interface/crud/transactions";
 import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { pick } from "@stackframe/stack-shared/dist/utils/objects";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
@@ -579,13 +579,13 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
     );
   }
 
-  async listTransactions(params: { cursor?: string, limit?: number, type?: 'subscription' | 'one_time' | 'item_quantity_change', customerType?: 'user' | 'team' | 'custom' }): Promise<{ transactions: AdminTransaction[], nextCursor: string | null }> {
+  async listTransactions(params: { cursor?: string, limit?: number, type?: 'subscription' | 'one_time' | 'item_quantity_change', customerType?: 'user' | 'team' | 'custom' }): Promise<{ transactions: Transaction[], nextCursor: string | null }> {
     const crud = Result.orThrow(await this._transactionsCache.getOrWait([params.cursor, params.limit, params.type, params.customerType] as const, "write-only"));
     return crud;
   }
 
   // IF_PLATFORM react-like
-  useTransactions(params: { cursor?: string, limit?: number, type?: 'subscription' | 'one_time' | 'item_quantity_change', customerType?: 'user' | 'team' | 'custom' }): { transactions: AdminTransaction[], nextCursor: string | null } {
+  useTransactions(params: { cursor?: string, limit?: number, type?: 'subscription' | 'one_time' | 'item_quantity_change', customerType?: 'user' | 'team' | 'custom' }): { transactions: Transaction[], nextCursor: string | null } {
     const data = useAsyncCache(this._transactionsCache, [params.cursor, params.limit, params.type, params.customerType] as const, "adminApp.useTransactions()");
     return data;
   }

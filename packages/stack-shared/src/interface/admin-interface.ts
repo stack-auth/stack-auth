@@ -8,7 +8,7 @@ import { ProjectPermissionDefinitionsCrud } from "./crud/project-permissions";
 import { ProjectsCrud } from "./crud/projects";
 import { SvixTokenCrud } from "./crud/svix-token";
 import { TeamPermissionDefinitionsCrud } from "./crud/team-permissions";
-import type { AdminTransaction } from "./crud/transactions";
+import type { Transaction } from "./crud/transactions";
 import { ServerAuthApplicationOptions, StackServerInterface } from "./server-interface";
 
 
@@ -582,7 +582,7 @@ export class StackAdminInterface extends StackServerInterface {
     return await response.json();
   }
 
-  async listTransactions(params?: { cursor?: string, limit?: number, type?: 'subscription' | 'one_time' | 'item_quantity_change', customerType?: 'user' | 'team' | 'custom' }): Promise<{ transactions: AdminTransaction[], nextCursor: string | null }> {
+  async listTransactions(params?: { cursor?: string, limit?: number, type?: 'subscription' | 'one_time' | 'item_quantity_change', customerType?: 'user' | 'team' | 'custom' }): Promise<{ transactions: Transaction[], nextCursor: string | null }> {
     const qs = new URLSearchParams();
     if (params?.cursor) qs.set('cursor', params.cursor);
     if (typeof params?.limit === 'number') qs.set('limit', String(params.limit));
@@ -593,7 +593,7 @@ export class StackAdminInterface extends StackServerInterface {
       { method: 'GET' },
       null,
     );
-    const json = await response.json() as { transactions: AdminTransaction[], next_cursor: string | null };
+    const json = await response.json() as { transactions: Transaction[], next_cursor: string | null };
     return { transactions: json.transactions, nextCursor: json.next_cursor };
   }
 
