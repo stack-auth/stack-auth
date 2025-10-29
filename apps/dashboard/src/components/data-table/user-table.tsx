@@ -3,7 +3,7 @@ import { useAdminApp } from '@/app/(main)/(protected)/projects/[projectId]/use-a
 import { useRouter } from "@/components/router";
 import { ServerUser } from '@stackframe/stack';
 import { deindent } from '@stackframe/stack-shared/dist/utils/strings';
-import { ActionCell, AvatarCell, BadgeCell, DataTableColumnHeader, DataTableManualPagination, DateCell, SearchToolbarItem, SimpleTooltip, Skeleton, TableCell, TableRow, TextCell } from "@stackframe/stack-ui";
+import { ActionCell, AvatarCell, BadgeCell, DataTableColumnHeader, DataTableManualPagination, DateCell, SearchToolbarItem, SimpleTooltip, Skeleton, TextCell } from "@stackframe/stack-ui";
 import { ColumnDef, ColumnFiltersState, Row, SortingState, Table as TableType } from "@tanstack/react-table";
 import { useEffect, useCallback, useRef, useState } from "react";
 import { Link } from '../link';
@@ -110,6 +110,9 @@ export const getCommonUserColumns = <T extends ExtendedServerUser>() => [
       return <AvatarCellWrapper user={row.original} />;
     },
     enableSorting: false,
+    meta: {
+      loading: <Skeleton className="h-6 w-6 rounded-full" />,
+    },
   },
   {
     accessorKey: "id",
@@ -168,6 +171,9 @@ const columns: ColumnDef<ExtendedServerUser>[] = [
   {
     id: "actions",
     cell: ({ row }) => <UserActions row={row} />,
+    meta: {
+      loading: <div className="p-1"><Skeleton className="h-6 w-6 rounded-md" /></div>
+    },
   },
 ];
 
@@ -199,37 +205,7 @@ export function UserTable() {
   const [isFetching, setIsFetching] = useState(false);
 
   const latestRequestIdRef = useRef(0);
-  const skeletonRows = isFetching ? (
-    <>
-      {Array.from({ length: 5 }).map((_, index) => (
-        <TableRow key={`user-table-skeleton-${index}`}>
-          <TableCell>
-            <Skeleton className="h-6 w-6 rounded-full" />
-          </TableCell>
-          <TableCell>
-            <Skeleton className="h-4 min-w-[60px]" />
-          </TableCell>
-          <TableCell>
-            <Skeleton className="h-4 min-w-[120px]" />
-          </TableCell>
-          <TableCell>
-            <Skeleton className="h-4 w-40" />
-          </TableCell>
-          <TableCell>
-            <Skeleton className="h-4 w-24" />
-          </TableCell>
-          <TableCell>
-            <Skeleton className="h-4 w-16" />
-          </TableCell>
-          <TableCell>
-            <Skeleton className="h-5 w-16" />
-          </TableCell>
-          <TableCell></TableCell>
-        </TableRow>
-      ))}
-    </>
-  ) : null;
-  const loadingState = skeletonRows ? { isLoading: true, skeleton: skeletonRows } : undefined;
+  const loadingState = isFetching ? { isLoading: true, rowCount: 5 } : undefined;
 
   const onUpdate = useCallback(async ({
     cursor,
@@ -250,7 +226,7 @@ export function UserTable() {
       limit,
       query: globalFilters,
       orderBy: "signedUpAt",
-      desc: primarySort?.id === "signedUpAt" ? primarySort.desc : true,
+      desc: primarySort.id === "signedUpAt" ? primarySort.desc : true,
       includeAnonymous,
     };
 
@@ -289,6 +265,6 @@ export function UserTable() {
       router.push(`/projects/${encodeURIComponent(stackAdminApp.projectId)}/users/${encodeURIComponent(row.id)}`);
     }}
     loadingState={loadingState}
-    externalRefreshKey={includeAnonymous}
+    externalRefreshKey={String(includeAnonymous)}
   />;
 }

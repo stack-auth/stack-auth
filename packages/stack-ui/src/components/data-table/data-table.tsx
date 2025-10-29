@@ -2,6 +2,7 @@
 
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import {
+  Skeleton,
   Table,
   TableBody,
   TableCell,
@@ -10,6 +11,7 @@ import {
   TableRow,
 } from "@stackframe/stack-ui";
 import {
+  Column,
   ColumnDef,
   ColumnFiltersState,
   GlobalFiltering,
@@ -43,9 +45,20 @@ export function TableView<TData, TValue>(props: {
   onRowClick?: (row: TData) => void,
   loadingState?: {
     isLoading: boolean,
-    skeleton: React.ReactNode,
+    rowCount?: number,
   },
 }) {
+  const visibleColumns = props.table.getVisibleLeafColumns();
+
+  const loadingRowCount = props.loadingState?.isLoading ? (props.loadingState.rowCount ?? 10) : 0;
+
+  const renderLoadingCell = (column: Column<TData, unknown>) => {
+    const meta = column.columnDef.meta as {
+      loading?: React.ReactNode,
+    } | undefined;
+    return meta?.loading ?? <Skeleton className="h-4 w-full" />;
+  };
+
   return (
     <div className="space-y-4">
       <DataTableToolbar
@@ -77,7 +90,17 @@ export function TableView<TData, TValue>(props: {
           </TableHeader>
           <TableBody>
             {props.loadingState?.isLoading ? (
-              props.loadingState.skeleton ?? null
+              <>
+                {Array.from({ length: loadingRowCount }).map((_, rowIndex) => (
+                  <TableRow key={`data-table-loading-${rowIndex}`}>
+                    {visibleColumns.map((column) => (
+                      <TableCell key={column.id}>
+                        {renderLoadingCell(column)}
+                      </TableCell>
+                    ))}
+                  </TableRow>
+                ))}
+              </>
             ) : props.table.getRowModel().rows.length ? (
               props.table.getRowModel().rows.map((row) => (
                 <TableRow
@@ -103,12 +126,12 @@ export function TableView<TData, TValue>(props: {
             ) : (
               <TableRow>
                 <TableCell
-                colSpan={props.columns.length}
-                className="h-24 text-center"
-              >
-                No results.
-              </TableCell>
-            </TableRow>
+                  colSpan={props.columns.length}
+                  className="h-24 text-center"
+                >
+                  No results.
+                </TableCell>
+              </TableRow>
             )}
           </TableBody>
         </Table>
@@ -128,7 +151,7 @@ type DataTableProps<TData, TValue> = {
   showDefaultToolbar?: boolean,
   loadingState?: {
     isLoading: boolean,
-    skeleton: React.ReactNode,
+    rowCount?: number,
   },
   onRowClick?: (row: TData) => void,
 }
@@ -283,7 +306,7 @@ type DataTableBaseProps<TData, TValue> = DataTableProps<TData, TValue> & {
   setGlobalFilter?: OnChangeFn<any>,
   loadingState?: {
     isLoading: boolean,
-    skeleton: React.ReactNode,
+    rowCount?: number,
   },
 }
 
