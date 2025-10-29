@@ -5,7 +5,7 @@ import { ServerUser } from '@stackframe/stack';
 import { deindent } from '@stackframe/stack-shared/dist/utils/strings';
 import { ActionCell, AvatarCell, BadgeCell, DataTableColumnHeader, DataTableManualPagination, DateCell, SearchToolbarItem, SimpleTooltip, Skeleton, TextCell } from "@stackframe/stack-ui";
 import { ColumnDef, ColumnFiltersState, Row, SortingState, Table as TableType } from "@tanstack/react-table";
-import { useEffect, useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { Link } from '../link';
 import { CreateCheckoutDialog } from '../payments/create-checkout-dialog';
 import { DeleteUserDialog, ImpersonateUserDialog } from '../user-dialogs';
