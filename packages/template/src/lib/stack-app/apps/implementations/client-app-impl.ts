@@ -956,46 +956,6 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         const tokens = await this.currentSession.getTokens();
         return tokens;
       },
-      async registerPasskey(options?: { hostname?: string }): Promise<Result<undefined, KnownErrors["PasskeyRegistrationFailed"] | KnownErrors["PasskeyWebAuthnError"]>> {
-        const hostname = (await app._getCurrentUrl())?.hostname;
-        if (!hostname) {
-          throw new StackAssertionError("hostname must be provided if the Stack App does not have a redirect method");
-        }
-
-        const initiationResult = await app._interface.initiatePasskeyRegistration({}, session);
-
-        if (initiationResult.status !== "ok") {
-          return Result.error(new KnownErrors.PasskeyRegistrationFailed("Failed to get initiation options for passkey registration"));
-        }
-
-        const { options_json, code } = initiationResult.data;
-
-        // HACK: Override the rpID to be the actual domain
-        if (options_json.rp.id !== "THIS_VALUE_WILL_BE_REPLACED.example.com") {
-          throw new StackAssertionError(`Expected returned RP ID from server to equal sentinel, but found ${options_json.rp.id}`);
-        }
-
-        options_json.rp.id = hostname;
-
-        let attResp;
-        try {
-          attResp = await startRegistration({ optionsJSON: options_json });
-        } catch (error: any) {
-          if (error instanceof WebAuthnError) {
-            return Result.error(new KnownErrors.PasskeyWebAuthnError(error.message, error.name));
-          } else {
-            // This should never happen
-            captureError("passkey-registration-failed", error);
-            return Result.error(new KnownErrors.PasskeyRegistrationFailed("Failed to start passkey registration due to unknown error"));
-          }
-        }
-
-
-        const registrationResult = await app._interface.registerPasskey({ credential: attResp, code }, session);
-
-        await app._refreshUser(session);
-        return registrationResult;
-      },
       signOut(options?: { redirectUrl?: URL | string }) {
         return app._signOut(session, options);
       },
@@ -1280,6 +1240,47 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       async getOAuthProvider(id: string) {
         const providers = await this.listOAuthProviders();
         return providers.find((p) => p.id === id) ?? null;
+      },
+
+      async registerPasskey(options?: { hostname?: string }): Promise<Result<undefined, KnownErrors["PasskeyRegistrationFailed"] | KnownErrors["PasskeyWebAuthnError"]>> {
+        const hostname = (await app._getCurrentUrl())?.hostname;
+        if (!hostname) {
+          throw new StackAssertionError("hostname must be provided if the Stack App does not have a redirect method");
+        }
+
+        const initiationResult = await app._interface.initiatePasskeyRegistration({}, session);
+
+        if (initiationResult.status !== "ok") {
+          return Result.error(new KnownErrors.PasskeyRegistrationFailed("Failed to get initiation options for passkey registration"));
+        }
+
+        const { options_json, code } = initiationResult.data;
+
+        // HACK: Override the rpID to be the actual domain
+        if (options_json.rp.id !== "THIS_VALUE_WILL_BE_REPLACED.example.com") {
+          throw new StackAssertionError(`Expected returned RP ID from server to equal sentinel, but found ${options_json.rp.id}`);
+        }
+
+        options_json.rp.id = hostname;
+
+        let attResp;
+        try {
+          attResp = await startRegistration({ optionsJSON: options_json });
+        } catch (error: any) {
+          if (error instanceof WebAuthnError) {
+            return Result.error(new KnownErrors.PasskeyWebAuthnError(error.message, error.name));
+          } else {
+            // This should never happen
+            captureError("passkey-registration-failed", error);
+            return Result.error(new KnownErrors.PasskeyRegistrationFailed("Failed to start passkey registration due to unknown error"));
+          }
+        }
+
+
+        const registrationResult = await app._interface.registerPasskey({ credential: attResp, code }, session);
+
+        await app._refreshUser(session);
+        return registrationResult;
       },
     };
   }

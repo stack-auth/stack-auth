@@ -144,7 +144,6 @@ export type Auth = {
    * ```
    */
   getAuthJson(): Promise<{ accessToken: string | null, refreshToken: string | null }>,
-  registerPasskey(options?: { hostname?: string }): Promise<Result<undefined, KnownErrors["PasskeyRegistrationFailed"] | KnownErrors["PasskeyWebAuthnError"]>>,
 };
 
 /**
@@ -274,6 +273,8 @@ export type UserExtra = {
 
   useOAuthProvider(id: string): OAuthProvider | null, // THIS_LINE_PLATFORM react-like
   getOAuthProvider(id: string): Promise<OAuthProvider | null>,
+
+  registerPasskey(options?: { hostname?: string }): Promise<Result<undefined, KnownErrors["PasskeyRegistrationFailed"] | KnownErrors["PasskeyWebAuthnError"]>>,
 }
 & AsyncStoreProperty<"apiKeys", [], UserApiKey[], true>
 & AsyncStoreProperty<"team", [id: string], Team | null, false>
