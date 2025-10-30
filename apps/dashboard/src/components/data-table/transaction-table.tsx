@@ -84,7 +84,7 @@ function formatTransactionTypeLabel(transactionType: TransactionType | null): Tr
       return { label: 'Product Change', Icon: Shuffle };
     }
     default: {
-      return { label: transactionType ?? '—', Icon: CircleHelp };
+      return { label: (transactionType as any) ?? '—', Icon: CircleHelp };
     }
   }
 }
