@@ -94,7 +94,7 @@ it("includes TEST_MODE subscription", async () => {
       {
         "adjusted_by": [],
         "created_at_millis": <stripped field 'created_at_millis'>,
-        "effective_at_millis": 1761843285318,
+        "effective_at_millis": <stripped field 'effective_at_millis'>,
         "entries": [
           {
             "adjusted_entry_index": null,
@@ -156,7 +156,7 @@ it("includes TEST_MODE one-time purchase", async () => {
       {
         "adjusted_by": [],
         "created_at_millis": <stripped field 'created_at_millis'>,
-        "effective_at_millis": 1761843290857,
+        "effective_at_millis": <stripped field 'effective_at_millis'>,
         "entries": [
           {
             "adjusted_entry_index": null,
@@ -210,7 +210,7 @@ it("includes item quantity change entries", async () => {
       {
         "adjusted_by": [],
         "created_at_millis": <stripped field 'created_at_millis'>,
-        "effective_at_millis": 1761843297601,
+        "effective_at_millis": <stripped field 'effective_at_millis'>,
         "entries": [
           {
             "adjusted_entry_index": null,
