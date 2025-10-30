@@ -6,7 +6,6 @@ import { checkApiKeySet, checkApiKeySetQuery } from "@/lib/internal-api-keys";
 import { getProjectQuery, listManagedProjectIds } from "@/lib/projects";
 import { DEFAULT_BRANCH_ID, Tenancy, getSoleTenancyFromProjectBranch } from "@/lib/tenancies";
 import { decodeAccessToken } from "@/lib/tokens";
-import { hashWorkflowTriggerToken } from "@/lib/workflows";
 import { globalPrismaClient, rawQueryAll } from "@/prisma-client";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
@@ -168,7 +167,6 @@ const parseAuth = withTraceSpan('smart request parseAuth', async (req: NextReque
   const secretServerKey = req.headers.get("x-stack-secret-server-key");
   const superSecretAdminKey = req.headers.get("x-stack-super-secret-admin-key");
   const adminAccessToken = req.headers.get("x-stack-admin-access-token");
-  const workflowToken = req.headers.get("x-stack-workflow-token");
   const accessToken = req.headers.get("x-stack-access-token");
   const developmentKeyOverride = req.headers.get("x-stack-development-override-key");  // in development, the internal project's API key can optionally be used to access any project
   const allowAnonymousUser = req.headers.get("x-stack-allow-anonymous-user") === "true";
@@ -277,25 +275,6 @@ const parseAuth = withTraceSpan('smart request parseAuth', async (req: NextReque
   } else if (adminAccessToken) {
     // TODO put this into the bundled queries above (not so important because this path is quite rare)
     await extractUserFromAdminAccessToken({ token: adminAccessToken, projectId });  // assert that the admin token is valid
-  } else if (workflowToken) {
-    // TODO put this into the bundled queries above (not so important because this path is quite rare)
-    if (requestType === "admin") {
-      throw new KnownErrors.AdminAuthenticationRequired();
-    }
-    if (!["client", "server"].includes(requestType)) {
-      throw new StackAssertionError(`Unexpected request type in workflow token auth: ${requestType}. This should never happen because we should've filtered this earlier`);
-    }
-    const workflowTokenHash = await hashWorkflowTriggerToken(workflowToken);
-    const workflowTriggerToken = tenancy ? await globalPrismaClient.workflowTriggerToken.findUnique({
-      where: {
-        tenancyId_tokenHash: {
-          tenancyId: tenancy.id,
-          tokenHash: workflowTokenHash,
-        },
-      },
-    }) : undefined;
-    if (!workflowTriggerToken) throw new KnownErrors.WorkflowTokenDoesNotExist();
-    if (workflowTriggerToken.expiresAt < new Date()) throw new KnownErrors.WorkflowTokenExpired();
   } else {
     switch (requestType) {
       case "client": {
