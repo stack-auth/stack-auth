@@ -126,10 +126,10 @@ const COLUMN_LAYOUT: Record<ColumnKey, ColumnLayoutEntry> = {
   auth: { size: 150, minWidth: 110, maxWidth: 150, width: "clamp(110px, 20vw, 150px)" },
   signedUpAt: { size: 110, minWidth: 80, maxWidth: 110, width: "clamp(80px, 16vw, 110px)" },
   actions: {
-    size: 80,
-    minWidth: 60,
-    maxWidth: 80,
-    width: "clamp(60px, 10vw, 80px)",
+    size: 40,
+    minWidth: 40,
+    maxWidth: 40,
+    width: "clamp(40px, 10vw, 40px)",
     headerClassName: "text-right",
     cellClassName: "text-right",
   },
@@ -223,7 +223,7 @@ export function UserTable() {
           setQuery((prev) => ({ ...prev, includeAnonymous: value, page: 1, cursor: undefined }))
         }
       />
-      <div className="rounded-xl overflow-clip border border-slate-200 bg-white shadow-sm">
+      <div className="overflow-clip rounded-xl border border-border bg-card shadow-sm">
         <Suspense fallback={<UserTableSkeleton pageSize={query.pageSize} />}>
           <UserTableBody
             stackAdminApp={stackAdminApp}
@@ -258,19 +258,19 @@ function UserTableHeader(props: {
             className="!px-8"
             autoComplete="off"
           />
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           {searchValue.length > 0 && (
             <button
               type="button"
               onClick={() => onSearchChange("")}
-              className="absolute right-2 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
+              className="absolute right-2 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full text-muted-foreground transition hover:bg-muted/60 hover:text-foreground"
               aria-label="Clear search"
             >
               <X className="h-4 w-4" />
             </button>
           )}
         </div>
-        <div className="flex items-center gap-2 text-sm font-medium text-slate-600">
+        <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
           <Select
             value={includeAnonymous ? "include" : "standard"}
             onValueChange={(value) => onIncludeAnonymousChange(value === "include")}
@@ -367,8 +367,8 @@ function UserTableBody(props: {
   }, [users.nextCursor, stackAdminApp, baseOptions, prefetchedCursorRef]);
 
   const columns = useMemo<ColumnDef<ExtendedServerUser>[]>(
-    () => createUserColumns(stackAdminApp.projectId, setQuery, query.signedUpOrder === "desc"),
-    [stackAdminApp.projectId, setQuery, query.signedUpOrder],
+    () => createUserColumns(setQuery, query.signedUpOrder === "desc"),
+    [setQuery, query.signedUpOrder],
   );
 
   const table = useReactTable({
@@ -384,10 +384,10 @@ function UserTableBody(props: {
   return (
     <div className="flex flex-col">
       <div className="overflow-x-auto">
-        <table className="w-full border-collapse text-left text-sm text-slate-700">
-          <thead className="sticky top-0 z-10 bg-slate-50 text-xs font-semibold tracking-wide text-slate-500">
+        <table className="w-full border-collapse text-left text-sm text-foreground">
+          <thead className="sticky top-0 z-10 bg-muted/80 text-xs font-semibold tracking-wide text-muted-foreground backdrop-blur">
             {table.getHeaderGroups().map((headerGroup) => (
-              <tr key={headerGroup.id} className="border-b border-slate-200">
+              <tr key={headerGroup.id} className="border-b border-border/70">
                 {headerGroup.headers.map((header) => {
                   const columnKey = (header.column.columnDef.meta as ColumnMeta | undefined)?.columnKey;
                   const layout = columnKey ? COLUMN_LAYOUT[columnKey] : undefined;
@@ -407,11 +407,7 @@ function UserTableBody(props: {
           <tbody>
             {hasResults ? (
               table.getRowModel().rows.map((row) => (
-                <tr
-                  key={row.id}
-                  className="border-b border-slate-100 transition hover:bg-slate-50 h-[49px]"
-                  style={ROW_HEIGHT_STYLE}
-                >
+                <tr key={row.id} className="border-b border-border/60 transition hover:bg-muted/60 h-[49px]" style={ROW_HEIGHT_STYLE}>
                   {row.getVisibleCells().map((cell) => {
                     const columnKey = (cell.column.columnDef.meta as ColumnMeta | undefined)?.columnKey;
                     const layout = columnKey ? COLUMN_LAYOUT[columnKey] : undefined;
@@ -432,13 +428,13 @@ function UserTableBody(props: {
               ))
             ) : (
               <tr>
-                <td colSpan={table.getAllColumns().length} className="px-6 py-12 text-center text-sm text-slate-500">
+                <td colSpan={table.getAllColumns().length} className="px-6 py-12 text-center text-sm text-muted-foreground">
                   <div className="mx-auto flex max-w-md flex-col items-center gap-4">
-                    <div className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-100">
-                      <Search className="h-6 w-6 text-slate-400" />
+                    <div className="flex h-12 w-12 items-center justify-center rounded-full bg-muted">
+                      <Search className="h-6 w-6 text-muted-foreground" />
                     </div>
-                    <div className="text-base font-medium text-slate-700">No users found</div>
-                    <p className="text-sm text-slate-500">
+                    <div className="text-base font-medium text-foreground">No users found</div>
+                    <p className="text-sm text-muted-foreground">
                       Try adjusting your search or filters. You can also reset everything and start again.
                     </p>
                     <Button
@@ -458,8 +454,8 @@ function UserTableBody(props: {
           </tbody>
         </table>
       </div>
-      <div className="flex flex-col gap-3 border-t border-slate-200 px-4 py-3 text-sm text-slate-600 md:flex-row md:items-center md:justify-between">
-        <div className="flex items-center gap-2 text-sm text-slate-500">
+      <div className="flex flex-col gap-3 border-t border-border/70 px-4 py-3 text-sm text-muted-foreground md:flex-row md:items-center md:justify-between">
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <span>Rows per page</span>
           <Select
             value={String(query.pageSize)}
@@ -496,7 +492,7 @@ function UserTableBody(props: {
             <ChevronLeft className="mr-1 h-4 w-4" />
             Previous
           </Button>
-          <span className="rounded-md border border-slate-200 px-3 py-1 text-xs font-medium text-slate-600">
+          <span className="rounded-md border border-border px-3 py-1 text-xs font-medium text-foreground">
             Page {query.page}
           </span>
           <Button
@@ -544,7 +540,7 @@ function UserTableSkeleton(props: { pageSize: number }) {
   };
   const renderSkeletonCellContent = (columnKey: ColumnKey): JSX.Element => {
     switch (columnKey) {
-      case "user":
+      case "user": {
         return (
           <div className="flex items-center gap-3">
             <Skeleton className="h-6 w-6 rounded-full" />
@@ -553,24 +549,32 @@ function UserTableSkeleton(props: { pageSize: number }) {
             </div>
           </div>
         );
-      case "email":
+      }
+      case "email": {
         return <Skeleton className="h-3 w-full max-w-[160px]" />;
-      case "userId":
+      }
+      case "userId": {
         return <Skeleton className="h-3 w-full max-w-[130px]" />;
-      case "emailStatus":
+      }
+      case "emailStatus": {
         return <Skeleton className="h-3 w-full max-w-[110px]" />;
-      case "lastActiveAt":
+      }
+      case "lastActiveAt": {
         return <Skeleton className="h-3 w-full max-w-[110px]" />;
-      case "auth":
+      }
+      case "auth": {
         return (
           <div className="flex flex-wrap gap-2">
             <Skeleton className="h-5 w-full max-w-[150px] rounded-full" />
           </div>
         );
-      case "signedUpAt":
+      }
+      case "signedUpAt": {
         return <Skeleton className="h-3 w-full max-w-[110px]" />;
-      case "actions":
+      }
+      case "actions": {
         return <Skeleton className="ml-auto h-4 w-4" />;
+      }
       default: {
         const exhaustiveCheck: never = columnKey;
         throw new Error("Unhandled skeleton column");
@@ -582,8 +586,8 @@ function UserTableSkeleton(props: { pageSize: number }) {
     <div className="flex flex-col">
       <div className="overflow-x-auto">
         <table className="w-full border-collapse text-left text-sm">
-          <thead className="bg-slate-50 text-xs font-semibold tracking-wide text-slate-400">
-            <tr className="border-b border-slate-200">
+          <thead className="bg-muted/80 text-xs font-semibold tracking-wide text-muted-foreground backdrop-blur">
+            <tr className="border-b border-border/70">
               {columnOrder.map((columnKey) => {
                 const layout = COLUMN_LAYOUT[columnKey];
                 return (
@@ -600,7 +604,7 @@ function UserTableSkeleton(props: { pageSize: number }) {
           </thead>
           <tbody>
             {rows.map((_, index) => (
-              <tr key={index} className="border-b border-slate-100 h-[49px]" style={ROW_HEIGHT_STYLE}>
+              <tr key={index} className="border-b border-border/60 h-[49px]" style={ROW_HEIGHT_STYLE}>
                 {columnOrder.map((columnKey) => {
                   const layout = COLUMN_LAYOUT[columnKey];
                   return (
@@ -621,8 +625,8 @@ function UserTableSkeleton(props: { pageSize: number }) {
           </tbody>
         </table>
       </div>
-      <div className="flex flex-col gap-3 border-t border-slate-200 px-4 py-3 text-sm text-slate-600 md:flex-row md:items-center md:justify-between">
-        <div className="flex items-center gap-2 text-sm text-slate-500">
+      <div className="flex flex-col gap-3 border-t border-border/70 px-4 py-3 text-sm text-muted-foreground md:flex-row md:items-center md:justify-between">
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <span>Rows per page</span>
           <Skeleton className="h-9 w-20" />
         </div>
@@ -631,7 +635,7 @@ function UserTableSkeleton(props: { pageSize: number }) {
             <ChevronLeft className="mr-1 h-4 w-4" />
             Previous
           </Button>
-          <span className="rounded-md border border-slate-200 px-3 py-1 text-xs font-medium text-slate-500">
+          <span className="rounded-md border border-border px-3 py-1 text-xs font-medium text-muted-foreground">
             Page …
           </span>
           <Button variant="ghost" size="sm" disabled>
@@ -644,8 +648,58 @@ function UserTableSkeleton(props: { pageSize: number }) {
   );
 }
 
+export const getCommonUserColumns = <T extends ExtendedServerUser>(): ColumnDef<T>[] => {
+  const helper = createColumnHelper<T>();
+  return [
+    helper.display({
+      id: "user",
+      size: COLUMN_LAYOUT.user.size,
+      minSize: COLUMN_LAYOUT.user.minWidth,
+      maxSize: COLUMN_LAYOUT.user.maxWidth,
+      meta: { columnKey: "user" } as ColumnMeta,
+      header: () => <span className="text-xs font-semibold tracking-wide">User</span>,
+      cell: ({ row }) => <UserIdentityCell user={row.original as ExtendedServerUser} />,
+    }),
+    helper.display({
+      id: "email",
+      size: COLUMN_LAYOUT.email.size,
+      minSize: COLUMN_LAYOUT.email.minWidth,
+      maxSize: COLUMN_LAYOUT.email.maxWidth,
+      meta: { columnKey: "email" } as ColumnMeta,
+      header: () => <span className="text-xs font-semibold tracking-wide">Email</span>,
+      cell: ({ row }) => <UserEmailCell user={row.original as ExtendedServerUser} />,
+    }),
+    helper.display({
+      id: "userId",
+      size: COLUMN_LAYOUT.userId.size,
+      minSize: COLUMN_LAYOUT.userId.minWidth,
+      maxSize: COLUMN_LAYOUT.userId.maxWidth,
+      meta: { columnKey: "userId" } as ColumnMeta,
+      header: () => <span className="text-xs font-semibold tracking-wide">User ID</span>,
+      cell: ({ row }) => <UserIdCell user={row.original as ExtendedServerUser} />,
+    }),
+    helper.display({
+      id: "emailVerified",
+      size: COLUMN_LAYOUT.emailStatus.size,
+      minSize: COLUMN_LAYOUT.emailStatus.minWidth,
+      maxSize: COLUMN_LAYOUT.emailStatus.maxWidth,
+      meta: { columnKey: "emailStatus" } as ColumnMeta,
+      header: () => <span className="text-xs font-semibold tracking-wide">Email status</span>,
+      cell: ({ row }) => <EmailStatusCell user={row.original as ExtendedServerUser} />,
+    }),
+    helper.display({
+      id: "lastActiveAt",
+      size: COLUMN_LAYOUT.lastActiveAt.size,
+      minSize: COLUMN_LAYOUT.lastActiveAt.minWidth,
+      maxSize: COLUMN_LAYOUT.lastActiveAt.maxWidth,
+      meta: { columnKey: "lastActiveAt" } as ColumnMeta,
+      header: () => <span className="text-xs font-semibold tracking-wide">Last active</span>,
+      cell: ({ row }) => <DateMetaCell value={(row.original as ExtendedServerUser).lastActiveAt} emptyLabel="Never" />,
+    }),
+  ];
+};
+
 function createUserColumns(
-  projectId: string,
   setQuery: (updater: QueryUpdater) => void,
   isSignedUpDesc: boolean,
 ): ColumnDef<ExtendedServerUser>[] {
@@ -657,50 +711,7 @@ function createUserColumns(
     }));
 
   return [
-    columnHelper.display({
-      id: "user",
-      size: COLUMN_LAYOUT.user.size,
-      minSize: COLUMN_LAYOUT.user.minWidth,
-      maxSize: COLUMN_LAYOUT.user.maxWidth,
-      meta: { columnKey: "user" } as ColumnMeta,
-      header: () => <span className="text-xs font-semibold tracking-wide">User</span>,
-      cell: ({ row }) => <UserIdentityCell user={row.original} projectId={projectId} />,
-    }),
-    columnHelper.display({
-      id: "email",
-      size: COLUMN_LAYOUT.email.size,
-      minSize: COLUMN_LAYOUT.email.minWidth,
-      maxSize: COLUMN_LAYOUT.email.maxWidth,
-      meta: { columnKey: "email" } as ColumnMeta,
-      header: () => <span className="text-xs font-semibold tracking-wide">Email</span>,
-      cell: ({ row }) => <UserEmailCell user={row.original} />,
-    }),
-    columnHelper.display({
-      id: "userId",
-      size: COLUMN_LAYOUT.userId.size,
-      minSize: COLUMN_LAYOUT.userId.minWidth,
-      maxSize: COLUMN_LAYOUT.userId.maxWidth,
-      meta: { columnKey: "userId" } as ColumnMeta,
-      header: () => <span className="text-xs font-semibold tracking-wide">User ID</span>,
-      cell: ({ row }) => <UserIdCell user={row.original} />,
-    }),
-    columnHelper.display({
-      id: "emailStatus",
-      size: COLUMN_LAYOUT.emailStatus.size,
-      minSize: COLUMN_LAYOUT.emailStatus.minWidth,
-      maxSize: COLUMN_LAYOUT.emailStatus.maxWidth,
-      meta: { columnKey: "emailStatus" } as ColumnMeta,
-      header: () => <span className="text-xs font-semibold tracking-wide">Email status</span>,
-      cell: ({ row }) => <EmailStatusCell user={row.original} />,
-    }),
-    columnHelper.accessor("lastActiveAt", {
-      size: COLUMN_LAYOUT.lastActiveAt.size,
-      minSize: COLUMN_LAYOUT.lastActiveAt.minWidth,
-      maxSize: COLUMN_LAYOUT.lastActiveAt.maxWidth,
-      meta: { columnKey: "lastActiveAt" } as ColumnMeta,
-      header: () => <span className="text-xs font-semibold tracking-wide">Last active</span>,
-      cell: ({ row }) => <DateMetaCell value={row.original.lastActiveAt} emptyLabel="Never" />,
-    }),
+    ...getCommonUserColumns<ExtendedServerUser>(),
     columnHelper.display({
       id: "auth",
       size: COLUMN_LAYOUT.auth.size,
@@ -710,7 +721,8 @@ function createUserColumns(
       header: () => <span className="text-xs font-semibold tracking-wide">Auth methods</span>,
       cell: ({ row }) => <AuthMethodsCell user={row.original} />,
     }),
-    columnHelper.accessor("signedUpAt", {
+    columnHelper.display({
+      id: "signedUpAt",
       size: COLUMN_LAYOUT.signedUpAt.size,
       minSize: COLUMN_LAYOUT.signedUpAt.minWidth,
       maxSize: COLUMN_LAYOUT.signedUpAt.maxWidth,
@@ -719,7 +731,7 @@ function createUserColumns(
         <button
           type="button"
           onClick={toggleSignedUpOrder}
-          className="inline-flex items-center gap-1 text-xs font-semibold tracking-wide text-slate-500 transition hover:text-slate-700 focus:outline-none"
+          className="inline-flex items-center gap-1 text-xs font-semibold tracking-wide text-muted-foreground transition hover:text-foreground focus:outline-none"
           aria-label={`Sort by signed up (${isSignedUpDesc ? "newest first" : "oldest first"})`}
         >
           <span>Signed up</span>
@@ -735,14 +747,15 @@ function createUserColumns(
       maxSize: COLUMN_LAYOUT.actions.maxWidth,
       meta: { columnKey: "actions" } as ColumnMeta,
       header: () => <span className="sr-only">Actions</span>,
-      cell: ({ row }) => <UserActions user={row.original} projectId={projectId} />,
+      cell: ({ row }) => <UserActions user={row.original} />,
     }),
   ];
 }
 
-function UserIdentityCell(props: { user: ExtendedServerUser, projectId: string }) {
-  const { user, projectId } = props;
-  const profileUrl = `/projects/${encodeURIComponent(projectId)}/users/${encodeURIComponent(user.id)}`;
+function UserIdentityCell(props: { user: ExtendedServerUser }) {
+  const { user } = props;
+  const stackAdminApp = useAdminApp();
+  const profileUrl = `/projects/${encodeURIComponent(stackAdminApp.projectId)}/users/${encodeURIComponent(user.id)}`;
   const fallback = user.displayName?.charAt(0) ?? user.primaryEmail?.charAt(0) ?? "?";
   const displayName = user.displayName ?? user.primaryEmail ?? "Unnamed user";
 
@@ -758,10 +771,11 @@ function UserIdentityCell(props: { user: ExtendedServerUser, projectId: string }
         <div className="flex flex-wrap items-center gap-2">
           <Link
             href={profileUrl}
-            className="max-w-full truncate text-sm font-semibold text-slate-900 hover:text-slate-700"
-            title={displayName}
+            className="max-w-full text-sm font-semibold text-foreground hover:text-foreground"
           >
-            {displayName}
+            <span className="block truncate" title={displayName}>
+              {displayName}
+            </span>
           </Link>
           {user.isAnonymous && (
             <Badge variant="secondary" className="text-xs">
@@ -779,7 +793,7 @@ function UserEmailCell(props: { user: ExtendedServerUser }) {
   const email = user.primaryEmail ?? "No email";
 
   return (
-    <span className="block max-w-full truncate text-sm text-slate-600" title={user.primaryEmail ?? undefined}>
+    <span className="block max-w-full truncate text-sm text-muted-foreground" title={user.primaryEmail ?? undefined}>
       {email}
     </span>
   );
@@ -799,7 +813,7 @@ function UserIdCell(props: { user: ExtendedServerUser }) {
       <Button
         type="button"
         onClick={handleCopy}
-        className="flex max-w-full py-0 px-1 h-min items-center gap-2 font-mono text-xs text-slate-500 transition hover:text-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-300 cursor-pointer bg-transparent hover:bg-transparent"
+        className="flex max-w-full px-1 py-0 h-min items-center gap-2 font-mono text-xs text-muted-foreground transition hover:text-foreground focus:outline-none focus:ring-2 focus:ring-ring cursor-pointer bg-transparent hover:bg-transparent"
         aria-label="Copy user ID"
         title={user.id}
       >
@@ -817,8 +831,8 @@ function EmailStatusCell(props: { user: ExtendedServerUser }) {
     <div className="flex items-center gap-2 text-sm">
       {isVerified ? (
         <>
-          <CheckCircle2 className="h-4 w-4 text-emerald-500" />
-          <span className="font-medium text-emerald-600">Verified</span>
+          <CheckCircle2 className="h-4 w-4 text-success" />
+          <span className="font-medium text-success">Verified</span>
         </>
       ) : (
         <>
@@ -841,7 +855,7 @@ function AuthMethodsCell(props: { user: ExtendedServerUser }) {
       {authLabels.map((type) => {
         const label = type === "none" ? "None" : AUTH_TYPE_LABELS.get(type) ?? titleCase(type);
         return (
-          <Badge key={type} variant="outline" className="bg-slate-50 text-xs text-slate-700">
+          <Badge key={type} variant="outline" className="bg-muted/60 text-xs text-muted-foreground">
             {label}
           </Badge>
         );
@@ -854,14 +868,15 @@ function DateMetaCell(props: { value: Date | string | null | undefined, emptyLab
   const { value, emptyLabel } = props;
   const meta = getDateMeta(value, emptyLabel);
   return (
-    <span className="text-sm text-slate-600 whitespace-nowrap" title={meta.tooltip}>
+    <span className="text-sm text-muted-foreground whitespace-nowrap" title={meta.tooltip}>
       {meta.label}
     </span>
   );
 }
 
-function UserActions(props: { user: ExtendedServerUser, projectId: string }) {
-  const { user, projectId } = props;
+function UserActions(props: { user: ExtendedServerUser }) {
+  const { user } = props;
+  const stackAdminApp = useAdminApp();
   const router = useRouter();
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
@@ -881,7 +896,7 @@ function UserActions(props: { user: ExtendedServerUser, projectId: string }) {
         <DropdownMenuContent align="end" className="w-56">
           <DropdownMenuItem
             onClick={() =>
-              router.push(`/projects/${encodeURIComponent(projectId)}/users/${encodeURIComponent(user.id)}`)
+              router.push(`/projects/${encodeURIComponent(stackAdminApp.projectId)}/users/${encodeURIComponent(user.id)}`)
             }
           >
             View details
@@ -895,7 +910,7 @@ function UserActions(props: { user: ExtendedServerUser, projectId: string }) {
                 const tokens = await session.getTokens();
                 setImpersonateSnippet(
                   deindent`
-                    document.cookie = 'stack-refresh-${projectId}=${tokens.refreshToken}; expires=${expiresAtDate.toUTCString()}; path=/';
+                    document.cookie = 'stack-refresh-${stackAdminApp.projectId}=${tokens.refreshToken}; expires=${expiresAtDate.toUTCString()}; path=/';
                     window.location.reload();
                   `,
                 );
@@ -917,7 +932,7 @@ function UserActions(props: { user: ExtendedServerUser, projectId: string }) {
             </DropdownMenuItem>
           )}
           <DropdownMenuSeparator />
-          <DropdownMenuItem onClick={() => setIsDeleteOpen(true)} className="text-rose-600 focus:text-rose-600">
+          <DropdownMenuItem onClick={() => setIsDeleteOpen(true)} className="text-destructive focus:text-destructive">
             Delete user
           </DropdownMenuItem>
         </DropdownMenuContent>
@@ -926,9 +941,9 @@ function UserActions(props: { user: ExtendedServerUser, projectId: string }) {
   );
 }
 
-function extendUsers(users: ServerUser[] & { nextCursor: string | null }): ExtendedServerUser[] & { nextCursor: string | null };
-function extendUsers(users: ServerUser[]): ExtendedServerUser[];
-function extendUsers(users: ServerUser[] & { nextCursor?: string | null }) {
+export function extendUsers(users: ServerUser[] & { nextCursor: string | null }): ExtendedServerUser[] & { nextCursor: string | null };
+export function extendUsers(users: ServerUser[]): ExtendedServerUser[];
+export function extendUsers(users: ServerUser[] & { nextCursor?: string | null }) {
   const extended = users.map((user) => {
     const authTypes = user.isAnonymous
       ? ["anonymous"]
@@ -1033,11 +1048,22 @@ function useUserTableQueryState() {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const state = useMemo(() => parseQuery(searchParams), [searchParams]);
+  const searchParamsKey = searchParams.toString();
+  const state = useMemo(() => parseQuery(searchParams), [searchParamsKey]);
+
+  const stateRef = useRef(state);
+  useEffect(() => {
+    stateRef.current = state;
+  }, [state]);
+
+  const replaceRef = useRef(router.replace);
+  useEffect(() => {
+    replaceRef.current = router.replace;
+  }, [router.replace]);
 
   const setQuery = useCallback(
     (updater: QueryUpdater) => {
-      const current = parseQuery(searchParams);
+      const current = stateRef.current;
       const patch = typeof updater === "function" ? updater(current) : updater;
       const next = sanitizeQueryState({ ...current, ...patch });
       if (isQueryEqual(current, next)) {
@@ -1063,9 +1089,10 @@ function useUserTableQueryState() {
         params.set("cursor", next.cursor);
       }
       const queryString = params.toString();
-      router.replace(queryString.length > 0 ? `${pathname}?${queryString}` : pathname);
+      const replace = replaceRef.current;
+      replace(queryString.length > 0 ? `${pathname}?${queryString}` : pathname);
     },
-    [router, pathname, searchParams],
+    [pathname],
   );
 
   return { state, setQuery };
