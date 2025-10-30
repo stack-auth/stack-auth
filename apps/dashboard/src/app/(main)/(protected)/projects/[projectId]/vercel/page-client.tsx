@@ -150,7 +150,7 @@ export default function PageClient() {
       action: (
         <div className="space-y-2 text-sm text-muted-foreground">
           <Typography variant="secondary" className="text-sm">
-            In Vercel → Settings → Environment Variables, copy-paste your environment variables into the input fields.
+            In Vercel → &lt;your-project&gt; → Settings → Environment Variables, copy-paste your environment variables into the input fields.
           </Typography>
         </div>
       ),
@@ -163,13 +163,8 @@ export default function PageClient() {
       description: "Trigger a new build so Stack Auth can read the variables.",
       action: (
         <div className="flex flex-col gap-3">
-          <Button asChild variant="secondary">
-            <StyledLink href="https://vercel.com/dashboard/deployments" target="_blank">
-              Redeploy project
-            </StyledLink>
-          </Button>
           <Typography variant="secondary" className="text-sm">
-            Redeploy both preview and production projects if they share the same Stack Auth project.
+            In Vercel → &lt;your-project&gt; → Deployments, redeploy both preview and production projects if they share the same Stack Auth project.
           </Typography>
         </div>
       ),
@@ -206,7 +201,7 @@ export default function PageClient() {
               </Typography>
               <Typography className="text-2xl font-semibold text-blue-900">
                 {completedCount === steps.length
-                  ? "All steps ready for deployment."
+                  ? "Vercel integration complete!"
                   : `${completedCount}/${steps.length} steps complete`}
               </Typography>
             </div>

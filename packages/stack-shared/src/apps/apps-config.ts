@@ -96,12 +96,6 @@ export const ALL_APPS = {
     tags: ["security", "storage"],
     stage: "beta",
   },
-  "workflows": {
-    displayName: "Workflows",
-    subtitle: "Automated business process orchestration",
-    tags: ["automation"],
-    stage: "beta",
-  },
   "webhooks": {
     displayName: "Webhooks",
     subtitle: "Real-time event notifications and integrations",
