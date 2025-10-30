@@ -1,12 +1,13 @@
 import { teamMembershipsCrudHandlers } from "@/app/api/latest/team-memberships/crud";
 import { sendEmailFromTemplate } from "@/lib/emails";
 import { getItemQuantityForCustomer } from "@/lib/payments";
+import { grantTeamPermission } from "@/lib/permissions";
 import { getSoleTenancyFromProjectBranch } from "@/lib/tenancies";
-import { getPrismaClientForTenancy } from "@/prisma-client";
+import { getPrismaClientForTenancy, retryTransaction } from "@/prisma-client";
 import { createVerificationCodeHandler } from "@/route-handlers/verification-code-handler";
 import { VerificationCodeType } from "@prisma/client";
 import { KnownErrors } from "@stackframe/stack-shared";
-import { emailSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+import { emailSchema, permissionDefinitionIdSchema, yupArray, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { teamsCrudHandlers } from "../../teams/crud";
 
 export const teamInvitationCodeHandler = createVerificationCodeHandler({
@@ -30,6 +31,7 @@ export const teamInvitationCodeHandler = createVerificationCodeHandler({
   type: VerificationCodeType.TEAM_INVITATION,
   data: yupObject({
     team_id: yupString().defined(),
+    permission_ids: yupArray(permissionDefinitionIdSchema.defined()).optional(),
   }).defined(),
   method: yupObject({
     email: emailSchema.defined(),
@@ -106,11 +108,26 @@ export const teamInvitationCodeHandler = createVerificationCodeHandler({
     });
 
     if (!oldMembership) {
-      await teamMembershipsCrudHandlers.adminCreate({
-        tenancy,
-        team_id: data.team_id,
-        user_id: user.id,
-        data: {},
+      await retryTransaction(prisma, async (tx) => {
+        await teamMembershipsCrudHandlers.adminCreate({
+          tenancy,
+          team_id: data.team_id,
+          user_id: user.id,
+          data: {},
+        });
+
+        // Apply additional specific permissions if provided (with deduplication)
+        if (data.permission_ids && data.permission_ids.length > 0) {
+          const uniquePermissionIds = [...new Set(data.permission_ids)];
+          for (const permissionId of uniquePermissionIds) {
+            await grantTeamPermission(tx, {
+              tenancy,
+              teamId: data.team_id,
+              userId: user.id,
+              permissionId,
+            });
+          }
+        }
       });
     }
 

@@ -192,7 +192,7 @@ List all members of a team:
 ```python
 def get_team_members(access_token, team_id):
     """
-    Get all members of a team with their profiles
+    Get all members of a team with their profiles and permission IDs
     Requires $read_members permission
     """
     response = stack_auth_request('GET', f'api/v1/team-member-profiles?team_id={team_id}',
@@ -204,7 +204,10 @@ def get_team_members(access_token, team_id):
 # Example usage
 members = get_team_members(access_token, team_id)
 for member in members:
-    print(f"Member: {member['display_name']} ({member['user_id']})")
+    permissions = member.get('permission_ids', [])
+    role = 'Admin' if 'team_admin' in permissions else 'Member' if 'team_member' in permissions else 'Custom'
+    print(f"Member: {member['display_name']} ({member['user_id']}) - Role: {role}")
+    print(f"  Permissions: {permissions}")
 ```
 
 ## Team Invitations
@@ -214,18 +217,27 @@ for member in members:
 Invite users to join a team via email:
 
 ```python
-def send_team_invitation(access_token, team_id, email, callback_url):
+def send_team_invitation(access_token, team_id, email, callback_url, permission_ids=None):
     """
-    Send an invitation to join a team
+    Send an invitation to join a team with optional role-based permissions
     Requires $invite_members permission
+    
+    Args:
+        permission_ids: Optional list of permission IDs to assign to the invited user
+                       e.g., ['team_admin'], ['team_member'], or custom permission IDs
     """
+    invitation_data = {
+        'email': email,
+        'team_id': team_id,
+        'callback_url': callback_url
+    }
+    
+    if permission_ids:
+        invitation_data['permission_ids'] = permission_ids
+    
     response = stack_auth_request('POST', 'api/v1/team-invitations/send-code',
         headers={'x-stack-access-token': access_token},
-        json={
-            'email': email,
-            'team_id': team_id,
-            'callback_url': callback_url
-        }
+        json=invitation_data
     )
     
     return {
@@ -233,14 +245,34 @@ def send_team_invitation(access_token, team_id, email, callback_url):
         'invitation_id': response['id']
     }
 
-# Example usage
+# Example usage - Send invitation with admin role
+invitation_result = send_team_invitation(
+    access_token=access_token,
+    team_id=team_id,
+    email="admin@example.com",
+    callback_url="https://yourapp.com/join-team",
+    permission_ids=["team_admin"]
+)
+print(f"Admin invitation sent: {invitation_result['invitation_id']}")
+
+# Example usage - Send invitation with member role
+invitation_result = send_team_invitation(
+    access_token=access_token,
+    team_id=team_id,
+    email="member@example.com",
+    callback_url="https://yourapp.com/join-team",
+    permission_ids=["team_member"]
+)
+print(f"Member invitation sent: {invitation_result['invitation_id']}")
+
+# Example usage - Send invitation without specific role (default permissions)
 invitation_result = send_team_invitation(
     access_token=access_token,
     team_id=team_id,
     email="newmember@example.com",
     callback_url="https://yourapp.com/join-team"
 )
-print(f"Invitation sent: {invitation_result['invitation_id']}")
+print(f"Default invitation sent: {invitation_result['invitation_id']}")
 ```
 
 ### Accepting Team Invitations
@@ -263,6 +295,32 @@ accept_team_invitation(invitation_code)
 print("User successfully joined the team!")
 ```
 
+### Getting Available Role Permissions
+
+Retrieve all available team permissions and roles:
+
+```python
+def get_team_role_permissions(access_token):
+    """
+    Get all available team permissions including role-based and system permissions
+    """
+    response = stack_auth_request('GET', 'api/v1/team-invitations/role-permissions',
+        headers={'x-stack-access-token': access_token}
+    )
+    
+    return response['items']
+
+# Example usage
+role_permissions = get_team_role_permissions(access_token)
+for permission in role_permissions:
+    print(f"Permission ID: {permission['id']}")
+    if permission.get('description'):
+        print(f"  Description: {permission['description']}")
+    if permission.get('contained_permission_ids'):
+        print(f"  Contains: {permission['contained_permission_ids']}")
+    print()
+```
+
 ### Listing Team Invitations
 
 Get pending invitations for a team:
@@ -270,7 +328,7 @@ Get pending invitations for a team:
 ```python
 def list_team_invitations(access_token, team_id):
     """
-    List pending invitations for a team
+    List pending invitations for a team with their assigned permissions
     Requires $invite_members permission
     """
     response = stack_auth_request('GET', f'api/v1/team-invitations?team_id={team_id}',
@@ -282,7 +340,11 @@ def list_team_invitations(access_token, team_id):
 # Example usage
 invitations = list_team_invitations(access_token, team_id)
 for invitation in invitations:
-    print(f"Pending invitation for: {invitation['recipient_email']}")
+    permissions = invitation.get('permission_ids', [])
+    role = 'Admin' if 'team_admin' in permissions else 'Member' if 'team_member' in permissions else 'Default'
+    print(f"Pending invitation: {invitation['recipient_email']} - Role: {role}")
+    print(f"  Expires: {invitation['expires_at']}")
+    print(f"  Permissions: {permissions}")
 ```
 
 ## Team Permissions Management
@@ -391,7 +453,7 @@ def update_team_member_profile(access_token, team_id, user_id="me", **profile_da
 
 def get_team_member_profile(access_token, team_id, user_id="me"):
     """
-    Get a user's profile within a team context
+    Get a user's profile within a team context, including their permission IDs
     """
     response = stack_auth_request('GET', f'api/v1/team-member-profiles/{team_id}/{user_id}',
         headers={'x-stack-access-token': access_token}
@@ -411,6 +473,18 @@ updated_profile = update_team_member_profile(
 # Get the updated profile
 profile = get_team_member_profile(access_token, team_id)
 print(f"Team profile: {profile['display_name']}")
+print(f"User ID: {profile['user_id']}")
+print(f"Permission IDs: {profile.get('permission_ids', [])}")
+
+# Determine user role based on permissions
+permissions = profile.get('permission_ids', [])
+if 'team_admin' in permissions:
+    role = 'Admin'
+elif 'team_member' in permissions:
+    role = 'Member'
+else:
+    role = 'Custom' if permissions else 'Default'
+print(f"Role: {role}")
 ```
 
 ### Deleting Teams
@@ -596,5 +670,5 @@ Stack Auth includes several built-in team permissions:
 - **`$read_members`** - View team member list
 - **`team_member`** - Basic team membership (automatically granted)
 
-For more advanced team features, check out the [REST API documentation](../rest-api/overview.mdx). 
+For more advanced team features, check out the [REST API documentation](../rest-api/overview.mdx).
  

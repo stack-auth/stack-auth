@@ -18,6 +18,7 @@ The `TeamProfile` object represents the profile of a user within the context of 
 <ClickableTableOfContents code={`type TeamProfile = {
     displayName: string | null;  //$stack-link-to:#teamprofiledisplayname
     profileImageUrl: string | null;  //$stack-link-to:#teamprofileprofileimageurl
+    permissionIds: string[];  //$stack-link-to:#teamprofilepermissionids
 };`} />
 
 ---
@@ -45,6 +46,20 @@ The `TeamProfile` object represents the profile of a user within the context of 
 
       ```typescript
       declare const profileImageUrl: string | null;
+      ```
+    </MethodAside>
+  </MethodLayout>
+</CollapsibleTypesSection>
+
+<CollapsibleTypesSection type="teamProfile" property="permissionIds" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      An array of permission IDs that the user has within the team context. These permissions determine what actions the user can perform within the team.
+    </MethodContent>
+    <MethodAside title="Type Definition">
+
+      ```typescript
+      declare const permissionIds: string[];
       ```
     </MethodAside>
   </MethodLayout>
