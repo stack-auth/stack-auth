@@ -37,12 +37,12 @@
         ]
       }
     ],
-    "no-longer-used-Stop": [
+    "Stop": [
       {
         "hooks": [
           {
             "type": "command",
-            "command": "(pnpm run typecheck 1>&2 || exit 2) && (pnpm run lint 1>&2 || exit 2)"
+            "command": "if jq -e '.stop_hook_active == true' >/dev/null 2>&1; then exit 0; fi && (pnpm run typecheck 1>&2 || exit 2) && (pnpm run lint 1>&2 || exit 2)"
           }
         ]
       }

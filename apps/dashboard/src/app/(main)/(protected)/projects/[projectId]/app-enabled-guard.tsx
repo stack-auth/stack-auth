@@ -13,8 +13,7 @@ export function AppEnabledGuard(props: { appId: AppId, children: ReactNode }) {
   const adminApp = useAdminApp();
   const project = adminApp.useProject();
   const config = project.useConfig();
-  const installedApps = config.apps.installed;
-  const isEnabled = installedApps[props.appId].enabled;
+  const isEnabled = config.apps.installed[props.appId]?.enabled;
 
   useEffect(() => {
     if (!isEnabled) {
