@@ -2169,11 +2169,25 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     });
   }
 
-  async signOut(options?: { redirectUrl?: URL | string }): Promise<void> {
-    const user = await this.getUser();
+  async signOut(options?: { redirectUrl?: URL | string, tokenStore?: TokenStoreInit }): Promise<void> {
+    const user = await this.getUser({ tokenStore: options?.tokenStore ?? undefined as any });
     if (user) {
-      await user.signOut(options);
+      await user.signOut({ redirectUrl: options?.redirectUrl });
     }
+  }
+
+  async getAuthHeaders(options?: { tokenStore?: TokenStoreInit }): Promise<{ "x-stack-auth": string }> {
+    return {
+      "x-stack-auth": JSON.stringify(await this.getAuthJson(options)),
+    };
+  }
+
+  async getAuthJson(options?: { tokenStore?: TokenStoreInit }): Promise<{ accessToken: string | null, refreshToken: string | null }> {
+    const user = await this.getUser({ tokenStore: options?.tokenStore ?? undefined as any });
+    if (user) {
+      return await user.getAuthJson();
+    }
+    return { accessToken: null, refreshToken: null };
   }
 
   async getProject(): Promise<Project> {
