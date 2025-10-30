@@ -1,11 +1,12 @@
 import { usersCrudHandlers } from '@/app/api/latest/users/crud';
 import { globalPrismaClient } from '@/prisma-client';
+import { runAsynchronouslyAndWaitUntil } from '@/utils/vercel';
 import { KnownErrors } from '@stackframe/stack-shared';
 import { yupBoolean, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { AccessTokenPayload } from '@stackframe/stack-shared/dist/sessions';
 import { generateSecureRandomString } from '@stackframe/stack-shared/dist/utils/crypto';
 import { getEnvVariable } from '@stackframe/stack-shared/dist/utils/env';
-import { StackAssertionError, throwErr } from '@stackframe/stack-shared/dist/utils/errors';
+import { StackAssertionError, captureError, throwErr } from '@stackframe/stack-shared/dist/utils/errors';
 import { getPrivateJwks, getPublicJwkSet, signJWT, verifyJWT } from '@stackframe/stack-shared/dist/utils/jwt';
 import { Result } from '@stackframe/stack-shared/dist/utils/results';
 import { traceSpan } from '@stackframe/stack-shared/dist/utils/telemetry';
@@ -158,21 +159,22 @@ export async function generateAccessTokenFromRefreshTokenIfValid(options: {
     throw error;
   }
 
-  // Update the user's lastActiveAt timestamp in the database
-  await globalPrismaClient.projectUser.update({
-    where: {
-      tenancyId_projectUserId: {
-        tenancyId: options.tenancy.id,
-        projectUserId: options.refreshTokenObj.projectUserId,
+  // Update the user's lastActiveAt timestamp in the database (non-blocking)
+  runAsynchronouslyAndWaitUntil(
+    globalPrismaClient.projectUser.update({
+      where: {
+        tenancyId_projectUserId: {
+          tenancyId: options.tenancy.id,
+          projectUserId: options.refreshTokenObj.projectUserId,
+        },
       },
-    },
-    data: {
-      lastActiveAt: new Date(),
-    },
-  }).catch((error) => {
-    // Log the error but don't fail the token refresh
-    console.error("Failed to update user lastActiveAt", error);
-  });
+      data: {
+        lastActiveAt: new Date(),
+      },
+    }).catch((error) => {
+      captureError("update-user-last-active-at", error);
+    })
+  );
 
   // Still log the session activity event for analytics/tracking purposes
   await logEvent(
