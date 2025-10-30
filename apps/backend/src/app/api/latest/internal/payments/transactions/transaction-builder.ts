@@ -1,7 +1,6 @@
 import type { ItemQuantityChange, OneTimePurchase, Subscription } from "@prisma/client";
 import type { Transaction, TransactionEntry } from "@stackframe/stack-shared/dist/interface/crud/transactions";
 import { SUPPORTED_CURRENCIES, type Currency } from "@stackframe/stack-shared/dist/utils/currency-constants";
-import { getOrUndefined } from "@stackframe/stack-shared/dist/utils/objects";
 import { typedToLowercase } from "@stackframe/stack-shared/dist/utils/strings";
 import type { Tenancy } from "@/lib/tenancies";
 import { productSchema } from "@stackframe/stack-shared/dist/schema-fields";
