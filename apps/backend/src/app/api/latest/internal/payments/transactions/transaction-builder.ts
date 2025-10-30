@@ -4,6 +4,9 @@ import { SUPPORTED_CURRENCIES, type Currency } from "@stackframe/stack-shared/di
 import { getOrUndefined } from "@stackframe/stack-shared/dist/utils/objects";
 import { typedToLowercase } from "@stackframe/stack-shared/dist/utils/strings";
 import type { Tenancy } from "@/lib/tenancies";
+import { productSchema } from "@stackframe/stack-shared/dist/schema-fields";
+import { InferType } from "yup";
+import { productToInlineProduct } from "@/lib/payments";
 
 type SelectedPriceMetadata = {
   interval?: unknown,
@@ -39,15 +42,9 @@ function buildFallbackProductSnapshot(options: {
   } as ProductSnapshot;
 }
 
-function ensureProductSnapshot(product: ProductWithPrices, customerType: "user" | "team" | "custom"): ProductSnapshot {
+function ensureProductSnapshot(product: InferType<typeof productSchema> | null, customerType: "user" | "team" | "custom"): ProductSnapshot {
   if (product) {
-    const snapshot = product as Partial<ProductSnapshot>;
-    return {
-      ...snapshot,
-      customerType: snapshot.customer_type ?? customerType,
-      prices: snapshot.prices ?? "include-by-default",
-      displayName: snapshot.display_name ?? "Unknown product",
-    } as ProductSnapshot;
+    return productToInlineProduct(product);
   }
   return buildFallbackProductSnapshot({
     displayName: "Unknown product",
@@ -178,7 +175,7 @@ export function buildSubscriptionTransaction(options: {
 }): Transaction {
   const { subscription } = options;
   const customerType = typedToLowercase(subscription.customerType);
-  const product = (subscription.product as ProductWithPrices) ?? null;
+  const product = subscription.product as InferType<typeof productSchema> | null;
   const productSnapshot = ensureProductSnapshot(product, customerType);
   const selectedPrice = product ? resolveSelectedPriceFromProduct(product, subscription.priceId ?? null) : null;
   const quantity = subscription.quantity;
@@ -223,7 +220,7 @@ export function buildOneTimePurchaseTransaction(options: {
 }): Transaction {
   const { purchase } = options;
   const customerType = typedToLowercase(purchase.customerType);
-  const product = (purchase.product as ProductWithPrices) ?? null;
+  const product = purchase.product as InferType<typeof productSchema> | null;
   const productSnapshot = ensureProductSnapshot(product, customerType);
   const selectedPrice = product ? resolveSelectedPriceFromProduct(product, purchase.priceId ?? null) : null;
   const quantity = purchase.quantity;

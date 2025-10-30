@@ -202,16 +202,16 @@ export function TransactionTable() {
         }
         const { Icon, label } = displayType;
         return (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <TextCell size={20}>
+          <TextCell size={20}>
+            <Tooltip>
+              <TooltipTrigger asChild>
                 <span className="flex h-6 w-6 items-center justify-center rounded-md bg-muted">
                   <Icon className="h-4 w-4" aria-hidden />
                 </span>
-              </TextCell>
-            </TooltipTrigger>
-            <TooltipContent side="left">{label}</TooltipContent>
-          </Tooltip>
+              </TooltipTrigger>
+              <TooltipContent side="left">{label}</TooltipContent>
+            </Tooltip>
+          </TextCell>
         );
       },
       enableSorting: false,

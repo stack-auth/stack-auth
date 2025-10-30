@@ -92,22 +92,44 @@ it("includes TEST_MODE subscription", async () => {
   expect(response.body.transactions).toMatchInlineSnapshot(`
     [
       {
+        "adjusted_by": [],
         "created_at_millis": <stripped field 'created_at_millis'>,
-        "customer_id": "<stripped UUID>",
-        "customer_type": "user",
+        "effective_at_millis": 1761843285318,
+        "entries": [
+          {
+            "adjusted_entry_index": null,
+            "adjusted_transaction_id": null,
+            "customer_id": "<stripped UUID>",
+            "customer_type": "user",
+            "price_id": "monthly",
+            "product": {
+              "client_metadata": null,
+              "client_read_only_metadata": null,
+              "customer_type": "user",
+              "display_name": "Sub Product",
+              "included_items": {},
+              "prices": {
+                "monthly": {
+                  "USD": "1000",
+                  "interval": [
+                    1,
+                    "month",
+                  ],
+                },
+              },
+              "server_metadata": null,
+              "server_only": false,
+              "stackable": false,
+            },
+            "product_id": "sub-product",
+            "quantity": 1,
+            "subscription_id": "<stripped UUID>",
+            "type": "product_grant",
+          },
+        ],
         "id": "<stripped UUID>",
-        "price": {
-          "USD": "1000",
-          "interval": [
-            1,
-            "month",
-          ],
-        },
-        "product_display_name": "Sub Product",
-        "quantity": 1,
-        "status": "active",
         "test_mode": true,
-        "type": "subscription",
+        "type": "purchase",
       },
     ]
   `);
@@ -132,16 +154,36 @@ it("includes TEST_MODE one-time purchase", async () => {
   expect(response.body.transactions).toMatchInlineSnapshot(`
     [
       {
+        "adjusted_by": [],
         "created_at_millis": <stripped field 'created_at_millis'>,
-        "customer_id": "<stripped UUID>",
-        "customer_type": "user",
+        "effective_at_millis": 1761843290857,
+        "entries": [
+          {
+            "adjusted_entry_index": null,
+            "adjusted_transaction_id": null,
+            "customer_id": "<stripped UUID>",
+            "customer_type": "user",
+            "one_time_purchase_id": "<stripped UUID>",
+            "price_id": "single",
+            "product": {
+              "client_metadata": null,
+              "client_read_only_metadata": null,
+              "customer_type": "user",
+              "display_name": "One-Time Product",
+              "included_items": {},
+              "prices": { "single": { "USD": "5000" } },
+              "server_metadata": null,
+              "server_only": false,
+              "stackable": false,
+            },
+            "product_id": "otp-product",
+            "quantity": 1,
+            "type": "product_grant",
+          },
+        ],
         "id": "<stripped UUID>",
-        "price": { "USD": "5000" },
-        "product_display_name": "One-Time Product",
-        "quantity": 1,
-        "status": null,
         "test_mode": true,
-        "type": "one_time",
+        "type": "purchase",
       },
     ]
   `);
@@ -166,19 +208,23 @@ it("includes item quantity change entries", async () => {
   expect(response.body.transactions).toMatchInlineSnapshot(`
     [
       {
+        "adjusted_by": [],
         "created_at_millis": <stripped field 'created_at_millis'>,
-        "customer_id": "<stripped UUID>",
-        "customer_type": "user",
-        "description": "test",
-        "expires_at_millis": <stripped field 'expires_at_millis'>,
+        "effective_at_millis": 1761843297601,
+        "entries": [
+          {
+            "adjusted_entry_index": null,
+            "adjusted_transaction_id": null,
+            "customer_id": "<stripped UUID>",
+            "customer_type": "user",
+            "item_id": "credits",
+            "quantity": 5,
+            "type": "item_quantity_change",
+          },
+        ],
         "id": "<stripped UUID>",
-        "item_id": "credits",
-        "price": null,
-        "product_display_name": null,
-        "quantity": 5,
-        "status": null,
         "test_mode": false,
-        "type": "item_quantity_change",
+        "type": "manual-item-quantity-change",
       },
     ]
   `);
