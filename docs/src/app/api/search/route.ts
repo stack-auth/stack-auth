@@ -16,6 +16,8 @@ async function callMcpServer(search_query: string): Promise<SearchResult[]> {
       ? 'http://localhost:8104/api/internal/mcp'
       : 'https://mcp.stack-auth.com/api/internal/mcp';
 
+    console.log(`Calling MCP server at: ${mcpUrl}`);
+
     const response = await fetch(mcpUrl, {
       method: 'POST',
       headers: {
@@ -34,23 +36,52 @@ async function callMcpServer(search_query: string): Promise<SearchResult[]> {
     });
 
     if (!response.ok) {
-      throw new Error(`MCP server error: ${response.status}`);
+      const errorText = await response.text();
+      console.error(`MCP server error (${response.status}):`, errorText);
+      throw new Error(`MCP server error: ${response.status} - ${errorText.substring(0, 200)}`);
     }
 
     // Parse Server-Sent Events format response
-    const text = await response.text();
-    const lines = text.split('\n');
+    // Read the stream until we get the data event (don't wait for connection to close)
+    if (!response.body) {
+      throw new Error('No response body');
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
     let jsonData = null;
 
-    for (const line of lines) {
-      if (line.startsWith('data: ')) {
-        try {
-          jsonData = JSON.parse(line.substring(6));
-          break;
-        } catch (e) {
-          // Continue looking for valid JSON data
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+
+        if (value) {
+          buffer += decoder.decode(value, { stream: true });
+
+          // Look for complete data: lines in the buffer
+          const lines = buffer.split('\n');
+
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              try {
+                jsonData = JSON.parse(line.substring(6));
+                // Found our data, we can stop reading
+                await reader.cancel();
+                break;
+              } catch (e) {
+                // Continue looking for valid JSON data
+              }
+            }
+          }
+
+          if (jsonData) break;
         }
+
+        if (done) break;
       }
+    } finally {
+      reader.releaseLock();
     }
 
     if (!jsonData) {

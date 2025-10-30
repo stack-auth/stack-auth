@@ -1,5 +1,5 @@
 import { usersCrudHandlers } from "@/app/api/latest/users/crud";
-import { getAuthContactChannel } from "@/lib/contact-channel";
+import { getAuthContactChannelWithEmailNormalization } from "@/lib/contact-channel";
 import { validateRedirectUrl } from "@/lib/redirect-urls";
 import { Tenancy, getTenancy } from "@/lib/tenancies";
 import { oauthCookieSchema } from "@/lib/tokens";
@@ -281,7 +281,7 @@ const handler = createSmartRouteHandler({
                   if (userInfo.email) {
                     primaryEmailAuthEnabled = true;
 
-                    const oldContactChannel = await getAuthContactChannel(
+                    const oldContactChannel = await getAuthContactChannelWithEmailNormalization(
                       prisma,
                       {
                         tenancyId: outerInfo.tenancyId,

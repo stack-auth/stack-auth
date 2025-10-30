@@ -5,3 +5,6 @@ A: Host ports use `${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}` plus the two-digit suff
 
 Q: How can I show helper text beneath metadata text areas in the dashboard?
 A: Use the shared `TextAreaField` component's `helperText` prop in `apps/dashboard/src/components/form-fields.tsx`; it now renders the helper content in a secondary Typography line under the textarea.
+
+Q: Why did `pnpm typecheck` fail after deleting a Next.js route?
+A: The generated `.next/types/validator.ts` can keep stale imports for removed routes. Deleting that file (or regenerating Next build output) clears the outdated references so `pnpm typecheck` succeeds again.

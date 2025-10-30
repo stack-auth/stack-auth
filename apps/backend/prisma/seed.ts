@@ -6,7 +6,9 @@ import { createOrUpdateProjectWithLegacyConfig, getProject } from '@/lib/project
 import { DEFAULT_BRANCH_ID, getSoleTenancyFromProjectBranch } from '@/lib/tenancies';
 import { getPrismaClientForTenancy, globalPrismaClient } from '@/prisma-client';
 import { PrismaClient } from '@prisma/client';
-import { errorToNiceString, throwErr } from '@stackframe/stack-shared/dist/utils/errors';
+import { ALL_APPS } from '@stackframe/stack-shared/dist/apps/apps-config';
+import { throwErr } from '@stackframe/stack-shared/dist/utils/errors';
+import { typedEntries, typedFromEntries } from '@stackframe/stack-shared/dist/utils/objects';
 
 const globalPrisma = new PrismaClient();
 
@@ -194,7 +196,10 @@ export async function seed() {
             customerType: "team"
           }
         },
-      }
+      },
+      apps: {
+        installed: typedFromEntries(typedEntries(ALL_APPS).map(([key, value]) => [key, { enabled: true }])),
+      },
     }
   });
 

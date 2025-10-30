@@ -1,4 +1,4 @@
-import { getAuthContactChannel } from "@/lib/contact-channel";
+import { getAuthContactChannelWithEmailNormalization } from "@/lib/contact-channel";
 import { sendEmailFromTemplate } from "@/lib/emails";
 import { getSoleTenancyFromProjectBranch, Tenancy } from "@/lib/tenancies";
 import { createAuthTokens } from "@/lib/tokens";
@@ -14,7 +14,7 @@ import { createMfaRequiredError } from "../../mfa/sign-in/verification-code-hand
 
 export async function ensureUserForEmailAllowsOtp(tenancy: Tenancy, email: string): Promise<UsersCrud["Admin"]["Read"] | null> {
   const prisma = await getPrismaClientForTenancy(tenancy);
-  const contactChannel = await getAuthContactChannel(
+  const contactChannel = await getAuthContactChannelWithEmailNormalization(
     prisma,
     {
       tenancyId: tenancy.id,

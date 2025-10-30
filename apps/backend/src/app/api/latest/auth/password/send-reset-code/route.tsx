@@ -1,4 +1,4 @@
-import { getAuthContactChannel } from "@/lib/contact-channel";
+import { getAuthContactChannelWithEmailNormalization } from "@/lib/contact-channel";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@stackframe/stack-shared";
@@ -38,7 +38,7 @@ export const POST = createSmartRouteHandler({
     const prisma = await getPrismaClientForTenancy(tenancy);
 
     // TODO filter in the query
-    const contactChannel = await getAuthContactChannel(
+    const contactChannel = await getAuthContactChannelWithEmailNormalization(
       prisma,
       {
         tenancyId: tenancy.id,
