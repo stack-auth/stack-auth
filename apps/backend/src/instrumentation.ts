@@ -1,3 +1,4 @@
+import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
 import { PrismaInstrumentation } from "@prisma/instrumentation";
 import * as Sentry from "@sentry/nextjs";
 import { getEnvVariable, getNextRuntime, getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
@@ -14,6 +15,11 @@ export function register() {
   registerOTel({
     serviceName: 'stack-backend',
     instrumentations: [new PrismaInstrumentation()],
+    ...getNodeEnvironment() === "development" && getNextRuntime() === "nodejs" ? {
+      traceExporter: new OTLPTraceExporter({
+        url: `http://localhost:${getEnvVariable("NEXT_PUBLIC_STACK_PORT_PREFIX", "81")}31/v1/traces`,
+      }),
+    } : {},
   });
 
   if (getNextRuntime() === "nodejs") {

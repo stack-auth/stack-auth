@@ -11,6 +11,12 @@ export function getConvexProvidersConfig(options: {
     {
       type: "customJwt",
       issuer: new URL(urlString`/api/v1/projects/${projectId}`, baseUrl),
+      jwks: new URL(urlString`/api/v1/projects/${projectId}/.well-known/jwks.json`, baseUrl),
+      algorithm: "ES256",
+    },
+    {
+      type: "customJwt",
+      issuer: new URL(urlString`/api/v1/projects-anonymous-users/${projectId}`, baseUrl),
       jwks: new URL(urlString`/api/v1/projects/${projectId}/.well-known/jwks.json?include_anonymous=true`, baseUrl),
       algorithm: "ES256",
     },
