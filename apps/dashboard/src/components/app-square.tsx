@@ -107,7 +107,7 @@ export function AppSquare({ appId }: {
   const project = adminApp.useProject();
   const config = project.useConfig();
 
-  const isEnabled = config.apps.installed[appId].enabled;
+  const isEnabled = config.apps.installed[appId]?.enabled ?? false;
   const appPath = getAppPath(project.id, appFrontend);
   const appDetailsPath = `/projects/${project.id}/apps/${appId}`;
 

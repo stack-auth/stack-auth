@@ -12,7 +12,7 @@ export default function PageClient() {
 
   // Get installed apps
   const installedApps = Object.entries(config.apps.installed)
-    .filter(([_, appConfig]) => appConfig.enabled)
+    .filter(([_, appConfig]) => appConfig?.enabled)
     .map(([appId]) => appId as AppId);
 
   // Group apps by tag
