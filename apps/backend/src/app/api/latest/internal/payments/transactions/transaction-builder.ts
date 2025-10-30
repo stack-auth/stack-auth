@@ -170,20 +170,11 @@ function createProductGrantEntry(options: {
   };
 }
 
-function resolveItemCustomerType(change: ItemQuantityChange, tenancy: Tenancy): "user" | "team" | "custom" {
-  const recorded = typedToLowercase(change.customerType) as string;
-  if (recorded === "user" || recorded === "team" || recorded === "custom") {
-    return recorded;
-  }
-  const itemCfg = getOrUndefined(tenancy.config.payments.items, change.itemId);
-  return itemCfg?.customerType ?? "custom";
-}
-
 export function buildSubscriptionTransaction(options: {
   subscription: Subscription,
 }): Transaction {
   const { subscription } = options;
-  const customerType = typedToLowercase(subscription.customerType) as "user" | "team" | "custom";
+  const customerType = typedToLowercase(subscription.customerType);
   const product = (subscription.product as ProductWithPrices) ?? null;
   const productSnapshot = ensureProductSnapshot(product, customerType);
   const selectedPrice = product ? resolveSelectedPriceFromProduct(product, subscription.priceId ?? null) : null;
@@ -228,7 +219,7 @@ export function buildOneTimePurchaseTransaction(options: {
   purchase: OneTimePurchase,
 }): Transaction {
   const { purchase } = options;
-  const customerType = typedToLowercase(purchase.customerType) as "user" | "team" | "custom";
+  const customerType = typedToLowercase(purchase.customerType);
   const product = (purchase.product as ProductWithPrices) ?? null;
   const productSnapshot = ensureProductSnapshot(product, customerType);
   const selectedPrice = product ? resolveSelectedPriceFromProduct(product, purchase.priceId ?? null) : null;
@@ -274,7 +265,7 @@ export function buildItemQuantityChangeTransaction(options: {
   tenancy: Tenancy,
 }): Transaction {
   const { change, tenancy } = options;
-  const customerType = resolveItemCustomerType(change, tenancy);
+  const customerType = typedToLowercase(change.customerType);
 
   const entries: TransactionEntry[] = [
     {

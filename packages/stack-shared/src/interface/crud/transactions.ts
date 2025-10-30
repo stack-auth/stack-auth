@@ -2,7 +2,6 @@ import type { InferType } from "yup";
 import * as yup from "yup";
 import {
   customerTypeSchema,
-  productPriceSchema,
   productSchema,
   yupArray,
   yupBoolean,
@@ -13,13 +12,11 @@ import {
 } from "../../schema-fields";
 import { SUPPORTED_CURRENCIES, type Currency, type MoneyAmount } from "../../utils/currency-constants";
 import { typedFromEntries } from "../../utils/objects";
+import { throwErr } from "../../utils/errors";
 
 type AdjustmentMode = "optional" | "required" | "forbidden";
 
-const USD_CURRENCY = SUPPORTED_CURRENCIES.find((currency) => currency.code === "USD");
-if (!USD_CURRENCY) {
-  throw new Error("USD currency configuration missing in SUPPORTED_CURRENCIES");
-}
+const USD_CURRENCY = SUPPORTED_CURRENCIES.find((currency) => currency.code === "USD") ?? throwErr("USD currency configuration missing in SUPPORTED_CURRENCIES");
 
 function signedMoneyAmountSchema(currency: Currency) {
   return yupString<MoneyAmount>().test("signed-money-amount", "Invalid money amount", (value, context) => {
@@ -178,20 +175,24 @@ export const transactionEntrySchema = yupUnion(
 
 export type TransactionEntry = InferType<typeof transactionEntrySchema>;
 
+export const TRANSACTION_TYPES = [
+  "purchase",
+  "subscription-cancellation",
+  "subscription-renewal",
+  "chargeback",
+  "manual-item-quantity-change",
+  "upgrade",
+  "downgrade",
+  "product-change",
+] as const;
+
+export type TransactionType = (typeof TRANSACTION_TYPES)[number];
+
 export const transactionSchema = yupObject({
   id: yupString().defined(),
   created_at_millis: yupNumber().defined(),
   effective_at_millis: yupNumber().defined(),
-  type: yupString().oneOf([
-    "purchase",
-    "subscription-cancellation",
-    "subscription-renewal",
-    "chargeback",
-    "manual-item-quantity-change",
-    "upgrade",
-    "downgrade",
-    "product-change",
-  ]).nullable().defined(),
+  type: yupString().oneOf(TRANSACTION_TYPES).nullable().defined(),
   entries: yupArray(transactionEntrySchema).defined(),
   adjustedBy: yupArray(
     yupObject({
@@ -203,27 +204,3 @@ export const transactionSchema = yupObject({
 }).defined();
 
 export type Transaction = InferType<typeof transactionSchema>;
-
-/**
- * @deprecated Use Transaction and transactionSchema instead.
- */
-export const adminTransaction = yupObject({
-  id: yupString().defined(),
-  type: yupString().oneOf(["subscription", "one_time", "item_quantity_change"]).defined(),
-  created_at_millis: yupNumber().defined(),
-  customer_type: customerTypeSchema.defined(),
-  customer_id: yupString().defined(),
-  quantity: yupNumber().defined(),
-  test_mode: yupBoolean().defined(),
-  product_display_name: yupString().nullable().defined(),
-  price: productPriceSchema.omit(["serverOnly", "freeTrial"]).nullable().defined(),
-  status: yupString().nullable().defined(),
-  item_id: yupString().optional(),
-  description: yupString().nullable().optional(),
-  expires_at_millis: yupNumber().nullable().optional(),
-}).defined();
-
-/**
- * @deprecated Use Transaction instead.
- */
-export type AdminTransaction = InferType<typeof adminTransaction>;

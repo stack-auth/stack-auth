@@ -1,7 +1,7 @@
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { Prisma } from "@prisma/client";
-import { transactionSchema, type Transaction } from "@stackframe/stack-shared/dist/interface/crud/transactions";
+import { TRANSACTION_TYPES, transactionSchema, type Transaction } from "@stackframe/stack-shared/dist/interface/crud/transactions";
 import { adaptSchema, adminAuthTypeSchema, yupArray, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { typedToUppercase } from "@stackframe/stack-shared/dist/utils/strings";
 import { buildItemQuantityChangeTransaction, buildOneTimePurchaseTransaction, buildSubscriptionTransaction } from "./transaction-builder";
@@ -21,7 +21,7 @@ export const GET = createSmartRouteHandler({
     query: yupObject({
       cursor: yupString().optional(),
       limit: yupString().optional(),
-      type: yupString().oneOf(['subscription', 'one_time', 'item_quantity_change']).optional(),
+      type: yupString().oneOf(TRANSACTION_TYPES).optional(),
       customer_type: yupString().oneOf(['user', 'team', 'custom']).optional(),
     }).optional(),
   }),
@@ -97,21 +97,21 @@ export const GET = createSmartRouteHandler({
     let merged: TransactionRow[] = [];
 
     const [subs, iqcs, otps] = await Promise.all([
-      (query.type === "subscription" || !query.type) ? prisma.subscription.findMany({
+      prisma.subscription.findMany({
         where: { tenancyId: auth.tenancy.id, ...(subWhere ?? {}), ...customerTypeFilter },
         orderBy: baseOrder,
         take: limit,
-      }) : [],
-      (query.type === "item_quantity_change" || !query.type) ? prisma.itemQuantityChange.findMany({
+      }),
+      prisma.itemQuantityChange.findMany({
         where: { tenancyId: auth.tenancy.id, ...(iqcWhere ?? {}), ...customerTypeFilter },
         orderBy: baseOrder,
         take: limit,
-      }) : [],
-      (query.type === "one_time" || !query.type) ? prisma.oneTimePurchase.findMany({
+      }),
+      prisma.oneTimePurchase.findMany({
         where: { tenancyId: auth.tenancy.id, ...(otpWhere ?? {}), ...customerTypeFilter },
         orderBy: baseOrder,
         take: limit,
-      }) : [],
+      }),
     ]);
 
     merged = [
@@ -140,7 +140,12 @@ export const GET = createSmartRouteHandler({
       return a.createdAt.getTime() < b.createdAt.getTime() ? 1 : -1;
     });
 
-    const page = merged.slice(0, limit);
+    const filtered = merged.filter((row) => {
+      if (!query.type) return true;
+      return row.transaction.type === query.type;
+    });
+
+    const page = filtered.slice(0, limit);
     let lastSubId = "";
     let lastIqcId = "";
     let lastOtpId = "";
