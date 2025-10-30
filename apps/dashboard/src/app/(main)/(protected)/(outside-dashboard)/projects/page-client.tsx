@@ -3,16 +3,16 @@
 import { ProjectCard } from "@/components/project-card";
 import { useRouter } from "@/components/router";
 import { SearchBar } from "@/components/search-bar";
-import { AdminOwnedProject, StackAdminApp, Team, useUser } from "@stackframe/stack";
+import { AdminOwnedProject, Team, useUser } from "@stackframe/stack";
 import { strictEmailSchema, yupObject } from "@stackframe/stack-shared/dist/schema-fields";
 import { groupBy } from "@stackframe/stack-shared/dist/utils/arrays";
 import { runAsynchronously, wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
-import { Button, Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, Input, Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue, Skeleton, Spinner, Typography, toast } from "@stackframe/stack-ui";
+import { Button, Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, Input, Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue, Skeleton, Typography, toast } from "@stackframe/stack-ui";
 import { Settings } from "lucide-react";
-import { useEffect, useMemo, useState, Suspense, useCallback } from "react";
-import { listInvitations, inviteUser, revokeInvitation } from "./actions";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import * as yup from "yup";
+import { inviteUser, listInvitations, revokeInvitation } from "./actions";
 
 export default function PageClient() {
   const user = useUser({ or: 'redirect', projectIdMustMatch: "internal" });
@@ -167,8 +167,17 @@ function TeamAddUserDialogContent(props: {
   }, [props.team.id]);
 
   useEffect(() => {
-    runAsynchronously(fetchInvitations());
-  }, [fetchInvitations]);
+    let canceled = false;
+    runAsynchronously(async () => {
+      const invitations = await listInvitations(props.team.id);
+      if (!canceled) {
+        setInvitations(invitations);
+      }
+    });
+    return () => {
+      canceled = true;
+    };
+  }, [props.team.id]);
 
   const users = props.team.useUsers();
   const admins = props.team.useItem("dashboard_admins");
