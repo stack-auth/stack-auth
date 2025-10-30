@@ -43,6 +43,8 @@ import {
   X,
   XCircle,
   Copy,
+  ArrowDown,
+  ArrowUp,
 } from "lucide-react";
 import { usePathname, useSearchParams, type ReadonlyURLSearchParams } from "next/navigation";
 import {
@@ -50,6 +52,7 @@ import {
   useCallback,
   useEffect,
   type MutableRefObject,
+  type CSSProperties,
   useMemo,
   useRef,
   useState,
@@ -71,6 +74,7 @@ type QueryState = {
   page: number,
   pageSize: number,
   cursor?: string,
+  signedUpOrder: "asc" | "desc",
 };
 
 type QueryUpdater =
@@ -94,6 +98,62 @@ const RELATIVE_TIME_DIVISIONS: { amount: number, unit: Intl.RelativeTimeFormatUn
   { amount: 12, unit: "month" },
 ];
 
+type ColumnKey =
+  | "user"
+  | "email"
+  | "userId"
+  | "emailStatus"
+  | "lastActiveAt"
+  | "auth"
+  | "signedUpAt"
+  | "actions";
+
+type ColumnLayoutEntry = {
+  size: number,
+  minWidth: number,
+  maxWidth: number,
+  width: string,
+  headerClassName?: string,
+  cellClassName?: string,
+};
+
+const COLUMN_LAYOUT: Record<ColumnKey, ColumnLayoutEntry> = {
+  user: { size: 160, minWidth: 110, maxWidth: 160, width: "clamp(110px, 22vw, 160px)" },
+  email: { size: 160, minWidth: 110, maxWidth: 160, width: "clamp(110px, 22vw, 160px)" },
+  userId: { size: 130, minWidth: 90, maxWidth: 130, width: "clamp(90px, 18vw, 130px)" },
+  emailStatus: { size: 110, minWidth: 80, maxWidth: 110, width: "clamp(80px, 16vw, 110px)" },
+  lastActiveAt: { size: 110, minWidth: 80, maxWidth: 110, width: "clamp(80px, 16vw, 110px)" },
+  auth: { size: 150, minWidth: 110, maxWidth: 150, width: "clamp(110px, 20vw, 150px)" },
+  signedUpAt: { size: 110, minWidth: 80, maxWidth: 110, width: "clamp(80px, 16vw, 110px)" },
+  actions: {
+    size: 80,
+    minWidth: 60,
+    maxWidth: 80,
+    width: "clamp(60px, 10vw, 80px)",
+    headerClassName: "text-right",
+    cellClassName: "text-right",
+  },
+};
+type ColumnMeta = { columnKey: ColumnKey };
+
+const ROW_HEIGHT_PX = 49;
+const ROW_HEIGHT_STYLE: CSSProperties = { height: ROW_HEIGHT_PX };
+
+function combineClassNames(...classes: (string | undefined)[]) {
+  return classes.filter(Boolean).join(" ");
+}
+
+function getColumnStyles(layout?: ColumnLayoutEntry) {
+  if (!layout) {
+    return undefined;
+  }
+  return {
+    width: layout.width,
+    minWidth: layout.minWidth,
+    maxWidth: layout.maxWidth,
+  } satisfies CSSProperties;
+}
+
 const querySchema = z.object({
   search: z
     .string()
@@ -106,6 +166,7 @@ const querySchema = z.object({
     .string()
     .transform((value) => (value.length === 0 ? undefined : value))
     .optional(),
+  signedUpOrder: z.enum(["asc", "desc"]).optional(),
 });
 
 const columnHelper = createColumnHelper<ExtendedServerUser>();
@@ -142,7 +203,7 @@ export function UserTable() {
   useEffect(() => {
     cursorCacheRef.current = new Map<number, string | null>([[1, null]]);
     prefetchedCursorRef.current.clear();
-  }, [query.search, query.includeAnonymous, query.pageSize]);
+  }, [query.search, query.includeAnonymous, query.pageSize, query.signedUpOrder]);
 
   useEffect(() => {
     if (query.page > 1 && !query.cursor) {
@@ -242,11 +303,11 @@ function UserTableBody(props: {
     () => ({
       limit: query.pageSize,
       orderBy: "signedUpAt" as const,
-      desc: true,
+      desc: query.signedUpOrder === "desc",
       query: query.search,
       includeAnonymous: query.includeAnonymous,
     }),
-    [query.pageSize, query.search, query.includeAnonymous],
+    [query.pageSize, query.search, query.includeAnonymous, query.signedUpOrder],
   );
 
   const storedCursor = cursorCacheRef.current.get(query.page);
@@ -306,8 +367,8 @@ function UserTableBody(props: {
   }, [users.nextCursor, stackAdminApp, baseOptions, prefetchedCursorRef]);
 
   const columns = useMemo<ColumnDef<ExtendedServerUser>[]>(
-    () => createUserColumns(stackAdminApp.projectId),
-    [stackAdminApp.projectId],
+    () => createUserColumns(stackAdminApp.projectId, setQuery, query.signedUpOrder === "desc"),
+    [stackAdminApp.projectId, setQuery, query.signedUpOrder],
   );
 
   const table = useReactTable({
@@ -323,15 +384,23 @@ function UserTableBody(props: {
   return (
     <div className="flex flex-col">
       <div className="overflow-x-auto">
-        <table className="min-w-full border-collapse text-left text-sm text-slate-700">
+        <table className="w-full border-collapse text-left text-sm text-slate-700">
           <thead className="sticky top-0 z-10 bg-slate-50 text-xs font-semibold tracking-wide text-slate-500">
             {table.getHeaderGroups().map((headerGroup) => (
               <tr key={headerGroup.id} className="border-b border-slate-200">
-                {headerGroup.headers.map((header) => (
-                  <th key={header.id} className="px-4 py-3 font-medium">
-                    {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
-                  </th>
-                ))}
+                {headerGroup.headers.map((header) => {
+                  const columnKey = (header.column.columnDef.meta as ColumnMeta | undefined)?.columnKey;
+                  const layout = columnKey ? COLUMN_LAYOUT[columnKey] : undefined;
+                  return (
+                    <th
+                      key={header.id}
+                      className={combineClassNames("px-4 py-3 font-medium", layout?.headerClassName)}
+                      style={getColumnStyles(layout)}
+                    >
+                      {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
+                    </th>
+                  );
+                })}
               </tr>
             ))}
           </thead>
@@ -340,13 +409,25 @@ function UserTableBody(props: {
               table.getRowModel().rows.map((row) => (
                 <tr
                   key={row.id}
-                  className="border-b border-slate-100 transition hover:bg-slate-50"
+                  className="border-b border-slate-100 transition hover:bg-slate-50 h-[49px]"
+                  style={ROW_HEIGHT_STYLE}
                 >
-                  {row.getVisibleCells().map((cell) => (
-                    <td key={cell.id} className="px-4 py-4 align-middle">
-                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                    </td>
-                  ))}
+                  {row.getVisibleCells().map((cell) => {
+                    const columnKey = (cell.column.columnDef.meta as ColumnMeta | undefined)?.columnKey;
+                    const layout = columnKey ? COLUMN_LAYOUT[columnKey] : undefined;
+                    return (
+                      <td
+                        key={cell.id}
+                        className={combineClassNames(
+                          "px-4 py-2 align-middle",
+                          layout?.cellClassName,
+                        )}
+                        style={getColumnStyles(layout)}
+                      >
+                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                      </td>
+                    );
+                  })}
                 </tr>
               ))
             ) : (
@@ -441,57 +522,100 @@ function UserTableBody(props: {
 function UserTableSkeleton(props: { pageSize: number }) {
   const { pageSize } = props;
   const rows = Array.from({ length: pageSize });
+  const columnOrder: ColumnKey[] = [
+    "user",
+    "email",
+    "userId",
+    "emailStatus",
+    "lastActiveAt",
+    "auth",
+    "signedUpAt",
+    "actions",
+  ];
+  const skeletonHeaders: Record<ColumnKey, string | null> = {
+    user: "User",
+    email: "Email",
+    userId: "User ID",
+    emailStatus: "Email status",
+    lastActiveAt: "Last active",
+    auth: "Auth methods",
+    signedUpAt: "Signed up",
+    actions: null,
+  };
+  const renderSkeletonCellContent = (columnKey: ColumnKey): JSX.Element => {
+    switch (columnKey) {
+      case "user":
+        return (
+          <div className="flex items-center gap-3">
+            <Skeleton className="h-6 w-6 rounded-full" />
+            <div className="flex-1 space-y-2">
+              <Skeleton className="h-3 w-full max-w-[160px]" />
+            </div>
+          </div>
+        );
+      case "email":
+        return <Skeleton className="h-3 w-full max-w-[160px]" />;
+      case "userId":
+        return <Skeleton className="h-3 w-full max-w-[130px]" />;
+      case "emailStatus":
+        return <Skeleton className="h-3 w-full max-w-[110px]" />;
+      case "lastActiveAt":
+        return <Skeleton className="h-3 w-full max-w-[110px]" />;
+      case "auth":
+        return (
+          <div className="flex flex-wrap gap-2">
+            <Skeleton className="h-5 w-full max-w-[150px] rounded-full" />
+          </div>
+        );
+      case "signedUpAt":
+        return <Skeleton className="h-3 w-full max-w-[110px]" />;
+      case "actions":
+        return <Skeleton className="ml-auto h-4 w-4" />;
+      default: {
+        const exhaustiveCheck: never = columnKey;
+        throw new Error("Unhandled skeleton column");
+      }
+    }
+  };
 
   return (
     <div className="flex flex-col">
       <div className="overflow-x-auto">
-        <table className="min-w-full border-collapse text-left text-sm">
+        <table className="w-full border-collapse text-left text-sm">
           <thead className="bg-slate-50 text-xs font-semibold tracking-wide text-slate-400">
             <tr className="border-b border-slate-200">
-              <th className="px-4 py-3">User</th>
-              <th className="px-4 py-3">Email</th>
-              <th className="px-4 py-3">User ID</th>
-              <th className="px-4 py-3">Email status</th>
-              <th className="px-4 py-3">Last active</th>
-              <th className="px-4 py-3">Auth methods</th>
-              <th className="px-4 py-3">Signed up</th>
-              <th className="px-4 py-3 text-right"></th>
+              {columnOrder.map((columnKey) => {
+                const layout = COLUMN_LAYOUT[columnKey];
+                return (
+                  <th
+                    key={columnKey}
+                    className={combineClassNames("px-4 py-3", layout.headerClassName)}
+                    style={getColumnStyles(layout)}
+                  >
+                    {skeletonHeaders[columnKey]}
+                  </th>
+                );
+              })}
             </tr>
           </thead>
           <tbody>
             {rows.map((_, index) => (
-              <tr key={index} className="border-b border-slate-100">
-                <td className="px-4 py-4">
-                  <div className="flex items-center gap-3">
-                    <Skeleton className="h-6 w-6 rounded-full" />
-                    <div className="flex-1 space-y-2">
-                      <Skeleton className="h-3 w-40" />
-                    </div>
-                  </div>
-                </td>
-                <td className="px-4 py-4">
-                  <Skeleton className="h-3 w-40" />
-                </td>
-                <td className="px-4 py-4">
-                  <Skeleton className="h-3 w-24" />
-                </td>
-                <td className="px-4 py-4">
-                  <Skeleton className="h-3 w-24" />
-                </td>
-                <td className="px-4 py-4">
-                  <Skeleton className="h-3 w-20" />
-                </td>
-                <td className="px-4 py-4">
-                  <div className="flex flex-wrap gap-2">
-                    <Skeleton className="h-5 w-16 rounded-full" />
-                  </div>
-                </td>
-                <td className="px-4 py-4">
-                  <Skeleton className="h-3 w-24" />
-                </td>
-                <td className="px-4 py-4 text-right">
-                  <Skeleton className="ml-auto w-4 h-4" />
-                </td>
+              <tr key={index} className="border-b border-slate-100 h-[49px]" style={ROW_HEIGHT_STYLE}>
+                {columnOrder.map((columnKey) => {
+                  const layout = COLUMN_LAYOUT[columnKey];
+                  return (
+                    <td
+                      key={columnKey}
+                      className={combineClassNames(
+                        "px-4 py-2",
+                        layout.cellClassName,
+                      )}
+                      style={getColumnStyles(layout)}
+                    >
+                      {renderSkeletonCellContent(columnKey)}
+                    </td>
+                  );
+                })}
               </tr>
             ))}
           </tbody>
@@ -520,43 +644,96 @@ function UserTableSkeleton(props: { pageSize: number }) {
   );
 }
 
-function createUserColumns(projectId: string): ColumnDef<ExtendedServerUser>[] {
+function createUserColumns(
+  projectId: string,
+  setQuery: (updater: QueryUpdater) => void,
+  isSignedUpDesc: boolean,
+): ColumnDef<ExtendedServerUser>[] {
+  const toggleSignedUpOrder = () =>
+    setQuery((prev) => ({
+      signedUpOrder: prev.signedUpOrder === "desc" ? "asc" : "desc",
+      page: 1,
+      cursor: undefined,
+    }));
+
   return [
     columnHelper.display({
       id: "user",
+      size: COLUMN_LAYOUT.user.size,
+      minSize: COLUMN_LAYOUT.user.minWidth,
+      maxSize: COLUMN_LAYOUT.user.maxWidth,
+      meta: { columnKey: "user" } as ColumnMeta,
       header: () => <span className="text-xs font-semibold tracking-wide">User</span>,
       cell: ({ row }) => <UserIdentityCell user={row.original} projectId={projectId} />,
     }),
     columnHelper.display({
       id: "email",
+      size: COLUMN_LAYOUT.email.size,
+      minSize: COLUMN_LAYOUT.email.minWidth,
+      maxSize: COLUMN_LAYOUT.email.maxWidth,
+      meta: { columnKey: "email" } as ColumnMeta,
       header: () => <span className="text-xs font-semibold tracking-wide">Email</span>,
       cell: ({ row }) => <UserEmailCell user={row.original} />,
     }),
     columnHelper.display({
       id: "userId",
+      size: COLUMN_LAYOUT.userId.size,
+      minSize: COLUMN_LAYOUT.userId.minWidth,
+      maxSize: COLUMN_LAYOUT.userId.maxWidth,
+      meta: { columnKey: "userId" } as ColumnMeta,
       header: () => <span className="text-xs font-semibold tracking-wide">User ID</span>,
       cell: ({ row }) => <UserIdCell user={row.original} />,
     }),
     columnHelper.display({
       id: "emailStatus",
+      size: COLUMN_LAYOUT.emailStatus.size,
+      minSize: COLUMN_LAYOUT.emailStatus.minWidth,
+      maxSize: COLUMN_LAYOUT.emailStatus.maxWidth,
+      meta: { columnKey: "emailStatus" } as ColumnMeta,
       header: () => <span className="text-xs font-semibold tracking-wide">Email status</span>,
       cell: ({ row }) => <EmailStatusCell user={row.original} />,
     }),
     columnHelper.accessor("lastActiveAt", {
+      size: COLUMN_LAYOUT.lastActiveAt.size,
+      minSize: COLUMN_LAYOUT.lastActiveAt.minWidth,
+      maxSize: COLUMN_LAYOUT.lastActiveAt.maxWidth,
+      meta: { columnKey: "lastActiveAt" } as ColumnMeta,
       header: () => <span className="text-xs font-semibold tracking-wide">Last active</span>,
       cell: ({ row }) => <DateMetaCell value={row.original.lastActiveAt} emptyLabel="Never" />,
     }),
     columnHelper.display({
       id: "auth",
+      size: COLUMN_LAYOUT.auth.size,
+      minSize: COLUMN_LAYOUT.auth.minWidth,
+      maxSize: COLUMN_LAYOUT.auth.maxWidth,
+      meta: { columnKey: "auth" } as ColumnMeta,
       header: () => <span className="text-xs font-semibold tracking-wide">Auth methods</span>,
       cell: ({ row }) => <AuthMethodsCell user={row.original} />,
     }),
     columnHelper.accessor("signedUpAt", {
-      header: () => <span className="text-xs font-semibold tracking-wide">Signed up</span>,
+      size: COLUMN_LAYOUT.signedUpAt.size,
+      minSize: COLUMN_LAYOUT.signedUpAt.minWidth,
+      maxSize: COLUMN_LAYOUT.signedUpAt.maxWidth,
+      meta: { columnKey: "signedUpAt" } as ColumnMeta,
+      header: () => (
+        <button
+          type="button"
+          onClick={toggleSignedUpOrder}
+          className="inline-flex items-center gap-1 text-xs font-semibold tracking-wide text-slate-500 transition hover:text-slate-700 focus:outline-none"
+          aria-label={`Sort by signed up (${isSignedUpDesc ? "newest first" : "oldest first"})`}
+        >
+          <span>Signed up</span>
+          {isSignedUpDesc ? <ArrowDown className="h-3 w-3" /> : <ArrowUp className="h-3 w-3" />}
+        </button>
+      ),
       cell: ({ row }) => <DateMetaCell value={row.original.signedUpAt} emptyLabel="Unknown" />,
     }),
     columnHelper.display({
       id: "actions",
+      size: COLUMN_LAYOUT.actions.size,
+      minSize: COLUMN_LAYOUT.actions.minWidth,
+      maxSize: COLUMN_LAYOUT.actions.maxWidth,
+      meta: { columnKey: "actions" } as ColumnMeta,
       header: () => <span className="sr-only">Actions</span>,
       cell: ({ row }) => <UserActions user={row.original} projectId={projectId} />,
     }),
@@ -581,7 +758,7 @@ function UserIdentityCell(props: { user: ExtendedServerUser, projectId: string }
         <div className="flex flex-wrap items-center gap-2">
           <Link
             href={profileUrl}
-            className="max-w-[240px] truncate text-sm font-semibold text-slate-900 hover:text-slate-700"
+            className="max-w-full truncate text-sm font-semibold text-slate-900 hover:text-slate-700"
             title={displayName}
           >
             {displayName}
@@ -602,7 +779,7 @@ function UserEmailCell(props: { user: ExtendedServerUser }) {
   const email = user.primaryEmail ?? "No email";
 
   return (
-    <span className="block max-w-[240px] truncate text-sm text-slate-600" title={user.primaryEmail ?? undefined}>
+    <span className="block max-w-full truncate text-sm text-slate-600" title={user.primaryEmail ?? undefined}>
       {email}
     </span>
   );
@@ -622,7 +799,7 @@ function UserIdCell(props: { user: ExtendedServerUser }) {
       <Button
         type="button"
         onClick={handleCopy}
-        className="flex max-w-[180px] items-center gap-2 truncate rounded px-1 py-0.5 font-mono text-xs text-slate-500 transition hover:text-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-300 cursor-pointer bg-transparent hover:bg-transparent"
+        className="flex max-w-full py-0 px-1 h-min items-center gap-2 font-mono text-xs text-slate-500 transition hover:text-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-300 cursor-pointer bg-transparent hover:bg-transparent"
         aria-label="Copy user ID"
         title={user.id}
       >
@@ -823,6 +1000,7 @@ function parseQuery(params: ReadonlyURLSearchParams): QueryState {
       includeAnonymous: false,
       page: 1,
       pageSize: DEFAULT_PAGE_SIZE,
+      signedUpOrder: "desc",
     };
   }
   return sanitizeQueryState(result.data);
@@ -836,7 +1014,8 @@ function sanitizeQueryState(state: Partial<QueryState>): QueryState {
   const candidatePage = state.page ?? 1;
   const page = Number.isFinite(candidatePage) ? Math.max(1, Math.floor(candidatePage)) : 1;
   const cursor = page > 1 && state.cursor ? state.cursor : undefined;
-  return { search, includeAnonymous, page, pageSize, cursor };
+  const signedUpOrder = state.signedUpOrder === "asc" ? "asc" : "desc";
+  return { search, includeAnonymous, page, pageSize, cursor, signedUpOrder };
 }
 
 function isQueryEqual(a: QueryState, b: QueryState) {
@@ -845,7 +1024,8 @@ function isQueryEqual(a: QueryState, b: QueryState) {
     a.includeAnonymous === b.includeAnonymous &&
     a.page === b.page &&
     a.pageSize === b.pageSize &&
-    a.cursor === b.cursor
+    a.cursor === b.cursor &&
+    a.signedUpOrder === b.signedUpOrder
   );
 }
 
@@ -853,8 +1033,6 @@ function useUserTableQueryState() {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const [isPending, startTransition] = useTransition();
-
   const state = useMemo(() => parseQuery(searchParams), [searchParams]);
 
   const setQuery = useCallback(
@@ -878,15 +1056,16 @@ function useUserTableQueryState() {
       if (next.pageSize !== DEFAULT_PAGE_SIZE) {
         params.set("pageSize", String(next.pageSize));
       }
+      if (next.signedUpOrder !== "desc") {
+        params.set("signedUpOrder", next.signedUpOrder);
+      }
       if (next.cursor) {
         params.set("cursor", next.cursor);
       }
       const queryString = params.toString();
-      startTransition(() => {
-        router.replace(queryString.length > 0 ? `${pathname}?${queryString}` : pathname, { scroll: false });
-      });
+      router.replace(queryString.length > 0 ? `${pathname}?${queryString}` : pathname);
     },
-    [router, pathname, searchParams, startTransition],
+    [router, pathname, searchParams],
   );
 
   return { state, setQuery };
