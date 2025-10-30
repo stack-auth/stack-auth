@@ -2,7 +2,7 @@ import { Link } from "@/components/link";
 import { StackAdminApp } from "@stackframe/stack";
 import { AppId } from "@stackframe/stack-shared/dist/apps/apps-config";
 import { getRelativePart, isChildUrl } from "@stackframe/stack-shared/dist/utils/urls";
-import { CreditCard, KeyRound, Mail, Mails, Rocket, ShieldEllipsis, Sparkles, Triangle, Tv, UserCog, Users, Vault, Webhook, Workflow } from "lucide-react";
+import { CreditCard, KeyRound, Mail, Mails, Rocket, ShieldEllipsis, Sparkles, Triangle, Tv, UserCog, Users, Vault, Webhook } from "lucide-react";
 import Image from "next/image";
 import ConvexLogo from "../../public/convex-logo.png";
 import LogoBright from "../../public/logo-bright.svg";
@@ -143,15 +143,6 @@ export const ALL_APPS_FRONTEND = {
     href: "data-vault",
     navigationItems: [
       { displayName: "Data Vault", href: "." },
-    ],
-    screenshots: [],
-    storeDescription: <></>,
-  },
-  workflows: {
-    icon: Workflow,
-    href: "workflows",
-    navigationItems: [
-      { displayName: "Workflows", href: "." },
     ],
     screenshots: [],
     storeDescription: <></>,
