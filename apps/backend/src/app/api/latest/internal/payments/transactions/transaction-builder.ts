@@ -27,29 +27,6 @@ export type ProductWithPrices = {
 
 type ProductSnapshot = (TransactionEntry & { type: "product_grant" })["product"];
 
-function buildFallbackProductSnapshot(options: {
-  displayName: string,
-  customerType: "user" | "team" | "custom",
-}): ProductSnapshot {
-  return {
-    display_name: options.displayName,
-    customer_type: options.customerType,
-    prices: {},
-    stackable: false,
-    server_only: false,
-    included_items: {},
-  } as ProductSnapshot;
-}
-
-function ensureProductSnapshot(product: InferType<typeof productSchema> | null, customerType: "user" | "team" | "custom"): ProductSnapshot {
-  if (product) {
-    return productToInlineProduct(product);
-  }
-  return buildFallbackProductSnapshot({
-    displayName: "Unknown product",
-    customerType,
-  });
-}
 
 export function resolveSelectedPriceFromProduct(product: ProductWithPrices, priceId?: string | null): SelectedPrice | null {
   if (!product) return null;
@@ -174,9 +151,9 @@ export function buildSubscriptionTransaction(options: {
 }): Transaction {
   const { subscription } = options;
   const customerType = typedToLowercase(subscription.customerType);
-  const product = subscription.product as InferType<typeof productSchema> | null;
-  const productSnapshot = ensureProductSnapshot(product, customerType);
-  const selectedPrice = product ? resolveSelectedPriceFromProduct(product, subscription.priceId ?? null) : null;
+  const product = subscription.product as InferType<typeof productSchema>;
+  const inlineProduct = productToInlineProduct(product);
+  const selectedPrice = resolveSelectedPriceFromProduct(product, subscription.priceId ?? null);
   const quantity = subscription.quantity;
   const chargedAmount = buildChargedAmount(selectedPrice, quantity);
   const testMode = subscription.creationSource === "TEST_MODE";
@@ -186,7 +163,7 @@ export function buildSubscriptionTransaction(options: {
       customerType,
       customerId: subscription.customerId,
       productId: subscription.productId ?? null,
-      product: productSnapshot,
+      product: inlineProduct,
       priceId: subscription.priceId ?? null,
       quantity,
       subscriptionId: subscription.id,
@@ -219,9 +196,9 @@ export function buildOneTimePurchaseTransaction(options: {
 }): Transaction {
   const { purchase } = options;
   const customerType = typedToLowercase(purchase.customerType);
-  const product = purchase.product as InferType<typeof productSchema> | null;
-  const productSnapshot = ensureProductSnapshot(product, customerType);
-  const selectedPrice = product ? resolveSelectedPriceFromProduct(product, purchase.priceId ?? null) : null;
+  const product = purchase.product as InferType<typeof productSchema>;
+  const inlineProduct = productToInlineProduct(product);
+  const selectedPrice = resolveSelectedPriceFromProduct(product, purchase.priceId ?? null);
   const quantity = purchase.quantity;
   const chargedAmount = buildChargedAmount(selectedPrice, quantity);
   const testMode = purchase.creationSource === "TEST_MODE";
@@ -231,7 +208,7 @@ export function buildOneTimePurchaseTransaction(options: {
       customerType,
       customerId: purchase.customerId,
       productId: purchase.productId ?? null,
-      product: productSnapshot,
+      product: inlineProduct,
       priceId: purchase.priceId ?? null,
       quantity,
       oneTimePurchaseId: purchase.id,
