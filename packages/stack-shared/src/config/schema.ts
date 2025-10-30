@@ -465,7 +465,7 @@ const organizationConfigDefaults = {
   },
 
   apps: {
-    installed: typedFromEntries(appIds.map(appId => [appId, { enabled: false }])),
+    installed: typedFromEntries(appIds.map(appId => [appId, { enabled: false }])) as Record<string, { enabled: boolean } | undefined>,
   },
 
   teams: {
@@ -770,6 +770,9 @@ export async function sanitizeOrganizationConfig(config: OrganizationRenderedCon
       prices,
     }];
   }));
+
+  const appSortIndices = new Map(Object.keys(ALL_APPS).map((appId, index) => [appId, index]));
+
   return {
     ...prepared,
     emails: {
@@ -781,7 +784,13 @@ export async function sanitizeOrganizationConfig(config: OrganizationRenderedCon
     payments: {
       ...prepared.payments,
       products
-    }
+    },
+    apps: {
+      installed: typedFromEntries(
+        typedEntries(prepared.apps.installed)
+          .sort(([a], [b]) => appSortIndices.get(a)! - appSortIndices.get(b)!)
+      ),
+    },
   };
 }
 
