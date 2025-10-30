@@ -158,6 +158,23 @@ export async function generateAccessTokenFromRefreshTokenIfValid(options: {
     throw error;
   }
 
+  // Update the user's lastActiveAt timestamp in the database
+  await globalPrismaClient.projectUser.update({
+    where: {
+      tenancyId_projectUserId: {
+        tenancyId: options.tenancy.id,
+        projectUserId: options.refreshTokenObj.projectUserId,
+      },
+    },
+    data: {
+      lastActiveAt: new Date(),
+    },
+  }).catch((error) => {
+    // Log the error but don't fail the token refresh
+    console.error("Failed to update user lastActiveAt", error);
+  });
+
+  // Still log the session activity event for analytics/tracking purposes
   await logEvent(
     [SystemEventTypes.SessionActivity],
     {
