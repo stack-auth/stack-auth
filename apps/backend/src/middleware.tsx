@@ -30,7 +30,6 @@ const corsAllowedRequestHeaders = [
   'x-stack-secret-server-key',
   'x-stack-super-secret-admin-key',
   'x-stack-admin-access-token',
-  'x-stack-workflow-token',
 
   // User auth
   'x-stack-refresh-token',

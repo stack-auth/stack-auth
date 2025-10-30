@@ -1,5 +1,9 @@
 // TODO: rename this file to spaghetti.ts because that's the kind of code here
 
+// IMPORTANT
+// WHENEVER YOU MAKE BACKWARDS-INCOMPATIBLE CHANGES TO THE CONFIG SCHEMA, YOU MUST UPDATE THE MIGRATION FUNCTIONS BELOW.
+// OTHERWISE THINGS WILL GO BOOM!!
+
 import * as yup from "yup";
 import { ALL_APPS } from "../apps/apps-config";
 import { DEFAULT_EMAIL_TEMPLATES, DEFAULT_EMAIL_THEMES, DEFAULT_EMAIL_THEME_ID } from "../helpers/emails";
@@ -167,16 +171,6 @@ const branchDomain = yupObject({
   allowLocalhost: yupBoolean(),
 });
 
-const branchWorkflowsSchema = yupObject({
-  availableWorkflows: yupRecord(
-    userSpecifiedIdSchema("workflowId"),
-    yupObject({
-      displayName: yupString(),
-      tsSource: yupString(),
-      enabled: yupBoolean(),
-    }),
-  ),
-});
 
 export const branchConfigSchema = canNoLongerBeOverridden(projectConfigSchema, ["sourceOfTruth"]).concat(yupObject({
   rbac: branchRbacSchema,
@@ -214,8 +208,6 @@ export const branchConfigSchema = canNoLongerBeOverridden(projectConfigSchema, [
       }),
     ),
   }),
-
-  workflows: branchWorkflowsSchema,
 }));
 
 
@@ -340,6 +332,13 @@ export function migrateConfigOverride(type: "project" | "branch" | "environment"
   // BEGIN 2025-09-23: payments.products.*.groupId is now payments.products.*.catalogId
   if (isBranchOrHigher) {
     res = renameProperty(res, (p) => p.length === 4 && p[0] === "payments" && p[1] === "products" && p[3] === "groupId", (p) => "catalogId");
+  }
+  // END
+
+  // BEGIN 2025-10-29: Removed workflows and everything associated with it
+  if (isBranchOrHigher) {
+    res = removeProperty(res, p => p[0] === "workflows");
+    res = removeProperty(res, p => p[0] === "apps" && p[1] === "workflows");
   }
   // END
 
@@ -570,14 +569,6 @@ const organizationConfigDefaults = {
   dataVault: {
     stores: (key: string) => ({
       displayName: "Unnamed Vault",
-    }),
-  },
-
-  workflows: {
-    availableWorkflows: (key: string) => ({
-      displayName: "Unnamed Workflow",
-      tsSource: "Error: Workflow config is missing TypeScript source code.",
-      enabled: false,
     }),
   },
 } as const satisfies DefaultsType<OrganizationRenderedConfigBeforeDefaults, [typeof environmentConfigDefaults, typeof branchConfigDefaults, typeof projectConfigDefaults]>;
