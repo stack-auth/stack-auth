@@ -124,15 +124,6 @@ const branchSchemaFuzzerConfig = [{
       }],
     }],
   }],
-  workflows: [{
-    availableWorkflows: [{
-      "some-workflow-id": [{
-        displayName: ["Some Workflow", "Some Other Workflow"],
-        tsSource: ["", "some typescript source code"],
-        enabled: [true, false],
-      }],
-    }],
-  }],
   teams: [{
     createPersonalTeamOnSignUp: [true, false],
     allowClientTeamCreation: [true, false],
@@ -315,4 +306,3 @@ import.meta.vitest?.test("fuzz schemas", async ({ expect }) => {
     }
   }
 });
-
