@@ -1,12 +1,14 @@
+import { Link } from "@/components/link";
 import { StackAdminApp } from "@stackframe/stack";
 import { AppId } from "@stackframe/stack-shared/dist/apps/apps-config";
 import { getRelativePart, isChildUrl } from "@stackframe/stack-shared/dist/utils/urls";
-import { CreditCard, KeyRound, Mail, Mails, Rocket, ShieldEllipsis, Sparkles, Tv, UserCog, Users, Vault, Webhook, Workflow } from "lucide-react";
+import { CreditCard, KeyRound, Mail, Mails, Rocket, ShieldEllipsis, Sparkles, Triangle, Tv, UserCog, Users, Vault, Webhook } from "lucide-react";
 import Image from "next/image";
 import ConvexLogo from "../../public/convex-logo.png";
 import LogoBright from "../../public/logo-bright.svg";
 import NeonLogo from "../../public/neon-logo.png";
 import OpenGraphImage from "../../public/open-graph-image.png";
+import VercelLogo from "../../public/vercel-logo.svg";
 
 export const DUMMY_ORIGIN = "https://example.com";
 
@@ -24,7 +26,7 @@ type AppNavigationItem = {
 
 export type AppFrontend = {
   icon: React.FunctionComponent<React.SVGProps<SVGSVGElement>>,
-  logo?: React.FunctionComponent<{ className?: string }>,
+  logo?: React.FunctionComponent<{}>,
   href: string,
   matchPath?: (relativePart: string) => boolean,
   getBreadcrumbItems?: (stackAdminApp: StackAdminApp<false>, relativePart: string) => Promise<BreadcrumbDefinition | null | undefined>,
@@ -145,15 +147,6 @@ export const ALL_APPS_FRONTEND = {
     screenshots: [],
     storeDescription: <></>,
   },
-  workflows: {
-    icon: Workflow,
-    href: "workflows",
-    navigationItems: [
-      { displayName: "Workflows", href: "." },
-    ],
-    screenshots: [],
-    storeDescription: <></>,
-  },
   webhooks: {
     icon: Webhook,
     href: "webhooks",
@@ -196,10 +189,10 @@ export const ALL_APPS_FRONTEND = {
         d="M 21.9999 3.6667 L 21.9999 16.1666 A 1.6667 1.6667 90 0 1 20.3333 17.8333 A 2.5 2.5 90 0 1 18.6666 16.9999 L 12.8333 10.3333 L 12.8333 20.3333 A 1.6667 1.6667 90 0 1 11.1666 21.9999 L 3.6667 21.9999 A 1.6667 1.6667 90 0 1 2 20.3333 L 2 3.6667 A 1.6667 1.6667 90 0 1 3.6667 2 L 20.3333 2 A 1.6667 1.6667 90 0 1 21.9999 3.6667 Z"
       />
     </>),
-    logo: (props: any) => <Image src={NeonLogo} alt="Neon logo" {...props} />,
+    logo: () => <Image src={NeonLogo} alt="Neon logo" />,
     href: "neon",
     navigationItems: [
-      { displayName: "Neon", href: "." },
+      { displayName: "Neon Integration", href: "." },
     ],
     screenshots: [],
     storeDescription: <></>,
@@ -210,13 +203,25 @@ export const ALL_APPS_FRONTEND = {
       <path d="M6.965 11.762c-0.961 2.219 -1.002 4.818 0.175 6.957 -4.144 -3.118 -4.099 -9.789 -0.051 -12.876 0.374 -0.285 0.819 -0.455 1.286 -0.48 1.919 -0.101 3.869 0.64 5.236 2.023 -2.778 0.028 -5.484 1.807 -6.647 4.377" />
       <path d="M14.953 8.068C13.551 6.113 11.357 4.783 8.953 4.742c4.647 -2.109 10.363 1.31 10.985 6.366 0.058 0.469 -0.018 0.948 -0.226 1.371 -0.868 1.763 -2.478 3.131 -4.359 3.637 1.378 -2.556 1.208 -5.68 -0.4 -8.048" />
     </>),
-    logo: (props: any) => <Image src={ConvexLogo} alt="Convex logo" {...props} />,
+    logo: () => <Image src={ConvexLogo} alt="Convex logo" />,
     href: "convex",
     navigationItems: [
-      { displayName: "Convex", href: "." },
+      { displayName: "Convex Integration", href: "." },
     ],
     screenshots: [],
     storeDescription: <></>,
+  },
+  vercel: {
+    icon: Triangle,
+    logo: () => <div>
+      <Image src={VercelLogo} alt="Vercel logo" className="bg-white p-4 pb-5 invert" />
+    </div>,
+    href: "vercel",
+    navigationItems: [
+      { displayName: "Setup", href: "." },
+    ],
+    screenshots: [],
+    storeDescription: <>Deploy your Stack Auth project to <Link href="https://vercel.com" target="_blank">Vercel</Link> with the Vercel x Stack Auth integration.</>,
   },
 } as const satisfies Record<AppId, AppFrontend>;
 
