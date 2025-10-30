@@ -30,9 +30,12 @@ function buildFallbackProductSnapshot(options: {
   customerType: "user" | "team" | "custom",
 }): ProductSnapshot {
   return {
-    displayName: options.displayName,
-    customerType: options.customerType,
-    prices: "include-by-default",
+    display_name: options.displayName,
+    customer_type: options.customerType,
+    prices: {},
+    stackable: false,
+    server_only: false,
+    included_items: {},
   } as ProductSnapshot;
 }
 
@@ -41,9 +44,9 @@ function ensureProductSnapshot(product: ProductWithPrices, customerType: "user" 
     const snapshot = product as Partial<ProductSnapshot>;
     return {
       ...snapshot,
-      customerType: snapshot.customerType ?? customerType,
+      customerType: snapshot.customer_type ?? customerType,
       prices: snapshot.prices ?? "include-by-default",
-      displayName: snapshot.displayName ?? "Unknown product",
+      displayName: snapshot.display_name ?? "Unknown product",
     } as ProductSnapshot;
   }
   return buildFallbackProductSnapshot({
@@ -210,7 +213,7 @@ export function buildSubscriptionTransaction(options: {
     effective_at_millis: subscription.createdAt.getTime(),
     type: "purchase",
     entries,
-    adjustedBy: [],
+    adjusted_by: [],
     test_mode: testMode,
   };
 }
@@ -255,7 +258,7 @@ export function buildOneTimePurchaseTransaction(options: {
     effective_at_millis: purchase.createdAt.getTime(),
     type: "purchase",
     entries,
-    adjustedBy: [],
+    adjusted_by: [],
     test_mode: testMode,
   };
 }
@@ -285,7 +288,7 @@ export function buildItemQuantityChangeTransaction(options: {
     effective_at_millis: change.createdAt.getTime(),
     type: "manual-item-quantity-change",
     entries,
-    adjustedBy: [],
+    adjusted_by: [],
     test_mode: false,
   };
 }

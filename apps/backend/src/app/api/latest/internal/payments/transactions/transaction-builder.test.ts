@@ -106,7 +106,7 @@ describe("transaction-builder", () => {
 
     expect(transaction).toMatchInlineSnapshot(`
       {
-        "adjustedBy": [],
+        "adjusted_by": [],
         "created_at_millis": 1735689600000,
         "effective_at_millis": 1735689600000,
         "entries": [
@@ -202,7 +202,7 @@ describe("transaction-builder", () => {
 
     expect(transaction).toMatchInlineSnapshot(`
       {
-        "adjustedBy": [],
+        "adjusted_by": [],
         "created_at_millis": 1742042096000,
         "effective_at_millis": 1742042096000,
         "entries": [
@@ -255,7 +255,7 @@ describe("transaction-builder", () => {
 
     expect(transaction).toMatchInlineSnapshot(`
       {
-        "adjustedBy": [],
+        "adjusted_by": [],
         "created_at_millis": 1743498000000,
         "effective_at_millis": 1743498000000,
         "entries": [
@@ -282,7 +282,7 @@ describe("transaction-builder", () => {
 
     expect(transaction).toMatchInlineSnapshot(`
       {
-        "adjustedBy": [],
+        "adjusted_by": [],
         "created_at_millis": 1735689600000,
         "effective_at_millis": 1735689600000,
         "entries": [
@@ -317,7 +317,7 @@ describe("transaction-builder", () => {
 
     expect(transaction).toMatchInlineSnapshot(`
       {
-        "adjustedBy": [],
+        "adjusted_by": [],
         "created_at_millis": 1742042096000,
         "effective_at_millis": 1742042096000,
         "entries": [

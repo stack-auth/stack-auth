@@ -2,7 +2,7 @@ import type { InferType } from "yup";
 import * as yup from "yup";
 import {
   customerTypeSchema,
-  productSchema,
+  inlineProductSchema,
   yupArray,
   yupBoolean,
   yupNumber,
@@ -125,7 +125,7 @@ const transactionEntryProductGrantSchema = enforceAdjustmentConstraint(
     customer_type: customerTypeSchema.defined(),
     customer_id: yupString().defined(),
     product_id: yupString().nullable().defined(),
-    product: productSchema.defined(),
+    product: inlineProductSchema.defined(),
     price_id: yupString().nullable().defined(),
     quantity: yupNumber().defined(),
     subscription_id: yupString().optional(),
@@ -194,7 +194,7 @@ export const transactionSchema = yupObject({
   effective_at_millis: yupNumber().defined(),
   type: yupString().oneOf(TRANSACTION_TYPES).nullable().defined(),
   entries: yupArray(transactionEntrySchema).defined(),
-  adjustedBy: yupArray(
+  adjusted_by: yupArray(
     yupObject({
       transaction_id: yupString().defined(),
       entry_index: yupNumber().integer().min(0).defined(),
