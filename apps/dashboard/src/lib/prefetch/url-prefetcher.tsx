@@ -7,6 +7,8 @@ import { createCachedRegex } from "@stackframe/stack-shared/dist/utils/regex";
 import { useEffect, useState } from "react";
 import { HookPrefetcher } from "./hook-prefetcher";
 
+// note that URL prefetchers are allowed to return early before execution of all hooks (but not call hook conditionally beyond that)
+// this is because we suspend the component
 const urlPrefetchers: Record<string, ((match: RegExpMatchArray, query: URLSearchParams, hash: string) => void)[]> = {
   "/projects/*": [
     // TODO: we currently don't prefetch metrics as they are pretty slow to fetch

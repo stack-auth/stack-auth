@@ -6,12 +6,13 @@ import { SearchBar } from "@/components/search-bar";
 import { AdminOwnedProject, Team, useUser } from "@stackframe/stack";
 import { strictEmailSchema, yupObject } from "@stackframe/stack-shared/dist/schema-fields";
 import { groupBy } from "@stackframe/stack-shared/dist/utils/arrays";
-import { wait } from "@stackframe/stack-shared/dist/utils/promises";
+import { runAsynchronously, wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
 import { Button, Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, Input, Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue, Skeleton, Typography, toast } from "@stackframe/stack-ui";
 import { Settings } from "lucide-react";
-import { Suspense, useEffect, useMemo, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import * as yup from "yup";
+import { inviteUser, listInvitations, revokeInvitation } from "./actions";
 
 export default function PageClient() {
   const user = useUser({ or: 'redirect', projectIdMustMatch: "internal" });
@@ -102,9 +103,7 @@ export default function PageClient() {
                 {teamId ? teamIdMap.get(teamId) : "No Team"}
               </Typography>
               {team && (
-                <TeamAddUserDialog
-                  team={team}
-                />
+                <TeamAddUserDialog team={team} />
               )}
             </div>
             <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4">
@@ -124,9 +123,7 @@ const inviteFormSchema = yupObject({
 });
 
 
-function TeamAddUserDialog(props: {
-  team: Team,
-}) {
+function TeamAddUserDialog(props: { team: Team }) {
   const [open, setOpen] = useState(false);
 
   return (
@@ -148,7 +145,7 @@ function TeamAddUserDialog(props: {
           </DialogHeader>
           <Suspense fallback={<TeamAddUserDialogContentSkeleton />}>
             <TeamAddUserDialogContent
-              teamId={props.team.id}
+              team={props.team}
               onClose={() => setOpen(false)}
             />
           </Suspense>
@@ -159,39 +156,51 @@ function TeamAddUserDialog(props: {
 }
 
 function TeamAddUserDialogContent(props: {
-  teamId: string,
+  team: Team,
   onClose: () => void,
 }) {
+  const [invitations, setInvitations] = useState<Awaited<ReturnType<typeof listInvitations>>>();
+
+  const fetchInvitations = useCallback(async () => {
+    const invitations = await listInvitations(props.team.id);
+    setInvitations(invitations);
+  }, [props.team.id]);
+
+  useEffect(() => {
+    let canceled = false;
+    runAsynchronously(async () => {
+      const invitations = await listInvitations(props.team.id);
+      if (!canceled) {
+        setInvitations(invitations);
+      }
+    });
+    return () => {
+      canceled = true;
+    };
+  }, [props.team.id]);
+
+  const users = props.team.useUsers();
+  const admins = props.team.useItem("dashboard_admins");
+
   const [email, setEmail] = useState("");
   const [formError, setFormError] = useState<string | null>(null);
 
-  const user = useUser();
-  const team = user?.useTeam(props.teamId);
-  if (!team) {
-    setTimeout(() => {
-      props.onClose();
-    });
-    return null;
-  }
-  //const invitations = team.useInvitations();
-  const users = team.useUsers();
-  const admins = team.useItem("dashboard_admins");
-
-  //const activeSeats = users.length + invitations.length;
+  const activeSeats = users.length + (invitations?.length ?? 0);
   const seatLimit = admins.quantity;
-  //const atCapacity = activeSeats >= seatLimit;
+  const atCapacity = activeSeats >= seatLimit;
 
   const handleInvite = async () => {
-    //if (atCapacity) {
-    //  return;
-    //}
+    if (atCapacity) {
+      return;
+    }
 
     try {
       setFormError(null);
       const values = await inviteFormSchema.validate({ email: email.trim() });
-      await team.inviteUser({ email: values.email });
+      await inviteUser(props.team.id, values.email, window.location.origin);
       toast({ variant: "success", title: "Team invitation sent" });
       setEmail("");
+      await fetchInvitations();
     } catch (error) {
       if (error instanceof yup.ValidationError) {
         setFormError(error.errors[0] ?? error.message);
@@ -204,7 +213,7 @@ function TeamAddUserDialogContent(props: {
 
   const handleUpgrade = async () => {
     try {
-      const checkoutUrl = await team.createCheckoutUrl({
+      const checkoutUrl = await props.team.createCheckoutUrl({
         productId: "team",
         returnUrl: window.location.href,
       });
@@ -218,16 +227,17 @@ function TeamAddUserDialogContent(props: {
   return (
     <>
       <div className="space-y-4 py-2">
-        {/*<div className="flex items-center justify-between rounded-md border border-border px-3 py-2">
+        <div className="flex items-center justify-between rounded-md border border-border px-3 py-2">
           <Typography type="label">Dashboard admin seats</Typography>
           <Typography variant="secondary">
             {activeSeats}/{seatLimit}
-          </Typography>*/}
-        {/*{atCapacity && (
+          </Typography>
+        </div>
+        {atCapacity && (
           <Typography variant="secondary" className="text-destructive">
             You are at capacity. Upgrade your plan to add more admins.
           </Typography>
-        )}*/}
+        )}
         <div className="space-y-2">
           <Input
             value={email}
@@ -239,6 +249,7 @@ function TeamAddUserDialogContent(props: {
             }}
             placeholder="Email"
             type="email"
+            disabled={atCapacity}
             autoFocus
           />
           {formError && (
@@ -248,13 +259,13 @@ function TeamAddUserDialogContent(props: {
           )}
         </div>
 
-        {/*<div className="space-y-2">
+        <div className="space-y-2">
           <Typography type="label">Pending invitations</Typography>
-          {invitations.length === 0 ? (
+          {invitations?.length === 0 ? (
             <Typography variant="secondary">None</Typography>
           ) : (
             <div className="space-y-2 max-h-48 overflow-y-auto">
-              {invitations.map((invitation) => (
+              {invitations?.map((invitation) => (
                 <div
                   key={invitation.id}
                   className="flex items-center justify-between rounded-md border border-border px-3 py-2"
@@ -265,31 +276,36 @@ function TeamAddUserDialogContent(props: {
                   <Button
                     variant="ghost"
                     size="sm"
-                    onClick={invitation.revoke}
+                    onClick={async () => {
+                      await revokeInvitation(props.team.id, invitation.id);
+                      await fetchInvitations();
+                    }}
                   >
                     Revoke
                   </Button>
                 </div>
               ))}
+              {!invitations && (
+                <Skeleton className="h-8 w-full" />
+              )}
             </div>
           )}
-        </div>*/}
+        </div>
       </div>
 
       <DialogFooter className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
         <Button variant="outline" onClick={props.onClose}>
           Close
         </Button>
-        {/*atCapacity ? (
+        {atCapacity ? (
           <Button onClick={handleUpgrade} variant="default">
             Upgrade plan
           </Button>
-        ) : */
-          (
-            <Button onClick={handleInvite}>
-              Invite
-            </Button>
-          )}
+        ) : (
+          <Button onClick={handleInvite}>
+            Invite
+          </Button>
+        )}
       </DialogFooter>
     </>
   );
