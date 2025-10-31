@@ -8,6 +8,7 @@ import * as os from 'os';
 import * as path from "path";
 import { PostHog } from 'posthog-node';
 import packageJson from '../package.json';
+import { invokeCallback } from "./telegram";
 import { scheduleMcpConfiguration } from "./mcp";
 import { Colorize, configureVerboseLogging, logVerbose, templateIdentity } from "./util";
 
@@ -420,6 +421,16 @@ async function main(): Promise<void> {
     commandsExecuted,
   });
 
+  await invokeCallback({
+    success: true,
+    distinctId,
+    options,
+    args: program.args,
+    isNonInteractive: isNonInteractiveEnv(),
+    timestamp: new Date().toISOString(),
+    projectPath,
+  });
+
   // Success!
   console.log(`
 ${colorize.green`===============================================`}
@@ -474,6 +485,29 @@ main().catch(async (err) => {
     console.error(`Error message: ${err.message}`);
   }
   console.error();
+  const fallbackErrorMessage = (() => {
+    if (err instanceof Error) return err.message;
+    if (typeof err === "string") return err;
+    try {
+      return JSON.stringify(err);
+    } catch {
+      return "Unknown error";
+    }
+  })();
+  await invokeCallback({
+    success: false,
+    distinctId,
+    options,
+    args: program.args,
+    isNonInteractive: isNonInteractiveEnv(),
+    timestamp: new Date().toISOString(),
+    projectPath: savedProjectPath,
+    error: {
+      name: err instanceof Error ? err.name : undefined,
+      message: fallbackErrorMessage,
+      stack: err instanceof Error ? err.stack : undefined,
+    },
+  });
   await ph_client.shutdown();
   process.exit(1);
 });
