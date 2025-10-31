@@ -2,6 +2,7 @@
 
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import {
+  Skeleton,
   Table,
   TableBody,
   TableCell,
@@ -10,6 +11,7 @@ import {
   TableRow,
 } from "@stackframe/stack-ui";
 import {
+  Column,
   ColumnDef,
   ColumnFiltersState,
   GlobalFiltering,
@@ -31,6 +33,8 @@ import React from "react";
 import { DataTablePagination } from "./pagination";
 import { DataTableToolbar } from "./toolbar";
 
+const GLOBAL_FILTER_DEBOUNCE_MS = 300;
+
 export function TableView<TData, TValue>(props: {
   table: TableType<TData>,
   columns: ColumnDef<TData, TValue>[],
@@ -39,7 +43,22 @@ export function TableView<TData, TValue>(props: {
   defaultColumnFilters: ColumnFiltersState,
   defaultSorting: SortingState,
   onRowClick?: (row: TData) => void,
+  loadingState?: {
+    isLoading: boolean,
+    rowCount?: number,
+  },
 }) {
+  const visibleColumns = props.table.getVisibleLeafColumns();
+
+  const loadingRowCount = props.loadingState?.isLoading ? (props.loadingState.rowCount ?? 10) : 0;
+
+  const renderLoadingCell = (column: Column<TData, unknown>) => {
+    const meta = column.columnDef.meta as {
+      loading?: React.ReactNode,
+    } | undefined;
+    return meta?.loading ?? <Skeleton className="h-4 w-full" />;
+  };
+
   return (
     <div className="space-y-4">
       <DataTableToolbar
@@ -70,7 +89,19 @@ export function TableView<TData, TValue>(props: {
             ))}
           </TableHeader>
           <TableBody>
-            {props.table.getRowModel().rows.length ? (
+            {props.loadingState?.isLoading ? (
+              <>
+                {Array.from({ length: loadingRowCount }).map((_, rowIndex) => (
+                  <TableRow key={`data-table-loading-${rowIndex}`}>
+                    {visibleColumns.map((column) => (
+                      <TableCell key={column.id}>
+                        {renderLoadingCell(column)}
+                      </TableCell>
+                    ))}
+                  </TableRow>
+                ))}
+              </>
+            ) : props.table.getRowModel().rows.length ? (
               props.table.getRowModel().rows.map((row) => (
                 <TableRow
                   key={row.id}
@@ -118,6 +149,10 @@ type DataTableProps<TData, TValue> = {
   defaultColumnFilters: ColumnFiltersState,
   defaultSorting: SortingState,
   showDefaultToolbar?: boolean,
+  loadingState?: {
+    isLoading: boolean,
+    rowCount?: number,
+  },
   onRowClick?: (row: TData) => void,
 }
 
@@ -130,6 +165,7 @@ export function DataTable<TData, TValue>({
   defaultSorting,
   showDefaultToolbar = true,
   onRowClick,
+  loadingState,
 }: DataTableProps<TData, TValue>) {
   const [sorting, setSorting] = React.useState<SortingState>(defaultSorting);
   const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>(defaultColumnFilters);
@@ -158,6 +194,7 @@ export function DataTable<TData, TValue>({
     setGlobalFilter={setGlobalFilter}
     showDefaultToolbar={showDefaultToolbar}
     onRowClick={onRowClick}
+    loadingState={loadingState}
   />;
 }
 
@@ -169,6 +206,7 @@ type DataTableManualPaginationProps<TData, TValue> = DataTableProps<TData, TValu
     columnFilters: ColumnFiltersState,
     globalFilters: any,
   }) => Promise<{ nextCursor: string | null }>,
+  externalRefreshKey?: number | string,
 }
 
 export function DataTableManualPagination<TData, TValue>({
@@ -181,6 +219,8 @@ export function DataTableManualPagination<TData, TValue>({
   onRowClick,
   onUpdate,
   showDefaultToolbar = true,
+  loadingState,
+  externalRefreshKey,
 }: DataTableManualPaginationProps<TData, TValue>) {
   const [sorting, setSorting] = React.useState<SortingState>(defaultSorting);
   const [pagination, setPagination] = React.useState({ pageIndex: 0, pageSize: 10 });
@@ -188,6 +228,7 @@ export function DataTableManualPagination<TData, TValue>({
   const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>(defaultColumnFilters);
   const [globalFilter, setGlobalFilter] = React.useState<any>();
   const [refreshCounter, setRefreshCounter] = React.useState(0);
+  const previousExternalRefreshKey = React.useRef(externalRefreshKey);
 
   React.useEffect(() => {
     runAsynchronouslyWithAlert(async () => {
@@ -212,9 +253,22 @@ export function DataTableManualPagination<TData, TValue>({
   React.useEffect(() => {
     const timer = setTimeout(() => {
       setRefreshCounter(x => x + 1);
-    }, 3_000);
+    }, GLOBAL_FILTER_DEBOUNCE_MS);
     return () => clearTimeout(timer);
   }, [globalFilter]);
+
+  React.useEffect(() => {
+    if (externalRefreshKey === undefined) {
+      return;
+    }
+    if (previousExternalRefreshKey.current === externalRefreshKey) {
+      return;
+    }
+    previousExternalRefreshKey.current = externalRefreshKey;
+    setPagination(pagination => ({ ...pagination, pageIndex: 0 }));
+    setCursors({});
+    setRefreshCounter(x => x + 1);
+  }, [externalRefreshKey]);
 
   return <DataTableBase
     columns={columns}
@@ -234,6 +288,7 @@ export function DataTableManualPagination<TData, TValue>({
     defaultVisibility={defaultVisibility}
     showDefaultToolbar={showDefaultToolbar}
     onRowClick={onRowClick}
+    loadingState={loadingState}
   />;
 }
 
@@ -249,6 +304,10 @@ type DataTableBaseProps<TData, TValue> = DataTableProps<TData, TValue> & {
   manualFiltering?: boolean,
   globalFilter?: any,
   setGlobalFilter?: OnChangeFn<any>,
+  loadingState?: {
+    isLoading: boolean,
+    rowCount?: number,
+  },
 }
 
 function DataTableBase<TData, TValue>({
@@ -271,6 +330,7 @@ function DataTableBase<TData, TValue>({
   manualFiltering = true,
   showDefaultToolbar = true,
   onRowClick,
+  loadingState,
 }: DataTableBaseProps<TData, TValue>) {
   const [rowSelection, setRowSelection] = React.useState({});
   const [columnVisibility, setColumnVisibility] = React.useState<VisibilityState>(defaultVisibility || {});
@@ -314,5 +374,6 @@ function DataTableBase<TData, TValue>({
     defaultColumnFilters={defaultColumnFilters}
     defaultSorting={defaultSorting}
     onRowClick={onRowClick}
+    loadingState={loadingState}
   />;
 }
