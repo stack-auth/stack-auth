@@ -464,6 +464,18 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
     }
   }
 
+  async sendTestWebhook(options: { endpointId: string }): Promise<Result<undefined, { errorMessage: string }>> {
+    const response = await this._interface.sendTestWebhook({
+      endpoint_id: options.endpointId,
+    });
+
+    if (response.success) {
+      return Result.ok(undefined);
+    } else {
+      return Result.error({ errorMessage: response.error_message ?? throwErr("Webhook test error not specified") });
+    }
+  }
+
   async listSentEmails(): Promise<AdminSentEmail[]> {
     const response = await this._interface.listSentEmails();
     return response.items.map((email) => ({
