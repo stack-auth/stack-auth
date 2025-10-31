@@ -3,9 +3,10 @@
 import { AsyncCache } from "@stackframe/stack-shared/dist/utils/caches";
 import { captureError } from "@stackframe/stack-shared/dist/utils/errors";
 import { getGlobal, setGlobal } from "@stackframe/stack-shared/dist/utils/globals";
+import { neverResolve } from "@stackframe/stack-shared/dist/utils/promises";
 import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
 import { ErrorBoundary } from "next/dist/client/components/error-boundary";
-import { Suspense, useEffect } from "react";
+import { Suspense, use, useEffect } from "react";
 
 let isPrefetching = false;
 let hasSetupHookPrefetcher = false;
@@ -44,7 +45,7 @@ export function HookPrefetcher(props: {
     isPrefetching = true;
     try {
       callback();
-      return null;
+      return use(neverResolve());
     } finally {
       isPrefetching = false;
     }
