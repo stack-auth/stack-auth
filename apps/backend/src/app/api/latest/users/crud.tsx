@@ -85,7 +85,6 @@ async function createPersonalTeamIfEnabled(prisma: PrismaClient, tenancy: Tenanc
 
 export const userPrismaToCrud = (
   prisma: Prisma.ProjectUserGetPayload<{ include: typeof userFullInclude }>,
-  lastActiveAtMillis: number,
 ): UsersCrud["Admin"]["Read"] => {
   const selectedTeamMembers = prisma.teamMembers;
   if (selectedTeamMembers.length > 1) {
@@ -121,7 +120,7 @@ export const userPrismaToCrud = (
     })),
     selected_team_id: selectedTeamMembers[0]?.teamId ?? null,
     selected_team: selectedTeamMembers[0] ? teamPrismaToCrud(selectedTeamMembers[0]?.team) : null,
-    last_active_at_millis: lastActiveAtMillis,
+    last_active_at_millis: prisma.lastActiveAt?.getTime() ?? prisma.createdAt.getTime(),
     is_anonymous: prisma.isAnonymous,
   };
   return result;
@@ -185,46 +184,6 @@ async function checkAuthData(
   }
 }
 
-export const getUserLastActiveAtMillis = async (projectId: string, branchId: string, userId: string): Promise<number | null> => {
-  const res = (await getUsersLastActiveAtMillis(projectId, branchId, [userId], [0]))[0];
-  if (res === 0) {
-    return null;
-  }
-  return res;
-};
-
-/**
- * Same as userIds.map(userId => getUserLastActiveAtMillis(tenancyId, userId)), but uses a single query
- */
-export const getUsersLastActiveAtMillis = async (projectId: string, branchId: string, userIds: string[], userSignedUpAtMillis: (number | Date)[]): Promise<number[]> => {
-  if (userIds.length === 0) {
-    // Prisma.join throws an error if the array is empty, so we need to handle that case
-    return [];
-  }
-
-  // Get the tenancy first to determine the source of truth
-  const tenancy = await getSoleTenancyFromProjectBranch(projectId, branchId);
-
-  const prisma = await getPrismaClientForTenancy(tenancy);
-  const schema = await getPrismaSchemaForTenancy(tenancy);
-  const events = await prisma.$queryRaw<Array<{ userId: string, lastActiveAt: Date }>>`
-    SELECT data->>'userId' as "userId", MAX("eventStartedAt") as "lastActiveAt"
-    FROM ${sqlQuoteIdent(schema)}."Event"
-    WHERE data->>'userId' = ANY(${Prisma.sql`ARRAY[${Prisma.join(userIds)}]`})
-      AND data->>'projectId' = ${projectId}
-      AND COALESCE("data"->>'branchId', 'main') = ${branchId}
-      AND "systemEventTypeIds" @> '{"$user-activity"}'
-    GROUP BY data->>'userId'
-  `;
-
-  return userIds.map((userId, index) => {
-    const event = events.find(e => e.userId === userId);
-    return event ? event.lastActiveAt.getTime() : (
-      typeof userSignedUpAtMillis[index] === "number" ? (userSignedUpAtMillis[index] as number) : (userSignedUpAtMillis[index] as Date).getTime()
-    );
-  });
-};
-
 export function getUserQuery(projectId: string, branchId: string, userId: string, schema: string): RawQuery<UsersCrud["Admin"]["Read"] | null> {
   return {
     supportedPrismaClients: ["source-of-truth"],
@@ -234,11 +193,6 @@ export function getUserQuery(projectId: string, branchId: string, userId: string
           SELECT (
             to_jsonb("ProjectUser".*) ||
             jsonb_build_object(
-              'lastActiveAt', (
-                SELECT MAX("eventStartedAt") as "lastActiveAt"
-                FROM ${sqlQuoteIdent(schema)}."Event"
-                WHERE data->>'projectId' = ("ProjectUser"."mirroredProjectId") AND COALESCE("data"->>'branchId', 'main') = ("ProjectUser"."mirroredBranchId") AND "data"->>'userId' = ("ProjectUser"."projectUserId")::text AND "systemEventTypeIds" @> '{"$user-activity"}'
-              ),
               'ContactChannels', (
                 SELECT COALESCE(ARRAY_AGG(
                   to_jsonb("ContactChannel") ||
@@ -491,10 +445,9 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
       } : {},
     });
 
-    const lastActiveAtMillis = await getUsersLastActiveAtMillis(auth.project.id, auth.branchId, db.map(user => user.projectUserId), db.map(user => user.createdAt));
     return {
       // remove the last item because it's the next cursor
-      items: db.map((user, index) => userPrismaToCrud(user, lastActiveAtMillis[index])).slice(0, query.limit),
+      items: db.map((user) => userPrismaToCrud(user)).slice(0, query.limit),
       is_paginated: true,
       pagination: {
         // if result is not full length, there is no next cursor
@@ -643,7 +596,7 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
         throw new StackAssertionError("User was created but not found", newUser);
       }
 
-      return userPrismaToCrud(user, await getUserLastActiveAtMillis(auth.project.id, auth.branchId, user.projectUserId) ?? user.createdAt.getTime());
+      return userPrismaToCrud(user);
     });
 
     await createPersonalTeamIfEnabled(prisma, auth.tenancy, result);
@@ -987,7 +940,7 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
         include: userFullInclude,
       });
 
-      const user = userPrismaToCrud(db, await getUserLastActiveAtMillis(auth.project.id, auth.branchId, params.user_id) ?? db.createdAt.getTime());
+      const user = userPrismaToCrud(db);
       return {
         user,
       };

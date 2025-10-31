@@ -8,17 +8,17 @@ import { teamMemberProfilesCrud } from "@stackframe/stack-shared/dist/interface/
 import { userIdOrMeSchema, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { StatusError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { createLazyProxy } from "@stackframe/stack-shared/dist/utils/proxies";
-import { getUserLastActiveAtMillis, getUsersLastActiveAtMillis, userFullInclude, userPrismaToCrud } from "../users/crud";
+import { userFullInclude, userPrismaToCrud } from "../users/crud";
 
 const fullInclude = { projectUser: { include: userFullInclude } };
 
-function prismaToCrud(prisma: Prisma.TeamMemberGetPayload<{ include: typeof fullInclude }>, lastActiveAtMillis: number) {
+function prismaToCrud(prisma: Prisma.TeamMemberGetPayload<{ include: typeof fullInclude }>) {
   return {
     team_id: prisma.teamId,
     user_id: prisma.projectUserId,
     display_name: prisma.displayName ?? prisma.projectUser.displayName,
     profile_image_url: prisma.profileImageUrl ?? prisma.projectUser.profileImageUrl,
-    user: userPrismaToCrud(prisma.projectUser, lastActiveAtMillis),
+    user: userPrismaToCrud(prisma.projectUser),
   };
 }
 
@@ -78,10 +78,8 @@ export const teamMemberProfilesCrudHandlers = createLazyProxy(() => createCrudHa
         include: fullInclude,
       });
 
-      const lastActiveAtMillis = await getUsersLastActiveAtMillis(auth.project.id, auth.branchId, db.map(user => user.projectUserId), db.map(user => user.createdAt));
-
       return {
-        items: db.map((user, index) => prismaToCrud(user, lastActiveAtMillis[index])),
+        items: db.map((user) => prismaToCrud(user)),
         is_paginated: false,
       };
     });
@@ -121,7 +119,7 @@ export const teamMemberProfilesCrudHandlers = createLazyProxy(() => createCrudHa
         throw new KnownErrors.TeamMembershipNotFound(params.team_id, params.user_id);
       }
 
-      return prismaToCrud(db, await getUserLastActiveAtMillis(auth.project.id, auth.branchId, db.projectUser.projectUserId) ?? db.projectUser.createdAt.getTime());
+      return prismaToCrud(db);
     });
   },
   onUpdate: async ({ auth, data, params }) => {
@@ -155,7 +153,7 @@ export const teamMemberProfilesCrudHandlers = createLazyProxy(() => createCrudHa
         include: fullInclude,
       });
 
-      return prismaToCrud(db, await getUserLastActiveAtMillis(auth.project.id, auth.branchId, db.projectUser.projectUserId) ?? db.projectUser.createdAt.getTime());
+      return prismaToCrud(db);
     });
   },
 }));
