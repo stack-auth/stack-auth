@@ -2,8 +2,7 @@
 
 import { useAdminApp } from "@/app/(main)/(protected)/projects/[projectId]/use-admin-app";
 import { useRouter } from "@/components/router";
-import type { StackAdminApp } from "@stackframe/stack";
-import { ServerUser } from "@stackframe/stack";
+import type { StackAdminApp, ServerUser } from "@stackframe/stack";
 import { runAsynchronously, runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
 import {
@@ -23,50 +22,34 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-  SimpleTooltip,
   Skeleton,
+  SimpleTooltip,
   toast,
 } from "@stackframe/stack-ui";
 import {
   ColumnDef,
   createColumnHelper,
-  flexRender,
   getCoreRowModel,
   useReactTable,
 } from "@tanstack/react-table";
+import { ArrowDown, ArrowUp, CheckCircle2, ChevronLeft, ChevronRight, Copy, MoreHorizontal, Search, X, XCircle } from "lucide-react";
+import { Suspense, useEffect, useMemo, useState } from "react";
+import * as yup from "yup";
 import {
-  ChevronLeft,
-  ChevronRight,
-  CheckCircle2,
-  MoreHorizontal,
-  Search,
-  X,
-  XCircle,
-  Copy,
-  ArrowDown,
-  ArrowUp,
-} from "lucide-react";
-import { usePathname, useSearchParams, type ReadonlyURLSearchParams } from "next/navigation";
-import {
-  Suspense,
-  useCallback,
-  useEffect,
-  type MutableRefObject,
-  type CSSProperties,
-  useMemo,
-  useRef,
-  useState,
-  useTransition,
-} from "react";
-import { z } from "zod";
+  ManualTableContent,
+  type ColumnLayout,
+  type ColumnMeta as ManualColumnMeta,
+  DEFAULT_ROW_HEIGHT_PX,
+} from "./common/manual-table";
+import { ManualPaginationControls } from "./common/manual-pagination";
+import { ManualTableSkeleton } from "./common/manual-table-skeleton";
+import { useCursorPaginationCache } from "./common/cursor-pagination";
+import { useUrlQueryState } from "./common/url-query-state";
+import { useStableValue } from "./common/stable-value";
 import { Link } from "../link";
 import { CreateCheckoutDialog } from "../payments/create-checkout-dialog";
 import { DeleteUserDialog, ImpersonateUserDialog } from "../user-dialogs";
-
-export type ExtendedServerUser = ServerUser & {
-  authTypes: string[],
-  emailVerified: "verified" | "unverified",
-};
+import { fromNow } from "@stackframe/stack-shared/dist/utils/dates";
 
 type QueryState = {
   search?: string,
@@ -84,11 +67,18 @@ type QueryUpdater =
 const DEFAULT_PAGE_SIZE = 10;
 const PAGE_SIZE_OPTIONS = [10, 25, 50];
 const SEARCH_DEBOUNCE_MS = 250;
+
+export type ExtendedServerUser = ServerUser & {
+  authTypes: string[],
+  emailVerified: "verified" | "unverified",
+};
+
 const AUTH_TYPE_LABELS = new Map<string, string>([
   ["anonymous", "Anonymous"],
   ["otp", "Authenticator"],
   ["password", "Password"],
 ]);
+
 const RELATIVE_TIME_DIVISIONS: { amount: number, unit: Intl.RelativeTimeFormatUnit }[] = [
   { amount: 60, unit: "second" },
   { amount: 60, unit: "minute" },
@@ -97,6 +87,14 @@ const RELATIVE_TIME_DIVISIONS: { amount: number, unit: Intl.RelativeTimeFormatUn
   { amount: 4.34524, unit: "week" },
   { amount: 12, unit: "month" },
 ];
+
+export const USER_COMMON_COLUMN_LAYOUT: ColumnLayout<"user" | "email" | "userId" | "emailStatus" | "lastActiveAt"> = {
+  user: { size: 160, minWidth: 110, maxWidth: 160, width: "clamp(110px, 22vw, 160px)" },
+  email: { size: 160, minWidth: 110, maxWidth: 160, width: "clamp(110px, 22vw, 160px)" },
+  userId: { size: 130, minWidth: 90, maxWidth: 130, width: "clamp(90px, 18vw, 130px)" },
+  emailStatus: { size: 110, minWidth: 80, maxWidth: 110, width: "clamp(80px, 16vw, 110px)" },
+  lastActiveAt: { size: 110, minWidth: 80, maxWidth: 110, width: "clamp(80px, 16vw, 110px)" },
+};
 
 type ColumnKey =
   | "user"
@@ -108,21 +106,13 @@ type ColumnKey =
   | "signedUpAt"
   | "actions";
 
-type ColumnLayoutEntry = {
-  size: number,
-  minWidth: number,
-  maxWidth: number,
-  width: string,
-  headerClassName?: string,
-  cellClassName?: string,
-};
+type ColumnLayoutMap = ColumnLayout<ColumnKey>;
+type ColumnMetaType = ManualColumnMeta<ColumnKey>;
 
-const COLUMN_LAYOUT: Record<ColumnKey, ColumnLayoutEntry> = {
-  user: { size: 160, minWidth: 110, maxWidth: 160, width: "clamp(110px, 22vw, 160px)" },
-  email: { size: 160, minWidth: 110, maxWidth: 160, width: "clamp(110px, 22vw, 160px)" },
-  userId: { size: 130, minWidth: 90, maxWidth: 130, width: "clamp(90px, 18vw, 130px)" },
-  emailStatus: { size: 110, minWidth: 80, maxWidth: 110, width: "clamp(80px, 16vw, 110px)" },
-  lastActiveAt: { size: 110, minWidth: 80, maxWidth: 110, width: "clamp(80px, 16vw, 110px)" },
+const ROW_HEIGHT_PX = DEFAULT_ROW_HEIGHT_PX;
+
+const COLUMN_LAYOUT: ColumnLayoutMap = {
+  ...USER_COMMON_COLUMN_LAYOUT,
   auth: { size: 150, minWidth: 110, maxWidth: 150, width: "clamp(110px, 20vw, 150px)" },
   signedUpAt: { size: 110, minWidth: 80, maxWidth: 110, width: "clamp(80px, 16vw, 110px)" },
   actions: {
@@ -134,39 +124,66 @@ const COLUMN_LAYOUT: Record<ColumnKey, ColumnLayoutEntry> = {
     cellClassName: "text-right",
   },
 };
-type ColumnMeta = { columnKey: ColumnKey };
 
-const ROW_HEIGHT_PX = 49;
-const ROW_HEIGHT_STYLE: CSSProperties = { height: ROW_HEIGHT_PX };
+const DEFAULT_QUERY_STATE: QueryState = {
+  includeAnonymous: false,
+  page: 1,
+  pageSize: DEFAULT_PAGE_SIZE,
+  signedUpOrder: "desc",
+};
 
-function combineClassNames(...classes: (string | undefined)[]) {
-  return classes.filter(Boolean).join(" ");
-}
+const numberTransform = (_value: unknown, originalValue: unknown) => {
+  if (typeof originalValue === "number" && Number.isFinite(originalValue)) {
+    return originalValue;
+  }
+  if (typeof originalValue === "string") {
+    const trimmed = originalValue.trim();
+    if (trimmed.length === 0) {
+      return undefined;
+    }
+    const parsed = Number(trimmed);
+    return Number.isFinite(parsed) ? parsed : undefined;
+  }
+  return undefined;
+};
 
-function getColumnStyles(layout?: ColumnLayoutEntry) {
-  if (!layout) {
+const optionalStringTransform = (value: unknown) => {
+  if (typeof value !== "string") {
     return undefined;
   }
-  return {
-    width: layout.width,
-    minWidth: layout.minWidth,
-    maxWidth: layout.maxWidth,
-  } satisfies CSSProperties;
-}
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+};
 
-const querySchema = z.object({
-  search: z
+const querySchema = yup.object({
+  search: yup
     .string()
-    .transform((value) => (value.trim().length === 0 ? undefined : value.trim()))
+    .transform((_, originalValue) => optionalStringTransform(originalValue))
     .optional(),
-  includeAnonymous: z.literal("true").transform(() => true).optional(),
-  page: z.coerce.number().int().positive().optional(),
-  pageSize: z.coerce.number().int().positive().optional(),
-  cursor: z
+  includeAnonymous: yup
+    .boolean()
+    .transform((_, originalValue) => (originalValue === "true" ? true : undefined))
+    .optional(),
+  page: yup
+    .number()
+    .transform(numberTransform)
+    .integer()
+    .positive()
+    .optional(),
+  pageSize: yup
+    .number()
+    .transform(numberTransform)
+    .integer()
+    .positive()
+    .optional(),
+  cursor: yup
     .string()
-    .transform((value) => (value.length === 0 ? undefined : value))
+    .transform((_, originalValue) => optionalStringTransform(originalValue))
     .optional(),
-  signedUpOrder: z.enum(["asc", "desc"]).optional(),
+  signedUpOrder: yup
+    .mixed<"asc" | "desc">()
+    .transform((_, originalValue) => (originalValue === "asc" || originalValue === "desc" ? originalValue : undefined))
+    .optional(),
 });
 
 const columnHelper = createColumnHelper<ExtendedServerUser>();
@@ -176,8 +193,13 @@ export function UserTable() {
   const router = useRouter();
   const { state: query, setQuery } = useUserTableQueryState();
   const [searchInput, setSearchInput] = useState(query.search ?? "");
-  const cursorCacheRef = useRef(new Map<number, string | null>([[1, null]]));
-  const prefetchedCursorRef = useRef(new Set<string>());
+  const {
+    resetCache,
+    readCursorForPage,
+    recordPageCursor,
+    recordNextCursor,
+    prefetchCursor,
+  } = useCursorPaginationCache();
 
   useEffect(() => {
     setSearchInput(query.search ?? "");
@@ -201,9 +223,8 @@ export function UserTable() {
   }, [searchInput, query.search, setQuery]);
 
   useEffect(() => {
-    cursorCacheRef.current = new Map<number, string | null>([[1, null]]);
-    prefetchedCursorRef.current.clear();
-  }, [query.search, query.includeAnonymous, query.pageSize, query.signedUpOrder]);
+    resetCache();
+  }, [resetCache, query.search, query.includeAnonymous, query.pageSize, query.signedUpOrder]);
 
   useEffect(() => {
     if (query.page > 1 && !query.cursor) {
@@ -230,8 +251,11 @@ export function UserTable() {
             router={router}
             query={query}
             setQuery={setQuery}
-            cursorCacheRef={cursorCacheRef}
-            prefetchedCursorRef={prefetchedCursorRef}
+            readCursorForPage={readCursorForPage}
+            recordPageCursor={recordPageCursor}
+            recordNextCursor={recordNextCursor}
+            prefetchCursor={prefetchCursor}
+            resetCursorCache={resetCache}
           />
         </Suspense>
       </div>
@@ -294,10 +318,23 @@ function UserTableBody(props: {
   router: ReturnType<typeof useRouter>,
   query: QueryState,
   setQuery: (updater: QueryUpdater) => void,
-  cursorCacheRef: MutableRefObject<Map<number, string | null>>,
-  prefetchedCursorRef: MutableRefObject<Set<string>>,
+  readCursorForPage: (page: number) => string | null | undefined,
+  recordPageCursor: (page: number, cursor: string | null | undefined) => void,
+  recordNextCursor: (page: number, nextCursor: string | null | undefined) => void,
+  prefetchCursor: (cursor: string | null | undefined, task: () => void | Promise<void>) => void,
+  resetCursorCache: () => void,
 }) {
-  const { stackAdminApp, router, query, setQuery, cursorCacheRef, prefetchedCursorRef } = props;
+  const {
+    stackAdminApp,
+    router,
+    query,
+    setQuery,
+    readCursorForPage,
+    recordPageCursor,
+    recordNextCursor,
+    prefetchCursor,
+    resetCursorCache,
+  } = props;
 
   const baseOptions = useMemo(
     () => ({
@@ -310,10 +347,9 @@ function UserTableBody(props: {
     [query.pageSize, query.search, query.includeAnonymous, query.signedUpOrder],
   );
 
-  const storedCursor = cursorCacheRef.current.get(query.page);
+  const storedCursor = readCursorForPage(query.page);
   const cursorToUse = useMemo(() => {
     if (query.page === 1) {
-      cursorCacheRef.current.set(1, null);
       return undefined;
     }
     if (storedCursor && storedCursor.length > 0) {
@@ -323,11 +359,10 @@ function UserTableBody(props: {
       return undefined;
     }
     if (query.cursor) {
-      cursorCacheRef.current.set(query.page, query.cursor);
       return query.cursor;
     }
     return undefined;
-  }, [query.page, query.cursor, storedCursor, cursorCacheRef]);
+  }, [query.page, query.cursor, storedCursor]);
 
   const listOptions = useMemo(
     () => ({
@@ -338,33 +373,28 @@ function UserTableBody(props: {
   );
 
   const rawUsers = stackAdminApp.useUsers(listOptions);
-  const stableRawUsers = useStableUsersReference(rawUsers);
+  const usersFingerprint = useMemo(() => getUsersFingerprint(rawUsers), [rawUsers]);
+  const stableRawUsers = useStableValue(rawUsers, usersFingerprint);
   const users = useMemo(() => extendUsers(stableRawUsers), [stableRawUsers]);
 
   useEffect(() => {
-    cursorCacheRef.current.set(query.page, query.page === 1 ? null : cursorToUse ?? null);
-    if (users.nextCursor) {
-      cursorCacheRef.current.set(query.page + 1, users.nextCursor);
-    } else {
-      cursorCacheRef.current.delete(query.page + 1);
-    }
-  }, [query.page, cursorToUse, users.nextCursor, cursorCacheRef]);
+    recordPageCursor(query.page, query.page === 1 ? null : cursorToUse ?? null);
+  }, [query.page, cursorToUse, recordPageCursor]);
 
   useEffect(() => {
-    if (!users.nextCursor) {
-      return;
-    }
-    if (prefetchedCursorRef.current.has(users.nextCursor)) {
-      return;
-    }
-    prefetchedCursorRef.current.add(users.nextCursor);
-    runAsynchronously(
-      stackAdminApp.listUsers({
-        ...baseOptions,
-        cursor: users.nextCursor,
-      }),
+    recordNextCursor(query.page, users.nextCursor);
+  }, [query.page, users.nextCursor, recordNextCursor]);
+
+  useEffect(() => {
+    prefetchCursor(users.nextCursor, () =>
+      runAsynchronously(
+        stackAdminApp.listUsers({
+          ...baseOptions,
+          cursor: users.nextCursor,
+        }),
+      ),
     );
-  }, [users.nextCursor, stackAdminApp, baseOptions, prefetchedCursorRef]);
+  }, [users.nextCursor, stackAdminApp, baseOptions, prefetchCursor]);
 
   const columns = useMemo<ColumnDef<ExtendedServerUser>[]>(
     () => createUserColumns(setQuery, query.signedUpOrder === "desc"),
@@ -383,141 +413,63 @@ function UserTableBody(props: {
 
   return (
     <div className="flex flex-col">
-      <div className="overflow-x-auto">
-        <table className="w-full border-collapse text-left text-sm text-foreground">
-          <thead className="sticky top-0 z-10 bg-muted/80 text-xs font-semibold tracking-wide text-muted-foreground backdrop-blur">
-            {table.getHeaderGroups().map((headerGroup) => (
-              <tr key={headerGroup.id} className="border-b border-border/70">
-                {headerGroup.headers.map((header) => {
-                  const columnKey = (header.column.columnDef.meta as ColumnMeta | undefined)?.columnKey;
-                  const layout = columnKey ? COLUMN_LAYOUT[columnKey] : undefined;
-                  return (
-                    <th
-                      key={header.id}
-                      className={combineClassNames("px-4 py-3 font-medium", layout?.headerClassName)}
-                      style={getColumnStyles(layout)}
-                    >
-                      {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
-                    </th>
-                  );
-                })}
-              </tr>
-            ))}
-          </thead>
-          <tbody>
-            {hasResults ? (
-              table.getRowModel().rows.map((row) => (
-                <tr key={row.id} className="border-b border-border/60 transition hover:bg-muted/60 h-[49px]" style={ROW_HEIGHT_STYLE}>
-                  {row.getVisibleCells().map((cell) => {
-                    const columnKey = (cell.column.columnDef.meta as ColumnMeta | undefined)?.columnKey;
-                    const layout = columnKey ? COLUMN_LAYOUT[columnKey] : undefined;
-                    return (
-                      <td
-                        key={cell.id}
-                        className={combineClassNames(
-                          "px-4 py-2 align-middle",
-                          layout?.cellClassName,
-                        )}
-                        style={getColumnStyles(layout)}
-                      >
-                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                      </td>
-                    );
-                  })}
-                </tr>
-              ))
-            ) : (
-              <tr>
-                <td colSpan={table.getAllColumns().length} className="px-6 py-12 text-center text-sm text-muted-foreground">
-                  <div className="mx-auto flex max-w-md flex-col items-center gap-4">
-                    <div className="flex h-12 w-12 items-center justify-center rounded-full bg-muted">
-                      <Search className="h-6 w-6 text-muted-foreground" />
-                    </div>
-                    <div className="text-base font-medium text-foreground">No users found</div>
-                    <p className="text-sm text-muted-foreground">
-                      Try adjusting your search or filters. You can also reset everything and start again.
-                    </p>
-                    <Button
-                      variant="outline"
-                      onClick={() => {
-                        cursorCacheRef.current = new Map<number, string | null>([[1, null]]);
-                        prefetchedCursorRef.current.clear();
-                        setQuery({ search: undefined, includeAnonymous: false, page: 1, cursor: undefined });
-                      }}
-                    >
-                      Reset filters
-                    </Button>
-                  </div>
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-      <div className="flex flex-col gap-3 border-t border-border/70 px-4 py-3 text-sm text-muted-foreground md:flex-row md:items-center md:justify-between">
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-          <span>Rows per page</span>
-          <Select
-            value={String(query.pageSize)}
-            onValueChange={(value) =>
-              setQuery((prev) => ({ ...prev, pageSize: Number(value), page: 1, cursor: undefined }))
-            }
-          >
-            <SelectTrigger className="w-20" aria-label={`Rows per page: ${query.pageSize}`}>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent align="start">
-              {PAGE_SIZE_OPTIONS.map((option) => (
-                <SelectItem key={option} value={String(option)}>
-                  {option}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => {
-              if (!hasPreviousPage) {
-                return;
-              }
-              const previousPage = query.page - 1;
-              const previousCursor = cursorCacheRef.current.get(previousPage);
-              setQuery({ page: previousPage, cursor: previousPage === 1 ? undefined : previousCursor ?? undefined });
-            }}
-            disabled={!hasPreviousPage}
-          >
-            <ChevronLeft className="mr-1 h-4 w-4" />
-            Previous
-          </Button>
-          <span className="rounded-md border border-border px-3 py-1 text-xs font-medium text-foreground">
-            Page {query.page}
-          </span>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => {
-              if (!hasNextPage) {
-                return;
-              }
-              setQuery({ page: query.page + 1, cursor: users.nextCursor ?? undefined });
-            }}
-            disabled={!hasNextPage}
-          >
-            Next
-            <ChevronRight className="ml-1 h-4 w-4" />
-          </Button>
-        </div>
-      </div>
+      <ManualTableContent
+        table={table}
+        columnLayout={COLUMN_LAYOUT}
+        hasResults={hasResults}
+        rowHeightPx={ROW_HEIGHT_PX}
+        renderEmptyState={() => (
+          <div className="mx-auto flex max-w-md flex-col items-center gap-4">
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-muted">
+              <Search className="h-6 w-6 text-muted-foreground" />
+            </div>
+            <div className="text-base font-medium text-foreground">No users found</div>
+            <p className="text-sm text-muted-foreground">
+              Try adjusting your search or filters. You can also reset everything and start again.
+            </p>
+            <Button
+              variant="outline"
+              onClick={() => {
+                resetCursorCache();
+                setQuery({ search: undefined, includeAnonymous: false, page: 1, cursor: undefined });
+              }}
+            >
+              Reset filters
+            </Button>
+          </div>
+        )}
+      />
+      <ManualPaginationControls
+        page={query.page}
+        pageSize={query.pageSize}
+        pageSizeOptions={PAGE_SIZE_OPTIONS}
+        hasNextPage={hasNextPage}
+        hasPreviousPage={hasPreviousPage}
+        onPageSizeChange={(value) =>
+          setQuery((prev) => ({ ...prev, pageSize: value, page: 1, cursor: undefined }))
+        }
+        onPreviousPage={() => {
+          if (!hasPreviousPage) {
+            return;
+          }
+          const previousPage = query.page - 1;
+          const previousCursor = readCursorForPage(previousPage);
+          setQuery({ page: previousPage, cursor: previousPage === 1 ? undefined : previousCursor ?? undefined });
+        }}
+        onNextPage={() => {
+          if (!hasNextPage) {
+            return;
+          }
+          setQuery({ page: query.page + 1, cursor: users.nextCursor ?? undefined });
+        }}
+        selectAriaLabel={`Rows per page: ${query.pageSize}`}
+      />
     </div>
   );
 }
 
 function UserTableSkeleton(props: { pageSize: number }) {
   const { pageSize } = props;
-  const rows = Array.from({ length: pageSize });
   const columnOrder: ColumnKey[] = [
     "user",
     "email",
@@ -584,47 +536,14 @@ function UserTableSkeleton(props: { pageSize: number }) {
 
   return (
     <div className="flex flex-col">
-      <div className="overflow-x-auto">
-        <table className="w-full border-collapse text-left text-sm">
-          <thead className="bg-muted/80 text-xs font-semibold tracking-wide text-muted-foreground backdrop-blur">
-            <tr className="border-b border-border/70">
-              {columnOrder.map((columnKey) => {
-                const layout = COLUMN_LAYOUT[columnKey];
-                return (
-                  <th
-                    key={columnKey}
-                    className={combineClassNames("px-4 py-3", layout.headerClassName)}
-                    style={getColumnStyles(layout)}
-                  >
-                    {skeletonHeaders[columnKey]}
-                  </th>
-                );
-              })}
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((_, index) => (
-              <tr key={index} className="border-b border-border/60 h-[49px]" style={ROW_HEIGHT_STYLE}>
-                {columnOrder.map((columnKey) => {
-                  const layout = COLUMN_LAYOUT[columnKey];
-                  return (
-                    <td
-                      key={columnKey}
-                      className={combineClassNames(
-                        "px-4 py-2",
-                        layout.cellClassName,
-                      )}
-                      style={getColumnStyles(layout)}
-                    >
-                      {renderSkeletonCellContent(columnKey)}
-                    </td>
-                  );
-                })}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <ManualTableSkeleton
+        columnOrder={columnOrder}
+        columnLayout={COLUMN_LAYOUT}
+        headerLabels={skeletonHeaders}
+        rowCount={pageSize}
+        rowHeightPx={ROW_HEIGHT_PX}
+        renderCellSkeleton={(columnKey) => renderSkeletonCellContent(columnKey)}
+      />
       <div className="flex flex-col gap-3 border-t border-border/70 px-4 py-3 text-sm text-muted-foreground md:flex-row md:items-center md:justify-between">
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <span>Rows per page</span>
@@ -648,57 +567,6 @@ function UserTableSkeleton(props: { pageSize: number }) {
   );
 }
 
-export const getCommonUserColumns = <T extends ExtendedServerUser>(): ColumnDef<T>[] => {
-  const helper = createColumnHelper<T>();
-  return [
-    helper.display({
-      id: "user",
-      size: COLUMN_LAYOUT.user.size,
-      minSize: COLUMN_LAYOUT.user.minWidth,
-      maxSize: COLUMN_LAYOUT.user.maxWidth,
-      meta: { columnKey: "user" } as ColumnMeta,
-      header: () => <span className="text-xs font-semibold tracking-wide">User</span>,
-      cell: ({ row }) => <UserIdentityCell user={row.original as ExtendedServerUser} />,
-    }),
-    helper.display({
-      id: "email",
-      size: COLUMN_LAYOUT.email.size,
-      minSize: COLUMN_LAYOUT.email.minWidth,
-      maxSize: COLUMN_LAYOUT.email.maxWidth,
-      meta: { columnKey: "email" } as ColumnMeta,
-      header: () => <span className="text-xs font-semibold tracking-wide">Email</span>,
-      cell: ({ row }) => <UserEmailCell user={row.original as ExtendedServerUser} />,
-    }),
-    helper.display({
-      id: "userId",
-      size: COLUMN_LAYOUT.userId.size,
-      minSize: COLUMN_LAYOUT.userId.minWidth,
-      maxSize: COLUMN_LAYOUT.userId.maxWidth,
-      meta: { columnKey: "userId" } as ColumnMeta,
-      header: () => <span className="text-xs font-semibold tracking-wide">User ID</span>,
-      cell: ({ row }) => <UserIdCell user={row.original as ExtendedServerUser} />,
-    }),
-    helper.display({
-      id: "emailVerified",
-      size: COLUMN_LAYOUT.emailStatus.size,
-      minSize: COLUMN_LAYOUT.emailStatus.minWidth,
-      maxSize: COLUMN_LAYOUT.emailStatus.maxWidth,
-      meta: { columnKey: "emailStatus" } as ColumnMeta,
-      header: () => <span className="text-xs font-semibold tracking-wide">Email status</span>,
-      cell: ({ row }) => <EmailStatusCell user={row.original as ExtendedServerUser} />,
-    }),
-    helper.display({
-      id: "lastActiveAt",
-      size: COLUMN_LAYOUT.lastActiveAt.size,
-      minSize: COLUMN_LAYOUT.lastActiveAt.minWidth,
-      maxSize: COLUMN_LAYOUT.lastActiveAt.maxWidth,
-      meta: { columnKey: "lastActiveAt" } as ColumnMeta,
-      header: () => <span className="text-xs font-semibold tracking-wide">Last active</span>,
-      cell: ({ row }) => <DateMetaCell value={(row.original as ExtendedServerUser).lastActiveAt} emptyLabel="Never" />,
-    }),
-  ];
-};
-
 function createUserColumns(
   setQuery: (updater: QueryUpdater) => void,
   isSignedUpDesc: boolean,
@@ -717,7 +585,7 @@ function createUserColumns(
       size: COLUMN_LAYOUT.auth.size,
       minSize: COLUMN_LAYOUT.auth.minWidth,
       maxSize: COLUMN_LAYOUT.auth.maxWidth,
-      meta: { columnKey: "auth" } as ColumnMeta,
+      meta: { columnKey: "auth" } as ColumnMetaType,
       header: () => <span className="text-xs font-semibold tracking-wide">Auth methods</span>,
       cell: ({ row }) => <AuthMethodsCell user={row.original} />,
     }),
@@ -726,7 +594,7 @@ function createUserColumns(
       size: COLUMN_LAYOUT.signedUpAt.size,
       minSize: COLUMN_LAYOUT.signedUpAt.minWidth,
       maxSize: COLUMN_LAYOUT.signedUpAt.maxWidth,
-      meta: { columnKey: "signedUpAt" } as ColumnMeta,
+      meta: { columnKey: "signedUpAt" } as ColumnMetaType,
       header: () => (
         <button
           type="button"
@@ -745,9 +613,234 @@ function createUserColumns(
       size: COLUMN_LAYOUT.actions.size,
       minSize: COLUMN_LAYOUT.actions.minWidth,
       maxSize: COLUMN_LAYOUT.actions.maxWidth,
-      meta: { columnKey: "actions" } as ColumnMeta,
+      meta: { columnKey: "actions" } as ColumnMetaType,
       header: () => <span className="sr-only">Actions</span>,
       cell: ({ row }) => <UserActions user={row.original} />,
+    }),
+  ];
+}
+
+function UserActions(props: { user: ExtendedServerUser }) {
+  const { user } = props;
+  const stackAdminApp = useAdminApp();
+  const router = useRouter();
+  const [isDeleteOpen, setIsDeleteOpen] = useState(false);
+  const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
+  const [impersonateSnippet, setImpersonateSnippet] = useState<string | null>(null);
+
+  return (
+    <div className="flex justify-end">
+      <DeleteUserDialog user={user} open={isDeleteOpen} onOpenChange={setIsDeleteOpen} />
+      <ImpersonateUserDialog user={user} impersonateSnippet={impersonateSnippet} onClose={() => setImpersonateSnippet(null)} />
+      <CreateCheckoutDialog open={isCheckoutOpen} onOpenChange={setIsCheckoutOpen} user={user} />
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="ghost" size="icon" className="h-8 w-8" aria-label="User actions">
+            <MoreHorizontal className="h-4 w-4" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-56">
+          <DropdownMenuItem
+            onClick={() =>
+              router.push(`/projects/${encodeURIComponent(stackAdminApp.projectId)}/users/${encodeURIComponent(user.id)}`)
+            }
+          >
+            View details
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            onClick={() =>
+              runAsynchronouslyWithAlert(async () => {
+                const expiresInMillis = 1000 * 60 * 60 * 2;
+                const expiresAtDate = new Date(Date.now() + expiresInMillis);
+                const session = await user.createSession({ expiresInMillis, isImpersonation: true });
+                const tokens = await session.getTokens();
+                setImpersonateSnippet(
+                  deindent`
+                    document.cookie = 'stack-refresh-${stackAdminApp.projectId}=${tokens.refreshToken}; expires=${expiresAtDate.toUTCString()}; path=/';
+                    window.location.reload();
+                  `,
+                );
+              })
+            }
+          >
+            Impersonate
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => setIsCheckoutOpen(true)}>Create checkout</DropdownMenuItem>
+          {user.isMultiFactorRequired && (
+            <DropdownMenuItem
+              onClick={() =>
+                runAsynchronouslyWithAlert(async () => {
+                  await user.update({ totpMultiFactorSecret: null });
+                })
+              }
+            >
+              Remove 2FA
+            </DropdownMenuItem>
+          )}
+          <DropdownMenuSeparator />
+          <DropdownMenuItem onClick={() => setIsDeleteOpen(true)} className="text-destructive focus:text-destructive">
+            Delete user
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
+  );
+}
+
+function getUsersFingerprint(users: ServerUser[] & { nextCursor: string | null }) {
+  const userSegments = users
+    .map((user) => [
+      user.id,
+      user.displayName ?? "",
+      user.primaryEmail ?? "",
+      user.primaryEmailVerified ? "1" : "0",
+      user.isAnonymous ? "1" : "0",
+      normalizeDateValue(user.lastActiveAt),
+      normalizeDateValue(user.signedUpAt),
+      user.otpAuthEnabled ? "1" : "0",
+      user.hasPassword ? "1" : "0",
+      user.profileImageUrl ?? "",
+      user.isMultiFactorRequired ? "1" : "0",
+      user.oauthProviders.map((provider) => provider.id).sort().join(","),
+    ].join("~"))
+    .join("||");
+  return `${users.nextCursor ?? ""}::${userSegments}`;
+}
+
+function normalizeDateValue(value: Date | string | null | undefined) {
+  if (!value) {
+    return "";
+  }
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return String(value);
+  }
+  return String(date.getTime());
+}
+
+function sanitizeQueryState(state: Partial<QueryState>): QueryState {
+  const search = state.search?.trim() ? state.search.trim() : undefined;
+  const includeAnonymous = Boolean(state.includeAnonymous);
+  const candidatePageSize = state.pageSize ?? DEFAULT_PAGE_SIZE;
+  const pageSize = PAGE_SIZE_OPTIONS.includes(candidatePageSize) ? candidatePageSize : DEFAULT_PAGE_SIZE;
+  const candidatePage = state.page ?? 1;
+  const page = Number.isFinite(candidatePage) ? Math.max(1, Math.floor(candidatePage)) : 1;
+  const cursor = page > 1 && state.cursor ? state.cursor : undefined;
+  const signedUpOrder = state.signedUpOrder === "asc" ? "asc" : "desc";
+  return { search, includeAnonymous, page, pageSize, cursor, signedUpOrder };
+}
+
+function serializeQueryState(state: QueryState) {
+  const params = new URLSearchParams();
+  if (state.search) {
+    params.set("search", state.search);
+  }
+  if (state.includeAnonymous) {
+    params.set("includeAnonymous", "true");
+  }
+  if (state.page > 1) {
+    params.set("page", String(state.page));
+  }
+  if (state.pageSize !== DEFAULT_PAGE_SIZE) {
+    params.set("pageSize", String(state.pageSize));
+  }
+  if (state.signedUpOrder !== "desc") {
+    params.set("signedUpOrder", state.signedUpOrder);
+  }
+  if (state.cursor) {
+    params.set("cursor", state.cursor);
+  }
+  return params;
+}
+
+function useUserTableQueryState() {
+  const { state, setState } = useUrlQueryState<QueryState>({
+    schema: querySchema,
+    defaultState: DEFAULT_QUERY_STATE,
+    sanitize: sanitizeQueryState,
+    serialize: serializeQueryState,
+  });
+  return { state, setQuery: setState };
+}
+
+function titleCase(value: string) {
+  return value.charAt(0).toUpperCase() + value.slice(1);
+}
+
+function formatUserId(id: string) {
+  if (id.length <= 10) {
+    return id;
+  }
+  return `${id.slice(0, 6)}…${id.slice(-4)}`;
+}
+
+export function extendUsers(users: ServerUser[] & { nextCursor: string | null }): ExtendedServerUser[] & { nextCursor: string | null };
+export function extendUsers(users: ServerUser[]): ExtendedServerUser[];
+export function extendUsers(users: ServerUser[] & { nextCursor?: string | null }) {
+  const extended = users.map((user) => {
+    const authTypes = user.isAnonymous
+      ? ["anonymous"]
+      : [
+        ...(user.otpAuthEnabled ? ["otp"] : []),
+        ...(user.hasPassword ? ["password"] : []),
+        ...user.oauthProviders.map((provider) => provider.id),
+      ];
+    return {
+      ...user,
+      authTypes,
+      emailVerified: user.primaryEmailVerified ? "verified" : "unverified",
+    } satisfies ExtendedServerUser;
+  });
+  return Object.assign(extended, { nextCursor: users.nextCursor ?? null });
+}
+
+export function getCommonUserColumns<T extends ExtendedServerUser>(): ColumnDef<T>[] {
+  const helper = createColumnHelper<T>();
+  return [
+    helper.display({
+      id: "user",
+      size: COLUMN_LAYOUT.user.size,
+      minSize: COLUMN_LAYOUT.user.minWidth,
+      maxSize: COLUMN_LAYOUT.user.maxWidth,
+      meta: { columnKey: "user" } as ColumnMetaType,
+      header: () => <span className="text-xs font-semibold tracking-wide">User</span>,
+      cell: ({ row }) => <UserIdentityCell user={row.original} />,
+    }),
+    helper.display({
+      id: "email",
+      size: COLUMN_LAYOUT.email.size,
+      minSize: COLUMN_LAYOUT.email.minWidth,
+      maxSize: COLUMN_LAYOUT.email.maxWidth,
+      meta: { columnKey: "email" } as ColumnMetaType,
+      header: () => <span className="text-xs font-semibold tracking-wide">Email</span>,
+      cell: ({ row }) => <UserEmailCell user={row.original} />,
+    }),
+    helper.display({
+      id: "userId",
+      size: COLUMN_LAYOUT.userId.size,
+      minSize: COLUMN_LAYOUT.userId.minWidth,
+      maxSize: COLUMN_LAYOUT.userId.maxWidth,
+      meta: { columnKey: "userId" } as ColumnMetaType,
+      header: () => <span className="text-xs font-semibold tracking-wide">User ID</span>,
+      cell: ({ row }) => <UserIdCell user={row.original} />,
+    }),
+    helper.display({
+      id: "emailStatus",
+      size: COLUMN_LAYOUT.emailStatus.size,
+      minSize: COLUMN_LAYOUT.emailStatus.minWidth,
+      maxSize: COLUMN_LAYOUT.emailStatus.maxWidth,
+      meta: { columnKey: "emailStatus" } as ColumnMetaType,
+      header: () => <span className="text-xs font-semibold tracking-wide">Email status</span>,
+      cell: ({ row }) => <EmailStatusCell user={row.original} />,
+    }),
+    helper.display({
+      id: "lastActiveAt",
+      size: COLUMN_LAYOUT.lastActiveAt.size,
+      minSize: COLUMN_LAYOUT.lastActiveAt.minWidth,
+      maxSize: COLUMN_LAYOUT.lastActiveAt.maxWidth,
+      meta: { columnKey: "lastActiveAt" } as ColumnMetaType,
+      header: () => <span className="text-xs font-semibold tracking-wide">Last active</span>,
+      cell: ({ row }) => <DateMetaCell value={row.original.lastActiveAt} emptyLabel="Never" />,
     }),
   ];
 }
@@ -836,10 +929,8 @@ function EmailStatusCell(props: { user: ExtendedServerUser }) {
         </>
       ) : (
         <>
-          <SimpleTooltip tooltip="Email is not verified" type="warning">
-            <XCircle className="h-4 w-4 text-amber-500" />
-          </SimpleTooltip>
-          <span className="font-medium text-amber-600">Pending</span>
+          <XCircle className="h-4 w-4 text-amber-500" />
+          <span className="font-medium text-amber-600">Unverified</span>
         </>
       )}
     </div>
@@ -874,241 +965,6 @@ function DateMetaCell(props: { value: Date | string | null | undefined, emptyLab
   );
 }
 
-function UserActions(props: { user: ExtendedServerUser }) {
-  const { user } = props;
-  const stackAdminApp = useAdminApp();
-  const router = useRouter();
-  const [isDeleteOpen, setIsDeleteOpen] = useState(false);
-  const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
-  const [impersonateSnippet, setImpersonateSnippet] = useState<string | null>(null);
-
-  return (
-    <div className="flex justify-end">
-      <DeleteUserDialog user={user} open={isDeleteOpen} onOpenChange={setIsDeleteOpen} />
-      <ImpersonateUserDialog user={user} impersonateSnippet={impersonateSnippet} onClose={() => setImpersonateSnippet(null)} />
-      <CreateCheckoutDialog open={isCheckoutOpen} onOpenChange={setIsCheckoutOpen} user={user} />
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button variant="ghost" size="icon" className="h-8 w-8" aria-label="User actions">
-            <MoreHorizontal className="h-4 w-4" />
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-56">
-          <DropdownMenuItem
-            onClick={() =>
-              router.push(`/projects/${encodeURIComponent(stackAdminApp.projectId)}/users/${encodeURIComponent(user.id)}`)
-            }
-          >
-            View details
-          </DropdownMenuItem>
-          <DropdownMenuItem
-            onClick={() =>
-              runAsynchronouslyWithAlert(async () => {
-                const expiresInMillis = 1000 * 60 * 60 * 2;
-                const expiresAtDate = new Date(Date.now() + expiresInMillis);
-                const session = await user.createSession({ expiresInMillis, isImpersonation: true });
-                const tokens = await session.getTokens();
-                setImpersonateSnippet(
-                  deindent`
-                    document.cookie = 'stack-refresh-${stackAdminApp.projectId}=${tokens.refreshToken}; expires=${expiresAtDate.toUTCString()}; path=/';
-                    window.location.reload();
-                  `,
-                );
-              })
-            }
-          >
-            Impersonate
-          </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => setIsCheckoutOpen(true)}>Create checkout</DropdownMenuItem>
-          {user.isMultiFactorRequired && (
-            <DropdownMenuItem
-              onClick={() =>
-                runAsynchronouslyWithAlert(async () => {
-                  await user.update({ totpMultiFactorSecret: null });
-                })
-              }
-            >
-              Remove 2FA
-            </DropdownMenuItem>
-          )}
-          <DropdownMenuSeparator />
-          <DropdownMenuItem onClick={() => setIsDeleteOpen(true)} className="text-destructive focus:text-destructive">
-            Delete user
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
-    </div>
-  );
-}
-
-export function extendUsers(users: ServerUser[] & { nextCursor: string | null }): ExtendedServerUser[] & { nextCursor: string | null };
-export function extendUsers(users: ServerUser[]): ExtendedServerUser[];
-export function extendUsers(users: ServerUser[] & { nextCursor?: string | null }) {
-  const extended = users.map((user) => {
-    const authTypes = user.isAnonymous
-      ? ["anonymous"]
-      : [
-        ...(user.otpAuthEnabled ? ["otp"] : []),
-        ...(user.hasPassword ? ["password"] : []),
-        ...user.oauthProviders.map((provider) => provider.id),
-      ];
-    return {
-      ...user,
-      authTypes,
-      emailVerified: user.primaryEmailVerified ? "verified" : "unverified",
-    } satisfies ExtendedServerUser;
-  });
-  return Object.assign(extended, { nextCursor: users.nextCursor ?? null });
-}
-
-function useStableUsersReference(users: ServerUser[] & { nextCursor: string | null }) {
-  const previousRef = useRef<{ fingerprint: string, value: ServerUser[] & { nextCursor: string | null } }>();
-  const fingerprint = useMemo(() => getUsersFingerprint(users), [users]);
-
-  if (previousRef.current && previousRef.current.fingerprint === fingerprint) {
-    return previousRef.current.value;
-  }
-
-  previousRef.current = { fingerprint, value: users };
-  return users;
-}
-
-function getUsersFingerprint(users: ServerUser[] & { nextCursor: string | null }) {
-  const userSegments = users
-    .map((user) => [
-      user.id,
-      user.displayName ?? "",
-      user.primaryEmail ?? "",
-      user.primaryEmailVerified ? "1" : "0",
-      user.isAnonymous ? "1" : "0",
-      normalizeDateValue(user.lastActiveAt),
-      normalizeDateValue(user.signedUpAt),
-      user.otpAuthEnabled ? "1" : "0",
-      user.hasPassword ? "1" : "0",
-      user.profileImageUrl ?? "",
-      user.isMultiFactorRequired ? "1" : "0",
-      user.oauthProviders.map((provider) => provider.id).sort().join(","),
-    ].join("~"))
-    .join("||");
-  return `${users.nextCursor ?? ""}::${userSegments}`;
-}
-
-function normalizeDateValue(value: Date | string | null | undefined) {
-  if (!value) {
-    return "";
-  }
-  const date = value instanceof Date ? value : new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return String(value);
-  }
-  return String(date.getTime());
-}
-
-function parseQuery(params: ReadonlyURLSearchParams): QueryState {
-  const raw: Record<string, string> = {};
-  params.forEach((value, key) => {
-    raw[key] = value;
-  });
-  const result = querySchema.safeParse(raw);
-  if (!result.success) {
-    return {
-      includeAnonymous: false,
-      page: 1,
-      pageSize: DEFAULT_PAGE_SIZE,
-      signedUpOrder: "desc",
-    };
-  }
-  return sanitizeQueryState(result.data);
-}
-
-function sanitizeQueryState(state: Partial<QueryState>): QueryState {
-  const search = state.search?.trim() ? state.search.trim() : undefined;
-  const includeAnonymous = Boolean(state.includeAnonymous);
-  const candidatePageSize = state.pageSize ?? DEFAULT_PAGE_SIZE;
-  const pageSize = PAGE_SIZE_OPTIONS.includes(candidatePageSize) ? candidatePageSize : DEFAULT_PAGE_SIZE;
-  const candidatePage = state.page ?? 1;
-  const page = Number.isFinite(candidatePage) ? Math.max(1, Math.floor(candidatePage)) : 1;
-  const cursor = page > 1 && state.cursor ? state.cursor : undefined;
-  const signedUpOrder = state.signedUpOrder === "asc" ? "asc" : "desc";
-  return { search, includeAnonymous, page, pageSize, cursor, signedUpOrder };
-}
-
-function isQueryEqual(a: QueryState, b: QueryState) {
-  return (
-    a.search === b.search &&
-    a.includeAnonymous === b.includeAnonymous &&
-    a.page === b.page &&
-    a.pageSize === b.pageSize &&
-    a.cursor === b.cursor &&
-    a.signedUpOrder === b.signedUpOrder
-  );
-}
-
-function useUserTableQueryState() {
-  const router = useRouter();
-  const pathname = usePathname();
-  const searchParams = useSearchParams();
-  const searchParamsKey = searchParams.toString();
-  const state = useMemo(() => parseQuery(searchParams), [searchParamsKey]);
-
-  const stateRef = useRef(state);
-  useEffect(() => {
-    stateRef.current = state;
-  }, [state]);
-
-  const replaceRef = useRef(router.replace);
-  useEffect(() => {
-    replaceRef.current = router.replace;
-  }, [router.replace]);
-
-  const setQuery = useCallback(
-    (updater: QueryUpdater) => {
-      const current = stateRef.current;
-      const patch = typeof updater === "function" ? updater(current) : updater;
-      const next = sanitizeQueryState({ ...current, ...patch });
-      if (isQueryEqual(current, next)) {
-        return;
-      }
-      const params = new URLSearchParams();
-      if (next.search) {
-        params.set("search", next.search);
-      }
-      if (next.includeAnonymous) {
-        params.set("includeAnonymous", "true");
-      }
-      if (next.page > 1) {
-        params.set("page", String(next.page));
-      }
-      if (next.pageSize !== DEFAULT_PAGE_SIZE) {
-        params.set("pageSize", String(next.pageSize));
-      }
-      if (next.signedUpOrder !== "desc") {
-        params.set("signedUpOrder", next.signedUpOrder);
-      }
-      if (next.cursor) {
-        params.set("cursor", next.cursor);
-      }
-      const queryString = params.toString();
-      const replace = replaceRef.current;
-      replace(queryString.length > 0 ? `${pathname}?${queryString}` : pathname);
-    },
-    [pathname],
-  );
-
-  return { state, setQuery };
-}
-
-function titleCase(value: string) {
-  return value.charAt(0).toUpperCase() + value.slice(1);
-}
-
-function formatUserId(id: string) {
-  if (id.length <= 10) {
-    return id;
-  }
-  return `${id.slice(0, 6)}…${id.slice(-4)}`;
-}
-
 function getDateMeta(value: Date | string | null | undefined, emptyLabel: string) {
   if (!value) {
     return { label: emptyLabel };
@@ -1118,26 +974,7 @@ function getDateMeta(value: Date | string | null | undefined, emptyLabel: string
     return { label: emptyLabel };
   }
   return {
-    label: formatRelativeTime(date),
-    tooltip: formatAbsoluteTime(date),
+    label: fromNow(date),
+    tooltip: date.toString(),
   };
-}
-
-function formatRelativeTime(date: Date) {
-  const formatter = new Intl.RelativeTimeFormat(undefined, { numeric: "auto" });
-  let duration = Math.round((date.getTime() - Date.now()) / 1000);
-  for (const division of RELATIVE_TIME_DIVISIONS) {
-    if (Math.abs(duration) < division.amount) {
-      return formatter.format(duration, division.unit);
-    }
-    duration = Math.round(duration / division.amount);
-  }
-  return formatter.format(duration, "year");
-}
-
-function formatAbsoluteTime(date: Date) {
-  return new Intl.DateTimeFormat(undefined, {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(date);
 }
