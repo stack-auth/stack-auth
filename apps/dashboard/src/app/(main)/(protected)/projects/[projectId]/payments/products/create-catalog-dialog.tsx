@@ -71,7 +71,8 @@ export function CreateCatalogDialog({ open, onOpenChange, onCreate }: CreateCata
               id="catalog-id"
               value={catalogId}
               onChange={(e) => {
-                setCatalogId(e.target.value);
+                const value = e.target.value.toLowerCase().replace(/[^a-z0-9_\-]/g, '-');
+                setCatalogId(value);
                 setErrors(prev => ({ ...prev, id: undefined }));
               }}
               placeholder="e.g., pricing-tiers"

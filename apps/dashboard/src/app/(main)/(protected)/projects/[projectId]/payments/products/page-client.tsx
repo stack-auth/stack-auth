@@ -1,11 +1,12 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useQueryState } from "@stackframe/stack-shared/dist/utils/react";
+import { Button, Label, Separator, Switch, toast } from "@stackframe/stack-ui";
+import { Plus } from "lucide-react";
+import { useId, useMemo, useState } from "react";
 import { IllustratedInfo } from "../../../../../../../components/illustrated-info";
 import { PageLayout } from "../../page-layout";
 import { useAdminApp } from "../../use-admin-app";
-import { Button } from "@stackframe/stack-ui";
-import { Plus } from "lucide-react";
 import PageClientCatalogsView from "./page-client-catalogs-view";
 import PageClientListView from "./page-client-list-view";
 
@@ -69,10 +70,13 @@ function WelcomeScreen({ onCreateProduct }: { onCreateProduct: () => void }) {
 }
 
 export default function PageClient() {
-  const [view, setView] = useState<ViewState>("catalogs");
+  const [view, setView] = useQueryState("view", "catalogs");
+  const isViewList = view === "list";
   const [welcomeDismissed, setWelcomeDismissed] = useState(false);
   const [draftCustomerType, setDraftCustomerType] = useState<'user' | 'team' | 'custom'>("user");
   const [draftRequestId, setDraftRequestId] = useState<string | undefined>(undefined);
+  const switchId = useId();
+  const testModeSwitchId = useId();
 
   const adminApp = useAdminApp();
   const project = adminApp.useProject();
@@ -98,18 +102,48 @@ export default function PageClient() {
     setDraftRequestId(undefined);
   };
 
+
+  const handleToggleTestMode = async (enabled: boolean) => {
+    await project.updateConfig({ "payments.testMode": enabled });
+    toast({ title: enabled ? "Test mode enabled" : "Test mode disabled" });
+  };
+
+
   if (showWelcome) {
     return <WelcomeScreen onCreateProduct={handleCreateFirstProduct} />;
   }
 
-  return view === "catalogs" ? (
-    <PageClientCatalogsView
-      onViewChange={setView}
-      createDraftRequestId={draftRequestId}
-      draftCustomerType={draftCustomerType}
-      onDraftHandled={handleDraftHandled}
-    />
-  ) : (
-    <PageClientListView onViewChange={setView} />
+  return (
+    <PageLayout
+      title='Products'
+      actions={
+        <div className="flex items-center gap-4 self-center">
+          <div className="flex items-center gap-2">
+            <Label htmlFor={switchId}>Pricing table</Label>
+            <Switch id={switchId} checked={isViewList} onCheckedChange={() => setView(isViewList ? "catalogs" : "list")} />
+            <Label htmlFor={switchId}>List</Label>
+          </div>
+          <Separator orientation="vertical" className="h-6" />
+          <div className="flex items-center gap-2">
+            <Label htmlFor={testModeSwitchId}>Test mode</Label>
+            <Switch
+              id={testModeSwitchId}
+              checked={paymentsConfig.testMode === true}
+              onCheckedChange={async (checked) => await handleToggleTestMode(checked)}
+            />
+          </div>
+        </div>
+      }
+    >
+      {isViewList ? (
+        <PageClientListView />
+      ) : (
+        <PageClientCatalogsView
+          createDraftRequestId={draftRequestId}
+          draftCustomerType={draftCustomerType}
+          onDraftHandled={handleDraftHandled}
+        />
+      )}
+    </PageLayout>
   );
 }
