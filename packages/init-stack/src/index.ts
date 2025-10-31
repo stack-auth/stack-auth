@@ -947,8 +947,7 @@ ${shouldInheritFromClient ? `${indentation}inheritsFrom: stackClientApp,` : `${i
     }
     laterWriteFileIfNotExists(
       handlerPath,
-      `import { StackHandler } from "@stackframe/stack"; \nimport { stackServerApp } from "../../../stack/server"; \n\nexport default function Handler(props${handlerFileExtension.includes("ts") ? ": unknown" : ""
-      }) { \n${projectInfo.indentation} return <StackHandler fullPage app = { stackServerApp } routeProps = { props } />; \n } \n`
+      `import { StackHandler } from "@stackframe/stack"; \n\nexport default function Handler() { \n${projectInfo.indentation}return <StackHandler fullPage />; \n} \n`
     );
   },
 
