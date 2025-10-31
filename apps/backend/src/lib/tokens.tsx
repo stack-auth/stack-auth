@@ -158,6 +158,7 @@ export async function generateAccessTokenFromRefreshTokenIfValid(options: {
     throw error;
   }
 
+  // Log session activity event (used for session tracking)
   await logEvent(
     [SystemEventTypes.SessionActivity],
     {
@@ -168,6 +169,21 @@ export async function generateAccessTokenFromRefreshTokenIfValid(options: {
       isAnonymous: user.is_anonymous,
     }
   );
+
+  // Update last logged in timestamp on the user object
+  await globalPrismaClient.projectUser.update({
+    where: {
+      tenancyId_projectUserId: {
+        tenancyId: options.tenancy.id,
+        projectUserId: options.refreshTokenObj.projectUserId,
+      },
+    },
+    data: {
+      lastLoggedInAt: new Date(),
+    },
+  }).catch(() => {
+    // Ignore errors - this is a best-effort update
+  });
 
   const payload: Omit<AccessTokenPayload, "iss" | "aud"> = {
     sub: options.refreshTokenObj.projectUserId,
