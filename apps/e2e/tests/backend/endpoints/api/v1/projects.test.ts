@@ -43,6 +43,7 @@ it("gets current project (internal)", async ({ expect }) => {
           "client_team_creation_enabled": true,
           "client_user_deletion_enabled": false,
           "credential_enabled": true,
+          "domains": [],
           "enabled_oauth_providers": [
             { "id": "github" },
             { "id": "google" },

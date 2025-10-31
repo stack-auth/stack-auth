@@ -275,7 +275,7 @@ import.meta.vitest?.test("getRelativePart", ({ expect }) => {
  *
  * Any values passed are encoded.
  */
-export function url(strings: TemplateStringsArray | readonly string[], ...values: (string|number|boolean)[]): URL {
+export function url(strings: TemplateStringsArray | readonly string[], ...values: (string | number | boolean)[]): URL {
   return new URL(urlString(strings, ...values));
 }
 import.meta.vitest?.test("url", ({ expect }) => {
@@ -311,7 +311,7 @@ import.meta.vitest?.test("url", ({ expect }) => {
  *
  * Any values passed are encoded.
  */
-export function urlString(strings: TemplateStringsArray | readonly string[], ...values: (string|number|boolean)[]): string {
+export function urlString(strings: TemplateStringsArray | readonly string[], ...values: (string | number | boolean)[]): string {
   return templateIdentity(strings, ...values.map(encodeURIComponent));
 }
 import.meta.vitest?.test("urlString", ({ expect }) => {
@@ -378,4 +378,3 @@ import.meta.vitest?.test("isSubPath", ({ expect }) => {
   expect(isChildPath("/path/", "/path-abc")).toBe(false);
   expect(isChildPath("/path/", "/path-abc/")).toBe(false);
 });
-
