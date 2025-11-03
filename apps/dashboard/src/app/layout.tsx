@@ -30,6 +30,18 @@ export const metadata: Metadata = {
     template: '%s | Stack Auth',
   },
   description: 'Stack Auth is the open-source Auth0 alternative, and the fastest way to add authentication to your web app.',
+  viewport: {
+    width: 'device-width',
+    initialScale: 1,
+    maximumScale: 1,
+    userScalable: false,
+    viewportFit: 'cover',
+  },
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: 'black-translucent',
+    title: 'Stack Auth',
+  },
   openGraph: {
     title: 'Stack Auth Dashboard',
     description: 'Stack Auth is the open-source Auth0 alternative, and the fastest way to add authentication to your web app.',

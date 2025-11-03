@@ -232,7 +232,7 @@ function NavItem({
       <ButtonComponent
         {...(isSection ? { onClick: onToggle } : { href })}
         className={cn(
-          "flex items-center w-full py-1.5 px-4 text-left hover:bg-foreground/5",
+          "flex items-center w-full py-1.5 px-4 text-left hover:bg-foreground/5 mobile-nav-item active:scale-95 transition-transform duration-200",
           isActive && "bg-foreground/5",
           isSection && "cursor-default"
         )}
@@ -292,7 +292,7 @@ function NavSubItem({
       href={href}
       onClick={onClick}
       className={cn(
-        "flex items-center pl-10 pr-2 py-1 text-sm text-muted-foreground hover:bg-foreground/5 hover:text-foreground",
+        "flex items-center pl-10 pr-2 py-1 text-sm text-muted-foreground hover:bg-foreground/5 hover:text-foreground mobile-nav-item active:scale-95 transition-transform duration-200",
         isActive && "bg-foreground/5 text-foreground"
       )}
     >
@@ -333,7 +333,7 @@ function SidebarContent({ projectId, onNavigate }: { projectId: string, onNaviga
 
   return (
     <div className="flex flex-col h-full items-stretch">
-      <div className="h-14 border-b flex items-center px-2 shrink-0">
+      <div className="h-14 border-b flex items-center px-2 shrink-0 bg-background/80 backdrop-blur-xl">
         {getPublicEnvVar("NEXT_PUBLIC_STACK_EMULATOR_ENABLED") === "true" ? (
           <div className="flex-grow mx-2">
             <Logo full width={80} />
@@ -342,7 +342,7 @@ function SidebarContent({ projectId, onNavigate }: { projectId: string, onNaviga
           <ProjectSwitcher currentProjectId={projectId} />
         )}
       </div>
-      <div className="flex flex-grow flex-col pt-2 overflow-y-auto">
+      <div className="flex flex-grow flex-col pt-2 overflow-y-auto overscroll-contain">
         {/* Overview - always at top */}
         <NavItem item={overviewItem} onClick={onNavigate} href={`/projects/${projectId}${overviewItem.href}`} />
 
@@ -377,7 +377,7 @@ function SidebarContent({ projectId, onNavigate }: { projectId: string, onNaviga
         <div className="flex-grow" />
 
         {/* Bottom Items */}
-        <div className="py-2 mt-2 border-t sticky bottom-0 backdrop-blur-md bg-background/20">
+        <div className="py-2 mt-2 border-t sticky bottom-0 backdrop-blur-xl bg-background/90 safe-bottom">
           {bottomItems.map((item, i) => (
             <NavItem
               key={item.name}
@@ -479,7 +479,7 @@ export default function SidebarLayout(props: { children?: React.ReactNode }) {
   return (
     <div className="w-full flex">
       {/* Left Sidebar */}
-      <div className="flex-col border-r min-w-[240px] h-screen sticky top-0 hidden lg:flex bg-slate-200/20 dark:bg-black/20 z-[10] relative">
+      <div className="flex-col border-r min-w-[240px] h-screen sticky top-0 hidden lg:flex bg-slate-200/20 dark:bg-black/20 z-[10] relative shadow-lg">
         {/*
           If we put a backdrop blur on the sidebar div, it will create a new backdrop root,
           which would then make us unable to properly do a nested blur for the bottom elements
@@ -488,7 +488,7 @@ export default function SidebarLayout(props: { children?: React.ReactNode }) {
 
           https://drafts.fxtf.org/filter-effects-2/#BackdropRoot
         */}
-        <div className="absolute inset-0 backdrop-blur-md z-[-1]"></div>
+        <div className="absolute inset-0 backdrop-blur-xl saturate-[180%] z-[-1]"></div>
 
         <SidebarContent projectId={projectId} />
       </div>
@@ -496,7 +496,7 @@ export default function SidebarLayout(props: { children?: React.ReactNode }) {
       {/* Main Content Area */}
       <div className="flex flex-col flex-grow w-0">
         {/* Header */}
-        <div className="h-14 border-b flex items-center justify-between sticky top-0 backdrop-blur-md bg-slate-200/20 dark:bg-black/20 z-10 px-4 lg:px-6">
+        <div className="h-14 border-b flex items-center justify-between sticky top-0 backdrop-blur-xl saturate-[180%] bg-slate-200/20 dark:bg-black/20 z-10 px-4 lg:px-6 mobile-header safe-top shadow-sm">
           <div className="hidden lg:flex">
             <HeaderBreadcrumb projectId={projectId} />
           </div>
@@ -506,12 +506,12 @@ export default function SidebarLayout(props: { children?: React.ReactNode }) {
               <SheetTitle className="hidden">
                 Sidebar Menu
               </SheetTitle>
-              <SheetTrigger>
+              <SheetTrigger className="mobile-nav-item active:scale-95 transition-transform duration-200 rounded-lg p-2 hover:bg-foreground/5">
                 <Menu />
               </SheetTrigger>
               <SheetContent
                 aria-describedby={undefined}
-                side='left' className="w-[240px] p-0" hasCloseButton={false}>
+                side='left' className="w-[280px] p-0 mobile-sheet rounded-r-3xl border-r-0 shadow-2xl" hasCloseButton={false}>
                 <SidebarContent projectId={projectId} onNavigate={() => setSidebarOpen(false)} />
               </SheetContent>
             </Sheet>
@@ -522,7 +522,7 @@ export default function SidebarLayout(props: { children?: React.ReactNode }) {
           </div>
 
           <div className="flex gap-2 relative items-center">
-            <Button asChild variant="ghost" size="icon" className="hidden lg:flex">
+            <Button asChild variant="ghost" size="icon" className="hidden lg:flex mobile-nav-item active:scale-95 transition-transform duration-200">
               <Link href={`/projects/${projectId}/project-settings`}>
                 <Settings className="w-4 h-4" />
               </Link>
@@ -535,13 +535,13 @@ export default function SidebarLayout(props: { children?: React.ReactNode }) {
         </div>
 
         {/* Content Body - Normal scrolling */}
-        <div className="flex-grow relative flex flex-col">
+        <div className="flex-grow relative flex flex-col overscroll-contain">
           {props.children}
         </div>
       </div>
 
       {/* Stack Companion - Sticky positioned like left sidebar */}
-      <div className="hidden sm:block h-screen sticky top-0 backdrop-blur-md bg-slate-200/20 dark:bg-black/20 z-[10]">
+      <div className="hidden sm:block h-screen sticky top-0 backdrop-blur-xl saturate-[180%] bg-slate-200/20 dark:bg-black/20 z-[10] shadow-lg">
         <StackCompanion onExpandedChange={setCompanionExpanded} />
       </div>
     </div>
