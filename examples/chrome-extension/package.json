@@ -1,0 +1,18 @@
+{
+  "name": "@stackframe/example-chrome-extension",
+  "version": "2.8.48",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "dotenv -e .env.development -e .env.local -- vite build --watch --mode development",
+    "build": "dotenv -e .env.development -e .env.local -- vite build",
+    "clean": "rimraf dist && rimraf node_modules",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@stackframe/js": "workspace:*",
+    "dotenv-cli": "^7.4.1",
+    "typescript": "5.3.3",
+    "vite": "^6.1.0"
+  }
+}

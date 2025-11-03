@@ -1,0 +1,16 @@
+{
+  "manifest_version": 3,
+  "name": "Stack Auth Extension Example",
+  "description": "Demo Chrome extension popup that signs users in with Stack Auth.",
+  "version": "0.1.0",
+  "action": {
+    "default_popup": "index.html",
+    "default_title": "Stack Auth"
+  },
+  "permissions": [
+    "storage"
+  ],
+  "host_permissions": [
+    "http://localhost/*"
+  ]
+}

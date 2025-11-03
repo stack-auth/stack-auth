@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Stack Auth Extension</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+      body {
+        margin: 0;
+        padding: 16px;
+        width: 320px;
+        min-height: 320px;
+        background: #0e1117;
+        color: #f2f2f2;
+      }
+      h1 {
+        font-size: 1.1rem;
+        margin: 0 0 12px;
+      }
+      button {
+        cursor: pointer;
+        border: none;
+        border-radius: 6px;
+        padding: 8px 12px;
+        font-weight: 600;
+        background: #556ff6;
+        color: #fff;
+      }
+      button:disabled {
+        opacity: 0.6;
+        cursor: progress;
+      }
+      input {
+        width: 100%;
+        margin-bottom: 8px;
+        padding: 8px 10px;
+        border-radius: 6px;
+        border: 1px solid rgba(255, 255, 255, 0.15);
+        background: rgba(0, 0, 0, 0.25);
+        color: inherit;
+      }
+      .card {
+        border-radius: 12px;
+        padding: 12px;
+        background: rgba(255, 255, 255, 0.07);
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+      .hidden {
+        display: none;
+      }
+      .error {
+        color: #f97c7c;
+        font-size: 0.85rem;
+        min-height: 18px;
+      }
+      .status {
+        font-size: 0.9rem;
+        opacity: 0.8;
+      }
+      .profile {
+        font-size: 0.95rem;
+        line-height: 1.4;
+      }
+      a {
+        color: #9db6ff;
+        text-decoration: none;
+      }
+      a:hover {
+        text-decoration: underline;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Stack Auth</h1>
+      <section id="signedOutCard" class="card">
+        <div class="status" id="signedOutStatus">Checking session…</div>
+        <form id="signInForm">
+          <input id="emailInput" type="email" placeholder="Email" autocomplete="email" required />
+          <input id="passwordInput" type="password" placeholder="Password" autocomplete="current-password" required />
+          <button id="signInButton" type="submit">Sign In</button>
+        </form>
+        <div class="error" id="errorMessage"></div>
+        <p class="status">
+          New here? Create an account with the same form – we'll sign you in automatically after.
+        </p>
+      </section>
+
+      <section id="signedInCard" class="card hidden">
+        <div class="status">You are signed in.</div>
+        <div class="profile">
+          <div><strong>Name:</strong> <span id="profileName">–</span></div>
+          <div><strong>Email:</strong> <span id="profileEmail">–</span></div>
+        </div>
+        <button id="signOutButton" type="button">Sign Out</button>
+      </section>
+    </main>
+    <script type="module" src="/src/popup.ts"></script>
+  </body>
+</html>
