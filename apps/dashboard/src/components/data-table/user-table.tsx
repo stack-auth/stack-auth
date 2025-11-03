@@ -43,7 +43,6 @@ import { useCursorPaginationCache } from "./common/cursor-pagination";
 import { PaginationControls } from "./common/pagination";
 import { useStableValue } from "./common/stable-value";
 import {
-  DEFAULT_ROW_HEIGHT_PX,
   TableContent,
   type ColumnLayout,
   type ColumnMeta,
@@ -79,14 +78,6 @@ const AUTH_TYPE_LABELS = new Map<string, string>([
   ["password", "Password"],
 ]);
 
-export const USER_COMMON_COLUMN_LAYOUT: ColumnLayout<"user" | "email" | "userId" | "emailStatus" | "lastActiveAt"> = {
-  user: { size: 160, minWidth: 110, maxWidth: 160, width: "clamp(110px, 22vw, 160px)" },
-  email: { size: 160, minWidth: 110, maxWidth: 160, width: "clamp(110px, 22vw, 160px)" },
-  userId: { size: 130, minWidth: 90, maxWidth: 130, width: "clamp(90px, 18vw, 130px)" },
-  emailStatus: { size: 110, minWidth: 80, maxWidth: 110, width: "clamp(80px, 16vw, 110px)" },
-  lastActiveAt: { size: 110, minWidth: 80, maxWidth: 110, width: "clamp(80px, 16vw, 110px)" },
-};
-
 type ColumnKey =
   | "user"
   | "email"
@@ -100,10 +91,13 @@ type ColumnKey =
 type ColumnLayoutMap = ColumnLayout<ColumnKey>;
 type ColumnMetaType = ColumnMeta<ColumnKey>;
 
-const ROW_HEIGHT_PX = DEFAULT_ROW_HEIGHT_PX;
 
 const COLUMN_LAYOUT: ColumnLayoutMap = {
-  ...USER_COMMON_COLUMN_LAYOUT,
+  user: { size: 160, minWidth: 110, maxWidth: 160, width: "clamp(110px, 22vw, 160px)" },
+  email: { size: 160, minWidth: 110, maxWidth: 160, width: "clamp(110px, 22vw, 160px)" },
+  userId: { size: 130, minWidth: 90, maxWidth: 130, width: "clamp(90px, 18vw, 130px)" },
+  emailStatus: { size: 110, minWidth: 80, maxWidth: 110, width: "clamp(80px, 16vw, 110px)" },
+  lastActiveAt: { size: 110, minWidth: 80, maxWidth: 110, width: "clamp(80px, 16vw, 110px)" },
   auth: { size: 150, minWidth: 110, maxWidth: 150, width: "clamp(110px, 20vw, 150px)" },
   signedUpAt: { size: 110, minWidth: 80, maxWidth: 110, width: "clamp(80px, 16vw, 110px)" },
   actions: {
@@ -180,16 +174,9 @@ const querySchema = yup.object({
 const columnHelper = createColumnHelper<ExtendedServerUser>();
 
 export function UserTable() {
-  const stackAdminApp = useAdminApp();
   const { query, setQuery } = useUserTableQueryState();
   const [searchInput, setSearchInput] = useState(query.search ?? "");
-  const {
-    resetCache,
-    readCursorForPage,
-    recordPageCursor,
-    recordNextCursor,
-    prefetchCursor,
-  } = useCursorPaginationCache();
+  const cursorPaginationCache = useCursorPaginationCache();
 
   useEffect(() => {
     setSearchInput(query.search ?? "");
@@ -213,8 +200,8 @@ export function UserTable() {
   }, [searchInput, query.search, setQuery]);
 
   useEffect(() => {
-    resetCache();
-  }, [resetCache, query.search, query.includeAnonymous, query.pageSize, query.signedUpOrder]);
+    cursorPaginationCache.resetCache();
+  }, [cursorPaginationCache, query.search, query.includeAnonymous, query.pageSize, query.signedUpOrder]);
 
   useEffect(() => {
     if (query.page > 1 && !query.cursor) {
@@ -223,7 +210,7 @@ export function UserTable() {
   }, [query.page, query.cursor, setQuery]);
 
   return (
-    <section className="space-y-4">
+    <section className="space-y-2">
       <UserTableHeader
         searchValue={searchInput}
         onSearchChange={setSearchInput}
@@ -232,17 +219,12 @@ export function UserTable() {
           setQuery((prev) => ({ ...prev, includeAnonymous: value, page: 1, cursor: undefined }))
         }
       />
-      <div className="overflow-clip rounded-xl border border-border bg-card shadow-sm">
+      <div className="overflow-clip rounded-xl border border-border bg-card">
         <Suspense fallback={<UserTableSkeleton pageSize={query.pageSize} />}>
           <UserTableBody
-            stackAdminApp={stackAdminApp}
             query={query}
             setQuery={setQuery}
-            readCursorForPage={readCursorForPage}
-            recordPageCursor={recordPageCursor}
-            recordNextCursor={recordNextCursor}
-            prefetchCursor={prefetchCursor}
-            resetCursorCache={resetCache}
+            cursorPaginationCache={cursorPaginationCache}
           />
         </Suspense>
       </div>
@@ -301,25 +283,19 @@ function UserTableHeader(props: {
 }
 
 function UserTableBody(props: {
-  stackAdminApp: StackAdminApp<false>,
   query: QueryState,
   setQuery: (updater: QueryUpdater) => void,
-  readCursorForPage: (page: number) => string | null | undefined,
-  recordPageCursor: (page: number, cursor: string | null | undefined) => void,
-  recordNextCursor: (page: number, nextCursor: string | null | undefined) => void,
-  prefetchCursor: (cursor: string | null | undefined, task: () => void | Promise<void>) => void,
-  resetCursorCache: () => void,
+  cursorPaginationCache: ReturnType<typeof useCursorPaginationCache>,
 }) {
+  const stackAdminApp = useAdminApp();
+  const { query, setQuery } = props;
   const {
-    stackAdminApp,
-    query,
-    setQuery,
     readCursorForPage,
     recordPageCursor,
     recordNextCursor,
     prefetchCursor,
-    resetCursorCache,
-  } = props;
+    resetCache,
+  } = props.cursorPaginationCache;
 
   const baseOptions = useMemo(
     () => ({
@@ -340,13 +316,7 @@ function UserTableBody(props: {
     if (storedCursor && storedCursor.length > 0) {
       return storedCursor;
     }
-    if (storedCursor === null) {
-      return undefined;
-    }
-    if (query.cursor) {
-      return query.cursor;
-    }
-    return undefined;
+    return storedCursor === null ? undefined : query.cursor;
   }, [query.page, query.cursor, storedCursor]);
 
   const listOptions = useMemo(
@@ -392,7 +362,6 @@ function UserTableBody(props: {
     getCoreRowModel: getCoreRowModel(),
   });
 
-  const hasResults = users.length > 0;
   const hasNextPage = users.nextCursor !== null;
   const hasPreviousPage = query.page > 1;
 
@@ -401,8 +370,6 @@ function UserTableBody(props: {
       <TableContent
         table={table}
         columnLayout={COLUMN_LAYOUT}
-        hasResults={hasResults}
-        rowHeightPx={ROW_HEIGHT_PX}
         renderEmptyState={() => (
           <div className="mx-auto flex max-w-md flex-col items-center gap-4">
             <div className="flex h-12 w-12 items-center justify-center rounded-full bg-muted">
@@ -410,12 +377,12 @@ function UserTableBody(props: {
             </div>
             <div className="text-base font-medium text-foreground">No users found</div>
             <p className="text-sm text-muted-foreground">
-              Try adjusting your search or filters. You can also reset everything and start again.
+              Try adjusting your search or filters
             </p>
             <Button
               variant="outline"
               onClick={() => {
-                resetCursorCache();
+                resetCache();
                 setQuery({ search: undefined, includeAnonymous: false, page: 1, cursor: undefined });
               }}
             >
@@ -447,7 +414,6 @@ function UserTableBody(props: {
           }
           setQuery({ page: query.page + 1, cursor: users.nextCursor ?? undefined });
         }}
-        selectAriaLabel={`Rows per page: ${query.pageSize}`}
       />
     </div>
   );
@@ -513,7 +479,6 @@ function UserTableSkeleton(props: { pageSize: number }) {
         return <Skeleton className="ml-auto h-4 w-4" />;
       }
       default: {
-        const exhaustiveCheck: never = columnKey;
         throw new Error("Unhandled skeleton column");
       }
     }
@@ -526,10 +491,9 @@ function UserTableSkeleton(props: { pageSize: number }) {
         columnLayout={COLUMN_LAYOUT}
         headerLabels={skeletonHeaders}
         rowCount={pageSize}
-        rowHeightPx={ROW_HEIGHT_PX}
         renderCellSkeleton={(columnKey) => renderSkeletonCellContent(columnKey)}
       />
-      <div className="flex flex-col gap-3 border-t border-border/70 px-4 py-3 text-sm text-muted-foreground md:flex-row md:items-center md:justify-between">
+      <div className="flex flex-col gap-3 px-4 py-3 text-sm text-muted-foreground md:flex-row md:items-center md:justify-between">
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <span>Rows per page</span>
           <Select>

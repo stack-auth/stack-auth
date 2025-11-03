@@ -5,19 +5,20 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 import type { ReactNode } from "react";
 import { combineClassNames } from "./table";
 
+const DEFAULT_PAGE_SIZE_OPTIONS = [10, 25, 50];
+
 type PaginationControlsProps = {
   page: number,
   pageSize: number,
-  pageSizeOptions: number[],
   hasNextPage: boolean,
   hasPreviousPage: boolean,
   onNextPage: () => void,
   onPreviousPage: () => void,
   onPageSizeChange: (pageSize: number) => void,
+  pageSizeOptions?: number[],
   pageSizeLabel?: string,
   pageIndicatorLabel?: (page: number) => ReactNode,
   className?: string,
-  selectAriaLabel?: string,
 };
 
 const defaultIndicator = (page: number) => <>Page {page}</>;
@@ -26,27 +27,26 @@ export function PaginationControls(props: PaginationControlsProps) {
   const {
     page,
     pageSize,
-    pageSizeOptions,
     hasNextPage,
     hasPreviousPage,
     onNextPage,
     onPreviousPage,
     onPageSizeChange,
+    pageSizeOptions = DEFAULT_PAGE_SIZE_OPTIONS,
     pageSizeLabel = "Rows per page",
     pageIndicatorLabel = defaultIndicator,
     className,
-    selectAriaLabel,
   } = props;
 
   return (
-    <div className={combineClassNames("flex flex-col gap-3 border-t border-border/70 px-4 py-3 text-sm text-muted-foreground md:flex-row md:items-center md:justify-between", className)}>
+    <div className={combineClassNames("flex flex-col gap-3 border-border/70 px-4 py-3 text-sm text-muted-foreground md:flex-row md:items-center md:justify-between", className)}>
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
         <span>{pageSizeLabel}</span>
         <Select
           value={String(pageSize)}
           onValueChange={(value) => onPageSizeChange(Number(value))}
         >
-          <SelectTrigger className="w-20" aria-label={selectAriaLabel ?? `${pageSizeLabel}: ${pageSize}`}>
+          <SelectTrigger className="w-20" aria-label={`${pageSizeLabel}: ${pageSize}`}>
             <SelectValue />
           </SelectTrigger>
           <SelectContent align="start">

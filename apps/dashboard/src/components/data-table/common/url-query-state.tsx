@@ -20,7 +20,7 @@ type UseUrlQueryStateResult<TState> = {
   setState: (updater: Updater<TState>) => void,
 };
 
-export function useUrlQueryState<TState>(options: UseUrlQueryStateOptions<TState>): UseUrlQueryStateResult<TState> {
+export function useUrlQueryState<TState extends Record<string, unknown>>(options: UseUrlQueryStateOptions<TState>): UseUrlQueryStateResult<TState> {
   const { schema, defaultState, sanitize, serialize, isEqual } = options;
   const router = useRouter();
   const pathname = usePathname();
@@ -43,7 +43,7 @@ export function useUrlQueryState<TState>(options: UseUrlQueryStateOptions<TState
 
     const sanitized = sanitize ? sanitize(partial) : { ...defaultState, ...partial };
     return sanitized as TState;
-  }, [schema, sanitize, defaultState, searchParamsKey]);
+  }, [schema, sanitize, defaultState, searchParams]);
 
   const stateRef = useRef(parsedState);
   useEffect(() => {
@@ -70,10 +70,10 @@ export function useUrlQueryState<TState>(options: UseUrlQueryStateOptions<TState
     [defaultState],
   );
 
-  const equalityFn = isEqual ?? ((a, b) => JSON.stringify(a) === JSON.stringify(b));
 
   const setState = useCallback(
     (updater: Updater<TState>) => {
+      const equalityFn = isEqual ?? ((a, b) => JSON.stringify(a) === JSON.stringify(b));
       const current = stateRef.current;
       const patch = typeof updater === "function" ? updater(current) : updater;
       const merged = { ...current, ...patch };
@@ -86,7 +86,7 @@ export function useUrlQueryState<TState>(options: UseUrlQueryStateOptions<TState
       const replace = replaceRef.current;
       replace(queryString.length > 0 ? `${pathname}?${queryString}` : pathname);
     },
-    [pathname, sanitize, serialize, defaultSerialize, equalityFn],
+    [pathname, sanitize, serialize, defaultSerialize, defaultState, isEqual],
   );
 
   return { state: parsedState, setState };

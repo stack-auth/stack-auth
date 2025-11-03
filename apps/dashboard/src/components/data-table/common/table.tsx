@@ -18,7 +18,7 @@ export type ColumnMeta<TColumnKey extends string> = {
   columnKey: TColumnKey,
 };
 
-export const DEFAULT_ROW_HEIGHT_PX = 49;
+export const DEFAULT_ROW_HEIGHT_PX = 50;
 
 export function getRowHeightStyle(heightPx: number = DEFAULT_ROW_HEIGHT_PX) {
   return { height: heightPx } satisfies CSSProperties;
@@ -42,41 +42,27 @@ export function getColumnStyles(layout?: ColumnLayoutEntry) {
 type TableContentProps<TData, TColumnKey extends string> = {
   table: Table<TData>,
   columnLayout: Partial<ColumnLayout<TColumnKey>>,
-  hasResults: boolean,
   renderEmptyState: () => React.ReactNode,
   rowHeightPx?: number,
-  getColumnKey?: (meta: unknown) => TColumnKey | undefined,
-  tableClassName?: string,
-  headerRowClassName?: string,
-  bodyRowClassName?: string,
-  bodyCellBaseClassName?: string,
-  emptyStateCellClassName?: string,
 };
 
 export function TableContent<TData, TColumnKey extends string>(props: TableContentProps<TData, TColumnKey>) {
   const {
     table,
     columnLayout,
-    hasResults,
     renderEmptyState,
     rowHeightPx,
-    getColumnKey,
-    tableClassName,
-    headerRowClassName,
-    bodyRowClassName,
-    bodyCellBaseClassName,
-    emptyStateCellClassName,
   } = props;
 
-  const resolveColumnKey = getColumnKey ?? ((meta: unknown) => (meta as ColumnMeta<TColumnKey> | undefined)?.columnKey);
+  const resolveColumnKey = ((meta: unknown) => (meta as ColumnMeta<TColumnKey> | undefined)?.columnKey);
   const rowHeightStyle = getRowHeightStyle(rowHeightPx ?? DEFAULT_ROW_HEIGHT_PX);
 
   return (
     <div className="overflow-x-auto">
-      <table className={tableClassName ?? "w-full border-collapse text-left text-sm text-foreground"}>
+      <table className={"w-full border-collapse text-left text-sm text-foreground"}>
         <thead className="sticky top-0 z-10 bg-muted/80 text-xs font-semibold tracking-wide text-muted-foreground backdrop-blur">
           {table.getHeaderGroups().map((headerGroup) => (
-            <tr key={headerGroup.id} className={headerRowClassName ?? "border-b border-border/70"}>
+            <tr key={headerGroup.id} className="border-b border-border/70">
               {headerGroup.headers.map((header) => {
                 const columnKey = resolveColumnKey(header.column.columnDef.meta);
                 const layout = columnKey ? columnLayout[columnKey] : undefined;
@@ -94,11 +80,11 @@ export function TableContent<TData, TColumnKey extends string>(props: TableConte
           ))}
         </thead>
         <tbody>
-          {hasResults ? (
+          {table.getRowModel().rows.length > 0 ? (
             table.getRowModel().rows.map((row) => (
               <tr
                 key={row.id}
-                className={combineClassNames("border-b border-border/60 transition hover:bg-muted/60", bodyRowClassName)}
+                className="border-b border-border/60 transition hover:bg-muted/60"
                 style={rowHeightStyle}
               >
                 {row.getVisibleCells().map((cell) => {
@@ -107,7 +93,7 @@ export function TableContent<TData, TColumnKey extends string>(props: TableConte
                   return (
                     <td
                       key={cell.id}
-                      className={combineClassNames("px-4 py-2 align-middle", bodyCellBaseClassName, layout?.cellClassName)}
+                      className={combineClassNames("px-4 py-2 align-middle", layout?.cellClassName)}
                       style={getColumnStyles(layout)}
                     >
                       {flexRender(cell.column.columnDef.cell, cell.getContext())}
@@ -120,7 +106,7 @@ export function TableContent<TData, TColumnKey extends string>(props: TableConte
             <tr>
               <td
                 colSpan={table.getAllColumns().length}
-                className={combineClassNames("px-6 py-12 text-center text-sm text-muted-foreground", emptyStateCellClassName)}
+                className="px-6 py-12 text-center text-sm text-muted-foreground"
               >
                 {renderEmptyState()}
               </td>
