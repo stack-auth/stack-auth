@@ -64,8 +64,8 @@ export default function PageClient() {
   }, [rawProjects, sort, search]);
 
   return (
-    <div className="flex-grow p-4">
-      <div className="flex justify-between gap-4 mb-4 flex-col sm:flex-row">
+    <div className="flex flex-col gap-6 pb-10">
+      <div className="rounded-[24px] border border-white/40 bg-white/75 p-4 shadow-[0_16px_32px_rgba(15,23,42,0.14)] backdrop-blur-xl dark:border-white/10 dark:bg-slate-900/70 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <SearchBar
           placeholder="Search project name"
           value={search}
@@ -97,8 +97,11 @@ export default function PageClient() {
       {projectsByTeam.map(({ teamId, projects }) => {
         const team = teamId ? teams.find((t) => t.id === teamId) : undefined;
         return (
-          <div key={teamId} className="mb-4">
-            <div className="mb-2 flex items-center gap-1">
+          <div
+            key={teamId}
+            className="rounded-[24px] border border-white/40 bg-white/75 p-4 shadow-[0_16px_32px_rgba(15,23,42,0.12)] backdrop-blur-xl dark:border-white/10 dark:bg-slate-900/70"
+          >
+            <div className="mb-3 flex items-center justify-between gap-2">
               <Typography>
                 {teamId ? teamIdMap.get(teamId) : "No Team"}
               </Typography>
