@@ -1,4 +1,7 @@
 @import 'tailwindcss';
+
+@source '../../../packages/stack-shared/src';
+
 @import 'fumadocs-ui/css/black.css';
 @import 'fumadocs-ui/css/preset.css';
 @import 'fumadocs-openapi/css/preset.css';

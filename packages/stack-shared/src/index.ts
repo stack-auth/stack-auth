@@ -1,4 +1,7 @@
 export {
+  AppIcon, appSquarePaddingExpression, appSquareWidthExpression, type AppIconProps
+} from "./apps/apps-ui";
+export {
   StackAdminInterface
 } from "./interface/admin-interface";
 export {

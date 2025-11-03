@@ -27,6 +27,8 @@ import { Accordion, AccordionGroup, ClickableTableOfContents, Icon, Markdown, Pa
 import { PropTable } from './components/prop-table';
 
 import { ImageZoom } from 'fumadocs-ui/components/image-zoom';
+import DocsSelector from './components/homepage/iconHover';
+import { AppCard, AppGrid } from './components/mdx/app-card';
 import { SignInDemo, SignInExtraInfo, SignInPasswordFirstTab, SignInStackAuth } from './components/stack-auth/sign-in';
 import { AccountSettingsStackAuth } from './components/stack-auth/stack-account-settings';
 import { TeamSwitcherDemo } from './components/stack-auth/stack-team-switcher';
@@ -90,6 +92,10 @@ export function getMDXComponents(components?: MDXComponents): MDXComponents {
     // UI Components
     Button,
     JWTViewer,
+    // App Components
+    AppCard,
+    AppGrid,
+    DocsSelector,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     img: (props) => <ImageZoom {...(props as any)} />,
   } as MDXComponents;
