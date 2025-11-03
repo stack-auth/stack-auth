@@ -7,9 +7,9 @@ import {
   getColumnStyles,
   getRowHeightStyle,
   type ColumnLayout,
-} from "./manual-table";
+} from "./table";
 
-type ManualTableSkeletonProps<TColumnKey extends string> = {
+type TableSkeletonProps<TColumnKey extends string> = {
   columnOrder: readonly TColumnKey[],
   columnLayout: Partial<ColumnLayout<TColumnKey>>,
   headerLabels: Partial<Record<TColumnKey, ReactNode | null>>,
@@ -18,7 +18,7 @@ type ManualTableSkeletonProps<TColumnKey extends string> = {
   rowHeightPx?: number,
 };
 
-export function ManualTableSkeleton<TColumnKey extends string>(props: ManualTableSkeletonProps<TColumnKey>) {
+export function TableSkeleton<TColumnKey extends string>(props: TableSkeletonProps<TColumnKey>) {
   const { columnOrder, columnLayout, headerLabels, rowCount, renderCellSkeleton, rowHeightPx } = props;
   const rows = Array.from({ length: rowCount });
   const rowStyle = getRowHeightStyle(rowHeightPx ?? DEFAULT_ROW_HEIGHT_PX);

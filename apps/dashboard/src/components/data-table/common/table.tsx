@@ -39,7 +39,7 @@ export function getColumnStyles(layout?: ColumnLayoutEntry) {
   } satisfies CSSProperties;
 }
 
-type ManualTableContentProps<TData, TColumnKey extends string> = {
+type TableContentProps<TData, TColumnKey extends string> = {
   table: Table<TData>,
   columnLayout: Partial<ColumnLayout<TColumnKey>>,
   hasResults: boolean,
@@ -53,7 +53,7 @@ type ManualTableContentProps<TData, TColumnKey extends string> = {
   emptyStateCellClassName?: string,
 };
 
-export function ManualTableContent<TData, TColumnKey extends string>(props: ManualTableContentProps<TData, TColumnKey>) {
+export function TableContent<TData, TColumnKey extends string>(props: TableContentProps<TData, TColumnKey>) {
   const {
     table,
     columnLayout,

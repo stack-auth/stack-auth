@@ -2,7 +2,8 @@
 
 import { useAdminApp } from "@/app/(main)/(protected)/projects/[projectId]/use-admin-app";
 import { useRouter } from "@/components/router";
-import type { StackAdminApp, ServerUser } from "@stackframe/stack";
+import type { ServerUser, StackAdminApp } from "@stackframe/stack";
+import { fromNow } from "@stackframe/stack-shared/dist/utils/dates";
 import { runAsynchronously, runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
 import {
@@ -22,8 +23,8 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-  Skeleton,
   SimpleTooltip,
+  Skeleton,
   toast,
 } from "@stackframe/stack-ui";
 import {
@@ -35,21 +36,20 @@ import {
 import { ArrowDown, ArrowUp, CheckCircle2, ChevronLeft, ChevronRight, Copy, MoreHorizontal, Search, X, XCircle } from "lucide-react";
 import { Suspense, useEffect, useMemo, useState } from "react";
 import * as yup from "yup";
-import {
-  ManualTableContent,
-  type ColumnLayout,
-  type ColumnMeta as ManualColumnMeta,
-  DEFAULT_ROW_HEIGHT_PX,
-} from "./common/manual-table";
-import { ManualPaginationControls } from "./common/manual-pagination";
-import { ManualTableSkeleton } from "./common/manual-table-skeleton";
-import { useCursorPaginationCache } from "./common/cursor-pagination";
-import { useUrlQueryState } from "./common/url-query-state";
-import { useStableValue } from "./common/stable-value";
 import { Link } from "../link";
 import { CreateCheckoutDialog } from "../payments/create-checkout-dialog";
 import { DeleteUserDialog, ImpersonateUserDialog } from "../user-dialogs";
-import { fromNow } from "@stackframe/stack-shared/dist/utils/dates";
+import { useCursorPaginationCache } from "./common/cursor-pagination";
+import { PaginationControls } from "./common/pagination";
+import { useStableValue } from "./common/stable-value";
+import {
+  DEFAULT_ROW_HEIGHT_PX,
+  TableContent,
+  type ColumnLayout,
+  type ColumnMeta,
+} from "./common/table";
+import { TableSkeleton } from "./common/table-skeleton";
+import { useUrlQueryState } from "./common/url-query-state";
 
 type QueryState = {
   search?: string,
@@ -79,15 +79,6 @@ const AUTH_TYPE_LABELS = new Map<string, string>([
   ["password", "Password"],
 ]);
 
-const RELATIVE_TIME_DIVISIONS: { amount: number, unit: Intl.RelativeTimeFormatUnit }[] = [
-  { amount: 60, unit: "second" },
-  { amount: 60, unit: "minute" },
-  { amount: 24, unit: "hour" },
-  { amount: 7, unit: "day" },
-  { amount: 4.34524, unit: "week" },
-  { amount: 12, unit: "month" },
-];
-
 export const USER_COMMON_COLUMN_LAYOUT: ColumnLayout<"user" | "email" | "userId" | "emailStatus" | "lastActiveAt"> = {
   user: { size: 160, minWidth: 110, maxWidth: 160, width: "clamp(110px, 22vw, 160px)" },
   email: { size: 160, minWidth: 110, maxWidth: 160, width: "clamp(110px, 22vw, 160px)" },
@@ -107,7 +98,7 @@ type ColumnKey =
   | "actions";
 
 type ColumnLayoutMap = ColumnLayout<ColumnKey>;
-type ColumnMetaType = ManualColumnMeta<ColumnKey>;
+type ColumnMetaType = ColumnMeta<ColumnKey>;
 
 const ROW_HEIGHT_PX = DEFAULT_ROW_HEIGHT_PX;
 
@@ -190,8 +181,7 @@ const columnHelper = createColumnHelper<ExtendedServerUser>();
 
 export function UserTable() {
   const stackAdminApp = useAdminApp();
-  const router = useRouter();
-  const { state: query, setQuery } = useUserTableQueryState();
+  const { query, setQuery } = useUserTableQueryState();
   const [searchInput, setSearchInput] = useState(query.search ?? "");
   const {
     resetCache,
@@ -211,7 +201,7 @@ export function UserTable() {
     if (normalized === (query.search ?? undefined)) {
       return;
     }
-    const handle = window.setTimeout(() => {
+    const handle = setTimeout(() => {
       setQuery((prev) => ({
         ...prev,
         page: 1,
@@ -219,7 +209,7 @@ export function UserTable() {
         search: normalized,
       }));
     }, SEARCH_DEBOUNCE_MS);
-    return () => window.clearTimeout(handle);
+    return () => clearTimeout(handle);
   }, [searchInput, query.search, setQuery]);
 
   useEffect(() => {
@@ -232,14 +222,12 @@ export function UserTable() {
     }
   }, [query.page, query.cursor, setQuery]);
 
-  const includeAnonymousChecked = query.includeAnonymous;
-
   return (
     <section className="space-y-4">
       <UserTableHeader
         searchValue={searchInput}
         onSearchChange={setSearchInput}
-        includeAnonymous={includeAnonymousChecked}
+        includeAnonymous={query.includeAnonymous}
         onIncludeAnonymousChange={(value) =>
           setQuery((prev) => ({ ...prev, includeAnonymous: value, page: 1, cursor: undefined }))
         }
@@ -248,7 +236,6 @@ export function UserTable() {
         <Suspense fallback={<UserTableSkeleton pageSize={query.pageSize} />}>
           <UserTableBody
             stackAdminApp={stackAdminApp}
-            router={router}
             query={query}
             setQuery={setQuery}
             readCursorForPage={readCursorForPage}
@@ -315,7 +302,6 @@ function UserTableHeader(props: {
 
 function UserTableBody(props: {
   stackAdminApp: StackAdminApp<false>,
-  router: ReturnType<typeof useRouter>,
   query: QueryState,
   setQuery: (updater: QueryUpdater) => void,
   readCursorForPage: (page: number) => string | null | undefined,
@@ -326,7 +312,6 @@ function UserTableBody(props: {
 }) {
   const {
     stackAdminApp,
-    router,
     query,
     setQuery,
     readCursorForPage,
@@ -390,7 +375,7 @@ function UserTableBody(props: {
       runAsynchronously(
         stackAdminApp.listUsers({
           ...baseOptions,
-          cursor: users.nextCursor,
+          cursor: users.nextCursor ?? undefined,
         }),
       ),
     );
@@ -413,7 +398,7 @@ function UserTableBody(props: {
 
   return (
     <div className="flex flex-col">
-      <ManualTableContent
+      <TableContent
         table={table}
         columnLayout={COLUMN_LAYOUT}
         hasResults={hasResults}
@@ -439,7 +424,7 @@ function UserTableBody(props: {
           </div>
         )}
       />
-      <ManualPaginationControls
+      <PaginationControls
         page={query.page}
         pageSize={query.pageSize}
         pageSizeOptions={PAGE_SIZE_OPTIONS}
@@ -536,7 +521,7 @@ function UserTableSkeleton(props: { pageSize: number }) {
 
   return (
     <div className="flex flex-col">
-      <ManualTableSkeleton
+      <TableSkeleton
         columnOrder={columnOrder}
         columnLayout={COLUMN_LAYOUT}
         headerLabels={skeletonHeaders}
@@ -760,7 +745,7 @@ function useUserTableQueryState() {
     sanitize: sanitizeQueryState,
     serialize: serializeQueryState,
   });
-  return { state, setQuery: setState };
+  return { query: state, setQuery: setState };
 }
 
 function titleCase(value: string) {

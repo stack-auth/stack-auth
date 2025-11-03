@@ -3,9 +3,9 @@
 import { Button, Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@stackframe/stack-ui";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import type { ReactNode } from "react";
-import { combineClassNames } from "./manual-table";
+import { combineClassNames } from "./table";
 
-type ManualPaginationControlsProps = {
+type PaginationControlsProps = {
   page: number,
   pageSize: number,
   pageSizeOptions: number[],
@@ -22,7 +22,7 @@ type ManualPaginationControlsProps = {
 
 const defaultIndicator = (page: number) => <>Page {page}</>;
 
-export function ManualPaginationControls(props: ManualPaginationControlsProps) {
+export function PaginationControls(props: PaginationControlsProps) {
   const {
     page,
     pageSize,
