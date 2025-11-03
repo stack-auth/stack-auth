@@ -532,7 +532,9 @@ function UserTableSkeleton(props: { pageSize: number }) {
       <div className="flex flex-col gap-3 border-t border-border/70 px-4 py-3 text-sm text-muted-foreground md:flex-row md:items-center md:justify-between">
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <span>Rows per page</span>
-          <Skeleton className="h-9 w-20" />
+          <Select>
+            <SelectTrigger className="w-20" disabled>{props.pageSize}</SelectTrigger>
+          </Select>
         </div>
         <div className="flex items-center gap-2">
           <Button variant="ghost" size="sm" disabled>
@@ -739,7 +741,7 @@ function serializeQueryState(state: QueryState) {
 }
 
 function useUserTableQueryState() {
-  const { state, setState } = useUrlQueryState<QueryState>({
+  const { state, setState } = useUrlQueryState({
     schema: querySchema,
     defaultState: DEFAULT_QUERY_STATE,
     sanitize: sanitizeQueryState,
