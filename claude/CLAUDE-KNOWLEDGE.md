@@ -8,3 +8,6 @@ A: Use the shared `TextAreaField` component's `helperText` prop in `apps/dashboa
 
 Q: Why did `pnpm typecheck` fail after deleting a Next.js route?
 A: The generated `.next/types/validator.ts` can keep stale imports for removed routes. Deleting that file (or regenerating Next build output) clears the outdated references so `pnpm typecheck` succeeds again.
+
+Q: How are payments item balances calculated?
+A: Item balances come from three sources merged at read time: manual `itemQuantityChange` ledger entries, one-time purchases, and active subscriptions. Purchase records store the product's `includedItems` metadata, so `getItem` can recompute quantities (respecting repeat cadences and expiry rules) without writing separate ledger rows for every grant.

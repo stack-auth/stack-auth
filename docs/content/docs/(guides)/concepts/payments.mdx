@@ -1,0 +1,113 @@
+---
+title: Payments
+description: Monetize your Stack Auth project with Stripe-backed subscriptions, one-time purchases, and usage tracking
+---
+
+Stack Payments gives you first-class billing inside your Stack Auth project. It uses a Stripe Connect account behind the scenes, keeps your product catalog in your Stack configuration, and automatically keeps subscriptions and usage in sync through webhooks.
+
+## Prerequisites
+
+- Configure the Stripe environment variables in the backend deployment: `STACK_STRIPE_SECRET_KEY`, `STACK_STRIPE_WEBHOOK_SECRET`, and the dashboard's `NEXT_PUBLIC_STACK_STRIPE_PUBLISHABLE_KEY`.
+- In the Stack Dashboard, open `Payments → Products` (`/projects/<projectId>/payments/products`) and run the onboarding flow. Stack creates a Stripe Connect account for the project and stores the connected account ID on the project.
+- Expose the webhook endpoint `/api/latest/integrations/stripe/webhooks` and register it in your Stripe dashboard using the same webhook secret.
+
+Once onboarding is complete, the project can create checkout URLs and receive live webhooks.
+
+## Building blocks
+
+### Products
+
+Products are the plans or add-ons customers buy. Each product lives at `config.payments.products[productId]` and can be scoped to users, teams, or custom customers. Key options:
+
+- `prices`: One or more price entries, each with currency amounts and optional billing intervals. If you set `"include-by-default"` instead, the product is automatically granted to every customer (useful for a “Free” plan).
+- `stackable`: Allow customers to buy multiple quantities in the same purchase flow.
+- `serverOnly`: Hide the product from client-side SDK calls. These products can still be granted via the Admin API.
+- `isAddOnTo`: Require the customer to already own another product (or set of products) before purchasing this one.
+- `freeTrial`: Optional trial length applied when the product starts a subscription.
+
+### Catalogs
+
+Catalogs group mutually exclusive products (for example Basic, Pro, Enterprise). Only one subscription in a catalog can be active at a time; purchasing a catalog product upgrades or replaces the existing one. Add-ons can also reference catalog products to enforce dependencies.
+
+### Items
+
+Items model the “rows” of your pricing table—credits, seats, storage limits, or other tracked usage. Items live at `config.payments.items[itemId]` and declare which customer type they apply to. Products grant items through the `includedItems` map:
+
+- `quantity`: Base units added per product quantity.
+- `repeat`: Configure recurring grants (e.g. `[1, "month"]` for monthly allowances or `"never"` for a one-time grant).
+- `expires`: Control when the allowance expires (`"never"`, `"when-purchase-expires"`, or `"when-repeated"`).
+
+Additional item adjustments (bonus credits, manual deductions) are stored in the ledger table and combined with purchase history when computing the balance.
+
+## Setting up your catalog
+
+1. Create items for each entitlement on the **Customers** tab. Items are reusable across products and match the customer type (user, team, or custom).
+2. Define products on the **Products** tab, attaching prices and the items they include. Choose a catalog for the main plan tiers.
+3. Toggle **Test mode** while you iterate. Test mode is enabled by default and exposes a “Bypass payment” button on the hosted checkout page so you can verify fulfillment without hitting Stripe.
+
+Changes are applied immediately; the config is stored with your project and versioned like the rest of Stack Auth settings.
+
+## Hosted checkout flow
+
+Stack handles checkout in three steps:
+
+1. **Generate a purchase link** – Call the SDK or Admin API to create a checkout URL.
+2. **Stack purchase page** – Customers land on `https://dashboard.stack-auth.com/purchase/<code>` (mirrored on your custom domain) where they review prices, adjust quantity, and proceed.
+3. **Stripe payment** – The page creates either a Payment Intent (one-time) or Subscription and redirects to Stripe if required. Upon completion, Stack confirms the payment, records the subscription or purchase, and updates item balances. Webhooks keep long-running subscriptions in sync.
+
+Client SDK example:
+
+```typescript
+import { useUser } from "@stackframe/react";
+
+export function UpgradeButton() {
+  const user = useUser({ or: "redirect" });
+
+  const handleUpgrade = async () => {
+    const checkoutUrl = await user.createCheckoutUrl({
+      productId: "prod_pro_monthly",
+    });
+    window.location.href = checkoutUrl;
+  };
+
+  return <button onClick={handleUpgrade}>Upgrade</button>;
+}
+```
+
+Server-side example (granting access via an API route):
+
+```typescript
+import { stackServerApp } from "@/lib/stack-server-app";
+import { NextResponse } from "next/server";
+
+export async function GET() {
+  const user = await stackServerApp.getUserOrThrow("user_123");
+  const checkoutUrl = await user.createCheckoutUrl({
+    productId: "prod_enterprise_annual",
+  });
+  return NextResponse.redirect(checkoutUrl);
+}
+```
+
+You can also pass `return_url` when calling the Admin API to send customers back to your application after payment.
+
+## Managing entitlements
+
+- Use `user.getItem(itemId)` or `team.getItem(itemId)` to check the current balance for any item. The response includes both the actual balance and a non-negative floor.
+- Server applications can adjust usage by calling `POST /payments/items/{customer_type}/{customer_id}/{item_id}/update-quantity?allow_negative=false`. Positive deltas add credits; negative deltas consume them (and will be rejected if the balance would drop below zero unless `allow_negative=true`).
+- The Admin API endpoint `POST /payments/products/{customer_type}/{customer_id}` can grant products directly without going through checkout. This is helpful for migrations, partnerships, or customer support grants.
+
+Behind the scenes, Stack combines manual adjustments with one-time purchases, subscriptions, and product metadata to compute balances. For subscriptions, item grants respect the `repeat` cadence and `expires` policy so you can model recurring allowances (e.g. monthly credits that expire if unused).
+
+## Test mode and going live
+
+- **Test mode** lets you simulate purchases without Stripe charges. Toggle it from the Products page; when enabled the hosted checkout shows a “Bypass with test mode” button that immediately grants the product.
+- When you are ready for real payments, disable test mode. Customers will be forced through Stripe and the hosted checkout will require valid payment methods.
+- Because Stack uses a Stripe Connect account per project, production usage requires your Stripe account to finish onboarding (fill out business details, enable payouts).
+
+## Operational visibility
+
+- The **Customers** page lets you inspect an individual user, team, or custom customer. You can view all items, adjust balances, and grant products.
+- The **Transactions** tab lists subscriptions, one-time purchases, and manual item adjustments. Results are paginated and filterable by customer type so you can audit billing events.
+
+With these primitives you can model freemium tiers, usage-based add-ons, or per-seat pricing entirely inside Stack Auth, while Stripe handles payment processing and compliance.
