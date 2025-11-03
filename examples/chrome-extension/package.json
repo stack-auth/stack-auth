@@ -1,0 +1,35 @@
+{
+  "name": "@stackframe/example-chrome-extension",
+  "version": "2.8.48",
+  "description": "Chrome extension example with Stack Auth integration",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --force --port ${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}21",
+    "build": "tsc -b && vite build",
+    "clean": "rimraf dist && rimraf node_modules",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@stackframe/react": "workspace:*",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.19.0",
+    "@types/chrome": "^0.0.268",
+    "@types/react": "^19.0.8",
+    "@types/react-dom": "^19.0.3",
+    "@vitejs/plugin-react": "^4.3.4",
+    "eslint": "^9.19.0",
+    "eslint-plugin-react-hooks": "^5.0.0",
+    "eslint-plugin-react-refresh": "^0.4.18",
+    "globals": "^15.14.0",
+    "rimraf": "^5.0.10",
+    "typescript": "5.3.3",
+    "typescript-eslint": "^8.22.0",
+    "vite": "^6.1.0"
+  }
+}
