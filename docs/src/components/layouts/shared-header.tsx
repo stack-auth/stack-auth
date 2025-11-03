@@ -2,7 +2,7 @@
 import { CustomSearchDialog } from '@/components/layout/custom-search-dialog';
 import { SearchInputToggle } from '@/components/layout/custom-search-toggle';
 import { type NavLink } from '@/lib/navigation-utils';
-import { UserButton } from '@stackframe/stack';
+import { UserButton, useUser } from '@stackframe/stack';
 import { Key, Menu, Sparkles, TableOfContents, X } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
@@ -206,6 +206,41 @@ function StackAuthLogo() {
 }
 
 /**
+ * Account menu wrapper to keep the UserButton styling consistent
+ * in the mobile navigation.
+ */
+function DocsAccountMenu({
+  className,
+}: {
+  className?: string,
+}) {
+  const user = useUser();
+  const isSignedIn = Boolean(user);
+  const displayName = user?.displayName ?? 'Stack Auth';
+
+  return (
+    <div
+      className={cn(
+        'flex items-center justify-between gap-4 rounded-xl border border-fd-border/80 bg-fd-muted/30 px-4 py-3',
+        className,
+      )}
+    >
+      <div className="space-y-1">
+        <p className="text-sm font-semibold text-fd-foreground">
+          {isSignedIn ? displayName : 'Account'}
+        </p>
+        <p className="text-xs text-fd-muted-foreground">
+          {isSignedIn ? 'Manage your Stack Auth profile and settings.' : 'Sign in to manage your Stack Auth account.'}
+        </p>
+      </div>
+      <div className="flex-shrink-0">
+        <UserButton />
+      </div>
+    </div>
+  );
+}
+
+/**
  * SHARED HEADER COMPONENT
  *
  * Reusable header with Waves background used across docs and API layouts.
@@ -381,6 +416,13 @@ export function SharedHeader({
             <div className="p-6 space-y-6">
               {/* Top-level Navigation */}
               <div>
+                {/* User Authentication */}
+                <div>
+                  <h2 className="text-lg font-semibold text-fd-foreground mb-4">Account</h2>
+                  <DocsAccountMenu />
+                  <br />
+                </div>
+
                 <h2 className="text-lg font-semibold text-fd-foreground mb-4">Navigation</h2>
                 <div className="space-y-2">
                   {navLinks.map((link, index) => {
@@ -406,13 +448,6 @@ export function SharedHeader({
                 </div>
               </div>
 
-              {/* User Authentication */}
-              <div>
-                <h2 className="text-lg font-semibold text-fd-foreground mb-4">Account</h2>
-                <div className="flex justify-center">
-                  <UserButton />
-                </div>
-              </div>
 
               {/* Sidebar Content */}
               {sidebarContent && (
