@@ -182,7 +182,7 @@ export async function getTenancyFromProject(projectId: string, branchId: string,
   const result = await rawQuery(globalPrismaClient, getTenancyFromProjectQuery(projectId, branchId, organizationId));
 
   // In development mode, compare with the old implementation to ensure correctness
-  if (!!getNodeEnvironment().includes("prod")) {
+  if (!getNodeEnvironment().includes("prod")) {
     const prisma = await globalPrismaClient.tenancy.findUnique({
       where: {
         ...(organizationId === null ? {
