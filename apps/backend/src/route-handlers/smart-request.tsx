@@ -4,7 +4,7 @@ import { getUser, getUserIfOnGlobalPrismaClientQuery } from "@/app/api/latest/us
 import { getRenderedEnvironmentConfigQuery } from "@/lib/config";
 import { checkApiKeySet, checkApiKeySetQuery } from "@/lib/internal-api-keys";
 import { getProjectQuery, listManagedProjectIds } from "@/lib/projects";
-import { DEFAULT_BRANCH_ID, Tenancy, getSoleTenancyFromProjectBranch } from "@/lib/tenancies";
+import { DEFAULT_BRANCH_ID, Tenancy, getSoleTenancyFromProjectBranchQuery } from "@/lib/tenancies";
 import { decodeAccessToken } from "@/lib/tokens";
 import { globalPrismaClient, rawQueryAll } from "@/prisma-client";
 import { KnownErrors } from "@stackframe/stack-shared";
@@ -248,11 +248,13 @@ const parseAuth = withTraceSpan('smart request parseAuth', async (req: NextReque
     isServerKeyValid: secretServerKey && requestType === "server" ? checkApiKeySetQuery(projectId, { secretServerKey }) : undefined,
     isAdminKeyValid: superSecretAdminKey && requestType === "admin" ? checkApiKeySetQuery(projectId, { superSecretAdminKey }) : undefined,
     project: getProjectQuery(projectId),
+    tenancy: getSoleTenancyFromProjectBranchQuery(projectId, branchId, true),
     environmentRenderedConfig: getRenderedEnvironmentConfigQuery({ projectId, branchId }),
   };
   const queriesResults = await rawQueryAll(globalPrismaClient, bundledQueries);
   const project = await queriesResults.project;
-  if (project === null) throw new KnownErrors.CurrentProjectNotFound(projectId);  // this does allow one to probe whether a project exists or not, but that's fine
+  if (project === null) throw new KnownErrors.CurrentProjectNotFound(projectId);  // this does allow one to probe whether a project exists or not, but that's fine (it's worth the better error messages)
+  const tenancy = await queriesResults.tenancy;
   const environmentConfig = await queriesResults.environmentRenderedConfig;
 
   // As explained above, as a performance optimization we already fetch the user from the global database optimistically
@@ -261,10 +263,6 @@ const parseAuth = withTraceSpan('smart request parseAuth', async (req: NextReque
   const user = environmentConfig.sourceOfTruth.type === "hosted"
     ? queriesResults.userIfOnGlobalPrismaClient
     : (userId ? await getUser({ userId, projectId, branchId }) : undefined);
-
-  // TODO HACK tenancy is not needed for /users/me, so let's not fetch it as a hack to make the endpoint faster. Once we
-  // refactor this stuff, we can fetch the tenancy alongside the user and won't need this anymore
-  const tenancy = req.method === "GET" && req.url.endsWith("/users/me") ? "tenancy not available in /users/me as a performance hack" as never : await getSoleTenancyFromProjectBranch(projectId, branchId, true);
 
   if (developmentKeyOverride) {
     if (!["development", "test"].includes(getNodeEnvironment()) && getEnvVariable("STACK_ALLOW_DEVELOPMENT_KEY_OVERRIDE_DESPITE_PRODUCTION", "") !== "this-is-dangerous") {  // it's not actually that dangerous, but it changes the security model
@@ -299,6 +297,7 @@ const parseAuth = withTraceSpan('smart request parseAuth', async (req: NextReque
   }
 
   if (!tenancy) {
+    // note that we only check branch existence here so you can't probe branches unless you have a project ID
     throw new KnownErrors.BranchDoesNotExist(branchId);
   }
 
