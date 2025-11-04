@@ -10,6 +10,7 @@ import { Alert, AlertDescription, AlertTitle, Button, Card, CardContent, Input, 
 import { Minus, Plus } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import Image from 'next/image';
 import * as yup from "yup";
 
 type ProductData = {
@@ -175,9 +176,9 @@ export default function PageClient({ code }: { code: string }) {
               <div className="space-y-5">
                 {data?.project_logo_url && (
                   <div className="flex items-center">
-                    <img 
-                      src={data.project_logo_url} 
-                      alt="Project logo" 
+                    <Image
+                      src={data.project_logo_url}
+                      alt="Project logo"
                       className="h-8 w-auto object-contain"
                     />
                   </div>
@@ -191,7 +192,7 @@ export default function PageClient({ code }: { code: string }) {
 
                 {(data?.already_bought_non_stackable || (data?.conflicting_products && data.conflicting_products.length > 0)) && (
                   <div className="space-y-2">
-                    {data?.already_bought_non_stackable && (
+                    {data.already_bought_non_stackable && (
                       <Alert variant="destructive">
                         <AlertTitle className="text-sm">Already Purchased</AlertTitle>
                         <AlertDescription className="text-sm">
@@ -199,7 +200,7 @@ export default function PageClient({ code }: { code: string }) {
                         </AlertDescription>
                       </Alert>
                     )}
-                    {data?.conflicting_products && data.conflicting_products.length > 0 && (
+                    {data.conflicting_products && data.conflicting_products.length > 0 && (
                       <Alert>
                         <AlertTitle className="text-sm">Plan Change Detected</AlertTitle>
                         <AlertDescription className="text-sm">
@@ -224,8 +225,8 @@ export default function PageClient({ code }: { code: string }) {
                         <Card
                           key={priceId}
                           className={`cursor-pointer transition-all duration-200 border-0 ${
-                            selectedPriceId === priceId 
-                              ? 'outline-2 outline-primary outline' 
+                            selectedPriceId === priceId
+                              ? 'outline-2 outline-primary outline'
                               : 'outline outline-2 outline-primary/20 hover:outline-primary/40'
                           }`}
                           onClick={() => setSelectedPriceId(priceId)}
@@ -245,7 +246,7 @@ export default function PageClient({ code }: { code: string }) {
                                     </div>
                                   )}
                                 </div>
-                                
+
                               </div>
                               <div className="text-right">
                                 <Typography type="h3" className="text-lg font-bold">

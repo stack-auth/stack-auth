@@ -651,7 +651,7 @@ it("gives an error when updating email_theme with an invalid value", async ({ ex
 it("lets user update logo_url to a valid image", async ({ expect }) => {
   await Project.createAndSwitch();
   // 1x1 png
-  const logo_url = `data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAAD0lEQVR4AQEEAPv/ALHBwQRaAjRgT7lCAAAAAElFTkSuQmCC`
+  const logo_url = `data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAAD0lEQVR4AQEEAPv/ALHBwQRaAjRgT7lCAAAAAElFTkSuQmCC`;
   const response = await niceBackendFetch("/api/v1/internal/projects/current", {
     method: "PATCH",
     accessType: "admin",
