@@ -338,7 +338,7 @@ export function migrateConfigOverride(type: "project" | "branch" | "environment"
   // BEGIN 2025-10-29: Removed workflows and everything associated with it
   if (isBranchOrHigher) {
     res = removeProperty(res, p => p[0] === "workflows");
-    res = removeProperty(res, p => p[0] === "apps" && p[1] === "workflows");
+    res = removeProperty(res, p => p[0] === "apps" && p[1] === "installed" && p[2] === "workflows");
   }
   // END
 
