@@ -131,13 +131,15 @@ function getTenancyFromProjectQuery(projectId: string, branchId: string, organiz
       }),
     ] as const),
     async ([tenancyResultPromise, projectResultPromise, configPromise]) => {
-      const [tenancyResult, projectResult, config] = await Promise.all([
-        tenancyResultPromise,
+      const tenancyResult = await tenancyResultPromise;
+
+      if (!tenancyResult) return null;
+
+      const [projectResult, config] = await Promise.all([
         projectResultPromise,
         configPromise,
       ]);
-
-      if (!tenancyResult) return null;
+      
       if (!projectResult) {
         throw new StackAssertionError("Project in tenancy not found", { projectId, tenancyId: tenancyResult.id });
       }
