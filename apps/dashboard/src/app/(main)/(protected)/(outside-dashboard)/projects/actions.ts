@@ -29,7 +29,8 @@ export async function listInvitations(teamId: string) {
   }));
 }
 
-export async function inviteUser(teamId: string, email: string, callbackUrl: string) {
+export async function inviteUser(teamId: string, email: string, origin: string) {
+  const callbackUrl = new URL(stackServerApp.urls.teamInvitation, origin).toString();
   const user = await stackServerApp.getUser();
   const team = await user?.getTeam(teamId);
   if (!team) {
