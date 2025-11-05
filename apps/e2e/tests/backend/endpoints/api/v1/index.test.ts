@@ -76,6 +76,66 @@ describe("without project ID", () => {
   it.todo("should not be able to authenticate as user");
 });
 
+describe("with project ID that doesn't exist", async () => {
+  backendContext.set({
+    projectKeys: {
+      projectId: "invalid",
+      publishableClientKey: "publish-key",
+      secretServerKey: "secret-key",
+      superSecretAdminKey: "admin-key",
+    }
+  });
+
+  it("should not have client access", async ({ expect }) => {
+    const response = await niceBackendFetch("/api/v1", {
+      accessType: "client",
+    });
+    expect(response).toMatchInlineSnapshot(`
+      NiceResponse {
+        "status": 400,
+        "body": {
+          "code": "CURRENT_PROJECT_NOT_FOUND",
+          "details": { "project_id": "invalid" },
+          "error": "The current project with ID invalid was not found. Please check the value of the x-stack-project-id header.",
+        },
+        "headers": Headers {
+          "x-stack-known-error": "CURRENT_PROJECT_NOT_FOUND",
+          <some fields may have been hidden>,
+        },
+      }
+    `);
+  });
+});
+
+describe("with a branch header that doesn't exist", async () => {
+  backendContext.set({
+    projectKeys: {
+      ...InternalProjectKeys,
+    },
+    currentBranchId: "invalid-branch",
+  });
+
+  it("should not have client access", async ({ expect }) => {
+    const response = await niceBackendFetch("/api/v1", {
+      accessType: "client",
+    });
+    expect(response).toMatchInlineSnapshot(`
+      NiceResponse {
+        "status": 400,
+        "body": {
+          "code": "BRANCH_DOES_NOT_EXIST",
+          "details": { "branch_id": "invalid-branch" },
+          "error": "The branch with ID invalid-branch does not exist.",
+        },
+        "headers": Headers {
+          "x-stack-known-error": "BRANCH_DOES_NOT_EXIST",
+          <some fields may have been hidden>,
+        },
+      }
+    `);
+  });
+});
+
 describe("with project keys that don't exist", async () => {
   backendContext.set({
     projectKeys: {

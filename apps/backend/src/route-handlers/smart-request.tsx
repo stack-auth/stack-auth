@@ -255,14 +255,6 @@ const parseAuth = withTraceSpan('smart request parseAuth', async (req: NextReque
   const project = await queriesResults.project;
   if (project === null) throw new KnownErrors.CurrentProjectNotFound(projectId);  // this does allow one to probe whether a project exists or not, but that's fine (it's worth the better error messages)
   const tenancy = await queriesResults.tenancy;
-  const environmentConfig = await queriesResults.environmentRenderedConfig;
-
-  // As explained above, as a performance optimization we already fetch the user from the global database optimistically
-  // If it turned out that the source-of-truth is not the global database, we'll fetch the user from the source-of-truth
-  // database instead.
-  const user = environmentConfig.sourceOfTruth.type === "hosted"
-    ? queriesResults.userIfOnGlobalPrismaClient
-    : (userId ? await getUser({ userId, projectId, branchId }) : undefined);
 
   if (developmentKeyOverride) {
     if (!["development", "test"].includes(getNodeEnvironment()) && getEnvVariable("STACK_ALLOW_DEVELOPMENT_KEY_OVERRIDE_DESPITE_PRODUCTION", "") !== "this-is-dangerous") {  // it's not actually that dangerous, but it changes the security model
@@ -297,9 +289,16 @@ const parseAuth = withTraceSpan('smart request parseAuth', async (req: NextReque
   }
 
   if (!tenancy) {
-    // note that we only check branch existence here so you can't probe branches unless you have a project ID
+    // note that we only check branch existence here so you can't probe branches unless you have the project keys
     throw new KnownErrors.BranchDoesNotExist(branchId);
   }
+
+  // As explained above, as a performance optimization we already fetch the user from the global database optimistically
+  // If it turned out that the source-of-truth is not the global database, we'll fetch the user from the source-of-truth
+  // database instead.
+  const user = tenancy.config.sourceOfTruth.type === "hosted"
+    ? queriesResults.userIfOnGlobalPrismaClient
+    : (userId ? await getUser({ userId, projectId, branchId }) : undefined);
 
   return {
     project,

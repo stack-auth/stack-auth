@@ -139,7 +139,7 @@ function getTenancyFromProjectQuery(projectId: string, branchId: string, organiz
         projectResultPromise,
         configPromise,
       ]);
-      
+
       if (!projectResult) {
         throw new StackAssertionError("Project in tenancy not found", { projectId, tenancyId: tenancyResult.id });
       }

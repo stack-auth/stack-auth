@@ -139,13 +139,13 @@ export function getProjectConfigOverrideQuery(options: ProjectOptions): RawQuery
 export function getBranchConfigOverrideQuery(options: BranchOptions): RawQuery<Promise<BranchConfigOverride>> {
   // fetch branch config from GitHub
   // (currently it's just empty)
-  if (options.branchId !== DEFAULT_BRANCH_ID) {
-    throw new StackAssertionError('Not implemented');
-  }
   return {
     supportedPrismaClients: ["global"],
     sql: Prisma.sql`SELECT 1`,
     postProcess: async () => {
+      if (options.branchId !== DEFAULT_BRANCH_ID) {
+        throw new StackAssertionError('getBranchConfigOverrideQuery is not implemented for branches other than the default one');
+      }
       return migrateConfigOverride("branch", {});
     },
   };
