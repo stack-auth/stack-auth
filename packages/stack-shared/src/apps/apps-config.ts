@@ -96,12 +96,6 @@ export const ALL_APPS = {
     tags: ["security", "storage"],
     stage: "beta",
   },
-  "workflows": {
-    displayName: "Workflows",
-    subtitle: "Automated business process orchestration",
-    tags: ["automation"],
-    stage: "beta",
-  },
   "webhooks": {
     displayName: "Webhooks",
     subtitle: "Real-time event notifications and integrations",
@@ -127,15 +121,21 @@ export const ALL_APPS = {
     stage: "alpha",
   },
   "neon": {
-    displayName: "Neon",
+    displayName: "Neon Integration",
     subtitle: "Serverless Postgres database integration",
     tags: ["integration", "storage"],
     stage: "alpha",
   },
   "convex": {
-    displayName: "Convex",
+    displayName: "Convex Integration",
     subtitle: "Real-time backend platform integration",
     tags: ["integration", "storage"],
     stage: "alpha",
+  },
+  "vercel": {
+    displayName: "Vercel Integration",
+    subtitle: "Deploy your Stack Auth project to Vercel",
+    tags: ["integration", "developers"],
+    stage: "stable",
   },
 } as const satisfies Record<string, App>;

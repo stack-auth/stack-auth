@@ -2,6 +2,7 @@ import * as CodeBlock from 'fumadocs-ui/components/codeblock';
 import { TypeTable } from 'fumadocs-ui/components/type-table';
 import defaultMdxComponents from 'fumadocs-ui/mdx';
 import type { MDXComponents } from 'mdx/types';
+import { ComponentProps } from 'react';
 
 // OpenAPI sources
 import { APIPage } from 'fumadocs-openapi/ui';
@@ -13,6 +14,7 @@ import { Card, CardGroup, Info } from './components/mdx';
 import ApiSequenceDiagram from './components/mdx/api-sequence-diagram';
 import { AuthCard } from './components/mdx/auth-card';
 import { DynamicCodeblock } from './components/mdx/dynamic-code-block';
+import { EmbeddedLink } from './components/mdx/embedded-link';
 import { PlatformCodeblock } from './components/mdx/platform-codeblock';
 
 import { AsideSection, CollapsibleMethodSection, CollapsibleTypesSection, MethodAside, MethodContent, MethodLayout, MethodSection, MethodTitle } from './components/ui/method-layout';
@@ -92,5 +94,14 @@ export function getMDXComponents(components?: MDXComponents): MDXComponents {
     JWTViewer,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     img: (props) => <ImageZoom {...(props as any)} />,
+  } as MDXComponents;
+}
+
+// MDX components for embedded mode - includes link rewriting
+export function getEmbeddedMDXComponents(components?: MDXComponents): MDXComponents {
+  return {
+    ...getMDXComponents(components),
+    // Override the link component to use embedded URLs
+    a: (props: ComponentProps<'a'>) => <EmbeddedLink {...props} isEmbedded={true} />,
   } as MDXComponents;
 }

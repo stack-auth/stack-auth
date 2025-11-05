@@ -1,11 +1,10 @@
-import { getRenderedEnvironmentConfigQuery } from "@/lib/config";
+import { getRenderedProjectConfigQuery } from "@/lib/config";
 import { normalizeEmail } from "@/lib/emails";
 import { grantDefaultProjectPermissions } from "@/lib/permissions";
 import { ensureTeamMembershipExists, ensureUserExists } from "@/lib/request-checks";
-import { Tenancy, getSoleTenancyFromProjectBranch, getTenancy } from "@/lib/tenancies";
+import { Tenancy, getSoleTenancyFromProjectBranch } from "@/lib/tenancies";
 import { PrismaTransaction } from "@/lib/types";
 import { sendTeamMembershipDeletedWebhook, sendUserCreatedWebhook, sendUserDeletedWebhook, sendUserUpdatedWebhook } from "@/lib/webhooks";
-import { triggerWorkflows } from "@/lib/workflows";
 import { RawQuery, getPrismaClientForSourceOfTruth, getPrismaClientForTenancy, getPrismaSchemaForSourceOfTruth, getPrismaSchemaForTenancy, globalPrismaClient, rawQuery, retryTransaction, sqlQuoteIdent } from "@/prisma-client";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
 import { uploadAndGetUrl } from "@/s3";
@@ -406,20 +405,21 @@ export function getUserIfOnGlobalPrismaClientQuery(projectId: string, branchId: 
   };
 }
 
-export async function getUser(options: { userId: string } & ({ projectId: string, branchId: string } | { tenancyId: string })) {
-  let projectId, branchId;
-  if (!("tenancyId" in options)) {
+export async function getUser(options: { userId: string } & ({ projectId: string, branchId: string } | { tenancy: Tenancy })) {
+  let projectId, branchId, sourceOfTruth;
+  if ("tenancy" in options) {
+    projectId = options.tenancy.project.id;
+    branchId = options.tenancy.branchId;
+    sourceOfTruth = options.tenancy.config.sourceOfTruth;
+  } else {
     projectId = options.projectId;
     branchId = options.branchId;
-  } else {
-    const tenancy = await getTenancy(options.tenancyId) ?? throwErr("Tenancy not found", { tenancyId: options.tenancyId });
-    projectId = tenancy.project.id;
-    branchId = tenancy.branchId;
+    const projectConfig = await rawQuery(globalPrismaClient, getRenderedProjectConfigQuery({ projectId }));
+    sourceOfTruth = projectConfig.sourceOfTruth;
   }
 
-  const environmentConfig = await rawQuery(globalPrismaClient, getRenderedEnvironmentConfigQuery({ projectId, branchId }));
-  const prisma = await getPrismaClientForSourceOfTruth(environmentConfig.sourceOfTruth, branchId);
-  const schema = await getPrismaSchemaForSourceOfTruth(environmentConfig.sourceOfTruth, branchId);
+  const prisma = await getPrismaClientForSourceOfTruth(sourceOfTruth, branchId);
+  const schema = await getPrismaSchemaForSourceOfTruth(sourceOfTruth, branchId);
   const result = await rawQuery(prisma, getUserQuery(projectId, branchId, options.userId, schema));
   return result;
 }
@@ -439,7 +439,7 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
     include_anonymous: yupString().oneOf(["true", "false"]).optional().meta({ openapiField: { onlyShowInOperations: [ 'List' ], description: "Whether to include anonymous users in the results. Defaults to false" } }),
   }),
   onRead: async ({ auth, params, query }) => {
-    const user = await getUser({ tenancyId: auth.tenancy.id, userId: params.user_id });
+    const user = await getUser({ tenancy: auth.tenancy, userId: params.user_id });
     if (!user) {
       throw new KnownErrors.UserNotFound();
     }
@@ -665,14 +665,6 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
     });
 
     await createPersonalTeamIfEnabled(prisma, auth.tenancy, result);
-
-    // if the user is not an anonymous user, trigger onSignUp workflows
-    if (!result.is_anonymous) {
-      await triggerWorkflows(auth.tenancy, {
-        type: "sign-up",
-        userId: result.id,
-      });
-    }
 
     runAsynchronouslyAndWaitUntil(sendUserCreatedWebhook({
       projectId: auth.project.id,
@@ -976,12 +968,6 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
 
       // if we went from anonymous to non-anonymous:
       if (oldUser.isAnonymous && data.is_anonymous === false) {
-        // trigger onSignUp workflows
-        await triggerWorkflows(auth.tenancy, {
-          type: "sign-up",
-          userId: params.user_id,
-        });
-
         // rename the personal team
         await tx.team.updateMany({
           where: {

@@ -1,4 +1,4 @@
-import { getAuthContactChannel } from "@/lib/contact-channel";
+import { getAuthContactChannelWithEmailNormalization } from "@/lib/contact-channel";
 import { createAuthTokens } from "@/lib/tokens";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
@@ -39,7 +39,7 @@ export const POST = createSmartRouteHandler({
     }
 
     const prisma = await getPrismaClientForTenancy(tenancy);
-    const contactChannel = await getAuthContactChannel(
+    const contactChannel = await getAuthContactChannelWithEmailNormalization(
       prisma,
       {
         tenancyId: tenancy.id,

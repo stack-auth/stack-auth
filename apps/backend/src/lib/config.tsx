@@ -4,6 +4,7 @@ import { BranchConfigOverride, BranchConfigOverrideOverride, BranchIncompleteCon
 import { ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
 import { yupBoolean, yupMixed, yupObject, yupRecord, yupString, yupUnion } from "@stackframe/stack-shared/dist/schema-fields";
 import { isTruthy } from "@stackframe/stack-shared/dist/utils/booleans";
+import { getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
 import { StackAssertionError, captureError } from "@stackframe/stack-shared/dist/utils/errors";
 import { filterUndefined, typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
@@ -130,10 +131,7 @@ export function getProjectConfigOverrideQuery(options: ProjectOptions): RawQuery
       if (queryResult.length > 1) {
         throw new StackAssertionError(`Expected 0 or 1 project config overrides for project ${options.projectId}, got ${queryResult.length}`, { queryResult });
       }
-      if (queryResult.length === 0) {
-        throw new StackAssertionError(`Expected a project row for project ${options.projectId}, got 0`, { queryResult, options });
-      }
-      return migrateConfigOverride("project", queryResult[0].projectConfigOverride ?? {});
+      return migrateConfigOverride("project", queryResult[0]?.projectConfigOverride ?? {});
     },
   };
 }
@@ -141,13 +139,13 @@ export function getProjectConfigOverrideQuery(options: ProjectOptions): RawQuery
 export function getBranchConfigOverrideQuery(options: BranchOptions): RawQuery<Promise<BranchConfigOverride>> {
   // fetch branch config from GitHub
   // (currently it's just empty)
-  if (options.branchId !== DEFAULT_BRANCH_ID) {
-    throw new StackAssertionError('Not implemented');
-  }
   return {
     supportedPrismaClients: ["global"],
     sql: Prisma.sql`SELECT 1`,
     postProcess: async () => {
+      if (options.branchId !== DEFAULT_BRANCH_ID) {
+        throw new StackAssertionError('getBranchConfigOverrideQuery is not implemented for branches other than the default one');
+      }
       return migrateConfigOverride("branch", {});
     },
   };
@@ -355,7 +353,16 @@ function makeUnsanitizedIncompleteConfigQuery<T, O>(options: { previous?: RawQue
     async ([prevPromise, overPromise]) => {
       const prev = await prevPromise;
       const over = await overPromise;
-      await assertNoConfigOverrideErrors(options.schema, over, { extraInfo: options.extraInfo });
+      try {
+        await assertNoConfigOverrideErrors(options.schema, over, { extraInfo: options.extraInfo });
+      } catch (error) {
+        if (getNodeEnvironment().includes("prod")) {
+          // be a bit more resilient in prod... we don't necessarily have to crash here, but this means that something went awfully wrong so go into panic mode regardless
+          captureError("config-override-validation-error", error);
+        } else {
+          throw error;
+        }
+      }
       return override(prev, over);
     },
   );
