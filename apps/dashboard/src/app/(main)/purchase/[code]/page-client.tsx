@@ -79,6 +79,42 @@ export default function PageClient({ code }: { code: string }) {
     return `${interval[0]} ${interval[1]}s`;
   };
 
+  const getPriceLabel = (interval: [number, string] | undefined): string => {
+    if (!interval) {
+      return "One-time";
+    }
+
+    const [count, unit] = interval;
+
+    if (count === 1) {
+      switch (unit) {
+        case "day":
+          return "Daily";
+        case "week":
+          return "Weekly";
+        case "month":
+          return "Monthly";
+        case "year":
+          return "Yearly";
+        default:
+          return `Every ${unit}`;
+      }
+    }
+
+    switch (unit) {
+      case "day":
+        return `Every ${count} days`;
+      case "week":
+        return `Once every ${count} weeks`;
+      case "month":
+        return `Every ${count} months`;
+      case "year":
+        return `Every ${count} years`;
+      default:
+        return `Every ${count} ${unit}s`;
+    }
+  };
+
   const validateCode = useCallback(async () => {
     const response = await fetch(`${baseUrl}/payments/purchases/validate-code`, {
       method: 'POST',
@@ -154,11 +190,11 @@ export default function PageClient({ code }: { code: string }) {
         <div className="flex-1 overflow-y-auto">
           <div className="max-w-xl mx-auto px-4 py-6 md:py-8">
             {loading ? (
-              <div className="space-y-4">
-                <Skeleton className="w-24 h-24 rounded-lg" />
-                <Skeleton className="w-3/4 h-6" />
-                <Skeleton className="w-full h-16" />
-                <Skeleton className="w-full h-16" />
+              <div>
+                <Skeleton className="h-10 w-10 rounded-lg" />
+                <Skeleton className="w-3/4 h-7 mt-5" />
+                <Skeleton className="w-full h-16 mt-5" />
+                <Skeleton className="w-full h-16 mt-5" />
               </div>
             ) : error ? (
               <div className="flex flex-col items-center justify-center min-h-[60vh] text-center space-y-3">
@@ -179,7 +215,10 @@ export default function PageClient({ code }: { code: string }) {
                     <Image
                       src={data.project_logo_url}
                       alt="Project logo"
-                      className="h-8 w-auto object-contain"
+                      className="h-10 w-10 object-contain"
+                      width={40}
+                      height={40}
+                      unoptimized
                     />
                   </div>
                 )}
@@ -236,7 +275,7 @@ export default function PageClient({ code }: { code: string }) {
                               <div className="flex-1 space-y-1">
                                 <div className="flex items-center gap-2">
                                   <Typography type="h4" className="text-sm font-semibold">
-                                    Option {index + 1}
+                                    {getPriceLabel(priceData.interval)}
                                   </Typography>
                                   {selectedPriceId === priceId && (
                                     <div className="w-4 h-4 rounded-full bg-primary flex items-center justify-center">
