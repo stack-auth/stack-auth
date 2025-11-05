@@ -28,6 +28,21 @@ export default {
 }
 ```
 
+Next, update or create a file in `convex/convex.config.ts`:
+
+```ts
+import { defineApp } from "convex/server";
+import stackAuthComponent from "@stackframe/js/convex.config";  // Vanilla JS
+// or: import stackAuthComponent from "@stackframe/react/convex.config";  // React
+// or: import stackAuthComponent from "@stackframe/stack/convex.config";  // Next.js
+
+
+const app = defineApp();
+app.use(stackAuthComponent);
+
+export default app;
+```
+
 Then, update your Convex client to use Stack Auth:
 
 ```ts
