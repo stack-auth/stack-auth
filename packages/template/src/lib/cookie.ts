@@ -189,11 +189,7 @@ function determineSecureFromServerContext(
   cookies: Awaited<ReturnType<typeof rscCookies>>,
   headers: Awaited<ReturnType<typeof rscHeaders>>,
 ): boolean {
-  let isSecureCookie = !!cookies.get("stack-is-https");
-  if (headers.get("x-forwarded-proto") === "https") {
-    isSecureCookie = true;
-  }
-  return isSecureCookie;
+  return cookies.has("stack-is-https") || headers.get("x-forwarded-proto") === "https";
 }
 // END_PLATFORM
 

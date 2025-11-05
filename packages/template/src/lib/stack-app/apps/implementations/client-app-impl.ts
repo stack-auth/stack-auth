@@ -431,9 +431,6 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
   protected get _refreshTokenCookieName() {
     return `stack-refresh-${this.projectId}`;
   }
-  protected get _refreshTokenDefaultCookieName() {
-    return `${this._refreshTokenCookieName}--default`;
-  }
   private _getRefreshTokenDefaultCookieNameForSecure(secure: boolean): string {
     return `${secure ? "__Host-" : ""}${this._refreshTokenCookieName}--default`;
   }
@@ -456,12 +453,14 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     }
     const parsed = parseJson(value);
     if (parsed.status !== "ok" || typeof parsed.data !== "object" || parsed.data === null) {
+      console.warn("Failed to parse structured refresh cookie");
       return null;
     }
     const data = parsed.data;
     const refreshToken = "refresh_token" in data && typeof data.refresh_token === "string" ? data.refresh_token : null;
     const updatedAt = "updated_at_millis" in data && typeof data.updated_at_millis === "number" ? data.updated_at_millis : null;
     if (!refreshToken) {
+      console.warn("Refresh token not found in structured refresh cookie");
       return null;
     }
     return {
@@ -513,10 +512,13 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         Array.isArray(parsed.data) &&
         parsed.data.length === 2 &&
         typeof parsed.data[0] === "string" &&
-        typeof parsed.data[1] === "string" &&
-        parsed.data[0] === refreshToken
+        typeof parsed.data[1] === "string"
       ) {
-        accessToken = parsed.data[1];
+        if (parsed.data[0] === refreshToken) {
+          accessToken = parsed.data[1];
+        } 
+      } else {
+        console.warn("Access token cookie has invalid format");
       }
     }
     return {
