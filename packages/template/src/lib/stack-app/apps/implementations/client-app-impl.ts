@@ -516,7 +516,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       ) {
         if (parsed.data[0] === refreshToken) {
           accessToken = parsed.data[1];
-        } 
+        }
       } else {
         console.warn("Access token cookie has invalid format");
       }
