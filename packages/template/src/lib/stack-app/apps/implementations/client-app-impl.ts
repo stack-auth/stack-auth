@@ -590,9 +590,12 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         hostname = window.location.hostname;
       }
       // IF_PLATFORM next
-      hostname = (await sc.headers?.())?.get("host");
+      else {
+        hostname = (await sc.headers?.())?.get("host");
+      }
       // END_PLATFORM
       if (!hostname) {
+        console.warn("No hostname found when queueing custom refresh cookie update");
         return;
       }
       const domain = await this._trustedParentDomainCache.getOrWait([hostname], "read-write");
