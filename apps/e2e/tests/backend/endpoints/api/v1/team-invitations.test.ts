@@ -525,3 +525,33 @@ it("errors with item_quantity_insufficient_amount when accepting invite without 
     }
   `);
 });
+
+it("should error when untrusted callback URL is provided", async ({ expect }) => {
+  const { teamId } = await Team.create();
+  const receiveMailbox = createMailbox();
+
+  backendContext.set({ userAuth: null });
+  const sendTeamInvitationResponse = await niceBackendFetch("/api/v1/team-invitations/send-code", {
+    method: "POST",
+    accessType: "server",
+    body: {
+      email: receiveMailbox.emailAddress,
+      team_id: teamId,
+      callback_url: "https://malicious.com/callback",
+    },
+  });
+
+  expect(sendTeamInvitationResponse).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 400,
+      "body": {
+        "code": "REDIRECT_URL_NOT_WHITELISTED",
+        "error": "Redirect URL not whitelisted. Did you forget to add this domain to the trusted domains list on the Stack Auth dashboard?",
+      },
+      "headers": Headers {
+        "x-stack-known-error": "REDIRECT_URL_NOT_WHITELISTED",
+        <some fields may have been hidden>,
+      },
+    }
+  `);
+});

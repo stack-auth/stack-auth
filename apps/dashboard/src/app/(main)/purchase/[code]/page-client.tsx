@@ -10,12 +10,14 @@ import { Alert, AlertDescription, AlertTitle, Button, Card, CardContent, Input, 
 import { Minus, Plus } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import Image from 'next/image';
 import * as yup from "yup";
 
 type ProductData = {
   product?: Omit<yup.InferType<typeof inlineProductSchema>, "included_items" | "server_only"> & { stackable: boolean },
   stripe_account_id: string,
   project_id: string,
+  project_logo_url: string | null,
   already_bought_non_stackable?: boolean,
   conflicting_products?: { product_id: string, display_name: string }[],
   test_mode: boolean,
@@ -75,6 +77,39 @@ export default function PageClient({ code }: { code: string }) {
       return interval[1];
     }
     return `${interval[0]} ${interval[1]}s`;
+  };
+
+  const getPriceLabel = (interval: [number, string] | undefined): string => {
+    if (!interval) {
+      return "One-time";
+    }
+    const [count, unit] = interval;
+
+    if (count === 1) {
+      if (unit === "day") {
+        return "Daily";
+      } else if (unit === "week") {
+        return "Weekly";
+      } else if (unit === "month") {
+        return "Monthly";
+      } else if (unit === "year") {
+        return "Yearly";
+      } else {
+        return `Every ${unit}`;
+      }
+    }
+
+    if (unit === "day") {
+      return `Every ${count} days`;
+    } else if (unit === "week") {
+      return `Once every ${count} weeks`;
+    } else if (unit === "month") {
+      return `Every ${count} months`;
+    } else if (unit === "year") {
+      return `Every ${count} years`;
+    } else {
+      return `Every ${count} ${unit}s`;
+    }
   };
 
   const validateCode = useCallback(async () => {
@@ -147,146 +182,219 @@ export default function PageClient({ code }: { code: string }) {
   }, [code, selectedPriceId, quantityNumber, isTooLarge, returnUrl]);
 
   return (
-    <div className="flex flex-row">
-      <div className="w-1/2 p-6 border-r border-primary/20 h-dvh max-w-md">
-        {loading ? (
-          <Skeleton className="w-full h-10" />
-        ) : error ? (
-          <>
-            <Typography type="h2" className="mb-2">Invalid URL</Typography>
-            <Typography type="label" variant="secondary">
-              The purchase code is invalid or has expired.
-            </Typography>
-          </>
-        ) : (
-          <>
-            <div className="mb-6">
-              <Typography type="h2" className="mb-2">{data?.product?.display_name || "Plan"}</Typography>
-            </div>
-            <div className="space-y-3">
-              {data?.already_bought_non_stackable ? (
-                <Alert variant="destructive">
-                  <AlertTitle>Already purchased</AlertTitle>
-                  <AlertDescription>
-                    You already have this product.
-                  </AlertDescription>
-                </Alert>
-              ) : data?.conflicting_products && data.conflicting_products.length > 0 ? (
-                <Alert>
-                  <AlertTitle>Plan change</AlertTitle>
-                  <AlertDescription>
-                    {data.conflicting_products.length === 1 ? (
-                      <>This purchase will change your plan from {data.conflicting_products[0].display_name}.</>
-                    ) : (
-                      <>This purchase will change your plan from one of your existing plans.</>
-                    )}
-                  </AlertDescription>
-                </Alert>
-              ) : null}
-              {data?.product?.prices && typedEntries(data.product.prices).map(([priceId, priceData]) => (
-                <Card
-                  key={priceId}
-                  className={`border cursor-pointer transition-colors ${selectedPriceId === priceId ? 'border-blue-500' : 'hover:border-primary/30'}`}
-                  onClick={() => setSelectedPriceId(priceId)}
-                >
-                  <CardContent className="p-4">
-                    <div className="flex justify-between items-center">
-                      <div>
-                        <Typography type="h4">{priceId}</Typography>
-                      </div>
-                      <div className="text-right">
-                        <Typography type="h3">
-                          ${priceData.USD}
-                          {priceData.interval && (
-                            <span className="text-sm text-primary/50">
-                              {" "}/ {shortenedInterval(priceData.interval)}
-                            </span>
-                          )}
-                        </Typography>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-              {data?.product?.stackable && selectedPriceId && (
-                <div className="pt-4 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <Typography type="label">Quantity</Typography>
-                    <div className="flex items-center gap-2">
-                      <Button
-                        type="button"
-                        size="icon"
-                        variant="outline"
-                        disabled={quantityNumber <= 1}
-                        onClick={() => setQuantityInput(String(Math.max(1, quantityNumber - 1)))}
-                      >
-                        <Minus className="w-4 h-4" />
-                      </Button>
-                      <Input
-                        className="text-center w-20"
-                        inputMode="numeric"
-                        pattern="[0-9]*"
-                        type="text"
-                        value={quantityInput}
-                        onChange={e => {
-                          const digitsOnly = e.target.value.replace(/[^0-9]/g, "");
-                          setQuantityInput(digitsOnly);
-                        }}
-                      />
-                      <Button
-                        type="button"
-                        size="icon"
-                        variant="outline"
-                        onClick={() => setQuantityInput(String(quantityNumber + 1))}
-                      >
-                        <Plus className="w-4 h-4" />
-                      </Button>
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <Typography type="footnote" variant="destructive">
-                      {quantityNumber < 1 ?
-                        "Enter a quantity of at least 1." :
-                        isTooLarge ?
-                          "Amount exceeds maximum of $999,999" :
-                          " "
-                      }
-                    </Typography>
-                  </div>
-                  <div className="pt-4 flex items-baseline justify-between">
-                    <Typography type="label">Total</Typography>
-                    <Typography type="h4">
-                      ${selectedPriceId ? (Number(data.product.prices[selectedPriceId].USD) * Math.max(0, quantityNumber)) : 0}
-                      {selectedPriceId && data.product.prices[selectedPriceId].interval && (
-                        <span className="text-sm text-primary/50">
-                          {" "}/ {shortenedInterval(data.product.prices[selectedPriceId].interval!)}
-                        </span>
-                      )}
-                    </Typography>
-                  </div>
+    <div className="min-h-screen flex flex-col md:flex-row">
+      <div className="w-full md:w-1/2 flex flex-col bg-background border-b md:border-b-0 md:border-r border-primary/10">
+        <div className="flex-1 overflow-y-auto">
+          <div className="max-w-xl mx-auto px-4 py-6 md:py-8">
+            {loading ? (
+              <div>
+                <Skeleton className="h-10 w-10 rounded-lg" />
+                <Skeleton className="w-3/4 h-7 mt-5" />
+                <Skeleton className="w-full h-16 mt-5" />
+                <Skeleton className="w-full h-16 mt-5" />
+              </div>
+            ) : error ? (
+              <div className="flex flex-col items-center justify-center min-h-[60vh] text-center space-y-3">
+                <div className="w-12 h-12 rounded-full bg-destructive/10 flex items-center justify-center">
+                  <svg className="w-6 h-6 text-destructive" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
                 </div>
-              )}
-            </div>
-          </>
-        )}
+                <Typography type="h2" className="mb-2 text-xl">Invalid Purchase Code</Typography>
+                <Typography type="p" variant="secondary" className="max-w-md text-sm">
+                  The purchase code is invalid or has expired. Please check your link and try again.
+                </Typography>
+              </div>
+            ) : (
+              <div className="space-y-5">
+                {data?.project_logo_url && (
+                  <div className="flex items-center">
+                    <Image
+                      src={data.project_logo_url}
+                      alt="Project logo"
+                      className="h-10 w-10 object-contain"
+                      width={40}
+                      height={40}
+                      unoptimized
+                    />
+                  </div>
+                )}
+
+                <div className="space-y-1">
+                  <Typography type="h2" className="text-xl font-semibold">
+                    {data?.product?.display_name || "Choose Your Plan"}
+                  </Typography>
+                </div>
+
+                {(data?.already_bought_non_stackable || (data?.conflicting_products && data.conflicting_products.length > 0)) && (
+                  <div className="space-y-2">
+                    {data.already_bought_non_stackable && (
+                      <Alert variant="destructive">
+                        <AlertTitle className="text-sm">Already Purchased</AlertTitle>
+                        <AlertDescription className="text-sm">
+                          You already have this product and cannot purchase it again.
+                        </AlertDescription>
+                      </Alert>
+                    )}
+                    {data.conflicting_products && data.conflicting_products.length > 0 && (
+                      <Alert>
+                        <AlertTitle className="text-sm">Plan Change Detected</AlertTitle>
+                        <AlertDescription className="text-sm">
+                          {data.conflicting_products.length === 1 ? (
+                            <>This purchase will replace your current plan: <strong>{data.conflicting_products[0].display_name}</strong></>
+                          ) : (
+                            <>This purchase will replace one of your existing plans.</>
+                          )}
+                        </AlertDescription>
+                      </Alert>
+                    )}
+                  </div>
+                )}
+
+                {data?.product?.prices && typedEntries(data.product.prices).length > 0 && (
+                  <div className="space-y-3">
+                    <Typography type="label" className="text-xs font-medium uppercase tracking-wide text-primary/60">
+                      Select a Pricing Option
+                    </Typography>
+                    <div className="grid gap-3">
+                      {typedEntries(data.product.prices).map(([priceId, priceData], index) => (
+                        <Card
+                          key={priceId}
+                          className={`cursor-pointer transition-all duration-200 border-0 ${
+                            selectedPriceId === priceId
+                              ? 'outline-2 outline-primary outline'
+                              : 'outline outline-2 outline-primary/20 hover:outline-primary/40'
+                          }`}
+                          onClick={() => setSelectedPriceId(priceId)}
+                        >
+                          <CardContent className="p-4">
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="flex-1 space-y-1">
+                                <div className="flex items-center gap-2">
+                                  <Typography type="h4" className="text-sm font-semibold">
+                                    {getPriceLabel(priceData.interval)}
+                                  </Typography>
+                                  {selectedPriceId === priceId && (
+                                    <div className="w-4 h-4 rounded-full bg-primary flex items-center justify-center">
+                                      <svg className="w-2.5 h-2.5 text-primary-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                                      </svg>
+                                    </div>
+                                  )}
+                                </div>
+
+                              </div>
+                              <div className="text-right">
+                                <Typography type="h3" className="text-lg font-bold">
+                                  ${priceData.USD}
+                                </Typography>
+                                {priceData.interval && (
+                                  <Typography type="p" variant="secondary" className="text-xs mt-0.5">
+                                    per {shortenedInterval(priceData.interval)}
+                                  </Typography>
+                                )}
+                              </div>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {data?.product?.stackable && selectedPriceId && (
+                  <div className="bg-primary/5 rounded-lg p-4 space-y-4 border border-primary/10">
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <Typography type="label" className="text-sm font-semibold">
+                          Quantity
+                        </Typography>
+                        <div className="flex items-center gap-2">
+                          <Button
+                            type="button"
+                            size="icon"
+                            variant="outline"
+                            className="h-8 w-8"
+                            disabled={quantityNumber <= 1}
+                            onClick={() => setQuantityInput(String(Math.max(1, quantityNumber - 1)))}
+                          >
+                            <Minus className="w-3.5 h-3.5" />
+                          </Button>
+                          <Input
+                            className="text-center w-20 h-8 text-sm font-semibold"
+                            inputMode="numeric"
+                            pattern="[0-9]*"
+                            type="text"
+                            value={quantityInput}
+                            onChange={e => {
+                              const digitsOnly = e.target.value.replace(/[^0-9]/g, "");
+                              setQuantityInput(digitsOnly);
+                            }}
+                          />
+                          <Button
+                            type="button"
+                            size="icon"
+                            variant="outline"
+                            className="h-8 w-8"
+                            onClick={() => setQuantityInput(String(quantityNumber + 1))}
+                          >
+                            <Plus className="w-3.5 h-3.5" />
+                          </Button>
+                        </div>
+                      </div>
+                      {(quantityNumber < 1 || isTooLarge) && (
+                        <Typography type="footnote" variant="destructive" className="text-xs">
+                          {quantityNumber < 1
+                            ? "Please enter a quantity of at least 1."
+                            : "Amount exceeds the maximum limit of $999,999. Please reduce the quantity."}
+                        </Typography>
+                      )}
+                    </div>
+
+                    <div className="pt-3 border-t border-primary/10">
+                      <div className="flex items-baseline justify-between">
+                        <Typography type="label" className="text-sm font-semibold">
+                          Total Amount
+                        </Typography>
+                        <div className="text-right">
+                          <Typography type="h2" className="text-xl font-bold">
+                            ${selectedPriceId ? (Number(data.product.prices[selectedPriceId].USD) * Math.max(0, quantityNumber)).toFixed(2) : "0.00"}
+                          </Typography>
+                          {selectedPriceId && data.product.prices[selectedPriceId].interval && (
+                            <Typography type="p" variant="secondary" className="text-xs mt-0.5">
+                              per {shortenedInterval(data.product.prices[selectedPriceId].interval!)}
+                            </Typography>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
       </div>
-      <div className="grow relative flex justify-center items-center bg-primary/5">
+
+      <div className="w-full md:w-1/2 flex flex-grow items-center justify-center bg-gradient-to-br from-primary/5 via-primary/3 to-background p-6 md:p-12">
         {data && (
-          <StripeElementsProvider
-            stripeAccountId={data.stripe_account_id}
-            amount={elementsAmountCents}
-            mode={elementsMode}
-          >
-            <CheckoutForm
-              fullCode={code}
+          <div className="w-full max-w-lg">
+            <StripeElementsProvider
               stripeAccountId={data.stripe_account_id}
-              setupSubscription={setupSubscription}
-              returnUrl={returnUrl ?? undefined}
-              disabled={quantityNumber < 1 || isTooLarge || data.already_bought_non_stackable === true}
-              chargesEnabled={data.charges_enabled}
-              onTestModeBypass={data.test_mode ? handleBypass : undefined}
-            />
-          </StripeElementsProvider>
+              amount={elementsAmountCents}
+              mode={elementsMode}
+            >
+              <CheckoutForm
+                fullCode={code}
+                stripeAccountId={data.stripe_account_id}
+                setupSubscription={setupSubscription}
+                returnUrl={returnUrl ?? undefined}
+                disabled={quantityNumber < 1 || isTooLarge || data.already_bought_non_stackable === true}
+                chargesEnabled={data.charges_enabled}
+                onTestModeBypass={data.test_mode ? handleBypass : undefined}
+              />
+            </StripeElementsProvider>
+          </div>
         )}
       </div>
     </div>

@@ -129,3 +129,36 @@ it("should not allow signing in when MFA is required", async ({ expect }) => {
     }
   `);
 });
+
+it("should return a schema error for empty e-mail address", async ({ expect }) => {
+  const response = await niceBackendFetch("/api/v1/auth/password/sign-in", {
+    method: "POST",
+    accessType: "client",
+    body: {
+      email: "",
+      password: "some-password",
+    },
+  });
+  expect(response).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 400,
+      "body": {
+        "code": "SCHEMA_ERROR",
+        "details": {
+          "message": deindent\`
+            Request validation failed on POST /api/v1/auth/password/sign-in:
+              - body.email must not be empty
+          \`,
+        },
+        "error": deindent\`
+          Request validation failed on POST /api/v1/auth/password/sign-in:
+            - body.email must not be empty
+        \`,
+      },
+      "headers": Headers {
+        "x-stack-known-error": "SCHEMA_ERROR",
+        <some fields may have been hidden>,
+      },
+    }
+  `);
+});
