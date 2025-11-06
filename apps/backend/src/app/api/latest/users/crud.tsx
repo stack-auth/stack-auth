@@ -193,6 +193,27 @@ export const getUserLastActiveAtMillis = async (projectId: string, branchId: str
   return res;
 };
 
+const mapUserLastActiveAtMillis = (
+  events: Array<{ userId: string, lastActiveAt: Date }>,
+  userIds: string[],
+  userSignedUpAtMillis: (number | Date)[],
+): number[] => {
+  const eventsByUserId = new Map<string, number>();
+  for (const event of events) {
+    eventsByUserId.set(event.userId, event.lastActiveAt.getTime());
+  }
+
+  return userIds.map((userId, index) => {
+    const lastActiveAt = eventsByUserId.get(userId);
+    if (lastActiveAt !== undefined) {
+      return lastActiveAt;
+    }
+
+    const signedUpAt = userSignedUpAtMillis[index];
+    return typeof signedUpAt === "number" ? signedUpAt : signedUpAt.getTime();
+  });
+};
+
 /**
  * Same as userIds.map(userId => getUserLastActiveAtMillis(tenancyId, userId)), but uses a single query
  */
@@ -217,12 +238,8 @@ export const getUsersLastActiveAtMillis = async (projectId: string, branchId: st
     GROUP BY data->>'userId'
   `;
 
-  return userIds.map((userId, index) => {
-    const event = events.find(e => e.userId === userId);
-    return event ? event.lastActiveAt.getTime() : (
-      typeof userSignedUpAtMillis[index] === "number" ? (userSignedUpAtMillis[index] as number) : (userSignedUpAtMillis[index] as Date).getTime()
-    );
-  });
+  return mapUserLastActiveAtMillis(events, userIds, userSignedUpAtMillis);
+
 };
 
 export function getUserQuery(projectId: string, branchId: string, userId: string, schema: string): RawQuery<UsersCrud["Admin"]["Read"] | null> {
