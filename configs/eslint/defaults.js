@@ -107,6 +107,10 @@ module.exports = {
         selector: "CallExpression > MemberExpression[property.name='$transaction']",
         message: "Calling .$transaction is disallowed. Use retryTransaction() instead.",
       },
+      {
+        selector: "ImportDeclaration[source.value='react'] ImportSpecifier[imported.name='use']",
+        message: "Use `use` from @stack-shared/dist/utils/react instead (as it also supports React 18).",
+      },
     ],
     "@typescript-eslint/no-misused-promises": [
       "error",
@@ -119,14 +123,6 @@ module.exports = {
     "no-restricted-imports": [
       "error",
       {
-        paths: [
-          {
-            name: "react",
-            importNames: ["use"],
-            message:
-              'Use `use` from @stack-shared/dist/utils/react instead (as it also supports React 18).',
-          },
-        ],
         patterns: [
           {
             group: ["@vercel/functions"],

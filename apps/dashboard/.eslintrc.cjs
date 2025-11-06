@@ -9,10 +9,10 @@ module.exports = {
       "error",
       {
         paths: [
-          ...defaults.rules["no-restricted-imports"][1].paths,
+          ...defaults.rules["no-restricted-imports"][1].paths ?? [],
         ],
         patterns: [
-          ...defaults.rules["no-restricted-imports"][1].patterns,
+          ...defaults.rules["no-restricted-imports"][1].patterns ?? [],
           {
             group: ["next/navigation", "next/router"],
             importNames: ["useRouter"],

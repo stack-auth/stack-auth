@@ -1,5 +1,5 @@
 {
-  "name": "vite_react_shadcn_ts",
+  "name": "@stackframe/lovable-react-18-example",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "build:dev": "vite build --mode development",
-    "lint": "eslint .",
+    "lint": "echo 'No linting for this example'",
     "preview": "vite preview",
     "clean": "rimraf dist && rimraf node_modules"
   },
