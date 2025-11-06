@@ -21,7 +21,7 @@ import { SignOut } from "./sign-out";
 import { TeamInvitation } from "./team-invitation";
 
 /* IF_PLATFORM react
-import { MessageCard } from "./message-card";
+import { MessageCard } from "../components/message-cards/message-card";
 // END_PLATFORM react */
 
 type Components = {
