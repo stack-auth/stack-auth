@@ -455,11 +455,11 @@ function ProductCard({ id, activeType, product, allProducts, existingItems, onSa
 
   useEffect(() => {
     const updateFromHash = () => {
-      if (window.location.hash === currentHash) return;
-      setCurrentHash(window.location.hash);
+      const h = window.location.hash;
+      if (h !== currentHash) setCurrentHash(h);
     };
     updateFromHash();
-    const interval = setInterval(() => updateFromHash(), 10);
+    window.addEventListener('hashchange', updateFromHash);
 
     const removeHashTarget = () => {
       if (isHashTarget && window.location.hash === hashAnchor) {
@@ -469,10 +469,10 @@ function ProductCard({ id, activeType, product, allProducts, existingItems, onSa
     window.addEventListener("click", removeHashTarget, { capture: true });
 
     return () => {
-      clearInterval(interval);
+      window.removeEventListener('hashchange', updateFromHash);
       window.removeEventListener("click", removeHashTarget, { capture: true });
     };
-  }, [currentHash, hashAnchor, isHashTarget]);
+  }, [hashAnchor, isHashTarget, currentHash]);
 
   const getPricesObject = (draft: Product): PricesObject => {
     if (draft.prices === 'include-by-default') {
