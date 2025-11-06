@@ -183,7 +183,7 @@ function renderComponent(props: {
         throw new StackAssertionError(`Path alias ${path} not included in switch statement, but in availablePaths?`, { availablePaths });
       }
       for (const [key, value] of Object.entries(pathAliases)) {
-        if (path === key.toLowerCase().replaceAll('-', '')) {
+        if (path.toLowerCase().replaceAll('-', '') === key.toLowerCase().replaceAll('-', '')) {
           const redirectUrl = `${app.urls.handler}/${value}?${new URLSearchParams(searchParams).toString()}`;
           return { redirect: redirectUrl };
         }
