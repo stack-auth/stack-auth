@@ -20,7 +20,7 @@ export const POST = createSmartRouteHandler({
       tenancy: adaptSchema,
     }).defined(),
     body: yupObject({
-      email: emailSchema.defined(),
+      email: emailSchema.defined().nonEmpty(),
       password: passwordSchema.defined(),
     }).defined(),
   }),
