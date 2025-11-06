@@ -83,35 +83,32 @@ export default function PageClient({ code }: { code: string }) {
     if (!interval) {
       return "One-time";
     }
-
     const [count, unit] = interval;
 
     if (count === 1) {
-      switch (unit) {
-        case "day":
-          return "Daily";
-        case "week":
-          return "Weekly";
-        case "month":
-          return "Monthly";
-        case "year":
-          return "Yearly";
-        default:
-          return `Every ${unit}`;
+      if (unit === "day") {
+        return "Daily";
+      } else if (unit === "week") {
+        return "Weekly";
+      } else if (unit === "month") {
+        return "Monthly";
+      } else if (unit === "year") {
+        return "Yearly";
+      } else {
+        return `Every ${unit}`;
       }
     }
 
-    switch (unit) {
-      case "day":
-        return `Every ${count} days`;
-      case "week":
-        return `Once every ${count} weeks`;
-      case "month":
-        return `Every ${count} months`;
-      case "year":
-        return `Every ${count} years`;
-      default:
-        return `Every ${count} ${unit}s`;
+    if (unit === "day") {
+      return `Every ${count} days`;
+    } else if (unit === "week") {
+      return `Once every ${count} weeks`;
+    } else if (unit === "month") {
+      return `Every ${count} months`;
+    } else if (unit === "year") {
+      return `Every ${count} years`;
+    } else {
+      return `Every ${count} ${unit}s`;
     }
   };
 
