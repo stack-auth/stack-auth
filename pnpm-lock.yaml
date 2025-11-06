@@ -250,8 +250,8 @@ importers:
         specifier: ^7.6.3
         version: 7.6.3
       sharp:
-        specifier: ^0.32.6
-        version: 0.32.6
+        specifier: ^0.34.4
+        version: 0.34.4
       stripe:
         specifier: ^18.3.0
         version: 18.3.0(@types/node@20.17.6)
