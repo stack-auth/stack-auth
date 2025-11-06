@@ -102,10 +102,20 @@ export class AsyncCache<D extends any[], T> {
   }
 
   async refreshWhere(predicate: (dependencies: D) => boolean) {
-    const promises: Promise<T>[] = [];
+    const promises: Promise<void>[] = [];
     for (const [dependencies, cache] of this._map) {
       if (predicate(dependencies)) {
         promises.push(cache.refresh());
+      }
+    }
+    await Promise.all(promises);
+  }
+
+  async invalidateWhere(predicate: (dependencies: D) => boolean) {
+    const promises: Promise<void>[] = [];
+    for (const [dependencies, cache] of this._map) {
+      if (predicate(dependencies)) {
+        promises.push(cache.invalidate().catch(() => undefined));
       }
     }
     await Promise.all(promises);
@@ -199,22 +209,21 @@ class AsyncValueCache<T> {
   }
 
   /**
-   * Refetches the value from the fetcher, and updates the cache with it.
+   * If anyone is listening to the cache, refreshes the value, and sets it without invalidating the cache.
    */
-  async refresh(): Promise<T> {
-    return await this.getOrWait("write-only");
+  async refresh(): Promise<void> {
+    if (this._subscriptionsCount > 0) {
+      await this.getOrWait("write-only");
+    }
   }
 
   /**
-   * Invalidates the cache, marking it dirty (ie. it will be refreshed on the next read). If anyone was listening to it,
-   * it will refresh immediately.
+   * Invalidates the cache, marking it dirty (ie. it will be refreshed on the next read). It will refresh immediately.
    */
-  invalidate(): void {
+  async invalidate(): Promise<void> {
     this._store.setUnavailable();
     this._pendingPromise = undefined;
-    if (this._subscriptionsCount > 0) {
-      runAsynchronously(this.refresh());
-    }
+    await this.refresh();
   }
 
   isDirty(): boolean {
@@ -242,11 +251,11 @@ class AsyncValueCache<T> {
         if (--this._subscriptionsCount === 0) {
           const currentRefreshPromiseIndex = ++this._mostRecentRefreshPromiseIndex;
           runAsynchronously(async () => {
-            // wait a few seconds; if anything changes during that time, we don't want to refresh
+            // wait a few seconds; we want to keep the cache up during this time
             // else we do unnecessary requests if we unsubscribe and then subscribe again immediately
             await wait(5000);
             if (this._subscriptionsCount === 0 && currentRefreshPromiseIndex === this._mostRecentRefreshPromiseIndex) {
-              this.invalidate();
+              await this.invalidate();
             }
           });
 
