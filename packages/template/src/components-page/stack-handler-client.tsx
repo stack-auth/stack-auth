@@ -21,7 +21,7 @@ import { SignOut } from "./sign-out";
 import { TeamInvitation } from "./team-invitation";
 
 /* IF_PLATFORM react
-import { MessageCard } from "@stackframe/stack-ui";
+import { MessageCard } from "./message-card";
 // END_PLATFORM react */
 
 type Components = {
