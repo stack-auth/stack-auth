@@ -49,10 +49,7 @@ export const POST = createSmartRouteHandler({
     if (semver.lt(clientVersion, serverVersion)) {
       return err(false, `You are running an outdated version of Stack Auth (v${clientVersion}; the current version is v${serverVersion}). Please update to the latest version as soon as possible to ensure that you get the latest feature and security updates.`);
     }
-    if (semver.gt(clientVersion, serverVersion)) {
-      return err(false, `You are running a version of Stack Auth that is newer than the newest known version (v${clientVersion} > v${serverVersion}). This is weird. Are you running on a development branch?`);
-    }
-    if (clientVersion !== serverVersion) {
+    if (!semver.gt(clientVersion, serverVersion) && clientVersion !== serverVersion) {
       return err(true, `You are running a version of Stack Auth that is not the same as the newest known version (v${clientVersion} !== v${serverVersion}). Please update to the latest version as soon as possible to ensure that you get the latest feature and security updates.`);
     }
 
