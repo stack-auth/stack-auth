@@ -131,10 +131,7 @@ export function getProjectConfigOverrideQuery(options: ProjectOptions): RawQuery
       if (queryResult.length > 1) {
         throw new StackAssertionError(`Expected 0 or 1 project config overrides for project ${options.projectId}, got ${queryResult.length}`, { queryResult });
       }
-      if (queryResult.length === 0) {
-        throw new StackAssertionError(`Expected a project row for project ${options.projectId}, got 0`, { queryResult, options });
-      }
-      return migrateConfigOverride("project", queryResult[0].projectConfigOverride ?? {});
+      return migrateConfigOverride("project", queryResult[0]?.projectConfigOverride ?? {});
     },
   };
 }
@@ -142,13 +139,13 @@ export function getProjectConfigOverrideQuery(options: ProjectOptions): RawQuery
 export function getBranchConfigOverrideQuery(options: BranchOptions): RawQuery<Promise<BranchConfigOverride>> {
   // fetch branch config from GitHub
   // (currently it's just empty)
-  if (options.branchId !== DEFAULT_BRANCH_ID) {
-    throw new StackAssertionError('Not implemented');
-  }
   return {
     supportedPrismaClients: ["global"],
     sql: Prisma.sql`SELECT 1`,
     postProcess: async () => {
+      if (options.branchId !== DEFAULT_BRANCH_ID) {
+        throw new StackAssertionError('getBranchConfigOverrideQuery is not implemented for branches other than the default one');
+      }
       return migrateConfigOverride("branch", {});
     },
   };

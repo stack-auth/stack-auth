@@ -67,6 +67,7 @@ export function createMailbox(email?: string): Mailbox {
 
 export type ProjectKeys = "no-project" | {
   projectId: string,
+  branchId?: string,
   publishableClientKey?: string,
   secretServerKey?: string,
   superSecretAdminKey?: string,
