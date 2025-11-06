@@ -66,7 +66,6 @@
     "jose": "^5.2.2",
     "oauth4webapi": "^2.10.3",
     "semver": "^7.6.3",
-    "tldts": "^7.0.17",
     "uuid": "^9.0.1"
   },
   "devDependencies": {
