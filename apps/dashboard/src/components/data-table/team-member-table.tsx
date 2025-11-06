@@ -8,7 +8,7 @@ import { useEffect, useMemo, useState } from "react";
 import * as yup from "yup";
 import { SmartFormDialog } from "../form-dialog";
 import { PermissionListField } from "../permission-field";
-import { ExtendedServerUser, extendUsers, getCommonUserColumns } from "./user-table";
+import { extendUsers, getCommonUserColumns, type ExtendedServerUser } from "./user-table";
 
 
 type ExtendedServerUserForTeam = ExtendedServerUser & {
