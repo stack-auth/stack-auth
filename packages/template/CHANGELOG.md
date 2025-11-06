@@ -1,5 +1,15 @@
 # @stackframe/stack
 
+## 2.8.50
+
+### Patch Changes
+
+- Various changes
+- Updated dependencies
+  - @stackframe/stack-sc@2.8.50
+  - @stackframe/stack-shared@2.8.50
+  - @stackframe/stack-ui@2.8.50
+
 ## 2.8.49
 
 ### Patch Changes

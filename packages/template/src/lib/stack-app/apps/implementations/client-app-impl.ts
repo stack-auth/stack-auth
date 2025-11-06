@@ -361,13 +361,18 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     this._options = resolvedOptions;
     this._extraOptions = extraOptions;
 
+    const projectId = resolvedOptions.projectId ?? getDefaultProjectId();
+    if (projectId !== "internal" && !(projectId.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[089ab][0-9a-f]{3}-[0-9a-f]{12}$/i))) {
+      throw new Error(`Invalid project ID: ${projectId}. Project IDs must be UUIDs. Please check your environment variables and/or your StackApp.`);
+    }
+
     if (extraOptions && extraOptions.interface) {
       this._interface = extraOptions.interface;
     } else {
       this._interface = new StackClientInterface({
         getBaseUrl: () => getBaseUrl(resolvedOptions.baseUrl),
         extraRequestHeaders: resolvedOptions.extraRequestHeaders ?? getDefaultExtraRequestHeaders(),
-        projectId: resolvedOptions.projectId ?? getDefaultProjectId(),
+        projectId,
         clientVersion,
         publishableClientKey: resolvedOptions.publishableClientKey ?? getDefaultPublishableClientKey(),
         prepareRequest: async () => {
@@ -590,9 +595,12 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         hostname = window.location.hostname;
       }
       // IF_PLATFORM next
-      hostname = (await sc.headers?.())?.get("host");
+      else {
+        hostname = (await sc.headers?.())?.get("host");
+      }
       // END_PLATFORM
       if (!hostname) {
+        console.warn("No hostname found when queueing custom refresh cookie update");
         return;
       }
       const domain = await this._trustedParentDomainCache.getOrWait([hostname], "read-write");
@@ -1166,46 +1174,6 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         const tokens = await this.currentSession.getTokens();
         return tokens;
       },
-      async registerPasskey(options?: { hostname?: string }): Promise<Result<undefined, KnownErrors["PasskeyRegistrationFailed"] | KnownErrors["PasskeyWebAuthnError"]>> {
-        const hostname = (await app._getCurrentUrl())?.hostname;
-        if (!hostname) {
-          throw new StackAssertionError("hostname must be provided if the Stack App does not have a redirect method");
-        }
-
-        const initiationResult = await app._interface.initiatePasskeyRegistration({}, session);
-
-        if (initiationResult.status !== "ok") {
-          return Result.error(new KnownErrors.PasskeyRegistrationFailed("Failed to get initiation options for passkey registration"));
-        }
-
-        const { options_json, code } = initiationResult.data;
-
-        // HACK: Override the rpID to be the actual domain
-        if (options_json.rp.id !== "THIS_VALUE_WILL_BE_REPLACED.example.com") {
-          throw new StackAssertionError(`Expected returned RP ID from server to equal sentinel, but found ${options_json.rp.id}`);
-        }
-
-        options_json.rp.id = hostname;
-
-        let attResp;
-        try {
-          attResp = await startRegistration({ optionsJSON: options_json });
-        } catch (error: any) {
-          if (error instanceof WebAuthnError) {
-            return Result.error(new KnownErrors.PasskeyWebAuthnError(error.message, error.name));
-          } else {
-            // This should never happen
-            captureError("passkey-registration-failed", error);
-            return Result.error(new KnownErrors.PasskeyRegistrationFailed("Failed to start passkey registration due to unknown error"));
-          }
-        }
-
-
-        const registrationResult = await app._interface.registerPasskey({ credential: attResp, code }, session);
-
-        await app._refreshUser(session);
-        return registrationResult;
-      },
       signOut(options?: { redirectUrl?: URL | string }) {
         return app._signOut(session, options);
       },
@@ -1490,6 +1458,47 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       async getOAuthProvider(id: string) {
         const providers = await this.listOAuthProviders();
         return providers.find((p) => p.id === id) ?? null;
+      },
+
+      async registerPasskey(options?: { hostname?: string }): Promise<Result<undefined, KnownErrors["PasskeyRegistrationFailed"] | KnownErrors["PasskeyWebAuthnError"]>> {
+        const hostname = (await app._getCurrentUrl())?.hostname;
+        if (!hostname) {
+          throw new StackAssertionError("hostname must be provided if the Stack App does not have a redirect method");
+        }
+
+        const initiationResult = await app._interface.initiatePasskeyRegistration({}, session);
+
+        if (initiationResult.status !== "ok") {
+          return Result.error(new KnownErrors.PasskeyRegistrationFailed("Failed to get initiation options for passkey registration"));
+        }
+
+        const { options_json, code } = initiationResult.data;
+
+        // HACK: Override the rpID to be the actual domain
+        if (options_json.rp.id !== "THIS_VALUE_WILL_BE_REPLACED.example.com") {
+          throw new StackAssertionError(`Expected returned RP ID from server to equal sentinel, but found ${options_json.rp.id}`);
+        }
+
+        options_json.rp.id = hostname;
+
+        let attResp;
+        try {
+          attResp = await startRegistration({ optionsJSON: options_json });
+        } catch (error: any) {
+          if (error instanceof WebAuthnError) {
+            return Result.error(new KnownErrors.PasskeyWebAuthnError(error.message, error.name));
+          } else {
+            // This should never happen
+            captureError("passkey-registration-failed", error);
+            return Result.error(new KnownErrors.PasskeyRegistrationFailed("Failed to start passkey registration due to unknown error"));
+          }
+        }
+
+
+        const registrationResult = await app._interface.registerPasskey({ credential: attResp, code }, session);
+
+        await app._refreshUser(session);
+        return registrationResult;
       },
     };
   }
@@ -2378,11 +2387,25 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     });
   }
 
-  async signOut(options?: { redirectUrl?: URL | string }): Promise<void> {
-    const user = await this.getUser();
+  async signOut(options?: { redirectUrl?: URL | string, tokenStore?: TokenStoreInit }): Promise<void> {
+    const user = await this.getUser({ tokenStore: options?.tokenStore ?? undefined as any });
     if (user) {
-      await user.signOut(options);
+      await user.signOut({ redirectUrl: options?.redirectUrl });
     }
+  }
+
+  async getAuthHeaders(options?: { tokenStore?: TokenStoreInit }): Promise<{ "x-stack-auth": string }> {
+    return {
+      "x-stack-auth": JSON.stringify(await this.getAuthJson(options)),
+    };
+  }
+
+  async getAuthJson(options?: { tokenStore?: TokenStoreInit }): Promise<{ accessToken: string | null, refreshToken: string | null }> {
+    const user = await this.getUser({ tokenStore: options?.tokenStore ?? undefined as any });
+    if (user) {
+      return await user.getAuthJson();
+    }
+    return { accessToken: null, refreshToken: null };
   }
 
   async getProject(): Promise<Project> {
