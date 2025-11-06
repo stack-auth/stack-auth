@@ -20,6 +20,10 @@ import { PasswordReset } from "./password-reset";
 import { SignOut } from "./sign-out";
 import { TeamInvitation } from "./team-invitation";
 
+/* IF_PLATFORM react
+import { MessageCard } from "@stackframe/stack-ui";
+// END_PLATFORM react */
+
 type Components = {
   SignIn: typeof SignIn,
   SignUp: typeof SignUp,
@@ -202,15 +206,13 @@ export function StackHandlerClient(props: BaseHandlerProps & Partial<RouteProps>
   const searchParamsFromHook = useSearchParams();
   const currentLocation = pathname;
   const searchParamsSource = searchParamsFromHook;
-  const origin = 'http://example.com';
   /* ELSE_IF_PLATFORM react
   const currentLocation = props.location ?? window.location.pathname;
   const searchParamsSource = new URLSearchParams(window.location.search);
-  const origin = window.location.origin;
   END_PLATFORM */
 
   const { path, searchParams } = useMemo(() => {
-    const handlerPath = new URL(stackApp.urls.handler, origin).pathname;
+    const handlerPath = new URL(stackApp.urls.handler, 'http://example.com').pathname;
     const relativePath = currentLocation.startsWith(handlerPath)
       ? currentLocation.slice(handlerPath.length).replace(/^\/+/, '')
       : currentLocation.replace(/^\/+/, '');
@@ -219,7 +221,7 @@ export function StackHandlerClient(props: BaseHandlerProps & Partial<RouteProps>
       path: relativePath,
       searchParams: Object.fromEntries(searchParamsSource.entries())
     };
-  }, [currentLocation, searchParamsSource, stackApp.urls.handler, origin]);
+  }, [currentLocation, searchParamsSource, stackApp.urls.handler]);
 
   const redirectIfNotHandler = (name: keyof HandlerUrls) => {
     const url = stackApp.urls[name];
@@ -229,7 +231,7 @@ export function StackHandlerClient(props: BaseHandlerProps & Partial<RouteProps>
       return;
     }
 
-    const urlObj = new URL(url, origin);
+    const urlObj = new URL(url, 'http://example.com');
     for (const [key, value] of Object.entries(searchParams)) {
       urlObj.searchParams.set(key, value);
     }

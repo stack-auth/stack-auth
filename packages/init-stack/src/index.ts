@@ -8,8 +8,8 @@ import * as os from 'os';
 import * as path from "path";
 import { PostHog } from 'posthog-node';
 import packageJson from '../package.json';
-import { invokeCallback } from "./telegram";
 import { scheduleMcpConfiguration } from "./mcp";
+import { invokeCallback } from "./telegram";
 import { Colorize, configureVerboseLogging, logVerbose, templateIdentity } from "./util";
 
 export { templateIdentity } from "./util";
@@ -981,7 +981,7 @@ ${shouldInheritFromClient ? `${indentation}inheritsFrom: stackClientApp,` : `${i
     }
     laterWriteFileIfNotExists(
       handlerPath,
-      `import { StackHandler } from "@stackframe/stack"; \n\nexport default function Handler() { \n${projectInfo.indentation}return <StackHandler fullPage />; \n} \n`
+      `import { StackHandler } from "@stackframe/stack";\n\nexport default function Handler() {\n${projectInfo.indentation}return <StackHandler fullPage />;\n}\n`
     );
   },
 
