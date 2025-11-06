@@ -2,7 +2,7 @@
 
 import { useAdminApp } from "@/app/(main)/(protected)/projects/[projectId]/use-admin-app";
 import { useRouter } from "@/components/router";
-import type { ServerUser, StackAdminApp } from "@stackframe/stack";
+import type { ServerUser } from "@stackframe/stack";
 import { fromNow } from "@stackframe/stack-shared/dist/utils/dates";
 import { runAsynchronously, runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
@@ -435,7 +435,7 @@ function UserTableSkeleton(props: { pageSize: number }) {
     user: "User",
     email: "Email",
     userId: "User ID",
-    emailStatus: "Email status",
+    emailStatus: "Email Verified",
     lastActiveAt: "Last active",
     auth: "Auth methods",
     signedUpAt: "Signed up",
@@ -460,7 +460,7 @@ function UserTableSkeleton(props: { pageSize: number }) {
         return <Skeleton className="h-3 w-full max-w-[130px]" />;
       }
       case "emailStatus": {
-        return <Skeleton className="h-3 w-full max-w-[110px]" />;
+        return <Skeleton className="h-4 w-4 rounded-full" />;
       }
       case "lastActiveAt": {
         return <Skeleton className="h-3 w-full max-w-[110px]" />;
@@ -781,7 +781,7 @@ export function getCommonUserColumns<T extends ExtendedServerUser>(): ColumnDef<
       minSize: COLUMN_LAYOUT.emailStatus.minWidth,
       maxSize: COLUMN_LAYOUT.emailStatus.maxWidth,
       meta: { columnKey: "emailStatus" } as ColumnMetaType,
-      header: () => <span className="text-xs font-semibold tracking-wide">Email status</span>,
+      header: () => <span className="text-xs font-semibold tracking-wide">Email Verified</span>,
       cell: ({ row }) => <EmailStatusCell user={row.original} />,
     }),
     helper.display({
@@ -832,17 +832,6 @@ function UserIdentityCell(props: { user: ExtendedServerUser }) {
   );
 }
 
-function UserEmailCell(props: { user: ExtendedServerUser }) {
-  const { user } = props;
-  const email = user.primaryEmail ?? "No email";
-
-  return (
-    <span className="block max-w-full truncate text-sm text-muted-foreground" title={user.primaryEmail ?? undefined}>
-      {email}
-    </span>
-  );
-}
-
 function UserIdCell(props: { user: ExtendedServerUser }) {
   const { user } = props;
   const idLabel = formatUserId(user.id);
@@ -868,21 +857,26 @@ function UserIdCell(props: { user: ExtendedServerUser }) {
   );
 }
 
+function UserEmailCell(props: { user: ExtendedServerUser }) {
+  const { user } = props;
+  const email = user.primaryEmail ?? "No email";
+
+  return (
+    <span className="block max-w-full truncate text-sm text-muted-foreground" title={user.primaryEmail ?? undefined}>
+      {email}
+    </span>
+  );
+}
+
 function EmailStatusCell(props: { user: ExtendedServerUser }) {
   const { user } = props;
   const isVerified = user.emailVerified === "verified";
   return (
-    <div className="flex items-center gap-2 text-sm">
+    <div className="flex items-center justify-start">
       {isVerified ? (
-        <>
-          <CheckCircle2 className="h-4 w-4 text-success" />
-          <span className="font-medium text-success">Verified</span>
-        </>
+        <CheckCircle2 className="h-4 w-4 text-success" aria-label="Email verified" />
       ) : (
-        <>
-          <XCircle className="h-4 w-4 text-amber-500" />
-          <span className="font-medium text-amber-600">Unverified</span>
-        </>
+        <XCircle className="h-4 w-4 text-amber-500" aria-label="Email unverified" />
       )}
     </div>
   );
