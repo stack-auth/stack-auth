@@ -1,19 +1,19 @@
-import { Tenancy } from "@/lib/tenancies";
 import { getOrSetCacheValue } from "@/lib/cache";
+import { Tenancy } from "@/lib/tenancies";
 import { getPrismaClientForTenancy, getPrismaSchemaForTenancy, globalPrismaClient, PrismaClientTransaction, sqlQuoteIdent } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
+import { Prisma } from "@prisma/client";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
 import { adaptSchema, adminAuthTypeSchema, yupArray, yupMixed, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import yup from 'yup';
-import { userFullInclude, userPrismaToCrud } from "../../users/crud";
-import { usersCrudHandlers } from "../../users/crud";
-import { Prisma } from "@prisma/client";
+import { userFullInclude, userPrismaToCrud, usersCrudHandlers } from "../../users/crud";
 
 type DataPoints = yup.InferType<typeof DataPointsSchema>;
 
 const METRICS_CACHE_NAMESPACE = "metrics";
 const ONE_HOUR_MS = 60 * 60 * 1000;
+const MAX_USERS_FOR_COUNTRY_SAMPLE = 10_000;
 
 async function withMetricsCache<T>(tenancy: Tenancy, suffix: string, prisma: PrismaClientTransaction, includeAnonymous: boolean = false, loader: () => Promise<T>): Promise<T> {
   return await getOrSetCacheValue<T>({
@@ -32,12 +32,20 @@ const DataPointsSchema = yupArray(yupObject({
 
 
 async function loadUsersByCountry(tenancy: Tenancy, prisma: PrismaClientTransaction, includeAnonymous: boolean = false): Promise<Record<string, number>> {
+  const totalUsers = await prisma.projectUser.count({
+    where: {
+      tenancyId: tenancy.id,
+      ...(includeAnonymous ? {} : { isAnonymous: false }),
+    },
+  });
   const users = await prisma.projectUser.findMany({
     where: {
       tenancyId: tenancy.id,
       ...(includeAnonymous ? {} : { isAnonymous: false }),
     },
     select: { projectUserId: true },
+    orderBy: { projectUserId: "asc" },
+    take: Math.min(totalUsers, MAX_USERS_FOR_COUNTRY_SAMPLE),
   });
 
   if (users.length === 0) {
@@ -46,6 +54,7 @@ async function loadUsersByCountry(tenancy: Tenancy, prisma: PrismaClientTransact
 
   const userIds = users.map((user) => user.projectUserId);
   const userIdArray = Prisma.sql`ARRAY[${Prisma.join(userIds.map((id) => Prisma.sql`${id}`))}]::text[]`;
+  const scalingFactor = totalUsers > users.length ? totalUsers / users.length : 1;
 
   const rows = await globalPrismaClient.$queryRaw<{ countryCode: string | null, userCount: bigint }[]>(Prisma.sql`
     WITH latest_ip AS (
@@ -70,8 +79,15 @@ async function loadUsersByCountry(tenancy: Tenancy, prisma: PrismaClientTransact
   `);
 
   return Object.fromEntries(
-    rows.map(({ userCount, countryCode }) => [countryCode, Number(userCount)])
-      .filter(([countryCode]) => countryCode)
+    rows.map(({ userCount, countryCode }) => {
+      if (!countryCode) {
+        return null;
+      }
+      const count = Number(userCount);
+      const estimatedCount = scalingFactor === 1 ? count : Math.round(count * scalingFactor);
+      return [countryCode, estimatedCount] as [string, number];
+    })
+      .filter((entry): entry is [string, number] => entry !== null)
   );
 }
 
