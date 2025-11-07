@@ -5,7 +5,7 @@ import { StackAssertionError, concatStacktraces, throwErr } from "@stackframe/st
 import { getGlobal } from "@stackframe/stack-shared/dist/utils/globals";
 import { filterUndefined, omit } from "@stackframe/stack-shared/dist/utils/objects";
 import { ReactPromise } from "@stackframe/stack-shared/dist/utils/promises";
-import { suspendIfSsr } from "@stackframe/stack-shared/dist/utils/react";
+import { suspendIfSsr, use } from "@stackframe/stack-shared/dist/utils/react";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { Store } from "@stackframe/stack-shared/dist/utils/stores";
 import React, { useCallback } from "react"; // THIS_LINE_PLATFORM react-like
@@ -200,7 +200,7 @@ export function useAsyncCache<D extends any[], T>(cache: AsyncCache<D, Result<T>
     () => throwErr(new Error("getServerSnapshot should never be called in useAsyncCache because we restrict to CSR earlier"))
   );
 
-  const result = React.use(promise);
+  const result = use(promise);
   if (result.status === "error") {
     const error = result.error;
     if (error instanceof Error && !(error as any).__stackHasConcatenatedStacktraces) {

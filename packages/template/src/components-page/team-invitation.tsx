@@ -3,6 +3,7 @@
 import { KnownErrors } from "@stackframe/stack-shared";
 import { cacheFunction } from "@stackframe/stack-shared/dist/utils/caches";
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
+import { use } from "@stackframe/stack-shared/dist/utils/react";
 import { Typography } from "@stackframe/stack-ui";
 import React from "react";
 import { MessageCard, StackClientApp, useStackApp, useUser } from "..";
@@ -22,7 +23,7 @@ function TeamInvitationInner(props: { fullPage?: boolean, searchParams: Record<s
   const stackApp = useStackApp();
   const [success, setSuccess] = React.useState(false);
   const [errorMessage, setErrorMessage] = React.useState<string | null>(null);
-  const details = React.use(cachedGetInvitationDetails(stackApp, props.searchParams.code || ''));
+  const details = use(cachedGetInvitationDetails(stackApp, props.searchParams.code || ''));
 
   if (errorMessage || details.status === 'error') {
     return (
@@ -108,7 +109,7 @@ export function TeamInvitation({ fullPage=false, searchParams }: { fullPage?: bo
     );
   }
 
-  const verificationResult = React.use(cachedVerifyInvitation(stackApp, searchParams.code || ''));
+  const verificationResult = use(cachedVerifyInvitation(stackApp, searchParams.code || ''));
 
   if (verificationResult.status === 'error') {
     const error = verificationResult.error;
