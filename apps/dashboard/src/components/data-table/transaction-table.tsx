@@ -4,7 +4,7 @@ import { useAdminApp } from '@/app/(main)/(protected)/projects/[projectId]/use-a
 import type { Transaction, TransactionEntry, TransactionType } from '@stackframe/stack-shared/dist/interface/crud/transactions';
 import { TRANSACTION_TYPES } from '@stackframe/stack-shared/dist/interface/crud/transactions';
 import { deepPlainEquals } from '@stackframe/stack-shared/dist/utils/objects';
-import { AvatarCell, DataTableColumnHeader, DataTableManualPagination, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, TextCell, Tooltip, TooltipContent, TooltipTrigger } from '@stackframe/stack-ui';
+import { ActionCell, AvatarCell, Button, DataTableColumnHeader, DataTableManualPagination, DateCell, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, TextCell, Tooltip, TooltipContent, TooltipTrigger } from '@stackframe/stack-ui';
 import type { ColumnDef, ColumnFiltersState, SortingState } from '@tanstack/react-table';
 import type { LucideIcon } from 'lucide-react';
 import { ArrowDownCircle, ArrowUpCircle, Ban, CircleHelp, RefreshCcw, RotateCcw, Settings, ShoppingCart, Shuffle } from 'lucide-react';
@@ -155,7 +155,7 @@ function describeDetail(transaction: Transaction, sourceType: SourceType): strin
   if (sourceType === 'item_quantity_change') {
     return 'Item quantity change';
   }
-  return '—';
+  return '-';
 }
 
 function getTransactionSummary(transaction: Transaction): TransactionSummary {
@@ -253,16 +253,18 @@ export function TransactionTable() {
       header: ({ column }) => <DataTableColumnHeader column={column} columnTitle="Details" />,
       cell: ({ row }) => {
         const summary = summaryById.get(row.original.id);
-        return <TextCell>{summary?.detail ?? '—'}</TextCell>;
+        return <TextCell>
+          {summary?.detail ?? '—'}
+        </TextCell>;
       },
       enableSorting: false,
     },
     {
       id: 'created_at_millis',
       accessorFn: (transaction) => transaction.created_at_millis,
-      header: ({ column }) => <DataTableColumnHeader column={column} columnTitle="Created" className="justify-end" />,
+      header: ({ column }) => <DataTableColumnHeader column={column} columnTitle="Created" />,
       cell: ({ row }) => (
-        <div className="min-w-[120px] w-full text-right pr-2">{new Date(row.original.created_at_millis).toLocaleString()}</div>
+        <DateCell date={new Date(row.original.created_at_millis)} />
       ),
       enableSorting: false,
     },

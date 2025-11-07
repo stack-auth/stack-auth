@@ -789,6 +789,8 @@ model Subscription {
   createdAt      DateTime               @default(now())
   updatedAt      DateTime               @updatedAt
 
+  SubscriptionInvoices SubscriptionInvoice[]
+
   @@id([tenancyId, id])
   @@unique([tenancyId, stripeSubscriptionId])
 }
@@ -849,4 +851,20 @@ model CacheEntry {
   updatedAt DateTime @updatedAt
 
   @@unique([namespace, cacheKey])
+}
+
+model SubscriptionInvoice {
+  id String @default(uuid()) @db.Uuid
+  tenancyId String @db.Uuid
+  stripeSubscriptionId String
+  stripeInvoiceId String
+  isSubscriptionCreationInvoice Boolean
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  subscription Subscription @relation(fields: [tenancyId, stripeSubscriptionId], references: [tenancyId, stripeSubscriptionId])
+
+  @@id([tenancyId, id])
+  @@unique([tenancyId, stripeInvoiceId])
 }

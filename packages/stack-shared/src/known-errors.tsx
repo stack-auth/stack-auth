@@ -16,7 +16,7 @@ export type AbstractKnownErrorConstructor<Args extends any[]> =
   };
 
 export type KnownErrorConstructor<SuperInstance extends KnownError, Args extends any[]> = {
-  new (...args: Args): SuperInstance & { constructorArgs: Args },
+  new(...args: Args): SuperInstance & { constructorArgs: Args },
   errorCode: string,
   constructorArgsFromJson: (json: KnownErrorJson) => Args,
   isInstance: (error: unknown) => error is SuperInstance & { constructorArgs: Args },
@@ -369,7 +369,7 @@ const AdminAccessTokenExpired = createKnownErrorConstructor(
   "ADMIN_ACCESS_TOKEN_EXPIRED",
   (expiredAt: Date | undefined) => [
     401,
-    `Admin access token has expired. Please refresh it and try again.${expiredAt ? ` (The access token expired at ${expiredAt.toISOString()}.)`: ""}`,
+    `Admin access token has expired. Please refresh it and try again.${expiredAt ? ` (The access token expired at ${expiredAt.toISOString()}.)` : ""}`,
     { expired_at_millis: expiredAt?.getTime() ?? null },
   ] as const,
   (json: any) => [json.expired_at_millis ?? undefined] as const,
@@ -530,7 +530,7 @@ const AccessTokenExpired = createKnownErrorConstructor(
   "ACCESS_TOKEN_EXPIRED",
   (expiredAt: Date | undefined) => [
     401,
-    `Access token has expired. Please refresh it and try again.${expiredAt ? ` (The access token expired at ${expiredAt.toISOString()}.)`: ""}`,
+    `Access token has expired. Please refresh it and try again.${expiredAt ? ` (The access token expired at ${expiredAt.toISOString()}.)` : ""}`,
     { expired_at_millis: expiredAt?.getTime() ?? null },
   ] as const,
   (json: any) => [json.expired_at_millis ? new Date(json.expired_at_millis) : undefined] as const,
@@ -1565,7 +1565,6 @@ const StripeAccountInfoNotFound = createKnownErrorConstructor(
   ] as const,
   () => [] as const,
 );
-
 
 export type KnownErrors = {
   [K in keyof typeof KnownErrors]: InstanceType<typeof KnownErrors[K]>;

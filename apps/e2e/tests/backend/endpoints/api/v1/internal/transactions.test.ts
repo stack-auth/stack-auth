@@ -1,11 +1,10 @@
+import { createHmac } from "node:crypto";
 import { expect } from "vitest";
 import { it } from "../../../../../helpers";
 import { Payments as PaymentsHelper, Project, User, niceBackendFetch } from "../../../../backend-helpers";
 
-async function setupProjectWithPaymentsConfig() {
-  await Project.createAndSwitch();
-  await PaymentsHelper.setup();
-  await Project.updateConfig({
+function createDefaultPaymentsConfig() {
+  return {
     payments: {
       testMode: true,
       products: {
@@ -34,7 +33,15 @@ async function setupProjectWithPaymentsConfig() {
         credits: { displayName: "Credits", customerType: "user" },
       },
     },
-  });
+  };
+}
+
+async function setupProjectWithPaymentsConfig() {
+  await Project.createAndSwitch();
+  await PaymentsHelper.setup();
+  const config = createDefaultPaymentsConfig();
+  await Project.updateConfig(config);
+  return config;
 }
 
 async function createPurchaseCode(options: { userId: string, productId: string }) {
@@ -52,6 +59,23 @@ async function createPurchaseCode(options: { userId: string, productId: string }
   const code = codeMatch ? codeMatch[1] : undefined;
   expect(code).toBeDefined();
   return code as string;
+}
+
+const stripeWebhookSecret = process.env.STACK_STRIPE_WEBHOOK_SECRET ?? "mock_stripe_webhook_secret";
+
+async function sendStripeWebhook(payload: unknown) {
+  const timestamp = Math.floor(Date.now() / 1000);
+  const hmac = createHmac("sha256", stripeWebhookSecret);
+  hmac.update(`${timestamp}.${JSON.stringify(payload)}`);
+  const signature = hmac.digest("hex");
+  return await niceBackendFetch("/api/latest/integrations/stripe/webhooks", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "stripe-signature": `t=${timestamp},v1=${signature}`,
+    },
+    body: payload,
+  });
 }
 
 it("returns empty list for fresh project", async () => {
@@ -273,3 +297,106 @@ it("supports concatenated cursor pagination", async () => {
   expect(page2.body).toMatchObject({ transactions: expect.any(Array) });
 });
 
+it("omits subscription-renewal entries for subscription creation invoices", async () => {
+  const config = await setupProjectWithPaymentsConfig();
+  const subProduct = config.payments.products["sub-product"];
+  const { userId } = await User.create();
+
+  const accountInfo = await niceBackendFetch("/api/latest/internal/payments/stripe/account-info", {
+    accessType: "admin",
+  });
+  expect(accountInfo.status).toBe(200);
+  const accountId: string = accountInfo.body.account_id;
+
+  const code = await createPurchaseCode({ userId, productId: "sub-product" });
+  const tenancyId = code.split("_")[0];
+
+  const nowSec = Math.floor(Date.now() / 1000);
+  const stripeSubscription = {
+    id: "sub_tx_filter",
+    status: "active",
+    items: {
+      data: [
+        {
+          quantity: 1,
+          current_period_start: nowSec - 60,
+          current_period_end: nowSec + 60 * 60,
+        },
+      ],
+    },
+    metadata: {
+      productId: "sub-product",
+      product: JSON.stringify(subProduct),
+      priceId: "monthly",
+    },
+    cancel_at_period_end: false,
+  };
+
+  const stackStripeMockData = {
+    "accounts.retrieve": { metadata: { tenancyId } },
+    "customers.retrieve": { metadata: { customerId: userId, customerType: "USER" } },
+    "subscriptions.list": { data: [stripeSubscription] },
+  };
+
+  const baseInvoiceObject = {
+    customer: "cus_tx_filter",
+    stack_stripe_mock_data: stackStripeMockData,
+    lines: {
+      data: [
+        {
+          parent: {
+            subscription_item_details: {
+              subscription: stripeSubscription.id,
+            },
+          },
+        },
+      ],
+    },
+  };
+
+  const creationInvoiceEvent = {
+    id: "evt_sub_invoice_creation",
+    type: "invoice.payment_succeeded",
+    account: accountId,
+    data: {
+      object: {
+        ...baseInvoiceObject,
+        id: "in_creation_tx",
+        billing_reason: "subscription_create",
+      },
+    },
+  };
+
+  const renewalInvoiceEvent = {
+    id: "evt_sub_invoice_cycle",
+    type: "invoice.payment_succeeded",
+    account: accountId,
+    data: {
+      object: {
+        ...baseInvoiceObject,
+        id: "in_cycle_tx",
+        billing_reason: "subscription_cycle",
+      },
+    },
+  };
+
+  const creationRes = await sendStripeWebhook(creationInvoiceEvent);
+  expect(creationRes.status).toBe(200);
+  expect(creationRes.body).toEqual({ received: true });
+
+  const renewalRes = await sendStripeWebhook(renewalInvoiceEvent);
+  expect(renewalRes.status).toBe(200);
+  expect(renewalRes.body).toEqual({ received: true });
+
+  const response = await niceBackendFetch("/api/latest/internal/payments/transactions", {
+    accessType: "admin",
+  });
+  expect(response.status).toBe(200);
+
+  const renewalTransactions = response.body.transactions.filter((tx: any) => tx.type === "subscription-renewal");
+  expect(renewalTransactions.length).toBe(1);
+  expect(renewalTransactions[0]?.entries?.[0]?.type).toBe("money_transfer");
+
+  const purchaseTransaction = response.body.transactions.find((tx: any) => tx.type === "purchase");
+  expect(purchaseTransaction).toBeDefined();
+});

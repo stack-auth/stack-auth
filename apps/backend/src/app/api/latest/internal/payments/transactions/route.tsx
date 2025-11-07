@@ -4,9 +4,14 @@ import { Prisma } from "@prisma/client";
 import { TRANSACTION_TYPES, transactionSchema, type Transaction } from "@stackframe/stack-shared/dist/interface/crud/transactions";
 import { adaptSchema, adminAuthTypeSchema, yupArray, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { typedToUppercase } from "@stackframe/stack-shared/dist/utils/strings";
-import { buildItemQuantityChangeTransaction, buildOneTimePurchaseTransaction, buildSubscriptionTransaction } from "./transaction-builder";
+import { 
+  buildItemQuantityChangeTransaction, 
+  buildOneTimePurchaseTransaction, 
+  buildSubscriptionTransaction, 
+  buildSubscriptionRenewalTransaction 
+} from "./transaction-builder";
 
-type TransactionSource = "subscription" | "item_quantity_change" | "one_time";
+type TransactionSource = "subscription" | "item_quantity_change" | "one_time" | "subscription-invoice";
 
 export const GET = createSmartRouteHandler({
   metadata: {
@@ -40,9 +45,9 @@ export const GET = createSmartRouteHandler({
     const parsedLimit = Number.parseInt(rawLimit, 10);
     const limit = Math.max(1, Math.min(200, Number.isFinite(parsedLimit) ? parsedLimit : 50));
     const cursorStr = query.cursor ?? "";
-    const [subCursor, iqcCursor, otpCursor] = (cursorStr.split("|") as [string?, string?, string?]);
+    const [subCursor, iqcCursor, otpCursor, siCursor] = (cursorStr.split("|") as [string?, string?, string?, string?]);
 
-    const paginateWhere = async <T extends "subscription" | "itemQuantityChange" | "oneTimePurchase">(
+    const paginateWhere = async <T extends "subscription" | "itemQuantityChange" | "oneTimePurchase" | "subscriptionInvoice">(
       table: T,
       cursorId?: string
     ): Promise<
@@ -50,7 +55,9 @@ export const GET = createSmartRouteHandler({
       ? Prisma.SubscriptionWhereInput | undefined
       : T extends "itemQuantityChange"
       ? Prisma.ItemQuantityChangeWhereInput | undefined
-      : Prisma.OneTimePurchaseWhereInput | undefined
+      : T extends "oneTimePurchase"
+      ? Prisma.OneTimePurchaseWhereInput | undefined
+      : Prisma.SubscriptionInvoiceWhereInput | undefined
     > => {
       if (!cursorId) return undefined as any;
       let pivot: { createdAt: Date } | null = null;
@@ -64,11 +71,16 @@ export const GET = createSmartRouteHandler({
           where: { tenancyId_id: { tenancyId: auth.tenancy.id, id: cursorId } },
           select: { createdAt: true },
         });
-      } else {
+      } else if (table === "oneTimePurchase") {
         pivot = await prisma.oneTimePurchase.findUnique({
           where: { tenancyId_id: { tenancyId: auth.tenancy.id, id: cursorId } },
           select: { createdAt: true },
         });
+      } else {
+        pivot = await prisma.subscriptionInvoice.findUnique({
+          where: { tenancyId_id: { tenancyId: auth.tenancy.id, id: cursorId } },
+          select: { createdAt: true } 
+        })
       }
       if (!pivot) return undefined as any;
       return {
@@ -79,10 +91,11 @@ export const GET = createSmartRouteHandler({
       } as any;
     };
 
-    const [subWhere, iqcWhere, otpWhere] = await Promise.all([
+    const [subWhere, iqcWhere, otpWhere, siWhere] = await Promise.all([
       paginateWhere("subscription", subCursor),
       paginateWhere("itemQuantityChange", iqcCursor),
       paginateWhere("oneTimePurchase", otpCursor),
+      paginateWhere("subscriptionInvoice", siCursor)
     ]);
 
     const baseOrder = [{ createdAt: "desc" as const }, { id: "desc" as const }];
@@ -96,7 +109,12 @@ export const GET = createSmartRouteHandler({
     };
     let merged: TransactionRow[] = [];
 
-    const [subs, iqcs, otps] = await Promise.all([
+    const [
+      subscriptions,
+      itemQuantityChanges,
+      oneTimePayments,
+      subscriptionInvoices
+    ] = await Promise.all([
       prisma.subscription.findMany({
         where: { tenancyId: auth.tenancy.id, ...(subWhere ?? {}), ...customerTypeFilter },
         orderBy: baseOrder,
@@ -112,27 +130,49 @@ export const GET = createSmartRouteHandler({
         orderBy: baseOrder,
         take: limit,
       }),
+      prisma.subscriptionInvoice.findMany({
+        where: { 
+          tenancyId: auth.tenancy.id, 
+          ...(siWhere ?? {}),  
+          subscription: customerTypeFilter,
+          isSubscriptionCreationInvoice: false,
+        },
+        include: {
+          subscription: true
+        },
+        orderBy: baseOrder,
+        take: limit,
+      })
     ]);
 
     merged = [
-      ...subs.map((subscription) => ({
+      ...subscriptions.map((subscription) => ({
         source: "subscription" as const,
         id: subscription.id,
         createdAt: subscription.createdAt,
         transaction: buildSubscriptionTransaction({ subscription }),
       })),
-      ...iqcs.map((change) => ({
+      ...itemQuantityChanges.map((change) => ({
         source: "item_quantity_change" as const,
         id: change.id,
         createdAt: change.createdAt,
-        transaction: buildItemQuantityChangeTransaction({ change, tenancy: auth.tenancy }),
+        transaction: buildItemQuantityChangeTransaction({ change }),
       })),
-      ...otps.map((purchase) => ({
+      ...oneTimePayments.map((purchase) => ({
         source: "one_time" as const,
         id: purchase.id,
         createdAt: purchase.createdAt,
         transaction: buildOneTimePurchaseTransaction({ purchase }),
       })),
+      ...subscriptionInvoices.map((subscriptionInvoice) => ({
+        source: "subscription-invoice" as const,
+        id: subscriptionInvoice.id,
+        createdAt: subscriptionInvoice.createdAt,
+        transaction: buildSubscriptionRenewalTransaction({ 
+          subscription: subscriptionInvoice.subscription,
+          subscriptionInvoice: subscriptionInvoice
+        })
+      }))
     ].sort((a, b) => {
       if (a.createdAt.getTime() === b.createdAt.getTime()) {
         return a.id < b.id ? 1 : -1;
@@ -149,14 +189,16 @@ export const GET = createSmartRouteHandler({
     let lastSubId = "";
     let lastIqcId = "";
     let lastOtpId = "";
+    let lastSiId = "";
     for (const r of page) {
       if (r.source === "subscription") lastSubId = r.id;
       if (r.source === "item_quantity_change") lastIqcId = r.id;
       if (r.source === "one_time") lastOtpId = r.id;
+      if (r.source === "subscription-invoice") lastSiId = r.id;
     }
 
     const nextCursor = page.length === limit
-      ? [lastSubId, lastIqcId, lastOtpId].join('|')
+      ? [lastSubId, lastIqcId, lastOtpId, lastSiId].join('|')
       : null;
 
     return {
@@ -169,4 +211,3 @@ export const GET = createSmartRouteHandler({
     };
   },
 });
-

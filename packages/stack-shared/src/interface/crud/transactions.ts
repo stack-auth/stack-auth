@@ -1,5 +1,4 @@
 import type { InferType } from "yup";
-import * as yup from "yup";
 import {
   customerTypeSchema,
   inlineProductSchema,
