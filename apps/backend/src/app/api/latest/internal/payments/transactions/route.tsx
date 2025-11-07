@@ -4,11 +4,11 @@ import { Prisma } from "@prisma/client";
 import { TRANSACTION_TYPES, transactionSchema, type Transaction } from "@stackframe/stack-shared/dist/interface/crud/transactions";
 import { adaptSchema, adminAuthTypeSchema, yupArray, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { typedToUppercase } from "@stackframe/stack-shared/dist/utils/strings";
-import { 
-  buildItemQuantityChangeTransaction, 
-  buildOneTimePurchaseTransaction, 
-  buildSubscriptionTransaction, 
-  buildSubscriptionRenewalTransaction 
+import {
+  buildItemQuantityChangeTransaction,
+  buildOneTimePurchaseTransaction,
+  buildSubscriptionTransaction,
+  buildSubscriptionRenewalTransaction
 } from "./transaction-builder";
 
 type TransactionSource = "subscription" | "item_quantity_change" | "one_time" | "subscription-invoice";
@@ -79,8 +79,8 @@ export const GET = createSmartRouteHandler({
       } else {
         pivot = await prisma.subscriptionInvoice.findUnique({
           where: { tenancyId_id: { tenancyId: auth.tenancy.id, id: cursorId } },
-          select: { createdAt: true } 
-        })
+          select: { createdAt: true }
+        });
       }
       if (!pivot) return undefined as any;
       return {
@@ -131,9 +131,9 @@ export const GET = createSmartRouteHandler({
         take: limit,
       }),
       prisma.subscriptionInvoice.findMany({
-        where: { 
-          tenancyId: auth.tenancy.id, 
-          ...(siWhere ?? {}),  
+        where: {
+          tenancyId: auth.tenancy.id,
+          ...(siWhere ?? {}),
           subscription: customerTypeFilter,
           isSubscriptionCreationInvoice: false,
         },
@@ -168,7 +168,7 @@ export const GET = createSmartRouteHandler({
         source: "subscription-invoice" as const,
         id: subscriptionInvoice.id,
         createdAt: subscriptionInvoice.createdAt,
-        transaction: buildSubscriptionRenewalTransaction({ 
+        transaction: buildSubscriptionRenewalTransaction({
           subscription: subscriptionInvoice.subscription,
           subscriptionInvoice: subscriptionInvoice
         })

@@ -294,5 +294,5 @@ export function buildSubscriptionRenewalTransaction(options: {
     adjusted_by: [],
     created_at_millis: subscriptionInvoice.createdAt.getTime(),
     effective_at_millis: subscriptionInvoice.createdAt.getTime(),
-  }
+  };
 }

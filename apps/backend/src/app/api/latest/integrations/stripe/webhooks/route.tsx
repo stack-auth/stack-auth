@@ -100,7 +100,7 @@ async function processStripeWebhookEvent(event: Stripe.Event): Promise<void> {
     }
     const stripe = await getStripeForAccount({ accountId }, mockData);
     await syncStripeSubscriptions(stripe, accountId, customerId);
-    
+
     if (event.type == "invoice.payment_succeeded") {
       await handleStripeInvoicePaid(stripe, accountId, event.data.object);
     }

@@ -57,7 +57,7 @@ const getTenancyFromStripeAccountIdOrThrow = async (stripe: Stripe, stripeAccoun
     throw new StackAssertionError("Tenancy not found", { accountId: stripeAccountId });
   }
   return tenancy;
-}
+};
 
 export async function syncStripeSubscriptions(stripe: Stripe, stripeAccountId: string, stripeCustomerId: string) {
   const tenancy = await getTenancyFromStripeAccountIdOrThrow(stripe, stripeAccountId);
