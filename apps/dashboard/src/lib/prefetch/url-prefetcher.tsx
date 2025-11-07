@@ -1,157 +1,242 @@
 "use client";
 
 import { useAdminApp } from "@/app/(main)/(protected)/projects/[projectId]/use-admin-app";
-import { useUser } from "@stackframe/stack";
+import { stackAppInternalsSymbol, useUser } from "@stackframe/stack";
 import { previewTemplateSource } from "@stackframe/stack-shared/dist/helpers/emails";
 import { createCachedRegex } from "@stackframe/stack-shared/dist/utils/regex";
 import { useEffect, useState } from "react";
-import { HookPrefetcher } from "./hook-prefetcher";
+import { HookPrefetcher, HookPrefetcherCallback } from "./hook-prefetcher";
 
 // note that URL prefetchers are allowed to return early before execution of all hooks (but not call hook conditionally beyond that)
 // this is because we suspend the component
-const urlPrefetchers: Record<string, ((match: RegExpMatchArray, query: URLSearchParams, hash: string) => void)[]> = {
+const urlPrefetchers: Record<string, ((match: RegExpMatchArray, query: URLSearchParams, hash: string) => void | HookPrefetcherCallback[])[]> = {
   "/projects/*": [
-    // TODO: we currently don't prefetch metrics as they are pretty slow to fetch
-    // ([_, projectId]) => (useAdminApp(projectId) as any)[stackAppInternalsSymbol].useMetrics(false),
+    ([_, projectId]) => {
+      (useAdminApp(projectId) as any)[stackAppInternalsSymbol].useMetrics(false);
+    },
+    ([_, projectId]) => {
+      useAdminApp(projectId).useUsers({ limit: 1 });
+    },
   ],
   "/projects/*/**": [
-    ([_, projectId]) => useAdminApp(projectId).useProject().useConfig(),
+    ([_, projectId]) => {
+      useAdminApp(projectId).useProject().useConfig();
+    },
   ],
   "/projects/*/users": [
-    // TODO: we currently don't prefetch metrics as they are pretty slow to fetch
-    // ([_, projectId]) => (useAdminApp(projectId) as any)[stackAppInternalsSymbol].useMetrics(),
-    ([_, projectId]) => useAdminApp(projectId).useUsers({ limit: 1 }),
-    ([_, projectId]) => useAdminApp(projectId).useUsers({
-      limit: 10,
-      orderBy: "signedUpAt",
-      desc: true,
-      includeAnonymous: false,
-    }),
+    ([_, projectId]) => {
+      (useAdminApp(projectId) as any)[stackAppInternalsSymbol].useMetrics(false);
+    },
+    ([_, projectId]) => {
+      (useAdminApp(projectId) as any)[stackAppInternalsSymbol].useMetrics(true);
+    },
+    ([_, projectId]) => {
+      useAdminApp(projectId).useUsers({ limit: 1 });
+    },
+    ([_, projectId]) => {
+      useAdminApp(projectId).useUsers({
+        limit: 10,
+        orderBy: "signedUpAt",
+        desc: true,
+        includeAnonymous: false,
+      });
+    },
   ],
   "/projects/*/users/*": [
-    ([_, projectId, userId]) => useAdminApp(projectId).useUser(userId),
     ([_, projectId, userId]) => {
       const user = useAdminApp(projectId).useUser(userId);
-      user?.useContactChannels();
-    },
-    ([_, projectId, userId]) => {
-      const user = useAdminApp(projectId).useUser(userId);
-      user?.useTeams();
-    },
-    ([_, projectId, userId]) => {
-      const user = useAdminApp(projectId).useUser(userId);
-      user?.useOAuthProviders();
+      if (user) {
+        return [
+          () => {
+            user.useContactChannels();
+          },
+          () => {
+            user.useTeams();
+          },
+          () => {
+            user.useOAuthProviders();
+          },
+        ];
+      }
     },
   ],
   "/projects/*/team-settings": [
-    ([_, projectId]) => useAdminApp(projectId).useTeamPermissionDefinitions(),
+    ([_, projectId]) => {
+      useAdminApp(projectId).useTeamPermissionDefinitions();
+    },
   ],
   "/projects/*/team-permissions": [
-    ([_, projectId]) => useAdminApp(projectId).useTeamPermissionDefinitions(),
-    ([_, projectId]) => useAdminApp(projectId).useProjectPermissionDefinitions(),
+    ([_, projectId]) => {
+      useAdminApp(projectId).useTeamPermissionDefinitions();
+    },
+    ([_, projectId]) => {
+      useAdminApp(projectId).useProjectPermissionDefinitions();
+    },
   ],
   "/projects/*/project-permissions": [
-    ([_, projectId]) => useAdminApp(projectId).useProjectPermissionDefinitions(),
-    ([_, projectId]) => useAdminApp(projectId).useTeamPermissionDefinitions(),
+    ([_, projectId]) => {
+      useAdminApp(projectId).useProjectPermissionDefinitions();
+    },
+    ([_, projectId]) => {
+      useAdminApp(projectId).useTeamPermissionDefinitions();
+    },
   ],
   "/projects/*/teams": [
-    ([_, projectId]) => useAdminApp(projectId).useTeams(),
+    ([_, projectId]) => {
+      useAdminApp(projectId).useTeams();
+    },
   ],
   "/projects/*/teams/*": [
-    ([_, projectId]) => useAdminApp(projectId).useTeamPermissionDefinitions(),
-    ([_, projectId]) => useAdminApp(projectId).useUsers({ limit: 10 }),
+    ([_, projectId]) => {
+      useAdminApp(projectId).useTeamPermissionDefinitions();
+    },
+    ([_, projectId]) => {
+      useAdminApp(projectId).useUsers({ limit: 10 });
+    },
     ([_, projectId, teamId]) => {
       const team = useAdminApp(projectId).useTeam(teamId);
-      team?.useUsers();
+      if (team) {
+        return [() => {
+          team.useUsers();
+        }];
+      }
     },
   ],
   "/projects/*/api-keys": [
-    ([_, projectId]) => useAdminApp(projectId).useInternalApiKeys(),
+    ([_, projectId]) => {
+      useAdminApp(projectId).useInternalApiKeys();
+    },
   ],
   "/projects/*/webhooks": [
-    ([_, projectId]) => useAdminApp(projectId).useSvixToken(),
+    ([_, projectId]) => {
+      useAdminApp(projectId).useSvixToken();
+    },
   ],
   "/projects/*/webhooks/*": [
-    ([_, projectId]) => useAdminApp(projectId).useSvixToken(),
+    ([_, projectId]) => {
+      useAdminApp(projectId).useSvixToken();
+    },
   ],
   "/projects/*/email-drafts": [
-    ([_, projectId]) => useAdminApp(projectId).useEmailDrafts(),
+    ([_, projectId]) => {
+      useAdminApp(projectId).useEmailDrafts();
+    },
   ],
   "/projects/*/email-drafts/*": [
-    ([_, projectId]) => useAdminApp(projectId).useEmailDrafts(),
-    ([_, projectId]) => useAdminApp(projectId).useEmailThemes(),
+    ([_, projectId]) => {
+      useAdminApp(projectId).useEmailDrafts();
+    },
+    ([_, projectId]) => {
+      useAdminApp(projectId).useEmailThemes();
+    },
     ([_, projectId, draftId]) => {
       const adminApp = useAdminApp(projectId);
       const draft = adminApp.useEmailDrafts().find((d) => d.id === draftId);
       if (draft) {
-        adminApp.useEmailPreview({
-          themeId: draft.themeId,
-          templateTsxSource: draft.tsxSource,
-        });
+        return [() => {
+          adminApp.useEmailPreview({
+            themeId: draft.themeId,
+            templateTsxSource: draft.tsxSource,
+          });
+        }];
       }
     },
   ],
   "/projects/*/emails": [
-    ([_, projectId]) => useAdminApp(projectId).useUsers({ limit: 10 }),
+    ([_, projectId]) => {
+      useAdminApp(projectId).useUsers({ limit: 10 });
+    },
   ],
   "/projects/*/email-templates": [
-    ([_, projectId]) => useAdminApp(projectId).useEmailTemplates(),
+    ([_, projectId]) => {
+      useAdminApp(projectId).useEmailTemplates();
+    },
   ],
   "/projects/*/email-templates/*": [
-    ([_, projectId]) => useAdminApp(projectId).useEmailTemplates(),
-    ([_, projectId]) => useAdminApp(projectId).useEmailThemes(),
+    ([_, projectId]) => {
+      useAdminApp(projectId).useEmailTemplates();
+    },
+    ([_, projectId]) => {
+      useAdminApp(projectId).useEmailThemes();
+    },
     ([_, projectId, templateId]) => {
       const adminApp = useAdminApp(projectId);
       const template = adminApp.useEmailTemplates().find((t) => t.id === templateId);
       if (template) {
-        adminApp.useEmailPreview({
-          themeId: template.themeId,
-          templateTsxSource: template.tsxSource,
-        });
+        return [() => {
+          adminApp.useEmailPreview({
+            themeId: template.themeId,
+            templateTsxSource: template.tsxSource,
+          });
+        }];
       }
     },
   ],
   "/projects/*/email-themes": [
-    ([_, projectId]) => useAdminApp(projectId).useProject().useConfig(),
-    ([_, projectId]) => useAdminApp(projectId).useEmailThemes(),
+    ([_, projectId]) => {
+      useAdminApp(projectId).useProject().useConfig();
+    },
+    ([_, projectId]) => {
+      useAdminApp(projectId).useEmailThemes();
+    },
     ([_, projectId]) => {
       const adminApp = useAdminApp(projectId);
       const themes = adminApp.useEmailThemes();
       themes.forEach((theme) => {
-        adminApp.useEmailPreview({
-          themeId: theme.id,
-          templateTsxSource: previewTemplateSource,
-        });
+        return [() => {
+          adminApp.useEmailPreview({
+            themeId: theme.id,
+            templateTsxSource: previewTemplateSource,
+          });
+        }];
       });
     },
   ],
   "/projects/*/email-themes/*": [
-    ([_, projectId, themeId]) => useAdminApp(projectId).useEmailTheme(themeId),
+    ([_, projectId, themeId]) => {
+      useAdminApp(projectId).useEmailTheme(themeId);
+    },
     ([_, projectId, themeId]) => {
       const adminApp = useAdminApp(projectId);
       const theme = adminApp.useEmailTheme(themeId);
-      adminApp.useEmailPreview({
-        themeTsxSource: theme.tsxSource,
-        templateTsxSource: previewTemplateSource,
-      });
+      return [() => {
+        adminApp.useEmailPreview({
+          themeTsxSource: theme.tsxSource,
+          templateTsxSource: previewTemplateSource,
+        });
+      }];
     },
   ],
   "/projects/*/project-settings": [
-    ([_, projectId]) => useAdminApp(projectId).useProject(),
-    ([_, projectId]) => useAdminApp(projectId).useProject().useProductionModeErrors(),
-    () => useUser({ or: "redirect", projectIdMustMatch: "internal" }),
+    ([_, projectId]) => {
+      useAdminApp(projectId).useProject();
+    },
+    ([_, projectId]) => {
+      useAdminApp(projectId).useProject().useProductionModeErrors();
+    },
+    () => {
+      useUser({ or: "redirect", projectIdMustMatch: "internal" });
+    },
     ([_, projectId]) => {
       const project = useAdminApp(projectId).useProject();
       const teams = useUser({ or: "redirect", projectIdMustMatch: "internal" }).useTeams();
       const ownerTeam = teams.find((team) => team.id === project.ownerTeamId);
-      ownerTeam?.useUsers();
+      if (ownerTeam) {
+        return [() => {
+          ownerTeam.useUsers();
+        }];
+      }
     },
   ],
   "/projects/*/payments/**": [
-    ([_, projectId]) => useAdminApp(projectId).useStripeAccountInfo(),
+    ([_, projectId]) => {
+      useAdminApp(projectId).useStripeAccountInfo();
+    },
   ],
   "/projects/*/payments/transactions": [
-    ([_, projectId]) => useAdminApp(projectId).useTransactions({ limit: 10 }),
+    ([_, projectId]) => {
+      useAdminApp(projectId).useTransactions({ limit: 10 });
+    },
   ],
 };
 
