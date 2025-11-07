@@ -1,17 +1,17 @@
 "use client";
 
+import { ItemDialog } from "@/components/payments/item-dialog";
 import { cn } from "@/lib/utils";
 import { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
 import { useHover } from "@stackframe/stack-shared/dist/hooks/use-hover";
 import { DayInterval } from "@stackframe/stack-shared/dist/utils/dates";
 import { prettyPrintWithMagnitudes } from "@stackframe/stack-shared/dist/utils/numbers";
 import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
-import { Button, Card, CardContent, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, Label, Separator, Switch, toast } from "@stackframe/stack-ui";
-import { MoreVertical } from "lucide-react";
-import React, { ReactNode, useEffect, useId, useMemo, useRef, useState } from "react";
-import { PageLayout } from "../../page-layout";
+import { Button, Card, CardContent, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, toast } from "@stackframe/stack-ui";
+import { MoreVertical, Plus } from "lucide-react";
+import React, { ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { IllustratedInfo } from "../../../../../../../components/illustrated-info";
 import { useAdminApp } from "../../use-admin-app";
-import { ItemDialog } from "@/components/payments/item-dialog";
 import { ListSection } from "./list-section";
 import { ProductDialog } from "./product-dialog";
 
@@ -535,7 +535,59 @@ function ItemsList({
   );
 }
 
-export default function PageClient({ onViewChange }: { onViewChange: (view: "list" | "catalogs") => void }) {
+function WelcomeScreen({ onCreateProduct }: { onCreateProduct: () => void }) {
+  return (
+    <div className="flex flex-col items-center justify-center h-full px-4 py-12 max-w-3xl mx-auto">
+      <IllustratedInfo
+        illustration={(
+          <div className="grid grid-cols-3 gap-2">
+            {/* Simple pricing table representation */}
+            <div className="bg-background rounded p-3 shadow-sm">
+              <div className="h-2 bg-muted rounded mb-2"></div>
+              <div className="h-8 bg-primary/20 rounded mb-2"></div>
+              <div className="space-y-1">
+                <div className="h-1.5 bg-muted rounded"></div>
+                <div className="h-1.5 bg-muted rounded"></div>
+                <div className="h-1.5 bg-muted rounded"></div>
+              </div>
+            </div>
+            <div className="bg-background rounded p-3 shadow-sm border-2 border-primary">
+              <div className="h-2 bg-muted rounded mb-2"></div>
+              <div className="h-8 bg-primary/40 rounded mb-2"></div>
+              <div className="space-y-1">
+                <div className="h-1.5 bg-muted rounded"></div>
+                <div className="h-1.5 bg-muted rounded"></div>
+                <div className="h-1.5 bg-muted rounded"></div>
+              </div>
+            </div>
+            <div className="bg-background rounded p-3 shadow-sm">
+              <div className="h-2 bg-muted rounded mb-2"></div>
+              <div className="h-8 bg-primary/20 rounded mb-2"></div>
+              <div className="space-y-1">
+                <div className="h-1.5 bg-muted rounded"></div>
+                <div className="h-1.5 bg-muted rounded"></div>
+                <div className="h-1.5 bg-muted rounded"></div>
+              </div>
+            </div>
+          </div>
+        )}
+        title="Welcome to Payments!"
+        description={[
+          <>Stack Auth Payments is built on two primitives: products and items.</>,
+          <>Products are what customers buy — the columns of your pricing table. Each product has one or more prices and may or may not include items.</>,
+          <>Items are what customers receive — the rows of your pricing table. A user can hold multiple of the same item. Items are powerful; they can unlock feature access, raise limits, or meter consumption for usage-based billing.</>,
+          <>Create your first product to get started!</>,
+        ]}
+      />
+      <Button onClick={onCreateProduct}>
+        <Plus className="h-4 w-4 mr-2" />
+        Create Your First Product
+      </Button>
+    </div>
+  );
+}
+
+export default function PageClient() {
   const [activeTab, setActiveTab] = useState<"products" | "items">("products");
   const [hoveredProductId, setHoveredProductId] = useState<string | null>(null);
   const [hoveredItemId, setHoveredItemId] = useState<string | null>(null);
@@ -546,9 +598,6 @@ export default function PageClient({ onViewChange }: { onViewChange: (view: "lis
   const stackAdminApp = useAdminApp();
   const project = stackAdminApp.useProject();
   const config = project.useConfig();
-  const switchId = useId();
-  const testModeSwitchId = useId();
-  const [isUpdatingTestMode, setIsUpdatingTestMode] = useState(false);
   const paymentsConfig = config.payments;
 
   // Refs for products and items
@@ -698,18 +747,6 @@ export default function PageClient({ onViewChange }: { onViewChange: (view: "lis
     toast({ title: editingItem ? "Item updated" : "Item created" });
   };
 
-  const handleToggleTestMode = async (enabled: boolean) => {
-    setIsUpdatingTestMode(true);
-    try {
-      await project.updateConfig({ "payments.testMode": enabled });
-      toast({ title: enabled ? "Test mode enabled" : "Test mode disabled" });
-    } catch (_error) {
-      toast({ title: "Failed to update test mode", variant: "destructive" });
-    } finally {
-      setIsUpdatingTestMode(false);
-    }
-  };
-
   // Prepare data for product dialog - update when items change
   const existingProductsList = Object.entries(paymentsConfig.products).map(([id, product]: [string, any]) => ({
     id,
@@ -725,30 +762,9 @@ export default function PageClient({ onViewChange }: { onViewChange: (view: "lis
   }));
 
   const innerContent = (
-    <PageLayout
-      title="Products"
-      actions={
-        <div className="flex items-center gap-4 self-center">
-          <div className="flex items-center gap-2">
-            <Label htmlFor={switchId}>Pricing table</Label>
-            <Switch id={switchId} checked={true} onCheckedChange={() => onViewChange("catalogs")} />
-            <Label htmlFor={switchId}>List</Label>
-          </div>
-          <Separator orientation="vertical" className="h-6" />
-          <div className="flex items-center gap-2">
-            <Label htmlFor={testModeSwitchId}>Test mode</Label>
-            <Switch
-              id={testModeSwitchId}
-              checked={paymentsConfig.testMode === true}
-              disabled={isUpdatingTestMode}
-              onCheckedChange={(checked) => void handleToggleTestMode(checked)}
-            />
-          </div>
-        </div>
-      }
-    >
+    <>
       {/* Mobile tabs */}
-      <div className="lg:hidden mb-4">
+      < div className="lg:hidden mb-4" >
         <div className="flex space-x-1 bg-muted p-1 rounded-md">
           <button
             onClick={() => setActiveTab("products")}
@@ -773,15 +789,16 @@ export default function PageClient({ onViewChange }: { onViewChange: (view: "lis
             Items
           </button>
         </div>
-      </div>
+      </div >
 
       {/* Content */}
-      <div
-        className="flex gap-6 flex-1"
-        style={{ flexBasis: "0px", overflow: "scroll" }}
-      >
+      <div className="flex gap-6 flex-1" style={{
+        flexBasis: "0px",
+        overflow: "scroll",
+      }
+      }>
         {/* Desktop two-column layout */}
-        <Card className="hidden lg:flex w-full relative" ref={containerRef}>
+        <Card className="hidden lg:flex w-full relative" ref={containerRef} >
           <CardContent className="flex w-full">
             <div className="flex-1">
               <ProductsList
@@ -816,8 +833,8 @@ export default function PageClient({ onViewChange }: { onViewChange: (view: "lis
           </CardContent>
 
           {/* Connection lines */}
-          {hoveredProductId &&
-            getConnectedItems(hoveredProductId).map((itemId) => (
+          {
+            hoveredProductId && getConnectedItems(hoveredProductId).map(itemId => (
               <ConnectionLine
                 key={`${hoveredProductId}-${itemId}`}
                 fromRef={productRefs[hoveredProductId]}
@@ -825,10 +842,11 @@ export default function PageClient({ onViewChange }: { onViewChange: (view: "lis
                 containerRef={containerRef}
                 quantity={getItemQuantity(hoveredProductId, itemId)}
               />
-            ))}
+            ))
+          }
 
-          {hoveredItemId &&
-            getConnectedProducts(hoveredItemId).map((productId) => (
+          {
+            hoveredItemId && getConnectedProducts(hoveredItemId).map(productId => (
               <ConnectionLine
                 key={`${productId}-${hoveredItemId}`}
                 fromRef={productRefs[productId]}
@@ -836,11 +854,12 @@ export default function PageClient({ onViewChange }: { onViewChange: (view: "lis
                 containerRef={containerRef}
                 quantity={getItemQuantity(productId, hoveredItemId)}
               />
-            ))}
-        </Card>
+            ))
+          }
+        </Card >
 
         {/* Mobile single column with tabs */}
-        <div className="lg:hidden w-full">
+        < div className="lg:hidden w-full" >
           {activeTab === "products" ? (
             <ProductsList
               groupedProducts={groupedProducts}
@@ -865,9 +884,9 @@ export default function PageClient({ onViewChange }: { onViewChange: (view: "lis
               setShowItemDialog={setShowItemDialog}
             />
           )}
-        </div>
-      </div>
-    </PageLayout>
+        </div >
+      </div >
+    </>
   );
 
   return (

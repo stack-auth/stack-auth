@@ -1,3 +1,4 @@
+import { isBrowserLike } from "./env";
 import { DependenciesMap } from "./maps";
 import { filterUndefined } from "./objects";
 import { RateLimitOptions, ReactPromise, pending, rateLimited, resolved, runAsynchronously, wait } from "./promises";
@@ -183,10 +184,15 @@ class AsyncValueCache<T> {
     this._store.set(value);
   }
 
-  private _setAsync(value: Promise<T>): ReactPromise<boolean> {
+  private _setAsync(value: Promise<T>): ReactPromise<void> {
+    if (this._subscriptionsCount === 0 && !isBrowserLike()) {
+      // if we're in a server-like environment, we'd rather cache less aggressively to avoid memory leaks.
+      // hence, if no one is listening to this cache, let's invalidate it
+      this._invalidateCacheSoon();
+    }
     const promise = pending(value);
     this._pendingPromise = promise;
-    return pending(this._store.setAsync(promise));
+    return pending(this._store.setAsync(promise).then(() => undefined));
   }
 
   private _refetch(cacheStrategy: CacheStrategy): ReactPromise<T> {
@@ -204,7 +210,7 @@ class AsyncValueCache<T> {
     this._set(value);
   }
 
-  forceSetCachedValueAsync(value: Promise<T>): ReactPromise<boolean> {
+  forceSetCachedValueAsync(value: Promise<T>): ReactPromise<void> {
     return this._setAsync(value);
   }
 
@@ -212,13 +218,14 @@ class AsyncValueCache<T> {
    * If anyone is listening to the cache, refreshes the value, and sets it without invalidating the cache.
    */
   async refresh(): Promise<void> {
+    // note that we do the extra check here to save a request if no one is listening to the cache anyway
     if (this._subscriptionsCount > 0) {
       await this.getOrWait("write-only");
     }
   }
 
   /**
-   * Invalidates the cache, marking it dirty (ie. it will be refreshed on the next read). It will refresh immediately.
+   * Invalidates the cache, marking it dirty (ie. it will be refreshed on the next read). If anyone is listening to the cache, it will refresh immediately.
    */
   async invalidate(): Promise<void> {
     this._store.setUnavailable();
@@ -228,6 +235,18 @@ class AsyncValueCache<T> {
 
   isDirty(): boolean {
     return this._pendingPromise === undefined;
+  }
+
+  _invalidateCacheSoon(): void {
+    // wait a few seconds; we want to keep the cache up during this time
+    // else we do unnecessary requests if we unsubscribe and then subscribe again immediately
+    const currentRefreshPromiseIndex = ++this._mostRecentRefreshPromiseIndex;
+    runAsynchronously(async () => {
+      await wait(5000);
+      if (this._subscriptionsCount === 0 && currentRefreshPromiseIndex === this._mostRecentRefreshPromiseIndex) {
+        await this.invalidate();
+      }
+    });
   }
 
   onStateChange(callback: (value: T, oldValue: T | undefined) => void): { unsubscribe: () => void } {
@@ -249,15 +268,7 @@ class AsyncValueCache<T> {
         hasUnsubscribed = true;
         storeObj.unsubscribe();
         if (--this._subscriptionsCount === 0) {
-          const currentRefreshPromiseIndex = ++this._mostRecentRefreshPromiseIndex;
-          runAsynchronously(async () => {
-            // wait a few seconds; we want to keep the cache up during this time
-            // else we do unnecessary requests if we unsubscribe and then subscribe again immediately
-            await wait(5000);
-            if (this._subscriptionsCount === 0 && currentRefreshPromiseIndex === this._mostRecentRefreshPromiseIndex) {
-              await this.invalidate();
-            }
-          });
+          this._invalidateCacheSoon();
 
           for (const unsubscribe of this._unsubscribers) {
             unsubscribe();
