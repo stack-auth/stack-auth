@@ -1,6 +1,6 @@
 'use client';
 
-import type { TableOfContents } from 'fumadocs-core/toc';
+import type { TableOfContents } from 'fumadocs-core/server';
 import { AnchorProvider, type AnchorProviderProps } from 'fumadocs-core/toc';
 import { I18nLabel } from 'fumadocs-ui/contexts/i18n';
 import { Edit, Text } from 'lucide-react';
