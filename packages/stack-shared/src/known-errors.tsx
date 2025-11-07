@@ -1492,6 +1492,33 @@ const CustomerDoesNotExist = createKnownErrorConstructor(
   (json) => [json.customer_id] as const,
 );
 
+const SubscriptionNotFound = createKnownErrorConstructor(
+  KnownError,
+  "SUBSCRIPTION_NOT_FOUND",
+  (subscriptionId: string) => [
+    404,
+    `Subscription with ID ${JSON.stringify(subscriptionId)} does not exist.`,
+    {
+      subscription_id: subscriptionId,
+    },
+  ] as const,
+  (json) => [json.subscription_id] as const,
+);
+
+const OneTimePurchaseNotFound = createKnownErrorConstructor(
+  KnownError,
+  "ONE_TIME_PURCHASE_NOT_FOUND",
+  (purchaseId: string) => [
+    404,
+    `One-time purchase with ID ${JSON.stringify(purchaseId)} does not exist.`,
+    {
+      one_time_purchase_id: purchaseId,
+    },
+  ] as const,
+  (json) => [json.one_time_purchase_id] as const,
+);
+
+
 const ProductDoesNotExist = createKnownErrorConstructor(
   KnownError,
   "PRODUCT_DOES_NOT_EXIST",
@@ -1687,6 +1714,8 @@ export const KnownErrors = {
   ProductDoesNotExist,
   ProductCustomerTypeDoesNotMatch,
   ProductAlreadyGranted,
+  SubscriptionNotFound,
+  OneTimePurchaseNotFound,
   ItemQuantityInsufficientAmount,
   StripeAccountInfoNotFound,
   DataVaultStoreDoesNotExist,

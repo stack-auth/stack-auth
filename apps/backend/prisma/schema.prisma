@@ -821,6 +821,7 @@ model OneTimePurchase {
   quantity              Int
   stripePaymentIntentId String?
   createdAt             DateTime               @default(now())
+  refundedAt            DateTime?
   creationSource        PurchaseCreationSource
 
   @@id([tenancyId, id])

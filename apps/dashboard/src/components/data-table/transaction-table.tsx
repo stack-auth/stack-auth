@@ -4,7 +4,7 @@ import { useAdminApp } from '@/app/(main)/(protected)/projects/[projectId]/use-a
 import type { Transaction, TransactionEntry, TransactionType } from '@stackframe/stack-shared/dist/interface/crud/transactions';
 import { TRANSACTION_TYPES } from '@stackframe/stack-shared/dist/interface/crud/transactions';
 import { deepPlainEquals } from '@stackframe/stack-shared/dist/utils/objects';
-import { ActionCell, AvatarCell, Button, DataTableColumnHeader, DataTableManualPagination, DateCell, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, TextCell, Tooltip, TooltipContent, TooltipTrigger } from '@stackframe/stack-ui';
+import { ActionCell, ActionDialog, AvatarCell, DataTableColumnHeader, DataTableManualPagination, DateCell, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, TextCell, Tooltip, TooltipContent, TooltipTrigger } from '@stackframe/stack-ui';
 import type { ColumnDef, ColumnFiltersState, SortingState } from '@tanstack/react-table';
 import type { LucideIcon } from 'lucide-react';
 import { ArrowDownCircle, ArrowUpCircle, Ban, CircleHelp, RefreshCcw, RotateCcw, Settings, ShoppingCart, Shuffle } from 'lucide-react';
@@ -25,12 +25,14 @@ type TransactionSummary = {
   customerId: string | null,
   detail: string,
   amountDisplay: string,
+  refundTarget: RefundTarget | null,
 };
 
 type EntryWithCustomer = Extract<TransactionEntry, { customer_type: string, customer_id: string }>;
 type MoneyTransferEntry = Extract<TransactionEntry, { type: 'money_transfer' }>;
 type ProductGrantEntry = Extract<TransactionEntry, { type: 'product_grant' }>;
 type ItemQuantityChangeEntry = Extract<TransactionEntry, { type: 'item_quantity_change' }>;
+type RefundTarget = { type: 'subscription' | 'one-time-purchase', id: string };
 
 function isEntryWithCustomer(entry: TransactionEntry): entry is EntryWithCustomer {
   return 'customer_type' in entry && 'customer_id' in entry;
@@ -46,6 +48,20 @@ function isProductGrantEntry(entry: TransactionEntry): entry is ProductGrantEntr
 
 function isItemQuantityChangeEntry(entry: TransactionEntry): entry is ItemQuantityChangeEntry {
   return entry.type === 'item_quantity_change';
+}
+
+function getRefundTarget(transaction: Transaction): RefundTarget | null {
+  if (transaction.type !== 'purchase') {
+    return null;
+  }
+  const productGrant = transaction.entries.find(isProductGrantEntry);
+  if (productGrant?.subscription_id) {
+    return { type: 'subscription', id: productGrant.subscription_id };
+  }
+  if (productGrant?.one_time_purchase_id) {
+    return { type: 'one-time-purchase', id: productGrant.one_time_purchase_id };
+  }
+  return null;
 }
 
 function deriveSourceType(transaction: Transaction): SourceType {
@@ -162,6 +178,7 @@ function getTransactionSummary(transaction: Transaction): TransactionSummary {
   const sourceType = deriveSourceType(transaction);
   const customerEntry = transaction.entries.find(isEntryWithCustomer);
   const moneyTransferEntry = transaction.entries.find(isMoneyTransferEntry);
+  const refundTarget = getRefundTarget(transaction);
 
   return {
     sourceType,
@@ -170,7 +187,50 @@ function getTransactionSummary(transaction: Transaction): TransactionSummary {
     customerId: customerEntry?.customer_id ?? null,
     detail: describeDetail(transaction, sourceType),
     amountDisplay: transaction.test_mode ? 'Test mode' : pickChargedAmountDisplay(moneyTransferEntry),
+    refundTarget,
   };
+}
+
+function RefundActionCell({ transaction, refundTarget }: { transaction: Transaction, refundTarget: RefundTarget | null }) {
+  const app = useAdminApp();
+  const [isDialogOpen, setIsDialogOpen] = React.useState(false);
+  const target = transaction.type === 'purchase' ? refundTarget : null;
+  const canRefund = !!target;
+
+  return (
+    <>
+      {target ? (
+        <ActionDialog
+          open={isDialogOpen}
+          onOpenChange={setIsDialogOpen}
+          title="Refund Transaction"
+          danger
+          cancelButton
+          okButton={{
+            label: "Refund",
+            onClick: async () => {
+              await app.refundTransaction(target);
+              setIsDialogOpen(false);
+            },
+          }}
+          confirmText="Refunds cannot be undone and will revoke access to the purchased product."
+        >
+          {`Refund this ${target.type === 'subscription' ? 'subscription' : 'one-time purchase'} transaction?`}
+        </ActionDialog>
+      ) : null}
+      <ActionCell
+        items={[{
+          item: "Refund",
+          danger: true,
+          disabled: !canRefund,
+          onClick: () => {
+            if (!target) return;
+            setIsDialogOpen(true);
+          },
+        }]}
+      />
+    </>
+  );
 }
 
 type Filters = {
@@ -268,6 +328,19 @@ export function TransactionTable() {
       ),
       enableSorting: false,
     },
+    {
+      id: 'actions',
+      cell: ({ row }) => {
+        const summary = summaryById.get(row.original.id);
+        return (
+          <RefundActionCell
+            transaction={row.original}
+            refundTarget={summary?.refundTarget ?? null}
+          />
+        );
+      },
+      enableSorting: false,
+    },
   ], [summaryById]);
 
   const onUpdate = async (options: {
@@ -304,6 +377,7 @@ export function TransactionTable() {
         amount: true,
         detail: true,
         created_at_millis: true,
+        actions: true,
       }}
       defaultColumnFilters={[
         { id: 'source_type', value: undefined },
