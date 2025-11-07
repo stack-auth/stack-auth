@@ -184,6 +184,7 @@ export class AsyncStore<T> implements ReadonlyAsyncStore<T> {
 
   setUnavailable(): void {
     this._lastSuccessfulUpdate = ++this._updateCounter;
+    this._mostRecentOkValue = undefined;
     this._isAvailable = false;
     this._isRejected = false;
     this._rejectionError = undefined;

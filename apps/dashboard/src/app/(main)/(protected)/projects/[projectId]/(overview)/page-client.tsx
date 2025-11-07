@@ -1,6 +1,5 @@
 'use client';
 
-import { stackAppInternalsSymbol } from "@/app/(main)/integrations/transfer-confirm-page";
 import { useState } from "react";
 import { useAdminApp } from "../use-admin-app";
 import MetricsPage from "./metrics-page";
@@ -8,8 +7,8 @@ import SetupPage from "./setup-page";
 
 export default function PageClient() {
   const adminApp = useAdminApp();
-  const data = (adminApp as any)[stackAppInternalsSymbol].useMetrics(false);
-  const [page, setPage] = useState<'setup' | 'metrics'>(data.total_users === 0 ? 'setup' : 'metrics');
+  const users = adminApp.useUsers({ limit: 1 });
+  const [page, setPage] = useState<'setup' | 'metrics'>(users.length === 0 ? 'setup' : 'metrics');
 
   switch (page) {
     case 'setup': {

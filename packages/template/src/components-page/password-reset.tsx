@@ -6,8 +6,9 @@ import { getPasswordError } from "@stackframe/stack-shared/dist/helpers/password
 import { passwordSchema, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { cacheFunction } from "@stackframe/stack-shared/dist/utils/caches";
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
+import { use } from "@stackframe/stack-shared/dist/utils/react";
 import { Button, Label, PasswordInput, Typography, cn } from "@stackframe/stack-ui";
-import React, { useState } from "react";
+import { useState } from "react";
 import { useForm } from "react-hook-form";
 import * as yup from "yup";
 import { StackClientApp, useStackApp } from "..";
@@ -161,7 +162,7 @@ export function PasswordReset({
     return invalidJsx;
   }
 
-  const result = React.use(cachedVerifyPasswordResetCode(stackApp, code));
+  const result = use(cachedVerifyPasswordResetCode(stackApp, code));
 
   if (result.status === 'error') {
     if (KnownErrors.VerificationCodeNotFound.isInstance(result.error)) {

@@ -154,12 +154,6 @@ You can now open the dev launchpad at [http://localhost:8100](http://localhost:8
 
 Your IDE may show an error on all `@stackframe/XYZ` imports. To fix this, simply restart the TypeScript language server; for example, in VSCode you can open the command palette (Ctrl+Shift+P) and run `Developer: Reload Window` or `TypeScript: Restart TS server`.
 
-You can also open Prisma Studio to see the database interface and edit data directly:
-
-```sh
-pnpm run prisma studio
-```
-
 
 ### Database migrations
 

@@ -3,6 +3,7 @@
 import { useAdminApp } from "@/app/(main)/(protected)/projects/[projectId]/use-admin-app";
 import { AppStoreEntry } from "@/components/app-store-entry";
 import { useRouter } from "@/components/router";
+import { ALL_APPS_FRONTEND, getAppPath } from "@/lib/apps-frontend";
 import { AppId } from "@stackframe/stack-shared/dist/apps/apps-config";
 import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { Dialog, DialogContent, DialogTitle } from "@stackframe/stack-ui";
@@ -18,7 +19,8 @@ export default function AppDetailsModalPageClient({ appId }: { appId: AppId }) {
     await project.updateConfig({
       [`apps.installed.${appId}.enabled`]: true,
     });
-    router.back();
+    const path = getAppPath(project.id, ALL_APPS_FRONTEND[appId]);
+    router.push(path);
   };
 
   return (

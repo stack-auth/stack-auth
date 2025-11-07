@@ -433,6 +433,14 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
     await this._internalApiKeysCache.refresh([]);
   }
 
+  protected override async _refreshUsers() {
+    await Promise.all([
+      super._refreshUsers(),
+      this._metricsCache.refresh([false]),
+      this._metricsCache.refresh([true]),
+    ]);
+  }
+
   get [stackAppInternalsSymbol]() {
     return {
       ...super[stackAppInternalsSymbol],

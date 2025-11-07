@@ -910,4 +910,19 @@ export class StackServerInterface extends StackClientInterface {
       null,
     );
   }
+
+  async initiateServerPasskeyRegistration(userId: string): Promise<Result<{ options_json: any, code: string }, KnownErrors[]>> {
+    // Create a temporary session for this user to use for passkey registration
+    // TODO instead of creating a new session, this should just call the endpoint in a way in which it doesn't require a session
+    // (currently this shows up on session history etc... not ideal)
+    const { accessToken, refreshToken } = await this.createServerUserSession(userId, 60000 * 2, false); // 2 minute session
+    const tempSession = new InternalSession({
+      accessToken,
+      refreshToken,
+      refreshAccessTokenCallback: async () => null, // No refresh for temporary sessions
+    });
+
+    // Use the existing initiatePasskeyRegistration method with the temporary session
+    return await this.initiatePasskeyRegistration({}, tempSession);
+  }
 }
