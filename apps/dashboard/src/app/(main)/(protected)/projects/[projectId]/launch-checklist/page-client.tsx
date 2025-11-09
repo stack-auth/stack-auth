@@ -21,7 +21,7 @@ import {
   cn
 } from "@stackframe/stack-ui";
 import { CheckCircle2, ChevronDown, ChevronUp, Circle, Clock } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AppEnabledGuard } from "../app-enabled-guard";
 import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";
@@ -195,42 +195,79 @@ function TaskCard(props: {
   task: LaunchTask,
   children?: React.ReactNode,
   footer?: React.ReactNode,
+  isExpanded: boolean,
+  onToggle: () => void,
 }) {
   const meta = STATUS_META[props.task.status];
 
   return (
     <Card className={cn("transition-all duration-300", meta.cardClass)}>
-      <CardHeader>
-        <div className="space-y-1.5">
-          <CardTitle className="text-xl font-semibold">{props.task.title}</CardTitle>
-          <CardDescription className="text-sm">{props.task.subtitle}</CardDescription>
+      <CardHeader
+        className="cursor-pointer select-none"
+        onClick={props.onToggle}
+      >
+        <div className="flex items-start justify-between gap-4">
+          <div className="space-y-1.5 flex-1">
+            <CardTitle className="text-xl font-semibold">{props.task.title}</CardTitle>
+            <CardDescription
+              className={cn(
+                "text-sm transition-opacity duration-300 ease-in-out",
+                props.isExpanded ? "opacity-100" : "opacity-0"
+              )}
+            >
+              {props.task.subtitle}
+            </CardDescription>
+          </div>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              props.onToggle();
+            }}
+            className="flex shrink-0 items-center justify-center rounded-md p-1.5 transition-colors hover:bg-accent"
+            aria-label={props.isExpanded ? "Collapse section" : "Expand section"}
+          >
+            {props.isExpanded ? (
+              <ChevronUp className="h-5 w-5 text-muted-foreground" />
+            ) : (
+              <ChevronDown className="h-5 w-5 text-muted-foreground" />
+            )}
+          </button>
         </div>
       </CardHeader>
-      <CardContent className="space-y-4">
-        <ul className="divide-y divide-border/40">
-          {props.task.items.map((item) => (
-            <ChecklistRow
-              key={item.id}
-              status={props.task.status}
-              title={item.title}
-              done={item.done}
-              detail={item.detail}
-            />
-          ))}
-        </ul>
-        {props.children}
-      </CardContent>
-      <CardFooter className="flex justify-end">
-        {props.footer ?? (
-          <Button
-            size="sm"
-            onClick={props.task.onAction}
-            className="font-medium bg-background text-foreground border border-border shadow-sm transition-all duration-150 hover:bg-accent active:scale-95 dark:bg-foreground dark:text-background dark:hover:bg-foreground/90"
-          >
-            {props.task.actionLabel}
-          </Button>
+      <div
+        className={cn(
+          "grid transition-all duration-300 ease-in-out",
+          props.isExpanded ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"
         )}
-      </CardFooter>
+      >
+        <div className="overflow-hidden">
+          <CardContent className="space-y-4">
+            <ul className="divide-y divide-border/40">
+              {props.task.items.map((item) => (
+                <ChecklistRow
+                  key={item.id}
+                  status={props.task.status}
+                  title={item.title}
+                  done={item.done}
+                  detail={item.detail}
+                />
+              ))}
+            </ul>
+            {props.children}
+          </CardContent>
+          <CardFooter className="flex justify-end">
+            {props.footer ?? (
+              <Button
+                size="sm"
+                onClick={props.task.onAction}
+                className="font-medium bg-background text-foreground border border-border shadow-sm transition-all duration-150 hover:bg-accent active:scale-95 dark:bg-foreground dark:text-background dark:hover:bg-foreground/90"
+              >
+                {props.task.actionLabel}
+              </Button>
+            )}
+          </CardFooter>
+        </div>
+      </div>
     </Card>
   );
 }
@@ -437,6 +474,35 @@ export default function PageClient() {
     completed,
     next,
     value: allItems.length === 0 ? 100 : (completed / allItems.length) * 100,
+  };
+
+  // Track which section is expanded (only one at a time, excluding "Checks complete")
+  const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
+  const prevNextTaskIdRef = useRef<string | null>(null);
+
+  // Auto-expand the section containing the next task on mount and when next task changes
+  useEffect(() => {
+    const nextTaskId = next?.task.id ?? null;
+    const prevNextTaskId = prevNextTaskIdRef.current;
+
+    // Only auto-expand if:
+    // 1. This is the initial load (prevNextTaskId is null), OR
+    // 2. The next task actually changed to a different section
+    if (prevNextTaskId === null || (nextTaskId !== null && nextTaskId !== prevNextTaskId)) {
+      if (nextTaskId !== null) {
+        setExpandedTaskId(nextTaskId);
+      } else {
+        // If all tasks are done, collapse all sections
+        setExpandedTaskId(null);
+      }
+    }
+
+    // Update the ref to track the current next task
+    prevNextTaskIdRef.current = nextTaskId;
+  }, [next]);
+
+  const handleTaskToggle = (taskId: string) => {
+    setExpandedTaskId((current) => (current === taskId ? null : taskId));
   };
 
   // Animate progress bar on mount and when progress changes
@@ -685,6 +751,7 @@ export default function PageClient() {
         <div className="grid gap-4">
           {orderedTasks.map((task, index) => {
             const extras = taskExtras[task.id] ?? {};
+            const isExpanded = expandedTaskId === task.id;
             return (
               <div
                 key={task.id}
@@ -697,6 +764,8 @@ export default function PageClient() {
               >
                 <TaskCard
                   task={task}
+                  isExpanded={isExpanded}
+                  onToggle={() => handleTaskToggle(task.id)}
                   {...extras}
                 />
               </div>
