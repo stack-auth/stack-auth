@@ -20,6 +20,7 @@ import {
   Typography,
   cn
 } from "@stackframe/stack-ui";
+import * as confetti from "canvas-confetti";
 import { CheckCircle2, ChevronDown, ChevronUp, Circle, Clock } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { AppEnabledGuard } from "../app-enabled-guard";
@@ -199,16 +200,34 @@ function TaskCard(props: {
   onToggle: () => void,
 }) {
   const meta = STATUS_META[props.task.status];
+  const allItemsDone = props.task.items.every((item) => item.done);
 
   return (
-    <Card className={cn("transition-all duration-300", meta.cardClass)}>
+    <Card
+      className={cn(
+        "transition-all duration-300",
+        meta.cardClass,
+        allItemsDone && "border-emerald-500/30 bg-emerald-500/5 dark:border-emerald-500/40 dark:bg-emerald-500/10"
+      )}
+    >
       <CardHeader
         className="cursor-pointer select-none"
         onClick={props.onToggle}
       >
         <div className="flex items-start justify-between gap-4">
           <div className="space-y-1.5 flex-1">
-            <CardTitle className="text-xl font-semibold">{props.task.title}</CardTitle>
+            <div className="flex items-center gap-2">
+              <CardTitle className="text-xl font-semibold">{props.task.title}</CardTitle>
+              {allItemsDone && (
+                <Badge
+                  variant="outline"
+                  className="border-emerald-500/50 bg-emerald-500/10 text-emerald-600 dark:border-emerald-500/50 dark:bg-emerald-500/20 dark:text-emerald-400"
+                >
+                  <CheckCircle2 className="mr-1 h-3 w-3" />
+                  Complete
+                </Badge>
+              )}
+            </div>
             <CardDescription
               className={cn(
                 "text-sm transition-opacity duration-300 ease-in-out",
@@ -282,6 +301,7 @@ export default function PageClient() {
   const [showOauthGuides, setShowOauthGuides] = useState(false);
   const [showEmailHelp, setShowEmailHelp] = useState(false);
   const [animatedProgress, setAnimatedProgress] = useState(0);
+  const prevProductionModeRef = useRef<boolean | undefined>(undefined);
 
   const domainConfigs = project.config.domains;
   const hasDomainConfigured = domainConfigs.length > 0;
@@ -513,6 +533,48 @@ export default function PageClient() {
     return () => clearTimeout(timer);
   }, [checklistProgress.value]);
 
+  // Trigger confetti when production mode is turned on
+  useEffect(() => {
+    const currentProductionMode = project.isProductionMode;
+    const prevProductionMode = prevProductionModeRef.current;
+
+    // Only trigger confetti when production mode changes from false to true
+    if (prevProductionMode !== undefined && !prevProductionMode && currentProductionMode) {
+      // Create a confetti effect dropping from the top
+      const duration = 3000;
+      const animationEnd = Date.now() + duration;
+      const defaults = { startVelocity: 30, spread: 360, ticks: 60, zIndex: 9999 };
+
+      function randomInRange(min: number, max: number) {
+        return Math.random() * (max - min) + min;
+      }
+
+      const interval = setInterval(() => {
+        const timeLeft = animationEnd - Date.now();
+
+        if (timeLeft <= 0) {
+          clearInterval(interval);
+          return;
+        }
+
+        const particleCount = 50 * (timeLeft / duration);
+        confetti.default({
+          ...defaults,
+          particleCount,
+          origin: { x: randomInRange(0.1, 0.9), y: 0 },
+        });
+      }, 250);
+
+      // Cleanup interval on unmount or when production mode changes
+      return () => {
+        clearInterval(interval);
+      };
+    }
+
+    // Update the ref to track the current production mode state
+    prevProductionModeRef.current = currentProductionMode;
+  }, [project.isProductionMode]);
+
   const providerEntries = Array.from(PROVIDER_GUIDES.entries());
   const defaultProviderTab = providerEntries[0]?.[0] ?? "google";
 
@@ -677,7 +739,7 @@ export default function PageClient() {
               <h2 className="text-2xl font-semibold tracking-tight text-foreground">
                 {checklistProgress.completed === checklistProgress.total
                   ? "Everything is ready to launch."
-                  : `${checklistProgress.completed}/${checklistProgress.total} checks complete`}
+                  : `${checklistProgress.completed}/${checklistProgress.total} Checks Completed`}
               </h2>
             </div>
 
