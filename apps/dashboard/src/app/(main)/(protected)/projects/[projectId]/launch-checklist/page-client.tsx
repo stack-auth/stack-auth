@@ -558,11 +558,16 @@ export default function PageClient() {
         }
 
         const particleCount = 50 * (timeLeft / duration);
-        confetti.default({
+        const result = confetti.default({
           ...defaults,
           particleCount,
           origin: { x: randomInRange(0.1, 0.9), y: 0 },
         });
+        if (result) {
+          result.catch(() => {
+            // Ignore confetti errors
+          });
+        }
       }, 250);
 
       // Cleanup interval on unmount or when production mode changes
