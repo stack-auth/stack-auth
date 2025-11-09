@@ -13,16 +13,15 @@ import {
   CardFooter,
   CardHeader,
   CardTitle,
-  Progress,
   Tabs,
   TabsContent,
   TabsList,
   TabsTrigger,
   Typography,
-  cn,
+  cn
 } from "@stackframe/stack-ui";
-import { CheckCircle2, Circle, Clock, AlertCircle, ChevronDown, ChevronUp } from "lucide-react";
-import { useState, useEffect } from "react";
+import { CheckCircle2, ChevronDown, ChevronUp, Circle, Clock } from "lucide-react";
+import { useEffect, useState } from "react";
 import { AppEnabledGuard } from "../app-enabled-guard";
 import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";
@@ -147,34 +146,24 @@ const STATUS_META: Record<
   LaunchTaskStatus,
   {
     badgeLabel: string,
-    badgeVariant: React.ComponentProps<typeof Badge>["variant"],
-    badgeClass?: string,
     cardClass: string,
     inactiveIcon: string,
-    badgeIcon: typeof CheckCircle2,
   }
 > = {
   done: {
     badgeLabel: "Complete",
-    badgeVariant: "default",
-    badgeClass: "bg-emerald-500 dark:bg-emerald-600 text-white",
-    cardClass: "border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/30 transition-all duration-300 hover:shadow-lg hover:shadow-emerald-500/10",
+    cardClass: "border-primary/30 bg-background transition-all duration-300 hover:shadow-lg dark:border-primary/40 dark:shadow-primary/5",
     inactiveIcon: "text-emerald-500 dark:text-emerald-400",
-    badgeIcon: CheckCircle2,
   },
   action: {
     badgeLabel: "Up next",
-    badgeVariant: "outline",
-    cardClass: "border-border bg-background transition-all duration-300 hover:shadow-lg hover:border-primary/30 hover:shadow-primary/5",
+    cardClass: "border-primary/30 bg-background transition-all duration-300 hover:shadow-lg dark:border-primary/40 dark:shadow-primary/5",
     inactiveIcon: "text-muted-foreground",
-    badgeIcon: Clock,
   },
   blocked: {
     badgeLabel: "Resolve",
-    badgeVariant: "outline",
-    cardClass: "border-border bg-background transition-all duration-300 hover:shadow-lg hover:border-destructive/30 hover:shadow-destructive/5",
+    cardClass: "border-primary/30 bg-background transition-all duration-300 hover:shadow-lg dark:border-primary/40 dark:shadow-primary/5",
     inactiveIcon: "text-muted-foreground",
-    badgeIcon: AlertCircle,
   },
 };
 
@@ -190,12 +179,12 @@ function ChecklistRow(props: {
     : STATUS_META[props.status].inactiveIcon;
 
   return (
-    <li className="group flex items-start gap-3 rounded-lg border border-border/70 bg-background/80 px-3 py-2 transition-all duration-200 hover:bg-accent/50 hover:border-border hover:shadow-sm">
-      <Icon className={cn("mt-1 h-4 w-4 flex-shrink-0 transition-transform duration-200 group-hover:scale-110", iconClass)} />
-      <div className="space-y-1 flex-1">
-        <Typography className="text-sm font-medium leading-none">
+    <li className="group flex items-start gap-3 py-3 transition-all duration-200">
+      <Icon className={cn("mt-0.5 h-4 w-4 flex-shrink-0", iconClass)} />
+      <div className="space-y-1.5 flex-1">
+        <p className="text-sm font-medium leading-snug text-foreground">
           {props.title}
-        </Typography>
+        </p>
         {props.detail}
       </div>
     </li>
@@ -208,22 +197,17 @@ function TaskCard(props: {
   footer?: React.ReactNode,
 }) {
   const meta = STATUS_META[props.task.status];
-  const BadgeIcon = meta.badgeIcon;
 
   return (
     <Card className={cn("transition-all duration-300", meta.cardClass)}>
-      <CardHeader className="flex flex-wrap justify-between gap-3">
-        <div className="space-y-2">
-          <CardTitle>{props.task.title}</CardTitle>
-          <CardDescription>{props.task.subtitle}</CardDescription>
-          <Badge variant={meta.badgeVariant} className={cn("gap-1.5", meta.badgeClass)}>
-            <BadgeIcon className="h-3 w-3" />
-            {meta.badgeLabel}
-          </Badge>
+      <CardHeader>
+        <div className="space-y-1.5">
+          <CardTitle className="text-xl font-semibold">{props.task.title}</CardTitle>
+          <CardDescription className="text-sm">{props.task.subtitle}</CardDescription>
         </div>
       </CardHeader>
-      <CardContent className="space-y-3">
-        <ul className="space-y-2">
+      <CardContent className="space-y-4">
+        <ul className="divide-y divide-border/40">
           {props.task.items.map((item) => (
             <ChecklistRow
               key={item.id}
@@ -237,25 +221,15 @@ function TaskCard(props: {
         {props.children}
       </CardContent>
       <CardFooter className="flex justify-end">
-        {props.footer ??
-          (props.task.status === "done" ? (
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={props.task.onAction}
-              className="transition-transform duration-150 active:scale-95"
-            >
-              {props.task.actionLabel}
-            </Button>
-          ) : (
-            <Button
-              size="sm"
-              onClick={props.task.onAction}
-              className="transition-transform duration-150 active:scale-95 hover:shadow-md"
-            >
-              {props.task.actionLabel}
-            </Button>
-          ))}
+        {props.footer ?? (
+          <Button
+            size="sm"
+            onClick={props.task.onAction}
+            className="font-medium bg-background text-foreground border border-border shadow-sm transition-all duration-150 hover:bg-accent active:scale-95 dark:bg-foreground dark:text-background dark:hover:bg-foreground/90"
+          >
+            {props.task.actionLabel}
+          </Button>
+        )}
       </CardFooter>
     </Card>
   );
@@ -478,58 +452,56 @@ export default function PageClient() {
 
   const oauthChildren =
     sharedOAuthProviders.length > 0 ? (
-      <div className="space-y-3 rounded-lg border border-border/60 bg-muted/20 p-3">
-        <Typography className="text-xs font-semibold uppercase text-foreground">
-          Need new credentials?
-        </Typography>
-        <Typography variant="secondary" className="text-xs">
-          Create an OAuth app with the provider, set Stack as the callback URL,
-          then paste the client ID and secret into the provider settings.
-        </Typography>
-        <Button
-          size="sm"
-          variant="ghost"
-          onClick={() => setShowOauthGuides((open) => !open)}
-          className="justify-start gap-1 px-2"
-        >
-          {showOauthGuides ? (
-            <>
-              <ChevronUp className="h-4 w-4" />
-              Hide provider guides
-            </>
-          ) : (
-            <>
-              <ChevronDown className="h-4 w-4" />
-              Show provider guides
-            </>
-          )}
-        </Button>
+      <div className="space-y-4 border-t border-border/40 pt-4">
+        <div className="flex items-start justify-between gap-4">
+          <p className="text-sm text-muted-foreground">
+            Need help? View setup guides for each provider.
+          </p>
+          <button
+            onClick={() => setShowOauthGuides((open) => !open)}
+            className="flex shrink-0 items-center gap-1 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+          >
+            {showOauthGuides ? (
+              <>
+                Hide guides
+                <ChevronUp className="h-3 w-3" />
+              </>
+            ) : (
+              <>
+                View guides
+                <ChevronDown className="h-3 w-3" />
+              </>
+            )}
+          </button>
+        </div>
         <div
           className={cn(
-            "grid transition-all duration-300 ease-in-out",
+            "grid transition-all duration-200 ease-in-out",
             showOauthGuides ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"
           )}
         >
           <div className="overflow-hidden">
-            <Tabs defaultValue={defaultProviderTab} className="w-full pt-2">
-              <TabsList className="flex w-full flex-wrap justify-start gap-2">
+            <Tabs defaultValue={defaultProviderTab} className="w-full">
+              <TabsList className="flex h-auto w-full flex-wrap justify-start gap-1 bg-transparent p-0">
                 {providerEntries.map(([id, guide]) => (
-                  <TabsTrigger key={id} value={id}>
+                  <TabsTrigger
+                    key={id}
+                    value={id}
+                    className="rounded border border-transparent bg-transparent px-2.5 py-1 text-xs data-[state=active]:border-border data-[state=active]:bg-accent"
+                  >
                     {guide.label}
                   </TabsTrigger>
                 ))}
               </TabsList>
               {providerEntries.map(([id, guide]) => (
-                <TabsContent key={id} value={id} className="space-y-1">
-                  <Typography>
-                    <StyledLink href={guide.docsUrl} target="_blank">
-                      {guide.label} setup guide
-                    </StyledLink>
-                  </Typography>
-                  <Typography variant="secondary" className="text-xs">
-                    Callback URL:
-                  </Typography>
-                  <InlineCode>{guide.callbackUrl}</InlineCode>
+                <TabsContent key={id} value={id} className="mt-3 space-y-2.5">
+                  <StyledLink href={guide.docsUrl} target="_blank" className="text-sm">
+                    View {guide.label} documentation →
+                  </StyledLink>
+                  <div className="space-y-1">
+                    <p className="text-xs text-muted-foreground">Callback URL</p>
+                    <InlineCode>{guide.callbackUrl}</InlineCode>
+                  </div>
                 </TabsContent>
               ))}
             </Tabs>
@@ -539,36 +511,36 @@ export default function PageClient() {
     ) : undefined;
 
   const emailChildren = (
-    <div className="space-y-3 rounded-lg border border-border/60 bg-muted/20 p-3">
-      <Typography className="text-xs font-semibold uppercase text-foreground">
-        Quick email setup
-      </Typography>
-      <Button
-        size="sm"
-        variant="ghost"
-        onClick={() => setShowEmailHelp((open) => !open)}
-        className="justify-start gap-1 px-2"
-      >
-        {showEmailHelp ? (
-          <>
-            <ChevronUp className="h-4 w-4" />
-            Hide setup steps
-          </>
-        ) : (
-          <>
-            <ChevronDown className="h-4 w-4" />
-            How do I connect my server?
-          </>
-        )}
-      </Button>
+    <div className="space-y-4 border-t border-border/40 pt-4">
+      <div className="flex items-start justify-between gap-4">
+        <p className="text-sm text-muted-foreground">
+          Need help setting up? Follow these steps.
+        </p>
+        <button
+          onClick={() => setShowEmailHelp((open) => !open)}
+          className="flex shrink-0 items-center gap-1 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+        >
+          {showEmailHelp ? (
+            <>
+              Hide steps
+              <ChevronUp className="h-3 w-3" />
+            </>
+          ) : (
+            <>
+              View steps
+              <ChevronDown className="h-3 w-3" />
+            </>
+          )}
+        </button>
+      </div>
       <div
         className={cn(
-          "grid transition-all duration-300 ease-in-out",
+          "grid transition-all duration-200 ease-in-out",
           showEmailHelp ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"
         )}
       >
         <div className="overflow-hidden">
-          <ol className="list-decimal space-y-1 pl-5 pt-2 text-xs text-muted-foreground">
+          <ol className="list-decimal space-y-2 pl-5 text-sm text-muted-foreground">
             <li>Verify a sending domain with your email provider.</li>
             <li>
               Switch Stack to Custom SMTP or Resend, then paste the credentials.
@@ -581,7 +553,7 @@ export default function PageClient() {
   );
 
   const productionChildren = (
-    <div className="rounded-lg border border-dashed border-border bg-background p-3">
+    <div className="border-t border-border/40 pt-4">
       <SettingSwitch
         label="Enable production mode"
         checked={project.isProductionMode}
@@ -598,14 +570,14 @@ export default function PageClient() {
   const productionFooter = (
     <div className="flex w-full items-center justify-end gap-3">
       {productionTaskStatus === "done" && (
-        <Typography variant="secondary" className="text-sm">
+        <span className="text-sm text-muted-foreground">
           Production mode is live.
-        </Typography>
+        </span>
       )}
       <Button
         size="sm"
-        variant={productionTaskStatus === "done" ? "ghost" : "secondary"}
         onClick={() => router.push(`${baseProjectPath}/project-settings`)}
+        className="font-medium bg-background text-foreground border border-border shadow-sm transition-all duration-150 hover:bg-accent active:scale-95 dark:bg-foreground dark:text-background dark:hover:bg-foreground/90"
       >
         {productionTaskStatus === "done"
           ? "Review settings"
@@ -629,45 +601,83 @@ export default function PageClient() {
         title="Launch Checklist"
         description="Finish these quick checks before turning on production mode."
       >
-        <div className="group relative overflow-hidden rounded-xl border border-primary/20 bg-gradient-to-br from-primary/5 via-accent/30 to-primary/5 p-5 shadow-sm transition-shadow duration-300 hover:shadow-md dark:from-primary/10 dark:via-accent/20 dark:to-primary/10">
-          <div className="flex flex-wrap items-start justify-between gap-4">
-            <div className="space-y-2">
-              <Typography className="text-xs font-medium uppercase tracking-wide text-primary/70 dark:text-primary/60">
-                Launch readiness
-              </Typography>
-              <Typography className="text-2xl font-semibold text-foreground">
+        <div className="group relative overflow-hidden rounded-2xl border border-sky-400/40 bg-gradient-to-br from-card/95 to-card p-7 shadow-sm ring-1 ring-sky-400/20 transition-all duration-300 hover:shadow-md dark:border-sky-500/40 dark:shadow-sm dark:ring-sky-500/30">
+          {/* Subtle blue glow on bottom border */}
+          <div className="pointer-events-none absolute bottom-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-sky-400/30 to-transparent blur-[2px] dark:via-sky-500/40" />
+
+          <div className="relative space-y-6">
+            {/* Header */}
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <h2 className="text-2xl font-semibold tracking-tight text-foreground">
                 {checklistProgress.completed === checklistProgress.total
                   ? "Everything is ready to launch."
                   : `${checklistProgress.completed}/${checklistProgress.total} checks complete`}
-              </Typography>
+              </h2>
             </div>
-            <Badge variant="default" className="gap-1.5 shadow-sm">
-              <CheckCircle2 className="h-3 w-3" />
-              Launch Checklist
-            </Badge>
-          </div>
-          <Progress
-            value={Math.round(animatedProgress)}
-            className="mt-4 h-2.5 bg-background/50 shadow-inner transition-all duration-700 ease-out dark:bg-background/30"
-          />
-          <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+
+            {/* Progress section - Minimal design */}
+            <div className="space-y-2">
+              <span className="text-xs font-medium text-muted-foreground">
+                Progress
+              </span>
+              <div className="relative">
+                {/* Minimal progress track */}
+                <div className="h-2 overflow-hidden rounded-full bg-border/60 dark:bg-border/40">
+                  <div
+                    className="h-full origin-left rounded-full bg-foreground transition-all duration-700 ease-out"
+                    style={{
+                      width: `${Math.round(animatedProgress)}%`,
+                    }}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* CTA section */}
             {checklistProgress.next ? (
-              <>
-                <Typography variant="secondary" className="text-sm">
-                  Up next: {checklistProgress.next.item.title}
-                </Typography>
-                <Button
-                  size="sm"
-                  onClick={checklistProgress.next.task.onAction}
-                  className="animate-pulse shadow-md transition-all duration-150 hover:animate-none hover:shadow-lg active:scale-95"
-                >
-                  Go to {checklistProgress.next.task.title}
-                </Button>
-              </>
+              <div className="flex flex-wrap items-center justify-between gap-4 pt-1">
+                <div className="flex items-center gap-2">
+                  <Clock className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-sm text-muted-foreground">
+                    Up next: <span className="font-medium text-foreground">{checklistProgress.next.item.title}</span>
+                  </span>
+                </div>
+                <div className="relative">
+                  {/* Rainbow beam effect - outer glow */}
+                  <div
+                    className="pointer-events-none absolute -inset-[2px] rounded-md opacity-70 blur-sm dark:opacity-60"
+                    style={{
+                      background: 'linear-gradient(90deg, #3b82f6, #8b5cf6, #ec4899, #f59e0b, #10b981, #3b82f6)',
+                      backgroundSize: '200% 100%',
+                      animation: 'rainbow-beam 3s ease-in-out infinite',
+                    }}
+                  />
+                  {/* Rainbow beam effect - sharp edge */}
+                  <div
+                    className="pointer-events-none absolute -inset-[1px] rounded-md opacity-100 dark:opacity-90"
+                    style={{
+                      background: 'linear-gradient(90deg, #60a5fa, #a78bfa, #f472b6, #fbbf24, #34d399, #60a5fa)',
+                      backgroundSize: '200% 100%',
+                      animation: 'rainbow-beam 3s ease-in-out infinite',
+                    }}
+                  />
+
+                  <Button
+                    size="sm"
+                    onClick={checklistProgress.next.task.onAction}
+                    className="relative font-medium shadow-lg transition-all duration-150 hover:shadow-xl active:scale-95"
+                  >
+                    Go to {checklistProgress.next.task.title}
+                  </Button>
+                </div>
+              </div>
             ) : (
-              <Typography variant="secondary" className="text-sm">
-                All checks are green. Enable production mode when you are ready.
-              </Typography>
+              <div className="flex items-center gap-2 pt-1">
+                <CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                <span className="text-sm text-muted-foreground">
+                  All checks complete. Enable production mode when ready.
+                </span>
+              </div>
             )}
           </div>
         </div>
