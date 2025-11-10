@@ -89,7 +89,6 @@ const nextConfig = {
       },
     ];
   },
-  skipTrailingSlashRedirect: true,
 
   async headers() {
     return [
