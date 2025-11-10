@@ -45,7 +45,7 @@ export const POST = createSmartRouteHandler({
         await prisma.subscription.update({
           where: { tenancyId_id: { tenancyId: auth.tenancy.id, id: body.id } },
           data: { status: "canceled" }
-        })
+        });
       } else {
         if (!subscription.stripeSubscriptionId) {
           console.error("Subscription has no stripe subscription ID", subscription);
@@ -54,7 +54,7 @@ export const POST = createSmartRouteHandler({
         const stripe = await getStripeForAccount({ tenancy: auth.tenancy });
         await stripe.subscriptions.cancel(subscription.stripeSubscriptionId);
       }
-    } else if (body.type === "one-time-purchase") {
+    } else {
       const purchase = await prisma.oneTimePurchase.findUnique({
         where: { tenancyId_id: { tenancyId: auth.tenancy.id, id: body.id } },
       });
@@ -65,7 +65,7 @@ export const POST = createSmartRouteHandler({
         await prisma.oneTimePurchase.update({
           where: { tenancyId_id: { tenancyId: auth.tenancy.id, id: body.id } },
           data: { refundedAt: new Date() }
-        })
+        });
       } else {
         const stripe = await getStripeForAccount({ tenancy: auth.tenancy });
         if (!purchase.stripePaymentIntentId) {

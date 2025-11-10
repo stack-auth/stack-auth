@@ -7,7 +7,7 @@ import { deepPlainEquals } from '@stackframe/stack-shared/dist/utils/objects';
 import { ActionCell, ActionDialog, AvatarCell, DataTableColumnHeader, DataTableManualPagination, DateCell, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, TextCell, Tooltip, TooltipContent, TooltipTrigger } from '@stackframe/stack-ui';
 import type { ColumnDef, ColumnFiltersState, SortingState } from '@tanstack/react-table';
 import type { LucideIcon } from 'lucide-react';
-import { ArrowDownCircle, ArrowUpCircle, Ban, CircleHelp, RefreshCcw, RotateCcw, Settings, ShoppingCart, Shuffle } from 'lucide-react';
+import { Ban, CircleHelp, RefreshCcw, RotateCcw, Settings, ShoppingCart, Shuffle } from 'lucide-react';
 import { Link } from '../link';
 import React from 'react';
 
@@ -89,12 +89,6 @@ function formatTransactionTypeLabel(transactionType: TransactionType | null): Tr
     }
     case 'manual-item-quantity-change': {
       return { label: 'Manual Item Quantity Change', Icon: Settings };
-    }
-    case 'upgrade': {
-      return { label: 'Upgrade', Icon: ArrowUpCircle };
-    }
-    case 'downgrade': {
-      return { label: 'Downgrade', Icon: ArrowDownCircle };
     }
     case 'product-change': {
       return { label: 'Product Change', Icon: Shuffle };
