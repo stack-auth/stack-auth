@@ -41,6 +41,9 @@
     --ring: 240 10% 3.9%;
 
     --radius: 0.5rem;
+
+    --rainbow-beam-blur: linear-gradient(90deg, #3b82f6, #8b5cf6, #ec4899, #f59e0b, #10b981, #3b82f6);
+    --rainbow-beam-sharp: linear-gradient(90deg, #60a5fa, #a78bfa, #f472b6, #fbbf24, #34d399, #60a5fa);
   }
 
   .dark {

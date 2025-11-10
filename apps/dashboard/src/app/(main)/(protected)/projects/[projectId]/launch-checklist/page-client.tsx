@@ -4,6 +4,7 @@ import { InlineCode } from "@/components/inline-code";
 import { StyledLink } from "@/components/link";
 import { useRouter } from "@/components/router";
 import { SettingSwitch } from "@/components/settings";
+import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
 import {
   Badge,
   Button,
@@ -146,23 +147,19 @@ type LaunchTask = {
 const STATUS_META: Record<
   LaunchTaskStatus,
   {
-    badgeLabel: string,
     cardClass: string,
     inactiveIcon: string,
   }
 > = {
   done: {
-    badgeLabel: "Complete",
     cardClass: "border-primary/30 bg-background transition-all duration-300 hover:shadow-lg dark:border-primary/40 dark:shadow-primary/5",
     inactiveIcon: "text-emerald-500 dark:text-emerald-400",
   },
   action: {
-    badgeLabel: "Up next",
     cardClass: "border-primary/30 bg-background transition-all duration-300 hover:shadow-lg dark:border-primary/40 dark:shadow-primary/5",
     inactiveIcon: "text-muted-foreground",
   },
   blocked: {
-    badgeLabel: "Resolve",
     cardClass: "border-primary/30 bg-background transition-all duration-300 hover:shadow-lg dark:border-primary/40 dark:shadow-primary/5",
     inactiveIcon: "text-muted-foreground",
   },
@@ -213,6 +210,14 @@ function TaskCard(props: {
       <CardHeader
         className="cursor-pointer select-none"
         onClick={props.onToggle}
+        role="button"
+        tabIndex={0}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            props.onToggle();
+          }
+        }}
       >
         <div className="flex items-start justify-between gap-4">
           <div className="space-y-1.5 flex-1">
@@ -238,6 +243,7 @@ function TaskCard(props: {
             </CardDescription>
           </div>
           <button
+            type="button"
             onClick={(e) => {
               e.stopPropagation();
               props.onToggle();
@@ -279,7 +285,7 @@ function TaskCard(props: {
               <Button
                 size="sm"
                 onClick={props.task.onAction}
-                className="font-medium bg-background text-foreground border border-border shadow-sm transition-all duration-150 hover:bg-accent active:scale-95 dark:bg-foreground dark:text-background dark:hover:bg-foreground/90"
+                className="font-medium border border-border shadow-sm transition-all duration-150 hover:bg-accent active:scale-95 dark:bg-foreground dark:text-background dark:hover:bg-foreground/90"
               >
                 {props.task.actionLabel}
               </Button>
@@ -310,7 +316,7 @@ export default function PageClient() {
   const isSharedEmailServer = emailServerConfig.isShared;
   const oauthProviders = project.config.oauthProviders;
   const sharedOAuthProviders = oauthProviders.filter(
-    (provider) => provider.type === "shared",
+    (provider: { type: string }) => provider.type === "shared",
   );
   const baseProjectPath = `/projects/${project.id}`;
 
@@ -321,7 +327,7 @@ export default function PageClient() {
       done: hasDomainConfigured,
       detail: hasDomainConfigured ? (
         <div className="flex flex-wrap gap-2">
-          {domainConfigs.slice(0, 3).map(({ domain }) => (
+          {domainConfigs.slice(0, 3).map(({ domain }: { domain: string }) => (
             <InlineCode key={domain}>{domain}</InlineCode>
           ))}
           {domainConfigs.length > 3 && (
@@ -357,7 +363,7 @@ export default function PageClient() {
   };
 
   const sharedProviderLabels = sharedOAuthProviders.map(
-    (provider) => PROVIDER_GUIDES.get(provider.id)?.label ?? provider.id,
+    (provider: { id: string }) => PROVIDER_GUIDES.get(provider.id)?.label ?? provider.id,
   );
   const oauthTask: LaunchTask = {
     id: "oauth",
@@ -382,7 +388,7 @@ export default function PageClient() {
                 Swap custom keys for:
               </Typography>
               <div className="flex flex-wrap gap-2">
-                {sharedProviderLabels.map((label) => (
+                {sharedProviderLabels.map((label: string) => (
                   <Badge key={label} variant="outline">
                     {label}
                   </Badge>
@@ -449,7 +455,7 @@ export default function PageClient() {
                 Fix these before enabling production mode:
               </Typography>
               <ul className="list-disc space-y-1 pl-4 text-xs text-destructive">
-                {productionModeErrors.map((error) => (
+                {productionModeErrors.map((error: { message: string, relativeFixUrl: string }) => (
                   <li key={error.message}>
                     {error.message}{" "}
                     <StyledLink href={error.relativeFixUrl}>
@@ -564,9 +570,7 @@ export default function PageClient() {
           origin: { x: randomInRange(0.1, 0.9), y: 0 },
         });
         if (result) {
-          result.catch(() => {
-            // Ignore confetti errors
-          });
+          runAsynchronously(result, { noErrorLogging: true });
         }
       }, 250);
 
@@ -591,7 +595,8 @@ export default function PageClient() {
             Need help? View setup guides for each provider.
           </p>
           <button
-            onClick={() => setShowOauthGuides((open) => !open)}
+            type="button"
+            onClick={() => setShowOauthGuides((open: boolean) => !open)}
             className="flex shrink-0 items-center gap-1 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
           >
             {showOauthGuides ? (
@@ -650,7 +655,8 @@ export default function PageClient() {
           Need help setting up? Follow these steps.
         </p>
         <button
-          onClick={() => setShowEmailHelp((open) => !open)}
+          type="button"
+          onClick={() => setShowEmailHelp((open: boolean) => !open)}
           className="flex shrink-0 items-center gap-1 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
         >
           {showEmailHelp ? (
@@ -710,7 +716,7 @@ export default function PageClient() {
       <Button
         size="sm"
         onClick={() => router.push(`${baseProjectPath}/project-settings`)}
-        className="font-medium bg-background text-foreground border border-border shadow-sm transition-all duration-150 hover:bg-accent active:scale-95 dark:bg-foreground dark:text-background dark:hover:bg-foreground/90"
+        className="font-medium border border-border shadow-sm transition-all duration-150 hover:bg-accent active:scale-95 dark:bg-foreground dark:text-background dark:hover:bg-foreground/90"
       >
         {productionTaskStatus === "done"
           ? "Review settings"
@@ -780,7 +786,7 @@ export default function PageClient() {
                   <div
                     className="pointer-events-none absolute -inset-[2px] rounded-md opacity-70 blur-sm dark:opacity-60"
                     style={{
-                      background: 'linear-gradient(90deg, #3b82f6, #8b5cf6, #ec4899, #f59e0b, #10b981, #3b82f6)',
+                      background: 'var(--rainbow-beam-blur)',
                       backgroundSize: '200% 100%',
                       animation: 'rainbow-beam 3s ease-in-out infinite',
                     }}
@@ -789,7 +795,7 @@ export default function PageClient() {
                   <div
                     className="pointer-events-none absolute -inset-[1px] rounded-md opacity-100 dark:opacity-90"
                     style={{
-                      background: 'linear-gradient(90deg, #60a5fa, #a78bfa, #f472b6, #fbbf24, #34d399, #60a5fa)',
+                      background: 'var(--rainbow-beam-sharp)',
                       backgroundSize: '200% 100%',
                       animation: 'rainbow-beam 3s ease-in-out infinite',
                     }}
@@ -824,7 +830,7 @@ export default function PageClient() {
                 key={task.id}
                 className="animate-in fade-in slide-in-from-bottom-4"
                 style={{
-                  animationDelay: `${index * 75}ms`,
+                  animationDelay: `${Math.min(index * 50, 300)}ms`,
                   animationDuration: "500ms",
                   animationFillMode: "backwards",
                 }}
