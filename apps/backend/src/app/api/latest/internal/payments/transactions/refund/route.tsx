@@ -5,7 +5,6 @@ import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
 import { adaptSchema, adminAuthTypeSchema, yupBoolean, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 
-
 export const POST = createSmartRouteHandler({
   metadata: {
     hidden: true,
@@ -30,30 +29,39 @@ export const POST = createSmartRouteHandler({
   }),
   handler: async ({ auth, body }) => {
     const prisma = await getPrismaClientForTenancy(auth.tenancy);
-
     if (body.type === "subscription") {
-      const subscription = await prisma.subscription.findUnique({
-        where: { tenancyId_id: { tenancyId: auth.tenancy.id, id: body.id } },
-      });
-      if (!subscription) {
-        throw new KnownErrors.SubscriptionNotFound(body.id);
-      }
-      if (subscription.status !== "active" && subscription.status !== "trialing") {
-        throw new StackAssertionError("Subscription is not active or trialing");
-      }
-      if (!subscription.stripeSubscriptionId) {
-        await prisma.subscription.update({
-          where: { tenancyId_id: { tenancyId: auth.tenancy.id, id: body.id } },
-          data: { status: "canceled" }
-        });
-      } else {
-        if (!subscription.stripeSubscriptionId) {
-          console.error("Subscription has no stripe subscription ID", subscription);
-          throw new KnownErrors.SubscriptionNotFound(body.id);
+      const subscriptionInvoices = await prisma.subscriptionInvoice.findMany({
+        where: {
+          tenancyId: auth.tenancy.id,
+          isSubscriptionCreationInvoice: true,
+          subscription: {
+            tenancyId: auth.tenancy.id,
+            id: body.id,
+          }
         }
-        const stripe = await getStripeForAccount({ tenancy: auth.tenancy });
-        await stripe.subscriptions.cancel(subscription.stripeSubscriptionId);
+      });
+      if (subscriptionInvoices.length === 0) {
+        throw new KnownErrors.SubscriptionInvoiceNotFound(body.id);
       }
+      if (subscriptionInvoices.length > 1) {
+        throw new StackAssertionError("Multiple subscription creation invoices found for subscription", { subscriptionId: body.id });
+      }
+      const subscriptionInvoice = subscriptionInvoices[0];
+      const stripe = await getStripeForAccount({ tenancy: auth.tenancy });
+      const invoice = await stripe.invoices.retrieve(subscriptionInvoice.stripeInvoiceId, { expand: ["payments"] });
+      const payments = invoice.payments?.data;
+      if (!payments || payments.length === 0) {
+        throw new StackAssertionError("Invoice has no payments", { invoiceId: subscriptionInvoice.stripeInvoiceId });
+      }
+      const paidPayment = payments.find((payment) => payment.status === "paid");
+      if (!paidPayment) {
+        throw new StackAssertionError("Invoice has no paid payment", { invoiceId: subscriptionInvoice.stripeInvoiceId });
+      }
+      const paymentIntentId = paidPayment.payment.payment_intent;
+      if (!paymentIntentId || typeof paymentIntentId !== "string") {
+        throw new StackAssertionError("Payment has no payment intent", { invoiceId: subscriptionInvoice.stripeInvoiceId });
+      }
+      await stripe.refunds.create({ payment_intent: paymentIntentId })
     } else {
       const purchase = await prisma.oneTimePurchase.findUnique({
         where: { tenancyId_id: { tenancyId: auth.tenancy.id, id: body.id } },
@@ -64,14 +72,20 @@ export const POST = createSmartRouteHandler({
       if (purchase.creationSource === "TEST_MODE") {
         await prisma.oneTimePurchase.update({
           where: { tenancyId_id: { tenancyId: auth.tenancy.id, id: body.id } },
-          data: { refundedAt: new Date() }
+          data: { refundedAt: new Date() },
         });
       } else {
         const stripe = await getStripeForAccount({ tenancy: auth.tenancy });
         if (!purchase.stripePaymentIntentId) {
           throw new KnownErrors.OneTimePurchaseNotFound(body.id);
         }
-        await stripe.refunds.create({ payment_intent: purchase.stripePaymentIntentId });
+        await stripe.refunds.create({
+          payment_intent: purchase.stripePaymentIntentId,
+          metadata: {
+            tenancyId: auth.tenancy.id,
+            purchaseId: purchase.id,
+          },
+        });
       }
     }
 
