@@ -18,17 +18,18 @@
     "@stackframe/stack": "workspace:*",
     "@stackframe/stack-shared": "workspace:*",
     "@stackframe/stack-ui": "workspace:*",
-    "next": "15.4.1",
+    "next": "^16.0.0",
     "next-themes": "^0.4.3",
     "react": "19.0.0",
     "react-dom": "19.0.0",
     "react-icons": "^5.3.0"
   },
   "devDependencies": {
+    "@next/bundle-analyzer": "^16.0.0",
     "@types/react": "19.0.12",
     "@types/react-dom": "19.0.4",
-    "@next/bundle-analyzer": "15.2.3",
     "autoprefixer": "^10.4.20",
+    "babel-plugin-react-compiler": "^1.0.0",
     "postcss": "^8.4.47",
     "rimraf": "^5.0.10",
     "tailwindcss": "^3.4.14"
