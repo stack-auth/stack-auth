@@ -1,0 +1,4 @@
+# Caddyfile
+https://a.myapp.local, https://b.myapp.local {
+    reverse_proxy localhost:8101
+}
