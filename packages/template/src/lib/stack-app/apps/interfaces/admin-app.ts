@@ -52,7 +52,7 @@ export type StackAdminApp<HasTokenStore extends boolean = boolean, ProjectId ext
     updateProjectPermissionDefinition(permissionId: string, data: AdminProjectPermissionDefinitionUpdateOptions): Promise<void>,
     deleteProjectPermissionDefinition(permissionId: string): Promise<void>,
 
-    useSvixToken(): string, // THIS_LINE_PLATFORM react-like
+    useSvixToken(): { token: string, url: string | undefined }, // THIS_LINE_PLATFORM react-like
 
     sendTestEmail(options: {
       recipientEmail: string,
