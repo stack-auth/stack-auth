@@ -61,7 +61,7 @@ export const POST = createSmartRouteHandler({
       if (!paymentIntentId || typeof paymentIntentId !== "string") {
         throw new StackAssertionError("Payment has no payment intent", { invoiceId: subscriptionInvoice.stripeInvoiceId });
       }
-      await stripe.refunds.create({ payment_intent: paymentIntentId })
+      await stripe.refunds.create({ payment_intent: paymentIntentId });
     } else {
       const purchase = await prisma.oneTimePurchase.findUnique({
         where: { tenancyId_id: { tenancyId: auth.tenancy.id, id: body.id } },
