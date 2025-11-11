@@ -4,10 +4,11 @@ export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   // Only apply to docs and api pages (not already .mdx requests)
-  if (
-    (pathname.startsWith('/docs/') || pathname.startsWith('/api/')) &&
-    !pathname.endsWith('.mdx')
-  ) {
+  // Match /docs, /docs/, /docs/... and /api, /api/, /api/...
+  const isDocsPath = pathname === '/docs' || pathname.startsWith('/docs/');
+  const isApiPath = pathname === '/api' || pathname.startsWith('/api/');
+
+  if ((isDocsPath || isApiPath) && !pathname.endsWith('.mdx')) {
     const acceptHeader = request.headers.get('accept') || '';
 
     // Parse Accept header by splitting on commas to properly handle MIME type ordering
