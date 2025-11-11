@@ -1,5 +1,7 @@
 # @stackframe/mock-oauth-server
 
+## 2.8.51
+
 ## 2.8.50
 
 ### Patch Changes

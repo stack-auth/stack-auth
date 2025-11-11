@@ -4,6 +4,7 @@ import { InlineCode } from "@/components/inline-code";
 import { StyledLink } from "@/components/link";
 import { useRouter } from "@/components/router";
 import { SettingSwitch } from "@/components/settings";
+import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
 import {
   Badge,
   Button,
@@ -13,16 +14,16 @@ import {
   CardFooter,
   CardHeader,
   CardTitle,
-  Progress,
   Tabs,
   TabsContent,
   TabsList,
   TabsTrigger,
   Typography,
-  cn,
+  cn
 } from "@stackframe/stack-ui";
-import { CheckCircle2, Circle } from "lucide-react";
-import { useState } from "react";
+import * as confetti from "canvas-confetti";
+import { CheckCircle2, ChevronDown, ChevronUp, Circle, Clock } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { AppEnabledGuard } from "../app-enabled-guard";
 import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";
@@ -146,30 +147,20 @@ type LaunchTask = {
 const STATUS_META: Record<
   LaunchTaskStatus,
   {
-    badgeLabel: string,
-    badgeVariant: React.ComponentProps<typeof Badge>["variant"],
-    badgeClass?: string,
     cardClass: string,
     inactiveIcon: string,
   }
 > = {
   done: {
-    badgeLabel: "Complete",
-    badgeVariant: "default",
-    badgeClass: "bg-emerald-500 text-white",
-    cardClass: "border-emerald-200 bg-emerald-50",
-    inactiveIcon: "text-emerald-500",
+    cardClass: "border-primary/30 bg-background transition-all duration-300 hover:shadow-lg dark:border-primary/40 dark:shadow-primary/5",
+    inactiveIcon: "text-emerald-500 dark:text-emerald-400",
   },
   action: {
-    badgeLabel: "Up next",
-    badgeVariant: "outline",
-    cardClass: "border-border bg-background",
+    cardClass: "border-primary/30 bg-background transition-all duration-300 hover:shadow-lg dark:border-primary/40 dark:shadow-primary/5",
     inactiveIcon: "text-muted-foreground",
   },
   blocked: {
-    badgeLabel: "Resolve",
-    badgeVariant: "outline",
-    cardClass: "border-border bg-background",
+    cardClass: "border-primary/30 bg-background transition-all duration-300 hover:shadow-lg dark:border-primary/40 dark:shadow-primary/5",
     inactiveIcon: "text-muted-foreground",
   },
 };
@@ -182,16 +173,16 @@ function ChecklistRow(props: {
 }) {
   const Icon = props.done ? CheckCircle2 : Circle;
   const iconClass = props.done
-    ? "text-emerald-500"
+    ? "text-emerald-500 dark:text-emerald-400"
     : STATUS_META[props.status].inactiveIcon;
 
   return (
-    <li className="flex items-start gap-3 rounded-lg border border-border/70 bg-background/80 px-3 py-2">
-      <Icon className={cn("mt-1 h-4 w-4 flex-shrink-0", iconClass)} />
-      <div className="space-y-1">
-        <Typography className="text-sm font-medium leading-none">
+    <li className="group flex items-start gap-3 py-3 transition-all duration-200">
+      <Icon className={cn("mt-0.5 h-4 w-4 flex-shrink-0", iconClass)} />
+      <div className="space-y-1.5 flex-1">
+        <p className="text-sm font-medium leading-snug text-foreground">
           {props.title}
-        </Typography>
+        </p>
         {props.detail}
       </div>
     </li>
@@ -202,46 +193,106 @@ function TaskCard(props: {
   task: LaunchTask,
   children?: React.ReactNode,
   footer?: React.ReactNode,
+  isExpanded: boolean,
+  onToggle: () => void,
 }) {
   const meta = STATUS_META[props.task.status];
+  const allItemsDone = props.task.items.every((item) => item.done);
 
   return (
-    <Card className={cn("transition-all", meta.cardClass)}>
-      <CardHeader className="flex flex-wrap justify-between gap-3">
-        <div className="space-y-1">
-          <CardTitle>{props.task.title}</CardTitle>
-          <CardDescription>{props.task.subtitle}</CardDescription>
-          <Badge variant={meta.badgeVariant} className={meta.badgeClass}>
-            {meta.badgeLabel}
-          </Badge>
+    <Card
+      className={cn(
+        "transition-all duration-300",
+        meta.cardClass,
+        allItemsDone && "border-emerald-500/30 bg-emerald-500/5 dark:border-emerald-500/40 dark:bg-emerald-500/10"
+      )}
+    >
+      <CardHeader
+        className="cursor-pointer select-none"
+        onClick={props.onToggle}
+        role="button"
+        tabIndex={0}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            props.onToggle();
+          }
+        }}
+      >
+        <div className="flex items-start justify-between gap-4">
+          <div className="space-y-1.5 flex-1">
+            <div className="flex items-center gap-2">
+              <CardTitle className="text-xl font-semibold">{props.task.title}</CardTitle>
+              {allItemsDone && (
+                <Badge
+                  variant="outline"
+                  className="border-emerald-500/50 bg-emerald-500/10 text-emerald-600 dark:border-emerald-500/50 dark:bg-emerald-500/20 dark:text-emerald-400"
+                >
+                  <CheckCircle2 className="mr-1 h-3 w-3" />
+                  Complete
+                </Badge>
+              )}
+            </div>
+            <CardDescription
+              className={cn(
+                "text-sm transition-opacity duration-300 ease-in-out",
+                props.isExpanded ? "opacity-100" : "opacity-0"
+              )}
+            >
+              {props.task.subtitle}
+            </CardDescription>
+          </div>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              props.onToggle();
+            }}
+            className="flex shrink-0 items-center justify-center rounded-md p-1.5 transition-colors hover:bg-accent"
+            aria-label={props.isExpanded ? "Collapse section" : "Expand section"}
+          >
+            {props.isExpanded ? (
+              <ChevronUp className="h-5 w-5 text-muted-foreground" />
+            ) : (
+              <ChevronDown className="h-5 w-5 text-muted-foreground" />
+            )}
+          </button>
         </div>
       </CardHeader>
-      <CardContent className="space-y-3">
-        <ul className="space-y-2">
-          {props.task.items.map((item) => (
-            <ChecklistRow
-              key={item.id}
-              status={props.task.status}
-              title={item.title}
-              done={item.done}
-              detail={item.detail}
-            />
-          ))}
-        </ul>
-        {props.children}
-      </CardContent>
-      <CardFooter className="flex justify-end">
-        {props.footer ??
-          (props.task.status === "done" ? (
-            <Button size="sm" variant="ghost" onClick={props.task.onAction}>
-              {props.task.actionLabel}
-            </Button>
-          ) : (
-            <Button size="sm" onClick={props.task.onAction}>
-              {props.task.actionLabel}
-            </Button>
-          ))}
-      </CardFooter>
+      <div
+        className={cn(
+          "grid transition-all duration-300 ease-in-out",
+          props.isExpanded ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"
+        )}
+      >
+        <div className="overflow-hidden">
+          <CardContent className="space-y-4">
+            <ul className="divide-y divide-border/40">
+              {props.task.items.map((item) => (
+                <ChecklistRow
+                  key={item.id}
+                  status={props.task.status}
+                  title={item.title}
+                  done={item.done}
+                  detail={item.detail}
+                />
+              ))}
+            </ul>
+            {props.children}
+          </CardContent>
+          <CardFooter className="flex justify-end">
+            {props.footer ?? (
+              <Button
+                size="sm"
+                onClick={props.task.onAction}
+                className="font-medium border border-border shadow-sm transition-all duration-150 hover:bg-accent active:scale-95 dark:bg-foreground dark:text-background dark:hover:bg-foreground/90"
+              >
+                {props.task.actionLabel}
+              </Button>
+            )}
+          </CardFooter>
+        </div>
+      </div>
     </Card>
   );
 }
@@ -255,6 +306,8 @@ export default function PageClient() {
 
   const [showOauthGuides, setShowOauthGuides] = useState(false);
   const [showEmailHelp, setShowEmailHelp] = useState(false);
+  const [animatedProgress, setAnimatedProgress] = useState(0);
+  const prevProductionModeRef = useRef<boolean | undefined>(undefined);
 
   const domainConfigs = project.config.domains;
   const hasDomainConfigured = domainConfigs.length > 0;
@@ -263,7 +316,7 @@ export default function PageClient() {
   const isSharedEmailServer = emailServerConfig.isShared;
   const oauthProviders = project.config.oauthProviders;
   const sharedOAuthProviders = oauthProviders.filter(
-    (provider) => provider.type === "shared",
+    (provider: { type: string }) => provider.type === "shared",
   );
   const baseProjectPath = `/projects/${project.id}`;
 
@@ -274,7 +327,7 @@ export default function PageClient() {
       done: hasDomainConfigured,
       detail: hasDomainConfigured ? (
         <div className="flex flex-wrap gap-2">
-          {domainConfigs.slice(0, 3).map(({ domain }) => (
+          {domainConfigs.slice(0, 3).map(({ domain }: { domain: string }) => (
             <InlineCode key={domain}>{domain}</InlineCode>
           ))}
           {domainConfigs.length > 3 && (
@@ -310,7 +363,7 @@ export default function PageClient() {
   };
 
   const sharedProviderLabels = sharedOAuthProviders.map(
-    (provider) => PROVIDER_GUIDES.get(provider.id)?.label ?? provider.id,
+    (provider: { id: string }) => PROVIDER_GUIDES.get(provider.id)?.label ?? provider.id,
   );
   const oauthTask: LaunchTask = {
     id: "oauth",
@@ -335,7 +388,7 @@ export default function PageClient() {
                 Swap custom keys for:
               </Typography>
               <div className="flex flex-wrap gap-2">
-                {sharedProviderLabels.map((label) => (
+                {sharedProviderLabels.map((label: string) => (
                   <Badge key={label} variant="outline">
                     {label}
                   </Badge>
@@ -402,7 +455,7 @@ export default function PageClient() {
                 Fix these before enabling production mode:
               </Typography>
               <ul className="list-disc space-y-1 pl-4 text-xs text-destructive">
-                {productionModeErrors.map((error) => (
+                {productionModeErrors.map((error: { message: string, relativeFixUrl: string }) => (
                   <li key={error.message}>
                     {error.message}{" "}
                     <StyledLink href={error.relativeFixUrl}>
@@ -449,81 +502,197 @@ export default function PageClient() {
     value: allItems.length === 0 ? 100 : (completed / allItems.length) * 100,
   };
 
+  // Track which section is expanded (only one at a time, excluding "Checks complete")
+  const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
+  const prevNextTaskIdRef = useRef<string | null>(null);
+
+  // Auto-expand the section containing the next task on mount and when next task changes
+  useEffect(() => {
+    const nextTaskId = next?.task.id ?? null;
+    const prevNextTaskId = prevNextTaskIdRef.current;
+
+    // Only auto-expand if:
+    // 1. This is the initial load (prevNextTaskId is null), OR
+    // 2. The next task actually changed to a different section
+    if (prevNextTaskId === null || (nextTaskId !== null && nextTaskId !== prevNextTaskId)) {
+      if (nextTaskId !== null) {
+        setExpandedTaskId(nextTaskId);
+      } else {
+        // If all tasks are done, collapse all sections
+        setExpandedTaskId(null);
+      }
+    }
+
+    // Update the ref to track the current next task
+    prevNextTaskIdRef.current = nextTaskId;
+  }, [next]);
+
+  const handleTaskToggle = (taskId: string) => {
+    setExpandedTaskId((current) => (current === taskId ? null : taskId));
+  };
+
+  // Animate progress bar on mount and when progress changes
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setAnimatedProgress(checklistProgress.value);
+    }, 100);
+    return () => clearTimeout(timer);
+  }, [checklistProgress.value]);
+
+  // Trigger confetti when production mode is turned on
+  useEffect(() => {
+    const currentProductionMode = project.isProductionMode;
+    const prevProductionMode = prevProductionModeRef.current;
+
+    // Only trigger confetti when production mode changes from false to true
+    if (prevProductionMode !== undefined && !prevProductionMode && currentProductionMode) {
+      // Create a confetti effect dropping from the top
+      const duration = 3000;
+      const animationEnd = Date.now() + duration;
+      const defaults = { startVelocity: 30, spread: 360, ticks: 60, zIndex: 9999 };
+
+      function randomInRange(min: number, max: number) {
+        return Math.random() * (max - min) + min;
+      }
+
+      const interval = setInterval(() => {
+        const timeLeft = animationEnd - Date.now();
+
+        if (timeLeft <= 0) {
+          clearInterval(interval);
+          return;
+        }
+
+        const particleCount = 50 * (timeLeft / duration);
+        const result = confetti.default({
+          ...defaults,
+          particleCount,
+          origin: { x: randomInRange(0.1, 0.9), y: 0 },
+        });
+        if (result) {
+          runAsynchronously(result, { noErrorLogging: true });
+        }
+      }, 250);
+
+      // Cleanup interval on unmount or when production mode changes
+      return () => {
+        clearInterval(interval);
+      };
+    }
+
+    // Update the ref to track the current production mode state
+    prevProductionModeRef.current = currentProductionMode;
+  }, [project.isProductionMode]);
+
   const providerEntries = Array.from(PROVIDER_GUIDES.entries());
   const defaultProviderTab = providerEntries[0]?.[0] ?? "google";
 
   const oauthChildren =
     sharedOAuthProviders.length > 0 ? (
-      <div className="space-y-3 rounded-lg border border-border/60 bg-muted/20 p-3">
-        <Typography className="text-xs font-semibold uppercase text-foreground">
-          Need new credentials?
-        </Typography>
-        <Typography variant="secondary" className="text-xs">
-          Create an OAuth app with the provider, set Stack as the callback URL,
-          then paste the client ID and secret into the provider settings.
-        </Typography>
-        <Button
-          size="sm"
-          variant="ghost"
-          onClick={() => setShowOauthGuides((open) => !open)}
-          className="justify-start px-2"
+      <div className="space-y-4 border-t border-border/40 pt-4">
+        <div className="flex items-start justify-between gap-4">
+          <p className="text-sm text-muted-foreground">
+            Need help? View setup guides for each provider.
+          </p>
+          <button
+            type="button"
+            onClick={() => setShowOauthGuides((open: boolean) => !open)}
+            className="flex shrink-0 items-center gap-1 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+          >
+            {showOauthGuides ? (
+              <>
+                Hide guides
+                <ChevronUp className="h-3 w-3" />
+              </>
+            ) : (
+              <>
+                View guides
+                <ChevronDown className="h-3 w-3" />
+              </>
+            )}
+          </button>
+        </div>
+        <div
+          className={cn(
+            "grid transition-all duration-200 ease-in-out",
+            showOauthGuides ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"
+          )}
         >
-          {showOauthGuides ? "Hide provider guides" : "Show provider guides"}
-        </Button>
-        {showOauthGuides && (
-          <Tabs defaultValue={defaultProviderTab} className="w-full">
-            <TabsList className="flex w-full flex-wrap justify-start gap-2">
+          <div className="overflow-hidden">
+            <Tabs defaultValue={defaultProviderTab} className="w-full">
+              <TabsList className="flex h-auto w-full flex-wrap justify-start gap-1 bg-transparent p-0">
+                {providerEntries.map(([id, guide]) => (
+                  <TabsTrigger
+                    key={id}
+                    value={id}
+                    className="rounded border border-transparent bg-transparent px-2.5 py-1 text-xs data-[state=active]:border-border data-[state=active]:bg-accent"
+                  >
+                    {guide.label}
+                  </TabsTrigger>
+                ))}
+              </TabsList>
               {providerEntries.map(([id, guide]) => (
-                <TabsTrigger key={id} value={id}>
-                  {guide.label}
-                </TabsTrigger>
-              ))}
-            </TabsList>
-            {providerEntries.map(([id, guide]) => (
-              <TabsContent key={id} value={id} className="space-y-1">
-                <Typography>
-                  <StyledLink href={guide.docsUrl} target="_blank">
-                    {guide.label} setup guide
+                <TabsContent key={id} value={id} className="mt-3 space-y-2.5">
+                  <StyledLink href={guide.docsUrl} target="_blank" className="text-sm">
+                    View {guide.label} documentation →
                   </StyledLink>
-                </Typography>
-                <Typography variant="secondary" className="text-xs">
-                  Callback URL:
-                </Typography>
-                <InlineCode>{guide.callbackUrl}</InlineCode>
-              </TabsContent>
-            ))}
-          </Tabs>
-        )}
+                  <div className="space-y-1">
+                    <p className="text-xs text-muted-foreground">Callback URL</p>
+                    <InlineCode>{guide.callbackUrl}</InlineCode>
+                  </div>
+                </TabsContent>
+              ))}
+            </Tabs>
+          </div>
+        </div>
       </div>
     ) : undefined;
 
   const emailChildren = (
-    <div className="space-y-3 rounded-lg border border-border/60 bg-muted/20 p-3">
-      <Typography className="text-xs font-semibold uppercase text-foreground">
-        Quick email setup
-      </Typography>
-      <Button
-        size="sm"
-        variant="ghost"
-        onClick={() => setShowEmailHelp((open) => !open)}
-        className="justify-start px-2"
+    <div className="space-y-4 border-t border-border/40 pt-4">
+      <div className="flex items-start justify-between gap-4">
+        <p className="text-sm text-muted-foreground">
+          Need help setting up? Follow these steps.
+        </p>
+        <button
+          type="button"
+          onClick={() => setShowEmailHelp((open: boolean) => !open)}
+          className="flex shrink-0 items-center gap-1 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+        >
+          {showEmailHelp ? (
+            <>
+              Hide steps
+              <ChevronUp className="h-3 w-3" />
+            </>
+          ) : (
+            <>
+              View steps
+              <ChevronDown className="h-3 w-3" />
+            </>
+          )}
+        </button>
+      </div>
+      <div
+        className={cn(
+          "grid transition-all duration-200 ease-in-out",
+          showEmailHelp ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"
+        )}
       >
-        {showEmailHelp ? "Hide setup steps" : "How do I connect my server?"}
-      </Button>
-      {showEmailHelp && (
-        <ol className="list-decimal space-y-1 pl-5 text-xs text-muted-foreground">
-          <li>Verify a sending domain with your email provider.</li>
-          <li>
-            Switch Stack to Custom SMTP or Resend, then paste the credentials.
-          </li>
-          <li>Send a test email to confirm delivery.</li>
-        </ol>
-      )}
+        <div className="overflow-hidden">
+          <ol className="list-decimal space-y-2 pl-5 text-sm text-muted-foreground">
+            <li>Verify a sending domain with your email provider.</li>
+            <li>
+              Switch Stack to Custom SMTP or Resend, then paste the credentials.
+            </li>
+            <li>Send a test email to confirm delivery.</li>
+          </ol>
+        </div>
+      </div>
     </div>
   );
 
   const productionChildren = (
-    <div className="rounded-lg border border-dashed border-border bg-background p-3">
+    <div className="border-t border-border/40 pt-4">
       <SettingSwitch
         label="Enable production mode"
         checked={project.isProductionMode}
@@ -540,14 +709,14 @@ export default function PageClient() {
   const productionFooter = (
     <div className="flex w-full items-center justify-end gap-3">
       {productionTaskStatus === "done" && (
-        <Typography variant="secondary" className="text-sm">
+        <span className="text-sm text-muted-foreground">
           Production mode is live.
-        </Typography>
+        </span>
       )}
       <Button
         size="sm"
-        variant={productionTaskStatus === "done" ? "ghost" : "secondary"}
         onClick={() => router.push(`${baseProjectPath}/project-settings`)}
+        className="font-medium border border-border shadow-sm transition-all duration-150 hover:bg-accent active:scale-95 dark:bg-foreground dark:text-background dark:hover:bg-foreground/90"
       >
         {productionTaskStatus === "done"
           ? "Review settings"
@@ -571,56 +740,108 @@ export default function PageClient() {
         title="Launch Checklist"
         description="Finish these quick checks before turning on production mode."
       >
-        <div className="rounded-xl border border-blue-500/40 bg-blue-500/10 p-5">
-          <div className="flex flex-wrap items-start justify-between gap-4">
-            <div className="space-y-2">
-              <Typography className="text-xs font-medium uppercase tracking-wide text-blue-700">
-                Launch readiness
-              </Typography>
-              <Typography className="text-2xl font-semibold text-blue-900">
+        <div className="group relative overflow-hidden rounded-2xl border border-sky-400/40 bg-gradient-to-br from-card/95 to-card p-7 shadow-sm ring-1 ring-sky-400/20 transition-all duration-300 hover:shadow-md dark:border-sky-500/40 dark:shadow-sm dark:ring-sky-500/30">
+          {/* Subtle blue glow on bottom border */}
+          <div className="pointer-events-none absolute bottom-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-sky-400/30 to-transparent blur-[2px] dark:via-sky-500/40" />
+
+          <div className="relative space-y-6">
+            {/* Header */}
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <h2 className="text-2xl font-semibold tracking-tight text-foreground">
                 {checklistProgress.completed === checklistProgress.total
                   ? "Everything is ready to launch."
-                  : `${checklistProgress.completed}/${checklistProgress.total} checks complete`}
-              </Typography>
+                  : `${checklistProgress.completed}/${checklistProgress.total} Checks Completed`}
+              </h2>
             </div>
-            <Badge variant="default" className="bg-blue-600 text-white">
-              Launch Checklist
-            </Badge>
-          </div>
-          <Progress
-            value={Math.round(checklistProgress.value)}
-            className="mt-4 h-2 bg-white/40"
-          />
-          <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+
+            {/* Progress section - Minimal design */}
+            <div className="space-y-2">
+              <span className="text-xs font-medium text-muted-foreground">
+                Progress
+              </span>
+              <div className="relative">
+                {/* Minimal progress track */}
+                <div className="h-2 overflow-hidden rounded-full bg-border/60 dark:bg-border/40">
+                  <div
+                    className="h-full origin-left rounded-full bg-foreground transition-all duration-700 ease-out"
+                    style={{
+                      width: `${Math.round(animatedProgress)}%`,
+                    }}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* CTA section */}
             {checklistProgress.next ? (
-              <>
-                <Typography variant="secondary" className="text-sm text-blue-900">
-                  Up next: {checklistProgress.next.item.title}
-                </Typography>
-                <Button
-                  size="sm"
-                  onClick={checklistProgress.next.task.onAction}
-                >
-                  Go to {checklistProgress.next.task.title}
-                </Button>
-              </>
+              <div className="flex flex-wrap items-center justify-between gap-4 pt-1">
+                <div className="flex items-center gap-2">
+                  <Clock className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-sm text-muted-foreground">
+                    Up next: <span className="font-medium text-foreground">{checklistProgress.next.item.title}</span>
+                  </span>
+                </div>
+                <div className="relative">
+                  {/* Rainbow beam effect - outer glow */}
+                  <div
+                    className="pointer-events-none absolute -inset-[2px] rounded-md opacity-70 blur-sm dark:opacity-60"
+                    style={{
+                      background: 'var(--rainbow-beam-blur)',
+                      backgroundSize: '200% 100%',
+                      animation: 'rainbow-beam 3s ease-in-out infinite',
+                    }}
+                  />
+                  {/* Rainbow beam effect - sharp edge */}
+                  <div
+                    className="pointer-events-none absolute -inset-[1px] rounded-md opacity-100 dark:opacity-90"
+                    style={{
+                      background: 'var(--rainbow-beam-sharp)',
+                      backgroundSize: '200% 100%',
+                      animation: 'rainbow-beam 3s ease-in-out infinite',
+                    }}
+                  />
+
+                  <Button
+                    size="sm"
+                    onClick={checklistProgress.next.task.onAction}
+                    className="relative font-medium shadow-lg transition-all duration-150 hover:shadow-xl active:scale-95"
+                  >
+                    Go to {checklistProgress.next.task.title}
+                  </Button>
+                </div>
+              </div>
             ) : (
-              <Typography variant="secondary" className="text-sm text-blue-900">
-                All checks are green. Enable production mode when you are ready.
-              </Typography>
+              <div className="flex items-center gap-2 pt-1">
+                <CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                <span className="text-sm text-muted-foreground">
+                  All checks complete. Enable production mode when ready.
+                </span>
+              </div>
             )}
           </div>
         </div>
 
         <div className="grid gap-4">
-          {orderedTasks.map((task) => {
+          {orderedTasks.map((task, index) => {
             const extras = taskExtras[task.id] ?? {};
+            const isExpanded = expandedTaskId === task.id;
             return (
-              <TaskCard
+              <div
                 key={task.id}
-                task={task}
-                {...extras}
-              />
+                className="animate-in fade-in slide-in-from-bottom-4"
+                style={{
+                  animationDelay: `${Math.min(index * 50, 300)}ms`,
+                  animationDuration: "500ms",
+                  animationFillMode: "backwards",
+                }}
+              >
+                <TaskCard
+                  task={task}
+                  isExpanded={isExpanded}
+                  onToggle={() => handleTaskToggle(task.id)}
+                  {...extras}
+                />
+              </div>
             );
           })}
         </div>
