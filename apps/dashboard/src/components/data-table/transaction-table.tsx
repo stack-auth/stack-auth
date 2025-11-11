@@ -135,7 +135,7 @@ function pickChargedAmountDisplay(entry: MoneyTransferEntry | undefined): string
     return `$${chargedAmount.USD}`;
   }
   // TODO: Handle other currencies
-  return '—';
+  return 'Non USD amount';
 }
 
 function describeDetail(transaction: Transaction, sourceType: SourceType): string {
