@@ -8,7 +8,6 @@ export function middleware(request: NextRequest) {
     'api-keys',
     'emails',
     'oauth',
-    'auth-providers',
     'orgs-and-teams',
     'permissions',
     'webhooks',
