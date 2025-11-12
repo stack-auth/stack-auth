@@ -4,6 +4,7 @@ import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
 import { adaptSchema, adminAuthTypeSchema, yupBoolean, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { SubscriptionStatus } from "@prisma/client";
 
 export const POST = createSmartRouteHandler({
   metadata: {
@@ -62,6 +63,14 @@ export const POST = createSmartRouteHandler({
         throw new StackAssertionError("Payment has no payment intent", { invoiceId: subscriptionInvoice.stripeInvoiceId });
       }
       await stripe.refunds.create({ payment_intent: paymentIntentId });
+      await prisma.subscription.update({
+        where: { tenancyId_id: { tenancyId: auth.tenancy.id, id: body.id } },
+        data: {
+          status: SubscriptionStatus.canceled,
+          cancelAtPeriodEnd: true,
+          currentPeriodEnd: new Date(),
+        },
+      });
     } else {
       const purchase = await prisma.oneTimePurchase.findUnique({
         where: { tenancyId_id: { tenancyId: auth.tenancy.id, id: body.id } },
@@ -70,23 +79,23 @@ export const POST = createSmartRouteHandler({
         throw new KnownErrors.OneTimePurchaseNotFound(body.id);
       }
       if (purchase.creationSource === "TEST_MODE") {
-        await prisma.oneTimePurchase.update({
-          where: { tenancyId_id: { tenancyId: auth.tenancy.id, id: body.id } },
-          data: { refundedAt: new Date() },
-        });
-      } else {
-        const stripe = await getStripeForAccount({ tenancy: auth.tenancy });
-        if (!purchase.stripePaymentIntentId) {
-          throw new KnownErrors.OneTimePurchaseNotFound(body.id);
-        }
-        await stripe.refunds.create({
-          payment_intent: purchase.stripePaymentIntentId,
-          metadata: {
-            tenancyId: auth.tenancy.id,
-            purchaseId: purchase.id,
-          },
-        });
+        throw new KnownErrors.TestModePurchaseNonRefundable();
       }
+      const stripe = await getStripeForAccount({ tenancy: auth.tenancy });
+      if (!purchase.stripePaymentIntentId) {
+        throw new KnownErrors.OneTimePurchaseNotFound(body.id);
+      }
+      await prisma.oneTimePurchase.update({
+        where: { tenancyId_id: { tenancyId: auth.tenancy.id, id: body.id } },
+        data: { refundedAt: new Date() },
+      });
+      await stripe.refunds.create({
+        payment_intent: purchase.stripePaymentIntentId,
+        metadata: {
+          tenancyId: auth.tenancy.id,
+          purchaseId: purchase.id,
+        },
+      });
     }
 
     return {

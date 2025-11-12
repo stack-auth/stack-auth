@@ -1518,6 +1518,16 @@ const OneTimePurchaseNotFound = createKnownErrorConstructor(
   (json) => [json.one_time_purchase_id] as const,
 );
 
+const TestModePurchaseNonRefundable = createKnownErrorConstructor(
+  KnownError,
+  "TEST_MODE_PURCHASE_NON_REFUNDABLE",
+  () => [
+    400,
+    "Test mode purchases are not refundable.",
+  ] as const,
+  () => [] as const,
+);
+
 
 const ProductDoesNotExist = createKnownErrorConstructor(
   KnownError,
@@ -1716,6 +1726,7 @@ export const KnownErrors = {
   ProductAlreadyGranted,
   SubscriptionInvoiceNotFound,
   OneTimePurchaseNotFound,
+  TestModePurchaseNonRefundable,
   ItemQuantityInsufficientAmount,
   StripeAccountInfoNotFound,
   DataVaultStoreDoesNotExist,
