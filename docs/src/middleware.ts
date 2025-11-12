@@ -3,6 +3,26 @@ import { NextRequest, NextResponse } from 'next/server';
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
+  // Redirect old concepts paths to new apps paths
+  const movedToApps = [
+    'api-keys',
+    'emails',
+    'oauth',
+    'auth-providers',
+    'orgs-and-teams',
+    'permissions',
+    'webhooks',
+  ];
+
+  if (pathname.startsWith('/docs/concepts/')) {
+    const pageName = pathname.replace('/docs/concepts/', '');
+    if (movedToApps.includes(pageName)) {
+      const url = request.nextUrl.clone();
+      url.pathname = `/docs/apps/${pageName}`;
+      return NextResponse.redirect(url, 301); // 301 = permanent redirect
+    }
+  }
+
   // Only apply to docs and api pages (not already .mdx requests)
   // Match /docs, /docs/, /docs/... and /api, /api/, /api/...
   const isDocsPath = pathname === '/docs' || pathname.startsWith('/docs/');
