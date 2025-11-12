@@ -193,7 +193,8 @@ function RefundActionCell({ transaction, refundTarget }: { transaction: Transact
   const [isDialogOpen, setIsDialogOpen] = React.useState(false);
   const target = transaction.type === 'purchase' ? refundTarget : null;
   const alreadyRefunded = transaction.adjusted_by.length > 0;
-  const canRefund = !!target && !transaction.test_mode && !alreadyRefunded;
+  const productEntry = transaction.entries.find(isProductGrantEntry);
+  const canRefund = !!target && !transaction.test_mode && !alreadyRefunded && productEntry?.price_id;
 
   return (
     <>
@@ -221,6 +222,7 @@ function RefundActionCell({ transaction, refundTarget }: { transaction: Transact
           item: "Refund",
           danger: true,
           disabled: !canRefund,
+          disabledTooltip: "This transaction cannot be refunded",
           onClick: () => {
             if (!target) return;
             setIsDialogOpen(true);
