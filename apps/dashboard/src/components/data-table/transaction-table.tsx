@@ -4,7 +4,7 @@ import { useAdminApp } from '@/app/(main)/(protected)/projects/[projectId]/use-a
 import type { Transaction, TransactionEntry, TransactionType } from '@stackframe/stack-shared/dist/interface/crud/transactions';
 import { TRANSACTION_TYPES } from '@stackframe/stack-shared/dist/interface/crud/transactions';
 import { deepPlainEquals } from '@stackframe/stack-shared/dist/utils/objects';
-import { ActionCell, ActionDialog, AvatarCell, DataTableColumnHeader, DataTableManualPagination, DateCell, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, TextCell, Tooltip, TooltipContent, TooltipTrigger } from '@stackframe/stack-ui';
+import { ActionCell, ActionDialog, AvatarCell, Badge, DataTableColumnHeader, DataTableManualPagination, DateCell, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, TextCell, Tooltip, TooltipContent, TooltipTrigger } from '@stackframe/stack-ui';
 import type { ColumnDef, ColumnFiltersState, SortingState } from '@tanstack/react-table';
 import type { LucideIcon } from 'lucide-react';
 import { Ban, CircleHelp, RefreshCcw, RotateCcw, Settings, ShoppingCart, Shuffle } from 'lucide-react';
@@ -26,6 +26,7 @@ type TransactionSummary = {
   detail: string,
   amountDisplay: string,
   refundTarget: RefundTarget | null,
+  refunded: boolean,
 };
 
 type EntryWithCustomer = Extract<TransactionEntry, { customer_type: string, customer_id: string }>;
@@ -173,6 +174,7 @@ function getTransactionSummary(transaction: Transaction): TransactionSummary {
   const customerEntry = transaction.entries.find(isEntryWithCustomer);
   const moneyTransferEntry = transaction.entries.find(isMoneyTransferEntry);
   const refundTarget = getRefundTarget(transaction);
+  const refunded = transaction.adjusted_by.length > 0;
 
   return {
     sourceType,
@@ -182,6 +184,7 @@ function getTransactionSummary(transaction: Transaction): TransactionSummary {
     detail: describeDetail(transaction, sourceType),
     amountDisplay: transaction.test_mode ? 'Test mode' : pickChargedAmountDisplay(moneyTransferEntry),
     refundTarget,
+    refunded,
   };
 }
 
@@ -189,7 +192,8 @@ function RefundActionCell({ transaction, refundTarget }: { transaction: Transact
   const app = useAdminApp();
   const [isDialogOpen, setIsDialogOpen] = React.useState(false);
   const target = transaction.type === 'purchase' ? refundTarget : null;
-  const canRefund = !!target && !transaction.test_mode;
+  const alreadyRefunded = transaction.adjusted_by.length > 0;
+  const canRefund = !!target && !transaction.test_mode && !alreadyRefunded;
 
   return (
     <>
@@ -307,9 +311,18 @@ export function TransactionTable() {
       header: ({ column }) => <DataTableColumnHeader column={column} columnTitle="Details" />,
       cell: ({ row }) => {
         const summary = summaryById.get(row.original.id);
-        return <TextCell>
-          {summary?.detail ?? '—'}
-        </TextCell>;
+        return (
+          <TextCell size={120}>
+            <div className="flex items-center gap-2">
+              <span className="truncate">{summary?.detail ?? '—'}</span>
+              {summary?.refunded ? (
+                <Badge variant="outline" className="text-xs">
+                  Refunded
+                </Badge>
+              ) : null}
+            </div>
+          </TextCell>
+        );
       },
       enableSorting: false,
     },

@@ -31,6 +31,16 @@ export const POST = createSmartRouteHandler({
   handler: async ({ auth, body }) => {
     const prisma = await getPrismaClientForTenancy(auth.tenancy);
     if (body.type === "subscription") {
+      const subscription = await prisma.subscription.findUnique({
+        where: { tenancyId_id: { tenancyId: auth.tenancy.id, id: body.id } },
+        select: { refundedAt: true },
+      });
+      if (!subscription) {
+        throw new KnownErrors.SubscriptionInvoiceNotFound(body.id);
+      }
+      if (subscription.refundedAt) {
+        throw new KnownErrors.SubscriptionAlreadyRefunded(body.id);
+      }
       const subscriptionInvoices = await prisma.subscriptionInvoice.findMany({
         where: {
           tenancyId: auth.tenancy.id,
@@ -69,6 +79,7 @@ export const POST = createSmartRouteHandler({
           status: SubscriptionStatus.canceled,
           cancelAtPeriodEnd: true,
           currentPeriodEnd: new Date(),
+          refundedAt: new Date(),
         },
       });
     } else {
@@ -77,6 +88,9 @@ export const POST = createSmartRouteHandler({
       });
       if (!purchase) {
         throw new KnownErrors.OneTimePurchaseNotFound(body.id);
+      }
+      if (purchase.refundedAt) {
+        throw new KnownErrors.OneTimePurchaseAlreadyRefunded(body.id);
       }
       if (purchase.creationSource === "TEST_MODE") {
         throw new KnownErrors.TestModePurchaseNonRefundable();
