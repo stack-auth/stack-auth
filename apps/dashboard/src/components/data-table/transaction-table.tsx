@@ -189,7 +189,7 @@ function RefundActionCell({ transaction, refundTarget }: { transaction: Transact
   const app = useAdminApp();
   const [isDialogOpen, setIsDialogOpen] = React.useState(false);
   const target = transaction.type === 'purchase' ? refundTarget : null;
-  const canRefund = !!target;
+  const canRefund = !!target && !transaction.test_mode;
 
   return (
     <>
