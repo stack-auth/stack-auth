@@ -3,6 +3,7 @@ import { yupObject, yupString } from "../../schema-fields";
 
 export const svixTokenAdminReadSchema = yupObject({
   token: yupString().defined(),
+  url: yupString().optional(),
 }).defined();
 
 export const svixTokenAdminCreateSchema = yupObject({}).defined();

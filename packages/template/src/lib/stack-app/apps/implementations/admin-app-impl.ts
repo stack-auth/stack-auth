@@ -416,9 +416,9 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
   }
   // END_PLATFORM
   // IF_PLATFORM react-like
-  useSvixToken(): string {
+  useSvixToken(): { token: string, url: string | undefined } {
     const crud = useAsyncCache(this._svixTokenCache, [], "adminApp.useSvixToken()");
-    return crud.token;
+    return { token: crud.token, url: crud.url };
   }
   // END_PLATFORM
 

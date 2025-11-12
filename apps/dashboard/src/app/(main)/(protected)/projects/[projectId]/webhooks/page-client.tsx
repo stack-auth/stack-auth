@@ -17,6 +17,56 @@ import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";
 import { getSvixResult } from "./utils";
 import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
+import { useTheme } from "next-themes";
+import { AppPortal } from "svix-react";
+import "svix-react/style.css";
+
+
+export default function PageClient() {
+  const stackAdminApp = useAdminApp();
+  const svixToken = stackAdminApp.useSvixToken();
+  const { resolvedTheme } = useTheme();
+  const [updateCounter, setUpdateCounter] = useState(0);
+  const [testDialogEndpoint, setTestDialogEndpoint] = useState<Endpoint | null>(null);
+
+  return (
+    <AppEnabledGuard appId="webhooks">
+      <PageLayout
+        title="Webhooks"
+        description="Webhooks are used to sync users and teams events from Stack to your own server."
+      >
+        {svixToken.url ? (
+          <div>
+            <AppPortal url={svixToken.url} darkMode={resolvedTheme === "dark"} fullSize />
+          </div>
+        ) : (
+          <SvixProvider
+            key={updateCounter}
+            token={svixToken.token}
+            appId={stackAdminApp.projectId}
+            options={{ serverUrl: getPublicEnvVar('NEXT_PUBLIC_STACK_SVIX_SERVER_URL') }}
+          >
+            <Endpoints
+              updateFn={() => setUpdateCounter(x => x + 1)}
+              onTestRequested={(endpoint) => setTestDialogEndpoint(endpoint)}
+            />
+            {testDialogEndpoint && (
+              <TestEndpointDialog
+                endpoint={testDialogEndpoint}
+                open
+                onOpenChange={(open) => {
+                  if (!open) {
+                    setTestDialogEndpoint(null);
+                  }
+                }}
+              />
+            )}
+          </SvixProvider>
+        )}
+      </PageLayout>
+    </AppEnabledGuard>
+  );
+}
 
 type Endpoint = {
   id: string,
@@ -157,7 +207,7 @@ function CreateDialog(props: {
   );
 }
 
-export function EndpointEditDialog(props: {
+function EndpointEditDialog(props: {
   open: boolean,
   onClose: () => void,
   endpoint: Endpoint,
@@ -368,43 +418,4 @@ function Endpoints(props: { updateFn: () => void, onTestRequested: (endpoint: En
       </>
     );
   }
-}
-
-export default function PageClient() {
-  const stackAdminApp = useAdminApp();
-  const svixToken = stackAdminApp.useSvixToken();
-  const [updateCounter, setUpdateCounter] = useState(0);
-  const [testDialogEndpoint, setTestDialogEndpoint] = useState<Endpoint | null>(null);
-
-  return (
-    <AppEnabledGuard appId="webhooks">
-      <PageLayout
-        title="Webhooks"
-        description="Webhooks are used to sync users and teams events from Stack to your own server."
-      >
-        <SvixProvider
-          key={updateCounter}
-          token={svixToken}
-          appId={stackAdminApp.projectId}
-          options={{ serverUrl: getPublicEnvVar('NEXT_PUBLIC_STACK_SVIX_SERVER_URL') }}
-        >
-          <Endpoints
-            updateFn={() => setUpdateCounter(x => x + 1)}
-            onTestRequested={(endpoint) => setTestDialogEndpoint(endpoint)}
-          />
-          {testDialogEndpoint && (
-            <TestEndpointDialog
-              endpoint={testDialogEndpoint}
-              open
-              onOpenChange={(open) => {
-                if (!open) {
-                  setTestDialogEndpoint(null);
-                }
-              }}
-            />
-          )}
-        </SvixProvider>
-      </PageLayout>
-    </AppEnabledGuard>
-  );
 }
