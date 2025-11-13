@@ -1,5 +1,6 @@
 {
   "title": "OAuth Providers",
+  "icon": "Plug",
   "defaultOpen": false,
   "pages": [
     "github",
