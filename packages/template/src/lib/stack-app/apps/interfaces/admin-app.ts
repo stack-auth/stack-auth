@@ -12,18 +12,11 @@ import { StackServerApp, StackServerAppConstructorOptions } from "./server-app";
 
 
 export type StackAdminAppConstructorOptions<HasTokenStore extends boolean, ProjectId extends string> = (
-  | (
-    & StackServerAppConstructorOptions<HasTokenStore, ProjectId>
-    & {
-      superSecretAdminKey?: string,
-    }
-  )
-  | (
-    & Omit<StackServerAppConstructorOptions<HasTokenStore, ProjectId>, "publishableClientKey" | "secretServerKey">
-    & {
-      projectOwnerSession: InternalSession,
-    }
-  )
+  & StackServerAppConstructorOptions<HasTokenStore, ProjectId>
+  & {
+    superSecretAdminKey?: string,
+    projectOwnerSession?: InternalSession,
+  }
 );
 
 
@@ -56,12 +49,14 @@ export type StackAdminApp<HasTokenStore extends boolean = boolean, ProjectId ext
     updateProjectPermissionDefinition(permissionId: string, data: AdminProjectPermissionDefinitionUpdateOptions): Promise<void>,
     deleteProjectPermissionDefinition(permissionId: string): Promise<void>,
 
-    useSvixToken(): string, // THIS_LINE_PLATFORM react-like
+    useSvixToken(): { token: string, url: string | undefined }, // THIS_LINE_PLATFORM react-like
 
     sendTestEmail(options: {
       recipientEmail: string,
       emailConfig: EmailConfig,
     }): Promise<Result<undefined, { errorMessage: string }>>,
+
+    sendTestWebhook(options: { endpointId: string }): Promise<Result<undefined, { errorMessage: string }>>,
 
     sendSignInInvitationEmail(email: string, callbackUrl: string): Promise<void>,
 
@@ -91,7 +86,6 @@ export type StackAdminApp<HasTokenStore extends boolean = boolean, ProjectId ext
       { teamId: string, itemId: string, quantity: number, expiresAt?: string, description?: string } |
       { customCustomerId: string, itemId: string, quantity: number, expiresAt?: string, description?: string }
     )): Promise<void>,
-    testModePurchase(options: { priceId: string, fullCode: string, quantity?: number }): Promise<void>,
   }
   & StackServerApp<HasTokenStore, ProjectId>
 );

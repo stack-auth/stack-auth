@@ -317,23 +317,6 @@ export class StackAdminInterface extends StackServerInterface {
     );
   }
 
-  async transferProject(session: InternalSession, newTeamId: string): Promise<void> {
-    await this.sendAdminRequest(
-      "/internal/projects/transfer",
-      {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({
-          project_id: this.options.projectId,
-          new_team_id: newTeamId,
-        }),
-      },
-      session,
-    );
-  }
-
   async getMetrics(includeAnonymous: boolean = false): Promise<any> {
     const params = new URLSearchParams();
     if (includeAnonymous) {
@@ -362,6 +345,19 @@ export class StackAdminInterface extends StackServerInterface {
     },
   }): Promise<{ success: boolean, error_message?: string }> {
     const response = await this.sendAdminRequest(`/internal/send-test-email`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: JSON.stringify(data),
+    }, null);
+    return await response.json();
+  }
+
+  async sendTestWebhook(data: {
+    endpoint_id: string,
+  }): Promise<{ success: boolean, error_message?: string }> {
+    const response = await this.sendAdminRequest(`/internal/send-test-webhook`, {
       method: "POST",
       headers: {
         "content-type": "application/json",
@@ -612,18 +608,6 @@ export class StackAdminInterface extends StackServerInterface {
     );
     const json = await response.json() as { transactions: AdminTransaction[], next_cursor: string | null };
     return { transactions: json.transactions, nextCursor: json.next_cursor };
-  }
-
-  async testModePurchase(options: { price_id: string, full_code: string, quantity?: number }): Promise<void> {
-    await this.sendAdminRequest(
-      "/internal/payments/test-mode-purchase-session",
-      {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(options),
-      },
-      null,
-    );
   }
 
 }

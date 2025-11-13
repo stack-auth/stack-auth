@@ -1,6 +1,4 @@
-import { Book, Code, Layers, Zap, type LucideIcon } from 'lucide-react';
-import { getSmartPlatformRedirect } from './platform-navigation';
-import type { Platform } from './platform-utils';
+import { Book, Code, Home, Layers, Zap, type LucideIcon } from 'lucide-react';
 
 export type NavLink = {
   href: string,
@@ -8,84 +6,44 @@ export type NavLink = {
   icon: LucideIcon,
 }
 
-/**
- * Determines if a platform supports React components
- */
-export function platformSupportsComponents(platform: Platform): boolean {
-  return ['next', 'react'].includes(platform);
-}
+const DOCS_OVERVIEW_PATH = '/docs/overview';
+const DOCS_GUIDES_PATH = '/docs/overview';
+const DOCS_SDK_PATH = '/docs/sdk';
+const DOCS_COMPONENTS_PATH = '/docs/components';
+const API_OVERVIEW_PATH = '/api/overview';
 
-/**
- * Determines if a platform supports SDK
- */
-export function platformSupportsSDK(platform: Platform): boolean {
-  return ['next', 'react', 'js'].includes(platform);
-}
-
-/**
- * Determines the appropriate redirect URL when switching platforms.
- * Uses docs-platform.yml to find the best alternative page or falls back to overview.
- */
-export function getSmartRedirectUrl(currentPath: string, newPlatform: Platform): string {
-  return getSmartPlatformRedirect(currentPath, newPlatform);
-}
-
-/**
- * Gets the current platform's URL for the current path
- */
-export function getCurrentPlatformUrl(currentPath: string, platform: Platform): string {
-  // Check for components section specifically: /docs/{platform}/components/...
-  const componentsMatch = currentPath.match(/^\/docs\/[a-z]+\/components(?:\/.*)?$/);
-  if (componentsMatch) {
-    const componentPath = currentPath.replace(/^\/docs\/[a-z]+\/components/, '');
-    return `/docs/${platform}/components${componentPath}`;
-  }
-
-  // Check for SDK section specifically: /docs/{platform}/sdk/...
-  const sdkMatch = currentPath.match(/^\/docs\/[a-z]+\/sdk(?:\/.*)?$/);
-  if (sdkMatch) {
-    const sdkPath = currentPath.replace(/^\/docs\/[a-z]+\/sdk/, '');
-    return `/docs/${platform}/sdk${sdkPath}`;
-  }
-
-  // For general docs within a platform: /docs/{platform}/*
-  const generalMatch = currentPath.match(/^\/docs\/[a-z]+(\/.*)$/);
-  if (generalMatch) {
-    const pathAfterPlatform = generalMatch[1];
-    return `/docs/${platform}${pathAfterPlatform}`;
-  }
-
-  return `/docs/${platform}/overview`;
-}
-
-/**
- * Generates platform-aware navigation links for the shared header.
- * Ensures navigation links point to the correct platform-specific routes.
- * Conditionally includes Components and SDK based on platform support.
- */
-export function generateNavLinks(platform: Platform): NavLink[] {
-  const baseLinks = [
+export function generateNavLinks(): NavLink[] {
+  return [
     {
-      href: `/docs/${platform}/overview`,
-      label: "Guides",
-      icon: Book
+      href: DOCS_OVERVIEW_PATH,
+      label: 'Welcome',
+      icon: Home,
     },
-    ...platformSupportsSDK(platform) ? [{
-      href: `/docs/${platform}/sdk`,
-      label: "SDK",
-      icon: Code
-    }] : [],
-    ...platformSupportsComponents(platform) ? [{
-      href: `/docs/${platform}/components`,
-      label: "Components",
-      icon: Layers
-    }] : [],
     {
-      href: "/api/overview",
-      label: "API Reference",
-      icon: Zap
-    }
+      href: DOCS_GUIDES_PATH,
+      label: 'Guides',
+      icon: Book,
+    },
+    {
+      href: DOCS_SDK_PATH,
+      label: 'SDK',
+      icon: Code,
+    },
+    {
+      href: DOCS_COMPONENTS_PATH,
+      label: 'Components',
+      icon: Layers,
+    },
+    {
+      href: API_OVERVIEW_PATH,
+      label: 'API Reference',
+      icon: Zap,
+    },
   ];
-
-  return baseLinks;
 }
+
+export const DOCS_NAV_PATHS = {
+  guides: DOCS_GUIDES_PATH,
+  sdk: DOCS_SDK_PATH,
+  components: DOCS_COMPONENTS_PATH,
+};

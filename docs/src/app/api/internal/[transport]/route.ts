@@ -135,6 +135,131 @@ const handler = createMcpHandler(
       }
     );
     server.tool(
+      "search_docs",
+      "Search through all Stack Auth documentation including API docs, guides, and examples. Returns ranked results with snippets and relevance scores.",
+      {
+        search_query: z.string().describe("The search query to find relevant documentation"),
+        result_limit: z.number().optional().describe("Maximum number of results to return (default: 50)")
+      },
+      async ({ search_query, result_limit = 50 }) => {
+        nodeClient?.capture({
+          event: "search_docs",
+          properties: { search_query, result_limit },
+          distinctId: "mcp-handler",
+        });
+
+        const results = [];
+        const queryLower = search_query.toLowerCase().trim();
+
+        // Search through all pages
+        for (const page of allPages) {
+          // Skip admin API endpoints
+          if (page.url.startsWith('/api/admin/')) {
+            continue;
+          }
+
+          let score = 0;
+          const title = page.data.title || '';
+          const description = page.data.description || '';
+
+          // Title matching (highest priority)
+          if (title.toLowerCase().includes(queryLower)) {
+            if (title.toLowerCase() === queryLower) {
+              score += 100; // Exact match
+            } else if (title.toLowerCase().startsWith(queryLower)) {
+              score += 80; // Starts with
+            } else {
+              score += 60; // Contains
+            }
+          }
+
+          // Description matching
+          if (description.toLowerCase().includes(queryLower)) {
+            score += 40;
+          }
+          // TOC/heading matching
+          for (const tocItem of page.data.toc) {
+            if (typeof tocItem.title === 'string' && tocItem.title.toLowerCase().includes(queryLower)) {
+              score += 30;
+            }
+          }
+
+          // Content matching (try to read the actual file)
+          try {
+            const filePath = `content/${page.file.path}`;
+            const content = await readFile(filePath, "utf-8");
+            const textContent = content
+              .replace(/^---[\s\S]*?---/, '') // Remove frontmatter
+              .replace(/<[^>]*>/g, ' ') // Remove JSX tags
+              .replace(/\{[^}]*\}/g, ' ') // Remove JSX expressions
+              .replace(/```[a-zA-Z]*\n/g, ' ') // Remove code block markers
+              .replace(/```/g, ' ')
+              .replace(/`([^`]*)`/g, '$1') // Remove inline code backticks
+              .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1') // Extract link text
+              .replace(/[#*_~]/g, '') // Remove markdown formatting
+              .replace(/\s+/g, ' ')
+              .trim();
+
+            if (textContent.toLowerCase().includes(queryLower)) {
+              score += 20;
+
+              // Find snippet around the match
+              const matchIndex = textContent.toLowerCase().indexOf(queryLower);
+              const start = Math.max(0, matchIndex - 50);
+              const end = Math.min(textContent.length, matchIndex + 100);
+              const snippet = textContent.slice(start, end);
+
+              results.push({
+                title,
+                description,
+                url: page.url,
+                score,
+                snippet: `...${snippet}...`,
+                type: page.url.startsWith('/api/') ? 'api' : 'docs'
+              });
+            } else if (score > 0) {
+              // Add without snippet if title/description matched
+              results.push({
+                title,
+                description,
+                url: page.url,
+                score,
+                snippet: description || title,
+                type: page.url.startsWith('/api/') ? 'api' : 'docs'
+              });
+            }
+          } catch {
+            // If file reading fails but we have title/description matches
+            if (score > 0) {
+              results.push({
+                title,
+                description,
+                url: page.url,
+                score,
+                snippet: description || title,
+                type: page.url.startsWith('/api/') ? 'api' : 'docs'
+              });
+            }
+          }
+        }
+
+        // Sort by score (highest first) and limit results
+        const sortedResults = results
+          .sort((a, b) => b.score - a.score)
+          .slice(0, result_limit);
+
+        const searchResultText = sortedResults.length > 0
+          ? sortedResults.map(result =>
+              `Title: ${result.title}\nDescription: ${result.description}\nURL: ${result.url}\nType: ${result.type}\nScore: ${result.score}\nSnippet: ${result.snippet}\n`
+            ).join('\n---\n')
+          : `No results found for "${search_query}"`;
+
+        return {
+          content: [{ type: "text", text: searchResultText }],
+        };
+      }
+    );
+    server.tool(
       "get_docs_by_id",
       "Use this tool to retrieve a specific Stack Auth Documentation page by its ID. It gives you the full content of the page so you can know exactly how to use specific Stack Auth APIs. Whenever using Stack Auth, you should always check the documentation first to have the most up-to-date information. When you write code using Stack Auth documentation you should reference the content you used in your comments.",
       { id: z.string() },
@@ -248,8 +373,8 @@ const handler = createMcpHandler(
         });
 
         try {
-          const instructionsPath = "content/setup-instructions.md";
-          const instructions = await readFile(instructionsPath, "utf-8");
+          const instructionsFromCurrentFile = "content/setup-instructions.md";
+          const instructions = await readFile(instructionsFromCurrentFile, "utf-8");
 
           return {
             content: [

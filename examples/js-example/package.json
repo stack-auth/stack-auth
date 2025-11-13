@@ -1,11 +1,11 @@
 {
   "name": "@stackframe/js-example",
-  "version": "2.8.39",
+  "version": "2.8.51",
   "private": true,
   "description": "",
   "main": "index.js",
   "scripts": {
-    "dev": "dotenv -e .env.development -e .env.local -- vite --port 8119 --force",
+    "dev": "dotenv -e .env.development -e .env.local -- vite --port ${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}19 --force",
     "clean": "rimraf dist && rimraf node_modules"
   },
   "keywords": [],

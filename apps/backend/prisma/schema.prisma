@@ -9,6 +9,16 @@ datasource db {
   directUrl = env("STACK_DIRECT_DATABASE_CONNECTION_STRING")
 }
 
+model SchemaMigration {
+  id             String   @id @default(dbgenerated("gen_random_uuid()"))
+  finishedAt     DateTime
+  migrationName  String   @unique
+
+  @@ignore
+}
+
+
+
 model Project {
   // Note that the project with ID `internal` is handled as a special case. All other project IDs are UUIDs.
   id String @id
@@ -756,6 +766,7 @@ enum SubscriptionStatus {
 enum PurchaseCreationSource {
   PURCHASE_PAGE
   TEST_MODE
+  API_GRANT
 }
 
 model Subscription {
@@ -763,9 +774,9 @@ model Subscription {
   tenancyId    String       @db.Uuid
   customerId   String
   customerType CustomerType
-  offerId      String?
+  productId    String?
   priceId      String?
-  offer        Json
+  product      Json
   quantity     Int          @default(1)
 
   stripeSubscriptionId String?
@@ -802,9 +813,9 @@ model OneTimePurchase {
   tenancyId             String                 @db.Uuid
   customerId            String
   customerType          CustomerType
-  offerId               String?
+  productId             String?
   priceId               String?
-  offer                 Json
+  product               Json
   quantity              Int
   stripePaymentIntentId String?
   createdAt             DateTime               @default(now())
@@ -828,97 +839,14 @@ model DataVaultEntry {
   @@index([tenancyId, storeId])
 }
 
-model WorkflowTriggerToken {
-  tenancyId String @db.Uuid
-  id        String @default(uuid()) @db.Uuid
-
-  tokenHash String
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
+model CacheEntry {
+  id        String   @id @default(uuid()) @db.Uuid
+  namespace String
+  cacheKey  String
+  payload   Json
   expiresAt DateTime
-
-  @@id([tenancyId, id])
-  @@unique([tenancyId, tokenHash])
-}
-
-model WorkflowTrigger {
-  tenancyId   String @db.Uuid
-  id          String @default(uuid()) @db.Uuid
-  executionId String @db.Uuid
-
-  triggerData Json
-
-  // the following fields determine the state of the trigger:
-  // - scheduledAt && !compiledWorkflowId && !output && !error: the trigger is scheduled to be executed
-  // - !scheduledAt && !compiledWorkflowId: the trigger was scheduled, but its workflow subsequently deleted. The trigger never ran
-  // - !scheduledAt && compiledWorkflowId && !output && !error: the trigger is currently executing
-  // - !scheduledAt && compiledWorkflowId && output && !error: the trigger has successfully completed execution
-  // - !scheduledAt && compiledWorkflowId && !output && error: the trigger has failed execution
-  // All other combinations are invalid.
-  scheduledAt        DateTime?
-  output             Json?
-  error              Json?
-  compiledWorkflowId String?           @db.Uuid
-  compiledWorkflow   CompiledWorkflow? @relation(fields: [tenancyId, compiledWorkflowId], references: [tenancyId, id])
-
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  execution WorkflowExecution @relation(fields: [tenancyId, executionId], references: [tenancyId, id])
-
-  @@id([tenancyId, id])
-}
-
-model WorkflowExecution {
-  tenancyId String @db.Uuid
-  id        String @default(uuid()) @db.Uuid
-
-  workflowId String
-
-  triggerIds String[]
-  triggers   WorkflowTrigger[]
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@id([tenancyId, id])
-}
-
-model CurrentlyCompilingWorkflow {
-  tenancyId          String @db.Uuid
-  workflowId         String
-  compilationVersion Int
-  sourceHash         String
-
-  startedCompilingAt DateTime @default(now())
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@id([tenancyId, workflowId, compilationVersion, sourceHash])
-}
-
-model CompiledWorkflow {
-  tenancyId          String @db.Uuid
-  id                 String @default(uuid()) @db.Uuid
-  workflowId         String // note: The workflow with this ID may have been edited or deleted in the meantime, so there may be multiple CompiledWorkflows with the same workflowId
-  compilationVersion Int
-  sourceHash         String
-
-  // exactly one of [compiledCode, compileError] must be set
-  compiledCode String?
-  compileError String?
-
-  compiledAt         DateTime @default(now())
-  registeredTriggers String[]
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  workflowTriggers WorkflowTrigger[]
-
-  @@id([tenancyId, id])
-  @@unique([tenancyId, workflowId, compilationVersion, sourceHash])
+  @@unique([namespace, cacheKey])
 }

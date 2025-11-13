@@ -10,12 +10,13 @@ export class Freestyle {
 
   constructor(options: { apiKey?: string } = {}) {
     const apiKey = options.apiKey || getEnvVariable("STACK_FREESTYLE_API_KEY");
-    let baseUrl = undefined;
+    let baseUrl = getEnvVariable("STACK_FREESTYLE_API_ENDPOINT", "") || undefined;
     if (apiKey === "mock_stack_freestyle_key") {
       if (!["development", "test"].includes(getNodeEnvironment())) {
         throw new StackAssertionError("Mock Freestyle key used in production; please set the STACK_FREESTYLE_API_KEY environment variable.");
       }
-      baseUrl = "http://localhost:8122";
+      const prefix = getEnvVariable("NEXT_PUBLIC_STACK_PORT_PREFIX", "81");
+      baseUrl = `http://localhost:${prefix}22`;
     }
     this.freestyle = new FreestyleSandboxes({
       apiKey,

@@ -1,9 +1,10 @@
 import { Typography } from "@stackframe/stack-ui";
+import React from "react";
 
 export function PageLayout(props: {
   children?: React.ReactNode,
   title?: string,
-  description?: string,
+  description?: string | React.ReactNode,
   actions?: React.ReactNode,
   fillWidth?: boolean,
 } & ({
@@ -26,7 +27,7 @@ export function PageLayout(props: {
               {props.title}
             </Typography>}
             {props.description && (
-              <Typography type="p" variant="secondary">
+              <Typography type={typeof props.description === "string" ? "p" : "div"} variant="secondary">
                 {props.description}
               </Typography>
             )}

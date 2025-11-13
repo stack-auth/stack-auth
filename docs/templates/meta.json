@@ -15,6 +15,7 @@
     "concepts/backend-integration",
     "concepts/custom-user-data",
     "concepts/emails",
+    "concepts/jwt",
     "concepts/oauth",
     "concepts/auth-providers",
     "concepts/orgs-and-teams",
@@ -33,6 +34,8 @@
     "others/cli-authentication",
     "others/self-host",
     "others/supabase",
+    "others/mcp-setup",
+    "others/convex",
     "sdk",
     "components"
   ]

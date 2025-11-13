@@ -9,10 +9,11 @@ import { createStripeProxy, type StripeOverridesMap } from "./stripe-proxy";
 
 const stripeSecretKey = getEnvVariable("STACK_STRIPE_SECRET_KEY");
 const useStripeMock = stripeSecretKey === "sk_test_mockstripekey" && ["development", "test"].includes(getNodeEnvironment());
+const stackPortPrefix = getEnvVariable("NEXT_PUBLIC_STACK_PORT_PREFIX", "81");
 const stripeConfig: Stripe.StripeConfig = useStripeMock ? {
   protocol: "http",
   host: "localhost",
-  port: 8123,
+  port: Number(`${stackPortPrefix}23`),
 } : {};
 
 export const getStackStripe = (overrides?: StripeOverridesMap) => {
@@ -89,7 +90,7 @@ export async function syncStripeSubscriptions(stripe: Stripe, stripeAccountId: s
       },
       update: {
         status: subscription.status,
-        offer: JSON.parse(subscription.metadata.offer),
+        product: JSON.parse(subscription.metadata.product),
         quantity: item.quantity ?? 1,
         currentPeriodEnd: new Date(item.current_period_end * 1000),
         currentPeriodStart: new Date(item.current_period_start * 1000),
@@ -100,9 +101,9 @@ export async function syncStripeSubscriptions(stripe: Stripe, stripeAccountId: s
         tenancyId: tenancy.id,
         customerId,
         customerType,
-        offerId: subscription.metadata.offerId,
+        productId: subscription.metadata.productId,
         priceId: priceId ?? null,
-        offer: JSON.parse(subscription.metadata.offer),
+        product: JSON.parse(subscription.metadata.product),
         quantity: item.quantity ?? 1,
         stripeSubscriptionId: subscription.id,
         status: subscription.status,

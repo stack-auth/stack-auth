@@ -5,6 +5,7 @@ import { PermissionListField } from "@/components/permission-field";
 import { Button } from "@stackframe/stack-ui";
 import React from "react";
 import * as yup from "yup";
+import { AppEnabledGuard } from "../app-enabled-guard";
 import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";
 
@@ -15,24 +16,26 @@ export default function PageClient() {
   const [createPermissionModalOpen, setCreatePermissionModalOpen] = React.useState(false);
 
   return (
-    <PageLayout
-      title="Team Permissions"
-      actions={
-        <Button onClick={() => setCreatePermissionModalOpen(true)}>
-          Create Permission
-        </Button>
-      }>
+    <AppEnabledGuard appId="rbac">
+      <PageLayout
+        title="Team Permissions"
+        actions={
+          <Button onClick={() => setCreatePermissionModalOpen(true)}>
+            Create Permission
+          </Button>
+        }
+      >
+        <PermissionTable
+          permissions={permissions}
+          permissionType="team"
+        />
 
-      <PermissionTable
-        permissions={permissions}
-        permissionType="team"
-      />
-
-      <CreateDialog
-        open={createPermissionModalOpen}
-        onOpenChange={setCreatePermissionModalOpen}
-      />
-    </PageLayout>
+        <CreateDialog
+          open={createPermissionModalOpen}
+          onOpenChange={setCreatePermissionModalOpen}
+        />
+      </PageLayout>
+    </AppEnabledGuard>
   );
 }
 

@@ -2,6 +2,7 @@
 <html>
   <head>
     <title>Stack Auth Dev Launchpad</title>
+    <script src="./env-config.js"></script>
     <style>
       body {
         font-family: Arial, sans-serif;
@@ -97,43 +98,52 @@
     <div class="apps-container"></div>
 
     <h2 style="margin-top: 64px;">Background services</h2>
-    <ul>
-      <li>
-        5432: PostgreSQL
-      </li>
-      <li>
-        2500: Inbucket SMTP
-      </li>
-      <li>
-        1100: Inbucket POP3
-      </li>
-      <li>
-        4318: OTel collector
-      </li>
-      <li>
-        8121: S3 mock
-      </li>
-      <li>
-        8122: Freestyle mock
-      </li>
-      <li>
-        8124: LocalStack Gateway (AWS mock)
-      </li>
-      <li>
-        8125: QStash mock
-      </li>
-      <li>
-        8150-8199: Reserved for LocalStack (external services)
-      </li>
-    </ul>
+    <ul class="background-services"></ul>
     <noscript>
       This page requires JavaScript.
     </noscript>
     <script>
+      const derivePrefixFromLocation = () => {
+        const port = window.location.port;
+        if (!port || port.length < 2) return "81";
+        return port.slice(0, -2);
+      };
+      const stackPortPrefix = window.NEXT_PUBLIC_STACK_PORT_PREFIX || derivePrefixFromLocation();
+      window.NEXT_PUBLIC_STACK_PORT_PREFIX = stackPortPrefix;
+      const withPrefix = (suffix) => `${stackPortPrefix}${suffix}`;
+
+      // Depending on the port prefix, set the color to light grey (port 91), light purple (port 92), papyrus yellow (port 93), or default otherwise
+      const color = {
+        "91": "#f8f8f8",
+        "92": "#fff8e0",
+        "93": "#e0e0ff",
+      }[stackPortPrefix] || undefined;
+      document.body.style.backgroundColor = color;
+
+      const backgroundServices = [
+        { suffix: "28", label: "PostgreSQL" },
+        { suffix: "29", label: "Inbucket SMTP" },
+        { suffix: "30", label: "Inbucket POP3" },
+        { suffix: "31", label: "OTel collector" },
+        { suffix: "21", label: "S3 mock" },
+        { suffix: "22", label: "Freestyle mock" },
+        { suffix: "24", label: "LocalStack Gateway (AWS mock)" },
+        { suffix: "25", label: "QStash mock" },
+        { range: ["50", "99"], label: "Reserved for LocalStack (external services)" },
+      ];
+
+      const backgroundList = document.querySelector(".background-services");
+      backgroundList.innerHTML = backgroundServices.map((service) => {
+        const portText = service.range
+          ? `${withPrefix(service.range[0])}-${withPrefix(service.range[1])}`
+          : withPrefix(service.suffix);
+        return `<li>${portText}: ${service.label}</li>`;
+      }).join("");
+
       const apps = [
         {
           name: "Dashboard",
-          port: 8101,
+          portSuffix: "01",
           description: [
             "Src: ./apps/dashboard",
             "Prod: https://app.stack-auth.com",
@@ -143,7 +153,7 @@
         },
         {
           name: "Backend",
-          port: 8102,
+          portSuffix: "02",
           description: [
             "Src: ./apps/backend",
             "Prod: https://api.stack-auth.com",
@@ -153,7 +163,7 @@
         },
         {
           name: "Demo app",
-          port: 8103,
+          portSuffix: "03",
           description: [
             "Src: ./examples/demo",
             "Prod: https://demo.stack-auth.com",
@@ -162,7 +172,7 @@
         },
         {
           name: "Docs",
-          port: 8104,
+          portSuffix: "04",
           description: [
             "Src: ./docs",
             "Prod: https://docs.stack-auth.com",
@@ -172,7 +182,7 @@
         },
         {
           name: "Inbucket",
-          port: 8105,
+          portSuffix: "05",
           img: "https://www.svgrepo.com/show/533176/at-sign.svg",
           importance: 1,
           description: [
@@ -181,7 +191,7 @@
         },
         {
           name: "Prisma Studio",
-          port: 8106,
+          portSuffix: "06",
           importance: 1,
           img: "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcS95TdAw63YPAPcUpvRl4imIf-VJ1sGHnEvbw&s",
           description: [
@@ -190,7 +200,7 @@
         },
         {
           name: "Jaeger UI (OTel)",
-          port: 8107,
+          portSuffix: "07",
           description: [
             "Performance & tracing",
           ],
@@ -199,42 +209,35 @@
         },
         {
           name: "examples/docs-examples",
-          port: 8108,
+          portSuffix: "08",
           description: [
             "Src: ./examples/docs-examples",
           ],
         },
         {
-          name: "examples/partial-prerendering",
-          port: 8109,
-          description: [
-            "Src: ./examples/partial-prerendering",
-          ],
-        },
-        {
           name: "examples/cjs-test",
-          port: 8110,
+          portSuffix: "10",
           description: [
             "Src: ./examples/cjs-test",
           ],
         },
         {
           name: "examples/e-commerce",
-          port: 8111,
+          portSuffix: "11",
           description: [
             "Src: ./examples/e-commerce",
           ],
         },
         {
           name: "examples/middleware",
-          port: 8112,
+          portSuffix: "12",
           description: [
             "Src: ./examples/middleware",
           ],
         },
         {
           name: "Svix server",
-          port: 8113,
+          portSuffix: "13",
           importance: 1,
           img: "data:image/svg+xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiPz4KPHN2ZyBpZD0iTGF5ZXJfMiIgZGF0YS1uYW1lPSJMYXllciAyIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZlcnNpb249IjEuMSIgdmlld0JveD0iODQuOSA4NC45IDM0NyAzNDciPgogIDxkZWZzPgogICAgPHN0eWxlPgogICAgICAuY2xzLTEgewogICAgICAgIGZpbGw6ICNmZmY7CiAgICAgIH0KCiAgICAgIC5jbHMtMSwgLmNscy0yIHsKICAgICAgICBzdHJva2Utd2lkdGg6IDBweDsKICAgICAgfQoKICAgICAgLmNscy0yIHsKICAgICAgICBmaWxsOiAjMmM3MGZmOwogICAgICB9CiAgICA8L3N0eWxlPgogIDwvZGVmcz4KICA8ZyBpZD0iTGF5ZXJfMS0yIiBkYXRhLW5hbWU9IkxheWVyIDEtMiI+CiAgICA8Y2lyY2xlIGNsYXNzPSJjbHMtMSIgY3g9IjI1OC40IiBjeT0iMjU4LjQiIHI9IjE3My41Ii8+CiAgICA8Zz4KICAgICAgPHBhdGggY2xhc3M9ImNscy0yIiBkPSJNMzYwLjgsMjMyLjljLTI4LjgtMS40LTU1LjctMTcuMi02OC4yLTQ1LTUuNS0xMi4zLTE3LjgtMjAuNC0zMS4zLTIwLjgtMjguNi0uOC00Ni43LDM1LjEtMjguNyw1Ny42LDYuMiw3LjgsMTUuNCwxMi4xLDI3LjUsMTIuOWgwYzIzLjQsMS43LDQzLjUsMTEuOCw1Ni44LDI4LjUsMjQuNCwzMC43LDIwLjksNzcuMS03LjQsMTA0LTM0LjEsMzIuNS05MS4xLDI1LjgtMTE3LjEtMTMuMi0yLjMtMy41LTQuMy03LjEtNi4xLTEwLjktNS41LTEyLjMtMTcuOC0yMC40LTMxLjMtMjAuOC0xMy45LS40LTI3LDQuOS0zNS4zLDEzLjgsMjcuMyw0Ni45LDc3LjcsNzguNywxMzUuOSw3OS43LDg4LjYsMS41LDE2MS43LTY5LDE2My4yLTE1Ny42LjMtMTQuOS0xLjYtMjkuNC01LjEtNDMuMi43LDIuOS0yMi4zLDEwLjktMjQuOCwxMS42LTkuMiwyLjctMTguNywzLjctMjgsMy4zaDBaIi8+CiAgICAgIDxwYXRoIGNsYXNzPSJjbHMtMiIgZD0iTTE1NiwyODMuNmMyOS40LjcsNTYuMSwxOC41LDY4LjIsNDUuMyw1LjUsMTIuMywxNy44LDIwLjQsMzEuMywyMC44LDkuNC4zLDE4LjMtMy4yLDI1LjItOS43LDEyLjgtMTIuMSwxNC41LTM0LjEsMy41LTQ4LTYuMi03LjgtMTUuNC0xMi4xLTI3LjUtMTIuOWgwYy0yMy40LTEuNy00My41LTExLjgtNTYuOC0yOC41LTI5LjYtMzcuMi0xNy05Mi41LDIzLjctMTE1LjQsMTEuOC02LjYsMjUuMi0xMC4yLDM4LjctOS44LDI5LjQuNyw1Ni4xLDE4LjUsNjguMiw0NS4zLDUuNSwxMi4zLDE3LjgsMjAuNCwzMS4zLDIwLjgsMTQsLjQsMjctNC45LDM1LjMtMTMuOC0yNy4zLTQ2LjktNzcuNy03OC43LTEzNS45LTc5LjgtODguNi0xLjUtMTYxLjYsNjkuMS0xNjMuMiwxNTcuNi0uMywxNC45LDEuNiwyOS40LDUuMiw0My4yLDE0LjktMTAuMSwzMy4zLTE1LjYsNTIuOS0xNS4yaDBaIi8+CiAgICA8L2c+CiAgPC9nPgo8L3N2Zz4=",
           description: [
@@ -243,21 +246,21 @@
         },
         {
           name: "OAuth mock server",
-          port: 8114,
+          portSuffix: "14",
           description: [
             "Src: ./apps/mock-oauth-server",
           ],
         },
         {
           name: "examples/supabase",
-          port: 8115,
+          portSuffix: "15",
           description: [
             "Src: ./examples/supabase",
           ],
         },
         {
           name: "PgHero",
-          port: 8116,
+          portSuffix: "16",
           description: [
             "For database performance analysis",
           ],
@@ -266,7 +269,7 @@
         },
         {
           name: "PgAdmin",
-          port: 8117,
+          portSuffix: "17",
           description: [
             "For database administration",
           ],
@@ -275,7 +278,7 @@
         },
         {
           name: "Supabase Studio",
-          port: 8118,
+          portSuffix: "18",
           path: "/project/default/editor",
           description: [
             "For database administration",
@@ -285,24 +288,40 @@
         },
         {
           name: "JS example",
-          port: 8119,
+          portSuffix: "19",
           description: [
             "JavaScript example",
           ],
         },
         {
           name: "React example",
-          port: 8120,
+          portSuffix: "20",
           description: [
             "React example",
           ],
         },
         {
           name: "MCPJam Inspector",
-          port: 8126,
+          portSuffix: "26",
           importance: 1,
           description: [
             "MCP tool inspector",
+          ],
+        },
+        {
+          name: "Convex example",
+          portSuffix: "27",
+          importance: 0,
+          description: [
+            "Convex example",
+          ],
+        },
+        {
+          name: "Lovable React 18 example",
+          portSuffix: "32",
+          importance: 0,
+          description: [
+            "Lovable React 18 example",
           ],
         },
       ];
@@ -315,10 +334,10 @@
           if ((app.importance ?? 0) === importance) {
             // TODO escape HTML
             appContainer.innerHTML += `
-              <a href="http://localhost:${app.port}${app.path ?? ""}" target="_blank" rel="noopener noreferrer" class="${app.importance === 2 ? "important" : app.importance === 1 ? "" : "unimportant"}">
-                <div class="port">:${app.port}</div>
+              <a href="http://localhost:${withPrefix(app.portSuffix)}${app.path ?? ""}" target="_blank" rel="noopener noreferrer" class="${app.importance === 2 ? "important" : app.importance === 1 ? "" : "unimportant"}">
+                <div class="port">:${withPrefix(app.portSuffix)}</div>
                 <div>
-                  <img src=${app.img || `//localhost:${app.port}/favicon.ico`} />
+                  <img src=${app.img || `//localhost:${withPrefix(app.portSuffix)}/favicon.ico`} />
                 </div>
                 <span class="description">${app.name}</span>
                 ${app.description ? `<div class="hover-description">${app.description.join("\n")}</div>` : ""}

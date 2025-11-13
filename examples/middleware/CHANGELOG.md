@@ -1,5 +1,89 @@
 # @stackframe/example-middleware-demo
 
+## 2.8.51
+
+### Patch Changes
+
+- Updated dependencies
+  - @stackframe/stack@2.8.51
+
+## 2.8.50
+
+### Patch Changes
+
+- Various changes
+- Updated dependencies
+  - @stackframe/stack@2.8.50
+
+## 2.8.49
+
+### Patch Changes
+
+- Various changes
+- Updated dependencies
+  - @stackframe/stack@2.8.49
+
+## 2.8.48
+
+### Patch Changes
+
+- @stackframe/stack@2.8.48
+
+## 2.8.47
+
+### Patch Changes
+
+- Various changes
+- Updated dependencies
+  - @stackframe/stack@2.8.47
+
+## 2.8.46
+
+### Patch Changes
+
+- Various changes
+- Updated dependencies
+  - @stackframe/stack@2.8.46
+
+## 2.8.45
+
+### Patch Changes
+
+- Various changes
+  - @stackframe/stack@2.8.45
+
+## 2.8.44
+
+### Patch Changes
+
+- @stackframe/stack@2.8.44
+
+## 2.8.43
+
+### Patch Changes
+
+- @stackframe/stack@2.8.43
+
+## 2.8.42
+
+### Patch Changes
+
+- Updated dependencies
+  - @stackframe/stack@2.8.42
+
+## 2.8.41
+
+### Patch Changes
+
+- @stackframe/stack@2.8.41
+
+## 2.8.40
+
+### Patch Changes
+
+- Updated dependencies
+  - @stackframe/stack@2.8.40
+
 ## 2.8.39
 
 ### Patch Changes

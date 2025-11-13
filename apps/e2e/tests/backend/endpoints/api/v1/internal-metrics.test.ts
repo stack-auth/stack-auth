@@ -125,29 +125,34 @@ it("should exclude anonymous users from metrics", async ({ expect }) => {
     await Auth.Anonymous.signUp();
   }
 
-  await wait(3000);  // the event log is async, so let's give it some time to be written to the DB
-
-  const response = await niceBackendFetch("/api/v1/internal/metrics", { accessType: 'admin' });
-  expect(beforeMetrics.body).toEqual(response.body);
+  // the event log is async, so let's give it some time to be written to the DB
+  let result!: NiceResponse;
+  for (let i = 0; i < 5; i++) {
+    result = await niceBackendFetch("/api/v1/internal/metrics", { accessType: 'admin' });
+    if (JSON.stringify(result.body) === JSON.stringify(beforeMetrics.body)) {
+      break;
+    }
+    await wait(2_000);
+  }
 
   // Verify that total_users only counts the 1 regular user, not the anonymous ones
-  expect(response.body.total_users).toBe(1);
+  expect(result.body.total_users).toBe(1);
 
   // Verify anonymous users don't appear in recently_registered
-  expect(response.body.recently_registered.length).toBe(1);
-  expect(response.body.recently_registered.every((user: any) => !user.is_anonymous)).toBe(true);
+  expect(result.body.recently_registered.length).toBe(1);
+  expect(result.body.recently_registered.every((user: any) => !user.is_anonymous)).toBe(true);
 
   // Verify anonymous users don't appear in recently_active
-  expect(response.body.recently_active.every((user: any) => !user.is_anonymous)).toBe(true);
+  expect(result.body.recently_active.every((user: any) => !user.is_anonymous)).toBe(true);
 
   // Verify anonymous users aren't counted in daily_users
-  const lastDayUsers = response.body.daily_users[response.body.daily_users.length - 1];
+  const lastDayUsers = result.body.daily_users[result.body.daily_users.length - 1];
   expect(lastDayUsers.activity).toBe(1);
 
   // Verify users_by_country only includes regular users
-  expect(response.body.users_by_country["US"]).toBe(1);
+  expect(result.body.users_by_country["US"]).toBe(1);
 
-  await ensureAnonymousUsersAreStillExcluded(response);
+  await ensureAnonymousUsersAreStillExcluded(result);
 });
 
 it("should handle anonymous users with activity correctly", async ({ expect }) => {

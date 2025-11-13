@@ -72,8 +72,8 @@ export function AuthPanel() {
   }, []);
 
   // Calculate position based on homepage and scroll state (same as AIChatDrawer)
-  const topPosition = isHomePage && isScrolled ? 'top-0' : 'top-14';
-  const height = isHomePage && isScrolled ? 'h-screen' : 'h-[calc(100vh-3.5rem)]';
+  const topPosition = isHomePage && isScrolled ? 'top-0' : 'top-0';
+  const height = isHomePage && isScrolled ? 'h-screen' : 'h-[calc(100vh)]';
 
   const stackAuthHeaders = [
     { key: 'Content-Type', label: 'Content Type', placeholder: 'application/json', required: true },
@@ -211,7 +211,12 @@ export function AuthPanel() {
       </div>
 
       {/* Mobile Auth Panel */}
-      <div className="md:hidden fixed inset-0 z-50 flex flex-col bg-fd-background">
+      <div
+        className={`md:hidden fixed inset-0 z-50 flex flex-col bg-fd-background transition-all duration-300 ease-out ${
+          isAuthOpen ? 'translate-x-0 opacity-100 pointer-events-auto' : 'translate-x-full opacity-0 pointer-events-none'
+        }`}
+        aria-hidden={!isAuthOpen}
+      >
         {/* Mobile Header */}
         <div className="flex items-center justify-between p-3 border-b border-fd-border bg-fd-background">
           <div className="flex items-center gap-2">
