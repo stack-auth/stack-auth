@@ -4,15 +4,16 @@ import { CustomerType } from "@prisma/client";
 import { typedIncludes } from "@stackframe/stack-shared/dist/utils/arrays";
 import { getEnvVariable, getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
 import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
-import { createStripeProxy, type StripeOverridesMap } from "./stripe-proxy";
 import Stripe from "stripe";
+import { createStripeProxy, type StripeOverridesMap } from "./stripe-proxy";
 
 const stripeSecretKey = getEnvVariable("STACK_STRIPE_SECRET_KEY");
 const useStripeMock = stripeSecretKey === "sk_test_mockstripekey" && ["development", "test"].includes(getNodeEnvironment());
+const stackPortPrefix = getEnvVariable("NEXT_PUBLIC_STACK_PORT_PREFIX", "81");
 const stripeConfig: Stripe.StripeConfig = useStripeMock ? {
   protocol: "http",
   host: "localhost",
-  port: 8123,
+  port: Number(`${stackPortPrefix}23`),
 } : {};
 
 export const getStackStripe = (overrides?: StripeOverridesMap) => {
@@ -79,6 +80,7 @@ export async function syncStripeSubscriptions(stripe: Stripe, stripeAccountId: s
       continue;
     }
     const item = subscription.items.data[0];
+    const priceId = subscription.metadata.priceId as string | undefined;
     await prisma.subscription.upsert({
       where: {
         tenancyId_stripeSubscriptionId: {
@@ -88,18 +90,20 @@ export async function syncStripeSubscriptions(stripe: Stripe, stripeAccountId: s
       },
       update: {
         status: subscription.status,
-        offer: JSON.parse(subscription.metadata.offer),
+        product: JSON.parse(subscription.metadata.product),
         quantity: item.quantity ?? 1,
         currentPeriodEnd: new Date(item.current_period_end * 1000),
         currentPeriodStart: new Date(item.current_period_start * 1000),
         cancelAtPeriodEnd: subscription.cancel_at_period_end,
+        priceId: priceId ?? null,
       },
       create: {
         tenancyId: tenancy.id,
         customerId,
         customerType,
-        offerId: subscription.metadata.offerId,
-        offer: JSON.parse(subscription.metadata.offer),
+        productId: subscription.metadata.productId,
+        priceId: priceId ?? null,
+        product: JSON.parse(subscription.metadata.product),
         quantity: item.quantity ?? 1,
         stripeSubscriptionId: subscription.id,
         status: subscription.status,

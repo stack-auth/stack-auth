@@ -2,8 +2,12 @@ import { applyMigrations } from "@/auto-migrations";
 import { MIGRATION_FILES_DIR, getMigrationFiles } from "@/auto-migrations/utils";
 import { globalPrismaClient, globalPrismaSchema, sqlQuoteIdent } from "@/prisma-client";
 import { Prisma } from "@prisma/client";
-import { execSync } from "child_process";
-import * as readline from 'readline';
+import { spawnSync } from "child_process";
+import fs from "fs";
+import path from "path";
+import * as readline from "readline";
+import { seed } from "../prisma/seed";
+import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 
 const dropSchema = async () => {
   await globalPrismaClient.$executeRaw(Prisma.sql`DROP SCHEMA ${sqlQuoteIdent(globalPrismaSchema)} CASCADE`);
@@ -12,20 +16,25 @@ const dropSchema = async () => {
   await globalPrismaClient.$executeRaw(Prisma.sql`GRANT ALL ON SCHEMA ${sqlQuoteIdent(globalPrismaSchema)} TO public`);
 };
 
-const seed = async () => {
-  execSync('pnpm run db-seed-script', { stdio: 'inherit' });
+
+const askQuestion = (question: string) => {
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout,
+  });
+
+  return new Promise<string>((resolve) => {
+    rl.question(question, (answer) => {
+      rl.close();
+      resolve(answer);
+    });
+  });
 };
 
 const promptDropDb = async () => {
-  const rl = readline.createInterface({
-    input: process.stdin,
-    output: process.stdout
-  });
-
-  const answer = await new Promise<string>(resolve => {
-    rl.question('Are you sure you want to drop everything in the database? This action cannot be undone. (y/N): ', resolve);
-  });
-  rl.close();
+  const answer = (await askQuestion(
+    'Are you sure you want to drop everything in the database? This action cannot be undone. (y/N): ',
+  )).trim();
 
   if (answer.toLowerCase() !== 'y') {
     console.log('Operation cancelled');
@@ -33,9 +42,82 @@ const promptDropDb = async () => {
   }
 };
 
-const migrate = async () => {
+const formatMigrationName = (input: string) =>
+  input
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+
+const promptMigrationName = async () => {
+  while (true) {
+    const rawName = (await askQuestion('Enter a migration name: ')).trim();
+    const formattedName = formatMigrationName(rawName);
+
+    if (!formattedName) {
+      console.log('Migration name cannot be empty. Please try again.');
+      continue;
+    }
+
+    if (formattedName !== rawName) {
+      console.log(`Using sanitized migration name: ${formattedName}`);
+    }
+
+    return formattedName;
+  }
+};
+
+const timestampPrefix = () => new Date().toISOString().replace(/\D/g, '').slice(0, 14);
+
+const generateMigrationFile = async () => {
+  const migrationName = await promptMigrationName();
+  const folderName = `${timestampPrefix()}_${migrationName}`;
+  const migrationDir = path.join(MIGRATION_FILES_DIR, folderName);
+  const migrationSqlPath = path.join(migrationDir, 'migration.sql');
+  const diffUrl = getEnvVariable('STACK_DIRECT_DATABASE_CONNECTION_STRING');
+
+  console.log(`Generating migration ${folderName}...`);
+  const diffResult = spawnSync(
+    'pnpm',
+    [
+      '-s',
+      'prisma',
+      'migrate',
+      'diff',
+      '--from-url',
+      diffUrl,
+      '--to-schema-datamodel',
+      'prisma/schema.prisma',
+      '--script',
+    ],
+    {
+      cwd: process.cwd(),
+      encoding: 'utf8',
+    },
+  );
+
+  if (diffResult.error || diffResult.status !== 0) {
+    console.error(diffResult.stdout);
+    console.error(diffResult.stderr);
+    throw diffResult.error ?? new Error(`Failed to generate migration (exit code ${diffResult.status})`);
+  }
+
+  const sql = diffResult.stdout;
+
+  if (!sql.trim()) {
+    console.log('No schema changes detected. Migration file was not created.');
+  } else {
+    fs.mkdirSync(migrationDir, { recursive: true });
+    fs.writeFileSync(migrationSqlPath, sql, 'utf8');
+    console.log(`Migration written to ${path.relative(process.cwd(), migrationSqlPath)}`);
+    console.log('Applying migration...');
+    await migrate([{ migrationName: folderName, sql }]);
+  }
+};
+
+const migrate = async (selectedMigrationFiles?: { migrationName: string, sql: string }[]) => {
   const startTime = performance.now();
-  const migrationFiles = getMigrationFiles(MIGRATION_FILES_DIR);
+  const migrationFiles = selectedMigrationFiles ?? getMigrationFiles(MIGRATION_FILES_DIR);
   const totalMigrations = migrationFiles.length;
 
   const result = await applyMigrations({
@@ -101,10 +183,9 @@ const main = async () => {
     }
     case 'generate-migration-file': {
       await promptDropDb();
-      execSync('pnpm prisma migrate reset --force --skip-seed', { stdio: 'inherit' });
-      execSync('pnpm prisma migrate dev --skip-seed', { stdio: 'inherit' });
       await dropSchema();
       await migrate();
+      await generateMigrationFile();
       await seed();
       break;
     }

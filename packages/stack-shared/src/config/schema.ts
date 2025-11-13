@@ -1,14 +1,18 @@
 // TODO: rename this file to spaghetti.ts because that's the kind of code here
 
+// IMPORTANT
+// WHENEVER YOU MAKE BACKWARDS-INCOMPATIBLE CHANGES TO THE CONFIG SCHEMA, YOU MUST UPDATE THE MIGRATION FUNCTIONS BELOW.
+// OTHERWISE THINGS WILL GO BOOM!!
+
 import * as yup from "yup";
+import { ALL_APPS } from "../apps/apps-config";
 import { DEFAULT_EMAIL_TEMPLATES, DEFAULT_EMAIL_THEMES, DEFAULT_EMAIL_THEME_ID } from "../helpers/emails";
 import * as schemaFields from "../schema-fields";
-import { offerSchema, userSpecifiedIdSchema, yupBoolean, yupDate, yupMixed, yupNever, yupNumber, yupObject, yupRecord, yupString, yupTuple, yupUnion } from "../schema-fields";
-import { isShallowEqual } from "../utils/arrays";
+import { productSchema, userSpecifiedIdSchema, yupBoolean, yupDate, yupMixed, yupNever, yupNumber, yupObject, yupRecord, yupString, yupTuple, yupUnion } from "../schema-fields";
 import { SUPPORTED_CURRENCIES } from "../utils/currency-constants";
 import { StackAssertionError } from "../utils/errors";
 import { allProviders } from "../utils/oauth";
-import { DeepFilterUndefined, DeepMerge, DeepRequiredOrUndefined, deleteKey, filterUndefined, get, has, isObjectLike, mapValues, set, typedAssign, typedEntries, typedFromEntries } from "../utils/objects";
+import { DeepFilterUndefined, DeepMerge, DeepRequiredOrUndefined, filterUndefined, get, has, isObjectLike, mapValues, set, typedAssign, typedEntries, typedFromEntries } from "../utils/objects";
 import { Result } from "../utils/results";
 import { CollapseObjectUnion, Expand, IntersectAll, IsUnion, typeAssert, typeAssertExtends, typeAssertIs } from "../utils/types";
 import { Config, NormalizationError, NormalizesTo, assertNormalized, getInvalidConfigReason, normalize } from "./format";
@@ -88,6 +92,32 @@ const branchApiKeysSchema = yupObject({
 });
 // --- END NEW API Keys Schema ---
 
+// --- NEW Apps Schema ---
+const appIds = Object.keys(ALL_APPS) as (keyof typeof ALL_APPS)[];
+const branchAppsSchema = yupObject({
+  installed: yupRecord(
+    yupString().oneOf(appIds),
+    yupObject({
+      enabled: yupBoolean(),
+    }),
+  ).test(
+    'authentication-and-emails-enabled',
+    'authentication and emails must be installed and enabled',
+    function(value) {
+      const hasAuthentication = value['authentication'].enabled === true;
+      const hasEmails = value['emails'].enabled === true;
+      if (!hasAuthentication || !hasEmails) {
+        return this.createError({
+          message: 'authentication and emails must be installed and enabled',
+          path: this.path,
+        });
+      }
+      return true;
+    }
+  ),
+});
+// --- END NEW Apps Schema ---
+
 
 const branchAuthSchema = yupObject({
   allowSignUp: yupBoolean(),
@@ -117,15 +147,16 @@ export const branchPaymentsSchema = yupObject({
   autoPay: yupObject({
     interval: schemaFields.dayIntervalSchema,
   }).optional(),
-  groups: yupRecord(
-    userSpecifiedIdSchema("groupId"),
+  testMode: yupBoolean(),
+  catalogs: yupRecord(
+    userSpecifiedIdSchema("catalogId"),
     yupObject({
       displayName: yupString().optional(),
     }),
-  ).meta({ openapiField: { description: 'The groups that offers can be in. All offers in a group (besides add-ons) are mutually exclusive.', exampleValue: { "group-id": { displayName: "My Group" } } } }),
-  offers: yupRecord(
-    userSpecifiedIdSchema("offerId"),
-    offerSchema,
+  ).meta({ openapiField: { description: 'The catalogs that products can be in. All products in a catalog (besides add-ons) are mutually exclusive.', exampleValue: { "catalog-id": { displayName: "My Catalog" } } } }),
+  products: yupRecord(
+    userSpecifiedIdSchema("productId"),
+    productSchema,
   ),
   items: yupRecord(
     userSpecifiedIdSchema("itemId"),
@@ -140,16 +171,6 @@ const branchDomain = yupObject({
   allowLocalhost: yupBoolean(),
 });
 
-const branchWorkflowsSchema = yupObject({
-  availableWorkflows: yupRecord(
-    userSpecifiedIdSchema("workflowId"),
-    yupObject({
-      displayName: yupString(),
-      tsSource: yupString(),
-      enabled: yupBoolean(),
-    }),
-  ),
-});
 
 export const branchConfigSchema = canNoLongerBeOverridden(projectConfigSchema, ["sourceOfTruth"]).concat(yupObject({
   rbac: branchRbacSchema,
@@ -164,6 +185,8 @@ export const branchConfigSchema = canNoLongerBeOverridden(projectConfigSchema, [
   }),
 
   apiKeys: branchApiKeysSchema,
+
+  apps: branchAppsSchema,
 
   domains: branchDomain,
 
@@ -185,8 +208,6 @@ export const branchConfigSchema = canNoLongerBeOverridden(projectConfigSchema, [
       }),
     ),
   }),
-
-  workflows: branchWorkflowsSchema,
 }));
 
 
@@ -256,7 +277,7 @@ export function migrateConfigOverride(type: "project" | "branch" | "environment"
 
   // BEGIN 2025-07-28: emails.theme is now emails.selectedThemeId
   if (isBranchOrHigher) {
-    res = renameProperty(res, "emails.theme", "emails.selectedThemeId");
+    res = renameProperty(res, "emails.theme", "selectedThemeId");
   }
   // END
 
@@ -294,6 +315,31 @@ export function migrateConfigOverride(type: "project" | "branch" | "environment"
   // BEGIN 2025-08-25: payments.items.default is no longer used, so let's remove it
   if (isBranchOrHigher) {
     res = removeProperty(res, p => p.length === 4 && p[0] === "payments" && p[1] === "items" && p[3] === "default");
+  }
+  // END
+
+  // BEGIN 2025-09-23: payments.offers is now payments.products
+  if (isBranchOrHigher) {
+    res = renameProperty(res, "payments.offers", "products");
+  }
+  // END
+
+  // BEGIN 2025-09-23: payments.groups is now payments.catalogs
+  if (isBranchOrHigher) {
+    res = renameProperty(res, "payments.groups", "catalogs");
+  }
+  // END
+
+  // BEGIN 2025-09-23: payments.products.*.groupId is now payments.products.*.catalogId
+  if (isBranchOrHigher) {
+    res = renameProperty(res, (p) => p.length === 4 && p[0] === "payments" && p[1] === "products" && p[3] === "groupId", (p) => "catalogId");
+  }
+  // END
+
+  // BEGIN 2025-10-29: Removed workflows and everything associated with it
+  if (isBranchOrHigher) {
+    res = removeProperty(res, p => p[0] === "workflows");
+    res = removeProperty(res, p => p[0] === "apps" && p[1] === "installed" && p[2] === "workflows");
   }
   // END
 
@@ -335,32 +381,46 @@ import.meta.vitest?.test("mapProperty - basic property mapping", ({ expect }) =>
   expect(mapProperty({ a: { b: { c: 1 } } }, p => p.length === 3 && p[0] === "a" && p[1] === "b", (value) => value + 1)).toEqual({ a: { b: { c: 2 } } });
 });
 
-function renameProperty(obj: Record<string, any>, oldPath: string, newPath: string): any {
-  const oldKeyParts = oldPath.split(".");
-  const newKeyParts = newPath.split(".");
-  if (!isShallowEqual(oldKeyParts.slice(0, -1), newKeyParts.slice(0, -1))) throw new StackAssertionError(`oldPath and newPath must have the same prefix. Provided: ${oldPath} and ${newPath}`);
+function renameProperty(obj: Record<string, any>, oldPath: string | ((path: string[]) => boolean), newName: string | ((path: string[]) => string)): any {
+  const pathCond = typeof oldPath === "function" ? oldPath : (p: string[]) => p.join(".") === oldPath;
+  const pathMapper = typeof newName === "function" ? newName : (p: string[]) => (newName as string);
 
-  for (let i = 0; i < oldKeyParts.length; i++) {
-    const pathPrefix = oldKeyParts.slice(0, i).join(".");
-    const oldPathSuffix = oldKeyParts.slice(i).join(".");
-    const newPathSuffix = newKeyParts.slice(i).join(".");
-    if (has(obj, pathPrefix) && isObjectLike(get(obj, pathPrefix))) {
-      set(obj, pathPrefix, renameProperty(get(obj, pathPrefix), oldPathSuffix, newPathSuffix));
+  const res: Record<string, any> = Array.isArray(obj) ? [] : {};
+  for (const [key, originalValue] of typedEntries(obj)) {
+    const path = key.split(".");
+
+    for (let i = 0; i < path.length; i++) {
+      const pathPrefix = path.slice(0, i + 1);
+      if (pathCond(pathPrefix)) {
+        const name = pathMapper(pathPrefix);
+        if (name.includes(".")) throw new StackAssertionError(`newName must not contain a dot. Provided: ${name}`);
+        path[i] = name;
+      }
     }
-  }
-  if (has(obj, oldPath)) {
-    set(obj, newPath, get(obj, oldPath));
-    deleteKey(obj, oldPath);
+
+    const value = isObjectLike(originalValue) ? renameProperty(originalValue, p => pathCond([...path, ...p]), p => pathMapper([...path, ...p])) : originalValue;
+    set(res, path.join("."), value);
   }
 
-  return obj;
+  return res;
 }
 import.meta.vitest?.test("renameProperty", ({ expect }) => {
   // Basic
   expect(renameProperty({ a: 1 }, "a", "b")).toEqual({ b: 1 });
-  expect(renameProperty({ b: { c: 1 } }, "b.c", "b.d")).toEqual({ b: { d: 1 } });
-  expect(renameProperty({ a: { b: { c: 1 } } }, "a.b.c", "a.b.d")).toEqual({ a: { b: { d: 1 } } });
-  expect(renameProperty({ a: { b: { c: 1 } } }, "a.b.c.d", "a.b.c.e")).toEqual({ a: { b: { c: 1 } } });
+  expect(renameProperty({ b: { c: 1 } }, "b.c", "d")).toEqual({ b: { d: 1 } });
+  expect(renameProperty({ a: { b: { c: 1 } } }, "a.b.c", "d")).toEqual({ a: { b: { d: 1 } } });
+  expect(renameProperty({ a: { b: { c: 1 } } }, "a.b.c.d", "e")).toEqual({ a: { b: { c: 1 } } });
+  expect(renameProperty({ a: { b: { c: 1 }, "b.c": 2 } }, "b.c", "d")).toEqual({ a: { b: { c: 1 }, "b.c": 2 } });
+  expect(renameProperty({ a: { "b.c.d": 2 } }, "a.b.c", "e")).toEqual({ a: { "b.e.d": 2 } });
+  expect(renameProperty({ a: { b: { c: 1 }, "b.c": 2 } }, "a.b.c", "d")).toEqual({ a: { b: { d: 1 }, "b.d": 2 } });
+  expect(renameProperty({ a: { b: { c: 1, d: 2 } } }, "a.b.c", "d")).toEqual({ a: { b: { d: 2 } } });
+  expect(renameProperty({ a: { b: { d: 2, c: 1 } } }, "a.b.c", "d")).toEqual({ a: { b: { d: 1 } } });
+
+  // Functions
+  expect(renameProperty({ a: 1 }, (p) => p.length === 1 && p[0] === "a", (p) => "b")).toEqual({ b: 1 });
+  expect(renameProperty({ a: { b: { c: 1 } } }, (p) => p.length === 3 && p[0] === "a" && p[1] === "b" && p[2] === "c", (p) => "d")).toEqual({ a: { b: { d: 1 } } });
+  expect(renameProperty({ a: { b: { c: 1 } } }, (p) => false, (p) => "e")).toEqual({ a: { b: { c: 1 } } });
+  expect(renameProperty({ a: { b: { a: 1 } } }, (p) => p[p.length - 1] === "a", (p) => "c")).toEqual({ c: { b: { c: 1 } } });
 
   // Errors
   expect(() => renameProperty({ a: 1 }, "a", "b.c")).toThrow();
@@ -403,6 +463,10 @@ const organizationConfigDefaults = {
       team: false,
       user: false,
     },
+  },
+
+  apps: {
+    installed: typedFromEntries(appIds.map(appId => [appId, { enabled: false }])) as Record<string, { enabled: boolean } | undefined>,
   },
 
   teams: {
@@ -473,13 +537,14 @@ const organizationConfigDefaults = {
   },
 
   payments: {
+    testMode: true,
     autoPay: undefined,
-    groups: (key: string) => ({
+    catalogs: (key: string) => ({
       displayName: undefined,
     }),
-    offers: (key: string) => ({
+    products: (key: string) => ({
       displayName: key,
-      groupId: undefined,
+      catalogId: undefined,
       customerType: "user",
       freeTrial: undefined,
       serverOnly: false,
@@ -506,14 +571,6 @@ const organizationConfigDefaults = {
   dataVault: {
     stores: (key: string) => ({
       displayName: "Unnamed Vault",
-    }),
-  },
-
-  workflows: {
-    availableWorkflows: (key: string) => ({
-      displayName: "Unnamed Workflow",
-      tsSource: "Error: Workflow config is missing TypeScript source code.",
-      enabled: false,
     }),
   },
 } as const satisfies DefaultsType<OrganizationRenderedConfigBeforeDefaults, [typeof environmentConfigDefaults, typeof branchConfigDefaults, typeof projectConfigDefaults]>;
@@ -555,26 +612,28 @@ function applyDefaults<D extends object | ((key: string) => unknown), C extends 
   const res: any = deepReplaceFunctionsWithObjects(defaults);
 
   outer: for (const [key, mergeValue] of Object.entries(config)) {
-    if (mergeValue === undefined) continue;
-    const keyParts = key.split(".");
-    let baseValue: any = defaults;
-    let currentRes: any = res;
-    for (const [index, part] of keyParts.entries()) {
-      baseValue = has(baseValue, part) ? get(baseValue, part) : (typeof baseValue === 'function' ? (baseValue as any)(part) : undefined);
-      if (baseValue === undefined || !isObjectLike(baseValue)) {
-        set(res, key, mergeValue);
-        continue outer;
+    if (mergeValue == null) continue;
+    if (!isObjectLike(mergeValue)) {
+      set(res, key, mergeValue);
+    } else {
+      const keyParts = key.split(".");
+      let baseValue: any = defaults;
+      for (const [index, part] of keyParts.entries()) {
+        baseValue = has(baseValue, part) ? get(baseValue, part) : (typeof baseValue === 'function' ? (baseValue as any)(part) : undefined);
+        if (baseValue === undefined || !isObjectLike(baseValue)) {
+          set(res, key, mergeValue);
+          continue outer;
+        }
       }
-      if (!has(currentRes, part)) set(currentRes, part, deepReplaceFunctionsWithObjects(baseValue) as never);
-      currentRes = get(currentRes, part);
+      set(res, key, applyDefaults(baseValue, mergeValue));
     }
-    set(res, key, isObjectLike(mergeValue) ? applyDefaults(baseValue, mergeValue) : mergeValue);
   }
   return res as any;
 }
 import.meta.vitest?.test("applyDefaults", ({ expect }) => {
   // Basic
   expect(applyDefaults({ a: 1 }, { a: 2 })).toEqual({ a: 2 });
+  expect(applyDefaults({ a: 1 }, { a: null })).toEqual({ a: 1 });
   expect(applyDefaults({}, { a: 1 })).toEqual({ a: 1 });
   expect(applyDefaults({ a: { b: 1 } }, { a: { b: 2 } })).toEqual({ a: { b: 2 } });
   expect(applyDefaults({ a: { b: 1 } }, { a: { c: 2 } })).toEqual({ a: { b: 1, c: 2 } });
@@ -582,22 +641,26 @@ import.meta.vitest?.test("applyDefaults", ({ expect }) => {
 
   // Functions
   expect(applyDefaults((key: string) => ({ b: key }), { a: {} })).toEqual({ a: { b: "a" } });
+  expect(applyDefaults((key: string) => ({ b: key }), { a: null })).toEqual({});
   expect(applyDefaults((key1: string) => (key2: string) => ({ a: key1, b: key2 }), { c: { d: {} } })).toEqual({ c: { d: { a: "c", b: "d" } } });
   expect(applyDefaults({ a: (key: string) => ({ b: key }) }, { a: { c: { d: 1 } } })).toEqual({ a: { c: { b: "c", d: 1 } } });
   expect(applyDefaults({ a: (key: string) => ({ b: key }) }, {})).toEqual({ a: {} });
+  expect(applyDefaults({ a: (key: string) => ({ b: key }) }, { a: null })).toEqual({ a: {} });
   expect(applyDefaults({ a: { b: (key: string) => ({ b: key }) } }, {})).toEqual({ a: { b: {} } });
   expect(applyDefaults(typedAssign(() => ({ b: 1 }), { a: { b: 1, c: 2 } }), { a: {} })).toEqual({ a: { b: 1, c: 2 } });
   expect(applyDefaults(typedAssign(() => ({ b: 1 }), { a: { b: 1, c: 2 } }), { d: {} })).toEqual({ a: { b: 1, c: 2 }, d: { b: 1 } });
 
   // Dot notation
   expect(applyDefaults({ a: { b: 1 } }, { "a.c": 2 })).toEqual({ a: { b: 1 }, "a.c": 2 });
+  expect(applyDefaults({ a: { b: 1 } }, { "a.c": null })).toEqual({ a: { b: 1 } });
   expect(applyDefaults({ a: 1 }, { "a.b": 2 })).toEqual({ a: 1, "a.b": 2 });
   expect(applyDefaults({ a: null }, { "a.b": 2 })).toEqual({ a: null, "a.b": 2 });
   expect(applyDefaults({ a: { b: { c: 1 } } }, { "a.b": { d: 2 } })).toEqual({ a: { b: { c: 1 } }, "a.b": { c: 1, d: 2 } });
+  expect(applyDefaults({ a: { b: { c: 1 } } }, { "a.b": null })).toEqual({ a: { b: { c: 1 } } });
   expect(applyDefaults({ a: { b: { c: { d: 1 } } } }, { "a.b.c": {} })).toEqual({ a: { b: { c: { d: 1 } } }, "a.b.c": { d: 1 } });
-  expect(applyDefaults({ a: () => ({ c: 1 }) }, { "a.b": { d: 2 } })).toEqual({ a: { b: { c: 1 } }, "a.b": { c: 1, d: 2 } });
-  expect(applyDefaults({ a: () => () => ({ d: 1 }) }, { "a.b.c": {} })).toEqual({ a: { b: { c: { d: 1 } } }, "a.b.c": { d: 1 } });
-  expect(applyDefaults({ a: { b: () => ({ c: 1, d: 2 }) } }, { "a.b.x-y.c": 3 })).toEqual({ a: { b: { "x-y": { c: 1, d: 2 } } }, "a.b.x-y.c": 3 });
+  expect(applyDefaults({ a: () => ({ c: 1 }) }, { "a.b": { d: 2 } })).toEqual({ a: {}, "a.b": { c: 1, d: 2 } });
+  expect(applyDefaults({ a: () => () => ({ d: 1 }) }, { "a.b.c": {} })).toEqual({ a: {}, "a.b.c": { d: 1 } });
+  expect(applyDefaults({ a: { b: () => ({ c: 1, d: 2 }) } }, { "a.b.x-y.c": 3 })).toEqual({ a: { b: {} }, "a.b.x-y.c": 3 });
 });
 
 export function applyProjectDefaults<T extends ProjectRenderedConfigBeforeDefaults>(config: T) {
@@ -693,22 +756,25 @@ export async function sanitizeOrganizationConfig(config: OrganizationRenderedCon
     ...DEFAULT_EMAIL_TEMPLATES,
     ...prepared.emails.templates,
   };
-  const offers = typedFromEntries(typedEntries(prepared.payments.offers).map(([key, offer]) => {
-    const isAddOnTo = offer.isAddOnTo === false ?
+  const products = typedFromEntries(typedEntries(prepared.payments.products).map(([key, product]) => {
+    const isAddOnTo = product.isAddOnTo === false ?
       false as const :
-      typedFromEntries(Object.keys(offer.isAddOnTo).map((key) => [key, true as const]));
-    const prices = offer.prices === "include-by-default" ?
+      typedFromEntries(Object.keys(product.isAddOnTo).map((key) => [key, true as const]));
+    const prices = product.prices === "include-by-default" ?
       "include-by-default" as const :
-      typedFromEntries(typedEntries(offer.prices).map(([key, value]) => {
+      typedFromEntries(typedEntries(product.prices).map(([key, value]) => {
         const data = { serverOnly: false, ...(value ?? {}) };
         return [key, data];
       }));
     return [key, {
-      ...offer,
+      ...product,
       isAddOnTo,
       prices,
     }];
   }));
+
+  const appSortIndices = new Map(Object.keys(ALL_APPS).map((appId, index) => [appId, index]));
+
   return {
     ...prepared,
     emails: {
@@ -719,8 +785,14 @@ export async function sanitizeOrganizationConfig(config: OrganizationRenderedCon
     },
     payments: {
       ...prepared.payments,
-      offers
-    }
+      products
+    },
+    apps: {
+      installed: typedFromEntries(
+        typedEntries(prepared.apps.installed)
+          .sort(([a], [b]) => appSortIndices.get(a)! - appSortIndices.get(b)!)
+      ),
+    },
   };
 }
 
@@ -855,7 +927,16 @@ export async function getConfigOverrideErrors<T extends yup.AnySchema>(schema: T
     if (value === undefined) continue;
     const subSchema = getSubSchema(schema, key);
     if (!subSchema) {
-      return Result.error(`The key ${JSON.stringify(key)} is not valid for the schema.`);
+      // find smallest key prefix that is invalid
+      const keySplit = key.split(".");
+      for (let i = 0; i < keySplit.length; i++) {
+        const prefix = keySplit.slice(0, i + 1).join(".");
+        const subSchema = getSubSchema(schema, prefix);
+        if (!subSchema) {
+          return Result.error(`The key ${JSON.stringify(key)} is not valid (nested object not found in schema: ${JSON.stringify(prefix)}).`);
+        }
+      }
+      throw new StackAssertionError("Something weird happened? Sub-schema for key is invalid but no prefix is invalid??", { key, subSchema });
     }
     let restrictedSchema = getRestrictedSchema(key, subSchema);
     try {
@@ -934,10 +1015,10 @@ export type ValidatedToHaveNoIncompleteConfigWarnings<T extends yup.AnySchema> =
 
 // Normalized overrides
 // ex.: { a?: { b?: number, c?: string }, d?: number }
-type ProjectConfigNormalizedOverride = Expand<ValidatedToHaveNoConfigOverrideErrors<typeof projectConfigSchema>>;
-type BranchConfigNormalizedOverride = Expand<ValidatedToHaveNoConfigOverrideErrors<typeof branchConfigSchema>>;
-type EnvironmentConfigNormalizedOverride = Expand<ValidatedToHaveNoConfigOverrideErrors<typeof environmentConfigSchema>>;
-type OrganizationConfigNormalizedOverride = Expand<ValidatedToHaveNoConfigOverrideErrors<typeof organizationConfigSchema>>;
+export type ProjectConfigNormalizedOverride = Expand<ValidatedToHaveNoConfigOverrideErrors<typeof projectConfigSchema>>;
+export type BranchConfigNormalizedOverride = Expand<ValidatedToHaveNoConfigOverrideErrors<typeof branchConfigSchema>>;
+export type EnvironmentConfigNormalizedOverride = Expand<ValidatedToHaveNoConfigOverrideErrors<typeof environmentConfigSchema>>;
+export type OrganizationConfigNormalizedOverride = Expand<ValidatedToHaveNoConfigOverrideErrors<typeof organizationConfigSchema>>;
 
 
 // Overrides

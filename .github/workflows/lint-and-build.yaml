@@ -62,11 +62,11 @@ jobs:
       - name: Create .env.production.local file for examples/middleware
         run: cp examples/middleware/.env.development examples/middleware/.env.production.local
 
-      - name: Create .env.production.local file for examples/partial-prerendering
-        run: cp examples/partial-prerendering/.env.development examples/partial-prerendering/.env.production.local
-
       - name: Create .env.production.local file for examples/supabase
         run: cp examples/supabase/.env.development examples/supabase/.env.production.local
+
+      - name: Create .env.production.local file for examples/convex
+        run: cp examples/convex/.env.development examples/convex/.env.production.local
 
       - name: Build
         run: pnpm build
@@ -88,7 +88,15 @@ jobs:
           if [[ -n $(git status --porcelain) ]]; then
             echo "Error: There are uncommitted changes after build/lint/typecheck."
             echo "Please commit all changes before pushing."
+            echo ""
+            echo "Files with uncommitted changes:"
+            git status --porcelain
+            echo ""
+            echo "Full git status:"
             git status
+            echo ""
+            echo "Diff of changes:"
+            git diff
             exit 1
           fi
       
@@ -97,6 +105,14 @@ jobs:
           if [[ -n $(git status --porcelain) ]]; then
             echo "Error: There are uncommitted changes after build/lint/typecheck."
             echo "Please commit all changes before pushing."
+            echo ""
+            echo "Files with uncommitted changes:"
+            git status --porcelain
+            echo ""
+            echo "Full git status:"
             git status
+            echo ""
+            echo "Diff of changes:"
+            git diff
             exit 1
           fi

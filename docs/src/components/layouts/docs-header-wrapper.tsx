@@ -1,12 +1,12 @@
 'use client';
+import { filterTreeForSection, resolveDocsSection } from '@/lib/docs-tree';
+import { generateNavLinks } from '@/lib/navigation-utils';
 import type { PageTree } from 'fumadocs-core/server';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import { usePathname } from 'next/navigation';
 import React, { useMemo, useState } from 'react';
-import { getCurrentPlatform } from '../../lib/platform-utils';
 import { ApiSidebarContent } from './api/api-sidebar';
-import { PlatformAwareHeader } from './platform-aware-header';
-import { isInApiSection } from './shared-header';
+import { SharedHeader, isInApiSection } from './shared-header';
 
 // Types for the page data
 type PageData = {
@@ -21,7 +21,6 @@ type PageData = {
 type DocsHeaderWrapperProps = {
   showSearch?: boolean,
   pageTree?: PageTree.Root,
-  className?: string,
   apiPages?: PageData[],
 }
 
@@ -179,7 +178,7 @@ function MobileClickableCollapsibleSection({
 }
 
 // Recursive component to render page tree items for mobile
-function MobilePageTreeItem({ item, currentPlatform }: { item: PageTree.Node, currentPlatform?: string }) {
+function MobilePageTreeItem({ item }: { item: PageTree.Node }) {
   const pathname = usePathname();
 
   if (item.type === 'separator') {
@@ -201,7 +200,7 @@ function MobilePageTreeItem({ item, currentPlatform }: { item: PageTree.Node, cu
           defaultOpen={!!isCurrentPath}
         >
           {item.children.map((child, index) => (
-            <MobilePageTreeItem key={child.type === 'page' ? child.url : index} item={child} currentPlatform={currentPlatform} />
+            <MobilePageTreeItem key={child.type === 'page' ? child.url : index} item={child} />
           ))}
         </MobileClickableCollapsibleSection>
       );
@@ -214,7 +213,7 @@ function MobilePageTreeItem({ item, currentPlatform }: { item: PageTree.Node, cu
         defaultOpen={!!isCurrentPath}
       >
         {item.children.map((child, index) => (
-          <MobilePageTreeItem key={child.type === 'page' ? child.url : index} item={child} currentPlatform={currentPlatform} />
+          <MobilePageTreeItem key={child.type === 'page' ? child.url : index} item={child} />
         ))}
       </MobileCollapsibleSection>
     );
@@ -227,57 +226,13 @@ function MobilePageTreeItem({ item, currentPlatform }: { item: PageTree.Node, cu
   );
 }
 
-// Function to find platform-specific content in the page tree
-function findPlatformContent(tree: PageTree.Root, platform: string): PageTree.Node[] {
-  // Platform folder name mappings
-  const platformMappings: Record<string, string[]> = {
-    'next': ['next.js', 'nextjs'],
-    'react': ['react'],
-    'js': ['javascript'],
-    'python': ['python']
-  };
+function GeneralDocsSidebarContent({ pageTree }: { pageTree?: PageTree.Root }) {
+  if (!pageTree) return null;
 
-  const platformKey = platform.toLowerCase();
-  const possibleNames = platformKey in platformMappings ? platformMappings[platformKey] : [platformKey];
-
-  for (const item of tree.children) {
-    if (item.type === 'folder') {
-      const itemName = String(item.name).toLowerCase();
-
-      for (const name of possibleNames) {
-        if (itemName.includes(name)) {
-          return item.children;
-        }
-      }
-    }
-  }
-
-  return [];
-}
-
-// Improved general docs sidebar content that renders the platform content
-function GeneralDocsSidebarContent({ pageTree, pathname }: { pageTree?: PageTree.Root, pathname: string }) {
-  const currentPlatform = getCurrentPlatform(pathname);
-
-  if (!currentPlatform || !pageTree) return null;
-
-  // For platform-specific docs, show the platform folder's content
-  const platformContent = findPlatformContent(pageTree, currentPlatform);
-  if (platformContent.length > 0) {
-    return (
-      <>
-        {platformContent.map((item, index) => (
-          <MobilePageTreeItem key={item.type === 'page' ? item.url : index} item={item} currentPlatform={currentPlatform} />
-        ))}
-      </>
-    );
-  }
-
-  // For general docs or when no platform content found, show root level content
   return (
     <>
       {pageTree.children.map((item, index) => (
-        <MobilePageTreeItem key={item.type === 'page' ? item.url : index} item={item} currentPlatform={currentPlatform} />
+        <MobilePageTreeItem key={item.type === 'page' ? item.url : index} item={item} />
       ))}
     </>
   );
@@ -286,13 +241,16 @@ function GeneralDocsSidebarContent({ pageTree, pathname }: { pageTree?: PageTree
 /**
  * CLIENT-SIDE HEADER WRAPPER
  *
- * This component wraps the PlatformAwareHeader and dynamically provides
+ * This component wraps the shared header and dynamically provides
  * sidebar content based on the current route. It's a client component
  * that can use hooks to determine the current section and provide
  * appropriate sidebar content for mobile navigation.
  */
-export function DocsHeaderWrapper({ showSearch = true, pageTree, className, apiPages }: DocsHeaderWrapperProps) {
+export function DocsHeaderWrapper({ showSearch = true, pageTree, apiPages }: DocsHeaderWrapperProps) {
   const pathname = usePathname();
+  const navLinks = useMemo(() => generateNavLinks(), []);
+  const docsSection = resolveDocsSection(pathname);
+  const sectionTree = useMemo(() => (pageTree ? filterTreeForSection(pageTree, docsSection) : undefined), [pageTree, docsSection]);
 
   // Determine current sidebar content based on route
   const sidebarContent = useMemo(() => {
@@ -302,17 +260,17 @@ export function DocsHeaderWrapper({ showSearch = true, pageTree, className, apiP
 
     // For all docs pages, use the page tree
     if (pathname.startsWith('/docs') && !isInApiSection(pathname)) {
-      return <GeneralDocsSidebarContent pageTree={pageTree} pathname={pathname} />;
+      return <GeneralDocsSidebarContent pageTree={sectionTree} />;
     }
 
     return null;
-  }, [pathname, pageTree, apiPages]);
+  }, [pathname, apiPages, sectionTree]);
 
   return (
-    <PlatformAwareHeader
+    <SharedHeader
+      navLinks={navLinks}
       showSearch={showSearch}
       sidebarContent={sidebarContent}
-      className={className}
     />
   );
 }

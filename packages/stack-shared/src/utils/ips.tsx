@@ -3,7 +3,7 @@ import ipRegex from "ip-regex";
 export type Ipv4Address = `${number}.${number}.${number}.${number}`;
 export type Ipv6Address = string;
 
-export function isIpAddress(ip: string): ip is Ipv4Address | Ipv6Address {
+export function isIpAddress(ip: string) {
   return ipRegex({ exact: true }).test(ip);
 }
 import.meta.vitest?.test("isIpAddress", ({ expect }) => {

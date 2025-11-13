@@ -1,6 +1,6 @@
 {
   "name": "@stackframe/e2e-tests",
-  "version": "2.8.38",
+  "version": "2.8.51",
   "private": true,
   "type": "module",
   "scripts": {
@@ -14,6 +14,7 @@
     "@oslojs/otp": "^1.1.0",
     "@stackframe/js": "workspace:*",
     "@stackframe/stack-shared": "workspace:*",
+    "convex": "^1.27.0",
     "dotenv": "^16.4.5"
   },
   "devDependencies": {

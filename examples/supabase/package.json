@@ -1,12 +1,12 @@
 {
   "name": "@stackframe/example-supabase",
-  "version": "2.8.38",
+  "version": "2.8.51",
   "private": true,
   "scripts": {
-    "dev": "next dev --turbo --port 8115",
+    "dev": "next dev --turbo --port ${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}15",
     "clean": "rimraf .next && rimraf node_modules",
     "build": "next build",
-    "start": "next start --port 8115"
+    "start": "next start --port ${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}15"
   },
   "dependencies": {
     "@stackframe/stack": "workspace:*",

@@ -35,17 +35,26 @@ async function extractOpenApiDetails(content: string, page: { data: { title: str
           const methodSpec = pathSpec?.[method.toLowerCase()];
 
           if (methodSpec) {
-            // Return the raw OpenAPI spec JSON for this specific endpoint
+            // Add human-readable summary first
+            const fullUrl = methodSpec['x-full-url'] || `https://api.stack-auth.com/api/v1${opPath}`;
+
+            apiDetails += `\n## ${method.toUpperCase()} ${opPath}\n`;
+            apiDetails += `**Full URL:** ${fullUrl}\n`;
+            apiDetails += `**Summary:** ${methodSpec.summary || 'No summary available'}\n\n`;
+
+            // Then include the complete OpenAPI spec with all examples and schemas
             const endpointJson = {
               [opPath]: {
                 [method.toLowerCase()]: methodSpec
               }
             };
+            apiDetails += "**Complete API Specification:**\n```json\n";
             apiDetails += JSON.stringify(endpointJson, null, 2);
+            apiDetails += "\n```\n\n---\n";
           }
         }
 
-        const resultText = `Title: ${page.data.title}\nDescription: ${page.data.description || ''}\n\nOpenAPI Spec: ${specFile}\nOperations: ${operations}\n\n${apiDetails}`;
+        const resultText = `Title: ${page.data.title}\nDescription: ${page.data.description || ''}\n\n${apiDetails}`;
 
         return {
           content: [
@@ -86,7 +95,14 @@ async function extractOpenApiDetails(content: string, page: { data: { title: str
 // Get pages from both main docs and API docs
 const pages = source.getPages();
 const apiPages = apiSource.getPages();
-const allPages = [...pages, ...apiPages];
+
+// Filter out admin API pages from the MCP server
+const filteredApiPages = apiPages.filter((page) => {
+  // Exclude admin API pages - they should not be accessible via MCP
+  return !page.url.startsWith('/api/admin/');
+});
+
+const allPages = [...pages, ...filteredApiPages];
 
 const pageSummaries = allPages
   .filter((v) => {
@@ -115,6 +131,131 @@ const handler = createMcpHandler(
         });
         return {
           content: [{ type: "text", text: pageSummaries }],
+        };
+      }
+    );
+    server.tool(
+      "search_docs",
+      "Search through all Stack Auth documentation including API docs, guides, and examples. Returns ranked results with snippets and relevance scores.",
+      {
+        search_query: z.string().describe("The search query to find relevant documentation"),
+        result_limit: z.number().optional().describe("Maximum number of results to return (default: 50)")
+      },
+      async ({ search_query, result_limit = 50 }) => {
+        nodeClient?.capture({
+          event: "search_docs",
+          properties: { search_query, result_limit },
+          distinctId: "mcp-handler",
+        });
+
+        const results = [];
+        const queryLower = search_query.toLowerCase().trim();
+
+        // Search through all pages
+        for (const page of allPages) {
+          // Skip admin API endpoints
+          if (page.url.startsWith('/api/admin/')) {
+            continue;
+          }
+
+          let score = 0;
+          const title = page.data.title || '';
+          const description = page.data.description || '';
+
+          // Title matching (highest priority)
+          if (title.toLowerCase().includes(queryLower)) {
+            if (title.toLowerCase() === queryLower) {
+              score += 100; // Exact match
+            } else if (title.toLowerCase().startsWith(queryLower)) {
+              score += 80; // Starts with
+            } else {
+              score += 60; // Contains
+            }
+          }
+
+          // Description matching
+          if (description.toLowerCase().includes(queryLower)) {
+            score += 40;
+          }
+          // TOC/heading matching
+          for (const tocItem of page.data.toc) {
+            if (typeof tocItem.title === 'string' && tocItem.title.toLowerCase().includes(queryLower)) {
+              score += 30;
+            }
+          }
+
+          // Content matching (try to read the actual file)
+          try {
+            const filePath = `content/${page.file.path}`;
+            const content = await readFile(filePath, "utf-8");
+            const textContent = content
+              .replace(/^---[\s\S]*?---/, '') // Remove frontmatter
+              .replace(/<[^>]*>/g, ' ') // Remove JSX tags
+              .replace(/\{[^}]*\}/g, ' ') // Remove JSX expressions
+              .replace(/```[a-zA-Z]*\n/g, ' ') // Remove code block markers
+              .replace(/```/g, ' ')
+              .replace(/`([^`]*)`/g, '$1') // Remove inline code backticks
+              .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1') // Extract link text
+              .replace(/[#*_~]/g, '') // Remove markdown formatting
+              .replace(/\s+/g, ' ')
+              .trim();
+
+            if (textContent.toLowerCase().includes(queryLower)) {
+              score += 20;
+
+              // Find snippet around the match
+              const matchIndex = textContent.toLowerCase().indexOf(queryLower);
+              const start = Math.max(0, matchIndex - 50);
+              const end = Math.min(textContent.length, matchIndex + 100);
+              const snippet = textContent.slice(start, end);
+
+              results.push({
+                title,
+                description,
+                url: page.url,
+                score,
+                snippet: `...${snippet}...`,
+                type: page.url.startsWith('/api/') ? 'api' : 'docs'
+              });
+            } else if (score > 0) {
+              // Add without snippet if title/description matched
+              results.push({
+                title,
+                description,
+                url: page.url,
+                score,
+                snippet: description || title,
+                type: page.url.startsWith('/api/') ? 'api' : 'docs'
+              });
+            }
+          } catch {
+            // If file reading fails but we have title/description matches
+            if (score > 0) {
+              results.push({
+                title,
+                description,
+                url: page.url,
+                score,
+                snippet: description || title,
+                type: page.url.startsWith('/api/') ? 'api' : 'docs'
+              });
+            }
+          }
+        }
+
+        // Sort by score (highest first) and limit results
+        const sortedResults = results
+          .sort((a, b) => b.score - a.score)
+          .slice(0, result_limit);
+
+        const searchResultText = sortedResults.length > 0
+          ? sortedResults.map(result =>
+              `Title: ${result.title}\nDescription: ${result.description}\nURL: ${result.url}\nType: ${result.type}\nScore: ${result.score}\nSnippet: ${result.snippet}\n`
+            ).join('\n---\n')
+          : `No results found for "${search_query}"`;
+
+        return {
+          content: [{ type: "text", text: searchResultText }],
         };
       }
     );
@@ -220,6 +361,42 @@ const handler = createMcpHandler(
         }
       }
     );
+    server.tool(
+      "get_stack_auth_setup_instructions",
+      "Use this tool when the user wants to set up authentication in a new project. It provides step-by-step instructions for installing and configuring Stack Auth authentication.",
+      {},
+      async ({}) => {
+        nodeClient?.capture({
+          event: "get_stack_auth_setup_instructions",
+          properties: {},
+          distinctId: "mcp-handler",
+        });
+
+        try {
+          const instructionsFromCurrentFile = "content/setup-instructions.md";
+          const instructions = await readFile(instructionsFromCurrentFile, "utf-8");
+
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: instructions,
+              },
+            ],
+          };
+        } catch (error) {
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: `Error reading setup instructions: ${error instanceof Error ? error.message : "Unknown error"}`,
+              },
+            ],
+            isError: true,
+          };
+        }
+      }
+    );
   },
   {
     capabilities: {
@@ -240,6 +417,15 @@ const handler = createMcpHandler(
               },
             },
             required: ["id"],
+          },
+        },
+        getStackAuthSetupInstructions: {
+          description:
+            "Use this tool when the user wants to set up Stack Auth in a new project. It provides step-by-step instructions for installing and configuring Stack Auth authentication, including environment setup, file scaffolding, and verification steps.",
+          parameters: {
+            type: "object",
+            properties: {},
+            required: [],
           },
         },
       },

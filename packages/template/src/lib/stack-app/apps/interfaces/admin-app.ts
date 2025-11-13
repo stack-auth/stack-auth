@@ -1,4 +1,5 @@
 import { ChatContent } from "@stackframe/stack-shared/dist/interface/admin-interface";
+import type { AdminTransaction } from "@stackframe/stack-shared/dist/interface/crud/transactions";
 import { InternalSession } from "@stackframe/stack-shared/dist/sessions";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { AsyncStoreProperty, EmailConfig } from "../../common";
@@ -11,18 +12,11 @@ import { StackServerApp, StackServerAppConstructorOptions } from "./server-app";
 
 
 export type StackAdminAppConstructorOptions<HasTokenStore extends boolean, ProjectId extends string> = (
-  | (
-    & StackServerAppConstructorOptions<HasTokenStore, ProjectId>
-    & {
-      superSecretAdminKey?: string,
-    }
-  )
-  | (
-    & Omit<StackServerAppConstructorOptions<HasTokenStore, ProjectId>, "publishableClientKey" | "secretServerKey">
-    & {
-      projectOwnerSession: InternalSession,
-    }
-  )
+  & StackServerAppConstructorOptions<HasTokenStore, ProjectId>
+  & {
+    superSecretAdminKey?: string,
+    projectOwnerSession?: InternalSession,
+  }
 );
 
 
@@ -36,6 +30,14 @@ export type StackAdminApp<HasTokenStore extends boolean = boolean, ProjectId ext
   & AsyncStoreProperty<"emailTemplates", [], { id: string, displayName: string, themeId?: string, tsxSource: string }[], true>
   & AsyncStoreProperty<"emailDrafts", [], { id: string, displayName: string, themeId: string | undefined | false, tsxSource: string, sentAt: Date | null }[], true>
   & AsyncStoreProperty<"stripeAccountInfo", [], { account_id: string, charges_enabled: boolean, details_submitted: boolean, payouts_enabled: boolean } | null, false>
+  & AsyncStoreProperty<
+    "transactions",
+    [
+      { cursor?: string, limit?: number, type?: 'subscription' | 'one_time' | 'item_quantity_change', customerType?: 'user' | 'team' | 'custom' }
+    ],
+    { transactions: AdminTransaction[], nextCursor: string | null },
+    true
+  >
   & {
     createInternalApiKey(options: InternalApiKeyCreateOptions): Promise<InternalApiKeyFirstView>,
 
@@ -47,12 +49,14 @@ export type StackAdminApp<HasTokenStore extends boolean = boolean, ProjectId ext
     updateProjectPermissionDefinition(permissionId: string, data: AdminProjectPermissionDefinitionUpdateOptions): Promise<void>,
     deleteProjectPermissionDefinition(permissionId: string): Promise<void>,
 
-    useSvixToken(): string, // THIS_LINE_PLATFORM react-like
+    useSvixToken(): { token: string, url: string | undefined }, // THIS_LINE_PLATFORM react-like
 
     sendTestEmail(options: {
       recipientEmail: string,
       emailConfig: EmailConfig,
     }): Promise<Result<undefined, { errorMessage: string }>>,
+
+    sendTestWebhook(options: { endpointId: string }): Promise<Result<undefined, { errorMessage: string }>>,
 
     sendSignInInvitationEmail(email: string, callbackUrl: string): Promise<void>,
 
@@ -82,7 +86,6 @@ export type StackAdminApp<HasTokenStore extends boolean = boolean, ProjectId ext
       { teamId: string, itemId: string, quantity: number, expiresAt?: string, description?: string } |
       { customCustomerId: string, itemId: string, quantity: number, expiresAt?: string, description?: string }
     )): Promise<void>,
-    testModePurchase(options: { priceId: string, fullCode: string, quantity?: number }): Promise<void>,
   }
   & StackServerApp<HasTokenStore, ProjectId>
 );

@@ -1,4 +1,5 @@
 import { generateSecureRandomString } from "@stackframe/stack-shared/dist/utils/crypto";
+import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { filterUndefined, omit } from "@stackframe/stack-shared/dist/utils/objects";
 import { wait } from "@stackframe/stack-shared/dist/utils/promises";
@@ -94,14 +95,6 @@ export class Context<R, T> {
     }
     this._yetToReduce = new Set();
   }
-}
-
-function getEnvVar(name: string): string {
-  const value = process.env[name];
-  if (!value) {
-    throw new Error(`Missing environment variable: ${name}`);
-  }
-  return value;
 }
 
 export function updateCookie(cookieString: string, cookieName: string, cookieValue: string) {
@@ -209,13 +202,13 @@ export class Mailbox {
     const fullMessageCache = new Map<string, any>();
 
     this.fetchMessages = async ({ noBody } = {}) => {
-      const res = await niceFetch(new URL(`/api/v1/mailbox/${encodeURIComponent(mailboxName)}`, INBUCKET_API_URL));
+      const res = await niceFetch(new URL(`/api/v1/mailbox/${encodeURIComponent(mailboxName)}`, STACK_INBUCKET_API_URL));
       return await Promise.all((res.body as any[]).map(async (message) => {
         let fullMessage: any;
         if (fullMessageCache.has(message.id)) {
           fullMessage = fullMessageCache.get(message.id);
         } else {
-          const fullMessageRes = await niceFetch(new URL(`/api/v1/mailbox/${encodeURIComponent(mailboxName)}/${message.id}`, INBUCKET_API_URL));
+          const fullMessageRes = await niceFetch(new URL(`/api/v1/mailbox/${encodeURIComponent(mailboxName)}/${message.id}`, STACK_INBUCKET_API_URL));
           fullMessage = fullMessageRes.body;
           fullMessageCache.set(message.id, fullMessage);
         }
@@ -232,7 +225,7 @@ export class Mailbox {
         if (withSubject.length > 0) {
           return withSubject;
         }
-        await wait(200);
+        await wait(500);
       }
       throw new Error(`Message with subject ${subject} not found`);
     };
@@ -272,11 +265,26 @@ export class MailboxMessage {
   };
 }
 
-export const STACK_DASHBOARD_BASE_URL = getEnvVar("STACK_DASHBOARD_BASE_URL");
-export const STACK_BACKEND_BASE_URL = getEnvVar("STACK_BACKEND_BASE_URL");
-export const STACK_INTERNAL_PROJECT_ID = getEnvVar("STACK_INTERNAL_PROJECT_ID");
-export const STACK_INTERNAL_PROJECT_CLIENT_KEY = getEnvVar("STACK_INTERNAL_PROJECT_CLIENT_KEY");
-export const STACK_INTERNAL_PROJECT_SERVER_KEY = getEnvVar("STACK_INTERNAL_PROJECT_SERVER_KEY");
-export const STACK_INTERNAL_PROJECT_ADMIN_KEY = getEnvVar("STACK_INTERNAL_PROJECT_ADMIN_KEY");
-export const INBUCKET_API_URL = getEnvVar("INBUCKET_API_URL");
-export const STACK_SVIX_SERVER_URL = getEnvVar("STACK_SVIX_SERVER_URL");
+
+function expandStackPortPrefix(value?: string | null) {
+  if (!value) return value ?? undefined;
+  const prefix = getEnvVariable("NEXT_PUBLIC_STACK_PORT_PREFIX", "81");
+  return prefix ? value.replace(/\$\{NEXT_PUBLIC_STACK_PORT_PREFIX:-81\}/g, prefix) : value;
+}
+for (const [key, value] of Object.entries(process.env)) {
+  if (key.startsWith("STACK_") || key.startsWith("NEXT_PUBLIC_STACK_")) {
+    const replaced = expandStackPortPrefix(value ?? undefined);
+    if (replaced !== undefined) {
+      // eslint-disable-next-line no-restricted-syntax
+      process.env[key] = replaced;
+    }
+  }
+}
+export const STACK_DASHBOARD_BASE_URL = getEnvVariable("STACK_DASHBOARD_BASE_URL");
+export const STACK_BACKEND_BASE_URL = getEnvVariable("STACK_BACKEND_BASE_URL");
+export const STACK_INTERNAL_PROJECT_ID = getEnvVariable("STACK_INTERNAL_PROJECT_ID");
+export const STACK_INTERNAL_PROJECT_CLIENT_KEY = getEnvVariable("STACK_INTERNAL_PROJECT_CLIENT_KEY");
+export const STACK_INTERNAL_PROJECT_SERVER_KEY = getEnvVariable("STACK_INTERNAL_PROJECT_SERVER_KEY");
+export const STACK_INTERNAL_PROJECT_ADMIN_KEY = getEnvVariable("STACK_INTERNAL_PROJECT_ADMIN_KEY");
+export const STACK_INBUCKET_API_URL = getEnvVariable("STACK_INBUCKET_API_URL");
+export const STACK_SVIX_SERVER_URL = getEnvVariable("STACK_SVIX_SERVER_URL");

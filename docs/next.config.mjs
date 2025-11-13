@@ -1,6 +1,7 @@
 import { createMDX } from 'fumadocs-mdx/next';
 
 const withMDX = createMDX();
+const dashboardUrl = process.env.NEXT_PUBLIC_STACK_DASHBOARD_URL || 'http://localhost:8101';
 
 /** @type {import('next').NextConfig} */
 const config = {
@@ -9,13 +10,58 @@ const config = {
     // Temporarily disable ESLint during builds for Vercel deployment
     ignoreDuringBuilds: false,
   },
+  async headers() {
+    return [
+      {
+        // Allow CORS for dashboard routes to be accessed by the dashboard app
+        source: '/dashboard/:path*',
+        headers: [
+          {
+            key: 'Access-Control-Allow-Origin',
+            value: dashboardUrl, // Dashboard app origin
+          },
+          {
+            key: 'Access-Control-Allow-Methods',
+            value: 'GET, POST, PUT, DELETE, OPTIONS',
+          },
+          {
+            key: 'Access-Control-Allow-Headers',
+            value: 'Content-Type, Authorization',
+          },
+        ],
+      },
+      {
+        // Allow CORS for embedded dashboard routes to be accessed by the dashboard app
+        source: '/dashboard-embed/:path*',
+        headers: [
+          {
+            key: 'Access-Control-Allow-Origin',
+            value: dashboardUrl, // Dashboard app origin
+          },
+          {
+            key: 'Access-Control-Allow-Methods',
+            value: 'GET, POST, PUT, DELETE, OPTIONS',
+          },
+          {
+            key: 'Access-Control-Allow-Headers',
+            value: 'Content-Type, Authorization',
+          },
+        ],
+      },
+    ];
+  },
   // Include OpenAPI files in output tracing for Vercel deployments
   outputFileTracingIncludes: {
-    '/api/**/*': ['./openapi/**/*'],
-    '/**/*': ['./openapi/**/*'],
+    '/**/*': ['./content/**/*', './openapi/**/*'],
   },
   async redirects() {
     return [
+      // Redirect root to docs overview
+      {
+        source: '/',
+        destination: '/docs/overview',
+        permanent: false,
+      },
       // Redirect /docs/api to the overview page
       {
         source: '/docs/api',

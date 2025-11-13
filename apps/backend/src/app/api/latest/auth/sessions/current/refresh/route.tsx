@@ -1,4 +1,4 @@
-import { generateAccessToken } from "@/lib/tokens";
+import { generateAccessTokenFromRefreshTokenIfValid } from "@/lib/tokens";
 import { getPrismaClientForTenancy, globalPrismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@stackframe/stack-shared";
@@ -37,15 +37,14 @@ export const POST = createSmartRouteHandler({
       },
     });
 
-    if (!sessionObj || (sessionObj.expiresAt && sessionObj.expiresAt < new Date())) {
+    const accessToken = await generateAccessTokenFromRefreshTokenIfValid({
+      tenancy,
+      refreshTokenObj: sessionObj,
+    });
+
+    if (!accessToken) {
       throw new KnownErrors.RefreshTokenNotFoundOrExpired();
     }
-
-    const accessToken = await generateAccessToken({
-      tenancy,
-      userId: sessionObj.projectUserId,
-      refreshTokenId: sessionObj.id,
-    });
 
     return {
       statusCode: 200,

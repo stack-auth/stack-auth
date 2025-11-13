@@ -5,12 +5,13 @@ import { APIEnvKeys, NextJsEnvKeys } from '@/components/env-keys';
 import { InlineCode } from '@/components/inline-code';
 import { StyledLink } from '@/components/link';
 import { useThemeWatcher } from '@/lib/theme';
+import { use } from "@stackframe/stack-shared/dist/utils/react";
 import { deindent } from '@stackframe/stack-shared/dist/utils/strings';
 import { Button, Tabs, TabsContent, TabsList, TabsTrigger, Typography, cn } from "@stackframe/stack-ui";
 import { Book, X } from "lucide-react";
 import dynamic from "next/dynamic";
 import Image from 'next/image';
-import { Suspense, use, useRef, useState } from "react";
+import { Suspense, useRef, useState } from "react";
 import type { GlobeMethods } from 'react-globe.gl';
 import { PageLayout } from "../page-layout";
 import { useAdminApp } from '../use-admin-app';
@@ -33,7 +34,7 @@ export default function SetupPage(props: { toMetrics: () => void }) {
       hasPublishableClientKey: true,
       hasSecretServerKey: true,
       hasSuperSecretAdminKey: false,
-      expiresAt: new Date(Date.now() + 1000 * 60 * 60 * 24 * 30),
+      expiresAt: new Date(Date.now() + 1000 * 60 * 60 * 24 * 365 * 200),
       description: 'Onboarding',
     });
 
