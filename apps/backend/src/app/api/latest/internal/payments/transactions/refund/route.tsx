@@ -99,16 +99,16 @@ export const POST = createSmartRouteHandler({
       if (!purchase.stripePaymentIntentId) {
         throw new KnownErrors.OneTimePurchaseNotFound(body.id);
       }
-      await prisma.oneTimePurchase.update({
-        where: { tenancyId_id: { tenancyId: auth.tenancy.id, id: body.id } },
-        data: { refundedAt: new Date() },
-      });
       await stripe.refunds.create({
         payment_intent: purchase.stripePaymentIntentId,
         metadata: {
           tenancyId: auth.tenancy.id,
           purchaseId: purchase.id,
         },
+      });
+      await prisma.oneTimePurchase.update({
+        where: { tenancyId_id: { tenancyId: auth.tenancy.id, id: body.id } },
+        data: { refundedAt: new Date() },
       });
     }
 
