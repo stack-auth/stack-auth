@@ -180,6 +180,7 @@ const environmentSchemaFuzzerConfig = [{
         clientSecret: ["some-client-secret"],
         facebookConfigId: ["some-facebook-config-id"],
         microsoftTenantId: ["some-microsoft-tenant-id"],
+        netsuiteAccountId: ["some-netsuite-account-id"],
       }]]))] as const,
     }],
   }],
