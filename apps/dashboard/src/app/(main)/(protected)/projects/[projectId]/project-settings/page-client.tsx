@@ -2,7 +2,7 @@
 import { InputField } from "@/components/form-fields";
 import { Link, StyledLink } from "@/components/link";
 import { LogoUpload } from "@/components/logo-upload";
-import { FormSettingCard, SettingCard, SettingCopyableText, SettingSwitch, SettingText } from "@/components/settings";
+import { FormSettingCard, SettingCard, SettingCopyableText, SettingSwitch } from "@/components/settings";
 import { getPublicEnvVar } from "@/lib/env";
 import { TeamSwitcher, useUser } from "@stackframe/stack";
 import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
@@ -139,23 +139,6 @@ export default function PageClient() {
 
   const handleFullLogoChange = useCallback(async (fullLogoUrl: string | null) => {
     await project.update({ fullLogoUrl });
-  }, [project]);
-
-  // Memoize API key setting callbacks
-  const handleUserApiKeysChange = useCallback(async (checked: boolean) => {
-    await project.update({
-      config: {
-        allowUserApiKeys: checked
-      }
-    });
-  }, [project]);
-
-  const handleTeamApiKeysChange = useCallback(async (checked: boolean) => {
-    await project.update({
-      config: {
-        allowTeamApiKeys: checked
-      }
-    });
   }, [project]);
 
   // Memoize production mode change callback
@@ -348,31 +331,6 @@ export default function PageClient() {
             )}
           </div>
         </div>
-      </SettingCard>
-
-      <SettingCard
-        title="API Key Settings"
-        description="Configure which types of API keys are allowed in your project."
-      >
-        <SettingSwitch
-          label="Allow User API Keys"
-          checked={project.config.allowUserApiKeys}
-          onCheckedChange={handleUserApiKeysChange}
-        />
-        <Typography variant="secondary" type="footnote">
-          Enable to allow users to create API keys for their accounts. Enables user-api-keys backend routes.
-        </Typography>
-
-        <SettingSwitch
-          label="Allow Team API Keys"
-          checked={project.config.allowTeamApiKeys}
-          onCheckedChange={handleTeamApiKeysChange}
-        />
-        <Typography variant="secondary" type="footnote">
-          Enable to allow users to create API keys for their teams. Enables team-api-keys backend routes.
-        </Typography>
-
-
       </SettingCard>
 
       <SettingCard
