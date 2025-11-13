@@ -347,7 +347,7 @@ export async function ensurePermissionDefinition(
     },
   }
 ) {
-  const existingPermission = options.tenancy.config.rbac.permissions[options.id];
+  const existingPermission = getOrUndefined(options.tenancy.config.rbac.permissions, options.id);
 
   if (existingPermission) {
     return await updatePermissionDefinition(globalTx, sourceOfTruthTx, {
