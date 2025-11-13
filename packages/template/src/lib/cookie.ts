@@ -204,9 +204,9 @@ function setCookieClientInternal(name: string, value: string, options: SetCookie
 
 function deleteCookieClientInternal(name: string, options: DeleteCookieOptions = {}) {
   if (options.domain !== undefined) {
-    Cookies.remove(name, { domain: options.domain });
+    Cookies.remove(name, { domain: options.domain, secure: determineSecureFromClientContext() });
   }
-  Cookies.remove(name);
+  Cookies.remove(name, { secure: determineSecureFromClientContext() });
 }
 
 export function setOrDeleteCookieClient(name: string, value: string | null, options: SetCookieOptions & DeleteCookieOptions = {}) {
