@@ -6,15 +6,14 @@ This guide documents the design patterns and styling conventions used in the Lau
 
 1. [Page Structure](#page-structure)
 2. [Color System](#color-system)
-3. [Dark Mode & Color Contrast](#dark-mode--color-contrast)
-4. [Typography](#typography)
-5. [Status System](#status-system)
-6. [Card Components](#card-components)
-7. [Spacing & Layout](#spacing--layout)
-8. [Interactive Elements](#interactive-elements)
-9. [Helper Sections](#helper-sections)
-10. [Progress Indicators](#progress-indicators)
-11. [Code Examples](#code-examples)
+3. [Typography](#typography)
+4. [Status System](#status-system)
+5. [Card Components](#card-components)
+6. [Spacing & Layout](#spacing--layout)
+7. [Interactive Elements](#interactive-elements)
+8. [Helper Sections](#helper-sections)
+9. [Progress Indicators](#progress-indicators)
+10. [Code Examples](#code-examples)
 
 ---
 
@@ -84,138 +83,6 @@ Pages typically consist of:
 - `bg-background/80` - Slightly transparent backgrounds
 - `bg-blue-500/10` - Very subtle tinted backgrounds
 - `bg-muted/20` - Subtle muted backgrounds
-
----
-
-## Dark Mode & Color Contrast
-
-### Design Consistency
-
-**Critical Requirement**: All designs must be consistent throughout the dashboard and work perfectly in both light mode and dark mode with proper color contrast.
-
-### Using Theme-Aware Colors
-
-Always prefer theme-aware color tokens over hardcoded colors. These automatically adapt to light/dark mode:
-
-#### Preferred Theme Tokens
-
-- **Backgrounds**: `bg-background`, `bg-muted`, `bg-card` (not `bg-white` or `bg-gray-*`)
-- **Text**: `text-foreground`, `text-muted-foreground` (not `text-gray-*` or `text-black`)
-- **Borders**: `border-border`, `border-muted` (not `border-gray-*`)
-- **Interactive**: Use component variants (`variant="default"`, `variant="outline"`, etc.) which handle dark mode automatically
-
-#### Status Colors in Dark Mode
-
-When using status colors (emerald, blue), ensure they work in both modes:
-
-**Success/Complete (Emerald)**:
-- Use `text-emerald-500` for icons (works in both modes)
-- Use `bg-emerald-500 text-white` for badges (sufficient contrast in both modes)
-- For card backgrounds, prefer `bg-emerald-50 dark:bg-emerald-950/30` pattern
-
-**Informational (Blue)**:
-- Use `text-blue-700 dark:text-blue-400` for labels (adjusts for contrast)
-- Use `text-blue-900 dark:text-blue-300` for headings (adjusts for contrast)
-- Use `bg-blue-500/10` with `border-blue-500/40` (opacity works well in both modes)
-
-### Color Contrast Requirements
-
-#### Minimum Contrast Ratios (WCAG AA)
-
-- **Normal text**: 4.5:1 contrast ratio
-- **Large text** (18pt+ or 14pt+ bold): 3:1 contrast ratio
-- **Interactive elements**: 3:1 contrast ratio
-- **UI components**: 3:1 contrast ratio
-
-#### Testing Contrast
-
-Always test your designs in both light and dark mode:
-
-```tsx
-// ❌ BAD: Hardcoded colors that don't adapt
-<div className="bg-white text-gray-900 border-gray-300">
-  Content
-</div>
-
-// ✅ GOOD: Theme-aware colors
-<div className="bg-background text-foreground border-border">
-  Content
-</div>
-
-// ✅ GOOD: Status colors with dark mode variants
-<div className="bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-800">
-  Content
-</div>
-```
-
-### Dark Mode Patterns
-
-#### Conditional Dark Mode Classes
-
-When you need different styles for dark mode:
-
-```tsx
-// Pattern: light-mode-class dark:dark-mode-class
-<Typography className="text-blue-700 dark:text-blue-400">
-  Label text
-</Typography>
-
-// For backgrounds with opacity
-<div className="bg-blue-500/10 dark:bg-blue-500/20">
-  Content
-</div>
-```
-
-#### Status Colors with Dark Mode
-
-```tsx
-// Success cards
-<div className="bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-800">
-  {/* Content */}
-</div>
-
-// Informational sections
-<div className="bg-blue-500/10 dark:bg-blue-500/20 border-blue-500/40 dark:border-blue-500/50">
-  {/* Content */}
-</div>
-```
-
-### Common Dark Mode Issues to Avoid
-
-1. **Hardcoded light colors**: Never use `bg-white`, `text-black`, `text-gray-900` without dark variants
-2. **Low contrast borders**: Ensure borders are visible in dark mode (use `border-border` or adjust opacity)
-3. **Transparent backgrounds**: Test opacity values (`/10`, `/20`, etc.) work in both modes
-4. **Status colors**: Always verify emerald/blue colors maintain sufficient contrast in dark mode
-5. **Progress bars**: Background colors like `bg-white/40` may need adjustment for dark mode
-
-### Typography in Dark Mode
-
-Use theme-aware typography variants:
-
-```tsx
-// ❌ BAD: Hardcoded colors
-<Typography className="text-gray-700">Text</Typography>
-
-// ✅ GOOD: Theme-aware
-<Typography className="text-foreground">Text</Typography>
-<Typography variant="secondary">Text</Typography>
-
-// ✅ GOOD: Status colors with dark mode
-<Typography className="text-blue-700 dark:text-blue-400">Label</Typography>
-```
-
-### Verification Checklist
-
-Before finalizing any design:
-
-- [ ] Test in both light mode and dark mode
-- [ ] Verify all text meets WCAG AA contrast requirements (4.5:1 for normal text, 3:1 for large text)
-- [ ] Check that borders are visible in both modes
-- [ ] Ensure interactive elements (buttons, links) have sufficient contrast
-- [ ] Verify status colors (emerald, blue) maintain meaning and contrast in both modes
-- [ ] Test opacity values work appropriately in both modes
-- [ ] Use theme tokens (`bg-background`, `text-foreground`, `border-border`) instead of hardcoded colors
-- [ ] Ensure consistent spacing, sizing, and layout in both modes
 
 ---
 
@@ -750,20 +617,16 @@ function ChecklistRow({
 
 ## Best Practices
 
-1. **Consistency**: Always use the same spacing, colors, and component patterns throughout the dashboard
-2. **Dark Mode**: Ensure all designs work perfectly in both light mode and dark mode with proper color contrast
-3. **Theme-Aware Colors**: Always use theme tokens (`bg-background`, `text-foreground`, `border-border`) instead of hardcoded colors
-4. **Color Contrast**: Verify all text meets WCAG AA contrast requirements (4.5:1 for normal text, 3:1 for large text) in both modes
-5. **Status Colors**: Use emerald for success, blue for info, muted for neutral - ensure they maintain contrast in dark mode
-6. **Responsive**: Use `flex-wrap` and responsive gap utilities
-7. **Transitions**: Add `transition-all` to cards for smooth state changes
-8. **Typography**: Use Typography component with appropriate variants (prefer theme-aware over hardcoded colors)
-9. **Icons**: Use lucide-react icons consistently (CheckCircle2 for done, Circle for incomplete)
-10. **Opacity**: Use opacity modifiers (`/70`, `/60`, `/40`, `/20`, `/10`) for subtle effects - test in both modes
-11. **Borders**: Use `border-border` with opacity modifiers for hierarchy - ensure visibility in dark mode
-12. **Badges**: Match badge styles to status (emerald for done, outline for others)
-13. **Buttons**: Use `size="sm"` in cards, ghost variant for completed states
-14. **Testing**: Always test designs in both light and dark mode before finalizing
+1. **Consistency**: Always use the same spacing, colors, and component patterns
+2. **Status Colors**: Use emerald for success, blue for info, muted for neutral
+3. **Responsive**: Use `flex-wrap` and responsive gap utilities
+4. **Transitions**: Add `transition-all` to cards for smooth state changes
+5. **Typography**: Use Typography component with appropriate variants
+6. **Icons**: Use lucide-react icons consistently (CheckCircle2 for done, Circle for incomplete)
+7. **Opacity**: Use opacity modifiers (`/70`, `/60`, `/40`, `/20`, `/10`) for subtle effects
+8. **Borders**: Use `border-border` with opacity modifiers for hierarchy
+9. **Badges**: Match badge styles to status (emerald for done, outline for others)
+10. **Buttons**: Use `size="sm"` in cards, ghost variant for completed states
 
 ---
 
@@ -796,19 +659,5 @@ import { PageLayout } from "../page-layout";
 ```
 
 ---
-
-## Design Consistency & Dark Mode Requirements
-
-**Critical**: When creating or updating any dashboard page:
-
-1. **Design Consistency**: Ensure the design is consistent throughout the dashboard, using the same patterns, spacing, colors, and component styles documented in this guide.
-
-2. **Dark Mode Support**: All designs must work perfectly in both light mode and dark mode. Always:
-   - Use theme-aware color tokens (`bg-background`, `text-foreground`, `border-border`) instead of hardcoded colors
-   - Test all components in both light and dark mode
-   - Verify color contrast meets WCAG AA standards (4.5:1 for normal text, 3:1 for large text) in both modes
-   - Ensure borders, backgrounds, and interactive elements are visible and functional in both modes
-
-3. **Color Contrast**: Perfect color contrast is required in both modes. Use the patterns and examples in the [Dark Mode & Color Contrast](#dark-mode--color-contrast) section to ensure accessibility.
 
 This guide should be referenced when creating new pages or updating existing ones to ensure visual and functional consistency across the dashboard.
