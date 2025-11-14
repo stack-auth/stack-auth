@@ -91,25 +91,17 @@ describe("get email theme", () => {
         "body": {
           "display_name": "Default Light",
           "tsx_source": deindent\`
-            import { Html, Head, Tailwind, Body, Container, Link, Img } from '@react-email/components';
-            import { ThemeProps } from "@stackframe/emails"
-            import { ThemeProps } from "@stackframe/emails"
+            import { Html, Head, Tailwind, Body, Container, Link } from '@react-email/components';
+            import { ThemeProps, ProjectLogo } from "@stackframe/emails";
             
-            export function EmailTheme({ children, unsubscribeLink, logoUrl, logoFullUrl, projectDisplayName }: ThemeProps) {
+            export function EmailTheme({ children, unsubscribeLink, projectLogos }: ThemeProps) {
               return (
                 <Html>
                   <Head />
                   <Tailwind>
                     <Body className="bg-[#fafbfb] font-sans text-base">
                       <Container className="bg-white p-[45px] rounded-lg">
-                        {logoFullUrl ? 
-                          <Img src={logoFullUrl} alt="Full Logo" className="h-16" /> :
-                          logoUrl ? 
-                            <div className="flex gap-2 items-center">
-                              <Img src={logoUrl} alt="Logo" className="h-8" />
-                              <h2>{projectDisplayName}</h2>
-                            </div>
-                            : null}
+                        <ProjectLogo data={projectLogos} mode="light" />
                         {children}
                       </Container>
                       {unsubscribeLink && (
