@@ -334,6 +334,45 @@ export async function updatePermissionDefinition(
   };
 }
 
+export async function ensurePermissionDefinition(
+  globalTx: PrismaTransaction,
+  sourceOfTruthTx: PrismaTransaction,
+  options: {
+    scope: "team" | "project",
+    tenancy: Tenancy,
+    id: string,
+    data: {
+      description?: string,
+      contained_permission_ids?: string[],
+    },
+  }
+) {
+  const existingPermission = getOrUndefined(options.tenancy.config.rbac.permissions, options.id);
+
+  if (existingPermission) {
+    return await updatePermissionDefinition(globalTx, sourceOfTruthTx, {
+      scope: options.scope,
+      tenancy: options.tenancy,
+      oldId: options.id,
+      data: {
+        id: options.id,
+        description: options.data.description,
+        contained_permission_ids: options.data.contained_permission_ids,
+      },
+    });
+  } else {
+    return await createPermissionDefinition(globalTx, {
+      scope: options.scope,
+      tenancy: options.tenancy,
+      data: {
+        id: options.id,
+        description: options.data.description,
+        contained_permission_ids: options.data.contained_permission_ids,
+      },
+    });
+  }
+}
+
 export async function deletePermissionDefinition(
   globalTx: PrismaTransaction,
   sourceOfTruthTx: PrismaTransaction,
