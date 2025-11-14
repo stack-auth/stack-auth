@@ -17,9 +17,9 @@ export class NetSuiteProvider extends OAuthBaseProvider {
   static async create(options: {
     clientId: string,
     clientSecret: string,
-    accountId?: string,
+    netsuiteAccountId?: string,
   }) {
-    const accountId = options.accountId || getEnvVariable("STACK_NETSUITE_ACCOUNT_ID", "");
+    const accountId = options.netsuiteAccountId || getEnvVariable("STACK_NETSUITE_ACCOUNT_ID", "");
     if (!accountId) {
       throw new StackAssertionError("NetSuite Account ID is required. Set STACK_NETSUITE_ACCOUNT_ID environment variable or provide accountId in options.");
     }
