@@ -1,18 +1,17 @@
 "use client";
 
+import { ItemDialog } from "@/components/payments/item-dialog";
 import { cn } from "@/lib/utils";
 import { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
 import { useHover } from "@stackframe/stack-shared/dist/hooks/use-hover";
 import { DayInterval } from "@stackframe/stack-shared/dist/utils/dates";
 import { prettyPrintWithMagnitudes } from "@stackframe/stack-shared/dist/utils/numbers";
 import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
-import { Button, Card, CardContent, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, Label, Separator, Switch, toast } from "@stackframe/stack-ui";
+import { Button, Card, CardContent, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, toast } from "@stackframe/stack-ui";
 import { MoreVertical, Plus } from "lucide-react";
-import React, { ReactNode, useEffect, useId, useMemo, useRef, useState } from "react";
+import React, { ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { IllustratedInfo } from "../../../../../../../components/illustrated-info";
-import { PageLayout } from "../../page-layout";
 import { useAdminApp } from "../../use-admin-app";
-import { ItemDialog } from "@/components/payments/item-dialog";
 import { ListSection } from "./list-section";
 import { ProductDialog } from "./product-dialog";
 
@@ -588,7 +587,7 @@ function WelcomeScreen({ onCreateProduct }: { onCreateProduct: () => void }) {
   );
 }
 
-export default function PageClient({ onViewChange }: { onViewChange: (view: "list" | "catalogs") => void }) {
+export default function PageClient() {
   const [activeTab, setActiveTab] = useState<"products" | "items">("products");
   const [hoveredProductId, setHoveredProductId] = useState<string | null>(null);
   const [hoveredItemId, setHoveredItemId] = useState<string | null>(null);
@@ -599,9 +598,6 @@ export default function PageClient({ onViewChange }: { onViewChange: (view: "lis
   const stackAdminApp = useAdminApp();
   const project = stackAdminApp.useProject();
   const config = project.useConfig();
-  const switchId = useId();
-  const testModeSwitchId = useId();
-  const [isUpdatingTestMode, setIsUpdatingTestMode] = useState(false);
   const paymentsConfig = config.payments;
 
   // Refs for products and items
@@ -726,8 +722,6 @@ export default function PageClient({ onViewChange }: { onViewChange: (view: "lis
   };
 
   // Check if there are no products and no items
-  const hasNoProductsAndNoItems = Object.keys(paymentsConfig.products).length === 0 && Object.keys(paymentsConfig.items).length === 0;
-
   // Handler for create product button
   const handleCreateProduct = () => {
     setShowProductDialog(true);
@@ -753,18 +747,6 @@ export default function PageClient({ onViewChange }: { onViewChange: (view: "lis
     toast({ title: editingItem ? "Item updated" : "Item created" });
   };
 
-  const handleToggleTestMode = async (enabled: boolean) => {
-    setIsUpdatingTestMode(true);
-    try {
-      await project.updateConfig({ "payments.testMode": enabled });
-      toast({ title: enabled ? "Test mode enabled" : "Test mode disabled" });
-    } catch (_error) {
-      toast({ title: "Failed to update test mode", variant: "destructive" });
-    } finally {
-      setIsUpdatingTestMode(false);
-    }
-  };
-
   // Prepare data for product dialog - update when items change
   const existingProductsList = Object.entries(paymentsConfig.products).map(([id, product]: [string, any]) => ({
     id,
@@ -779,160 +761,133 @@ export default function PageClient({ onViewChange }: { onViewChange: (view: "lis
     customerType: item.customerType
   }));
 
-  // If no products and items, show welcome screen instead of everything
-  let innerContent;
-  if (hasNoProductsAndNoItems) {
-    innerContent = <WelcomeScreen onCreateProduct={handleCreateProduct} />;
-  } else {
-    innerContent = (
-      <PageLayout
-        title="Products"
-        actions={
-          <div className="flex items-center gap-4 self-center">
-            <div className="flex items-center gap-2">
-              <Label htmlFor={switchId}>Pricing table</Label>
-              <Switch id={switchId} checked={true} onCheckedChange={() => onViewChange("catalogs")} />
-              <Label htmlFor={switchId}>List</Label>
-            </div>
-            <Separator orientation="vertical" className="h-6" />
-            <div className="flex items-center gap-2">
-              <Label htmlFor={testModeSwitchId}>Test mode</Label>
-              <Switch
-                id={testModeSwitchId}
-                checked={paymentsConfig.testMode === true}
-                disabled={isUpdatingTestMode}
-                onCheckedChange={(checked) => void handleToggleTestMode(checked)}
-              />
-            </div>
-          </div>
-        }
-      >
-        {/* Mobile tabs */}
-        < div className="lg:hidden mb-4" >
-          <div className="flex space-x-1 bg-muted p-1 rounded-md">
-            <button
-              onClick={() => setActiveTab("products")}
-              className={cn(
-                "flex-1 px-3 py-2 rounded-sm text-sm font-medium transition-all",
-                activeTab === "products"
-                  ? "bg-background text-foreground shadow-sm"
-                  : "text-muted-foreground hover:text-foreground"
-              )}
-            >
-              Products
-            </button>
-            <button
-              onClick={() => setActiveTab("items")}
-              className={cn(
-                "flex-1 px-3 py-2 rounded-sm text-sm font-medium transition-all",
-                activeTab === "items"
-                  ? "bg-background text-foreground shadow-sm"
-                  : "text-muted-foreground hover:text-foreground"
-              )}
-            >
-              Items
-            </button>
-          </div>
-        </div >
+  const innerContent = (
+    <>
+      {/* Mobile tabs */}
+      < div className="lg:hidden mb-4" >
+        <div className="flex space-x-1 bg-muted p-1 rounded-md">
+          <button
+            onClick={() => setActiveTab("products")}
+            className={cn(
+              "flex-1 px-3 py-2 rounded-sm text-sm font-medium transition-all",
+              activeTab === "products"
+                ? "bg-background text-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground"
+            )}
+          >
+            Products
+          </button>
+          <button
+            onClick={() => setActiveTab("items")}
+            className={cn(
+              "flex-1 px-3 py-2 rounded-sm text-sm font-medium transition-all",
+              activeTab === "items"
+                ? "bg-background text-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground"
+            )}
+          >
+            Items
+          </button>
+        </div>
+      </div >
 
-        {/* Content */}
-        < div className="flex gap-6 flex-1" style={{
-          flexBasis: "0px",
-          overflow: "scroll",
-        }
-        }>
-          {/* Desktop two-column layout */}
-          < Card className="hidden lg:flex w-full relative" ref={containerRef} >
-            <CardContent className="flex w-full">
-              <div className="flex-1">
-                <ProductsList
-                  groupedProducts={groupedProducts}
-                  paymentsGroups={paymentsConfig.catalogs}
-                  hoveredItemId={hoveredItemId}
-                  getConnectedProducts={getConnectedProducts}
-                  productRefs={productRefs}
-                  onProductMouseEnter={setHoveredProductId}
-                  onProductMouseLeave={() => setHoveredProductId(null)}
-                  onProductAdd={handleCreateProduct}
-                  setEditingProduct={setEditingProduct}
-                  setShowProductDialog={setShowProductDialog}
-                />
-              </div>
-            </CardContent>
-            <div className="border-l" />
-            <CardContent className="flex gap-6 w-full">
-              <div className="flex-1">
-                <ItemsList
-                  items={paymentsConfig.items}
-                  hoveredProductId={hoveredProductId}
-                  getConnectedItems={getConnectedItems}
-                  itemRefs={itemRefs}
-                  onItemMouseEnter={setHoveredItemId}
-                  onItemMouseLeave={() => setHoveredItemId(null)}
-                  onItemAdd={handleCreateItem}
-                  setEditingItem={setEditingItem}
-                  setShowItemDialog={setShowItemDialog}
-                />
-              </div>
-            </CardContent>
-
-            {/* Connection lines */}
-            {
-              hoveredProductId && getConnectedItems(hoveredProductId).map(itemId => (
-                <ConnectionLine
-                  key={`${hoveredProductId}-${itemId}`}
-                  fromRef={productRefs[hoveredProductId]}
-                  toRef={itemRefs[itemId]}
-                  containerRef={containerRef}
-                  quantity={getItemQuantity(hoveredProductId, itemId)}
-                />
-              ))
-            }
-
-            {
-              hoveredItemId && getConnectedProducts(hoveredItemId).map(productId => (
-                <ConnectionLine
-                  key={`${productId}-${hoveredItemId}`}
-                  fromRef={productRefs[productId]}
-                  toRef={itemRefs[hoveredItemId]}
-                  containerRef={containerRef}
-                  quantity={getItemQuantity(productId, hoveredItemId)}
-                />
-              ))
-            }
-          </Card >
-
-          {/* Mobile single column with tabs */}
-          < div className="lg:hidden w-full" >
-            {activeTab === "products" ? (
+      {/* Content */}
+      <div className="flex gap-6 flex-1" style={{
+        flexBasis: "0px",
+        overflow: "scroll",
+      }
+      }>
+        {/* Desktop two-column layout */}
+        <Card className="hidden lg:flex w-full relative" ref={containerRef} >
+          <CardContent className="flex w-full">
+            <div className="flex-1">
               <ProductsList
                 groupedProducts={groupedProducts}
                 paymentsGroups={paymentsConfig.catalogs}
                 hoveredItemId={hoveredItemId}
                 getConnectedProducts={getConnectedProducts}
+                productRefs={productRefs}
                 onProductMouseEnter={setHoveredProductId}
                 onProductMouseLeave={() => setHoveredProductId(null)}
                 onProductAdd={handleCreateProduct}
                 setEditingProduct={setEditingProduct}
                 setShowProductDialog={setShowProductDialog}
               />
-            ) : (
+            </div>
+          </CardContent>
+          <div className="border-l" />
+          <CardContent className="flex gap-6 w-full">
+            <div className="flex-1">
               <ItemsList
                 items={paymentsConfig.items}
                 hoveredProductId={hoveredProductId}
                 getConnectedItems={getConnectedItems}
+                itemRefs={itemRefs}
                 onItemMouseEnter={setHoveredItemId}
                 onItemMouseLeave={() => setHoveredItemId(null)}
                 onItemAdd={handleCreateItem}
                 setEditingItem={setEditingItem}
                 setShowItemDialog={setShowItemDialog}
               />
-            )}
-          </div >
+            </div>
+          </CardContent>
+
+          {/* Connection lines */}
+          {
+            hoveredProductId && getConnectedItems(hoveredProductId).map(itemId => (
+              <ConnectionLine
+                key={`${hoveredProductId}-${itemId}`}
+                fromRef={productRefs[hoveredProductId]}
+                toRef={itemRefs[itemId]}
+                containerRef={containerRef}
+                quantity={getItemQuantity(hoveredProductId, itemId)}
+              />
+            ))
+          }
+
+          {
+            hoveredItemId && getConnectedProducts(hoveredItemId).map(productId => (
+              <ConnectionLine
+                key={`${productId}-${hoveredItemId}`}
+                fromRef={productRefs[productId]}
+                toRef={itemRefs[hoveredItemId]}
+                containerRef={containerRef}
+                quantity={getItemQuantity(productId, hoveredItemId)}
+              />
+            ))
+          }
+        </Card >
+
+        {/* Mobile single column with tabs */}
+        < div className="lg:hidden w-full" >
+          {activeTab === "products" ? (
+            <ProductsList
+              groupedProducts={groupedProducts}
+              paymentsGroups={paymentsConfig.catalogs}
+              hoveredItemId={hoveredItemId}
+              getConnectedProducts={getConnectedProducts}
+              onProductMouseEnter={setHoveredProductId}
+              onProductMouseLeave={() => setHoveredProductId(null)}
+              onProductAdd={handleCreateProduct}
+              setEditingProduct={setEditingProduct}
+              setShowProductDialog={setShowProductDialog}
+            />
+          ) : (
+            <ItemsList
+              items={paymentsConfig.items}
+              hoveredProductId={hoveredProductId}
+              getConnectedItems={getConnectedItems}
+              onItemMouseEnter={setHoveredItemId}
+              onItemMouseLeave={() => setHoveredItemId(null)}
+              onItemAdd={handleCreateItem}
+              setEditingItem={setEditingItem}
+              setShowItemDialog={setShowItemDialog}
+            />
+          )}
         </div >
-      </PageLayout >
-    );
-  }
+      </div >
+    </>
+  );
 
   return (
     <>

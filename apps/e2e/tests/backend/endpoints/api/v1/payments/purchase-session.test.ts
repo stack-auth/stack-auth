@@ -1,4 +1,5 @@
 import { it } from "../../../../../helpers";
+import { withPortPrefix } from "../../../../../helpers/ports";
 import { Auth, Payments, Project, User, niceBackendFetch } from "../../../../backend-helpers";
 
 it("should error on invalid code", async ({ expect }) => {
@@ -326,7 +327,7 @@ it("should create purchase URL with inline product, validate code, and create pu
   });
   expect(response.status).toBe(200);
   const body = response.body as { url: string };
-  expect(body.url).toMatch(/^https?:\/\/localhost:8101\/purchase\/[a-z0-9-_]+$/);
+  expect(body.url).toMatch(new RegExp(`^https?:\/\/localhost:${withPortPrefix("01")}\/purchase\/[a-z0-9-_]+$`));
   const codeMatch = body.url.match(/\/purchase\/([a-z0-9-_]+)/);
   const code = codeMatch ? codeMatch[1] : undefined;
   expect(code).toBeDefined();
@@ -434,6 +435,79 @@ it("creates subscription in test mode and increases included item quantity", asy
   });
   expect(getAfter.status).toBe(200);
   expect(getAfter.body.quantity).toBe(2);
+});
+
+it("should list inline product metadata after completing test-mode purchase", async ({ expect }) => {
+  await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+  await Payments.setup();
+  await Project.updateConfig({
+    payments: {
+      testMode: true,
+    },
+  });
+
+  const { userId } = await Auth.Otp.signIn();
+  const createPurchaseResponse = await niceBackendFetch("/api/latest/payments/purchases/create-purchase-url", {
+    method: "POST",
+    accessType: "server",
+    body: {
+      customer_type: "user",
+      customer_id: userId,
+      product_inline: {
+        display_name: "Inline Metadata Product",
+        customer_type: "user",
+        server_only: true,
+        prices: {
+          "monthly-inline": {
+            USD: "1800",
+            interval: [1, "month"],
+          },
+        },
+        included_items: {},
+        server_metadata: {
+          correlation_id: "inline-test-123",
+          attributes: {
+            seats: 5,
+            tier: "gold",
+          },
+        },
+      },
+    },
+  });
+  expect(createPurchaseResponse.status).toBe(200);
+  const url = (createPurchaseResponse.body as { url: string }).url;
+  const codeMatch = url.match(/\/purchase\/([a-z0-9-_]+)/);
+  const code = codeMatch ? codeMatch[1] : undefined;
+  expect(code).toBeDefined();
+
+  const testModePurchaseResponse = await niceBackendFetch("/api/latest/internal/payments/test-mode-purchase-session", {
+    method: "POST",
+    accessType: "admin",
+    body: {
+      full_code: code,
+      price_id: "monthly-inline",
+    },
+  });
+  expect(testModePurchaseResponse.status).toBe(200);
+  expect(testModePurchaseResponse.body).toEqual({ success: true });
+
+  const listResponse = await niceBackendFetch(`/api/v1/payments/products/user/${userId}`, {
+    accessType: "server",
+  });
+  expect(listResponse.status).toBe(200);
+  const listBody = listResponse.body as {
+    items: Array<{ product: { server_metadata?: Record<string, unknown> } }>,
+  };
+  expect(listBody.items).toHaveLength(1);
+  expect(listBody.items[0].product.server_metadata).toMatchInlineSnapshot(`
+    {
+      "attributes": {
+        "seats": 5,
+        "tier": "gold",
+      },
+      "correlation_id": "inline-test-123",
+    }
+  `);
 });
 
 it("test-mode should error on invalid code", async ({ expect }) => {

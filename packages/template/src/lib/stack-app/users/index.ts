@@ -8,7 +8,7 @@ import { ReadonlyJson } from "@stackframe/stack-shared/dist/utils/json";
 import { ProviderType } from "@stackframe/stack-shared/dist/utils/oauth";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { ApiKeyCreationOptions, UserApiKey, UserApiKeyFirstView } from "../api-keys";
-import { AsyncStoreProperty } from "../common";
+import { AsyncStoreProperty, AuthLike } from "../common";
 import { OAuthConnection } from "../connected-accounts";
 import { ContactChannel, ContactChannelCreateOptions, ServerContactChannel, ServerContactChannelCreateOptions } from "../contact-channels";
 import { Customer } from "../customers";
@@ -16,6 +16,25 @@ import { NotificationCategory } from "../notification-categories";
 import { AdminTeamPermission, TeamPermission } from "../permissions";
 import { AdminOwnedProject, AdminProjectCreateOptions } from "../projects";
 import { EditableTeamMemberProfile, ServerTeam, ServerTeamCreateOptions, Team, TeamCreateOptions } from "../teams";
+
+const userGetterErrorMessage = "Stack Auth: useUser() already returns the user object. Use `const user = useUser()` (or `const user = await app.getUser()`) instead of destructuring it like `const { user } = ...`.";
+
+export function attachUserDestructureGuard(target: object): void {
+  const descriptor = Object.getOwnPropertyDescriptor(target, "user");
+  if (descriptor?.get === guardGetter) {
+    return;
+  }
+
+  Object.defineProperty(target, "user", {
+    get: guardGetter,
+    configurable: false,
+    enumerable: false,
+  });
+}
+
+function guardGetter(): never {
+  throw new Error(userGetterErrorMessage);
+}
 
 export type OAuthProvider = {
   readonly id: string,
@@ -53,79 +72,9 @@ export type Session = {
 /**
  * Contains everything related to the current user session.
  */
-export type Auth = {
+export type Auth = AuthLike<{}> & {
   readonly _internalSession: InternalSession,
   readonly currentSession: Session,
-  signOut(options?: { redirectUrl?: URL | string }): Promise<void>,
-
-  /**
-   * Returns headers for sending authenticated HTTP requests to external servers. Most commonly used in cross-origin
-   * requests. Similar to `getAuthJson`, but specifically for HTTP requests.
-   *
-   * If you are using `tokenStore: "cookie"`, you don't need this for same-origin requests. However, most
-   * browsers now disable third-party cookies by default, so we must pass authentication tokens by header instead
-   * if the client and server are on different origins.
-   *
-   * This function returns a header object that can be used with `fetch` or other HTTP request libraries to send
-   * authenticated requests.
-   *
-   * On the server, you can then pass in the `Request` object to the `tokenStore` option
-   * of your Stack app. Please note that CORS does not allow most headers by default, so you
-   * must include `x-stack-auth` in the [`Access-Control-Allow-Headers` header](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Access-Control-Allow-Headers)
-   * of the CORS preflight response.
-   *
-   * If you are not using HTTP (and hence cannot set headers), you will need to use the `getAuthJson()` function
-   * instead.
-   *
-   * Example:
-   *
-   * ```ts
-   * // client
-   * const res = await fetch("https://api.example.com", {
-   *   headers: {
-   *     ...await stackApp.getAuthHeaders()
-   *     // you can also add your own headers here
-   *   },
-   * });
-   *
-   * // server
-   * function handleRequest(req: Request) {
-   *   const user = await stackServerApp.getUser({ tokenStore: req });
-   *   return new Response("Welcome, " + user.displayName);
-   * }
-   * ```
-   */
-  getAuthHeaders(): Promise<{ "x-stack-auth": string }>,
-
-  /**
-   * Creates a JSON-serializable object containing the information to authenticate a user on an external server.
-   * Similar to `getAuthHeaders`, but returns an object that can be sent over any protocol instead of just
-   * HTTP headers.
-   *
-   * While `getAuthHeaders` is the recommended way to send authentication tokens over HTTP, your app may use
-   * a different protocol, for example WebSockets or gRPC. This function returns a token object that can be JSON-serialized and sent to the server in any way you like.
-   *
-   * On the server, you can pass in this token object into the `tokenStore` option to fetch user details.
-   *
-   * Example:
-   *
-   * ```ts
-   * // client
-   * const res = await rpcCall(rpcEndpoint, {
-   *   data: {
-   *     auth: await stackApp.getAuthJson(),
-   *   },
-   * });
-   *
-   * // server
-   * function handleRequest(data) {
-   *   const user = await stackServerApp.getUser({ tokenStore: data.auth });
-   *   return new Response("Welcome, " + user.displayName);
-   * }
-   * ```
-   */
-  getAuthJson(): Promise<{ accessToken: string | null, refreshToken: string | null }>,
-  registerPasskey(options?: { hostname?: string }): Promise<Result<undefined, KnownErrors["PasskeyRegistrationFailed"] | KnownErrors["PasskeyWebAuthnError"]>>,
 };
 
 /**
@@ -255,6 +204,8 @@ export type UserExtra = {
 
   useOAuthProvider(id: string): OAuthProvider | null, // THIS_LINE_PLATFORM react-like
   getOAuthProvider(id: string): Promise<OAuthProvider | null>,
+
+  registerPasskey(options?: { hostname?: string }): Promise<Result<undefined, KnownErrors["PasskeyRegistrationFailed"] | KnownErrors["PasskeyWebAuthnError"]>>,
 }
 & AsyncStoreProperty<"apiKeys", [], UserApiKey[], true>
 & AsyncStoreProperty<"team", [id: string], Team | null, false>

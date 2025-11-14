@@ -1,7 +1,7 @@
 import { KnownErrors } from "@stackframe/stack-shared";
 import { CurrentUserCrud } from "@stackframe/stack-shared/dist/interface/crud/current-user";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
-import { AsyncStoreProperty, GetCurrentPartialUserOptions, GetCurrentUserOptions, HandlerUrls, OAuthScopesOnSignIn, RedirectMethod, RedirectToOptions, TokenStoreInit, stackAppInternalsSymbol } from "../../common";
+import { AsyncStoreProperty, AuthLike, GetCurrentPartialUserOptions, GetCurrentUserOptions, HandlerUrls, OAuthScopesOnSignIn, RedirectMethod, RedirectToOptions, TokenStoreInit, stackAppInternalsSymbol } from "../../common";
 import { CustomerProductsList, CustomerProductsRequestOptions, Item } from "../../customers";
 import { Project } from "../../projects";
 import { ProjectCurrentUser, SyncedPartialUser, TokenPartialUser } from "../../users";
@@ -14,8 +14,9 @@ export type StackClientAppConstructorOptions<HasTokenStore extends boolean, Proj
   publishableClientKey?: string,
   urls?: Partial<HandlerUrls>,
   oauthScopesOnSignIn?: Partial<OAuthScopesOnSignIn>,
-  tokenStore: TokenStoreInit<HasTokenStore>,
+  tokenStore?: TokenStoreInit<HasTokenStore>,
   redirectMethod?: RedirectMethod,
+  inheritsFrom?: StackClientApp<any, any>,
 
   /**
    * By default, the Stack app will automatically prefetch some data from Stack's server when this app is first
@@ -23,10 +24,14 @@ export type StackClientAppConstructorOptions<HasTokenStore extends boolean, Proj
    * the app is never used or disposed of immediately. To disable this behavior, set this option to true.
    */
   noAutomaticPrefetch?: boolean,
-};
+} & (
+  { tokenStore: TokenStoreInit<HasTokenStore> } | { tokenStore?: undefined, inheritsFrom: StackClientApp<HasTokenStore, any> }
+) & (
+  string extends ProjectId ? unknown : ({ projectId: ProjectId } | { inheritsFrom: StackClientApp<any, ProjectId> })
+);
 
 
-export type StackClientAppJson<HasTokenStore extends boolean, ProjectId extends string> = StackClientAppConstructorOptions<HasTokenStore, ProjectId> & {
+export type StackClientAppJson<HasTokenStore extends boolean, ProjectId extends string> = StackClientAppConstructorOptions<HasTokenStore, ProjectId> & { inheritsFrom?: undefined } & {
   uniqueIdentifier: string,
   // note: if you add more fields here, make sure to ensure the checkString in the constructor has/doesn't have them
 };
@@ -39,7 +44,7 @@ export type StackClientApp<HasTokenStore extends boolean = boolean, ProjectId ex
 
     signInWithOAuth(provider: string, options?: { returnTo?: string }): Promise<void>,
     signInWithCredential(options: { email: string, password: string, noRedirect?: boolean }): Promise<Result<undefined, KnownErrors["EmailPasswordMismatch"] | KnownErrors["InvalidTotpCode"]>>,
-    signUpWithCredential(options: { email: string, password: string, noRedirect?: boolean, verificationCallbackUrl?: string }): Promise<Result<undefined, KnownErrors["UserWithEmailAlreadyExists"] | KnownErrors["PasswordRequirementsNotMet"]>>,
+    signUpWithCredential(options: { email: string, password: string, noRedirect?: boolean } & ({ noVerificationCallback: true } | { noVerificationCallback?: false, verificationCallbackUrl?: string })): Promise<Result<undefined, KnownErrors["UserWithEmailAlreadyExists"] | KnownErrors["PasswordRequirementsNotMet"]>>,
     signInWithPasskey(): Promise<Result<undefined, KnownErrors["PasskeyAuthenticationFailed"] | KnownErrors["InvalidTotpCode"] | KnownErrors["PasskeyWebAuthnError"]>>,
     callOAuthCallback(): Promise<boolean>,
     promptCliLogin(options: { appUrl: string, expiresInMillis?: number }): Promise<Result<string, KnownErrors["CliAuthError"] | KnownErrors["CliAuthExpiredError"] | KnownErrors["CliAuthUsedError"]>>,
@@ -85,6 +90,7 @@ export type StackClientApp<HasTokenStore extends boolean = boolean, ProjectId ex
     [stackAppInternalsSymbol]: {
       toClientJson(): StackClientAppJson<HasTokenStore, ProjectId>,
       setCurrentUser(userJsonPromise: Promise<CurrentUserCrud['Client']['Read'] | null>): void,
+      getConstructorOptions(): StackClientAppConstructorOptions<HasTokenStore, ProjectId> & { inheritsFrom?: undefined },
     },
   }
   & AsyncStoreProperty<"project", [], Project, false>
@@ -101,6 +107,7 @@ export type StackClientApp<HasTokenStore extends boolean = boolean, ProjectId ex
     true
   >
   & { [K in `redirectTo${Capitalize<keyof Omit<HandlerUrls, 'handler' | 'oauthCallback'>>}`]: (options?: RedirectToOptions) => Promise<void> }
+  & AuthLike<HasTokenStore extends false ? { tokenStore: TokenStoreInit } : { tokenStore?: TokenStoreInit }>
 );
 export type StackClientAppConstructor = {
   new <

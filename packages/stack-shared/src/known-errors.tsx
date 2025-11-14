@@ -372,7 +372,7 @@ const AdminAccessTokenExpired = createKnownErrorConstructor(
     `Admin access token has expired. Please refresh it and try again.${expiredAt ? ` (The access token expired at ${expiredAt.toISOString()}.)`: ""}`,
     { expired_at_millis: expiredAt?.getTime() ?? null },
   ] as const,
-  (json: any) => [json.expired_at_millis ?? undefined] as const,
+  (json: any) => [json.expired_at_millis ? new Date(json.expired_at_millis) : undefined] as const,
 );
 
 const InvalidProjectForAdminAccessToken = createKnownErrorConstructor(
@@ -1566,25 +1566,6 @@ const StripeAccountInfoNotFound = createKnownErrorConstructor(
   () => [] as const,
 );
 
-const WorkflowTokenDoesNotExist = createKnownErrorConstructor(
-  KnownError,
-  "WORKFLOW_TOKEN_DOES_NOT_EXIST",
-  () => [
-    400,
-    "The workflow token you specified does not exist. Make sure the value in x-stack-workflow-token is correct.",
-  ] as const,
-  () => [] as const,
-);
-
-const WorkflowTokenExpired = createKnownErrorConstructor(
-  KnownError,
-  "WORKFLOW_TOKEN_EXPIRED",
-  () => [
-    400,
-    "The workflow token you specified has expired. Make sure the value in x-stack-workflow-token is correct.",
-  ] as const,
-  () => [] as const,
-);
 
 export type KnownErrors = {
   [K in keyof typeof KnownErrors]: InstanceType<typeof KnownErrors[K]>;
@@ -1711,8 +1692,6 @@ export const KnownErrors = {
   StripeAccountInfoNotFound,
   DataVaultStoreDoesNotExist,
   DataVaultStoreHashedKeyDoesNotExist,
-  WorkflowTokenDoesNotExist,
-  WorkflowTokenExpired,
 } satisfies Record<string, KnownErrorConstructor<any, any>>;
 
 

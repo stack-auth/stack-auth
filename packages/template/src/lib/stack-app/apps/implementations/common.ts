@@ -2,13 +2,14 @@ import { InternalSession } from "@stackframe/stack-shared/dist/sessions";
 import { AsyncCache } from "@stackframe/stack-shared/dist/utils/caches";
 import { isBrowserLike } from "@stackframe/stack-shared/dist/utils/env";
 import { StackAssertionError, concatStacktraces, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
-import { filterUndefined } from "@stackframe/stack-shared/dist/utils/objects";
+import { getGlobal } from "@stackframe/stack-shared/dist/utils/globals";
+import { filterUndefined, omit } from "@stackframe/stack-shared/dist/utils/objects";
 import { ReactPromise } from "@stackframe/stack-shared/dist/utils/promises";
-import { suspendIfSsr } from "@stackframe/stack-shared/dist/utils/react";
+import { suspendIfSsr, use } from "@stackframe/stack-shared/dist/utils/react";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { Store } from "@stackframe/stack-shared/dist/utils/stores";
 import React, { useCallback } from "react"; // THIS_LINE_PLATFORM react-like
-import { HandlerUrls } from "../../common";
+import { HandlerUrls, stackAppInternalsSymbol } from "../../common";
 
 // hack to make sure process is defined in non-node environments
 const process = (globalThis as any).process ?? { env: {} }; // THIS_LINE_PLATFORM js react
@@ -17,6 +18,12 @@ export const clientVersion = "STACK_COMPILE_TIME_CLIENT_PACKAGE_VERSION_SENTINEL
 if (clientVersion.startsWith("STACK_COMPILE_TIME")) {
   throw new StackAssertionError("Client version was not replaced. Something went wrong during build!");
 }
+
+const replaceStackPortPrefix = <T extends string | undefined>(input: T): T => {
+  if (!input) return input;
+  const prefix = process.env.NEXT_PUBLIC_STACK_PORT_PREFIX;
+  return prefix ? input.replace(/\$\{NEXT_PUBLIC_STACK_PORT_PREFIX:-81\}/g, prefix) as T : input;
+};
 
 
 export const createCache = <D extends any[], T>(fetcher: (dependencies: D) => Promise<T>) => {
@@ -37,6 +44,15 @@ export const createCacheBySession = <D extends any[], T>(fetcher: (session: Inte
     },
   );
 };
+
+
+type AppLike = { [stackAppInternalsSymbol]: { getConstructorOptions: () => any } };
+export function resolveConstructorOptions<T extends { inheritsFrom?: AppLike }>(options: T): T & { inheritsFrom?: undefined } {
+  return {
+    ...options.inheritsFrom?.[stackAppInternalsSymbol].getConstructorOptions() ?? {},
+    ...filterUndefined(omit(options, ["inheritsFrom"])),
+  };
+}
 
 export function getUrls(partial: Partial<HandlerUrls>): HandlerUrls {
   const handler = partial.handler ?? "/handler";
@@ -124,7 +140,7 @@ export function getBaseUrl(userSpecifiedBaseUrl: string | { browser: string, ser
     url = url || process.env.NEXT_PUBLIC_STACK_API_URL || process.env.STACK_API_URL || process.env.NEXT_PUBLIC_STACK_URL || defaultBaseUrl;
   }
 
-  return url.endsWith('/') ? url.slice(0, -1) : url;
+  return replaceStackPortPrefix(url.endsWith('/') ? url.slice(0, -1) : url);
 }
 export const defaultBaseUrl = "https://api.stack-auth.com";
 
@@ -146,6 +162,12 @@ const cachePromiseByHookId = new Map<string, ReactPromise<Result<unknown>>>();
 export function useAsyncCache<D extends any[], T>(cache: AsyncCache<D, Result<T>>, dependencies: D, caller: string): T {
   // we explicitly don't want to run this hook in SSR
   suspendIfSsr(caller);
+
+  // on the dashboard, we do some perf monitoring for pre-fetching which should hook right in here
+  const asyncCacheHooks: any[] = getGlobal("use-async-cache-execution-hooks") ?? [];
+  for (const hook of asyncCacheHooks) {
+    hook({ cache, caller, dependencies });
+  }
 
   const id = React.useId();
 
@@ -178,7 +200,7 @@ export function useAsyncCache<D extends any[], T>(cache: AsyncCache<D, Result<T>
     () => throwErr(new Error("getServerSnapshot should never be called in useAsyncCache because we restrict to CSR earlier"))
   );
 
-  const result = React.use(promise);
+  const result = use(promise);
   if (result.status === "error") {
     const error = result.error;
     if (error instanceof Error && !(error as any).__stackHasConcatenatedStacktraces) {

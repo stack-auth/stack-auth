@@ -9,6 +9,7 @@ import * as jose from "jose";
 import { randomUUID } from "node:crypto";
 import { expect } from "vitest";
 import { Context, Mailbox, NiceRequestInit, NiceResponse, STACK_BACKEND_BASE_URL, STACK_INTERNAL_PROJECT_ADMIN_KEY, STACK_INTERNAL_PROJECT_CLIENT_KEY, STACK_INTERNAL_PROJECT_ID, STACK_INTERNAL_PROJECT_SERVER_KEY, STACK_SVIX_SERVER_URL, generatedEmailSuffix, localRedirectUrl, niceFetch, updateCookiesFromResponse } from "../helpers";
+import { localhostUrl, withPortPrefix } from "../helpers/ports";
 
 type BackendContext = {
   readonly projectKeys: ProjectKeys,
@@ -66,6 +67,7 @@ export function createMailbox(email?: string): Mailbox {
 
 export type ProjectKeys = "no-project" | {
   projectId: string,
+  branchId?: string,
   publishableClientKey?: string,
   secretServerKey?: string,
   superSecretAdminKey?: string,
@@ -645,7 +647,11 @@ export namespace Auth {
         status: 307,
         headers: expect.any(Headers),
       });
-      expect(response.headers.get("location")).toMatch(/^http:\/\/localhost:8114\/auth\?.*$/);
+      const location = response.headers.get("location");
+      expect(location).toBeTruthy();
+      const locationUrl = new URL(location!);
+      expect(locationUrl.origin).toBe(localhostUrl("14"));
+      expect(locationUrl.pathname).toBe("/auth");
       expect(response.headers.get("set-cookie")).toMatch(/^stack-oauth-inner-[^;]+=[^;]+; Path=\/; Expires=[^;]+; Max-Age=\d+;( Secure;)? HttpOnly$/);
       return {
         authorizeResponse: response,
@@ -725,7 +731,7 @@ export namespace Auth {
         body: expect.any(String),
       });
       const innerCallbackUrl = new URL(redirectResponse3.headers.get("location") ?? throwErr("missing redirect location", { redirectResponse3 }));
-      expect(innerCallbackUrl.origin).toBe("http://localhost:8102");
+      expect(innerCallbackUrl.origin).toBe(localhostUrl("02"));
       expect(innerCallbackUrl.pathname).toBe("/api/v1/auth/oauth/callback/spotify");
       return {
         authorizeResponse,
@@ -1449,6 +1455,7 @@ export namespace Payments {
     await Payments.setup();
     await Project.updateConfig({
       payments: {
+        testMode: false,
         products: {
           "test-product": {
             displayName: "Test Product",
@@ -1479,7 +1486,7 @@ export namespace Payments {
     });
     expect(response.status).toBe(200);
     const body = response.body as { url: string };
-    expect(body.url).toMatch(/^https?:\/\/localhost:8101\/purchase\/[a-z0-9-_]+$/);
+    expect(body.url).toMatch(new RegExp(`^https?:\/\/localhost:${withPortPrefix("01")}\/purchase\/[a-z0-9-_]+$`));
     const codeMatch = body.url.match(/\/purchase\/([a-z0-9-_]+)/);
     const code = codeMatch ? codeMatch[1] : undefined;
     expect(code).toBeDefined();

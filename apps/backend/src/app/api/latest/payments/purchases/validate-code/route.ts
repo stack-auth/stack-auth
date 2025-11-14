@@ -38,12 +38,14 @@ export const POST = createSmartRouteHandler({
       product: inlineProductSchema,
       stripe_account_id: yupString().defined(),
       project_id: yupString().defined(),
+      project_logo_url: yupString().nullable().defined(),
       already_bought_non_stackable: yupBoolean().defined(),
       conflicting_products: yupArray(yupObject({
         product_id: yupString().defined(),
         display_name: yupString().defined(),
       }).defined()).defined(),
       test_mode: yupBoolean().defined(),
+      charges_enabled: yupBoolean().defined(),
     }).defined(),
   }),
   async handler({ body }) {
@@ -95,9 +97,11 @@ export const POST = createSmartRouteHandler({
         product: productToInlineProduct(product),
         stripe_account_id: verificationCode.data.stripeAccountId,
         project_id: tenancy.project.id,
+        project_logo_url: tenancy.project.logo_url ?? null,
         already_bought_non_stackable: alreadyBoughtNonStackable,
         conflicting_products: conflictingCatalogProducts,
         test_mode: tenancy.config.payments.testMode === true,
+        charges_enabled: verificationCode.data.chargesEnabled,
       },
     };
   },

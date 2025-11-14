@@ -5,23 +5,38 @@ import { SelectField } from "@/components/form-fields";
 import { Link } from "@/components/link";
 import { StripeConnectProvider } from "@/components/payments/stripe-connect-provider";
 import { cn } from "@/lib/utils";
-import { runAsynchronouslyWithAlert, wait } from "@stackframe/stack-shared/dist/utils/promises";
-import { ActionDialog, Alert, AlertDescription, AlertTitle, Button, Card, CardContent, Typography } from "@stackframe/stack-ui";
+import { wait } from "@stackframe/stack-shared/dist/utils/promises";
+import { ActionDialog, Button, Card, CardContent, Typography } from "@stackframe/stack-ui";
 import { ConnectNotificationBanner } from "@stripe/react-connect-js";
-import { ArrowRight, BarChart3, Repeat, Shield, Wallet, Webhook } from "lucide-react";
+import { AlertTriangle, ArrowRight, BarChart3, FlaskConical, Repeat, Shield, Wallet, Webhook } from "lucide-react";
 import { useState } from "react";
 import * as yup from "yup";
+import { AppEnabledGuard } from "../../app-enabled-guard";
 import { useAdminApp } from "../../use-admin-app";
 
 export default function PaymentsLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <AppEnabledGuard appId="payments">
+      <PaymentsLayoutInner>{children}</PaymentsLayoutInner>
+    </AppEnabledGuard>
+  );
+}
+
+function PaymentsLayoutInner({ children }: { children: React.ReactNode }) {
   const [bannerHasItems, setBannerHasItems] = useState(false);
   const stackAdminApp = useAdminApp();
   const stripeAccountInfo = stackAdminApp.useStripeAccountInfo();
+  const project = stackAdminApp.useProject();
+  const paymentsConfig = project.useConfig().payments;
 
   const setupPayments = async () => {
     const { url } = await stackAdminApp.setupPayments();
     window.location.href = url;
     await wait(2000);
+  };
+
+  const handleDisableTestMode = async () => {
+    await project.updateConfig({ "payments.testMode": false });
   };
 
   if (!stripeAccountInfo) {
@@ -65,27 +80,72 @@ export default function PaymentsLayout({ children }: { children: React.ReactNode
 
   return (
     <StripeConnectProvider>
-      {!stripeAccountInfo.details_submitted && (
-        <div className="flex justify-center p-4" >
-          <Alert variant="destructive" style={{ maxWidth: 1250, width: '100%' }}>
-            <AlertTitle className="font-semibold">Incomplete setup</AlertTitle>
-            <AlertDescription>
-              Stripe account is not fully setup.
-              You can test your application, but please{" "}
-              <Link
-                href="#"
-                className="underline"
-                onClick={() => runAsynchronouslyWithAlert(setupPayments)}
-              >
-                complete the setup process
-              </Link>
-              {" "}to{" "}
-              {[
-                ...!stripeAccountInfo.charges_enabled ? ["receive payments"] : [],
-                ...!stripeAccountInfo.payouts_enabled ? ["send payouts"] : [],
-              ].join(" and ")}.
-            </AlertDescription>
-          </Alert>
+      {paymentsConfig.testMode ? (
+        <div className="flex justify-center px-4 py-6">
+          <div className="w-full max-w-[1250px] rounded-xl border border-blue-200 dark:border-blue-500 bg-blue-50 dark:bg-blue-900/20 p-6 shadow-sm">
+            <div className="flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
+              <div className="space-y-3">
+                <div className="flex items-center gap-2 text-blue-900 dark:text-blue-300">
+                  <FlaskConical className="h-5 w-5" />
+                  <Typography type="h4" className="font-semibold">
+                    You are currently in test mode
+                  </Typography>
+                </div>
+                <Typography type="p" variant="secondary" className="text-blue-900/80 dark:text-blue-300/80">
+                  All purchases are currently free and no money will be deducted.
+                </Typography>
+              </div>
+              <div className="flex flex-col items-start self-stretch">
+                <Button
+                  size="lg"
+                  variant="outline"
+                  onClick={() => handleDisableTestMode()}
+                  className="inline-flex items-center gap-2 mb-auto border-blue-300 dark:border-blue-600 text-blue-900 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900/40"
+                >
+                  Disable test mode
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : !stripeAccountInfo.details_submitted && (
+        <div className="flex justify-center px-4 py-6">
+          <div className="w-full max-w-[1250px] rounded-xl border border-amber-200 dark:border-amber-500 bg-amber-50 dark:bg-amber-900/20 p-6 shadow-sm">
+            <div className="flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
+              <div className="space-y-3">
+                <div className="flex items-center gap-2 text-amber-900 dark:text-amber-300">
+                  <AlertTriangle className="h-5 w-5" />
+                  <Typography type="h4" className="font-semibold">
+                    Finish setting up payments
+                  </Typography>
+                </div>
+                <Typography type="p" variant="secondary" className="text-amber-900/80 dark:text-amber-300/80">
+                  Complete the onboarding to unlock full payment capabilities.
+                </Typography>
+                <ul className="space-y-1 text-sm text-amber-900/80 dark:text-amber-300/80">
+                  {[
+                    ...(!stripeAccountInfo.charges_enabled ? ["Start charging customers in production"] : []),
+                    ...(!stripeAccountInfo.payouts_enabled ? ["Send payouts to your connected bank account"] : []),
+                  ].map((item) => (
+                    <li key={item} className="flex items-center gap-2">
+                      <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+                      <span>{item}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+              <div className="flex flex-col items-start self-stretch">
+                <Button
+                  size="lg"
+                  onClick={() => setupPayments()}
+                  className="inline-flex items-center gap-2 mb-auto"
+                >
+                  Continue setup
+                  <ArrowRight className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
       <div className={cn(bannerHasItems && "p-4", "flex justify-center")}>

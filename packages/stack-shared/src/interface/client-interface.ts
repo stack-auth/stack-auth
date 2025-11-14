@@ -21,6 +21,7 @@ import { CurrentUserCrud } from './crud/current-user';
 import { ItemCrud } from './crud/items';
 import { NotificationPreferenceCrud } from './crud/notification-preferences';
 import { OAuthProviderCrud } from './crud/oauth-providers';
+import { CustomerProductsListResponse, ListCustomerProductsOptions } from './crud/products';
 import { TeamApiKeysCrud, UserApiKeysCrud, teamApiKeysCreateInputSchema, teamApiKeysCreateOutputSchema, userApiKeysCreateInputSchema, userApiKeysCreateOutputSchema } from './crud/project-api-keys';
 import { ProjectPermissionsCrud } from './crud/project-permissions';
 import { AdminUserProjectsCrud, ClientProjectsCrud } from './crud/projects';
@@ -29,7 +30,6 @@ import { TeamInvitationCrud } from './crud/team-invitation';
 import { TeamMemberProfilesCrud } from './crud/team-member-profiles';
 import { TeamPermissionsCrud } from './crud/team-permissions';
 import { TeamsCrud } from './crud/teams';
-import { CustomerProductsListResponse, ListCustomerProductsOptions } from './crud/products';
 
 export type ClientInterfaceOptions = {
   clientVersion: string,
@@ -45,6 +45,8 @@ export type ClientInterfaceOptions = {
 });
 
 export class StackClientInterface {
+  private pendingNetworkDiagnostics?: ReturnType<StackClientInterface["_runNetworkDiagnosticsInner"]>;
+
   constructor(public readonly options: ClientInterfaceOptions) {
     // nothing here
   }
@@ -58,6 +60,19 @@ export class StackClientInterface {
   }
 
   public async runNetworkDiagnostics(session?: InternalSession | null, requestType?: "client" | "server" | "admin") {
+    if (this.pendingNetworkDiagnostics) {
+      return await this.pendingNetworkDiagnostics;
+    }
+
+    this.pendingNetworkDiagnostics = this._runNetworkDiagnosticsInner(session, requestType);
+    try {
+      return await this.pendingNetworkDiagnostics;
+    } finally {
+      this.pendingNetworkDiagnostics = undefined;
+    }
+  }
+
+  private async _runNetworkDiagnosticsInner(session?: InternalSession | null, requestType?: "client" | "server" | "admin") {
     const tryRequest = async (cb: () => Promise<void>) => {
       try {
         await cb();
@@ -72,12 +87,6 @@ export class StackClientInterface {
         throw new Error(`${res.status} ${res.statusText}: ${await res.text()}`);
       }
     });
-    const apiRoot = session !== undefined && requestType !== undefined ? await tryRequest(async () => {
-      const res = await this.sendClientRequestInner("/", {}, session!, requestType);
-      if (res.status === "error") {
-        throw res.error;
-      }
-    }) : "Not tested";
     const baseUrlBackend = await tryRequest(async () => {
       const res = await fetch(new URL("/health", this.getApiUrl()));
       if (!res.ok) {
@@ -99,7 +108,6 @@ export class StackClientInterface {
     return {
       "navigator?.onLine": globalVar.navigator?.onLine,
       cfTrace,
-      apiRoot,
       baseUrlBackend,
       prodDashboard,
       prodBackend,
@@ -156,29 +164,33 @@ export class StackClientInterface {
       token_endpoint_auth_method: 'client_secret_post',
     };
 
-    const rawResponse = await this._networkRetryException(
-      async () => await oauth.refreshTokenGrantRequest(
+    const response = await this._networkRetryException(async () => {
+      const rawResponse = await oauth.refreshTokenGrantRequest(
         as,
         client,
         refreshToken.token,
-      )
-    );
-    const response = await this._processResponse(rawResponse);
+      );
 
-    if (response.status === "error") {
-      const error = response.error;
-      if (KnownErrors.RefreshTokenError.isInstance(error)) {
-        return null;
+      const response = await this._processResponse(rawResponse);
+
+      if (response.status === "error") {
+        const error = response.error;
+        if (KnownErrors.RefreshTokenError.isInstance(error)) {
+          return null;
+        }
+        throw error;
       }
-      throw error;
-    }
 
-    if (!response.data.ok) {
-      const body = await response.data.text();
-      throw new Error(`Failed to send refresh token request: ${response.status} ${body}`);
-    }
+      if (!response.data.ok) {
+        const body = await response.data.text();
+        throw new Error(`Failed to send refresh token request: ${response.status} ${body}`);
+      }
 
-    const result = await oauth.processRefreshTokenResponse(as, client, response.data);
+      return response.data;
+    });
+    if (!response) return null;
+
+    const result = await oauth.processRefreshTokenResponse(as, client, response);
     if (oauth.isOAuth2Error(result)) {
       // TODO Handle OAuth 2.0 response body error
       throw new StackAssertionError("OAuth error", { result });
@@ -803,7 +815,7 @@ export class StackClientInterface {
   async signUpWithCredential(
     email: string,
     password: string,
-    emailVerificationRedirectUrl: string,
+    emailVerificationRedirectUrl: string | undefined,
     session: InternalSession,
   ): Promise<Result<{ accessToken: string, refreshToken: string }, KnownErrors["UserWithEmailAlreadyExists"] | KnownErrors["PasswordRequirementsNotMet"]>> {
     const res = await this.sendClientRequestAndCatchKnownError(

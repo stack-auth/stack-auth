@@ -1,5 +1,9 @@
 // TODO: rename this file to spaghetti.ts because that's the kind of code here
 
+// IMPORTANT
+// WHENEVER YOU MAKE BACKWARDS-INCOMPATIBLE CHANGES TO THE CONFIG SCHEMA, YOU MUST UPDATE THE MIGRATION FUNCTIONS BELOW.
+// OTHERWISE THINGS WILL GO BOOM!!
+
 import * as yup from "yup";
 import { ALL_APPS } from "../apps/apps-config";
 import { DEFAULT_EMAIL_TEMPLATES, DEFAULT_EMAIL_THEMES, DEFAULT_EMAIL_THEME_ID } from "../helpers/emails";
@@ -167,16 +171,6 @@ const branchDomain = yupObject({
   allowLocalhost: yupBoolean(),
 });
 
-const branchWorkflowsSchema = yupObject({
-  availableWorkflows: yupRecord(
-    userSpecifiedIdSchema("workflowId"),
-    yupObject({
-      displayName: yupString(),
-      tsSource: yupString(),
-      enabled: yupBoolean(),
-    }),
-  ),
-});
 
 export const branchConfigSchema = canNoLongerBeOverridden(projectConfigSchema, ["sourceOfTruth"]).concat(yupObject({
   rbac: branchRbacSchema,
@@ -214,8 +208,6 @@ export const branchConfigSchema = canNoLongerBeOverridden(projectConfigSchema, [
       }),
     ),
   }),
-
-  workflows: branchWorkflowsSchema,
 }));
 
 
@@ -343,6 +335,13 @@ export function migrateConfigOverride(type: "project" | "branch" | "environment"
   }
   // END
 
+  // BEGIN 2025-10-29: Removed workflows and everything associated with it
+  if (isBranchOrHigher) {
+    res = removeProperty(res, p => p[0] === "workflows");
+    res = removeProperty(res, p => p[0] === "apps" && p[1] === "installed" && p[2] === "workflows");
+  }
+  // END
+
   // return the result
   return res;
 };
@@ -466,7 +465,7 @@ const organizationConfigDefaults = {
   },
 
   apps: {
-    installed: typedFromEntries(appIds.map(appId => [appId, { enabled: false }])),
+    installed: typedFromEntries(appIds.map(appId => [appId, { enabled: false }])) as Record<string, { enabled: boolean } | undefined>,
   },
 
   teams: {
@@ -536,7 +535,7 @@ const organizationConfigDefaults = {
   },
 
   payments: {
-    testMode: false,
+    testMode: true,
     autoPay: undefined,
     catalogs: (key: string) => ({
       displayName: undefined,
@@ -570,14 +569,6 @@ const organizationConfigDefaults = {
   dataVault: {
     stores: (key: string) => ({
       displayName: "Unnamed Vault",
-    }),
-  },
-
-  workflows: {
-    availableWorkflows: (key: string) => ({
-      displayName: "Unnamed Workflow",
-      tsSource: "Error: Workflow config is missing TypeScript source code.",
-      enabled: false,
     }),
   },
 } as const satisfies DefaultsType<OrganizationRenderedConfigBeforeDefaults, [typeof environmentConfigDefaults, typeof branchConfigDefaults, typeof projectConfigDefaults]>;
@@ -779,6 +770,9 @@ export async function sanitizeOrganizationConfig(config: OrganizationRenderedCon
       prices,
     }];
   }));
+
+  const appSortIndices = new Map(Object.keys(ALL_APPS).map((appId, index) => [appId, index]));
+
   return {
     ...prepared,
     emails: {
@@ -790,7 +784,13 @@ export async function sanitizeOrganizationConfig(config: OrganizationRenderedCon
     payments: {
       ...prepared.payments,
       products
-    }
+    },
+    apps: {
+      installed: typedFromEntries(
+        typedEntries(prepared.apps.installed)
+          .sort(([a], [b]) => appSortIndices.get(a)! - appSortIndices.get(b)!)
+      ),
+    },
   };
 }
 

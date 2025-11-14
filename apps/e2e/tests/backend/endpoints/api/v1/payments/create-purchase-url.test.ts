@@ -1,5 +1,6 @@
 import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
 import { it } from "../../../../../helpers";
+import { withPortPrefix } from "../../../../../helpers/ports";
 import { Auth, niceBackendFetch, Payments, Project, User } from "../../../../backend-helpers";
 
 it("should not be able to create purchase URL without product_id or product_inline", async ({ expect }) => {
@@ -275,7 +276,91 @@ it("should allow product_inline when calling from server", async ({ expect }) =>
     },
   });
   expect(response.status).toBe(200);
-  expect(response.body.url).toMatch(/^https?:\/\/localhost:8101\/purchase\/[a-z0-9-_]+$/);
+  expect(response.body.url).toMatch(new RegExp(`^https?:\\/\\/localhost:${withPortPrefix("01")}\/purchase\/[a-z0-9-_]+$`));
+});
+
+it("should return inline product metadata when validating purchase code", async ({ expect }) => {
+  await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+  await Payments.setup();
+
+  const { userId } = await Auth.Otp.signIn();
+  const createResponse = await niceBackendFetch("/api/latest/payments/purchases/create-purchase-url", {
+    method: "POST",
+    accessType: "server",
+    body: {
+      customer_type: "user",
+      customer_id: userId,
+      product_inline: {
+        display_name: "Metadata Inline Product",
+        customer_type: "user",
+        server_only: true,
+        prices: {
+          "monthly-metadata": {
+            USD: "1500",
+            interval: [1, "month"],
+          },
+        },
+        included_items: {},
+        server_metadata: {
+          reference_id: "ref-123",
+          features: ["priority-support", "analytics"],
+        },
+      },
+    },
+  });
+  expect(createResponse.status).toBe(200);
+  const url = (createResponse.body as { url: string }).url;
+  const codeMatch = url.match(/\/purchase\/([a-z0-9-_]+)/);
+  const fullCode = codeMatch ? codeMatch[1] : undefined;
+  expect(fullCode).toBeDefined();
+
+  const validateResponse = await niceBackendFetch("/api/latest/payments/purchases/validate-code", {
+    method: "POST",
+    accessType: "client",
+    body: {
+      full_code: fullCode,
+    },
+  });
+  expect(validateResponse).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": {
+        "already_bought_non_stackable": false,
+        "charges_enabled": false,
+        "conflicting_products": [],
+        "product": {
+          "client_metadata": null,
+          "client_read_only_metadata": null,
+          "customer_type": "user",
+          "display_name": "Metadata Inline Product",
+          "included_items": {},
+          "prices": {
+            "monthly-metadata": {
+              "USD": "1500",
+              "interval": [
+                1,
+                "month",
+              ],
+            },
+          },
+          "server_metadata": {
+            "features": [
+              "priority-support",
+              "analytics",
+            ],
+            "reference_id": "ref-123",
+          },
+          "server_only": true,
+          "stackable": false,
+        },
+        "project_id": "<stripped UUID>",
+        "project_logo_url": null,
+        "stripe_account_id": <stripped field 'stripe_account_id'>,
+        "test_mode": true,
+      },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
 });
 
 it("should allow valid product_id", async ({ expect }) => {
@@ -314,7 +399,7 @@ it("should allow valid product_id", async ({ expect }) => {
   });
   expect(response.status).toBe(200);
   const body = response.body as { url: string };
-  expect(body.url).toMatch(/^https?:\/\/localhost:8101\/purchase\/[a-z0-9-_]+\?return_url=/);
+  expect(body.url).toMatch(new RegExp(`^https?:\/\/localhost:${withPortPrefix("01")}\/purchase\/[a-z0-9-_]+\\?return_url=`));
   const urlObj = new URL(body.url);
   const returnUrl = urlObj.searchParams.get("return_url");
   expect(returnUrl).toBe("http://stack-test.localhost/after-purchase");
