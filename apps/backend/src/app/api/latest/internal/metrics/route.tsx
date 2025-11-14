@@ -1,13 +1,29 @@
+import { getOrSetCacheValue } from "@/lib/cache";
 import { Tenancy } from "@/lib/tenancies";
-import { getPrismaClientForTenancy, getPrismaSchemaForTenancy, globalPrismaClient, sqlQuoteIdent } from "@/prisma-client";
+import { getPrismaClientForTenancy, getPrismaSchemaForTenancy, globalPrismaClient, PrismaClientTransaction, sqlQuoteIdent } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
+import { Prisma } from "@prisma/client";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
 import { adaptSchema, adminAuthTypeSchema, yupArray, yupMixed, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import yup from 'yup';
-import { usersCrudHandlers } from "../../users/crud";
+import { userFullInclude, userPrismaToCrud, usersCrudHandlers } from "../../users/crud";
 
 type DataPoints = yup.InferType<typeof DataPointsSchema>;
+
+const METRICS_CACHE_NAMESPACE = "metrics";
+const ONE_HOUR_MS = 60 * 60 * 1000;
+const MAX_USERS_FOR_COUNTRY_SAMPLE = 10_000;
+
+async function withMetricsCache<T>(tenancy: Tenancy, suffix: string, prisma: PrismaClientTransaction, includeAnonymous: boolean = false, loader: () => Promise<T>): Promise<T> {
+  return await getOrSetCacheValue<T>({
+    namespace: METRICS_CACHE_NAMESPACE,
+    cacheKey: `${tenancy.id}:${suffix}:${includeAnonymous ? "anon" : "non_anon"}`,
+    ttlMs: ONE_HOUR_MS,
+    prisma,
+    loader,
+  });
+}
 
 const DataPointsSchema = yupArray(yupObject({
   date: yupString().defined(),
@@ -15,40 +31,70 @@ const DataPointsSchema = yupArray(yupObject({
 }).defined()).defined();
 
 
-async function loadUsersByCountry(tenancy: Tenancy, includeAnonymous: boolean = false): Promise<Record<string, number>> {
-  const a = await globalPrismaClient.$queryRaw<{countryCode: string|null, userCount: bigint}[]>`
-    WITH LatestEventWithCountryCode AS (
-      SELECT DISTINCT ON ("userId")
-        "data"->'userId' AS "userId",
-        "countryCode",
-        "eventStartedAt" AS latest_timestamp
-      FROM "Event"
-      LEFT JOIN "EventIpInfo" eip
-        ON "Event"."endUserIpInfoGuessId" = eip.id
-      WHERE '$user-activity' = ANY("systemEventTypeIds"::text[])
-        AND "data"->>'projectId' = ${tenancy.project.id}
-        AND (${includeAnonymous} OR COALESCE("data"->>'isAnonymous', 'false') != 'true')
-        AND COALESCE("data"->>'branchId', 'main') = ${tenancy.branchId}
-        AND "countryCode" IS NOT NULL
-      ORDER BY "userId", "eventStartedAt" DESC
+async function loadUsersByCountry(tenancy: Tenancy, prisma: PrismaClientTransaction, includeAnonymous: boolean = false): Promise<Record<string, number>> {
+  const totalUsers = await prisma.projectUser.count({
+    where: {
+      tenancyId: tenancy.id,
+      ...(includeAnonymous ? {} : { isAnonymous: false }),
+    },
+  });
+  const users = await prisma.projectUser.findMany({
+    where: {
+      tenancyId: tenancy.id,
+      ...(includeAnonymous ? {} : { isAnonymous: false }),
+    },
+    select: { projectUserId: true },
+    orderBy: { projectUserId: "asc" },
+    take: Math.min(totalUsers, MAX_USERS_FOR_COUNTRY_SAMPLE),
+  });
+
+  if (users.length === 0) {
+    return {};
+  }
+
+  const userIds = users.map((user) => user.projectUserId);
+  const userIdArray = Prisma.sql`ARRAY[${Prisma.join(userIds.map((id) => Prisma.sql`${id}`))}]::text[]`;
+  const scalingFactor = totalUsers > users.length ? totalUsers / users.length : 1;
+
+  const rows = await globalPrismaClient.$queryRaw<{ countryCode: string | null, userCount: bigint }[]>(Prisma.sql`
+    WITH latest_ip AS (
+      SELECT DISTINCT ON (e."data"->>'userId')
+        e."data"->>'userId' AS "userId",
+        eip."countryCode" AS "countryCode"
+      FROM "Event" e
+      JOIN "EventIpInfo" eip
+        ON eip.id = e."endUserIpInfoGuessId"
+      WHERE '$user-activity' = ANY(e."systemEventTypeIds"::text[])
+        AND e."data"->>'projectId' = ${tenancy.project.id}
+        AND COALESCE(e."data"->>'branchId', 'main') = ${tenancy.branchId}
+        AND e."data"->>'userId' = ANY(${userIdArray})
+        AND e."endUserIpInfoGuessId" IS NOT NULL
+        AND eip."countryCode" IS NOT NULL
+      ORDER BY e."data"->>'userId', e."eventStartedAt" DESC
     )
     SELECT "countryCode", COUNT("userId") AS "userCount"
-    FROM LatestEventWithCountryCode
+    FROM latest_ip
     GROUP BY "countryCode"
     ORDER BY "userCount" DESC;
-  `;
+  `);
 
-  const rec = Object.fromEntries(
-    a.map(({ userCount, countryCode }) => [countryCode, Number(userCount)])
-      .filter(([countryCode, userCount]) => countryCode)
+  return Object.fromEntries(
+    rows.map(({ userCount, countryCode }) => {
+      if (!countryCode) {
+        return null;
+      }
+      const count = Number(userCount);
+      const estimatedCount = scalingFactor === 1 ? count : Math.round(count * scalingFactor);
+      return [countryCode, estimatedCount] as [string, number];
+    })
+      .filter((entry): entry is [string, number] => entry !== null)
   );
-  return rec;
 }
 
 async function loadTotalUsers(tenancy: Tenancy, now: Date, includeAnonymous: boolean = false): Promise<DataPoints> {
   const schema = await getPrismaSchemaForTenancy(tenancy);
   const prisma = await getPrismaClientForTenancy(tenancy);
-  return (await prisma.$queryRaw<{date: Date, dailyUsers: bigint, cumUsers: bigint}[]>`
+  return (await prisma.$queryRaw<{ date: Date, dailyUsers: bigint, cumUsers: bigint }[]>`
     WITH date_series AS (
         SELECT GENERATE_SERIES(
           ${now}::date - INTERVAL '30 days',
@@ -75,7 +121,7 @@ async function loadTotalUsers(tenancy: Tenancy, now: Date, includeAnonymous: boo
 }
 
 async function loadDailyActiveUsers(tenancy: Tenancy, now: Date, includeAnonymous: boolean = false) {
-  const res = await globalPrismaClient.$queryRaw<{day: Date, dau: bigint}[]>`
+  const res = await globalPrismaClient.$queryRaw<{ day: Date, dau: bigint }[]>`
     WITH date_series AS (
       SELECT GENERATE_SERIES(
         ${now}::date - INTERVAL '30 days',
@@ -84,16 +130,28 @@ async function loadDailyActiveUsers(tenancy: Tenancy, now: Date, includeAnonymou
       )
       AS "day"
     ),
-    daily_users AS (
+    filtered_events AS (
       SELECT
-        DATE_TRUNC('day', "eventStartedAt") AS "day",
-        COUNT(DISTINCT CASE WHEN (${includeAnonymous} OR COALESCE("data"->>'isAnonymous', 'false') != 'true') THEN "data"->'userId' ELSE NULL END) AS "dau"
+        ("eventStartedAt"::date) AS "day",
+        "data"->>'userId' AS "userId"
       FROM "Event"
       WHERE "eventStartedAt" >= ${now}::date - INTERVAL '30 days'
+        AND "eventStartedAt" < ${now}::date + INTERVAL '1 day'
         AND '$user-activity' = ANY("systemEventTypeIds"::text[])
         AND "data"->>'projectId' = ${tenancy.project.id}
         AND COALESCE("data"->>'branchId', 'main') = ${tenancy.branchId}
-      GROUP BY DATE_TRUNC('day', "eventStartedAt")
+        AND (${includeAnonymous} OR COALESCE("data"->>'isAnonymous', 'false') != 'true')
+        AND "data"->>'userId' IS NOT NULL
+    ),
+    unique_daily_users AS (
+      SELECT "day", "userId"
+      FROM filtered_events
+      GROUP BY "day", "userId"
+    ),
+    daily_users AS (
+      SELECT "day", COUNT(*) AS "dau"
+      FROM unique_daily_users
+      GROUP BY "day"
     )
     SELECT ds."day", COALESCE(du.dau, 0) AS dau
     FROM date_series ds
@@ -105,10 +163,10 @@ async function loadDailyActiveUsers(tenancy: Tenancy, now: Date, includeAnonymou
   return res.map(x => ({
     date: x.day.toISOString().split('T')[0],
     activity: Number(x.dau),
-  }));
+  })) as DataPoints;
 }
 
-async function loadLoginMethods(tenancy: Tenancy): Promise<{method: string, count: number }[]> {
+async function loadLoginMethods(tenancy: Tenancy): Promise<{ method: string, count: number }[]> {
   const schema = await getPrismaSchemaForTenancy(tenancy);
   const prisma = await getPrismaClientForTenancy(tenancy);
   return await prisma.$queryRaw<{ method: string, count: number }[]>`
@@ -135,48 +193,52 @@ async function loadLoginMethods(tenancy: Tenancy): Promise<{method: string, coun
 }
 
 async function loadRecentlyActiveUsers(tenancy: Tenancy, includeAnonymous: boolean = false): Promise<UsersCrud["Admin"]["Read"][]> {
-  // use the Events table to get the most recent activity
-  const events = await globalPrismaClient.$queryRaw<{ data: any, eventStartedAt: Date }[]>`
-    WITH RankedEvents AS (
-      SELECT 
-        "data", "eventStartedAt",
-        ROW_NUMBER() OVER (
-          PARTITION BY "data"->>'userId' 
-          ORDER BY "eventStartedAt" DESC
-        ) as rn
+  const events = await globalPrismaClient.$queryRaw<{ userId: string, lastActiveAt: Date }[]>`
+    WITH ordered_events AS (
+      SELECT
+        "data"->>'userId' AS "userId",
+        "eventStartedAt" AS "lastActiveAt"
       FROM "Event"
       WHERE "data"->>'projectId' = ${tenancy.project.id}
-        AND (${includeAnonymous} OR COALESCE("data"->>'isAnonymous', 'false') != 'true')
         AND COALESCE("data"->>'branchId', 'main') = ${tenancy.branchId}
+        AND (${includeAnonymous} OR COALESCE("data"->>'isAnonymous', 'false') != 'true')
         AND '$user-activity' = ANY("systemEventTypeIds"::text[])
+        AND "data"->>'userId' IS NOT NULL
+      ORDER BY "eventStartedAt" DESC
+      LIMIT 4000
+    ),
+    latest_events AS (
+      SELECT DISTINCT ON ("userId")
+        "userId",
+        "lastActiveAt"
+      FROM ordered_events
+      ORDER BY "userId", "lastActiveAt" DESC
     )
-    SELECT "data", "eventStartedAt"
-    FROM RankedEvents
-    WHERE rn = 1
-    ORDER BY "eventStartedAt" DESC
+    SELECT "userId", "lastActiveAt"
+    FROM latest_events
+    ORDER BY "lastActiveAt" DESC
     LIMIT 5
   `;
-  const userObjects: UsersCrud["Admin"]["Read"][] = [];
-  for (const event of events) {
-    let user;
-    try {
-      user = await usersCrudHandlers.adminRead({
-        tenancy,
-        user_id: event.data.userId,
-        allowedErrorTypes: [
-          KnownErrors.UserNotFound,
-        ],
-      });
-    } catch (e) {
-      if (KnownErrors.UserNotFound.isInstance(e)) {
-        // user probably deleted their account, skip
-        continue;
-      }
-      throw e;
-    }
-    userObjects.push(user);
+  if (events.length === 0) {
+    return [];
   }
-  return userObjects;
+
+  const prisma = await getPrismaClientForTenancy(tenancy);
+  const dbUsers = await prisma.projectUser.findMany({
+    where: {
+      tenancyId: tenancy.id,
+      projectUserId: {
+        in: events.map((event) => event.userId),
+      },
+    },
+    include: userFullInclude,
+  });
+
+  const userObjects = events.map((event) => {
+    const user = dbUsers.find((user) => user.projectUserId === event.userId);
+    return user ? userPrismaToCrud(user, event.lastActiveAt.getTime()) : null;
+  });
+  return userObjects.filter((user): user is UsersCrud["Admin"]["Read"] => user !== null);
 }
 
 export const GET = createSmartRouteHandler({
@@ -225,8 +287,20 @@ export const GET = createSmartRouteHandler({
         where: { tenancyId: req.auth.tenancy.id, ...(includeAnonymous ? {} : { isAnonymous: false }) },
       }),
       loadTotalUsers(req.auth.tenancy, now, includeAnonymous),
-      loadDailyActiveUsers(req.auth.tenancy, now, includeAnonymous),
-      loadUsersByCountry(req.auth.tenancy, includeAnonymous),
+      withMetricsCache(
+        req.auth.tenancy,
+        "daily_active_users",
+        prisma,
+        includeAnonymous,
+        () => loadDailyActiveUsers(req.auth.tenancy, now, includeAnonymous)
+      ),
+      withMetricsCache(
+        req.auth.tenancy,
+        "users_by_country",
+        prisma,
+        includeAnonymous,
+        () => loadUsersByCountry(req.auth.tenancy, prisma, includeAnonymous)
+      ),
       usersCrudHandlers.adminList({
         tenancy: req.auth.tenancy,
         query: {
@@ -258,4 +332,3 @@ export const GET = createSmartRouteHandler({
     };
   },
 });
-

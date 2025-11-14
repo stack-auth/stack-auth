@@ -1,8 +1,12 @@
-import { getStackStripe, syncStripeSubscriptions } from "@/lib/stripe";
+import { getStackStripe, getStripeForAccount, syncStripeSubscriptions } from "@/lib/stripe";
+import { getTenancy } from "@/lib/tenancies";
+import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { yupMixed, yupNumber, yupObject, yupString, yupTuple } from "@stackframe/stack-shared/dist/schema-fields";
+import { typedIncludes } from '@stackframe/stack-shared/dist/utils/arrays';
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
-import { StackAssertionError, captureError } from "@stackframe/stack-shared/dist/utils/errors";
+import { StackAssertionError, StatusError, captureError } from "@stackframe/stack-shared/dist/utils/errors";
+import { typedToUppercase } from "@stackframe/stack-shared/dist/utils/strings";
 import Stripe from "stripe";
 
 const subscriptionChangedEvents = [
@@ -30,6 +34,75 @@ const isSubscriptionChangedEvent = (event: Stripe.Event): event is Stripe.Event 
   return subscriptionChangedEvents.includes(event.type as any);
 };
 
+async function processStripeWebhookEvent(event: Stripe.Event): Promise<void> {
+  const mockData = (event.data.object as any).stack_stripe_mock_data;
+  if (event.type === "payment_intent.succeeded" && event.data.object.metadata.purchaseKind === "ONE_TIME") {
+    const metadata = event.data.object.metadata;
+    const accountId = event.account;
+    if (!accountId) {
+      throw new StackAssertionError("Stripe webhook account id missing", { event });
+    }
+    const stripe = getStackStripe(mockData);
+    const account = await stripe.accounts.retrieve(accountId);
+    const tenancyId = account.metadata?.tenancyId;
+    if (!tenancyId) {
+      throw new StackAssertionError("Stripe account metadata missing tenancyId", { event });
+    }
+    const tenancy = await getTenancy(tenancyId);
+    if (!tenancy) {
+      throw new StackAssertionError("Tenancy not found", { event });
+    }
+    const prisma = await getPrismaClientForTenancy(tenancy);
+    const product = JSON.parse(metadata.product || "{}");
+    const qty = Math.max(1, Number(metadata.purchaseQuantity || 1));
+    const stripePaymentIntentId = event.data.object.id;
+    if (!metadata.customerId || !metadata.customerType) {
+      throw new StackAssertionError("Missing customer metadata for one-time purchase", { event });
+    }
+    if (!typedIncludes(["user", "team", "custom"] as const, metadata.customerType)) {
+      throw new StackAssertionError("Invalid customer type for one-time purchase", { event });
+    }
+    await prisma.oneTimePurchase.upsert({
+      where: {
+        tenancyId_stripePaymentIntentId: {
+          tenancyId: tenancy.id,
+          stripePaymentIntentId,
+        },
+      },
+      create: {
+        tenancyId: tenancy.id,
+        customerId: metadata.customerId,
+        customerType: typedToUppercase(metadata.customerType),
+        productId: metadata.productId || null,
+        priceId: metadata.priceId || null,
+        stripePaymentIntentId,
+        product,
+        quantity: qty,
+        creationSource: "PURCHASE_PAGE",
+      },
+      update: {
+        productId: metadata.productId || null,
+        priceId: metadata.priceId || null,
+        product,
+        quantity: qty,
+      }
+    });
+  }
+
+  if (isSubscriptionChangedEvent(event)) {
+    const accountId = event.account;
+    const customerId = event.data.object.customer;
+    if (!accountId) {
+      throw new StackAssertionError("Stripe webhook account id missing", { event });
+    }
+    if (typeof customerId !== 'string') {
+      throw new StackAssertionError("Stripe webhook bad customer id", { event });
+    }
+    const stripe = await getStripeForAccount({ accountId }, mockData);
+    await syncStripeSubscriptions(stripe, accountId, customerId);
+  }
+}
+
 export const POST = createSmartRouteHandler({
   metadata: {
     hidden: true,
@@ -47,38 +120,27 @@ export const POST = createSmartRouteHandler({
     body: yupMixed().defined(),
   }),
   handler: async (req, fullReq) => {
+    const stripe = getStackStripe();
+    let event: Stripe.Event;
     try {
-      const stripe = getStackStripe();
       const signature = req.headers["stripe-signature"][0];
-      if (!signature) {
-        throw new StackAssertionError("Missing stripe-signature header");
-      }
-
       const textBody = new TextDecoder().decode(fullReq.bodyBuffer);
-      const event = stripe.webhooks.constructEvent(
+      event = stripe.webhooks.constructEvent(
         textBody,
         signature,
         getEnvVariable("STACK_STRIPE_WEBHOOK_SECRET"),
       );
+    } catch {
+      throw new StatusError(400, "Invalid stripe-signature header");
+    }
 
-      if (event.type === "account.updated") {
-        if (!event.account) {
-          throw new StackAssertionError("Stripe webhook account id missing", { event });
-        }
-      } else if (isSubscriptionChangedEvent(event)) {
-        const accountId = event.account;
-        const customerId = (event.data.object as any).customer;
-        if (!accountId) {
-          throw new StackAssertionError("Stripe webhook account id missing", { event });
-        }
-        if (typeof customerId !== 'string') {
-          throw new StackAssertionError("Stripe webhook bad customer id", { event });
-        }
-        await syncStripeSubscriptions(accountId, customerId);
-      }
+    try {
+      await processStripeWebhookEvent(event);
     } catch (error) {
       captureError("stripe-webhook-receiver", error);
+      throw error;
     }
+
     return {
       statusCode: 200,
       bodyType: "json",

@@ -8,7 +8,9 @@ import { ProjectPermissionDefinitionsCrud } from "./crud/project-permissions";
 import { ProjectsCrud } from "./crud/projects";
 import { SvixTokenCrud } from "./crud/svix-token";
 import { TeamPermissionDefinitionsCrud } from "./crud/team-permissions";
+import type { AdminTransaction } from "./crud/transactions";
 import { ServerAuthApplicationOptions, StackServerInterface } from "./server-interface";
+
 
 export type ChatContent = Array<
   | { type: "text", text: string }
@@ -159,6 +161,41 @@ export class StackAdminInterface extends StackServerInterface {
     return result.templates;
   }
 
+  async listInternalEmailDrafts(): Promise<{ id: string, display_name: string, theme_id?: string | undefined | false, tsx_source: string, sent_at_millis?: number | null }[]> {
+    const response = await this.sendAdminRequest(`/internal/email-drafts`, {}, null);
+    const result = await response.json() as { drafts: { id: string, display_name: string, theme_id?: string | undefined | false, tsx_source: string, sent_at_millis?: number | null }[] };
+    return result.drafts;
+  }
+
+  async createEmailDraft(options: { display_name?: string, theme_id?: string | false, tsx_source?: string }): Promise<{ id: string }> {
+    const response = await this.sendAdminRequest(
+      `/internal/email-drafts`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify(options),
+      },
+      null,
+    );
+    return await response.json();
+  }
+
+  async updateEmailDraft(id: string, data: { display_name?: string, theme_id?: string | null | false, tsx_source?: string, sent_at_millis?: number | null }): Promise<void> {
+    await this.sendAdminRequest(
+      `/internal/email-drafts/${id}`,
+      {
+        method: "PATCH",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify(data),
+      },
+      null,
+    );
+  }
+
   async listEmailThemes(): Promise<{ id: string, display_name: string }[]> {
     const response = await this.sendAdminRequest(`/internal/email-themes`, {}, null);
     const result = await response.json() as { themes: { id: string, display_name: string }[] };
@@ -280,23 +317,6 @@ export class StackAdminInterface extends StackServerInterface {
     );
   }
 
-  async transferProject(session: InternalSession, newTeamId: string): Promise<void> {
-    await this.sendAdminRequest(
-      "/internal/projects/transfer",
-      {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({
-          project_id: this.options.projectId,
-          new_team_id: newTeamId,
-        }),
-      },
-      session,
-    );
-  }
-
   async getMetrics(includeAnonymous: boolean = false): Promise<any> {
     const params = new URLSearchParams();
     if (includeAnonymous) {
@@ -325,6 +345,19 @@ export class StackAdminInterface extends StackServerInterface {
     },
   }): Promise<{ success: boolean, error_message?: string }> {
     const response = await this.sendAdminRequest(`/internal/send-test-email`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: JSON.stringify(data),
+    }, null);
+    return await response.json();
+  }
+
+  async sendTestWebhook(data: {
+    endpoint_id: string,
+  }): Promise<{ success: boolean, error_message?: string }> {
+    const response = await this.sendAdminRequest(`/internal/send-test-webhook`, {
       method: "POST",
       headers: {
         "content-type": "application/json",
@@ -364,7 +397,7 @@ export class StackAdminInterface extends StackServerInterface {
 
   async sendChatMessage(
     threadId: string,
-    contextType: "email-theme" | "email-template",
+    contextType: "email-theme" | "email-template" | "email-draft",
     messages: Array<{ role: string, content: any }>,
     abortSignal?: AbortSignal,
   ): Promise<{ content: ChatContent }> {
@@ -562,16 +595,19 @@ export class StackAdminInterface extends StackServerInterface {
     return await response.json();
   }
 
-  async testModePurchase(options: { price_id: string, full_code: string, quantity?: number }): Promise<void> {
-    await this.sendAdminRequest(
-      "/internal/payments/test-mode-purchase-session",
-      {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(options),
-      },
+  async listTransactions(params?: { cursor?: string, limit?: number, type?: 'subscription' | 'one_time' | 'item_quantity_change', customerType?: 'user' | 'team' | 'custom' }): Promise<{ transactions: AdminTransaction[], nextCursor: string | null }> {
+    const qs = new URLSearchParams();
+    if (params?.cursor) qs.set('cursor', params.cursor);
+    if (typeof params?.limit === 'number') qs.set('limit', String(params.limit));
+    if (params?.type) qs.set('type', params.type);
+    if (params?.customerType) qs.set('customer_type', params.customerType);
+    const response = await this.sendAdminRequest(
+      `/internal/payments/transactions${qs.size ? `?${qs.toString()}` : ''}`,
+      { method: 'GET' },
       null,
     );
+    const json = await response.json() as { transactions: AdminTransaction[], next_cursor: string | null };
+    return { transactions: json.transactions, nextCursor: json.next_cursor };
   }
 
 }

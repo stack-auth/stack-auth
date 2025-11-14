@@ -10,6 +10,7 @@
     "concepts/backend-integration",
     "concepts/user-authentication",
     "concepts/teams-management",
+    "concepts/jwt",
     "---Integration---",
     "---Other---",
     "others/self-host",

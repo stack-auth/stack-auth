@@ -5,6 +5,7 @@ import { CurrentUserCrud } from "@stackframe/stack-shared/dist/interface/crud/cu
 import { ItemCrud } from "@stackframe/stack-shared/dist/interface/crud/items";
 import { NotificationPreferenceCrud } from "@stackframe/stack-shared/dist/interface/crud/notification-preferences";
 import { OAuthProviderCrud } from "@stackframe/stack-shared/dist/interface/crud/oauth-providers";
+import type { CustomerProductsListResponse } from "@stackframe/stack-shared/dist/interface/crud/products";
 import { TeamApiKeysCrud, UserApiKeysCrud, teamApiKeysCreateOutputSchema, userApiKeysCreateOutputSchema } from "@stackframe/stack-shared/dist/interface/crud/project-api-keys";
 import { ProjectPermissionsCrud } from "@stackframe/stack-shared/dist/interface/crud/project-permissions";
 import { ClientProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
@@ -15,6 +16,7 @@ import { TeamPermissionsCrud } from "@stackframe/stack-shared/dist/interface/cru
 import { TeamsCrud } from "@stackframe/stack-shared/dist/interface/crud/teams";
 import { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
 import { InternalSession } from "@stackframe/stack-shared/dist/sessions";
+import { encodeBase32 } from "@stackframe/stack-shared/dist/utils/bytes";
 import { scrambleDuringCompileTime } from "@stackframe/stack-shared/dist/utils/compile-time";
 import { isBrowserLike } from "@stackframe/stack-shared/dist/utils/env";
 import { StackAssertionError, captureError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
@@ -25,7 +27,7 @@ import { neverResolve, runAsynchronously, wait } from "@stackframe/stack-shared/
 import { suspend, suspendIfSsr } from "@stackframe/stack-shared/dist/utils/react";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { Store, storeLock } from "@stackframe/stack-shared/dist/utils/stores";
-import { deindent, mergeScopeStrings } from "@stackframe/stack-shared/dist/utils/strings";
+import { deindent, mergeScopeStrings, stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
 import { getRelativePart, isRelative } from "@stackframe/stack-shared/dist/utils/urls";
 import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
 import * as cookie from "cookie";
@@ -34,20 +36,21 @@ import React, { useCallback, useMemo } from "react"; // THIS_LINE_PLATFORM react
 import type * as yup from "yup";
 import { constructRedirectUrl } from "../../../../utils/url";
 import { addNewOAuthProviderOrScope, callOAuthCallback, signInWithOAuth } from "../../../auth";
-import { CookieHelper, createBrowserCookieHelper, createCookieHelper, createPlaceholderCookieHelper, deleteCookieClient, getCookieClient, setOrDeleteCookie, setOrDeleteCookieClient } from "../../../cookie";
+import { CookieHelper, createBrowserCookieHelper, createCookieHelper, createPlaceholderCookieHelper, deleteCookieClient, isSecure as isSecureCookieContext, setOrDeleteCookie, setOrDeleteCookieClient } from "../../../cookie";
 import { ApiKey, ApiKeyCreationOptions, ApiKeyUpdateOptions, apiKeyCreationOptionsToCrud } from "../../api-keys";
-import { GetUserOptions, HandlerUrls, OAuthScopesOnSignIn, RedirectMethod, RedirectToOptions, RequestLike, TokenStoreInit, stackAppInternalsSymbol } from "../../common";
+import { ConvexCtx, GetCurrentPartialUserOptions, GetCurrentUserOptions, HandlerUrls, OAuthScopesOnSignIn, RedirectMethod, RedirectToOptions, RequestLike, TokenStoreInit, stackAppInternalsSymbol } from "../../common";
 import { OAuthConnection } from "../../connected-accounts";
 import { ContactChannel, ContactChannelCreateOptions, ContactChannelUpdateOptions, contactChannelCreateOptionsToCrud, contactChannelUpdateOptionsToCrud } from "../../contact-channels";
-import { Customer, Item } from "../../customers";
+import { Customer, CustomerProductsList, CustomerProductsListOptions, CustomerProductsRequestOptions, Item } from "../../customers";
 import { NotificationCategory } from "../../notification-categories";
 import { TeamPermission } from "../../permissions";
 import { AdminOwnedProject, AdminProjectUpdateOptions, Project, adminProjectCreateOptionsToCrud } from "../../projects";
 import { EditableTeamMemberProfile, Team, TeamCreateOptions, TeamInvitation, TeamUpdateOptions, TeamUser, teamCreateOptionsToCrud, teamUpdateOptionsToCrud } from "../../teams";
-import { ActiveSession, Auth, BaseUser, CurrentUser, InternalUserExtra, OAuthProvider, ProjectCurrentUser, UserExtra, UserUpdateOptions, userUpdateOptionsToCrud } from "../../users";
+import { ActiveSession, Auth, BaseUser, CurrentUser, InternalUserExtra, OAuthProvider, ProjectCurrentUser, SyncedPartialUser, TokenPartialUser, UserExtra, UserUpdateOptions, attachUserDestructureGuard, userUpdateOptionsToCrud } from "../../users";
 import { StackClientApp, StackClientAppConstructorOptions, StackClientAppJson } from "../interfaces/client-app";
 import { _StackAdminAppImplIncomplete } from "./admin-app-impl";
-import { TokenObject, clientVersion, createCache, createCacheBySession, createEmptyTokenStore, getBaseUrl, getDefaultExtraRequestHeaders, getDefaultProjectId, getDefaultPublishableClientKey, getUrls } from "./common";
+import { TokenObject, clientVersion, createCache, createCacheBySession, createEmptyTokenStore, getBaseUrl, getDefaultExtraRequestHeaders, getDefaultProjectId, getDefaultPublishableClientKey, getUrls, resolveConstructorOptions } from "./common";
+import { parseJson } from "@stackframe/stack-shared/dist/utils/json";
 
 // IF_PLATFORM react-like
 import { useAsyncCache } from "./common";
@@ -56,7 +59,7 @@ import { useAsyncCache } from "./common";
 let isReactServer = false;
 // IF_PLATFORM next
 import * as sc from "@stackframe/stack-sc";
-import { cookies } from '@stackframe/stack-sc';
+import { cookies } from "@stackframe/stack-sc";
 isReactServer = sc.isReactServer;
 
 // NextNavigation.useRouter does not exist in react-server environments and some bundlers try to be helpful and throw a warning. Ignore the warning.
@@ -69,6 +72,8 @@ const process = (globalThis as any).process ?? { env: {} }; // THIS_LINE_PLATFOR
 
 const allClientApps = new Map<string, [checkString: string | undefined, app: StackClientApp<any, any>]>();
 
+type StackClientAppImplConstructorOptionsResolved<HasTokenStore extends boolean, ProjectId extends string> = StackClientAppConstructorOptions<HasTokenStore, ProjectId> & { inheritsFrom?: undefined };
+
 export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, ProjectId extends string = string> implements StackClientApp<HasTokenStore, ProjectId> {
   /**
    * There is a circular dependency between the admin app and the client app, as the former inherits from the latter and
@@ -79,6 +84,8 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
    */
   static readonly LazyStackAdminAppImpl: { value: typeof import("./admin-app-impl")._StackAdminAppImplIncomplete | undefined } = { value: undefined };
 
+  protected readonly _options: StackClientAppImplConstructorOptionsResolved<HasTokenStore, ProjectId>;
+  protected readonly _extraOptions: { uniqueIdentifier?: string, checkString?: string, interface?: StackClientInterface } | undefined;
   protected _uniqueIdentifier: string | undefined = undefined;
   protected _interface: StackClientInterface;
   protected readonly _tokenStoreInit: TokenStoreInit<HasTokenStore>;
@@ -154,7 +161,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         getUser: async () => Result.orThrow(await this._currentUserCache.getOrWait([session], "write-only")),
         getOrWaitOAuthToken: async () => Result.orThrow(await this._currentUserOAuthConnectionAccessTokensCache.getOrWait([session, providerId, scope || ""] as const, "write-only")),
         // IF_PLATFORM react-like
-        useOAuthToken: () => useAsyncCache(this._currentUserOAuthConnectionAccessTokensCache, [session, providerId, scope || ""] as const, "useOAuthToken"),
+        useOAuthToken: () => useAsyncCache(this._currentUserOAuthConnectionAccessTokensCache, [session, providerId, scope || ""] as const, "connection.useAccessToken()"),
         // END_PLATFORM
         providerId,
         scope,
@@ -227,6 +234,47 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     async (session, [customCustomerId, itemId]) => {
       return await this._interface.getItem({ customCustomerId, itemId }, session);
     }
+  );
+
+  private readonly _userProductsCache = createCacheBySession<[string, string | null, number | null], CustomerProductsListResponse>(
+    async (session, [userId, cursor, limit]) => {
+      return await this._interface.listProducts({
+        customer_type: "user",
+        customer_id: userId,
+        cursor: cursor ?? undefined,
+        limit: limit ?? undefined,
+      }, session);
+    }
+  );
+
+  private readonly _teamProductsCache = createCacheBySession<[string, string | null, number | null], CustomerProductsListResponse>(
+    async (session, [teamId, cursor, limit]) => {
+      return await this._interface.listProducts({
+        customer_type: "team",
+        customer_id: teamId,
+        cursor: cursor ?? undefined,
+        limit: limit ?? undefined,
+      }, session);
+    }
+  );
+
+  private readonly _customProductsCache = createCacheBySession<[string, string | null, number | null], CustomerProductsListResponse>(
+    async (session, [customCustomerId, cursor, limit]) => {
+      return await this._interface.listProducts({
+        customer_type: "custom",
+        customer_id: customCustomerId,
+        cursor: cursor ?? undefined,
+        limit: limit ?? undefined,
+      }, session);
+    }
+  );
+
+  private readonly _convexPartialUserCache = createCache<[unknown], TokenPartialUser | null>(
+    async ([ctx]) => await this._getPartialUserFromConvex(ctx as any)
+  );
+
+  private readonly _trustedParentDomainCache = createCache<[string], string | null>(
+    async ([domain]) => await this._getTrustedParentDomain(domain)
   );
 
   private _anonymousSignUpInProgress: Promise<{ accessToken: string, refreshToken: string }> | null = null;
@@ -303,45 +351,44 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     };
   }
 
-  constructor(protected readonly _options:
-    & {
-      uniqueIdentifier?: string,
-      checkString?: string,
-    }
-    & (
-      | StackClientAppConstructorOptions<HasTokenStore, ProjectId>
-      | Exclude<StackClientAppConstructorOptions<HasTokenStore, ProjectId>, "baseUrl" | "projectId" | "publishableClientKey"> & {
-        interface: StackClientInterface,
-      }
-    )
-  ) {
+  constructor(options: StackClientAppConstructorOptions<HasTokenStore, ProjectId>, extraOptions?: { uniqueIdentifier?: string, checkString?: string, interface?: StackClientInterface }) {
+    const resolvedOptions = resolveConstructorOptions(options);
+
     if (!_StackClientAppImplIncomplete.LazyStackAdminAppImpl.value) {
       throw new StackAssertionError("Admin app implementation not initialized. Did you import the _StackClientApp from stack-app/apps/implementations/index.ts? You can't import it directly from ./apps/implementations/client-app-impl.ts as that causes a circular dependency (see the comment at _LazyStackAdminAppImpl for more details).");
     }
 
-    if ("interface" in _options) {
-      this._interface = _options.interface;
+    this._options = resolvedOptions;
+    this._extraOptions = extraOptions;
+
+    const projectId = resolvedOptions.projectId ?? getDefaultProjectId();
+    if (projectId !== "internal" && !(projectId.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[089ab][0-9a-f]{3}-[0-9a-f]{12}$/i))) {
+      throw new Error(`Invalid project ID: ${projectId}. Project IDs must be UUIDs. Please check your environment variables and/or your StackApp.`);
+    }
+
+    if (extraOptions && extraOptions.interface) {
+      this._interface = extraOptions.interface;
     } else {
       this._interface = new StackClientInterface({
-        getBaseUrl: () => getBaseUrl(_options.baseUrl),
-        extraRequestHeaders: _options.extraRequestHeaders ?? getDefaultExtraRequestHeaders(),
-        projectId: _options.projectId ?? getDefaultProjectId(),
+        getBaseUrl: () => getBaseUrl(resolvedOptions.baseUrl),
+        extraRequestHeaders: resolvedOptions.extraRequestHeaders ?? getDefaultExtraRequestHeaders(),
+        projectId,
         clientVersion,
-        publishableClientKey: _options.publishableClientKey ?? getDefaultPublishableClientKey(),
+        publishableClientKey: resolvedOptions.publishableClientKey ?? getDefaultPublishableClientKey(),
         prepareRequest: async () => {
           await cookies?.(); // THIS_LINE_PLATFORM next
         }
       });
     }
 
-    this._tokenStoreInit = _options.tokenStore;
-    this._redirectMethod = _options.redirectMethod || "none";
-    this._redirectMethod = _options.redirectMethod || "nextjs"; // THIS_LINE_PLATFORM next
-    this._urlOptions = _options.urls ?? {};
-    this._oauthScopesOnSignIn = _options.oauthScopesOnSignIn ?? {};
+    this._tokenStoreInit = resolvedOptions.tokenStore;
+    this._redirectMethod = resolvedOptions.redirectMethod || "none";
+    this._redirectMethod = resolvedOptions.redirectMethod || "nextjs"; // THIS_LINE_PLATFORM next
+    this._urlOptions = resolvedOptions.urls ?? {};
+    this._oauthScopesOnSignIn = resolvedOptions.oauthScopesOnSignIn ?? {};
 
-    if (_options.uniqueIdentifier) {
-      this._uniqueIdentifier = _options.uniqueIdentifier;
+    if (extraOptions && extraOptions.uniqueIdentifier) {
+      this._uniqueIdentifier = extraOptions.uniqueIdentifier;
       this._initUniqueIdentifier();
     }
   }
@@ -353,7 +400,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     if (allClientApps.has(this._uniqueIdentifier)) {
       throw new StackAssertionError("A Stack client app with the same unique identifier already exists");
     }
-    allClientApps.set(this._uniqueIdentifier, [this._options.checkString ?? undefined, this]);
+    allClientApps.set(this._uniqueIdentifier, [this._extraOptions?.checkString ?? undefined, this]);
   }
 
   /**
@@ -382,13 +429,103 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
   protected _nextServerCookiesTokenStores = new WeakMap<object, Store<TokenObject>>();
   protected _requestTokenStores = new WeakMap<RequestLike, Store<TokenObject>>();
   protected _storedBrowserCookieTokenStore: Store<TokenObject> | null = null;
+  private _mostRecentQueuedCookieRefreshIndex: number = 0;
+  protected get _legacyRefreshTokenCookieName() {
+    return `stack-refresh-${this.projectId}`;
+  }
   protected get _refreshTokenCookieName() {
     return `stack-refresh-${this.projectId}`;
   }
-  protected _getTokensFromCookies(cookies: { refreshTokenCookie: string | null, accessTokenCookie: string | null }): TokenObject {
-    const refreshToken = cookies.refreshTokenCookie;
-    const accessTokenObject = cookies.accessTokenCookie?.startsWith('[\"') ? JSON.parse(cookies.accessTokenCookie) : null;  // gotta check for validity first for backwards-compat, and also in case someone messes with the cookie value
-    const accessToken = accessTokenObject && refreshToken === accessTokenObject[0] ? accessTokenObject[1] : null;  // if the refresh token has changed, the access token is invalid
+  private _getRefreshTokenDefaultCookieNameForSecure(secure: boolean): string {
+    return `${secure ? "__Host-" : ""}${this._refreshTokenCookieName}--default`;
+  }
+  private _getCustomRefreshCookieName(domain: string): string {
+    const encoded = encodeBase32(new TextEncoder().encode(domain.toLowerCase()));
+    return `${this._refreshTokenCookieName}--custom-${encoded}`;
+  }
+  private _formatRefreshCookieValue(refreshToken: string, updatedAt: number): string {
+    return JSON.stringify({
+      refresh_token: refreshToken,
+      updated_at_millis: updatedAt,
+    });
+  }
+  private _formatAccessCookieValue(refreshToken: string | null, accessToken: string | null): string | null {
+    return refreshToken && accessToken ? JSON.stringify([refreshToken, accessToken]) : null;
+  }
+  private _parseStructuredRefreshCookie(value: string | null): { refreshToken: string, updatedAt: number | null } | null {
+    if (!value) {
+      return null;
+    }
+    const parsed = parseJson(value);
+    if (parsed.status !== "ok" || typeof parsed.data !== "object" || parsed.data === null) {
+      console.warn("Failed to parse structured refresh cookie");
+      return null;
+    }
+    const data = parsed.data;
+    const refreshToken = "refresh_token" in data && typeof data.refresh_token === "string" ? data.refresh_token : null;
+    const updatedAt = "updated_at_millis" in data && typeof data.updated_at_millis === "number" ? data.updated_at_millis : null;
+    if (!refreshToken) {
+      console.warn("Refresh token not found in structured refresh cookie");
+      return null;
+    }
+    return {
+      refreshToken,
+      updatedAt,
+    };
+
+  }
+  private _extractRefreshTokenFromCookieMap(cookies: Record<string, string>): { refreshToken: string | null, updatedAt: number | null } {
+    const { legacyNames, structuredPrefixes } = this._getRefreshTokenCookieNamePatterns();
+    for (const name of legacyNames) {
+      const value = cookies[name];
+      if (value) {
+        return { refreshToken: value, updatedAt: null };
+      }
+    }
+
+    let selected: { refreshToken: string, updatedAt: number | null } | null = null;
+    for (const [name, value] of Object.entries(cookies)) {
+      if (!structuredPrefixes.some(prefix => name.startsWith(prefix))) continue;
+      const parsed = this._parseStructuredRefreshCookie(value);
+      if (!parsed) continue;
+      const candidateUpdatedAt = parsed.updatedAt ?? Number.NEGATIVE_INFINITY;
+      const selectedUpdatedAt = selected?.updatedAt ?? Number.NEGATIVE_INFINITY;
+      if (!selected || candidateUpdatedAt > selectedUpdatedAt) {
+        selected = parsed;
+      }
+    }
+
+    if (!selected) {
+      return { refreshToken: null, updatedAt: null };
+    }
+
+    return {
+      refreshToken: selected.refreshToken,
+      updatedAt: selected.updatedAt ?? null,
+    };
+  }
+  protected _getTokensFromCookies(cookies: Record<string, string>): TokenObject {
+    const { refreshToken } = this._extractRefreshTokenFromCookieMap(cookies);
+    const accessTokenCookie = cookies[this._accessTokenCookieName] ?? null;
+    let accessToken: string | null = null;
+    if (accessTokenCookie && accessTokenCookie.startsWith('[\"')) {
+      const parsed = parseJson(accessTokenCookie);
+      if (
+        parsed.status === "ok" &&
+        typeof parsed.data === "object" &&
+        parsed.data !== null &&
+        Array.isArray(parsed.data) &&
+        parsed.data.length === 2 &&
+        typeof parsed.data[0] === "string" &&
+        typeof parsed.data[1] === "string"
+      ) {
+        if (parsed.data[0] === refreshToken) {
+          accessToken = parsed.data[1];
+        }
+      } else {
+        console.warn("Access token cookie has invalid format");
+      }
+    }
     return {
       refreshToken,
       accessToken,
@@ -401,6 +538,107 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     // the access token on page reload.
     return `stack-access`;
   }
+  private _getAllBrowserCookies(): Record<string, string> {
+    if (!isBrowserLike()) {
+      throw new StackAssertionError("Cannot get browser cookies on the server!");
+    }
+    return cookie.parse(document.cookie || "");
+  }
+  private _getRefreshTokenCookieNamePatterns(): { legacyNames: string[], structuredPrefixes: string[] } {
+    return {
+      legacyNames: [this._legacyRefreshTokenCookieName, "stack-refresh"],
+      structuredPrefixes: [
+        `${this._refreshTokenCookieName}--`,
+        `__Host-${this._refreshTokenCookieName}--`,
+      ],
+    };
+  }
+  private _collectRefreshTokenCookieNames(cookies: Record<string, string>): Set<string> {
+    const { legacyNames, structuredPrefixes } = this._getRefreshTokenCookieNamePatterns();
+    const names = new Set<string>();
+    for (const name of legacyNames) {
+      if (cookies[name]) {
+        names.add(name);
+      }
+    }
+    for (const name of Object.keys(cookies)) {
+      if (structuredPrefixes.some(prefix => name.startsWith(prefix))) {
+        names.add(name);
+      }
+    }
+    return names;
+  }
+  private _prepareRefreshCookieUpdate(
+    existingCookies: Record<string, string>,
+    refreshToken: string | null,
+    accessToken: string | null,
+    defaultCookieName: string,
+  ) {
+    const cookieNames = this._collectRefreshTokenCookieNames(existingCookies);
+    cookieNames.delete(defaultCookieName);
+    const updatedAt = refreshToken ? Date.now() : null;
+    const refreshCookieValue = refreshToken && updatedAt !== null ? this._formatRefreshCookieValue(refreshToken, updatedAt) : null;
+    const accessTokenPayload = this._formatAccessCookieValue(refreshToken, accessToken);
+    return {
+      updatedAt,
+      refreshCookieValue,
+      accessTokenPayload,
+      cookieNamesToDelete: [...cookieNames],
+    };
+  }
+  private _queueCustomRefreshCookieUpdate(refreshToken: string | null, updatedAt: number | null, context: "browser" | "server") {
+    runAsynchronously(async () => {
+      this._mostRecentQueuedCookieRefreshIndex++;
+      const updateIndex = this._mostRecentQueuedCookieRefreshIndex;
+      let hostname;
+      if (isBrowserLike()) {
+        hostname = window.location.hostname;
+      }
+      // IF_PLATFORM next
+      else {
+        hostname = (await sc.headers?.())?.get("host");
+      }
+      // END_PLATFORM
+      if (!hostname) {
+        console.warn("No hostname found when queueing custom refresh cookie update");
+        return;
+      }
+      const domain = await this._trustedParentDomainCache.getOrWait([hostname], "read-write");
+
+      const setCookie = async (targetDomain: string, value: string | null) => {
+        const name = this._getCustomRefreshCookieName(targetDomain);
+        const options = { maxAge: 60 * 60 * 24 * 365, domain: targetDomain, noOpIfServerComponent: true };
+        if (context === "browser") {
+          setOrDeleteCookieClient(name, value, options);
+        } else {
+          await setOrDeleteCookie(name, value, options);
+        }
+      };
+
+      if (domain.status === "error" || !domain.data || updateIndex !== this._mostRecentQueuedCookieRefreshIndex) {
+        return;
+      }
+      const value = refreshToken && updatedAt ? this._formatRefreshCookieValue(refreshToken, updatedAt) : null;
+      await setCookie(domain.data, value);
+      const isSecure = await isSecureCookieContext();
+      await setOrDeleteCookie(this._getRefreshTokenDefaultCookieNameForSecure(isSecure), null);
+    });
+  }
+  private async _getTrustedParentDomain(currentDomain: string): Promise<string | null> {
+    const project = Result.orThrow(await this._interface.getClientProject());
+    const domains = project.config.domains.map(d => d.domain.trim().replace(/^https?:\/\//, "").split("/")[0]?.toLowerCase());
+    const trustedWildcards = domains.filter(d => d.startsWith("**."));
+    const parts = currentDomain.split('.');
+    for (let i = parts.length - 2; i >= 0; i--) {
+      const parentDomain = parts.slice(i).join('.');
+      if (domains.includes(parentDomain) && trustedWildcards.includes("**." + parentDomain)) {
+        return parentDomain;
+      }
+    }
+
+    return null;
+  }
+
   protected _getBrowserCookieTokenStore(): Store<TokenObject> {
     if (!isBrowserLike()) {
       throw new Error("Cannot use cookie token store on the server!");
@@ -408,10 +646,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
 
     if (this._storedBrowserCookieTokenStore === null) {
       const getCurrentValue = (old: TokenObject | null) => {
-        const tokens = this._getTokensFromCookies({
-          refreshTokenCookie: getCookieClient(this._refreshTokenCookieName) ?? getCookieClient('stack-refresh'),  // keep old cookie name for backwards-compatibility
-          accessTokenCookie: getCookieClient(this._accessTokenCookieName),
-        });
+        const tokens = this._getTokensFromCookies(this._getAllBrowserCookies());
         return {
           refreshToken: tokens.refreshToken,
           accessToken: tokens.accessToken ?? (old?.refreshToken === tokens.refreshToken ? old.accessToken : null),
@@ -431,9 +666,19 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       }, 100);
       this._storedBrowserCookieTokenStore.onChange((value) => {
         try {
-          setOrDeleteCookieClient(this._refreshTokenCookieName, value.refreshToken, { maxAge: 60 * 60 * 24 * 365 });
-          setOrDeleteCookieClient(this._accessTokenCookieName, value.accessToken ? JSON.stringify([value.refreshToken, value.accessToken]) : null, { maxAge: 60 * 60 * 24 });
-          deleteCookieClient('stack-refresh');  // delete cookie name from previous versions (for backwards-compatibility)
+          const refreshToken = value.refreshToken;
+          const secure = window.location.protocol === "https:";
+          const defaultName = this._getRefreshTokenDefaultCookieNameForSecure(secure);
+          const { updatedAt, refreshCookieValue, accessTokenPayload, cookieNamesToDelete } = this._prepareRefreshCookieUpdate(
+            this._getAllBrowserCookies(),
+            refreshToken,
+            value.accessToken ?? null,
+            defaultName,
+          );
+          setOrDeleteCookieClient(defaultName, refreshCookieValue, { maxAge: 60 * 60 * 24 * 365, secure });
+          setOrDeleteCookieClient(this._accessTokenCookieName, accessTokenPayload, { maxAge: 60 * 60 * 24 });
+          cookieNamesToDelete.forEach((name) => deleteCookieClient(name));
+          this._queueCustomRefreshCookieUpdate(refreshToken, updatedAt, "browser");
           hasSucceededInWriting = true;
         } catch (e) {
           if (!isBrowserLike()) {
@@ -459,10 +704,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         if (isBrowserLike()) {
           return this._getBrowserCookieTokenStore();
         } else {
-          const tokens = this._getTokensFromCookies({
-            refreshTokenCookie: cookieHelper.get(this._refreshTokenCookieName) ?? cookieHelper.get('stack-refresh'),  // keep old cookie name for backwards-compatibility
-            accessTokenCookie: cookieHelper.get(this._accessTokenCookieName),
-          });
+          const tokens = this._getTokensFromCookies(cookieHelper.getAll());
           const store = new Store<TokenObject>(tokens);
           store.onChange((value) => {
             runAsynchronously(async () => {
@@ -477,10 +719,27 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
               // we're currently processing, and hence we can't find out which per-request cookie helper to use
               //
               // so hack it is
+              const refreshToken = value.refreshToken;
+              const secure = await isSecureCookieContext();
+              const defaultName = this._getRefreshTokenDefaultCookieNameForSecure(secure);
+              const { updatedAt, refreshCookieValue, accessTokenPayload, cookieNamesToDelete } = this._prepareRefreshCookieUpdate(
+                cookieHelper.getAll(),
+                refreshToken,
+                value.accessToken ?? null,
+                defaultName,
+              );
               await Promise.all([
-                setOrDeleteCookie(this._refreshTokenCookieName, value.refreshToken, { maxAge: 60 * 60 * 24 * 365, noOpIfServerComponent: true }),
-                setOrDeleteCookie(this._accessTokenCookieName, value.accessToken ? JSON.stringify([value.refreshToken, value.accessToken]) : null, { maxAge: 60 * 60 * 24, noOpIfServerComponent: true }),
+                setOrDeleteCookie(defaultName, refreshCookieValue, { maxAge: 60 * 60 * 24 * 365, noOpIfServerComponent: true }),
+                setOrDeleteCookie(this._accessTokenCookieName, accessTokenPayload, { maxAge: 60 * 60 * 24, noOpIfServerComponent: true }),
               ]);
+              if (cookieNamesToDelete.length > 0) {
+                await Promise.all(
+                  cookieNamesToDelete.map((name) =>
+                    setOrDeleteCookie(name, null, { noOpIfServerComponent: true }),
+                  ),
+                );
+              }
+              this._queueCustomRefreshCookieUpdate(refreshToken, updatedAt, "server");
             });
           });
           return store;
@@ -515,10 +774,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
           // read from cookies
           const cookieHeader = tokenStoreInit.headers.get("cookie");
           const parsed = cookie.parse(cookieHeader || "");
-          const res = new Store<TokenObject>({
-            refreshToken: parsed[this._refreshTokenCookieName] || parsed['stack-refresh'] || null,  // keep old cookie name for backwards-compatibility
-            accessToken: parsed[this._accessTokenCookieName] || null,
-          });
+          const res = new Store<TokenObject>(this._getTokensFromCookies(parsed));
           this._requestTokenStores.set(tokenStoreInit, res);
           return res;
         } else if ("accessToken" in tokenStoreInit || "refreshToken" in tokenStoreInit) {
@@ -583,7 +839,8 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
 
   protected async _getSession(overrideTokenStoreInit?: TokenStoreInit): Promise<InternalSession> {
     const tokenStore = this._getOrCreateTokenStore(await this._createCookieHelper(), overrideTokenStoreInit);
-    return this._getSessionFromTokenStore(tokenStore);
+    const session = this._getSessionFromTokenStore(tokenStore);
+    return session;
   }
 
   // IF_PLATFORM react-like
@@ -885,6 +1142,18 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     };
   }
 
+  protected _customerProductsFromResponse(response: CustomerProductsListResponse): CustomerProductsList {
+    const products = response.items.map((item) => ({
+      id: item.id,
+      quantity: item.quantity,
+      displayName: item.product.display_name,
+      customerType: item.product.customer_type,
+      isServerOnly: item.product.server_only,
+      stackable: item.product.stackable,
+    }));
+    return Object.assign(products, { nextCursor: response.pagination.next_cursor ?? null });
+  }
+
   protected _createAuth(session: InternalSession): Auth {
     const app = this;
     return {
@@ -906,46 +1175,6 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       async getAuthJson(): Promise<{ accessToken: string | null, refreshToken: string | null }> {
         const tokens = await this.currentSession.getTokens();
         return tokens;
-      },
-      async registerPasskey(options?: { hostname?: string }): Promise<Result<undefined, KnownErrors["PasskeyRegistrationFailed"] | KnownErrors["PasskeyWebAuthnError"]>> {
-        const hostname = (await app._getCurrentUrl())?.hostname;
-        if (!hostname) {
-          throw new StackAssertionError("hostname must be provided if the Stack App does not have a redirect method");
-        }
-
-        const initiationResult = await app._interface.initiatePasskeyRegistration({}, session);
-
-        if (initiationResult.status !== "ok") {
-          return Result.error(new KnownErrors.PasskeyRegistrationFailed("Failed to get initiation options for passkey registration"));
-        }
-
-        const { options_json, code } = initiationResult.data;
-
-        // HACK: Override the rpID to be the actual domain
-        if (options_json.rp.id !== "THIS_VALUE_WILL_BE_REPLACED.example.com") {
-          throw new StackAssertionError(`Expected returned RP ID from server to equal sentinel, but found ${options_json.rp.id}`);
-        }
-
-        options_json.rp.id = hostname;
-
-        let attResp;
-        try {
-          attResp = await startRegistration({ optionsJSON: options_json });
-        } catch (error: any) {
-          if (error instanceof WebAuthnError) {
-            return Result.error(new KnownErrors.PasskeyWebAuthnError(error.message, error.name));
-          } else {
-            // This should never happen
-            captureError("passkey-registration-failed", error);
-            return Result.error(new KnownErrors.PasskeyRegistrationFailed("Failed to start passkey registration due to unknown error"));
-          }
-        }
-
-
-        const registrationResult = await app._interface.registerPasskey({ credential: attResp, code }, session);
-
-        await app._refreshUser(session);
-        return registrationResult;
       },
       signOut(options?: { redirectUrl?: URL | string }) {
         return app._signOut(session, options);
@@ -1232,6 +1461,47 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         const providers = await this.listOAuthProviders();
         return providers.find((p) => p.id === id) ?? null;
       },
+
+      async registerPasskey(options?: { hostname?: string }): Promise<Result<undefined, KnownErrors["PasskeyRegistrationFailed"] | KnownErrors["PasskeyWebAuthnError"]>> {
+        const hostname = (await app._getCurrentUrl())?.hostname;
+        if (!hostname) {
+          throw new StackAssertionError("hostname must be provided if the Stack App does not have a redirect method");
+        }
+
+        const initiationResult = await app._interface.initiatePasskeyRegistration({}, session);
+
+        if (initiationResult.status !== "ok") {
+          return Result.error(new KnownErrors.PasskeyRegistrationFailed("Failed to get initiation options for passkey registration"));
+        }
+
+        const { options_json, code } = initiationResult.data;
+
+        // HACK: Override the rpID to be the actual domain
+        if (options_json.rp.id !== "THIS_VALUE_WILL_BE_REPLACED.example.com") {
+          throw new StackAssertionError(`Expected returned RP ID from server to equal sentinel, but found ${options_json.rp.id}`);
+        }
+
+        options_json.rp.id = hostname;
+
+        let attResp;
+        try {
+          attResp = await startRegistration({ optionsJSON: options_json });
+        } catch (error: any) {
+          if (error instanceof WebAuthnError) {
+            return Result.error(new KnownErrors.PasskeyWebAuthnError(error.message, error.name));
+          } else {
+            // This should never happen
+            captureError("passkey-registration-failed", error);
+            return Result.error(new KnownErrors.PasskeyRegistrationFailed("Failed to start passkey registration due to unknown error"));
+          }
+        }
+
+
+        const registrationResult = await app._interface.registerPasskey({ credential: attResp, code }, session);
+
+        await app._refreshUser(session);
+        return registrationResult;
+      },
     };
   }
 
@@ -1241,6 +1511,10 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     return {
       createProject(newProject: AdminProjectUpdateOptions & { displayName: string, teamId: string }) {
         return app._createProject(session, newProject);
+      },
+      async transferProject(projectIdToTransfer: string, newTeamId: string): Promise<void> {
+        await app._interface.transferProject(session, projectIdToTransfer, newTeamId);
+        await app._refreshProject();
       },
       listOwnedProjects() {
         return app._listOwnedProjects(session);
@@ -1253,22 +1527,28 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     };
   }
 
-  protected _createCustomer(userIdOrTeamId: string, type: "user" | "team", session: InternalSession): Omit<Customer, "id"> {
+  protected _createCustomer(userIdOrTeamId: string, type: "user" | "team", session: InternalSession | null): Omit<Customer, "id"> {
     const app = this;
-    const cache = type === "user" ? app._userItemCache : app._teamItemCache;
+    const customerOptions = type === "user" ? { userId: userIdOrTeamId } : { teamId: userIdOrTeamId };
     return {
       async getItem(itemId: string) {
-        const result = Result.orThrow(await cache.getOrWait([session, userIdOrTeamId, itemId], "write-only"));
-        return app._clientItemFromCrud(result);
+        return await app.getItem({ itemId, ...customerOptions });
       },
       // IF_PLATFORM react-like
       useItem(itemId: string) {
-        const result = useAsyncCache(cache, [session, userIdOrTeamId, itemId] as const, "team.useItem()");
-        return app._clientItemFromCrud(result);
+        return app.useItem({ itemId, ...customerOptions });
       },
       // END_PLATFORM
-      async createCheckoutUrl(options: { offerId: string }) {
-        return await app._interface.createCheckoutUrl(type, userIdOrTeamId, options.offerId, session);
+      async listProducts(options?: CustomerProductsListOptions) {
+        return await app.listProducts({ ...options, ...customerOptions });
+      },
+      // IF_PLATFORM react-like
+      useProducts(options?: CustomerProductsListOptions) {
+        return app.useProducts({ ...options, ...customerOptions });
+      },
+      // END_PLATFORM
+      async createCheckoutUrl(options: { productId: string, returnUrl?: string }) {
+        return await app._interface.createCheckoutUrl(type, userIdOrTeamId, options.productId, session, options.returnUrl);
       },
     };
   }
@@ -1297,6 +1577,30 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
   }
   // END_PLATFORM
 
+  async listProducts(options: CustomerProductsRequestOptions): Promise<CustomerProductsList> {
+    const session = await this._getSession();
+    if ("userId" in options) {
+      const response = Result.orThrow(await this._userProductsCache.getOrWait([session, options.userId, options.cursor ?? null, options.limit ?? null], "write-only"));
+      return this._customerProductsFromResponse(response);
+    } else if ("teamId" in options) {
+      const response = Result.orThrow(await this._teamProductsCache.getOrWait([session, options.teamId, options.cursor ?? null, options.limit ?? null], "write-only"));
+      return this._customerProductsFromResponse(response);
+    }
+    const response = Result.orThrow(await this._customProductsCache.getOrWait([session, options.customCustomerId, options.cursor ?? null, options.limit ?? null], "write-only"));
+    return this._customerProductsFromResponse(response);
+  }
+
+  // IF_PLATFORM react-like
+  useProducts(options: CustomerProductsRequestOptions): CustomerProductsList {
+    const session = this._useSession();
+    const cache = "userId" in options ? this._userProductsCache : "teamId" in options ? this._teamProductsCache : this._customProductsCache;
+    const debugLabel = "clientApp.useProducts()";
+    const customerId = "userId" in options ? options.userId : "teamId" in options ? options.teamId : options.customCustomerId;
+    const response = useAsyncCache(cache, [session, customerId, options.cursor ?? null, options.limit ?? null] as const, debugLabel);
+    return this._customerProductsFromResponse(response);
+  }
+  // END_PLATFORM
+
   protected _currentUserFromCrud(crud: NonNullable<CurrentUserCrud['Client']['Read']>, session: InternalSession): ProjectCurrentUser<ProjectId> {
     const currentUser = {
       ...this._createBaseUser(crud),
@@ -1306,6 +1610,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       ...this._createCustomer(crud.id, "user", session),
     } satisfies CurrentUser;
 
+    attachUserDestructureGuard(currentUser);
     Object.freeze(currentUser);
     return currentUser as ProjectCurrentUser<ProjectId>;
   }
@@ -1505,11 +1810,11 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     return result;
   }
 
-  async getUser(options: GetUserOptions<HasTokenStore> & { or: 'redirect' }): Promise<ProjectCurrentUser<ProjectId>>;
-  async getUser(options: GetUserOptions<HasTokenStore> & { or: 'throw' }): Promise<ProjectCurrentUser<ProjectId>>;
-  async getUser(options: GetUserOptions<HasTokenStore> & { or: 'anonymous' }): Promise<ProjectCurrentUser<ProjectId>>;
-  async getUser(options?: GetUserOptions<HasTokenStore>): Promise<ProjectCurrentUser<ProjectId> | null>;
-  async getUser(options?: GetUserOptions<HasTokenStore>): Promise<ProjectCurrentUser<ProjectId> | null> {
+  async getUser(options: GetCurrentUserOptions<HasTokenStore> & { or: 'redirect' }): Promise<ProjectCurrentUser<ProjectId>>;
+  async getUser(options: GetCurrentUserOptions<HasTokenStore> & { or: 'throw' }): Promise<ProjectCurrentUser<ProjectId>>;
+  async getUser(options: GetCurrentUserOptions<HasTokenStore> & { or: 'anonymous' }): Promise<ProjectCurrentUser<ProjectId>>;
+  async getUser(options?: GetCurrentUserOptions<HasTokenStore>): Promise<ProjectCurrentUser<ProjectId> | null>;
+  async getUser(options?: GetCurrentUserOptions<HasTokenStore>): Promise<ProjectCurrentUser<ProjectId> | null> {
     this._ensurePersistentTokenStore(options?.tokenStore);
     const session = await this._getSession(options?.tokenStore);
     let crud = Result.orThrow(await this._currentUserCache.getOrWait([session], "write-only"));
@@ -1542,15 +1847,15 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
   }
 
   // IF_PLATFORM react-like
-  useUser(options: GetUserOptions<HasTokenStore> & { or: 'redirect' }): ProjectCurrentUser<ProjectId>;
-  useUser(options: GetUserOptions<HasTokenStore> & { or: 'throw' }): ProjectCurrentUser<ProjectId>;
-  useUser(options: GetUserOptions<HasTokenStore> & { or: 'anonymous' }): ProjectCurrentUser<ProjectId>;
-  useUser(options?: GetUserOptions<HasTokenStore>): ProjectCurrentUser<ProjectId> | null;
-  useUser(options?: GetUserOptions<HasTokenStore>): ProjectCurrentUser<ProjectId> | null {
+  useUser(options: GetCurrentUserOptions<HasTokenStore> & { or: 'redirect' }): ProjectCurrentUser<ProjectId>;
+  useUser(options: GetCurrentUserOptions<HasTokenStore> & { or: 'throw' }): ProjectCurrentUser<ProjectId>;
+  useUser(options: GetCurrentUserOptions<HasTokenStore> & { or: 'anonymous' }): ProjectCurrentUser<ProjectId>;
+  useUser(options?: GetCurrentUserOptions<HasTokenStore>): ProjectCurrentUser<ProjectId> | null;
+  useUser(options?: GetCurrentUserOptions<HasTokenStore>): ProjectCurrentUser<ProjectId> | null {
     this._ensurePersistentTokenStore(options?.tokenStore);
 
     const session = this._useSession(options?.tokenStore);
-    let crud = useAsyncCache(this._currentUserCache, [session] as const, "useUser()");
+    let crud = useAsyncCache(this._currentUserCache, [session] as const, "clientApp.useUser()");
     if (crud?.is_anonymous && options?.or !== "anonymous" && options?.or !== "anonymous-if-exists[deprecated]") {
       crud = null;
     }
@@ -1591,13 +1896,102 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
   }
   // END_PLATFORM
 
+  _getTokenPartialUserFromSession(session: InternalSession, options: GetCurrentPartialUserOptions<HasTokenStore>): TokenPartialUser | null {
+    const accessToken = session.getAccessTokenIfNotExpiredYet(0);
+    if (!accessToken) {
+      return null;
+    }
+    const isAnonymous = accessToken.payload.is_anonymous;
+    if (isAnonymous && options.or !== "anonymous") {
+      return null;
+    }
+    return {
+      id: accessToken.payload.sub,
+      primaryEmail: accessToken.payload.email,
+      displayName: accessToken.payload.name,
+      primaryEmailVerified: accessToken.payload.email_verified,
+      isAnonymous,
+    } satisfies TokenPartialUser;
+  }
+
+  async _getPartialUserFromConvex(ctx: ConvexCtx): Promise<TokenPartialUser | null> {
+    const auth = await ctx.auth.getUserIdentity();
+    if (!auth) {
+      return null;
+    }
+    return {
+      id: auth.subject,
+      displayName: auth.name ?? null,
+      primaryEmail: auth.email ?? null,
+      primaryEmailVerified: auth.email_verified as boolean,
+      isAnonymous: auth.is_anonymous as boolean,
+    };
+  }
+
+  async getPartialUser(options: GetCurrentPartialUserOptions<HasTokenStore> & { from: 'token' }): Promise<TokenPartialUser | null>;
+  async getPartialUser(options: GetCurrentPartialUserOptions<HasTokenStore> & { from: 'convex' }): Promise<TokenPartialUser | null>;
+  async getPartialUser(options: GetCurrentPartialUserOptions<HasTokenStore>): Promise<SyncedPartialUser | TokenPartialUser | null> {
+    switch (options.from) {
+      case "token": {
+        this._ensurePersistentTokenStore(options.tokenStore ?? this._tokenStoreInit);
+        const session = await this._getSession(options.tokenStore);
+        return this._getTokenPartialUserFromSession(session, options);
+      }
+      case "convex": {
+        return await this._getPartialUserFromConvex(options.ctx);
+      }
+      default: {
+        // @ts-expect-error
+        throw new Error(`Invalid 'from' option: ${options.from}`);
+      }
+    }
+  }
+  // IF_PLATFORM react-like
+  usePartialUser(options: GetCurrentPartialUserOptions<HasTokenStore> & { from: 'token' }): TokenPartialUser | null;
+  usePartialUser(options: GetCurrentPartialUserOptions<HasTokenStore> & { from: 'convex' }): TokenPartialUser | null;
+  usePartialUser(options: GetCurrentPartialUserOptions<HasTokenStore>): TokenPartialUser | SyncedPartialUser | null {
+    switch (options.from) {
+      case "token": {
+        this._ensurePersistentTokenStore(options.tokenStore ?? this._tokenStoreInit);
+        const session = this._useSession(options.tokenStore);
+        return this._getTokenPartialUserFromSession(session, options);
+      }
+      case "convex": {
+        const result = useAsyncCache(this._convexPartialUserCache, [options.ctx] as const, "clientApp.usePartialUser()");
+        return result;
+      }
+      default: {
+        // @ts-expect-error
+        throw new Error(`Invalid 'from' option: ${options.from}`);
+      }
+    }
+  }
+  // END_PLATFORM
+  getConvexClientAuth(options: { tokenStore: TokenStoreInit }): (args: { forceRefreshToken: boolean }) => Promise<string | null> {
+    return async (args: { forceRefreshToken: boolean }) => {
+      const session = await this._getSession(options.tokenStore ?? this._tokenStoreInit);
+      if (!args.forceRefreshToken) {
+        const tokens = await session.getOrFetchLikelyValidTokens(20_000);
+        return tokens?.accessToken.token ?? null;
+      }
+      const tokens = await session.fetchNewTokens();
+      return tokens?.accessToken.token ?? null;
+    };
+  }
+
+  async getConvexHttpClientAuth(options: { tokenStore: TokenStoreInit }): Promise<string> {
+    const session = await this._getSession(options.tokenStore);
+    const tokens = await session.getOrFetchLikelyValidTokens(20_000);
+    return tokens?.accessToken.token ?? "";
+  }
+
   protected async _updateClientUser(update: UserUpdateOptions, session: InternalSession) {
     const res = await this._interface.updateClientUser(userUpdateOptionsToCrud(update), session);
     await this._refreshUser(session);
     return res;
   }
 
-  async signInWithOAuth(provider: ProviderType) {
+  async signInWithOAuth(provider: ProviderType, options?: { returnTo?: string }) {
     if (typeof window === "undefined") {
       throw new Error("signInWithOAuth can currently only be called in a browser environment");
     }
@@ -1608,7 +2002,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       this._interface,
       {
         provider,
-        redirectUrl: this.urls.oauthCallback,
+        redirectUrl: options?.returnTo ?? this.urls.oauthCallback,
         errorRedirectUrl: this.urls.error,
         providerScope: this._oauthScopesOnSignIn[provider]?.join(" "),
       },
@@ -1680,17 +2074,39 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     email: string,
     password: string,
     noRedirect?: boolean,
+    noVerificationCallback?: boolean,
     verificationCallbackUrl?: string,
   }): Promise<Result<undefined, KnownErrors["UserWithEmailAlreadyExists"] | KnownErrors['PasswordRequirementsNotMet']>> {
+    if (options.noVerificationCallback && options.verificationCallbackUrl) {
+      throw new StackAssertionError("verificationCallbackUrl is not allowed when noVerificationCallback is true");
+    }
     this._ensurePersistentTokenStore();
     const session = await this._getSession();
-    const emailVerificationRedirectUrl = options.verificationCallbackUrl ?? constructRedirectUrl(this.urls.emailVerification, "verificationCallbackUrl");
-    const result = await this._interface.signUpWithCredential(
+    const emailVerificationRedirectUrl = options.noVerificationCallback ? undefined : options.verificationCallbackUrl ?? constructRedirectUrl(this.urls.emailVerification, "verificationCallbackUrl");
+
+    let result = await this._interface.signUpWithCredential(
       options.email,
       options.password,
       emailVerificationRedirectUrl,
       session
     );
+
+    // If the redirect URL is not whitelisted and we didn't explicitly opt out of verification,
+    // retry with undefined (no email verification) and log a warning
+    if (result.status === 'error' &&
+      result.error instanceof KnownErrors.RedirectUrlNotWhitelisted &&
+      !options.noVerificationCallback &&
+      emailVerificationRedirectUrl !== undefined) {
+      console.error("Warning: The verification callback URL is not trusted. Proceeding with signup without email verification. Please add your domain to the trusted domains list in your Stack Auth dashboard.", { url: emailVerificationRedirectUrl });
+
+      result = await this._interface.signUpWithCredential(
+        options.email,
+        options.password,
+        undefined, // No email verification
+        session
+      );
+    }
+
     if (result.status === 'ok') {
       await this._signInToAccountWithTokens(result.data);
       if (!options.noRedirect) {
@@ -1973,11 +2389,25 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     });
   }
 
-  async signOut(options?: { redirectUrl?: URL | string }): Promise<void> {
-    const user = await this.getUser();
+  async signOut(options?: { redirectUrl?: URL | string, tokenStore?: TokenStoreInit }): Promise<void> {
+    const user = await this.getUser({ tokenStore: options?.tokenStore ?? undefined as any });
     if (user) {
-      await user.signOut(options);
+      await user.signOut({ redirectUrl: options?.redirectUrl });
     }
+  }
+
+  async getAuthHeaders(options?: { tokenStore?: TokenStoreInit }): Promise<{ "x-stack-auth": string }> {
+    return {
+      "x-stack-auth": JSON.stringify(await this.getAuthJson(options)),
+    };
+  }
+
+  async getAuthJson(options?: { tokenStore?: TokenStoreInit }): Promise<{ accessToken: string | null, refreshToken: string | null }> {
+    const user = await this.getUser({ tokenStore: options?.tokenStore ?? undefined as any });
+    if (user) {
+      return await user.getAuthJson();
+    }
+    return { accessToken: null, refreshToken: null };
   }
 
   async getProject(): Promise<Project> {
@@ -1987,7 +2417,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
 
   // IF_PLATFORM react-like
   useProject(): Project {
-    const crud = useAsyncCache(this._currentProjectCache, [], "useProject()");
+    const crud = useAsyncCache(this._currentProjectCache, [], "clientApp.useProject()");
     return useMemo(() => this._clientProjectFromCrud(crud), [crud]);
   }
   // END_PLATFORM
@@ -2004,7 +2434,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
   // IF_PLATFORM react-like
   protected _useOwnedProjects(session: InternalSession): AdminOwnedProject[] {
     this._ensureInternalProject();
-    const projects = useAsyncCache(this._ownedProjectsCache, [session], "useOwnedProjects()");
+    const projects = useAsyncCache(this._ownedProjectsCache, [session], "clientApp.useOwnedProjects()");
     return useMemo(() => projects.map((j) => this._getOwnedAdminApp(j.id, session)._adminOwnedProjectFromCrud(
       j,
       () => this._refreshOwnedProjects(session),
@@ -2059,7 +2489,9 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         }
 
         return new _StackClientAppImplIncomplete<HasTokenStore, ProjectId>({
-          ...json,
+          ...omit(json, ["uniqueIdentifier"]) as any,
+        }, {
+          uniqueIdentifier: json.uniqueIdentifier,
           checkString: providedCheckString,
         });
       }
@@ -2095,6 +2527,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
           await this._currentUserCache.forceSetCachedValueAsync([await this._getSession()], Result.fromPromise(userJsonPromise));
         });
       },
+      getConstructorOptions: () => this._options,
       sendRequest: async (
         path: string,
         requestOptions: RequestInit,

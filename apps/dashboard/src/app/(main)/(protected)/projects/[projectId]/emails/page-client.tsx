@@ -6,89 +6,100 @@ import { InputField, SelectField, TextAreaField } from "@/components/form-fields
 import { SettingCard, SettingText } from "@/components/settings";
 import { getPublicEnvVar } from "@/lib/env";
 import { AdminEmailConfig, AdminProject, AdminSentEmail, ServerUser, UserAvatar } from "@stackframe/stack";
+import { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
 import { strictEmailSchema } from "@stackframe/stack-shared/dist/schema-fields";
 import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { deepPlainEquals } from "@stackframe/stack-shared/dist/utils/objects";
 import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
-import { ActionDialog, Alert, Button, DataTable, SimpleTooltip, Typography, useToast, Input, Textarea, TooltipProvider, TooltipTrigger, TooltipContent, Tooltip, AlertDescription, AlertTitle } from "@stackframe/stack-ui";
+import { ActionDialog, Alert, AlertDescription, AlertTitle, Button, DataTable, SimpleTooltip, Tooltip, TooltipContent, TooltipProvider, TooltipTrigger, Typography, useToast } from "@stackframe/stack-ui";
 import { ColumnDef } from "@tanstack/react-table";
 import { AlertCircle, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import * as yup from "yup";
+import { AppEnabledGuard } from "../app-enabled-guard";
 import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";
 
 export default function PageClient() {
   const stackAdminApp = useAdminApp();
   const project = stackAdminApp.useProject();
-  const emailConfig = project.config.emailConfig;
+  const emailConfig = project.useConfig().emails.server;
 
   return (
-    <PageLayout
-      title="Emails"
-      description="Manage email server and logs"
-      actions={
-        <SendEmailDialog
-          trigger={<Button>Send Email</Button>}
-          emailConfigType={emailConfig?.type}
-        />
-      }
-    >
-      {getPublicEnvVar('NEXT_PUBLIC_STACK_EMULATOR_ENABLED') === 'true' ? (
-        <SettingCard
-          title="Mock Emails"
-          description="View all emails sent through the emulator in Inbucket"
-        >
-          <Button variant='secondary' onClick={() => {
-            window.open(getPublicEnvVar('NEXT_PUBLIC_STACK_INBUCKET_WEB_URL') + '/monitor', '_blank');
-          }}>
-            Open Inbox
-          </Button>
+    <AppEnabledGuard appId="emails">
+      <PageLayout
+        title="Emails"
+        description="Manage email server and logs"
+        actions={
+          <SendEmailDialog
+            trigger={<Button>Send Email</Button>}
+            emailConfig={emailConfig}
+          />
+        }
+      >
+        {getPublicEnvVar('NEXT_PUBLIC_STACK_EMULATOR_ENABLED') === 'true' ? (
+          <SettingCard
+            title="Mock Emails"
+            description="View all emails sent through the emulator in Inbucket"
+          >
+            <Button variant='secondary' onClick={() => {
+              window.open(getPublicEnvVar('NEXT_PUBLIC_STACK_INBUCKET_WEB_URL') + '/monitor', '_blank');
+            }}>
+              Open Inbox
+            </Button>
+          </SettingCard>
+        ) : (
+          <SettingCard
+            title="Email Server"
+            description="Configure the email server and sender address for outgoing emails"
+            actions={
+              <div className="flex items-center gap-2">
+                {!emailConfig.isShared && <TestSendingDialog trigger={<Button variant='secondary' className="w-full">Send Test Email</Button>} />}
+                <EditEmailServerDialog trigger={<Button variant='secondary' className="w-full">Configure</Button>} />
+              </div>
+            }
+          >
+            <SettingText label="Server">
+              <div className="flex items-center gap-2">
+                {emailConfig.isShared ?
+                  <>Shared <SimpleTooltip tooltip="When you use the shared email server, all the emails are sent from Stack's email address" type='info' /></>
+                  : (emailConfig.provider === 'resend' ? "Resend" : "Custom SMTP server")
+                }
+              </div>
+            </SettingText>
+            <SettingText label="Sender Email">
+              {emailConfig.isShared ? 'noreply@stackframe.co' : emailConfig.senderEmail}
+            </SettingText>
+          </SettingCard>
+        )}
+        <SettingCard title="Email Log" description="Manage email sending history" >
+          <EmailSendDataTable />
         </SettingCard>
-      ) : (
-        <SettingCard
-          title="Email Server"
-          description="Configure the email server and sender address for outgoing emails"
-          actions={
-            <div className="flex items-center gap-2">
-              {emailConfig?.type === 'standard' && <TestSendingDialog trigger={<Button variant='secondary' className="w-full">Send Test Email</Button>} />}
-              <EditEmailServerDialog trigger={<Button variant='secondary' className="w-full">Configure</Button>} />
-            </div>
-          }
-        >
-          <SettingText label="Server">
-            <div className="flex items-center gap-2">
-              {emailConfig?.type === 'standard' ?
-                'Custom SMTP server' :
-                <>Shared <SimpleTooltip tooltip="When you use the shared email server, all the emails are sent from Stack's email address" type='info' /></>
-              }
-            </div>
-          </SettingText>
-          <SettingText label="Sender Email">
-            {emailConfig?.type === 'standard' ? emailConfig.senderEmail : 'noreply@stackframe.co'}
-          </SettingText>
-        </SettingCard>
-      )}
-      <SettingCard title="Email Log" description="Manage email sending history" >
-        <EmailSendDataTable />
-      </SettingCard>
-    </PageLayout>
+      </PageLayout>
+    </AppEnabledGuard>
   );
 }
 
-function definedWhenNotShared<S extends yup.AnyObject>(schema: S, message: string): S {
+function definedWhenTypeIsOneOf<S extends yup.AnyObject>(schema: S, types: string[], message: string): S {
   return schema.when('type', {
-    is: 'standard',
+    is: (t: string) => types.includes(t),
     then: (schema: S) => schema.defined(message),
     otherwise: (schema: S) => schema.optional()
   });
 }
 
-const getDefaultValues = (emailConfig: AdminEmailConfig | undefined, project: AdminProject) => {
+const getDefaultValues = (emailConfig: CompleteConfig['emails']['server'] | undefined, project: AdminProject) => {
   if (!emailConfig) {
     return { type: 'shared', senderName: project.displayName } as const;
-  } else if (emailConfig.type === 'shared') {
+  } else if (emailConfig.isShared) {
     return { type: 'shared' } as const;
+  } else if (emailConfig.provider === 'resend') {
+    return {
+      type: 'resend',
+      senderEmail: emailConfig.senderEmail,
+      senderName: emailConfig.senderName,
+      password: emailConfig.password,
+    } as const;
   } else {
     return {
       type: 'standard',
@@ -103,13 +114,13 @@ const getDefaultValues = (emailConfig: AdminEmailConfig | undefined, project: Ad
 };
 
 const emailServerSchema = yup.object({
-  type: yup.string().oneOf(['shared', 'standard']).defined(),
-  host: definedWhenNotShared(yup.string(), "Host is required"),
-  port: definedWhenNotShared(yup.number().min(0, "Port must be a number between 0 and 65535").max(65535, "Port must be a number between 0 and 65535"), "Port is required"),
-  username: definedWhenNotShared(yup.string(), "Username is required"),
-  password: definedWhenNotShared(yup.string(), "Password is required"),
-  senderEmail: definedWhenNotShared(strictEmailSchema("Sender email must be a valid email"), "Sender email is required"),
-  senderName: definedWhenNotShared(yup.string(), "Email sender name is required"),
+  type: yup.string().oneOf(['shared', 'standard', 'resend']).defined(),
+  host: definedWhenTypeIsOneOf(yup.string(), ["standard"], "Host is required"),
+  port: definedWhenTypeIsOneOf(yup.number().min(0, "Port must be a number between 0 and 65535").max(65535, "Port must be a number between 0 and 65535"), ["standard"], "Port is required"),
+  username: definedWhenTypeIsOneOf(yup.string(), ["standard"], "Username is required"),
+  password: definedWhenTypeIsOneOf(yup.string(), ["standard", "resend"], "Password is required"),
+  senderEmail: definedWhenTypeIsOneOf(strictEmailSchema("Sender email must be a valid email"), ["standard", "resend"], "Sender email is required"),
+  senderName: definedWhenTypeIsOneOf(yup.string(), ["standard", "resend"], "Email sender name is required"),
 });
 
 function EditEmailServerDialog(props: {
@@ -117,10 +128,44 @@ function EditEmailServerDialog(props: {
 }) {
   const stackAdminApp = useAdminApp();
   const project = stackAdminApp.useProject();
+  const config = project.useConfig();
   const [error, setError] = useState<string | null>(null);
   const [formValues, setFormValues] = useState<any>(null);
-  const defaultValues = useMemo(() => getDefaultValues(project.config.emailConfig, project), [project]);
+  const defaultValues = useMemo(() => getDefaultValues(config.emails.server, project), [config, project]);
   const { toast } = useToast();
+
+  async function testEmailAndUpdateConfig(emailConfig: AdminEmailConfig & { type: "standard" | "resend" }) {
+    const testResult = await stackAdminApp.sendTestEmail({
+      recipientEmail: 'test-email-recipient@stackframe.co',
+      emailConfig,
+    });
+
+    if (testResult.status === 'error') {
+      setError(testResult.error.errorMessage);
+      return 'prevent-close-and-prevent-reset';
+    }
+    setError(null);
+    await project.updateConfig({
+      emails: {
+        server: {
+          isShared: false,
+          host: emailConfig.host,
+          port: emailConfig.port,
+          username: emailConfig.username,
+          password: emailConfig.password,
+          senderEmail: emailConfig.senderEmail,
+          senderName: emailConfig.senderName,
+          provider: emailConfig.type === 'resend' ? 'resend' : 'smtp',
+        }
+      }
+    });
+
+    toast({
+      title: "Email server updated",
+      description: "The email server has been updated. You can now send test emails to verify the configuration.",
+      variant: 'success',
+    });
+  }
 
   return <FormDialog
     trigger={props.trigger}
@@ -135,45 +180,31 @@ function EditEmailServerDialog(props: {
             emailConfig: { type: 'shared' }
           }
         });
+      } else if (values.type === 'resend') {
+        if (!values.password || !values.senderEmail || !values.senderName) {
+          throwErr("Missing email server config for Resend");
+        }
+        return await testEmailAndUpdateConfig({
+          type: 'resend',
+          host: 'smtp.resend.com',
+          port: 465,
+          username: 'resend',
+          password: values.password,
+          senderEmail: values.senderEmail,
+          senderName: values.senderName,
+        });
       } else {
         if (!values.host || !values.port || !values.username || !values.password || !values.senderEmail || !values.senderName) {
           throwErr("Missing email server config for custom SMTP server");
         }
-
-        const emailConfig = {
+        return await testEmailAndUpdateConfig({
+          type: 'standard',
           host: values.host,
           port: values.port,
           username: values.username,
           password: values.password,
           senderEmail: values.senderEmail,
-          senderName: values.senderName,
-        };
-
-        const testResult = await stackAdminApp.sendTestEmail({
-          recipientEmail: 'test-email-recipient@stackframe.co',
-          emailConfig: emailConfig,
-        });
-
-        if (testResult.status === 'error') {
-          setError(testResult.error.errorMessage);
-          return 'prevent-close-and-prevent-reset';
-        } else {
-          setError(null);
-        }
-
-        await project.update({
-          config: {
-            emailConfig: {
-              type: 'standard',
-              ...emailConfig,
-            }
-          }
-        });
-
-        toast({
-          title: "Email server updated",
-          description: "The email server has been updated. You can now send test emails to verify the configuration.",
-          variant: 'success',
+          senderName: values.senderName
         });
       }
     }}
@@ -193,9 +224,26 @@ function EditEmailServerDialog(props: {
           control={form.control}
           options={[
             { label: "Shared (noreply@stackframe.co)", value: 'shared' },
+            { label: "Resend (your own email address)", value: 'resend' },
             { label: "Custom SMTP server (your own email address)", value: 'standard' },
           ]}
         />
+        {form.watch('type') === 'resend' && <>
+          {([
+            { label: "Resend API Key", name: "password", type: 'password' },
+            { label: "Sender Email", name: "senderEmail", type: 'email' },
+            { label: "Sender Name", name: "senderName", type: 'text' },
+          ] as const).map((field) => (
+            <InputField
+              key={field.name}
+              label={field.label}
+              name={field.name}
+              control={form.control}
+              type={field.type}
+              required
+            />
+          ))}
+        </>}
         {form.watch('type') === 'standard' && <>
           {([
             { label: "Host", name: "host", type: 'text' },
@@ -327,7 +375,7 @@ function EmailSendDataTable() {
 
 function SendEmailDialog(props: {
   trigger: React.ReactNode,
-  emailConfigType?: AdminEmailConfig['type'],
+  emailConfig: CompleteConfig['emails']['server'],
 }) {
   const stackAdminApp = useAdminApp();
   const { toast } = useToast();
@@ -420,7 +468,7 @@ function SendEmailDialog(props: {
     <>
       <div
         onClick={() => {
-          if (props.emailConfigType === 'standard') {
+          if (!props.emailConfig.isShared) {
             setOpen(true);
           } else {
             setSharedSmtpDialogOpen(true);

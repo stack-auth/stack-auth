@@ -9,6 +9,7 @@ import packageJson from '../../package.json';
 import { FeedbackForm } from './feedback-form';
 import { ChangelogWidget } from './stack-companion/changelog-widget';
 import { FeatureRequestBoard } from './stack-companion/feature-request-board';
+import { UnifiedDocsWidget } from './stack-companion/unified-docs-widget';
 
 type StackCompanionProps = {
   className?: string,
@@ -214,8 +215,8 @@ export function StackCompanion({ className, onExpandedChange }: StackCompanionPr
       {/* Single Expanding Sidebar */}
       <div
         className={cn(
-          "h-screen bg-background border-l shadow-lg flex relative",
-          isExpanded ? "" : "w-12",
+          "h-screen border-l flex relative",
+          isExpanded ? "shadow-lg" : "w-12",
           !isResizing ? "transition-all duration-300 ease-in-out" : ""
         )}
         style={isExpanded ? { width: `${width}px` } : undefined}
@@ -362,26 +363,7 @@ export function StackCompanion({ className, onExpandedChange }: StackCompanionPr
                     }
                   `}</style>
                 {activeItem === 'docs' && (
-                  <div className="space-y-3">
-                    <button
-                      onClick={() => window.open('https://docs.stack-auth.com', '_blank')}
-                      className="w-full bg-muted/30 hover:bg-muted/50 rounded-lg p-4 text-center transition-colors cursor-pointer group"
-                    >
-                      <BookOpen className="h-6 w-6 mx-auto mb-2 text-blue-600 group-hover:text-blue-700" />
-                      <p className="text-xs text-foreground group-hover:text-blue-600 font-medium">
-                        Access Stack Auth Documentation
-                      </p>
-                      <p className="text-[10px] text-muted-foreground mt-1">
-                        Click to open docs.stack-auth.com
-                      </p>
-                    </button>
-
-                    <div className="text-center">
-                      <p className="text-[10px] text-muted-foreground italic">
-                        Interactive dashboard docs coming soon
-                      </p>
-                    </div>
-                  </div>
+                  <UnifiedDocsWidget isActive={true} />
                 )}
 
                 {activeItem === 'feedback' && (

@@ -1,16 +1,17 @@
 "use client";
 
+import { EditableInput } from "@/components/editable-input";
 import { FormDialog, SmartFormDialog } from "@/components/form-dialog";
 import { InputField, SelectField } from "@/components/form-fields";
+import { StyledLink } from "@/components/link";
 import { SettingCard } from "@/components/settings";
 import { DeleteUserDialog, ImpersonateUserDialog } from "@/components/user-dialogs";
 import { useThemeWatcher } from '@/lib/theme';
 import MonacoEditor from '@monaco-editor/react';
 import { ServerContactChannel, ServerOAuthProvider, ServerUser } from "@stackframe/stack";
 import { KnownErrors } from "@stackframe/stack-shared";
-import { useAsyncCallback } from "@stackframe/stack-shared/dist/hooks/use-async-callback";
 import { fromNow } from "@stackframe/stack-shared/dist/utils/dates";
-import { StackAssertionError, throwErr } from '@stackframe/stack-shared/dist/utils/errors';
+import { StackAssertionError } from '@stackframe/stack-shared/dist/utils/errors';
 import { isJsonSerializable } from "@stackframe/stack-shared/dist/utils/json";
 import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
 import {
@@ -28,7 +29,6 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-  Input,
   Separator,
   SimpleTooltip,
   Table,
@@ -42,151 +42,18 @@ import {
   useToast
 } from "@stackframe/stack-ui";
 import { AtSign, Calendar, Check, Hash, Mail, MoreHorizontal, Shield, SquareAsterisk, X } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import * as yup from "yup";
+import { AppEnabledGuard } from "../../app-enabled-guard";
 import { PageLayout } from "../../page-layout";
 import { useAdminApp } from "../../use-admin-app";
+
+const metadataDocsUrl = "https://docs.stack-auth.com/docs/concepts/custom-user-data";
 
 type UserInfoProps = {
   icon: React.ReactNode,
   children: React.ReactNode,
   name: string,
-}
-
-
-type EditableInputProps = {
-  value: string,
-  initialEditValue?: string | undefined,
-  onUpdate?: (value: string) => Promise<void>,
-  readOnly?: boolean,
-  placeholder?: string,
-  inputClassName?: string,
-  shiftTextToLeft?: boolean,
-  mode?: 'text' | 'password',
-};
-
-function EditableInput({
-  value,
-  initialEditValue,
-  onUpdate,
-  readOnly,
-  placeholder,
-  inputClassName,
-  shiftTextToLeft,
-  mode = 'text',
-}: EditableInputProps) {
-  const [editValue, setEditValue] = useState<string | null>(null);
-  const editing = editValue !== null;
-  const [hasChanged, setHasChanged] = useState(false);
-
-  const forceAllowBlur = useRef(false);
-
-  const inputRef = useRef<HTMLInputElement>(null);
-  const acceptRef = useRef<HTMLButtonElement>(null);
-
-  const [handleUpdate, isLoading] = useAsyncCallback(async (value: string) => {
-    await onUpdate?.(value);
-  }, [onUpdate]);
-
-  return <div
-    className="flex gap-2 items-center"
-    onFocus={() => {
-      if (!readOnly) {
-        setEditValue(editValue ?? initialEditValue ?? value);
-      }
-    }}
-    onBlur={(ev) => {
-      if (!forceAllowBlur.current) {
-        if (!hasChanged) {
-          setEditValue(null);
-        } else {
-          // TODO this should probably be a blocking dialog instead, and it should have a "cancel" button that focuses the input again
-          if (confirm("You have unapplied changes. Would you like to save them?")) {
-            acceptRef.current?.click();
-          } else {
-            setEditValue(null);
-            setHasChanged(false);
-          }
-        }
-      }
-    }}
-    onMouseDown={(ev) => {
-      // prevent blur from happening
-      ev.preventDefault();
-      return false;
-    }}
-  >
-    <Input
-      type={mode === 'password' ? 'password' : 'text'}
-      ref={inputRef}
-      readOnly={readOnly}
-      disabled={isLoading}
-      placeholder={placeholder}
-      tabIndex={readOnly ? -1 : undefined}
-      className={cn(
-        "w-full px-1 py-0 h-[unset] border-transparent hover:ring-1 hover:ring-gray-300 dark:hover:ring-gray-500 focus-visible:ring-gray-500 dark:focus-visible:ring-gray-50",
-        readOnly && "focus-visible:ring-0 hover:ring-0",
-        shiftTextToLeft && "ml-[-7px]",
-        inputClassName,
-      )}
-      value={editValue ?? value}
-      autoComplete="off"
-      style={{
-        textOverflow: "ellipsis",
-      }}
-      onChange={(e) => {
-        setEditValue(e.target.value);
-        setHasChanged(true);
-      }}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter') {
-          acceptRef.current?.click();
-        }
-      }}
-      onMouseDown={(ev) => {
-        // parent prevents mousedown, so we stop it here
-        ev.stopPropagation();
-      }}
-    />
-    <div className="flex gap-2" style={{
-      overflow: "hidden",
-      width: editing ? "4rem" : 0,
-      opacity: editing ? 1 : 0,
-      transition: "width 0.2s ease-in-out, opacity 0.2s ease-in-out",
-    }}>
-      {["accept", "reject"].map((action) => (
-        <Button
-          ref={action === "accept" ? acceptRef : undefined}
-          key={action}
-          disabled={isLoading}
-          type="button"
-          variant="plain"
-          size="plain"
-          className={cn(
-            "min-h-5 min-w-5 h-5 w-5 rounded-full flex items-center justify-center",
-            action === "accept" ? "bg-green-500 active:bg-green-600" : "bg-red-500 active:bg-red-600"
-          )}
-          onClick={async () => {
-            try {
-              forceAllowBlur.current = true;
-              inputRef.current?.blur();
-              if (action === "accept") {
-                await handleUpdate(editValue ?? throwErr("No value to update"));
-              }
-              setEditValue(null);
-              setHasChanged(false);
-            } finally {
-              forceAllowBlur.current = false;
-            }
-          }}
-        >
-          {action === "accept" ?
-            <Check size={15} className="text-white dark:text-black" /> :
-            <X size={15} className="text-white dark:text-black" />}
-        </Button>
-      ))}
-    </div>
-  </div>;
 }
 
 function UserInfo({ icon, name, children }: UserInfoProps) {
@@ -295,14 +162,20 @@ export default function PageClient({ userId }: { userId: string }) {
   const user = stackAdminApp.useUser(userId);
 
   if (user === null) {
-    return <PageLayout
-      title="User Not Found"
-    >
-      User Not Found
-    </PageLayout>;
+    return (
+      <AppEnabledGuard appId="authentication">
+        <PageLayout title="User Not Found">
+          User Not Found
+        </PageLayout>
+      </AppEnabledGuard>
+    );
   }
 
-  return <UserPage user={user}/>;
+  return (
+    <AppEnabledGuard appId="authentication">
+      <UserPage user={user} />
+    </AppEnabledGuard>
+  );
 }
 
 type UserHeaderProps = {
@@ -852,6 +725,80 @@ function ContactChannelsSection({ user }: ContactChannelsSectionProps) {
   );
 }
 
+type UserTeamsSectionProps = {
+  user: ServerUser,
+};
+
+function UserTeamsSection({ user }: UserTeamsSectionProps) {
+  const stackAdminApp = useAdminApp();
+  const teams = user.useTeams();
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-lg font-semibold">Teams</h2>
+          <p className="text-sm text-muted-foreground">Teams this user belongs to</p>
+        </div>
+      </div>
+
+      {teams.length === 0 ? (
+        <div className="flex flex-col items-center gap-2 p-4 border rounded-md bg-muted/10">
+          <p className='text-sm text-gray-500 text-center'>
+            No teams found
+          </p>
+        </div>
+      ) : (
+        <div className='border rounded-md'>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Team ID</TableHead>
+                <TableHead>Display Name</TableHead>
+                <TableHead>Created At</TableHead>
+                <TableHead className="w-[80px]"></TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {teams.map((team) => (
+                <TableRow key={team.id}>
+                  <TableCell>
+                    <div className="font-mono text-xs bg-muted px-2 py-1 rounded max-w-[120px] truncate">
+                      {team.id}
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <div className="font-medium">
+                      {team.displayName || '-'}
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <div className="text-sm text-muted-foreground">
+                      {team.createdAt.toLocaleDateString()}
+                    </div>
+                  </TableCell>
+                  <TableCell align="right">
+                    <ActionCell
+                      items={[
+                        {
+                          item: "View Team",
+                          onClick: () => {
+                            window.open(`/projects/${stackAdminApp.projectId}/teams/${team.id}`, '_blank', 'noopener');
+                          },
+                        },
+                      ]}
+                    />
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      )}
+    </div>
+  );
+}
+
 type OAuthProvidersSectionProps = {
   user: ServerUser,
 };
@@ -1187,12 +1134,17 @@ function MetadataSection({ user }: MetadataSectionProps) {
   return (
     <SettingCard
       title="Metadata"
-      description="Use metadata to store a custom JSON object on the user."
+      description={
+        <>
+          Use metadata to store a custom JSON object on the user.{" "}
+          <StyledLink href={metadataDocsUrl} target="_blank">Learn more in the docs</StyledLink>.
+        </>
+      }
     >
       <div className="grid gap-4 grid-cols-1 lg:grid-cols-3">
         <MetadataEditor
           title="Client"
-          hint="Readable and writable from both clients and servers."
+          hint="Custom JSON clients can read and update; avoid sensitive data."
           initialValue={JSON.stringify(user.clientMetadata)}
           onUpdate={async (value) => {
             await user.setClientMetadata(value);
@@ -1200,7 +1152,7 @@ function MetadataSection({ user }: MetadataSectionProps) {
         />
         <MetadataEditor
           title="Client Read-Only"
-          hint="Readable from clients, but only writable from servers."
+          hint="Custom JSON clients can read but only your backend can change."
           initialValue={JSON.stringify(user.clientReadOnlyMetadata)}
           onUpdate={async (value) => {
             await user.setClientReadOnlyMetadata(value);
@@ -1208,7 +1160,7 @@ function MetadataSection({ user }: MetadataSectionProps) {
         />
         <MetadataEditor
           title="Server"
-          hint="Readable and writable from servers. Not accessible to clients."
+          hint="Custom JSON reserved for server-side logic and never exposed to clients."
           initialValue={JSON.stringify(user.serverMetadata)}
           onUpdate={async (value) => {
             await user.setServerMetadata(value);
@@ -1228,8 +1180,8 @@ function UserPage({ user }: { user: ServerUser }) {
         <UserDetails user={user} />
         <Separator />
         <ContactChannelsSection user={user} />
+        <UserTeamsSection user={user} />
         <OAuthProvidersSection user={user} />
-        <div />
         <MetadataSection user={user} />
       </div>
     </PageLayout>

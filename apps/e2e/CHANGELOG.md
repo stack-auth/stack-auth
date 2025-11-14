@@ -1,5 +1,129 @@
 # @stackframe/e2e-tests
 
+## 2.8.51
+
+### Patch Changes
+
+- Various changes
+- Updated dependencies
+  - @stackframe/stack-shared@2.8.51
+  - @stackframe/js@2.8.51
+
+## 2.8.50
+
+### Patch Changes
+
+- Various changes
+- Updated dependencies
+  - @stackframe/js@2.8.50
+  - @stackframe/stack-shared@2.8.50
+
+## 2.8.49
+
+### Patch Changes
+
+- Various changes
+- Updated dependencies
+  - @stackframe/js@2.8.49
+  - @stackframe/stack-shared@2.8.49
+
+## 2.8.48
+
+### Patch Changes
+
+- Various changes
+- Updated dependencies
+  - @stackframe/stack-shared@2.8.48
+  - @stackframe/js@2.8.48
+
+## 2.8.47
+
+### Patch Changes
+
+- Various changes
+- Updated dependencies
+  - @stackframe/js@2.8.47
+  - @stackframe/stack-shared@2.8.47
+
+## 2.8.46
+
+### Patch Changes
+
+- Various changes
+- Updated dependencies
+  - @stackframe/js@2.8.46
+  - @stackframe/stack-shared@2.8.46
+
+## 2.8.45
+
+### Patch Changes
+
+- Various changes
+- Updated dependencies
+  - @stackframe/stack-shared@2.8.45
+  - @stackframe/js@2.8.45
+
+## 2.8.44
+
+### Patch Changes
+
+- Various changes
+- Updated dependencies
+  - @stackframe/stack-shared@2.8.44
+  - @stackframe/js@2.8.44
+
+## 2.8.43
+
+### Patch Changes
+
+- Various changes
+  - @stackframe/js@2.8.43
+  - @stackframe/stack-shared@2.8.43
+
+## 2.8.42
+
+### Patch Changes
+
+- Various changes
+- Updated dependencies
+  - @stackframe/stack-shared@2.8.42
+  - @stackframe/js@2.8.42
+
+## 2.8.41
+
+### Patch Changes
+
+- Updated dependencies
+  - @stackframe/stack-shared@2.8.41
+  - @stackframe/js@2.8.41
+
+## 2.8.40
+
+### Patch Changes
+
+- Various changes
+- Updated dependencies
+  - @stackframe/stack-shared@2.8.40
+  - @stackframe/js@2.8.40
+
+## 2.8.39
+
+### Patch Changes
+
+- Various changes
+- Updated dependencies
+  - @stackframe/stack-shared@2.8.39
+  - @stackframe/js@2.8.39
+
+## 2.8.38
+
+### Patch Changes
+
+- Various changes
+- Updated dependencies
+  - @stackframe/stack-shared@2.8.38
+  - @stackframe/js@2.8.38
+
 ## 2.8.37
 
 ### Patch Changes

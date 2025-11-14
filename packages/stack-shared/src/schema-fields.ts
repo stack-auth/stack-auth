@@ -1,8 +1,8 @@
 import * as yup from "yup";
-import { KnownErrors } from ".";
+import { KnownErrors } from "./known-errors";
 import { isBase64 } from "./utils/bytes";
 import { SUPPORTED_CURRENCIES, type Currency, type MoneyAmount } from "./utils/currency-constants";
-import { DayInterval, Interval } from "./utils/dates";
+import type { DayInterval, Interval } from "./utils/dates";
 import { StackAssertionError, throwErr } from "./utils/errors";
 import { decodeBasicAuthorizationHeader } from "./utils/http";
 import { allProviders } from "./utils/oauth";
@@ -63,7 +63,7 @@ yup.addMethod(yup.string, "nonEmpty", function (message?: string) {
 });
 
 yup.addMethod(yup.Schema, "hasNested", function (path: any) {
-  if (!path.match(/^[a-zA-Z0-9_$:-]+$/)) throw new StackAssertionError(`yupSchema.hasNested can currently only be used with alphanumeric keys, underscores, dollar signs, colons, and hyphens. Fix this in the future. Provided key: ${JSON.stringify(path)}`);
+  if (!path.match(/^[a-zA-Z0-9_$:-]*$/)) throw new StackAssertionError(`yupSchema.hasNested can currently only be used with alphanumeric keys, underscores, dollar signs, colons, and hyphens. Fix this in the future. Provided key: ${JSON.stringify(path)}`);
   const schemaInfo = this.meta()?.stackSchemaInfo as any;
   if (schemaInfo?.type === "record") {
     return schemaInfo.keySchema.isValidSync(path);
@@ -83,7 +83,7 @@ yup.addMethod(yup.Schema, "hasNested", function (path: any) {
 });
 
 yup.addMethod(yup.Schema, "getNested", function (path: any) {
-  if (!path.match(/^[a-zA-Z0-9_$:-]+$/)) throw new StackAssertionError(`yupSchema.getNested can currently only be used with alphanumeric keys, underscores, dollar signs, colons, and hyphens. Fix this in the future. Provided key: ${path}`);
+  if (!path.match(/^[a-zA-Z0-9_$:-]*$/)) throw new StackAssertionError(`yupSchema.getNested can currently only be used with alphanumeric keys, underscores, dollar signs, colons, and hyphens. Fix this in the future. Provided key: ${JSON.stringify(path)}`);
 
   if (!this.hasNested(path as never)) throw new StackAssertionError(`Tried to call yupSchema.getNested, but key is not present in the schema. Provided key: ${path}`, { path, schema: this });
 
@@ -423,7 +423,7 @@ export const dayIntervalOrNeverSchema = yupUnion(dayIntervalSchema.defined(), yu
  * This schema is useful for fields where the user can specify the ID, such as price IDs. It is particularly common
  * for IDs in the config schema.
  */
-export const userSpecifiedIdSchema = (idName: `${string}Id`) => yupString().max(63).matches(/^[a-zA-Z_][a-zA-Z0-9_-]*$/, `${idName} must start with a letter, underscore, or number, and contain only letters, numbers, underscores, and hyphens`);
+export const userSpecifiedIdSchema = (idName: `${string}Id`) => yupString().max(63).matches(/^[a-zA-Z0-9_][a-zA-Z0-9_-]*$/, `${idName} must contain only letters, numbers, underscores, and hyphens, and not start with a hyphen`);
 export const moneyAmountSchema = (currency: Currency) => yupString<MoneyAmount>().test('money-amount', 'Invalid money amount', (value, context) => {
   if (value == null) return true;
   const regex = /^([0-9]+)(\.([0-9]+))?$/;
@@ -547,14 +547,15 @@ export const emailTemplateListSchema = yupRecord(
 
 // Payments
 export const customerTypeSchema = yupString().oneOf(['user', 'team', 'custom']);
-const validateHasAtLeastOneSupportedCurrency = (value: Record<string, unknown>, context: any) => {
+const validateHasAtLeastOneSupportedCurrency = (value: Record<string, unknown> | null, context: any) => {
+  if (!value) return true;
   const currencies = Object.keys(value).filter(key => SUPPORTED_CURRENCIES.some(c => c.code === key));
   if (currencies.length === 0) {
     return context.createError({ message: "At least one currency is required" });
   }
   return true;
 };
-export const offerPriceSchema = yupObject({
+export const productPriceSchema = yupObject({
   ...typedFromEntries(SUPPORTED_CURRENCIES.map(currency => [currency.code, moneyAmountSchema(currency).optional()])),
   interval: dayIntervalSchema.optional(),
   serverOnly: yupBoolean(),
@@ -564,19 +565,19 @@ export const priceOrIncludeByDefaultSchema = yupUnion(
   yupString().oneOf(['include-by-default']).meta({ openapiField: { description: 'Makes this item free and includes it by default for all customers.', exampleValue: 'include-by-default' } }),
   yupRecord(
     userSpecifiedIdSchema("priceId"),
-    offerPriceSchema,
+    productPriceSchema,
   ),
 );
-export const offerSchema = yupObject({
+export const productSchema = yupObject({
   displayName: yupString(),
-  groupId: userSpecifiedIdSchema("groupId").optional().meta({ openapiField: { description: 'The ID of the group this offer belongs to. Within a group, all offers are mutually exclusive unless they are an add-on to another offer in the group.', exampleValue: 'group-id' } }),
+  catalogId: userSpecifiedIdSchema("catalogId").optional().meta({ openapiField: { description: 'The ID of the catalog this product belongs to. Within a catalog, all products are mutually exclusive unless they are an add-on to another product in the catalog.', exampleValue: 'catalog-id' } }),
   isAddOnTo: yupUnion(
     yupBoolean().isFalse(),
     yupRecord(
-      userSpecifiedIdSchema("offerId"),
+      userSpecifiedIdSchema("productId"),
       yupBoolean().isTrue().defined(),
     ),
-  ).optional().meta({ openapiField: { description: 'The offers that this offer is an add-on to. If this is set, the customer must already have one of the offers in the record to be able to purchase this offer.', exampleValue: { "offer-id": true } } }),
+  ).optional().meta({ openapiField: { description: 'The products that this product is an add-on to. If this is set, the customer must already have one of the products in the record to be able to purchase this product.', exampleValue: { "product-id": true } } }),
   customerType: customerTypeSchema.defined(),
   freeTrial: dayIntervalSchema.optional(),
   serverOnly: yupBoolean(),
@@ -591,11 +592,25 @@ export const offerSchema = yupObject({
     }),
   ),
 });
-export const inlineOfferSchema = yupObject({
+
+const productMetadataExample = { featureFlag: true, source: 'marketing-campaign' } as const;
+
+export const productClientMetadataSchema = jsonSchema.meta({ openapiField: { description: _clientMetaDataDescription('product'), exampleValue: productMetadataExample } });
+export const productClientReadOnlyMetadataSchema = jsonSchema.meta({ openapiField: { description: _clientReadOnlyMetaDataDescription('product'), exampleValue: productMetadataExample } });
+export const productServerMetadataSchema = jsonSchema.meta({ openapiField: { description: _serverMetaDataDescription('product'), exampleValue: productMetadataExample } });
+
+export const productSchemaWithMetadata = productSchema.concat(yupObject({
+  clientMetadata: productClientMetadataSchema.optional(),
+  clientReadOnlyMetadata: productClientReadOnlyMetadataSchema.optional(),
+  serverMetadata: productServerMetadataSchema.optional(),
+}));
+
+export const inlineProductSchema = yupObject({
   display_name: yupString().defined(),
   customer_type: customerTypeSchema.defined(),
   free_trial: dayIntervalSchema.optional(),
-  server_only: yupBoolean().oneOf([true]).default(true),
+  server_only: yupBoolean().default(true),
+  stackable: yupBoolean().default(false),
   prices: yupRecord(
     userSpecifiedIdSchema("priceId"),
     yupObject({
@@ -612,6 +627,9 @@ export const inlineOfferSchema = yupObject({
       expires: yupString().oneOf(['never', 'when-purchase-expires', 'when-repeated']).optional(),
     }),
   ),
+  client_metadata: productClientMetadataSchema.optional(),
+  client_read_only_metadata: productClientReadOnlyMetadataSchema.optional(),
+  server_metadata: productServerMetadataSchema.optional(),
 });
 
 // Users
@@ -658,6 +676,21 @@ export const userPasswordHashMutationSchema = yupString()
 export const userTotpSecretMutationSchema = base64Schema.nullable().meta({ openapiField: { description: 'Enables 2FA and sets a TOTP secret for the user. Set to null to disable 2FA.', exampleValue: 'dG90cC1zZWNyZXQ=' } });
 
 // Auth
+export const accessTokenPayloadSchema = yupObject({
+  sub: yupString().defined(),
+  exp: yupNumber().optional(),
+  iss: yupString().defined(),
+  aud: yupString().defined(),
+  project_id: yupString().defined(),
+  branch_id: yupString().defined(),
+  refresh_token_id: yupString().defined(),
+  role: yupString().oneOf(["authenticated"]).defined(),
+  name: yupString().defined().nullable(),
+  email: yupString().defined().nullable(),
+  email_verified: yupBoolean().defined(),
+  selected_team_id: yupString().defined().nullable(),
+  is_anonymous: yupBoolean().defined(),
+});
 export const signInEmailSchema = strictEmailSchema(undefined).meta({ openapiField: { description: 'The email to sign in with.', exampleValue: 'johndoe@example.com' } });
 export const emailOtpSignInCallbackUrlSchema = urlSchema.meta({ openapiField: { description: 'The base callback URL to construct the magic link from. A query parameter `code` with the verification code will be appended to it. The page should then make a request to the `/auth/otp/sign-in` endpoint.', exampleValue: 'https://example.com/handler/magic-link-callback' } });
 export const emailVerificationCallbackUrlSchema = urlSchema.meta({ openapiField: { description: 'The base callback URL to construct a verification link for the verification e-mail. A query parameter `code` with the verification code will be appended to it. The page should then make a request to the `/contact-channels/verify` endpoint.', exampleValue: 'https://example.com/handler/email-verification' } });

@@ -47,7 +47,7 @@ export default function OnboardingPage() {
 ```
 
 <Info>
-While the above implementation offers a basic onboarding process, users can still skip onboarding by directly sending an API request to update the `clientMetadata.onboarded` flag. If you want to ensure that onboarding cannot be bypassed on the API level, you should create a server endpoint to validate and store the data, then save the `onboarded` flag in the `clientReadonlyMetadata` on the server side after validation.
+While the above implementation products a basic onboarding process, users can still skip onboarding by directly sending an API request to update the `clientMetadata.onboarded` flag. If you want to ensure that onboarding cannot be bypassed on the API level, you should create a server endpoint to validate and store the data, then save the `onboarded` flag in the `clientReadonlyMetadata` on the server side after validation.
 </Info>
 
 Next, we can create a hook/function to check if the user has completed onboarding and redirect them to the onboarding page:
@@ -78,7 +78,7 @@ Next, we can create a hook/function to check if the user has completed onboardin
   </TabsContent>
   <TabsContent value="server">
     ```jsx title="app/onboarding-functions.ts"
-    import { stackServerApp } from '@/stack';
+    import { stackServerApp } from '@/stack/server';
     import { redirect } from 'next/navigation';
 
     export async function ensureOnboarded() {
@@ -116,7 +116,7 @@ You can then use these functions wherever onboarding is required:
   <TabsContent value="server">
     ```jsx title="app/page.tsx"
     import { ensureOnboarding } from '@/app/onboarding-functions';
-    import { stackServerApp } from '@/stack';
+    import { stackServerApp } from '@/stack/server';
 
     export default async function HomePage() {
       await ensureOnboarding();

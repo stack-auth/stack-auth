@@ -29,7 +29,6 @@ export type AdminProject = {
 
   update(this: AdminProject, update: AdminProjectUpdateOptions): Promise<void>,
   delete(this: AdminProject): Promise<void>,
-  transfer(this: AdminProject, user: CurrentUser, newTeamId: string): Promise<void>,
 
   getConfig(this: AdminProject): Promise<CompleteConfig>,
   // NEXT_LINE_PLATFORM react-like

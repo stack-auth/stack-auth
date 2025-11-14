@@ -4,18 +4,19 @@ import { InternalApiKeyCreateCrudResponse } from "@stackframe/stack-shared/dist/
 import { EmailTemplateCrud } from "@stackframe/stack-shared/dist/interface/crud/email-templates";
 import { InternalApiKeysCrud } from "@stackframe/stack-shared/dist/interface/crud/internal-api-keys";
 import { ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
+import type { AdminTransaction } from "@stackframe/stack-shared/dist/interface/crud/transactions";
 import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { pick } from "@stackframe/stack-shared/dist/utils/objects";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { useMemo } from "react"; // THIS_LINE_PLATFORM react-like
-import { AdminSentEmail, CurrentUser } from "../..";
+import { AdminSentEmail } from "../..";
 import { EmailConfig, stackAppInternalsSymbol } from "../../common";
 import { AdminEmailTemplate } from "../../email-templates";
 import { InternalApiKey, InternalApiKeyBase, InternalApiKeyBaseCrudRead, InternalApiKeyCreateOptions, InternalApiKeyFirstView, internalApiKeyCreateOptionsToCrud } from "../../internal-api-keys";
 import { AdminProjectPermission, AdminProjectPermissionDefinition, AdminProjectPermissionDefinitionCreateOptions, AdminProjectPermissionDefinitionUpdateOptions, AdminTeamPermission, AdminTeamPermissionDefinition, AdminTeamPermissionDefinitionCreateOptions, AdminTeamPermissionDefinitionUpdateOptions, adminProjectPermissionDefinitionCreateOptionsToCrud, adminProjectPermissionDefinitionUpdateOptionsToCrud, adminTeamPermissionDefinitionCreateOptionsToCrud, adminTeamPermissionDefinitionUpdateOptionsToCrud } from "../../permissions";
 import { AdminOwnedProject, AdminProject, AdminProjectUpdateOptions, adminProjectUpdateOptionsToCrud } from "../../projects";
 import { StackAdminApp, StackAdminAppConstructorOptions } from "../interfaces/admin-app";
-import { clientVersion, createCache, getBaseUrl, getDefaultExtraRequestHeaders, getDefaultProjectId, getDefaultPublishableClientKey, getDefaultSecretServerKey, getDefaultSuperSecretAdminKey } from "./common";
+import { clientVersion, createCache, getBaseUrl, getDefaultExtraRequestHeaders, getDefaultProjectId, getDefaultPublishableClientKey, getDefaultSecretServerKey, getDefaultSuperSecretAdminKey, resolveConstructorOptions } from "./common";
 import { _StackServerAppImplIncomplete } from "./server-app-impl";
 
 import { CompleteConfig, EnvironmentConfigOverrideOverride } from "@stackframe/stack-shared/dist/config/schema";
@@ -41,6 +42,9 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
   });
   private readonly _adminEmailTemplatesCache = createCache(async () => {
     return await this._interface.listInternalEmailTemplates();
+  });
+  private readonly _adminEmailDraftsCache = createCache(async () => {
+    return await this._interface.listInternalEmailDrafts();
   });
   private readonly _adminTeamPermissionDefinitionsCache = createCache(async () => {
     return await this._interface.listTeamPermissionDefinitions();
@@ -70,29 +74,28 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
       throw error;
     }
   });
+  private readonly _transactionsCache = createCache(async ([cursor, limit, type, customerType]: [string | undefined, number | undefined, 'subscription' | 'one_time' | 'item_quantity_change' | undefined, 'user' | 'team' | 'custom' | undefined]) => {
+    return await this._interface.listTransactions({ cursor, limit, type, customerType });
+  });
 
-  constructor(options: StackAdminAppConstructorOptions<HasTokenStore, ProjectId>) {
-    super({
-      interface: new StackAdminInterface({
-        getBaseUrl: () => getBaseUrl(options.baseUrl),
-        projectId: options.projectId ?? getDefaultProjectId(),
-        extraRequestHeaders: options.extraRequestHeaders ?? getDefaultExtraRequestHeaders(),
+  constructor(options: StackAdminAppConstructorOptions<HasTokenStore, ProjectId>, extraOptions?: { uniqueIdentifier?: string, checkString?: string, interface?: StackAdminInterface }) {
+    const resolvedOptions = resolveConstructorOptions(options);
+
+    super(resolvedOptions, {
+      ...extraOptions,
+      interface: extraOptions?.interface ?? new StackAdminInterface({
+        getBaseUrl: () => getBaseUrl(resolvedOptions.baseUrl),
+        projectId: resolvedOptions.projectId ?? getDefaultProjectId(),
+        extraRequestHeaders: resolvedOptions.extraRequestHeaders ?? getDefaultExtraRequestHeaders(),
         clientVersion,
-        ..."projectOwnerSession" in options ? {
-          projectOwnerSession: options.projectOwnerSession,
+        ...resolvedOptions.projectOwnerSession ? {
+          projectOwnerSession: resolvedOptions.projectOwnerSession,
         } : {
-          publishableClientKey: options.publishableClientKey ?? getDefaultPublishableClientKey(),
-          secretServerKey: options.secretServerKey ?? getDefaultSecretServerKey(),
-          superSecretAdminKey: options.superSecretAdminKey ?? getDefaultSuperSecretAdminKey(),
+          publishableClientKey: resolvedOptions.publishableClientKey ?? getDefaultPublishableClientKey(),
+          secretServerKey: resolvedOptions.secretServerKey ?? getDefaultSecretServerKey(),
+          superSecretAdminKey: resolvedOptions.superSecretAdminKey ?? getDefaultSuperSecretAdminKey(),
         },
       }),
-      baseUrl: options.baseUrl,
-      extraRequestHeaders: options.extraRequestHeaders,
-      projectId: options.projectId,
-      tokenStore: options.tokenStore,
-      urls: options.urls,
-      oauthScopesOnSignIn: options.oauthScopesOnSignIn,
-      redirectMethod: options.redirectMethod,
     });
   }
 
@@ -175,7 +178,7 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
       },
       // IF_PLATFORM react-like
       useConfig() {
-        const config = useAsyncCache(app._configOverridesCache, [], "useConfig()");
+        const config = useAsyncCache(app._configOverridesCache, [], "project.useConfig()");
         return useMemo(() => app._adminConfigFromCrud(config), [config]);
       },
       // END_PLATFORM
@@ -190,10 +193,6 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
       },
       async delete() {
         await app._interface.deleteProject();
-      },
-      async transfer(user: CurrentUser, newTeamId: string) {
-        await app._interface.transferProject(user._internalSession, newTeamId);
-        await onRefresh();
       },
       async getProductionModeErrors() {
         return getProductionModeErrors(data);
@@ -224,7 +223,7 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
 
   // IF_PLATFORM react-like
   override useProject(): AdminProject {
-    const crud = useAsyncCache(this._adminProjectCache, [], "useProjectAdmin()");
+    const crud = useAsyncCache(this._adminProjectCache, [], "adminApp.useProject()");
     return useMemo(() => this._adminProjectFromCrud(
       crud,
       () => this._refreshProject()
@@ -281,7 +280,7 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
 
   // IF_PLATFORM react-like
   useInternalApiKeys(): InternalApiKey[] {
-    const crud = useAsyncCache(this._internalApiKeysCache, [], "useInternalApiKeys()");
+    const crud = useAsyncCache(this._internalApiKeysCache, [], "adminApp.useInternalApiKeys()");
     return useMemo(() => {
       return crud.map((j) => this._createInternalApiKeyFromCrud(j));
     }, [crud]);
@@ -297,7 +296,7 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
 
   // IF_PLATFORM react-like
   useEmailThemes(): { id: string, displayName: string }[] {
-    const crud = useAsyncCache(this._adminEmailThemesCache, [], "useEmailThemes()");
+    const crud = useAsyncCache(this._adminEmailThemesCache, [], "adminApp.useEmailThemes()");
     return useMemo(() => {
       return crud.map((theme) => ({
         id: theme.id,
@@ -306,13 +305,25 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
     }, [crud]);
   }
   useEmailTemplates(): { id: string, displayName: string, themeId?: string, tsxSource: string }[] {
-    const crud = useAsyncCache(this._adminEmailTemplatesCache, [], "useEmailTemplates()");
+    const crud = useAsyncCache(this._adminEmailTemplatesCache, [], "adminApp.useEmailTemplates()");
     return useMemo(() => {
       return crud.map((template) => ({
         id: template.id,
         displayName: template.display_name,
         themeId: template.theme_id,
         tsxSource: template.tsx_source,
+      }));
+    }, [crud]);
+  }
+  useEmailDrafts(): { id: string, displayName: string, themeId: string | undefined | false, tsxSource: string, sentAt: Date | null }[] {
+    const crud = useAsyncCache(this._adminEmailDraftsCache, [], "adminApp.useEmailDrafts()");
+    return useMemo(() => {
+      return crud.map((draft) => ({
+        id: draft.id,
+        displayName: draft.display_name,
+        themeId: draft.theme_id,
+        tsxSource: draft.tsx_source,
+        sentAt: draft.sent_at_millis ? new Date(draft.sent_at_millis) : null,
       }));
     }, [crud]);
   }
@@ -332,6 +343,17 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
       displayName: template.display_name,
       themeId: template.theme_id,
       tsxSource: template.tsx_source,
+    }));
+  }
+
+  async listEmailDrafts(): Promise<{ id: string, displayName: string, themeId: string | undefined | false, tsxSource: string, sentAt: Date | null }[]> {
+    const crud = Result.orThrow(await this._adminEmailDraftsCache.getOrWait([], "write-only"));
+    return crud.map((draft) => ({
+      id: draft.id,
+      displayName: draft.display_name,
+      themeId: draft.theme_id,
+      tsxSource: draft.tsx_source,
+      sentAt: draft.sent_at_millis ? new Date(draft.sent_at_millis) : null,
     }));
   }
 
@@ -359,7 +381,7 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
 
   // IF_PLATFORM react-like
   useTeamPermissionDefinitions(): AdminTeamPermissionDefinition[] {
-    const crud = useAsyncCache(this._adminTeamPermissionDefinitionsCache, [], "usePermissions()");
+    const crud = useAsyncCache(this._adminTeamPermissionDefinitionsCache, [], "adminApp.useTeamPermissionDefinitions()");
     return useMemo(() => {
       return crud.map((p) => this._serverTeamPermissionDefinitionFromCrud(p));
     }, [crud]);
@@ -389,16 +411,16 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
 
   // IF_PLATFORM react-like
   useProjectPermissionDefinitions(): AdminProjectPermissionDefinition[] {
-    const crud = useAsyncCache(this._adminProjectPermissionDefinitionsCache, [], "useProjectPermissions()");
+    const crud = useAsyncCache(this._adminProjectPermissionDefinitionsCache, [], "adminApp.useProjectPermissionDefinitions()");
     return useMemo(() => {
       return crud.map((p) => this._serverProjectPermissionDefinitionFromCrud(p));
     }, [crud]);
   }
   // END_PLATFORM
   // IF_PLATFORM react-like
-  useSvixToken(): string {
-    const crud = useAsyncCache(this._svixTokenCache, [], "useSvixToken()");
-    return crud.token;
+  useSvixToken(): { token: string, url: string | undefined } {
+    const crud = useAsyncCache(this._svixTokenCache, [], "adminApp.useSvixToken()");
+    return { token: crud.token, url: crud.url };
   }
   // END_PLATFORM
 
@@ -413,12 +435,20 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
     await this._internalApiKeysCache.refresh([]);
   }
 
+  protected override async _refreshUsers() {
+    await Promise.all([
+      super._refreshUsers(),
+      this._metricsCache.refresh([false]),
+      this._metricsCache.refresh([true]),
+    ]);
+  }
+
   get [stackAppInternalsSymbol]() {
     return {
       ...super[stackAppInternalsSymbol],
       // IF_PLATFORM react-like
       useMetrics: (includeAnonymous: boolean = false): any => {
-        return useAsyncCache(this._metricsCache, [includeAnonymous] as const, "useMetrics()");
+        return useAsyncCache(this._metricsCache, [includeAnonymous] as const, "adminApp.useMetrics()");
       }
       // END_PLATFORM
     };
@@ -444,6 +474,18 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
     }
   }
 
+  async sendTestWebhook(options: { endpointId: string }): Promise<Result<undefined, { errorMessage: string }>> {
+    const response = await this._interface.sendTestWebhook({
+      endpoint_id: options.endpointId,
+    });
+
+    if (response.success) {
+      return Result.ok(undefined);
+    } else {
+      return Result.error({ errorMessage: response.error_message ?? throwErr("Webhook test error not specified") });
+    }
+  }
+
   async listSentEmails(): Promise<AdminSentEmail[]> {
     const response = await this._interface.listSentEmails();
     return response.items.map((email) => ({
@@ -466,9 +508,28 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
     return result;
   }
 
+  async createEmailDraft(options: { displayName: string, themeId?: string | false, tsxSource?: string }): Promise<{ id: string }> {
+    const result = await this._interface.createEmailDraft({
+      display_name: options.displayName,
+      theme_id: options.themeId,
+      tsx_source: options.tsxSource,
+    });
+    await this._adminEmailDraftsCache.refresh([]);
+    return result;
+  }
+
+  async updateEmailDraft(id: string, data: { displayName?: string, themeId?: string | undefined | false, tsxSource?: string }): Promise<void> {
+    await this._interface.updateEmailDraft(id, {
+      display_name: data.displayName,
+      theme_id: data.themeId,
+      tsx_source: data.tsxSource,
+    });
+    await this._adminEmailDraftsCache.refresh([]);
+  }
+
   async sendChatMessage(
     threadId: string,
-    contextType: "email-theme" | "email-template",
+    contextType: "email-theme" | "email-template" | "email-draft",
     messages: Array<{ role: string, content: any }>,
     abortSignal?: AbortSignal,
   ): Promise<{ content: ChatContent }> {
@@ -494,13 +555,13 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
   }
   // IF_PLATFORM react-like
   useEmailPreview(options: { themeId?: string | null | false, themeTsxSource?: string, templateId?: string, templateTsxSource?: string }): string {
-    const crud = useAsyncCache(this._emailPreviewCache, [options.themeId, options.themeTsxSource, options.templateId, options.templateTsxSource] as const, "useEmailPreview()");
+    const crud = useAsyncCache(this._emailPreviewCache, [options.themeId, options.themeTsxSource, options.templateId, options.templateTsxSource] as const, "adminApp.useEmailPreview()");
     return crud.html;
   }
   // END_PLATFORM
   // IF_PLATFORM react-like
   useEmailTheme(id: string): { displayName: string, tsxSource: string } {
-    const crud = useAsyncCache(this._adminEmailThemeCache, [id] as const, "useEmailTheme()");
+    const crud = useAsyncCache(this._adminEmailThemeCache, [id] as const, "adminApp.useEmailTheme()");
     return {
       displayName: crud.display_name,
       tsxSource: crud.tsx_source,
@@ -535,13 +596,22 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
         delta: options.quantity,
         expires_at: options.expiresAt,
         description: options.description,
+        allow_negative: true,
       }
     );
   }
 
-  async testModePurchase(options: { priceId: string, fullCode: string, quantity?: number }): Promise<void> {
-    await this._interface.testModePurchase({ price_id: options.priceId, full_code: options.fullCode, quantity: options.quantity });
+  async listTransactions(params: { cursor?: string, limit?: number, type?: 'subscription' | 'one_time' | 'item_quantity_change', customerType?: 'user' | 'team' | 'custom' }): Promise<{ transactions: AdminTransaction[], nextCursor: string | null }> {
+    const crud = Result.orThrow(await this._transactionsCache.getOrWait([params.cursor, params.limit, params.type, params.customerType] as const, "write-only"));
+    return crud;
   }
+
+  // IF_PLATFORM react-like
+  useTransactions(params: { cursor?: string, limit?: number, type?: 'subscription' | 'one_time' | 'item_quantity_change', customerType?: 'user' | 'team' | 'custom' }): { transactions: AdminTransaction[], nextCursor: string | null } {
+    const data = useAsyncCache(this._transactionsCache, [params.cursor, params.limit, params.type, params.customerType] as const, "adminApp.useTransactions()");
+    return data;
+  }
+  // END_PLATFORM
 
   async getStripeAccountInfo(): Promise<null | { account_id: string, charges_enabled: boolean, details_submitted: boolean, payouts_enabled: boolean }> {
     return await this._interface.getStripeAccountInfo();
@@ -549,7 +619,7 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
 
   // IF_PLATFORM react-like
   useStripeAccountInfo(): { account_id: string, charges_enabled: boolean, details_submitted: boolean, payouts_enabled: boolean } | null {
-    const data = useAsyncCache(this._stripeAccountInfoCache, [], "useStripeAccountInfo()");
+    const data = useAsyncCache(this._stripeAccountInfoCache, [], "adminApp.useStripeAccountInfo()");
     return data;
   }
   // END_PLATFORM

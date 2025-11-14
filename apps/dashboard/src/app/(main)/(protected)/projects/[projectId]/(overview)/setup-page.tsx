@@ -5,12 +5,13 @@ import { APIEnvKeys, NextJsEnvKeys } from '@/components/env-keys';
 import { InlineCode } from '@/components/inline-code';
 import { StyledLink } from '@/components/link';
 import { useThemeWatcher } from '@/lib/theme';
+import { use } from "@stackframe/stack-shared/dist/utils/react";
 import { deindent } from '@stackframe/stack-shared/dist/utils/strings';
 import { Button, Tabs, TabsContent, TabsList, TabsTrigger, Typography, cn } from "@stackframe/stack-ui";
 import { Book, X } from "lucide-react";
 import dynamic from "next/dynamic";
 import Image from 'next/image';
-import { Suspense, use, useRef, useState } from "react";
+import { Suspense, useRef, useState } from "react";
 import type { GlobeMethods } from 'react-globe.gl';
 import { PageLayout } from "../page-layout";
 import { useAdminApp } from '../use-admin-app';
@@ -33,7 +34,7 @@ export default function SetupPage(props: { toMetrics: () => void }) {
       hasPublishableClientKey: true,
       hasSecretServerKey: true,
       hasSuperSecretAdminKey: false,
-      expiresAt: new Date(Date.now() + 1000 * 60 * 60 * 24 * 30),
+      expiresAt: new Date(Date.now() + 1000 * 60 * 60 * 24 * 365 * 200),
       description: 'Onboarding',
     });
 
@@ -114,10 +115,10 @@ export default function SetupPage(props: { toMetrics: () => void }) {
     },
     {
       step: 4,
-      title: "Create stack.ts file",
+      title: "Create stack/client.ts file",
       content: <>
         <Typography>
-          Create a new file called <InlineCode>stack.ts</InlineCode> and add the following code. Here we use react-router-dom as an example.
+          Create a new file called <InlineCode>stack/client.ts</InlineCode> and add the following code. Here we use react-router-dom as an example.
         </Typography>
         <CodeBlock
           language="tsx"
@@ -135,7 +136,7 @@ export default function SetupPage(props: { toMetrics: () => void }) {
               }
             });
           `}
-          title="stack.ts"
+          title="stack/client.ts"
           icon="code"
         />
       </>
@@ -154,7 +155,7 @@ export default function SetupPage(props: { toMetrics: () => void }) {
             import { StackHandler, StackProvider, StackTheme } from "@stackframe/react";
             import { Suspense } from "react";
             import { BrowserRouter, Route, Routes, useLocation } from "react-router-dom";
-            import { stackClientApp } from "./stack";
+            import { stackClientApp } from "./stack/client";
 
             function HandlerRoutes() {
               const location = useLocation();
@@ -427,7 +428,7 @@ export default function SetupPage(props: { toMetrics: () => void }) {
           <X className="w-4 h-4 ml-1 mt-0.5" />
         </Button>
       </div>
-      <div className="flex gap-4 justify-center items-center border rounded-2xl py-4 px-8 backdrop-blur-md bg-white/20 dark:bg-black/20">
+      <div className="flex gap-4 justify-center items-center border rounded-2xl py-4 px-8 backdrop-blur-md bg-slate-200/20 dark:bg-black/20">
         <GlobeIllustration />
 
         <div className="flex flex-col gap-4">

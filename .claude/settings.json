@@ -16,16 +16,6 @@
   },
   "includeCoAuthoredBy": false,
   "hooks": {
-    "UserPromptSubmit": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "if ! curl -s --connect-timeout 1 http://localhost:8102 >/dev/null 2>&1; then echo -e '\\n\\n\\033[1;31mCannot reach backend on port 8102! Please run `pnpm run dev` before querying Claude Code\\033[0m\\n\\n' >&2; exit 2; fi"
-          }
-        ]
-      }
-    ],
     "PostToolUse": [
       {
         "matcher": "Edit|MultiEdit|Write",
@@ -42,7 +32,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "(pnpm run typecheck 1>&2 || exit 2) && (pnpm run lint 1>&2 || exit 2)"
+            "command": "if jq -e '.stop_hook_active == true' >/dev/null 2>&1; then exit 0; fi && (pnpm run typecheck 1>&2 || exit 2) && (pnpm run lint 1>&2 || exit 2)"
           }
         ]
       }

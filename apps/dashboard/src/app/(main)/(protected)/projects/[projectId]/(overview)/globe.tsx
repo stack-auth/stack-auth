@@ -1,10 +1,11 @@
 import { useThemeWatcher } from '@/lib/theme';
 import useResizeObserver from '@react-hook/resize-observer';
 import { useUser } from '@stackframe/stack';
+import { use } from '@stackframe/stack-shared/dist/utils/react';
 import { getFlagEmoji } from '@stackframe/stack-shared/dist/utils/unicode';
 import { Typography } from '@stackframe/stack-ui';
 import dynamic from 'next/dynamic';
-import { RefObject, use, useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
+import { RefObject, useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { GlobeMethods } from 'react-globe.gl';
 
 export const globeImages = {

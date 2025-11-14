@@ -221,6 +221,7 @@ export async function createOrUpdateProjectWithLegacyConfig(
       password: dataOptions.email_config.password,
       senderName: dataOptions.email_config.sender_name,
       senderEmail: dataOptions.email_config.sender_email,
+      provider: "smtp",
     } satisfies CompleteConfig['emails']['server'] : undefined,
     'emails.selectedThemeId': dataOptions.email_theme,
     // ======================= rbac =======================
@@ -255,6 +256,10 @@ export async function createOrUpdateProjectWithLegacyConfig(
     configOverrideOverride['rbac.defaultPermissions.teamMember'] ??= { 'team_member': true };
 
     configOverrideOverride['auth.password.allowSignIn'] ??= true;
+
+    configOverrideOverride['apps.installed.authentication.enabled'] ??= true;
+    configOverrideOverride['apps.installed.emails.enabled'] ??= true;
+    configOverrideOverride['apps.installed.api-keys.enabled'] ??= true;
   }
   await overrideEnvironmentConfigOverride({
     projectId: projectId,

@@ -4,9 +4,8 @@ import { getUser, getUserIfOnGlobalPrismaClientQuery } from "@/app/api/latest/us
 import { getRenderedEnvironmentConfigQuery } from "@/lib/config";
 import { checkApiKeySet, checkApiKeySetQuery } from "@/lib/internal-api-keys";
 import { getProjectQuery, listManagedProjectIds } from "@/lib/projects";
-import { DEFAULT_BRANCH_ID, Tenancy, getSoleTenancyFromProjectBranch } from "@/lib/tenancies";
+import { DEFAULT_BRANCH_ID, Tenancy, getSoleTenancyFromProjectBranchQuery } from "@/lib/tenancies";
 import { decodeAccessToken } from "@/lib/tokens";
-import { hashWorkflowTriggerToken } from "@/lib/workflows";
 import { globalPrismaClient, rawQueryAll } from "@/prisma-client";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
@@ -168,7 +167,6 @@ const parseAuth = withTraceSpan('smart request parseAuth', async (req: NextReque
   const secretServerKey = req.headers.get("x-stack-secret-server-key");
   const superSecretAdminKey = req.headers.get("x-stack-super-secret-admin-key");
   const adminAccessToken = req.headers.get("x-stack-admin-access-token");
-  const workflowToken = req.headers.get("x-stack-workflow-token");
   const accessToken = req.headers.get("x-stack-access-token");
   const developmentKeyOverride = req.headers.get("x-stack-development-override-key");  // in development, the internal project's API key can optionally be used to access any project
   const allowAnonymousUser = req.headers.get("x-stack-allow-anonymous-user") === "true";
@@ -250,23 +248,13 @@ const parseAuth = withTraceSpan('smart request parseAuth', async (req: NextReque
     isServerKeyValid: secretServerKey && requestType === "server" ? checkApiKeySetQuery(projectId, { secretServerKey }) : undefined,
     isAdminKeyValid: superSecretAdminKey && requestType === "admin" ? checkApiKeySetQuery(projectId, { superSecretAdminKey }) : undefined,
     project: getProjectQuery(projectId),
+    tenancy: getSoleTenancyFromProjectBranchQuery(projectId, branchId, true),
     environmentRenderedConfig: getRenderedEnvironmentConfigQuery({ projectId, branchId }),
   };
   const queriesResults = await rawQueryAll(globalPrismaClient, bundledQueries);
   const project = await queriesResults.project;
-  if (project === null) throw new KnownErrors.CurrentProjectNotFound(projectId);  // this does allow one to probe whether a project exists or not, but that's fine
-  const environmentConfig = await queriesResults.environmentRenderedConfig;
-
-  // As explained above, as a performance optimization we already fetch the user from the global database optimistically
-  // If it turned out that the source-of-truth is not the global database, we'll fetch the user from the source-of-truth
-  // database instead.
-  const user = environmentConfig.sourceOfTruth.type === "hosted"
-    ? queriesResults.userIfOnGlobalPrismaClient
-    : (userId ? await getUser({ userId, projectId, branchId }) : undefined);
-
-  // TODO HACK tenancy is not needed for /users/me, so let's not fetch it as a hack to make the endpoint faster. Once we
-  // refactor this stuff, we can fetch the tenancy alongside the user and won't need this anymore
-  const tenancy = req.method === "GET" && req.url.endsWith("/users/me") ? "tenancy not available in /users/me as a performance hack" as never : await getSoleTenancyFromProjectBranch(projectId, branchId, true);
+  if (project === null) throw new KnownErrors.CurrentProjectNotFound(projectId);  // this does allow one to probe whether a project exists or not, but that's fine (it's worth the better error messages)
+  const tenancy = await queriesResults.tenancy;
 
   if (developmentKeyOverride) {
     if (!["development", "test"].includes(getNodeEnvironment()) && getEnvVariable("STACK_ALLOW_DEVELOPMENT_KEY_OVERRIDE_DESPITE_PRODUCTION", "") !== "this-is-dangerous") {  // it's not actually that dangerous, but it changes the security model
@@ -277,25 +265,6 @@ const parseAuth = withTraceSpan('smart request parseAuth', async (req: NextReque
   } else if (adminAccessToken) {
     // TODO put this into the bundled queries above (not so important because this path is quite rare)
     await extractUserFromAdminAccessToken({ token: adminAccessToken, projectId });  // assert that the admin token is valid
-  } else if (workflowToken) {
-    // TODO put this into the bundled queries above (not so important because this path is quite rare)
-    if (requestType === "admin") {
-      throw new KnownErrors.AdminAuthenticationRequired();
-    }
-    if (!["client", "server"].includes(requestType)) {
-      throw new StackAssertionError(`Unexpected request type in workflow token auth: ${requestType}. This should never happen because we should've filtered this earlier`);
-    }
-    const workflowTokenHash = await hashWorkflowTriggerToken(workflowToken);
-    const workflowTriggerToken = tenancy ? await globalPrismaClient.workflowTriggerToken.findUnique({
-      where: {
-        tenancyId_tokenHash: {
-          tenancyId: tenancy.id,
-          tokenHash: workflowTokenHash,
-        },
-      },
-    }) : undefined;
-    if (!workflowTriggerToken) throw new KnownErrors.WorkflowTokenDoesNotExist();
-    if (workflowTriggerToken.expiresAt < new Date()) throw new KnownErrors.WorkflowTokenExpired();
   } else {
     switch (requestType) {
       case "client": {
@@ -320,8 +289,16 @@ const parseAuth = withTraceSpan('smart request parseAuth', async (req: NextReque
   }
 
   if (!tenancy) {
+    // note that we only check branch existence here so you can't probe branches unless you have the project keys
     throw new KnownErrors.BranchDoesNotExist(branchId);
   }
+
+  // As explained above, as a performance optimization we already fetch the user from the global database optimistically
+  // If it turned out that the source-of-truth is not the global database, we'll fetch the user from the source-of-truth
+  // database instead.
+  const user = tenancy.config.sourceOfTruth.type === "hosted"
+    ? queriesResults.userIfOnGlobalPrismaClient
+    : (userId ? await getUser({ userId, projectId, branchId }) : undefined);
 
   return {
     project,

@@ -22,7 +22,7 @@ On a high level, Stack Auth is composed of the following services:
 - **Dashboard**: The interface for managing users, teams, auth methods, etc. This is available at [app.stack-auth.com](https://app.stack-auth.com).
 - **Client SDK**: An SDK used to connect your app to the Stack Auth API backend, wrapping API calls and providing easy-to-use interfaces. More details [here](../getting-started/setup.mdx).
 - **Postgres database**: Used to store all user data. We use [Prisma](https://prisma.io) as the ORM and manage the database schema migrations.
-- **Svix**: Used to send webhooks. Svix is open-source and can be self-hosted, but also offers a cloud hosted solution. More on Svix [here](https://svix.com)
+- **Svix**: Used to send webhooks. Svix is open-source and can be self-hosted, but also products a cloud hosted solution. More on Svix [here](https://svix.com)
 - **Email server**: We use [Inbucket](https://inbucket.org) as a local email server for development and a separate SMTP server for production. Any email service supporting SMTP will work.
 - **S3 storage**: We use [S3Mock](https://github.com/adobe/S3Mock) as a local S3 storage for development and a separate S3 storage for production. Any S3 storage will work.
 
@@ -32,7 +32,7 @@ Stack Auth provides a [pre-configured Docker](https://hub.docker.com/r/stackauth
 
 1. Use a cloud hosted Postgres or start a example Postgres database. Don't use this setting in production:
   ```sh
-  docker run -d --name db -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=password -e POSTGRES_DB=stackframe -p 5432:5432 postgres:latest
+  docker run -d --name db -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=password -e POSTGRES_DB=stackframe -p 8128:5432 postgres:latest
   ```
 
 2. Get the [example environment file](https://github.com/stack-auth/stack-auth/tree/main/docker/server/.env.example) and modify it to your needs (for security, you MUST edit at least the `STACK_SERVER_SECRET` value). You must also supply a `STACK_FREESTYLE_API_KEY` in order to send emails with Stack Auth (can be generated on [freestyle](https://freestyle.sh)). See the [full template here](https://github.com/stack-auth/stack-auth/blob/dev/docker/server/.env).

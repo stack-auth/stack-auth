@@ -1,43 +1,46 @@
 'use client';
 
+import NextLink from 'next/link'; // eslint-disable-line no-restricted-imports
+
+import { UrlPrefetcher } from '@/lib/prefetch/url-prefetcher';
+import React from "react";
 import { cn } from "../lib/utils";
-// eslint-disable-next-line
-import NextLink from 'next/link';
 import { useRouter, useRouterConfirm } from "./router";
 
 type LinkProps = {
-  href: string,
+  href: string | URL,
   children: React.ReactNode,
   className?: string,
   target?: string,
   onClick?: () => void,
   style?: React.CSSProperties,
-  prefetch?: boolean,
+  scroll?: boolean,
+  prefetch?: boolean | "auto",
 };
 
-export function Link(props: LinkProps) {
+export const Link = React.forwardRef<HTMLAnchorElement, LinkProps>(({ onClick, href, children, ...rest }, ref) => {
   const router = useRouter();
   const { needConfirm } = useRouterConfirm();
 
   return <NextLink
-    href={props.href}
-    target={props.target}
-    className={props.className}
-    prefetch={props.prefetch}
-    style={props.style}
+    ref={ref}
+    href={href}
+    {...rest}
     onClick={(e: React.MouseEvent<HTMLAnchorElement>) => {
       if (needConfirm) {
         e.preventDefault();
-        props.onClick?.();
-        router.push(props.href);
+        onClick?.();
+        router.push(href.toString());
       }
-      props.onClick?.();
+      onClick?.();
     }}
   >
-    {props.children}
+    <UrlPrefetcher href={href} />
+    {children}
   </NextLink>;
 
-}
+});
+Link.displayName = 'Link';
 
 export function StyledLink(props: LinkProps) {
   return (

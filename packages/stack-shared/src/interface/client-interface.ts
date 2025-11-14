@@ -2,7 +2,7 @@ import * as oauth from 'oauth4webapi';
 
 import * as yup from 'yup';
 import { KnownError, KnownErrors } from '../known-errors';
-import { inlineOfferSchema } from '../schema-fields';
+import { inlineProductSchema } from '../schema-fields';
 import { AccessToken, InternalSession, RefreshToken } from '../sessions';
 import { generateSecureRandomString } from '../utils/crypto';
 import { StackAssertionError, throwErr } from '../utils/errors';
@@ -21,6 +21,7 @@ import { CurrentUserCrud } from './crud/current-user';
 import { ItemCrud } from './crud/items';
 import { NotificationPreferenceCrud } from './crud/notification-preferences';
 import { OAuthProviderCrud } from './crud/oauth-providers';
+import { CustomerProductsListResponse, ListCustomerProductsOptions } from './crud/products';
 import { TeamApiKeysCrud, UserApiKeysCrud, teamApiKeysCreateInputSchema, teamApiKeysCreateOutputSchema, userApiKeysCreateInputSchema, userApiKeysCreateOutputSchema } from './crud/project-api-keys';
 import { ProjectPermissionsCrud } from './crud/project-permissions';
 import { AdminUserProjectsCrud, ClientProjectsCrud } from './crud/projects';
@@ -44,6 +45,8 @@ export type ClientInterfaceOptions = {
 });
 
 export class StackClientInterface {
+  private pendingNetworkDiagnostics?: ReturnType<StackClientInterface["_runNetworkDiagnosticsInner"]>;
+
   constructor(public readonly options: ClientInterfaceOptions) {
     // nothing here
   }
@@ -57,6 +60,19 @@ export class StackClientInterface {
   }
 
   public async runNetworkDiagnostics(session?: InternalSession | null, requestType?: "client" | "server" | "admin") {
+    if (this.pendingNetworkDiagnostics) {
+      return await this.pendingNetworkDiagnostics;
+    }
+
+    this.pendingNetworkDiagnostics = this._runNetworkDiagnosticsInner(session, requestType);
+    try {
+      return await this.pendingNetworkDiagnostics;
+    } finally {
+      this.pendingNetworkDiagnostics = undefined;
+    }
+  }
+
+  private async _runNetworkDiagnosticsInner(session?: InternalSession | null, requestType?: "client" | "server" | "admin") {
     const tryRequest = async (cb: () => Promise<void>) => {
       try {
         await cb();
@@ -71,12 +87,6 @@ export class StackClientInterface {
         throw new Error(`${res.status} ${res.statusText}: ${await res.text()}`);
       }
     });
-    const apiRoot = session !== undefined && requestType !== undefined ? await tryRequest(async () => {
-      const res = await this.sendClientRequestInner("/", {}, session!, requestType);
-      if (res.status === "error") {
-        throw res.error;
-      }
-    }) : "Not tested";
     const baseUrlBackend = await tryRequest(async () => {
       const res = await fetch(new URL("/health", this.getApiUrl()));
       if (!res.ok) {
@@ -98,7 +108,6 @@ export class StackClientInterface {
     return {
       "navigator?.onLine": globalVar.navigator?.onLine,
       cfTrace,
-      apiRoot,
       baseUrlBackend,
       prodDashboard,
       prodBackend,
@@ -155,29 +164,33 @@ export class StackClientInterface {
       token_endpoint_auth_method: 'client_secret_post',
     };
 
-    const rawResponse = await this._networkRetryException(
-      async () => await oauth.refreshTokenGrantRequest(
+    const response = await this._networkRetryException(async () => {
+      const rawResponse = await oauth.refreshTokenGrantRequest(
         as,
         client,
         refreshToken.token,
-      )
-    );
-    const response = await this._processResponse(rawResponse);
+      );
 
-    if (response.status === "error") {
-      const error = response.error;
-      if (KnownErrors.RefreshTokenError.isInstance(error)) {
-        return null;
+      const response = await this._processResponse(rawResponse);
+
+      if (response.status === "error") {
+        const error = response.error;
+        if (KnownErrors.RefreshTokenError.isInstance(error)) {
+          return null;
+        }
+        throw error;
       }
-      throw error;
-    }
 
-    if (!response.data.ok) {
-      const body = await response.data.text();
-      throw new Error(`Failed to send refresh token request: ${response.status} ${body}`);
-    }
+      if (!response.data.ok) {
+        const body = await response.data.text();
+        throw new Error(`Failed to send refresh token request: ${response.status} ${body}`);
+      }
 
-    const result = await oauth.processRefreshTokenResponse(as, client, response.data);
+      return response.data;
+    });
+    if (!response) return null;
+
+    const result = await oauth.processRefreshTokenResponse(as, client, response);
     if (oauth.isOAuth2Error(result)) {
       // TODO Handle OAuth 2.0 response body error
       throw new StackAssertionError("OAuth error", { result });
@@ -187,7 +200,7 @@ export class StackClientInterface {
       throw new StackAssertionError("Access token not found in token endpoint response, this is weird!");
     }
 
-    return new AccessToken(result.access_token);
+    return AccessToken.createIfValid(result.access_token) ?? throwErr("Access token in fetchNewAccessToken is invalid, looks like the backend is returning an invalid token!", { result });
   }
 
   public async sendClientRequest(
@@ -802,7 +815,7 @@ export class StackClientInterface {
   async signUpWithCredential(
     email: string,
     password: string,
-    emailVerificationRedirectUrl: string,
+    emailVerificationRedirectUrl: string | undefined,
     session: InternalSession,
   ): Promise<Result<{ accessToken: string, refreshToken: string }, KnownErrors["UserWithEmailAlreadyExists"] | KnownErrors["PasswordRequirementsNotMet"]>> {
     const res = await this.sendClientRequestAndCatchKnownError(
@@ -1774,15 +1787,33 @@ export class StackClientInterface {
     return await response.json();
   }
 
+  async listProducts(
+    options: ListCustomerProductsOptions,
+    session: InternalSession | null,
+  ): Promise<CustomerProductsListResponse> {
+    const queryParams = new URLSearchParams(filterUndefined({
+      cursor: options.cursor,
+      limit: options.limit !== undefined ? options.limit.toString() : undefined,
+    }));
+    const path = urlString`/payments/products/${options.customer_type}/${options.customer_id}`;
+    const response = await this.sendClientRequest(
+      `${path}${queryParams.toString() ? `?${queryParams.toString()}` : ''}`,
+      {},
+      session,
+    );
+    return await response.json();
+  }
+
   async createCheckoutUrl(
     customer_type: "user" | "team" | "custom",
     customer_id: string,
-    offerIdOrInline: string | yup.InferType<typeof inlineOfferSchema>,
+    productIdOrInline: string | yup.InferType<typeof inlineProductSchema>,
     session: InternalSession | null,
+    returnUrl?: string,
   ): Promise<string> {
-    const offerBody = typeof offerIdOrInline === "string" ?
-      { offer_id: offerIdOrInline } :
-      { inline_offer: offerIdOrInline };
+    const productBody = typeof productIdOrInline === "string" ?
+      { product_id: productIdOrInline } :
+      { inline_product: productIdOrInline };
     const response = await this.sendClientRequest(
       "/payments/purchases/create-purchase-url",
       {
@@ -1790,12 +1821,31 @@ export class StackClientInterface {
         headers: {
           "content-type": "application/json",
         },
-        body: JSON.stringify({ customer_type, customer_id, ...offerBody }),
+        body: JSON.stringify({ customer_type, customer_id, ...productBody, return_url: returnUrl }),
       },
       session
     );
     const { url } = await response.json() as { url: string };
     return url;
   }
-}
 
+  async transferProject(internalProjectSession: InternalSession, projectIdToTransfer: string, newTeamId: string): Promise<void> {
+    if (this.options.projectId !== "internal") {
+      throw new StackAssertionError("StackClientInterface.transferProject() is only available for internal projects (please specify the project ID in the constructor)");
+    }
+    await this.sendClientRequest(
+      "/internal/projects/transfer",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          project_id: projectIdToTransfer,
+          new_team_id: newTeamId,
+        }),
+      },
+      internalProjectSession,
+    );
+  }
+}

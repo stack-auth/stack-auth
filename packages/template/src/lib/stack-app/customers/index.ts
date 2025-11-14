@@ -1,8 +1,8 @@
-import { inlineOfferSchema } from "@stackframe/stack-shared/dist/schema-fields";
+import { inlineProductSchema } from "@stackframe/stack-shared/dist/schema-fields";
 import * as yup from "yup";
 import { AsyncStoreProperty } from "../common";
 
-export type InlineOffer = yup.InferType<typeof inlineOfferSchema>;
+export type InlineProduct = yup.InferType<typeof inlineProductSchema>;
 
 export type Item = {
   displayName: string,
@@ -32,13 +32,36 @@ export type ServerItem = Item & {
   tryDecreaseQuantity(amount: number): Promise<boolean>,
 };
 
+export type CustomerProduct = {
+  id: string | null,
+  quantity: number,
+  displayName: string,
+  customerType: "user" | "team" | "custom",
+  isServerOnly: boolean,
+  stackable: boolean,
+};
+
+export type CustomerProductsList = CustomerProduct[] & {
+  nextCursor: string | null,
+};
+
+export type CustomerProductsListOptions = {
+  cursor?: string,
+  limit?: number,
+};
+
+export type CustomerProductsRequestOptions =
+  | ({ userId: string } & CustomerProductsListOptions)
+  | ({ teamId: string } & CustomerProductsListOptions)
+  | ({ customCustomerId: string } & CustomerProductsListOptions);
+
 export type Customer<IsServer extends boolean = false> =
   & {
     readonly id: string,
 
     createCheckoutUrl(options: (
-      | { offerId: string }
-      | (IsServer extends true ? { offer: InlineOffer } : never)
+      | { productId: string, returnUrl?: string }
+      | (IsServer extends true ? { product: InlineProduct, returnUrl?: string } : never)
     )): Promise<string>,
   }
   & AsyncStoreProperty<
@@ -46,4 +69,15 @@ export type Customer<IsServer extends boolean = false> =
     [itemId: string],
     IsServer extends true ? ServerItem : Item,
     false
-  >;
+  >
+  & AsyncStoreProperty<
+    "products",
+    [options?: CustomerProductsListOptions],
+    CustomerProductsList,
+    true
+  >
+  & (IsServer extends true ? {
+    grantProduct(
+      product: { productId: string, quantity?: number } | { product: InlineProduct, quantity?: number },
+    ): Promise<void>,
+  } : {});

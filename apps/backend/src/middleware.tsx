@@ -9,6 +9,10 @@ import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 import { SmartRouter } from './smart-router';
 
+const DEV_RATE_LIMIT_MAX_REQUESTS = 100;
+const DEV_RATE_LIMIT_WINDOW_MS = 10_000;
+const devRateLimitTimestamps: number[] = [];
+
 const corsAllowedRequestHeaders = [
   // General
   'content-type',
@@ -26,7 +30,6 @@ const corsAllowedRequestHeaders = [
   'x-stack-secret-server-key',
   'x-stack-super-secret-admin-key',
   'x-stack-admin-access-token',
-  'x-stack-workflow-token',
 
   // User auth
   'x-stack-refresh-token',
@@ -65,6 +68,49 @@ export async function middleware(request: NextRequest) {
   const url = new URL(request.url);
   const isApiRequest = url.pathname.startsWith('/api/');
 
+  const corsHeadersInit = isApiRequest ? {
+    // CORS headers
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
+    "Access-Control-Max-Age": "86400",  // 1 day (capped to lower values, eg. 10min, by some browsers)
+    "Access-Control-Allow-Headers": corsAllowedRequestHeaders.join(', '),
+    "Access-Control-Expose-Headers": corsAllowedResponseHeaders.join(', '),
+  } : undefined;
+
+  // ensure our clients can handle 429 responses
+  if (isApiRequest && !request.headers.get('x-stack-disable-artificial-development-delay') && getNodeEnvironment() === 'development' && request.method !== 'OPTIONS' && !request.url.includes(".well-known")) {
+    const now = Date.now();
+    while (devRateLimitTimestamps.length > 0 && now - devRateLimitTimestamps[0] > DEV_RATE_LIMIT_WINDOW_MS) {
+      devRateLimitTimestamps.shift();
+    }
+    if (devRateLimitTimestamps.length >= DEV_RATE_LIMIT_MAX_REQUESTS) {
+      const waitMs = Math.max(0, DEV_RATE_LIMIT_WINDOW_MS - (now - devRateLimitTimestamps[0]));
+      const retryAfterSeconds = Math.max(1, Math.ceil(waitMs / 1000));
+
+      const response = NextResponse.json({
+        message: 'Artificial development rate limit triggered. Wait before retrying.',
+      }, {
+        status: 429,
+      });
+
+      // since not all firewalls return CORS headers with their 429 responses, 50% chance that we don't set the CORS headers
+      if (Math.random() < 0.5 && corsHeadersInit) {
+        for (const [key, value] of Object.entries(corsHeadersInit)) {
+          response.headers.set(key, value);
+        }
+      }
+
+      if (Math.random() < 0.5) {
+        // for debugging, make sure we don't always set the Retry-After header
+        response.headers.set('Retry-After', retryAfterSeconds.toString());
+      }
+
+      return response;
+    } else {
+      devRateLimitTimestamps.push(now);
+    }
+  }
+
   const newRequestHeaders = new Headers(request.headers);
   // here we could update the request headers (currently we don't)
 
@@ -72,14 +118,7 @@ export async function middleware(request: NextRequest) {
     request: {
       headers: newRequestHeaders,
     },
-    headers: {
-      // CORS headers
-      "Access-Control-Allow-Origin": "*",
-      "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
-      "Access-Control-Max-Age": "86400",  // 1 day (capped to lower values, eg. 10min, by some browsers)
-      "Access-Control-Allow-Headers": corsAllowedRequestHeaders.join(', '),
-      "Access-Control-Expose-Headers": corsAllowedResponseHeaders.join(', '),
-    },
+    headers: corsHeadersInit,
   } as const : undefined;
 
   // we want to allow preflight requests to pass through
