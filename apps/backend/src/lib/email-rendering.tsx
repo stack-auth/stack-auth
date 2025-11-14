@@ -51,11 +51,12 @@ export async function renderEmailWithTemplate(
     variables?: Record<string, any>,
     themeProps?: {
       unsubscribeLink?: string,
-      projectDisplayName?: string,
-      logoUrl?: string,
-      logoFullUrl?: string,
-      logoDarkModeUrl?: string,
-      logoFullDarkModeUrl?: string,
+      projectLogos: {
+        logoUrl?: string,
+        logoFullUrl?: string,
+        logoDarkModeUrl?: string,
+        logoFullDarkModeUrl?: string,
+      },
     },
     previewMode?: boolean,
   },
@@ -287,8 +288,67 @@ export function findComponentValue(element, targetStackComponent) {
 }`;
 
 const stackframeEmailsPackage = deindent`
+  import React from 'react';
+  import { Img } from '@react-email/components';
   export const Subject = (props) => null;
   Subject.__stackComponent = "Subject";
   export const NotificationCategory = (props) => null;
   NotificationCategory.__stackComponent = "NotificationCategory";
+
+  export function Logo(props) {
+    return React.createElement(
+      "div",
+      { className: "flex gap-2 items-center" },
+      React.createElement(Img, {
+        src: props.logoUrl,
+        alt: "Logo",
+        className: "h-8",
+      }),
+      React.createElement(
+        "h2",
+        { className: "text-white" },
+        props.projectDisplayName
+      )
+    );
+  }
+
+  export function FullLogo(props) {
+    return React.createElement(Img, {
+      src: props.logoFullUrl,
+      alt: "Full Logo",
+      className: "h-16",
+    });
+  }
+
+  export function ProjectLogo(props) {
+    const { mode = "light" } = props;
+    const {
+      logoUrl,
+      logoFullUrl,
+      logoDarkModeUrl,
+      logoFullDarkModeUrl,
+      projectDisplayName,
+    } = props.data;
+
+    if (mode === "dark" && logoFullDarkModeUrl) {
+      return React.createElement(FullLogo, { logoFullUrl: logoFullDarkModeUrl });
+    }
+    if (mode === "dark" && logoDarkModeUrl) {
+      return React.createElement(Logo, {
+        logoUrl: logoDarkModeUrl,
+        projectDisplayName,
+      });
+    }
+    if (mode === "light" && logoFullUrl) {
+      return React.createElement(FullLogo, { logoFullUrl });
+    }
+    if (mode === "light" && logoUrl) {
+      return React.createElement(Logo, {
+        logoUrl,
+        projectDisplayName,
+      });
+    }
+
+    return null;
+  }
 `;

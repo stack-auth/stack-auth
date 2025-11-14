@@ -42,24 +42,17 @@ export const emptyEmailTheme = deindent`
   }
 `;
 
-export const LightEmailTheme = `import { Html, Head, Tailwind, Body, Container, Link, Img } from '@react-email/components';
-import { ThemeProps } from "@stackframe/emails"
+export const LightEmailTheme = `import { Html, Head, Tailwind, Body, Container, Link } from '@react-email/components';
+import { ThemeProps, ProjectLogo } from "@stackframe/emails";
 
-export function EmailTheme({ children, unsubscribeLink, logoUrl, logoFullUrl, projectDisplayName }: ThemeProps) {
+export function EmailTheme({ children, unsubscribeLink, projectLogos }: ThemeProps) {
   return (
     <Html>
       <Head />
       <Tailwind>
         <Body className="bg-[#fafbfb] font-sans text-base">
           <Container className="bg-white p-[45px] rounded-lg">
-            {logoFullUrl ? 
-              <Img src={logoFullUrl} alt="Full Logo" className="h-16" /> :
-              logoUrl ? 
-                <div className="flex gap-2 items-center">
-                  <Img src={logoUrl} alt="Logo" className="h-8" />
-                  <h2>{projectDisplayName}</h2>
-                </div>
-                : null}
+            <ProjectLogo data={projectLogos} mode="light" />
             {children}
           </Container>
           {unsubscribeLink && (
@@ -80,38 +73,17 @@ EmailTheme.PreviewProps = {
 `;
 
 
-const DarkEmailTheme = `import { Html, Head, Tailwind, Body, Container, Link, Img } from '@react-email/components';
-import { ThemeProps } from "@stackframe/emails";
+const DarkEmailTheme = `import { Html, Head, Tailwind, Body, Container, Link } from '@react-email/components';
+import { ThemeProps, ProjectLogo } from "@stackframe/emails";
 
-function Logo(props: { logoUrl: string; projectDisplayName: string | undefined }) {
-  return (
-    <div className="flex gap-2 items-center">
-      <Img src={props.logoUrl} alt="Logo" className="h-8" />
-      <h2 className="text-white">{props.projectDisplayName}</h2>
-    </div>
-  );  
-}
-
-function FullLogo(props: { logoFullUrl: string }) {
-  return <Img src={props.logoFullUrl} alt="Full Logo" className="h-16" />;
-}
-
-export function EmailTheme({ children, unsubscribeLink, logoUrl, logoFullUrl, logoDarkModeUrl, logoFullDarkModeUrl, projectDisplayName }: ThemeProps) {
+export function EmailTheme({ children, unsubscribeLink, projectLogos }: ThemeProps) {
   return (
     <Html>
       <Head />
       <Tailwind>
         <Body className="bg-[#323232] font-sans text-white">
           <Container className="bg-black p-[45px] rounded-lg">
-            {logoFullDarkModeUrl ?
-              <FullLogo logoFullUrl={logoFullDarkModeUrl} /> :
-              logoDarkModeUrl ?
-                <Logo logoUrl={logoDarkModeUrl} projectDisplayName={projectDisplayName} /> :
-                  logoFullUrl ?
-                    <FullLogo logoFullUrl={logoFullUrl} /> :
-                      logoUrl ?
-                        <Logo logoUrl={logoUrl} projectDisplayName={projectDisplayName} /> :
-                          null}
+            <ProjectLogo data={projectLogos} mode="dark" />
             {children}
           </Container>
           {unsubscribeLink && (
