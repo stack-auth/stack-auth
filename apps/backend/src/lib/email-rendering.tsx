@@ -299,6 +299,7 @@ export function findComponentValue(element, targetStackComponent) {
   return value;
 }`;
 
+// issues with using jsx in external packages, using React.createElement instead
 const stackframeEmailsPackage = deindent`
   import React from 'react';
   import { Img } from '@react-email/components';
@@ -316,11 +317,6 @@ const stackframeEmailsPackage = deindent`
         alt: "Logo",
         className: "h-8",
       }),
-      React.createElement(
-        "h2",
-        { className: "text-white" },
-        props.projectDisplayName
-      )
     );
   }
 
@@ -339,7 +335,6 @@ const stackframeEmailsPackage = deindent`
       logoFullUrl,
       logoDarkModeUrl,
       logoFullDarkModeUrl,
-      projectDisplayName,
     } = props.data ?? {};
 
     if (mode === "dark" && logoFullDarkModeUrl) {
@@ -348,7 +343,6 @@ const stackframeEmailsPackage = deindent`
     if (mode === "dark" && logoDarkModeUrl) {
       return React.createElement(Logo, {
         logoUrl: logoDarkModeUrl,
-        projectDisplayName,
       });
     }
     if (mode === "light" && logoFullUrl) {
@@ -357,7 +351,6 @@ const stackframeEmailsPackage = deindent`
     if (mode === "light" && logoUrl) {
       return React.createElement(Logo, {
         logoUrl,
-        projectDisplayName,
       });
     }
 
