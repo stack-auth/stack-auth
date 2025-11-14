@@ -195,10 +195,14 @@ export const POST = createSmartRouteHandler({
         project: { displayName: auth.tenancy.project.display_name },
         variables,
         unsubscribeLink: unsubLinks.get(user.projectUserId),
-        logoUrl: auth.tenancy.project.logo_url ?? undefined,
-        logoFullUrl: auth.tenancy.project.logo_full_url ?? undefined,
-        logoDarkModeUrl: auth.tenancy.project.logo_dark_mode_url ?? undefined,
-        logoFullDarkModeUrl: auth.tenancy.project.logo_full_dark_mode_url ?? undefined,
+        themeProps: {
+          projectLogos: {
+            logoUrl: auth.tenancy.project.logo_url ?? undefined,
+            logoFullUrl: auth.tenancy.project.logo_full_url ?? undefined,
+            logoDarkModeUrl: auth.tenancy.project.logo_dark_mode_url ?? undefined,
+            logoFullDarkModeUrl: auth.tenancy.project.logo_full_dark_mode_url ?? undefined,
+          },
+        },
       }));
 
       const inputChunks = getChunks(finalInputs, BATCH_SIZE);

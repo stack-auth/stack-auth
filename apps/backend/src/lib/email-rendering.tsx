@@ -156,6 +156,14 @@ export async function renderEmailsWithTemplateBatched(
     project: { displayName: string },
     variables?: Record<string, any>,
     unsubscribeLink?: string,
+    themeProps?: {
+      projectLogos: {
+        logoUrl?: string,
+        logoFullUrl?: string,
+        logoDarkModeUrl?: string,
+        logoFullDarkModeUrl?: string,
+      },
+    },
   }>,
 ): Promise<Result<Array<{ html: string, text: string, subject?: string, notificationCategory?: string }>, string>> {
   const apiKey = getEnvVariable("STACK_FREESTYLE_API_KEY");
@@ -186,8 +194,12 @@ export async function renderEmailsWithTemplateBatched(
           if (variables instanceof type.errors) {
             throw new Error(variables.summary)
           }
+          const themeProps = {
+            ...{ projectLogos: input.themeProps?.projectLogos ?? {} },
+            unsubscribeLink: input.unsubscribeLink,
+          }
           const EmailTemplateWithProps  = <EmailTemplate variables={variables} user={input.user} project={input.project} />;
-          const Email = <EmailTheme unsubscribeLink={input.unsubscribeLink}>
+          const Email = <EmailTheme {...themeProps}>
             { EmailTemplateWithProps }
           </EmailTheme>;
           return {
@@ -328,7 +340,7 @@ const stackframeEmailsPackage = deindent`
       logoDarkModeUrl,
       logoFullDarkModeUrl,
       projectDisplayName,
-    } = props.data;
+    } = props.data ?? {};
 
     if (mode === "dark" && logoFullDarkModeUrl) {
       return React.createElement(FullLogo, { logoFullUrl: logoFullDarkModeUrl });
