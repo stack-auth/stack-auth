@@ -1,7 +1,5 @@
 import { ChartConfig, ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
-import { isWeekend } from "@stackframe/stack-shared/dist/utils/dates";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@stackframe/stack-ui";
-import { Bar, BarChart, CartesianGrid, Cell, Pie, PieChart, XAxis, YAxis } from "recharts";
+import { Line, LineChart, CartesianGrid, Cell, Pie, PieChart, XAxis, YAxis } from "recharts";
 
 export type LineChartDisplayConfig = {
   name: string,
@@ -21,121 +19,131 @@ export function LineChartDisplay({
   datapoints: DataPoint[],
 }) {
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>
-          {config.name}
-        </CardTitle>
-        <CardDescription>
-          {config.description}
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        <ChartContainer config={config.chart} className='w-full p-0 ml-[-30px]' maxHeight={300}>
-          <BarChart accessibilityLayer data={datapoints}>
+    <div className="relative overflow-hidden rounded-xl border border-border bg-card transition-all hover:shadow-lg group">
+      <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+      <div className="relative p-5">
+        <div className="mb-4">
+          <h3 className="text-base font-semibold">{config.name}</h3>
+          {config.description && (
+            <p className="text-xs text-muted-foreground mt-0.5">{config.description}</p>
+          )}
+        </div>
+        <ChartContainer config={config.chart} className='w-full p-0 ml-[-20px]' maxHeight={280}>
+          <LineChart accessibilityLayer data={datapoints} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
             <CartesianGrid
               horizontal={true}
               vertical={false}
+              strokeDasharray="3 3"
+              stroke="hsl(var(--border))"
+              opacity={0.3}
             />
             <ChartTooltip
               content={<ChartTooltipContent labelKey='date'/>}
+              cursor={{ stroke: 'var(--color-activity)', strokeWidth: 2, strokeDasharray: '5 5', opacity: 0.5 }}
             />
-            <Bar
+            <Line
+              type="monotone"
               dataKey="activity"
-              fill="var(--color-activity)"
-              fillOpacity={1}
+              stroke="var(--color-activity)"
+              strokeWidth={3}
+              dot={false}
+              activeDot={{
+                r: 6,
+                fill: 'var(--color-activity)',
+                strokeWidth: 2,
+                stroke: 'hsl(var(--background))',
+              }}
               isAnimationActive={false}
-            >{datapoints.map(x => (
-              <Cell key={x.date} fillOpacity={isWeekend(new Date(x.date)) ? 0.4 : 1} />
-            ))}</Bar>
-
+            />
             <YAxis
               tickLine={false}
               axisLine={false}
-              width={60}
+              width={50}
+              tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11 }}
             />
             <XAxis
               dataKey="date"
               tickLine={false}
-              tickMargin={10}
+              tickMargin={8}
               axisLine={false}
+              tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 10 }}
               tickFormatter={(value) => value}
             />
-          </BarChart>
+          </LineChart>
         </ChartContainer>
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   );
 }
 
 const BRAND_CONFIG = {
   email: {
     label: 'Email',
-    color: '#ffffff'
+    color: 'hsl(210, 40%, 55%)'
   },
   magiclink: {
     label: 'Magic Link',
-    color: '#A657F0'
+    color: 'hsl(270, 85%, 65%)'
   },
   passkey: {
     label: 'Passkey',
-    color: '#D2B6EF'
+    color: 'hsl(270, 70%, 80%)'
   },
   google: {
     label: 'Google',
-    color: '#F3801D',
+    color: 'hsl(15, 90%, 55%)',
   },
   github: {
     label: 'GitHub',
-    color: '#222222',
+    color: 'hsl(0, 0%, 20%)',
   },
   microsoft: {
     label: 'Microsoft',
-    color: '#F35325',
+    color: 'hsl(8, 89%, 57%)',
   },
   spotify: {
     label: 'Spotify',
-    color: '#1ED760'
+    color: 'hsl(141, 73%, 55%)'
   },
   facebook: {
     label: 'Facebook',
-    color: '#0866FF',
+    color: 'hsl(214, 100%, 52%)',
   },
   discord: {
     label: 'Discord',
-    color: '#5865F2',
+    color: 'hsl(235, 85%, 65%)',
   },
   gitlab: {
     label: 'GitLab',
-    color: '#FC6D26'
+    color: 'hsl(14, 96%, 57%)'
   },
   bitbucket: {
     label: 'Bitbucket',
-    color: '#0052CC',
+    color: 'hsl(208, 100%, 40%)',
   },
   linkedin: {
     label: 'LinkedIn',
-    color: '#0A66C2',
+    color: 'hsl(201, 100%, 40%)',
   },
   apple: {
     label: 'Apple',
-    color: '#F47CAD',
+    color: 'hsl(330, 85%, 65%)',
   },
   x: {
     label: 'X (Twitter)',
-    color: '#444444',
+    color: 'hsl(0, 0%, 30%)',
   },
   password: {
     label: 'Password',
-    color: '#008888',
+    color: 'hsl(180, 100%, 27%)',
   },
   other: {
     label: 'Other',
-    color: '#ffff00',
+    color: 'hsl(60, 100%, 50%)',
   },
   otp: {
     label: 'OTP/Magic Link',
-    color: '#ff0088',
+    color: 'hsl(330, 100%, 50%)',
   },
 };
 
@@ -150,14 +158,14 @@ export function DonutChartDisplay({
   datapoints: AuthMethodDatapoint[],
 }) {
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>
-          Auth Methods
-        </CardTitle>
-      </CardHeader>
-      <CardContent>
-        <ChartContainer config={BRAND_CONFIG} className='w-full p-4' maxHeight={300}>
+    <div className="relative overflow-hidden rounded-xl border border-border bg-card transition-all hover:shadow-lg">
+      <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-transparent opacity-0 hover:opacity-100 transition-opacity" />
+      <div className="relative p-5">
+        <div className="mb-3">
+          <h3 className="text-base font-semibold">Auth Methods</h3>
+          <p className="text-xs text-muted-foreground mt-0.5">Login distribution</p>
+        </div>
+        <ChartContainer config={BRAND_CONFIG} className='w-full flex items-center justify-center' maxHeight={220}>
           <PieChart>
             <ChartTooltip
               cursor={false}
@@ -170,14 +178,33 @@ export function DonutChartDisplay({
               }))}
               dataKey="count"
               nameKey="method"
-              innerRadius={60}
+              innerRadius={55}
+              outerRadius={85}
+              paddingAngle={2}
               labelLine={false}
               isAnimationActive={false}
-              label={(x) => `${new Map(Object.entries(BRAND_CONFIG)).get(x.method)?.label ?? x.method}: ${x.count}`}
+              label={(x) => {
+                const total = datapoints.reduce((sum, d) => sum + d.count, 0);
+                const percentage = ((x.count / total) * 100).toFixed(0);
+                return percentage !== '0' ? `${percentage}%` : '';
+              }}
             />
           </PieChart>
         </ChartContainer>
-      </CardContent>
-    </Card>
+        <div className="mt-3 flex flex-wrap gap-2 justify-center">
+          {datapoints.map((item) => (
+            <div key={item.method} className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-muted/50">
+              <div 
+                className="w-2.5 h-2.5 rounded-full" 
+                style={{ backgroundColor: `var(--color-${item.method})` }}
+              />
+              <span className="text-xs font-medium">
+                {new Map(Object.entries(BRAND_CONFIG)).get(item.method)?.label ?? item.method}
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
   );
 }
