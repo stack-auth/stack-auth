@@ -241,9 +241,6 @@ function HeroSection({ includeAnonymous }: { includeAnonymous: boolean }) {
           <div className="mb-4 space-y-1">
             <div className="flex items-center gap-2">
               <h3 className="text-lg font-semibold">Global Distribution</h3>
-              <div className="px-2 py-0.5 rounded-full bg-blue-500/10 dark:bg-blue-500/20 border border-blue-500/20 dark:border-blue-500/30">
-                <span className="text-xs font-medium text-blue-700 dark:text-blue-400">Interactive</span>
-              </div>
             </div>
             <p className="text-sm text-muted-foreground">Explore where your users are located</p>
           </div>

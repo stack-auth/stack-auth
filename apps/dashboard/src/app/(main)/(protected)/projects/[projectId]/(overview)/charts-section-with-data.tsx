@@ -3,6 +3,14 @@
 import { useRouter } from "@/components/router";
 import { UserAvatar } from '@stackframe/stack';
 import { fromNow } from '@stackframe/stack-shared/dist/utils/dates';
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+  Typography,
+} from "@stackframe/stack-ui";
 import { useAdminApp, useProjectId } from '../use-admin-app';
 import { DonutChartDisplay, LineChartDisplay, LineChartDisplayConfig } from './line-chart';
 
@@ -59,44 +67,62 @@ export function ChartsSectionWithData({ includeAnonymous }: { includeAnonymous: 
       {/* Activity Grid */}
       <div className='grid gap-4 lg:grid-cols-3'>
         {/* Recent Sign Ups - 2/3 width */}
-        <div className="lg:col-span-2 relative overflow-hidden rounded-xl border border-border bg-card transition-all hover:shadow-lg">
-          <div className="absolute inset-0 bg-gradient-to-br from-blue-500/5 to-transparent opacity-0 hover:opacity-100 transition-opacity" />
-          <div className="relative p-5">
-            <h3 className="text-base font-semibold mb-4">Recent Sign Ups</h3>
+        <Card className="lg:col-span-2 transition-all">
+          <CardHeader className="pb-3">
+            <div className="space-y-1">
+              <Typography className="text-xs font-medium uppercase tracking-wide text-blue-700">
+                Activity
+              </Typography>
+              <CardTitle className="text-base font-semibold">
+                Recent Sign Ups
+              </CardTitle>
+              <CardDescription className="text-xs">
+                Users who signed up most recently.
+              </CardDescription>
+            </div>
+          </CardHeader>
+          <CardContent className="pt-0">
             {data.recently_registered.length === 0 ? (
               <div className="flex items-center justify-center py-16">
-                <p className="text-sm text-muted-foreground">No recent sign ups</p>
+                <Typography variant="secondary" className="text-sm">
+                  No recent sign ups
+                </Typography>
               </div>
             ) : (
-              <div className="space-y-2">
+              <div className="space-y-2 max-h-[340px] overflow-y-auto pr-1">
                 {data.recently_registered.map((user: any) => (
-                  <div
+                  <button
                     key={user.id}
-                    onClick={() => router.push(`/projects/${encodeURIComponent(projectId)}/users/${encodeURIComponent(user.id)}`)}
-                    className="flex items-center gap-3 p-3 rounded-lg bg-muted/30 hover:bg-accent cursor-pointer transition-colors group"
+                    type="button"
+                    onClick={() =>
+                      router.push(
+                        `/projects/${encodeURIComponent(projectId)}/users/${encodeURIComponent(user.id)}`
+                      )
+                    }
+                    className="flex w-full items-center gap-3 rounded-lg border border-border/70 bg-background/80 px-3 py-2 text-left transition-colors hover:bg-muted/40"
                   >
                     <UserAvatar
                       user={{
                         profileImageUrl: user.profile_image_url,
                         displayName: user.display_name,
-                        primaryEmail: user.primary_email
+                        primaryEmail: user.primary_email,
                       }}
                       size={40}
                     />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium truncate">
+                    <div className="min-w-0 flex-1 space-y-0.5">
+                      <Typography className="truncate text-sm font-medium leading-snug">
                         {user.display_name ?? user.primary_email}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
+                      </Typography>
+                      <Typography variant="secondary" className="text-xs">
                         {fromNow(new Date(user.signed_up_at_millis))}
-                      </p>
+                      </Typography>
                     </div>
-                  </div>
+                  </button>
                 ))}
               </div>
             )}
-          </div>
-        </div>
+          </CardContent>
+        </Card>
 
         {/* Auth Methods Donut */}
         <DonutChartDisplay
@@ -105,44 +131,62 @@ export function ChartsSectionWithData({ includeAnonymous }: { includeAnonymous: 
       </div>
 
       {/* Recently Active - Full Width Grid */}
-      <div className="relative overflow-hidden rounded-xl border border-border bg-card transition-all hover:shadow-lg">
-        <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/5 to-transparent opacity-0 hover:opacity-100 transition-opacity" />
-        <div className="relative p-5">
-          <h3 className="text-base font-semibold mb-4">Recently Active</h3>
+      <Card className="transition-all">
+        <CardHeader className="pb-3">
+          <div className="space-y-1">
+            <Typography className="text-xs font-medium uppercase tracking-wide text-blue-700">
+              Activity
+            </Typography>
+            <CardTitle className="text-base font-semibold">
+              Recently Active
+            </CardTitle>
+            <CardDescription className="text-xs">
+              Users who were active most recently.
+            </CardDescription>
+          </div>
+        </CardHeader>
+        <CardContent className="pt-0">
           {data.recently_active.length === 0 ? (
             <div className="flex items-center justify-center py-16">
-              <p className="text-sm text-muted-foreground">No recent activity</p>
+              <Typography variant="secondary" className="text-sm">
+                No recent activity
+              </Typography>
             </div>
           ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 gap-2">
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5">
               {data.recently_active.map((user: any) => (
-                <div
+                <button
                   key={user.id}
-                  onClick={() => router.push(`/projects/${encodeURIComponent(projectId)}/users/${encodeURIComponent(user.id)}`)}
-                  className="flex items-center gap-3 p-3 rounded-lg bg-muted/30 hover:bg-accent cursor-pointer transition-colors group"
+                  type="button"
+                  onClick={() =>
+                    router.push(
+                      `/projects/${encodeURIComponent(projectId)}/users/${encodeURIComponent(user.id)}`
+                    )
+                  }
+                  className="flex w-full items-center gap-3 rounded-lg border border-border/70 bg-background/80 px-3 py-2 text-left transition-colors hover:bg-muted/40"
                 >
                   <UserAvatar
                     user={{
                       profileImageUrl: user.profile_image_url,
                       displayName: user.display_name,
-                      primaryEmail: user.primary_email
+                      primaryEmail: user.primary_email,
                     }}
                     size={40}
                   />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium truncate">
+                  <div className="min-w-0 flex-1 space-y-0.5">
+                    <Typography className="truncate text-sm font-medium leading-snug">
                       {user.display_name ?? user.primary_email}
-                    </p>
-                    <p className="text-xs text-muted-foreground truncate">
+                    </Typography>
+                    <Typography variant="secondary" className="text-xs truncate">
                       {fromNow(new Date(user.last_active_at_millis))}
-                    </p>
+                    </Typography>
                   </div>
-                </div>
+                </button>
               ))}
             </div>
           )}
-        </div>
-      </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }
