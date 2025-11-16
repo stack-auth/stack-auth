@@ -1,5 +1,5 @@
 import { ChartConfig, ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
-import { Line, LineChart, CartesianGrid, Cell, Pie, PieChart, XAxis, YAxis } from "recharts";
+import { CartesianGrid, Line, LineChart, Pie, PieChart, XAxis, YAxis } from "recharts";
 
 export type LineChartDisplayConfig = {
   name: string,
@@ -194,8 +194,8 @@ export function DonutChartDisplay({
         <div className="mt-3 flex flex-wrap gap-2 justify-center">
           {datapoints.map((item) => (
             <div key={item.method} className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-muted/50">
-              <div 
-                className="w-2.5 h-2.5 rounded-full" 
+              <div
+                className="w-2.5 h-2.5 rounded-full"
                 style={{ backgroundColor: `var(--color-${item.method})` }}
               />
               <span className="text-xs font-medium">

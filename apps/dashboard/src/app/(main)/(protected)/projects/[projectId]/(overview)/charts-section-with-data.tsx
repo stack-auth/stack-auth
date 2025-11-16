@@ -75,13 +75,13 @@ export function ChartsSectionWithData({ includeAnonymous }: { includeAnonymous: 
                     onClick={() => router.push(`/projects/${encodeURIComponent(projectId)}/users/${encodeURIComponent(user.id)}`)}
                     className="flex items-center gap-3 p-3 rounded-lg bg-muted/30 hover:bg-accent cursor-pointer transition-colors group"
                   >
-                    <UserAvatar 
-                      user={{ 
-                        profileImageUrl: user.profile_image_url, 
-                        displayName: user.display_name, 
-                        primaryEmail: user.primary_email 
+                    <UserAvatar
+                      user={{
+                        profileImageUrl: user.profile_image_url,
+                        displayName: user.display_name,
+                        primaryEmail: user.primary_email
                       }}
-                      className="w-10 h-10"
+                      size={40}
                     />
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium truncate">
@@ -121,13 +121,13 @@ export function ChartsSectionWithData({ includeAnonymous }: { includeAnonymous: 
                   onClick={() => router.push(`/projects/${encodeURIComponent(projectId)}/users/${encodeURIComponent(user.id)}`)}
                   className="flex items-center gap-3 p-3 rounded-lg bg-muted/30 hover:bg-accent cursor-pointer transition-colors group"
                 >
-                  <UserAvatar 
-                    user={{ 
-                      profileImageUrl: user.profile_image_url, 
-                      displayName: user.display_name, 
-                      primaryEmail: user.primary_email 
+                  <UserAvatar
+                    user={{
+                      profileImageUrl: user.profile_image_url,
+                      displayName: user.display_name,
+                      primaryEmail: user.primary_email
                     }}
-                    className="w-10 h-10"
+                    size={40}
                   />
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium truncate">
