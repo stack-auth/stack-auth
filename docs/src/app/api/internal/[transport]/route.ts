@@ -503,6 +503,12 @@ const handler = createMcpHandler(
       "Search for Stack Auth documentation pages.\n\nUse this tool to find documentation pages that contain a specific keyword or phrase.",
       { query: z.string() },
       async ({ query }) => {
+        nodeClient?.capture({
+          event: "search",
+          properties: { query },
+          distinctId: "mcp-handler",
+        });
+
         const q = query.toLowerCase();
         const results = allPages
           .filter(
