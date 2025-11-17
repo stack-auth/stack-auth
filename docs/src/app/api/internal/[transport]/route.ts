@@ -3,8 +3,8 @@ import { readFile } from "node:fs/promises";
 import { z } from "zod";
 import { apiSource, source } from "../../../../../lib/source";
 
-import { PostHog } from "posthog-node";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import { PostHog } from "posthog-node";
 
 const nodeClient = process.env.NEXT_PUBLIC_POSTHOG_KEY
   ? new PostHog(process.env.NEXT_PUBLIC_POSTHOG_KEY)
@@ -106,6 +106,30 @@ const filteredApiPages = apiPages.filter((page) => {
 });
 
 const allPages = [...pages, ...filteredApiPages];
+
+// Helper to extract actual API endpoint from page frontmatter
+function getApiEndpointFromPage(page: typeof allPages[0]): string | null {
+  if (!page.url.startsWith('/api/') || page.url.startsWith('/api/webhooks/')) {
+    return null;
+  }
+
+  // Check if the page data has _openapi metadata
+  const pageData = page.data as { _openapi?: { method?: string, route?: string } };
+
+  // Debug: log what we have
+  if (page.url === '/api/client/users/users/me/get') {
+    console.log('[API ENDPOINT DEBUG] Sample page data keys:', Object.keys(pageData));
+    console.log('[API ENDPOINT DEBUG] _openapi value:', pageData._openapi);
+  }
+
+  if (pageData._openapi && pageData._openapi.method && pageData._openapi.route) {
+    const endpoint = `${pageData._openapi.method.toUpperCase()} ${pageData._openapi.route}`;
+    console.log('[API ENDPOINT DEBUG] ✓ Extracted endpoint:', endpoint, 'for', page.url);
+    return endpoint;
+  }
+
+  return null;
+}
 
 const pageSummaries = allPages
   .filter((v) => {
@@ -249,8 +273,25 @@ const handler = createMcpHandler(
           distinctId: "mcp-handler",
         });
 
-        const results = [];
+        console.log('[MCP DEBUG] Search query:', search_query);
+        console.log('[MCP DEBUG] Total pages available:', allPages.length);
+        console.log('[MCP DEBUG] First 3 page titles:', allPages.slice(0, 3).map(p => p.data.title));
+
+        type SearchResult = {
+          title: string,
+          description: string,
+          url: string,
+          score: number,
+          snippet: string,
+          type: 'api' | 'docs',
+          apiEndpoint?: string | null,
+        };
+
+        const results: SearchResult[] = [];
         const queryLower = search_query.toLowerCase().trim();
+        const queryWords = queryLower.split(/\s+/).filter(w => w.length > 0);
+
+        console.log('[MCP DEBUG] Query words:', queryWords);
 
         // Search through all pages
         for (const page of allPages) {
@@ -262,32 +303,63 @@ const handler = createMcpHandler(
           let score = 0;
           const title = page.data.title || '';
           const description = page.data.description || '';
+          const titleLower = title.toLowerCase();
+          const descriptionLower = description.toLowerCase();
 
-          // Title matching (highest priority)
-          if (title.toLowerCase().includes(queryLower)) {
-            if (title.toLowerCase() === queryLower) {
+          // Exact phrase match in title (highest priority)
+          if (titleLower.includes(queryLower)) {
+            if (titleLower === queryLower) {
               score += 100; // Exact match
-            } else if (title.toLowerCase().startsWith(queryLower)) {
+            } else if (titleLower.startsWith(queryLower)) {
               score += 80; // Starts with
             } else {
               score += 60; // Contains
             }
           }
 
-          // Description matching
-          if (description.toLowerCase().includes(queryLower)) {
+          // Individual word matching in title
+          for (const word of queryWords) {
+            if (titleLower.includes(word)) {
+              score += 30; // Each word match
+            }
+          }
+
+          // Exact phrase match in description
+          if (descriptionLower.includes(queryLower)) {
             score += 40;
+          }
+
+          // Individual word matching in description
+          for (const word of queryWords) {
+            if (descriptionLower.includes(word)) {
+              score += 15; // Each word match
+            }
           }
           // TOC/heading matching
           for (const tocItem of page.data.toc) {
-            if (typeof tocItem.title === 'string' && tocItem.title.toLowerCase().includes(queryLower)) {
-              score += 30;
+            if (typeof tocItem.title === 'string') {
+              const tocTitleLower = tocItem.title.toLowerCase();
+              // Exact phrase match
+              if (tocTitleLower.includes(queryLower)) {
+                score += 30;
+              }
+              // Individual word matching
+              for (const word of queryWords) {
+                if (tocTitleLower.includes(word)) {
+                  score += 10;
+                }
+              }
             }
           }
 
           // Content matching (try to read the actual file)
           try {
-            const filePath = `content/${page.file.path}`;
+            // Fix the file path - fumadocs page.file.path doesn't include 'api/' prefix
+            let filePath = `content/${page.file.path}`;
+            // If it's an API page and the path doesn't start with api/, add it
+            if (page.url.startsWith('/api/') && !page.file.path.startsWith('api/')) {
+              filePath = `content/api/${page.file.path}`;
+            }
             const content = await readFile(filePath, "utf-8");
             const textContent = content
               .replace(/^---[\s\S]*?---/, '') // Remove frontmatter
@@ -301,14 +373,33 @@ const handler = createMcpHandler(
               .replace(/\s+/g, ' ')
               .trim();
 
-            if (textContent.toLowerCase().includes(queryLower)) {
-              score += 20;
+            const textContentLower = textContent.toLowerCase();
 
-              // Find snippet around the match
-              const matchIndex = textContent.toLowerCase().indexOf(queryLower);
+            // Exact phrase match in content
+            let hasContentMatch = false;
+            if (textContentLower.includes(queryLower)) {
+              score += 20;
+              hasContentMatch = true;
+            }
+
+            // Individual word matching in content
+            for (const word of queryWords) {
+              if (textContentLower.includes(word)) {
+                score += 5; // Each word match
+                hasContentMatch = true;
+              }
+            }
+
+            if (hasContentMatch) {
+              // Find snippet around the first query word match
+              const firstWord = queryWords[0];
+              const matchIndex = textContentLower.indexOf(firstWord);
               const start = Math.max(0, matchIndex - 50);
               const end = Math.min(textContent.length, matchIndex + 100);
               const snippet = textContent.slice(start, end);
+
+              // For API pages, try to extract the actual endpoint
+              const apiEndpoint = page.url.startsWith('/api/') ? getApiEndpointFromPage(page) : null;
 
               results.push({
                 title,
@@ -316,29 +407,37 @@ const handler = createMcpHandler(
                 url: page.url,
                 score,
                 snippet: `...${snippet}...`,
-                type: page.url.startsWith('/api/') ? 'api' : 'docs'
+                type: page.url.startsWith('/api/') ? 'api' : 'docs',
+                apiEndpoint
               });
             } else if (score > 0) {
               // Add without snippet if title/description matched
+              const apiEndpoint = page.url.startsWith('/api/') ? getApiEndpointFromPage(page) : null;
+
               results.push({
                 title,
                 description,
                 url: page.url,
                 score,
                 snippet: description || title,
-                type: page.url.startsWith('/api/') ? 'api' : 'docs'
+                type: page.url.startsWith('/api/') ? 'api' : 'docs',
+                apiEndpoint
               });
             }
-          } catch {
+          } catch (error) {
             // If file reading fails but we have title/description matches
+            console.log('[MCP DEBUG] Failed to read file for page:', page.url, 'Error:', error instanceof Error ? error.message : 'unknown');
             if (score > 0) {
+              const apiEndpoint = page.url.startsWith('/api/') ? getApiEndpointFromPage(page) : null;
+
               results.push({
                 title,
                 description,
                 url: page.url,
                 score,
                 snippet: description || title,
-                type: page.url.startsWith('/api/') ? 'api' : 'docs'
+                type: page.url.startsWith('/api/') ? 'api' : 'docs',
+                apiEndpoint
               });
             }
           }
@@ -349,10 +448,23 @@ const handler = createMcpHandler(
           .sort((a, b) => b.score - a.score)
           .slice(0, result_limit);
 
+        console.log('[MCP DEBUG] Found', results.length, 'results, returning top', sortedResults.length);
+        if (sortedResults.length > 0) {
+          console.log('[MCP DEBUG] Top 3 results:', sortedResults.slice(0, 3).map(r => ({ title: r.title, score: r.score })));
+        }
+
         const searchResultText = sortedResults.length > 0
-          ? sortedResults.map(result =>
-              `Title: ${result.title}\nDescription: ${result.description}\nURL: ${result.url}\nType: ${result.type}\nScore: ${result.score}\nSnippet: ${result.snippet}\n`
-            ).join('\n---\n')
+          ? sortedResults.map(result => {
+            let text = `Title: ${result.title}\nDescription: ${result.description}\n`;
+
+            if (result.apiEndpoint) {
+              text += `API Endpoint: ${result.apiEndpoint}\n`;
+            }
+
+            text += `Documentation URL: ${result.url}\nType: ${result.type}\nScore: ${result.score}\nSnippet: ${result.snippet}\n`;
+
+            return text;
+          }).join('\n---\n')
           : `No results found for "${search_query}"`;
 
         return {

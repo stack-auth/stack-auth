@@ -12,7 +12,6 @@ const google = createGoogleGenerativeAI({
 
 // Helper function to get error message
 function getErrorMessage(error: unknown): string {
-  console.log('Error in chat API:', error);
   if (error instanceof Error) {
     return error.message;
   }
@@ -25,12 +24,19 @@ export async function POST(request: Request) {
   // Create MCP client for Stack Auth documentation with error handling
   let tools = {};
   try {
+    // Use local MCP server in development, production server in production
+    const mcpUrl = process.env.NODE_ENV === 'development'
+      ? new URL('/api/internal/mcp', 'https://localhost:8104')
+      : new URL('/api/internal/mcp', 'https://mcp.stack-auth.com');
+
+    console.log('[AI Chat] Using MCP endpoint:', mcpUrl.toString());
+
     const stackAuthMcp = await createMCPClient({
-      transport: new StreamableHTTPClientTransport(
-        new URL('/api/internal/mcp', 'https://mcp.stack-auth.com/api/internal/mcp')
-      ),
+      transport: new StreamableHTTPClientTransport(mcpUrl),
     });
     tools = await stackAuthMcp.tools();
+
+    console.log('[AI Chat] Available tools:', Object.keys(tools).join(', '));
   } catch (error) {
     console.error('Failed to initialize MCP client or retrieve tools:', error);
     return new Response(
@@ -54,6 +60,12 @@ You are Stack Auth's AI assistant. You help users with Stack Auth - a complete a
 **CRITICAL**: Keep responses SHORT and concise. ALWAYS use the available tools to pull relevant documentation for every question. There should almost never be a question where you don't retrieve relevant docs.
 
 Think step by step about what to say. Being wrong is 100x worse than saying you don't know.
+
+## TOOL USAGE WORKFLOW:
+1. **FIRST**, use \`search_docs\` with relevant keywords to find related documentation
+2. **THEN**, use \`get_docs_by_id\` to retrieve the full content of the most relevant pages
+3. Base your answer on the actual documentation content retrieved
+4. When referring to API endpoints, **always cite the actual endpoint** (e.g., "GET /users/me") not the documentation URL
 
 ## CORE RESPONSIBILITIES:
 1. Help users implement Stack Auth in their applications
@@ -85,13 +97,23 @@ When users need personalized support, have complex issues, or ask for help beyon
 
 ## RESPONSE FORMAT:
 - Use markdown formatting for better readability
-- Include code blocks with proper syntax highlighting
+- **ALWAYS include code examples** - Show users how to actually implement solutions
+- Include code blocks with proper syntax highlighting (typescript, bash, etc.)
 - Use bullet points for lists
 - Bold important concepts
-- Provide practical examples when possible
+- Provide practical, working examples
 - Focus on giving complete, helpful answers
 - **When referencing documentation, use links with the base URL: https://docs.stack-auth.com**
-- Example: For setup docs, use https://docs.stack-auth.com/docs/next/getting-started/setup
+- Example: For setup docs, use https://docs.stack-auth.com/docs/getting-started/setup
+
+## CODE EXAMPLE GUIDELINES:
+- For API calls, show both the HTTP endpoint AND the SDK method
+- For example, when explaining "get current user":
+  * Show the HTTP API endpoint: GET /users/me
+  * Show the SDK usage: const user = useUser();
+  * Include necessary imports and authentication headers
+- Always show complete, runnable code snippets with proper language tags
+- Include context like "HTTP API", "SDK (React)", "SDK (Next.js)" etc.
 
 ## WHEN UNSURE:
 - If you're unsure about a Stack Auth feature, say "As an AI, I don't know" or "As an AI, I'm not certain" clearly
@@ -124,7 +146,7 @@ Remember: You're here to help users succeed with Stack Auth. Be helpful but conc
       maxSteps: 50,
       system: systemPrompt,
       messages,
-      temperature: 0.1,
+      temperature: 0.3, // Slightly higher for more natural, detailed responses
     });
 
     return result.toDataStreamResponse({
