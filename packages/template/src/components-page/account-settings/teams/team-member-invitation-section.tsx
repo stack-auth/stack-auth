@@ -171,7 +171,7 @@ function MemberInvitationSectionInner(props: { team: Team }) {
     setLoading(true);
 
     try {
-      const permissionIds = data.role ? [data.role] : undefined;
+      const permissionIds = data.role && data.role !== 'default' ? [data.role] : undefined;
       await props.team.inviteUser({
         email: data.email,
         permissionIds
