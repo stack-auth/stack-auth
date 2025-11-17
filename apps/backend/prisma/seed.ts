@@ -260,7 +260,7 @@ export async function seed() {
     console.log('Internal team created');
   }
 
-  const shouldSeedDummyProject = Boolean(process.env.STACK_SEED_ENABLE_DUMMY_PROJECT);
+  const shouldSeedDummyProject = process.env.STACK_SEED_ENABLE_DUMMY_PROJECT === 'true';
   if (shouldSeedDummyProject) {
     await seedDummyProject({
       globalPrismaClient,
