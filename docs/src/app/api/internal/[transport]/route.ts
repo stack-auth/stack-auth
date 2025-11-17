@@ -514,8 +514,7 @@ const handler = createMcpHandler(
           .filter(
             (page) =>
               page.data.title.toLowerCase().includes(q) ||
-              page.data.description?.toLowerCase().includes(q) ||
-              page.data.content.toLowerCase().includes(q),
+              page.data.description?.toLowerCase().includes(q),
           )
           .map((page) => ({
             id: page.url,
