@@ -1,4 +1,4 @@
-import { Book, Code, Layers, Zap, type LucideIcon } from 'lucide-react';
+import { Book, Code, Home, Layers, Zap, type LucideIcon } from 'lucide-react';
 
 export type NavLink = {
   href: string,
@@ -6,6 +6,7 @@ export type NavLink = {
   icon: LucideIcon,
 }
 
+const DOCS_OVERVIEW_PATH = '/docs/overview';
 const DOCS_GUIDES_PATH = '/docs/overview';
 const DOCS_SDK_PATH = '/docs/sdk';
 const DOCS_COMPONENTS_PATH = '/docs/components';
@@ -13,6 +14,11 @@ const API_OVERVIEW_PATH = '/api/overview';
 
 export function generateNavLinks(): NavLink[] {
   return [
+    {
+      href: DOCS_OVERVIEW_PATH,
+      label: 'Welcome',
+      icon: Home,
+    },
     {
       href: DOCS_GUIDES_PATH,
       label: 'Guides',

@@ -29,6 +29,7 @@ next-env.d.ts
 
 # ignore generated API content
 /content/api/
+/content/dashboard/
 /public/openapi/
 /openapi/
 

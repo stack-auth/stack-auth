@@ -8,7 +8,11 @@ module.exports = {
     "no-restricted-imports": [
       "error",
       {
+        paths: [
+          ...defaults.rules["no-restricted-imports"][1].paths ?? [],
+        ],
         patterns: [
+          ...defaults.rules["no-restricted-imports"][1].patterns ?? [],
           {
             group: ["next/navigation", "next/router"],
             importNames: ["useRouter"],

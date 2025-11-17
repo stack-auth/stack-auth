@@ -91,7 +91,7 @@ type AccordionContextType = {
 
 const AccordionContext = createContext<AccordionContextType | null>(null);
 
-function AccordionProvider({ children }: { children: ReactNode }) {
+export function AccordionProvider({ children }: { children: ReactNode }) {
   const [accordionState, setAccordionStateInternal] = useState<Record<string, boolean>>({});
 
   const setAccordionState = (key: string, isOpen: boolean) => {
@@ -105,7 +105,7 @@ function AccordionProvider({ children }: { children: ReactNode }) {
   );
 }
 
-function useAccordionState(key: string, defaultValue: boolean) {
+export function useAccordionState(key: string, defaultValue: boolean) {
   const context = useContext(AccordionContext);
   if (!context) {
     throw new Error('useAccordionState must be used within AccordionProvider');
@@ -125,11 +125,13 @@ function useAccordionState(key: string, defaultValue: boolean) {
 function DocsSidebarLink({
   href,
   children,
-  external = false
+  external = false,
+  icon
 }: {
   href: string,
   children: ReactNode,
   external?: boolean,
+  icon?: ReactNode,
 }) {
   const pathname = usePathname();
   const isActive = pathname === href;
@@ -144,6 +146,7 @@ function DocsSidebarLink({
       }`}
       {...(external && { target: '_blank', rel: 'noopener noreferrer' })}
     >
+      {icon && <span className="flex-shrink-0 [&_svg]:size-3.5">{icon}</span>}
       <span className="flex-1">{children}</span>
     </Link>
   );
@@ -305,7 +308,7 @@ function PageTreeItem({ item }: { item: PageTree.Node }) {
   }
 
   return (
-    <DocsSidebarLink href={item.url} external={item.external}>
+    <DocsSidebarLink href={item.url} external={item.external} icon={item.icon}>
       {item.name}
     </DocsSidebarLink>
   );

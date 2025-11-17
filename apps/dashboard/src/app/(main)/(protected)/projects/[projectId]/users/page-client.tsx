@@ -12,9 +12,21 @@ import { useAdminApp } from "../use-admin-app";
 
 function TotalUsersDisplay() {
   const stackAdminApp = useAdminApp();
-  const data = (stackAdminApp as any)[stackAppInternalsSymbol].useMetrics();
+  const metrics = (stackAdminApp as any)[stackAppInternalsSymbol].useMetrics(false);
+  const metricsIncludingAnonymous = (stackAdminApp as any)[stackAppInternalsSymbol].useMetrics(true);
 
-  return <>{data.total_users}</>;
+  const anonymousUsersCount = metricsIncludingAnonymous.total_users - metrics.total_users;
+
+  return (
+    <>
+      {metrics.total_users}
+      {anonymousUsersCount > 0 ? (
+        <>
+          {" "}(+ {anonymousUsersCount} anonymous)
+        </>
+      ) : null}
+    </>
+  );
 }
 
 export default function PageClient() {

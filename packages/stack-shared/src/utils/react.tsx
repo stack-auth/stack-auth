@@ -1,6 +1,7 @@
 import React, { SetStateAction } from "react";
 import { isBrowserLike } from "./env";
-import { neverResolve } from "./promises";
+import { neverResolve, runAsynchronously } from "./promises";
+import { AsyncResult } from "./results";
 import { deindent } from "./strings";
 
 export function componentWrapper<
@@ -13,6 +14,35 @@ export function componentWrapper<
 }
 type RefFromComponent<C extends React.ComponentType<any> | keyof React.JSX.IntrinsicElements> = NonNullable<RefFromComponentDistCond<React.ComponentPropsWithRef<C>["ref"]>>;
 type RefFromComponentDistCond<A> = A extends React.RefObject<infer T> ? T : never;  // distributive conditional type; see https://www.typescriptlang.org/docs/handbook/2/conditional-types.html#distributive-conditional-types
+
+const react18PromiseCache = new WeakMap<Promise<unknown>, AsyncResult<unknown, unknown>>();
+export function use<T>(promise: Promise<T>): T {
+  if ("use" in React) {
+    return React.use(promise);
+  } else {
+    if (react18PromiseCache.has(promise)) {
+      const result = react18PromiseCache.get(promise)!;
+      if (result.status === "pending") {
+        throw promise;
+      } else if (result.status === "ok") {
+        return result.data as T;
+      } else {
+        throw result.error;
+      }
+    } else {
+      react18PromiseCache.set(promise, { "status": "pending", progress: undefined });
+      runAsynchronously(async () => {
+        try {
+          const res = await promise;
+          react18PromiseCache.set(promise, { "status": "ok", data: res });
+        } catch (e) {
+          react18PromiseCache.set(promise, { "status": "error", error: e });
+        }
+      });
+      throw promise;
+    }
+  }
+}
 
 export function forwardRefIfNeeded<T, P = {}>(render: React.ForwardRefRenderFunction<T, P>): React.FC<P & { ref?: React.Ref<T> }> {
   // TODO: when we drop support for react 18, remove this
@@ -93,7 +123,7 @@ import.meta.vitest?.test("getNodeText", ({ expect }) => {
  * You can use this to translate older query- or AsyncResult-based code to new the Suspense system, for example: `if (query.isLoading) suspend();`
  */
 export function suspend(): never {
-  React.use(neverResolve());
+  use(neverResolve());
   throw new Error("Somehow a Promise that never resolves was resolved?");
 }
 
@@ -166,6 +196,28 @@ export function mapRefState<T, R>(refState: RefState<T>, mapper: (value: T) => R
       refState.set(reverseMapper(refState.current, value));
     },
   };
+}
+
+export function useQueryState(key: string, defaultValue?: string) {
+  const getValue = () => new URLSearchParams(window.location.search).get(key) ?? defaultValue ?? "";
+
+  const [value, setValue] = React.useState(getValue);
+
+  React.useEffect(() => {
+    const onPopState = () => setValue(getValue());
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, []);
+
+  const update = (next: string) => {
+    const params = new URLSearchParams(window.location.search);
+    params.set(key, next);
+    const newUrl = `${window.location.pathname}?${params.toString()}`;
+    window.history.pushState(null, "", newUrl);
+    setValue(next);
+  };
+
+  return [value, update] as const;
 }
 
 export function shouldRethrowRenderingError(error: unknown): boolean {

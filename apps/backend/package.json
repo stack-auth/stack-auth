@@ -1,6 +1,6 @@
 {
   "name": "@stackframe/stack-backend",
-  "version": "2.8.47",
+  "version": "2.8.51",
   "private": true,
   "scripts": {
     "clean": "rimraf src/generated && rimraf .next && rimraf node_modules",
@@ -88,7 +88,7 @@
     "react-dom": "19.0.0",
     "resend": "^6.0.1",
     "semver": "^7.6.3",
-    "sharp": "^0.32.6",
+    "sharp": "^0.34.4",
     "stripe": "^18.3.0",
     "svix": "^1.25.0",
     "vite": "^6.1.0",

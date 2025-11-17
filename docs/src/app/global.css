@@ -1,4 +1,7 @@
 @import 'tailwindcss';
+
+@source '../../../packages/stack-shared/src';
+
 @import 'fumadocs-ui/css/black.css';
 @import 'fumadocs-ui/css/preset.css';
 @import 'fumadocs-openapi/css/preset.css';
@@ -198,6 +201,59 @@ body.home-page.scrolled [data-chat-drawer] {
 button:not(.chat-gradient-active)::before {
   mask: radial-gradient(circle at 20% 80%, transparent 0%, transparent 100%);
   transition: mask 0.3s ease-out;
+}
+
+/* Hide scrollbars for embedded iframe content */
+.scrollbar-hide {
+  -ms-overflow-style: none;  /* Internet Explorer 10+ */
+  scrollbar-width: none;  /* Firefox */
+}
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;  /* Safari and Chrome */
+}
+
+/* Prevent horizontal overflow in embedded iframe content */
+.prose {
+  /* Only break words when absolutely necessary, not all the time */
+  overflow-wrap: break-word;
+  word-wrap: break-word;
+  /* Remove aggressive word-break that was breaking normal text */
+}
+
+.prose pre {
+  /* Prevent code blocks from causing horizontal scroll */
+  overflow-x: auto;
+  max-width: 100%;
+}
+
+.prose code {
+  /* Only break very long unbreakable strings, not normal code */
+  overflow-wrap: break-word;
+  word-wrap: break-word;
+}
+
+.prose table {
+  /* Make tables responsive */
+  display: block;
+  overflow-x: auto;
+  white-space: nowrap;
+  max-width: 100%;
+}
+
+.prose img {
+  /* Ensure images don't overflow */
+  max-width: 100%;
+  height: auto;
+}
+
+/* Only break URLs and very long unbreakable strings */
+.prose a[href*="://"] {
+  overflow-wrap: anywhere;
+}
+
+/* Break very long strings that have no spaces (like tokens, hashes, etc.) */
+.prose code:not(pre code) {
+  overflow-wrap: anywhere;
 }
 
 /* Ensure EnhancedAPIPage components fill their container */

@@ -416,9 +416,9 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
   }
   // END_PLATFORM
   // IF_PLATFORM react-like
-  useSvixToken(): string {
+  useSvixToken(): { token: string, url: string | undefined } {
     const crud = useAsyncCache(this._svixTokenCache, [], "adminApp.useSvixToken()");
-    return crud.token;
+    return { token: crud.token, url: crud.url };
   }
   // END_PLATFORM
 
@@ -431,6 +431,14 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
 
   protected async _refreshInternalApiKeys() {
     await this._internalApiKeysCache.refresh([]);
+  }
+
+  protected override async _refreshUsers() {
+    await Promise.all([
+      super._refreshUsers(),
+      this._metricsCache.refresh([false]),
+      this._metricsCache.refresh([true]),
+    ]);
   }
 
   get [stackAppInternalsSymbol]() {
@@ -461,6 +469,18 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
       return Result.ok(undefined);
     } else {
       return Result.error({ errorMessage: response.error_message ?? throwErr("Email test error not specified") });
+    }
+  }
+
+  async sendTestWebhook(options: { endpointId: string }): Promise<Result<undefined, { errorMessage: string }>> {
+    const response = await this._interface.sendTestWebhook({
+      endpoint_id: options.endpointId,
+    });
+
+    if (response.success) {
+      return Result.ok(undefined);
+    } else {
+      return Result.error({ errorMessage: response.error_message ?? throwErr("Webhook test error not specified") });
     }
   }
 

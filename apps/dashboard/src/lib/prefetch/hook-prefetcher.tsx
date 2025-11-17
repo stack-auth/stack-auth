@@ -7,10 +7,10 @@ import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
 import { ErrorBoundary } from "next/dist/client/components/error-boundary";
 import { Suspense, useEffect } from "react";
 
-let isPrefetching = false;
+let isPrefetchingCounter = 0;
 let hasSetupHookPrefetcher = false;
 
-type HookPrefetcherCallback = () => void;
+export type HookPrefetcherCallback = () => HookPrefetcherCallback[] | void;
 
 export function HookPrefetcher(props: {
   callbacks: HookPrefetcherCallback[],
@@ -23,7 +23,7 @@ export function HookPrefetcher(props: {
       ...(getGlobal("use-async-cache-execution-hooks") ?? []),
       (options: { caller: string, dependencies: any[], cache: AsyncCache<any, any> }) => {
         if (options.cache.isDirty(options.dependencies)) {
-          if (isPrefetching) {
+          if (isPrefetchingCounter > 0) {
             // all good, continue
             if (process.env.NODE_ENV === "development") {
               console.info(`Prefetching ${options.caller}...`);
@@ -40,28 +40,37 @@ export function HookPrefetcher(props: {
     ]);
   }, []);
 
-  const components = props.callbacks.map((callback, i) => () => {
-    isPrefetching = true;
-    try {
-      callback();
-      return null;
-    } finally {
-      isPrefetching = false;
-    }
-  } );
+  const PrefetchMany = (props: { callbacks: HookPrefetcherCallback[] }): React.ReactNode => {
+    return <>
+      {props.callbacks.map((callback, i) => {
+        const Component = () => {
+          isPrefetchingCounter++;
+          try {
+            const componentCallbacks = callback();
+            if (componentCallbacks) {
+              return <PrefetchMany callbacks={componentCallbacks} />;
+            }
+            return null;
+          } finally {
+            isPrefetchingCounter--;
+          }
+        };
 
-  return <>
-    {components.map((Component, i) => (
-      <ErrorBoundary
-        key={i}
-        errorComponent={HookPrefetcherErrorComponent}
-      >
-        <Suspense fallback={null}>
-          <Component />
-        </Suspense>
-      </ErrorBoundary>
-    ))}
-  </>;
+        return (
+          <ErrorBoundary
+            key={i}
+            errorComponent={HookPrefetcherErrorComponent}
+          >
+            <Suspense fallback={null}>
+              <Component />
+            </Suspense>
+          </ErrorBoundary>
+        );
+      })}
+    </>;
+  };
+
+  return <PrefetchMany callbacks={props.callbacks} />;
 }
 
 function HookPrefetcherErrorComponent(props: { error: Error }) {

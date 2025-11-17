@@ -1,12 +1,14 @@
 /* eslint-disable no-restricted-syntax */
 import { usersCrudHandlers } from '@/app/api/latest/users/crud';
 import { overrideEnvironmentConfigOverride } from '@/lib/config';
-import { grantTeamPermission, updatePermissionDefinition } from '@/lib/permissions';
+import { ensurePermissionDefinition, grantTeamPermission } from '@/lib/permissions';
 import { createOrUpdateProjectWithLegacyConfig, getProject } from '@/lib/projects';
 import { DEFAULT_BRANCH_ID, getSoleTenancyFromProjectBranch } from '@/lib/tenancies';
 import { getPrismaClientForTenancy, globalPrismaClient } from '@/prisma-client';
 import { PrismaClient } from '@prisma/client';
-import { errorToNiceString, throwErr } from '@stackframe/stack-shared/dist/utils/errors';
+import { ALL_APPS } from '@stackframe/stack-shared/dist/apps/apps-config';
+import { throwErr } from '@stackframe/stack-shared/dist/utils/errors';
+import { typedEntries, typedFromEntries } from '@stackframe/stack-shared/dist/utils/objects';
 
 const globalPrisma = new PrismaClient();
 
@@ -194,34 +196,35 @@ export async function seed() {
             customerType: "team"
           }
         },
-      }
+      },
+      apps: {
+        installed: typedFromEntries(typedEntries(ALL_APPS).map(([key, value]) => [key, { enabled: true }])),
+      },
     }
   });
 
-  await updatePermissionDefinition(
+  await ensurePermissionDefinition(
     globalPrismaClient,
     internalPrisma,
     {
-      oldId: "team_member",
+      id: "team_member",
       scope: "team",
       tenancy: internalTenancy,
       data: {
-        id: "team_member",
         description: "1",
         contained_permission_ids: ["$read_members"],
       }
     }
   );
   const updatedInternalTenancy = await getSoleTenancyFromProjectBranch("internal", DEFAULT_BRANCH_ID);
-  await updatePermissionDefinition(
+  await ensurePermissionDefinition(
     globalPrismaClient,
     internalPrisma,
     {
-      oldId: "team_admin",
+      id: "team_admin",
       scope: "team",
       tenancy: updatedInternalTenancy,
       data: {
-        id: "team_admin",
         description: "2",
         contained_permission_ids: ["$read_members", "$remove_members", "$update_team"],
       }

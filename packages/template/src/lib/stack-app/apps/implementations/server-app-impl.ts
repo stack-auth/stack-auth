@@ -706,6 +706,60 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
         const providers = await this.listOAuthProviders();
         return providers.find((p) => p.id === id) ?? null;
       },
+      async registerPasskey(options?: { hostname?: string }): Promise<Result<undefined, KnownErrors["PasskeyRegistrationFailed"] | KnownErrors["PasskeyWebAuthnError"]>> {
+        // TODO remove duplicated code between this and the function in client-app-impl.ts
+        const hostname = options?.hostname || (await app._getCurrentUrl())?.hostname;
+        if (!hostname) {
+          throw new StackAssertionError("hostname must be provided if the Stack App does not have a redirect method");
+        }
+
+        // Use server interface to initiate passkey registration for this specific user
+        const initiationResult = await app._interface.initiateServerPasskeyRegistration(crud.id);
+
+        if (initiationResult.status !== "ok") {
+          return Result.error(new KnownErrors.PasskeyRegistrationFailed("Failed to get initiation options for passkey registration"));
+        }
+
+        const { options_json, code } = initiationResult.data;
+
+        // HACK: Override the rpID to be the actual domain
+        if (options_json.rp.id !== "THIS_VALUE_WILL_BE_REPLACED.example.com") {
+          throw new StackAssertionError(`Expected returned RP ID from server to equal sentinel, but found ${options_json.rp.id}`);
+        }
+
+        options_json.rp.id = hostname;
+
+        let attResp;
+        try {
+          const { startRegistration } = await import("@simplewebauthn/browser");
+          attResp = await startRegistration({ optionsJSON: options_json });
+        } catch (error: any) {
+          const { WebAuthnError } = await import("@simplewebauthn/browser");
+          if (error instanceof WebAuthnError) {
+            return Result.error(new KnownErrors.PasskeyWebAuthnError(error.message, error.name));
+          } else {
+            // This should never happen
+            const { captureError } = await import("@stackframe/stack-shared/dist/utils/errors");
+            captureError("passkey-registration-failed", error);
+            return Result.error(new KnownErrors.PasskeyRegistrationFailed("Failed to start passkey registration due to unknown error"));
+          }
+        }
+
+        // Create a temporary session to complete the registration
+        // TODO instead of creating a new session, this should just call the endpoint in a way in which it doesn't require a session
+        // (currently this shows up on session history etc... not ideal)
+        const { accessToken, refreshToken } = await app._interface.createServerUserSession(crud.id, 60000 * 2, false);
+        const tempSession = new InternalSession({
+          accessToken,
+          refreshToken,
+          refreshAccessTokenCallback: async () => null,
+        });
+
+        const registrationResult = await app._interface.registerPasskey({ credential: attResp, code }, tempSession);
+
+        await app._serverUserCache.refresh([crud.id]);
+        return registrationResult;
+      },
       ...app._createServerCustomer(crud.id, "user"),
     } satisfies ServerUser;
 
@@ -1109,7 +1163,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
 
   // IF_PLATFORM react-like
   useUsers(options?: ServerListUsersOptions): ServerUser[] & { nextCursor: string | null } {
-    const crud = useAsyncCache(this._serverUsersCache, [options?.cursor, options?.limit, options?.orderBy, options?.desc, options?.query] as const, "serverApp.useUsers()");
+    const crud = useAsyncCache(this._serverUsersCache, [options?.cursor, options?.limit, options?.orderBy, options?.desc, options?.query, options?.includeAnonymous] as const, "serverApp.useUsers()");
     const result: any = crud.items.map((j) => this._serverUserFromCrud(j));
     result.nextCursor = crud.pagination?.next_cursor ?? null;
     return result as any;
