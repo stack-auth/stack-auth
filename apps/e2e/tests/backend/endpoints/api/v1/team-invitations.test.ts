@@ -681,7 +681,7 @@ it("returns 400 error for invitation with non-existent permission_ids", async ({
     method: "POST",
     accessType: "client",
     body: {
-      email: receiveMailbox,
+      email: receiveMailbox.emailAddress,
       team_id: teamId,
       callback_url: "http://localhost:12345/some-callback-url",
       permission_ids: ["non_existent_role"],
@@ -689,10 +689,9 @@ it("returns 400 error for invitation with non-existent permission_ids", async ({
   });
 
   expect(response.status).toBe(400);
-  expect(response.body).toHaveProperty('error');
-  expect(response.body.error).toHaveProperty('code');
-  expect(response.body.error).toHaveProperty('message');
-  expect(response.body.error.message).toMatch(/invalid permission|permission.*not found/i);
+  expect(response.body).toHaveProperty('code');
+  expect(response.body).toHaveProperty('message');
+  expect(response.body.message).toMatch(/invalid permission|permission.*not found/i);
 });
 
 it("returns 400 error for invitation with malformed permission_ids", async ({ expect }) => {
@@ -713,7 +712,7 @@ it("returns 400 error for invitation with malformed permission_ids", async ({ ex
     method: "POST",
     accessType: "client",
     body: {
-      email: receiveMailbox,
+      email: receiveMailbox.emailAddress,
       team_id: teamId,
       callback_url: "http://localhost:12345/some-callback-url",
       permission_ids: 123, // number instead of array
@@ -721,9 +720,8 @@ it("returns 400 error for invitation with malformed permission_ids", async ({ ex
   });
 
   expect(response.status).toBe(400);
-  expect(response.body).toHaveProperty('error');
-  expect(response.body.error).toHaveProperty('message');
-  expect(response.body.error.message).toMatch(/permission_ids.*must be array|invalid.*permission_ids/i);
+  expect(response.body).toHaveProperty('message');
+  expect(response.body.message).toMatch(/permission_ids.*must be array|invalid.*permission_ids/i);
 });
 
 it("returns 400 error for invitation with mixed valid/invalid permission_ids", async ({ expect }) => {
@@ -744,7 +742,7 @@ it("returns 400 error for invitation with mixed valid/invalid permission_ids", a
     method: "POST",
     accessType: "client",
     body: {
-      email: receiveMailbox,
+      email: receiveMailbox.emailAddress,
       team_id: teamId,
       callback_url: "http://localhost:12345/some-callback-url",
       permission_ids: ["team_admin", "invalid_permission"],
@@ -752,8 +750,8 @@ it("returns 400 error for invitation with mixed valid/invalid permission_ids", a
   });
 
   expect(response.status).toBe(400);
-  expect(response.body).toHaveProperty('error');
-  expect(response.body.error.message).toMatch(/invalid permission|permission.*not found/i);
+  expect(response.body).toHaveProperty('message');
+  expect(response.body.message).toMatch(/invalid permission|permission.*not found/i);
 });
 
 // Permission escalation tests
@@ -769,7 +767,7 @@ it("returns 403 error when user without invite permission tries to invite with e
     method: "POST",
     accessType: "client",
     body: {
-      email: receiveMailbox,
+      email: receiveMailbox.emailAddress,
       team_id: teamId,
       callback_url: "http://localhost:12345/some-callback-url",
       permission_ids: ["team_admin"], // Try to grant admin permission
@@ -777,10 +775,10 @@ it("returns 403 error when user without invite permission tries to invite with e
   });
 
   expect(response.status).toBe(403);
-  expect(response.body).toHaveProperty('error');
-  expect(response.body.error).toHaveProperty('code');
-  expect(response.body.error.code).toMatch(/permission|unauthorized|forbidden/i);
-  expect(response.body.error.message).toMatch(/permission|invite|unauthorized/i);
+  expect(response.body).toHaveProperty('code');
+  expect(response.body.code).toMatch(/permission|unauthorized|forbidden/i);
+  expect(response.body).toHaveProperty('message');
+  expect(response.body.message).toMatch(/permission|invite|unauthorized/i);
 });
 
 it("returns 403 error when user without invite permission tries to invite with default permissions", async ({ expect }) => {
@@ -795,7 +793,7 @@ it("returns 403 error when user without invite permission tries to invite with d
     method: "POST",
     accessType: "client",
     body: {
-      email: receiveMailbox,
+      email: receiveMailbox.emailAddress,
       team_id: teamId,
       callback_url: "http://localhost:12345/some-callback-url",
       permission_ids: [], // Empty array (default permissions)
@@ -803,8 +801,8 @@ it("returns 403 error when user without invite permission tries to invite with d
   });
 
   expect(response.status).toBe(403);
-  expect(response.body).toHaveProperty('error');
-  expect(response.body.error.code).toMatch(/permission|unauthorized|forbidden/i);
+  expect(response.body).toHaveProperty('code');
+  expect(response.body.code).toMatch(/permission|unauthorized|forbidden/i);
 });
 
 // Backwards compatibility tests
@@ -826,7 +824,7 @@ it("successfully creates invitation with empty permission_ids array", async ({ e
     method: "POST",
     accessType: "client",
     body: {
-      email: receiveMailbox,
+      email: receiveMailbox.emailAddress,
       team_id: teamId,
       callback_url: "http://localhost:12345/some-callback-url",
       permission_ids: [], // Empty array
@@ -865,7 +863,7 @@ it("successfully creates invitation with omitted permission_ids (backwards compa
     method: "POST",
     accessType: "client",
     body: {
-      email: receiveMailbox,
+      email: receiveMailbox.emailAddress,
       team_id: teamId,
       callback_url: "http://localhost:12345/some-callback-url",
       // permission_ids completely omitted
@@ -900,7 +898,7 @@ it("allows server access invitation with permission_ids bypassing user permissio
     method: "POST",
     accessType: "server",
     body: {
-      email: receiveMailbox,
+      email: receiveMailbox.emailAddress,
       team_id: teamId,
       callback_url: "http://localhost:12345/some-callback-url",
       permission_ids: ["team_admin"],
@@ -930,9 +928,8 @@ it("returns 401 for unauthenticated access to role-permissions endpoint", async 
   });
 
   expect(response.status).toBe(401);
-  expect(response.body).toHaveProperty('error');
-  expect(response.body.error).toHaveProperty('code');
-  expect(response.body.error.code).toMatch(/unauthorized|unauthenticated/i);
+  expect(response.body).toHaveProperty('code');
+  expect(response.body.code).toMatch(/unauthorized|unauthenticated/i);
 });
 
 it("returns consistent responses for client vs server access to role-permissions endpoint", async ({ expect }) => {
@@ -982,7 +979,7 @@ it("returns 400 for invitation with null permission_ids", async ({ expect }) => 
     method: "POST",
     accessType: "client",
     body: {
-      email: receiveMailbox,
+      email: receiveMailbox.emailAddress,
       team_id: teamId,
       callback_url: "http://localhost:12345/some-callback-url",
       permission_ids: null, // null instead of array
@@ -990,6 +987,6 @@ it("returns 400 for invitation with null permission_ids", async ({ expect }) => 
   });
 
   expect(response.status).toBe(400);
-  expect(response.body).toHaveProperty('error');
-  expect(response.body.error.message).toMatch(/permission_ids.*must be array|invalid.*permission_ids/i);
+  expect(response.body).toHaveProperty('message');
+  expect(response.body.message).toMatch(/permission_ids.*must be array|invalid.*permission_ids/i);
 });
