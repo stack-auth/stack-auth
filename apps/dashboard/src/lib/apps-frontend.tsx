@@ -5,14 +5,13 @@ import { getRelativePart, isChildUrl } from "@stackframe/stack-shared/dist/utils
 import { CreditCard, KeyRound, Mail, Mails, Rocket, ShieldEllipsis, Sparkles, Triangle, Tv, UserCog, Users, Vault, Webhook } from "lucide-react";
 import Image, { StaticImageData } from "next/image";
 import ConvexLogo from "../../public/convex-logo.png";
-import LogoBright from "../../public/logo-bright.svg";
 import NeonLogo from "../../public/neon-logo.png";
-import OpenGraphImage from "../../public/open-graph-image.png";
 import VercelLogo from "../../public/vercel-logo.svg";
 
-// Images used in app store
-import WebhooksScreenshot1 from "../../public/storeDesc-webhooks-1.png";
-import WebhooksScreenshot2 from "../../public/storeDesc-webhooks-2.png";
+// Helper to generate screenshot paths
+const getScreenshots = (appName: string, count: number): string[] => {
+  return Array.from({ length: count }, (_, i) => `/storeDesc-${appName}-${i + 1}.png`);
+};
 
 export const DUMMY_ORIGIN = "https://example.com";
 
@@ -75,10 +74,7 @@ export const ALL_APPS_FRONTEND = {
       { displayName: "Auth Methods", href: "../auth-methods" },
       { displayName: "Trusted Domains", href: "../domains" },
     ],
-    screenshots: [
-      LogoBright,
-      OpenGraphImage,
-    ],
+    screenshots: getScreenshots('auth', 6),
     storeDescription: (
       <>
         <p>Authentication centralizes everything you need to operate your Stack Auth user directory.</p>
@@ -94,7 +90,7 @@ export const ALL_APPS_FRONTEND = {
       { displayName: "Teams", href: ".", getBreadcrumbItems: getTeamBreadcrumbItems },
       { displayName: "Team Settings", href: "../team-settings" },
     ],
-    screenshots: [],
+    screenshots: getScreenshots('teams', 4),
     storeDescription: (
       <>
         <p>Teams gives your project first-class multi-tenancy without extra plumbing.</p>
@@ -110,7 +106,7 @@ export const ALL_APPS_FRONTEND = {
       { displayName: "Project Permissions", href: "../project-permissions" },
       { displayName: "Team Permissions", href: "../team-permissions" },
     ],
-    screenshots: [],
+    screenshots: getScreenshots('rbac', 4),
     storeDescription: (
       <>
         <p>RBAC helps you model the authorization surface of your product in a structured, auditable way.</p>
@@ -125,10 +121,10 @@ export const ALL_APPS_FRONTEND = {
     navigationItems: [
       { displayName: "API Keys", href: "." },
     ],
-    screenshots: [],
+    screenshots: getScreenshots('api-keys', 1),
     storeDescription: (
       <>
-        <p>API Keys keeps every environment credentialized without sacrificing control.</p>
+        <p>API Keys keeps every environment credentialed without sacrificing control.</p>
         <p>Issue publishable client keys or secret server keys with configurable expirations and copy the values before they disappear.</p>
         <p>When a credential is no longer trusted, revoke or rotate it instantly from the dashboard.</p>
       </>
@@ -142,7 +138,7 @@ export const ALL_APPS_FRONTEND = {
       { displayName: "Customers", href: "./customers" },
       { displayName: "Transactions", href: "./transactions" },
     ],
-    screenshots: [],
+    screenshots: getScreenshots('payments', 7),
     storeDescription: (
       <>
         <p>Payments brings Stack&apos;s product-first pricing model into the dashboard.</p>
@@ -160,7 +156,7 @@ export const ALL_APPS_FRONTEND = {
       { displayName: "Templates", href: "../email-templates", getBreadcrumbItems: getEmailTemplatesBreadcrumbItems },
       { displayName: "Themes", href: "../email-themes", getBreadcrumbItems: getEmailThemeBreadcrumbItems },
     ],
-    screenshots: [],
+    screenshots: getScreenshots('emails', 7),
     storeDescription: (
       <>
         <p>Emails gives you a full control room for transactional communication.</p>
@@ -190,7 +186,7 @@ export const ALL_APPS_FRONTEND = {
     navigationItems: [
       { displayName: "Data Vault", href: "." },
     ],
-    screenshots: [],
+    screenshots: getScreenshots('data-vault', 4),
     storeDescription: (
       <>
         <p>Data Vault is an encrypted key-value store for the secrets your app should never expose.</p>
@@ -205,10 +201,7 @@ export const ALL_APPS_FRONTEND = {
     navigationItems: [
       { displayName: "Webhooks", href: "." },
     ],
-    screenshots: [
-      WebhooksScreenshot1,
-      WebhooksScreenshot2,
-    ],
+    screenshots: getScreenshots('webhooks', 2),
     storeDescription: (
       <>
         <p>Webhooks keep user and team events in sync between Stack and your own servers.</p>
@@ -287,7 +280,7 @@ export const ALL_APPS_FRONTEND = {
     navigationItems: [
       { displayName: "Setup", href: "." },
     ],
-    screenshots: [],
+    screenshots: getScreenshots('vercel', 2),
     storeDescription: <>Deploy your Stack Auth project to <Link href="https://vercel.com" target="_blank">Vercel</Link> with the Vercel x Stack Auth integration.</>,
   },
 } as const satisfies Record<AppId, AppFrontend>;
