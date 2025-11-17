@@ -263,6 +263,7 @@ export async function seed() {
   const shouldSeedDummyProject = Boolean(process.env.STACK_SEED_ENABLE_DUMMY_PROJECT);
   if (shouldSeedDummyProject) {
     await seedDummyProject({
+      internalPrisma,
       ownerTeamId: internalTeamId,
       oauthProviderIds,
     });
@@ -491,6 +492,7 @@ export async function seed() {
 }
 
 type DummyProjectSeedOptions = {
+  internalPrisma: PrismaClient,
   ownerTeamId: string,
   oauthProviderIds: string[],
 };
@@ -995,7 +997,7 @@ async function seedDummyProject(options: DummyProjectSeedOptions) {
     },
   });
 
-  await dummyPrisma.project.update({
+  await options.internalPrisma.project.update({
     where: {
       id: DUMMY_PROJECT_ID,
     },
