@@ -177,7 +177,7 @@ export function ProviderSettingDialog(props: Props & { open: boolean, onClose: (
 
           <Link
             className={cn(buttonVariants({ variant: "outline", size: "sm" }), "gap-2 mt-2")}
-            href={`https://docs.stack-auth.com/docs/next/concepts/auth-providers/${props.id}`}
+            href={`https://docs.stack-auth.com/docs/concepts/auth-providers/${props.id === "x" ? "x-twitter" : props.id}`}
             target="_blank"
             rel="noopener"
           >
