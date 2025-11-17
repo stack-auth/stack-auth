@@ -29,14 +29,10 @@ export async function POST(request: Request) {
       ? new URL('/api/internal/mcp', 'https://localhost:8104')
       : new URL('/api/internal/mcp', 'https://mcp.stack-auth.com');
 
-    console.log('[AI Chat] Using MCP endpoint:', mcpUrl.toString());
-
     const stackAuthMcp = await createMCPClient({
       transport: new StreamableHTTPClientTransport(mcpUrl),
     });
     tools = await stackAuthMcp.tools();
-
-    console.log('[AI Chat] Available tools:', Object.keys(tools).join(', '));
   } catch (error) {
     console.error('Failed to initialize MCP client or retrieve tools:', error);
     return new Response(

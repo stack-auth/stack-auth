@@ -116,15 +116,8 @@ function getApiEndpointFromPage(page: typeof allPages[0]): string | null {
   // Check if the page data has _openapi metadata
   const pageData = page.data as { _openapi?: { method?: string, route?: string } };
 
-  // Debug: log what we have
-  if (page.url === '/api/client/users/users/me/get') {
-    console.log('[API ENDPOINT DEBUG] Sample page data keys:', Object.keys(pageData));
-    console.log('[API ENDPOINT DEBUG] _openapi value:', pageData._openapi);
-  }
-
   if (pageData._openapi && pageData._openapi.method && pageData._openapi.route) {
     const endpoint = `${pageData._openapi.method.toUpperCase()} ${pageData._openapi.route}`;
-    console.log('[API ENDPOINT DEBUG] ✓ Extracted endpoint:', endpoint, 'for', page.url);
     return endpoint;
   }
 
@@ -273,10 +266,6 @@ const handler = createMcpHandler(
           distinctId: "mcp-handler",
         });
 
-        console.log('[MCP DEBUG] Search query:', search_query);
-        console.log('[MCP DEBUG] Total pages available:', allPages.length);
-        console.log('[MCP DEBUG] First 3 page titles:', allPages.slice(0, 3).map(p => p.data.title));
-
         type SearchResult = {
           title: string,
           description: string,
@@ -290,8 +279,6 @@ const handler = createMcpHandler(
         const results: SearchResult[] = [];
         const queryLower = search_query.toLowerCase().trim();
         const queryWords = queryLower.split(/\s+/).filter(w => w.length > 0);
-
-        console.log('[MCP DEBUG] Query words:', queryWords);
 
         // Search through all pages
         for (const page of allPages) {
@@ -426,7 +413,6 @@ const handler = createMcpHandler(
             }
           } catch (error) {
             // If file reading fails but we have title/description matches
-            console.log('[MCP DEBUG] Failed to read file for page:', page.url, 'Error:', error instanceof Error ? error.message : 'unknown');
             if (score > 0) {
               const apiEndpoint = page.url.startsWith('/api/') ? getApiEndpointFromPage(page) : null;
 
@@ -447,11 +433,6 @@ const handler = createMcpHandler(
         const sortedResults = results
           .sort((a, b) => b.score - a.score)
           .slice(0, result_limit);
-
-        console.log('[MCP DEBUG] Found', results.length, 'results, returning top', sortedResults.length);
-        if (sortedResults.length > 0) {
-          console.log('[MCP DEBUG] Top 3 results:', sortedResults.slice(0, 3).map(r => ({ title: r.title, score: r.score })));
-        }
 
         const searchResultText = sortedResults.length > 0
           ? sortedResults.map(result => {
