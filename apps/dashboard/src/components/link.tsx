@@ -16,7 +16,7 @@ type LinkProps = {
   style?: React.CSSProperties,
   scroll?: boolean,
   prefetch?: boolean | "auto",
-};
+} & React.ComponentProps<typeof NextLink>;
 
 export const Link = React.forwardRef<HTMLAnchorElement, LinkProps>(({ onClick, href, children, ...rest }, ref) => {
   const router = useRouter();

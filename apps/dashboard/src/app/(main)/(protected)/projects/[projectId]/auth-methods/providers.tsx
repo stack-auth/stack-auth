@@ -178,7 +178,8 @@ export function ProviderSettingDialog(props: Props & { open: boolean, onClose: (
           <Link
             className={cn(buttonVariants({ variant: "outline", size: "sm" }), "gap-2 mt-2")}
             href={`https://docs.stack-auth.com/docs/next/concepts/auth-providers/${props.id}`}
-            target="_blank" rel="noreferrer"
+            target="_blank"
+            rel="noopener"
           >
             See full documentation
             <ArrowRight size={16} />
