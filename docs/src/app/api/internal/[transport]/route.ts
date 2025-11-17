@@ -377,7 +377,7 @@ const handler = createMcpHandler(
               }
             }
 
-            if (hasContentMatch) {
+            if (hasContentMatch && queryWords.length > 0) {
               // Find snippet around the first query word match
               const firstWord = queryWords[0];
               const matchIndex = textContentLower.indexOf(firstWord);
