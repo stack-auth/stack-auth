@@ -826,7 +826,7 @@ it("successfully creates invitation with empty permission_ids array", async ({ e
     method: "POST",
     accessType: "client",
     body: {
-      email: receiveMailbox,
+      email: receiveMailbox.emailAddress,
       team_id: teamId,
       callback_url: "http://localhost:12345/some-callback-url",
       permission_ids: [], // Empty array
@@ -865,7 +865,7 @@ it("successfully creates invitation with omitted permission_ids (backwards compa
     method: "POST",
     accessType: "client",
     body: {
-      email: receiveMailbox,
+      email: receiveMailbox.emailAddress,
       team_id: teamId,
       callback_url: "http://localhost:12345/some-callback-url",
       // permission_ids completely omitted
@@ -900,7 +900,7 @@ it("allows server access invitation with permission_ids bypassing user permissio
     method: "POST",
     accessType: "server",
     body: {
-      email: receiveMailbox,
+      email: receiveMailbox.emailAddress,
       team_id: teamId,
       callback_url: "http://localhost:12345/some-callback-url",
       permission_ids: ["team_admin"],
