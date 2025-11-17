@@ -1,0 +1,21 @@
+{
+  "title": "OAuth Providers",
+  "icon": "Plug",
+  "defaultOpen": false,
+  "pages": [
+    "github",
+    "google",
+    "facebook",
+    "microsoft",
+    "spotify",
+    "discord",
+    "gitlab",
+    "apple",
+    "bitbucket",
+    "linkedin",
+    "x-twitter",
+    "twitch",
+    "passkey",
+    "two-factor-auth"
+  ]
+} 

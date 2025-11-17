@@ -4,6 +4,7 @@ import { BranchConfigOverride, BranchConfigOverrideOverride, BranchIncompleteCon
 import { ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
 import { yupBoolean, yupMixed, yupObject, yupRecord, yupString, yupUnion } from "@stackframe/stack-shared/dist/schema-fields";
 import { isTruthy } from "@stackframe/stack-shared/dist/utils/booleans";
+import { getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
 import { StackAssertionError, captureError } from "@stackframe/stack-shared/dist/utils/errors";
 import { filterUndefined, typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
@@ -130,10 +131,7 @@ export function getProjectConfigOverrideQuery(options: ProjectOptions): RawQuery
       if (queryResult.length > 1) {
         throw new StackAssertionError(`Expected 0 or 1 project config overrides for project ${options.projectId}, got ${queryResult.length}`, { queryResult });
       }
-      if (queryResult.length === 0) {
-        throw new StackAssertionError(`Expected a project row for project ${options.projectId}, got 0`, { queryResult, options });
-      }
-      return migrateConfigOverride("project", queryResult[0].projectConfigOverride ?? {});
+      return migrateConfigOverride("project", queryResult[0]?.projectConfigOverride ?? {});
     },
   };
 }
@@ -141,13 +139,13 @@ export function getProjectConfigOverrideQuery(options: ProjectOptions): RawQuery
 export function getBranchConfigOverrideQuery(options: BranchOptions): RawQuery<Promise<BranchConfigOverride>> {
   // fetch branch config from GitHub
   // (currently it's just empty)
-  if (options.branchId !== DEFAULT_BRANCH_ID) {
-    throw new StackAssertionError('Not implemented');
-  }
   return {
     supportedPrismaClients: ["global"],
     sql: Prisma.sql`SELECT 1`,
     postProcess: async () => {
+      if (options.branchId !== DEFAULT_BRANCH_ID) {
+        throw new StackAssertionError('getBranchConfigOverrideQuery is not implemented for branches other than the default one');
+      }
       return migrateConfigOverride("branch", {});
     },
   };
@@ -205,10 +203,11 @@ export async function overrideProjectConfigOverride(options: {
 
   // TODO put this in a serializable transaction (or a single SQL query) to prevent race conditions
   const oldConfig = await rawQuery(globalPrismaClient, getProjectConfigOverrideQuery(options));
-  const newConfig = override(
+  const newConfigUnmigrated = override(
     oldConfig,
     options.projectConfigOverrideOverride,
   );
+  const newConfig = migrateConfigOverride("project", newConfigUnmigrated);
 
   // large configs make our DB slow; let's prevent them early
   const newConfigString = JSON.stringify(newConfig);
@@ -249,10 +248,11 @@ export async function overrideEnvironmentConfigOverride(options: {
 
   // TODO put this in a serializable transaction (or a single SQL query) to prevent race conditions
   const oldConfig = await rawQuery(globalPrismaClient, getEnvironmentConfigOverrideQuery(options));
-  const newConfig = override(
+  const newConfigUnmigrated = override(
     oldConfig,
     options.environmentConfigOverrideOverride,
   );
+  const newConfig = migrateConfigOverride("environment", newConfigUnmigrated);
 
   // large configs make our DB slow; let's prevent them early
   const newConfigString = JSON.stringify(newConfig);
@@ -353,7 +353,16 @@ function makeUnsanitizedIncompleteConfigQuery<T, O>(options: { previous?: RawQue
     async ([prevPromise, overPromise]) => {
       const prev = await prevPromise;
       const over = await overPromise;
-      await assertNoConfigOverrideErrors(options.schema, over, { extraInfo: options.extraInfo });
+      try {
+        await assertNoConfigOverrideErrors(options.schema, over, { extraInfo: options.extraInfo });
+      } catch (error) {
+        if (getNodeEnvironment().includes("prod")) {
+          // be a bit more resilient in prod... we don't necessarily have to crash here, but this means that something went awfully wrong so go into panic mode regardless
+          captureError("config-override-validation-error", error);
+        } else {
+          throw error;
+        }
+      }
       return override(prev, over);
     },
   );
@@ -434,8 +443,10 @@ import.meta.vitest?.test('_validateConfigOverrideSchemaImpl(...)', async ({ expe
   expect(await validateConfigOverrideSchema(yupObject({ a: yupObject({ b: yupObject({ c: yupString().defined() }).defined() }).defined() }), { a: { b: {} } }, { "a.b": { c: 123 } })).toEqual(Result.error("[ERROR] a.b.c must be a `string` type, but the final value was: `123`."));
   expect(await validateConfigOverrideSchema(yupObject({ a: yupString().defined().oneOf(['b']) }), {}, { a: 'c' })).toEqual(Result.error("[ERROR] a must be one of the following values: b"));
   expect(await validateConfigOverrideSchema(yupObject({ a: yupString().defined() }), {}, {})).toEqual(Result.error("[WARNING] a must be defined"));
-  expect(await validateConfigOverrideSchema(yupObject({ a: yupMixed() }), {}, { "a.b": "c" })).toEqual(Result.error(`[ERROR] The key \"a.b\" is not valid for the schema.`));
-  expect(await validateConfigOverrideSchema(yupObject({ a: yupMixed() }), { a: 'str' }, { "a.b": "c" })).toEqual(Result.error(`[ERROR] The key \"a.b\" is not valid for the schema.`));
+  expect(await validateConfigOverrideSchema(yupObject({}), {}, { "a.b": "c" })).toEqual(Result.error(`[ERROR] The key \"a.b\" is not valid (nested object not found in schema: "a").`));
+  expect(await validateConfigOverrideSchema(yupObject({ a: yupMixed() }), {}, { "a.b": "c" })).toEqual(Result.error(`[ERROR] The key \"a.b\" is not valid (nested object not found in schema: "a.b").`));
+  expect(await validateConfigOverrideSchema(yupObject({ a: yupMixed() }), { a: 'str' }, { "a.b": "c" })).toEqual(Result.error(`[ERROR] The key \"a.b\" is not valid (nested object not found in schema: "a.b").`));
+  expect(await validateConfigOverrideSchema(yupObject({ a: yupObject({ c: yupString().optional() }) }), { a: 'str' }, { "a.b": "c" })).toEqual(Result.error(`[ERROR] The key \"a.b\" is not valid (nested object not found in schema: "a.b").`));
   expect(await validateConfigOverrideSchema(schema1, {}, { a: 123 })).toEqual(Result.error('[ERROR] a must be a `string` type, but the final value was: `123`.'));
   expect(await validateConfigOverrideSchema(unionSchema, { a: { "time": "now" } }, { "a.morning": true })).toMatchInlineSnapshot(`
     {

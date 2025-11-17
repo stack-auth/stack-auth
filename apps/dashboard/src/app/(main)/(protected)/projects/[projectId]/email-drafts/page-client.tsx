@@ -9,6 +9,7 @@ import { useState } from "react";
 import * as yup from "yup";
 import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";
+import { AppEnabledGuard } from "../app-enabled-guard";
 
 export default function PageClient() {
   const stackAdminApp = useAdminApp();
@@ -19,63 +20,65 @@ export default function PageClient() {
   const [sharedSmtpWarningDialogOpen, setSharedSmtpWarningDialogOpen] = useState<string | null>(null);
 
   return (
-    <PageLayout
-      title="Email Drafts"
-      description="Create, edit, and send email drafts"
-      actions={<NewDraftButton />}
-    >
-      {emailConfig?.type === 'shared' && <Alert variant="default">
-        <AlertCircle className="h-4 w-4" />
-        <AlertTitle>Warning</AlertTitle>
-        <AlertDescription>
-          You are using a shared email server. If you want to send manual emails, you need to configure a custom SMTP server.
-        </AlertDescription>
-      </Alert>}
-
-      {drafts.map((draft: any) => (
-        <Card key={draft.id} className="p-4">
-          <div className="flex justify-between gap-2 items-center">
-            <Typography className="font-medium">
-              {draft.displayName}
-            </Typography>
-            <div className="flex justify-start items-end gap-2">
-              <Button
-                variant='secondary'
-                onClick={() => {
-                  if (emailConfig?.type === 'shared') {
-                    setSharedSmtpWarningDialogOpen(draft.id);
-                  } else {
-                    router.push(`email-drafts/${draft.id}`);
-                  }
-                }}
-              >
-                Open Draft
-              </Button>
-            </div>
-          </div>
-        </Card>
-      ))}
-
-      <ActionDialog
-        open={sharedSmtpWarningDialogOpen !== null}
-        onClose={() => setSharedSmtpWarningDialogOpen(null)}
-        title="Shared Email Server"
-        okButton={{
-          label: "Open Draft Anyway", onClick: async () => {
-            router.push(`email-drafts/${sharedSmtpWarningDialogOpen}`);
-          }
-        }}
-        cancelButton={{ label: "Cancel" }}
+    <AppEnabledGuard appId="emails">
+      <PageLayout
+        title="Email Drafts"
+        description="Create, edit, and send email drafts"
+        actions={<NewDraftButton />}
       >
-        <Alert variant="default">
+        {emailConfig?.type === 'shared' && <Alert variant="default">
           <AlertCircle className="h-4 w-4" />
           <AlertTitle>Warning</AlertTitle>
           <AlertDescription>
-            You are using a shared email server. You can open the draft anyway, but you will not be able to send emails.
+            You are using a shared email server. If you want to send manual emails, you need to configure a custom SMTP server.
           </AlertDescription>
-        </Alert>
-      </ActionDialog>
-    </PageLayout>
+        </Alert>}
+
+        {drafts.map((draft: any) => (
+          <Card key={draft.id} className="p-4">
+            <div className="flex justify-between gap-2 items-center">
+              <Typography className="font-medium">
+                {draft.displayName}
+              </Typography>
+              <div className="flex justify-start items-end gap-2">
+                <Button
+                  variant='secondary'
+                  onClick={() => {
+                    if (emailConfig?.type === 'shared') {
+                      setSharedSmtpWarningDialogOpen(draft.id);
+                    } else {
+                      router.push(`email-drafts/${draft.id}`);
+                    }
+                  }}
+                >
+                  Open Draft
+                </Button>
+              </div>
+            </div>
+          </Card>
+        ))}
+
+        <ActionDialog
+          open={sharedSmtpWarningDialogOpen !== null}
+          onClose={() => setSharedSmtpWarningDialogOpen(null)}
+          title="Shared Email Server"
+          okButton={{
+            label: "Open Draft Anyway", onClick: async () => {
+            router.push(`email-drafts/${sharedSmtpWarningDialogOpen}`);
+            }
+          }}
+          cancelButton={{ label: "Cancel" }}
+        >
+          <Alert variant="default">
+            <AlertCircle className="h-4 w-4" />
+            <AlertTitle>Warning</AlertTitle>
+            <AlertDescription>
+              You are using a shared email server. You can open the draft anyway, but you will not be able to send emails.
+            </AlertDescription>
+          </Alert>
+        </ActionDialog>
+      </PageLayout>
+    </AppEnabledGuard>
   );
 }
 
@@ -108,4 +111,3 @@ function NewDraftButton() {
     />
   );
 }
-

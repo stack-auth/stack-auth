@@ -17,7 +17,7 @@ jobs:
     env:
       NODE_ENV: test
       STACK_ENABLE_HARDCODED_PASSKEY_CHALLENGE_FOR_TESTING: yes
-      STACK_DIRECT_DATABASE_CONNECTION_STRING: "postgres://postgres:PASSWORD-PLACEHOLDER--uqfEC1hmmv@localhost:5432/stackframe"
+      STACK_DIRECT_DATABASE_CONNECTION_STRING: "postgres://postgres:PASSWORD-PLACEHOLDER--uqfEC1hmmv@localhost:8128/stackframe"
 
     strategy:
       matrix:
@@ -41,7 +41,7 @@ jobs:
       - name: Start Docker Compose in background
         uses: JarvusInnovations/background-action@v1.0.7
         with:
-          run: docker compose -f docker/dependencies/docker.compose.yaml up -d &
+          run: docker compose -f docker/dependencies/docker.compose.yaml up --pull always -d &
           # we don't need to wait on anything, just need to start the daemon
           wait-on: /dev/null
           tail: true
@@ -78,11 +78,11 @@ jobs:
       - name: Create .env.test.local file for examples/middleware
         run: cp examples/middleware/.env.development examples/middleware/.env.test.local
 
-      - name: Create .env.test.local file for examples/partial-prerendering
-        run: cp examples/partial-prerendering/.env.development examples/partial-prerendering/.env.test.local
-
       - name: Create .env.test.local file for examples/supabase
         run: cp examples/supabase/.env.development examples/supabase/.env.test.local
+
+      - name: Create .env.test.local file for examples/convex
+        run: cp examples/convex/.env.development examples/convex/.env.test.local
 
       - name: Build
         run: pnpm build
@@ -91,7 +91,7 @@ jobs:
         run: pnpm run wait-until-postgres-is-ready:pg_isready
 
       - name: Wait on Inbucket
-        run: npx wait-on tcp:localhost:2500
+        run: npx wait-on tcp:localhost:8129
 
       - name: Wait on Svix
         run: npx wait-on tcp:localhost:8113

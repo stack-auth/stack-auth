@@ -1,53 +1,111 @@
 'use client';
 
-import { AlignLeft, ChevronDown, ExternalLink, FileText, Hash, Search, X } from 'lucide-react';
+import { AlignLeft, ExternalLink, FileText, Hash, Search, Sparkles, X } from 'lucide-react';
 import Link from 'next/link';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { cn } from '../../lib/cn';
-
-// Platform colors matching your theme
-const PLATFORM_COLORS = {
-  'next': '#3B82F6', // Blue - matches rgb(59, 130, 246)
-  'react': '#10B981', // Green - matches rgb(16, 185, 129)
-  'js': '#F59E0B', // Yellow - matches rgb(245, 158, 11)
-  'javascript': '#F59E0B', // Yellow - matches rgb(245, 158, 11)
-  'python': '#A855F7', // Purple - matches rgb(168, 85, 247)
-  'api': '#FF6B6B', // Keep existing red for API
-} as const;
-
-const PLATFORM_NAMES = {
-  'next': 'Next.js',
-  'react': 'React',
-  'js': 'JavaScript',
-  'javascript': 'JavaScript',
-  'python': 'Python',
-  'api': 'API',
-} as const;
+import { useSidebar } from '../layouts/sidebar-context';
 
 type SearchResult = {
   id: string,
-  type: 'page' | 'heading' | 'text',
+  type: 'page' | 'heading' | 'text' | 'api',
   content: string,
   url: string,
+  title?: string,
 };
 
+type DocumentCategory = 'api' | 'sdk' | 'component' | 'guide' | 'webhook';
+
 type GroupedResult = {
-  platform: string,
   basePath: string,
   title: string,
+  category: DocumentCategory,
+  categories: DocumentCategory[], // Support multiple categories (e.g., API + Webhook)
   results: SearchResult[],
 };
 
-function extractPlatformFromUrl(url: string): string {
-  const match = url.match(/\/docs\/([^\/]+)/);
-  const platform = match?.[1] || 'api';
-  return platform;
+function categorizeUrl(url: string): { primary: DocumentCategory, all: DocumentCategory[] } {
+  const categories: DocumentCategory[] = [];
+
+  // Check for API
+  if (url.startsWith('/api/')) {
+    categories.push('api');
+
+    // Check if it's also a webhook
+    if (url.includes('/webhook')) {
+      categories.push('webhook');
+      return { primary: 'webhook', all: categories };
+    }
+
+    return { primary: 'api', all: categories };
+  }
+
+  // Check for SDK
+  if (url.includes('/docs/sdk/') || url.includes('/sdk/')) {
+    categories.push('sdk');
+    return { primary: 'sdk', all: categories };
+  }
+
+  // Check for Component
+  if (url.includes('/docs/components/') || url.includes('/components/')) {
+    categories.push('component');
+    return { primary: 'component', all: categories };
+  }
+
+  // Default to guide
+  categories.push('guide');
+  return { primary: 'guide', all: categories };
 }
 
 function extractBasePathFromUrl(url: string): string {
-  // Extract everything after the platform but before any hash
-  const match = url.match(/\/docs\/[^\/]+(.+?)(?:#|$)/);
+  // Handle API URLs
+  if (url.startsWith('/api/')) {
+    const match = url.match(/\/api\/([^#]+)/);
+    return match?.[1] || '';
+  }
+  // Handle docs URLs
+  const match = url.match(/\/docs\/(.+?)(?:#|$)/);
   return match?.[1] || '';
+}
+
+function getCategoryLabel(category: DocumentCategory): string {
+  switch (category) {
+    case 'api': {
+      return 'API';
+    }
+    case 'sdk': {
+      return 'SDK';
+    }
+    case 'component': {
+      return 'COMP';
+    }
+    case 'guide': {
+      return 'GUIDE';
+    }
+    case 'webhook': {
+      return 'EVENT';
+    }
+  }
+}
+
+function getCategoryStyles(category: DocumentCategory): string {
+  switch (category) {
+    case 'api': {
+      return 'bg-red-500/10 text-red-700 dark:text-red-400 border border-red-500/20';
+    }
+    case 'sdk': {
+      return 'bg-blue-500/10 text-blue-700 dark:text-blue-400 border border-blue-500/20';
+    }
+    case 'component': {
+      return 'bg-cyan-500/10 text-cyan-700 dark:text-cyan-400 border border-cyan-500/20';
+    }
+    case 'guide': {
+      return 'bg-green-500/10 text-green-700 dark:text-green-400 border border-green-500/20';
+    }
+    case 'webhook': {
+      return 'bg-purple-500/10 text-purple-700 dark:text-purple-400 border border-purple-500/20';
+    }
+  }
 }
 
 function groupResultsByPage(results: SearchResult[]): GroupedResult[] {
@@ -55,19 +113,48 @@ function groupResultsByPage(results: SearchResult[]): GroupedResult[] {
   const groupOrder: string[] = []; // Track the order groups are first encountered
 
   for (const result of results) {
-    const platform = extractPlatformFromUrl(result.url);
     const basePath = extractBasePathFromUrl(result.url);
-    const baseUrl = `/docs/${platform}${basePath}`;
+    const baseUrl = result.url.split('#')[0];
+    const { primary: category, all: categories } = categorizeUrl(result.url);
 
     if (!grouped.has(baseUrl)) {
-      // Find the page title from page-type results, fallback to path-based title
-      const pageResult = results.find(r => r.url === baseUrl && r.type === 'page');
-      const title = pageResult?.content || basePath.split('/').pop()?.replace(/-/g, ' ') || 'Unknown';
+      // Try to get title from the result itself first, then from other results with same base URL
+      let title = result.title;
+
+      if (!title) {
+        // Try to find a page-type result with this base URL that has a title
+        const pageResult = results.find(r => r.url.split('#')[0] === baseUrl && r.title);
+        title = pageResult?.title;
+      }
+
+      // Fallback to formatting the path
+      if (!title) {
+        // For API URLs, create readable titles
+        if (categories.includes('api')) {
+          const parts = basePath.split('/').filter(Boolean);
+          if (parts.length > 0) {
+            title = parts.map(part =>
+              part.split('-').map(word =>
+                word.charAt(0).toUpperCase() + word.slice(1)
+              ).join(' ')
+            ).join(' - ');
+          } else {
+            title = 'API Documentation';
+          }
+        } else {
+          // For docs URLs, format the last part of the path
+          const lastPart = basePath.split('/').pop() || basePath;
+          title = lastPart.split('-').map(word =>
+            word.charAt(0).toUpperCase() + word.slice(1)
+          ).join(' ');
+        }
+      }
 
       grouped.set(baseUrl, {
-        platform,
         basePath,
-        title,
+        title: title || 'Documentation',
+        category,
+        categories,
         results: []
       });
 
@@ -84,24 +171,6 @@ function groupResultsByPage(results: SearchResult[]): GroupedResult[] {
   // Return groups in the order they were first encountered (preserves API scoring order)
   // This maintains the relevance ranking from our search API
   return groupOrder.map(url => grouped.get(url)!);
-}
-
-function PlatformBadge({ platform }: { platform: string }) {
-  const color = PLATFORM_COLORS[platform as keyof typeof PLATFORM_COLORS];
-  const name = PLATFORM_NAMES[platform as keyof typeof PLATFORM_NAMES];
-
-  return (
-    <span
-      className="inline-flex items-center px-2 py-0.5 text-xs font-medium rounded-md"
-      style={{
-        backgroundColor: `${color}20`,
-        color: color,
-        border: `1px solid ${color}40`
-      }}
-    >
-      {name}
-    </span>
-  );
 }
 
 function SearchResultIcon({ type }: { type: string }) {
@@ -130,34 +199,28 @@ export function CustomSearchDialog({ open, onOpenChange }: CustomSearchDialogPro
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<SearchResult[]>([]);
   const [loading, setLoading] = useState(false);
-  const [selectedPlatformFilter, setSelectedPlatformFilter] = useState<string>('all');
   const [selectedIndex, setSelectedIndex] = useState(0);
-  const [dropdownOpen, setDropdownOpen] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
-  const dropdownRef = useRef<HTMLDivElement>(null);
 
   const searchTimeoutRef = useRef<NodeJS.Timeout>();
+  const sidebarContext = useSidebar();
 
-  // Available platforms for the dropdown
-  const availablePlatforms = ['all', 'next', 'react', 'js', 'python', 'api'];
-
-  // Close dropdown when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        setDropdownOpen(false);
-      }
-    };
-
-    if (dropdownOpen) {
-      document.addEventListener('mousedown', handleClickOutside);
+  // Handle AI chat opening
+  const handleOpenAIChat = () => {
+    onOpenChange(false); // Close search dialog first
+    if (!sidebarContext) {
+      return;
     }
 
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
-  }, [dropdownOpen]);
+    const { toggleChat } = sidebarContext;
 
+    // Small delay to ensure search dialog closes smoothly
+    setTimeout(() => {
+      if (!sidebarContext.isChatOpen) {
+        toggleChat();
+      }
+    }, 100);
+  };
   const performSearch = useCallback(async (searchQuery: string) => {
     if (!searchQuery.trim()) {
       setResults([]);
@@ -204,48 +267,47 @@ export function CustomSearchDialog({ open, onOpenChange }: CustomSearchDialogPro
 
   const groupedResults = groupResultsByPage(results);
 
-  // Filter by selected platform
-  const filteredResults = selectedPlatformFilter === 'all'
-    ? groupedResults
-    : groupedResults.filter(group => group.platform === selectedPlatformFilter);
+  // Sort results by category: guides first, then SDK, then API, then webhooks, then components
+  const categoryOrder: Record<DocumentCategory, number> = {
+    'guide': 1,
+    'sdk': 2,
+    'api': 3,
+    'webhook': 4,
+    'component': 5,
+  };
+
+  const filteredResults = groupedResults.sort((a, b) => {
+    return categoryOrder[a.category] - categoryOrder[b.category];
+  });
 
   // Flatten results for keyboard navigation
   const flatResults = filteredResults.flatMap(group =>
     group.results.map(result => ({
       ...result,
       groupTitle: group.title,
-      platform: group.platform
     }))
   );
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     switch (e.key) {
       case 'Escape': {
-        if (dropdownOpen) {
-          setDropdownOpen(false);
-        } else {
-          onOpenChange(false);
-        }
+        onOpenChange(false);
         break;
       }
       case 'ArrowDown': {
-        if (!dropdownOpen) {
-          e.preventDefault();
-          setSelectedIndex(prev => Math.min(prev + 1, flatResults.length - 1));
-        }
+        e.preventDefault();
+        setSelectedIndex(prev => Math.min(prev + 1, flatResults.length - 1));
         break;
       }
       case 'ArrowUp': {
-        if (!dropdownOpen) {
-          e.preventDefault();
-          setSelectedIndex(prev => Math.max(prev - 1, 0));
-        }
+        e.preventDefault();
+        setSelectedIndex(prev => Math.max(prev - 1, 0));
         break;
       }
       case 'Enter': {
-        if (!dropdownOpen) {
-          e.preventDefault();
-          const selectedResult = flatResults[selectedIndex];
+        e.preventDefault();
+        const selectedResult = flatResults.at(selectedIndex);
+        if (selectedResult) {
           window.location.href = selectedResult.url;
           onOpenChange(false);
         }
@@ -267,7 +329,6 @@ export function CustomSearchDialog({ open, onOpenChange }: CustomSearchDialogPro
       setQuery('');
       setResults([]);
       setSelectedIndex(0);
-      setDropdownOpen(false);
     }
   }, [open]);
 
@@ -293,52 +354,6 @@ export function CustomSearchDialog({ open, onOpenChange }: CustomSearchDialogPro
             placeholder="Search documentation..."
             className="flex-1 px-0 py-4 text-sm bg-transparent outline-none placeholder:text-fd-muted-foreground"
           />
-          <div className="flex items-center gap-2 ml-3 relative" ref={dropdownRef}>
-            <button
-              onClick={() => setDropdownOpen(!dropdownOpen)}
-              className={cn(
-                "text-xs px-3 py-1.5 rounded-md flex items-center gap-2",
-                dropdownOpen ? "bg-fd-primary text-fd-primary-foreground" : "bg-fd-muted text-fd-muted-foreground hover:bg-fd-muted/80"
-              )}
-            >
-              {selectedPlatformFilter === 'all' ? (
-                <span>All platforms</span>
-              ) : (
-                <>
-                  <PlatformBadge platform={selectedPlatformFilter} />
-                  <span>only</span>
-                </>
-              )}
-              <ChevronDown className={cn("w-3 h-3 transition-transform", dropdownOpen && "rotate-180")} />
-            </button>
-
-            {/* Dropdown Menu */}
-            {dropdownOpen && (
-              <div className="absolute top-full left-0 mt-1 bg-fd-background border border-fd-border rounded-md shadow-lg z-50 min-w-[140px]">
-                {availablePlatforms.map((platform) => (
-                  <button
-                    key={platform}
-                    onClick={() => {
-                      setSelectedPlatformFilter(platform);
-                      setDropdownOpen(false);
-                    }}
-                    className={cn(
-                      "w-full text-left px-3 py-2 text-xs hover:bg-fd-muted flex items-center gap-2",
-                      selectedPlatformFilter === platform && "bg-fd-primary/10 text-fd-primary"
-                    )}
-                  >
-                    {platform === 'all' ? (
-                      <span>All platforms</span>
-                    ) : (
-                      <>
-                        <PlatformBadge platform={platform} />
-                      </>
-                    )}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
           <button
             onClick={() => onOpenChange(false)}
             className="ml-3 p-1 hover:bg-fd-muted rounded-md"
@@ -363,15 +378,26 @@ export function CustomSearchDialog({ open, onOpenChange }: CustomSearchDialogPro
           )}
 
           {!loading && filteredResults.map((group, groupIndex) => (
-            <div key={`${group.platform}-${group.basePath}`} className="mb-6">
-              {/* Group Header */}
-              <div className="flex items-center gap-3 px-3 py-2 mb-3 bg-fd-muted/30 rounded-lg">
-                <PlatformBadge platform={group.platform} />
-                <h3 className="text-sm font-semibold text-fd-foreground">
+            <div key={group.basePath || groupIndex} className="mb-4">
+              {/* Group Header - grid layout for consistent badge alignment */}
+              <div className="grid grid-cols-[1fr_auto_auto] items-center gap-3 px-3 py-2.5 mb-2 bg-fd-muted/20 rounded-lg">
+                <h3 className="text-sm font-semibold text-fd-foreground truncate">
                   {group.title}
                 </h3>
-                <div className="flex-1" />
-                <span className="text-xs text-fd-muted-foreground">
+                <div className="flex items-center gap-1 flex-shrink-0">
+                  {group.categories.map((cat, idx) => (
+                    <span
+                      key={idx}
+                      className={cn(
+                        "inline-flex items-center justify-center px-2 py-0.5 rounded-md text-[10px] font-medium tracking-wide leading-none",
+                        getCategoryStyles(cat)
+                      )}
+                    >
+                      {getCategoryLabel(cat)}
+                    </span>
+                  ))}
+                </div>
+                <span className="text-xs text-fd-muted-foreground flex-shrink-0">
                   {group.results.length} result{group.results.length !== 1 ? 's' : ''}
                 </span>
               </div>
@@ -424,6 +450,11 @@ export function CustomSearchDialog({ open, onOpenChange }: CustomSearchDialogPro
                   );
                 })}
               </div>
+
+              {/* Separator between groups (except for last group) */}
+              {groupIndex < filteredResults.length - 1 && (
+                <div className="mt-4 mb-4 mx-3 border-t border-fd-border/30" />
+              )}
             </div>
           ))}
 
@@ -438,14 +469,21 @@ export function CustomSearchDialog({ open, onOpenChange }: CustomSearchDialogPro
         {/* Footer */}
         <div className="border-t border-fd-border px-3 py-2 text-xs text-fd-muted-foreground flex justify-between items-center">
           <span>Use ↑↓ to navigate, Enter to select, Esc to close</span>
-          <span>
-            {filteredResults.length} result group{filteredResults.length !== 1 ? 's' : ''}
-            {selectedPlatformFilter !== 'all' && filteredResults.length > 0 && (
-              <span className="ml-2 text-fd-primary">
-                • {PLATFORM_NAMES[selectedPlatformFilter as keyof typeof PLATFORM_NAMES]} only
-              </span>
-            )}
-          </span>
+          <div className="flex items-center gap-2">
+            <span>
+              {filteredResults.length} result group{filteredResults.length !== 1 ? 's' : ''}
+            </span>
+
+            {/* AI Chat Fallback */}
+            <span className="text-fd-muted-foreground">•</span>
+            <button
+              onClick={handleOpenAIChat}
+              className="flex items-center gap-1 px-2 py-1 text-xs rounded-md transition-all duration-300 ease-out relative overflow-hidden text-white chat-gradient-active hover:scale-105 hover:brightness-110 hover:shadow-lg"
+            >
+              <Sparkles className="h-3 w-3 relative z-10" />
+              <span className="font-medium relative z-10">Ask AI</span>
+            </button>
+          </div>
         </div>
       </div>
     </div>

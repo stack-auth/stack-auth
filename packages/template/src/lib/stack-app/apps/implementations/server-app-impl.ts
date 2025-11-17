@@ -3,6 +3,7 @@ import { ContactChannelsCrud } from "@stackframe/stack-shared/dist/interface/cru
 import { ItemCrud } from "@stackframe/stack-shared/dist/interface/crud/items";
 import { NotificationPreferenceCrud } from "@stackframe/stack-shared/dist/interface/crud/notification-preferences";
 import { OAuthProviderCrud } from "@stackframe/stack-shared/dist/interface/crud/oauth-providers";
+import type { CustomerProductsListResponse } from "@stackframe/stack-shared/dist/interface/crud/products";
 import { TeamApiKeysCrud, UserApiKeysCrud, teamApiKeysCreateOutputSchema, userApiKeysCreateOutputSchema } from "@stackframe/stack-shared/dist/interface/crud/project-api-keys";
 import { ProjectPermissionDefinitionsCrud, ProjectPermissionsCrud } from "@stackframe/stack-shared/dist/interface/crud/project-permissions";
 import { TeamInvitationCrud } from "@stackframe/stack-shared/dist/interface/crud/team-invitation";
@@ -21,19 +22,19 @@ import { useMemo } from "react"; // THIS_LINE_PLATFORM react-like
 import * as yup from "yup";
 import { constructRedirectUrl } from "../../../../utils/url";
 import { ApiKey, ApiKeyCreationOptions, ApiKeyUpdateOptions, apiKeyCreationOptionsToCrud, apiKeyUpdateOptionsToCrud } from "../../api-keys";
-import { GetUserOptions, HandlerUrls, OAuthScopesOnSignIn, TokenStoreInit } from "../../common";
+import { ConvexCtx, GetCurrentUserOptions } from "../../common";
 import { OAuthConnection } from "../../connected-accounts";
 import { ServerContactChannel, ServerContactChannelCreateOptions, ServerContactChannelUpdateOptions, serverContactChannelCreateOptionsToCrud, serverContactChannelUpdateOptionsToCrud } from "../../contact-channels";
-import { InlineOffer, ServerItem } from "../../customers";
+import { Customer, InlineProduct, ServerItem } from "../../customers";
 import { DataVaultStore } from "../../data-vault";
 import { SendEmailOptions } from "../../email";
 import { NotificationCategory } from "../../notification-categories";
 import { AdminProjectPermissionDefinition, AdminTeamPermission, AdminTeamPermissionDefinition } from "../../permissions";
 import { EditableTeamMemberProfile, ServerListUsersOptions, ServerTeam, ServerTeamCreateOptions, ServerTeamUpdateOptions, ServerTeamUser, Team, TeamInvitation, serverTeamCreateOptionsToCrud, serverTeamUpdateOptionsToCrud } from "../../teams";
-import { ProjectCurrentServerUser, ServerOAuthProvider, ServerUser, ServerUserCreateOptions, ServerUserUpdateOptions, serverUserCreateOptionsToCrud, serverUserUpdateOptionsToCrud } from "../../users";
+import { ProjectCurrentServerUser, ServerOAuthProvider, ServerUser, ServerUserCreateOptions, ServerUserUpdateOptions, attachUserDestructureGuard, serverUserCreateOptionsToCrud, serverUserUpdateOptionsToCrud } from "../../users";
 import { StackServerAppConstructorOptions } from "../interfaces/server-app";
 import { _StackClientAppImplIncomplete } from "./client-app-impl";
-import { clientVersion, createCache, createCacheBySession, getBaseUrl, getDefaultExtraRequestHeaders, getDefaultProjectId, getDefaultPublishableClientKey, getDefaultSecretServerKey } from "./common";
+import { clientVersion, createCache, createCacheBySession, getBaseUrl, getDefaultExtraRequestHeaders, getDefaultProjectId, getDefaultPublishableClientKey, getDefaultSecretServerKey, resolveConstructorOptions } from "./common";
 
 import { useAsyncCache } from "./common"; // THIS_LINE_PLATFORM react-like
 
@@ -152,6 +153,13 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
     }
   );
 
+  private readonly _convexIdentitySubjectCache = createCache<[ConvexCtx], string | null>(
+    async ([ctx]) => {
+      const identity = await ctx.auth.getUserIdentity();
+      return identity ? identity.subject : null;
+    }
+  );
+
   private readonly _serverCheckApiKeyCache = createCache<["user" | "team", string], UserApiKeysCrud['Server']['Read'] | TeamApiKeysCrud['Server']['Read'] | null>(async ([type, apiKey]) => {
     const result = await this._interface.checkProjectApiKey(
       type,
@@ -185,6 +193,76 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
       return await this._interface.getItem({ customCustomerId, itemId }, null);
     }
   );
+
+  private readonly _serverUserProductsCache = createCache<[string, string | null, number | null], CustomerProductsListResponse>(
+    async ([userId, cursor, limit]) => {
+      return await this._interface.listProducts({
+        customer_type: "user",
+        customer_id: userId,
+        cursor: cursor ?? undefined,
+        limit: limit ?? undefined,
+      }, null);
+    }
+  );
+
+  private readonly _serverTeamProductsCache = createCache<[string, string | null, number | null], CustomerProductsListResponse>(
+    async ([teamId, cursor, limit]) => {
+      return await this._interface.listProducts({
+        customer_type: "team",
+        customer_id: teamId,
+        cursor: cursor ?? undefined,
+        limit: limit ?? undefined,
+      }, null);
+    }
+  );
+
+  private readonly _serverCustomProductsCache = createCache<[string, string | null, number | null], CustomerProductsListResponse>(
+    async ([customCustomerId, cursor, limit]) => {
+      return await this._interface.listProducts({
+        customer_type: "custom",
+        customer_id: customCustomerId,
+        cursor: cursor ?? undefined,
+        limit: limit ?? undefined,
+      }, null);
+    }
+  );
+
+  protected _createServerCustomer(userIdOrTeamId: string, type: "user" | "team"): Omit<Customer<true>, "id"> {
+    const app = this;
+    const productsCache = type === "user" ? app._serverUserProductsCache : app._serverTeamProductsCache;
+    const customerOptions = type === "user" ? { userId: userIdOrTeamId } : { teamId: userIdOrTeamId };
+    return {
+      ...this._createCustomer(userIdOrTeamId, type, null),
+      async getItem(itemId: string) {
+        return await app.getItem({ itemId, ...customerOptions });
+      },
+      // IF_PLATFORM react-like
+      useItem(itemId: string) {
+        return app.useItem({ itemId, ...customerOptions });
+      },
+      // END_PLATFORM
+      async grantProduct(productOptions: { productId: string, quantity?: number } | { product: InlineProduct, quantity?: number }) {
+        if (type === "user") {
+          if ("productId" in productOptions) {
+            await app.grantProduct({ userId: userIdOrTeamId, productId: productOptions.productId, quantity: productOptions.quantity });
+          } else {
+            await app.grantProduct({ userId: userIdOrTeamId, product: productOptions.product, quantity: productOptions.quantity });
+          }
+        } else {
+          if ("productId" in productOptions) {
+            await app.grantProduct({ teamId: userIdOrTeamId, productId: productOptions.productId, quantity: productOptions.quantity });
+          } else {
+            await app.grantProduct({ teamId: userIdOrTeamId, product: productOptions.product, quantity: productOptions.quantity });
+          }
+        }
+        await productsCache.refresh([userIdOrTeamId, null, null]);
+      },
+      async createCheckoutUrl(options: { productId: string, returnUrl?: string } | { product: InlineProduct, returnUrl?: string }) {
+        const productIdOrInline = "productId" in options ? options.productId : options.product;
+        return await app._interface.createCheckoutUrl(type, userIdOrTeamId, productIdOrInline, null, options.returnUrl);
+      },
+    };
+  }
 
   private async _updateServerUser(userId: string, update: ServerUserUpdateOptions): Promise<UsersCrud['Server']['Read']> {
     const result = await this._interface.updateServerUser(userId, serverUserUpdateOptionsToCrud(update));
@@ -293,37 +371,19 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
     };
   }
 
-  constructor(options:
-    | StackServerAppConstructorOptions<HasTokenStore, ProjectId>
-    | {
-      interface: StackServerInterface,
-      tokenStore: TokenStoreInit<HasTokenStore>,
-      urls: Partial<HandlerUrls> | undefined,
-      oauthScopesOnSignIn?: Partial<OAuthScopesOnSignIn> | undefined,
-    }
-  ) {
-    super("interface" in options ? {
-      interface: options.interface,
-      tokenStore: options.tokenStore,
-      urls: options.urls,
-      oauthScopesOnSignIn: options.oauthScopesOnSignIn,
-    } : {
-      interface: new StackServerInterface({
-        getBaseUrl: () => getBaseUrl(options.baseUrl),
-        projectId: options.projectId ?? getDefaultProjectId(),
-        extraRequestHeaders: options.extraRequestHeaders ?? getDefaultExtraRequestHeaders(),
+  constructor(options: StackServerAppConstructorOptions<HasTokenStore, ProjectId>, extraOptions?: { uniqueIdentifier?: string, checkString?: string, interface?: StackServerInterface }) {
+    const resolvedOptions = resolveConstructorOptions(options);
+
+    super(resolvedOptions, {
+      ...extraOptions,
+      interface: extraOptions?.interface ?? new StackServerInterface({
+        getBaseUrl: () => getBaseUrl(resolvedOptions.baseUrl),
+        projectId: resolvedOptions.projectId ?? getDefaultProjectId(),
+        extraRequestHeaders: resolvedOptions.extraRequestHeaders ?? getDefaultExtraRequestHeaders(),
         clientVersion,
-        publishableClientKey: options.publishableClientKey ?? getDefaultPublishableClientKey(),
-        secretServerKey: options.secretServerKey ?? getDefaultSecretServerKey(),
+        publishableClientKey: resolvedOptions.publishableClientKey ?? getDefaultPublishableClientKey(),
+        secretServerKey: resolvedOptions.secretServerKey ?? getDefaultSecretServerKey(),
       }),
-      baseUrl: options.baseUrl,
-      extraRequestHeaders: options.extraRequestHeaders,
-      projectId: options.projectId,
-      publishableClientKey: options.publishableClientKey,
-      tokenStore: options.tokenStore,
-      urls: options.urls,
-      oauthScopesOnSignIn: options.oauthScopesOnSignIn,
-      redirectMethod: options.redirectMethod,
     });
   }
 
@@ -373,7 +433,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
     }
     // END_PLATFORM
 
-    return {
+    const serverUser = {
       ...super._createBaseUser(crud),
       lastActiveAt: new Date(crud.last_active_at_millis),
       serverMetadata: crud.server_metadata,
@@ -646,32 +706,80 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
         const providers = await this.listOAuthProviders();
         return providers.find((p) => p.id === id) ?? null;
       },
-      async createCheckoutUrl(options: { offerId: string } | { offer: InlineOffer }) {
-        const offerIdOrInline = "offerId" in options ? options.offerId : options.offer;
-        return await app._interface.createCheckoutUrl("user", crud.id, offerIdOrInline, null);
+      async registerPasskey(options?: { hostname?: string }): Promise<Result<undefined, KnownErrors["PasskeyRegistrationFailed"] | KnownErrors["PasskeyWebAuthnError"]>> {
+        // TODO remove duplicated code between this and the function in client-app-impl.ts
+        const hostname = options?.hostname || (await app._getCurrentUrl())?.hostname;
+        if (!hostname) {
+          throw new StackAssertionError("hostname must be provided if the Stack App does not have a redirect method");
+        }
+
+        // Use server interface to initiate passkey registration for this specific user
+        const initiationResult = await app._interface.initiateServerPasskeyRegistration(crud.id);
+
+        if (initiationResult.status !== "ok") {
+          return Result.error(new KnownErrors.PasskeyRegistrationFailed("Failed to get initiation options for passkey registration"));
+        }
+
+        const { options_json, code } = initiationResult.data;
+
+        // HACK: Override the rpID to be the actual domain
+        if (options_json.rp.id !== "THIS_VALUE_WILL_BE_REPLACED.example.com") {
+          throw new StackAssertionError(`Expected returned RP ID from server to equal sentinel, but found ${options_json.rp.id}`);
+        }
+
+        options_json.rp.id = hostname;
+
+        let attResp;
+        try {
+          const { startRegistration } = await import("@simplewebauthn/browser");
+          attResp = await startRegistration({ optionsJSON: options_json });
+        } catch (error: any) {
+          const { WebAuthnError } = await import("@simplewebauthn/browser");
+          if (error instanceof WebAuthnError) {
+            return Result.error(new KnownErrors.PasskeyWebAuthnError(error.message, error.name));
+          } else {
+            // This should never happen
+            const { captureError } = await import("@stackframe/stack-shared/dist/utils/errors");
+            captureError("passkey-registration-failed", error);
+            return Result.error(new KnownErrors.PasskeyRegistrationFailed("Failed to start passkey registration due to unknown error"));
+          }
+        }
+
+        // Create a temporary session to complete the registration
+        // TODO instead of creating a new session, this should just call the endpoint in a way in which it doesn't require a session
+        // (currently this shows up on session history etc... not ideal)
+        const { accessToken, refreshToken } = await app._interface.createServerUserSession(crud.id, 60000 * 2, false);
+        const tempSession = new InternalSession({
+          accessToken,
+          refreshToken,
+          refreshAccessTokenCallback: async () => null,
+        });
+
+        const registrationResult = await app._interface.registerPasskey({ credential: attResp, code }, tempSession);
+
+        await app._serverUserCache.refresh([crud.id]);
+        return registrationResult;
       },
-      async getItem(itemId: string) {
-        const result = Result.orThrow(await app._serverUserItemsCache.getOrWait([crud.id, itemId], "write-only"));
-        return app._serverItemFromCrud({ type: "user", id: crud.id }, result);
-      },
-      // IF_PLATFORM react-like
-      useItem(itemId: string) {
-        const result = useAsyncCache(app._serverUserItemsCache, [crud.id, itemId] as const, "user.useItem()");
-        return useMemo(() => app._serverItemFromCrud({ type: "user", id: crud.id }, result), [result]);
-      },
-      // END_PLATFORM
-    };
+      ...app._createServerCustomer(crud.id, "user"),
+    } satisfies ServerUser;
+
+    attachUserDestructureGuard(serverUser);
+
+    return serverUser;
   }
 
   protected _serverTeamUserFromCrud(crud: TeamMemberProfilesCrud["Server"]["Read"]): ServerTeamUser {
-    return {
+    const teamUser = {
       ...this._serverUserFromCrud(crud.user),
       teamProfile: {
         displayName: crud.display_name,
         profileImageUrl: crud.profile_image_url,
         permission_ids: crud.permission_ids,
       },
-    };
+    } satisfies ServerTeamUser;
+
+    attachUserDestructureGuard(teamUser);
+    return teamUser;
   }
 
   protected _serverTeamInvitationFromCrud(crud: TeamInvitationCrud['Server']['Read']): TeamInvitation {
@@ -682,18 +790,19 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
       permissionIds: crud.permission_ids,
       revoke: async () => {
         await this._interface.revokeServerTeamInvitation(crud.id, crud.team_id);
+        await this._serverTeamInvitationsCache.refresh([crud.team_id]);
       },
     };
   }
 
   protected override _currentUserFromCrud(crud: UsersCrud['Server']['Read'], session: InternalSession): ProjectCurrentServerUser<ProjectId> {
-    const app = this;
     const currentUser = {
       ...this._serverUserFromCrud(crud),
       ...this._createAuth(session),
       ...this._isInternalProject() ? this._createInternalUserExtra(session) : {},
     } satisfies ServerUser;
 
+    attachUserDestructureGuard(currentUser);
     Object.freeze(currentUser);
     return currentUser as ProjectCurrentServerUser<ProjectId>;
   }
@@ -778,20 +887,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
         await app._serverTeamApiKeysCache.refresh([crud.id]);
         return app._serverApiKeyFromCrud(result);
       },
-      async getItem(itemId: string) {
-        const result = Result.orThrow(await app._serverTeamItemsCache.getOrWait([crud.id, itemId], "write-only"));
-        return app._serverItemFromCrud({ type: "team", id: crud.id }, result);
-      },
-      // IF_PLATFORM react-like
-      useItem(itemId: string) {
-        const result = useAsyncCache(app._serverTeamItemsCache, [crud.id, itemId] as const, "team.useItem()");
-        return useMemo(() => app._serverItemFromCrud({ type: "team", id: crud.id }, result), [result]);
-      },
-      // END_PLATFORM
-      async createCheckoutUrl(options: { offerId: string } | { offer: InlineOffer }) {
-        const offerIdOrInline = "offerId" in options ? options.offerId : options.offer;
-        return await app._interface.createCheckoutUrl("team", crud.id, offerIdOrInline, null);
-      },
+      ...app._createServerCustomer(crud.id, "team"),
     };
   }
 
@@ -856,13 +952,13 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
   }
   // IF_PLATFORM react-like
   protected _useUserApiKey(options: { apiKey: string }): ApiKey<"user"> | null {
-    const crud = useAsyncCache(this._serverCheckApiKeyCache, ["user", options.apiKey] as const, "useUserApiKey()") as UserApiKeysCrud['Server']['Read'] | null;
+    const crud = useAsyncCache(this._serverCheckApiKeyCache, ["user", options.apiKey] as const, "serverApp.useUserApiKey()") as UserApiKeysCrud['Server']['Read'] | null;
     return useMemo(() => crud ? this._serverApiKeyFromCrud(crud) : null, [crud]);
   }
   // END_PLATFORM
   // IF_PLATFORM react-like
   protected _useTeamApiKey(options: { apiKey: string }): ApiKey<"team"> | null {
-    const crud = useAsyncCache(this._serverCheckApiKeyCache, ["team", options.apiKey] as const, "useTeamApiKey()") as TeamApiKeysCrud['Server']['Read'] | null;
+    const crud = useAsyncCache(this._serverCheckApiKeyCache, ["team", options.apiKey] as const, "serverApp.useTeamApiKey()") as TeamApiKeysCrud['Server']['Read'] | null;
     return useMemo(() => crud ? this._serverApiKeyFromCrud(crud) : null, [crud]);
   }
   // END_PLATFORM
@@ -873,6 +969,31 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
     }
     return await this.getServerUserById(apiKeyObject.userId);
   }
+
+  protected async _getUserByConvex(ctx: ConvexCtx, includeAnonymous: boolean): Promise<ServerUser | null> {
+    const identity = await ctx.auth.getUserIdentity();
+    if (identity === null) {
+      return null;
+    }
+    const user = await this.getServerUserById(identity.subject);
+    if (user?.isAnonymous && !includeAnonymous) {
+      return null;
+    }
+    return user;
+  }
+  // IF_PLATFORM react-like
+  protected _useUserByConvex(ctx: ConvexCtx, includeAnonymous: boolean): ServerUser | null {
+    const subject = useAsyncCache(this._convexIdentitySubjectCache, [ctx] as const, "serverApp.useUserByConvex()");
+    if (subject === null) {
+      return null;
+    }
+    const user = this.useUserById(subject);
+    if (user?.isAnonymous && !includeAnonymous) {
+      return null;
+    }
+    return user;
+  }
+  // END_PLATFORM
   // IF_PLATFORM react-like
   protected _useUserByApiKey(apiKey: string): ServerUser | null {
     const apiKeyObject = this._useUserApiKey({ apiKey });
@@ -906,18 +1027,22 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
     return this._serverUserFromCrud(crud);
   }
 
-  async getUser(options: GetUserOptions<HasTokenStore> & { or: 'redirect' }): Promise<ProjectCurrentServerUser<ProjectId>>;
-  async getUser(options: GetUserOptions<HasTokenStore> & { or: 'throw' }): Promise<ProjectCurrentServerUser<ProjectId>>;
-  async getUser(options: GetUserOptions<HasTokenStore> & { or: 'anonymous' }): Promise<ProjectCurrentServerUser<ProjectId>>;
-  async getUser(options?: GetUserOptions<HasTokenStore>): Promise<ProjectCurrentServerUser<ProjectId> | null>;
+  async getUser(options: GetCurrentUserOptions<HasTokenStore> & { or: 'redirect' }): Promise<ProjectCurrentServerUser<ProjectId>>;
+  async getUser(options: GetCurrentUserOptions<HasTokenStore> & { or: 'throw' }): Promise<ProjectCurrentServerUser<ProjectId>>;
+  async getUser(options: GetCurrentUserOptions<HasTokenStore> & { or: 'anonymous' }): Promise<ProjectCurrentServerUser<ProjectId>>;
+  async getUser(options?: GetCurrentUserOptions<HasTokenStore>): Promise<ProjectCurrentServerUser<ProjectId> | null>;
   async getUser(id: string): Promise<ServerUser | null>;
   async getUser(options: { apiKey: string }): Promise<ServerUser | null>;
-  async getUser(options?: string | GetUserOptions<HasTokenStore> | { apiKey: string }): Promise<ProjectCurrentServerUser<ProjectId> | ServerUser | null> {
+  async getUser(options: { from: "convex", ctx: ConvexCtx, or?: "return-null" | "anonymous" }): Promise<ServerUser | null>;
+  async getUser(options?: string | GetCurrentUserOptions<HasTokenStore> | { apiKey: string } | { from: "convex", ctx: ConvexCtx }): Promise<ProjectCurrentServerUser<ProjectId> | ServerUser | null> {
     if (typeof options === "string") {
       return await this.getServerUserById(options);
     } else if (typeof options === "object" && "apiKey" in options) {
       return await this._getUserByApiKey(options.apiKey);
+    } else if (typeof options === "object" && "from" in options && options.from as string === "convex") {
+      return await this._getUserByConvex(options.ctx, "or" in options && options.or === "anonymous");
     } else {
+      options = options as GetCurrentUserOptions<HasTokenStore> | undefined;
       // TODO this code is duplicated from the client app; fix that
       this._ensurePersistentTokenStore(options?.tokenStore);
       const session = await this._getSession(options?.tokenStore);
@@ -962,23 +1087,27 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
   }
 
   // IF_PLATFORM react-like
-  useUser(options: GetUserOptions<HasTokenStore> & { or: 'redirect' }): ProjectCurrentServerUser<ProjectId>;
-  useUser(options: GetUserOptions<HasTokenStore> & { or: 'throw' }): ProjectCurrentServerUser<ProjectId>;
-  useUser(options: GetUserOptions<HasTokenStore> & { or: 'anonymous' }): ProjectCurrentServerUser<ProjectId>;
-  useUser(options?: GetUserOptions<HasTokenStore>): ProjectCurrentServerUser<ProjectId> | null;
+  useUser(options: GetCurrentUserOptions<HasTokenStore> & { or: 'redirect' }): ProjectCurrentServerUser<ProjectId>;
+  useUser(options: GetCurrentUserOptions<HasTokenStore> & { or: 'throw' }): ProjectCurrentServerUser<ProjectId>;
+  useUser(options: GetCurrentUserOptions<HasTokenStore> & { or: 'anonymous' }): ProjectCurrentServerUser<ProjectId>;
+  useUser(options?: GetCurrentUserOptions<HasTokenStore>): ProjectCurrentServerUser<ProjectId> | null;
   useUser(id: string): ServerUser | null;
   useUser(options: { apiKey: string }): ServerUser | null;
-  useUser(options?: GetUserOptions<HasTokenStore> | string | { apiKey: string }): ProjectCurrentServerUser<ProjectId> | ServerUser | null {
+  useUser(options: { from: "convex", ctx: ConvexCtx, or?: "return-null" | "anonymous" }): ServerUser | null;
+  useUser(options?: GetCurrentUserOptions<HasTokenStore> | string | { apiKey: string } | { from: "convex", ctx: ConvexCtx }): ProjectCurrentServerUser<ProjectId> | ServerUser | null {
     if (typeof options === "string") {
       return this.useUserById(options);
     } else if (typeof options === "object" && "apiKey" in options) {
       return this._useUserByApiKey(options.apiKey);
+    } else if (typeof options === "object" && "from" in options && options.from as string === "convex") {
+      return this._useUserByConvex(options.ctx, "or" in options && options.or === "anonymous");
     } else {
+      options = options as GetCurrentUserOptions<HasTokenStore> | undefined;
       // TODO this code is duplicated from the client app; fix that
       this._ensurePersistentTokenStore(options?.tokenStore);
 
       const session = this._useSession(options?.tokenStore);
-      let crud = useAsyncCache(this._currentServerUserCache, [session] as const, "useUser()");
+      let crud = useAsyncCache(this._currentServerUserCache, [session] as const, "serverApp.useUser()");
       if (crud?.is_anonymous && options?.or !== "anonymous" && options?.or !== "anonymous-if-exists[deprecated]") {
         crud = null;
       }
@@ -1021,7 +1150,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
   // END_PLATFORM
   // IF_PLATFORM react-like
   useUserById(userId: string): ServerUser | null {
-    const crud = useAsyncCache(this._serverUserCache, [userId], "useUserById()");
+    const crud = useAsyncCache(this._serverUserCache, [userId], "serverApp.useUserById()");
     return useMemo(() => {
       return crud && this._serverUserFromCrud(crud);
     }, [crud]);
@@ -1037,7 +1166,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
 
   // IF_PLATFORM react-like
   useUsers(options?: ServerListUsersOptions): ServerUser[] & { nextCursor: string | null } {
-    const crud = useAsyncCache(this._serverUsersCache, [options?.cursor, options?.limit, options?.orderBy, options?.desc, options?.query] as const, "useServerUsers()");
+    const crud = useAsyncCache(this._serverUsersCache, [options?.cursor, options?.limit, options?.orderBy, options?.desc, options?.query, options?.includeAnonymous] as const, "serverApp.useUsers()");
     const result: any = crud.items.map((j) => this._serverUserFromCrud(j));
     result.nextCursor = crud.pagination?.next_cursor ?? null;
     return result as any;
@@ -1104,11 +1233,44 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
     }
 
     const cacheKey = [id, options.itemId] as [string, string];
-    const debugLabel = `app.useItem(${type})`;
+    const debugLabel = "serverApp.useItem()";
     const result = useAsyncCache(cache, cacheKey, debugLabel);
     return useMemo(() => this._serverItemFromCrud({ type, id }, result), [result]);
   }
   // END_PLATFORM
+  async grantProduct(options: (
+    ({ userId: string } | { teamId: string } | { customCustomerId: string }) &
+    ({ productId: string } | { product: InlineProduct }) &
+    { quantity?: number }
+  )): Promise<void> {
+    let customerType: "user" | "team" | "custom";
+    let customerId: string;
+    if ("userId" in options) {
+      customerType = "user";
+      customerId = options.userId;
+    } else if ("teamId" in options) {
+      customerType = "team";
+      customerId = options.teamId;
+    } else {
+      customerType = "custom";
+      customerId = options.customCustomerId;
+    }
+
+    await this._interface.grantProduct({
+      customerType,
+      customerId,
+      productId: "productId" in options ? options.productId : undefined,
+      product: "product" in options ? options.product : undefined,
+      quantity: options.quantity,
+    });
+
+    const cache = customerType === "user"
+      ? this._serverUserProductsCache
+      : customerType === "team"
+        ? this._serverTeamProductsCache
+        : this._serverCustomProductsCache;
+    await cache.refresh([customerId, null, null]);
+  }
 
   async createTeam(data: ServerTeamCreateOptions): Promise<ServerTeam> {
     const team = await this._interface.createServerTeam(serverTeamCreateOptionsToCrud(data));
@@ -1118,7 +1280,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
 
   // IF_PLATFORM react-like
   useTeams(): ServerTeam[] {
-    const teams = useAsyncCache(this._serverTeamsCache, [undefined], "useServerTeams()");
+    const teams = useAsyncCache(this._serverTeamsCache, [undefined], "serverApp.useTeams()");
     return useMemo(() => {
       return teams.map((t) => this._serverTeamFromCrud(t));
     }, [teams]);
@@ -1170,7 +1332,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
       // IF_PLATFORM react-like
       useValue: (key, options) => {
         validateOptions(options);
-        return useAsyncCache(this._serverDataVaultStoreValueCache, [id, key, options.secret] as const, `app.useDataVaultStoreValue()`);
+        return useAsyncCache(this._serverDataVaultStoreValueCache, [id, key, options.secret] as const, "store.useValue()");
       },
       // END_PLATFORM
     };

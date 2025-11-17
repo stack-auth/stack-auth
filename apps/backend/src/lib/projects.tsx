@@ -8,7 +8,7 @@ import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { filterUndefined, typedFromEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
-import { getPrismaClientForTenancy, RawQuery, globalPrismaClient, rawQuery, retryTransaction } from "../prisma-client";
+import { RawQuery, getPrismaClientForTenancy, globalPrismaClient, rawQuery, retryTransaction } from "../prisma-client";
 import { overrideEnvironmentConfigOverride, overrideProjectConfigOverride } from "./config";
 import { DEFAULT_BRANCH_ID, getSoleTenancyFromProjectBranch } from "./tenancies";
 
@@ -251,6 +251,10 @@ export async function createOrUpdateProjectWithLegacyConfig(
     configOverrideOverride['rbac.defaultPermissions.teamMember'] ??= { 'team_member': true };
 
     configOverrideOverride['auth.password.allowSignIn'] ??= true;
+
+    configOverrideOverride['apps.installed.authentication.enabled'] ??= true;
+    configOverrideOverride['apps.installed.emails.enabled'] ??= true;
+    configOverrideOverride['apps.installed.api-keys.enabled'] ??= true;
   }
   await overrideEnvironmentConfigOverride({
     projectId: projectId,

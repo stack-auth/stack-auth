@@ -1,8 +1,9 @@
 'use client';
 
 import { useChat } from '@ai-sdk/react';
-import { Maximize2, Minimize2, Send, X } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { runAsynchronously } from '@stackframe/stack-shared/dist/utils/promises';
+import { ChevronDown, ChevronUp, ExternalLink, FileText, Maximize2, Minimize2, Send, X } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
 import { useSidebar } from '../layouts/sidebar-context';
 import { MessageFormatter } from './message-formatter';
 
@@ -22,6 +23,208 @@ function StackIcon({ size = 20, className }: { size?: number, className?: string
   );
 }
 
+// Separate component for search results to properly use React hooks
+const SearchDocsDisplay = ({ toolCall }: { toolCall: { toolName: string, args?: { search_query?: string }, result?: { content?: { text: string }[], text?: string } } | string }) => {
+  const [isExpanded, setIsExpanded] = useState(false);
+
+  const query = (toolCall as { args?: { search_query?: string } }).args?.search_query || "...";
+  // Try multiple ways to get the result text
+  const resultText = ((toolCall as { result?: { content?: { text: string }[], text?: string } }).result?.content?.[0]?.text
+    || (toolCall as { result?: { content?: { text: string }[], text?: string } }).result?.text
+    || (typeof (toolCall as { result?: string }).result === 'string' ? (toolCall as { result?: string }).result : undefined)) ?? "";
+
+  // Count how many results were found
+  const resultCount = (resultText.match(/Title:/g) || []).length;
+
+  // Parse search results
+  const parseSearchResults = () => {
+    const results = [];
+    const sections = resultText.split('---').map((s: string) => s.trim()).filter(Boolean);
+
+    for (const section of sections) {
+      const titleMatch = section.match(/Title:\s*([^\n]+)/);
+      const descMatch = section.match(/Description:\s*([^\n]+)/);
+      const urlMatch = section.match(/Documentation URL:\s*([^\n]+)/);
+      const endpointMatch = section.match(/API Endpoint:\s*([^\n]+)/);
+      const scoreMatch = section.match(/Score:\s*(\d+)/);
+
+      if (titleMatch) {
+        results.push({
+          title: titleMatch[1].trim(),
+          description: descMatch?.[1]?.trim(),
+          url: urlMatch?.[1]?.trim(),
+          endpoint: endpointMatch?.[1]?.trim(),
+          score: scoreMatch?.[1] ? parseInt(scoreMatch[1]) : 0,
+        });
+      }
+    }
+
+    return results.slice(0, 10); // Limit to top 10 for display
+  };
+
+  const results = parseSearchResults();
+
+  return (
+    <div className="flex flex-col bg-purple-50 dark:bg-purple-950/30 border border-purple-200 dark:border-purple-800 rounded-lg text-xs mb-2">
+      <button
+        onClick={() => setIsExpanded(!isExpanded)}
+        className="flex items-center gap-2 p-2 w-full text-left hover:bg-purple-100 dark:hover:bg-purple-900/30 transition-colors rounded-lg"
+      >
+        <FileText className="w-3 h-3 text-purple-600 dark:text-purple-400 flex-shrink-0" />
+        <span className="text-purple-700 dark:text-purple-300 font-medium flex-1">
+          Searched for &quot;{query}&quot; • {resultCount} {resultCount === 1 ? 'result' : 'results'}
+        </span>
+        {isExpanded ? (
+          <ChevronUp className="w-3 h-3 text-purple-600 dark:text-purple-400 flex-shrink-0" />
+        ) : (
+          <ChevronDown className="w-3 h-3 text-purple-600 dark:text-purple-400 flex-shrink-0" />
+        )}
+      </button>
+
+      {isExpanded && results.length > 0 && (
+        <div className="px-2 pb-2 space-y-1.5 max-h-64 overflow-y-auto">
+          {results.map((result, idx) => (
+            <div
+              key={idx}
+              className="p-2 bg-white dark:bg-gray-900/50 rounded border border-purple-200/50 dark:border-purple-800/50"
+            >
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex-1 min-w-0">
+                  <div className="font-medium text-purple-900 dark:text-purple-100 truncate">
+                    {result.title}
+                  </div>
+                  {result.endpoint && (
+                    <div className="text-purple-600 dark:text-purple-400 font-mono text-[10px] mt-0.5">
+                      {result.endpoint}
+                    </div>
+                  )}
+                  {result.description && (
+                    <div className="text-purple-700 dark:text-purple-300 text-[10px] mt-1 line-clamp-2">
+                      {result.description}
+                    </div>
+                  )}
+                </div>
+                {result.url && (
+                  <a
+                    href={`https://docs.stack-auth.com${result.url}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-purple-600 dark:text-purple-400 hover:text-purple-800 dark:hover:text-purple-200 flex-shrink-0"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <ExternalLink className="w-3 h-3" />
+                  </a>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
+// Component to render tool calls
+const ToolCallDisplay = ({
+  toolCall,
+}: {
+  toolCall: { toolName: string, args?: { id?: string, search_query?: string }, result?: { content?: { text: string }[], text?: string } },
+}) => {
+  // Handle search_docs tool
+  if (toolCall.toolName === "search_docs") {
+    return <SearchDocsDisplay toolCall={toolCall} />;
+  }
+
+  // Handle get_docs_by_id and fetch tools (they work the same)
+  if (toolCall.toolName === "get_docs_by_id" || toolCall.toolName === "fetch") {
+    const docId = toolCall.args?.id;
+    let docTitle = "Loading...";
+    let apiEndpoint: string | null = null;
+
+    // Try multiple ways to get the result text
+    const resultText = (toolCall.result?.content?.[0]?.text
+      || toolCall.result?.text
+      || (typeof toolCall.result === 'string' ? toolCall.result : undefined)) ?? "";
+
+    // Extract title - more robust matching
+    const titleMatch = resultText.match(/Title:\s*([^\n]+)/);
+    if (titleMatch?.[1]) {
+      docTitle = titleMatch[1].trim();
+    } else {
+      // Fallback: try to extract from the docId if available
+      if (docId) {
+        const pathParts = String(docId).split('/').filter(Boolean);
+        docTitle = pathParts[pathParts.length - 1]?.replace(/-/g, ' ') || 'Documentation';
+      } else {
+        docTitle = 'Documentation';
+      }
+    }
+
+    // Extract API endpoint if present
+    const endpointMatch = resultText.match(/API Endpoint:\s*([^\n]+)/);
+    if (endpointMatch?.[1]) {
+      apiEndpoint = endpointMatch[1].trim();
+    }
+
+    return (
+      <div className="flex flex-col gap-1 p-2 bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-lg text-xs mb-2">
+        <div className="flex items-center gap-2">
+          <FileText className="w-3 h-3 text-blue-600 dark:text-blue-400" />
+          <span className="text-blue-700 dark:text-blue-300 font-medium">
+            {docTitle}
+          </span>
+          {docId && (
+            <a
+              href={`https://docs.stack-auth.com${encodeURI(
+                (String(docId).startsWith('/') ? String(docId) : `/${String(docId)}`)
+              )}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-1 text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-200 transition-colors ml-auto"
+            >
+              <ExternalLink className="w-3 h-3" />
+              <span>Open</span>
+            </a>
+          )}
+        </div>
+        {apiEndpoint && (
+          <div className="pl-5 text-blue-600 dark:text-blue-400 font-mono">
+            {apiEndpoint}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // Handle search tool (for ChatGPT compatibility)
+  if (toolCall.toolName === "search") {
+    // Try multiple ways to get the result text
+    const resultText = (toolCall.result?.content?.[0]?.text
+      || toolCall.result?.text
+      || (typeof toolCall.result === 'string' ? toolCall.result : undefined)) ?? "";
+    let resultCount = 0;
+
+    try {
+      const parsed = JSON.parse(resultText);
+      resultCount = parsed.results?.length || 0;
+    } catch {
+      // If not JSON, try counting
+      resultCount = (resultText.match(/title:/gi) || []).length;
+    }
+
+    return (
+      <div className="flex items-center gap-2 p-2 bg-purple-50 dark:bg-purple-950/30 border border-purple-200 dark:border-purple-800 rounded-lg text-xs mb-2">
+        <FileText className="w-3 h-3 text-purple-600 dark:text-purple-400" />
+        <span className="text-purple-700 dark:text-purple-300 font-medium">
+          Searched • {resultCount} {resultCount === 1 ? 'result' : 'results'}
+        </span>
+      </div>
+    );
+  }
+
+  return null;
+};
+
 export function AIChatDrawer() {
   const sidebarContext = useSidebar();
   const { isChatOpen, isChatExpanded, toggleChat, setChatExpanded } = sidebarContext || {
@@ -31,7 +234,8 @@ export function AIChatDrawer() {
     setChatExpanded: () => {},
   };
 
-  const [docsContent, setDocsContent] = useState('');
+  const editableRef = useRef<HTMLDivElement>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
   const [isHomePage, setIsHomePage] = useState(false);
   const [isScrolled, setIsScrolled] = useState(false);
   const [pageLoadTime] = useState(Date.now());
@@ -125,61 +329,10 @@ export function AIChatDrawer() {
     };
   }, []);
 
-  // Fetch documentation content when component mounts with caching
-  useEffect(() => {
-    let isCancelled = false;
-
-    const fetchDocs = async () => {
-      try {
-        // Check cache first (10 minute TTL)
-        if (typeof window !== 'undefined') {
-          const cached = sessionStorage.getItem('ai-chat-docs-cache');
-          if (cached) {
-            const { content, timestamp } = JSON.parse(cached);
-            const CACHE_TTL = 10 * 60 * 1000; // 10 minutes in milliseconds
-
-            if (Date.now() - timestamp < CACHE_TTL) {
-              // Cache is still valid, use cached content
-              if (!isCancelled) {
-                setDocsContent(content);
-              }
-              return;
-            }
-          }
-        }
-
-        // Cache miss or expired, fetch fresh content
-        const response = await fetch('/llms.txt');
-        if (response.ok && !isCancelled) {
-          const content = await response.text();
-          setDocsContent(content);
-
-          // Cache the fresh content
-          if (typeof window !== 'undefined') {
-            sessionStorage.setItem('ai-chat-docs-cache', JSON.stringify({
-              content,
-              timestamp: Date.now()
-            }));
-          }
-        }
-      } catch (error) {
-        console.error('Failed to fetch documentation:', error);
-      }
-    };
-
-    // eslint-disable-next-line no-restricted-syntax
-    fetchDocs().catch((error) => {
-      console.error('Failed to fetch documentation:', error);
-    });
-
-    return () => {
-      isCancelled = true;
-    };
-  }, []);
 
   // Calculate position based on homepage and scroll state
-  const topPosition = isHomePage && isScrolled ? 'top-0' : 'top-14';
-  const height = isHomePage && isScrolled ? 'h-screen' : 'h-[calc(100vh-3.5rem)]';
+  const topPosition = 'top-0';
+  const height = isHomePage && isScrolled ? 'h-screen' : 'h-[calc(100vh)]';
 
   const {
     messages,
@@ -191,20 +344,28 @@ export function AIChatDrawer() {
   } = useChat({
     api: '/api/chat',
     initialMessages: [],
-    body: {
-      docsContent,
-    },
     onError: (error: Error) => {
       console.error('Chat error:', error);
     },
     onFinish: (message) => {
       // Send AI response to Discord
-      // eslint-disable-next-line no-restricted-syntax
-      sendAIResponseToDiscord(message.content).catch(error => {
-        console.error('Failed to send AI response to Discord:', error);
-      });
+      runAsynchronously(() => sendAIResponseToDiscord(message.content));
     },
   });
+
+  // Auto-scroll to bottom when new messages are added
+  useEffect(() => {
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [messages]);
+
+  // Sync contentEditable with input state
+  useEffect(() => {
+    if (editableRef.current && editableRef.current.textContent !== input) {
+      editableRef.current.textContent = input;
+    }
+  }, [input]);
 
   // Function to send AI response to Discord webhook
   const sendAIResponseToDiscord = async (response: string) => {
@@ -214,6 +375,7 @@ export function AIChatDrawer() {
         metadata: {
           sessionId: sessionId,
           model: 'gemini-2.0-flash',
+          temperature: 0,
         }
       };
 
@@ -277,32 +439,10 @@ export function AIChatDrawer() {
     }));
 
     // Send message to Discord webhook
-    // eslint-disable-next-line no-restricted-syntax
-    sendToDiscord(input.trim()).catch(error => {
-      console.error('Discord webhook error:', error);
-    });
+    runAsynchronously(() => sendToDiscord(input.trim()));
 
     // Continue with normal chat submission
     handleSubmit(e);
-  };
-
-  // Non-async wrapper for form onSubmit to avoid promise issues
-  const handleFormSubmit = (e: React.FormEvent) => {
-    // eslint-disable-next-line no-restricted-syntax
-    handleChatSubmit(e).catch(error => {
-      console.error('Chat submit error:', error);
-    });
-  };
-
-  // Non-async handler for onKeyDown to avoid promise issues
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      // eslint-disable-next-line no-restricted-syntax
-      handleChatSubmit(e as React.FormEvent).catch(error => {
-        console.error('Chat submit error:', error);
-      });
-    }
   };
 
   // Starter prompts for users
@@ -329,6 +469,11 @@ export function AIChatDrawer() {
     handleInputChange({ target: { value: prompt } } as React.ChangeEvent<HTMLInputElement>);
   };
 
+  // Helper function for safe async event handling
+  const handleSubmitSafely = () => {
+    runAsynchronously(() => handleChatSubmit({} as React.FormEvent));
+  };
+
   return (
     <div
       className={`fixed ${topPosition} right-0 ${height} bg-fd-background border-l border-fd-border flex flex-col transition-all duration-300 ease-out z-50 ${
@@ -343,7 +488,6 @@ export function AIChatDrawer() {
           <StackIcon size={18} className="text-fd-primary" />
           <div>
             <h3 className="font-medium text-fd-foreground text-sm">Stack Auth AI</h3>
-            <p className="text-xs text-fd-muted-foreground">Documentation assistant</p>
           </div>
         </div>
         <div className="flex items-center gap-1">
@@ -421,7 +565,12 @@ export function AIChatDrawer() {
                     {message.content}
                   </div>
                 ) : (
-                  <MessageFormatter content={message.content} />
+                  <>
+                    {message.toolInvocations?.map((toolCall, index) => (
+                      <ToolCallDisplay key={index} toolCall={toolCall} />
+                    ))}
+                    <MessageFormatter content={message.content} />
+                  </>
                 )}
               </div>
             </div>
@@ -430,14 +579,18 @@ export function AIChatDrawer() {
 
         {isLoading && (
           <div className="flex justify-start">
-            <div className="bg-fd-muted text-fd-foreground border border-fd-border p-2 rounded-lg text-xs">
-              <div className="flex items-center gap-1">
-                <div className="flex space-x-1">
-                  <div className="w-1 h-1 bg-current rounded-full animate-bounce [animation-delay:-0.3s]"></div>
-                  <div className="w-1 h-1 bg-current rounded-full animate-bounce [animation-delay:-0.15s]"></div>
-                  <div className="w-1 h-1 bg-current rounded-full animate-bounce"></div>
+            <div className="p-2">
+              <div className="rounded-lg bg-fd-muted border border-fd-border p-3">
+                <div className="flex items-center gap-3">
+                  <StackIcon size={18} className="text-fd-primary" />
+                  <span className="text-fd-foreground font-medium text-sm">Thinking</span>
+                  <div className="flex space-x-1.5 ml-2">
+                    <div className="w-1.5 h-1.5 bg-fd-primary rounded-full animate-bounce [animation-delay:-0.3s]"></div>
+                    <div className="w-1.5 h-1.5 bg-fd-primary rounded-full animate-bounce [animation-delay:-0.15s]"></div>
+                    <div className="w-1.5 h-1.5 bg-fd-primary rounded-full animate-bounce"></div>
+                    <div className="w-1.5 h-1.5 bg-fd-primary rounded-full animate-bounce [animation-delay:0.15s]"></div>
+                  </div>
                 </div>
-                <span className="ml-1">Thinking...</span>
               </div>
             </div>
           </div>
@@ -448,28 +601,61 @@ export function AIChatDrawer() {
             Error: {error.message}
           </div>
         )}
+
+        {/* Invisible element to scroll to */}
+        <div ref={messagesEndRef} />
       </div>
 
       {/* Input */}
-      <div className="border-t border-fd-border p-3">
-        <form onSubmit={handleFormSubmit} className="flex gap-2">
-          <textarea
-            value={input}
-            onChange={handleInputChange}
-            placeholder="Ask about Stack Auth..."
-            className="flex-1 resize-none border border-fd-border rounded-md px-2 py-1 text-xs bg-fd-background text-fd-foreground placeholder:text-fd-muted-foreground focus:outline-none focus:ring-1 focus:ring-fd-primary focus:border-fd-primary"
-            rows={1}
-            style={{ minHeight: '32px', maxHeight: '96px' }}
-            onKeyDown={handleKeyDown}
-          />
-          <button
-            type="submit"
-            disabled={!input.trim() || isLoading}
-            className="px-2 py-1 bg-fd-primary text-fd-primary-foreground rounded-md text-xs hover:bg-fd-primary/90 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
-          >
-            <Send className="w-3 h-3" />
-          </button>
-        </form>
+      <div className="px-3 pb-3">
+        <div className="border-input bg-background cursor-text rounded-3xl border px-3 py-2 shadow-xs">
+          <div className="flex items-center gap-2">
+            <div className="flex-1 flex items-center">
+              <div
+                ref={editableRef}
+                contentEditable
+                suppressContentEditableWarning={true}
+                className="text-primary w-full resize-none border-none bg-transparent shadow-none outline-none focus-visible:ring-0 focus-visible:ring-offset-0 text-sm empty:before:content-[attr(data-placeholder)] empty:before:text-fd-muted-foreground"
+                style={{ lineHeight: "1.4", minHeight: "20px" }}
+                onInput={(e) => {
+                  const value = e.currentTarget.textContent || "";
+                  handleInputChange({
+                    target: { value },
+                  } as React.ChangeEvent<HTMLInputElement>);
+
+                  // Clean up the div if it's empty to show placeholder
+                  if (!value.trim()) {
+                    e.currentTarget.innerHTML = "";
+                  }
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    handleSubmitSafely();
+                  }
+                }}
+                onPaste={(e) => {
+                  e.preventDefault();
+                  const text = e.clipboardData.getData("text/plain");
+                  e.currentTarget.textContent =
+                    (e.currentTarget.textContent || "") + text;
+                  const value = e.currentTarget.textContent;
+                  handleInputChange({
+                    target: { value },
+                  } as React.ChangeEvent<HTMLInputElement>);
+                }}
+                data-placeholder="Ask about Stack Auth..."
+              />
+            </div>
+            <button
+              disabled={!input.trim() || isLoading}
+              onClick={handleSubmitSafely}
+              className="h-8 w-8 rounded-full p-0 shrink-0 bg-fd-primary text-fd-primary-foreground hover:bg-fd-primary/90 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+            >
+              <Send className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );

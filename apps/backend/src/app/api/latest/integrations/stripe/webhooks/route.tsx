@@ -42,7 +42,6 @@ async function processStripeWebhookEvent(event: Stripe.Event): Promise<void> {
     if (!accountId) {
       throw new StackAssertionError("Stripe webhook account id missing", { event });
     }
-    console.log("Processing1", mockData);
     const stripe = getStackStripe(mockData);
     const account = await stripe.accounts.retrieve(accountId);
     const tenancyId = account.metadata?.tenancyId;
@@ -54,7 +53,7 @@ async function processStripeWebhookEvent(event: Stripe.Event): Promise<void> {
       throw new StackAssertionError("Tenancy not found", { event });
     }
     const prisma = await getPrismaClientForTenancy(tenancy);
-    const offer = JSON.parse(metadata.offer || "{}");
+    const product = JSON.parse(metadata.product || "{}");
     const qty = Math.max(1, Number(metadata.purchaseQuantity || 1));
     const stripePaymentIntentId = event.data.object.id;
     if (!metadata.customerId || !metadata.customerType) {
@@ -74,15 +73,17 @@ async function processStripeWebhookEvent(event: Stripe.Event): Promise<void> {
         tenancyId: tenancy.id,
         customerId: metadata.customerId,
         customerType: typedToUppercase(metadata.customerType),
-        offerId: metadata.offerId || null,
+        productId: metadata.productId || null,
+        priceId: metadata.priceId || null,
         stripePaymentIntentId,
-        offer,
+        product,
         quantity: qty,
         creationSource: "PURCHASE_PAGE",
       },
       update: {
-        offerId: metadata.offerId || null,
-        offer,
+        productId: metadata.productId || null,
+        priceId: metadata.priceId || null,
+        product,
         quantity: qty,
       }
     });

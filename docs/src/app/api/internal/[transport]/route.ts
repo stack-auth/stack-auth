@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import { z } from "zod";
 import { apiSource, source } from "../../../../../lib/source";
 
+import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { PostHog } from "posthog-node";
 
 const nodeClient = process.env.NEXT_PUBLIC_POSTHOG_KEY
@@ -10,8 +11,10 @@ const nodeClient = process.env.NEXT_PUBLIC_POSTHOG_KEY
   : null;
 
 // Helper function to extract OpenAPI details from Enhanced API Page content
-async function extractOpenApiDetails(content: string, page: { data: { title: string, description?: string } }) {
-
+async function extractOpenApiDetails(
+  content: string,
+  page: { data: { title: string, description?: string } },
+) {
   const componentMatch = content.match(/<EnhancedAPIPage\s+([^>]+)>/);
   if (componentMatch) {
     const props = componentMatch[1];
@@ -35,17 +38,26 @@ async function extractOpenApiDetails(content: string, page: { data: { title: str
           const methodSpec = pathSpec?.[method.toLowerCase()];
 
           if (methodSpec) {
-            // Return the raw OpenAPI spec JSON for this specific endpoint
+            // Add human-readable summary first
+            const fullUrl = methodSpec['x-full-url'] || `https://api.stack-auth.com/api/v1${opPath}`;
+
+            apiDetails += `\n## ${method.toUpperCase()} ${opPath}\n`;
+            apiDetails += `**Full URL:** ${fullUrl}\n`;
+            apiDetails += `**Summary:** ${methodSpec.summary || 'No summary available'}\n\n`;
+
+            // Then include the complete OpenAPI spec with all examples and schemas
             const endpointJson = {
               [opPath]: {
                 [method.toLowerCase()]: methodSpec
               }
             };
+            apiDetails += "**Complete API Specification:**\n```json\n";
             apiDetails += JSON.stringify(endpointJson, null, 2);
+            apiDetails += "\n```\n\n---\n";
           }
         }
 
-        const resultText = `Title: ${page.data.title}\nDescription: ${page.data.description || ''}\n\nOpenAPI Spec: ${specFile}\nOperations: ${operations}\n\n${apiDetails}`;
+        const resultText = `Title: ${page.data.title}\nDescription: ${page.data.description || ''}\n\n${apiDetails}`;
 
         return {
           content: [
@@ -86,7 +98,31 @@ async function extractOpenApiDetails(content: string, page: { data: { title: str
 // Get pages from both main docs and API docs
 const pages = source.getPages();
 const apiPages = apiSource.getPages();
-const allPages = [...pages, ...apiPages];
+
+// Filter out admin API pages from the MCP server
+const filteredApiPages = apiPages.filter((page) => {
+  // Exclude admin API pages - they should not be accessible via MCP
+  return !page.url.startsWith('/api/admin/');
+});
+
+const allPages = [...pages, ...filteredApiPages];
+
+// Helper to extract actual API endpoint from page frontmatter
+function getApiEndpointFromPage(page: typeof allPages[0]): string | null {
+  if (!page.url.startsWith('/api/') || page.url.startsWith('/api/webhooks/')) {
+    return null;
+  }
+
+  // Check if the page data has _openapi metadata
+  const pageData = page.data as { _openapi?: { method?: string, route?: string } };
+
+  if (pageData._openapi && pageData._openapi.method && pageData._openapi.route) {
+    const endpoint = `${pageData._openapi.method.toUpperCase()} ${pageData._openapi.route}`;
+    return endpoint;
+  }
+
+  return null;
+}
 
 const pageSummaries = allPages
   .filter((v) => {
@@ -100,6 +136,104 @@ ID: ${page.url}
 `.trim()
   )
   .join("\n");
+
+async function getDocsById({ id }: { id: string }): Promise<CallToolResult> {
+  nodeClient?.capture({
+    event: "get_docs_by_id",
+    properties: { id },
+    distinctId: "mcp-handler",
+  });
+  const page = allPages.find((page) => page.url === id);
+  if (!page) {
+    return { content: [{ type: "text", text: "Page not found." }] };
+  }
+  // Check if this is an API page and handle OpenAPI spec extraction
+  const isApiPage = page.url.startsWith("/api/");
+
+  // Try primary path first, then fallback to docs/ prefix or api/ prefix
+  const filePath = `content/${page.file.path}`;
+  try {
+    const content = await readFile(filePath, "utf-8");
+
+    if (isApiPage && content.includes("<EnhancedAPIPage")) {
+      // Extract OpenAPI information from API pages
+      try {
+        return await extractOpenApiDetails(content, page);
+      } catch {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Title: ${page.data.title}\nDescription: ${page.data.description}\nContent:\n${content}`,
+            },
+          ],
+        };
+      }
+    } else {
+      // Regular doc page - return content as before
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Title: ${page.data.title}\nDescription: ${page.data.description}\nContent:\n${content}`,
+          },
+        ],
+      };
+    }
+  } catch {
+    // Try alternative paths
+    const altPaths = [
+      `content/docs/${page.file.path}`,
+      `content/api/${page.file.path}`,
+    ];
+
+    for (const altPath of altPaths) {
+      try {
+        const content = await readFile(altPath, "utf-8");
+
+        if (isApiPage && content.includes("<EnhancedAPIPage")) {
+          // Same OpenAPI extraction logic for alternative path
+          try {
+            return await extractOpenApiDetails(content, page);
+          } catch {
+            // If parsing fails, return the raw content
+            return {
+              content: [
+                {
+                  type: "text",
+                  text: `Title: ${page.data.title}\nDescription: ${page.data.description}\nContent:\n${content}`,
+                },
+              ],
+            };
+          }
+        } else {
+          return {
+            content: [
+              {
+                type: "text",
+                text: `Title: ${page.data.title}\nDescription: ${page.data.description}\nContent:\n${content}`,
+              },
+            ],
+          };
+        }
+      } catch {
+        // Continue to next path
+        continue;
+      }
+    }
+
+    // If all paths fail
+    return {
+      content: [
+        {
+          type: "text",
+          text: `Title: ${page.data.title}\nDescription: ${page.data.description}\nError: Could not read file at any of the attempted paths: ${filePath}, ${altPaths.join(", ")}`,
+        },
+      ],
+      isError: true,
+    };
+  }
+}
 
 const handler = createMcpHandler(
   async (server) => {
@@ -116,109 +250,295 @@ const handler = createMcpHandler(
         return {
           content: [{ type: "text", text: pageSummaries }],
         };
+      },
+    );
+    server.tool(
+      "search_docs",
+      "Search through all Stack Auth documentation including API docs, guides, and examples. Returns ranked results with snippets and relevance scores.",
+      {
+        search_query: z.string().describe("The search query to find relevant documentation"),
+        result_limit: z.number().optional().describe("Maximum number of results to return (default: 50)")
+      },
+      async ({ search_query, result_limit = 50 }) => {
+        nodeClient?.capture({
+          event: "search_docs",
+          properties: { search_query, result_limit },
+          distinctId: "mcp-handler",
+        });
+
+        type SearchResult = {
+          title: string,
+          description: string,
+          url: string,
+          score: number,
+          snippet: string,
+          type: 'api' | 'docs',
+          apiEndpoint?: string | null,
+        };
+
+        const results: SearchResult[] = [];
+        const queryLower = search_query.toLowerCase().trim();
+        const queryWords = queryLower.split(/\s+/).filter(w => w.length > 0);
+
+        // Search through all pages
+        for (const page of allPages) {
+          // Skip admin API endpoints
+          if (page.url.startsWith('/api/admin/')) {
+            continue;
+          }
+
+          let score = 0;
+          const title = page.data.title || '';
+          const description = page.data.description || '';
+          const titleLower = title.toLowerCase();
+          const descriptionLower = description.toLowerCase();
+
+          // Exact phrase match in title (highest priority)
+          if (titleLower.includes(queryLower)) {
+            if (titleLower === queryLower) {
+              score += 100; // Exact match
+            } else if (titleLower.startsWith(queryLower)) {
+              score += 80; // Starts with
+            } else {
+              score += 60; // Contains
+            }
+          }
+
+          // Individual word matching in title
+          for (const word of queryWords) {
+            if (titleLower.includes(word)) {
+              score += 30; // Each word match
+            }
+          }
+
+          // Exact phrase match in description
+          if (descriptionLower.includes(queryLower)) {
+            score += 40;
+          }
+
+          // Individual word matching in description
+          for (const word of queryWords) {
+            if (descriptionLower.includes(word)) {
+              score += 15; // Each word match
+            }
+          }
+          // TOC/heading matching
+          for (const tocItem of page.data.toc) {
+            if (typeof tocItem.title === 'string') {
+              const tocTitleLower = tocItem.title.toLowerCase();
+              // Exact phrase match
+              if (tocTitleLower.includes(queryLower)) {
+                score += 30;
+              }
+              // Individual word matching
+              for (const word of queryWords) {
+                if (tocTitleLower.includes(word)) {
+                  score += 10;
+                }
+              }
+            }
+          }
+
+          // Content matching (try to read the actual file)
+          try {
+            // Fix the file path - fumadocs page.file.path doesn't include 'api/' prefix
+            let filePath = `content/${page.file.path}`;
+            // If it's an API page and the path doesn't start with api/, add it
+            if (page.url.startsWith('/api/') && !page.file.path.startsWith('api/')) {
+              filePath = `content/api/${page.file.path}`;
+            }
+            const content = await readFile(filePath, "utf-8");
+            const textContent = content
+              .replace(/^---[\s\S]*?---/, '') // Remove frontmatter
+              .replace(/<[^>]*>/g, ' ') // Remove JSX tags
+              .replace(/\{[^}]*\}/g, ' ') // Remove JSX expressions
+              .replace(/```[a-zA-Z]*\n/g, ' ') // Remove code block markers
+              .replace(/```/g, ' ')
+              .replace(/`([^`]*)`/g, '$1') // Remove inline code backticks
+              .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1') // Extract link text
+              .replace(/[#*_~]/g, '') // Remove markdown formatting
+              .replace(/\s+/g, ' ')
+              .trim();
+
+            const textContentLower = textContent.toLowerCase();
+
+            // Exact phrase match in content
+            let hasContentMatch = false;
+            if (textContentLower.includes(queryLower)) {
+              score += 20;
+              hasContentMatch = true;
+            }
+
+            // Individual word matching in content
+            for (const word of queryWords) {
+              if (textContentLower.includes(word)) {
+                score += 5; // Each word match
+                hasContentMatch = true;
+              }
+            }
+
+            if (hasContentMatch && queryWords.length > 0) {
+              // Find snippet around the first query word match
+              const firstWord = queryWords[0];
+              const matchIndex = textContentLower.indexOf(firstWord);
+              const start = Math.max(0, matchIndex - 50);
+              const end = Math.min(textContent.length, matchIndex + 100);
+              const snippet = textContent.slice(start, end);
+
+              // For API pages, try to extract the actual endpoint
+              const apiEndpoint = page.url.startsWith('/api/') ? getApiEndpointFromPage(page) : null;
+
+              results.push({
+                title,
+                description,
+                url: page.url,
+                score,
+                snippet: `...${snippet}...`,
+                type: page.url.startsWith('/api/') ? 'api' : 'docs',
+                apiEndpoint
+              });
+            } else if (score > 0) {
+              // Add without snippet if title/description matched
+              const apiEndpoint = page.url.startsWith('/api/') ? getApiEndpointFromPage(page) : null;
+
+              results.push({
+                title,
+                description,
+                url: page.url,
+                score,
+                snippet: description || title,
+                type: page.url.startsWith('/api/') ? 'api' : 'docs',
+                apiEndpoint
+              });
+            }
+          } catch (error) {
+            // If file reading fails but we have title/description matches
+            if (score > 0) {
+              const apiEndpoint = page.url.startsWith('/api/') ? getApiEndpointFromPage(page) : null;
+
+              results.push({
+                title,
+                description,
+                url: page.url,
+                score,
+                snippet: description || title,
+                type: page.url.startsWith('/api/') ? 'api' : 'docs',
+                apiEndpoint
+              });
+            }
+          }
+        }
+
+        // Sort by score (highest first) and limit results
+        const sortedResults = results
+          .sort((a, b) => b.score - a.score)
+          .slice(0, result_limit);
+
+        const searchResultText = sortedResults.length > 0
+          ? sortedResults.map(result => {
+            let text = `Title: ${result.title}\nDescription: ${result.description}\n`;
+
+            if (result.apiEndpoint) {
+              text += `API Endpoint: ${result.apiEndpoint}\n`;
+            }
+
+            text += `Documentation URL: ${result.url}\nType: ${result.type}\nScore: ${result.score}\nSnippet: ${result.snippet}\n`;
+
+            return text;
+          }).join('\n---\n')
+          : `No results found for "${search_query}"`;
+
+        return {
+          content: [{ type: "text", text: searchResultText }],
+        };
       }
     );
     server.tool(
       "get_docs_by_id",
       "Use this tool to retrieve a specific Stack Auth Documentation page by its ID. It gives you the full content of the page so you can know exactly how to use specific Stack Auth APIs. Whenever using Stack Auth, you should always check the documentation first to have the most up-to-date information. When you write code using Stack Auth documentation you should reference the content you used in your comments.",
       { id: z.string() },
-      async ({ id }) => {
+      getDocsById,
+    );
+    server.tool(
+      "get_stack_auth_setup_instructions",
+      "Use this tool when the user wants to set up authentication in a new project. It provides step-by-step instructions for installing and configuring Stack Auth authentication.",
+      {},
+      async () => {
         nodeClient?.capture({
-          event: "get_docs_by_id",
-          properties: { id },
+          event: "get_stack_auth_setup_instructions",
+          properties: {},
           distinctId: "mcp-handler",
         });
-        const page = allPages.find((page) => page.url === id);
-        if (!page) {
-          return { content: [{ type: "text", text: "Page not found." }] };
-        }
-        // Check if this is an API page and handle OpenAPI spec extraction
-        const isApiPage = page.url.startsWith('/api/');
 
-        // Try primary path first, then fallback to docs/ prefix or api/ prefix
-        const filePath = `content/${page.file.path}`;
         try {
-          const content = await readFile(filePath, "utf-8");
+          const instructionsFromCurrentFile = "content/setup-instructions.md";
+          const instructions = await readFile(instructionsFromCurrentFile, "utf-8");
 
-          if (isApiPage && content.includes('<EnhancedAPIPage')) {
-            // Extract OpenAPI information from API pages
-            try {
-              return await extractOpenApiDetails(content, page);
-            } catch {
-              return {
-                content: [
-                  {
-                    type: "text",
-                    text: `Title: ${page.data.title}\nDescription: ${page.data.description}\nContent:\n${content}`,
-                  },
-                ],
-              };
-            }
-          } else {
-            // Regular doc page - return content as before
-            return {
-              content: [
-                {
-                  type: "text",
-                  text: `Title: ${page.data.title}\nDescription: ${page.data.description}\nContent:\n${content}`,
-                },
-              ],
-            };
-          }
-        } catch {
-          // Try alternative paths
-          const altPaths = [
-            `content/docs/${page.file.path}`,
-            `content/api/${page.file.path}`,
-          ];
-
-          for (const altPath of altPaths) {
-            try {
-              const content = await readFile(altPath, "utf-8");
-
-              if (isApiPage && content.includes('<EnhancedAPIPage')) {
-                // Same OpenAPI extraction logic for alternative path
-                try {
-                  return await extractOpenApiDetails(content, page);
-                } catch {
-                  // If parsing fails, return the raw content
-                  return {
-                    content: [
-                      {
-                        type: "text",
-                        text: `Title: ${page.data.title}\nDescription: ${page.data.description}\nContent:\n${content}`,
-                      },
-                    ],
-                  };
-                }
-              } else {
-                return {
-                  content: [
-                    {
-                      type: "text",
-                      text: `Title: ${page.data.title}\nDescription: ${page.data.description}\nContent:\n${content}`,
-                    },
-                  ],
-                };
-              }
-            } catch {
-              // Continue to next path
-              continue;
-            }
-          }
-
-          // If all paths fail
           return {
             content: [
               {
-                type: "text",
-                text: `Title: ${page.data.title}\nDescription: ${page.data.description}\nError: Could not read file at any of the attempted paths: ${filePath}, ${altPaths.join(', ')}`,
+                type: "text" as const,
+                text: instructions,
+              },
+            ],
+          };
+        } catch (error) {
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: `Error reading setup instructions: ${error instanceof Error ? error.message : "Unknown error"}`,
               },
             ],
             isError: true,
           };
         }
-      }
+      },
+    );
+
+    // Search tool for ChatGPT deep research
+    // Reference: https://platform.openai.com/docs/mcp#search-tool
+    server.tool(
+      "search",
+      "Search for Stack Auth documentation pages.\n\nUse this tool to find documentation pages that contain a specific keyword or phrase.",
+      { query: z.string() },
+      async ({ query }) => {
+        nodeClient?.capture({
+          event: "search",
+          properties: { query },
+          distinctId: "mcp-handler",
+        });
+
+        const q = query.toLowerCase();
+        const results = allPages
+          .filter(
+            (page) =>
+              page.data.title.toLowerCase().includes(q) ||
+              page.data.description?.toLowerCase().includes(q),
+          )
+          .map((page) => ({
+            id: page.url,
+            title: page.data.title,
+            url: page.url,
+          }));
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({ results }),
+            },
+          ],
+        };
+      },
+    );
+
+    // Fetch tool for ChatGPT deep research
+    // Reference: https://platform.openai.com/docs/mcp#fetch-tool
+    server.tool(
+      "fetch",
+      "Fetch a particular Stack Auth Documentation page by its ID.\n\nThis tool is identical to `get_docs_by_id`.",
+      { id: z.string() },
+      getDocsById,
     );
   },
   {
@@ -231,6 +551,43 @@ const handler = createMcpHandler(
         getDocById: {
           description:
             "Use this tool to retrieve a specific Stack Auth Documentation page by its ID. It gives you the full content of the page so you can know exactly how to use specific Stack Auth APIs. Whenever using Stack Auth, you should always check the documentation first to have the most up-to-date information. When you write code using Stack Auth documentation you should reference the content you used in your comments.",
+          parameters: {
+            type: "object",
+            properties: {
+              id: {
+                type: "string",
+                description: "The ID of the documentation page to retrieve.",
+              },
+            },
+            required: ["id"],
+          },
+        },
+        getStackAuthSetupInstructions: {
+          description:
+            "Use this tool when the user wants to set up Stack Auth in a new project. It provides step-by-step instructions for installing and configuring Stack Auth authentication, including environment setup, file scaffolding, and verification steps.",
+          parameters: {
+            type: "object",
+            properties: {},
+            required: [],
+          },
+        },
+        search: {
+          description:
+            "Search for Stack Auth documentation pages.\n\nUse this tool to find documentation pages that contain a specific keyword or phrase.",
+          parameters: {
+            type: "object",
+            properties: {
+              query: {
+                type: "string",
+                description: "The search query to use.",
+              },
+            },
+            required: ["query"],
+          },
+        },
+        fetch: {
+          description:
+            "Fetch a particular Stack Auth Documentation page by its ID.\n\nThis tool is identical to `get_docs_by_id`.",
           parameters: {
             type: "object",
             properties: {

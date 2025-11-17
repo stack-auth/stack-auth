@@ -4,7 +4,7 @@ import { ServerUser } from '@stackframe/stack';
 import { AvatarCell, DataTableColumnHeader, DataTableManualPagination, SearchToolbarItem, TextCell } from "@stackframe/stack-ui";
 import { ColumnDef, ColumnFiltersState, SortingState } from "@tanstack/react-table";
 import { useState } from "react";
-import { extendUsers } from './user-table';
+import { extendUsers } from "./user-table";
 
 export function TeamMemberSearchTable(props: {
   action: (user: ServerUser) => React.ReactNode,

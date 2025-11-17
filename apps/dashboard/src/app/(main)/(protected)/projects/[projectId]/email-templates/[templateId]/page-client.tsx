@@ -1,6 +1,7 @@
 "use client";
 
 import EmailPreview from "@/components/email-preview";
+import { EmailThemeSelector } from "@/components/email-theme-selector";
 import { useRouterConfirm } from "@/components/router";
 import {
   AssistantChat,
@@ -14,9 +15,9 @@ import { ToolCallContent } from "@/components/vibe-coding/chat-adapters";
 import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
 import { Button, toast } from "@stackframe/stack-ui";
 import { useEffect, useState } from "react";
+import { AppEnabledGuard } from "../../app-enabled-guard";
 import { PageLayout } from "../../page-layout";
 import { useAdminApp } from "../../use-admin-app";
-import { EmailThemeSelector } from "@/components/email-theme-selector";
 
 export default function PageClient(props: { templateId: string }) {
   const stackAdminApp = useAdminApp();
@@ -53,47 +54,52 @@ export default function PageClient(props: { templateId: string }) {
 
 
   if (!template) {
-    return <PageLayout
-      title="Email Template Not Found"
-    />;
+    return (
+      <AppEnabledGuard appId="emails">
+        <PageLayout title="Email Template Not Found">
+          <p>The requested email template could not be found.</p>
+        </PageLayout>
+      </AppEnabledGuard>
+    );
   }
 
   return (
-    <VibeCodeLayout
-      previewComponent={
-        <div className="p-4 w-full h-full">
-          <EmailPreview themeId={selectedThemeId} templateTsxSource={currentCode} />
-        </div>
-      }
-      editorComponent={
-        <CodeEditor
-          code={currentCode}
-          onCodeChange={setCurrentCode}
-          action={
-            <div className="flex gap-2">
-              <EmailThemeSelector
-                selectedThemeId={selectedThemeId}
-                onThemeChange={setSelectedThemeId}
-                className="w-48"
-              />
-              <Button
-                disabled={currentCode === template.tsxSource && selectedThemeId === template.themeId}
-                onClick={handleSaveTemplate}
-              >
-                Save
-              </Button>
-            </div>
-          }
-        />
-      }
-      chatComponent={
-        <AssistantChat
-          chatAdapter={createChatAdapter(stackAdminApp, template.id, "email-template", handleCodeUpdate)}
-          historyAdapter={createHistoryAdapter(stackAdminApp, template.id)}
-          toolComponents={<EmailTemplateUI setCurrentCode={setCurrentCode} />}
-        />
-      }
-    />
+    <AppEnabledGuard appId="emails">
+      <VibeCodeLayout
+        previewComponent={
+          <div className="p-4 w-full h-full">
+            <EmailPreview themeId={selectedThemeId} templateTsxSource={currentCode} />
+          </div>
+        }
+        editorComponent={
+          <CodeEditor
+            code={currentCode}
+            onCodeChange={setCurrentCode}
+            action={
+              <div className="flex gap-2">
+                <EmailThemeSelector
+                  selectedThemeId={selectedThemeId}
+                  onThemeChange={setSelectedThemeId}
+                  className="w-48"
+                />
+                <Button
+                  disabled={currentCode === template.tsxSource && selectedThemeId === template.themeId}
+                  onClick={handleSaveTemplate}
+                >
+                  Save
+                </Button>
+              </div>
+            }
+          />
+        }
+        chatComponent={
+          <AssistantChat
+            chatAdapter={createChatAdapter(stackAdminApp, template.id, "email-template", handleCodeUpdate)}
+            historyAdapter={createHistoryAdapter(stackAdminApp, template.id)}
+            toolComponents={<EmailTemplateUI setCurrentCode={setCurrentCode} />}
+          />
+        }
+      />
+    </AppEnabledGuard>
   );
 }
-

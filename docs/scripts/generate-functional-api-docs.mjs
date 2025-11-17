@@ -17,6 +17,7 @@ const FUNCTIONAL_TAGS = [
   'Oauth', // Note: OpenAPI uses "Oauth" not "OAuth"
   'OTP',
   'Password',
+  'Payments',
   'Permissions',
   'Projects', 
   'Sessions',

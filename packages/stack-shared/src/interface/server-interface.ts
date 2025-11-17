@@ -1,5 +1,7 @@
+import * as yup from "yup";
 import { decryptValue, encryptValue, hashKey } from "../helpers/vault/client-side";
 import { KnownErrors } from "../known-errors";
+import { inlineProductSchema } from "../schema-fields";
 import { AccessToken, InternalSession, RefreshToken } from "../sessions";
 import { StackAssertionError } from "../utils/errors";
 import { filterUndefined } from "../utils/objects";
@@ -841,6 +843,37 @@ export class StackServerInterface extends StackClientInterface {
     );
   }
 
+  async grantProduct(
+    options: {
+      customerType: "user" | "team" | "custom",
+      customerId: string,
+      productId?: string,
+      product?: yup.InferType<typeof inlineProductSchema>,
+      quantity?: number,
+    },
+  ): Promise<void> {
+    if (!options.productId && !options.product) {
+      throw new StackAssertionError("grantProduct requires either productId or product");
+    }
+    if (options.productId && options.product) {
+      throw new StackAssertionError("grantProduct should not receive both productId and product");
+    }
+    const body = filterUndefined({
+      product_id: options.productId,
+      product_inline: options.product,
+      quantity: options.quantity,
+    });
+    await this.sendServerRequest(
+      urlString`/payments/products/${options.customerType}/${options.customerId}`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      },
+      null,
+    );
+  }
+
   async getDataVaultStoreValue(secret: string, storeId: string, key: string) {
     const hashedKey = await hashKey(secret, key);
     const response = await this.sendServerRequestAndCatchKnownError(
@@ -878,5 +911,20 @@ export class StackServerInterface extends StackClientInterface {
       },
       null,
     );
+  }
+
+  async initiateServerPasskeyRegistration(userId: string): Promise<Result<{ options_json: any, code: string }, KnownErrors[]>> {
+    // Create a temporary session for this user to use for passkey registration
+    // TODO instead of creating a new session, this should just call the endpoint in a way in which it doesn't require a session
+    // (currently this shows up on session history etc... not ideal)
+    const { accessToken, refreshToken } = await this.createServerUserSession(userId, 60000 * 2, false); // 2 minute session
+    const tempSession = new InternalSession({
+      accessToken,
+      refreshToken,
+      refreshAccessTokenCallback: async () => null, // No refresh for temporary sessions
+    });
+
+    // Use the existing initiatePasskeyRegistration method with the temporary session
+    return await this.initiatePasskeyRegistration({}, tempSession);
   }
 }

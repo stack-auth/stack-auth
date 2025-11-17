@@ -275,7 +275,7 @@ import.meta.vitest?.test("getRelativePart", ({ expect }) => {
  *
  * Any values passed are encoded.
  */
-export function url(strings: TemplateStringsArray | readonly string[], ...values: (string|number|boolean)[]): URL {
+export function url(strings: TemplateStringsArray | readonly string[], ...values: (string | number | boolean)[]): URL {
   return new URL(urlString(strings, ...values));
 }
 import.meta.vitest?.test("url", ({ expect }) => {
@@ -311,7 +311,7 @@ import.meta.vitest?.test("url", ({ expect }) => {
  *
  * Any values passed are encoded.
  */
-export function urlString(strings: TemplateStringsArray | readonly string[], ...values: (string|number|boolean)[]): string {
+export function urlString(strings: TemplateStringsArray | readonly string[], ...values: (string | number | boolean)[]): string {
   return templateIdentity(strings, ...values.map(encodeURIComponent));
 }
 import.meta.vitest?.test("urlString", ({ expect }) => {
@@ -336,4 +336,45 @@ import.meta.vitest?.test("urlString", ({ expect }) => {
   expect(urlString`https://example.com/${"path"}?query=${"value with spaces"}`).toBe("https://example.com/path?query=value%20with%20spaces");
 });
 
+export function isChildUrl(parentUrl: URL, maybeChildUrl: URL) {
+  return parentUrl.origin === maybeChildUrl.origin
+    && isChildPath(parentUrl.pathname, maybeChildUrl.pathname)
+    && [...parentUrl.searchParams].every(([key, value]) => maybeChildUrl.searchParams.get(key) === value)
+    && (!parentUrl.hash || parentUrl.hash === maybeChildUrl.hash);
+}
+import.meta.vitest?.test("isChildUrl", ({ expect }) => {
+  // true
+  expect(isChildUrl(new URL("https://abc.com/"), new URL("https://abc.com/"))).toBe(true);
+  expect(isChildUrl(new URL("https://abc.com/"), new URL("https://abc.com/path"))).toBe(true);
+  expect(isChildUrl(new URL("https://abc.com/"), new URL("https://abc.com/path?query=value"))).toBe(true);
+  expect(isChildUrl(new URL("https://abc.com/"), new URL("https://abc.com/path?query=value#hash"))).toBe(true);
 
+  // false
+  expect(isChildUrl(new URL("https://abc.com"), new URL("https://example.com"))).toBe(false);
+  expect(isChildUrl(new URL("https://abc.com/"), new URL("https://example.com/path"))).toBe(false);
+  expect(isChildUrl(new URL("https://abc.com/"), new URL("https://example.com/path?query=value"))).toBe(false);
+  expect(isChildUrl(new URL("https://abc.com/"), new URL("https://example.com/path?query=value#hash"))).toBe(false);
+  expect(isChildUrl(new URL("https://example.com"), new URL("https://abc.com/path?query=value#hash"))).toBe(false);
+  expect(isChildUrl(new URL("https://example.com?query=value123"), new URL("https://example.com/path?query=value#hash"))).toBe(false);
+});
+
+export function isChildPath(parentPath: string, maybeChildPath: string) {
+  parentPath = parentPath.endsWith("/") ? parentPath : parentPath + "/";
+  maybeChildPath = maybeChildPath.endsWith("/") ? maybeChildPath : maybeChildPath + "/";
+  return maybeChildPath.startsWith(parentPath);
+}
+import.meta.vitest?.test("isSubPath", ({ expect }) => {
+  expect(isChildPath("/", "/")).toBe(true);
+  expect(isChildPath("/", "/path")).toBe(true);
+  expect(isChildPath("/path", "/")).toBe(false);
+  expect(isChildPath("/path", "/path")).toBe(true);
+  expect(isChildPath("/path/", "/path")).toBe(true);
+  expect(isChildPath("/path", "/path/")).toBe(true);
+  expect(isChildPath("/path/", "/path/")).toBe(true);
+  expect(isChildPath("/path", "/path/abc")).toBe(true);
+  expect(isChildPath("/path/", "/path/abc")).toBe(true);
+  expect(isChildPath("/path", "/path-abc")).toBe(false);
+  expect(isChildPath("/path", "/path-abc/")).toBe(false);
+  expect(isChildPath("/path/", "/path-abc")).toBe(false);
+  expect(isChildPath("/path/", "/path-abc/")).toBe(false);
+});

@@ -76,6 +76,7 @@ async function main() {
   const shouldSaveOutput = flags.includes("--save-output");
   const shouldVerifyOutput = flags.includes("--verify-output");
   const shouldSkipNeon = flags.includes("--skip-neon");
+  const recentFirst = flags.includes("--recent-first");
 
 
   if (shouldSaveOutput) {
@@ -117,7 +118,9 @@ async function main() {
       displayName: true,
       description: true,
     },
-    orderBy: {
+    orderBy: recentFirst ? {
+      updatedAt: "desc",
+    } : {
       id: "asc",
     },
   });
@@ -126,7 +129,7 @@ async function main() {
     console.log(`Starting at project ${startAt}.`);
   }
 
-  const maxUsersPerProject = 10000;
+  const maxUsersPerProject = 100;
 
   const endAt = Math.min(startAt + count, projects.length);
   for (let i = startAt; i < endAt; i++) {
@@ -264,6 +267,7 @@ async function main() {
   console.log();
   console.log();
 }
+// eslint-disable-next-line no-restricted-syntax
 main().catch((...args) => {
   console.error();
   console.error();
