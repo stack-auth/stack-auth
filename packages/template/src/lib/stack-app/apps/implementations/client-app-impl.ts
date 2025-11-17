@@ -901,7 +901,12 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         oauthProviders: crud.config.enabled_oauth_providers.map((p) => ({
           id: p.id,
         })),
-      }
+      },
+      listTeamPermissionDefinitions: async () => {
+        const session = await this._getSession();
+        const result = await this._interface.getTeamRolePermissions({ session });
+        return result.items;
+      },
     };
   }
 
@@ -1190,6 +1195,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     return {
       displayName: crud.display_name,
       profileImageUrl: crud.profile_image_url,
+      permissionIds: crud.permission_ids,
       async update(update: { displayName?: string, profileImageUrl?: string }) {
         await app._interface.updateTeamMemberProfile({
           teamId: crud.team_id,
@@ -1804,27 +1810,6 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     } else {
       return Result.error(result.error);
     }
-  }
-
-  async getTeamRolePermissions(): Promise<{ items: { id: string, description?: string, contained_permission_ids: string[] }[], is_paginated: false }> {
-    const session = await this._getSession();
-    const result = await this._interface.sendClientRequest(
-      "/team-invitations/role-permissions",
-      {
-        method: "GET",
-        headers: {
-          "Content-Type": "application/json",
-        },
-      },
-      session
-    );
-
-    if (!result.ok) {
-      throw new Error(`Failed to get team role permissions: ${result.status} ${await result.text()}`);
-    }
-
-    const data = await result.json();
-    return data;
   }
 
   async verifyEmail(code: string): Promise<Result<undefined, KnownErrors["VerificationCodeError"]>> {

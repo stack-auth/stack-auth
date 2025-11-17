@@ -275,6 +275,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
     return {
       displayName: crud.display_name,
       profileImageUrl: crud.profile_image_url,
+      permissionIds: crud.permission_ids,
       async update(update: { displayName?: string, profileImageUrl?: string }) {
         await app._interface.updateServerTeamMemberProfile({
           teamId: crud.team_id,
@@ -774,7 +775,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
       teamProfile: {
         displayName: crud.display_name,
         profileImageUrl: crud.profile_image_url,
-        permission_ids: crud.permission_ids,
+        permissionIds: crud.permission_ids,
       },
     } satisfies ServerTeamUser;
 

@@ -555,3 +555,109 @@ it("should error when untrusted callback URL is provided", async ({ expect }) =>
     }
   `);
 });
+
+it("can fetch role permissions from role-permissions endpoint", async ({ expect }) => {
+  await Auth.Otp.signIn();
+
+  const response = await niceBackendFetch("/api/v1/team-invitations/role-permissions", {
+    accessType: "client",
+    method: "GET",
+  });
+
+  expect(response.status).toBe(200);
+  expect(response.body).toHaveProperty('items');
+  expect(response.body).toHaveProperty('is_paginated', false);
+  expect(Array.isArray(response.body.items)).toBe(true);
+
+  // Check that each item has the correct structure
+  if (response.body.items.length > 0) {
+    const item = response.body.items[0];
+    expect(item).toHaveProperty('id');
+    expect(item).toHaveProperty('contained_permission_ids');
+    expect(Array.isArray(item.contained_permission_ids)).toBe(true);
+  }
+});
+
+it("can send invitation with permission_ids", async ({ expect }) => {
+  await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+  const { userId } = await Auth.Otp.signIn();
+  const { teamId } = await Team.create();
+
+  // Grant invite permission
+  await niceBackendFetch(`/api/v1/team-permissions/${teamId}/${userId}/$invite_members`, {
+    accessType: "server",
+    method: "POST",
+    body: {},
+  });
+
+  const receiveMailbox = createMailbox();
+
+  const sendResponse = await niceBackendFetch("/api/v1/team-invitations/send-code", {
+    method: "POST",
+    accessType: "client",
+    body: {
+      email: receiveMailbox,
+      team_id: teamId,
+      callback_url: "http://localhost:12345/some-callback-url",
+      permission_ids: ["team_admin"],
+    },
+  });
+
+  expect(sendResponse.status).toBe(200);
+
+  // Verify invitation was created with permission_ids
+  const listResponse = await niceBackendFetch(`/api/v1/team-invitations?team_id=${teamId}`, {
+    accessType: "server",
+    method: "GET",
+  });
+
+  expect(listResponse.status).toBe(200);
+  expect(listResponse.body.items.length).toBeGreaterThan(0);
+  expect(listResponse.body.items[0]).toHaveProperty('permission_ids');
+  expect(listResponse.body.items[0].permission_ids).toEqual(["team_admin"]);
+});
+
+it("applies permission_ids when accepting invitation", async ({ expect }) => {
+  await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+  const { userId } = await Auth.Otp.signIn();
+  const { teamId } = await Team.create();
+
+  // Grant invite permission
+  await niceBackendFetch(`/api/v1/team-permissions/${teamId}/${userId}/$invite_members`, {
+    accessType: "server",
+    method: "POST",
+    body: {},
+  });
+
+  const receiveMailbox = createMailbox();
+
+  // Send invitation with permission_ids
+  await niceBackendFetch("/api/v1/team-invitations/send-code", {
+    method: "POST",
+    accessType: "client",
+    body: {
+      email: receiveMailbox,
+      team_id: teamId,
+      callback_url: "http://localhost:12345/some-callback-url",
+      permission_ids: ["team_admin"],
+    },
+  });
+
+  // Accept invitation as new user
+  backendContext.set({ mailbox: receiveMailbox });
+  await Auth.Otp.signIn();
+  await Team.acceptInvitation();
+
+  // Verify user received the permission
+  const newUserId = (await User.getCurrent()).id;
+  const permissionResponse = await niceBackendFetch(
+    `/api/v1/team-permissions/${teamId}/${newUserId}/team_admin`,
+    {
+      accessType: "server",
+      method: "GET",
+    }
+  );
+
+  expect(permissionResponse.status).toBe(200);
+  expect(permissionResponse.body).toHaveProperty('id', 'team_admin');
+});

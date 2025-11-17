@@ -171,6 +171,14 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
         teamMemberDefaultPermissions: data.config.team_member_default_permissions,
         userDefaultPermissions: data.config.user_default_permissions,
       },
+      async listTeamPermissionDefinitions() {
+        const result = await app._interface.listTeamPermissionDefinitions();
+        return result.map((p) => ({
+          id: p.id,
+          description: p.description,
+          contained_permission_ids: p.contained_permission_ids,
+        }));
+      },
       async getConfig() {
         return app._adminConfigFromCrud(await app._interface.getConfig());
       },

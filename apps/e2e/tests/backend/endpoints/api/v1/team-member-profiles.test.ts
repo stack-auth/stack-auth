@@ -1,6 +1,6 @@
 import { expect } from "vitest";
 import { it } from "../../../../helpers";
-import { Auth, Team, backendContext, bumpEmailAddress, niceBackendFetch } from "../../../backend-helpers";
+import { Auth, Project, Team, backendContext, bumpEmailAddress, createMailbox, niceBackendFetch } from "../../../backend-helpers";
 
 async function signInAndCreateTeam() {
   const { userId: userId1 } = await Auth.Otp.signIn();
@@ -310,7 +310,7 @@ it("can do several operations when granted $read_members permission", async ({ e
 
 it("includes permission_ids in team member profiles response", async ({ expect }) => {
   const { teamId } = await signInAndCreateTeam();
-  
+
   // Test reading own profile includes permission_ids field
   const ownProfileResponse = await niceBackendFetch(`/api/v1/team-member-profiles/${teamId}/me`, {
     accessType: "client",
@@ -319,4 +319,54 @@ it("includes permission_ids in team member profiles response", async ({ expect }
   expect(ownProfileResponse.status).toBe(200);
   expect(ownProfileResponse.body).toHaveProperty('permission_ids');
   expect(Array.isArray(ownProfileResponse.body.permission_ids)).toBe(true);
+});
+
+it("returns correct permission_ids for team members with granted permissions", async ({ expect }) => {
+  await Project.createAndSwitch();
+  const { userId: user1Id } = await Auth.Otp.signIn();
+  const { teamId } = await Team.create();
+
+  // Add a second user to the team
+  const user2Mailbox = createMailbox();
+  await niceBackendFetch("/api/v1/team-invitations/send-code", {
+    method: "POST",
+    accessType: "server",
+    body: {
+      email: user2Mailbox,
+      team_id: teamId,
+      callback_url: "http://localhost:12345/some-callback-url",
+    },
+  });
+
+  // Accept invitation as second user
+  backendContext.set({ mailbox: user2Mailbox });
+  const { userId: user2Id } = await Auth.Otp.signIn();
+  await Team.acceptInvitation();
+
+  // Grant team_admin permission to user2
+  await niceBackendFetch(`/api/v1/team-permissions/${teamId}/${user2Id}/team_admin`, {
+    accessType: "server",
+    method: "POST",
+    body: {},
+  });
+
+  // Fetch user2's team member profile
+  const user2ProfileResponse = await niceBackendFetch(`/api/v1/team-member-profiles/${teamId}/${user2Id}`, {
+    accessType: "server",
+    method: "GET",
+  });
+
+  expect(user2ProfileResponse.status).toBe(200);
+  expect(user2ProfileResponse.body).toHaveProperty('permission_ids');
+  expect(user2ProfileResponse.body.permission_ids).toContain('team_admin');
+
+  // Verify user1 (creator) also has permission_ids
+  const user1ProfileResponse = await niceBackendFetch(`/api/v1/team-member-profiles/${teamId}/${user1Id}`, {
+    accessType: "server",
+    method: "GET",
+  });
+
+  expect(user1ProfileResponse.status).toBe(200);
+  expect(user1ProfileResponse.body).toHaveProperty('permission_ids');
+  expect(Array.isArray(user1ProfileResponse.body.permission_ids)).toBe(true);
 });

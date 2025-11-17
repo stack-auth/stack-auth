@@ -58,7 +58,6 @@ export type StackClientApp<HasTokenStore extends boolean = boolean, ProjectId ex
     verifyEmail(code: string): Promise<Result<undefined, KnownErrors["VerificationCodeError"]>>,
     signInWithMagicLink(code: string, options?: { noRedirect?: boolean }): Promise<Result<undefined, KnownErrors["VerificationCodeError"] | KnownErrors["InvalidTotpCode"]>>,
     signInWithMfa(otp: string, code: string, options?: { noRedirect?: boolean }): Promise<Result<undefined, KnownErrors["VerificationCodeError"] | KnownErrors["InvalidTotpCode"]>>,
-    getTeamRolePermissions(): Promise<{ items: { id: string, description?: string, contained_permission_ids: string[] }[], is_paginated: false }>,
 
     redirectToOAuthCallback(): Promise<void>,
 

@@ -11,6 +11,7 @@ export type Project = {
   readonly id: string,
   readonly displayName: string,
   readonly config: ProjectConfig,
+  listTeamPermissionDefinitions(): Promise<{ id: string, description?: string, contained_permission_ids: string[] }[]>,
 };
 
 export type AdminProject = {

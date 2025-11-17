@@ -31,27 +31,28 @@ function MemberInvitationsSectionInvitationsList(props: { team: Team }) {
 
   const removeMemberPermission = user.usePermission(props.team, '$remove_members');
   const [rolePermissions, setRolePermissions] = useState<{ id: string, description?: string }[]>([]);
+  const project = stackApp.useProject();
 
   // Fetch available role-based permissions to map permission_ids to role names
   useEffect(() => {
     const fetchRolePermissions = async () => {
       try {
         console.log('Fetching role permissions...');
-        const response = await stackApp.getTeamRolePermissions();
-        console.log('Role permissions fetched:', response.items);
-        setRolePermissions(response.items);
+        const permissions = await project.listTeamPermissionDefinitions();
+        console.log('Role permissions fetched:', permissions);
+        setRolePermissions(permissions);
       } catch (error) {
         console.error('Failed to fetch role permissions:', error);
       }
     };
 
-    fetchRolePermissions();
-  }, [stackApp]);
+    fetchRolePermissions().catch(() => {
+      // Error already logged in fetchRolePermissions
+    });
+  }, [project]);
 
   const getRoleDisplayName = (permissionIds: string[]) => {
-
-
-    if (!permissionIds || permissionIds.length === 0) {
+    if (permissionIds.length === 0) {
       return t("Default member role");
     }
 
@@ -133,6 +134,7 @@ function MemberInvitationSectionInner(props: { team: Team }) {
   const { t } = useTranslation();
   const readMemberPermission = user.usePermission(props.team, '$read_members');
   const [rolePermissions, setRolePermissions] = useState<{ id: string, description?: string }[]>([]);
+  const project = stackApp.useProject();
 
   const invitationSchema = yupObject({
     email: strictEmailSchema(t('Please enter a valid email address')).defined().nonEmpty(t('Please enter an email address')),
@@ -153,15 +155,17 @@ function MemberInvitationSectionInner(props: { team: Team }) {
   useEffect(() => {
     const fetchRolePermissions = async () => {
       try {
-        const response = await stackApp.getTeamRolePermissions();
-        setRolePermissions(response.items);
+        const permissions = await project.listTeamPermissionDefinitions();
+        setRolePermissions(permissions);
       } catch (error) {
         console.error('Failed to fetch role permissions:', error);
       }
     };
 
-    fetchRolePermissions();
-  }, [stackApp]);
+    fetchRolePermissions().catch(() => {
+      // Error already logged in fetchRolePermissions
+    });
+  }, [project]);
 
   const onSubmit = async (data: yup.InferType<typeof invitationSchema>) => {
     setLoading(true);
