@@ -636,7 +636,7 @@ it("applies permission_ids when accepting invitation", async ({ expect }) => {
     method: "POST",
     accessType: "client",
     body: {
-      email: receiveMailbox,
+      email: receiveMailbox.emailAddress,
       team_id: teamId,
       callback_url: "http://localhost:12345/some-callback-url",
       permission_ids: ["team_admin"],
