@@ -1,12 +1,14 @@
 "use client";
 import { FormDialog } from "@/components/form-dialog";
 import { InputField, SwitchField } from "@/components/form-fields";
+import { Link } from "@/components/link";
 import { getPublicEnvVar } from '@/lib/env';
 import { AdminProject } from "@stackframe/stack";
 import { yupBoolean, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { sharedProviders } from "@stackframe/stack-shared/dist/utils/oauth";
-import { ActionDialog, Badge, BrandIcons, InlineCode, Label, SimpleTooltip, Typography } from "@stackframe/stack-ui";
+import { ActionDialog, Badge, BrandIcons, InlineCode, Label, SimpleTooltip, Typography, buttonVariants, cn } from "@stackframe/stack-ui";
 import clsx from "clsx";
+import { ArrowRight } from "lucide-react";
 import { useState } from "react";
 import * as yup from "yup";
 
@@ -166,6 +168,23 @@ export function ProviderSettingDialog(props: Props & { open: boolean, onClose: (
               )}
             </>
           )}
+
+          {props.id === 'github' && !form.watch("shared") && (
+            <Typography variant="secondary" type="footnote">
+              Note: GitHub apps must be public with read-only email permissions enabled.
+            </Typography>
+          )}
+
+          <Link
+            className={cn(buttonVariants({ variant: "outline", size: "sm" }), "gap-2 mt-2")}
+            href={`https://docs.stack-auth.com/docs/concepts/auth-providers/${props.id === "x" ? "x-twitter" : props.id}`}
+            target="_blank"
+            rel="noopener"
+          >
+            See full documentation
+            <ArrowRight size={16} />
+          </Link>
+
         </>
       )}
     />
