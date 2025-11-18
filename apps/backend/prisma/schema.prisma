@@ -785,6 +785,8 @@ model Subscription {
   currentPeriodStart   DateTime
   cancelAtPeriodEnd    Boolean
 
+  refundedAt DateTime?
+
   creationSource PurchaseCreationSource
   createdAt      DateTime               @default(now())
   updatedAt      DateTime               @updatedAt

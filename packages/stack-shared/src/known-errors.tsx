@@ -1518,6 +1518,32 @@ const OneTimePurchaseNotFound = createKnownErrorConstructor(
   (json) => [json.one_time_purchase_id] as const,
 );
 
+const SubscriptionAlreadyRefunded = createKnownErrorConstructor(
+  KnownError,
+  "SUBSCRIPTION_ALREADY_REFUNDED",
+  (subscriptionId: string) => [
+    400,
+    `Subscription with ID ${JSON.stringify(subscriptionId)} was already refunded.`,
+    {
+      subscription_id: subscriptionId,
+    },
+  ] as const,
+  (json) => [json.subscription_id] as const,
+);
+
+const OneTimePurchaseAlreadyRefunded = createKnownErrorConstructor(
+  KnownError,
+  "ONE_TIME_PURCHASE_ALREADY_REFUNDED",
+  (purchaseId: string) => [
+    400,
+    `One-time purchase with ID ${JSON.stringify(purchaseId)} was already refunded.`,
+    {
+      one_time_purchase_id: purchaseId,
+    },
+  ] as const,
+  (json) => [json.one_time_purchase_id] as const,
+);
+
 const TestModePurchaseNonRefundable = createKnownErrorConstructor(
   KnownError,
   "TEST_MODE_PURCHASE_NON_REFUNDABLE",
@@ -1726,6 +1752,8 @@ export const KnownErrors = {
   ProductAlreadyGranted,
   SubscriptionInvoiceNotFound,
   OneTimePurchaseNotFound,
+  SubscriptionAlreadyRefunded,
+  OneTimePurchaseAlreadyRefunded,
   TestModePurchaseNonRefundable,
   ItemQuantityInsufficientAmount,
   StripeAccountInfoNotFound,

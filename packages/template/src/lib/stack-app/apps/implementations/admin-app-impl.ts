@@ -601,6 +601,7 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
 
   async refundTransaction(options: { type: "subscription" | "one-time-purchase", id: string }): Promise<void> {
     await this._interface.refundTransaction({ type: options.type, id: options.id });
+    await this._transactionsCache.invalidateWhere(() => true);
   }
 
   async listTransactions(params: { cursor?: string, limit?: number, type?: TransactionType, customerType?: 'user' | 'team' | 'custom' }): Promise<{ transactions: Transaction[], nextCursor: string | null }> {

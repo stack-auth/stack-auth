@@ -246,6 +246,37 @@ it("refunds non-test mode one-time purchases created via Stripe webhooks", async
   expect(refundRes.status).toBe(200);
   expect(refundRes.body).toEqual({ success: true });
 
+  const transactionsAfterRefund = await niceBackendFetch("/api/latest/internal/payments/transactions", {
+    accessType: "admin",
+  });
+  const refundedTransaction = transactionsAfterRefund.body.transactions.find((tx: any) => tx.id === purchaseTransaction.id);
+  expect(refundedTransaction?.adjusted_by).toEqual([
+    {
+      entry_index: 0,
+      transaction_id: expect.stringContaining(`${purchaseTransaction.id}:refund`),
+    },
+  ]);
+
+  const secondRefundAttempt = await niceBackendFetch("/api/latest/internal/payments/transactions/refund", {
+    accessType: "admin",
+    method: "POST",
+    body: { type: "one-time-purchase", id: purchaseTransaction.id },
+  });
+  expect(secondRefundAttempt).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 400,
+      "body": {
+        "code": "ONE_TIME_PURCHASE_ALREADY_REFUNDED",
+        "details": { "one_time_purchase_id": "<stripped UUID>" },
+        "error": "One-time purchase with ID \\"<stripped UUID>\\" was already refunded.",
+      },
+      "headers": Headers {
+        "x-stack-known-error": "ONE_TIME_PURCHASE_ALREADY_REFUNDED",
+        <some fields may have been hidden>,
+      },
+    }
+  `);
+
   const productsAfterRes = await niceBackendFetch(`/api/v1/payments/products/user/${userId}`, {
     accessType: "client",
   });
