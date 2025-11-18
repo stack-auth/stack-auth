@@ -1,5 +1,13 @@
 # @stackframe/convex-example
 
+## 2.8.52
+
+### Patch Changes
+
+- Updated dependencies
+  - @stackframe/stack-shared@2.8.52
+  - @stackframe/stack@2.8.52
+
 ## 2.8.51
 
 ### Patch Changes

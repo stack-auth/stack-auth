@@ -2,7 +2,7 @@
 
 import { useChat } from '@ai-sdk/react';
 import { runAsynchronously } from '@stackframe/stack-shared/dist/utils/promises';
-import { ExternalLink, FileText, Maximize2, Minimize2, Send, X } from 'lucide-react';
+import { ChevronDown, ChevronUp, ExternalLink, FileText, Maximize2, Minimize2, Send, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { useSidebar } from '../layouts/sidebar-context';
 import { MessageFormatter } from './message-formatter';
@@ -23,46 +23,201 @@ function StackIcon({ size = 20, className }: { size?: number, className?: string
   );
 }
 
+// Separate component for search results to properly use React hooks
+const SearchDocsDisplay = ({ toolCall }: { toolCall: { toolName: string, args?: { search_query?: string }, result?: { content?: { text: string }[], text?: string } } | string }) => {
+  const [isExpanded, setIsExpanded] = useState(false);
+
+  const query = (toolCall as { args?: { search_query?: string } }).args?.search_query || "...";
+  // Try multiple ways to get the result text
+  const resultText = ((toolCall as { result?: { content?: { text: string }[], text?: string } }).result?.content?.[0]?.text
+    || (toolCall as { result?: { content?: { text: string }[], text?: string } }).result?.text
+    || (typeof (toolCall as { result?: string }).result === 'string' ? (toolCall as { result?: string }).result : undefined)) ?? "";
+
+  // Count how many results were found
+  const resultCount = (resultText.match(/Title:/g) || []).length;
+
+  // Parse search results
+  const parseSearchResults = () => {
+    const results = [];
+    const sections = resultText.split('---').map((s: string) => s.trim()).filter(Boolean);
+
+    for (const section of sections) {
+      const titleMatch = section.match(/Title:\s*([^\n]+)/);
+      const descMatch = section.match(/Description:\s*([^\n]+)/);
+      const urlMatch = section.match(/Documentation URL:\s*([^\n]+)/);
+      const endpointMatch = section.match(/API Endpoint:\s*([^\n]+)/);
+      const scoreMatch = section.match(/Score:\s*(\d+)/);
+
+      if (titleMatch) {
+        results.push({
+          title: titleMatch[1].trim(),
+          description: descMatch?.[1]?.trim(),
+          url: urlMatch?.[1]?.trim(),
+          endpoint: endpointMatch?.[1]?.trim(),
+          score: scoreMatch?.[1] ? parseInt(scoreMatch[1]) : 0,
+        });
+      }
+    }
+
+    return results.slice(0, 10); // Limit to top 10 for display
+  };
+
+  const results = parseSearchResults();
+
+  return (
+    <div className="flex flex-col bg-purple-50 dark:bg-purple-950/30 border border-purple-200 dark:border-purple-800 rounded-lg text-xs mb-2">
+      <button
+        onClick={() => setIsExpanded(!isExpanded)}
+        className="flex items-center gap-2 p-2 w-full text-left hover:bg-purple-100 dark:hover:bg-purple-900/30 transition-colors rounded-lg"
+      >
+        <FileText className="w-3 h-3 text-purple-600 dark:text-purple-400 flex-shrink-0" />
+        <span className="text-purple-700 dark:text-purple-300 font-medium flex-1">
+          Searched for &quot;{query}&quot; • {resultCount} {resultCount === 1 ? 'result' : 'results'}
+        </span>
+        {isExpanded ? (
+          <ChevronUp className="w-3 h-3 text-purple-600 dark:text-purple-400 flex-shrink-0" />
+        ) : (
+          <ChevronDown className="w-3 h-3 text-purple-600 dark:text-purple-400 flex-shrink-0" />
+        )}
+      </button>
+
+      {isExpanded && results.length > 0 && (
+        <div className="px-2 pb-2 space-y-1.5 max-h-64 overflow-y-auto">
+          {results.map((result, idx) => (
+            <div
+              key={idx}
+              className="p-2 bg-white dark:bg-gray-900/50 rounded border border-purple-200/50 dark:border-purple-800/50"
+            >
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex-1 min-w-0">
+                  <div className="font-medium text-purple-900 dark:text-purple-100 truncate">
+                    {result.title}
+                  </div>
+                  {result.endpoint && (
+                    <div className="text-purple-600 dark:text-purple-400 font-mono text-[10px] mt-0.5">
+                      {result.endpoint}
+                    </div>
+                  )}
+                  {result.description && (
+                    <div className="text-purple-700 dark:text-purple-300 text-[10px] mt-1 line-clamp-2">
+                      {result.description}
+                    </div>
+                  )}
+                </div>
+                {result.url && (
+                  <a
+                    href={`https://docs.stack-auth.com${result.url}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-purple-600 dark:text-purple-400 hover:text-purple-800 dark:hover:text-purple-200 flex-shrink-0"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <ExternalLink className="w-3 h-3" />
+                  </a>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
 // Component to render tool calls
 const ToolCallDisplay = ({
   toolCall,
 }: {
-  toolCall: {
-    toolName: string,
-    args?: { id?: string },
-    result?: { content: { text: string }[] },
-  },
+  toolCall: { toolName: string, args?: { id?: string, search_query?: string }, result?: { content?: { text: string }[], text?: string } },
 }) => {
-  if (toolCall.toolName === "get_docs_by_id") {
+  // Handle search_docs tool
+  if (toolCall.toolName === "search_docs") {
+    return <SearchDocsDisplay toolCall={toolCall} />;
+  }
+
+  // Handle get_docs_by_id and fetch tools (they work the same)
+  if (toolCall.toolName === "get_docs_by_id" || toolCall.toolName === "fetch") {
     const docId = toolCall.args?.id;
     let docTitle = "Loading...";
+    let apiEndpoint: string | null = null;
 
-    const titleMatch = toolCall.result?.content[0]?.text.match(/Title:\s*(.*)/);
+    // Try multiple ways to get the result text
+    const resultText = (toolCall.result?.content?.[0]?.text
+      || toolCall.result?.text
+      || (typeof toolCall.result === 'string' ? toolCall.result : undefined)) ?? "";
+
+    // Extract title - more robust matching
+    const titleMatch = resultText.match(/Title:\s*([^\n]+)/);
     if (titleMatch?.[1]) {
       docTitle = titleMatch[1].trim();
     } else {
-      docTitle = 'No Title Found';
+      // Fallback: try to extract from the docId if available
+      if (docId) {
+        const pathParts = String(docId).split('/').filter(Boolean);
+        docTitle = pathParts[pathParts.length - 1]?.replace(/-/g, ' ') || 'Documentation';
+      } else {
+        docTitle = 'Documentation';
+      }
+    }
+
+    // Extract API endpoint if present
+    const endpointMatch = resultText.match(/API Endpoint:\s*([^\n]+)/);
+    if (endpointMatch?.[1]) {
+      apiEndpoint = endpointMatch[1].trim();
     }
 
     return (
-      <div className="flex items-center gap-2 p-2 bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-lg text-xs mb-2">
-        <FileText className="w-3 h-3 text-blue-600 dark:text-blue-400" />
-        <span className="text-blue-700 dark:text-blue-300 font-medium">
-          {docTitle}
-        </span>
-        {docId && (
-          <a
-            href={`https://docs.stack-auth.com${encodeURI(
-              (String(docId).startsWith('/') ? String(docId) : `/${String(docId)}`)
-            )}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center gap-1 text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-200 transition-colors"
-          >
-            <ExternalLink className="w-3 h-3" />
-            <span>Open</span>
-          </a>
+      <div className="flex flex-col gap-1 p-2 bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-lg text-xs mb-2">
+        <div className="flex items-center gap-2">
+          <FileText className="w-3 h-3 text-blue-600 dark:text-blue-400" />
+          <span className="text-blue-700 dark:text-blue-300 font-medium">
+            {docTitle}
+          </span>
+          {docId && (
+            <a
+              href={`https://docs.stack-auth.com${encodeURI(
+                (String(docId).startsWith('/') ? String(docId) : `/${String(docId)}`)
+              )}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-1 text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-200 transition-colors ml-auto"
+            >
+              <ExternalLink className="w-3 h-3" />
+              <span>Open</span>
+            </a>
+          )}
+        </div>
+        {apiEndpoint && (
+          <div className="pl-5 text-blue-600 dark:text-blue-400 font-mono">
+            {apiEndpoint}
+          </div>
         )}
+      </div>
+    );
+  }
+
+  // Handle search tool (for ChatGPT compatibility)
+  if (toolCall.toolName === "search") {
+    // Try multiple ways to get the result text
+    const resultText = (toolCall.result?.content?.[0]?.text
+      || toolCall.result?.text
+      || (typeof toolCall.result === 'string' ? toolCall.result : undefined)) ?? "";
+    let resultCount = 0;
+
+    try {
+      const parsed = JSON.parse(resultText);
+      resultCount = parsed.results?.length || 0;
+    } catch {
+      // If not JSON, try counting
+      resultCount = (resultText.match(/title:/gi) || []).length;
+    }
+
+    return (
+      <div className="flex items-center gap-2 p-2 bg-purple-50 dark:bg-purple-950/30 border border-purple-200 dark:border-purple-800 rounded-lg text-xs mb-2">
+        <FileText className="w-3 h-3 text-purple-600 dark:text-purple-400" />
+        <span className="text-purple-700 dark:text-purple-300 font-medium">
+          Searched • {resultCount} {resultCount === 1 ? 'result' : 'results'}
+        </span>
       </div>
     );
   }
