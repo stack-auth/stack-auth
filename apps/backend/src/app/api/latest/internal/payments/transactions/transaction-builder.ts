@@ -1,8 +1,7 @@
-import type { ItemQuantityChange, OneTimePurchase, Subscription } from "@prisma/client";
+import type { ItemQuantityChange, OneTimePurchase, Subscription, SubscriptionInvoice } from "@prisma/client";
 import type { Transaction, TransactionEntry } from "@stackframe/stack-shared/dist/interface/crud/transactions";
 import { SUPPORTED_CURRENCIES, type Currency } from "@stackframe/stack-shared/dist/utils/currency-constants";
 import { typedToLowercase } from "@stackframe/stack-shared/dist/utils/strings";
-import type { Tenancy } from "@/lib/tenancies";
 import { productSchema } from "@stackframe/stack-shared/dist/schema-fields";
 import { InferType } from "yup";
 import { productToInlineProduct } from "@/lib/payments";
@@ -27,6 +26,7 @@ export type ProductWithPrices = {
 
 type ProductSnapshot = (TransactionEntry & { type: "product_grant" })["product"];
 
+const REFUND_TRANSACTION_SUFFIX = ":refund";
 
 export function resolveSelectedPriceFromProduct(product: ProductWithPrices, priceId?: string | null): SelectedPrice | null {
   if (!product) return null;
@@ -146,6 +146,18 @@ function createProductGrantEntry(options: {
   };
 }
 
+function buildRefundAdjustments(options: { refundedAt?: Date | null, entries: TransactionEntry[], transactionId: string }): Transaction["adjusted_by"] {
+  if (!options.refundedAt) {
+    return [];
+  }
+  const productGrantIndex = options.entries.findIndex((entry) => entry.type === "product_grant");
+  const entryIndex = productGrantIndex >= 0 ? productGrantIndex : 0;
+  return [{
+    transaction_id: `${options.transactionId}${REFUND_TRANSACTION_SUFFIX}`,
+    entry_index: entryIndex,
+  }];
+}
+
 export function buildSubscriptionTransaction(options: {
   subscription: Subscription,
 }): Transaction {
@@ -180,13 +192,19 @@ export function buildSubscriptionTransaction(options: {
     entries.push(moneyTransfer);
   }
 
+  const adjustedBy = buildRefundAdjustments({
+    refundedAt: subscription.refundedAt,
+    entries,
+    transactionId: subscription.id,
+  });
+
   return {
     id: subscription.id,
     created_at_millis: subscription.createdAt.getTime(),
     effective_at_millis: subscription.createdAt.getTime(),
     type: "purchase",
     entries,
-    adjusted_by: [],
+    adjusted_by: adjustedBy,
     test_mode: testMode,
   };
 }
@@ -225,22 +243,27 @@ export function buildOneTimePurchaseTransaction(options: {
     entries.push(moneyTransfer);
   }
 
+  const adjustedBy = buildRefundAdjustments({
+    refundedAt: purchase.refundedAt,
+    entries,
+    transactionId: purchase.id,
+  });
+
   return {
     id: purchase.id,
     created_at_millis: purchase.createdAt.getTime(),
     effective_at_millis: purchase.createdAt.getTime(),
     type: "purchase",
     entries,
-    adjusted_by: [],
+    adjusted_by: adjustedBy,
     test_mode: testMode,
   };
 }
 
 export function buildItemQuantityChangeTransaction(options: {
   change: ItemQuantityChange,
-  tenancy: Tenancy,
 }): Transaction {
-  const { change, tenancy } = options;
+  const { change } = options;
   const customerType = typedToLowercase(change.customerType);
 
   const entries: TransactionEntry[] = [
@@ -263,5 +286,38 @@ export function buildItemQuantityChangeTransaction(options: {
     entries,
     adjusted_by: [],
     test_mode: false,
+  };
+}
+
+export function buildSubscriptionRenewalTransaction(options: {
+  subscription: Subscription,
+  subscriptionInvoice: SubscriptionInvoice,
+}): Transaction {
+  const { subscription, subscriptionInvoice } = options;
+  const product = subscription.product as InferType<typeof productSchema>;
+  const selectedPrice = resolveSelectedPriceFromProduct(product, subscription.priceId ?? null);
+  const chargedAmount = buildChargedAmount(selectedPrice, subscription.quantity);
+
+  const entries: TransactionEntry[] = [
+    {
+      type: "money_transfer",
+      adjusted_transaction_id: null,
+      adjusted_entry_index: null,
+      charged_amount: chargedAmount,
+      // todo: store net amount
+      net_amount: { USD: chargedAmount.USD },
+      customer_id: subscription.customerId,
+      customer_type: typedToLowercase(subscription.customerType),
+    },
+  ];
+
+  return {
+    type: "subscription-renewal",
+    id: subscriptionInvoice.id,
+    test_mode: false,
+    entries,
+    adjusted_by: [],
+    created_at_millis: subscriptionInvoice.createdAt.getTime(),
+    effective_at_millis: subscriptionInvoice.createdAt.getTime(),
   };
 }

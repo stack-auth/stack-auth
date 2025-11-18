@@ -1,5 +1,4 @@
 import type { InferType } from "yup";
-import * as yup from "yup";
 import {
   customerTypeSchema,
   inlineProductSchema,
@@ -101,11 +100,9 @@ export const TRANSACTION_TYPES = [
   "purchase",
   "subscription-cancellation",
   "subscription-renewal",
-  "chargeback",
   "manual-item-quantity-change",
-  "upgrade",
-  "downgrade",
-  "product-change",
+  "chargeback", // todo
+  "product-change", // todo
 ] as const;
 
 export type TransactionType = (typeof TRANSACTION_TYPES)[number];
