@@ -610,4 +610,19 @@ export class StackAdminInterface extends StackServerInterface {
     return { transactions: json.transactions, nextCursor: json.next_cursor };
   }
 
+  async refundTransaction(options: { type: "subscription" | "one-time-purchase", id: string }): Promise<{ success: boolean }> {
+    const response = await this.sendAdminRequest(
+      "/internal/payments/transactions/refund",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify(options),
+      },
+      null,
+    );
+    return await response.json();
+  }
+
 }

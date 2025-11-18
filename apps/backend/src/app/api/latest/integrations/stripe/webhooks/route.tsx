@@ -88,7 +88,6 @@ async function processStripeWebhookEvent(event: Stripe.Event): Promise<void> {
       }
     });
   }
-
   if (isSubscriptionChangedEvent(event)) {
     const accountId = event.account;
     const customerId = event.data.object.customer;
@@ -104,6 +103,9 @@ async function processStripeWebhookEvent(event: Stripe.Event): Promise<void> {
     if (event.type == "invoice.payment_succeeded") {
       await handleStripeInvoicePaid(stripe, accountId, event.data.object);
     }
+  }
+  if (event.type === "refund.created") {
+    const refund = event.data.object;
   }
 }
 

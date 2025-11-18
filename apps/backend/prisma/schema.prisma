@@ -785,6 +785,8 @@ model Subscription {
   currentPeriodStart   DateTime
   cancelAtPeriodEnd    Boolean
 
+  refundedAt DateTime?
+
   creationSource PurchaseCreationSource
   createdAt      DateTime               @default(now())
   updatedAt      DateTime               @updatedAt
@@ -821,6 +823,7 @@ model OneTimePurchase {
   quantity              Int
   stripePaymentIntentId String?
   createdAt             DateTime               @default(now())
+  refundedAt            DateTime?
   creationSource        PurchaseCreationSource
 
   @@id([tenancyId, id])

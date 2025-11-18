@@ -1492,6 +1492,69 @@ const CustomerDoesNotExist = createKnownErrorConstructor(
   (json) => [json.customer_id] as const,
 );
 
+const SubscriptionInvoiceNotFound = createKnownErrorConstructor(
+  KnownError,
+  "SUBSCRIPTION_INVOICE_NOT_FOUND",
+  (subscriptionInvoiceId: string) => [
+    404,
+    `Subscription invoice with ID ${JSON.stringify(subscriptionInvoiceId)} does not exist.`,
+    {
+      subscription_invoice_id: subscriptionInvoiceId,
+    },
+  ] as const,
+  (json) => [json.subscription_invoice_id] as const,
+);
+
+const OneTimePurchaseNotFound = createKnownErrorConstructor(
+  KnownError,
+  "ONE_TIME_PURCHASE_NOT_FOUND",
+  (purchaseId: string) => [
+    404,
+    `One-time purchase with ID ${JSON.stringify(purchaseId)} does not exist.`,
+    {
+      one_time_purchase_id: purchaseId,
+    },
+  ] as const,
+  (json) => [json.one_time_purchase_id] as const,
+);
+
+const SubscriptionAlreadyRefunded = createKnownErrorConstructor(
+  KnownError,
+  "SUBSCRIPTION_ALREADY_REFUNDED",
+  (subscriptionId: string) => [
+    400,
+    `Subscription with ID ${JSON.stringify(subscriptionId)} was already refunded.`,
+    {
+      subscription_id: subscriptionId,
+    },
+  ] as const,
+  (json) => [json.subscription_id] as const,
+);
+
+const OneTimePurchaseAlreadyRefunded = createKnownErrorConstructor(
+  KnownError,
+  "ONE_TIME_PURCHASE_ALREADY_REFUNDED",
+  (purchaseId: string) => [
+    400,
+    `One-time purchase with ID ${JSON.stringify(purchaseId)} was already refunded.`,
+    {
+      one_time_purchase_id: purchaseId,
+    },
+  ] as const,
+  (json) => [json.one_time_purchase_id] as const,
+);
+
+const TestModePurchaseNonRefundable = createKnownErrorConstructor(
+  KnownError,
+  "TEST_MODE_PURCHASE_NON_REFUNDABLE",
+  () => [
+    400,
+    "Test mode purchases are not refundable.",
+  ] as const,
+  () => [] as const,
+);
+
+
 const ProductDoesNotExist = createKnownErrorConstructor(
   KnownError,
   "PRODUCT_DOES_NOT_EXIST",
@@ -1687,6 +1750,11 @@ export const KnownErrors = {
   ProductDoesNotExist,
   ProductCustomerTypeDoesNotMatch,
   ProductAlreadyGranted,
+  SubscriptionInvoiceNotFound,
+  OneTimePurchaseNotFound,
+  SubscriptionAlreadyRefunded,
+  OneTimePurchaseAlreadyRefunded,
+  TestModePurchaseNonRefundable,
   ItemQuantityInsufficientAmount,
   StripeAccountInfoNotFound,
   DataVaultStoreDoesNotExist,
