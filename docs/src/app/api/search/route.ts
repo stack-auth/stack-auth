@@ -114,7 +114,10 @@ async function callMcpServer(search_query: string): Promise<SearchResult[]> {
           title = line.substring(7);
         } else if (line.startsWith('Description: ')) {
           description = line.substring(13);
+        } else if (line.startsWith('Documentation URL: ')) {
+          url = line.substring(19);
         } else if (line.startsWith('URL: ')) {
+          // Fallback for old format
           url = line.substring(5);
         } else if (line.startsWith('Type: ')) {
           type = line.substring(6);
