@@ -1,6 +1,6 @@
 import { Link } from "@/components/link";
 import { StackAdminApp } from "@stackframe/stack";
-import { AppId } from "@stackframe/stack-shared/dist/apps/apps-config";
+import { ALL_APPS } from "@stackframe/stack-shared/dist/apps/apps-config";
 import { getRelativePart, isChildUrl } from "@stackframe/stack-shared/dist/utils/urls";
 import { CreditCard, KeyRound, Mail, Mails, Rocket, ShieldEllipsis, Sparkles, Triangle, Tv, UserCog, Users, Vault, Webhook } from "lucide-react";
 import Image from "next/image";
@@ -9,6 +9,8 @@ import LogoBright from "../../public/logo-bright.svg";
 import NeonLogo from "../../public/neon-logo.png";
 import OpenGraphImage from "../../public/open-graph-image.png";
 import VercelLogo from "../../public/vercel-logo.svg";
+
+export type AppId = keyof typeof ALL_APPS;
 
 export const DUMMY_ORIGIN = "https://example.com";
 
@@ -213,8 +215,8 @@ export const ALL_APPS_FRONTEND = {
   },
   vercel: {
     icon: Triangle,
-    logo: () => <div>
-      <Image src={VercelLogo} alt="Vercel logo" className="bg-white p-4 pb-5 invert" />
+    logo: () => <div className="w-full h-full flex items-center justify-center">
+      <Image src={VercelLogo} alt="Vercel logo" className="bg-white invert w-full h-full object-contain p-2" />
     </div>,
     href: "vercel",
     navigationItems: [

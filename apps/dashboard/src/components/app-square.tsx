@@ -1,109 +1,274 @@
 import { useAdminApp } from "@/app/(main)/(protected)/projects/[projectId]/use-admin-app";
-import { ALL_APPS_FRONTEND, AppFrontend, getAppPath } from "@/lib/apps-frontend";
-import { ALL_APPS, AppId } from "@stackframe/stack-shared/dist/apps/apps-config";
+import { ALL_APPS_FRONTEND, getAppPath, type AppFrontend, type AppId } from "@/lib/apps-frontend";
+import { ALL_APPS } from "@stackframe/stack-shared/dist/apps/apps-config";
 import { typedIncludes } from "@stackframe/stack-shared/dist/utils/arrays";
-import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
-import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger, cn } from "@stackframe/stack-ui";
+import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
+import { cn } from "@stackframe/stack-ui";
+import { Check } from "lucide-react";
+import { useState } from "react";
+import { AppWarningModal } from "./app-warning-modal";
 import { Link } from "./link";
 
-export const appSquareWidthExpression = "max(min(11vw,180px),80px)";
-export const appSquarePaddingExpression = "max(min(1vw,1.5rem),0.25rem)";
+// CSS sizing expressions for app squares (used in metrics page grid layout)
+export const appSquarePaddingExpression = "0.5rem";
+export const appSquareWidthExpression = "6rem";
 
-export function AppIcon({ appId, className, disabled, style }: {
+type AppSquareVariant = "default" | "installed" | "featured";
+
+export function AppIcon({
+  appId,
+  className,
+  size = "medium",
+  showBadge = false,
+  variant = "default"
+}: {
   appId: AppId,
   className?: string,
-  disabled?: boolean,
-  style?: React.CSSProperties,
+  size?: "small" | "medium" | "large",
+  showBadge?: boolean,
+  variant?: AppSquareVariant,
 }) {
-  const svgGradients = (gradients: Record<string, string[]>) => {
-    return (
-      <svg width="0" height="0">
-        {Object.entries(gradients).map(([id, gradient]) => {
-          return (
-            <linearGradient key={id} id={id} x1="100%" y1="100%" x2="0%" y2="0%">
-              {gradient.map((color, index) => {
-                return <stop key={index} stopColor={color} offset={`${index * 100 / (gradient.length - 1)}%`} />;
-              })}
-            </linearGradient>
-          );
-        })}
-      </svg>
-    );
+  const sizeClasses = {
+    small: "w-12 h-12",
+    medium: "w-16 h-16",
+    large: "w-20 h-20"
+  };
 
+  const iconSizeClasses = {
+    small: "inset-[25%] w-[50%] h-[50%]",
+    medium: "inset-[22%] w-[56%] h-[56%]",
+    large: "inset-[20%] w-[60%] h-[60%]"
   };
 
   const app = ALL_APPS[appId];
   const appFrontend: AppFrontend = ALL_APPS_FRONTEND[appId];
-  return <div style={style} className={cn(
-    "relative w-24 h-24 rounded-[24.154%] overflow-hidden select-none",
-    !disabled && "bg-[linear-gradient(45deg,#dde,#fff)] dark:bg-[linear-gradient(45deg,#222,#666)]",
-    disabled && 'border-gray-400/70 border-dashed border-4',
-    className,
-  )}>
+
+  // Simplified color scheme
+  const getIconColor = () => {
+    if (variant === "installed") return "#10B981"; // green
+    if (variant === "featured") return "#3B82F6"; // blue
+    if (typedIncludes(app.tags, "expert")) return "#F59E0B"; // amber
+    if (typedIncludes(app.tags, "integration")) return "#8B5CF6"; // purple
+    return "#6B7280"; // gray
+  };
+
+  return (
     <div className={cn(
-      "w-full h-full isolate relative",
+      "relative rounded-2xl overflow-hidden select-none transition-all",
+      "bg-gray-50 dark:bg-gray-800/50",
+      sizeClasses[size],
+      className
     )}>
-      {appFrontend.logo ? (
-        <div
-          className="absolute inset-[20%] w-[60%] h-[60%] rounded-[24.154%] overflow-hidden flex items-center justify-center border"
-          style={{
-            opacity: disabled ? 0.6 : 1,
-          }}
-        >
-          <appFrontend.logo />
-        </div>
-      ) : (
-        <>
-          <svg width="0" height="0">
-            {svgGradients({
-              "app-icon-gradient-light": ["#c0f", "#66f", "#4af"],
-              "app-icon-gradient-dark": ["#3ec", "#9af", "#a5f"],
-              "app-icon-gradient-light-expert": ["#f0c", "#f66", "#fa4"],
-              "app-icon-gradient-dark-expert": ["#f0c", "#f66", "#fa4"],
-              "app-icon-gradient-light-integration": ["#E5AB00", "#FFBA00", "#F8DF80"],
-              "app-icon-gradient-dark-integration": ["#E5AB00", "#FFBA00", "#F8DF80"],
-            })}
-          </svg>
+      <div className="w-full h-full flex items-center justify-center">
+        {appFrontend.logo ? (
+          <div className={cn(
+            "flex items-center justify-center",
+            iconSizeClasses[size]
+          )}>
+            <appFrontend.logo />
+          </div>
+        ) : (
           <appFrontend.icon
-            opacity={disabled ? 0.75 : 1}
             className={cn(
-              "inset-[20%] w-[60%] h-[60%] bg-clip-text text-transparent text-white absolute",
-              (typedIncludes(app.tags, "expert")
-                ? "stroke-[url(#app-icon-gradient-light-expert)] dark:stroke-[url(#app-icon-gradient-dark-expert)]"
-                : typedIncludes(app.tags, "integration")
-                  ? "stroke-[url(#app-icon-gradient-light-integration)] dark:stroke-[url(#app-icon-gradient-dark-integration)]"
-                  : "stroke-[url(#app-icon-gradient-light)] dark:stroke-[url(#app-icon-gradient-dark)]"
-              )
+              "absolute",
+              iconSizeClasses[size]
             )}
+            style={{ color: getIconColor() }}
           />
-        </>
-      )}
-    </div>
-    <div className="absolute top-0 left-[-100%] right-0 flex flex-col gap-1 [transform:_rotate(-45deg)_translateY(24px)] [transform-origin:top_center]">
-      {app.stage !== "stable" && (
-        <div className={cn(
-          "h-4 uppercase text-xs font-bold font-mono tracking-widest text-center",
-          disabled
-            ? "bg-gray-400/80 text-white"
-            : app.stage === "alpha"
-              ? "bg-red-500 text-white"
-              : "bg-yellow-600 text-white"
-          )}
-        >
-          {app.stage}
+        )}
+      </div>
+
+      {/* Stage badge - subtle but noticeable */}
+      {showBadge && app.stage !== "stable" && (
+        <div className="absolute -top-1.5 -right-1.5">
+          <div className={cn(
+            "px-1.5 py-0.5 rounded-md text-[9px] font-bold uppercase tracking-wide",
+            "border backdrop-blur-sm shadow-sm",
+            app.stage === "alpha"
+              ? "bg-orange-50/80 dark:bg-orange-950/30 text-orange-600 dark:text-orange-400 border-orange-200 dark:border-orange-800"
+              : "bg-blue-50/80 dark:bg-blue-950/30 text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-800"
+          )}>
+            {app.stage === "alpha" ? "Alpha" : "Beta"}
+          </div>
         </div>
       )}
     </div>
-  </div>;
+  );
 }
 
-export function AppSquare({ appId }: {
+export function AppSquare({
+  appId,
+  variant = "default",
+  showSubtitle = false,
+  onToggleEnabled
+}: {
   appId: AppId,
+  variant?: AppSquareVariant,
+  showSubtitle?: boolean,
+  onToggleEnabled?: (enabled: boolean) => void,
+}) {
+  const app = ALL_APPS[appId];
+  const appFrontend = ALL_APPS_FRONTEND[appId];
+  const [isHovered, setIsHovered] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [showWarningModal, setShowWarningModal] = useState(false);
+
+  const adminApp = useAdminApp()!;
+  const project = adminApp.useProject();
+  const config = project.useConfig();
+
+  const isEnabled = config.apps.installed[appId]?.enabled ?? false;
+
+  const handleToggleEnabled = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    if (isProcessing) return;
+
+    // Show warning modal for alpha/beta apps when enabling
+    if (!isEnabled && app.stage !== "stable") {
+      setShowWarningModal(true);
+      return;
+    }
+
+    // Direct disable for enabled apps or enable for stable apps
+    await performToggle();
+  };
+
+  const performToggle = async () => {
+    setIsProcessing(true);
+
+    try {
+      await project.updateConfig({
+        [`apps.installed.${appId}.enabled`]: !isEnabled,
+      });
+      onToggleEnabled?.(!isEnabled);
+    } catch (error) {
+      console.error(`Failed to ${isEnabled ? 'disable' : 'enable'} app:`, error);
+      alert(`Failed to ${isEnabled ? 'disable' : 'enable'} ${app.displayName}. Please try again.`);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  return (
+    <>
+      <div
+        className={cn(
+          "group relative",
+          isProcessing && "pointer-events-none opacity-50"
+        )}
+        onMouseEnter={() => setIsHovered(true)}
+        onMouseLeave={() => setIsHovered(false)}
+      >
+        <div
+          className={cn(
+            "relative flex flex-col items-center gap-3 p-4 rounded-2xl transition-all duration-200 cursor-default",
+            "bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800",
+            "hover:border-gray-300 dark:hover:border-gray-700 hover:shadow-lg",
+            isEnabled && "border-green-500/30 dark:border-green-500/30 bg-green-50/50 dark:bg-green-950/20"
+          )}
+        >
+          {/* Icon */}
+          <div className="relative">
+            <AppIcon
+              appId={appId}
+              size="medium"
+              showBadge={false}
+              variant={isEnabled ? "installed" : variant}
+            />
+          </div>
+
+          {/* Text */}
+          <div className="flex flex-col items-center gap-1 w-full">
+            <span className={cn(
+            "text-sm font-medium text-center",
+            "text-gray-900 dark:text-gray-100"
+          )}>
+              {app.displayName}
+            </span>
+
+            {showSubtitle && (
+              <span className="text-xs text-gray-500 dark:text-gray-400 text-center line-clamp-2 px-2">
+                {app.subtitle}
+              </span>
+            )}
+          </div>
+
+          {/* Hover actions */}
+          <div className={cn(
+          "absolute inset-x-0 bottom-0 p-3 flex justify-center transition-all duration-200",
+          isHovered ? "opacity-100 translate-y-0" : "opacity-0 translate-y-2 pointer-events-none"
+        )}>
+            <button
+              onClick={(event) => {
+                runAsynchronously(handleToggleEnabled(event));
+              }}
+              className={cn(
+              "px-4 py-1.5 text-xs font-medium rounded-full transition-all",
+              "shadow-lg backdrop-blur-sm",
+              isEnabled
+                ? "bg-gray-900/90 dark:bg-gray-100/90 text-white dark:text-gray-900 hover:bg-gray-800 dark:hover:bg-gray-200"
+                : "bg-blue-600/90 text-white hover:bg-blue-700"
+            )}
+            >
+              {isEnabled ? 'Disable' : 'Enable'}
+            </button>
+          </div>
+        </div>
+
+        {/* Status badges in top-right corner */}
+        {isEnabled && (
+          <div className="absolute top-2 right-2 w-6 h-6 bg-green-500 rounded-full flex items-center justify-center shadow-md">
+            <Check className="w-3.5 h-3.5 text-white" strokeWidth={3} />
+          </div>
+        )}
+
+        {!isEnabled && app.stage !== "stable" && (
+          <div className="absolute top-2 right-2">
+            <div className={cn(
+              "px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider",
+              "border backdrop-blur-sm shadow-sm",
+              app.stage === "alpha"
+                ? "bg-orange-50/90 dark:bg-orange-950/40 text-orange-600 dark:text-orange-400 border-orange-200 dark:border-orange-800"
+                : "bg-blue-50/90 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-800"
+            )}>
+              {app.stage === "alpha" ? "Alpha" : "Beta"}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Warning Modal */}
+      {app.stage !== "stable" && (
+        <AppWarningModal
+          isOpen={showWarningModal}
+          onClose={() => setShowWarningModal(false)}
+          onConfirm={() => {
+            runAsynchronously(performToggle());
+          }}
+          appName={app.displayName}
+          stage={app.stage as "alpha" | "beta"}
+        />
+      )}
+    </>
+  );
+}
+
+// Compact version for lists
+export function AppListItem({
+  appId,
+  onEnable,
+  showActions = true
+}: {
+  appId: AppId,
+  onEnable?: () => void,
+  showActions?: boolean,
 }) {
   const app = ALL_APPS[appId];
   const appFrontend = ALL_APPS_FRONTEND[appId];
 
-  const adminApp = useAdminApp();
+  const adminApp = useAdminApp()!;
   const project = adminApp.useProject();
   const config = project.useConfig();
 
@@ -111,59 +276,60 @@ export function AppSquare({ appId }: {
   const appPath = getAppPath(project.id, appFrontend);
   const appDetailsPath = `/projects/${project.id}/apps/${appId}`;
 
-  const setEnabled = async (enabled: boolean) => {
-    await project.updateConfig({
-      [`apps.installed.${appId}.enabled`]: enabled,
-    });
-  };
-
   return (
-    <ContextMenu>
-      <div className="flex flex-col items-center">
-        <ContextMenuTrigger>
-          <Link
-            href={isEnabled ? appPath : appDetailsPath}
-            className={cn(
-              "flex flex-col items-center gap-1 sm:gap-2 transition-all duration-200 cursor-pointer group select-none",
-              "p-2 rounded-lg",
-              "hover:bg-foreground/15 hover:duration-0",
-            )}
-            style={{
-              padding: appSquarePaddingExpression,
-            }}
-          >
-            <AppIcon
-              appId={appId}
-              disabled={!isEnabled}
-              style={{
-                width: `calc(${appSquareWidthExpression} - 2 * ${appSquarePaddingExpression})`,
-                height: `calc(${appSquareWidthExpression} - 2 * ${appSquarePaddingExpression})`,
-              }}
-              className={cn(
-                `shadow-md`,
-              )}
-            />
-            <span className={cn(
-              "text-xs lg:text-sm text-center max-w-20 sm:max-w-28 md:max-w-32 lg:max-w-36 truncate select-none",
-              isEnabled
-                ? 'text-gray-700 dark:text-gray-300'
-                : 'text-gray-600 dark:text-gray-400'
-            )}
-            >
-              {app.displayName}
-            </span>
-          </Link>
-        </ContextMenuTrigger>
+    <Link
+      href={isEnabled ? appPath : appDetailsPath}
+      className={cn(
+        "flex items-center gap-3 p-3 rounded-lg transition-all",
+        "hover:bg-gray-50 dark:hover:bg-gray-800/50",
+        isEnabled && "bg-green-50/50 dark:bg-green-900/10 border border-green-200 dark:border-green-800"
+      )}
+    >
+      <AppIcon
+        appId={appId}
+        size="small"
+        variant={isEnabled ? "installed" : "default"}
+      />
+
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-medium text-gray-900 dark:text-gray-100">
+            {app.displayName}
+          </span>
+          {app.stage !== "stable" && (
+            <div className={cn(
+              "px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide",
+              "border",
+              app.stage === "alpha"
+                ? "bg-orange-50 dark:bg-orange-950/30 text-orange-600 dark:text-orange-400 border-orange-200 dark:border-orange-800"
+                : "bg-blue-50 dark:bg-blue-950/30 text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-800"
+            )}>
+              {app.stage === "alpha" ? "Alpha" : "Beta"}
+            </div>
+          )}
+        </div>
+        <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
+          {app.subtitle}
+        </p>
       </div>
-      <ContextMenuContent>
-        <ContextMenuItem onClick={() => window.open(appPath, '_blank')}>
-          Open in new tab
-        </ContextMenuItem>
-        <ContextMenuSeparator />
-        <ContextMenuItem onClick={() => runAsynchronouslyWithAlert(setEnabled(!isEnabled))}>
-          {isEnabled ? 'Disable' : 'Enable'}
-        </ContextMenuItem>
-      </ContextMenuContent>
-    </ContextMenu>
+
+      {showActions && (
+        <div className="flex items-center gap-2">
+          {isEnabled ? (
+            <Check className="w-4 h-4 text-green-500" />
+          ) : (
+            <button
+              onClick={(e) => {
+                e.preventDefault();
+                onEnable?.();
+              }}
+              className="px-3 py-1 text-xs font-medium bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors"
+            >
+              Enable
+            </button>
+          )}
+        </div>
+      )}
+    </Link>
   );
 }
