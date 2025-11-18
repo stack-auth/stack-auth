@@ -1,7 +1,12 @@
 import { ChartConfig, ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
-import { isWeekend } from "@stackframe/stack-shared/dist/utils/dates";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@stackframe/stack-ui";
-import { Bar, BarChart, CartesianGrid, Cell, Pie, PieChart, XAxis, YAxis } from "recharts";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+} from "@stackframe/stack-ui";
+import { CartesianGrid, Line, LineChart, Pie, PieChart, XAxis, YAxis } from "recharts";
 
 export type LineChartDisplayConfig = {
   name: string,
@@ -14,6 +19,40 @@ export type DataPoint = {
   activity: number,
 }
 
+const CustomTooltip = ({ active, payload }: any) => {
+  if (!active || !payload?.length) return null;
+
+  const data = payload[0].payload;
+  const date = new Date(data.date);
+  const formattedDate = !isNaN(date.getTime())
+    ? date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+    : data.date;
+
+  return (
+    <div className="rounded-xl border border-border/70 bg-background/90 px-3 py-2 text-xs shadow-xl">
+      <div className="flex flex-col gap-1.5">
+        <span className="text-[0.7rem] font-medium text-muted-foreground">
+          {formattedDate}
+        </span>
+        <div className="flex items-center gap-2">
+          <span
+            className="h-2.5 w-2.5 rounded-full"
+            style={{ backgroundColor: "var(--color-activity)" }}
+          />
+          <span className="text-[0.7rem] text-muted-foreground">
+            Activity
+          </span>
+          <span className="ml-auto font-mono text-[0.7rem] font-semibold tabular-nums text-foreground">
+            {typeof data.activity === "number"
+              ? data.activity.toLocaleString()
+              : data.activity}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 export function LineChartDisplay({
   config, datapoints
 }: {
@@ -21,47 +60,89 @@ export function LineChartDisplay({
   datapoints: DataPoint[],
 }) {
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>
-          {config.name}
-        </CardTitle>
-        <CardDescription>
-          {config.description}
-        </CardDescription>
+    <Card className="transition-all">
+      <CardHeader className="pb-3">
+        <div className="space-y-1">
+          <CardTitle className="text-base font-semibold">{config.name}</CardTitle>
+          {config.description && (
+            <CardDescription className="text-xs">
+              {config.description}
+            </CardDescription>
+          )}
+        </div>
       </CardHeader>
-      <CardContent>
-        <ChartContainer config={config.chart} className='w-full p-0 ml-[-30px]' maxHeight={300}>
-          <BarChart accessibilityLayer data={datapoints}>
+      <CardContent className="pt-0">
+        <ChartContainer
+          config={config.chart}
+          className="w-full"
+          maxHeight={280}
+        >
+          <LineChart
+            accessibilityLayer
+            data={datapoints}
+            margin={{ top: 5, right: 10, left: 0, bottom: 0 }}
+          >
             <CartesianGrid
-              horizontal={true}
+              horizontal
               vertical={false}
+              strokeDasharray="3 3"
+              stroke="hsl(var(--border))"
+              opacity={0.3}
             />
             <ChartTooltip
-              content={<ChartTooltipContent labelKey='date'/>}
+              content={<CustomTooltip />}
+              cursor={{
+                stroke: "var(--color-activity)",
+                strokeWidth: 2,
+                strokeDasharray: "5 5",
+                opacity: 0.5,
+              }}
             />
-            <Bar
+            <Line
+              type="monotone"
               dataKey="activity"
-              fill="var(--color-activity)"
-              fillOpacity={1}
+              stroke="var(--color-activity)"
+              strokeWidth={3}
+              dot={false}
+              activeDot={{
+                r: 6,
+                fill: "var(--color-activity)",
+                strokeWidth: 2,
+                stroke: "hsl(var(--background))",
+              }}
               isAnimationActive={false}
-            >{datapoints.map(x => (
-              <Cell key={x.date} fillOpacity={isWeekend(new Date(x.date)) ? 0.4 : 1} />
-            ))}</Bar>
-
+            />
             <YAxis
               tickLine={false}
               axisLine={false}
-              width={60}
+              width={50}
+              tick={{
+                fill: "hsl(var(--muted-foreground))",
+                fontSize: 11,
+              }}
             />
             <XAxis
               dataKey="date"
               tickLine={false}
-              tickMargin={10}
+              tickMargin={8}
               axisLine={false}
-              tickFormatter={(value) => value}
+              tick={{
+                fill: "hsl(var(--muted-foreground))",
+                fontSize: 10,
+              }}
+              tickFormatter={(value) => {
+                const date = new Date(value);
+                if (!isNaN(date.getTime())) {
+                  const month = date.toLocaleDateString("en-US", {
+                    month: "short",
+                  });
+                  const day = date.getDate();
+                  return `${month} ${day}`;
+                }
+                return value;
+              }}
             />
-          </BarChart>
+          </LineChart>
         </ChartContainer>
       </CardContent>
     </Card>
@@ -71,71 +152,71 @@ export function LineChartDisplay({
 const BRAND_CONFIG = {
   email: {
     label: 'Email',
-    color: '#ffffff'
+    color: 'hsl(210, 40%, 55%)'
   },
   magiclink: {
     label: 'Magic Link',
-    color: '#A657F0'
+    color: 'hsl(270, 85%, 65%)'
   },
   passkey: {
     label: 'Passkey',
-    color: '#D2B6EF'
+    color: 'hsl(270, 70%, 80%)'
   },
   google: {
     label: 'Google',
-    color: '#F3801D',
+    color: 'hsl(15, 90%, 55%)',
   },
   github: {
     label: 'GitHub',
-    color: '#222222',
+    color: 'hsl(0, 0%, 20%)',
   },
   microsoft: {
     label: 'Microsoft',
-    color: '#F35325',
+    color: 'hsl(8, 89%, 57%)',
   },
   spotify: {
     label: 'Spotify',
-    color: '#1ED760'
+    color: 'hsl(141, 73%, 55%)'
   },
   facebook: {
     label: 'Facebook',
-    color: '#0866FF',
+    color: 'hsl(214, 100%, 52%)',
   },
   discord: {
     label: 'Discord',
-    color: '#5865F2',
+    color: 'hsl(235, 85%, 65%)',
   },
   gitlab: {
     label: 'GitLab',
-    color: '#FC6D26'
+    color: 'hsl(14, 96%, 57%)'
   },
   bitbucket: {
     label: 'Bitbucket',
-    color: '#0052CC',
+    color: 'hsl(208, 100%, 40%)',
   },
   linkedin: {
     label: 'LinkedIn',
-    color: '#0A66C2',
+    color: 'hsl(201, 100%, 40%)',
   },
   apple: {
     label: 'Apple',
-    color: '#F47CAD',
+    color: 'hsl(330, 85%, 65%)',
   },
   x: {
     label: 'X (Twitter)',
-    color: '#444444',
+    color: 'hsl(0, 0%, 30%)',
   },
   password: {
     label: 'Password',
-    color: '#008888',
+    color: 'hsl(180, 100%, 27%)',
   },
   other: {
     label: 'Other',
-    color: '#ffff00',
+    color: 'hsl(60, 100%, 50%)',
   },
   otp: {
     label: 'OTP/Magic Link',
-    color: '#ff0088',
+    color: 'hsl(330, 100%, 50%)',
   },
 };
 
@@ -149,34 +230,93 @@ export function DonutChartDisplay({
 }: {
   datapoints: AuthMethodDatapoint[],
 }) {
+  const total = datapoints.reduce((sum, d) => sum + d.count, 0);
+
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>
-          Auth Methods
-        </CardTitle>
+    <Card className="transition-all">
+      <CardHeader className="pb-3">
+        <div className="space-y-1">
+          <CardTitle className="text-base font-semibold">Auth Methods</CardTitle>
+          <CardDescription className="text-xs">
+            Login distribution
+          </CardDescription>
+        </div>
       </CardHeader>
-      <CardContent>
-        <ChartContainer config={BRAND_CONFIG} className='w-full p-4' maxHeight={300}>
-          <PieChart>
-            <ChartTooltip
-              cursor={false}
-              content={<ChartTooltipContent hideLabel />}
-            />
-            <Pie
-              data={datapoints.map(x => ({
-                ...x,
-                fill: `var(--color-${x.method})`
-              }))}
-              dataKey="count"
-              nameKey="method"
-              innerRadius={60}
-              labelLine={false}
-              isAnimationActive={false}
-              label={(x) => `${new Map(Object.entries(BRAND_CONFIG)).get(x.method)?.label ?? x.method}: ${x.count}`}
-            />
-          </PieChart>
-        </ChartContainer>
+      <CardContent className="pt-0">
+        <div className="flex flex-col items-center">
+          <ChartContainer
+            config={BRAND_CONFIG}
+            className="flex w-full items-center justify-center"
+            maxHeight={200}
+          >
+            <PieChart>
+              <ChartTooltip
+                cursor={false}
+                content={
+                  <ChartTooltipContent
+                    className="rounded-xl border border-border/70 bg-background/90 px-3 py-1.5 text-xs shadow-xl"
+                    hideIndicator
+                    nameKey="method"
+                    formatter={(value, _name, item) => {
+                      const key = (item.payload as AuthMethodDatapoint | undefined)?.method;
+                      const label = (key && BRAND_CONFIG[key].label) || _name;
+
+                      if (typeof value !== "number" || !key) {
+                        return null;
+                      }
+
+                      return (
+                        <div className="flex items-center gap-2">
+                          <span
+                            className="h-2.5 w-2.5 rounded-full"
+                            style={{ backgroundColor: `var(--color-${key})` }}
+                          />
+                          <span className="text-[0.7rem] font-medium">
+                            {label}
+                          </span>
+                          <span className="font-mono text-[0.7rem] font-semibold tabular-nums">
+                            {value}
+                          </span>
+                        </div>
+                      );
+                    }}
+                  />
+                }
+              />
+              <Pie
+                data={datapoints.map(x => ({
+                  ...x,
+                  fill: `var(--color-${x.method})`
+                }))}
+                dataKey="count"
+                nameKey="method"
+                innerRadius={60}
+                outerRadius={90}
+                paddingAngle={3}
+                labelLine={false}
+                isAnimationActive={false}
+              />
+            </PieChart>
+          </ChartContainer>
+          <div className="mt-4 flex max-w-md flex-wrap justify-center gap-2">
+            {datapoints.map((item) => {
+              const percentage = ((item.count / total) * 100).toFixed(0);
+              return (
+                <div
+                  key={item.method}
+                  className="flex items-center gap-2 rounded-full border border-border/70 bg-background/80 px-3 py-1.5 text-xs shadow-sm transition-colors hover:bg-muted/40"
+                >
+                  <span className="text-xs font-medium text-foreground">
+                    {new Map(Object.entries(BRAND_CONFIG)).get(item.method)?.label ?? item.method}
+                  </span>
+                  <span className="text-xs text-muted-foreground">
+                    ({percentage}%)
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
       </CardContent>
     </Card>
   );
