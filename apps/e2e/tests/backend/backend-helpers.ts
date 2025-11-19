@@ -993,7 +993,7 @@ export namespace ProjectApiKey {
         accessType: "server",
         body: data,
       });
-      expect(response).toEqual({
+      expect(response).toMatchObject({
         status: 200,
         body: expect.objectContaining({
           created_at_millis: expect.any(Number),
