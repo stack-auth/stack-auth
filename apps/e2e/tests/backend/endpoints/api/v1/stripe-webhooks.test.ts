@@ -1,34 +1,6 @@
-import { createHmac } from "node:crypto";
 import { it } from "../../../../helpers";
 import { niceBackendFetch, Payments, Project, User } from "../../../backend-helpers";
 
-const stripeWebhookSecret = "mock_stripe_webhook_secret";
-
-async function sendStripeWebhook(payload: unknown, options?: {
-  invalidSignature?: boolean,
-  omitSignature?: boolean,
-  secret?: string,
-}) {
-  const timestamp = Math.floor(Date.now() / 1000);
-  const headers: Record<string, string> = { "content-type": "application/json" };
-  if (!options?.omitSignature) {
-    let header: string;
-    if (options?.invalidSignature) {
-      header = `t=${timestamp},v1=dead`;
-    } else {
-      const hmac = createHmac("sha256", options?.secret ?? stripeWebhookSecret);
-      hmac.update(`${timestamp}.${JSON.stringify(payload)}`);
-      const signature = hmac.digest("hex");
-      header = `t=${timestamp},v1=${signature}`;
-    }
-    headers["stripe-signature"] = header;
-  }
-  return await niceBackendFetch("/api/latest/integrations/stripe/webhooks", {
-    method: "POST",
-    headers,
-    body: payload,
-  });
-}
 
 it("accepts signed mock_event.succeeded webhook", async ({ expect }) => {
   const payload = {
@@ -37,7 +9,7 @@ it("accepts signed mock_event.succeeded webhook", async ({ expect }) => {
     account: "acct_test123",
     data: { object: { customer: "cus_test123", metadata: {} } },
   };
-  const res = await sendStripeWebhook(payload);
+  const res = await Payments.sendStripeWebhook(payload);
   expect(res.status).toBe(200);
   expect(res.body).toEqual({ received: true });
 });
@@ -49,7 +21,7 @@ it("returns 400 on invalid signature", async ({ expect }) => {
     account: "acct_test123",
     data: { object: { customer: "cus_test456" } },
   };
-  const res = await sendStripeWebhook(payload, { invalidSignature: true });
+  const res = await Payments.sendStripeWebhook(payload, { invalidSignature: true });
   expect(res).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 400,
@@ -66,7 +38,7 @@ it("returns 400 when signature header is missing (schema validation)", async ({ 
     account: "acct_test123",
     data: { object: { customer: "cus_test123", metadata: {} } },
   };
-  const res = await sendStripeWebhook(payload, { omitSignature: true });
+  const res = await Payments.sendStripeWebhook(payload, { omitSignature: true });
   expect(res.status).toBe(400);
 });
 
@@ -155,11 +127,11 @@ it("deduplicates one-time purchase on payment_intent.succeeded retry", async ({ 
       },
     },
   };
-  const res = await sendStripeWebhook(payloadObj);
+  const res = await Payments.sendStripeWebhook(payloadObj);
   expect(res.status).toBe(200);
   expect(res.body).toEqual({ received: true });
 
-  const res2 = await sendStripeWebhook(payloadObj);
+  const res2 = await Payments.sendStripeWebhook(payloadObj);
   expect(res2.status).toBe(200);
   expect(res2.body).toEqual({ received: true });
 
@@ -263,7 +235,7 @@ it("syncs subscriptions from webhook and is idempotent", async ({ expect }) => {
     },
   };
 
-  const res = await sendStripeWebhook(payloadObj);
+  const res = await Payments.sendStripeWebhook(payloadObj);
   expect(res.status).toBe(200);
   expect(res.body).toEqual({ received: true });
 
@@ -273,7 +245,7 @@ it("syncs subscriptions from webhook and is idempotent", async ({ expect }) => {
   expect(getAfter1.status).toBe(200);
   expect(getAfter1.body.quantity).toBe(1);
 
-  const res2 = await sendStripeWebhook(payloadObj);
+  const res2 = await Payments.sendStripeWebhook(payloadObj);
   expect(res2.status).toBe(200);
   expect(res2.body).toEqual({ received: true });
 
@@ -376,7 +348,7 @@ it("updates a user's subscriptions via webhook (add then remove)", async ({ expe
     },
   };
 
-  const resAdd = await sendStripeWebhook(payloadAdd);
+  const resAdd = await Payments.sendStripeWebhook(payloadAdd);
   expect(resAdd.status).toBe(200);
   expect(resAdd.body).toEqual({ received: true });
 
@@ -416,7 +388,7 @@ it("updates a user's subscriptions via webhook (add then remove)", async ({ expe
     },
   };
 
-  const resRemove = await sendStripeWebhook(payloadRemove);
+  const resRemove = await Payments.sendStripeWebhook(payloadRemove);
   expect(resRemove.status).toBe(200);
   expect(resRemove.body).toEqual({ received: true });
 

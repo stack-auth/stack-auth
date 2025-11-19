@@ -5,6 +5,7 @@ const config = {
   content: [
     './src/**/*.{ts,tsx}',
     "./node_modules/@stackframe/stack-ui/src/**/*.{ts,tsx}",
+    "./node_modules/@stackframe/stack-shared/src/**/*.{ts,tsx}",
 	],
   prefix: "",
   theme: {

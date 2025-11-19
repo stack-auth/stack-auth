@@ -247,7 +247,7 @@ export const environmentConfigSchema = branchConfigSchema.concat(yupObject({
     trustedDomains: yupRecord(
       userSpecifiedIdSchema("trustedDomainId"),
       yupObject({
-        baseUrl: schemaFields.wildcardUrlSchema.max(300),
+        baseUrl: schemaFields.wildcardUrlSchema.max(300),  // TODO: replace with wildcardProtocolAndDomainSchema (this will require a migration as some configs have domains that are not valid wildcard protocol and domain patterns)
         handlerPath: schemaFields.handlerPathSchema.max(300),
       }),
     ),

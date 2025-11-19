@@ -95,6 +95,37 @@ it("adds two different domains", async ({ expect }) => {
   `);
 });
 
+it("does not add if the domain has a path, query parameters, or hash", async ({ expect }) => {
+  await Auth.Otp.signIn();
+  const { adminAccessToken } = await Project.createAndGetAdminToken();
+  const response = await niceBackendFetch("/api/v1/integrations/custom/domains", {
+    accessType: "admin",
+    headers: {
+      'x-stack-admin-access-token': adminAccessToken,
+    },
+    method: "POST",
+    body: {
+      domain: "https://domain-to-keep.example.com/path",
+    },
+  });
+  expect(response.status).toBe(400);
+  expect(response.body).toMatchInlineSnapshot(`
+    {
+      "code": "SCHEMA_ERROR",
+      "details": {
+        "message": deindent\`
+          Request validation failed on POST /api/v1/integrations/custom/domains:
+            - body.domain must be a protocol and domain (with optional port) without any path, query parameters, or hash
+        \`,
+      },
+      "error": deindent\`
+        Request validation failed on POST /api/v1/integrations/custom/domains:
+          - body.domain must be a protocol and domain (with optional port) without any path, query parameters, or hash
+      \`,
+    }
+  `);
+});
+
 it("adds two domains and deletes one", async ({ expect }) => {
   await Auth.Otp.signIn();
   const { adminAccessToken } = await Project.createAndGetAdminToken();

@@ -1,4 +1,4 @@
-import { getStackStripe, getStripeForAccount, syncStripeSubscriptions } from "@/lib/stripe";
+import { getStackStripe, getStripeForAccount, handleStripeInvoicePaid, syncStripeSubscriptions } from "@/lib/stripe";
 import { getTenancy } from "@/lib/tenancies";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
@@ -88,7 +88,6 @@ async function processStripeWebhookEvent(event: Stripe.Event): Promise<void> {
       }
     });
   }
-
   if (isSubscriptionChangedEvent(event)) {
     const accountId = event.account;
     const customerId = event.data.object.customer;
@@ -100,6 +99,10 @@ async function processStripeWebhookEvent(event: Stripe.Event): Promise<void> {
     }
     const stripe = await getStripeForAccount({ accountId }, mockData);
     await syncStripeSubscriptions(stripe, accountId, customerId);
+
+    if (event.type === "invoice.payment_succeeded") {
+      await handleStripeInvoicePaid(stripe, accountId, event.data.object);
+    }
   }
 }
 

@@ -391,6 +391,22 @@ export const wildcardUrlSchema = yupString().test({
     }
   }
 });
+export const wildcardProtocolAndDomainSchema = wildcardUrlSchema.test({
+  name: 'is-protocol-and-domain',
+  message: (params) => `${params.path} must be a protocol and domain (with optional port) without any path, query parameters, or hash`,
+  test: (value) => {
+    if (value == null) return true;
+    try {
+      const PLACEHOLDER = 'wildcard-placeholder';
+      // Replace wildcards with valid placeholders for URL parsing
+      const normalized = value.replace(/\*/g, PLACEHOLDER);
+      const url = new URL(normalized);
+      return url.protocol !== '' && url.hostname !== '' && url.pathname === '/' && url.search === '' && url.hash === '';
+    } catch (e) {
+      return false;
+    }
+  }
+});
 export const jsonSchema = yupMixed().nullable().defined().transform((value) => JSON.parse(JSON.stringify(value)));
 export const jsonStringSchema = yupString().test("json", (params) => `${params.path} is not valid JSON`, (value) => {
   if (value == null) return true;

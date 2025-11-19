@@ -1,33 +1,17 @@
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { Prisma } from "@prisma/client";
-import { AdminTransaction, adminTransaction } from "@stackframe/stack-shared/dist/interface/crud/transactions";
+import { TRANSACTION_TYPES, transactionSchema, type Transaction } from "@stackframe/stack-shared/dist/interface/crud/transactions";
 import { adaptSchema, adminAuthTypeSchema, yupArray, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { getOrUndefined } from "@stackframe/stack-shared/dist/utils/objects";
-import { typedToLowercase, typedToUppercase } from "@stackframe/stack-shared/dist/utils/strings";
+import { typedToUppercase } from "@stackframe/stack-shared/dist/utils/strings";
+import {
+  buildItemQuantityChangeTransaction,
+  buildOneTimePurchaseTransaction,
+  buildSubscriptionTransaction,
+  buildSubscriptionRenewalTransaction
+} from "./transaction-builder";
 
-
-type SelectedPrice = NonNullable<AdminTransaction['price']>;
-type ProductWithPrices = {
-  displayName?: string,
-  prices?: Record<string, SelectedPrice & { serverOnly?: unknown, freeTrial?: unknown }> | "include-by-default",
-} | null | undefined;
-
-function resolveSelectedPriceFromProduct(product: ProductWithPrices, priceId?: string | null): SelectedPrice | null {
-  if (!product) return null;
-  if (!priceId) return null;
-  const prices = product.prices;
-  if (!prices || prices === "include-by-default") return null;
-  const selected = prices[priceId as keyof typeof prices] as (SelectedPrice & { serverOnly?: unknown, freeTrial?: unknown }) | undefined;
-  if (!selected) return null;
-  const { serverOnly: _serverOnly, freeTrial: _freeTrial, ...rest } = selected as any;
-  return rest as SelectedPrice;
-}
-
-function getProductDisplayName(product: ProductWithPrices): string | null {
-  return product?.displayName ?? null;
-}
-
+type TransactionSource = "subscription" | "item_quantity_change" | "one_time" | "subscription-invoice";
 
 export const GET = createSmartRouteHandler({
   metadata: {
@@ -42,7 +26,7 @@ export const GET = createSmartRouteHandler({
     query: yupObject({
       cursor: yupString().optional(),
       limit: yupString().optional(),
-      type: yupString().oneOf(['subscription', 'one_time', 'item_quantity_change']).optional(),
+      type: yupString().oneOf(TRANSACTION_TYPES).optional(),
       customer_type: yupString().oneOf(['user', 'team', 'custom']).optional(),
     }).optional(),
   }),
@@ -50,7 +34,7 @@ export const GET = createSmartRouteHandler({
     statusCode: yupNumber().oneOf([200]).defined(),
     bodyType: yupString().oneOf(["json"]).defined(),
     body: yupObject({
-      transactions: yupArray(adminTransaction).defined(),
+      transactions: yupArray(transactionSchema).defined(),
       next_cursor: yupString().nullable().defined(),
     }).defined(),
   }),
@@ -61,9 +45,9 @@ export const GET = createSmartRouteHandler({
     const parsedLimit = Number.parseInt(rawLimit, 10);
     const limit = Math.max(1, Math.min(200, Number.isFinite(parsedLimit) ? parsedLimit : 50));
     const cursorStr = query.cursor ?? "";
-    const [subCursor, iqcCursor, otpCursor] = (cursorStr.split("|") as [string?, string?, string?]);
+    const [subCursor, iqcCursor, otpCursor, siCursor] = (cursorStr.split("|") as [string?, string?, string?, string?]);
 
-    const paginateWhere = async <T extends "subscription" | "itemQuantityChange" | "oneTimePurchase">(
+    const paginateWhere = async <T extends "subscription" | "itemQuantityChange" | "oneTimePurchase" | "subscriptionInvoice">(
       table: T,
       cursorId?: string
     ): Promise<
@@ -71,7 +55,9 @@ export const GET = createSmartRouteHandler({
       ? Prisma.SubscriptionWhereInput | undefined
       : T extends "itemQuantityChange"
       ? Prisma.ItemQuantityChangeWhereInput | undefined
-      : Prisma.OneTimePurchaseWhereInput | undefined
+      : T extends "oneTimePurchase"
+      ? Prisma.OneTimePurchaseWhereInput | undefined
+      : Prisma.SubscriptionInvoiceWhereInput | undefined
     > => {
       if (!cursorId) return undefined as any;
       let pivot: { createdAt: Date } | null = null;
@@ -85,10 +71,15 @@ export const GET = createSmartRouteHandler({
           where: { tenancyId_id: { tenancyId: auth.tenancy.id, id: cursorId } },
           select: { createdAt: true },
         });
-      } else {
+      } else if (table === "oneTimePurchase") {
         pivot = await prisma.oneTimePurchase.findUnique({
           where: { tenancyId_id: { tenancyId: auth.tenancy.id, id: cursorId } },
           select: { createdAt: true },
+        });
+      } else {
+        pivot = await prisma.subscriptionInvoice.findUnique({
+          where: { tenancyId_id: { tenancyId: auth.tenancy.id, id: cursorId } },
+          select: { createdAt: true }
         });
       }
       if (!pivot) return undefined as any;
@@ -100,107 +91,123 @@ export const GET = createSmartRouteHandler({
       } as any;
     };
 
-    const [subWhere, iqcWhere, otpWhere] = await Promise.all([
+    const [subWhere, iqcWhere, otpWhere, siWhere] = await Promise.all([
       paginateWhere("subscription", subCursor),
       paginateWhere("itemQuantityChange", iqcCursor),
       paginateWhere("oneTimePurchase", otpCursor),
+      paginateWhere("subscriptionInvoice", siCursor)
     ]);
 
     const baseOrder = [{ createdAt: "desc" as const }, { id: "desc" as const }];
     const customerTypeFilter = query.customer_type ? { customerType: typedToUppercase(query.customer_type) } : {};
 
-    let merged: AdminTransaction[] = [];
+    type TransactionRow = {
+      source: TransactionSource,
+      id: string,
+      createdAt: Date,
+      transaction: Transaction,
+    };
+    let merged: TransactionRow[] = [];
 
-    const [subs, iqcs, otps] = await Promise.all([
-      (query.type === "subscription" || !query.type) ? prisma.subscription.findMany({
+    const [
+      subscriptions,
+      itemQuantityChanges,
+      oneTimePayments,
+      subscriptionInvoices
+    ] = await Promise.all([
+      prisma.subscription.findMany({
         where: { tenancyId: auth.tenancy.id, ...(subWhere ?? {}), ...customerTypeFilter },
         orderBy: baseOrder,
         take: limit,
-      }) : [],
-      (query.type === "item_quantity_change" || !query.type) ? prisma.itemQuantityChange.findMany({
+      }),
+      prisma.itemQuantityChange.findMany({
         where: { tenancyId: auth.tenancy.id, ...(iqcWhere ?? {}), ...customerTypeFilter },
         orderBy: baseOrder,
         take: limit,
-      }) : [],
-      (query.type === "one_time" || !query.type) ? prisma.oneTimePurchase.findMany({
+      }),
+      prisma.oneTimePurchase.findMany({
         where: { tenancyId: auth.tenancy.id, ...(otpWhere ?? {}), ...customerTypeFilter },
         orderBy: baseOrder,
         take: limit,
-      }) : [],
+      }),
+      prisma.subscriptionInvoice.findMany({
+        where: {
+          tenancyId: auth.tenancy.id,
+          ...(siWhere ?? {}),
+          subscription: customerTypeFilter,
+          isSubscriptionCreationInvoice: false,
+        },
+        include: {
+          subscription: true
+        },
+        orderBy: baseOrder,
+        take: limit,
+      })
     ]);
 
-    const subRows: AdminTransaction[] = subs.map((s) => ({
-      id: s.id,
-      type: 'subscription',
-      created_at_millis: s.createdAt.getTime(),
-      customer_type: typedToLowercase(s.customerType),
-      customer_id: s.customerId,
-      quantity: s.quantity,
-      test_mode: s.creationSource === 'TEST_MODE',
-      product_display_name: getProductDisplayName(s.product as ProductWithPrices),
-      price: resolveSelectedPriceFromProduct(s.product as ProductWithPrices, s.priceId ?? null),
-      status: s.status,
-    }));
-
-    const iqcRows: AdminTransaction[] = iqcs.map((i) => {
-      const itemCfg = getOrUndefined(auth.tenancy.config.payments.items, i.itemId) as { customerType?: 'user' | 'team' | 'custom' } | undefined;
-      const customerType = (itemCfg && itemCfg.customerType) ? itemCfg.customerType : 'custom';
-      return {
-        id: i.id,
-        type: 'item_quantity_change',
-        created_at_millis: i.createdAt.getTime(),
-        customer_type: customerType,
-        customer_id: i.customerId,
-        quantity: i.quantity,
-        test_mode: false,
-        product_display_name: null,
-        price: null,
-        status: null,
-        item_id: i.itemId,
-        description: i.description ?? null,
-        expires_at_millis: i.expiresAt ? i.expiresAt.getTime() : null,
-      } as const;
+    merged = [
+      ...subscriptions.map((subscription) => ({
+        source: "subscription" as const,
+        id: subscription.id,
+        createdAt: subscription.createdAt,
+        transaction: buildSubscriptionTransaction({ subscription }),
+      })),
+      ...itemQuantityChanges.map((change) => ({
+        source: "item_quantity_change" as const,
+        id: change.id,
+        createdAt: change.createdAt,
+        transaction: buildItemQuantityChangeTransaction({ change }),
+      })),
+      ...oneTimePayments.map((purchase) => ({
+        source: "one_time" as const,
+        id: purchase.id,
+        createdAt: purchase.createdAt,
+        transaction: buildOneTimePurchaseTransaction({ purchase }),
+      })),
+      ...subscriptionInvoices.map((subscriptionInvoice) => ({
+        source: "subscription-invoice" as const,
+        id: subscriptionInvoice.id,
+        createdAt: subscriptionInvoice.createdAt,
+        transaction: buildSubscriptionRenewalTransaction({
+          subscription: subscriptionInvoice.subscription,
+          subscriptionInvoice: subscriptionInvoice
+        })
+      }))
+    ].sort((a, b) => {
+      if (a.createdAt.getTime() === b.createdAt.getTime()) {
+        return a.id < b.id ? 1 : -1;
+      }
+      return a.createdAt.getTime() < b.createdAt.getTime() ? 1 : -1;
     });
 
-    const otpRows: AdminTransaction[] = otps.map((o) => ({
-      id: o.id,
-      type: 'one_time',
-      created_at_millis: o.createdAt.getTime(),
-      customer_type: typedToLowercase(o.customerType),
-      customer_id: o.customerId,
-      quantity: o.quantity,
-      test_mode: o.creationSource === 'TEST_MODE',
-      product_display_name: getProductDisplayName(o.product as ProductWithPrices),
-      price: resolveSelectedPriceFromProduct(o.product as ProductWithPrices, o.priceId ?? null),
-      status: null,
-    }));
+    const filtered = merged.filter((row) => {
+      if (!query.type) return true;
+      return row.transaction.type === query.type;
+    });
 
-    merged = [...subRows, ...iqcRows, ...otpRows]
-      .sort((a, b) => (a.created_at_millis === b.created_at_millis ? (a.id < b.id ? 1 : -1) : (a.created_at_millis < b.created_at_millis ? 1 : -1)));
-
-    const page = merged.slice(0, limit);
+    const page = filtered.slice(0, limit);
     let lastSubId = "";
     let lastIqcId = "";
     let lastOtpId = "";
+    let lastSiId = "";
     for (const r of page) {
-      if (r.type === 'subscription') lastSubId = r.id;
-      if (r.type === 'item_quantity_change') lastIqcId = r.id;
-      if (r.type === 'one_time') lastOtpId = r.id;
+      if (r.source === "subscription") lastSubId = r.id;
+      if (r.source === "item_quantity_change") lastIqcId = r.id;
+      if (r.source === "one_time") lastOtpId = r.id;
+      if (r.source === "subscription-invoice") lastSiId = r.id;
     }
 
     const nextCursor = page.length === limit
-      ? [lastSubId, lastIqcId, lastOtpId].join('|')
+      ? [lastSubId, lastIqcId, lastOtpId, lastSiId].join('|')
       : null;
 
     return {
       statusCode: 200,
       bodyType: "json",
       body: {
-        transactions: page,
+        transactions: page.map((row) => row.transaction),
         next_cursor: nextCursor,
       },
     };
   },
 });
-
-

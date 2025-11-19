@@ -47,11 +47,20 @@ export const getStripeForAccount = async (options: { tenancy?: Tenancy, accountI
   return createStripeProxy(new Stripe(stripeSecretKey, { stripeAccount: accountId, ...stripeConfig }), overrides);
 };
 
-export async function syncStripeSubscriptions(stripe: Stripe, stripeAccountId: string, stripeCustomerId: string) {
+const getTenancyFromStripeAccountIdOrThrow = async (stripe: Stripe, stripeAccountId: string) => {
   const account = await stripe.accounts.retrieve(stripeAccountId);
-  if (!account.metadata?.tenancyId) {
-    throwErr(500, "Stripe account metadata missing tenancyId");
+  if (!account.metadata?.tenancyId || typeof account.metadata.tenancyId !== "string") {
+    throw new StackAssertionError("Stripe account metadata missing tenancyId", { accountId: stripeAccountId });
   }
+  const tenancy = await getTenancy(account.metadata.tenancyId);
+  if (!tenancy) {
+    throw new StackAssertionError("Tenancy not found", { accountId: stripeAccountId });
+  }
+  return tenancy;
+};
+
+export async function syncStripeSubscriptions(stripe: Stripe, stripeAccountId: string, stripeCustomerId: string) {
+  const tenancy = await getTenancyFromStripeAccountIdOrThrow(stripe, stripeAccountId);
   const stripeCustomer = await stripe.customers.retrieve(stripeCustomerId);
   if (stripeCustomer.deleted) {
     return;
@@ -63,10 +72,6 @@ export async function syncStripeSubscriptions(stripe: Stripe, stripeAccountId: s
   }
   if (!typedIncludes(Object.values(CustomerType), customerType)) {
     throw new StackAssertionError("Stripe customer metadata has invalid customerType");
-  }
-  const tenancy = await getTenancy(account.metadata.tenancyId);
-  if (!tenancy) {
-    throw new StackAssertionError("Tenancy not found");
   }
   const prisma = await getPrismaClientForTenancy(tenancy);
   const subscriptions = await stripe.subscriptions.list({
@@ -114,4 +119,43 @@ export async function syncStripeSubscriptions(stripe: Stripe, stripeAccountId: s
       },
     });
   }
+}
+
+export async function handleStripeInvoicePaid(stripe: Stripe, stripeAccountId: string, invoice: Stripe.Invoice) {
+  const invoiceSubscriptionIds = invoice.lines.data
+    .map((line) => line.parent?.subscription_item_details?.subscription)
+    .filter((subscription): subscription is string => !!subscription);
+  if (invoiceSubscriptionIds.length === 0 || !invoice.id) {
+    return;
+  }
+  if (invoiceSubscriptionIds.length > 1) {
+    throw new StackAssertionError(
+      "Multiple subscription line items found in single invoice",
+      { stripeAccountId, invoiceId: invoice.id }
+    );
+  }
+
+  const stripeSubscriptionId = invoiceSubscriptionIds[0];
+  const isSubscriptionCreationInvoice = invoice.billing_reason === "subscription_create";
+  const tenancy = await getTenancyFromStripeAccountIdOrThrow(stripe, stripeAccountId);
+  const prisma = await getPrismaClientForTenancy(tenancy);
+
+  await prisma.subscriptionInvoice.upsert({
+    where: {
+      tenancyId_stripeInvoiceId: {
+        tenancyId: tenancy.id,
+        stripeInvoiceId: invoice.id,
+      },
+    },
+    update: {
+      stripeSubscriptionId,
+      isSubscriptionCreationInvoice,
+    },
+    create: {
+      tenancyId: tenancy.id,
+      stripeSubscriptionId,
+      stripeInvoiceId: invoice.id,
+      isSubscriptionCreationInvoice,
+    },
+  });
 }
