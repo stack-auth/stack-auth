@@ -45,8 +45,9 @@ model Tenancy {
   branchId String
 
   // If organizationId is NULL, hasNoOrganization must be TRUE. If organizationId is not NULL, hasNoOrganization must be NULL.
-  organizationId    String?      @db.Uuid
+  organizationId    String?       @db.Uuid
   hasNoOrganization BooleanTrue?
+  emailOutboxes     EmailOutbox[]
 
   @@unique([projectId, branchId, organizationId])
   @@unique([projectId, branchId, hasNoOrganization])
@@ -179,7 +180,6 @@ model ProjectUser {
   passkeyAuthMethod          PasskeyAuthMethod[]
   otpAuthMethod              OtpAuthMethod[]
   oauthAuthMethod            OAuthAuthMethod[]
-  SentEmail                  SentEmail[]
   projectApiKey              ProjectApiKey[]
   directPermissions          ProjectUserDirectPermission[]
   Project                    Project?                      @relation(fields: [projectId], references: [id])
@@ -651,26 +651,173 @@ model EventIpInfo {
 
 //#endregion
 
-model SentEmail {
+enum EmailOutboxStatus {
+  PAUSED
+  PREPARING
+  RENDERING
+  RENDER_ERROR
+  SCHEDULED
+  QUEUED
+  SENDING
+  SERVER_ERROR
+  SENT
+  DELIVERY_DELAYED
+  BOUNCED
+  OPENED
+  CLICKED
+  MARKED_AS_SPAM
+}
+
+enum EmailOutboxSimpleStatus {
+  IN_PROGRESS
+  ERROR
+  OK
+}
+
+enum EmailOutboxSkippedReason {
+  USER_UNSUBSCRIBED
+  USER_DELETED_ACCOUNT
+}
+
+enum EmailOutboxCreatedWith {
+  DRAFT
+  PROGRAMMATIC_CALL
+}
+
+// In most displays, the way emails in the outbox should be ordered is:
+// - by finishedSendingAt, descending (null comes first)
+// - by scheduledAtIfNotYetQueued, descending (null comes last)
+// - by priority, ascending
+// - by id, ascending
+model EmailOutbox {
   tenancyId String @db.Uuid
 
   id String @default(uuid()) @db.Uuid
 
-  userId String? @db.Uuid
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // note: [tsxSource, themeId, isHighPriority, toUserIds, toEmails, extraRenderVariables, shouldSkipDeliverabilityCheck] can be changed, but only while startedSendingAt is not set, and any modification should reset fields like [renderedByWorkerId, startedRenderingAt, finishedRenderingAt, renderError*, rendered*, isQueued] and any other fields with similar semantics to null.
+  tsxSource                     String
+  themeId                       String?
+  isHighPriority                Boolean
+  // Who the email is being sent to. { type: "user-primary-email", userId: string } | { type: "user-custom-emails", userId: string, emails: string[] } | { type: "custom-emails", emails: string[] }
+  to                            Json
+  extraRenderVariables          Json
+  shouldSkipDeliverabilityCheck Boolean
+
+  createdWith                     EmailOutboxCreatedWith
+  // If the email was created from a draft, it is kept around so we can later group by it. Must be set if and only if createdWith is DRAFT.
+  emailDraftId                    String?
+  // If the email was created from a template programmatically, it is kept around so we can later group by it. Must be NOT set if createdWith is NOT PROGRAMMATIC_CALL. If createdWith is PROGRAMMATIC_CALL and this is not set, then no template was used (eg. email was sent directly as HTML).
+  emailProgrammaticCallTemplateId String?
+
+  // Computed from EmailOutbox can be the `status` of the email:
+  //
+  // - ⚪ `paused`           : isPaused
+  // - ⚪ `preparing`        : !isPaused && !startedRenderingAt
+  // - ⚪ `rendering`        : !isPaused && !finishedRenderingAt
+  // - 🔴 `render-error`     : !isPaused && finishedRenderingAt && renderError
+  // - ⚪ `scheduled`        : !isPaused && finishedRenderingAt && !renderError && !isQueued
+  // - ⚪ `queued`           : !isPaused && finishedRenderingAt && !renderError && isQueued && !startedSendingAt
+  // - ⚪ `sending`          : !isPaused && startedSendingAt && !deliveredAt
+  // - 🔴 `server-error`     : !isPaused && finishedSendingAt && sendServerErrorMessage
+  // - ⚫ `skipped`          : !isPaused && finishedSendingAt && !sendServerErrorMessage && skippedReason
+  // - 🟢 `sent`             : !isPaused && finishedSendingAt && !openedAt && !markedAsSpamAt && !sendServerErrorMessage && !skippedReason && (canHaveDeliveryInfo ? deliveredAt : finishedSendingAt)
+  // - ⚪ `delivery-delayed` : !isPaused && canHaveDeliveryInfo && deliveryDelayedAt
+  // - 🔴 `bounced`          : !isPaused && canHaveDeliveryInfo && bouncedAt
+  // - 🔵 `opened`           : !isPaused && openedAt && !clickedAt && !markedAsSpamAt
+  // - 🟣 `clicked`          : !isPaused && clickedAt && !markedAsSpamAt
+  // - 🟡 `marked-as-spam`   : !isPaused && markedAsSpamAt
+  //
+  // This column is auto-generated as defined in the SQL migration. It can not be set manually.
+  status EmailOutboxStatus @default(dbgenerated("<manually set>"))
+
+  // A simplified version of the status property.
+  // In terms of the color mapping of `status`, white statuses have a `simpleStatus` of `in-progress`, red statuses have a `simpleStatus` of `error`, and everything else has a `simpleStatus` of `ok`.
+  // 
+  // This column is auto-generated as defined in the SQL migration. It can not be set manually.
+  simpleStatus EmailOutboxSimpleStatus @default(dbgenerated("<manually set>"))
+
+  // priority is the sending priority of the email among all emails that are not yet sent but already past their scheduled time. Higher priority means it should be sent sooner.
+  //
+  // This column is auto-generated based on the following formula:
+  //  priority = (isHighPriority ? 100 : 0) + (renderedIsTransactional ? 10 : 0)
+  priority Int @default(dbgenerated("<manually set>"))
+
+  // This column is auto-generated as defined in the SQL migration. It can not be set manually.
+  isPaused Boolean @default(false)
+
+  // either both or neither of [renderedByWorkerId, startedRenderingAt] must be set
+  renderedByWorkerId  String?   @db.Uuid
+  startedRenderingAt  DateTime?
+  // if startedRenderingAt is not set, then finishedRenderingAt is also not set
+  finishedRenderingAt DateTime?
+
+  // if finishedRenderingAt is set, then exactly one of [renderedHtml, renderedText, renderedSubject, renderedIsTransactional, renderedNotificationCategoryId] or [renderErrorExternalMessage, renderErrorExternalDetails, renderErrorInternalMessage, renderErrorInternalDetails] must be set; if finishedRenderingAt is not set, then none of the aforementioned fields are set
+  renderErrorExternalMessage     String?
+  renderErrorExternalDetails     Json?
+  renderErrorInternalMessage     String?
+  renderErrorInternalDetails     Json?
+  renderedHtml                   String?
+  renderedText                   String?
+  renderedSubject                String?
+  renderedIsTransactional        Boolean?
+  renderedNotificationCategoryId String?
+
+  // The scheduled time of when the email should be added to the queue. Can be edited, but only if the email has not yet started sending. Doing so should set isQueued to false.
+  scheduledAt DateTime
+
+  // The scheduled time of the email if it is in the future.
+  isQueued Boolean @default(false)
+
+  // A generated column that is equal to scheduledAt if isQueued is false, otherwise null.
+  scheduledAtIfNotYetQueued DateTime? @default(dbgenerated("<manually set>"))
+
+  // if finishedRenderingAt is not set, then startedSendingAt is also not set
+  startedSendingAt  DateTime?
+  // if startedSendingAt is not set, then finishedSendingAt is also not set
+  finishedSendingAt DateTime?
+
+  // A generated column that is equal to finishedSendingAt if canHaveDeliveryInfo is true, otherwise deliveredAt.
+  sentAt DateTime? @default(dbgenerated("<manually set>"))
+
+  // either all or none of [sendServerErrorExternalMessage, sendServerErrorExternalDetails, sendServerErrorInternalMessage, sendServerErrorInternalDetails] must be set. If finishedSendingAt is not set, then none of these are set.
+  sendServerErrorExternalMessage String?
+  sendServerErrorExternalDetails Json?
+  sendServerErrorInternalMessage String?
+  sendServerErrorInternalDetails Json?
+
+  // The reason why the email was skipped. If finishedSendingAt is not set, then this is also not set. Usually one of: 
+  skippedReason EmailOutboxSkippedReason?
+
+  // Whether this email was sent through a server that provides delivery info. This is set if and only if finishedSendingAt is set (it is only determined once the email has been sent). If canHaveDeliveryInfo is false, then [deliveredAt, deliveryDelayedAt, bouncedAt] are all not set. This flag is usually set to true if the email provider is Resend.
+  canHaveDeliveryInfo Boolean?
+
+  // at most one of [deliveredAt, deliveryDelayedAt, bouncedAt] can be set. If finishedSendingAt is not set, then none of these are set.
+  deliveredAt       DateTime?
+  deliveryDelayedAt DateTime?
+  bouncedAt         DateTime?
+
+  // if finishedSendingAt is not set, then openedAt is also not set
+  openedAt       DateTime?
+  // note: setting clickedAt should also set openedAt if it's not set yet
+  clickedAt      DateTime?
+  unsubscribedAt DateTime?
+  markedAsSpamAt DateTime?
+
+  tenancy Tenancy @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
+
+  @@id([tenancyId, id])
+}
+
+model EmailOutboxProcessingMetadata {
+  key String @id
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  senderConfig Json
-  to           String[]
-  subject      String
-  html         String?
-  text         String?
-
-  error Json?
-  user  ProjectUser? @relation(fields: [tenancyId, userId], references: [tenancyId, projectUserId], onDelete: Cascade)
-
-  @@id([tenancyId, id])
+  lastExecutedAt DateTime?
 }
 
 model EmailDraft {

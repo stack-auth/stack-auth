@@ -365,10 +365,17 @@ export namespace Auth {
           "headers": Headers { <some fields may have been hidden> },
         }
       `);
-      const messages = await mailbox.fetchMessages({ noBody: true });
-      const subjects = messages.map((message) => message.subject);
-      const containsSubstring = subjects.some(str => str.includes("Sign in to"));
-      expect(containsSubstring).toBe(true);
+      for (let i = 0; true; i++) {
+        const messages = await mailbox.fetchMessages();
+        const containsSubstring = messages.some(message => message.subject.includes("Sign in to") && message.body?.html.includes(response.body.nonce));
+        if (containsSubstring) {
+          break;
+        }
+        await wait(200);
+        if (i >= 30) {
+          throw new StackAssertionError(`Sign-in code message not found after ${i} attempts`, { messages });
+        }
+      }
       return {
         sendSignInCodeResponse: response,
       };
@@ -376,17 +383,17 @@ export namespace Auth {
 
     export async function signIn() {
       const sendSignInCodeRes = await sendSignInCode();
-      const signInResult = await signInWithCode(await getSignInCodeFromMailbox());
+      const signInResult = await signInWithCode(await getSignInCodeFromMailbox(sendSignInCodeRes.sendSignInCodeResponse.body.nonce));
       return {
         ...sendSignInCodeRes,
         ...signInResult,
       };
     }
 
-    export async function getSignInCodeFromMailbox() {
+    export async function getSignInCodeFromMailbox(nonce?: string) {
       const mailbox = backendContext.value.mailbox;
       const messages = await mailbox.fetchMessages();
-      const message = messages.findLast((message) => message.subject.includes("Sign in to")) ?? throwErr("Sign-in code message not found");
+      const message = messages.filter(message => nonce === undefined || message.body?.html.includes(nonce)).findLast((message) => message.subject.includes("Sign in to")) ?? throwErr("Sign-in code message not found");
       const signInCode = message.body?.text.match(/http:\/\/localhost:12345\/some-callback-url\?code=([a-zA-Z0-9]+)/)?.[1] ?? throwErr("Sign-in URL not found");
       return signInCode;
     }

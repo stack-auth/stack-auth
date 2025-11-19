@@ -1,27 +1,29 @@
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
-import { SentEmail } from "@prisma/client";
+import { EmailOutbox } from "@prisma/client";
 import { InternalEmailsCrud, internalEmailsCrud } from "@stackframe/stack-shared/dist/interface/crud/emails";
 import { yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { createLazyProxy } from "@stackframe/stack-shared/dist/utils/proxies";
 
-function prismaModelToCrud(prismaModel: SentEmail): InternalEmailsCrud["Admin"]["Read"] {
-  const senderConfig = prismaModel.senderConfig as any;
+function prismaModelToCrud(prismaModel: EmailOutbox): InternalEmailsCrud["Admin"]["Read"] {
+  const recipient = prismaModel.to as any;
+  let to: string[] = [];
+  if (recipient?.type === 'user-primary-email') {
+    to = [`User ID: ${recipient.userId}`];
+  } else if (recipient?.type === 'user-custom-emails' || recipient?.type === 'custom-emails') {
+    to = Array.isArray(recipient.emails) ? recipient.emails : [];
+  }
+
+  let error: string | null = null;
+  if (prismaModel.renderErrorExternalMessage) error = `Render error: ${prismaModel.renderErrorExternalMessage}`;
+  else if (prismaModel.sendServerErrorExternalMessage) error = `Send error: ${prismaModel.sendServerErrorExternalMessage}`;
 
   return {
     id: prismaModel.id,
-    subject: prismaModel.subject,
-    sent_at_millis: prismaModel.createdAt.getTime(),
-    to: prismaModel.to,
-    sender_config: {
-      type: senderConfig.type,
-      host: senderConfig.host,
-      port: senderConfig.port,
-      username: senderConfig.username,
-      sender_name: senderConfig.senderName,
-      sender_email: senderConfig.senderEmail,
-    },
-    error: prismaModel.error,
+    subject: prismaModel.renderedSubject ?? "",
+    sent_at_millis: (prismaModel.finishedSendingAt ?? prismaModel.createdAt).getTime(),
+    to,
+    error: error,
   };
 }
 
@@ -33,7 +35,7 @@ export const internalEmailsCrudHandlers = createLazyProxy(() => createCrudHandle
   onList: async ({ auth }) => {
     const prisma = await getPrismaClientForTenancy(auth.tenancy);
 
-    const emails = await prisma.sentEmail.findMany({
+    const emails = await prisma.emailOutbox.findMany({
       where: {
         tenancyId: auth.tenancy.id,
       },

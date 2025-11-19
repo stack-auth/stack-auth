@@ -27,7 +27,7 @@ import { OAuthConnection } from "../../connected-accounts";
 import { ServerContactChannel, ServerContactChannelCreateOptions, ServerContactChannelUpdateOptions, serverContactChannelCreateOptionsToCrud, serverContactChannelUpdateOptionsToCrud } from "../../contact-channels";
 import { Customer, InlineProduct, ServerItem } from "../../customers";
 import { DataVaultStore } from "../../data-vault";
-import { SendEmailOptions } from "../../email";
+import { EmailDeliveryInfo, SendEmailOptions } from "../../email";
 import { NotificationCategory } from "../../notification-categories";
 import { AdminProjectPermissionDefinition, AdminTeamPermission, AdminTeamPermissionDefinition } from "../../permissions";
 import { EditableTeamMemberProfile, ServerListUsersOptions, ServerTeam, ServerTeamCreateOptions, ServerTeamUpdateOptions, ServerTeamUser, Team, TeamInvitation, serverTeamCreateOptionsToCrud, serverTeamUpdateOptionsToCrud } from "../../teams";
@@ -133,6 +133,10 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
   );
   private readonly _serverDataVaultStoreValueCache = createCache<[string, string, string], string | null>(async ([storeId, key, secret]) => {
     return await this._interface.getDataVaultStoreValue(secret, storeId, key);
+  });
+
+  private readonly _emailDeliveryInfoCache = createCache(async () => {
+    return await this._interface.getEmailDeliveryInfo();
   });
 
   private readonly _serverUserApiKeysCache = createCache<[string], UserApiKeysCrud['Server']['Read'][]>(
@@ -1294,6 +1298,16 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
   async sendEmail(options: SendEmailOptions): Promise<void> {
     await this._interface.sendEmail(options);
   }
+
+  async getEmailDeliveryStats(): Promise<EmailDeliveryInfo> {
+    return Result.orThrow(await this._emailDeliveryInfoCache.getOrWait([], "write-only"));
+  }
+
+  // IF_PLATFORM react-like
+  useEmailDeliveryStats(): EmailDeliveryInfo {
+    return useAsyncCache(this._emailDeliveryInfoCache, [], "stackServerApp.useEmailDeliveryStats()");
+  }
+  // END_PLATFORM
 
   protected override async _refreshSession(session: InternalSession) {
     await Promise.all([

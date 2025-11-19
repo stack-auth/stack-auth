@@ -804,6 +804,31 @@ export class StackServerInterface extends StackClientInterface {
     return Result.ok(undefined);
   }
 
+  async getEmailDeliveryInfo(): Promise<{
+    stats: {
+      hour: { sent: number, bounced: number, marked_as_spam: number },
+      day: { sent: number, bounced: number, marked_as_spam: number },
+      week: { sent: number, bounced: number, marked_as_spam: number },
+      month: { sent: number, bounced: number, marked_as_spam: number },
+    },
+    capacity: {
+      rate_per_second: number,
+      penalty_factor: number,
+    },
+  }> {
+    const res = await this.sendServerRequest(
+      "/emails/delivery-info",
+      {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json"
+        },
+      },
+      null,
+    );
+    return await res.json();
+  }
+
   async updateItemQuantity(
     options: (
       { itemId: string, userId: string } |
