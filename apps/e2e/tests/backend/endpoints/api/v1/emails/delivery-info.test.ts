@@ -66,12 +66,8 @@ describe("with valid credentials", () => {
       },
     });
 
-    // Wait for the email to be processed (simulated by the background worker)
-    // Since we have the background worker running in dev/test environment via run-email-queue.ts (or similar in E2E setup),
-    // we might need to wait a bit.
-    // However, E2E tests usually run against a real backend which should have the worker running.
-    // Let's wait a reasonable amount of time.
-    await wait(5000);
+    // wait for the email to be processed
+    await wait(10_000);
 
     const response = await niceBackendFetch("/api/v1/emails/delivery-info", {
       method: "GET",

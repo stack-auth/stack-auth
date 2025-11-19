@@ -1,6 +1,8 @@
 import { runEmailQueueStep } from "@/lib/email-queue-step";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { yupBoolean, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+import { yupBoolean, yupNumber, yupObject, yupString, yupTuple } from "@stackframe/stack-shared/dist/schema-fields";
+import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
+import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 
 export const GET = createSmartRouteHandler({
@@ -13,6 +15,9 @@ export const GET = createSmartRouteHandler({
   request: yupObject({
     auth: yupObject({}).nullable().optional(),
     method: yupString().oneOf(["GET"]).defined(),
+    headers: yupObject({
+      "authorization": yupTuple([yupString()]).defined(),
+    }).defined(),
   }),
   response: yupObject({
     statusCode: yupNumber().oneOf([200]).defined(),
@@ -21,7 +26,12 @@ export const GET = createSmartRouteHandler({
       ok: yupBoolean().defined(),
     }).defined(),
   }),
-  handler: async (_req, fullReq) => {
+  handler: async ({ headers }, fullReq) => {
+    const authHeader = headers.authorization[0];
+    if (authHeader !== `Bearer ${getEnvVariable('CRON_SECRET')}`) {
+      throw new StatusError(401, "Unauthorized");
+    }
+
     const startTime = performance.now();
 
     while (performance.now() - startTime < 2 * 60 * 1000) {
