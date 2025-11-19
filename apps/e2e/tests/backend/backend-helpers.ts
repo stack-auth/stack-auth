@@ -186,6 +186,35 @@ export async function bumpEmailAddress(options: { unindexed?: boolean } = {}) {
 }
 
 export namespace Auth {
+  export async function fastSignUp() {
+    const { userId } = await User.create();
+    const sessionResponse = await niceBackendFetch(`/api/v1/auth/sessions`, {
+      method: "POST",
+      accessType: "server",
+      body: {
+        user_id: userId,
+        expires_in_millis: 1000 * 60 * 60 * 24 * 365,
+        is_impersonation: false,
+      },
+    });
+    expect(sessionResponse).toMatchInlineSnapshot(`
+      NiceResponse {
+        "status": 200,
+        "body": {
+          "access_token": <stripped field 'access_token'>,
+          "refresh_token": <stripped field 'refresh_token'>,
+        },
+        "headers": Headers { <some fields may have been hidden> },
+      }
+    `);
+    backendContext.set({ userAuth: { accessToken: sessionResponse.body.access_token, refreshToken: sessionResponse.body.refresh_token } });
+    return {
+      userId,
+      accessToken: sessionResponse.body.access_token,
+      refreshToken: sessionResponse.body.refresh_token,
+    };
+  }
+
   export async function ensureParsableAccessToken() {
     const accessToken = backendContext.value.userAuth?.accessToken;
     if (accessToken) {
@@ -964,7 +993,19 @@ export namespace ProjectApiKey {
         accessType: "server",
         body: data,
       });
-      expect(response.status).toEqual(200);
+      expect(response).toEqual({
+        status: 200,
+        body: expect.objectContaining({
+          created_at_millis: expect.any(Number),
+          description: expect.any(String),
+          id: expect.any(String),
+          is_public: expect.any(Boolean),
+          type: expect.any(String),
+          user_id: expect.any(String),
+          value: expect.any(String),
+        }),
+        headers: expect.any(Headers),
+      });
       return {
         createUserApiKeyResponse: response,
       };
@@ -1129,12 +1170,10 @@ export namespace Project {
 
   export async function createAndGetAdminToken(body?: Partial<AdminUserProjectsCrud["Admin"]["Create"]>, useExistingUser?: boolean) {
     backendContext.set({ projectKeys: InternalProjectKeys });
-    const oldMailbox = backendContext.value.mailbox;
     let userId: string | undefined;
     if (!useExistingUser) {
       backendContext.set({ userAuth: null });
-      await bumpEmailAddress({ unindexed: true });
-      const { userId: newUserId } = await Auth.Otp.signIn();
+      const { userId: newUserId } = await Auth.fastSignUp();
       userId = newUserId;
     }
     const adminAccessToken = backendContext.value.userAuth?.accessToken;
@@ -1146,7 +1185,6 @@ export namespace Project {
         projectId,
       },
       userAuth: null,
-      mailbox: oldMailbox,
     });
 
     return {
@@ -1316,42 +1354,50 @@ export namespace User {
     return response.body;
   }
 
-  export async function create({ emailAddress }: { emailAddress?: string } = {}) {
+  export async function create() {
     // Create new mailbox
-    const email = emailAddress ?? `unindexed-mailbox--${randomUUID()}${generatedEmailSuffix}`;
-    const mailbox = createMailbox(email);
-    const password = generateSecureRandomString();
-    const createUserResponse = await niceBackendFetch("/api/v1/auth/password/sign-up", {
+    const createUserResponse = await niceBackendFetch("/api/v1/users", {
       method: "POST",
-      accessType: "client",
-      body: {
-        email,
-        password,
-        verification_callback_url: "http://localhost:12345/some-callback-url",
-      },
+      accessType: "server",
+      body: {},
     });
-    expect(createUserResponse).toMatchObject({
-      status: 200,
-      body: {
-        access_token: expect.any(String),
-        refresh_token: expect.any(String),
-        user_id: expect.any(String),
-      },
-      headers: expect.anything(),
-    });
+    expect(createUserResponse).toMatchInlineSnapshot(`
+      NiceResponse {
+        "status": 201,
+        "body": {
+          "auth_with_email": false,
+          "client_metadata": null,
+          "client_read_only_metadata": null,
+          "display_name": null,
+          "has_password": false,
+          "id": "<stripped UUID>",
+          "is_anonymous": false,
+          "last_active_at_millis": <stripped field 'last_active_at_millis'>,
+          "oauth_providers": [],
+          "otp_auth_enabled": false,
+          "passkey_auth_enabled": false,
+          "primary_email": null,
+          "primary_email_auth_enabled": false,
+          "primary_email_verified": false,
+          "profile_image_url": null,
+          "requires_totp_mfa": false,
+          "selected_team": null,
+          "selected_team_id": null,
+          "server_metadata": null,
+          "signed_up_at_millis": <stripped field 'signed_up_at_millis'>,
+        },
+        "headers": Headers { <some fields may have been hidden> },
+      }
+    `);
     return {
-      userId: createUserResponse.body.user_id,
-      mailbox,
-      accessToken: createUserResponse.body.access_token,
-      refreshToken: createUserResponse.body.refresh_token,
-      password,
+      userId: createUserResponse.body.id,
     };
   }
 
   export async function createMultiple(count: number) {
     const users = [];
     for (let i = 0; i < count; i++) {
-      const user = await User.create({});
+      const user = await User.create();
       users.push(user);
     }
     return users;
