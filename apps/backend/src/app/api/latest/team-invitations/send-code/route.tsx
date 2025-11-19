@@ -4,6 +4,7 @@ import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { adaptSchema, clientOrHigherAuthTypeSchema, permissionDefinitionIdSchema, teamIdSchema, teamInvitationCallbackUrlSchema, teamInvitationEmailSchema, yupArray, yupBoolean, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { teamInvitationCodeHandler } from "../accept/verification-code-handler";
+import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 
 export const POST = createSmartRouteHandler({
   metadata: {
@@ -37,6 +38,9 @@ export const POST = createSmartRouteHandler({
     await retryTransaction(prisma, async (tx) => {
       if (auth.type === "client") {
         if (!auth.user) throw new KnownErrors.UserAuthenticationRequired();
+        if (body.permission_ids !== undefined) {
+          throw new StatusError(StatusError.Forbidden, "permission_ids can only be set from server-side requests.");
+        }
 
         await ensureUserTeamPermissionExists(tx, {
           tenancy: auth.tenancy,

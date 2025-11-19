@@ -22,7 +22,7 @@ async function fetchTeamMemberPermissions(tx: any, tenancyId: string, teamId: st
     },
     select: { projectUserId: true, permissionId: true },
   });
-  
+
   // Group permissions by projectUserId
   const permissionMap = new Map<string, string[]>();
   for (const perm of permissions) {
@@ -31,7 +31,7 @@ async function fetchTeamMemberPermissions(tx: any, tenancyId: string, teamId: st
     }
     permissionMap.get(perm.projectUserId)!.push(perm.permissionId);
   }
-  
+
   return permissionMap;
 }
 

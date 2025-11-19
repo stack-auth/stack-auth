@@ -706,7 +706,6 @@ export class StackClientInterface {
     teamId: string,
     callbackUrl: string,
     session: InternalSession,
-    permissionIds?: string[],
   }): Promise<void> {
     await this.sendClientRequest(
       "/team-invitations/send-code",
@@ -719,7 +718,6 @@ export class StackClientInterface {
           email: options.email,
           team_id: options.teamId,
           callback_url: options.callbackUrl,
-          permission_ids: options.permissionIds,
         }),
       },
       options.session,

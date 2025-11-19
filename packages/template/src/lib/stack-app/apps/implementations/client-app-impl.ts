@@ -999,13 +999,12 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       clientMetadata: crud.client_metadata,
       clientReadOnlyMetadata: crud.client_read_only_metadata,
       ...this._createCustomer(crud.id, "team", session),
-      async inviteUser(options: { email: string, callbackUrl?: string, permissionIds?: string[] }) {
+      async inviteUser(options: { email: string, callbackUrl?: string }) {
         await app._interface.sendTeamInvitation({
           teamId: crud.id,
           email: options.email,
           session,
           callbackUrl: options.callbackUrl ?? constructRedirectUrl(app.urls.teamInvitation, "callbackUrl"),
-          permissionIds: options.permissionIds,
         });
         await app._teamInvitationsCache.refresh([session, crud.id]);
       },
