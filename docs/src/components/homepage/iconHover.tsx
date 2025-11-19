@@ -88,27 +88,21 @@ const DocsIcon3D: React.FC<DocsIcon3DProps> = ({
         {sections.map((section) => (
           <div
             key={section.id}
-            className="cursor-pointer group transform hover:scale-105"
+            className="cursor-pointer group transition-transform hover:scale-105"
             onMouseEnter={() => setHoveredSection(section.id)}
             onMouseLeave={() => setHoveredSection(null)}
             onClick={() => handleSectionClick(section)}
           >
             <div
-              className={`
-                bg-card border-[0.5px] border-border rounded-xl p-6 w-full h-40
-                flex flex-col items-center justify-center
-                shadow-sm hover:shadow-lg
-              `}
+              className="bg-card border border-border rounded-xl p-4 w-full h-40 flex flex-col items-center justify-center shadow-sm hover:shadow-lg transition-all overflow-hidden"
               style={{
                 borderColor: hoveredSection === section.id ? section.color : rgbToRgba(section.color, 0.4),
               }}
             >
               {/* Icon Container */}
-              <div className="mb-4">
+              <div className="mb-3 flex-shrink-0">
                 <div
-                  className={`
-                    w-12 h-12 rounded-lg flex items-center justify-center
-                  `}
+                  className="w-10 h-10 rounded-lg flex items-center justify-center transition-all"
                   style={{
                     backgroundColor: hoveredSection === section.id ? section.color : rgbToRgba(section.color, 0.2),
                     color: hoveredSection === section.id ? 'white' : section.color,
@@ -116,7 +110,7 @@ const DocsIcon3D: React.FC<DocsIcon3DProps> = ({
                   }}
                 >
                   {React.cloneElement(section.icon as React.ReactElement, {
-                    size: 20,
+                    size: 18,
                     strokeWidth: hoveredSection === section.id ? 2.5 : 2,
                   })}
                 </div>
@@ -124,7 +118,7 @@ const DocsIcon3D: React.FC<DocsIcon3DProps> = ({
 
               {/* Title */}
               <h3
-                className="text-sm font-semibold mb-2 text-center"
+                className="text-sm font-semibold mb-1.5 text-center transition-transform line-clamp-1"
                 style={{
                   color: section.color,
                   transform: hoveredSection === section.id ? 'scale(1.05)' : 'scale(1)',
@@ -134,7 +128,7 @@ const DocsIcon3D: React.FC<DocsIcon3DProps> = ({
               </h3>
 
               {/* Description */}
-              <p className="text-xs text-center text-muted-foreground leading-relaxed px-2 opacity-80">
+              <p className="text-xs text-center text-muted-foreground leading-snug px-1 opacity-80 line-clamp-2">
                 {section.description}
               </p>
             </div>

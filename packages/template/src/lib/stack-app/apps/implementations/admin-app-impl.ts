@@ -4,7 +4,7 @@ import { InternalApiKeyCreateCrudResponse } from "@stackframe/stack-shared/dist/
 import { EmailTemplateCrud } from "@stackframe/stack-shared/dist/interface/crud/email-templates";
 import { InternalApiKeysCrud } from "@stackframe/stack-shared/dist/interface/crud/internal-api-keys";
 import { ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
-import type { AdminTransaction } from "@stackframe/stack-shared/dist/interface/crud/transactions";
+import type { Transaction, TransactionType } from "@stackframe/stack-shared/dist/interface/crud/transactions";
 import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { pick } from "@stackframe/stack-shared/dist/utils/objects";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
@@ -74,7 +74,7 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
       throw error;
     }
   });
-  private readonly _transactionsCache = createCache(async ([cursor, limit, type, customerType]: [string | undefined, number | undefined, 'subscription' | 'one_time' | 'item_quantity_change' | undefined, 'user' | 'team' | 'custom' | undefined]) => {
+  private readonly _transactionsCache = createCache(async ([cursor, limit, type, customerType]: [string | undefined, number | undefined, TransactionType | undefined, 'user' | 'team' | 'custom' | undefined]) => {
     return await this._interface.listTransactions({ cursor, limit, type, customerType });
   });
 
@@ -416,9 +416,9 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
   }
   // END_PLATFORM
   // IF_PLATFORM react-like
-  useSvixToken(): string {
+  useSvixToken(): { token: string, url: string | undefined } {
     const crud = useAsyncCache(this._svixTokenCache, [], "adminApp.useSvixToken()");
-    return crud.token;
+    return { token: crud.token, url: crud.url };
   }
   // END_PLATFORM
 
@@ -431,6 +431,14 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
 
   protected async _refreshInternalApiKeys() {
     await this._internalApiKeysCache.refresh([]);
+  }
+
+  protected override async _refreshUsers() {
+    await Promise.all([
+      super._refreshUsers(),
+      this._metricsCache.refresh([false]),
+      this._metricsCache.refresh([true]),
+    ]);
   }
 
   get [stackAppInternalsSymbol]() {
@@ -461,6 +469,18 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
       return Result.ok(undefined);
     } else {
       return Result.error({ errorMessage: response.error_message ?? throwErr("Email test error not specified") });
+    }
+  }
+
+  async sendTestWebhook(options: { endpointId: string }): Promise<Result<undefined, { errorMessage: string }>> {
+    const response = await this._interface.sendTestWebhook({
+      endpoint_id: options.endpointId,
+    });
+
+    if (response.success) {
+      return Result.ok(undefined);
+    } else {
+      return Result.error({ errorMessage: response.error_message ?? throwErr("Webhook test error not specified") });
     }
   }
 
@@ -579,13 +599,18 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
     );
   }
 
-  async listTransactions(params: { cursor?: string, limit?: number, type?: 'subscription' | 'one_time' | 'item_quantity_change', customerType?: 'user' | 'team' | 'custom' }): Promise<{ transactions: AdminTransaction[], nextCursor: string | null }> {
+  async refundTransaction(options: { type: "subscription" | "one-time-purchase", id: string }): Promise<void> {
+    await this._interface.refundTransaction({ type: options.type, id: options.id });
+    await this._transactionsCache.invalidateWhere(() => true);
+  }
+
+  async listTransactions(params: { cursor?: string, limit?: number, type?: TransactionType, customerType?: 'user' | 'team' | 'custom' }): Promise<{ transactions: Transaction[], nextCursor: string | null }> {
     const crud = Result.orThrow(await this._transactionsCache.getOrWait([params.cursor, params.limit, params.type, params.customerType] as const, "write-only"));
     return crud;
   }
 
   // IF_PLATFORM react-like
-  useTransactions(params: { cursor?: string, limit?: number, type?: 'subscription' | 'one_time' | 'item_quantity_change', customerType?: 'user' | 'team' | 'custom' }): { transactions: AdminTransaction[], nextCursor: string | null } {
+  useTransactions(params: { cursor?: string, limit?: number, type?: TransactionType, customerType?: 'user' | 'team' | 'custom' }): { transactions: Transaction[], nextCursor: string | null } {
     const data = useAsyncCache(this._transactionsCache, [params.cursor, params.limit, params.type, params.customerType] as const, "adminApp.useTransactions()");
     return data;
   }

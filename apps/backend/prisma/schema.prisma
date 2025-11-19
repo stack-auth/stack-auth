@@ -9,6 +9,16 @@ datasource db {
   directUrl = env("STACK_DIRECT_DATABASE_CONNECTION_STRING")
 }
 
+model SchemaMigration {
+  id             String   @id @default(dbgenerated("gen_random_uuid()"))
+  finishedAt     DateTime
+  migrationName  String   @unique
+
+  @@ignore
+}
+
+
+
 model Project {
   // Note that the project with ID `internal` is handled as a special case. All other project IDs are UUIDs.
   id String @id
@@ -922,9 +932,13 @@ model Subscription {
   currentPeriodStart   DateTime
   cancelAtPeriodEnd    Boolean
 
+  refundedAt DateTime?
+
   creationSource PurchaseCreationSource
   createdAt      DateTime               @default(now())
   updatedAt      DateTime               @updatedAt
+
+  SubscriptionInvoices SubscriptionInvoice[]
 
   @@id([tenancyId, id])
   @@unique([tenancyId, stripeSubscriptionId])
@@ -956,6 +970,7 @@ model OneTimePurchase {
   quantity              Int
   stripePaymentIntentId String?
   createdAt             DateTime               @default(now())
+  refundedAt            DateTime?
   creationSource        PurchaseCreationSource
 
   @@id([tenancyId, id])
@@ -974,4 +989,32 @@ model DataVaultEntry {
   @@id([tenancyId, id])
   @@unique([tenancyId, storeId, hashedKey])
   @@index([tenancyId, storeId])
+}
+
+model CacheEntry {
+  id        String   @id @default(uuid()) @db.Uuid
+  namespace String
+  cacheKey  String
+  payload   Json
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([namespace, cacheKey])
+}
+
+model SubscriptionInvoice {
+  id String @default(uuid()) @db.Uuid
+  tenancyId String @db.Uuid
+  stripeSubscriptionId String
+  stripeInvoiceId String
+  isSubscriptionCreationInvoice Boolean
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  subscription Subscription @relation(fields: [tenancyId, stripeSubscriptionId], references: [tenancyId, stripeSubscriptionId])
+
+  @@id([tenancyId, id])
+  @@unique([tenancyId, stripeInvoiceId])
 }

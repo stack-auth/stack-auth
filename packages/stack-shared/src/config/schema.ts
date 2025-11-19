@@ -247,7 +247,7 @@ export const environmentConfigSchema = branchConfigSchema.concat(yupObject({
     trustedDomains: yupRecord(
       userSpecifiedIdSchema("trustedDomainId"),
       yupObject({
-        baseUrl: schemaFields.wildcardUrlSchema.max(300),
+        baseUrl: schemaFields.wildcardUrlSchema.max(300),  // TODO: replace with wildcardProtocolAndDomainSchema (this will require a migration as some configs have domains that are not valid wildcard protocol and domain patterns)
         handlerPath: schemaFields.handlerPathSchema.max(300),
       }),
     ),
@@ -338,7 +338,7 @@ export function migrateConfigOverride(type: "project" | "branch" | "environment"
   // BEGIN 2025-10-29: Removed workflows and everything associated with it
   if (isBranchOrHigher) {
     res = removeProperty(res, p => p[0] === "workflows");
-    res = removeProperty(res, p => p[0] === "apps" && p[1] === "workflows");
+    res = removeProperty(res, p => p[0] === "apps" && p[1] === "installed" && p[2] === "workflows");
   }
   // END
 

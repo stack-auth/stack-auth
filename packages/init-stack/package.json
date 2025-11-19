@@ -1,6 +1,6 @@
 {
   "name": "@stackframe/init-stack",
-  "version": "2.8.48",
+  "version": "2.8.52",
   "description": "The setup wizard for Stack. https://stack-auth.com",
   "main": "dist/index.js",
   "type": "module",
@@ -12,7 +12,7 @@
     "lint": "eslint --ext .tsx,.ts .",
     "typecheck": "tsc --noEmit",
     "init-stack": "node dist/index.js",
-    "init-stack:local": "STACK_NEXT_INSTALL_PACKAGE_NAME_OVERRIDE=../../stack STACK_JS_INSTALL_PACKAGE_NAME_OVERRIDE=../../js STACK_REACT_INSTALL_PACKAGE_NAME_OVERRIDE=../../react node dist/index.js",
+    "init-stack:local": "STACK_INIT_API_BASE_URL=http://localhost:${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}02 STACK_NEXT_INSTALL_PACKAGE_NAME_OVERRIDE=../../stack STACK_JS_INSTALL_PACKAGE_NAME_OVERRIDE=../../js STACK_REACT_INSTALL_PACKAGE_NAME_OVERRIDE=../../react node dist/index.js",
     "test-run": "pnpm run build && pnpm run test-run-js && pnpm run test-run-node && pnpm run test-run-next && pnpm run test-run-neon && pnpm run test-run-no-browser",
     "test-run:manual": "pnpm run build && pnpm run test-run-js:manual && pnpm run test-run-node:manual && pnpm run test-run-next:manual && pnpm run test-run-neon:manual",
     "ensure-neon": "grep -q '\"@neondatabase/serverless\"' ./test-run-output/package.json && echo 'Initialized Neon successfully!'",

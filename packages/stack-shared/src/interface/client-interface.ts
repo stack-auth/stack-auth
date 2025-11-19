@@ -45,6 +45,8 @@ export type ClientInterfaceOptions = {
 });
 
 export class StackClientInterface {
+  private pendingNetworkDiagnostics?: ReturnType<StackClientInterface["_runNetworkDiagnosticsInner"]>;
+
   constructor(public readonly options: ClientInterfaceOptions) {
     // nothing here
   }
@@ -58,6 +60,19 @@ export class StackClientInterface {
   }
 
   public async runNetworkDiagnostics(session?: InternalSession | null, requestType?: "client" | "server" | "admin") {
+    if (this.pendingNetworkDiagnostics) {
+      return await this.pendingNetworkDiagnostics;
+    }
+
+    this.pendingNetworkDiagnostics = this._runNetworkDiagnosticsInner(session, requestType);
+    try {
+      return await this.pendingNetworkDiagnostics;
+    } finally {
+      this.pendingNetworkDiagnostics = undefined;
+    }
+  }
+
+  private async _runNetworkDiagnosticsInner(session?: InternalSession | null, requestType?: "client" | "server" | "admin") {
     const tryRequest = async (cb: () => Promise<void>) => {
       try {
         await cb();
@@ -72,12 +87,6 @@ export class StackClientInterface {
         throw new Error(`${res.status} ${res.statusText}: ${await res.text()}`);
       }
     });
-    const apiRoot = session !== undefined && requestType !== undefined ? await tryRequest(async () => {
-      const res = await this.sendClientRequestInner("/", {}, session!, requestType);
-      if (res.status === "error") {
-        throw res.error;
-      }
-    }) : "Not tested";
     const baseUrlBackend = await tryRequest(async () => {
       const res = await fetch(new URL("/health", this.getApiUrl()));
       if (!res.ok) {
@@ -99,7 +108,6 @@ export class StackClientInterface {
     return {
       "navigator?.onLine": globalVar.navigator?.onLine,
       cfTrace,
-      apiRoot,
       baseUrlBackend,
       prodDashboard,
       prodBackend,

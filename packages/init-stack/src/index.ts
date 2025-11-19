@@ -9,6 +9,7 @@ import * as path from "path";
 import { PostHog } from 'posthog-node';
 import packageJson from '../package.json';
 import { scheduleMcpConfiguration } from "./mcp";
+import { invokeCallback } from "./telegram";
 import { Colorize, configureVerboseLogging, logVerbose, templateIdentity } from "./util";
 
 export { templateIdentity } from "./util";
@@ -420,6 +421,16 @@ async function main(): Promise<void> {
     commandsExecuted,
   });
 
+  await invokeCallback({
+    success: true,
+    distinctId,
+    options,
+    args: program.args,
+    isNonInteractive: isNonInteractiveEnv(),
+    timestamp: new Date().toISOString(),
+    projectPath,
+  });
+
   // Success!
   console.log(`
 ${colorize.green`===============================================`}
@@ -474,6 +485,29 @@ main().catch(async (err) => {
     console.error(`Error message: ${err.message}`);
   }
   console.error();
+  const fallbackErrorMessage = (() => {
+    if (err instanceof Error) return err.message;
+    if (typeof err === "string") return err;
+    try {
+      return JSON.stringify(err);
+    } catch {
+      return "Unknown error";
+    }
+  })();
+  await invokeCallback({
+    success: false,
+    distinctId,
+    options,
+    args: program.args,
+    isNonInteractive: isNonInteractiveEnv(),
+    timestamp: new Date().toISOString(),
+    projectPath: savedProjectPath,
+    error: {
+      name: err instanceof Error ? err.name : undefined,
+      message: fallbackErrorMessage,
+      stack: err instanceof Error ? err.stack : undefined,
+    },
+  });
   await ph_client.shutdown();
   process.exit(1);
 });
@@ -947,8 +981,7 @@ ${shouldInheritFromClient ? `${indentation}inheritsFrom: stackClientApp,` : `${i
     }
     laterWriteFileIfNotExists(
       handlerPath,
-      `import { StackHandler } from "@stackframe/stack"; \nimport { stackServerApp } from "../../../stack/server"; \n\nexport default function Handler(props${handlerFileExtension.includes("ts") ? ": unknown" : ""
-      }) { \n${projectInfo.indentation} return <StackHandler fullPage app = { stackServerApp } routeProps = { props } />; \n } \n`
+      `import { StackHandler } from "@stackframe/stack";\n\nexport default function Handler() {\n${projectInfo.indentation}return <StackHandler fullPage />;\n}\n`
     );
   },
 
@@ -1668,7 +1701,7 @@ function isSimpleConvexConfig(content: string): boolean {
 
 function getPublicProjectEnvVarName(type: "js" | "next" | "react"): string {
   if (type === "react") {
-    return "VITE_PUBLIC_STACK_PROJECT_ID";
+    return "VITE_STACK_PROJECT_ID";
   }
   if (type === "next") {
     return "NEXT_PUBLIC_STACK_PROJECT_ID";

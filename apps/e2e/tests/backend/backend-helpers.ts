@@ -6,7 +6,7 @@ import { filterUndefined } from "@stackframe/stack-shared/dist/utils/objects";
 import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { nicify } from "@stackframe/stack-shared/dist/utils/strings";
 import * as jose from "jose";
-import { randomUUID } from "node:crypto";
+import { createHmac, randomUUID } from "node:crypto";
 import { expect } from "vitest";
 import { Context, Mailbox, NiceRequestInit, NiceResponse, STACK_BACKEND_BASE_URL, STACK_INTERNAL_PROJECT_ADMIN_KEY, STACK_INTERNAL_PROJECT_CLIENT_KEY, STACK_INTERNAL_PROJECT_ID, STACK_INTERNAL_PROJECT_SERVER_KEY, STACK_SVIX_SERVER_URL, generatedEmailSuffix, localRedirectUrl, niceFetch, updateCookiesFromResponse } from "../helpers";
 import { localhostUrl, withPortPrefix } from "../helpers/ports";
@@ -67,6 +67,7 @@ export function createMailbox(email?: string): Mailbox {
 
 export type ProjectKeys = "no-project" | {
   projectId: string,
+  branchId?: string,
   publishableClientKey?: string,
   secretServerKey?: string,
   superSecretAdminKey?: string,
@@ -1547,4 +1548,34 @@ export namespace Payments {
       code,
     };
   }
+
+  export async function sendStripeWebhook(
+    payload: unknown,
+    options?: {
+      invalidSignature?: boolean,
+      omitSignature?: boolean,
+      secret?: string,
+    }
+  ) {
+    const timestamp = Math.floor(Date.now() / 1000);
+    const headers: Record<string, string> = { "content-type": "application/json" };
+    if (!options?.omitSignature) {
+      let header: string;
+      if (options?.invalidSignature) {
+        header = `t=${timestamp},v1=dead`;
+      } else {
+        const hmac = createHmac("sha256", options?.secret ?? "mock_stripe_webhook_secret");
+        hmac.update(`${timestamp}.${JSON.stringify(payload)}`);
+        const signature = hmac.digest("hex");
+        header = `t=${timestamp},v1=${signature}`;
+      }
+      headers["stripe-signature"] = header;
+    }
+    return await niceBackendFetch("/api/latest/integrations/stripe/webhooks", {
+      method: "POST",
+      headers,
+      body: payload,
+    });
+  }
+
 }

@@ -647,3 +647,53 @@ it("gives an error when updating email_theme with an invalid value", async ({ ex
     }
   `);
 });
+
+it("lets user update logo_url to a valid image", async ({ expect }) => {
+  await Project.createAndSwitch();
+  // 1x1 png
+  const logo_url = `data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAAD0lEQVR4AQEEAPv/ALHBwQRaAjRgT7lCAAAAAElFTkSuQmCC`;
+  const response = await niceBackendFetch("/api/v1/internal/projects/current", {
+    method: "PATCH",
+    accessType: "admin",
+    body: {
+      logo_url,
+    }
+  });
+  expect(response).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": {
+        "config": {
+          "allow_localhost": true,
+          "allow_team_api_keys": false,
+          "allow_user_api_keys": false,
+          "client_team_creation_enabled": false,
+          "client_user_deletion_enabled": false,
+          "create_team_on_sign_up": false,
+          "credential_enabled": true,
+          "domains": [],
+          "email_config": { "type": "shared" },
+          "email_theme": "<stripped UUID>",
+          "enabled_oauth_providers": [],
+          "magic_link_enabled": false,
+          "oauth_account_merge_strategy": "link_method",
+          "oauth_providers": [],
+          "passkey_enabled": false,
+          "sign_up_enabled": true,
+          "team_creator_default_permissions": [{ "id": "team_admin" }],
+          "team_member_default_permissions": [{ "id": "team_member" }],
+          "user_default_permissions": [],
+        },
+        "created_at_millis": <stripped field 'created_at_millis'>,
+        "description": "",
+        "display_name": "New Project",
+        "full_logo_url": null,
+        "id": "<stripped UUID>",
+        "is_production_mode": false,
+        "logo_url": "http://localhost:<$NEXT_PUBLIC_STACK_PORT_PREFIX>21/stack-storage/project-logos/<stripped UUID>.png",
+        "owner_team_id": "<stripped UUID>",
+      },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+});

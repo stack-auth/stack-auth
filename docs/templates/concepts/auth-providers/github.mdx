@@ -10,19 +10,37 @@ You should replace these before you go into production.
 </Info>
 
 ## Integration Steps
-
 <Steps>
   <Step>
-    ### Create a GitHub OAuth App
-    
-    1. Navigate to your [GitHub Developer Settings](https://github.com/settings/developers).
-    2. Click the **New OAuth App** button.
-    3. Enter a name for your application, homepage URL, and a description.
-    4. For **Authorization callback URL**, add `https://api.stack-auth.com/api/v1/auth/oauth/callback/github`
-    5. Click **Register application**
-    6. Save the **Client ID** and click **Generate a new client secret** to create your **Client Secret**.
+    <Tabs defaultValue="oauth-app">
+      <TabsList>
+        <TabsTrigger value="oauth-app">OAuth App</TabsTrigger>
+        <TabsTrigger value="github-app">GitHub App</TabsTrigger>
+      </TabsList>
+      <TabsContent value="oauth-app">
+        ### Create a GitHub OAuth App
+        
+        1. Navigate to your [GitHub Developer Settings](https://github.com/settings/developers).
+        2. Click the **New OAuth App** button.
+        3. Enter a name for your application, homepage URL, and a description.
+        4. For **Authorization callback URL**, add `https://api.stack-auth.com/api/v1/auth/oauth/callback/github`
+        5. Click **Register application**
+        6. Save the **Client ID** and click **Generate a new client secret** to create your **Client Secret**.
+      </TabsContent>
+      <TabsContent value="github-app">
+        ### When using GitHub apps
+        1. Navigate to your [GitHub Developer Settings](https://github.com/settings/developers).
+        2. Click the **New GitHub App** button.
+        3. Enter a name for your application, homepage URL, and a description.
+        4. For **Authorization callback URL**, add `https://api.stack-auth.com/api/v1/auth/oauth/callback/github`
+        5. Make sure to enable the read-only email address permission.
+        6. Click **Create GitHub App**
+        7. Save the **Client ID** and click **Generate a new client secret** to create your **Client Secret**.
+        8. Make sure to make the app public in the advanced settings.
+      </TabsContent>
+    </Tabs>
   </Step>
-  
+
   <Step>
     ### Enable GitHub OAuth in Stack Auth
     

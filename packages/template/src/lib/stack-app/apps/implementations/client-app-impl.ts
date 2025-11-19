@@ -16,6 +16,7 @@ import { TeamPermissionsCrud } from "@stackframe/stack-shared/dist/interface/cru
 import { TeamsCrud } from "@stackframe/stack-shared/dist/interface/crud/teams";
 import { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
 import { InternalSession } from "@stackframe/stack-shared/dist/sessions";
+import { encodeBase32 } from "@stackframe/stack-shared/dist/utils/bytes";
 import { scrambleDuringCompileTime } from "@stackframe/stack-shared/dist/utils/compile-time";
 import { isBrowserLike } from "@stackframe/stack-shared/dist/utils/env";
 import { StackAssertionError, captureError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
@@ -26,7 +27,7 @@ import { neverResolve, runAsynchronously, wait } from "@stackframe/stack-shared/
 import { suspend, suspendIfSsr } from "@stackframe/stack-shared/dist/utils/react";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { Store, storeLock } from "@stackframe/stack-shared/dist/utils/stores";
-import { deindent, mergeScopeStrings } from "@stackframe/stack-shared/dist/utils/strings";
+import { deindent, mergeScopeStrings, stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
 import { getRelativePart, isRelative } from "@stackframe/stack-shared/dist/utils/urls";
 import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
 import * as cookie from "cookie";
@@ -35,7 +36,7 @@ import React, { useCallback, useMemo } from "react"; // THIS_LINE_PLATFORM react
 import type * as yup from "yup";
 import { constructRedirectUrl } from "../../../../utils/url";
 import { addNewOAuthProviderOrScope, callOAuthCallback, signInWithOAuth } from "../../../auth";
-import { CookieHelper, createBrowserCookieHelper, createCookieHelper, createPlaceholderCookieHelper, deleteCookieClient, getCookieClient, setOrDeleteCookie, setOrDeleteCookieClient } from "../../../cookie";
+import { CookieHelper, createBrowserCookieHelper, createCookieHelper, createPlaceholderCookieHelper, deleteCookieClient, isSecure as isSecureCookieContext, setOrDeleteCookie, setOrDeleteCookieClient } from "../../../cookie";
 import { ApiKey, ApiKeyCreationOptions, ApiKeyUpdateOptions, apiKeyCreationOptionsToCrud } from "../../api-keys";
 import { ConvexCtx, GetCurrentPartialUserOptions, GetCurrentUserOptions, HandlerUrls, OAuthScopesOnSignIn, RedirectMethod, RedirectToOptions, RequestLike, TokenStoreInit, stackAppInternalsSymbol } from "../../common";
 import { OAuthConnection } from "../../connected-accounts";
@@ -49,6 +50,7 @@ import { ActiveSession, Auth, BaseUser, CurrentUser, InternalUserExtra, OAuthPro
 import { StackClientApp, StackClientAppConstructorOptions, StackClientAppJson } from "../interfaces/client-app";
 import { _StackAdminAppImplIncomplete } from "./admin-app-impl";
 import { TokenObject, clientVersion, createCache, createCacheBySession, createEmptyTokenStore, getBaseUrl, getDefaultExtraRequestHeaders, getDefaultProjectId, getDefaultPublishableClientKey, getUrls, resolveConstructorOptions } from "./common";
+import { parseJson } from "@stackframe/stack-shared/dist/utils/json";
 
 // IF_PLATFORM react-like
 import { useAsyncCache } from "./common";
@@ -57,7 +59,7 @@ import { useAsyncCache } from "./common";
 let isReactServer = false;
 // IF_PLATFORM next
 import * as sc from "@stackframe/stack-sc";
-import { cookies } from '@stackframe/stack-sc';
+import { cookies } from "@stackframe/stack-sc";
 isReactServer = sc.isReactServer;
 
 // NextNavigation.useRouter does not exist in react-server environments and some bundlers try to be helpful and throw a warning. Ignore the warning.
@@ -271,6 +273,10 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     async ([ctx]) => await this._getPartialUserFromConvex(ctx as any)
   );
 
+  private readonly _trustedParentDomainCache = createCache<[string], string | null>(
+    async ([domain]) => await this._getTrustedParentDomain(domain)
+  );
+
   private _anonymousSignUpInProgress: Promise<{ accessToken: string, refreshToken: string }> | null = null;
 
   protected async _createCookieHelper(): Promise<CookieHelper> {
@@ -355,13 +361,18 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     this._options = resolvedOptions;
     this._extraOptions = extraOptions;
 
+    const projectId = resolvedOptions.projectId ?? getDefaultProjectId();
+    if (projectId !== "internal" && !(projectId.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[089ab][0-9a-f]{3}-[0-9a-f]{12}$/i))) {
+      throw new Error(`Invalid project ID: ${projectId}. Project IDs must be UUIDs. Please check your environment variables and/or your StackApp.`);
+    }
+
     if (extraOptions && extraOptions.interface) {
       this._interface = extraOptions.interface;
     } else {
       this._interface = new StackClientInterface({
         getBaseUrl: () => getBaseUrl(resolvedOptions.baseUrl),
         extraRequestHeaders: resolvedOptions.extraRequestHeaders ?? getDefaultExtraRequestHeaders(),
-        projectId: resolvedOptions.projectId ?? getDefaultProjectId(),
+        projectId,
         clientVersion,
         publishableClientKey: resolvedOptions.publishableClientKey ?? getDefaultPublishableClientKey(),
         prepareRequest: async () => {
@@ -418,13 +429,103 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
   protected _nextServerCookiesTokenStores = new WeakMap<object, Store<TokenObject>>();
   protected _requestTokenStores = new WeakMap<RequestLike, Store<TokenObject>>();
   protected _storedBrowserCookieTokenStore: Store<TokenObject> | null = null;
+  private _mostRecentQueuedCookieRefreshIndex: number = 0;
+  protected get _legacyRefreshTokenCookieName() {
+    return `stack-refresh-${this.projectId}`;
+  }
   protected get _refreshTokenCookieName() {
     return `stack-refresh-${this.projectId}`;
   }
-  protected _getTokensFromCookies(cookies: { refreshTokenCookie: string | null, accessTokenCookie: string | null }): TokenObject {
-    const refreshToken = cookies.refreshTokenCookie;
-    const accessTokenObject = cookies.accessTokenCookie?.startsWith('[\"') ? JSON.parse(cookies.accessTokenCookie) : null;  // gotta check for validity first for backwards-compat, and also in case someone messes with the cookie value
-    const accessToken = accessTokenObject && refreshToken === accessTokenObject[0] ? accessTokenObject[1] : null;  // if the refresh token has changed, the access token is invalid
+  private _getRefreshTokenDefaultCookieNameForSecure(secure: boolean): string {
+    return `${secure ? "__Host-" : ""}${this._refreshTokenCookieName}--default`;
+  }
+  private _getCustomRefreshCookieName(domain: string): string {
+    const encoded = encodeBase32(new TextEncoder().encode(domain.toLowerCase()));
+    return `${this._refreshTokenCookieName}--custom-${encoded}`;
+  }
+  private _formatRefreshCookieValue(refreshToken: string, updatedAt: number): string {
+    return JSON.stringify({
+      refresh_token: refreshToken,
+      updated_at_millis: updatedAt,
+    });
+  }
+  private _formatAccessCookieValue(refreshToken: string | null, accessToken: string | null): string | null {
+    return refreshToken && accessToken ? JSON.stringify([refreshToken, accessToken]) : null;
+  }
+  private _parseStructuredRefreshCookie(value: string | null): { refreshToken: string, updatedAt: number | null } | null {
+    if (!value) {
+      return null;
+    }
+    const parsed = parseJson(value);
+    if (parsed.status !== "ok" || typeof parsed.data !== "object" || parsed.data === null) {
+      console.warn("Failed to parse structured refresh cookie");
+      return null;
+    }
+    const data = parsed.data;
+    const refreshToken = "refresh_token" in data && typeof data.refresh_token === "string" ? data.refresh_token : null;
+    const updatedAt = "updated_at_millis" in data && typeof data.updated_at_millis === "number" ? data.updated_at_millis : null;
+    if (!refreshToken) {
+      console.warn("Refresh token not found in structured refresh cookie");
+      return null;
+    }
+    return {
+      refreshToken,
+      updatedAt,
+    };
+
+  }
+  private _extractRefreshTokenFromCookieMap(cookies: Record<string, string>): { refreshToken: string | null, updatedAt: number | null } {
+    const { legacyNames, structuredPrefixes } = this._getRefreshTokenCookieNamePatterns();
+    for (const name of legacyNames) {
+      const value = cookies[name];
+      if (value) {
+        return { refreshToken: value, updatedAt: null };
+      }
+    }
+
+    let selected: { refreshToken: string, updatedAt: number | null } | null = null;
+    for (const [name, value] of Object.entries(cookies)) {
+      if (!structuredPrefixes.some(prefix => name.startsWith(prefix))) continue;
+      const parsed = this._parseStructuredRefreshCookie(value);
+      if (!parsed) continue;
+      const candidateUpdatedAt = parsed.updatedAt ?? Number.NEGATIVE_INFINITY;
+      const selectedUpdatedAt = selected?.updatedAt ?? Number.NEGATIVE_INFINITY;
+      if (!selected || candidateUpdatedAt > selectedUpdatedAt) {
+        selected = parsed;
+      }
+    }
+
+    if (!selected) {
+      return { refreshToken: null, updatedAt: null };
+    }
+
+    return {
+      refreshToken: selected.refreshToken,
+      updatedAt: selected.updatedAt ?? null,
+    };
+  }
+  protected _getTokensFromCookies(cookies: Record<string, string>): TokenObject {
+    const { refreshToken } = this._extractRefreshTokenFromCookieMap(cookies);
+    const accessTokenCookie = cookies[this._accessTokenCookieName] ?? null;
+    let accessToken: string | null = null;
+    if (accessTokenCookie && accessTokenCookie.startsWith('[\"')) {
+      const parsed = parseJson(accessTokenCookie);
+      if (
+        parsed.status === "ok" &&
+        typeof parsed.data === "object" &&
+        parsed.data !== null &&
+        Array.isArray(parsed.data) &&
+        parsed.data.length === 2 &&
+        typeof parsed.data[0] === "string" &&
+        typeof parsed.data[1] === "string"
+      ) {
+        if (parsed.data[0] === refreshToken) {
+          accessToken = parsed.data[1];
+        }
+      } else {
+        console.warn("Access token cookie has invalid format");
+      }
+    }
     return {
       refreshToken,
       accessToken,
@@ -437,6 +538,107 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     // the access token on page reload.
     return `stack-access`;
   }
+  private _getAllBrowserCookies(): Record<string, string> {
+    if (!isBrowserLike()) {
+      throw new StackAssertionError("Cannot get browser cookies on the server!");
+    }
+    return cookie.parse(document.cookie || "");
+  }
+  private _getRefreshTokenCookieNamePatterns(): { legacyNames: string[], structuredPrefixes: string[] } {
+    return {
+      legacyNames: [this._legacyRefreshTokenCookieName, "stack-refresh"],
+      structuredPrefixes: [
+        `${this._refreshTokenCookieName}--`,
+        `__Host-${this._refreshTokenCookieName}--`,
+      ],
+    };
+  }
+  private _collectRefreshTokenCookieNames(cookies: Record<string, string>): Set<string> {
+    const { legacyNames, structuredPrefixes } = this._getRefreshTokenCookieNamePatterns();
+    const names = new Set<string>();
+    for (const name of legacyNames) {
+      if (cookies[name]) {
+        names.add(name);
+      }
+    }
+    for (const name of Object.keys(cookies)) {
+      if (structuredPrefixes.some(prefix => name.startsWith(prefix))) {
+        names.add(name);
+      }
+    }
+    return names;
+  }
+  private _prepareRefreshCookieUpdate(
+    existingCookies: Record<string, string>,
+    refreshToken: string | null,
+    accessToken: string | null,
+    defaultCookieName: string,
+  ) {
+    const cookieNames = this._collectRefreshTokenCookieNames(existingCookies);
+    cookieNames.delete(defaultCookieName);
+    const updatedAt = refreshToken ? Date.now() : null;
+    const refreshCookieValue = refreshToken && updatedAt !== null ? this._formatRefreshCookieValue(refreshToken, updatedAt) : null;
+    const accessTokenPayload = this._formatAccessCookieValue(refreshToken, accessToken);
+    return {
+      updatedAt,
+      refreshCookieValue,
+      accessTokenPayload,
+      cookieNamesToDelete: [...cookieNames],
+    };
+  }
+  private _queueCustomRefreshCookieUpdate(refreshToken: string | null, updatedAt: number | null, context: "browser" | "server") {
+    runAsynchronously(async () => {
+      this._mostRecentQueuedCookieRefreshIndex++;
+      const updateIndex = this._mostRecentQueuedCookieRefreshIndex;
+      let hostname;
+      if (isBrowserLike()) {
+        hostname = window.location.hostname;
+      }
+      // IF_PLATFORM next
+      else {
+        hostname = (await sc.headers?.())?.get("host");
+      }
+      // END_PLATFORM
+      if (!hostname) {
+        console.warn("No hostname found when queueing custom refresh cookie update");
+        return;
+      }
+      const domain = await this._trustedParentDomainCache.getOrWait([hostname], "read-write");
+
+      const setCookie = async (targetDomain: string, value: string | null) => {
+        const name = this._getCustomRefreshCookieName(targetDomain);
+        const options = { maxAge: 60 * 60 * 24 * 365, domain: targetDomain, noOpIfServerComponent: true };
+        if (context === "browser") {
+          setOrDeleteCookieClient(name, value, options);
+        } else {
+          await setOrDeleteCookie(name, value, options);
+        }
+      };
+
+      if (domain.status === "error" || !domain.data || updateIndex !== this._mostRecentQueuedCookieRefreshIndex) {
+        return;
+      }
+      const value = refreshToken && updatedAt ? this._formatRefreshCookieValue(refreshToken, updatedAt) : null;
+      await setCookie(domain.data, value);
+      const isSecure = await isSecureCookieContext();
+      await setOrDeleteCookie(this._getRefreshTokenDefaultCookieNameForSecure(isSecure), null);
+    });
+  }
+  private async _getTrustedParentDomain(currentDomain: string): Promise<string | null> {
+    const project = Result.orThrow(await this._interface.getClientProject());
+    const domains = project.config.domains.map(d => d.domain.trim().replace(/^https?:\/\//, "").split("/")[0]?.toLowerCase());
+    const trustedWildcards = domains.filter(d => d.startsWith("**."));
+    const parts = currentDomain.split('.');
+    for (let i = parts.length - 2; i >= 0; i--) {
+      const parentDomain = parts.slice(i).join('.');
+      if (domains.includes(parentDomain) && trustedWildcards.includes("**." + parentDomain)) {
+        return parentDomain;
+      }
+    }
+
+    return null;
+  }
+
   protected _getBrowserCookieTokenStore(): Store<TokenObject> {
     if (!isBrowserLike()) {
       throw new Error("Cannot use cookie token store on the server!");
@@ -444,10 +646,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
 
     if (this._storedBrowserCookieTokenStore === null) {
       const getCurrentValue = (old: TokenObject | null) => {
-        const tokens = this._getTokensFromCookies({
-          refreshTokenCookie: getCookieClient(this._refreshTokenCookieName) ?? getCookieClient('stack-refresh'),  // keep old cookie name for backwards-compatibility
-          accessTokenCookie: getCookieClient(this._accessTokenCookieName),
-        });
+        const tokens = this._getTokensFromCookies(this._getAllBrowserCookies());
         return {
           refreshToken: tokens.refreshToken,
           accessToken: tokens.accessToken ?? (old?.refreshToken === tokens.refreshToken ? old.accessToken : null),
@@ -467,9 +666,19 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       }, 100);
       this._storedBrowserCookieTokenStore.onChange((value) => {
         try {
-          setOrDeleteCookieClient(this._refreshTokenCookieName, value.refreshToken, { maxAge: 60 * 60 * 24 * 365 });
-          setOrDeleteCookieClient(this._accessTokenCookieName, value.accessToken ? JSON.stringify([value.refreshToken, value.accessToken]) : null, { maxAge: 60 * 60 * 24 });
-          deleteCookieClient('stack-refresh');  // delete cookie name from previous versions (for backwards-compatibility)
+          const refreshToken = value.refreshToken;
+          const secure = window.location.protocol === "https:";
+          const defaultName = this._getRefreshTokenDefaultCookieNameForSecure(secure);
+          const { updatedAt, refreshCookieValue, accessTokenPayload, cookieNamesToDelete } = this._prepareRefreshCookieUpdate(
+            this._getAllBrowserCookies(),
+            refreshToken,
+            value.accessToken ?? null,
+            defaultName,
+          );
+          setOrDeleteCookieClient(defaultName, refreshCookieValue, { maxAge: 60 * 60 * 24 * 365, secure });
+          setOrDeleteCookieClient(this._accessTokenCookieName, accessTokenPayload, { maxAge: 60 * 60 * 24 });
+          cookieNamesToDelete.forEach((name) => deleteCookieClient(name));
+          this._queueCustomRefreshCookieUpdate(refreshToken, updatedAt, "browser");
           hasSucceededInWriting = true;
         } catch (e) {
           if (!isBrowserLike()) {
@@ -495,10 +704,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         if (isBrowserLike()) {
           return this._getBrowserCookieTokenStore();
         } else {
-          const tokens = this._getTokensFromCookies({
-            refreshTokenCookie: cookieHelper.get(this._refreshTokenCookieName) ?? cookieHelper.get('stack-refresh'),  // keep old cookie name for backwards-compatibility
-            accessTokenCookie: cookieHelper.get(this._accessTokenCookieName),
-          });
+          const tokens = this._getTokensFromCookies(cookieHelper.getAll());
           const store = new Store<TokenObject>(tokens);
           store.onChange((value) => {
             runAsynchronously(async () => {
@@ -513,10 +719,27 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
               // we're currently processing, and hence we can't find out which per-request cookie helper to use
               //
               // so hack it is
+              const refreshToken = value.refreshToken;
+              const secure = await isSecureCookieContext();
+              const defaultName = this._getRefreshTokenDefaultCookieNameForSecure(secure);
+              const { updatedAt, refreshCookieValue, accessTokenPayload, cookieNamesToDelete } = this._prepareRefreshCookieUpdate(
+                cookieHelper.getAll(),
+                refreshToken,
+                value.accessToken ?? null,
+                defaultName,
+              );
               await Promise.all([
-                setOrDeleteCookie(this._refreshTokenCookieName, value.refreshToken, { maxAge: 60 * 60 * 24 * 365, noOpIfServerComponent: true }),
-                setOrDeleteCookie(this._accessTokenCookieName, value.accessToken ? JSON.stringify([value.refreshToken, value.accessToken]) : null, { maxAge: 60 * 60 * 24, noOpIfServerComponent: true }),
+                setOrDeleteCookie(defaultName, refreshCookieValue, { maxAge: 60 * 60 * 24 * 365, noOpIfServerComponent: true }),
+                setOrDeleteCookie(this._accessTokenCookieName, accessTokenPayload, { maxAge: 60 * 60 * 24, noOpIfServerComponent: true }),
               ]);
+              if (cookieNamesToDelete.length > 0) {
+                await Promise.all(
+                  cookieNamesToDelete.map((name) =>
+                    setOrDeleteCookie(name, null, { noOpIfServerComponent: true }),
+                  ),
+                );
+              }
+              this._queueCustomRefreshCookieUpdate(refreshToken, updatedAt, "server");
             });
           });
           return store;
@@ -551,10 +774,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
           // read from cookies
           const cookieHeader = tokenStoreInit.headers.get("cookie");
           const parsed = cookie.parse(cookieHeader || "");
-          const res = new Store<TokenObject>({
-            refreshToken: parsed[this._refreshTokenCookieName] || parsed['stack-refresh'] || null,  // keep old cookie name for backwards-compatibility
-            accessToken: parsed[this._accessTokenCookieName] || null,
-          });
+          const res = new Store<TokenObject>(this._getTokensFromCookies(parsed));
           this._requestTokenStores.set(tokenStoreInit, res);
           return res;
         } else if ("accessToken" in tokenStoreInit || "refreshToken" in tokenStoreInit) {
@@ -956,46 +1176,6 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         const tokens = await this.currentSession.getTokens();
         return tokens;
       },
-      async registerPasskey(options?: { hostname?: string }): Promise<Result<undefined, KnownErrors["PasskeyRegistrationFailed"] | KnownErrors["PasskeyWebAuthnError"]>> {
-        const hostname = (await app._getCurrentUrl())?.hostname;
-        if (!hostname) {
-          throw new StackAssertionError("hostname must be provided if the Stack App does not have a redirect method");
-        }
-
-        const initiationResult = await app._interface.initiatePasskeyRegistration({}, session);
-
-        if (initiationResult.status !== "ok") {
-          return Result.error(new KnownErrors.PasskeyRegistrationFailed("Failed to get initiation options for passkey registration"));
-        }
-
-        const { options_json, code } = initiationResult.data;
-
-        // HACK: Override the rpID to be the actual domain
-        if (options_json.rp.id !== "THIS_VALUE_WILL_BE_REPLACED.example.com") {
-          throw new StackAssertionError(`Expected returned RP ID from server to equal sentinel, but found ${options_json.rp.id}`);
-        }
-
-        options_json.rp.id = hostname;
-
-        let attResp;
-        try {
-          attResp = await startRegistration({ optionsJSON: options_json });
-        } catch (error: any) {
-          if (error instanceof WebAuthnError) {
-            return Result.error(new KnownErrors.PasskeyWebAuthnError(error.message, error.name));
-          } else {
-            // This should never happen
-            captureError("passkey-registration-failed", error);
-            return Result.error(new KnownErrors.PasskeyRegistrationFailed("Failed to start passkey registration due to unknown error"));
-          }
-        }
-
-
-        const registrationResult = await app._interface.registerPasskey({ credential: attResp, code }, session);
-
-        await app._refreshUser(session);
-        return registrationResult;
-      },
       signOut(options?: { redirectUrl?: URL | string }) {
         return app._signOut(session, options);
       },
@@ -1280,6 +1460,47 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       async getOAuthProvider(id: string) {
         const providers = await this.listOAuthProviders();
         return providers.find((p) => p.id === id) ?? null;
+      },
+
+      async registerPasskey(options?: { hostname?: string }): Promise<Result<undefined, KnownErrors["PasskeyRegistrationFailed"] | KnownErrors["PasskeyWebAuthnError"]>> {
+        const hostname = (await app._getCurrentUrl())?.hostname;
+        if (!hostname) {
+          throw new StackAssertionError("hostname must be provided if the Stack App does not have a redirect method");
+        }
+
+        const initiationResult = await app._interface.initiatePasskeyRegistration({}, session);
+
+        if (initiationResult.status !== "ok") {
+          return Result.error(new KnownErrors.PasskeyRegistrationFailed("Failed to get initiation options for passkey registration"));
+        }
+
+        const { options_json, code } = initiationResult.data;
+
+        // HACK: Override the rpID to be the actual domain
+        if (options_json.rp.id !== "THIS_VALUE_WILL_BE_REPLACED.example.com") {
+          throw new StackAssertionError(`Expected returned RP ID from server to equal sentinel, but found ${options_json.rp.id}`);
+        }
+
+        options_json.rp.id = hostname;
+
+        let attResp;
+        try {
+          attResp = await startRegistration({ optionsJSON: options_json });
+        } catch (error: any) {
+          if (error instanceof WebAuthnError) {
+            return Result.error(new KnownErrors.PasskeyWebAuthnError(error.message, error.name));
+          } else {
+            // This should never happen
+            captureError("passkey-registration-failed", error);
+            return Result.error(new KnownErrors.PasskeyRegistrationFailed("Failed to start passkey registration due to unknown error"));
+          }
+        }
+
+
+        const registrationResult = await app._interface.registerPasskey({ credential: attResp, code }, session);
+
+        await app._refreshUser(session);
+        return registrationResult;
       },
     };
   }
@@ -1873,9 +2094,9 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     // If the redirect URL is not whitelisted and we didn't explicitly opt out of verification,
     // retry with undefined (no email verification) and log a warning
     if (result.status === 'error' &&
-        result.error instanceof KnownErrors.RedirectUrlNotWhitelisted &&
-        !options.noVerificationCallback &&
-        emailVerificationRedirectUrl !== undefined) {
+      result.error instanceof KnownErrors.RedirectUrlNotWhitelisted &&
+      !options.noVerificationCallback &&
+      emailVerificationRedirectUrl !== undefined) {
       console.error("Warning: The verification callback URL is not trusted. Proceeding with signup without email verification. Please add your domain to the trusted domains list in your Stack Auth dashboard.", { url: emailVerificationRedirectUrl });
 
       result = await this._interface.signUpWithCredential(
@@ -2168,11 +2389,25 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     });
   }
 
-  async signOut(options?: { redirectUrl?: URL | string }): Promise<void> {
-    const user = await this.getUser();
+  async signOut(options?: { redirectUrl?: URL | string, tokenStore?: TokenStoreInit }): Promise<void> {
+    const user = await this.getUser({ tokenStore: options?.tokenStore ?? undefined as any });
     if (user) {
-      await user.signOut(options);
+      await user.signOut({ redirectUrl: options?.redirectUrl });
     }
+  }
+
+  async getAuthHeaders(options?: { tokenStore?: TokenStoreInit }): Promise<{ "x-stack-auth": string }> {
+    return {
+      "x-stack-auth": JSON.stringify(await this.getAuthJson(options)),
+    };
+  }
+
+  async getAuthJson(options?: { tokenStore?: TokenStoreInit }): Promise<{ accessToken: string | null, refreshToken: string | null }> {
+    const user = await this.getUser({ tokenStore: options?.tokenStore ?? undefined as any });
+    if (user) {
+      return await user.getAuthJson();
+    }
+    return { accessToken: null, refreshToken: null };
   }
 
   async getProject(): Promise<Project> {

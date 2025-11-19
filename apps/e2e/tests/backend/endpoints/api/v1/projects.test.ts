@@ -5,7 +5,7 @@ import { Auth, InternalApiKey, InternalProjectKeys, Project, backendContext, nic
 
 // TODO some of the tests here test /api/v1/projects/current, the others test /api/v1/internal/projects/current. We should split them into different test files
 
-it("should not have have access to the project without project keys", async ({ expect }) => {
+it("should not have access to the project without project keys", async ({ expect }) => {
   backendContext.set({
     projectKeys: 'no-project'
   });
@@ -43,6 +43,7 @@ it("gets current project (internal)", async ({ expect }) => {
           "client_team_creation_enabled": true,
           "client_user_deletion_enabled": false,
           "credential_enabled": true,
+          "domains": [],
           "enabled_oauth_providers": [
             { "id": "github" },
             { "id": "google" },

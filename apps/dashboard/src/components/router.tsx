@@ -17,13 +17,13 @@ export function useRouter() {
   const context = useRouterConfirm();
 
   return {
-    push: (url: string) => {
+    push: (...args: Parameters<typeof router.push>) => {
       if (context.needConfirm && !window.confirm(confirmAlertMessage)) return;
-      router.push(url);
+      router.push(...args);
     },
-    replace: (url: string) => {
+    replace: (...args: Parameters<typeof router.replace>) => {
       if (context.needConfirm && !window.confirm(confirmAlertMessage)) return;
-      router.replace(url);
+      router.replace(...args);
     },
     back: () => {
       if (context.needConfirm && !window.confirm(confirmAlertMessage)) return;
