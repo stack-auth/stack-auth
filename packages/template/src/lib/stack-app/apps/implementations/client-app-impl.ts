@@ -620,6 +620,8 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       }
       const value = refreshToken && updatedAt ? this._formatRefreshCookieValue(refreshToken, updatedAt) : null;
       await setCookie(domain.data, value);
+      const isSecure = await isSecureCookieContext();
+      await setOrDeleteCookie(this._getRefreshTokenDefaultCookieNameForSecure(isSecure), null);
     });
   }
   private async _getTrustedParentDomain(currentDomain: string): Promise<string | null> {
