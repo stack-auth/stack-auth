@@ -1,5 +1,4 @@
 import { calculateCapacityRate, getEmailDeliveryStatsForTenancy } from "@/lib/email-delivery-stats";
-import { enqueueEmailQueueStep } from "@/lib/email-queue";
 import { getEmailThemeForThemeId, renderEmailsForTenancyBatched } from "@/lib/email-rendering";
 import { EmailOutboxRecipient, getEmailConfig, } from "@/lib/emails";
 import { generateUnsubscribeLink, getNotificationCategoryById } from "@/lib/notification-categories";
@@ -26,8 +25,6 @@ type TenancySendBatch = {
 
 // note: there is no locking surrounding this function, so it may run multiple times concurrently. It needs to deal with that.
 export const runEmailQueueStep = withTraceSpan("runEmailQueueStep", async () => {
-  await withTraceSpan("runEmailQueueStep-enqueueEmailQueueStep", enqueueEmailQueueStep)();
-
   const workerId = randomUUID();
 
   const deltaSeconds = await withTraceSpan("runEmailQueueStep-updateLastExecutionTime", updateLastExecutionTime)();

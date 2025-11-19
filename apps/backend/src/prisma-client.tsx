@@ -73,7 +73,7 @@ export async function getPrismaSchemaForTenancy(tenancy: Tenancy) {
 
 const postgresPrismaClientsStore: Map<string, {
   client: PrismaClient,
-  schema: string | null,
+  schema: string,
 }> = globalVar.__stack_postgres_prisma_clients ??= new Map();
 function getPostgresPrismaClient(connectionString: string) {
   let postgresPrismaClient = postgresPrismaClientsStore.get(connectionString);

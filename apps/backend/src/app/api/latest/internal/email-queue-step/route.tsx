@@ -18,6 +18,9 @@ export const GET = createSmartRouteHandler({
     headers: yupObject({
       "authorization": yupTuple([yupString()]).defined(),
     }).defined(),
+    query: yupObject({
+      only_one_step: yupString().oneOf(["true", "false"]).optional(),
+    }).defined(),
   }),
   response: yupObject({
     statusCode: yupNumber().oneOf([200]).defined(),
@@ -26,7 +29,7 @@ export const GET = createSmartRouteHandler({
       ok: yupBoolean().defined(),
     }).defined(),
   }),
-  handler: async ({ headers }, fullReq) => {
+  handler: async ({ headers, query }, fullReq) => {
     const authHeader = headers.authorization[0];
     if (authHeader !== `Bearer ${getEnvVariable('CRON_SECRET')}`) {
       throw new StatusError(401, "Unauthorized");
@@ -37,6 +40,9 @@ export const GET = createSmartRouteHandler({
     while (performance.now() - startTime < 2 * 60 * 1000) {
       await runEmailQueueStep();
       await wait(1000);
+      if (query.only_one_step === "true") {
+        break;
+      }
     }
 
     return {

@@ -10,7 +10,7 @@ const customNoExternal = new Set([
 // run in the Docker container with no extra dependencies.
 export default defineConfig({
   entry: ['scripts/db-migrations.ts'],
-  format: ['cjs'],
+  format: ['esm'],
   outDir: 'dist',
   target: 'node22',
   platform: 'node',
