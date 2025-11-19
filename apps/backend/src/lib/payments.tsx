@@ -675,6 +675,7 @@ export async function getOwnedProductsForCustomer(options: {
         tenancyId: options.tenancy.id,
         customerId: options.customerId,
         customerType: typedToUppercase(options.customerType),
+        refundedAt: null,
       },
     }),
   ]);
