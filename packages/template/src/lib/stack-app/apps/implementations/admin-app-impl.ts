@@ -447,8 +447,11 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
       // IF_PLATFORM react-like
       useMetrics: (includeAnonymous: boolean = false): any => {
         return useAsyncCache(this._metricsCache, [includeAnonymous] as const, "adminApp.useMetrics()");
-      }
+      },
       // END_PLATFORM
+      sendAdminRequest: async (path: string, options: RequestInit = {}): Promise<Response> => {
+        return await this._interface.sendAdminRequest(path, options, null);
+      },
     };
   }
 

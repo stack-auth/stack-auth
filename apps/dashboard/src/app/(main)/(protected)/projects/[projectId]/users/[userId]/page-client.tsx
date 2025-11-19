@@ -47,6 +47,7 @@ import * as yup from "yup";
 import { AppEnabledGuard } from "../../app-enabled-guard";
 import { PageLayout } from "../../page-layout";
 import { useAdminApp } from "../../use-admin-app";
+import { UserActivityCard } from "./user-activity-card";
 
 const metadataDocsUrl = "https://docs.stack-auth.com/docs/concepts/custom-user-data";
 
@@ -1174,15 +1175,23 @@ function MetadataSection({ user }: MetadataSectionProps) {
 function UserPage({ user }: { user: ServerUser }) {
   return (
     <PageLayout>
-      <div className="flex flex-col gap-6">
-        <UserHeader user={user} />
-        <Separator />
-        <UserDetails user={user} />
-        <Separator />
-        <ContactChannelsSection user={user} />
-        <UserTeamsSection user={user} />
-        <OAuthProvidersSection user={user} />
-        <MetadataSection user={user} />
+      <div className="flex flex-col lg:flex-row gap-6">
+        {/* Main content */}
+        <div className="flex-1 flex flex-col gap-6">
+          <UserHeader user={user} />
+          <Separator />
+          <UserDetails user={user} />
+          <Separator />
+          <ContactChannelsSection user={user} />
+          <UserTeamsSection user={user} />
+          <OAuthProvidersSection user={user} />
+          <MetadataSection user={user} />
+        </div>
+
+        {/* Right sidebar */}
+        <div className="lg:w-[400px] xl:w-[450px]">
+          <UserActivityCard userId={user.id} />
+        </div>
       </div>
     </PageLayout>
   );

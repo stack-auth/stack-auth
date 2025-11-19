@@ -1,4 +1,5 @@
 import { DevErrorNotifier } from '@/components/dev-error-notifier';
+import { QueryProvider } from '@/components/query-provider';
 import { RouterProvider } from '@/components/router';
 import { SiteLoadingIndicatorDisplay } from '@/components/site-loading-indicator';
 import { StyleLink } from '@/components/style-link';
@@ -94,14 +95,16 @@ export default function RootLayout({
           <ThemeProvider>
             <StackProvider app={stackServerApp} lang={translationLocale as any}>
               <StackTheme>
-                <ClientPolyfill />
-                <RouterProvider>
-                  <UserIdentity />
-                  <VersionAlerter />
-                  <BackgroundShine />
-                  {children}
-                  <DevelopmentPortDisplay />
-                </RouterProvider>
+                <QueryProvider>
+                  <ClientPolyfill />
+                  <RouterProvider>
+                    <UserIdentity />
+                    <VersionAlerter />
+                    <BackgroundShine />
+                    {children}
+                    <DevelopmentPortDisplay />
+                  </RouterProvider>
+                </QueryProvider>
               </StackTheme>
             </StackProvider>
           </ThemeProvider>

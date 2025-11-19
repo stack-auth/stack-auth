@@ -379,6 +379,9 @@ importers:
       '@stripe/stripe-js':
         specifier: ^7.7.0
         version: 7.7.0
+      '@tanstack/react-query':
+        specifier: ^5.83.0
+        version: 5.90.5(react@19.2.0)
       '@tanstack/react-table':
         specifier: ^8.20.5
         version: 8.20.5(react-dom@19.2.0(react@19.2.0))(react@19.2.0)
@@ -8421,16 +8424,8 @@ packages:
     peerDependencies:
       tailwindcss: '>=3.0.0 || insiders || >=4.0.0-alpha.20 || >=4.0.0-beta.1'
 
-  '@tanstack/query-core@5.81.5':
-    resolution: {integrity: sha512-ZJOgCy/z2qpZXWaj/oxvodDx07XcQa9BF92c0oINjHkoqUPsmm3uG08HpTaviviZ/N9eP1f9CM7mKSEkIo7O1Q==}
-
   '@tanstack/query-core@5.90.5':
     resolution: {integrity: sha512-wLamYp7FaDq6ZnNehypKI5fNvxHPfTYylE0m/ZpuuzJfJqhR5Pxg9gvGBHZx4n7J+V5Rg5mZxHHTlv25Zt5u+w==}
-
-  '@tanstack/react-query@5.81.5':
-    resolution: {integrity: sha512-lOf2KqRRiYWpQT86eeeftAGnjuTR35myTP8MXyvHa81VlomoAWNEd8x5vkcAfQefu0qtYCvyqLropFZqgI2EQw==}
-    peerDependencies:
-      react: ^18 || ^19
 
   '@tanstack/react-query@5.90.5':
     resolution: {integrity: sha512-pN+8UWpxZkEJ/Rnnj2v2Sxpx1WFlaa9L6a4UO89p6tTQbeo+m0MS8oYDjbggrR8QcTyjKoYWKS3xJQGr3ExT8Q==}
@@ -25033,19 +25028,17 @@ snapshots:
       postcss-selector-parser: 6.0.10
       tailwindcss: 3.4.18(tsx@4.19.3)(yaml@2.6.0)
 
-  '@tanstack/query-core@5.81.5': {}
-
   '@tanstack/query-core@5.90.5': {}
-
-  '@tanstack/react-query@5.81.5(react@18.3.1)':
-    dependencies:
-      '@tanstack/query-core': 5.81.5
-      react: 18.3.1
 
   '@tanstack/react-query@5.90.5(react@18.3.1)':
     dependencies:
       '@tanstack/query-core': 5.90.5
       react: 18.3.1
+
+  '@tanstack/react-query@5.90.5(react@19.2.0)':
+    dependencies:
+      '@tanstack/query-core': 5.90.5
+      react: 19.2.0
 
   '@tanstack/react-table@8.20.5(react-dom@19.0.0(react@19.0.0))(react@19.0.0)':
     dependencies:
@@ -29462,7 +29455,7 @@ snapshots:
   ? freestyle-sandboxes@0.0.92(encoding@0.1.13)(expo-constants@17.1.7(expo@53.0.17(@babel/core@7.28.0)(@expo/metro-runtime@4.0.1(react-native@0.80.1(@babel/core@7.28.0)(@types/react@18.3.12)(react@19.0.0)))(react-native@0.80.1(@babel/core@7.28.0)(@types/react@18.3.12)(react@19.0.0))(react@19.0.0))(react-native@0.80.1(@babel/core@7.28.0)(@types/react@18.3.12)(react@19.0.0)))(expo-linking@7.0.5(expo@53.0.17(@babel/core@7.28.0)(@expo/metro-runtime@4.0.1(react-native@0.80.1(@babel/core@7.28.0)(@types/react@18.3.12)(react@19.0.0)))(react-native@0.80.1(@babel/core@7.28.0)(@types/react@18.3.12)(react@19.0.0))(react@19.0.0))(react-native@0.80.1(@babel/core@7.28.0)(@types/react@18.3.12)(react@19.0.0))(react@19.0.0))(expo@53.0.17(@babel/core@7.28.0)(@expo/metro-runtime@4.0.1(react-native@0.80.1(@babel/core@7.28.0)(@types/react@18.3.12)(react@19.0.0)))(react-native@0.80.1(@babel/core@7.28.0)(@types/react@18.3.12)(react@19.0.0))(react@19.0.0))(react-dom@19.0.0(react@19.0.0))(react-native-safe-area-context@5.5.1(react-native@0.80.1(@babel/core@7.28.0)(@types/react@18.3.12)(react@19.0.0))(react@19.0.0))(react-native-screens@4.11.1(react-native@0.80.1(@babel/core@7.28.0)(@types/react@18.3.12)(react@19.0.0))(react@19.0.0))(react-native@0.80.1(@babel/core@7.28.0)(@types/react@18.3.12)(react@19.0.0))(ws@8.18.3)
   : dependencies:
       '@hey-api/client-fetch': 0.5.7
-      '@tanstack/react-query': 5.81.5(react@18.3.1)
+      '@tanstack/react-query': 5.90.5(react@18.3.1)
       '@types/react': 18.3.12
       expo-router: 4.0.21(expo-constants@17.1.7(expo@53.0.17(@babel/core@7.28.0)(@expo/metro-runtime@4.0.1(react-native@0.80.1(@babel/core@7.28.0)(@types/react@18.3.12)(react@19.0.0)))(react-native@0.80.1(@babel/core@7.28.0)(@types/react@18.3.12)(react@19.0.0))(react@19.0.0))(react-native@0.80.1(@babel/core@7.28.0)(@types/react@18.3.12)(react@19.0.0)))(expo-linking@7.0.5(expo@53.0.17(@babel/core@7.28.0)(@expo/metro-runtime@4.0.1(react-native@0.80.1(@babel/core@7.28.0)(@types/react@18.3.12)(react@19.0.0)))(react-native@0.80.1(@babel/core@7.28.0)(@types/react@18.3.12)(react@19.0.0))(react@19.0.0))(react-native@0.80.1(@babel/core@7.28.0)(@types/react@18.3.12)(react@19.0.0))(react@19.0.0))(expo@53.0.17(@babel/core@7.28.0)(@expo/metro-runtime@4.0.1(react-native@0.80.1(@babel/core@7.28.0)(@types/react@18.3.12)(react@19.0.0)))(react-native@0.80.1(@babel/core@7.28.0)(@types/react@18.3.12)(react@19.0.0))(react@19.0.0))(react-dom@19.0.0(react@19.0.0))(react-native-safe-area-context@5.5.1(react-native@0.80.1(@babel/core@7.28.0)(@types/react@18.3.12)(react@19.0.0))(react@19.0.0))(react-native-screens@4.11.1(react-native@0.80.1(@babel/core@7.28.0)(@types/react@18.3.12)(react@19.0.0))(react@19.0.0))(react-native@0.80.1(@babel/core@7.28.0)(@types/react@18.3.12)(react@19.0.0))(react@18.3.1)
       freestyle-sandboxes: 0.0.66(encoding@0.1.13)(expo-constants@17.1.7(expo@53.0.17(@babel/core@7.28.0)(@expo/metro-runtime@4.0.1(react-native@0.80.1(@babel/core@7.28.0)(@types/react@18.3.12)(react@19.0.0)))(react-native@0.80.1(@babel/core@7.28.0)(@types/react@18.3.12)(react@19.0.0))(react@19.0.0))(react-native@0.80.1(@babel/core@7.28.0)(@types/react@18.3.12)(react@19.0.0)))(expo-linking@7.0.5(expo@53.0.17(@babel/core@7.28.0)(@expo/metro-runtime@4.0.1(react-native@0.80.1(@babel/core@7.28.0)(@types/react@18.3.12)(react@19.0.0)))(react-native@0.80.1(@babel/core@7.28.0)(@types/react@18.3.12)(react@19.0.0))(react@19.0.0))(react-native@0.80.1(@babel/core@7.28.0)(@types/react@18.3.12)(react@19.0.0))(react@19.0.0))(expo@53.0.17(@babel/core@7.28.0)(@expo/metro-runtime@4.0.1(react-native@0.80.1(@babel/core@7.28.0)(@types/react@18.3.12)(react@19.0.0)))(react-native@0.80.1(@babel/core@7.28.0)(@types/react@18.3.12)(react@19.0.0))(react@19.0.0))(react-dom@19.0.0(react@19.0.0))(react-native-safe-area-context@5.5.1(react-native@0.80.1(@babel/core@7.28.0)(@types/react@18.3.12)(react@19.0.0))(react@19.0.0))(react-native-screens@4.11.1(react-native@0.80.1(@babel/core@7.28.0)(@types/react@18.3.12)(react@19.0.0))(react@19.0.0))(react-native@0.80.1(@babel/core@7.28.0)(@types/react@18.3.12)(react@19.0.0))(ws@8.18.3)
