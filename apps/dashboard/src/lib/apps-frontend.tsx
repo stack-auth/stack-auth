@@ -156,7 +156,7 @@ export const ALL_APPS_FRONTEND = {
       { displayName: "Templates", href: "../email-templates", getBreadcrumbItems: getEmailTemplatesBreadcrumbItems },
       { displayName: "Themes", href: "../email-themes", getBreadcrumbItems: getEmailThemeBreadcrumbItems },
     ],
-    screenshots: getScreenshots('emails', 7),
+    screenshots: getScreenshots('emails', 8),
     storeDescription: (
       <>
         <p>Emails gives you a full control room for transactional communication.</p>
