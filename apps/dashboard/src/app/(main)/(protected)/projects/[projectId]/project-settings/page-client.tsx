@@ -130,11 +130,31 @@ export default function PageClient() {
 
         <LogoUpload
           label="Full Logo"
-          value={project.fullLogoUrl}
-          onValueChange={async (fullLogoUrl) => {
-            await project.update({ fullLogoUrl });
+          value={project.logoFullUrl}
+          onValueChange={async (logoFullUrl) => {
+            await project.update({ logoFullUrl });
           }}
           description="Upload a full logo with text. Recommended size: At least 100px tall, landscape format"
+          type="full-logo"
+        />
+
+        <LogoUpload
+          label="Logo (Dark Mode)"
+          value={project.logoDarkModeUrl}
+          onValueChange={async (logoDarkModeUrl) => {
+            await project.update({ logoDarkModeUrl });
+          }}
+          description="Upload a dark mode version of your logo. Recommended size: 200x200px"
+          type="logo"
+        />
+
+        <LogoUpload
+          label="Full Logo (Dark Mode)"
+          value={project.logoFullDarkModeUrl}
+          onValueChange={async (logoFullDarkModeUrl) => {
+            await project.update({ logoFullDarkModeUrl });
+          }}
+          description="Upload a dark mode version of your full logo. Recommended size: At least 100px tall, landscape format"
           type="full-logo"
         />
 
