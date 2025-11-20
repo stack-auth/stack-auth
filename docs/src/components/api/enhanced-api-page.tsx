@@ -1,5 +1,6 @@
 'use client';
 
+import { useUser } from '@stackframe/stack';
 import { ArrowRight, Check, Code, Copy, Play, Send, Settings, Zap } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import type { OpenAPIOperation, OpenAPIParameter, OpenAPISchema, OpenAPISpec } from '../../lib/openapi-types';
@@ -42,11 +43,13 @@ const HTTP_METHOD_COLORS = {
 
 export function EnhancedAPIPage({ document, operations, description }: EnhancedAPIPageProps) {
   const apiContext = useAPIPageContext();
+  const user = useUser(); // Get user for token refresh
 
   // Use default functions if API context is not available
-  const { sharedHeaders, reportError } = apiContext || {
+  const { sharedHeaders, reportError, updateSharedHeaders } = apiContext || {
     sharedHeaders: {},
-    reportError: () => {}
+    reportError: () => {},
+    updateSharedHeaders: () => {}
   };
 
   const [spec, setSpec] = useState<OpenAPISpec | null>(null);
@@ -205,7 +208,33 @@ export function EnhancedAPIPage({ document, operations, description }: EnhancedA
     }));
 
     try {
-      const baseUrl = spec?.servers?.[0]?.url || '';
+      // Refresh admin access token before making request (if using admin auth)
+      if (user && requestState.headers['X-Stack-Access-Type'] === 'admin') {
+        const authJson = await user.getAuthJson();
+        if (authJson?.accessToken) {
+          // Update the admin access token with a fresh one
+          const refreshedHeaders = {
+            ...requestState.headers,
+            'X-Stack-Admin-Access-Token': authJson.accessToken,
+          };
+          setRequestState(prev => ({ ...prev, headers: refreshedHeaders }));
+          updateSharedHeaders(refreshedHeaders);
+          // Use refreshed headers for this request
+          requestState.headers = refreshedHeaders;
+        }
+      }
+      // Use local API URL in development, production URL from OpenAPI spec otherwise
+      const defaultBaseUrl = spec?.servers?.[0]?.url || '';
+      const localApiUrl = process.env.NEXT_PUBLIC_STACK_API_URL;
+      const baseUrl = localApiUrl ? localApiUrl + '/api/v1' : defaultBaseUrl;
+      
+      console.log('Making API request:', {
+        localApiUrl,
+        defaultBaseUrl,
+        baseUrl,
+        finalUrl: baseUrl + path
+      });
+      
       let url = baseUrl + path;
 
       // Replace path parameters
@@ -247,6 +276,11 @@ export function EnhancedAPIPage({ document, operations, description }: EnhancedA
         );
         if (Object.keys(bodyData).length > 0) {
           requestOptions.body = JSON.stringify(bodyData);
+          // Add Content-Type header when sending JSON body
+          requestOptions.headers = {
+            ...filteredHeaders,
+            'Content-Type': 'application/json',
+          };
         }
       }
 
@@ -286,7 +320,7 @@ export function EnhancedAPIPage({ document, operations, description }: EnhancedA
         }
       }));
     }
-  }, [spec, requestState.parameters, requestState.headers, requestState.bodyFields, reportError]); // Changed from requestState.body
+  }, [spec, requestState.parameters, requestState.headers, requestState.bodyFields, reportError, user, updateSharedHeaders]);
 
   if (loading) {
     return (
@@ -387,7 +421,11 @@ function ModernAPIPlayground({
   };
 
   const generateCurlCommand = useCallback(() => {
-    const baseUrl = spec.servers?.[0]?.url || '';
+    // Use local API URL in development, production URL otherwise
+    const defaultBaseUrl = spec.servers?.[0]?.url || '';
+    const baseUrl = process.env.NEXT_PUBLIC_STACK_API_URL 
+      ? process.env.NEXT_PUBLIC_STACK_API_URL + '/api/v1'
+      : defaultBaseUrl;
     let url = baseUrl + path;
 
     // Replace path parameters
@@ -433,7 +471,11 @@ function ModernAPIPlayground({
     return curlCommand;
   }, [operation, path, method, spec, requestState]);
   const generateJavaScriptCode = useCallback(() => {
-    const baseUrl = spec.servers?.[0]?.url || '';
+    // Use local API URL in development, production URL otherwise
+    const defaultBaseUrl = spec.servers?.[0]?.url || '';
+    const baseUrl = process.env.NEXT_PUBLIC_STACK_API_URL 
+      ? process.env.NEXT_PUBLIC_STACK_API_URL + '/api/v1'
+      : defaultBaseUrl;
     let url = baseUrl + path;
 
     // Replace path parameters
@@ -483,7 +525,11 @@ function ModernAPIPlayground({
   }, [operation, path, method, spec, requestState]);
 
   const generatePythonCode = useCallback(() => {
-    const baseUrl = spec.servers?.[0]?.url || '';
+    // Use local API URL in development, production URL otherwise
+    const defaultBaseUrl = spec.servers?.[0]?.url || '';
+    const baseUrl = process.env.NEXT_PUBLIC_STACK_API_URL 
+      ? process.env.NEXT_PUBLIC_STACK_API_URL + '/api/v1'
+      : defaultBaseUrl;
     let url = baseUrl + path;
 
     // Replace path parameters
