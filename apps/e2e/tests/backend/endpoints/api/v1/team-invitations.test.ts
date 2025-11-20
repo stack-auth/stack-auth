@@ -3,7 +3,7 @@ import { it } from "../../../../helpers";
 import { Auth, InternalProjectKeys, Project, Team, User, backendContext, bumpEmailAddress, createMailbox, niceBackendFetch } from "../../../backend-helpers";
 
 async function createAndAddCurrentUserWithoutMemberPermission() {
-  const { teamId } = await Team.createWithCurrentAsCreator();
+  const { teamId } = await Team.create();
   const user = await User.getCurrent();
   await Team.addMember(teamId, user.id);
   const response = await niceBackendFetch(`/api/v1/team-permissions/${teamId}/${user.id}/team_member`, {
@@ -29,7 +29,7 @@ it("requires $invite_members permission to send invitation", async ({ expect }) 
 
   const sendTeamInvitationResponse = await niceBackendFetch("/api/v1/team-invitations/send-code", {
     method: "POST",
-    accessType: "server",
+    accessType: "client",
     body: {
       email: "some-email-test@example.com",
       team_id: teamId,
@@ -105,7 +105,7 @@ it("can send invitation", async ({ expect }) => {
 });
 
 it("can send invitation without a current user on the server", async ({ expect }) => {
-  const { teamId } = await Team.createWithCurrentAsCreator();
+  const { teamId } = await Team.create();
   const receiveMailbox = createMailbox();
 
   backendContext.set({ userAuth: null });
@@ -529,7 +529,7 @@ it("errors with item_quantity_insufficient_amount when accepting invite without 
 });
 
 it("should error when untrusted callback URL is provided", async ({ expect }) => {
-  const { teamId } = await Team.createWithCurrentAsCreator();
+  const { teamId } = await Team.create();
   const receiveMailbox = createMailbox();
 
   backendContext.set({ userAuth: null });
