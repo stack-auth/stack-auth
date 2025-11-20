@@ -3,7 +3,7 @@ import { sendEmailFromTemplate } from "@/lib/emails";
 import { getItemQuantityForCustomer } from "@/lib/payments";
 import { grantTeamPermission } from "@/lib/permissions";
 import { getSoleTenancyFromProjectBranch } from "@/lib/tenancies";
-import { getPrismaClientForTenancy, retryTransaction } from "@/prisma-client";
+import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createVerificationCodeHandler } from "@/route-handlers/verification-code-handler";
 import { VerificationCodeType } from "@prisma/client";
 import { KnownErrors } from "@stackframe/stack-shared";
@@ -69,7 +69,7 @@ export const teamInvitationCodeHandler = createVerificationCodeHandler({
 
     return codeObj;
   },
-  async handler(tenancy, {}, data, body, user) {
+  async handler(tenancy, { }, data, body, user) {
     if (!user) throw new KnownErrors.UserAuthenticationRequired;
     const prisma = await getPrismaClientForTenancy(tenancy);
 
@@ -108,27 +108,25 @@ export const teamInvitationCodeHandler = createVerificationCodeHandler({
     });
 
     if (!oldMembership) {
-      await retryTransaction(prisma, async (tx) => {
-        await teamMembershipsCrudHandlers.adminCreate({
-          tenancy,
-          team_id: data.team_id,
-          user_id: user.id,
-          data: {},
-        });
-
-        // Apply additional specific permissions if provided (with deduplication)
-        if (data.permission_ids && data.permission_ids.length > 0) {
-          const uniquePermissionIds = [...new Set(data.permission_ids)];
-          for (const permissionId of uniquePermissionIds) {
-            await grantTeamPermission(tx, {
-              tenancy,
-              teamId: data.team_id,
-              userId: user.id,
-              permissionId,
-            });
-          }
-        }
+      await teamMembershipsCrudHandlers.adminCreate({
+        tenancy,
+        team_id: data.team_id,
+        user_id: user.id,
+        data: {},
       });
+
+      // Apply additional specific permissions if provided (with deduplication)
+      if (data.permission_ids && data.permission_ids.length > 0) {
+        const uniquePermissionIds = [...new Set(data.permission_ids)];
+        for (const permissionId of uniquePermissionIds) {
+          await grantTeamPermission(prisma, {
+            tenancy,
+            teamId: data.team_id,
+            userId: user.id,
+            permissionId,
+          });
+        }
+      }
     }
 
     return {
@@ -137,7 +135,7 @@ export const teamInvitationCodeHandler = createVerificationCodeHandler({
       body: {}
     };
   },
-  async details(tenancy, {}, data, body, user) {
+  async details(tenancy, { }, data, body, user) {
     if (!user) throw new KnownErrors.UserAuthenticationRequired;
 
     const team = await teamsCrudHandlers.adminRead({

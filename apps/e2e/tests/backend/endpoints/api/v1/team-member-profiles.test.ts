@@ -105,7 +105,7 @@ async function signInAndCreateTeam() {
 }
 
 
-it("lists and updates member profiles in team", async ({ expect }) => {
+it("requires team_id to be specified for client access type", async ({ expect }) => {
   await signInAndCreateTeam();
   // Must specify team_id
   const response = await niceBackendFetch(`/api/v1/team-member-profiles`, {
@@ -162,6 +162,7 @@ it("can read own profile", async ({ expect }) => {
         "items": [
           {
             "display_name": "User 1",
+            "permission_ids": [],
             "profile_image_url": null,
             "team_id": "<stripped UUID>",
             "user_id": "<stripped UUID>",
@@ -196,18 +197,21 @@ it("can do several operations when granted $read_members permission", async ({ e
         "items": [
           {
             "display_name": "User 3 (team creator)",
+            "permission_ids": ["team_admin"],
             "profile_image_url": null,
             "team_id": "<stripped UUID>",
             "user_id": "<stripped UUID>",
           },
           {
             "display_name": "User 1",
+            "permission_ids": ["$read_members"],
             "profile_image_url": null,
             "team_id": "<stripped UUID>",
             "user_id": "<stripped UUID>",
           },
           {
             "display_name": "User 2",
+            "permission_ids": ["team_member"],
             "profile_image_url": null,
             "team_id": "<stripped UUID>",
             "user_id": "<stripped UUID>",
@@ -231,6 +235,7 @@ it("can do several operations when granted $read_members permission", async ({ e
       "status": 200,
       "body": {
         "display_name": "Team Member Name Updated",
+        "permission_ids": ["$read_members"],
         "profile_image_url": null,
         "team_id": "<stripped UUID>",
         "user_id": "<stripped UUID>",
@@ -257,6 +262,7 @@ it("can do several operations when granted $read_members permission", async ({ e
       "status": 200,
       "body": {
         "display_name": "Team Member Name Updated",
+        "permission_ids": ["$read_members"],
         "profile_image_url": null,
         "team_id": "<stripped UUID>",
         "user_id": "<stripped UUID>",
@@ -299,6 +305,7 @@ it("can do several operations when granted $read_members permission", async ({ e
       "status": 200,
       "body": {
         "display_name": "User 2 Updated",
+        "permission_ids": ["team_member"],
         "profile_image_url": null,
         "team_id": "<stripped UUID>",
         "user_id": "<stripped UUID>",
@@ -322,9 +329,9 @@ it("includes permission_ids in team member profiles response", async ({ expect }
 });
 
 it("returns correct permission_ids for team members with granted permissions", async ({ expect }) => {
-  await Project.createAndSwitch();
+  await Project.createAndSwitch({ config: { magic_link_enabled: true } });
   const { userId: user1Id } = await Auth.Otp.signIn();
-  const { teamId } = await Team.create();
+  const { teamId } = await Team.createWithCurrentAsCreator();
 
   // Add a second user to the team
   const user2Mailbox = createMailbox();
@@ -332,11 +339,12 @@ it("returns correct permission_ids for team members with granted permissions", a
     method: "POST",
     accessType: "server",
     body: {
-      email: user2Mailbox,
+      email: user2Mailbox.emailAddress,
       team_id: teamId,
       callback_url: "http://localhost:12345/some-callback-url",
     },
   });
+
 
   // Accept invitation as second user
   backendContext.set({ mailbox: user2Mailbox });

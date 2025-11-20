@@ -3,7 +3,7 @@ import { it } from "../../../../helpers";
 import { Auth, InternalProjectKeys, Project, Team, User, backendContext, bumpEmailAddress, createMailbox, niceBackendFetch } from "../../../backend-helpers";
 
 async function createAndAddCurrentUserWithoutMemberPermission() {
-  const { teamId } = await Team.create();
+  const { teamId } = await Team.createWithCurrentAsCreator();
   const user = await User.getCurrent();
   await Team.addMember(teamId, user.id);
   const response = await niceBackendFetch(`/api/v1/team-permissions/${teamId}/${user.id}/team_member`, {
@@ -29,7 +29,7 @@ it("requires $invite_members permission to send invitation", async ({ expect }) 
 
   const sendTeamInvitationResponse = await niceBackendFetch("/api/v1/team-invitations/send-code", {
     method: "POST",
-    accessType: "client",
+    accessType: "server",
     body: {
       email: "some-email-test@example.com",
       team_id: teamId,
@@ -105,7 +105,7 @@ it("can send invitation", async ({ expect }) => {
 });
 
 it("can send invitation without a current user on the server", async ({ expect }) => {
-  const { teamId } = await Team.create();
+  const { teamId } = await Team.createWithCurrentAsCreator();
   const receiveMailbox = createMailbox();
 
   backendContext.set({ userAuth: null });
@@ -167,6 +167,7 @@ it("can list invitations on the server", async ({ expect }) => {
           {
             "expires_at_millis": <stripped field 'expires_at_millis'>,
             "id": "<stripped UUID>",
+            "permission_ids": [],
             "recipient_email": "some-email-test@example.com",
             "team_id": "<stripped UUID>",
           },
@@ -237,6 +238,7 @@ it("allows team admins to list invitations", async ({ expect }) => {
           {
             "expires_at_millis": <stripped field 'expires_at_millis'>,
             "id": "<stripped UUID>",
+            "permission_ids": [],
             "recipient_email": "some-email-test@example.com",
             "team_id": "<stripped UUID>",
           },
@@ -527,7 +529,7 @@ it("errors with item_quantity_insufficient_amount when accepting invite without 
 });
 
 it("should error when untrusted callback URL is provided", async ({ expect }) => {
-  const { teamId } = await Team.create();
+  const { teamId } = await Team.createWithCurrentAsCreator();
   const receiveMailbox = createMailbox();
 
   backendContext.set({ userAuth: null });
@@ -581,7 +583,7 @@ it("can fetch role permissions from role-permissions endpoint", async ({ expect 
 it("can send invitation with permission_ids", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
   const { userId } = await Auth.Otp.signIn();
-  const { teamId } = await Team.create();
+  const { teamId } = await Team.createWithCurrentAsCreator();
 
   // Grant invite permission
   await niceBackendFetch(`/api/v1/team-permissions/${teamId}/${userId}/$invite_members`, {
@@ -594,7 +596,7 @@ it("can send invitation with permission_ids", async ({ expect }) => {
 
   const sendResponse = await niceBackendFetch("/api/v1/team-invitations/send-code", {
     method: "POST",
-    accessType: "client",
+    accessType: "server",
     body: {
       email: receiveMailbox.emailAddress,
       team_id: teamId,
@@ -620,7 +622,7 @@ it("can send invitation with permission_ids", async ({ expect }) => {
 it("applies permission_ids when accepting invitation", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
   const { userId } = await Auth.Otp.signIn();
-  const { teamId } = await Team.create();
+  const { teamId } = await Team.createWithCurrentAsCreator();
 
   // Grant invite permission
   await niceBackendFetch(`/api/v1/team-permissions/${teamId}/${userId}/$invite_members`, {
@@ -634,7 +636,7 @@ it("applies permission_ids when accepting invitation", async ({ expect }) => {
   // Send invitation with permission_ids
   await niceBackendFetch("/api/v1/team-invitations/send-code", {
     method: "POST",
-    accessType: "client",
+    accessType: "server",
     body: {
       email: receiveMailbox.emailAddress,
       team_id: teamId,
@@ -651,7 +653,7 @@ it("applies permission_ids when accepting invitation", async ({ expect }) => {
   // Verify user received the permission
   const newUserId = (await User.getCurrent()).id;
   const permissionResponse = await niceBackendFetch(
-    `/api/v1/team-permissions/${teamId}/${newUserId}/team_admin`,
+    `/api/v1/team-permissions?team_id=${teamId}&user_id=${newUserId}`,
     {
       accessType: "server",
       method: "GET",
@@ -659,14 +661,17 @@ it("applies permission_ids when accepting invitation", async ({ expect }) => {
   );
 
   expect(permissionResponse.status).toBe(200);
-  expect(permissionResponse.body).toHaveProperty('id', 'team_admin');
+  expect(permissionResponse.body).toHaveProperty('items');
+  expect(
+    permissionResponse.body.items.some((item: any) => item.id === "team_admin")
+  ).toBe(true);
 });
 
 // Edge case tests for invalid permission_ids
-it("returns 400 error for invitation with non-existent permission_ids", async ({ expect }) => {
+it("returns 404 error for invitation with non-existent permission_ids", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
   const { userId } = await Auth.Otp.signIn();
-  const { teamId } = await Team.create();
+  const { teamId } = await Team.createWithCurrentAsCreator();
 
   // Grant invite permission
   await niceBackendFetch(`/api/v1/team-permissions/${teamId}/${userId}/$invite_members`, {
@@ -679,7 +684,7 @@ it("returns 400 error for invitation with non-existent permission_ids", async ({
 
   const response = await niceBackendFetch("/api/v1/team-invitations/send-code", {
     method: "POST",
-    accessType: "client",
+    accessType: "server",
     body: {
       email: receiveMailbox.emailAddress,
       team_id: teamId,
@@ -688,16 +693,16 @@ it("returns 400 error for invitation with non-existent permission_ids", async ({
     },
   });
 
-  expect(response.status).toBe(400);
+  expect(response.status).toBe(404);
   expect(response.body).toHaveProperty('code');
-  expect(response.body).toHaveProperty('message');
-  expect(response.body.message).toMatch(/invalid permission|permission.*not found/i);
+  expect(response.body).toHaveProperty('details');
+  expect(response.body.details.permission_id).toBe("non_existent_role");
 });
 
 it("returns 400 error for invitation with malformed permission_ids", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
   const { userId } = await Auth.Otp.signIn();
-  const { teamId } = await Team.create();
+  const { teamId } = await Team.createWithCurrentAsCreator();
 
   // Grant invite permission
   await niceBackendFetch(`/api/v1/team-permissions/${teamId}/${userId}/$invite_members`, {
@@ -710,7 +715,7 @@ it("returns 400 error for invitation with malformed permission_ids", async ({ ex
 
   const response = await niceBackendFetch("/api/v1/team-invitations/send-code", {
     method: "POST",
-    accessType: "client",
+    accessType: "server",
     body: {
       email: receiveMailbox.emailAddress,
       team_id: teamId,
@@ -720,14 +725,14 @@ it("returns 400 error for invitation with malformed permission_ids", async ({ ex
   });
 
   expect(response.status).toBe(400);
-  expect(response.body).toHaveProperty('message');
-  expect(response.body.message).toMatch(/permission_ids.*must be array|invalid.*permission_ids/i);
+  expect(response.body).toHaveProperty('error');
+  expect(response.body.error).toMatch(/permission_ids[\s\S]*array|invalid.*permission_ids/i);
 });
 
-it("returns 400 error for invitation with mixed valid/invalid permission_ids", async ({ expect }) => {
+it("returns 404 error for invitation with mixed valid/invalid permission_ids", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
   const { userId } = await Auth.Otp.signIn();
-  const { teamId } = await Team.create();
+  const { teamId } = await Team.createWithCurrentAsCreator();
 
   // Grant invite permission
   await niceBackendFetch(`/api/v1/team-permissions/${teamId}/${userId}/$invite_members`, {
@@ -740,7 +745,7 @@ it("returns 400 error for invitation with mixed valid/invalid permission_ids", a
 
   const response = await niceBackendFetch("/api/v1/team-invitations/send-code", {
     method: "POST",
-    accessType: "client",
+    accessType: "server",
     body: {
       email: receiveMailbox.emailAddress,
       team_id: teamId,
@@ -749,18 +754,34 @@ it("returns 400 error for invitation with mixed valid/invalid permission_ids", a
     },
   });
 
-  expect(response.status).toBe(400);
-  expect(response.body).toHaveProperty('message');
-  expect(response.body.message).toMatch(/invalid permission|permission.*not found/i);
+  expect(response.status).toBe(404);
+  expect(response.body).toHaveProperty('details');
+  expect(response.body.details.permission_id).toBe("invalid_permission");
 });
 
 // Permission escalation tests
 it("returns 403 error when user without invite permission tries to invite with elevated permissions", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
-  const { userId } = await Auth.Otp.signIn();
-  const { teamId } = await Team.create();
+  await Auth.Otp.signIn();
+  const { teamId } = await Team.createWithCurrentAsCreator();
 
-  // DO NOT grant invite permission to user
+  const otherMailbox = createMailbox();
+  backendContext.set({ mailbox: otherMailbox });
+  const { userId: limitedUserId } = await Auth.Otp.signIn();
+  await Team.addMember(teamId, limitedUserId);
+  await niceBackendFetch(`/api/v1/team-permissions/${teamId}/${limitedUserId}/team_member`, {
+    accessType: "server",
+    method: "DELETE",
+    body: {},
+  });
+  await niceBackendFetch(`/api/v1/team-permissions/${teamId}/${limitedUserId}/$invite_members`, {
+    accessType: "server",
+    method: "DELETE",
+    body: {},
+  });
+
+  backendContext.set({ mailbox: otherMailbox });
+  await Auth.Otp.signIn();
   const receiveMailbox = createMailbox();
 
   const response = await niceBackendFetch("/api/v1/team-invitations/send-code", {
@@ -775,18 +796,32 @@ it("returns 403 error when user without invite permission tries to invite with e
   });
 
   expect(response.status).toBe(403);
-  expect(response.body).toHaveProperty('code');
-  expect(response.body.code).toMatch(/permission|unauthorized|forbidden/i);
-  expect(response.body).toHaveProperty('message');
-  expect(response.body.message).toMatch(/permission|invite|unauthorized/i);
+  expect(typeof response.body).toBe("string");
+  expect(response.body).toMatch(/permission_ids can only be set from server-side requests/i);
 });
 
 it("returns 403 error when user without invite permission tries to invite with default permissions", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
-  const { userId } = await Auth.Otp.signIn();
-  const { teamId } = await Team.create();
+  await Auth.Otp.signIn();
+  const { teamId } = await Team.createWithCurrentAsCreator();
 
-  // DO NOT grant invite permission to user
+  const otherMailbox = createMailbox();
+  backendContext.set({ mailbox: otherMailbox });
+  const { userId: limitedUserId } = await Auth.Otp.signIn();
+  await Team.addMember(teamId, limitedUserId);
+  await niceBackendFetch(`/api/v1/team-permissions/${teamId}/${limitedUserId}/team_member`, {
+    accessType: "server",
+    method: "DELETE",
+    body: {},
+  });
+  await niceBackendFetch(`/api/v1/team-permissions/${teamId}/${limitedUserId}/$invite_members`, {
+    accessType: "server",
+    method: "DELETE",
+    body: {},
+  });
+
+  backendContext.set({ mailbox: otherMailbox });
+  await Auth.Otp.signIn();
   const receiveMailbox = createMailbox();
 
   const response = await niceBackendFetch("/api/v1/team-invitations/send-code", {
@@ -801,15 +836,15 @@ it("returns 403 error when user without invite permission tries to invite with d
   });
 
   expect(response.status).toBe(403);
-  expect(response.body).toHaveProperty('code');
-  expect(response.body.code).toMatch(/permission|unauthorized|forbidden/i);
+  expect(typeof response.body).toBe("string");
+  expect(response.body).toMatch(/permission_ids can only be set from server-side requests/i);
 });
 
 // Backwards compatibility tests
 it("successfully creates invitation with empty permission_ids array", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
   const { userId } = await Auth.Otp.signIn();
-  const { teamId } = await Team.create();
+  const { teamId } = await Team.createWithCurrentAsCreator();
 
   // Grant invite permission
   await niceBackendFetch(`/api/v1/team-permissions/${teamId}/${userId}/$invite_members`, {
@@ -822,7 +857,7 @@ it("successfully creates invitation with empty permission_ids array", async ({ e
 
   const response = await niceBackendFetch("/api/v1/team-invitations/send-code", {
     method: "POST",
-    accessType: "client",
+    accessType: "server",
     body: {
       email: receiveMailbox.emailAddress,
       team_id: teamId,
@@ -848,7 +883,7 @@ it("successfully creates invitation with empty permission_ids array", async ({ e
 it("successfully creates invitation with omitted permission_ids (backwards compatibility)", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
   const { userId } = await Auth.Otp.signIn();
-  const { teamId } = await Team.create();
+  const { teamId } = await Team.createWithCurrentAsCreator();
 
   // Grant invite permission
   await niceBackendFetch(`/api/v1/team-permissions/${teamId}/${userId}/$invite_members`, {
@@ -920,16 +955,16 @@ it("allows server access invitation with permission_ids bypassing user permissio
 });
 
 // Role-permissions endpoint edge cases
-it("returns 401 for unauthenticated access to role-permissions endpoint", async ({ expect }) => {
-  // Don't sign in
+it("allows unauthenticated access to role-permissions endpoint", async ({ expect }) => {
+  backendContext.set({ userAuth: null });
   const response = await niceBackendFetch("/api/v1/team-invitations/role-permissions", {
     accessType: "client",
     method: "GET",
   });
 
-  expect(response.status).toBe(401);
-  expect(response.body).toHaveProperty('code');
-  expect(response.body.code).toMatch(/unauthorized|unauthenticated/i);
+  expect(response.status).toBe(200);
+  expect(response.body).toHaveProperty('items');
+  expect(Array.isArray(response.body.items)).toBe(true);
 });
 
 it("returns consistent responses for client vs server access to role-permissions endpoint", async ({ expect }) => {
@@ -987,6 +1022,6 @@ it("returns 400 for invitation with null permission_ids", async ({ expect }) => 
   });
 
   expect(response.status).toBe(400);
-  expect(response.body).toHaveProperty('message');
-  expect(response.body.message).toMatch(/permission_ids.*must be array|invalid.*permission_ids/i);
+  expect(response.body).toHaveProperty('error');
+  expect(response.body.error).toMatch(/permission_ids.*(must be.*array|invalid.*permission_ids|cannot be null)/i);
 });

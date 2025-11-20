@@ -5,6 +5,7 @@ import { KnownErrors } from "@stackframe/stack-shared";
 import { adaptSchema, clientOrHigherAuthTypeSchema, permissionDefinitionIdSchema, teamIdSchema, teamInvitationCallbackUrlSchema, teamInvitationEmailSchema, yupArray, yupBoolean, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { teamInvitationCodeHandler } from "../accept/verification-code-handler";
 import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
+import { listPermissionDefinitionsFromConfig } from "@/lib/permissions";
 
 export const POST = createSmartRouteHandler({
   metadata: {
@@ -52,6 +53,20 @@ export const POST = createSmartRouteHandler({
         });
       }
     });
+
+    if (body.permission_ids !== undefined) {
+      const validPermissionIds = new Set(
+        listPermissionDefinitionsFromConfig({
+          config: auth.tenancy.config,
+          scope: "team",
+        }).map((permission) => permission.id),
+      );
+      for (const permissionId of body.permission_ids) {
+        if (!validPermissionIds.has(permissionId)) {
+          throw new KnownErrors.PermissionNotFound(permissionId);
+        }
+      }
+    }
 
     const codeObj = await teamInvitationCodeHandler.sendCode({
       tenancy: auth.tenancy,
