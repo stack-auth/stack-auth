@@ -247,7 +247,7 @@ export const environmentConfigSchema = branchConfigSchema.concat(yupObject({
     trustedDomains: yupRecord(
       userSpecifiedIdSchema("trustedDomainId"),
       yupObject({
-        baseUrl: schemaFields.wildcardUrlSchema.max(300),
+        baseUrl: schemaFields.wildcardUrlSchema.max(300),  // TODO: replace with wildcardProtocolAndDomainSchema (this will require a migration as some configs have domains that are not valid wildcard protocol and domain patterns)
         handlerPath: schemaFields.handlerPathSchema.max(300),
       }),
     ),
@@ -752,7 +752,7 @@ export async function sanitizeOrganizationConfig(config: OrganizationRenderedCon
   };
   const templates: typeof prepared.emails.templates = {
     ...DEFAULT_EMAIL_TEMPLATES,
-    ...prepared.emails.templates,
+    ...(config.emails.server.isShared ? {} : prepared.emails.templates),
   };
   const products = typedFromEntries(typedEntries(prepared.payments.products).map(([key, product]) => {
     const isAddOnTo = product.isAddOnTo === false ?

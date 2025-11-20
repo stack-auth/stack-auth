@@ -73,7 +73,7 @@ services:
     environment:
       PG_META_PORT: 8080
       PG_META_DB_HOST: db
-      PG_META_DB_PORT: 8128
+      PG_META_DB_PORT: 5432
       PG_META_DB_NAME: stackframe
       PG_META_DB_USER: postgres
       PG_META_DB_PASSWORD: PASSWORD-PLACEHOLDER--uqfEC1hmmv
