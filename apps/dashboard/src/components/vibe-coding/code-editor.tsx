@@ -46,6 +46,7 @@ export default function CodeEditor({
       skipLibCheck: true,
       strict: true,
       strictNullChecks: true,
+      strictFunctionTypes: false,
       exactOptionalPropertyTypes: true,
     });
     runAsynchronously(addTypeFiles(monaco));
@@ -55,12 +56,14 @@ export default function CodeEditor({
     monaco: Monaco,
     moduleName: string,
     url: string,
+    transform?: (content: string) => string,
   ) => {
     try {
       const response = await fetch(url);
       if (response.ok) {
         const content = await response.text();
-        monaco.languages.typescript.typescriptDefaults.addExtraLib(content, `file:///node_modules/${moduleName}/index.d.ts`);
+        const transformed = transform ? transform(content) : content;
+        monaco.languages.typescript.typescriptDefaults.addExtraLib(transformed, `file:///node_modules/${moduleName}/index.d.ts`);
       }
     } catch (error) {
       console.warn(`Failed to fetch type definitions from ${url}:`, error);
@@ -93,7 +96,14 @@ export default function CodeEditor({
           type ThemeProps = {
             children: React.ReactNode;
             unsubscribeLink?: string;
+            projectLogos: {
+              logoUrl?: string;
+              logoFullUrl?: string;
+              logoDarkModeUrl?: string;
+              logoFullDarkModeUrl?: string;
+            };
           };
+          const ProjectLogo: React.FC<{data: ThemeProps['projectLogos'], mode: 'light' | 'dark'}>;
         }
       `,
     );
@@ -104,16 +114,28 @@ export default function CodeEditor({
     const reactEmailPackages = [
       'components', 'body', 'button', 'code-block', 'code-inline', 'column',
       'container', 'font', 'head', 'heading', 'hr', 'html', 'img', 'link',
-      'markdown', 'preview', 'render', 'row', 'section', 'tailwind', 'text'
+      'markdown', 'preview', 'row', 'section', 'tailwind', 'text'
     ];
     await Promise.all([
       // latest version of react causes type issue with rendering react-email components
       fetchAndAddTypeDefinition(monaco, 'react', 'https://unpkg.com/@types/react@18.0.38/index.d.ts'),
       fetchAndAddTypeDefinition(monaco, 'csstype', 'https://unpkg.com/csstype@3.1.3/index.d.ts'),
       ...reactEmailPackages.map(packageName =>
-        fetchAndAddTypeDefinition(monaco, `@react-email/${packageName}`, `https://unpkg.com/@react-email/${packageName}/dist/index.d.ts`)
+        fetchAndAddTypeDefinition(
+          monaco,
+          `@react-email/${packageName}`,
+          `https://unpkg.com/@react-email/${packageName}/dist/index.d.ts`,
+          packageName === "tailwind" ? transformTailwindTypeFile : undefined
+        )
       ),
     ]);
+  };
+
+  const transformTailwindTypeFile = (content: string) => {
+    return content.replace(
+      /}\s*:\s*TailwindProps\)\s*:\s*React\.ReactNode;/,
+      '}: TailwindProps): JSX.Element | null;'
+    );
   };
 
   return (

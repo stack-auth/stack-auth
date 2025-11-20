@@ -21,7 +21,9 @@ export type AdminProject = {
   readonly isProductionMode: boolean,
   readonly ownerTeamId: string | null,
   readonly logoUrl: string | null | undefined,
-  readonly fullLogoUrl: string | null | undefined,
+  readonly logoFullUrl: string | null | undefined,
+  readonly logoDarkModeUrl: string | null | undefined,
+  readonly logoFullDarkModeUrl: string | null | undefined,
 
   readonly config: AdminProjectConfig,
 
@@ -47,7 +49,9 @@ export type AdminProjectUpdateOptions = {
   description?: string,
   isProductionMode?: boolean,
   logoUrl?: string | null,
-  fullLogoUrl?: string | null,
+  logoFullUrl?: string | null,
+  logoDarkModeUrl?: string | null,
+  logoFullDarkModeUrl?: string | null,
   config?: AdminProjectConfigUpdateOptions,
 };
 export function adminProjectUpdateOptionsToCrud(options: AdminProjectUpdateOptions): ProjectsCrud["Admin"]["Update"] {
@@ -56,7 +60,9 @@ export function adminProjectUpdateOptionsToCrud(options: AdminProjectUpdateOptio
     description: options.description,
     is_production_mode: options.isProductionMode,
     logo_url: options.logoUrl,
-    full_logo_url: options.fullLogoUrl,
+    logo_full_url: options.logoFullUrl,
+    logo_dark_mode_url: options.logoDarkModeUrl,
+    logo_full_dark_mode_url: options.logoFullDarkModeUrl,
     config: {
       domains: options.config?.domains?.map((d) => ({
         domain: d.domain,

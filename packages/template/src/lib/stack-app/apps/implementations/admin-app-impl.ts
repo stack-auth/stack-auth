@@ -127,7 +127,9 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
       isProductionMode: data.is_production_mode,
       ownerTeamId: data.owner_team_id,
       logoUrl: data.logo_url,
-      fullLogoUrl: data.full_logo_url,
+      logoFullUrl: data.logo_full_url,
+      logoDarkModeUrl: data.logo_dark_mode_url,
+      logoFullDarkModeUrl: data.logo_full_dark_mode_url,
       config: {
         signUpEnabled: data.config.sign_up_enabled,
         credentialEnabled: data.config.credential_enabled,
