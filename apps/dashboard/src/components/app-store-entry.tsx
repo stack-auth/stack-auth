@@ -6,7 +6,7 @@ import { ALL_APPS, ALL_APP_TAGS, AppId } from "@stackframe/stack-shared/dist/app
 import { Badge, Button, Dialog, DialogContent, DialogTitle, ScrollArea } from "@stackframe/stack-ui";
 import { ChevronLeft, ChevronRight, X } from "lucide-react";
 import Image from "next/image";
-import { FunctionComponent, useEffect, useRef, useState } from "react";
+import { FunctionComponent, useCallback, useEffect, useRef, useState } from "react";
 
 export function AppStoreEntry({
   appId,
@@ -33,13 +33,13 @@ export function AppStoreEntry({
     }
   };
 
-  const navigatePreview = (direction: 'prev' | 'next') => {
+  const navigatePreview = useCallback((direction: 'prev' | 'next') => {
     if (previewIndex === null) return;
-    const newIndex = direction === 'prev' 
+    const newIndex = direction === 'prev'
       ? Math.max(0, previewIndex - 1)
       : Math.min(appFrontend.screenshots.length - 1, previewIndex + 1);
     setPreviewIndex(newIndex);
-  };
+  }, [previewIndex, appFrontend.screenshots.length]);
 
   // Keyboard navigation for preview
   useEffect(() => {
@@ -59,7 +59,7 @@ export function AppStoreEntry({
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [previewIndex, appFrontend.screenshots.length]);
+  }, [previewIndex, navigatePreview]);
 
   return (
     <div className="flex flex-col h-full">
@@ -94,7 +94,7 @@ export function AppStoreEntry({
       {/* Screenshots */}
       {appFrontend.screenshots.length > 0 && (
         <div className="border-b relative group">
-          <div 
+          <div
             ref={screenshotContainerRef}
             className="overflow-x-auto overflow-y-hidden"
             style={{
@@ -162,7 +162,7 @@ export function AppStoreEntry({
       <Dialog open={previewIndex !== null} onOpenChange={(open) => !open && setPreviewIndex(null)}>
         <DialogContent className="max-w-7xl max-h-[95vh] p-0 bg-black/95 border-0" noCloseButton>
           <DialogTitle className="sr-only">
-            {previewIndex !== null 
+            {previewIndex !== null
               ? `${app.displayName} screenshot ${previewIndex + 1} of ${appFrontend.screenshots.length}`
               : 'Screenshot preview'}
           </DialogTitle>
