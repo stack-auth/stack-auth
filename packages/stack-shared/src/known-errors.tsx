@@ -1629,6 +1629,26 @@ const StripeAccountInfoNotFound = createKnownErrorConstructor(
   () => [] as const,
 );
 
+const AnalyticsQueryTimeout = createKnownErrorConstructor(
+  KnownError,
+  "ANALYTICS_QUERY_TIMEOUT",
+  () => [
+    400,
+    "The query timed out. Please try again with a shorter query or increase the timeout.",
+  ] as const,
+  () => [] as const,
+);
+
+const AnalyticsQueryError = createKnownErrorConstructor(
+  KnownError,
+  "ANALYTICS_QUERY_ERROR",
+  (error: string) => [
+    400,
+    `The query failed to execute: ${error}`,
+  ] as const,
+  (json: any) => [json.error] as const,
+);
+
 export type KnownErrors = {
   [K in keyof typeof KnownErrors]: InstanceType<typeof KnownErrors[K]>;
 };
@@ -1759,6 +1779,8 @@ export const KnownErrors = {
   StripeAccountInfoNotFound,
   DataVaultStoreDoesNotExist,
   DataVaultStoreHashedKeyDoesNotExist,
+  AnalyticsQueryTimeout,
+  AnalyticsQueryError,
 } satisfies Record<string, KnownErrorConstructor<any, any>>;
 
 
