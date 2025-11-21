@@ -320,9 +320,34 @@ function renderSidebarContent(tree: PageTree.Root, pathname: string) {
     return null;
   }
 
+  const overviewItem = tree.children.find(
+    (item) =>
+      item.type === 'page' &&
+      (item.url.endsWith('/overview') || item.name === 'Overview')
+  );
+  const faqItem = tree.children.find(
+    (item) =>
+      item.type === 'page' &&
+      (item.url.endsWith('/faq') || item.name === 'FAQ')
+  );
+
+  const specialItems = [overviewItem, faqItem].filter(
+    (item): item is PageTree.Node => !!item
+  );
+  const otherItems = tree.children.filter(
+    (item) => !specialItems.includes(item)
+  );
+
   return (
     <>
-      {tree.children.map((item, index) => (
+      {specialItems.length > 0 && (
+        <div className="mb-4 rounded-xl border border-fd-border/20 bg-fd-muted/10 p-1">
+          {specialItems.map((item, index) => (
+            <PageTreeItem key={item.type === 'page' ? item.url : index} item={item} />
+          ))}
+        </div>
+      )}
+      {otherItems.map((item, index) => (
         <PageTreeItem key={item.type === 'page' ? item.url : index} item={item} />
       ))}
     </>
