@@ -106,6 +106,10 @@ async function tcpPing(host: string, port: number, timeout = 2000) {
 
 const originalGlobalConnectionString = getEnvVariable("STACK_DATABASE_CONNECTION_STRING", "");
 let actualGlobalConnectionString: string = globalVar.__stack_actual_global_connection_string ??= await (async () => {
+  if (!originalGlobalConnectionString) {
+    return originalGlobalConnectionString;
+  }
+
   // If we are on a Mac with OrbStack installed, it's much much faster to use the OrbStack-provided domain instead of
   // the container's port forwarding.
   //
