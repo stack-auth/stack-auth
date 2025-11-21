@@ -232,7 +232,8 @@ it("can execute query and hit custom timeout", async ({ expect }) => {
       "status": 400,
       "body": {
         "code": "ANALYTICS_QUERY_TIMEOUT",
-        "error": "The query timed out. Please try again with a shorter query or increase the timeout.",
+        "details": { "timeout_ms": 100 },
+        "error": "The query timed out. Please try again with a shorter query or increase the timeout. Timeout was 100ms.",
       },
       "headers": Headers {
         "x-stack-known-error": "ANALYTICS_QUERY_TIMEOUT",
