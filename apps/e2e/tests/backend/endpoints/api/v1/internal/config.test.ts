@@ -1,3 +1,4 @@
+import { DEFAULT_EMAIL_THEME_ID } from "@stackframe/stack-shared/dist/helpers/emails";
 import { pick } from "@stackframe/stack-shared/dist/utils/objects";
 import { it } from "../../../../../helpers";
 import { Project, niceBackendFetch } from "../../../../backend-helpers";
@@ -530,4 +531,103 @@ it("adds, updates, and removes domains", async ({ expect }) => {
   });
   // Second domain should still be there
   expect(configWithUpdatedDomain.domains.trustedDomains['domain-2']).toBeDefined();
+});
+
+it("only keeps custom email templates when using a dedicated email server", async ({ expect }) => {
+  const { adminAccessToken } = await Project.createAndSwitch({
+    config: {
+      magic_link_enabled: true,
+    }
+  });
+
+  const customTemplate = {
+    displayName: "Custom Reset",
+    tsxSource: "export const EmailTemplate = () => null;",
+    themeId: DEFAULT_EMAIL_THEME_ID,
+  };
+  const customTemplateId = "11111111-1111-4111-8111-111111111111";
+
+  const configureServer = (server: Record<string, unknown>) => niceBackendFetch("/api/v1/internal/config/override", {
+    method: "PATCH",
+    accessType: "admin",
+    headers: {
+      'x-stack-admin-access-token': adminAccessToken,
+    },
+    body: {
+      config_override_string: JSON.stringify({
+        'emails.server': server,
+      }),
+    },
+  });
+  const upsertTemplate = (template: typeof customTemplate | null) => niceBackendFetch("/api/v1/internal/config/override", {
+    method: "PATCH",
+    accessType: "admin",
+    headers: {
+      'x-stack-admin-access-token': adminAccessToken,
+    },
+    body: {
+      config_override_string: JSON.stringify({
+        [`emails.templates.${customTemplateId}`]: template,
+      }),
+    },
+  });
+
+  const dedicatedServer = {
+    isShared: false,
+    provider: 'smtp',
+    host: 'smtp.example.com',
+    port: 587,
+    username: 'smtp-user',
+    password: 'smtp-pass',
+    senderName: 'Stack',
+    senderEmail: 'noreply@example.com',
+  };
+
+  const setDedicatedResponse = await configureServer(dedicatedServer);
+  expect(setDedicatedResponse.status).toBe(200);
+
+  const addTemplateResponse = await upsertTemplate(customTemplate);
+  expect(addTemplateResponse.status).toBe(200);
+
+  const initialConfigResponse = await niceBackendFetch("/api/v1/internal/config", {
+    method: "GET",
+    accessType: "admin",
+    headers: {
+      'x-stack-admin-access-token': adminAccessToken,
+    },
+  });
+  const initialConfig = JSON.parse(initialConfigResponse.body.config_string);
+  expect(initialConfig.emails.server.isShared).toBe(false);
+  expect(initialConfig.emails.templates[customTemplateId]).toEqual(customTemplate);
+
+  const setSharedResponse = await configureServer({
+    isShared: true,
+    provider: 'smtp',
+  });
+  expect(setSharedResponse.status).toBe(200);
+
+  const sharedConfigResponse = await niceBackendFetch("/api/v1/internal/config", {
+    method: "GET",
+    accessType: "admin",
+    headers: {
+      'x-stack-admin-access-token': adminAccessToken,
+    },
+  });
+  const sharedConfig = JSON.parse(sharedConfigResponse.body.config_string);
+  expect(sharedConfig.emails.server.isShared).toBe(true);
+  expect(sharedConfig.emails.templates[customTemplateId]).toBeUndefined();
+
+  const restoreDedicatedResponse = await configureServer(dedicatedServer);
+  expect(restoreDedicatedResponse.status).toBe(200);
+
+  const dedicatedConfigResponse = await niceBackendFetch("/api/v1/internal/config", {
+    method: "GET",
+    accessType: "admin",
+    headers: {
+      'x-stack-admin-access-token': adminAccessToken,
+    },
+  });
+  const dedicatedConfig = JSON.parse(dedicatedConfigResponse.body.config_string);
+  expect(dedicatedConfig.emails.server.isShared).toBe(false);
+  expect(dedicatedConfig.emails.templates[customTemplateId]).toEqual(customTemplate);
 });
