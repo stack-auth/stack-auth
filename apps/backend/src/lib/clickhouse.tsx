@@ -2,15 +2,17 @@ import { createClient, type ClickHouseClient } from "@clickhouse/client";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 
 const clickhouseUrl = getEnvVariable("CLICKHOUSE_URL");
-const clickhouseUser = getEnvVariable("CLICKHOUSE_USER");
-const clickhousePassword = getEnvVariable("CLICKHOUSE_PASSWORD");
+const clickhouseAdminUser = getEnvVariable("CLICKHOUSE_ADMIN_USER");
+const clickhouseExternalUser = getEnvVariable("CLICKHOUSE_EXTERNAL_USER");
+const clickhouseAdminPassword = getEnvVariable("CLICKHOUSE_ADMIN_PASSWORD");
+const clickhouseExternalPassword = getEnvVariable("CLICKHOUSE_EXTERNAL_PASSWORD");
 const clickhouseDatabase = getEnvVariable("CLICKHOUSE_DATABASE");
 
-export function createClickhouseClient(timeoutMs: number) {
+export function createClickhouseClient(authType: "admin" | "external", timeoutMs?: number) {
   return createClient({
     url: clickhouseUrl,
-    username: clickhouseUser,
-    password: clickhousePassword,
+    username: authType === "admin" ? clickhouseAdminUser : clickhouseExternalUser,
+    password: authType === "admin" ? clickhouseAdminPassword : clickhouseExternalPassword,
     database: clickhouseDatabase,
     request_timeout: timeoutMs,
   });
@@ -19,8 +21,14 @@ export function createClickhouseClient(timeoutMs: number) {
 
 export const getQueryTimingStats = async (client: ClickHouseClient, queryId: string) => {
   // Flush logs to ensure system.query_log has latest query result.
-  // Todo: research performance impact of this vs polling vs setting query_log_flush_interval_milliseconds
-  await client.exec({ query: "SYSTEM FLUSH LOGS" });
+  // Todo: for performance we should instead poll for this row to become available asynchronously after returning result. Flushed every 7.5 seconds by default
+  await client.exec({
+    query: "SYSTEM FLUSH LOGS",
+    auth: {
+      username: clickhouseAdminUser,
+      password: clickhouseAdminPassword,
+    },
+  });
   const profile = await client.query({
     query: `
     SELECT
@@ -32,6 +40,10 @@ export const getQueryTimingStats = async (client: ClickHouseClient, queryId: str
     LIMIT 1
   `,
     query_params: { query_id: queryId },
+    auth: {
+      username: clickhouseAdminUser,
+      password: clickhouseAdminPassword,
+    },
     format: "JSON",
   });
 

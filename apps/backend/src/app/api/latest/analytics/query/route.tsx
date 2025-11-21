@@ -34,13 +34,16 @@ export const POST = createSmartRouteHandler({
       }).defined(),
     }).defined(),
   }),
-  async handler({ body }) {
-    const client = createClickhouseClient(body.timeout_ms);
+  async handler({ body, auth }) {
+    const client = createClickhouseClient("external", body.timeout_ms);
     const queryId = randomUUID();
     const resultSet = await Result.fromPromise(client.query({
       query: body.query,
       query_id: queryId,
       query_params: body.params,
+      clickhouse_settings: {
+        SQL_tenancy_id: auth.tenancy.id,
+      },
       format: "JSONEachRow",
     }));
 

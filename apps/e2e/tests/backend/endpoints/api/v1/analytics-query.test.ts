@@ -155,7 +155,7 @@ it("can execute query returning multiple rows", async ({ expect }) => {
     method: "POST",
     accessType: "server",
     body: {
-      query: "SELECT number FROM system.numbers LIMIT 3",
+      query: "SELECT arrayJoin([0, 1, 2]) AS number",
     },
   });
 
@@ -236,6 +236,149 @@ it("can execute query and hit custom timeout", async ({ expect }) => {
       },
       "headers": Headers {
         "x-stack-known-error": "ANALYTICS_QUERY_TIMEOUT",
+        <some fields may have been hidden>,
+      },
+    }
+  `);
+});
+
+it("sets SQL_tenancy_id setting in query", async ({ expect }) => {
+  await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+  await Auth.Otp.signIn();
+
+  const response = await niceBackendFetch("/api/v1/analytics/query", {
+    method: "POST",
+    accessType: "server",
+    body: {
+      query: "SELECT getSetting('SQL_tenancy_id') AS tenancy_id;",
+    },
+  });
+
+  expect(response).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": {
+        "result": [{ "tenancy_id": "<stripped UUID>" }],
+        "stats": {
+          "cpu_time": <stripped field 'cpu_time'>,
+          "wall_clock_time": <stripped field 'wall_clock_time'>,
+        },
+      },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+});
+
+
+it("does not allow CREATE TABLE", async ({ expect }) => {
+  await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+  await Auth.Otp.signIn();
+
+  const response = await niceBackendFetch("/api/v1/analytics/query", {
+    method: "POST",
+    accessType: "server",
+    body: {
+      query: "CREATE TABLE IF NOT EXISTS test_table (id UUID) ENGINE = MergeTree() ORDER BY id;",
+    },
+  });
+
+  expect(response).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 400,
+      "body": {
+        "code": "ANALYTICS_QUERY_ERROR",
+        "details": { "error": "limited_user: Not enough privileges. To execute this query, it's necessary to have the grant CREATE TABLE ON analytics.test_table. " },
+        "error": "The query failed to execute: limited_user: Not enough privileges. To execute this query, it's necessary to have the grant CREATE TABLE ON analytics.test_table. ",
+      },
+      "headers": Headers {
+        "x-stack-known-error": "ANALYTICS_QUERY_ERROR",
+        <some fields may have been hidden>,
+      },
+    }
+  `);
+});
+
+
+it("does not allow querying system tables", async ({ expect }) => {
+  await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+  await Auth.Otp.signIn();
+
+  const response = await niceBackendFetch("/api/v1/analytics/query", {
+    method: "POST",
+    accessType: "server",
+    body: {
+      query: "SELECT number FROM system.numbers LIMIT 1",
+    },
+  });
+
+  expect(response).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 400,
+      "body": {
+        "code": "ANALYTICS_QUERY_ERROR",
+        "details": { "error": "limited_user: Not enough privileges. To execute this query, it's necessary to have the grant SELECT(number) ON system.numbers. " },
+        "error": "The query failed to execute: limited_user: Not enough privileges. To execute this query, it's necessary to have the grant SELECT(number) ON system.numbers. ",
+      },
+      "headers": Headers {
+        "x-stack-known-error": "ANALYTICS_QUERY_ERROR",
+        <some fields may have been hidden>,
+      },
+    }
+  `);
+});
+
+
+it("does not allow killing queries", async ({ expect }) => {
+  await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+  await Auth.Otp.signIn();
+
+  const response = await niceBackendFetch("/api/v1/analytics/query", {
+    method: "POST",
+    accessType: "server",
+    body: {
+      query: "KILL QUERY WHERE query_id = '00000000-0000-0000-0000-000000000000'",
+    },
+  });
+
+  expect(response).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 400,
+      "body": {
+        "code": "ANALYTICS_QUERY_ERROR",
+        "details": { "error": "limited_user: Not enough privileges. To execute this query, it's necessary to have the grant SELECT(query_id, user, query) ON system.processes. " },
+        "error": "The query failed to execute: limited_user: Not enough privileges. To execute this query, it's necessary to have the grant SELECT(query_id, user, query) ON system.processes. ",
+      },
+      "headers": Headers {
+        "x-stack-known-error": "ANALYTICS_QUERY_ERROR",
+        <some fields may have been hidden>,
+      },
+    }
+  `);
+});
+
+
+it("does not allow INSERT statements", async ({ expect }) => {
+  await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+  await Auth.Otp.signIn();
+
+  const response = await niceBackendFetch("/api/v1/analytics/query", {
+    method: "POST",
+    accessType: "server",
+    body: {
+      query: "INSERT INTO system.one (dummy) VALUES (0)",
+    },
+  });
+
+  expect(response).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 400,
+      "body": {
+        "code": "ANALYTICS_QUERY_ERROR",
+        "details": { "error": "limited_user: Not enough privileges. To execute this query, it's necessary to have the grant INSERT(dummy) ON system.one. " },
+        "error": "The query failed to execute: limited_user: Not enough privileges. To execute this query, it's necessary to have the grant INSERT(dummy) ON system.one. ",
+      },
+      "headers": Headers {
+        "x-stack-known-error": "ANALYTICS_QUERY_ERROR",
         <some fields may have been hidden>,
       },
     }
