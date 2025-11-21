@@ -1,8 +1,7 @@
 import { ProductionModeError } from "@stackframe/stack-shared/dist/helpers/production-mode";
 import { AdminUserProjectsCrud, ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
 
-import { CompleteConfig, EnvironmentConfigOverrideOverride } from "@stackframe/stack-shared/dist/config/schema";
-import { CurrentUser } from "..";
+import { CompleteConfig, EnvironmentConfigNormalizedOverride, EnvironmentConfigOverrideOverride } from "@stackframe/stack-shared/dist/config/schema";
 import { StackAdminApp } from "../apps/interfaces/admin-app";
 import { AdminProjectConfig, AdminProjectConfigUpdateOptions, ProjectConfig } from "../project-configs";
 
@@ -33,7 +32,14 @@ export type AdminProject = {
   getConfig(this: AdminProject): Promise<CompleteConfig>,
   // NEXT_LINE_PLATFORM react-like
   useConfig(this: AdminProject): CompleteConfig,
-  updateConfig(this: AdminProject, config: EnvironmentConfigOverrideOverride): Promise<void>,
+
+  // We have some strict types here in order to prevent accidental overwriting of a top-level property of a config object
+  updateConfig(
+    this: AdminProject,
+    config: EnvironmentConfigOverrideOverride & {
+      [K in keyof EnvironmentConfigNormalizedOverride]: "............................ERROR MESSAGE AFTER THIS LINE............................ You have attempted to update a config object with a top-level property in it (for example `emails`). This is very likely a mistake, and you probably meant to update a nested property instead (for example `emails.server`). If you really meant to update a top-level property (resetting all nested properties to their defaults), cast as any (the code will work at runtime) ............................ERROR MESSAGE BEFORE THIS LINE............................";
+    }
+  ): Promise<void>,
 
   getProductionModeErrors(this: AdminProject): Promise<ProductionModeError[]>,
   // NEXT_LINE_PLATFORM react-like
