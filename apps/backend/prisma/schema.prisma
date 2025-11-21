@@ -685,7 +685,7 @@ enum EmailOutboxSimpleStatus {
 
 enum EmailOutboxSkippedReason {
   USER_UNSUBSCRIBED
-  USER_DELETED_ACCOUNT
+  USER_ACCOUNT_DELETED
   USER_HAS_NO_PRIMARY_EMAIL
 }
 

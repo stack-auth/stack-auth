@@ -1,7 +1,7 @@
 import { calculateCapacityRate, getEmailDeliveryStatsForTenancy } from "@/lib/email-delivery-stats";
 import { getEmailThemeForThemeId, renderEmailsForTenancyBatched } from "@/lib/email-rendering";
 import { EmailOutboxRecipient, getEmailConfig, } from "@/lib/emails";
-import { generateUnsubscribeLink, getNotificationCategoryById, hasNotificationEnabled } from "@/lib/notification-categories";
+import { generateUnsubscribeLink, getNotificationCategoryById, hasNotificationEnabled, listNotificationCategories } from "@/lib/notification-categories";
 import { getTenancy, Tenancy } from "@/lib/tenancies";
 import { getPrismaClientForTenancy, globalPrismaClient, PrismaClientTransaction } from "@/prisma-client";
 import { withTraceSpan } from "@/utils/telemetry";
@@ -233,6 +233,7 @@ async function renderTenancyEmails(workerId: string, tenancyId: string, group: E
   for (let index = 0; index < group.length; index++) {
     const row = group[index];
     const output = outputs[index];
+    const notificationCategory = listNotificationCategories().find((category) => category.name === output.notificationCategory);
     await globalPrismaClient.emailOutbox.updateMany({
       where: {
         tenancyId,
@@ -243,8 +244,8 @@ async function renderTenancyEmails(workerId: string, tenancyId: string, group: E
         renderedHtml: output.html,
         renderedText: output.text,
         renderedSubject: output.subject ?? "",
-        renderedNotificationCategoryId: output.notificationCategory,
-        renderedIsTransactional: output.notificationCategory === "transactional",  // TODO this should use smarter logic for notification category handling
+        renderedNotificationCategoryId: notificationCategory?.id,
+        renderedIsTransactional: notificationCategory?.name === "Transactional",  // TODO this should use smarter logic for notification category handling
         renderErrorExternalMessage: null,
         renderErrorExternalDetails: Prisma.DbNull,
         renderErrorInternalMessage: null,
@@ -445,6 +446,7 @@ async function processSingleEmail(context: TenancyProcessingContext, row: EmailO
       },
       data: {
         finishedSendingAt: new Date(),
+        canHaveDeliveryInfo: false,
         sendServerErrorExternalMessage: "An error occurred while sending the email. If you are the admin of this project, please check the email configuration and try again.",
         sendServerErrorExternalDetails: {},
         sendServerErrorInternalMessage: errorToNiceString(error),
@@ -475,7 +477,7 @@ async function resolveRecipientEmails(
     },
   });
   if (!user) {
-    return { status: "skip", reason: EmailOutboxSkippedReason.USER_DELETED_ACCOUNT };
+    return { status: "skip", reason: EmailOutboxSkippedReason.USER_ACCOUNT_DELETED };
   }
 
   const primaryEmail = getPrimaryEmail(user);
