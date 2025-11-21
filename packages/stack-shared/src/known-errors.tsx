@@ -1645,8 +1645,9 @@ const AnalyticsQueryError = createKnownErrorConstructor(
   (error: string) => [
     400,
     `The query failed to execute: ${error}`,
+    { error },
   ] as const,
-  (json: any) => [json.error] as const,
+  (json) => [json.error] as const,
 );
 
 export type KnownErrors = {
