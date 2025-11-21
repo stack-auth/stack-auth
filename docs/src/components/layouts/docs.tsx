@@ -341,7 +341,7 @@ function renderSidebarContent(tree: PageTree.Root, pathname: string) {
   return (
     <>
       {specialItems.length > 0 && (
-        <div className="mb-4 rounded-xl border border-fd-border/20 bg-fd-muted/10 p-1">
+        <div className="mb-4 rounded-xl border border-fd-border/80 bg-fd-muted/10 p-1">
           {specialItems.map((item, index) => (
             <PageTreeItem key={item.type === 'page' ? item.url : index} item={item} />
           ))}
