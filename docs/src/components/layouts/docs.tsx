@@ -139,7 +139,7 @@ function DocsSidebarLink({
   return (
     <Link
       href={href}
-      className={`flex items-center gap-2 px-2 py-1.5 rounded-md text-xs transition-colors ${
+      className={`flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs transition-colors ${
         isActive
           ? 'bg-fd-primary/10 text-fd-primary font-medium'
           : 'text-fd-muted-foreground hover:text-fd-foreground hover:bg-fd-muted/50'
@@ -228,7 +228,7 @@ function ClickableCollapsibleSection({
       <div className="group">
         <Link
           href={href}
-          className={`flex items-center justify-between w-full px-2 py-1.5 rounded-md text-xs transition-colors ${
+          className={`flex items-center justify-between w-full px-2 py-1.5 rounded-lg text-xs transition-colors ${
             isActive
               ? 'bg-fd-primary/10 text-fd-primary font-medium'
               : 'text-fd-muted-foreground hover:text-fd-foreground hover:bg-fd-muted/50'
