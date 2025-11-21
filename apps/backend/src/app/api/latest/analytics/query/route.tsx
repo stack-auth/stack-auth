@@ -50,7 +50,7 @@ export const POST = createSmartRouteHandler({
     if (resultSet.status === "error") {
       const message = resultSet.error instanceof Error ? resultSet.error.message : null;
       if (message === "Timeout error.") {
-        throw new KnownErrors.AnalyticsQueryTimeout();
+        throw new KnownErrors.AnalyticsQueryTimeout(body.timeout_ms);
       }
       throw new KnownErrors.AnalyticsQueryError(message ?? "Unknown error");
     }

@@ -12,7 +12,7 @@ async function main() {
     "REVOKE CREATE, ALTER, DROP, INSERT ON *.* FROM limited_user;"
   ];
   for (const query of queries) {
-    console.log(query);
+    console.log(query.replace(clickhouseExternalPassword, "********"));
     await client.exec({ query });
   }
   console.log("Done");

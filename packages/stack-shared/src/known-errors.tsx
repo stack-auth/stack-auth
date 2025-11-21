@@ -1632,11 +1632,12 @@ const StripeAccountInfoNotFound = createKnownErrorConstructor(
 const AnalyticsQueryTimeout = createKnownErrorConstructor(
   KnownError,
   "ANALYTICS_QUERY_TIMEOUT",
-  () => [
+  (timeoutMs: number) => [
     400,
-    "The query timed out. Please try again with a shorter query or increase the timeout.",
+    `The query timed out. Please try again with a shorter query or increase the timeout. Timeout was ${timeoutMs}ms.`,
+    { timeout_ms: timeoutMs },
   ] as const,
-  () => [] as const,
+  (json) => [json.timeout_ms] as const,
 );
 
 const AnalyticsQueryError = createKnownErrorConstructor(
