@@ -28,8 +28,11 @@ model Project {
   description      String  @default("")
   isProductionMode Boolean
   ownerTeamId      String? @db.Uuid
-  logoUrl          String?
-  fullLogoUrl      String?
+
+  logoUrl             String?
+  logoFullUrl         String?
+  logoDarkModeUrl     String?
+  logoFullDarkModeUrl String?
 
   projectConfigOverride Json?
   stripeAccountId       String?

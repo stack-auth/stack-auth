@@ -6,7 +6,6 @@ import { UsersCrud } from '@stackframe/stack-shared/dist/interface/crud/users';
 import { getEnvVariable } from '@stackframe/stack-shared/dist/utils/env';
 import { StackAssertionError } from '@stackframe/stack-shared/dist/utils/errors';
 import { runEmailQueueStep } from './email-queue-step';
-import { getEmailThemeForThemeId } from './email-rendering';
 import { LowLevelEmailConfig, isSecureEmailPort } from './emails-low-level';
 import { Tenancy } from './tenancies';
 
@@ -78,7 +77,6 @@ export async function sendEmailFromDefaultTemplate(options: {
   version?: 1 | 2,
 }) {
   const template = getDefaultEmailTemplate(options.tenancy, options.templateType);
-  const themeSource = getEmailThemeForThemeId(options.tenancy, template.themeId);
 
   await sendEmailToMany({
     tenancy: options.tenancy,

@@ -54,7 +54,15 @@ export async function renderEmailWithTemplate(
     user?: { displayName: string | null },
     project?: { displayName: string },
     variables?: Record<string, any>,
-    unsubscribeLink?: string,
+    themeProps?: {
+      unsubscribeLink?: string,
+      projectLogos: {
+        logoUrl?: string,
+        logoFullUrl?: string,
+        logoDarkModeUrl?: string,
+        logoFullDarkModeUrl?: string,
+      },
+    },
     previewMode?: boolean,
   },
 ): Promise<Result<{ html: string, text: string, subject?: string, notificationCategory?: string }, string>> {
@@ -91,9 +99,12 @@ export async function renderEmailWithTemplate(
         if (variables instanceof type.errors) {
           throw new Error(variables.summary)
         }
-        const unsubscribeLink = ${previewMode ? "EmailTheme.PreviewProps?.unsubscribeLink" : JSON.stringify(options.unsubscribeLink)};
+        const themeProps = {
+          ...${JSON.stringify(options.themeProps || {})},
+          ...${previewMode ? "EmailTheme.PreviewProps" : "{}"},
+        }
         const EmailTemplateWithProps  = <EmailTemplate variables={variables} user={${JSON.stringify(user)}} project={${JSON.stringify(project)}} />;
-        const Email = <EmailTheme unsubscribeLink={unsubscribeLink}>
+        const Email = <EmailTheme {...themeProps}>
           {${previewMode ? "EmailTheme.PreviewProps?.children ?? " : ""} EmailTemplateWithProps}
         </EmailTheme>;
         return {
@@ -150,6 +161,14 @@ export async function renderEmailsWithTemplateBatched(
     project: { displayName: string },
     variables?: Record<string, any>,
     unsubscribeLink?: string,
+    themeProps?: {
+      projectLogos: {
+        logoUrl?: string,
+        logoFullUrl?: string,
+        logoDarkModeUrl?: string,
+        logoFullDarkModeUrl?: string,
+      },
+    },
   }>,
 ): Promise<Result<Array<{ html: string, text: string, subject?: string, notificationCategory?: string }>, string>> {
   const apiKey = getEnvVariable("STACK_FREESTYLE_API_KEY");
@@ -180,8 +199,12 @@ export async function renderEmailsWithTemplateBatched(
           if (variables instanceof type.errors) {
             throw new Error(variables.summary)
           }
+          const themeProps = {
+            ...{ projectLogos: input.themeProps?.projectLogos ?? {} },
+            unsubscribeLink: input.unsubscribeLink,
+          }
           const EmailTemplateWithProps  = <EmailTemplate variables={variables} user={input.user} project={input.project} />;
-          const Email = <EmailTheme unsubscribeLink={input.unsubscribeLink}>
+          const Email = <EmailTheme {...themeProps}>
             { EmailTemplateWithProps }
           </EmailTheme>;
           return {
@@ -393,9 +416,61 @@ export function findComponentValue(element, targetStackComponent) {
   return value;
 }`;
 
+// issues with using jsx in external packages, using React.createElement instead
 const stackframeEmailsPackage = deindent`
+  import React from 'react';
+  import { Img } from '@react-email/components';
   export const Subject = (props) => null;
   Subject.__stackComponent = "Subject";
   export const NotificationCategory = (props) => null;
   NotificationCategory.__stackComponent = "NotificationCategory";
+
+  export function Logo(props) {
+    return React.createElement(
+      "div",
+      { className: "flex gap-2 items-center" },
+      React.createElement(Img, {
+        src: props.logoUrl,
+        alt: "Logo",
+        className: "h-8",
+      }),
+    );
+  }
+
+  export function FullLogo(props) {
+    return React.createElement(Img, {
+      src: props.logoFullUrl,
+      alt: "Full Logo",
+      className: "h-16",
+    });
+  }
+
+  export function ProjectLogo(props) {
+    const { mode = "light" } = props;
+    const {
+      logoUrl,
+      logoFullUrl,
+      logoDarkModeUrl,
+      logoFullDarkModeUrl,
+    } = props.data ?? {};
+
+    if (mode === "dark" && logoFullDarkModeUrl) {
+      return React.createElement(FullLogo, { logoFullUrl: logoFullDarkModeUrl });
+    }
+    if (mode === "dark" && logoDarkModeUrl) {
+      return React.createElement(Logo, {
+        logoUrl: logoDarkModeUrl,
+      });
+    }
+    if (mode === "light" && logoFullUrl) {
+      return React.createElement(FullLogo, { logoFullUrl });
+    }
+    if (mode === "light" && logoUrl) {
+      return React.createElement(Logo, {
+        logoUrl,
+      });
+    }
+
+    return null;
+  }
 `;
