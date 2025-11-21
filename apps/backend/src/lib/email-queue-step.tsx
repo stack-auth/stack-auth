@@ -1,7 +1,7 @@
 import { calculateCapacityRate, getEmailDeliveryStatsForTenancy } from "@/lib/email-delivery-stats";
 import { getEmailThemeForThemeId, renderEmailsForTenancyBatched } from "@/lib/email-rendering";
 import { EmailOutboxRecipient, getEmailConfig, } from "@/lib/emails";
-import { generateUnsubscribeLink, getNotificationCategoryById } from "@/lib/notification-categories";
+import { generateUnsubscribeLink, getNotificationCategoryById, hasNotificationEnabled } from "@/lib/notification-categories";
 import { getTenancy, Tenancy } from "@/lib/tenancies";
 import { getPrismaClientForTenancy, globalPrismaClient, PrismaClientTransaction } from "@/prisma-client";
 import { withTraceSpan } from "@/utils/telemetry";
@@ -34,12 +34,18 @@ export const runEmailQueueStep = withTraceSpan("runEmailQueueStep", async () => 
 
 
   const pendingRender = await withTraceSpan("runEmailQueueStep-claimEmailsForRendering", claimEmailsForRendering)(workerId);
+  if (pendingRender.length > 0) {
+    console.log(`Rendering ${pendingRender.length} emails`);
+  }
   await withTraceSpan("runEmailQueueStep-renderEmails", renderEmails)(workerId, pendingRender);
   await withTraceSpan("runEmailQueueStep-retryEmailsStuckInRendering", retryEmailsStuckInRendering)();
 
   await withTraceSpan("runEmailQueueStep-queueReadyEmails", queueReadyEmails)();
 
   const sendPlan = await withTraceSpan("runEmailQueueStep-prepareSendPlan", prepareSendPlan)(deltaSeconds);
+  if (sendPlan.length > 0) {
+    console.log(`Sending emails from ${sendPlan.length} tenancies`);
+  }
   await withTraceSpan("runEmailQueueStep-processSendPlan", processSendPlan)(sendPlan);
 });
 
@@ -329,8 +335,6 @@ type TenancyProcessingContext = {
   tenancy: Tenancy,
   prisma: Awaited<ReturnType<typeof getPrismaClientForTenancy>>,
   emailConfig: Awaited<ReturnType<typeof getEmailConfig>>,
-  userMap: Map<string, ProjectUserWithContacts>,
-  notificationPreferences: Map<string, Map<string, boolean>>,
 };
 
 async function processTenancyBatch(batch: TenancySendBatch): Promise<void> {
@@ -347,24 +351,10 @@ async function processTenancyBatch(batch: TenancySendBatch): Promise<void> {
     }
   }
 
-  const users = userIds.size > 0 ? await prisma.projectUser.findMany({
-    where: {
-      tenancyId: tenancy.id,
-      projectUserId: { in: Array.from(userIds) },
-    },
-    include: {
-      contactChannels: true,
-    },
-  }) : [];
-
-  const userMap = new Map(users.map(user => [user.projectUserId, user]));
-
   const context: TenancyProcessingContext = {
     tenancy,
     prisma,
     emailConfig,
-    userMap,
-    notificationPreferences: new Map(),
   };
 
   const promises = batch.rows.map((row) => processSingleEmail(context, row));
@@ -470,13 +460,20 @@ async function resolveRecipientEmails(
   recipient: ReturnType<typeof deserializeRecipient>,
 ): Promise<ResolvedRecipient> {
   if (recipient.type === "custom-emails") {
-    if (recipient.emails.length === 0) {
-      return { status: "skip", reason: EmailOutboxSkippedReason.USER_DELETED_ACCOUNT };
-    }
     return { status: "ok", emails: recipient.emails };
   }
 
-  const user = context.userMap.get(recipient.userId);
+  const user = await context.prisma.projectUser.findUnique({
+    where: {
+      tenancyId_projectUserId: {
+        tenancyId: context.tenancy.id,
+        projectUserId: recipient.userId,
+      },
+    },
+    include: {
+      contactChannels: true,
+    },
+  });
   if (!user) {
     return { status: "skip", reason: EmailOutboxSkippedReason.USER_DELETED_ACCOUNT };
   }
@@ -486,11 +483,10 @@ async function resolveRecipientEmails(
   if (recipient.type === "user-custom-emails") {
     emails = recipient.emails.length > 0 ? recipient.emails : primaryEmail ? [primaryEmail] : [];
   } else {
-    emails = primaryEmail ? [primaryEmail] : [];
-  }
-
-  if (emails.length === 0) {
-    return { status: "skip", reason: EmailOutboxSkippedReason.USER_DELETED_ACCOUNT };
+    if (!primaryEmail) {
+      return { status: "skip", reason: EmailOutboxSkippedReason.USER_HAS_NO_PRIMARY_EMAIL };
+    }
+    emails = [primaryEmail];
   }
 
   if (row.renderedNotificationCategoryId) {
@@ -510,34 +506,14 @@ async function shouldSendEmail(
 ): Promise<boolean> {
   const category = getNotificationCategoryById(categoryId);
   if (!category) {
-    return true;
+    throw new StackAssertionError("Invalid notification category id, we should have validated this before calling shouldSendEmail", { categoryId, userId });
   }
   if (!category.can_disable) {
     return true;
   }
 
-  let cache = context.notificationPreferences.get(categoryId);
-  if (!cache) {
-    const userIds = Array.from(context.userMap.keys());
-    if (userIds.length === 0) {
-      cache = new Map();
-    } else {
-      const preferences = await context.prisma.userNotificationPreference.findMany({
-        where: {
-          tenancyId: context.tenancy.id,
-          notificationCategoryId: categoryId,
-          projectUserId: { in: userIds },
-        },
-      });
-      cache = new Map(preferences.map(pref => [pref.projectUserId, pref.enabled]));
-    }
-    context.notificationPreferences.set(categoryId, cache);
-  }
-
-  if (!cache.has(userId)) {
-    return category.default_enabled;
-  }
-  return cache.get(userId) ?? category.default_enabled;
+  const enabled = await hasNotificationEnabled(context.tenancy, userId, categoryId);
+  return enabled;
 }
 
 async function markSkipped(row: EmailOutbox, reason: EmailOutboxSkippedReason): Promise<void> {

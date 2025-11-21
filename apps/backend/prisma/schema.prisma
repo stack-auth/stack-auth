@@ -10,14 +10,12 @@ datasource db {
 }
 
 model SchemaMigration {
-  id             String   @id @default(dbgenerated("gen_random_uuid()"))
-  finishedAt     DateTime
-  migrationName  String   @unique
+  id            String   @id @default(dbgenerated("gen_random_uuid()"))
+  finishedAt    DateTime
+  migrationName String   @unique
 
   @@ignore
 }
-
-
 
 model Project {
   // Note that the project with ID `internal` is handled as a special case. All other project IDs are UUIDs.
@@ -671,6 +669,7 @@ enum EmailOutboxStatus {
   SENDING
   SERVER_ERROR
   SENT
+  SKIPPED
   DELIVERY_DELAYED
   BOUNCED
   OPENED
@@ -687,6 +686,7 @@ enum EmailOutboxSimpleStatus {
 enum EmailOutboxSkippedReason {
   USER_UNSUBSCRIBED
   USER_DELETED_ACCOUNT
+  USER_HAS_NO_PRIMARY_EMAIL
 }
 
 enum EmailOutboxCreatedWith {
@@ -755,7 +755,6 @@ model EmailOutbox {
   //  priority = (isHighPriority ? 100 : 0) + (renderedIsTransactional ? 10 : 0)
   priority Int @default(dbgenerated("<manually set>"))
 
-  // This column is auto-generated as defined in the SQL migration. It can not be set manually.
   isPaused Boolean @default(false)
 
   // either both or neither of [renderedByWorkerId, startedRenderingAt] must be set
@@ -1004,10 +1003,10 @@ model CacheEntry {
 }
 
 model SubscriptionInvoice {
-  id String @default(uuid()) @db.Uuid
-  tenancyId String @db.Uuid
-  stripeSubscriptionId String
-  stripeInvoiceId String
+  id                            String  @default(uuid()) @db.Uuid
+  tenancyId                     String  @db.Uuid
+  stripeSubscriptionId          String
+  stripeInvoiceId               String
   isSubscriptionCreationInvoice Boolean
 
   createdAt DateTime @default(now())

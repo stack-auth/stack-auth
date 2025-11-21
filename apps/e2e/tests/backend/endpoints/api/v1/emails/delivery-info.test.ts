@@ -1,6 +1,7 @@
 import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { describe } from "vitest";
 import { it } from "../../../../../helpers";
+import { withPortPrefix } from "../../../../../helpers/ports";
 import { Auth, niceBackendFetch, Project, User } from "../../../../backend-helpers";
 
 describe("with valid credentials", () => {
@@ -52,22 +53,40 @@ describe("with valid credentials", () => {
     await Auth.Otp.signIn();
     await Project.createAndSwitch({
       display_name: "Test Sent Stats Project",
+      config: {
+        email_config: {
+          type: "standard",
+          host: "localhost",
+          port: Number(withPortPrefix("29")),
+          username: "test",
+          password: "test",
+          sender_name: "Test Project",
+          sender_email: "test@example.com",
+        },
+      },
     }, true);
-    const user = await User.create();
+    const { userId } = await User.create();
 
     // Send an email
-    await niceBackendFetch("/api/v1/emails/send-email", {
+    const sendEmailResponse = await niceBackendFetch("/api/v1/emails/send-email", {
       method: "POST",
       accessType: "server",
       body: {
-        user_ids: [user.userId],
+        user_ids: [userId],
         html: "Test email",
         subject: "Test",
       },
     });
+    expect(sendEmailResponse).toMatchInlineSnapshot(`
+      NiceResponse {
+        "status": 200,
+        "body": { "results": [{ "user_id": "<stripped UUID>" }] },
+        "headers": Headers { <some fields may have been hidden> },
+      }
+    `);
 
     // wait for the email to be processed
-    await wait(10_000);
+    await wait(5_000);
 
     const response = await niceBackendFetch("/api/v1/emails/delivery-info", {
       method: "GET",

@@ -118,7 +118,6 @@ export const POST = createSmartRouteHandler({
     })).map(user => user.projectUserId) : body.user_ids ?? throwErr("user_ids must be provided if all_users is false");
 
 
-    console.log("Sending email to", requestedUserIds.map(userId => ({ type: "user-primary-email", userId })));
     await sendEmailToMany({
       createdWith: createdWith,
       tenancy: auth.tenancy,

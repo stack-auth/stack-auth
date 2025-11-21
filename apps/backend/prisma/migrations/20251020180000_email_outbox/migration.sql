@@ -9,6 +9,7 @@ CREATE TYPE "EmailOutboxStatus" AS ENUM (
     'SENDING',
     'SERVER_ERROR',
     'SENT',
+    'SKIPPED',
     'DELIVERY_DELAYED',
     'BOUNCED',
     'OPENED',
@@ -20,7 +21,7 @@ CREATE TYPE "EmailOutboxStatus" AS ENUM (
 CREATE TYPE "EmailOutboxSimpleStatus" AS ENUM ('IN_PROGRESS', 'ERROR', 'OK');
 
 -- CreateEnum
-CREATE TYPE "EmailOutboxSkippedReason" AS ENUM ('USER_UNSUBSCRIBED', 'USER_DELETED_ACCOUNT');
+CREATE TYPE "EmailOutboxSkippedReason" AS ENUM ('USER_UNSUBSCRIBED', 'USER_DELETED_ACCOUNT', 'USER_HAS_NO_PRIMARY_EMAIL');
 
 -- CreateEnum
 CREATE TYPE "EmailOutboxCreatedWith" AS ENUM ('DRAFT', 'PROGRAMMATIC_CALL');
@@ -44,30 +45,38 @@ CREATE TABLE "EmailOutbox" (
     "shouldSkipDeliverabilityCheck" BOOLEAN NOT NULL,
     "status" "EmailOutboxStatus" NOT NULL GENERATED ALWAYS AS (
         CASE
+            -- paused
             WHEN "isPaused" THEN 'PAUSED'::"EmailOutboxStatus"
+
+            -- starting, not rendering yet
+            WHEN "startedRenderingAt" IS NULL THEN 'PREPARING'::"EmailOutboxStatus"
+            
+            -- rendering
+            WHEN "finishedRenderingAt" IS NULL THEN 'RENDERING'::"EmailOutboxStatus"
+
+            -- rendering error
+            WHEN "renderedHtml" IS NULL THEN 'RENDER_ERROR'::"EmailOutboxStatus"  -- EmailOutbox_render_payload_consistency_check ensures that renderedHtml being null implies that the error fields are set 
+
+            -- queued or scheduled
+            WHEN "startedSendingAt" IS NULL AND "isQueued" IS FALSE THEN 'SCHEDULED'::"EmailOutboxStatus"
+            WHEN "startedSendingAt" IS NULL THEN 'QUEUED'::"EmailOutboxStatus"
+
+            -- sending
+            WHEN "finishedSendingAt" IS NULL THEN 'SENDING'::"EmailOutboxStatus"
+            WHEN "canHaveDeliveryInfo" IS TRUE AND "deliveredAt" IS NULL THEN 'SENDING'::"EmailOutboxStatus"
+
+            -- failed to send
+            WHEN "sendServerErrorExternalMessage" IS NOT NULL THEN 'SERVER_ERROR'::"EmailOutboxStatus"
+            WHEN "skippedReason" IS NOT NULL THEN 'SKIPPED'::"EmailOutboxStatus"
+
+            -- delivered successfully
+            WHEN "canHaveDeliveryInfo" IS FALSE THEN 'SENT'::"EmailOutboxStatus"
             WHEN "markedAsSpamAt" IS NOT NULL THEN 'MARKED_AS_SPAM'::"EmailOutboxStatus"
             WHEN "clickedAt" IS NOT NULL THEN 'CLICKED'::"EmailOutboxStatus"
             WHEN "openedAt" IS NOT NULL THEN 'OPENED'::"EmailOutboxStatus"
-            WHEN "canHaveDeliveryInfo" IS TRUE AND "bouncedAt" IS NOT NULL THEN 'BOUNCED'::"EmailOutboxStatus"
-            WHEN "canHaveDeliveryInfo" IS TRUE AND "deliveryDelayedAt" IS NOT NULL THEN 'DELIVERY_DELAYED'::"EmailOutboxStatus"
-            WHEN "finishedSendingAt" IS NOT NULL AND (
-                "sendServerErrorExternalMessage" IS NOT NULL
-                OR "sendServerErrorExternalDetails" IS NOT NULL
-                OR "sendServerErrorInternalMessage" IS NOT NULL
-                OR "sendServerErrorInternalDetails" IS NOT NULL
-            ) THEN 'SERVER_ERROR'::"EmailOutboxStatus"
-            WHEN "finishedSendingAt" IS NOT NULL THEN 'SENT'::"EmailOutboxStatus"
-            WHEN "startedSendingAt" IS NOT NULL THEN 'SENDING'::"EmailOutboxStatus"
-            WHEN "finishedRenderingAt" IS NOT NULL AND (
-                "renderErrorExternalMessage" IS NOT NULL
-                OR "renderErrorExternalDetails" IS NOT NULL
-                OR "renderErrorInternalMessage" IS NOT NULL
-                OR "renderErrorInternalDetails" IS NOT NULL
-            ) THEN 'RENDER_ERROR'::"EmailOutboxStatus"
-            WHEN "finishedRenderingAt" IS NOT NULL AND "renderedHtml" IS NOT NULL AND "isQueued" THEN 'QUEUED'::"EmailOutboxStatus"
-            WHEN "finishedRenderingAt" IS NOT NULL AND "renderedHtml" IS NOT NULL THEN 'SCHEDULED'::"EmailOutboxStatus"
-            WHEN "startedRenderingAt" IS NOT NULL THEN 'RENDERING'::"EmailOutboxStatus"
-            ELSE 'PREPARING'::"EmailOutboxStatus"
+            WHEN "bouncedAt" IS NOT NULL THEN 'BOUNCED'::"EmailOutboxStatus"
+            WHEN "deliveryDelayedAt" IS NOT NULL THEN 'DELIVERY_DELAYED'::"EmailOutboxStatus"
+            ELSE 'SENT'::"EmailOutboxStatus"
         END
     ) STORED,
     "simpleStatus" "EmailOutboxSimpleStatus" NOT NULL GENERATED ALWAYS AS (
