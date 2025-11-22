@@ -173,7 +173,9 @@ const querySchema = yup.object({
 
 const columnHelper = createColumnHelper<ExtendedServerUser>();
 
-export function UserTable() {
+export function UserTable(props?: {
+  onFilterChange?: (filters: { search?: string, includeAnonymous: boolean }) => void,
+}) {
   const { query, setQuery } = useUserTableQueryState();
   const [searchInput, setSearchInput] = useState(query.search ?? "");
   const cursorPaginationCache = useCursorPaginationCache();
@@ -208,6 +210,15 @@ export function UserTable() {
       setQuery((prev) => ({ ...prev, page: 1, cursor: undefined }));
     }
   }, [query.page, query.cursor, setQuery]);
+
+  const onFilterChange = props?.onFilterChange;
+
+  useEffect(() => {
+    onFilterChange?.({
+      search: query.search,
+      includeAnonymous: query.includeAnonymous,
+    });
+  }, [query.search, query.includeAnonymous, onFilterChange]);
 
   return (
     <section className="space-y-2">

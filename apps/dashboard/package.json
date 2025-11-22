@@ -42,6 +42,7 @@
     "canvas-confetti": "^1.9.2",
     "clsx": "^2.0.0",
     "dotenv-cli": "^7.3.0",
+    "export-to-csv": "^1.4.0",
     "geist": "^1",
     "jose": "^5.2.2",
     "lodash": "^4.17.21",
