@@ -18,10 +18,13 @@ import {
   BreadcrumbItem,
   BreadcrumbList,
   BreadcrumbPage,
-  BreadcrumbSeparator, Button, Sheet,
+  BreadcrumbSeparator,
+  Button,
+  Sheet,
   SheetContent,
   SheetTitle,
-  SheetTrigger
+  SheetTrigger,
+  Typography,
 } from "@stackframe/stack-ui";
 import {
   Blocks,
@@ -35,7 +38,7 @@ import {
 } from "lucide-react";
 import { useTheme } from "next-themes";
 import { usePathname } from "next/navigation";
-import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAdminApp, useProjectId } from "./use-admin-app";
 
 type BreadcrumbItem = { item: React.ReactNode, href: string };
@@ -217,53 +220,124 @@ function NavItem({
   const pathname = usePathname();
   const isSection = 'items' in item;
   const subItemsRef = useRef<HTMLDivElement>(null);
+  const currentUrl = useMemo(() => {
+    try {
+      return new URL(pathname, DUMMY_ORIGIN);
+    } catch {
+      return null;
+    }
+  }, [pathname]);
 
   // If this is a collapsible section
   const IconComponent = item.icon;
-  const ButtonComponent: any = isSection ? "button" : Link;
+  const isDirectItemActive = "type" in item && item.regex?.test(pathname);
 
-  const isActive = "type" in item && item.regex?.test(pathname);
+  const matchesCurrentUrl = (sectionItem: AppSection["items"][number]) => {
+    if (!currentUrl) {
+      return false;
+    }
+    try {
+      return sectionItem.match(currentUrl);
+    } catch {
+      return false;
+    }
+  };
+
+  const isSectionActive = isSection
+    ? item.items.some((sectionItem) => matchesCurrentUrl(sectionItem))
+    : false;
+
+  const isHighlighted = isDirectItemActive || isSectionActive;
+
+  const inactiveClasses = cn(
+    "border-transparent hover:border-blue-500/20 hover:bg-blue-500/5",
+    "text-foreground"
+  );
+
+  const buttonClasses = cn(
+    "group flex w-full items-center justify-between rounded-lg border px-3 py-2 text-left text-sm font-medium transition-all",
+    isHighlighted
+      ? "border-blue-500/40 bg-blue-500/10 text-foreground shadow-sm dark:text-foreground"
+      : inactiveClasses,
+    isSection ? "cursor-default" : "cursor-pointer",
+    isSection && isExpanded && !isHighlighted && "border-border/60 bg-muted/20"
+  );
+
+  const iconClasses = cn(
+    "h-4 w-4 flex-shrink-0 transition-colors",
+    isHighlighted
+      ? "text-blue-600 dark:text-blue-400"
+      : "text-muted-foreground group-hover:text-foreground"
+  );
+
+  const caretClasses = cn(
+    "h-4 w-4 flex-shrink-0 transition-colors transition-transform",
+    isHighlighted
+      ? "text-blue-600 dark:text-blue-400"
+      : "text-muted-foreground group-hover:text-foreground",
+    isSection && isExpanded && "rotate-180"
+  );
 
   return (
-    <div className={cn(
-      "transition-[margin] duration-200",
-      isExpanded && "my-1",
-    )}>
-      <ButtonComponent
-        {...(isSection ? { onClick: onToggle } : { href })}
-        className={cn(
-          "flex items-center w-full py-1.5 px-4 text-left hover:bg-foreground/5",
-          isActive && "bg-foreground/5",
-          isSection && "cursor-default"
-        )}
-      >
-        <IconComponent className="mr-2 h-4 w-4" />
-        <span className="flex-1 text-md">{item.name}</span>
-        {isSection ? (
-          isExpanded ? (
-            <ChevronDown strokeWidth={2} className="h-4 w-4" />
-          ) : (
-            <ChevronRight strokeWidth={2} className="h-4 w-4" />
-          )
-        ) : (
-          <div className=" h-4" />
-        )}
-      </ButtonComponent>
+    <div className="transition-[margin] duration-200">
+      {isSection ? (
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          onClick={onToggle}
+          aria-expanded={isExpanded}
+          className={buttonClasses}
+        >
+          <span className="flex min-w-0 flex-1 items-center gap-3">
+            <IconComponent className={iconClasses} />
+            <span className="truncate text-sm font-semibold">{item.name}</span>
+          </span>
+          <ChevronDown strokeWidth={2} className={caretClasses} />
+        </Button>
+      ) : (
+        <Button
+          asChild
+          variant="ghost"
+          size="sm"
+          className={buttonClasses}
+        >
+          <Link href={href ?? "#"} onClick={onClick} className="flex w-full items-center gap-3">
+            <IconComponent className={iconClasses} />
+            <span className="flex-1 truncate text-sm">{item.name}</span>
+            <ChevronRight
+              strokeWidth={2}
+              className={cn(
+                "h-4 w-4 flex-shrink-0 transition-all",
+                isHighlighted
+                  ? "text-blue-600 dark:text-blue-400"
+                  : "text-muted-foreground group-hover:text-foreground"
+              )}
+            />
+          </Link>
+        </Button>
+      )}
 
       {isSection && (
         <div
           ref={subItemsRef}
           style={{
-            height: isExpanded ? (subItemsRef.current ? subItemsRef.current.scrollHeight + 'px' : undefined) : '0px',
+            height: isExpanded
+              ? subItemsRef.current
+                ? `${subItemsRef.current.scrollHeight}px`
+                : undefined
+              : "0px",
           }}
           className={cn(
-            "transition-[height] duration-200 overflow-hidden max-h-[999999px]",
-            !isExpanded && "h-0",  // hidden, but still rendered, so we correctly prefetch the pages
+            "ml-[0.5px] w-[calc(100%-1px)] overflow-hidden transition-[height] duration-200",
+            !isExpanded && "h-0"
           )}
         >
-          {item.items.map((item) => (
-            <NavSubItem key={item.href} item={item} href={item.href} onClick={onClick} />
-          ))}
+          <div className="space-y-2 py-2 pl-3">
+            {item.items.map((navItem) => (
+              <NavSubItem key={navItem.href} item={navItem} href={navItem.href} onClick={onClick} />
+            ))}
+          </div>
         </div>
       )}
     </div>
@@ -292,11 +366,23 @@ function NavSubItem({
       href={href}
       onClick={onClick}
       className={cn(
-        "flex items-center pl-10 pr-2 py-1 text-sm text-muted-foreground hover:bg-foreground/5 hover:text-foreground",
-        isActive && "bg-foreground/5 text-foreground"
+        "group flex items-center gap-3 rounded-lg border px-3 py-2 text-sm font-medium transition-all",
+        isActive
+          ? "border-blue-500/40 bg-blue-500/10 text-foreground shadow-sm dark:text-foreground"
+          : "border-transparent text-foreground hover:border-blue-500/20 hover:bg-blue-500/5"
       )}
     >
-      <span>{item.name}</span>
+      <span className="relative flex h-2 w-2 items-center justify-center">
+        <span
+          className={cn(
+            "h-2 w-2 rounded-full border transition-all",
+            isActive
+              ? "border-blue-500/60 bg-blue-500/40 dark:border-blue-400/60 dark:bg-blue-400/40"
+              : "border-border/60 bg-muted group-hover:border-blue-500/40 group-hover:bg-blue-500/20"
+          )}
+        />
+      </span>
+      <span className="truncate leading-none">{item.name}</span>
     </Link>
   );
 }
@@ -306,10 +392,30 @@ function SidebarContent({ projectId, onNavigate }: { projectId: string, onNaviga
   const pathname = usePathname();
   const project = stackAdminApp.useProject();
   const config = project.useConfig();
-  const enabledApps = typedEntries(config.apps.installed).filter(([appId, appConfig]) => appConfig?.enabled && appId in ALL_APPS).map(([appId]) => appId as AppId);
-  const [expandedSections, setExpandedSections] = useState<Set<AppId>>(getDefaultExpandedSections());
 
-  const toggleSection = (appId: AppId) => {
+  // Memoize enabledApps to prevent recalculation on every render
+  const enabledApps = useMemo(() =>
+    typedEntries(config.apps.installed)
+      .filter(([appId, appConfig]) => appConfig?.enabled && appId in ALL_APPS)
+      .map(([appId]) => appId as AppId),
+    [config.apps.installed]
+  );
+
+  // Memoize getDefaultExpandedSections to prevent recreating the function
+  const getDefaultExpandedSections = useCallback((): Set<AppId> => {
+    const currentUrl = new URL(pathname, DUMMY_ORIGIN);
+    for (const enabledApp of enabledApps) {
+      const appFrontend = ALL_APPS_FRONTEND[enabledApp];
+      if (testAppPath(projectId, appFrontend, currentUrl)) {
+        return new Set([enabledApp]);
+      }
+    }
+    return new Set(["authentication"]);
+  }, [enabledApps, pathname, projectId]);
+
+  const [expandedSections, setExpandedSections] = useState<Set<AppId>>(() => getDefaultExpandedSections());
+
+  const toggleSection = useCallback((appId: AppId) => {
     setExpandedSections(prev => {
       const newSet = new Set(prev);
       if (newSet.has(appId)) {
@@ -319,66 +425,63 @@ function SidebarContent({ projectId, onNavigate }: { projectId: string, onNaviga
       }
       return newSet;
     });
-  };
-
-  function getDefaultExpandedSections(): Set<AppId> {
-    for (const enabledApp of enabledApps) {
-      const appFrontend = ALL_APPS_FRONTEND[enabledApp];
-      if (testAppPath(projectId, appFrontend, new URL(pathname, DUMMY_ORIGIN))) {
-        return new Set([enabledApp]);
-      }
-    }
-    return new Set(["authentication"]);
-  };
+  }, []);
 
   return (
-    <div className="flex flex-col h-full items-stretch">
-      <div className="h-14 border-b flex items-center px-2 shrink-0">
+    <div className="flex h-full flex-col">
+      <div className="flex h-16 shrink-0 items-center justify-between border-b border-border px-4">
         {getPublicEnvVar("NEXT_PUBLIC_STACK_EMULATOR_ENABLED") === "true" ? (
-          <div className="flex-grow mx-2">
-            <Logo full width={80} />
+          <div className="mx-2 flex-grow">
+            <Logo full width={96} />
           </div>
         ) : (
           <ProjectSwitcher currentProjectId={projectId} />
         )}
       </div>
-      <div className="flex flex-grow flex-col pt-2 overflow-y-auto">
-        {/* Overview - always at top */}
-        <NavItem item={overviewItem} onClick={onNavigate} href={`/projects/${projectId}${overviewItem.href}`} />
-
-
-        <div className="mt-4 text-xs uppercase text-muted-foreground px-2 py-1 flex justify-start items-center gap-2">
-          My Apps
+      <div className="flex flex-grow flex-col overflow-y-auto px-3 py-4">
+        <div className="space-y-3">
+          <NavItem item={overviewItem} onClick={onNavigate} href={`/projects/${projectId}${overviewItem.href}`} />
         </div>
-        {/* App Sections */}
-        {enabledApps.map((appId) => {
-          const app = ALL_APPS[appId as AppId];
-          const appFrontend = ALL_APPS_FRONTEND[appId as AppId];
-          return (
-            <NavItem
-              key={appId}
-              item={{
-                name: app.displayName,
-                appId,
-                items: appFrontend.navigationItems.map((navItem) => ({
-                  name: navItem.displayName,
-                  href: getItemPath(projectId, appFrontend, navItem),
-                  match: (fullUrl: URL) => testItemPath(projectId, appFrontend, navItem, fullUrl),
-                })),
-                href: getAppPath(projectId, appFrontend),
-                icon: appFrontend.icon,
-              }}
-              isExpanded={expandedSections.has(appId)}
-              onToggle={() => toggleSection(appId)}
-            />
-          );
-        })}
+
+        <div className="mt-6 mb-3">
+          <Typography className="px-1 text-xs font-semibold uppercase tracking-wide text-foreground/70">
+            My Apps
+          </Typography>
+        </div>
+
+        <div className="space-y-2">
+          {enabledApps.map((appId) => {
+            const app = ALL_APPS[appId as AppId];
+            const appFrontend = ALL_APPS_FRONTEND[appId as AppId];
+            // Memoize the item object to prevent NavItem re-renders
+            const navItemData = {
+              name: app.displayName,
+              appId,
+              items: appFrontend.navigationItems.map((navItem) => ({
+                name: navItem.displayName,
+                href: getItemPath(projectId, appFrontend, navItem),
+                match: (fullUrl: URL) => testItemPath(projectId, appFrontend, navItem, fullUrl),
+              })),
+              href: getAppPath(projectId, appFrontend),
+              icon: appFrontend.icon,
+            };
+            return (
+              <NavItem
+                key={appId}
+                item={navItemData}
+                isExpanded={expandedSections.has(appId)}
+                onToggle={() => toggleSection(appId)}
+              />
+            );
+          })}
+        </div>
 
         <div className="flex-grow" />
+      </div>
 
-        {/* Bottom Items */}
-        <div className="py-2 mt-2 border-t sticky bottom-0 backdrop-blur-md bg-background/20">
-          {bottomItems.map((item, i) => (
+      <div className="sticky bottom-0 border-t border-border px-3 py-4 backdrop-blur-sm">
+        <div className="space-y-2">
+          {bottomItems.map((item) => (
             <NavItem
               key={item.name}
               onClick={onNavigate}
@@ -422,9 +525,14 @@ function HeaderBreadcrumb({
     return () => {
       cancelled = true;
     };
+    // Only depend on pathname and projectId, stackAdminApp should be stable
   }, [pathname, projectId, stackAdminApp]);
 
-  const selectedProject = projects.find((project) => project.id === projectId);
+  // Memoize selectedProject to prevent recalculation
+  const selectedProject = useMemo(
+    () => projects.find((project) => project.id === projectId),
+    [projects, projectId]
+  );
 
   if (mobile) {
     return (
@@ -479,7 +587,7 @@ export default function SidebarLayout(props: { children?: React.ReactNode }) {
   return (
     <div className="w-full flex">
       {/* Left Sidebar */}
-      <div className="flex-col border-r min-w-[240px] h-screen sticky top-0 hidden lg:flex bg-slate-200/20 dark:bg-black/20 z-[10] relative">
+      <div className="fixed left-0 top-0 hidden h-screen min-w-[248px] flex-col border-r border-border bg-background lg:flex z-[10]">
         {/*
           If we put a backdrop blur on the sidebar div, it will create a new backdrop root,
           which would then make us unable to properly do a nested blur for the bottom elements
@@ -488,15 +596,15 @@ export default function SidebarLayout(props: { children?: React.ReactNode }) {
 
           https://drafts.fxtf.org/filter-effects-2/#BackdropRoot
         */}
-        <div className="absolute inset-0 backdrop-blur-md z-[-1]"></div>
+        <div className="absolute inset-0 backdrop-blur-sm z-[-1]"></div>
 
         <SidebarContent projectId={projectId} />
       </div>
 
       {/* Main Content Area */}
-      <div className="flex flex-col flex-grow w-0">
+      <div className="flex flex-col flex-grow w-0 lg:ml-[248px] sm:pr-12">
         {/* Header */}
-        <div className="h-14 border-b flex items-center justify-between sticky top-0 backdrop-blur-md bg-slate-200/20 dark:bg-black/20 z-10 px-4 lg:px-6">
+        <div className="sticky top-0 z-10 flex h-16 items-center justify-between border-b border-border bg-background px-4 backdrop-blur-sm lg:px-6">
           <div className="hidden lg:flex">
             <HeaderBreadcrumb projectId={projectId} />
           </div>
@@ -511,7 +619,7 @@ export default function SidebarLayout(props: { children?: React.ReactNode }) {
               </SheetTrigger>
               <SheetContent
                 aria-describedby={undefined}
-                side='left' className="w-[240px] p-0" hasCloseButton={false}>
+                side='left' className="w-[248px] bg-background p-0 backdrop-blur-sm" hasCloseButton={false}>
                 <SidebarContent projectId={projectId} onNavigate={() => setSidebarOpen(false)} />
               </SheetContent>
             </Sheet>
@@ -540,8 +648,8 @@ export default function SidebarLayout(props: { children?: React.ReactNode }) {
         </div>
       </div>
 
-      {/* Stack Companion - Sticky positioned like left sidebar */}
-      <div className="hidden sm:block h-screen sticky top-0 backdrop-blur-md bg-slate-200/20 dark:bg-black/20 z-[10]">
+      {/* Stack Companion - Fixed positioned like left sidebar */}
+      <div className="fixed right-0 top-0 hidden h-screen border-l border-border bg-background sm:block z-[10]">
         <StackCompanion onExpandedChange={setCompanionExpanded} />
       </div>
     </div>
