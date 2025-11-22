@@ -50,7 +50,7 @@ export function isInApiSection(pathname: string): boolean {
  */
 function isNavLinkActive(pathname: string, navLink: NavLink): boolean {
   // More specific matches first
-  if (navLink.label === 'Welcome' && pathname === '/docs/overview') {
+  if (navLink.label === 'Welcome' && (pathname === '/docs/overview' || pathname === '/docs/faq')) {
     return true;
   }
   if (navLink.label === 'SDK' && isInSdkSection(pathname)) {
@@ -63,7 +63,7 @@ function isNavLinkActive(pathname: string, navLink: NavLink): boolean {
     return true;
   }
   if (navLink.label === 'Guides' && pathname.startsWith('/docs') &&
-      !isInComponentsSection(pathname) && !isInSdkSection(pathname) && pathname !== '/docs/overview') {
+      !isInComponentsSection(pathname) && !isInSdkSection(pathname) && pathname !== '/docs/overview' && pathname !== '/docs/faq') {
     return true;
   }
   return false;

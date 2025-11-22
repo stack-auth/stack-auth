@@ -10,7 +10,7 @@ import { EnhancedAPIPage } from './components/api/enhanced-api-page';
 import { WebhooksAPIPage } from './components/api/webhooks-api-page';
 
 import AppleSecretGenerator from './components/apple-secret-generator';
-import { Card, CardGroup, Info } from './components/mdx';
+import { Card, CardGroup, Info, QuickLink, QuickLinks } from './components/mdx';
 import ApiSequenceDiagram from './components/mdx/api-sequence-diagram';
 import { AuthCard } from './components/mdx/auth-card';
 import { DynamicCodeblock } from './components/mdx/dynamic-code-block';
@@ -46,6 +46,8 @@ export function getMDXComponents(components?: MDXComponents): MDXComponents {
     //SignIn
     Card,
     CardGroup,
+    QuickLink,
+    QuickLinks,
     Info,
     SignInStackAuth,
     SignInPasswordFirstTab,
