@@ -1,15 +1,18 @@
 import { generateSecureRandomString } from "@stackframe/stack-shared/dist/utils/crypto";
 import type { MailboxMessage } from "../../../../../../helpers";
 import { it } from "../../../../../../helpers";
-import { InternalApiKey, Project, ProjectApiKey, Team, User, niceBackendFetch } from "../../../../../backend-helpers";
+import { Auth, InternalApiKey, Project, ProjectApiKey, Team, backendContext, bumpEmailAddress, niceBackendFetch } from "../../../../../backend-helpers";
 
-it("should send email notification to user when revoking an API key through credential scanning", async ({ expect }: { expect: any }) => {
+// TODO re-enable these tests when we re-enable credential scanning email notifications
+
+it.skip("should send email notification to user when revoking an API key through credential scanning", async ({ expect }: { expect: any }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true, allow_team_api_keys: true, allow_user_api_keys: true } });
 
-  const [user1, user2] = await User.createMultiple(2);
-
-
-  User.setBackendContextFromUser(user1);
+  const mailbox2 = await bumpEmailAddress();
+  const user2 = await Auth.Password.signUpWithEmail();
+  await Auth.signOut();
+  const mailbox1 = await bumpEmailAddress();
+  const user1 = await Auth.fastSignUp();
 
   // Create a user API key
   const { createUserApiKeyResponse } = await ProjectApiKey.User.create({
@@ -74,7 +77,7 @@ it("should send email notification to user when revoking an API key through cred
     `);
 
     // Verify that an email notification was sent
-    const messages = (await user1.mailbox.fetchMessages({ noBody: true })).filter((m: MailboxMessage) => m.subject.includes("API Key Revoked"));
+    const messages = (await mailbox1.fetchMessages({ noBody: true })).filter((m: MailboxMessage) => m.subject.includes("API Key Revoked"));
     expect(messages).toMatchInlineSnapshot(`
       [
         MailboxMessage {
@@ -87,7 +90,7 @@ it("should send email notification to user when revoking an API key through cred
     `);
 
     // Verify the email content
-    const emailContent = await user1.mailbox.fetchMessages();
+    const emailContent = await mailbox1.fetchMessages();
     const revocationEmail = emailContent.find((m: MailboxMessage) => m.subject === "API Key Revoked: Test API Key to Revoke <HTML Test &>");
     expect(revocationEmail).toBeDefined();
     expect(revocationEmail?.body?.text).toMatchInlineSnapshot(`
@@ -106,19 +109,27 @@ it("should send email notification to user when revoking an API key through cred
 
 
     // Verify second user did not receive the email
-    const messages2 = (await user2.mailbox.fetchMessages({ noBody: true })).filter((m: MailboxMessage) => m.subject.includes("API Key Revoked"));
+    const messages2 = (await mailbox2.fetchMessages({ noBody: true })).filter((m: MailboxMessage) => m.subject.includes("API Key Revoked"));
     expect(messages2).toMatchInlineSnapshot(`[]`);
   }
 });
 
-it("should send email notification to team members when revoking a team API key through credential scanning", async ({ expect }: { expect: any }) => {
+it.skip("should send email notification to team members when revoking a team API key through credential scanning", async ({ expect }: { expect: any }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true, allow_team_api_keys: true, allow_user_api_keys: true } });
 
   // this test may run longer than the admin access token is valid for, so let's create API keys
   await InternalApiKey.createAndSetProjectKeys();
 
-  const [user1, user2, user3] = await User.createMultiple(3);
-  // Create a team and add both users
+  const mailbox2 = await bumpEmailAddress();
+  const user2 = await Auth.Password.signUpWithEmail();
+  await Auth.signOut();
+  const mailbox3 = await bumpEmailAddress();
+  const user3 = await Auth.Password.signUpWithEmail();
+  await Auth.signOut();
+  const mailbox1 = await bumpEmailAddress();
+  const user1 = await Auth.Password.signUpWithEmail();
+
+  // Create a team and add all users
   const { teamId } = await Team.create();
 
   await Team.addMember(teamId, user1.userId);
@@ -128,9 +139,6 @@ it("should send email notification to team members when revoking a team API key 
   await Team.addPermission(teamId, user1.userId, "$manage_api_keys");
   await Team.addPermission(teamId, user2.userId, "$manage_api_keys");
   // we do not give user3 the permission to manage api keys
-
-
-  User.setBackendContextFromUser(user1);
 
 
   const { createTeamApiKeyResponse } = await ProjectApiKey.Team.create({
@@ -196,9 +204,9 @@ it("should send email notification to team members when revoking a team API key 
 
       // Verify that email notifications were sent to both team members
 
-      const user1_revocation_email = (await user1.mailbox.fetchMessages()).filter((m: MailboxMessage) => m.subject === "API Key Revoked: Test Team API Key to Revoke");
-      const user2_revocation_email = (await user2.mailbox.fetchMessages()).filter((m: MailboxMessage) => m.subject === "API Key Revoked: Test Team API Key to Revoke");
-      const user3_revocation_email = (await user3.mailbox.fetchMessages()).filter((m: MailboxMessage) => m.subject === "API Key Revoked: Test Team API Key to Revoke");
+      const user1_revocation_email = (await mailbox1.fetchMessages()).filter((m: MailboxMessage) => m.subject === "API Key Revoked: Test Team API Key to Revoke");
+      const user2_revocation_email = (await mailbox2.fetchMessages()).filter((m: MailboxMessage) => m.subject === "API Key Revoked: Test Team API Key to Revoke");
+      const user3_revocation_email = (await mailbox3.fetchMessages()).filter((m: MailboxMessage) => m.subject === "API Key Revoked: Test Team API Key to Revoke");
 
       expect(user1_revocation_email).toMatchInlineSnapshot(`
         [
@@ -255,11 +263,10 @@ it("should send email notification to team members when revoking a team API key 
     }
 }, { timeout: 120_000 });
 
-it("should handle already revoked API keys gracefully", async ({ expect }: { expect: any }) => {
+it.skip("should handle already revoked API keys gracefully", async ({ expect }: { expect: any }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true, allow_team_api_keys: true, allow_user_api_keys: true } });
 
-  const user1 = await User.create();
-  User.setBackendContextFromUser(user1);
+  const user1 = await Auth.fastSignUp();
 
   // Create a user API key
   const { createUserApiKeyResponse } = await ProjectApiKey.User.create({
@@ -330,7 +337,7 @@ it("should handle already revoked API keys gracefully", async ({ expect }: { exp
     `);
 
     // Verify no additional email was sent
-    const messages = await user1.mailbox.fetchMessages({ noBody: true });
+    const messages = await backendContext.value.mailbox.fetchMessages({ noBody: true });
     const revocationEmails = messages.filter((m: MailboxMessage) =>
       m.subject === "API Key Revoked: Test API Key Already Revoked"
     );
@@ -339,7 +346,7 @@ it("should handle already revoked API keys gracefully", async ({ expect }: { exp
   }
 });
 
-it("should error when api key is not found", async ({ expect }: { expect: any }) => {
+it.skip("should error when api key is not found", async ({ expect }: { expect: any }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
 
   const fakeApiKey = `stack_test_nonexistent_${generateSecureRandomString()}`;

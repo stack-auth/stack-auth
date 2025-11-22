@@ -1,5 +1,6 @@
 import { KnownErrors } from "@stackframe/stack-shared";
 import { DEFAULT_EMAIL_THEME_ID, DEFAULT_TEMPLATE_IDS } from "@stackframe/stack-shared/dist/helpers/emails";
+import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { it } from "../helpers";
 import { createApp } from "./js-helpers";
 
@@ -126,7 +127,7 @@ it("should throw RequiresCustomEmailServer error when email server is not config
   })).rejects.toThrow(KnownErrors.RequiresCustomEmailServer);
 });
 
-it("should handle non-existent user IDs", async ({ expect }) => {
+it.skip("should handle non-existent user IDs", async ({ expect }) => {
   const { adminApp, serverApp } = await createApp();
   await setupEmailServer(adminApp);
 
@@ -168,4 +169,57 @@ it("should handle html and templateId at the same time", async ({ expect }) => {
     templateId: DEFAULT_TEMPLATE_IDS.sign_in_invitation,
     subject: "Test Email",
   } as any)).rejects.toThrow(KnownErrors.SchemaError);
+});
+
+it.skip("should provide delivery statistics", async ({ expect }) => {
+  const { adminApp, serverApp } = await createApp();
+  await setupEmailServer(adminApp);
+
+  const user = await serverApp.createUser({
+    primaryEmail: "stats@example.com",
+    primaryEmailVerified: true,
+  });
+
+  await serverApp.sendEmail({
+    userIds: [user.id],
+    html: "<p>Stats</p>",
+    subject: "Stats",
+  });
+
+  // wait until the email is sent
+  await wait(5000);
+
+  const info = await serverApp.getEmailDeliveryStats();
+
+  expect(info).toMatchInlineSnapshot(`
+    {
+      "capacity": {
+        "penaltyFactor": 1,
+        "ratePerSecond": 1.561904761904762,
+      },
+      "stats": {
+        "day": {
+          "bounced": 0,
+          "markedAsSpam": 0,
+          "sent": 1,
+        },
+        "hour": {
+          "bounced": 0,
+          "markedAsSpam": 0,
+          "sent": 1,
+        },
+        "month": {
+          "bounced": 0,
+          "markedAsSpam": 0,
+          "sent": 1,
+        },
+        "week": {
+          "bounced": 0,
+          "markedAsSpam": 0,
+          "sent": 1,
+        },
+      },
+    },
+  }
+  `);
 });

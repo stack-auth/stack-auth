@@ -19,8 +19,13 @@ export async function ensureUpstashSignature(fullReq: SmartRequest): Promise<voi
     throw new StatusError(400, "upstash-signature header is required");
   }
 
+  const nodeEnv = getNodeEnvironment();
+  if ((nodeEnv.includes("development") || nodeEnv.includes("test")) && upstashSignature === "test-bypass") {
+    return;
+  }
+
   const url = new URL(fullReq.url);
-  if ((getNodeEnvironment().includes("development") || getNodeEnvironment().includes("test")) && url.hostname === "localhost") {
+  if ((nodeEnv.includes("development") || nodeEnv.includes("test")) && url.hostname === "localhost") {
     url.hostname = "host.docker.internal";
   }
 

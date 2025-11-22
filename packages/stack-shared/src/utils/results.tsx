@@ -303,8 +303,8 @@ import.meta.vitest?.test("mapResult", ({ expect }) => {
 });
 
 
-class RetryError extends AggregateError {
-  constructor(public readonly errors: unknown[]) {
+class RetryError<E = unknown> extends AggregateError {
+  constructor(public readonly errors: E[]) {
     const strings = errors.map(e => nicify(e));
     const isAllSame = strings.length > 1 && strings.every(s => s === strings[0]);
     super(
@@ -364,12 +364,12 @@ import.meta.vitest?.test("RetryError", ({ expect }) => {
   expect(retryErrorSame.message).toContain("Attempts 1-2");
 });
 
-async function retry<T>(
-  fn: (attemptIndex: number) => Result<T> | Promise<Result<T>>,
+async function retry<T, E>(
+  fn: (attemptIndex: number) => Result<T, E> | Promise<Result<T, E>>,
   totalAttempts: number,
   { exponentialDelayBase = 1000 } = {},
-): Promise<Result<T, RetryError> & { attempts: number }> {
-  const errors: unknown[] = [];
+): Promise<Result<T, RetryError<E>> & { attempts: number }> {
+  const errors: E[] = [];
   for (let i = 0; i < totalAttempts; i++) {
     const res = await fn(i);
     if (res.status === "ok") {

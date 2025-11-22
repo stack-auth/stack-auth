@@ -1,5 +1,5 @@
 import { getAuthContactChannelWithEmailNormalization } from "@/lib/contact-channel";
-import { sendEmailFromTemplate } from "@/lib/emails";
+import { sendEmailFromDefaultTemplate } from "@/lib/emails";
 import { getSoleTenancyFromProjectBranch, Tenancy } from "@/lib/tenancies";
 import { createAuthTokens } from "@/lib/tokens";
 import { createOrUpgradeAnonymousUser } from "@/lib/users";
@@ -85,7 +85,7 @@ export const signInVerificationCodeHandler = createVerificationCodeHandler({
   }),
   async send(codeObj, createOptions, sendOptions: { email: string }) {
     const tenancy = await getSoleTenancyFromProjectBranch(createOptions.project.id, createOptions.branchId);
-    await sendEmailFromTemplate({
+    await sendEmailFromDefaultTemplate({
       tenancy,
       email: createOptions.method.email,
       user: null,
@@ -94,6 +94,7 @@ export const signInVerificationCodeHandler = createVerificationCodeHandler({
         magicLink: codeObj.link.toString(),
         otp: codeObj.code.slice(0, 6).toUpperCase(),
       },
+      shouldSkipDeliverabilityCheck: true,
       version: createOptions.method.type === "legacy" ? 1 : undefined,
     });
 

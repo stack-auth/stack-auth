@@ -1,4 +1,3 @@
-import { getSharedEmailConfig, sendEmail } from "@/lib/emails";
 import { listPermissions } from "@/lib/permissions";
 import { getTenancy } from "@/lib/tenancies";
 import { getPrismaClientForTenancy, globalPrismaClient, retryTransaction } from "@/prisma-client";
@@ -184,18 +183,8 @@ export const POST = createSmartRouteHandler({
       </div>
     `;
 
-    const emailConfig = await getSharedEmailConfig("Stack Auth");
-
     // Send email notifications
-    for (const email of affectedEmails) {
-      await sendEmail({
-        tenancyId: updatedApiKey.tenancyId,
-        emailConfig,
-        to: email,
-        subject,
-        html: htmlContent,
-      });
-    }
+    throw new StackAssertionError("Credential scanning email is currently disabled!");
 
     return {
       statusCode: 200,

@@ -1,6 +1,6 @@
 import { it } from "../../../../helpers";
 import { withPortPrefix } from "../../../../helpers/ports";
-import { Project, User, niceBackendFetch } from "../../../backend-helpers";
+import { Auth, Project, backendContext, niceBackendFetch } from "../../../backend-helpers";
 
 it("unsubscribe link should be sent and update notification preference", async ({ expect }) => {
   await Project.createAndSwitch({
@@ -17,14 +17,14 @@ it("unsubscribe link should be sent and update notification preference", async (
       },
     },
   });
-  const user = await User.create();
+  const { userId } = await Auth.Password.signUpWithEmail();
   const response = await niceBackendFetch(
     "/api/v1/emails/send-email",
     {
       method: "POST",
       accessType: "server",
       body: {
-        user_ids: [user.userId],
+        user_ids: [userId],
         html: "<h1>Test Email</h1><p>This is a test email with HTML content.</p>",
         subject: "Custom Test Email Subject",
         notification_category_name: "Marketing",
@@ -48,7 +48,7 @@ it("unsubscribe link should be sent and update notification preference", async (
   `);
 
   // Verify the email was actually sent by checking the mailbox
-  const messages = await user.mailbox.waitForMessagesWithSubject("Custom Test Email Subject");
+  const messages = await backendContext.value.mailbox.waitForMessagesWithSubject("Custom Test Email Subject");
   const sentEmail = messages[0];
   expect(sentEmail!.body?.html).toMatchInlineSnapshot(`"http://localhost:<$NEXT_PUBLIC_STACK_PORT_PREFIX>02/api/v1/emails/unsubscribe-link?code=%3Cstripped+query+param%3E"`);
 
@@ -64,7 +64,7 @@ it("unsubscribe link should be sent and update notification preference", async (
   expect(unsubscribeResponse.body).toBe("<p>Successfully unsubscribed from notification group</p>");
 
   const listPreferencesResponse = await niceBackendFetch(
-    `/api/v1/emails/notification-preference/${user.userId}`,
+    `/api/v1/emails/notification-preference/${userId}`,
     {
       method: "GET",
       accessType: "admin",
@@ -110,14 +110,14 @@ it("unsubscribe link should not be sent for emails with transactional notificati
       },
     },
   });
-  const user = await User.create();
+  const { userId } = await Auth.Password.signUpWithEmail();
   const response = await niceBackendFetch(
     "/api/v1/emails/send-email",
     {
       method: "POST",
       accessType: "server",
       body: {
-        user_ids: [user.userId],
+        user_ids: [userId],
         html: "<h1>Test Email</h1><p>This is a test email with HTML content.</p>",
         subject: "Custom Test Email Subject",
         notification_category_name: "Transactional",
@@ -140,7 +140,7 @@ it("unsubscribe link should not be sent for emails with transactional notificati
     }
   `);
 
-  const messages = await user.mailbox.waitForMessagesWithSubject("Custom Test Email Subject");
+  const messages = await backendContext.value.mailbox.waitForMessagesWithSubject("Custom Test Email Subject");
   const sentEmail = messages[0];
   expect(sentEmail).toBeDefined();
   expect(sentEmail!.body?.html).toMatchInlineSnapshot(`"<!DOCTYPE html PUBLIC \\"-//W3C//DTD XHTML 1.0 Transitional//EN\\" \\"http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd\\"><html dir=\\"ltr\\" lang=\\"en\\"><head><meta content=\\"text/html; charset=UTF-8\\" http-equiv=\\"Content-Type\\"/><meta name=\\"x-apple-disable-message-reformatting\\"/></head><body style=\\"background-color:rgb(250,251,251);font-family:ui-sans-serif, system-ui, sans-serif, &quot;Apple Color Emoji&quot;, &quot;Segoe UI Emoji&quot;, &quot;Segoe UI Symbol&quot;, &quot;Noto Color Emoji&quot;;font-size:1rem;line-height:1.5rem\\"><!--$--><table align=\\"center\\" width=\\"100%\\" border=\\"0\\" cellPadding=\\"0\\" cellSpacing=\\"0\\" role=\\"presentation\\" style=\\"background-color:rgb(255,255,255);padding:45px;border-radius:0.5rem;max-width:37.5em\\"><tbody><tr style=\\"width:100%\\"><td><div><h1>Test Email</h1><p>This is a test email with HTML content.</p></div></td></tr></tbody></table><!--7--><!--/$--></body></html>"`);

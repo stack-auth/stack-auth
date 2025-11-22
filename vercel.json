@@ -1,4 +1,10 @@
 {
+  "crons": [
+    {
+      "path": "/api/latest/internal/email-queue-step",
+      "schedule": "* * * * *"
+    }
+  ],
   "functions": {
     "**/*": {
       "maxDuration": 300

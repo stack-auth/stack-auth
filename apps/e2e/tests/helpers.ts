@@ -2,7 +2,7 @@ import { generateSecureRandomString } from "@stackframe/stack-shared/dist/utils/
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { filterUndefined, omit } from "@stackframe/stack-shared/dist/utils/objects";
-import { wait } from "@stackframe/stack-shared/dist/utils/promises";
+import { ignoreUnhandledRejection, wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { Nicifiable } from "@stackframe/stack-shared/dist/utils/strings";
 import { AsyncLocalStorage } from "node:async_hooks";
 // eslint-disable-next-line no-restricted-imports
@@ -10,6 +10,18 @@ import { afterEach, beforeEach, test as vitestTest } from "vitest";
 
 export const test: typeof vitestTest = vitestTest.extend({});
 export const it: typeof vitestTest = test;
+
+export const afterTestFinishesCallbacks: (() => Promise<void>)[] = [];
+
+export function runAsynchronouslyBeforeTestFinishes(callback: () => Promise<void>) {
+  const promise = callback();
+  ignoreUnhandledRejection(promise);
+  afterTestFinishesCallbacks.push(async () => await promise);
+}
+
+export function beforeTestFinishes(callback: () => Promise<void>) {
+  afterTestFinishesCallbacks.push(callback);
+}
 
 export class Context<R, T> {
   // we want to retain order in which the values were set instead of the order in which the beforeEach callback was called, so we keep a Map and a Set together here
@@ -219,15 +231,16 @@ export class Mailbox {
 
     this.waitForMessagesWithSubject = async (subject: string) => {
       const maxRetries = 20;
+      let messages: MailboxMessage[] = [];
       for (let i = 0; i < maxRetries; i++) {
-        const messages = await this.fetchMessages();
+        messages = await this.fetchMessages();
         const withSubject = messages.filter(m => m.subject === subject);
         if (withSubject.length > 0) {
           return withSubject;
         }
         await wait(500);
       }
-      throw new Error(`Message with subject ${subject} not found`);
+      throw new StackAssertionError(`Message with subject ${subject} not found`, { messages });
     };
   }
 }
