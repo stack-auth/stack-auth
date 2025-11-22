@@ -2,10 +2,12 @@
 
 import { stackAppInternalsSymbol } from "@/app/(main)/integrations/transfer-confirm-page";
 import { UserTable } from "@/components/data-table/user-table";
+import { ExportUsersDialog } from "@/components/export-users-dialog";
 import { StyledLink } from "@/components/link";
 import { UserDialog } from "@/components/user-dialog";
 import { Alert, Button, Skeleton } from "@stackframe/stack-ui";
-import { Suspense } from "react";
+import { Download } from "lucide-react";
+import { Suspense, useState } from "react";
 import { AppEnabledGuard } from "../app-enabled-guard";
 import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";
@@ -31,7 +33,11 @@ function TotalUsersDisplay() {
 
 export default function PageClient() {
   const stackAdminApp = useAdminApp();
-  const firstUser = stackAdminApp.useUsers({ limit: 1 });
+  const firstUser = (stackAdminApp as any).useUsers({ limit: 1 });
+  const [exportOptions, setExportOptions] = useState<{
+    search?: string,
+    includeAnonymous: boolean,
+  }>({ includeAnonymous: false });
 
   return (
     <AppEnabledGuard appId="authentication">
@@ -43,10 +49,23 @@ export default function PageClient() {
             <TotalUsersDisplay />
           </Suspense>
         </>}
-        actions={<UserDialog
-          type="create"
-          trigger={<Button>Create User</Button>}
-        />}
+        actions={
+          <div className="flex gap-2">
+            <ExportUsersDialog
+              trigger={
+                <Button variant="outline">
+                  <Download className="mr-2 h-4 w-4" />
+                  Export
+                </Button>
+              }
+              exportOptions={exportOptions}
+            />
+            <UserDialog
+              type="create"
+              trigger={<Button>Create User</Button>}
+            />
+          </div>
+        }
       >
         {firstUser.length > 0 ? null : (
           <Alert variant='success'>
@@ -54,7 +73,7 @@ export default function PageClient() {
           </Alert>
         )}
 
-        <UserTable />
+        <UserTable onFilterChange={setExportOptions} />
       </PageLayout>
     </AppEnabledGuard>
   );
