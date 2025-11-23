@@ -391,6 +391,22 @@ export const wildcardUrlSchema = yupString().test({
     }
   }
 });
+export const wildcardProtocolAndDomainSchema = wildcardUrlSchema.test({
+  name: 'is-protocol-and-domain',
+  message: (params) => `${params.path} must be a protocol and domain (with optional port) without any path, query parameters, or hash`,
+  test: (value) => {
+    if (value == null) return true;
+    try {
+      const PLACEHOLDER = 'wildcard-placeholder';
+      // Replace wildcards with valid placeholders for URL parsing
+      const normalized = value.replace(/\*/g, PLACEHOLDER);
+      const url = new URL(normalized);
+      return url.protocol !== '' && url.hostname !== '' && url.pathname === '/' && url.search === '' && url.hash === '';
+    } catch (e) {
+      return false;
+    }
+  }
+});
 export const jsonSchema = yupMixed().nullable().defined().transform((value) => JSON.parse(JSON.stringify(value)));
 export const jsonStringSchema = yupString().test("json", (params) => `${params.path} is not valid JSON`, (value) => {
   if (value == null) return true;
@@ -487,7 +503,9 @@ export const projectIdSchema = yupString().test((v) => v === undefined || v === 
 export const projectBranchIdSchema = yupString().nonEmpty().max(255).meta({ openapiField: { description: _idDescription('project branch'), exampleValue: 'main' } });
 export const projectDisplayNameSchema = yupString().meta({ openapiField: { description: _displayNameDescription('project'), exampleValue: 'MyMusic' } });
 export const projectLogoUrlSchema = urlSchema.max(MAX_IMAGE_SIZE_BASE64_BYTES).meta({ openapiField: { description: 'URL of the logo for the project. This is usually a close to 1:1 image of the company logo.', exampleValue: 'https://example.com/logo.png' } });
-export const projectFullLogoUrlSchema = urlSchema.max(MAX_IMAGE_SIZE_BASE64_BYTES).meta({ openapiField: { description: 'URL of the full logo for the project. This is usually a vertical image with the logo and the company name.', exampleValue: 'https://example.com/full-logo.png' } });
+export const projectLogoFullUrlSchema = urlSchema.max(MAX_IMAGE_SIZE_BASE64_BYTES).meta({ openapiField: { description: 'URL of the full logo for the project. This is usually a vertical image with the logo and the company name.', exampleValue: 'https://example.com/full-logo.png' } });
+export const projectLogoDarkModeUrlSchema = urlSchema.max(MAX_IMAGE_SIZE_BASE64_BYTES).meta({ openapiField: { description: 'URL of the dark mode logo for the project. This is usually a close to 1:1 image of the company logo optimized for dark backgrounds.', exampleValue: 'https://example.com/logo-dark.png' } });
+export const projectLogoFullDarkModeUrlSchema = urlSchema.max(MAX_IMAGE_SIZE_BASE64_BYTES).meta({ openapiField: { description: 'URL of the dark mode full logo for the project. This is usually a vertical image with the logo and the company name optimized for dark backgrounds.', exampleValue: 'https://example.com/full-logo-dark.png' } });
 export const projectDescriptionSchema = yupString().nullable().meta({ openapiField: { description: 'A human readable description of the project', exampleValue: 'A music streaming service' } });
 export const projectCreatedAtMillisSchema = yupNumber().meta({ openapiField: { description: _createdAtMillisDescription('project'), exampleValue: 1630000000000 } });
 export const projectIsProductionModeSchema = yupBoolean().meta({ openapiField: { description: 'Whether the project is in production mode', exampleValue: true } });

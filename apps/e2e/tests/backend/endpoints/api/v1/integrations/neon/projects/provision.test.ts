@@ -1,6 +1,6 @@
 import { decryptValue, hashKey } from "@stackframe/stack-shared/dist/helpers/vault/client-side";
 import { it } from "../../../../../../../helpers";
-import { Auth, InternalApiKey, InternalProjectKeys, Project, backendContext, niceBackendFetch } from "../../../../../../backend-helpers";
+import { Auth, InternalApiKey, InternalProjectKeys, backendContext, niceBackendFetch } from "../../../../../../backend-helpers";
 
 export async function provisionProject() {
   return await niceBackendFetch("/api/v1/integrations/neon/projects/provision", {
@@ -81,9 +81,11 @@ it("should be able to provision a new project if neon client details are correct
         "created_at_millis": <stripped field 'created_at_millis'>,
         "description": "Created with Neon",
         "display_name": "Test project",
-        "full_logo_url": null,
         "id": "<stripped UUID>",
         "is_production_mode": false,
+        "logo_dark_mode_url": null,
+        "logo_full_dark_mode_url": null,
+        "logo_full_url": null,
         "logo_url": null,
         "owner_team_id": null,
       },

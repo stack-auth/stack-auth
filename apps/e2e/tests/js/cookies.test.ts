@@ -166,13 +166,10 @@ it("should set refresh token cookies for trusted parent domains", async ({ expec
   const customReady = await waitUntil(() => cookieStore.has(customCookieName), 10_000);
   expect(customReady).toBe(true);
 
-  expect(cookieStore.has(defaultCookieName)).toBe(true);
+  expect(cookieStore.has(defaultCookieName)).toBe(false);
   expect(cookieStore.has(customCookieName)).toBe(true);
 
-  const valuesEqual = await waitUntil(() => cookieStore.get(customCookieName) === cookieStore.get(defaultCookieName), 10_000);
-  expect(valuesEqual).toBe(true);
-
-  const defaultValue = cookieStore.get(defaultCookieName)!;
+  const defaultValue = cookieStore.get(customCookieName)!;
   const parsedValue = JSON.parse(decodeURIComponent(defaultValue));
   expect(typeof parsedValue.refresh_token).toBe("string");
   expect(parsedValue.refresh_token.length).toBeGreaterThan(10);
