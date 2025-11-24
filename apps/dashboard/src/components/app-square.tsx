@@ -1,17 +1,12 @@
 import { useAdminApp } from "@/app/(main)/(protected)/projects/[projectId]/use-admin-app";
-import { ALL_APPS_FRONTEND, getAppPath, type AppFrontend, type AppId } from "@/lib/apps-frontend";
-import { ALL_APPS } from "@stackframe/stack-shared/dist/apps/apps-config";
-import { typedIncludes } from "@stackframe/stack-shared/dist/utils/arrays";
-import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
-import { cn } from "@stackframe/stack-ui";
-import { Check } from "lucide-react";
-import { useState } from "react";
-import { AppWarningModal } from "./app-warning-modal";
+import { ALL_APPS_FRONTEND, AppFrontend, getAppPath } from "@/lib/apps-frontend";
+import { ALL_APPS, AppId } from "@stackframe/stack-shared/dist/apps/apps-config";
+import { AppIcon as SharedAppIcon, appSquarePaddingExpression, appSquareWidthExpression } from "@stackframe/stack-shared/dist/apps/apps-ui";
+import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
+import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger, cn } from "@stackframe/stack-ui";
 import { Link } from "./link";
 
-// CSS sizing expressions for app squares (used in metrics page grid layout)
-export const appSquarePaddingExpression = "0.5rem";
-export const appSquareWidthExpression = "6rem";
+export { appSquarePaddingExpression, appSquareWidthExpression };
 
 type AppSquareVariant = "default" | "installed" | "featured";
 
@@ -28,71 +23,18 @@ export function AppIcon({
   showBadge?: boolean,
   variant?: AppSquareVariant,
 }) {
-  const sizeClasses = {
-    small: "w-12 h-12",
-    medium: "w-16 h-16",
-    large: "w-20 h-20"
-  };
-
-  const iconSizeClasses = {
-    small: "inset-[25%] w-[50%] h-[50%]",
-    medium: "inset-[22%] w-[56%] h-[56%]",
-    large: "inset-[20%] w-[60%] h-[60%]"
-  };
-
-  const app = ALL_APPS[appId];
   const appFrontend: AppFrontend = ALL_APPS_FRONTEND[appId];
 
-  // Simplified color scheme
-  const getIconColor = () => {
-    if (variant === "installed") return "#10B981"; // green
-    if (variant === "featured") return "#3B82F6"; // blue
-    if (typedIncludes(app.tags, "expert")) return "#F59E0B"; // amber
-    if (typedIncludes(app.tags, "integration")) return "#8B5CF6"; // purple
-    return "#6B7280"; // gray
-  };
-
   return (
-    <div className={cn(
-      "relative rounded-2xl overflow-hidden select-none transition-all",
-      "bg-gray-50 dark:bg-gray-800/50",
-      sizeClasses[size],
-      className
-    )}>
-      <div className="w-full h-full flex items-center justify-center">
-        {appFrontend.logo ? (
-          <div className={cn(
-            "flex items-center justify-center",
-            iconSizeClasses[size]
-          )}>
-            <appFrontend.logo />
-          </div>
-        ) : (
-          <appFrontend.icon
-            className={cn(
-              "absolute",
-              iconSizeClasses[size]
-            )}
-            style={{ color: getIconColor() }}
-          />
-        )}
-      </div>
-
-      {/* Stage badge - subtle but noticeable */}
-      {showBadge && app.stage !== "stable" && (
-        <div className="absolute -top-1.5 -right-1.5">
-          <div className={cn(
-            "px-1.5 py-0.5 rounded-md text-[9px] font-bold uppercase tracking-wide",
-            "border backdrop-blur-sm shadow-sm",
-            app.stage === "alpha"
-              ? "bg-orange-50/80 dark:bg-orange-950/30 text-orange-600 dark:text-orange-400 border-orange-200 dark:border-orange-800"
-              : "bg-blue-50/80 dark:bg-blue-950/30 text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-800"
-          )}>
-            {app.stage === "alpha" ? "Alpha" : "Beta"}
-          </div>
-        </div>
-      )}
-    </div>
+    <SharedAppIcon
+      appId={appId}
+      IconComponent={appFrontend.icon}
+      LogoComponent={appFrontend.logo}
+      className={className}
+      disabled={disabled}
+      style={style}
+      cn={cn}
+    />
   );
 }
 

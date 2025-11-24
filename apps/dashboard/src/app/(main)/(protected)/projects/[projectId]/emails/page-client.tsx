@@ -146,18 +146,16 @@ function EditEmailServerDialog(props: {
     }
     setError(null);
     await project.updateConfig({
-      emails: {
-        server: {
-          isShared: false,
-          host: emailConfig.host,
-          port: emailConfig.port,
-          username: emailConfig.username,
-          password: emailConfig.password,
-          senderEmail: emailConfig.senderEmail,
-          senderName: emailConfig.senderName,
-          provider: emailConfig.type === 'resend' ? 'resend' : 'smtp',
-        }
-      }
+      "emails.server": {
+        isShared: false,
+        host: emailConfig.host,
+        port: emailConfig.port,
+        username: emailConfig.username,
+        password: emailConfig.password,
+        senderEmail: emailConfig.senderEmail,
+        senderName: emailConfig.senderName,
+        provider: emailConfig.type === 'resend' ? 'resend' : 'smtp',
+      } satisfies CompleteConfig['emails']['server']
     });
 
     toast({
