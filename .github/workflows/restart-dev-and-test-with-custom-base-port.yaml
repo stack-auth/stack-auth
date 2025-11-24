@@ -21,10 +21,10 @@ jobs:
       NEXT_PUBLIC_STACK_PORT_PREFIX: "69"
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v6
 
       - name: Setup Node.js v20
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v6
         with:
           node-version: 20
 
