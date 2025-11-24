@@ -56,7 +56,7 @@ export async function sendEmailToMany(options: {
       createdWith: options.createdWith.type === "draft" ? EmailOutboxCreatedWith.DRAFT : EmailOutboxCreatedWith.PROGRAMMATIC_CALL,
       emailDraftId: options.createdWith.type === "draft" ? options.createdWith.draftId : undefined,
       emailProgrammaticCallTemplateId: options.createdWith.type === "programmatic-call" ? options.createdWith.templateId : undefined,
-      to: options.recipients.map(serializeRecipient),
+      to: serializeRecipient(recipient)!,
       extraRenderVariables: options.extraVariables,
       scheduledAt: options.scheduledAt,
       shouldSkipDeliverabilityCheck: options.shouldSkipDeliverabilityCheck,

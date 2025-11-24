@@ -414,6 +414,7 @@ async function processSingleEmail(context: TenancyProcessingContext, row: EmailO
             tenancyId: row.tenancyId,
             id: row.id,
           },
+          finishedSendingAt: null,
         },
         data: {
           finishedSendingAt: new Date(),
