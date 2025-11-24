@@ -5,7 +5,7 @@ import { DEFAULT_TEMPLATE_IDS } from '@stackframe/stack-shared/dist/helpers/emai
 import { UsersCrud } from '@stackframe/stack-shared/dist/interface/crud/users';
 import { getEnvVariable } from '@stackframe/stack-shared/dist/utils/env';
 import { StackAssertionError } from '@stackframe/stack-shared/dist/utils/errors';
-import { runEmailQueueStep } from './email-queue-step';
+import { runEmailQueueStep, serializeRecipient } from './email-queue-step';
 import { LowLevelEmailConfig, isSecureEmailPort } from './emails-low-level';
 import { Tenancy } from './tenancies';
 
@@ -56,7 +56,7 @@ export async function sendEmailToMany(options: {
       createdWith: options.createdWith.type === "draft" ? EmailOutboxCreatedWith.DRAFT : EmailOutboxCreatedWith.PROGRAMMATIC_CALL,
       emailDraftId: options.createdWith.type === "draft" ? options.createdWith.draftId : undefined,
       emailProgrammaticCallTemplateId: options.createdWith.type === "programmatic-call" ? options.createdWith.templateId : undefined,
-      to: recipient,
+      to: options.recipients.map(serializeRecipient),
       extraRenderVariables: options.extraVariables,
       scheduledAt: options.scheduledAt,
       shouldSkipDeliverabilityCheck: options.shouldSkipDeliverabilityCheck,
@@ -83,7 +83,7 @@ export async function sendEmailFromDefaultTemplate(options: {
     recipients: [options.user ? { type: "user-custom-emails", userId: options.user.id, emails: [options.email] } : { type: "custom-emails", emails: [options.email] }],
     tsxSource: template.tsxSource,
     extraVariables: options.extraVariables,
-    themeId: template.themeId === false ? null : options.tenancy.config.emails.selectedThemeId,
+    themeId: template.themeId === false ? null : (template.themeId ?? options.tenancy.config.emails.selectedThemeId),
     createdWith: { type: "programmatic-call", templateId: DEFAULT_TEMPLATE_IDS[options.templateType] },
     isHighPriority: options.shouldSkipDeliverabilityCheck,  // always make emails sent via default template high priority
     shouldSkipDeliverabilityCheck: options.shouldSkipDeliverabilityCheck,

@@ -404,6 +404,7 @@ async function processSingleEmail(context: TenancyProcessingContext, row: EmailO
       subject: row.renderedSubject ?? "",
       html: row.renderedHtml ?? undefined,
       text: row.renderedText ?? undefined,
+      shouldSkipDeliverabilityCheck: row.shouldSkipDeliverabilityCheck,
     });
 
     if (result.status === "error") {

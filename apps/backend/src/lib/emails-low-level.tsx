@@ -35,6 +35,7 @@ export type LowLevelSendEmailOptions = {
   emailConfig: LowLevelEmailConfig,
   to: string | string[],
   subject: string,
+  shouldSkipDeliverabilityCheck: boolean,
   html?: string,
   text?: string,
 }
@@ -63,29 +64,29 @@ async function _lowLevelSendEmailWithoutRetries(options: LowLevelSendEmailOption
 
     // If using the shared email config, use Emailable to check if the email is valid. skip the ones that are not (it's as if they had bounced)
     const emailableApiKey = getEnvVariable('STACK_EMAILABLE_API_KEY', "");
-    if (options.emailConfig.type === 'shared' && emailableApiKey) {
+    if (options.emailConfig.type === 'shared' && emailableApiKey && !options.shouldSkipDeliverabilityCheck) {
       await traceSpan('verifying email addresses with Emailable', async () => {
         toArray = (await Promise.all(toArray.map(async (to) => {
           try {
             const emailableResponseResult = await Result.retry(async (attempt) => {
-              const res = await fetch(`https://api.emailable.com/v1/verify?email=${encodeURIComponent(options.to as string)}&api_key=${emailableApiKey}`);
+              const res = await fetch(`https://api.emailable.com/v1/verify?email=${encodeURIComponent(to)}&api_key=${emailableApiKey}`);
               if (res.status === 249) {
                 const text = await res.text();
                 console.log('Emailable is taking longer than expected, retrying...', text, { to: options.to });
-                return Result.error(new Error("Emailable API returned a 249 error for " + options.to + ". This means it takes some more time to verify the email address. Response body: " + text));
+                return Result.error(new Error("Emailable API returned a 249 error for " + to + ". This means it takes some more time to verify the email address. Response body: " + text));
               }
               return Result.ok(res);
             }, 4, { exponentialDelayBase: 4000 });
             if (emailableResponseResult.status === 'error') {
               throw new StackAssertionError("Timed out while verifying email address with Emailable", {
-                to: options.to,
+                to,
                 emailableResponseResult,
               });
             }
             const emailableResponse = emailableResponseResult.data;
             if (!emailableResponse.ok) {
               throw new StackAssertionError("Failed to verify email address with Emailable", {
-                to: options.to,
+                to,
                 emailableResponse,
                 emailableResponseText: await emailableResponse.text(),
               });
@@ -298,8 +299,6 @@ export async function lowLevelSendEmailDirectViaProvider(options: LowLevelSendEm
     throw new StackAssertionError("No recipient email address provided to sendEmail", omit(options, ['emailConfig']));
   }
 
-  const errorMessage = "Failed to send email. If you are the admin of this project, please check the email configuration and try again.";
-
   class DoNotRetryError extends Error {
     constructor(public readonly errorObj: {
       rawError: any,
@@ -344,6 +343,7 @@ export async function lowLevelSendEmailDirectViaProvider(options: LowLevelSendEm
   }
 
   if (result.status === 'error') {
+    console.warn("Failed to send email after all retries!", result.error);
     return Result.error(result.error.errors[0]);
   }
   return Result.ok(undefined);

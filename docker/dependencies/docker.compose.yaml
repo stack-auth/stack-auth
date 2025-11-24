@@ -211,9 +211,9 @@ services:
     image: ghcr.io/drizzle-team/gateway:latest
     restart: always
     ports:
-      - "${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}32:${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}32"
+      - "${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}33:${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}33"
     environment:
-      PORT: ${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}32
+      PORT: ${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}33
       STORE_PATH: ./app
     volumes:
       - drizzle-gateway:/app
@@ -239,10 +239,6 @@ services:
 
 volumes:
   postgres-data:
-    driver: local
-    driver_opts:
-      type: tmpfs
-      device: tmpfs
   inbucket-data:
   svix-redis-data:
   svix-postgres-data:

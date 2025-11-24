@@ -106,7 +106,7 @@ FROM "SentEmail" se
 ON CONFLICT ("tenancyId", "id") DO NOTHING;
 
 INSERT INTO "EmailOutboxProcessingMetadata" ("key", "createdAt", "updatedAt", "lastExecutedAt")
-VALUES ('email-queue-step', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, NULL)
+VALUES ('EMAIL_QUEUE_METADATA_KEY', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, NULL)
 ON CONFLICT ("key") DO NOTHING;
 
 DROP TABLE IF EXISTS "SentEmail";

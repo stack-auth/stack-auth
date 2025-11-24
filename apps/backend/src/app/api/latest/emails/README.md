@@ -8,13 +8,12 @@ background workers render, queue, and deliver them.
 ## Execution Flow
 
 1. **Enqueue** – API endpoints (and server-side helpers) call
-   `sendEmailToAll` to persist one row per recipient. Each entry
+   `sendEmailToMany` to persist one row per recipient. Each entry
    captures the template source, render variables, target recipient, priority,
-   and scheduling metadata. We enqueue the QStash worker so the
-   pipeline continues in the background without blocking the caller.
-2. **Render** – `runEmailQueueStep` acquires an advisory lock and atomically
-   claims rows that have not been rendered. Emails are rendered in tenancy
-   batches via Freestyle, producing HTML/Text/Subject snapshots while capturing
+   and scheduling metadata.
+2. **Render** – `runEmailQueueStep` atomically
+   claims rows that have not been rendered. Emails are rendered via Freestyle,
+   producing HTML/Text/Subject snapshots while capturing
    render errors in structured fields.
 3. **Queue** – Rendered rows whose `scheduled_at` is in the past are marked as
    ready (`isQueued = true`). Capacity is calculated per tenancy based on recent

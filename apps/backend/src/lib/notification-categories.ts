@@ -59,6 +59,7 @@ export const generateUnsubscribeLink = async (tenancy: Tenancy, userId: string, 
       user_id: userId,
       notification_category_id: notificationCategoryId,
     },
+    expiresInMs: 1000 * 60 * 60 * 24 * 30, // 30 days
     callbackUrl: undefined,
   });
   return `${getEnvVariable("NEXT_PUBLIC_STACK_API_URL")}/api/v1/emails/unsubscribe-link?token=${code}&notification_category_id=${notificationCategoryId}`;

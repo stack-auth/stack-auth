@@ -120,7 +120,6 @@ let actualGlobalConnectionString: string = globalVar.__stack_actual_global_conne
     if (match) {
       const [, password, portPrefix, schema] = match;
       const orbStackDomain = `db.stack-dependencies-${portPrefix}.orb.local`;
-      const now = performance.now();
       const ok = await tcpPing(orbStackDomain, 5432, 50);  // extremely short timeout; OrbStack should be fast to respond, otherwise why are we doing this?
       if (ok) {
         return `postgres://postgres:${password}@${orbStackDomain}:5432/${schema}`;
