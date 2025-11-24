@@ -130,11 +130,13 @@ export function GlobeSection({ countryData, totalUsers, children }: {countryData
     return () => window.removeEventListener('error', handleError);
   }, []);
 
+  const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 });
+
   return (
     <div className='w-full'>
       <div
         ref={sectionContainerRef}
-        className='flex w-full gap-8 flex-col lg:flex-row items-center'
+        className='relative flex items-center justify-center'
       >
         {/* Globe Container - Premium 3D */}
         <div className='relative flex-shrink-0'>
@@ -145,7 +147,10 @@ export function GlobeSection({ countryData, totalUsers, children }: {countryData
               width: Math.min(globeWindowSize?.width ?? 600, 600),
               height: Math.min(globeWindowSize?.height ?? 600, 600),
             }}
-            onMouseMove={resumeRender}
+            onMouseMove={(e) => {
+              resumeRender();
+              setTooltipPos({ x: e.clientX, y: e.clientY });
+            }}
             onMouseLeave={() => {
               setHexSelectedCountry(null);
               setPolygonSelectedCountry(null);
@@ -200,29 +205,28 @@ export function GlobeSection({ countryData, totalUsers, children }: {countryData
                 }}
 
                 hexPolygonsData={countries.features}
-                hexPolygonResolution={isFastEngine ? 3 : 2}
-                hexPolygonMargin={0.35}
-                hexPolygonAltitude={0.002}
+                hexPolygonResolution={3}
+                hexPolygonMargin={0.6}
+                hexPolygonAltitude={(d: any) => {
+                  const highlight = isFastEngine && d.properties.ISO_A2_EH === selectedCountry?.code;
+                  return highlight ? 0.02 : 0.005;
+                }}
                 hexPolygonColor={(country: any) => {
-                  const createColor = (value: number | null) => {
-                    const highlight = isFastEngine && country.properties.ISO_A2_EH === selectedCountry?.code;
+                  const highlight = isFastEngine && country.properties.ISO_A2_EH === selectedCountry?.code;
+                  const value = colorValues.get(country.properties.ISO_A2_EH) ?? null;
 
-                    if (Number.isNaN(value) || value === null || maxColorValue < 0.0001) {
-                      if (theme === 'light') {
-                        return `hsl(220, 10%, ${highlight ? '63%' : '55%'})`;
-                      } else {
-                        return `hsl(220, 15%, ${highlight ? '51%' : '43%'})`;
-                      }
-                    }
-                    const scaled = value / maxColorValue;
-                    // Subtle gradient
-                    if (theme === 'light') {
-                      return `hsl(${210 - 30 * scaled}, ${50 + 15 * scaled}%, ${48 + 20 * scaled + (highlight ? 5 : 0)}%)`;
-                    } else {
-                      return `hsl(${210 - 30 * scaled}, ${55 + 15 * scaled}%, ${58 + 20 * scaled + (highlight ? 5 : 0)}%)`;
-                    }
-                  };
-                  return createColor(colorValues.get(country.properties.ISO_A2_EH) ?? null);
+                  if (highlight) return "#ffffff";
+
+                  // Base color for all countries
+                  // Using slate-300 to allow white selection to stand out
+                  if (Number.isNaN(value) || value === null || maxColorValue < 0.0001) {
+                    return "#cbd5e1";
+                  }
+
+                  const scaled = value / maxColorValue;
+                  // Interpolate from bright slate to almost white (max 95% lightness)
+                  // This ensures the pure white highlight (100%) is always distinct
+                  return `hsl(210, ${30 + 60 * scaled}%, ${75 + 20 * scaled}%)`;
                 }}
                 onHexPolygonHover={(d: any) => {
                   resumeRender();
@@ -233,67 +237,61 @@ export function GlobeSection({ countryData, totalUsers, children }: {countryData
                   }
                 }}
 
-                atmosphereColor={theme === 'light' ? 'rgba(100, 116, 139, 0.25)' : 'rgba(148, 163, 184, 0.2)'}
-                atmosphereAltitude={0.12}
+                atmosphereColor={'rgba(14, 165, 233, 0.3)'} // Sky blue, more subtle to let the globe blue show through
+                atmosphereAltitude={0.2}
+                onHexPolygonClick={(polygon: any, event: MouseEvent, coords: { lat: number, lng: number, altitude: number }) => {
+                  resumeRender();
+                  if (globeRef.current) {
+                    globeRef.current.controls().autoRotate = false;
+                    globeRef.current.pointOfView({ lat: coords.lat, lng: coords.lng, altitude: 1.5 }, 2000);
+                  }
+                }}
+                onGlobeClick={() => {
+                  resumeRender();
+                  if (globeRef.current) {
+                    globeRef.current.controls().autoRotate = true;
+                    globeRef.current.pointOfView({ altitude: 4.0 }, 2000);
+                  }
+                }}
               />
             )}
             <div ref={globeWindowRef} className='absolute inset-0 pointer-events-none' />
-          </div>
-        </div>
 
-        {/* Info Panel - Clean Card */}
-        <div className='flex-1 flex flex-col justify-center gap-4 min-w-0 max-w-md lg:max-w-sm'>
-          {selectedCountry ? (
-            <div className='space-y-4 p-6 rounded-xl bg-muted/50 border border-border'>
-              <div className='flex items-start gap-4'>
-                <div className='text-4xl flex-shrink-0'>
-                  {selectedCountry.code.match(/^[a-zA-Z][a-zA-Z]$/) ? getFlagEmoji(selectedCountry.code) : '🌍'}
-                </div>
-                <div className='flex-1 min-w-0'>
-                  <h4 className='text-lg font-semibold truncate'>
-                    {selectedCountry.name}
-                  </h4>
-                  <p className='text-xs text-muted-foreground mt-1'>
-                    {selectedCountry.code}
-                  </p>
-                </div>
-              </div>
-              <div className='h-px bg-border' />
-              <div className='space-y-2'>
-                <div className='flex items-baseline justify-between'>
-                  <span className='text-sm text-muted-foreground'>Users</span>
-                  <span className='text-2xl font-bold'>{(countryData[selectedCountry.code] ?? 0).toLocaleString()}</span>
-                </div>
-                <div className='flex items-baseline justify-between'>
-                  <span className='text-sm text-muted-foreground'>Share</span>
-                  <span className='text-base font-semibold text-primary'>
-                    {totalUsers > 0
-                      ? `${((countryData[selectedCountry.code] ?? 0) / totalUsers * 100).toFixed(1)}%`
-                      : 'N/A'}
+            {/* Tooltip */}
+            {selectedCountry && (
+              <div
+                className="fixed z-[100] min-w-[160px] p-3 rounded-xl shadow-2xl bg-background/90 backdrop-blur-md border border-border/50 pointer-events-none transition-all duration-75 ease-out"
+                style={{
+                  left: tooltipPos.x,
+                  top: tooltipPos.y,
+                  transform: 'translate(-50%, -100%) translateY(-8px)',
+                }}
+              >
+                <div className="flex items-center gap-2 font-semibold mb-2">
+                  <span className="text-xl leading-none">
+                    {selectedCountry.code.match(/^[a-zA-Z][a-zA-Z]$/) ? getFlagEmoji(selectedCountry.code) : '🌍'}
                   </span>
+                  <span className="truncate">{selectedCountry.name}</span>
+                </div>
+                <div className="space-y-1 text-xs text-muted-foreground">
+                  <div className="flex justify-between items-center gap-4">
+                    <span>Users</span>
+                    <span className="font-mono font-medium text-foreground">
+                      {(countryData[selectedCountry.code] ?? 0).toLocaleString()}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center gap-4">
+                    <span>Share</span>
+                    <span className="font-mono font-medium text-primary">
+                      {totalUsers > 0
+                        ? `${((countryData[selectedCountry.code] ?? 0) / totalUsers * 100).toFixed(1)}%`
+                        : 'N/A'}
+                    </span>
+                  </div>
                 </div>
               </div>
-            </div>
-          ) : (
-            <div className='space-y-3 p-6 rounded-xl bg-muted/50 border border-border'>
-              <div className='flex items-center gap-2'>
-                <div className='w-2 h-2 rounded-full bg-emerald-500 animate-pulse' />
-                <span className='text-xs font-medium text-muted-foreground uppercase tracking-wide'>Live Data</span>
-              </div>
-              <div>
-                <div className='text-3xl font-bold'>{totalUsers.toLocaleString()}</div>
-                <p className='text-sm text-muted-foreground mt-1'>
-                  Total users in {Object.keys(countryData).length} {Object.keys(countryData).length === 1 ? 'country' : 'countries'}
-                </p>
-              </div>
-              <div className='pt-3 border-t border-border'>
-                <p className='text-xs text-muted-foreground'>
-                  Hover over the globe to explore regions
-                </p>
-              </div>
-            </div>
-          )}
-          {children}
+            )}
+          </div>
         </div>
       </div>
     </div>
