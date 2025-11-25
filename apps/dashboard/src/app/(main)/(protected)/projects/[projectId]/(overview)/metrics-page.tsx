@@ -362,20 +362,14 @@ function MetricsContent({
         {/* Left Column: Globe - Hidden on mobile */}
         {showGlobe && (
           <div className="hidden lg:flex lg:flex-col lg:col-span-5 h-full min-h-[300px]">
-            <div className="flex items-end justify-between mb-6 px-1">
-              <div>
-                <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1">
-                  Total Users
-                </h2>
-                <div className="text-4xl font-bold tracking-tight text-foreground">
-                  <Suspense fallback="...">
-                    <TotalUsersDisplay timeRange={timeRange} includeAnonymous={includeAnonymous} minimal />
-                  </Suspense>
-                </div>
-              </div>
-              <div className="flex items-center gap-2 px-2.5 py-1 rounded-full bg-muted/50 border border-border/50 text-xs font-medium text-muted-foreground mb-1">
-                <Globe2 className="h-3.5 w-3.5" />
-                <span>Worldwide</span>
+            <div className="mb-6 px-1">
+              <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1">
+                Total Users
+              </h2>
+              <div className="text-4xl font-bold tracking-tight text-foreground">
+                <Suspense fallback="...">
+                  <TotalUsersDisplay timeRange={timeRange} includeAnonymous={includeAnonymous} minimal />
+                </Suspense>
               </div>
             </div>
             <div className="relative flex-1 w-full overflow-hidden flex items-center justify-center">
