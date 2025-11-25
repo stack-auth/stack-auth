@@ -398,6 +398,14 @@ export async function sendEmailFromTemplate(options: {
       user: { displayName: options.user?.display_name ?? null },
       project: { displayName: options.tenancy.project.display_name },
       variables,
+      themeProps: {
+        projectLogos: {
+          logoUrl: options.tenancy.project.logo_url ?? undefined,
+          logoFullUrl: options.tenancy.project.logo_full_url ?? undefined,
+          logoDarkModeUrl: options.tenancy.project.logo_dark_mode_url ?? undefined,
+          logoFullDarkModeUrl: options.tenancy.project.logo_full_dark_mode_url ?? undefined,
+        }
+      }
     }
   );
   if (result.status === 'error') {

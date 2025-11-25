@@ -235,6 +235,26 @@ export default function PageClient() {
           type="full-logo"
         />
 
+        <LogoUpload
+          label="Logo (Dark Mode)"
+          value={project.logoDarkModeUrl}
+          onValueChange={async (logoDarkModeUrl) => {
+            await project.update({ logoDarkModeUrl });
+          }}
+          description="Upload a dark mode version of your logo. Recommended size: 200x200px"
+          type="logo"
+        />
+
+        <LogoUpload
+          label="Full Logo (Dark Mode)"
+          value={project.logoFullDarkModeUrl}
+          onValueChange={async (logoFullDarkModeUrl) => {
+            await project.update({ logoFullDarkModeUrl });
+          }}
+          description="Upload a dark mode version of your full logo. Recommended size: At least 100px tall, landscape format"
+          type="full-logo"
+        />
+
         <Typography variant="secondary" type="footnote">
           Logo images will be displayed in your application (e.g. login page) and emails. The logo should be a square image, while the full logo can include text and be wider.
         </Typography>

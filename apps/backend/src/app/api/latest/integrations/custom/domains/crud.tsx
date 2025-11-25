@@ -8,16 +8,16 @@ import { createLazyProxy } from "@stackframe/stack-shared/dist/utils/proxies";
 import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
 import { projectsCrudHandlers } from "../../../internal/projects/current/crud";
 
-const domainSchema = schemaFields.wildcardUrlSchema.max(300).defined()
+const domainSchema = schemaFields.wildcardProtocolAndDomainSchema.max(300).defined()
   .matches(/^https?:\/\//, 'URL must start with http:// or https://')
   .meta({ openapiField: { description: 'URL. Must start with http:// or https://', exampleValue: 'https://example.com' } });
 
 const domainReadSchema = yupObject({
-  domain: domainSchema,
+  domain: domainSchema.defined(),
 });
 
 const domainCreateSchema = yupObject({
-  domain: domainSchema,
+  domain: domainSchema.defined(),
 });
 
 export const domainDeleteSchema = yupMixed();

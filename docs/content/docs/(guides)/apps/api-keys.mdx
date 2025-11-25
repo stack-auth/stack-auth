@@ -1,0 +1,150 @@
+---
+title: API Keys
+description: Create and manage API keys for users and teams
+icon: KeyRound
+---
+
+The API Keys app enables your users to generate and manage API keys for programmatic access to your backend services. API keys provide a secure way to authenticate requests, allowing developers to associate API calls with specific users or teams. Stack Auth provides prebuilt UI components for users and teams to manage their own API keys.
+
+## Overview
+
+API keys allow your users to access your backend services programmatically without interactive authentication. 
+
+<Mermaid chart={`
+sequenceDiagram
+    participant User as User/Client
+    participant Server as Your Application Server
+    participant Stack as Stack Auth Service
+    
+    User->>+Server: API request with API key
+    Server->>+Stack: Validate API key
+    Stack-->>-Server: Return authenticated User object
+    Server->>Server: Process request
+    Server-->>-User: Response with data
+`} />
+
+Stack Auth provides two types of API keys:
+
+### User API keys
+
+User API keys are associated with individual users and allow them to authenticate with your API.
+
+<PlatformCodeblock 
+  document="apps/api-keys"
+  examples={["create-user-api-key"]}
+/>
+
+### Team API keys
+
+Team API keys are associated with teams and can be used to provide access to team resources over your API.
+
+<PlatformCodeblock 
+  document="apps/api-keys"
+  examples={["create-team-api-key"]}
+/>
+
+## Enabling the API Keys App
+
+To use API keys in your application, you need to enable the API Keys app in your Stack Auth dashboard:
+
+1. Navigate to your Stack Auth dashboard
+2. Go to the **Apps** section
+3. Find and click on **API Keys** in the app store
+4. Click the **Enable** button
+
+Once enabled, you can configure User API Keys and Team API Keys in the app settings. The app will provide your users with a prebuilt UI to manage their own API keys.
+
+## Prebuilt UI Components
+
+Stack Auth provides prebuilt UI components that allow your users to manage their own API keys without any additional code:
+
+### User API Keys UI
+
+For frameworks that support React components, the `<AccountSettings>` component includes an API Keys tab where users can:
+- View all their active API keys
+- Create new API keys with custom descriptions and expiration dates
+- Revoke existing API keys
+- See when each key was created and when it expires.
+
+<PlatformCodeblock 
+  document="apps/api-keys"
+  examples={["account-settings-examples"]}
+/>
+
+### Team API Keys UI
+
+For team API keys, the team settings page automatically includes an API Keys section when:
+- The API Keys app is enabled
+- `allowTeamApiKeys` is configured in your project settings
+- The user has the `$manage_api_keys` permission for the team
+
+Users with appropriate permissions can manage team API keys directly from the team settings interface.
+
+## Working with API Keys
+
+### Creating User API Keys
+
+<PlatformCodeblock 
+  document="apps/api-keys"
+  examples={["create-user-api-key"]}
+/>
+
+### Creating Team API Keys
+
+<PlatformCodeblock 
+  document="apps/api-keys"
+  examples={["create-team-api-key"]}
+/>
+
+### Listing API Keys
+
+<PlatformCodeblock 
+  document="apps/api-keys"
+  examples={["list-api-keys"]}
+/>
+
+### Revoking API Keys
+
+API keys can be revoked when they are no longer needed or if they have been compromised.
+
+<PlatformCodeblock 
+  document="apps/api-keys"
+  examples={["revoke-api-key"]}
+/>
+
+### Checking API Key Validity
+
+You can check if an API key is still valid:
+
+<PlatformCodeblock 
+  document="apps/api-keys"
+  examples={["check-api-key-validity"]}
+/>
+
+## Authenticating Requests with API Keys
+
+To validate incoming API requests with API keys on your server, use the `getUser` or `getTeam` methods with the `apiKey` option:
+
+### Validating User API Keys
+
+<PlatformCodeblock 
+  document="apps/api-keys"
+  examples={["validate-user-api-key"]}
+/>
+
+### Validating Team API Keys
+
+For team API keys, use `getTeam` with the `apiKey` option:
+
+<PlatformCodeblock 
+  document="apps/api-keys"
+  examples={["validate-team-api-key"]}
+/>
+
+### Best Practices for API Key Authentication
+
+1. **Use HTTPS**: Always use HTTPS in production to protect API keys in transit
+2. **Validate on every request**: Never trust client-side validation alone
+3. **Use appropriate headers**: Common header names include `X-Stack-Api-Key`, `Authorization: Bearer <key>`, or `X-Api-Key`
+4. **Rate limiting**: Implement rate limiting to prevent abuse
+5. **Monitor usage**: Track API key usage to detect anomalies
