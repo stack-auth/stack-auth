@@ -6,9 +6,9 @@ import React, { useCallback, useEffect, useState } from "react";
 import { InlineCode } from "./inline-code";
 
 export const CopyableText = React.memo(function CopyableText(props: {
-  value: string;
-  label?: string;
-  className?: string;
+  value: string,
+  label?: string,
+  className?: string,
 }) {
   const [copied, setCopied] = useState(false);
 

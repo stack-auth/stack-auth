@@ -57,10 +57,12 @@ export function ChartsSectionWithData({ includeAnonymous }: { includeAnonymous: 
         <LineChartDisplay
           config={dailySignUpsConfig}
           datapoints={data.daily_users}
+          timeRange="30d"
         />
         <LineChartDisplay
           config={dauConfig}
           datapoints={data.daily_active_users}
+          timeRange="30d"
         />
       </div>
 

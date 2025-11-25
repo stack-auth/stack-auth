@@ -5,19 +5,19 @@ import { InlineCode } from "@/components/inline-code";
 import { StyledLink } from "@/components/link";
 import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
 import {
-    Alert,
-    AlertDescription,
-    AlertTitle,
-    Badge,
-    Button,
-    Card,
-    CardContent,
-    CardDescription,
-    CardFooter,
-    CardHeader,
-    CardTitle,
-    Typography,
-    cn
+  Alert,
+  AlertDescription,
+  AlertTitle,
+  Badge,
+  Button,
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+  Typography,
+  cn
 } from "@stackframe/stack-ui";
 import * as confetti from "canvas-confetti";
 import { CheckCircle2, ChevronDown, ChevronUp, Circle, Clock } from "lucide-react";
@@ -520,7 +520,7 @@ function StepCard(props: {
         onClick={props.onToggle}
         role="button"
         tabIndex={0}
-        onKeyDown={(e: { key: string; preventDefault: () => void; }) => {
+        onKeyDown={(e: { key: string, preventDefault: () => void }) => {
           if (e.key === "Enter" || e.key === " ") {
             e.preventDefault();
             props.onToggle();

@@ -3,8 +3,8 @@ import { ChartConfig, ChartContainer, ChartTooltip, ChartTooltipContent } from "
 import { UserAvatar } from '@stackframe/stack';
 import { fromNow } from '@stackframe/stack-shared/dist/utils/dates';
 import {
-  cn,
-  Typography
+    cn,
+    Typography
 } from "@stackframe/stack-ui";
 import { useState } from "react";
 import { Bar, BarChart, CartesianGrid, Cell, Pie, PieChart, TooltipProps, XAxis, YAxis } from "recharts";
@@ -36,10 +36,10 @@ const isWeekend = (dateString: string): boolean => {
   if (isNaN(date.getTime())) return false;
   const dayOfWeek = date.getDay();
   return dayOfWeek === 0 || dayOfWeek === 6; // Sunday (0) or Saturday (6)
-}
+};
 
-// Standardized weekend color - using CSS variable for consistency
-const WEEKEND_COLOR = "hsl(var(--muted-foreground) / 0.4)";
+// Standardized weekend color - dark blue for weekends
+const WEEKEND_COLOR = "hsl(217, 91%, 30%)";
 
 const CustomTooltip = ({ active, payload }: TooltipProps<number, string>) => {
   if (!active || !payload?.length) return null;
@@ -174,14 +174,14 @@ function ActivityBarChart({
   );
 }
 
-export function ChartCard({ 
-  children, 
-  className, 
-  gradientColor = "blue" 
-}: { 
-  children: React.ReactNode, 
+export function ChartCard({
+  children,
+  className,
+  gradientColor = "blue"
+}: {
+  children: React.ReactNode,
   className?: string,
-  gradientColor?: "blue" | "purple" | "green" | "orange" | "slate"
+  gradientColor?: "blue" | "purple" | "green" | "orange" | "slate",
 }) {
   const gradientColors = {
     blue: "from-blue-500/5",
@@ -214,7 +214,7 @@ export function TimeRangeToggle({
   timeRange: TimeRange,
   onTimeRangeChange: (range: TimeRange) => void,
 }) {
-  const options: { value: TimeRange; label: string }[] = [
+  const options: { value: TimeRange, label: string }[] = [
     { value: '7d', label: '7d' },
     { value: '30d', label: '30d' },
     { value: 'all', label: 'All' },
@@ -230,7 +230,7 @@ export function TimeRangeToggle({
           className={cn(
             "px-2.5 py-1 text-xs font-medium rounded-[4px] transition-all",
             timeRange === option.value
-              ? "bg-muted text-foreground shadow-sm" 
+              ? "bg-muted text-foreground shadow-sm"
               : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
           )}
         >
@@ -242,9 +242,9 @@ export function TimeRangeToggle({
 }
 
 export function TabbedMetricsCard({
-  config, 
-  chartData, 
-  listData, 
+  config,
+  chartData,
+  listData,
   listTitle,
   gradientColor = "blue",
   projectId,
@@ -269,12 +269,12 @@ export function TabbedMetricsCard({
   showTotal?: boolean,
 }) {
   const [view, setView] = useState<'chart' | 'list'>('chart');
-  
+
   const filteredDatapoints = filterDatapointsByTimeRange(chartData, timeRange);
 
   // Calculate total for the selected time range
   const total = filteredDatapoints.reduce((sum, point) => sum + point.activity, 0);
-  
+
   // For "all" time range, use totalAllTime if provided (which includes data beyond 30 days)
   const displayTotal = timeRange === 'all' && totalAllTime !== undefined ? totalAllTime : total;
 
@@ -319,7 +319,7 @@ export function TabbedMetricsCard({
             )}
           </button>
         </div>
-        
+
         {view === 'chart' && showTotal && (
           <span className="text-lg font-semibold text-foreground tabular-nums">
             {displayTotal.toLocaleString()}
@@ -382,8 +382,8 @@ export function TabbedMetricsCard({
                       </div>
                       <div className="text-[10px] text-muted-foreground truncate flex items-center gap-1.5">
                         <span>
-                          {config.name === 'Daily Active Users' 
-                            ? user.last_active_at_millis 
+                          {config.name === 'Daily Active Users'
+                            ? user.last_active_at_millis
                               ? `Active ${fromNow(new Date(user.last_active_at_millis))}`
                               : 'Never active'
                             : user.signed_up_at_millis
@@ -404,17 +404,17 @@ export function TabbedMetricsCard({
   );
 }
 
-export function LineChartDisplay({ 
-  config, 
-  datapoints, 
-  className, 
+export function LineChartDisplay({
+  config,
+  datapoints,
+  className,
   height = 300,
   compact = false,
   gradientColor = "blue",
   timeRange,
-}: { 
-  config: LineChartDisplayConfig, 
-  datapoints: DataPoint[], 
+}: {
+  config: LineChartDisplayConfig,
+  datapoints: DataPoint[],
   className?: string,
   height?: number,
   compact?: boolean,
@@ -489,14 +489,14 @@ const BRAND_CONFIG: ChartConfig = {
 // Memoized Map for efficient lookups
 const BRAND_CONFIG_MAP = new Map(Object.entries(BRAND_CONFIG));
 
-export function DonutChartDisplay({ 
-  datapoints, 
+export function DonutChartDisplay({
+  datapoints,
   className,
   height = 300,
   compact = false,
   gradientColor = "blue",
-}: { 
-  datapoints: AuthMethodDatapoint[], 
+}: {
+  datapoints: AuthMethodDatapoint[],
   className?: string,
   height?: number,
   compact?: boolean,
@@ -599,7 +599,7 @@ export function DonutChartDisplay({
                   >
                     <span
                       className="h-2 w-2 rounded-full shrink-0"
-                      style={{ backgroundColor: BRAND_CONFIG[item.method as keyof typeof BRAND_CONFIG]?.color ?? "var(--color-other)" }}
+                      style={{ backgroundColor: BRAND_CONFIG[item.method as keyof typeof BRAND_CONFIG].color ?? "var(--color-other)" }}
                     />
                     <span className="font-medium text-foreground">
                       {BRAND_CONFIG_MAP.get(item.method)?.label ?? item.method}

@@ -215,22 +215,17 @@ export function StackCompanion({ className, onExpandedChange }: StackCompanionPr
       {/* Single Expanding Sidebar */}
       <div
         className={cn(
-          "h-screen border-l flex relative",
-          isExpanded ? "shadow-lg" : "w-12",
+          "h-full flex relative",
+          isExpanded ? "" : "w-16",
           !isResizing ? "transition-all duration-300 ease-in-out" : ""
         )}
         style={isExpanded ? { width: `${width}px` } : undefined}
       >
         {/* Collapsed State - Vertical Buttons */}
         {!isExpanded && (
-          <div className="flex flex-col h-full w-12">
-            {/* Header - Match navbar height */}
-            <div className="flex items-center justify-center h-14">
-              {/* Nothing here for now */}
-            </div>
-
+          <div className="flex flex-col w-full py-2">
             {/* Navigation Items */}
-            <div className="flex-1 flex flex-col items-center justify-center py-6 space-y-4">
+            <div className="flex flex-col items-center space-y-1">
               {sidebarItems.map((item) => {
                 const Icon = item.icon;
 
@@ -239,15 +234,15 @@ export function StackCompanion({ className, onExpandedChange }: StackCompanionPr
                     <button
                       onClick={() => setActiveItem(String(activeItem) === item.id ? null : item.id)}
                       className={cn(
-                        "flex items-center justify-center w-10 h-10 rounded-lg group transition-none hover:bg-muted",
+                        "flex items-center justify-center w-9 h-9 rounded-lg group transition-colors hover:bg-muted/80",
                         item.color
                       )}
                     >
-                      <Icon className="h-5 w-5" />
+                      <Icon className="h-[18px] w-[18px]" />
 
                       {/* Tooltip */}
                       <div className={cn(
-                        "absolute right-full top-1/2 -translate-y-1/2 mr-3 px-3 py-2 text-white text-sm font-medium rounded-md shadow-lg opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-[9999] group-active:opacity-0 group-focus:opacity-0 transition-opacity duration-150 delay-0",
+                        "absolute right-full top-1/2 -translate-y-1/2 mr-3 px-3 py-2 text-white text-sm font-medium rounded-lg shadow-lg opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-[9999] group-active:opacity-0 group-focus:opacity-0 transition-opacity duration-150 delay-0",
                         item.id === 'docs' ? 'bg-blue-600' :
                           item.id === 'feedback' ? 'bg-purple-600' :
                             item.id === 'changelog' ? 'bg-green-600' :
@@ -267,19 +262,6 @@ export function StackCompanion({ className, onExpandedChange }: StackCompanionPr
                 );
               })}
             </div>
-
-            {/* Footer - Normal orientation text */}
-            <div className={cn(
-              "h-12 border-t flex items-center justify-center",
-              versionCheckResult ? (versionCheckResult.severe ? "bg-red-500" : "bg-orange-500") : ""
-            )}>
-              <div className={cn(
-                "text-[10px] font-medium text-center",
-                versionCheckResult ? "text-white" : "text-muted-foreground"
-              )}>
-                v{packageJson.version}
-              </div>
-            </div>
           </div>
         )}
 
@@ -287,7 +269,7 @@ export function StackCompanion({ className, onExpandedChange }: StackCompanionPr
         {isExpanded && (
           <div className="flex h-full w-full">
             {/* Left side - Navigation */}
-            <div className="flex flex-col h-full w-12 border-r">
+            <div className="flex flex-col h-full w-12 border-r border-border/50">
               {/* Header - Match navbar height */}
               <div className="flex items-center justify-center h-14">
                 {/* Nothing here for now */}
@@ -317,7 +299,7 @@ export function StackCompanion({ className, onExpandedChange }: StackCompanionPr
 
               {/* Footer - Normal orientation text */}
               <div className={cn(
-                  "h-12 border-t flex items-center justify-center",
+                  "h-12 border-t border-border/50 flex items-center justify-center rounded-bl-2xl",
                   versionCheckResult ? (versionCheckResult.severe ? "bg-red-500" : "bg-orange-500") : ""
                 )}>
                 <div className={cn(
@@ -332,7 +314,7 @@ export function StackCompanion({ className, onExpandedChange }: StackCompanionPr
             {/* Right side - Content */}
             <div className="flex-1 flex flex-col h-full">
               {/* Content Header - Match navbar height */}
-              <div className="flex items-center justify-between p-3 h-14 border-b">
+              <div className="flex items-center justify-between p-3 h-14 border-b border-border/50 rounded-tr-2xl">
                 <div className="flex items-center gap-2">
                   {(() => {
                     const item = sidebarItems.find(i => i.id === activeItem);
