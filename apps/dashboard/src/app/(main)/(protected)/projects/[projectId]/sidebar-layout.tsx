@@ -33,7 +33,6 @@ import {
 import {
     Blocks,
     ChevronDown,
-    ChevronRight,
     Globe,
     KeyRound,
     LucideIcon,
@@ -65,6 +64,7 @@ type AppSection = {
     href: string,
     match: (fullUrl: URL) => boolean,
   }[],
+  firstItemHref?: string,
 };
 
 type BottomItem = {
@@ -288,16 +288,18 @@ function NavItem({
   );
 
   if (isCollapsed) {
+    // For sections, navigate to the first item when collapsed
+    const collapsedHref = isSection && item.firstItemHref ? item.firstItemHref : href;
+    
     return (
       <div className="flex justify-center">
         <Tooltip>
           <TooltipTrigger asChild>
             {isSection ? (
               <Button
-                type="button"
+                asChild
                 variant="ghost"
                 size="sm"
-                onClick={onExpandSidebar}
                 className={cn(
                   "h-9 w-9 p-0 justify-center rounded-lg border transition-all",
                   isHighlighted
@@ -305,7 +307,9 @@ function NavItem({
                     : "border-transparent hover:border-blue-500/20 hover:bg-blue-500/5"
                 )}
               >
-                <IconComponent className={iconClasses} />
+                <Link href={collapsedHref ?? "#"} onClick={onClick}>
+                  <IconComponent className={iconClasses} />
+                </Link>
               </Button>
             ) : (
               <Button
@@ -360,15 +364,6 @@ function NavItem({
           <Link href={href ?? "#"} onClick={onClick} className="flex w-full items-center gap-3">
             <IconComponent className={iconClasses} />
             <span className="flex-1 truncate text-sm">{item.name}</span>
-            <ChevronRight
-              strokeWidth={2}
-              className={cn(
-                "h-4 w-4 flex-shrink-0 transition-all",
-                isHighlighted
-                  ? "text-blue-600 dark:text-blue-400"
-                  : "text-muted-foreground group-hover:text-foreground"
-              )}
-            />
           </Link>
         </Button>
       )}
@@ -464,17 +459,21 @@ function AppNavItem({
   const appFrontend = ALL_APPS_FRONTEND[appId];
   
   // Memoize the item object to prevent NavItem re-renders
-  const navItemData = useMemo(() => ({
-    name: app.displayName,
-    appId,
-    items: appFrontend.navigationItems.map((navItem) => ({
+  const navItemData = useMemo(() => {
+    const items = appFrontend.navigationItems.map((navItem) => ({
       name: navItem.displayName,
       href: getItemPath(projectId, appFrontend, navItem),
       match: (fullUrl: URL) => testItemPath(projectId, appFrontend, navItem, fullUrl),
-    })),
-    href: getAppPath(projectId, appFrontend),
-    icon: appFrontend.icon,
-  }), [app.displayName, appId, appFrontend, projectId]);
+    }));
+    return {
+      name: app.displayName,
+      appId,
+      items,
+      href: getAppPath(projectId, appFrontend),
+      icon: appFrontend.icon,
+      firstItemHref: items[0]?.href,
+    };
+  }, [app.displayName, appId, appFrontend, projectId]);
 
   return (
     <NavItem
@@ -611,7 +610,7 @@ function SidebarContent({
           ))}
           
           {toggleCollapsed && (
-            <div className="flex justify-center pt-2 border-t border-border mt-2">
+            <div className={cn("flex justify-center pt-2 border-t border-border mt-2", isCollapsed ? "-mx-2" : "-mx-3")}>
               <Tooltip>
                  <TooltipTrigger asChild>
                     <Button 
