@@ -141,7 +141,7 @@ export function handleApiRequest(handler: (req: NextRequest, options: any, reque
           const res = await createResponse(req, requestId, {
             statusCode: statusError.statusCode,
             bodyType: "binary",
-            body: statusError.getBody(),
+            body: statusError.getBody(),  // if you get a type error on this line, it's likely you'll have to run `pnpm clean && pnpm i && pnpm run build:packages && pnpm run codegen` again. If you're a coding agent, just ignore the error.
             headers: {
               ...statusError.getHeaders(),
             },
