@@ -12,11 +12,12 @@ type LinkProps = {
   children: React.ReactNode,
   className?: string,
   target?: string,
-  onClick?: () => void,
+  onClick?: (e: React.MouseEvent<HTMLAnchorElement>) => void,
   style?: React.CSSProperties,
   scroll?: boolean,
   prefetch?: boolean | "auto",
-} & React.ComponentProps<typeof NextLink>;
+  title?: string,
+};
 
 export const Link = React.forwardRef<HTMLAnchorElement, LinkProps>(({ onClick, href, children, ...rest }, ref) => {
   const router = useRouter();
@@ -29,10 +30,10 @@ export const Link = React.forwardRef<HTMLAnchorElement, LinkProps>(({ onClick, h
     onClick={(e: React.MouseEvent<HTMLAnchorElement>) => {
       if (needConfirm) {
         e.preventDefault();
-        onClick?.();
+        onClick?.(e);
         router.push(href.toString());
       }
-      onClick?.();
+      onClick?.(e);
     }}
   >
     <UrlPrefetcher href={href} />

@@ -3,9 +3,8 @@ import useResizeObserver from '@react-hook/resize-observer';
 import { useUser } from '@stackframe/stack';
 import { use } from '@stackframe/stack-shared/dist/utils/react';
 import { getFlagEmoji } from '@stackframe/stack-shared/dist/utils/unicode';
-import { Typography } from '@stackframe/stack-ui';
 import dynamic from 'next/dynamic';
-import { RefObject, useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
+import { RefObject, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { GlobeMethods } from 'react-globe.gl';
 
 export const globeImages = {
@@ -39,13 +38,11 @@ export function GlobeSection({ countryData, totalUsers, children }: {countryData
   const globeContainerSize = useSize(globeContainerRef);
   const sectionContainerRef = useRef<HTMLDivElement>(null);
   const sectionContainerSize = useSize(sectionContainerRef);
-  const globeTranslation = sectionContainerSize && globeContainerSize && globeWindowSize && [
-    -sectionContainerSize.width / 2 + (globeWindowSize.width) / 2,
-    -32,
-  ];
-  const globeSize = globeContainerSize && globeTranslation && [
-    globeContainerSize.width + 2 * Math.abs(globeTranslation[0]),
-    globeContainerSize.height + 2 * Math.abs(globeTranslation[1]),
+
+  // Simplified sizing for the new layout
+  const globeSize = [
+    globeContainerSize?.width ?? 400,
+    globeContainerSize?.height ?? 400,
   ];
 
   const [hexSelectedCountry, setHexSelectedCountry] = useState<{ code: string, name: string } | null>(null);
@@ -133,238 +130,196 @@ export function GlobeSection({ countryData, totalUsers, children }: {countryData
     return () => window.removeEventListener('error', handleError);
   }, []);
 
-  return <div
-    ref={sectionContainerRef}
-    className='flex w-full gap-4 flex-row select-none'
-  >
-    <div
-      ref={globeContainerRef}
-      className='absolute top-0 left-0 right-0'
-      style={{
-        height: (globeWindowSize?.height ?? 64) + 16,
-      }}
-      onMouseMove={() => {
-        resumeRender();
-      }}
-      onMouseLeave={() => {
-        setHexSelectedCountry(null);
-        setPolygonSelectedCountry(null);
-      }}
-      onTouchMove={() => {
-        resumeRender();
-      }}
-    >
-      <div className='absolute top-[-64px] right-0' style={{
-        width: globeSize?.[0] ?? 64,
-        height: (globeWindowSize?.height ?? 64) + 16 + 64,
-        overflow: 'hidden',
-      }}>
-        {!isGlobeReady && (
-          <div className='absolute top-1/2 left-1/2'>
-            <div className='-translate-x-1/2 -translate-y-1/2'>
-              <PlanetLoader />
-            </div>
-          </div>
-        )}
-        {mounted && isFastEngine !== null && (
-          <Globe
-            key={errorRefreshCount}
-            ref={globeRef}
-            backgroundColor='#00000000'
-            globeImageUrl={globeImages[theme]}
-            width={globeSize?.[0] ?? 64}
-            height={128 + (globeSize?.[1] ?? 0)}
-            onGlobeReady={() => {
-              setTimeout(() => setIsGlobeReady(true), 100);
-              const current = globeRef.current;
-              if (!current) {
-                // User probably navigated away right at this moment
-                return;
-              }
-              const controls = current.controls();
-              controls.maxDistance = 1000;
-              controls.minDistance = 200;
-              controls.dampingFactor = 0.2;
-              current.camera().position.z = 500;
-              // even though rendering is resumed by default, we want to pause it after 200ms, so call resumeRender()
-              resumeRender();
-            }}
-            onZoom={() => {
-              resumeRender();
-            }}
-            animateIn={isFastEngine}
+  const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 });
 
-
-            polygonsData={countries.features}
-            polygonCapColor={() => "transparent"}
-            polygonSideColor={() => "transparent"}
-            polygonAltitude={0.002}
-            onPolygonHover={(d: any) => {
-            resumeRender();
-            if (d) {
-              setPolygonSelectedCountry({ code: d.properties.ISO_A2_EH, name: d.properties.NAME });
-            } else {
-              setPolygonSelectedCountry(null);
-            }
-            }}
-
-            hexPolygonsData={countries.features}
-            hexPolygonResolution={isFastEngine ? 3 : 2}
-            hexPolygonMargin={0.2}
-            hexPolygonAltitude={0.003}
-            hexPolygonColor={(country: any) => {
-              const createColor = (value: number | null) => {
-                const highlight = isFastEngine && country.properties.ISO_A2_EH === selectedCountry?.code;
-
-                if (Number.isNaN(value) || value === null || maxColorValue < 0.0001) {
-                  if (theme === 'light') {
-                    return `hsl(210, 17.20%, ${highlight ? '55.5%' : '45.5%'})`;
-                  } else {
-                    if (value === null && maxColorValue < 0.0001) {
-                      // if there are no users at all, in dark mode, show the globe in a slightly lighter color
-                      return `hsl(240, 84%, ${highlight ? '30%' : '20%'})`;
-                    } else {
-                      return `hsl(240, 84%, ${highlight ? '25%' : '15%'})`;
-                    }
-                  }
-                }
-                const scaled = value / maxColorValue;
-                if (theme === 'light') {
-                  return `hsl(${175 * (1 - scaled)}, 100%, ${20 + 40 * scaled + (highlight ? 10 : 0)}%)`;
-                } else {
-                  return `hsl(240, 84%, ${24 + 60 * scaled + (highlight ? 10 : 0)}%)`;
-                }
-              };
-              const color = createColor(colorValues.get(country.properties.ISO_A2_EH) ?? null);
-              return color;
-            }}
-            onHexPolygonHover={(d: any) => {
-              resumeRender();
-              if (d) {
-                setHexSelectedCountry({ code: d.properties.ISO_A2_EH, name: d.properties.NAME });
-              } else {
-                setHexSelectedCountry(null);
-              }
-            }}
-
-            atmosphereColor='#CBD5E0'
-            atmosphereAltitude={0.2}
-          />
-        )}
-      </div>
+  return (
+    <div className='w-full'>
       <div
-        className='absolute top-0 right-0 bottom-0 backdrop-blur-md'
-        style={{
-          left: ((globeContainerSize?.width ?? 0) - (sectionContainerSize?.width ?? 0)) / 2 + (globeWindowSize?.width ?? 0),
-        }}
+        ref={sectionContainerRef}
+        className='relative flex items-center justify-center'
+      >
+        {/* Globe Container - Premium 3D */}
+        <div className='relative flex-shrink-0'>
+          <div
+            ref={globeContainerRef}
+            className='relative'
+            style={{
+              width: Math.min(globeWindowSize?.width ?? 600, 600),
+              height: Math.min(globeWindowSize?.height ?? 600, 600),
+            }}
+            onMouseEnter={() => {
+              if (globeRef.current) {
+                globeRef.current.controls().autoRotate = false;
+              }
+            }}
+            onMouseMove={(e) => {
+              resumeRender();
+              setTooltipPos({ x: e.clientX, y: e.clientY });
+            }}
+            onMouseLeave={() => {
+              setHexSelectedCountry(null);
+              setPolygonSelectedCountry(null);
+              if (globeRef.current) {
+                globeRef.current.controls().autoRotate = true;
+              }
+            }}
+            onTouchMove={resumeRender}
+          >
+            {/* Subtle glow effect */}
+            <div className='absolute inset-0 bg-gradient-radial from-primary/10 via-transparent to-transparent blur-3xl opacity-30' />
 
-        onMouseMove={() => {
-          setHexSelectedCountry(null);
-          setPolygonSelectedCountry(null);
-        }}
-        onTouchStart={() => {
-          setHexSelectedCountry(null);
-          setPolygonSelectedCountry(null);
-        }}
-      />
-    </div>
-    <div
-      ref={globeWindowRef}
-      className='relative rounded-lg w-[400px] lg:w-[600px] h-[400px] lg:h-[600px] overflow-hidden pointer-events-none select-none touch-none'
-    >
-      <div className='absolute top-0 left-0 right-0 bottom-0 lg:hidden block'>
-        <Typography type="h2">
-          Welcome back!
-        </Typography>
-      </div>
-      <div className='absolute top-1 left-2 right-0 bottom-0 flex flex-col gap-4 hidden lg:block'>
-        <Typography type="h2">
-          Welcome back{displayName ? `, ${displayName}!` : '!'}
-        </Typography>
-        <div className='text-red-500 p-4 flex items-center gap-1.5 text-xs font-bold'>
-          <div className="stack-live-pulse" />
-          <style>{`
-              .stack-live-pulse {
-                width: 6px;
-                aspect-ratio: 1;
-                border-radius: 50%;
-                background: currentColor;
-                box-shadow: 0 0 0 0 currentColor;
-                animation: stack-live-pulse-anim 4s infinite;
-              }
-              @keyframes stack-live-pulse-anim {
-                  25% {box-shadow: 0 0 0 8px #0000}
-                  100% {box-shadow: 0 0 0 8px #0000}
-              }
-            `}</style>
-          LIVE
+            {!isGlobeReady && (
+              <div className='absolute inset-0 flex items-center justify-center'>
+                <PlanetLoader />
+              </div>
+            )}
+            {mounted && isFastEngine !== null && (
+              <Globe
+                key={errorRefreshCount}
+                ref={globeRef}
+                backgroundColor='rgba(0,0,0,0)'
+                globeImageUrl={globeImages[theme]}
+                width={globeSize[0] ?? 600}
+                height={globeSize[1] ?? 600}
+                onGlobeReady={() => {
+                  setTimeout(() => setIsGlobeReady(true), 100);
+                  const current = globeRef.current;
+                  if (!current) return;
+
+                  const controls = current.controls();
+                  controls.autoRotate = true;
+                  controls.autoRotateSpeed = 0.5;
+                  controls.maxDistance = 1000;
+                  controls.minDistance = 200;
+                  controls.dampingFactor = 0.15;
+                  controls.enableZoom = false;
+                  controls.enableRotate = true;
+                  current.camera().position.z = 420;
+                  resumeRender();
+                }}
+                onZoom={resumeRender}
+                animateIn={isFastEngine}
+
+                polygonsData={countries.features}
+                polygonCapColor={() => "transparent"}
+                polygonSideColor={() => "transparent"}
+                polygonAltitude={0.001}
+                onPolygonHover={(d: any) => {
+                  resumeRender();
+                  if (d) {
+                    setPolygonSelectedCountry({ code: d.properties.ISO_A2_EH, name: d.properties.NAME });
+                  } else {
+                    setPolygonSelectedCountry(null);
+                  }
+                }}
+
+                hexPolygonsData={countries.features}
+                hexPolygonResolution={3}
+                hexPolygonMargin={0.6}
+                hexPolygonAltitude={(d: any) => {
+                  const highlight = isFastEngine && d.properties.ISO_A2_EH === selectedCountry?.code;
+                  return highlight ? 0.02 : 0.005;
+                }}
+                hexPolygonColor={(country: any) => {
+                  const highlight = isFastEngine && country.properties.ISO_A2_EH === selectedCountry?.code;
+                  const value = colorValues.get(country.properties.ISO_A2_EH) ?? null;
+
+                  if (highlight) return "#ffffff";
+
+                  // Base color for all countries
+                  // Using slate-300 to allow white selection to stand out
+                  if (Number.isNaN(value) || value === null || maxColorValue < 0.0001) {
+                    return "#cbd5e1";
+                  }
+
+                  const scaled = value / maxColorValue;
+                  // Interpolate from bright slate to almost white (max 95% lightness)
+                  // This ensures the pure white highlight (100%) is always distinct
+                  return `hsl(210, ${30 + 60 * scaled}%, ${75 + 20 * scaled}%)`;
+                }}
+                onHexPolygonHover={(d: any) => {
+                  resumeRender();
+                  if (d) {
+                    setHexSelectedCountry({ code: d.properties.ISO_A2_EH, name: d.properties.NAME });
+                  } else {
+                    setHexSelectedCountry(null);
+                  }
+                }}
+
+                atmosphereColor={'rgba(14, 165, 233, 0.3)'} // Sky blue, more subtle to let the globe blue show through
+                atmosphereAltitude={0.2}
+                onHexPolygonClick={(polygon: any, event: MouseEvent, coords: { lat: number, lng: number, altitude: number }) => {
+                  resumeRender();
+                  if (globeRef.current) {
+                    globeRef.current.controls().autoRotate = false;
+                    globeRef.current.pointOfView({ lat: coords.lat, lng: coords.lng, altitude: 1.5 }, 2000);
+                  }
+                }}
+                onGlobeClick={() => {
+                  resumeRender();
+                  if (globeRef.current) {
+                    globeRef.current.controls().autoRotate = true;
+                    globeRef.current.pointOfView({ altitude: 4.0 }, 2000);
+                  }
+                }}
+              />
+            )}
+            <div ref={globeWindowRef} className='absolute inset-0 pointer-events-none' />
+
+            {/* Tooltip */}
+            {selectedCountry && (
+              <div
+                className="fixed z-[100] min-w-[160px] p-3 rounded-xl shadow-2xl bg-background/90 backdrop-blur-md border border-border/50 pointer-events-none transition-all duration-75 ease-out"
+                style={{
+                  left: tooltipPos.x,
+                  top: tooltipPos.y,
+                  transform: 'translate(-50%, -100%) translateY(-8px)',
+                }}
+              >
+                <div className="flex items-center gap-2 font-semibold mb-2">
+                  <span className="text-xl leading-none">
+                    {selectedCountry.code.match(/^[a-zA-Z][a-zA-Z]$/) ? getFlagEmoji(selectedCountry.code) : '🌍'}
+                  </span>
+                  <span className="truncate">{selectedCountry.name}</span>
+                </div>
+                <div className="space-y-1 text-xs text-muted-foreground">
+                  <div className="flex justify-between items-center gap-4">
+                    <span>Users</span>
+                    <span className="font-mono font-medium text-foreground">
+                      {(countryData[selectedCountry.code] ?? 0).toLocaleString()}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center gap-4">
+                    <span>Share</span>
+                    <span className="font-mono font-medium text-primary">
+                      {totalUsers > 0
+                        ? `${((countryData[selectedCountry.code] ?? 0) / totalUsers * 100).toFixed(1)}%`
+                        : 'N/A'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>
-    <div className='relative h-full flex-grow flex flex-col gap-4 z-1'>
-      <Typography type='h2' className='text-sm uppercase'>
-        🌎 Worldwide
-      </Typography>
-      <Typography type='p' className='text-2xl'>
-        {totalUsers} total users
-      </Typography>
-      {selectedCountry && (
-        <>
-          <Typography type='h2' className='text-sm uppercase mt-6'>
-            {selectedCountry.code.match(/^[a-zA-Z][a-zA-Z]$/) ? `${getFlagEmoji(selectedCountry.code)} ` : ""} {selectedCountry.name}
-          </Typography>
-          <Typography type='p' className='text-2xl'>
-            {countryData[selectedCountry.code] ?? 0} users
-          </Typography>
-        </>
-      )}
-    </div>
-    {children && <div className='relative h-full flex flex-col gap-4 z-1'>
-      {children}
-    </div>}
-  </div>;
+  );
 }
 
 function PlanetLoader() {
-  const id = `planet-loader-${useId().replace(/:/g, '-')}`;
-  return <div id={`${id}`}>
-    <style>{`
-      #${id} {
-        width: 70px;
-        height: 70px;
-        aspect-ratio: 1;
-        background:
-          radial-gradient(farthest-side,rgba(95, 174, 247, 1) 90%,#0000) center/16px 16px,
-          radial-gradient(farthest-side,rgba(107, 93, 247, 1)   90%,#0000) bottom/12px 12px;
-        background-repeat: no-repeat;
-        animation: anim-${id} 2s infinite linear;
-        position: relative;
-        opacity: 1;
-      }
-      #${id}::before {    
-        content:"";
-        position: absolute;
-        width: 8px;
-        aspect-ratio: 1;
-        inset: auto 0 16px;
-        margin: auto;
-        background: #ccc;
-        border-radius: 50%;
-        transform-origin: 50% calc(100% + 10px);
-        animation: inherit;
-        animation-duration: 1s;
-        opacity: 1;
-      }
-      @keyframes anim-${id} {
-        50% {
-          opacity: 0.6;
-          transform: rotate(0.5turn);
-        }
-        100% {
-          opacity: 1;
-          transform: rotate(1turn);
-        }
-      }
-    `}</style>
-  </div>;
+  return (
+    <div className="flex flex-col items-center justify-center gap-4">
+      {/* Simple elegant spinner */}
+      <div className="relative w-16 h-16">
+        {/* Outer ring */}
+        <div className="absolute inset-0 rounded-full border-4 border-transparent border-t-blue-500 border-r-purple-500 animate-spin" />
+        {/* Inner glow */}
+        <div className="absolute inset-2 rounded-full bg-gradient-to-br from-blue-500/20 to-purple-500/20 blur-md" />
+      </div>
+
+      {/* Simple text */}
+      <p className="text-xs font-medium text-muted-foreground">Loading</p>
+    </div>
+  );
 }
