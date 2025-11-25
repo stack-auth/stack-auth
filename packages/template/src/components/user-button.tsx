@@ -1,8 +1,8 @@
 'use client';
 
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger, Skeleton, Typography } from "@stackframe/stack-ui";
-import { CircleUser, LogIn, LogOut, SunMoon, UserPlus } from "lucide-react";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, Skeleton, Typography } from "@stackframe/stack-ui";
+import { CircleUser, LogIn, LogOut, UserPlus } from "lucide-react";
 import React, { Suspense } from "react";
 import { CurrentUser, useStackApp, useUser } from "..";
 import { useTranslation } from "../lib/translations";
@@ -69,7 +69,7 @@ function UserButtonInnerInner(props: UserButtonProps & { user: CurrentUser | nul
 
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger className="outline-none stack-scope">
+      <DropdownMenuTrigger className="outline-none stack-scope rounded-lg hover:bg-muted/50 transition-colors p-1 -m-1">
         <div className="flex gap-2 items-center">
           <UserAvatar user={user} />
           {user && props.showUserInfo &&
@@ -80,18 +80,7 @@ function UserButtonInnerInner(props: UserButtonProps & { user: CurrentUser | nul
           }
         </div>
       </DropdownMenuTrigger>
-      <DropdownMenuContent className="stack-scope">
-        <DropdownMenuLabel>
-          <div className="flex gap-2 items-center">
-            <UserAvatar user={user} />
-            <div>
-              {user && <Typography className="max-w-40 truncate">{user.displayName}</Typography>}
-              {user && <Typography className="max-w-40 truncate" variant="secondary" type='label'>{user.primaryEmail}</Typography>}
-              {!user && <Typography>{t('Not signed in')}</Typography>}
-            </div>
-          </div>
-        </DropdownMenuLabel>
-        <DropdownMenuSeparator />
+      <DropdownMenuContent className="stack-scope w-60" align="end">
         {user && <Item
           text={t('Account settings')}
           onClick={async () => {
@@ -128,13 +117,6 @@ function UserButtonInnerInner(props: UserButtonProps & { user: CurrentUser | nul
         {user && props.extraItems && props.extraItems.map((item, index) => (
           <Item key={index} {...item} />
         ))}
-        {props.colorModeToggle && (
-          <Item
-            text={t('Toggle theme')}
-            onClick={props.colorModeToggle}
-            icon={<SunMoon {...iconProps} />}
-          />
-        )}
         {user && <Item
           text={t('Sign out')}
           onClick={async () => {

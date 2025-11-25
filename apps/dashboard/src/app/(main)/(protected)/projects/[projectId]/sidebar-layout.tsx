@@ -5,20 +5,13 @@ import { Logo } from "@/components/logo";
 import { ProjectSwitcher } from "@/components/project-switcher";
 import { StackCompanion } from "@/components/stack-companion";
 import ThemeToggle from "@/components/theme-toggle";
-import { ALL_APPS_FRONTEND, AppFrontend, DUMMY_ORIGIN, getAppPath, getItemPath, testAppPath, testItemPath } from "@/lib/apps-frontend";
+import { ALL_APPS_FRONTEND, DUMMY_ORIGIN, getAppPath, getItemPath, testAppPath, testItemPath } from "@/lib/apps-frontend";
 import { getPublicEnvVar } from '@/lib/env';
 import { cn } from "@/lib/utils";
-import { StackAdminApp, UserButton, useUser } from "@stackframe/stack";
+import { UserButton } from "@stackframe/stack";
 import { ALL_APPS, type AppId } from "@stackframe/stack-shared/dist/apps/apps-config";
 import { typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
-import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
-import { getRelativePart } from "@stackframe/stack-shared/dist/utils/urls";
 import {
-    Breadcrumb,
-    BreadcrumbItem,
-    BreadcrumbList,
-    BreadcrumbPage,
-    BreadcrumbSeparator,
     Button,
     Sheet,
     SheetContent,
@@ -40,12 +33,9 @@ import {
     PanelLeft,
     Settings,
 } from "lucide-react";
-import { useTheme } from "next-themes";
 import { usePathname } from "next/navigation";
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { useAdminApp, useProjectId } from "./use-admin-app";
-
-type BreadcrumbItem = { item: React.ReactNode, href: string };
 
 type Item = {
   name: React.ReactNode,
@@ -73,11 +63,6 @@ type BottomItem = {
   icon: LucideIcon,
   external?: boolean,
   regex?: RegExp,
-};
-
-type BreadcrumbSource = {
-  item: string,
-  href: string,
 };
 
 // Bottom navigation items (always visible)
@@ -110,104 +95,6 @@ const overviewItem: Item = {
   icon: Globe,
   type: 'item'
 };
-
-const normalizePath = (path: string) => {
-  if (!path) return "/";
-  return path !== "/" && path.endsWith("/") ? path.slice(0, -1) : path;
-};
-
-const resolveWithin = (basePath: string, href: string) => {
-  const normalizedBase = basePath.endsWith("/") ? basePath : `${basePath}/`;
-  const baseUrl = new URL(normalizedBase, DUMMY_ORIGIN);
-  const target = href === "/" ? "./" : href;
-  const resolved = new URL(target, baseUrl);
-  return normalizePath(getRelativePart(resolved));
-};
-
-const relativeTo = (path: string, base: string) => {
-  const normalizedBase = base.endsWith("/") ? base.slice(0, -1) : base;
-  if (!path.startsWith(normalizedBase)) return path;
-  const rest = path.slice(normalizedBase.length);
-  if (!rest) return "/";
-  return rest.startsWith("/") ? rest : `/${rest}`;
-};
-
-async function resolveBreadcrumbs({
-  pathname,
-  projectId,
-  stackAdminApp,
-}: {
-  pathname: string,
-  projectId: string,
-  stackAdminApp: StackAdminApp<false>,
-}): Promise<BreadcrumbItem[]> {
-  const projectBasePath = `/projects/${projectId}`;
-
-  if (overviewItem.regex?.test(pathname)) {
-    return [{
-      item: overviewItem.name,
-      href: resolveWithin(projectBasePath, overviewItem.href),
-    }];
-  }
-
-  const bottomMatch = bottomItems.find((item) => item.regex?.test(pathname));
-  if (bottomMatch) {
-    return [{
-      item: bottomMatch.name,
-      href: bottomMatch.external
-        ? bottomMatch.href
-        : resolveWithin(projectBasePath, bottomMatch.href),
-    }];
-  }
-
-  const currentUrl = new URL(pathname, DUMMY_ORIGIN);
-  const projectRelativePart = relativeTo(pathname, projectBasePath);
-
-  const matchedAppEntry = typedEntries(ALL_APPS).find(([appId]) => {
-    const appFrontend = ALL_APPS_FRONTEND[appId];
-    return testAppPath(projectId, appFrontend, currentUrl);
-  });
-
-  if (!matchedAppEntry) {
-    return [];
-  }
-
-  const [matchedAppId, app] = matchedAppEntry;
-  const appFrontend: AppFrontend = ALL_APPS_FRONTEND[matchedAppId];
-  const appBreadcrumbsRaw = await appFrontend.getBreadcrumbItems?.(stackAdminApp, projectRelativePart);
-  const appBreadcrumbs = appBreadcrumbsRaw?.length
-    ? appBreadcrumbsRaw.map((crumb) => ({
-      item: crumb.item,
-      href: resolveWithin(projectBasePath, crumb.href),
-    }))
-    : [{
-      item: app.displayName,
-      href: getAppPath(projectId, appFrontend),
-    }];
-
-  const navItem = appFrontend.navigationItems.find((item) =>
-    testItemPath(projectId, appFrontend, item, currentUrl)
-  );
-
-  if (!navItem) {
-    return appBreadcrumbs;
-  }
-
-  const itemHref = getItemPath(projectId, appFrontend, navItem);
-  const itemRelativePart = relativeTo(pathname, itemHref);
-  const itemBreadcrumbsRaw = await navItem.getBreadcrumbItems?.(stackAdminApp, itemRelativePart);
-  const itemBreadcrumbs = itemBreadcrumbsRaw?.length
-    ? itemBreadcrumbsRaw.map((crumb) => ({
-      item: crumb.item,
-      href: resolveWithin(itemHref, crumb.href),
-    }))
-    : [{
-      item: navItem.displayName,
-      href: itemHref,
-    }];
-
-  return [...appBreadcrumbs, ...itemBreadcrumbs];
-}
 
 function NavItem({
   item,
@@ -290,7 +177,7 @@ function NavItem({
   if (isCollapsed) {
     // For sections, navigate to the first item when collapsed
     const collapsedHref = isSection && item.firstItemHref ? item.firstItemHref : href;
-    
+
     return (
       <div className="flex justify-center">
         <Tooltip>
@@ -457,7 +344,7 @@ function AppNavItem({
 }) {
   const app = ALL_APPS[appId];
   const appFrontend = ALL_APPS_FRONTEND[appId];
-  
+
   // Memoize the item object to prevent NavItem re-renders
   const navItemData = useMemo(() => {
     const items = appFrontend.navigationItems.map((navItem) => ({
@@ -487,16 +374,14 @@ function AppNavItem({
   );
 }
 
-function SidebarContent({ 
-  projectId, 
+function SidebarContent({
+  projectId,
   onNavigate,
   isCollapsed,
-  toggleCollapsed,
-}: { 
-  projectId: string, 
+}: {
+  projectId: string,
   onNavigate?: () => void,
   isCollapsed?: boolean,
-  toggleCollapsed?: () => void,
 }) {
   const stackAdminApp = useAdminApp();
   const pathname = usePathname();
@@ -539,27 +424,12 @@ function SidebarContent({
 
   return (
     <div className="flex h-full flex-col">
-      <div className={cn("flex h-16 shrink-0 items-center border-b border-border px-4 transition-all duration-200", isCollapsed ? "justify-center px-2" : "justify-between")}>
-        {isCollapsed ? (
-          <div className="flex items-center justify-center">
-            <Logo width={24} />
-          </div>
-        ) : (
-          getPublicEnvVar("NEXT_PUBLIC_STACK_EMULATOR_ENABLED") === "true" ? (
-            <div className="mx-2 flex-grow">
-              <Logo full width={96} />
-            </div>
-          ) : (
-            <ProjectSwitcher currentProjectId={projectId} />
-          )
-        )}
-      </div>
       <div className={cn("flex flex-grow flex-col overflow-y-auto py-4 transition-all duration-200", isCollapsed ? "px-2" : "px-3")}>
         <div className="space-y-3">
-          <NavItem 
-            item={overviewItem} 
-            onClick={onNavigate} 
-            href={`/projects/${projectId}${overviewItem.href}`} 
+          <NavItem
+            item={overviewItem}
+            onClick={onNavigate}
+            href={`/projects/${projectId}${overviewItem.href}`}
             isCollapsed={isCollapsed}
           />
         </div>
@@ -579,10 +449,6 @@ function SidebarContent({
               isExpanded={expandedSections.has(appId)}
               onToggle={() => toggleSection(appId)}
               isCollapsed={isCollapsed}
-              onExpandSidebar={() => {
-                if (toggleCollapsed) toggleCollapsed();
-                if (!expandedSections.has(appId)) toggleSection(appId);
-              }}
               onClick={onNavigate}
             />
           ))}
@@ -591,7 +457,7 @@ function SidebarContent({
         <div className="flex-grow" />
       </div>
 
-      <div className={cn("sticky bottom-0 border-t border-border py-4 backdrop-blur-sm transition-all duration-200", isCollapsed ? "px-2" : "px-3")}>
+      <div className={cn("sticky bottom-0 border-t border-border/30 py-3 backdrop-blur-sm transition-all duration-200 rounded-b-2xl", isCollapsed ? "px-2" : "px-3")}>
         <div className="space-y-2">
           {bottomItems.map((item) => (
             <NavItem
@@ -608,123 +474,17 @@ function SidebarContent({
               isCollapsed={isCollapsed}
             />
           ))}
-          
-          {toggleCollapsed && (
-            <div className={cn("flex justify-center pt-2 border-t border-border mt-2", isCollapsed ? "-mx-2" : "-mx-3")}>
-              <Tooltip>
-                 <TooltipTrigger asChild>
-                    <Button 
-                      variant="ghost" 
-                      size="sm" 
-                      onClick={toggleCollapsed}
-                      className={cn("text-muted-foreground hover:text-foreground", isCollapsed ? "h-9 w-9 p-0" : "w-full justify-between")}
-                    >
-                      {isCollapsed ? (
-                        <PanelLeft className="h-4 w-4" />
-                      ) : (
-                        <>
-                          <span className="text-xs font-medium">Collapse Sidebar</span>
-                          <PanelLeft className="h-4 w-4" />
-                        </>
-                      )}
-                    </Button>
-                 </TooltipTrigger>
-                 <TooltipContent side="right">
-                    {isCollapsed ? "Expand Sidebar" : "Collapse Sidebar"}
-                 </TooltipContent>
-              </Tooltip>
-            </div>
-          )}
         </div>
       </div>
     </div>
   );
 }
 
-function HeaderBreadcrumb({
-  mobile,
-  projectId
-}: {
-  projectId: string,
-  mobile?: boolean,
-}) {
-  const pathname = usePathname();
-  const stackAdminApp = useAdminApp();
-
-  const user = useUser({ or: 'redirect', projectIdMustMatch: "internal" });
-  const projects = user.useOwnedProjects();
-  const [breadcrumbItems, setBreadcrumbItems] = useState<BreadcrumbItem[]>([]);
-
-  useEffect(() => {
-    let cancelled = false;
-    runAsynchronously(async () => {
-      const items = await resolveBreadcrumbs({ pathname, projectId, stackAdminApp });
-      if (!cancelled) setBreadcrumbItems(items);
-    });
-
-    return () => {
-      cancelled = true;
-    };
-    // Only depend on pathname and projectId, stackAdminApp should be stable
-  }, [pathname, projectId, stackAdminApp]);
-
-  // Memoize selectedProject to prevent recalculation
-  const selectedProject = useMemo(
-    () => projects.find((project) => project.id === projectId),
-    [projects, projectId]
-  );
-
-  if (mobile) {
-    return (
-      <Logo full height={24} href="/projects" />
-    );
-  } else {
-    return (
-      <Breadcrumb>
-        <BreadcrumbList>
-          {getPublicEnvVar("NEXT_PUBLIC_STACK_EMULATOR_ENABLED") !== "true" &&
-            <>
-              <BreadcrumbItem>
-                <Link href="/projects">Home</Link>
-              </BreadcrumbItem>
-              <BreadcrumbSeparator />
-              <BreadcrumbItem>
-                <span className="max-w-40 truncate">
-                  <Link href={`/projects/${projectId}`}>{selectedProject?.displayName}</Link>
-                </span>
-              </BreadcrumbItem>
-              <BreadcrumbSeparator />
-            </>}
-
-          {breadcrumbItems.map((breadcrumbItem, index) => (
-            index < breadcrumbItems.length - 1 ?
-              <Fragment key={index}>
-                <BreadcrumbItem>
-                  <Link href={breadcrumbItem.href}>
-                    {breadcrumbItem.item}
-                  </Link>
-                </BreadcrumbItem>
-                <BreadcrumbSeparator />
-              </Fragment> :
-              <BreadcrumbPage key={index}>
-                <Link href={breadcrumbItem.href}>
-                  {breadcrumbItem.item}
-                </Link>
-              </BreadcrumbPage>
-          ))}
-        </BreadcrumbList>
-      </Breadcrumb>
-    );
-  }
-}
-
 export default function SidebarLayout(props: { children?: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [companionExpanded, setCompanionExpanded] = useState(false);
-  // Add sidebar collapsed state
   const [isCollapsed, setIsCollapsed] = useState(false);
-  
-  const { resolvedTheme, setTheme } = useTheme();
+
   const projectId = useProjectId();
 
   const toggleCollapsed = useCallback(() => {
@@ -733,86 +493,108 @@ export default function SidebarLayout(props: { children?: React.ReactNode }) {
 
   return (
     <TooltipProvider>
-      <div className="w-full flex">
-        {/* Left Sidebar */}
-        <div 
-          className={cn(
-            "fixed left-0 top-0 hidden h-screen flex-col border-r border-border bg-background lg:flex z-[10] transition-[width] duration-200 ease-in-out",
-            isCollapsed ? "w-[70px]" : "w-[248px]"
-          )}
-        >
-          {/*
-            If we put a backdrop blur on the sidebar div, it will create a new backdrop root,
-            which would then make us unable to properly do a nested blur for the bottom elements
-            of the sidebar. By putting the backdrop, and with it the backdrop root, in an element
-            right behind all the contents, we get the same behavior but better.
+      <div className="w-full flex flex-col min-h-screen">
+        {/* Full-width Header */}
+        <div className="fixed top-3 left-3 right-3 z-20 flex h-14 items-center justify-between rounded-2xl border border-border/40 bg-background/70 backdrop-blur-md px-4 shadow-sm">
+          {/* Left section: Toggle/Menu + Project Switcher */}
+          <div className="flex items-center gap-3">
+            {/* Desktop: Toggle button */}
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={toggleCollapsed}
+              className="hidden lg:flex h-9 w-9 p-0 text-muted-foreground hover:text-foreground"
+            >
+              <PanelLeft className="h-4 w-4" />
+            </Button>
 
-            https://drafts.fxtf.org/filter-effects-2/#BackdropRoot
-          */}
-          <div className="absolute inset-0 backdrop-blur-sm z-[-1]"></div>
+            {/* Mobile: Menu button */}
+            <Sheet onOpenChange={(open) => setSidebarOpen(open)} open={sidebarOpen}>
+              <SheetTitle className="hidden">
+                Sidebar Menu
+              </SheetTitle>
+              <SheetTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="lg:hidden h-9 w-9 p-0 text-muted-foreground hover:text-foreground"
+                >
+                  <Menu className="h-4 w-4" />
+                </Button>
+              </SheetTrigger>
+              <SheetContent
+                aria-describedby={undefined}
+                side='left'
+                className="w-[248px] bg-background p-0 backdrop-blur-sm"
+                hasCloseButton={false}
+              >
+                <SidebarContent projectId={projectId} onNavigate={() => setSidebarOpen(false)} />
+              </SheetContent>
+            </Sheet>
 
-          <SidebarContent 
-            projectId={projectId} 
-            isCollapsed={isCollapsed}
-            toggleCollapsed={toggleCollapsed}
-          />
-        </div>
-
-        {/* Main Content Area */}
-        <div 
-          className={cn(
-            "flex flex-col flex-grow w-0 sm:pr-12 transition-[margin] duration-200 ease-in-out",
-             isCollapsed ? "lg:ml-[70px]" : "lg:ml-[248px]"
-          )}
-        >
-          {/* Header */}
-          <div className="sticky top-0 z-10 flex h-16 items-center justify-between border-b border-border bg-background px-4 backdrop-blur-sm lg:px-6">
-            <div className="hidden lg:flex">
-              <HeaderBreadcrumb projectId={projectId} />
+            {/* Desktop: Project Switcher */}
+            <div className="hidden lg:block max-w-xs">
+              {getPublicEnvVar("NEXT_PUBLIC_STACK_EMULATOR_ENABLED") === "true" ? (
+                <Logo full width={96} href="/projects" />
+              ) : (
+                <ProjectSwitcher currentProjectId={projectId} />
+              )}
             </div>
 
-            <div className="flex lg:hidden items-center">
-              <Sheet onOpenChange={(open) => setSidebarOpen(open)} open={sidebarOpen}>
-                <SheetTitle className="hidden">
-                  Sidebar Menu
-                </SheetTitle>
-                <SheetTrigger>
-                  <Menu />
-                </SheetTrigger>
-                <SheetContent
-                  aria-describedby={undefined}
-                  side='left' className="w-[248px] bg-background p-0 backdrop-blur-sm" hasCloseButton={false}>
-                  <SidebarContent projectId={projectId} onNavigate={() => setSidebarOpen(false)} />
-                </SheetContent>
-              </Sheet>
-
-              <div className="ml-4 flex lg:hidden">
-                <HeaderBreadcrumb projectId={projectId} mobile />
-              </div>
-            </div>
-
-            <div className="flex gap-2 relative items-center">
-              <Button asChild variant="ghost" size="icon" className="hidden lg:flex">
-                <Link href={`/projects/${projectId}/project-settings`}>
-                  <Settings className="w-4 h-4" />
-                </Link>
-              </Button>
-              {getPublicEnvVar("NEXT_PUBLIC_STACK_EMULATOR_ENABLED") === "true" ?
-                <ThemeToggle /> :
-                <UserButton colorModeToggle={() => setTheme(resolvedTheme === 'light' ? 'dark' : 'light')} />
-              }
+            {/* Mobile: Logo */}
+            <div className="lg:hidden">
+              <Logo full height={24} href="/projects" />
             </div>
           </div>
 
-          {/* Content Body - Normal scrolling */}
-          <div className="flex-grow relative flex flex-col">
-            {props.children}
+          {/* Right section: Theme toggle and User button */}
+          <div className="flex gap-2 items-center">
+            {getPublicEnvVar("NEXT_PUBLIC_STACK_EMULATOR_ENABLED") === "true" ? (
+              <ThemeToggle />
+            ) : (
+              <>
+                <ThemeToggle />
+                <UserButton />
+              </>
+            )}
           </div>
         </div>
 
-        {/* Stack Companion - Fixed positioned like left sidebar */}
-        <div className="fixed right-0 top-0 hidden h-screen border-l border-border bg-background sm:block z-[10]">
-          <StackCompanion onExpandedChange={setCompanionExpanded} />
+        {/* Main layout below header */}
+        <div className="w-full flex pt-[80px]">
+          {/* Left Sidebar - positioned below header */}
+          <div
+            className={cn(
+              "fixed left-3 top-20 bottom-3 hidden flex-col border border-border/40 bg-background/70 backdrop-blur-md lg:flex z-[10] transition-[width] duration-200 ease-in-out rounded-2xl shadow-sm",
+              isCollapsed ? "w-[64px]" : "w-[248px]"
+            )}
+          >
+            <SidebarContent
+              projectId={projectId}
+              isCollapsed={isCollapsed}
+            />
+          </div>
+
+          {/* Main Content Area */}
+          <div
+            className={cn(
+              "flex flex-col flex-grow w-0 sm:pr-12 transition-[margin] duration-200 ease-in-out",
+              isCollapsed ? "lg:ml-[88px]" : "lg:ml-[272px]"
+            )}
+          >
+            {/* Content Body */}
+            <div className="flex-grow relative flex flex-col">
+              {props.children}
+            </div>
+          </div>
+
+          {/* Stack Companion - positioned below header */}
+          <div className={cn(
+            "fixed right-3 hidden border border-border/40 bg-background/70 backdrop-blur-md sm:block z-[10] rounded-2xl shadow-sm overflow-hidden",
+            companionExpanded ? "top-20 bottom-3" : "top-1/2 -translate-y-1/2"
+          )}>
+            <StackCompanion onExpandedChange={setCompanionExpanded} />
+          </div>
         </div>
       </div>
     </TooltipProvider>

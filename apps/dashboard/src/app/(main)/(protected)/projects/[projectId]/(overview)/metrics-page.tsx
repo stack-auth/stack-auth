@@ -19,12 +19,12 @@ import { MetricsLoadingFallback } from './metrics-loading';
 // Widget definitions
 type WidgetId = 'apps' | 'daily-active-users' | 'daily-sign-ups' | 'globe' | 'total-users';
 
-interface WidgetConfig {
-  id: WidgetId;
-  name: string;
-  description: string;
-  defaultEnabled: boolean;
-  area: 'left' | 'right';
+type WidgetConfig = {
+  id: WidgetId,
+  name: string,
+  description: string,
+  defaultEnabled: boolean,
+  area: 'left' | 'right',
 }
 
 const AVAILABLE_WIDGETS: WidgetConfig[] = [
@@ -35,9 +35,9 @@ const AVAILABLE_WIDGETS: WidgetConfig[] = [
   { id: 'daily-sign-ups', name: 'Daily Sign-Ups', description: 'Chart and list of new registrations', defaultEnabled: true, area: 'right' },
 ];
 
-interface DashboardConfig {
-  enabledWidgets: WidgetId[];
-  widgetOrder: WidgetId[];
+type DashboardConfig = {
+  enabledWidgets: WidgetId[],
+  widgetOrder: WidgetId[],
 }
 
 const DEFAULT_CONFIG: DashboardConfig = {
@@ -57,7 +57,7 @@ function loadConfig(): DashboardConfig {
       const validWidgetIds = new Set(AVAILABLE_WIDGETS.map(w => w.id));
       const enabledWidgets = (parsed.enabledWidgets || []).filter((id: string) => validWidgetIds.has(id as WidgetId));
       const widgetOrder = (parsed.widgetOrder || []).filter((id: string) => validWidgetIds.has(id as WidgetId));
-      
+
       // Add any new widgets that aren't in the stored config
       for (const widget of AVAILABLE_WIDGETS) {
         if (!widgetOrder.includes(widget.id)) {
@@ -67,7 +67,7 @@ function loadConfig(): DashboardConfig {
           }
         }
       }
-      
+
       return { enabledWidgets, widgetOrder };
     }
   } catch (e) {
@@ -114,7 +114,7 @@ const dauConfig = {
 
 const stackAppInternalsSymbol = Symbol.for("StackAuth--DO-NOT-USE-OR-YOU-WILL-BE-FIRED--StackAppInternals");
 
-function TotalUsersDisplay({ timeRange, includeAnonymous, minimal = false }: { timeRange: TimeRange; includeAnonymous: boolean, minimal?: boolean }) {
+function TotalUsersDisplay({ timeRange, includeAnonymous, minimal = false }: { timeRange: TimeRange, includeAnonymous: boolean, minimal?: boolean }) {
   const adminApp = useAdminApp();
   const data = (adminApp as any)[stackAppInternalsSymbol].useMetrics(includeAnonymous);
 
@@ -124,7 +124,7 @@ function TotalUsersDisplay({ timeRange, includeAnonymous, minimal = false }: { t
     }
     const dailyUsers = data.daily_users || [];
     const filteredData = timeRange === '7d' ? dailyUsers.slice(-7) : dailyUsers.slice(-30);
-    return filteredData.reduce((sum: any, point: { activity: any; }) => sum + point.activity, 0);
+    return filteredData.reduce((sum: any, point: { activity: any }) => sum + point.activity, 0);
   };
 
   const totalUsers = calculateTotalUsers();
@@ -191,20 +191,20 @@ function AppsWidget({ installedApps, projectId }: { installedApps: AppId[], proj
   );
 }
 
-function DailyActiveUsersWidget({ 
-  data, 
-  projectId, 
-  router, 
-  timeRange 
-}: { 
-  data: any, 
-  projectId: string, 
-  router: ReturnType<typeof useRouter>, 
-  timeRange: TimeRange 
+function DailyActiveUsersWidget({
+  data,
+  projectId,
+  router,
+  timeRange
+}: {
+  data: any,
+  projectId: string,
+  router: ReturnType<typeof useRouter>,
+  timeRange: TimeRange,
 }) {
   return (
-    <TabbedMetricsCard 
-      config={dauConfig} 
+    <TabbedMetricsCard
+      config={dauConfig}
       chartData={data.daily_active_users || []}
       listData={data.recently_active || []}
       listTitle="Recently Active"
@@ -217,20 +217,20 @@ function DailyActiveUsersWidget({
   );
 }
 
-function DailySignUpsWidget({ 
-  data, 
-  projectId, 
-  router, 
-  timeRange 
-}: { 
-  data: any, 
-  projectId: string, 
-  router: ReturnType<typeof useRouter>, 
-  timeRange: TimeRange 
+function DailySignUpsWidget({
+  data,
+  projectId,
+  router,
+  timeRange
+}: {
+  data: any,
+  projectId: string,
+  router: ReturnType<typeof useRouter>,
+  timeRange: TimeRange,
 }) {
   return (
-    <TabbedMetricsCard 
-      config={dailySignUpsConfig} 
+    <TabbedMetricsCard
+      config={dailySignUpsConfig}
       chartData={data.daily_users || []}
       listData={data.recently_registered || []}
       listTitle="Recent Sign Ups"
@@ -278,8 +278,8 @@ export default function MetricsPage(props: { toSetup: () => void }) {
       fillWidth
     >
       <Suspense fallback={<MetricsLoadingFallback />}>
-        <MetricsContent 
-          includeAnonymous={includeAnonymous} 
+        <MetricsContent
+          includeAnonymous={includeAnonymous}
           installedApps={installedApps}
           timeRange={timeRange}
           dashboardConfig={dashboardConfig}
@@ -289,13 +289,13 @@ export default function MetricsPage(props: { toSetup: () => void }) {
   );
 }
 
-function MetricsContent({ 
-  includeAnonymous, 
+function MetricsContent({
+  includeAnonymous,
   installedApps,
   timeRange,
   dashboardConfig,
-}: { 
-  includeAnonymous: boolean, 
+}: {
+  includeAnonymous: boolean,
   installedApps: AppId[],
   timeRange: TimeRange,
   dashboardConfig: DashboardConfig,
@@ -306,7 +306,7 @@ function MetricsContent({
   const data = (adminApp as any)[stackAppInternalsSymbol].useMetrics(includeAnonymous);
 
   const isWidgetEnabled = (id: WidgetId) => dashboardConfig.enabledWidgets.includes(id);
-  
+
   // Get ordered right-side widgets
   const rightWidgets = useMemo(() => {
     return dashboardConfig.widgetOrder
@@ -321,31 +321,32 @@ function MetricsContent({
   // Render a widget by ID
   const renderWidget = (widgetId: WidgetId) => {
     switch (widgetId) {
-      case 'apps':
+      case 'apps': {
         return <AppsWidget installedApps={installedApps} projectId={projectId} />;
-      
-      case 'daily-active-users':
+      }
+      case 'daily-active-users': {
         return (
-          <DailyActiveUsersWidget 
-            data={data} 
-            projectId={projectId} 
-            router={router} 
-            timeRange={timeRange} 
+          <DailyActiveUsersWidget
+            data={data}
+            projectId={projectId}
+            router={router}
+            timeRange={timeRange}
           />
         );
-      
-      case 'daily-sign-ups':
+      }
+      case 'daily-sign-ups': {
         return (
-          <DailySignUpsWidget 
-            data={data} 
-            projectId={projectId} 
-            router={router} 
-            timeRange={timeRange} 
+          <DailySignUpsWidget
+            data={data}
+            projectId={projectId}
+            router={router}
+            timeRange={timeRange}
           />
         );
-      
-      default:
+      }
+      default: {
         return null;
+      }
     }
   };
 
@@ -403,8 +404,8 @@ function MetricsContent({
           {chartWidgets.length > 0 && (
             <div className={cn(
               "flex-1 min-h-0 grid gap-3",
-              chartWidgets.length === 1 
-                ? "grid-cols-1" 
+              chartWidgets.length === 1
+                ? "grid-cols-1"
                 : "grid-cols-1 sm:grid-cols-2"
             )}>
               {chartWidgets.map(widgetId => (
@@ -428,7 +429,7 @@ function MetricsContent({
           )}
         </div>
       </div>
-      
+
       {/* Mobile Globe Notice */}
       {showGlobe && (
         <div className="lg:hidden mt-4 p-3 rounded-lg bg-muted/30 border border-border/50 text-center">
