@@ -2,8 +2,11 @@ import { useAdminApp } from "@/app/(main)/(protected)/projects/[projectId]/use-a
 import { ALL_APPS_FRONTEND, AppFrontend, getAppPath } from "@/lib/apps-frontend";
 import { ALL_APPS, AppId } from "@stackframe/stack-shared/dist/apps/apps-config";
 import { AppIcon as SharedAppIcon, appSquarePaddingExpression, appSquareWidthExpression } from "@stackframe/stack-shared/dist/apps/apps-ui";
-import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
-import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger, cn } from "@stackframe/stack-ui";
+import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
+import { cn } from "@stackframe/stack-ui";
+import { Check } from "lucide-react";
+import { useState } from "react";
+import { AppWarningModal } from "./app-warning-modal";
 import { Link } from "./link";
 
 export { appSquarePaddingExpression, appSquareWidthExpression };
@@ -31,8 +34,6 @@ export function AppIcon({
       IconComponent={appFrontend.icon}
       LogoComponent={appFrontend.logo}
       className={className}
-      disabled={disabled}
-      style={style}
       cn={cn}
     />
   );
