@@ -147,6 +147,11 @@ export function GlobeSection({ countryData, totalUsers, children }: {countryData
               width: Math.min(globeWindowSize?.width ?? 600, 600),
               height: Math.min(globeWindowSize?.height ?? 600, 600),
             }}
+            onMouseEnter={() => {
+              if (globeRef.current) {
+                globeRef.current.controls().autoRotate = false;
+              }
+            }}
             onMouseMove={(e) => {
               resumeRender();
               setTooltipPos({ x: e.clientX, y: e.clientY });
@@ -154,6 +159,9 @@ export function GlobeSection({ countryData, totalUsers, children }: {countryData
             onMouseLeave={() => {
               setHexSelectedCountry(null);
               setPolygonSelectedCountry(null);
+              if (globeRef.current) {
+                globeRef.current.controls().autoRotate = true;
+              }
             }}
             onTouchMove={resumeRender}
           >
@@ -184,6 +192,7 @@ export function GlobeSection({ countryData, totalUsers, children }: {countryData
                   controls.maxDistance = 1000;
                   controls.minDistance = 200;
                   controls.dampingFactor = 0.15;
+                  controls.enableZoom = false;
                   controls.enableRotate = true;
                   current.camera().position.z = 420;
                   resumeRender();

@@ -8,33 +8,38 @@ import ThemeToggle from "@/components/theme-toggle";
 import { ALL_APPS_FRONTEND, AppFrontend, DUMMY_ORIGIN, getAppPath, getItemPath, testAppPath, testItemPath } from "@/lib/apps-frontend";
 import { getPublicEnvVar } from '@/lib/env';
 import { cn } from "@/lib/utils";
-import { UserButton, useUser } from "@stackframe/stack";
+import { StackAdminApp, UserButton, useUser } from "@stackframe/stack";
 import { ALL_APPS, type AppId } from "@stackframe/stack-shared/dist/apps/apps-config";
 import { typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
 import { getRelativePart } from "@stackframe/stack-shared/dist/utils/urls";
 import {
-  Breadcrumb,
-  BreadcrumbItem,
-  BreadcrumbList,
-  BreadcrumbPage,
-  BreadcrumbSeparator,
-  Button,
-  Sheet,
-  SheetContent,
-  SheetTitle,
-  SheetTrigger,
-  Typography,
+    Breadcrumb,
+    BreadcrumbItem,
+    BreadcrumbList,
+    BreadcrumbPage,
+    BreadcrumbSeparator,
+    Button,
+    Sheet,
+    SheetContent,
+    SheetTitle,
+    SheetTrigger,
+    Tooltip,
+    TooltipContent,
+    TooltipProvider,
+    TooltipTrigger,
+    Typography,
 } from "@stackframe/stack-ui";
 import {
-  Blocks,
-  ChevronDown,
-  ChevronRight,
-  Globe,
-  KeyRound,
-  LucideIcon,
-  Menu,
-  Settings,
+    Blocks,
+    ChevronDown,
+    ChevronRight,
+    Globe,
+    KeyRound,
+    LucideIcon,
+    Menu,
+    PanelLeft,
+    Settings,
 } from "lucide-react";
 import { useTheme } from "next-themes";
 import { usePathname } from "next/navigation";
@@ -134,7 +139,7 @@ async function resolveBreadcrumbs({
 }: {
   pathname: string,
   projectId: string,
-  stackAdminApp: ReturnType<typeof useAdminApp>,
+  stackAdminApp: StackAdminApp<false>,
 }): Promise<BreadcrumbItem[]> {
   const projectBasePath = `/projects/${projectId}`;
 
@@ -171,7 +176,7 @@ async function resolveBreadcrumbs({
   const appFrontend: AppFrontend = ALL_APPS_FRONTEND[matchedAppId];
   const appBreadcrumbsRaw = await appFrontend.getBreadcrumbItems?.(stackAdminApp, projectRelativePart);
   const appBreadcrumbs = appBreadcrumbsRaw?.length
-    ? appBreadcrumbsRaw.map((crumb: BreadcrumbSource) => ({
+    ? appBreadcrumbsRaw.map((crumb) => ({
       item: crumb.item,
       href: resolveWithin(projectBasePath, crumb.href),
     }))
@@ -192,7 +197,7 @@ async function resolveBreadcrumbs({
   const itemRelativePart = relativeTo(pathname, itemHref);
   const itemBreadcrumbsRaw = await navItem.getBreadcrumbItems?.(stackAdminApp, itemRelativePart);
   const itemBreadcrumbs = itemBreadcrumbsRaw?.length
-    ? itemBreadcrumbsRaw.map((crumb: BreadcrumbSource) => ({
+    ? itemBreadcrumbsRaw.map((crumb) => ({
       item: crumb.item,
       href: resolveWithin(itemHref, crumb.href),
     }))
@@ -210,12 +215,16 @@ function NavItem({
   onClick,
   isExpanded,
   onToggle,
+  isCollapsed,
+  onExpandSidebar,
 }: {
   item: Item | AppSection,
   href?: string,
   onClick?: () => void,
   isExpanded?: boolean,
   onToggle?: () => void,
+  isCollapsed?: boolean,
+  onExpandSidebar?: () => void,
 }) {
   const pathname = usePathname();
   const isSection = 'items' in item;
@@ -277,6 +286,52 @@ function NavItem({
       : "text-muted-foreground group-hover:text-foreground",
     isSection && isExpanded && "rotate-180"
   );
+
+  if (isCollapsed) {
+    return (
+      <div className="flex justify-center">
+        <Tooltip>
+          <TooltipTrigger asChild>
+            {isSection ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={onExpandSidebar}
+                className={cn(
+                  "h-9 w-9 p-0 justify-center rounded-lg border transition-all",
+                  isHighlighted
+                    ? "border-blue-500/40 bg-blue-500/10 shadow-sm"
+                    : "border-transparent hover:border-blue-500/20 hover:bg-blue-500/5"
+                )}
+              >
+                <IconComponent className={iconClasses} />
+              </Button>
+            ) : (
+              <Button
+                asChild
+                variant="ghost"
+                size="sm"
+                className={cn(
+                  "h-9 w-9 p-0 justify-center rounded-lg border transition-all",
+                  isHighlighted
+                    ? "border-blue-500/40 bg-blue-500/10 shadow-sm"
+                    : "border-transparent hover:border-blue-500/20 hover:bg-blue-500/5"
+                )}
+              >
+                <Link href={href ?? "#"} onClick={onClick} className="flex items-center justify-center">
+                  <IconComponent className={iconClasses} />
+                </Link>
+              </Button>
+            )}
+          </TooltipTrigger>
+          <TooltipContent side="right">
+            {item.name}
+          </TooltipContent>
+        </Tooltip>
+      </div>
+    );
+  }
 
   return (
     <div className="transition-[margin] duration-200">
@@ -387,7 +442,63 @@ function NavSubItem({
   );
 }
 
-function SidebarContent({ projectId, onNavigate }: { projectId: string, onNavigate?: () => void }) {
+// Memoized component for app navigation items to prevent unnecessary re-renders
+function AppNavItem({
+  appId,
+  projectId,
+  isExpanded,
+  onToggle,
+  isCollapsed,
+  onExpandSidebar,
+  onClick,
+}: {
+  appId: AppId,
+  projectId: string,
+  isExpanded: boolean,
+  onToggle: () => void,
+  isCollapsed?: boolean,
+  onExpandSidebar?: () => void,
+  onClick?: () => void,
+}) {
+  const app = ALL_APPS[appId];
+  const appFrontend = ALL_APPS_FRONTEND[appId];
+  
+  // Memoize the item object to prevent NavItem re-renders
+  const navItemData = useMemo(() => ({
+    name: app.displayName,
+    appId,
+    items: appFrontend.navigationItems.map((navItem) => ({
+      name: navItem.displayName,
+      href: getItemPath(projectId, appFrontend, navItem),
+      match: (fullUrl: URL) => testItemPath(projectId, appFrontend, navItem, fullUrl),
+    })),
+    href: getAppPath(projectId, appFrontend),
+    icon: appFrontend.icon,
+  }), [app.displayName, appId, appFrontend, projectId]);
+
+  return (
+    <NavItem
+      item={navItemData}
+      isExpanded={isExpanded}
+      onToggle={onToggle}
+      isCollapsed={isCollapsed}
+      onExpandSidebar={onExpandSidebar}
+      onClick={onClick}
+    />
+  );
+}
+
+function SidebarContent({ 
+  projectId, 
+  onNavigate,
+  isCollapsed,
+  toggleCollapsed,
+}: { 
+  projectId: string, 
+  onNavigate?: () => void,
+  isCollapsed?: boolean,
+  toggleCollapsed?: () => void,
+}) {
   const stackAdminApp = useAdminApp();
   const pathname = usePathname();
   const project = stackAdminApp.useProject();
@@ -429,57 +540,59 @@ function SidebarContent({ projectId, onNavigate }: { projectId: string, onNaviga
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex h-16 shrink-0 items-center justify-between border-b border-border px-4">
-        {getPublicEnvVar("NEXT_PUBLIC_STACK_EMULATOR_ENABLED") === "true" ? (
-          <div className="mx-2 flex-grow">
-            <Logo full width={96} />
+      <div className={cn("flex h-16 shrink-0 items-center border-b border-border px-4 transition-all duration-200", isCollapsed ? "justify-center px-2" : "justify-between")}>
+        {isCollapsed ? (
+          <div className="flex items-center justify-center">
+            <Logo width={24} />
           </div>
         ) : (
-          <ProjectSwitcher currentProjectId={projectId} />
+          getPublicEnvVar("NEXT_PUBLIC_STACK_EMULATOR_ENABLED") === "true" ? (
+            <div className="mx-2 flex-grow">
+              <Logo full width={96} />
+            </div>
+          ) : (
+            <ProjectSwitcher currentProjectId={projectId} />
+          )
         )}
       </div>
-      <div className="flex flex-grow flex-col overflow-y-auto px-3 py-4">
+      <div className={cn("flex flex-grow flex-col overflow-y-auto py-4 transition-all duration-200", isCollapsed ? "px-2" : "px-3")}>
         <div className="space-y-3">
-          <NavItem item={overviewItem} onClick={onNavigate} href={`/projects/${projectId}${overviewItem.href}`} />
+          <NavItem 
+            item={overviewItem} 
+            onClick={onNavigate} 
+            href={`/projects/${projectId}${overviewItem.href}`} 
+            isCollapsed={isCollapsed}
+          />
         </div>
 
-        <div className="mt-6 mb-3">
+        <div className={cn("mt-6 mb-3 transition-opacity duration-200", isCollapsed ? "opacity-0 h-0 mt-2 mb-0 overflow-hidden" : "opacity-100")}>
           <Typography className="px-1 text-xs font-semibold uppercase tracking-wide text-foreground/70">
             My Apps
           </Typography>
         </div>
 
-        <div className="space-y-2">
-          {enabledApps.map((appId) => {
-            const app = ALL_APPS[appId as AppId];
-            const appFrontend = ALL_APPS_FRONTEND[appId as AppId];
-            // Memoize the item object to prevent NavItem re-renders
-            const navItemData = {
-              name: app.displayName,
-              appId,
-              items: appFrontend.navigationItems.map((navItem) => ({
-                name: navItem.displayName,
-                href: getItemPath(projectId, appFrontend, navItem),
-                match: (fullUrl: URL) => testItemPath(projectId, appFrontend, navItem, fullUrl),
-              })),
-              href: getAppPath(projectId, appFrontend),
-              icon: appFrontend.icon,
-            };
-            return (
-              <NavItem
-                key={appId}
-                item={navItemData}
-                isExpanded={expandedSections.has(appId)}
-                onToggle={() => toggleSection(appId)}
-              />
-            );
-          })}
+        <div className={cn("space-y-2", isCollapsed && "mt-2")}>
+          {enabledApps.map((appId) => (
+            <AppNavItem
+              key={appId}
+              appId={appId}
+              projectId={projectId}
+              isExpanded={expandedSections.has(appId)}
+              onToggle={() => toggleSection(appId)}
+              isCollapsed={isCollapsed}
+              onExpandSidebar={() => {
+                if (toggleCollapsed) toggleCollapsed();
+                if (!expandedSections.has(appId)) toggleSection(appId);
+              }}
+              onClick={onNavigate}
+            />
+          ))}
         </div>
 
         <div className="flex-grow" />
       </div>
 
-      <div className="sticky bottom-0 border-t border-border px-3 py-4 backdrop-blur-sm">
+      <div className={cn("sticky bottom-0 border-t border-border py-4 backdrop-blur-sm transition-all duration-200", isCollapsed ? "px-2" : "px-3")}>
         <div className="space-y-2">
           {bottomItems.map((item) => (
             <NavItem
@@ -493,8 +606,36 @@ function SidebarContent({ projectId, onNavigate }: { projectId: string, onNaviga
                 regex: item.regex,
               }}
               href={item.external ? item.href : `/projects/${projectId}${item.href}`}
+              isCollapsed={isCollapsed}
             />
           ))}
+          
+          {toggleCollapsed && (
+            <div className="flex justify-center pt-2 border-t border-border mt-2">
+              <Tooltip>
+                 <TooltipTrigger asChild>
+                    <Button 
+                      variant="ghost" 
+                      size="sm" 
+                      onClick={toggleCollapsed}
+                      className={cn("text-muted-foreground hover:text-foreground", isCollapsed ? "h-9 w-9 p-0" : "w-full justify-between")}
+                    >
+                      {isCollapsed ? (
+                        <PanelLeft className="h-4 w-4" />
+                      ) : (
+                        <>
+                          <span className="text-xs font-medium">Collapse Sidebar</span>
+                          <PanelLeft className="h-4 w-4" />
+                        </>
+                      )}
+                    </Button>
+                 </TooltipTrigger>
+                 <TooltipContent side="right">
+                    {isCollapsed ? "Expand Sidebar" : "Collapse Sidebar"}
+                 </TooltipContent>
+              </Tooltip>
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -556,19 +697,19 @@ function HeaderBreadcrumb({
               <BreadcrumbSeparator />
             </>}
 
-          {breadcrumbItems.map((name, index) => (
+          {breadcrumbItems.map((breadcrumbItem, index) => (
             index < breadcrumbItems.length - 1 ?
               <Fragment key={index}>
                 <BreadcrumbItem>
-                  <Link href={name.href}>
-                    {name.item}
+                  <Link href={breadcrumbItem.href}>
+                    {breadcrumbItem.item}
                   </Link>
                 </BreadcrumbItem>
                 <BreadcrumbSeparator />
               </Fragment> :
               <BreadcrumbPage key={index}>
-                <Link href={name.href}>
-                  {name.item}
+                <Link href={breadcrumbItem.href}>
+                  {breadcrumbItem.item}
                 </Link>
               </BreadcrumbPage>
           ))}
@@ -581,77 +722,100 @@ function HeaderBreadcrumb({
 export default function SidebarLayout(props: { children?: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [companionExpanded, setCompanionExpanded] = useState(false);
+  // Add sidebar collapsed state
+  const [isCollapsed, setIsCollapsed] = useState(false);
+  
   const { resolvedTheme, setTheme } = useTheme();
   const projectId = useProjectId();
 
+  const toggleCollapsed = useCallback(() => {
+    setIsCollapsed(prev => !prev);
+  }, []);
+
   return (
-    <div className="w-full flex">
-      {/* Left Sidebar */}
-      <div className="fixed left-0 top-0 hidden h-screen min-w-[248px] flex-col border-r border-border bg-background lg:flex z-[10]">
-        {/*
-          If we put a backdrop blur on the sidebar div, it will create a new backdrop root,
-          which would then make us unable to properly do a nested blur for the bottom elements
-          of the sidebar. By putting the backdrop, and with it the backdrop root, in an element
-          right behind all the contents, we get the same behavior but better.
+    <TooltipProvider>
+      <div className="w-full flex">
+        {/* Left Sidebar */}
+        <div 
+          className={cn(
+            "fixed left-0 top-0 hidden h-screen flex-col border-r border-border bg-background lg:flex z-[10] transition-[width] duration-200 ease-in-out",
+            isCollapsed ? "w-[70px]" : "w-[248px]"
+          )}
+        >
+          {/*
+            If we put a backdrop blur on the sidebar div, it will create a new backdrop root,
+            which would then make us unable to properly do a nested blur for the bottom elements
+            of the sidebar. By putting the backdrop, and with it the backdrop root, in an element
+            right behind all the contents, we get the same behavior but better.
 
-          https://drafts.fxtf.org/filter-effects-2/#BackdropRoot
-        */}
-        <div className="absolute inset-0 backdrop-blur-sm z-[-1]"></div>
+            https://drafts.fxtf.org/filter-effects-2/#BackdropRoot
+          */}
+          <div className="absolute inset-0 backdrop-blur-sm z-[-1]"></div>
 
-        <SidebarContent projectId={projectId} />
-      </div>
+          <SidebarContent 
+            projectId={projectId} 
+            isCollapsed={isCollapsed}
+            toggleCollapsed={toggleCollapsed}
+          />
+        </div>
 
-      {/* Main Content Area */}
-      <div className="flex flex-col flex-grow w-0 lg:ml-[248px] sm:pr-12">
-        {/* Header */}
-        <div className="sticky top-0 z-10 flex h-16 items-center justify-between border-b border-border bg-background px-4 backdrop-blur-sm lg:px-6">
-          <div className="hidden lg:flex">
-            <HeaderBreadcrumb projectId={projectId} />
-          </div>
+        {/* Main Content Area */}
+        <div 
+          className={cn(
+            "flex flex-col flex-grow w-0 sm:pr-12 transition-[margin] duration-200 ease-in-out",
+             isCollapsed ? "lg:ml-[70px]" : "lg:ml-[248px]"
+          )}
+        >
+          {/* Header */}
+          <div className="sticky top-0 z-10 flex h-16 items-center justify-between border-b border-border bg-background px-4 backdrop-blur-sm lg:px-6">
+            <div className="hidden lg:flex">
+              <HeaderBreadcrumb projectId={projectId} />
+            </div>
 
-          <div className="flex lg:hidden items-center">
-            <Sheet onOpenChange={(open) => setSidebarOpen(open)} open={sidebarOpen}>
-              <SheetTitle className="hidden">
-                Sidebar Menu
-              </SheetTitle>
-              <SheetTrigger>
-                <Menu />
-              </SheetTrigger>
-              <SheetContent
-                aria-describedby={undefined}
-                side='left' className="w-[248px] bg-background p-0 backdrop-blur-sm" hasCloseButton={false}>
-                <SidebarContent projectId={projectId} onNavigate={() => setSidebarOpen(false)} />
-              </SheetContent>
-            </Sheet>
+            <div className="flex lg:hidden items-center">
+              <Sheet onOpenChange={(open) => setSidebarOpen(open)} open={sidebarOpen}>
+                <SheetTitle className="hidden">
+                  Sidebar Menu
+                </SheetTitle>
+                <SheetTrigger>
+                  <Menu />
+                </SheetTrigger>
+                <SheetContent
+                  aria-describedby={undefined}
+                  side='left' className="w-[248px] bg-background p-0 backdrop-blur-sm" hasCloseButton={false}>
+                  <SidebarContent projectId={projectId} onNavigate={() => setSidebarOpen(false)} />
+                </SheetContent>
+              </Sheet>
 
-            <div className="ml-4 flex lg:hidden">
-              <HeaderBreadcrumb projectId={projectId} mobile />
+              <div className="ml-4 flex lg:hidden">
+                <HeaderBreadcrumb projectId={projectId} mobile />
+              </div>
+            </div>
+
+            <div className="flex gap-2 relative items-center">
+              <Button asChild variant="ghost" size="icon" className="hidden lg:flex">
+                <Link href={`/projects/${projectId}/project-settings`}>
+                  <Settings className="w-4 h-4" />
+                </Link>
+              </Button>
+              {getPublicEnvVar("NEXT_PUBLIC_STACK_EMULATOR_ENABLED") === "true" ?
+                <ThemeToggle /> :
+                <UserButton colorModeToggle={() => setTheme(resolvedTheme === 'light' ? 'dark' : 'light')} />
+              }
             </div>
           </div>
 
-          <div className="flex gap-2 relative items-center">
-            <Button asChild variant="ghost" size="icon" className="hidden lg:flex">
-              <Link href={`/projects/${projectId}/project-settings`}>
-                <Settings className="w-4 h-4" />
-              </Link>
-            </Button>
-            {getPublicEnvVar("NEXT_PUBLIC_STACK_EMULATOR_ENABLED") === "true" ?
-              <ThemeToggle /> :
-              <UserButton colorModeToggle={() => setTheme(resolvedTheme === 'light' ? 'dark' : 'light')} />
-            }
+          {/* Content Body - Normal scrolling */}
+          <div className="flex-grow relative flex flex-col">
+            {props.children}
           </div>
         </div>
 
-        {/* Content Body - Normal scrolling */}
-        <div className="flex-grow relative flex flex-col">
-          {props.children}
+        {/* Stack Companion - Fixed positioned like left sidebar */}
+        <div className="fixed right-0 top-0 hidden h-screen border-l border-border bg-background sm:block z-[10]">
+          <StackCompanion onExpandedChange={setCompanionExpanded} />
         </div>
       </div>
-
-      {/* Stack Companion - Fixed positioned like left sidebar */}
-      <div className="fixed right-0 top-0 hidden h-screen border-l border-border bg-background sm:block z-[10]">
-        <StackCompanion onExpandedChange={setCompanionExpanded} />
-      </div>
-    </div>
+    </TooltipProvider>
   );
 }
