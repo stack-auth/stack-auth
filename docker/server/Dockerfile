@@ -13,7 +13,7 @@ ENV PNPM_HOME=/pnpm
 ENV PATH=$PNPM_HOME:$PATH
 
 RUN corepack enable
-RUN corepack prepare pnpm@10.0.0 --activate
+RUN corepack prepare pnpm@10.23.0 --activate
 RUN pnpm add -g turbo
 RUN pnpm add -g tsx
 
