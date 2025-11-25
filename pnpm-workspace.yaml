@@ -3,3 +3,5 @@ packages:
   - apps/*
   - examples/*
   - docs
+
+minimumReleaseAge: 2880
