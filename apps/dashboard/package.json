@@ -10,7 +10,7 @@
     "dev": "next dev --turbopack --port ${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}01",
     "build": "next build",
     "docker-build": "next build --experimental-build-mode compile",
-    "analyze-bundle": "ANALYZE_BUNDLE=1 pnpm run build",
+    "analyze-bundle": "next experimental-analyze --serve",
     "start": "next start --port ${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}01",
     "psql": "pnpm run with-env bash -c 'psql $STACK_DATABASE_CONNECTION_STRING'",
     "lint": "eslint ."
@@ -23,7 +23,6 @@
     "@dnd-kit/sortable": "^10.0.0",
     "@hookform/resolvers": "^3.3.4",
     "@monaco-editor/react": "4.7.0",
-    "@next/bundle-analyzer": "16.0.0-beta.0",
     "@radix-ui/react-slot": "^1.2.3",
     "@radix-ui/react-tooltip": "^1.1.3",
     "@react-hook/resize-observer": "^2.0.2",
@@ -86,5 +85,6 @@
       "@types/react": "19.2.2",
       "@types/react-dom": "19.2.2"
     }
-  }
+  },
+  "packageManager": "pnpm@10.23.0"
 }

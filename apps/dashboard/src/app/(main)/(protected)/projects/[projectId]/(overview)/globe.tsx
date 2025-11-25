@@ -108,11 +108,11 @@ export function GlobeSection({ countryData, totalUsers, children }: {countryData
     const populationProportion = countryPopulation / totalPopulationInCountries;  // how likely is it that a random person is in this country?
     const likelihoodRatio = proportionLowerBound / populationProportion;  // how much more likely is it for a random user to be in this country than a random person?
 
-    const colorValue = Math.log(Math.max(1, 100 * likelihoodRatio));
+    const colorValue = Math.max(0, Math.log(100 * likelihoodRatio));
 
     return [country.properties.ISO_A2_EH, colorValue] as const;
   }));
-  const maxColorValue = Math.max(0, ...[...colorValues.values()].filter((v): v is number => v !== null));
+  const maxColorValue = Math.max(0.001, ...[...colorValues.values()].filter((v): v is number => v !== null));
 
   // There is a react-globe error that we haven't been able to track down, so we refresh it whenever it occurs
   // TODO fix it without a workaround
