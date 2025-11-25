@@ -16,5 +16,6 @@
     "dotenv-cli": "^7.4.1",
     "typescript": "5.3.3",
     "vite": "^6.1.0"
-  }
+  },
+  "packageManager": "pnpm@10.23.0"
 }

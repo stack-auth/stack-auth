@@ -49,5 +49,6 @@
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "next": "^14.1.0"
-  }
+  },
+  "packageManager": "pnpm@10.23.0"
 }
