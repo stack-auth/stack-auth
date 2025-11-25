@@ -178,7 +178,7 @@ function AppsWidget({ installedApps, projectId }: { installedApps: AppId[], proj
                       className="shadow-sm group-hover:shadow-md bg-white dark:bg-gray-800 rounded-[1.2rem] ring-1 ring-black/5 dark:ring-white/5"
                     />
                   </div>
-                  <span className="text-[11px] font-medium text-center text-muted-foreground group-hover:text-foreground transition-colors line-clamp-2 leading-tight w-full px-1">
+                  <span className="text-[11px] font-medium text-center text-muted-foreground group-hover:text-foreground transition-colors truncate leading-tight w-full px-1">
                     {app.displayName}
                   </span>
                 </Link>

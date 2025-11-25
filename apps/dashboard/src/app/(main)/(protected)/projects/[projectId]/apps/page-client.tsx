@@ -150,7 +150,7 @@ export default function PageClient() {
         </div>
 
         {/* Category Tabs */}
-        <div className="flex items-center gap-1 mb-8 border-b border-gray-200 dark:border-gray-800">
+        <div className="flex items-center gap-1 mb-8 border-b border-gray-200 dark:border-gray-800 overflow-x-auto flex-nowrap [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
           {CATEGORIES.map((category) => {
             const count = getCategoryCount(category.id);
             const isActive = selectedCategory === category.id;
@@ -160,7 +160,7 @@ export default function PageClient() {
                 key={category.id}
                 onClick={() => setSelectedCategory(category.id)}
                 className={cn(
-                  "px-4 py-3 text-sm font-medium transition-all relative",
+                  "px-3 sm:px-4 py-3 text-sm font-medium transition-all relative flex-shrink-0 whitespace-nowrap",
                   "hover:text-gray-900 dark:hover:text-gray-100",
                   isActive
                     ? "text-blue-600 dark:text-blue-400"

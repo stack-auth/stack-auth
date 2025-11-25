@@ -18,13 +18,15 @@ export function AppIcon({
   className,
   size = "medium",
   showBadge = false,
-  variant = "default"
+  variant = "default",
+  enabled = false,
 }: {
   appId: AppId,
   className?: string,
   size?: "small" | "medium" | "large",
   showBadge?: boolean,
   variant?: AppSquareVariant,
+  enabled?: boolean,
 }) {
   const appFrontend: AppFrontend = ALL_APPS_FRONTEND[appId];
 
@@ -34,6 +36,7 @@ export function AppIcon({
       IconComponent={appFrontend.icon}
       LogoComponent={appFrontend.logo}
       className={className}
+      enabled={enabled || variant === "installed"}
       cn={cn}
     />
   );
@@ -98,7 +101,7 @@ export function AppSquare({
     <>
       <div
         className={cn(
-          "group relative",
+          "group relative aspect-square",
           isProcessing && "pointer-events-none opacity-50"
         )}
         onMouseEnter={() => setIsHovered(true)}
@@ -106,14 +109,14 @@ export function AppSquare({
       >
         <div
           className={cn(
-            "relative flex flex-col items-center gap-3 p-4 rounded-2xl transition-all duration-200 cursor-default",
-            "bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800",
+            "absolute inset-0 flex flex-col items-center p-3 sm:p-4 rounded-xl sm:rounded-2xl transition-all duration-200 cursor-default overflow-hidden",
+            "bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800",
             "hover:border-gray-300 dark:hover:border-gray-700 hover:shadow-lg",
-            isEnabled && "border-green-500/30 dark:border-green-500/30 bg-green-50/50 dark:bg-green-950/20"
+            isEnabled && "border-green-500/40 dark:border-green-500/30 bg-green-50/30 dark:bg-green-950/20"
           )}
         >
-          {/* Icon */}
-          <div className="relative">
+          {/* Icon container - fixed height portion */}
+          <div className="flex items-center justify-center w-full h-[45%]">
             <AppIcon
               appId={appId}
               size="medium"
@@ -122,17 +125,17 @@ export function AppSquare({
             />
           </div>
 
-          {/* Text */}
-          <div className="flex flex-col items-center gap-1 w-full">
+          {/* Text container - fixed height portion */}
+          <div className="w-full h-[55%] flex flex-col items-center justify-start pt-2 overflow-hidden">
             <span className={cn(
-            "text-sm font-medium text-center",
-            "text-gray-900 dark:text-gray-100"
-          )}>
+              "text-[11px] sm:text-xs font-medium text-center w-full line-clamp-1",
+              "text-gray-900 dark:text-gray-100"
+            )}>
               {app.displayName}
             </span>
 
             {showSubtitle && (
-              <span className="text-xs text-gray-500 dark:text-gray-400 text-center line-clamp-2 px-2">
+              <span className="mt-1 text-[9px] sm:text-[10px] text-gray-500 dark:text-gray-400 text-center line-clamp-2 w-full leading-normal">
                 {app.subtitle}
               </span>
             )}
@@ -140,20 +143,20 @@ export function AppSquare({
 
           {/* Hover actions */}
           <div className={cn(
-          "absolute inset-x-0 bottom-0 p-3 flex justify-center transition-all duration-200",
-          isHovered ? "opacity-100 translate-y-0" : "opacity-0 translate-y-2 pointer-events-none"
-        )}>
+            "absolute inset-x-0 bottom-3 sm:bottom-4 flex justify-center transition-all duration-200",
+            isHovered ? "opacity-100 translate-y-0" : "opacity-0 translate-y-2 pointer-events-none"
+          )}>
             <button
               onClick={(event) => {
                 runAsynchronously(handleToggleEnabled(event));
               }}
               className={cn(
-              "px-4 py-1.5 text-xs font-medium rounded-full transition-all",
-              "shadow-lg backdrop-blur-sm",
-              isEnabled
-                ? "bg-gray-900/90 dark:bg-gray-100/90 text-white dark:text-gray-900 hover:bg-gray-800 dark:hover:bg-gray-200"
-                : "bg-blue-600/90 text-white hover:bg-blue-700"
-            )}
+                "px-3 sm:px-4 py-1 sm:py-1.5 text-[10px] sm:text-xs font-medium rounded-full transition-all",
+                "shadow-lg backdrop-blur-sm",
+                isEnabled
+                  ? "bg-gray-900/90 dark:bg-gray-100/90 text-white dark:text-gray-900 hover:bg-gray-800 dark:hover:bg-gray-200"
+                  : "bg-blue-600/90 text-white hover:bg-blue-700"
+              )}
             >
               {isEnabled ? 'Disable' : 'Enable'}
             </button>
@@ -162,19 +165,18 @@ export function AppSquare({
 
         {/* Status badges in top-right corner */}
         {isEnabled && (
-          <div className="absolute top-2 right-2 w-6 h-6 bg-green-500 rounded-full flex items-center justify-center shadow-md">
-            <Check className="w-3.5 h-3.5 text-white" strokeWidth={3} />
+          <div className="absolute top-2 right-2 sm:top-3 sm:right-3 w-5 h-5 sm:w-6 sm:h-6 bg-green-500 rounded-full flex items-center justify-center shadow-md z-10">
+            <Check className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-white" strokeWidth={3} />
           </div>
         )}
 
         {!isEnabled && app.stage !== "stable" && (
-          <div className="absolute top-2 right-2">
+          <div className="absolute top-2 right-2 sm:top-3 sm:right-3 z-10">
             <div className={cn(
-              "px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider",
-              "border backdrop-blur-sm shadow-sm",
+              "px-1.5 sm:px-2 py-0.5 rounded sm:rounded-md text-[8px] sm:text-[10px] font-bold uppercase tracking-wide border",
               app.stage === "alpha"
-                ? "bg-orange-50/90 dark:bg-orange-950/40 text-orange-600 dark:text-orange-400 border-orange-200 dark:border-orange-800"
-                : "bg-blue-50/90 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-800"
+                ? "bg-orange-500/10 text-orange-500 border-orange-500/50"
+                : "bg-blue-500/10 text-blue-500 border-blue-500/50"
             )}>
               {app.stage === "alpha" ? "Alpha" : "Beta"}
             </div>
