@@ -8,5 +8,6 @@
   },
   "dependencies": {
     "serve": "^14.2.4"
-  }
+  },
+  "packageManager": "pnpm@10.23.0"
 }

@@ -46,7 +46,7 @@
     "jose": "^5.2.2",
     "lodash": "^4.17.21",
     "lucide-react": "^0.508.0",
-    "next": "16.0.2-canary.33",
+    "next": "16.0.0",
     "next-themes": "^0.2.1",
     "posthog-js": "^1.235.0",
     "react": "19.2.0",
@@ -85,5 +85,6 @@
       "@types/react": "19.2.2",
       "@types/react-dom": "19.2.2"
     }
-  }
+  },
+  "packageManager": "pnpm@10.23.0"
 }
