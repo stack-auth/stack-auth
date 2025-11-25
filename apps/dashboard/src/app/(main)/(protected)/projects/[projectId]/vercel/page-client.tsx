@@ -3,7 +3,7 @@
 import { EnvKeys } from "@/components/env-keys";
 import { InlineCode } from "@/components/inline-code";
 import { StyledLink } from "@/components/link";
-import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
+import { runAsynchronously, runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import {
   Alert,
   AlertDescription,
@@ -77,26 +77,20 @@ export default function PageClient() {
     setIsGenerating(true);
     setError(null);
 
-    try {
-      const newKey = await adminApp.createInternalApiKey({
-        hasPublishableClientKey: true,
-        hasSecretServerKey: true,
-        hasSuperSecretAdminKey: false,
-        expiresAt: new Date(Date.now() + TWO_HUNDRED_YEARS_IN_MS),
-        description: "Vercel Integration",
-      });
+    const newKey = await adminApp.createInternalApiKey({
+      hasPublishableClientKey: true,
+      hasSecretServerKey: true,
+      hasSuperSecretAdminKey: false,
+      expiresAt: new Date(Date.now() + TWO_HUNDRED_YEARS_IN_MS),
+      description: "Vercel Integration",
+    });
 
-      setKeys({
-        projectId: adminApp.projectId,
-        publishableClientKey: newKey.publishableClientKey!,
-        secretServerKey: newKey.secretServerKey!,
-      });
-    } catch (err) {
-      console.error(err);
-      setError(err instanceof Error ? err.message : "Failed to generate API keys. Please try again.");
-    } finally {
-      setIsGenerating(false);
-    }
+    setKeys({
+      projectId: adminApp.projectId,
+      publishableClientKey: newKey.publishableClientKey!,
+      secretServerKey: newKey.secretServerKey!,
+    });
+    setIsGenerating(false);
   };
 
   const toggleStepCompletion = (id: StepId) => {

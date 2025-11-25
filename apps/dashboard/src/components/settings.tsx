@@ -1,5 +1,5 @@
 import { yupResolver } from "@hookform/resolvers/yup";
-import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
+import { runAsynchronously, runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { forwardRefIfNeeded } from "@stackframe/stack-shared/dist/utils/react";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger, Button, Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle, cn, DelayedInput, Form, Label, Select, SelectContent, SelectTrigger, SelectValue, Switch, Typography, useToast } from "@stackframe/stack-ui";
 import { Settings } from "lucide-react";
@@ -272,24 +272,28 @@ export function FormSettingCard<F extends FieldValues>(
   const onSubmit = useCallback(async (values: F, e?: React.BaseSyntheticEvent) => {
     e?.preventDefault();
     setSubmitting(true);
-    try {
-      await propsOnSubmit(values);
-      form.reset(values);
-      toast({ title: 'Your changes have been saved', variant: 'success' });
-    } catch (error) {
-      toast({
-        title: 'Failed to save changes',
-        description: error instanceof Error ? error.message : 'An error occurred',
-        variant: 'destructive'
-      });
-    } finally {
-      setSubmitting(false);
-    }
+    await propsOnSubmit(values);
+    form.reset(values);
+    toast({ title: 'Your changes have been saved', variant: 'success' });
+    setSubmitting(false);
   }, [propsOnSubmit, form, toast]);
 
   const handleFormSubmit = useCallback((e: React.FormEvent<HTMLFormElement>) => {
-    runAsynchronouslyWithAlert(form.handleSubmit(onSubmit)(e));
-  }, [form, onSubmit]);
+    runAsynchronously(async () => {
+      setSubmitting(true);
+      try {
+        await form.handleSubmit(onSubmit)(e);
+      } catch (error) {
+        toast({
+          title: 'Failed to save changes',
+          description: error instanceof Error ? error.message : 'An error occurred',
+          variant: 'destructive'
+        });
+      } finally {
+        setSubmitting(false);
+      }
+    });
+  }, [form, onSubmit, toast]);
 
   const handleCancel = useCallback(() => {
     form.reset();

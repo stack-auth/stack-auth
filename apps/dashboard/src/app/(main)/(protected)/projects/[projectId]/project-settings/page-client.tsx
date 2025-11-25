@@ -6,8 +6,9 @@ import { FormSettingCard, SettingCard, SettingCopyableText, SettingSwitch } from
 import { getPublicEnvVar } from "@/lib/env";
 import { TeamSwitcher, useUser } from "@stackframe/stack";
 import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { ActionDialog, Alert, Avatar, AvatarFallback, AvatarImage, Button, SimpleTooltip, Typography, useToast } from "@stackframe/stack-ui";
-import React, { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import * as yup from "yup";
 import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";
@@ -17,8 +18,7 @@ const projectInformationSchema = yup.object().shape({
   description: yup.string(),
 });
 
-// Memoized team member list item component
-const TeamMemberItem = React.memo(function TeamMemberItem({ member }: { member: any }) {
+function TeamMemberItem({ member }: { member: any }) {
   const displayName = member.teamProfile.displayName?.trim() || "Name not set";
   const avatarFallback = displayName === "Name not set"
     ? "?"
@@ -42,7 +42,7 @@ const TeamMemberItem = React.memo(function TeamMemberItem({ member }: { member: 
       </div>
     </li>
   );
-});
+}
 
 export default function PageClient() {
   const stackAdminApp = useAdminApp();
@@ -52,7 +52,6 @@ export default function PageClient() {
   const teams = user.useTeams();
   const [selectedTeamId, setSelectedTeamId] = useState<string | null>(null);
   const [isTransferring, setIsTransferring] = useState(false);
-  const transferInProgressRef = useRef(false);
   const { toast } = useToast();
 
   const baseApiUrl = getPublicEnvVar('NEXT_PUBLIC_STACK_API_URL');
@@ -101,12 +100,10 @@ export default function PageClient() {
     [currentOwnerTeam.id]
   );
 
-  // Fix race condition with ref and improve error handling
   const handleTransfer = useCallback(async () => {
     if (!selectedTeamId || selectedTeamId === project.ownerTeamId) return;
-    if (transferInProgressRef.current) return; // Prevent concurrent transfers
+    if (isTransferring) return;
 
-    transferInProgressRef.current = true;
     setIsTransferring(true);
     try {
       await user.transferProject(project.id, selectedTeamId);
@@ -119,18 +116,10 @@ export default function PageClient() {
       // Reload the page to reflect changes
       // we don't actually need this, but it's a nicer UX as it clearly indicates to the user that a "big" change was made
       window.location.reload();
-    } catch (error) {
-      console.error('Failed to transfer project:', error);
-      toast({
-        title: 'Failed to transfer project',
-        description: error instanceof Error ? error.message : 'Unknown error',
-        variant: 'destructive'
-      });
     } finally {
       setIsTransferring(false);
-      transferInProgressRef.current = false;
     }
-  }, [selectedTeamId, project.ownerTeamId, project.id, user, toast]);
+  }, [selectedTeamId, project.ownerTeamId, project.id, user, toast, isTransferring]);
 
   // Memoize logo update callbacks
   const handleLogoChange = useCallback(async (logoUrl: string | null) => {
@@ -336,7 +325,7 @@ export default function PageClient() {
                   title="Transfer Project"
                   okButton={{
                     label: "Transfer Project",
-                    onClick: handleTransfer
+                    onClick: () => runAsynchronouslyWithAlert(handleTransfer())
                   }}
                   cancelButton
                 >
