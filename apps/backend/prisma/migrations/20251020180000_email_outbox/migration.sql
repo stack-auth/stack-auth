@@ -36,6 +36,8 @@ CREATE TABLE "EmailOutbox" (
     "themeId" TEXT,
     "isHighPriority" BOOLEAN NOT NULL,
     "to" JSONB NOT NULL,
+    "overrideSubject" TEXT,
+    "overrideNotificationCategoryId" TEXT,
     "renderedIsTransactional" BOOLEAN,
     "renderedNotificationCategoryId" TEXT,
     "extraRenderVariables" JSONB NOT NULL,

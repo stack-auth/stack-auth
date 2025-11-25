@@ -46,6 +46,8 @@ export async function sendEmailToMany(options: {
   shouldSkipDeliverabilityCheck: boolean,
   scheduledAt: Date,
   createdWith: { type: "draft", draftId: string } | { type: "programmatic-call", templateId: string | null },
+  overrideSubject?: string,
+  overrideNotificationCategoryId?: string,
 }) {
   await globalPrismaClient.emailOutbox.createMany({
     data: options.recipients.map(recipient => ({
@@ -60,6 +62,8 @@ export async function sendEmailToMany(options: {
       extraRenderVariables: options.extraVariables,
       scheduledAt: options.scheduledAt,
       shouldSkipDeliverabilityCheck: options.shouldSkipDeliverabilityCheck,
+      overrideSubject: options.overrideSubject,
+      overrideNotificationCategoryId: options.overrideNotificationCategoryId,
     })),
   });
   // The cron job should run runEmailQueueStep() to process the emails, but we call it here again for those self-hosters

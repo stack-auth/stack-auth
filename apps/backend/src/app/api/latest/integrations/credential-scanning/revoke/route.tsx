@@ -1,3 +1,6 @@
+import { createTemplateComponentFromHtml } from "@/lib/email-rendering";
+import { sendEmailToMany } from "@/lib/emails";
+import { getNotificationCategoryByName } from "@/lib/notification-categories";
 import { listPermissions } from "@/lib/permissions";
 import { getTenancy } from "@/lib/tenancies";
 import { getPrismaClientForTenancy, globalPrismaClient, retryTransaction } from "@/prisma-client";
@@ -153,14 +156,7 @@ export const POST = createSmartRouteHandler({
       }
     }
 
-    const tenancy = await globalPrismaClient.tenancy.findUnique({
-      where: {
-        id: updatedApiKey.tenancyId
-      },
-      include: {
-        project: true,
-      },
-    });
+    const tenancy = await getTenancy(updatedApiKey.tenancyId);
 
     if (!tenancy) {
       throw new StackAssertionError("Tenancy not found");
@@ -172,7 +168,7 @@ export const POST = createSmartRouteHandler({
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
         <h2 style="color: #333;">API Key Revoked</h2>
         <p style="color: #555; font-size: 16px; line-height: 1.5;">
-          Your API key "${escapeHtml(updatedApiKey.description)}" for ${escapeHtml(tenancy.project.displayName)} has been automatically revoked because it was found in a public repository.
+          Your API key "${escapeHtml(updatedApiKey.description)}" for ${escapeHtml(tenancy.project.display_name)} has been automatically revoked because it was found in a public repository.
         </p>
         <p style="color: #555; font-size: 16px; line-height: 1.5;">
           This is an automated security measure to protect your api keys from being leaked. If you believe this was a mistake, please contact support.
@@ -184,7 +180,24 @@ export const POST = createSmartRouteHandler({
     `;
 
     // Send email notifications
-    throw new StackAssertionError("Credential scanning email is currently disabled!");
+    if (affectedEmails.size > 0) {
+      const tsxSource = createTemplateComponentFromHtml(htmlContent);
+      const transactionalCategory = getNotificationCategoryByName("Transactional");
+
+      await sendEmailToMany({
+        tenancy,
+        recipients: Array.from(affectedEmails).map(email => ({ type: "custom-emails", emails: [email] })),
+        tsxSource,
+        extraVariables: {},
+        themeId: null,
+        isHighPriority: true,
+        shouldSkipDeliverabilityCheck: false,
+        scheduledAt: new Date(),
+        createdWith: { type: "programmatic-call", templateId: null },
+        overrideSubject: subject,
+        overrideNotificationCategoryId: transactionalCategory?.id,
+      });
+    }
 
     return {
       statusCode: 200,

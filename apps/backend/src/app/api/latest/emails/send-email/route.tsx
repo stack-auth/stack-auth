@@ -1,6 +1,7 @@
 import { getEmailDraft, themeModeToTemplateThemeId } from "@/lib/email-drafts";
 import { createTemplateComponentFromHtml } from "@/lib/email-rendering";
 import { sendEmailToMany } from "@/lib/emails";
+import { getNotificationCategoryByName } from "@/lib/notification-categories";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@stackframe/stack-shared";
@@ -16,8 +17,8 @@ type UserResult = {
 const bodyBase = yupObject({
   user_ids: yupArray(yupString().defined()).optional(),
   all_users: yupBoolean().oneOf([true]).optional(),
-  subject: yupString().optional(),  // TODO unused rn; fix this
-  notification_category_name: yupString().optional(),  // TODO unused rn; fix this
+  subject: yupString().optional(),
+  notification_category_name: yupString().optional(),
   theme_id: templateThemeIdSchema.nullable().meta({
     openapiField: { description: "The theme to use for the email. If not specified, the default theme will be used." }
   }),
@@ -70,11 +71,31 @@ export const POST = createSmartRouteHandler({
       throw new KnownErrors.SchemaError("Exactly one of user_ids or all_users must be provided");
     }
 
+    // We have this check in the email queue step as well, but to give the user a better error message already in the send-email endpoint we already do it here
+    if (body.notification_category_name) {
+      if (!getNotificationCategoryByName(body.notification_category_name)) {
+        throwErr(400, "Notification category not found with given name");
+      }
+    }
+
     const isHighPriority = body.is_high_priority ?? false;
 
     const prisma = await getPrismaClientForTenancy(auth.tenancy);
 
     const variables = "variables" in body ? body.variables ?? {} : {};
+
+    let overrideSubject: string | undefined = undefined;
+    if (body.subject) {
+      overrideSubject = body.subject;
+    }
+
+    let overrideNotificationCategoryId: string | undefined = undefined;
+    if (body.notification_category_name) {
+      const category = getNotificationCategoryByName(body.notification_category_name);
+      if (category) {
+        overrideNotificationCategoryId = category.id;
+      }
+    }
 
     const templates = new Map(Object.entries(auth.tenancy.config.emails.templates));
     let tsxSource: string;
@@ -117,6 +138,24 @@ export const POST = createSmartRouteHandler({
       },
     })).map(user => user.projectUserId) : body.user_ids ?? throwErr("user_ids must be provided if all_users is false");
 
+    // Sanity check that the user IDs are valid so the user gets an error here instead of only once the email is rendered.
+    if (!body.all_users && body.user_ids) {
+      const users = await prisma.projectUser.findMany({
+        where: {
+          tenancyId: auth.tenancy.id,
+          projectUserId: { in: body.user_ids },
+        },
+        select: {
+          projectUserId: true,
+        },
+      });
+      if (users.length !== body.user_ids.length) {
+        const foundUserIds = new Set(users.map(u => u.projectUserId));
+        const missingUserId = body.user_ids.find(id => !foundUserIds.has(id));
+        // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+        throw new KnownErrors.UserIdDoesNotExist(missingUserId!);
+      }
+    }
 
     await sendEmailToMany({
       createdWith: createdWith,
@@ -128,6 +167,8 @@ export const POST = createSmartRouteHandler({
       isHighPriority: isHighPriority,
       shouldSkipDeliverabilityCheck: false,
       scheduledAt: new Date(),
+      overrideSubject: overrideSubject,
+      overrideNotificationCategoryId: overrideNotificationCategoryId,
     });
 
 

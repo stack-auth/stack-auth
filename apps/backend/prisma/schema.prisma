@@ -710,14 +710,16 @@ model EmailOutbox {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  // note: [tsxSource, themeId, isHighPriority, toUserIds, toEmails, extraRenderVariables, shouldSkipDeliverabilityCheck] can be changed, but only while startedSendingAt is not set, and any modification should reset fields like [renderedByWorkerId, startedRenderingAt, finishedRenderingAt, renderError*, rendered*, isQueued] and any other fields with similar semantics to null.
-  tsxSource                     String
-  themeId                       String?
-  isHighPriority                Boolean
+  // note: [tsxSource, themeId, isHighPriority, toUserIds, toEmails, extraRenderVariables, shouldSkipDeliverabilityCheck, overrideSubject, overrideNotificationCategoryId] can be changed, but only while startedSendingAt is not set, and any modification should reset fields like [renderedByWorkerId, startedRenderingAt, finishedRenderingAt, renderError*, rendered*, isQueued] and any other fields with similar semantics to null.
+  tsxSource                      String
+  themeId                        String?
+  isHighPriority                 Boolean
   // Who the email is being sent to. { type: "user-primary-email", userId: string } | { type: "user-custom-emails", userId: string, emails: string[] } | { type: "custom-emails", emails: string[] }
-  to                            Json
-  extraRenderVariables          Json
-  shouldSkipDeliverabilityCheck Boolean
+  to                             Json
+  extraRenderVariables           Json
+  overrideSubject                String?
+  overrideNotificationCategoryId String?
+  shouldSkipDeliverabilityCheck  Boolean
 
   createdWith                     EmailOutboxCreatedWith
   // If the email was created from a draft, it is kept around so we can later group by it. Must be set if and only if createdWith is DRAFT.

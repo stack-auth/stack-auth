@@ -241,7 +241,11 @@ async function renderTenancyEmails(workerId: string, tenancyId: string, group: E
   for (let index = 0; index < group.length; index++) {
     const row = group[index];
     const output = outputs[index];
-    const notificationCategory = listNotificationCategories().find((category) => category.name === output.notificationCategory);
+
+    const subject = row.overrideSubject ?? output.subject ?? "";
+    const categoryName = row.overrideNotificationCategoryId ? getNotificationCategoryById(row.overrideNotificationCategoryId)?.name : output.notificationCategory;
+
+    const notificationCategory = listNotificationCategories().find((category) => category.name === categoryName);
     await globalPrismaClient.emailOutbox.updateMany({
       where: {
         tenancyId,
@@ -251,7 +255,7 @@ async function renderTenancyEmails(workerId: string, tenancyId: string, group: E
       data: {
         renderedHtml: output.html,
         renderedText: output.text,
-        renderedSubject: output.subject ?? "",
+        renderedSubject: subject,
         renderedNotificationCategoryId: notificationCategory?.id,
         renderedIsTransactional: notificationCategory?.name === "Transactional",  // TODO this should use smarter logic for notification category handling
         renderErrorExternalMessage: null,
