@@ -37,8 +37,6 @@ export function AppStoreEntry({
             <div className="flex-shrink-0">
               <AppIcon
                 appId={appId}
-                size="large"
-                showBadge={true}
                 className="shadow-xl ring-1 ring-black/5 dark:ring-white/10"
               />
             </div>

@@ -12,26 +12,26 @@ import { UserButton } from "@stackframe/stack";
 import { ALL_APPS, type AppId } from "@stackframe/stack-shared/dist/apps/apps-config";
 import { typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import {
-    Button,
-    Sheet,
-    SheetContent,
-    SheetTitle,
-    SheetTrigger,
-    Tooltip,
-    TooltipContent,
-    TooltipProvider,
-    TooltipTrigger,
-    Typography,
+  Button,
+  Sheet,
+  SheetContent,
+  SheetTitle,
+  SheetTrigger,
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+  Typography,
 } from "@stackframe/stack-ui";
 import {
-    Blocks,
-    ChevronDown,
-    Globe,
-    KeyRound,
-    LucideIcon,
-    Menu,
-    PanelLeft,
-    Settings,
+  Blocks,
+  ChevronDown,
+  Globe,
+  KeyRound,
+  LucideIcon,
+  Menu,
+  PanelLeft,
+  Settings,
 } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { useCallback, useMemo, useRef, useState } from "react";
@@ -151,23 +151,23 @@ function NavItem({
   );
 
   const buttonClasses = cn(
-    "group flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm font-medium transition-all duration-[50ms]",
+    "group flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm font-medium transition-all duration-150 hover:transition-none",
     isHighlighted
-      ? "bg-background text-foreground shadow-sm"
+      ? "bg-gradient-to-r from-blue-500/[0.15] to-blue-500/[0.08] text-foreground shadow-[0_0_12px_rgba(59,130,246,0.15)] ring-1 ring-blue-500/20"
       : inactiveClasses,
     isSection ? "cursor-default" : "cursor-pointer",
     isSection && isExpanded && !isHighlighted && "bg-background/30"
   );
 
   const iconClasses = cn(
-    "h-4 w-4 flex-shrink-0 transition-colors duration-[50ms]",
+    "h-4 w-4 flex-shrink-0 transition-colors duration-150 group-hover:transition-none",
     isHighlighted
       ? "text-blue-600 dark:text-blue-400"
       : "text-muted-foreground group-hover:text-foreground"
   );
 
   const caretClasses = cn(
-    "h-4 w-4 flex-shrink-0 transition-colors transition-transform duration-[50ms]",
+    "h-4 w-4 flex-shrink-0 transition-all duration-150 group-hover:transition-none",
     isHighlighted
       ? "text-blue-600 dark:text-blue-400"
       : "text-muted-foreground group-hover:text-foreground",
@@ -188,9 +188,9 @@ function NavItem({
                 variant="ghost"
                 size="sm"
                 className={cn(
-                  "h-9 w-9 p-0 justify-center rounded-lg transition-all duration-[50ms]",
+                  "h-9 w-9 p-0 justify-center rounded-lg transition-all duration-150 hover:transition-none",
                   isHighlighted
-                    ? "bg-background shadow-sm"
+                    ? "bg-blue-500/[0.12] shadow-[0_0_12px_rgba(59,130,246,0.15)] ring-1 ring-blue-500/20"
                     : "hover:bg-background/60 text-muted-foreground hover:text-foreground"
                 )}
               >
@@ -204,9 +204,9 @@ function NavItem({
                 variant="ghost"
                 size="sm"
                 className={cn(
-                  "h-9 w-9 p-0 justify-center rounded-lg transition-all duration-[50ms]",
+                  "h-9 w-9 p-0 justify-center rounded-lg transition-all duration-150 hover:transition-none",
                   isHighlighted
-                    ? "bg-background shadow-sm"
+                    ? "bg-blue-500/[0.12] shadow-[0_0_12px_rgba(59,130,246,0.15)] ring-1 ring-blue-500/20"
                     : "hover:bg-background/60 text-muted-foreground hover:text-foreground"
                 )}
               >
@@ -303,16 +303,16 @@ function NavSubItem({
       href={href}
       onClick={onClick}
       className={cn(
-        "group flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-[50ms]",
+        "group flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-150 hover:transition-none",
         isActive
-          ? "bg-background text-foreground shadow-sm"
+          ? "bg-gradient-to-r from-blue-500/[0.15] to-blue-500/[0.08] text-foreground shadow-[0_0_12px_rgba(59,130,246,0.15)] ring-1 ring-blue-500/20"
           : "text-muted-foreground hover:text-foreground hover:bg-background/60"
       )}
     >
       <span className="relative flex h-2 w-2 items-center justify-center">
         <span
           className={cn(
-            "h-2 w-2 rounded-full transition-all duration-[50ms]",
+            "h-2 w-2 rounded-full transition-all duration-150 group-hover:transition-none",
             isActive
               ? "bg-blue-600 dark:bg-blue-400"
               : "bg-muted-foreground/40 group-hover:bg-blue-500/50"

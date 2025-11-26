@@ -1,4 +1,5 @@
 import { useThemeWatcher } from '@/lib/theme';
+import { cn } from '@/lib/utils';
 import useResizeObserver from '@react-hook/resize-observer';
 import { useUser } from '@stackframe/stack';
 import { use } from '@stackframe/stack-shared/dist/utils/react';
@@ -52,17 +53,25 @@ export function GlobeSection({ countryData, totalUsers, children }: {countryData
   const canvasWidth = globeContainerSize?.width ?? 0;
   const GLOBE_MIN_WIDTH = 350;
   const shouldShowGlobe = canvasWidth >= GLOBE_MIN_WIDTH;
-  
+
   // Calculate zoom based on width
   // For widths >= 355, use linear formula: zoom = 484 - 0.35 * width
   // For widths between 350-355, use 360 (same as at 355px)
-  const cameraDistance = canvasWidth >= 355 
-    ? 484 - 0.35 * canvasWidth 
+  const cameraDistance = canvasWidth >= 355
+    ? 484 - 0.35 * canvasWidth
     : 360; // For 350-355 range, use 360
 
   const [hexSelectedCountry, setHexSelectedCountry] = useState<{ code: string, name: string } | null>(null);
   const [polygonSelectedCountry, setPolygonSelectedCountry] = useState<{ code: string, name: string } | null>(null);
   const selectedCountry = hexSelectedCountry ?? polygonSelectedCountry ?? null;
+  const [previousSelectedCountry, setPreviousSelectedCountry] = useState<{ code: string, name: string } | null>(null);
+  const lastSelectedCountry = selectedCountry ?? previousSelectedCountry;
+
+  useEffect(() => {
+    if (selectedCountry) {
+      setPreviousSelectedCountry(selectedCountry);
+    }
+  }, [selectedCountry]);
 
   const resumeRenderIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const resumeRender = () => {
@@ -101,7 +110,7 @@ export function GlobeSection({ countryData, totalUsers, children }: {countryData
   // Update camera position when globe size changes (e.g., window resize)
   useEffect(() => {
     if (!globeRef.current || !shouldShowGlobe) return;
-    
+
     const controls = globeRef.current.controls();
     controls.maxDistance = cameraDistance;
     controls.minDistance = cameraDistance;
@@ -153,7 +162,7 @@ export function GlobeSection({ countryData, totalUsers, children }: {countryData
     return () => window.removeEventListener('error', handleError);
   }, []);
 
-  const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 });
+  const tooltipRef = useRef<HTMLDivElement>(null);
 
   return (
     <div className='w-full h-full'>
@@ -163,21 +172,22 @@ export function GlobeSection({ countryData, totalUsers, children }: {countryData
       >
         {/* Hidden measurement div - always rendered to track size */}
         <div ref={globeContainerRef} className='absolute inset-0 pointer-events-none' aria-hidden="true" />
-        
+
         {/* Globe Container - Premium 3D */}
         {shouldShowGlobe && (
           <div className='relative flex-shrink-0 flex items-center justify-center -mt-16' style={{ width: globeSize, height: globeSize }}>
             <div
               className='relative w-full h-full'
-              style={{}}
               onMouseEnter={() => {
                 if (globeRef.current) {
                   globeRef.current.controls().autoRotate = false;
                 }
               }}
-              onMouseMove={(e) => {
+              onMouseMoveCapture={(e) => {
                 resumeRender();
-                setTooltipPos({ x: e.clientX, y: e.clientY });
+                if (tooltipRef.current) {
+                  tooltipRef.current.style.transform = `translate(${e.clientX}px, ${e.clientY}px)`;
+                }
               }}
               onMouseLeave={() => {
                 setHexSelectedCountry(null);
@@ -188,143 +198,142 @@ export function GlobeSection({ countryData, totalUsers, children }: {countryData
               }}
               onTouchMove={resumeRender}
             >
-            {/* Subtle glow effect */}
-            <div className='absolute inset-0 bg-gradient-radial from-primary/10 via-transparent to-transparent blur-3xl opacity-30' />
+              {/* Subtle glow effect */}
+              <div className='absolute inset-0 bg-gradient-radial from-primary/10 via-transparent to-transparent blur-3xl opacity-30' />
 
-            {mounted && isFastEngine !== null && (
-              <Globe
-                key={errorRefreshCount}
-                ref={globeRef}
-                backgroundColor='rgba(0,0,0,0)'
-                globeImageUrl={globeImages[theme]}
-                width={globeSize ?? 600}
-                height={globeSize ?? 600}
-                onGlobeReady={() => {
-                  const current = globeRef.current;
-                  if (!current) return;
+              {mounted && isFastEngine !== null && (
+                <Globe
+                  key={errorRefreshCount}
+                  ref={globeRef}
+                  backgroundColor='rgba(0,0,0,0)'
+                  globeImageUrl={globeImages[theme]}
+                  width={globeSize ?? 600}
+                  height={globeSize ?? 600}
+                  onGlobeReady={() => {
+                    const current = globeRef.current;
+                    if (!current) return;
 
-                  const controls = current.controls();
-                  controls.autoRotate = true;
-                  controls.autoRotateSpeed = 0.5;
-                  controls.maxDistance = cameraDistance;
-                  controls.minDistance = cameraDistance;
-                  controls.dampingFactor = 0.15;
-                  controls.enableZoom = false;
-                  controls.enableRotate = true;
+                    const controls = current.controls();
+                    controls.autoRotate = true;
+                    controls.autoRotateSpeed = 0.5;
+                    controls.maxDistance = cameraDistance;
+                    controls.minDistance = cameraDistance;
+                    controls.dampingFactor = 0.15;
+                    controls.enableZoom = false;
+                    controls.enableRotate = true;
                   current.camera().position.z = cameraDistance;
                   resumeRender();
-                }}
-                onZoom={resumeRender}
-                animateIn={isFastEngine}
+                  }}
+                  onZoom={resumeRender}
+                  animateIn={isFastEngine}
 
-                polygonsData={countries.features}
-                polygonCapColor={() => "transparent"}
-                polygonSideColor={() => "transparent"}
-                polygonAltitude={0.001}
-                onPolygonHover={(d: any) => {
+                  polygonsData={countries.features}
+                  polygonCapColor={() => "transparent"}
+                  polygonSideColor={() => "transparent"}
+                  polygonAltitude={0.001}
+                  onPolygonHover={(d: any) => {
                   resumeRender();
                   if (d) {
                     setPolygonSelectedCountry({ code: d.properties.ISO_A2_EH, name: d.properties.NAME });
                   } else {
                     setPolygonSelectedCountry(null);
                   }
-                }}
+                  }}
 
-                hexPolygonsData={countries.features}
-                hexPolygonResolution={3}
-                hexPolygonMargin={0.6}
-                hexPolygonAltitude={(d: any) => {
-                  const highlight = isFastEngine && d.properties.ISO_A2_EH === selectedCountry?.code;
-                  return highlight ? 0.02 : 0.005;
-                }}
-                hexPolygonColor={(country: any) => {
-                  const highlight = isFastEngine && country.properties.ISO_A2_EH === selectedCountry?.code;
-                  const value = colorValues.get(country.properties.ISO_A2_EH) ?? null;
+                  hexPolygonsData={countries.features}
+                  hexPolygonResolution={3}
+                  hexPolygonMargin={0.6}
+                  hexPolygonAltitude={(d: any) => {
+                    const highlight = isFastEngine && d.properties.ISO_A2_EH === selectedCountry?.code;
+                    return highlight ? 0.02 : 0.005;
+                  }}
+                  hexPolygonColor={(country: any) => {
+                    const highlight = isFastEngine && country.properties.ISO_A2_EH === selectedCountry?.code;
+                    const value = colorValues.get(country.properties.ISO_A2_EH) ?? null;
 
-                  if (highlight) return theme === 'dark' ? "#ffffff" : "#1e293b";
+                    if (highlight) return theme === 'dark' ? "#ffffff" : "#1e293b";
 
-                  // Base color for all countries - theme-aware
-                  if (Number.isNaN(value) || value === null || maxColorValue < 0.0001) {
-                    // Dark mode: light slate, Light mode: darker slate for visibility
-                    return theme === 'dark' ? "#cbd5e1" : "#64748b";
-                  }
+                    // Base color for all countries - theme-aware
+                    if (Number.isNaN(value) || value === null || maxColorValue < 0.0001) {
+                      // Dark mode: light slate, Light mode: darker slate for visibility
+                      return theme === 'dark' ? "#cbd5e1" : "#64748b";
+                    }
 
-                  const scaled = value / maxColorValue;
-                  if (theme === 'dark') {
-                    // Dark mode: vibrant teal/emerald that pops against slate
-                    // Goes from teal-400 to emerald-300 as scaled increases
-                    return `hsl(${168 - 8 * scaled}, ${70 + 15 * scaled}%, ${55 + 20 * scaled}%)`;
-                  } else {
-                    // Light mode: rich teal/emerald that stands out against slate
-                    // Goes from teal-600 to emerald-500 as scaled increases
-                    return `hsl(${168 - 8 * scaled}, ${70 + 20 * scaled}%, ${35 + 10 * scaled}%)`;
-                  }
-                }}
-                onHexPolygonHover={(d: any) => {
+                    const scaled = value / maxColorValue;
+                    if (theme === 'dark') {
+                      // Dark mode: vibrant teal/emerald that pops against slate
+                      // Goes from teal-400 to emerald-300 as scaled increases
+                      return `hsl(${168 - 8 * scaled}, ${70 + 15 * scaled}%, ${55 + 20 * scaled}%)`;
+                    } else {
+                      // Light mode: rich teal/emerald that stands out against slate
+                      // Goes from teal-600 to emerald-500 as scaled increases
+                      return `hsl(${168 - 8 * scaled}, ${70 + 20 * scaled}%, ${35 + 10 * scaled}%)`;
+                    }
+                  }}
+                  onHexPolygonHover={(d: any) => {
                   resumeRender();
                   if (d) {
                     setHexSelectedCountry({ code: d.properties.ISO_A2_EH, name: d.properties.NAME });
                   } else {
                     setHexSelectedCountry(null);
                   }
-                }}
+                  }}
 
-                atmosphereColor={theme === 'dark' ? 'rgba(14, 165, 233, 0.3)' : 'rgba(30, 64, 175, 0.25)'} // Dark: sky blue, Light: deeper blue for visibility
-                atmosphereAltitude={0.2}
-                onHexPolygonClick={(polygon: any, event: MouseEvent, coords: { lat: number, lng: number, altitude: number }) => {
+                  atmosphereColor={theme === 'dark' ? 'rgba(14, 165, 233, 0.3)' : 'rgba(30, 64, 175, 0.25)'} // Dark: sky blue, Light: deeper blue for visibility
+                  atmosphereAltitude={0.2}
+                  onHexPolygonClick={(polygon: any, event: MouseEvent, coords: { lat: number, lng: number, altitude: number }) => {
                   resumeRender();
                   if (globeRef.current) {
                     globeRef.current.controls().autoRotate = false;
                     globeRef.current.pointOfView({ lat: coords.lat, lng: coords.lng }, 2000);
                   }
-                }}
-                onGlobeClick={() => {
+                  }}
+                  onGlobeClick={() => {
                   resumeRender();
                   if (globeRef.current) {
                     globeRef.current.controls().autoRotate = true;
                     // globeRef.current.pointOfView({ altitude: 4.0 }, 2000);
                   }
-                }}
-              />
-            )}
-            <div ref={globeWindowRef} className='absolute inset-0 pointer-events-none' />
+                  }}
+                />
+              )}
+              <div ref={globeWindowRef} className='absolute inset-0 pointer-events-none' />
 
-            {/* Tooltip */}
-            {selectedCountry && (
-              <div
-                className="fixed z-[100] min-w-[180px] p-4 rounded-2xl shadow-xl bg-background/95 backdrop-blur-xl ring-1 ring-foreground/[0.08] pointer-events-none transition-all duration-75 ease-out"
-                style={{
-                  left: tooltipPos.x,
-                  top: tooltipPos.y,
-                  transform: 'translate(-50%, -100%) translateY(-12px)',
-                }}
-              >
-                <div className="flex items-center gap-2.5 font-semibold mb-3 pb-3 border-b border-foreground/[0.06]">
-                  <span className="text-xl leading-none">
-                    {selectedCountry.code.match(/^[a-zA-Z][a-zA-Z]$/) ? getFlagEmoji(selectedCountry.code) : '🌍'}
-                  </span>
-                  <span className="truncate text-sm">{selectedCountry.name}</span>
-                </div>
-                <div className="space-y-2 text-xs">
-                  <div className="flex justify-between items-center gap-6">
-                    <span className="text-muted-foreground">Users</span>
-                    <span className="font-mono font-semibold text-foreground tabular-nums">
-                      {(countryData[selectedCountry.code] ?? 0).toLocaleString()}
+              {/* Tooltip */}
+              {lastSelectedCountry && (
+                <div
+                  ref={tooltipRef}
+                  className={cn(
+                    "fixed top-0 left-0 z-[100] min-w-[180px] p-4 rounded-2xl shadow-xl bg-background/95 backdrop-blur-xl ring-1 ring-foreground/[0.08] pointer-events-none",
+                    selectedCountry ? 'opacity-100' : 'opacity-0 transition-opacity duration-300 ease-out',
+                  )}
+                >
+                  <div className="flex items-center gap-2.5 font-semibold mb-3 pb-3 border-b border-foreground/[0.06]">
+                    <span className="text-xl leading-none">
+                      {lastSelectedCountry.code.match(/^[a-zA-Z][a-zA-Z]$/) ? getFlagEmoji(lastSelectedCountry.code) : '🌍'}
                     </span>
+                    <span className="truncate text-sm">{lastSelectedCountry.name}</span>
                   </div>
-                  <div className="flex justify-between items-center gap-6">
-                    <span className="text-muted-foreground">Share</span>
-                    <span className="font-mono font-semibold text-blue-500 dark:text-blue-400 tabular-nums">
-                      {totalUsers > 0
-                        ? `${((countryData[selectedCountry.code] ?? 0) / totalUsers * 100).toFixed(1)}%`
-                        : 'N/A'}
-                    </span>
+                  <div className="space-y-2 text-xs">
+                    <div className="flex justify-between items-center gap-6">
+                      <span className="text-muted-foreground">Users</span>
+                      <span className="font-mono font-semibold text-foreground tabular-nums">
+                        {(countryData[lastSelectedCountry.code] ?? 0).toLocaleString()}
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center gap-6">
+                      <span className="text-muted-foreground">Share</span>
+                      <span className="font-mono font-semibold text-blue-500 dark:text-blue-400 tabular-nums">
+                        {totalUsers > 0
+                          ? `${((countryData[lastSelectedCountry.code] ?? 0) / totalUsers * 100).toFixed(1)}%`
+                          : 'N/A'}
+                      </span>
+                    </div>
                   </div>
                 </div>
-              </div>
-            )}
+              )}
+            </div>
           </div>
-        </div>
         )}
       </div>
     </div>

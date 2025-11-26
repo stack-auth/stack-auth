@@ -44,9 +44,9 @@ export function AppIcon({
     <div
       style={style}
       className={cn(
-        "relative w-12 h-12 sm:w-14 sm:h-14 rounded-[20%] overflow-hidden select-none border",
-        !disabled && "bg-gray-100 dark:bg-gray-900 border-gray-200 dark:border-gray-700/50",
-        disabled && 'bg-gray-100 dark:bg-gray-900 border-gray-300 dark:border-gray-700 border-dashed',
+        "relative w-16 h-16 rounded-[20%] overflow-hidden select-none border",
+        !disabled && "bg-gray-300 dark:bg-gray-900 border-gray-200 dark:border-gray-500/50",
+        disabled && 'bg-gray-300 dark:bg-gray-900 border-gray-300 dark:border-gray-500 border-dashed',
         className,
       )}
     >
