@@ -146,17 +146,17 @@ function NavItem({
   const isHighlighted = isDirectItemActive || isSectionActive;
 
   const inactiveClasses = cn(
-    "border-transparent hover:border-blue-500/20 hover:bg-blue-500/5",
-    "text-foreground"
+    "hover:bg-background/60",
+    "text-muted-foreground hover:text-foreground"
   );
 
   const buttonClasses = cn(
-    "group flex w-full items-center justify-between rounded-lg border px-3 py-2 text-left text-sm font-medium transition-all",
+    "group flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm font-medium transition-all",
     isHighlighted
-      ? "border-blue-500/40 bg-blue-500/10 text-foreground shadow-sm dark:text-foreground"
+      ? "bg-background text-foreground shadow-sm"
       : inactiveClasses,
     isSection ? "cursor-default" : "cursor-pointer",
-    isSection && isExpanded && !isHighlighted && "border-border/60 bg-muted/20"
+    isSection && isExpanded && !isHighlighted && "bg-background/30"
   );
 
   const iconClasses = cn(
@@ -188,10 +188,10 @@ function NavItem({
                 variant="ghost"
                 size="sm"
                 className={cn(
-                  "h-9 w-9 p-0 justify-center rounded-lg border transition-all",
+                  "h-9 w-9 p-0 justify-center rounded-lg transition-all",
                   isHighlighted
-                    ? "border-blue-500/40 bg-blue-500/10 shadow-sm"
-                    : "border-transparent hover:border-blue-500/20 hover:bg-blue-500/5"
+                    ? "bg-background shadow-sm"
+                    : "hover:bg-background/60 text-muted-foreground hover:text-foreground"
                 )}
               >
                 <Link href={collapsedHref ?? "#"} onClick={onClick}>
@@ -204,10 +204,10 @@ function NavItem({
                 variant="ghost"
                 size="sm"
                 className={cn(
-                  "h-9 w-9 p-0 justify-center rounded-lg border transition-all",
+                  "h-9 w-9 p-0 justify-center rounded-lg transition-all",
                   isHighlighted
-                    ? "border-blue-500/40 bg-blue-500/10 shadow-sm"
-                    : "border-transparent hover:border-blue-500/20 hover:bg-blue-500/5"
+                    ? "bg-background shadow-sm"
+                    : "hover:bg-background/60 text-muted-foreground hover:text-foreground"
                 )}
               >
                 <Link href={href ?? "#"} onClick={onClick} className="flex items-center justify-center">
@@ -303,19 +303,19 @@ function NavSubItem({
       href={href}
       onClick={onClick}
       className={cn(
-        "group flex items-center gap-3 rounded-lg border px-3 py-2 text-sm font-medium transition-all",
+        "group flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all",
         isActive
-          ? "border-blue-500/40 bg-blue-500/10 text-foreground shadow-sm dark:text-foreground"
-          : "border-transparent text-foreground hover:border-blue-500/20 hover:bg-blue-500/5"
+          ? "bg-background text-foreground shadow-sm"
+          : "text-muted-foreground hover:text-foreground hover:bg-background/60"
       )}
     >
       <span className="relative flex h-2 w-2 items-center justify-center">
         <span
           className={cn(
-            "h-2 w-2 rounded-full border transition-all",
+            "h-2 w-2 rounded-full transition-all",
             isActive
-              ? "border-blue-500/60 bg-blue-500/40 dark:border-blue-400/60 dark:bg-blue-400/40"
-              : "border-border/60 bg-muted group-hover:border-blue-500/40 group-hover:bg-blue-500/20"
+              ? "bg-blue-600 dark:bg-blue-400"
+              : "bg-muted-foreground/40 group-hover:bg-blue-500/50"
           )}
         />
       </span>
@@ -482,7 +482,6 @@ function SidebarContent({
 
 export default function SidebarLayout(props: { children?: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [companionExpanded, setCompanionExpanded] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(false);
 
   const projectId = useProjectId();
@@ -493,9 +492,9 @@ export default function SidebarLayout(props: { children?: React.ReactNode }) {
 
   return (
     <TooltipProvider>
-      <div className="w-full flex flex-col min-h-screen">
-        {/* Full-width Header */}
-        <div className="fixed top-3 left-3 right-3 z-20 flex h-14 items-center justify-between rounded-2xl border border-border/40 bg-background/70 backdrop-blur-md px-4 shadow-sm">
+      <div className="mx-auto max-w-[96rem] w-full flex flex-col min-h-screen bg-background shadow-2xl border-x border-border/5">
+        {/* Header - Sticky Floating */}
+        <div className="sticky top-3 z-20 mx-3 mb-3 mt-3 flex h-14 items-center justify-between bg-foreground/5 border border-foreground/5 backdrop-blur-xl px-4 shadow-sm rounded-2xl">
           {/* Left section: Toggle/Menu + Project Switcher */}
           <div className="flex items-center gap-3">
             {/* Desktop: Toggle button */}
@@ -560,12 +559,12 @@ export default function SidebarLayout(props: { children?: React.ReactNode }) {
           </div>
         </div>
 
-        {/* Main layout below header */}
-        <div className="w-full flex pt-[80px]">
-          {/* Left Sidebar - positioned below header */}
-          <div
+        {/* Body Layout (Left Sidebar + Content + Right Sidebar) */}
+        <div className="flex flex-1 items-start w-full">
+          {/* Left Sidebar - Sticky */}
+          <aside
             className={cn(
-              "fixed left-3 top-20 bottom-3 hidden flex-col border border-border/40 bg-background/70 backdrop-blur-md lg:flex z-[10] transition-[width] duration-200 ease-in-out rounded-2xl shadow-sm",
+              "sticky top-20 h-[calc(100vh-6rem)] ml-3 hidden flex-col bg-foreground/5 border border-foreground/5 backdrop-blur-xl lg:flex z-[10] transition-[width] duration-200 ease-in-out rounded-2xl shadow-sm",
               isCollapsed ? "w-[64px]" : "w-[248px]"
             )}
           >
@@ -573,28 +572,19 @@ export default function SidebarLayout(props: { children?: React.ReactNode }) {
               projectId={projectId}
               isCollapsed={isCollapsed}
             />
-          </div>
+          </aside>
 
           {/* Main Content Area */}
-          <div
-            className={cn(
-              "flex flex-col flex-grow w-0 sm:pr-12 transition-[margin] duration-200 ease-in-out",
-              isCollapsed ? "lg:ml-[88px]" : "lg:ml-[272px]"
-            )}
-          >
-            {/* Content Body */}
-            <div className="flex-grow relative flex flex-col">
+          <main className="flex-1 min-w-0 px-2 pb-3 pr-14 md:pr-16">
+            <div className="relative flex flex-col min-h-full">
               {props.children}
             </div>
-          </div>
+          </main>
+        </div>
 
-          {/* Stack Companion - positioned below header */}
-          <div className={cn(
-            "fixed right-3 hidden border border-border/40 bg-background/70 backdrop-blur-md sm:block z-[10] rounded-2xl shadow-sm overflow-hidden",
-            companionExpanded ? "top-20 bottom-3" : "top-1/2 -translate-y-1/2"
-          )}>
-            <StackCompanion onExpandedChange={setCompanionExpanded} />
-          </div>
+        {/* Stack Companion - Fixed right edge drawer */}
+        <div className="hidden md:block">
+          <StackCompanion />
         </div>
       </div>
     </TooltipProvider>

@@ -144,21 +144,23 @@ function TotalUsersDisplay({ timeRange, includeAnonymous, minimal = false }: { t
 function AppsWidget({ installedApps, projectId }: { installedApps: AppId[], projectId: string }) {
   return (
     <ChartCard gradientColor="slate" className="shrink-0">
-      <div className="p-4 sm:p-6">
-        <div className="flex items-center gap-2 mb-5">
-          <LayoutGrid className="h-4 w-4 text-muted-foreground/70" />
-          <span className="text-xs font-semibold text-muted-foreground/70 uppercase tracking-wider">
+      <div className="p-5 sm:p-6">
+        <div className="flex items-center gap-2.5 mb-6">
+          <div className="p-1.5 rounded-lg bg-foreground/[0.04]">
+            <LayoutGrid className="h-3.5 w-3.5 text-muted-foreground" />
+          </div>
+          <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
             Quick Access
           </span>
         </div>
         {installedApps.length === 0 ? (
-          <div className="flex items-center justify-center py-8">
+          <div className="flex items-center justify-center py-10">
             <Typography variant="secondary" className="text-sm text-center">
               No apps installed
             </Typography>
           </div>
         ) : (
-          <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-x-4 gap-y-6">
+          <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-7 gap-x-2 gap-y-5">
             {installedApps.map((appId) => {
               const appFrontend = ALL_APPS_FRONTEND[appId];
               const app = ALL_APPS[appId];
@@ -167,18 +169,18 @@ function AppsWidget({ installedApps, projectId }: { installedApps: AppId[], proj
                 <Link
                   key={appId}
                   href={appPath}
-                  className="group flex flex-col items-center gap-3 p-2 -mx-2 rounded-xl hover:bg-muted/50 transition-all duration-300 ease-out"
+                  className="group flex flex-col items-center gap-2.5 p-2.5 rounded-xl hover:bg-foreground/[0.03] transition-all duration-200"
                   title={app.displayName}
                 >
-                  <div className="relative transform transition-transform duration-300 group-hover:scale-105">
+                  <div className="relative transition-transform duration-200 group-hover:scale-[1.02]">
                     <AppIcon
                       appId={appId}
                       size="medium"
                       variant="installed"
-                      className="shadow-sm group-hover:shadow-md bg-white dark:bg-gray-800 rounded-[1.2rem] ring-1 ring-black/5 dark:ring-white/5"
+                      className="shadow-sm group-hover:shadow-md bg-background rounded-2xl ring-1 ring-foreground/[0.06] group-hover:ring-foreground/[0.1]"
                     />
                   </div>
-                  <span className="text-[11px] font-medium text-center text-muted-foreground group-hover:text-foreground transition-colors truncate leading-tight w-full px-1">
+                  <span className="text-[11px] font-medium text-center text-muted-foreground group-hover:text-foreground transition-colors truncate leading-tight w-full">
                     {app.displayName}
                   </span>
                 </Link>
@@ -355,19 +357,24 @@ function MetricsContent({
   const statWidgets = rightWidgets.filter(id => id === 'apps');
 
   return (
-    <div className="relative pb-4 sm:pb-8">
+    <div className="relative pb-4 sm:pb-6">
       <div className={cn(
-        "grid gap-3 sm:gap-4 min-h-[400px] h-[calc(100vh-160px)]",
+        "grid gap-4 sm:gap-5 min-h-[400px] h-[calc(100vh-180px)]",
         showGlobe ? "grid-cols-1 lg:grid-cols-12" : "grid-cols-1"
       )}>
         {/* Left Column: Globe - Hidden on mobile */}
         {showGlobe && (
           <div className="hidden lg:flex lg:flex-col lg:col-span-5 h-full min-h-[300px]">
-            <div className="mb-6 px-1">
-              <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1">
+            <div className="mb-4 px-1">
+              <div className="flex items-center gap-2 mb-2">
+                <div className="p-1.5 rounded-lg bg-foreground/[0.04]">
+                  <Globe2 className="h-3.5 w-3.5 text-muted-foreground" />
+                </div>
+                <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                 Total Users
-              </h2>
-              <div className="text-4xl font-bold tracking-tight text-foreground">
+                </span>
+              </div>
+              <div className="text-4xl font-bold tracking-tight text-foreground pl-0.5">
                 <Suspense fallback="...">
                   <TotalUsersDisplay timeRange={timeRange} includeAnonymous={includeAnonymous} minimal />
                 </Suspense>
@@ -383,13 +390,13 @@ function MetricsContent({
 
         {/* Right Column: Stats Grid */}
         <div className={cn(
-          "flex flex-col gap-3 h-full min-h-0",
+          "flex flex-col gap-4 h-full min-h-0",
           showGlobe ? "lg:col-span-7" : ""
         )}>
           {/* Stat Widgets Row (Apps) */}
           {statWidgets.length > 0 && (
             <div className={cn(
-              "shrink-0 grid gap-3",
+              "shrink-0 grid gap-4",
               statWidgets.length === 1 ? "grid-cols-1" : "grid-cols-1 sm:grid-cols-2"
             )}>
               {statWidgets.map(widgetId => (
@@ -403,13 +410,13 @@ function MetricsContent({
           {/* Charts Grid */}
           {chartWidgets.length > 0 && (
             <div className={cn(
-              "flex-1 min-h-0 grid gap-3",
+              "flex-1 min-h-0 grid gap-4",
               chartWidgets.length === 1
                 ? "grid-cols-1"
                 : "grid-cols-1 sm:grid-cols-2"
             )}>
               {chartWidgets.map(widgetId => (
-                <div key={widgetId} className="h-full min-h-[200px]">
+                <div key={widgetId} className="h-full min-h-[220px]">
                   {renderWidget(widgetId)}
                 </div>
               ))}
@@ -419,8 +426,10 @@ function MetricsContent({
           {/* Empty state when no widgets */}
           {rightWidgets.length === 0 && !showGlobe && (
             <div className="flex-1 flex items-center justify-center min-h-[300px]">
-              <div className="text-center p-8">
-                <LayoutGrid className="h-12 w-12 text-muted-foreground/30 mx-auto mb-3" />
+              <div className="text-center p-10">
+                <div className="p-3 rounded-2xl bg-foreground/[0.03] w-fit mx-auto mb-4">
+                  <LayoutGrid className="h-8 w-8 text-muted-foreground/40" />
+                </div>
                 <Typography variant="secondary" className="text-sm">
                   No widgets enabled
                 </Typography>
@@ -432,7 +441,7 @@ function MetricsContent({
 
       {/* Mobile Globe Notice */}
       {showGlobe && (
-        <div className="lg:hidden mt-4 p-3 rounded-lg bg-muted/30 border border-border/50 text-center">
+        <div className="lg:hidden mt-5 p-4 rounded-2xl bg-foreground/[0.02] ring-1 ring-foreground/[0.05] text-center">
           <Typography variant="secondary" className="text-xs">
             <Globe2 className="h-3.5 w-3.5 inline-block mr-1.5 -mt-0.5" />
             Globe visualization is available on larger screens
