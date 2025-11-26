@@ -173,16 +173,14 @@ it("password reset should work with normalized email when account was created wi
   expect(sendResetRes.status).toBe(200);
 
   // Get the reset code from the mailbox
-  const messages = await backendContext.value.mailbox.fetchMessages({ noBody: false });
-  const resetMessage = messages.find(m => m.subject.includes("password") || m.subject.includes("reset"));
-  expect(resetMessage).toBeDefined();
+  const messages = await backendContext.value.mailbox.waitForMessagesWithSubject("Reset your password at New Project");
+  expect(messages).toHaveLength(1);
 
   // Extract code from the email
-  const match = resetMessage?.body?.text.match(/code=([a-zA-Z0-9_-]+)/);
+  const match = messages[0]!.body!.text.match(/code=([a-zA-Z0-9_-]+)/);
   expect(match).toBeDefined();
   const code = match?.[1];
   expect(code).toBeDefined();
-  console.log(code);
 
   // Reset password using the code
   const newPassword = "new-password-123";
@@ -250,12 +248,11 @@ it("password reset should work with unnormalized email when account was created 
   expect(sendResetRes.status).toBe(200);
 
   // Get the reset code from the mailbox
-  const messages = await backendContext.value.mailbox.fetchMessages({ noBody: false });
-  const resetMessage = messages.find(m => m.subject.includes("password") || m.subject.includes("reset"));
-  expect(resetMessage).toBeDefined();
+  const messages = await backendContext.value.mailbox.waitForMessagesWithSubject("Reset your password at New Project");
+  expect(messages).toHaveLength(1);
 
   // Extract code from the email
-  const match = resetMessage?.body?.text.match(/code=([a-zA-Z0-9_-]+)/);
+  const match = messages[0]!.body!.text.match(/code=([a-zA-Z0-9_-]+)/);
   expect(match).toBeDefined();
   const code = match?.[1];
   expect(code).toBeDefined();

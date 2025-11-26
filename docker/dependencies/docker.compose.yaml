@@ -9,6 +9,7 @@ services:
       POSTGRES_PASSWORD: PASSWORD-PLACEHOLDER--uqfEC1hmmv
       POSTGRES_DB: stackframe
       POSTGRES_DELAY_MS: ${POSTGRES_DELAY_MS:-0}
+      POSTGRES_INITDB_ARGS: --nosync
     ports:
       - "${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}28:5432"
     volumes:
@@ -204,6 +205,19 @@ services:
     environment:
       HOST_ON_HOST: host.docker.internal
 
+  # ================= Drizzle Gateway =================
+
+  drizzle-gateway:
+    image: ghcr.io/drizzle-team/gateway:latest
+    restart: always
+    ports:
+      - "${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}33:${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}33"
+    environment:
+      PORT: ${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}33
+      STORE_PATH: ./app
+    volumes:
+      - drizzle-gateway:/app
+
   # ================= MCPJam Inspector =================
 
   mcpjam-inspector:
@@ -232,6 +246,7 @@ volumes:
   deno-cache:
   localstack-data:
   mcpjam-inspector-data:
+  drizzle-gateway:
 
 # ================= configs =================
 

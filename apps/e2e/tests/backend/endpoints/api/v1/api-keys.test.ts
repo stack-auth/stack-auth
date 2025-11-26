@@ -9,7 +9,7 @@ async function createAndSwitchToAPIEnabledProject(allow_team_api_keys = true, al
 it("throws an error when user API keys are disabled and trying to use user API keys", async ({ expect }: { expect: any }) => {
   // Create a project with user API keys disabled
   await createAndSwitchToAPIEnabledProject(true, false);
-  await Auth.Otp.signIn();
+  await Auth.fastSignUp();
 
   // Try to create a user API key
   const createResponse = await niceBackendFetch("/api/v1/user-api-keys", {
@@ -76,7 +76,7 @@ it("throws an error when user API keys are disabled and trying to use user API k
 it("can create public API keys", async ({ expect }: { expect: any }) => {
   await createAndSwitchToAPIEnabledProject();
 
-  await Auth.Otp.signIn();
+  await Auth.fastSignUp();
 
   const { createUserApiKeyResponse } = await ProjectApiKey.User.create({
     user_id: "me",
@@ -104,7 +104,7 @@ it("can create public API keys", async ({ expect }: { expect: any }) => {
 
 it("can create API keys that expire", async ({ expect }: { expect: any }) => {
   await createAndSwitchToAPIEnabledProject();
-  const { userId } = await Auth.Otp.signIn();
+  const { userId } = await Auth.fastSignUp();
 
   // Create a user API key that expires in 1 hour
   const oneHourFromNow = new Date().getTime() + 1000 * 60 * 60;
@@ -233,7 +233,7 @@ it("can create API keys that expire", async ({ expect }: { expect: any }) => {
 
 it("can read own API key on the client", async ({ expect }: { expect: any }) => {
   await createAndSwitchToAPIEnabledProject();
-  const { userId } = await Auth.Otp.signIn();
+  const { userId } = await Auth.fastSignUp();
 
   // Create an API key
   const { createUserApiKeyResponse } = await ProjectApiKey.User.create({
@@ -267,7 +267,7 @@ it("can read own API key on the client", async ({ expect }: { expect: any }) => 
 
 it("returns 404 when checking a non-existent API key", async ({ expect }: { expect: any }) => {
   await createAndSwitchToAPIEnabledProject();
-  await Auth.Otp.signIn();
+  await Auth.fastSignUp();
 
   // Try to check a non-existent API key
   const checkResponse = await niceBackendFetch("/api/v1/user-api-keys/check", {
@@ -295,7 +295,7 @@ it("returns 404 when checking a non-existent API key", async ({ expect }: { expe
 
 it("returns 400 when checking a team API key with the user endpoint", async ({ expect }: { expect: any }) => {
   await createAndSwitchToAPIEnabledProject();
-  const { userId } = await Auth.Otp.signIn();
+  const { userId } = await Auth.fastSignUp();
   const { teamId } = await Team.create({ addCurrentUser: true });
 
   // Create a team API key
@@ -335,7 +335,7 @@ it("returns 400 when checking a team API key with the user endpoint", async ({ e
 
 it("does not require user_id in read requests on the client", async ({ expect }: { expect: any }) => {
   await createAndSwitchToAPIEnabledProject();
-  const { userId } = await Auth.Otp.signIn();
+  const { userId } = await Auth.fastSignUp();
 
   // Create an API key
   const { createUserApiKeyResponse } = await ProjectApiKey.User.create({
@@ -396,7 +396,7 @@ it("does not require user_id in read requests on the client", async ({ expect }:
 
 it("does not require user_id in read requests on the server", async ({ expect }: { expect: any }) => {
   await createAndSwitchToAPIEnabledProject();
-  const { userId } = await Auth.Otp.signIn();
+  const { userId } = await Auth.fastSignUp();
 
   // Create an API key
   const { createUserApiKeyResponse } = await ProjectApiKey.User.create({
@@ -431,11 +431,11 @@ it("prevents creating API keys for other users", async ({ expect }: { expect: an
   await createAndSwitchToAPIEnabledProject();
 
   // First user signs in
-  const { userId: userId1 } = await Auth.Otp.signIn();
+  const { userId: userId1 } = await Auth.fastSignUp();
 
   // Second user signs in
   await bumpEmailAddress();
-  await Auth.Otp.signIn();
+  await Auth.fastSignUp();
 
   const unauthorizedResponse = await niceBackendFetch("/api/v1/user-api-keys", {
     method: "POST",
@@ -458,7 +458,7 @@ it("prevents creating API keys for other users", async ({ expect }: { expect: an
 
 it("can manage API keys if and only if the respective team permission is granted", async ({ expect }: { expect: any }) => {
   await createAndSwitchToAPIEnabledProject();
-  const { userId: userId1 } = await Auth.Otp.signIn();
+  const { userId: userId1 } = await Auth.fastSignUp();
   const { teamId } = await Team.createWithCurrentAsCreator();
 
 
@@ -526,7 +526,7 @@ it("can manage API keys if and only if the respective team permission is granted
 
   // Second user tries to create API key for the same team
   await bumpEmailAddress();
-  await Auth.Otp.signIn();
+  await Auth.fastSignUp();
 
   const unauthorizedResponse = await niceBackendFetch("/api/v1/team-api-keys", {
     method: "POST",
@@ -555,7 +555,7 @@ it("can manage API keys if and only if the respective team permission is granted
 
 it("can revoke API keys", async ({ expect }: { expect: any }) => {
   await createAndSwitchToAPIEnabledProject();
-  const { userId } = await Auth.Otp.signIn();
+  const { userId } = await Auth.fastSignUp();
 
   // Create an API key
   const { createUserApiKeyResponse } = await ProjectApiKey.User.create({
@@ -658,7 +658,7 @@ it("prevents updating API keys for other users on the client", async ({ expect }
   await createAndSwitchToAPIEnabledProject();
 
   // First user signs in and creates an API key
-  const { userId: userId1 } = await Auth.Otp.signIn();
+  const { userId: userId1 } = await Auth.fastSignUp();
   const { createUserApiKeyResponse: firstUserApiKey } = await ProjectApiKey.User.create({
     user_id: userId1,
     description: "First User's API Key",
@@ -667,7 +667,7 @@ it("prevents updating API keys for other users on the client", async ({ expect }
 
   // Second user signs in and creates an API key
   await bumpEmailAddress();
-  const { userId: userId2 } = await Auth.Otp.signIn();
+  const { userId: userId2 } = await Auth.fastSignUp();
   // Second user tries to update first user's API key
 
   const unauthorizedResponse = await niceBackendFetch(urlString`/api/v1/user-api-keys/${firstUserApiKey.body.id}?user_id=${userId1}`, {
@@ -715,7 +715,7 @@ it("prevents updating API keys for other users on the client", async ({ expect }
 
 it("cannot pass user_id or team_id in update requests", async ({ expect }: { expect: any }) => {
   await createAndSwitchToAPIEnabledProject();
-  const { userId } = await Auth.Otp.signIn();
+  const { userId } = await Auth.fastSignUp();
 
   // Create an API key
   const { createUserApiKeyResponse } = await ProjectApiKey.User.create({
@@ -820,14 +820,14 @@ it("can create API keys for other users on the server", async ({ expect }: { exp
   await createAndSwitchToAPIEnabledProject();
 
   // First user signs in
-  const { userId: userId1 } = await Auth.Otp.signIn();
+  const { userId: userId1 } = await Auth.fastSignUp();
 
   const user1Creds = backendContext.value.userAuth;
 
 
   // Second user signs in
   await bumpEmailAddress();
-  const { userId: userId2 } = await Auth.Otp.signIn();
+  const { userId: userId2 } = await Auth.fastSignUp();
 
 
   // Create an API key for the second user using server access
@@ -904,7 +904,7 @@ it("can create API keys for other users on the server", async ({ expect }: { exp
 
 it("can list all API keys for a user", async ({ expect }: { expect: any }) => {
   await createAndSwitchToAPIEnabledProject();
-  const { userId } = await Auth.Otp.signIn();
+  const { userId } = await Auth.fastSignUp();
 
   // Create multiple API keys for the user
   const { createUserApiKeyResponse: apiKey1 } = await ProjectApiKey.User.create({
@@ -960,7 +960,7 @@ it("prevents listing API keys for other users on the client", async ({ expect }:
   await createAndSwitchToAPIEnabledProject();
 
   // First user signs in and creates an API key
-  const { userId: userId1 } = await Auth.Otp.signIn();
+  const { userId: userId1 } = await Auth.fastSignUp();
   await ProjectApiKey.User.create({
     user_id: userId1,
     description: "First User's API Key",
@@ -969,7 +969,7 @@ it("prevents listing API keys for other users on the client", async ({ expect }:
 
   // Second user signs in and creates an API key
   await bumpEmailAddress();
-  const { userId: userId2 } = await Auth.Otp.signIn();
+  const { userId: userId2 } = await Auth.fastSignUp();
   await ProjectApiKey.User.create({
     user_id: userId2,
     description: "Second User's API Key",
@@ -996,7 +996,7 @@ it("cannot list all API keys for all users on the server", async ({ expect }: { 
   await createAndSwitchToAPIEnabledProject();
 
   // First user signs in and creates an API key
-  const { userId: userId1 } = await Auth.Otp.signIn();
+  const { userId: userId1 } = await Auth.fastSignUp();
   await ProjectApiKey.User.create({
     user_id: userId1,
     description: "First User's API Key",
@@ -1005,7 +1005,7 @@ it("cannot list all API keys for all users on the server", async ({ expect }: { 
 
   // Second user signs in and creates an API key
   await bumpEmailAddress();
-  const { userId: userId2 } = await Auth.Otp.signIn();
+  const { userId: userId2 } = await Auth.fastSignUp();
   await ProjectApiKey.User.create({
     user_id: userId2,
     description: "Second User's API Key",
@@ -1036,7 +1036,7 @@ it("cannot list all API keys for all users on the server", async ({ expect }: { 
 
 it("revoking an API key twice will not change the revocation timestamp", async ({ expect }: { expect: any }) => {
   await createAndSwitchToAPIEnabledProject();
-  const { userId } = await Auth.Otp.signIn();
+  const { userId } = await Auth.fastSignUp();
 
   // Create an API key
   const { createUserApiKeyResponse } = await ProjectApiKey.User.create({

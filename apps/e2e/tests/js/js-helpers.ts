@@ -60,12 +60,16 @@ export async function createApp(
     hasSecretServerKey: true,
     hasSuperSecretAdminKey: false,
   });
+  if (!apiKey.secretServerKey) {
+    throw new Error("createInternalApiKey did not return a secretServerKey");
+  }
+  const secretServerKey = apiKey.secretServerKey;
 
   const serverApp = new StackServerApp({
     baseUrl: STACK_BACKEND_BASE_URL,
     projectId: project.id,
     publishableClientKey: apiKey.publishableClientKey,
-    secretServerKey: apiKey.secretServerKey,
+    secretServerKey,
     tokenStore: "memory",
     ...(appOverrides?.server ?? {}),
   });
@@ -82,5 +86,8 @@ export async function createApp(
     serverApp,
     clientApp,
     adminApp,
+    apiKey,
+    project,
+    secretServerKey,
   };
 }

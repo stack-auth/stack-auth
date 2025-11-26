@@ -102,13 +102,15 @@ export function handleApiRequest(handler: (req: NextRequest, options: any, reque
           }
 
           // request duration warning
-          const warnAfterSeconds = 12;
-          runAsynchronously(async () => {
-            await wait(warnAfterSeconds * 1000);
-            if (!hasRequestFinished) {
-              captureError("request-timeout-watcher", new Error(`Request with ID ${requestId} to endpoint ${req.nextUrl.pathname} has been running for ${warnAfterSeconds} seconds. Try to keep requests short. The request may be cancelled by the serverless provider if it takes too long.`));
-            }
-          });
+          if (req.nextUrl.pathname !== "/api/latest/internal/email-queue-step") {
+            const warnAfterSeconds = 12;
+            runAsynchronously(async () => {
+              await wait(warnAfterSeconds * 1000);
+              if (!hasRequestFinished) {
+                captureError("request-timeout-watcher", new Error(`Request with ID ${requestId} to endpoint ${req.nextUrl.pathname} has been running for ${warnAfterSeconds} seconds. Try to keep requests short. The request may be cancelled by the serverless provider if it takes too long.`));
+              }
+            });
+          }
 
           if (!disableExtendedLogging) console.log(`[API REQ] [${requestId}] ${req.method} ${censoredUrl}`);
           const timeStart = performance.now();

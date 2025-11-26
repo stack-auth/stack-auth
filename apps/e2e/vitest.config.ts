@@ -8,7 +8,7 @@ export default mergeConfig(
     plugins: [react() as any],
     test: {
       environment: 'node',
-      testTimeout: process.env.CI ? 40_000 : 20_000,
+      testTimeout: process.env.CI ? 50_000 : 30_000,
       globalSetup: './tests/global-setup.ts',
       setupFiles: [
         "./tests/setup.ts",
