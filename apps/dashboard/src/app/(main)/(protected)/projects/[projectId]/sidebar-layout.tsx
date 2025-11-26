@@ -151,7 +151,7 @@ function NavItem({
   );
 
   const buttonClasses = cn(
-    "group flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm font-medium transition-all",
+    "group flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm font-medium transition-all duration-[50ms]",
     isHighlighted
       ? "bg-background text-foreground shadow-sm"
       : inactiveClasses,
@@ -160,14 +160,14 @@ function NavItem({
   );
 
   const iconClasses = cn(
-    "h-4 w-4 flex-shrink-0 transition-colors",
+    "h-4 w-4 flex-shrink-0 transition-colors duration-[50ms]",
     isHighlighted
       ? "text-blue-600 dark:text-blue-400"
       : "text-muted-foreground group-hover:text-foreground"
   );
 
   const caretClasses = cn(
-    "h-4 w-4 flex-shrink-0 transition-colors transition-transform",
+    "h-4 w-4 flex-shrink-0 transition-colors transition-transform duration-[50ms]",
     isHighlighted
       ? "text-blue-600 dark:text-blue-400"
       : "text-muted-foreground group-hover:text-foreground",
@@ -188,7 +188,7 @@ function NavItem({
                 variant="ghost"
                 size="sm"
                 className={cn(
-                  "h-9 w-9 p-0 justify-center rounded-lg transition-all",
+                  "h-9 w-9 p-0 justify-center rounded-lg transition-all duration-[50ms]",
                   isHighlighted
                     ? "bg-background shadow-sm"
                     : "hover:bg-background/60 text-muted-foreground hover:text-foreground"
@@ -204,7 +204,7 @@ function NavItem({
                 variant="ghost"
                 size="sm"
                 className={cn(
-                  "h-9 w-9 p-0 justify-center rounded-lg transition-all",
+                  "h-9 w-9 p-0 justify-center rounded-lg transition-all duration-[50ms]",
                   isHighlighted
                     ? "bg-background shadow-sm"
                     : "hover:bg-background/60 text-muted-foreground hover:text-foreground"
@@ -303,7 +303,7 @@ function NavSubItem({
       href={href}
       onClick={onClick}
       className={cn(
-        "group flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all",
+        "group flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-[50ms]",
         isActive
           ? "bg-background text-foreground shadow-sm"
           : "text-muted-foreground hover:text-foreground hover:bg-background/60"
@@ -312,7 +312,7 @@ function NavSubItem({
       <span className="relative flex h-2 w-2 items-center justify-center">
         <span
           className={cn(
-            "h-2 w-2 rounded-full transition-all",
+            "h-2 w-2 rounded-full transition-all duration-[50ms]",
             isActive
               ? "bg-blue-600 dark:bg-blue-400"
               : "bg-muted-foreground/40 group-hover:bg-blue-500/50"
@@ -524,7 +524,7 @@ export default function SidebarLayout(props: { children?: React.ReactNode }) {
               <SheetContent
                 aria-describedby={undefined}
                 side='left'
-                className="w-[248px] bg-background p-0 backdrop-blur-sm"
+                className="w-[248px] bg-foreground/5 border-foreground/5 p-0 backdrop-blur-xl shadow-sm"
                 hasCloseButton={false}
               >
                 <SidebarContent projectId={projectId} onNavigate={() => setSidebarOpen(false)} />

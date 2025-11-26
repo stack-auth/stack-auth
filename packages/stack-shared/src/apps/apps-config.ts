@@ -40,6 +40,7 @@ export const ALL_APP_TAGS = {
 
 type App = {
   displayName: string,
+  shortName?: string,
   subtitle: string,
   tags: (keyof typeof ALL_APP_TAGS)[],
   stage: "alpha" | "beta" | "stable",
@@ -50,6 +51,7 @@ export type AppId = keyof typeof ALL_APPS;
 export const ALL_APPS = {
   "authentication": {
     displayName: "Authentication",
+    shortName: "Auth",
     subtitle: "User sign-in and account management",
     tags: ["auth", "security"],
     stage: "stable",
@@ -74,6 +76,7 @@ export const ALL_APPS = {
   },
   "payments": {
     displayName: "Payments",
+    shortName: "Pay",
     subtitle: "Payment processing and subscription management",
     tags: ["operations", "gtm"],
     stage: "stable",
@@ -86,30 +89,35 @@ export const ALL_APPS = {
   },
   "email-api": {
     displayName: "Email API",
+    shortName: "Email",
     subtitle: "Programmatic email sending and delivery",
     tags: ["comms", "developers", "expert"],
     stage: "alpha",
   },
   "data-vault": {
     displayName: "Data Vault",
+    shortName: "Vault",
     subtitle: "Secure storage for sensitive user data",
     tags: ["security", "storage"],
     stage: "beta",
   },
   "webhooks": {
     displayName: "Webhooks",
+    shortName: "Hooks",
     subtitle: "Real-time event notifications and integrations",
     tags: ["developers"],
     stage: "stable",
   },
   "tv-mode": {
     displayName: "TV mode",
+    shortName: "TV",
     subtitle: "Dashboard display for large screens",
     tags: ["various"],
     stage: "alpha",
   },
   "launch-checklist": {
     displayName: "Launch Checklist",
+    shortName: "Launch",
     subtitle: "Pre-launch verification and readiness checks",
     tags: ["various"],
     stage: "stable",
@@ -122,18 +130,21 @@ export const ALL_APPS = {
   },
   "neon": {
     displayName: "Neon Integration",
+    shortName: "Neon",
     subtitle: "Serverless Postgres database integration",
     tags: ["integration", "storage"],
     stage: "alpha",
   },
   "convex": {
     displayName: "Convex Integration",
+    shortName: "Convex",
     subtitle: "Real-time backend platform integration",
     tags: ["integration", "storage"],
     stage: "alpha",
   },
   "vercel": {
     displayName: "Vercel Integration",
+    shortName: "Vercel",
     subtitle: "Deploy your Stack Auth project to Vercel",
     tags: ["integration", "developers"],
     stage: "stable",

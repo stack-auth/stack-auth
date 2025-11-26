@@ -4,12 +4,13 @@ import { AppIcon } from "@/components/app-square";
 import { Link } from "@/components/link";
 import { useRouter } from "@/components/router";
 import { ALL_APPS_FRONTEND, getAppPath } from "@/lib/apps-frontend";
+import useResizeObserver from '@react-hook/resize-observer';
 import { useUser } from '@stackframe/stack';
 import { ALL_APPS, type AppId } from "@stackframe/stack-shared/dist/apps/apps-config";
 import { typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import { cn, Typography } from '@stackframe/stack-ui';
-import { Globe2, LayoutGrid } from "lucide-react";
-import { Suspense, useEffect, useMemo, useState } from 'react';
+import { ChevronUp, Globe2, LayoutGrid, MoreHorizontal } from "lucide-react";
+import { Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { PageLayout } from "../page-layout";
 import { useAdminApp, useProjectId } from '../use-admin-app';
 import { GlobeSectionWithData } from './globe-section-with-data';
@@ -140,8 +141,26 @@ function TotalUsersDisplay({ timeRange, includeAnonymous, minimal = false }: { t
   );
 }
 
+
 // Widget components for better organization
 function AppsWidget({ installedApps, projectId }: { installedApps: AppId[], projectId: string }) {
+  const [ref, setRef] = useState<HTMLDivElement | null>(null);
+  const [width, setWidth] = useState(0);
+  const [expanded, setExpanded] = useState(false);
+
+  useResizeObserver(ref, (entry) => setWidth(entry.contentRect.width));
+
+  const gap = 8;
+  const minItemWidth = 90;
+  const itemsPerRow = Math.max(1, Math.floor((width + gap) / (minItemWidth + gap)));
+  const maxRows = 2;
+  const maxItems = itemsPerRow * maxRows;
+
+  const canExpand = installedApps.length > maxItems && width > 0;
+  const showSeeAll = !expanded && canExpand;
+  const showShowLess = expanded && canExpand;
+  const displayApps = showSeeAll ? installedApps.slice(0, maxItems - 1) : installedApps;
+
   return (
     <ChartCard gradientColor="slate" className="shrink-0">
       <div className="p-5 sm:p-6">
@@ -160,8 +179,11 @@ function AppsWidget({ installedApps, projectId }: { installedApps: AppId[], proj
             </Typography>
           </div>
         ) : (
-          <div className="grid grid-cols-[repeat(auto-fill,minmax(90px,1fr))] gap-x-2 gap-y-5">
-            {installedApps.map((appId) => {
+          <div
+            ref={setRef}
+            className="grid grid-cols-[repeat(auto-fill,minmax(90px,1fr))] gap-x-2 gap-y-5"
+          >
+            {displayApps.map((appId) => {
               const appFrontend = ALL_APPS_FRONTEND[appId];
               const app = ALL_APPS[appId];
               const appPath = getAppPath(projectId, appFrontend);
@@ -169,10 +191,10 @@ function AppsWidget({ installedApps, projectId }: { installedApps: AppId[], proj
                 <Link
                   key={appId}
                   href={appPath}
-                  className="group flex flex-col items-center gap-2.5 p-2.5 rounded-xl hover:bg-foreground/[0.03] transition-all duration-200"
+                  className="group flex flex-col items-center gap-2.5 p-2.5 rounded-xl hover:bg-foreground/[0.03] transition-all duration-[50ms]"
                   title={app.displayName}
                 >
-                  <div className="relative transition-transform duration-200 group-hover:scale-[1.02]">
+                  <div className="relative transition-transform duration-[50ms] group-hover:scale-[1.02]">
                     <AppIcon
                       appId={appId}
                       size="medium"
@@ -180,12 +202,47 @@ function AppsWidget({ installedApps, projectId }: { installedApps: AppId[], proj
                       className="shadow-sm group-hover:shadow-md bg-background rounded-2xl ring-1 ring-foreground/[0.06] group-hover:ring-foreground/[0.1]"
                     />
                   </div>
-                  <span className="text-[11px] font-medium text-center text-muted-foreground group-hover:text-foreground transition-colors truncate leading-tight w-full">
-                    {app.displayName}
+                  <span
+                    className="text-[11px] font-medium text-center text-muted-foreground group-hover:text-foreground transition-colors duration-[50ms] truncate leading-tight w-full"
+                    title={app.displayName}
+                  >
+                    {'shortName' in app ? app.shortName : app.displayName}
                   </span>
                 </Link>
               );
             })}
+            {showSeeAll && (
+              <button
+                onClick={() => setExpanded(true)}
+                className="group flex flex-col items-center gap-2.5 p-2.5 rounded-xl hover:bg-foreground/[0.03] transition-all duration-[50ms]"
+                title="See all apps"
+              >
+                <div className="relative transition-transform duration-[50ms] group-hover:scale-[1.02]">
+                  <div className="flex items-center justify-center w-12 h-12 sm:w-14 sm:h-14 shadow-sm group-hover:shadow-md bg-background rounded-2xl ring-1 ring-foreground/[0.06] group-hover:ring-foreground/[0.1]">
+                    <MoreHorizontal className="w-6 h-6 sm:w-7 sm:h-7 text-muted-foreground" />
+                  </div>
+                </div>
+                <span className="text-[11px] font-medium text-center text-muted-foreground group-hover:text-foreground transition-colors truncate leading-tight w-full">
+                  See all
+                </span>
+              </button>
+            )}
+            {showShowLess && (
+              <button
+                onClick={() => setExpanded(false)}
+                className="group flex flex-col items-center gap-2.5 p-2.5 rounded-xl hover:bg-foreground/[0.03] transition-all duration-[50ms]"
+                title="Show less"
+              >
+                <div className="relative transition-transform duration-[50ms] group-hover:scale-[1.02]">
+                  <div className="flex items-center justify-center w-12 h-12 sm:w-14 sm:h-14 shadow-sm group-hover:shadow-md bg-background rounded-2xl ring-1 ring-foreground/[0.06] group-hover:ring-foreground/[0.1]">
+                    <ChevronUp className="w-6 h-6 sm:w-7 sm:h-7 text-muted-foreground" />
+                  </div>
+                </div>
+                <span className="text-[11px] font-medium text-center text-muted-foreground group-hover:text-foreground transition-colors truncate leading-tight w-full">
+                  Less
+                </span>
+              </button>
+            )}
           </div>
         )}
       </div>
@@ -320,6 +377,34 @@ function MetricsContent({
 
   const showGlobe = isWidgetEnabled('globe');
 
+  // Track grid container width to calculate globe column width
+  const gridContainerRef = useRef<HTMLDivElement>(null);
+  const [gridContainerSize, setGridContainerSize] = useState<DOMRectReadOnly>();
+
+  useLayoutEffect(() => {
+    setGridContainerSize(gridContainerRef.current?.getBoundingClientRect());
+  }, []);
+
+  useResizeObserver(gridContainerRef, (entry) => setGridContainerSize(entry.contentRect));
+
+  // Calculate globe column width (5/12 of grid width, accounting for gaps)
+  // Grid has 12 columns, globe takes 5, with gap-4 sm:gap-5 between columns
+  // On lg screens, gap-5 applies = 1.25rem = 20px
+  const calculateGlobeColumnWidth = () => {
+    if (!gridContainerSize?.width) return 0;
+    const gap = 20; // gap-5 = 1.25rem = 20px on lg screens (sm:gap-5 applies)
+    const totalGaps = gap * 11; // 11 gaps between 12 columns
+    const availableWidth = gridContainerSize.width - totalGaps;
+    const columnWidth = availableWidth / 12;
+    return columnWidth * 5 + gap * 4; // 5 columns + 4 gaps
+  };
+
+  const globeColumnWidth = calculateGlobeColumnWidth();
+
+  // Hide globe and total users section when width is less than 352.5px
+  const GLOBE_MIN_WIDTH = 352.5;
+  const shouldShowGlobeSection = showGlobe && globeColumnWidth >= GLOBE_MIN_WIDTH;
+
   // Render a widget by ID
   const renderWidget = (widgetId: WidgetId) => {
     switch (widgetId) {
@@ -358,12 +443,15 @@ function MetricsContent({
 
   return (
     <div className="relative pb-4 sm:pb-6">
-      <div className={cn(
-        "grid gap-4 sm:gap-5 min-h-[400px] h-[calc(100vh-180px)]",
-        showGlobe ? "grid-cols-1 lg:grid-cols-12" : "grid-cols-1"
-      )}>
+      <div
+        ref={gridContainerRef}
+        className={cn(
+          "grid gap-4 sm:gap-5 min-h-[400px] h-[calc(100vh-180px)]",
+          showGlobe ? "grid-cols-1 lg:grid-cols-12" : "grid-cols-1"
+        )}
+      >
         {/* Left Column: Globe - Hidden on mobile */}
-        {showGlobe && (
+        {showGlobe && shouldShowGlobeSection && (
           <div className="hidden lg:flex lg:flex-col lg:col-span-5 h-full min-h-[300px]">
             <div className="mb-4 px-1">
               <div className="flex items-center gap-2 mb-2">
@@ -371,7 +459,7 @@ function MetricsContent({
                   <Globe2 className="h-3.5 w-3.5 text-muted-foreground" />
                 </div>
                 <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                Total Users
+                  Total Users
                 </span>
               </div>
               <div className="text-4xl font-bold tracking-tight text-foreground pl-0.5">
@@ -381,7 +469,7 @@ function MetricsContent({
               </div>
             </div>
             <div className="relative flex-1 w-full overflow-hidden flex items-center justify-center">
-              <div className="absolute inset-0">
+              <div className="absolute inset-0 flex items-center justify-center">
                 <GlobeSectionWithData includeAnonymous={includeAnonymous} />
               </div>
             </div>
@@ -391,7 +479,7 @@ function MetricsContent({
         {/* Right Column: Stats Grid */}
         <div className={cn(
           "flex flex-col gap-4 h-full min-h-0",
-          showGlobe ? "lg:col-span-7" : ""
+          showGlobe && shouldShowGlobeSection ? "lg:col-span-7" : showGlobe ? "lg:col-span-12" : ""
         )}>
           {/* Stat Widgets Row (Apps) */}
           {statWidgets.length > 0 && (

@@ -4,12 +4,12 @@ import { useRouter } from "@/components/router";
 import { UserAvatar } from '@stackframe/stack';
 import { fromNow } from '@stackframe/stack-shared/dist/utils/dates';
 import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-  Typography,
+    Card,
+    CardContent,
+    CardDescription,
+    CardHeader,
+    CardTitle,
+    Typography,
 } from "@stackframe/stack-ui";
 import { useAdminApp, useProjectId } from '../use-admin-app';
 import { DonutChartDisplay, LineChartDisplay, LineChartDisplayConfig } from './line-chart';
