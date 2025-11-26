@@ -492,7 +492,7 @@ export default function SidebarLayout(props: { children?: React.ReactNode }) {
 
   return (
     <TooltipProvider>
-      <div className="mx-auto max-w-[96rem] w-full flex flex-col min-h-screen bg-background shadow-2xl border-x border-border/5">
+      <div className="mx-auto w-full flex flex-col min-h-screen bg-background shadow-2xl border-x border-border/5">
         {/* Header - Sticky Floating */}
         <div className="sticky top-3 z-20 mx-3 mb-3 mt-3 flex h-14 items-center justify-between bg-foreground/5 border border-foreground/5 backdrop-blur-xl px-4 shadow-sm rounded-2xl">
           {/* Left section: Toggle/Menu + Project Switcher */}

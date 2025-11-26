@@ -15,7 +15,7 @@ export function PageLayout(props: {
   return (
     <div className="py-4 px-4 sm:py-6 sm:px-6 flex justify-center flex-1">
       <div
-        className={cn("min-w-0 flex flex-col w-full")}
+        className={cn("min-w-0 flex flex-col w-full max-w-7xl")}
         style={{
           maxWidth: props.fillWidth ? undefined : (props.width ?? 1250),
           width: props.fillWidth ? '100%' : (props.width ?? 1250),
