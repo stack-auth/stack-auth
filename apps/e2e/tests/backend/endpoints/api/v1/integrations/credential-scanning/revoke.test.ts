@@ -9,7 +9,7 @@ it("should send email notification to user when revoking an API key through cred
   await Project.createAndSwitch({ config: { magic_link_enabled: true, allow_team_api_keys: true, allow_user_api_keys: true } });
 
   const mailbox2 = await bumpEmailAddress();
-  const user2 = await Auth.Password.signUpWithEmail();
+  await Auth.Password.signUpWithEmail();
   await Auth.signOut();
   const mailbox1 = await bumpEmailAddress();
   const user1 = await Auth.fastSignUp();

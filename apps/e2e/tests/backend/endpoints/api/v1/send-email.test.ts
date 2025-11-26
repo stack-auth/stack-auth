@@ -536,11 +536,11 @@ describe("all users", () => {
     });
 
     const mailbox1 = await bumpEmailAddress();
-    const userA = await User.create({ primary_email: mailbox1.emailAddress, primary_email_verified: true });
+    await User.create({ primary_email: mailbox1.emailAddress, primary_email_verified: true });
     const mailbox2 = await bumpEmailAddress();
-    const userB = await User.create({ primary_email: mailbox2.emailAddress, primary_email_verified: true });
+    await User.create({ primary_email: mailbox2.emailAddress, primary_email_verified: true });
     const mailbox3 = await bumpEmailAddress();
-    const userC = await User.create({ primary_email: mailbox3.emailAddress, primary_email_verified: true });
+    await User.create({ primary_email: mailbox3.emailAddress, primary_email_verified: true });
 
     const subject = "Send to All Users Test Subject";
     const response = await niceBackendFetch(

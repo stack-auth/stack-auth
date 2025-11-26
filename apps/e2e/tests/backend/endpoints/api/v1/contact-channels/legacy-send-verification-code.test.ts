@@ -50,6 +50,7 @@ it("should send a verification code per e-mail", async ({ expect }) => {
     },
   });
   await wait(1000);
+  // expect two emails; one from the signup, and one from the send-verification-code
   expect(await backendContext.value.mailbox.fetchMessages({ noBody: true })).toMatchInlineSnapshot(`
     [
       MailboxMessage {

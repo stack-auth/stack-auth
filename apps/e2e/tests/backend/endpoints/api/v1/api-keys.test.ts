@@ -295,7 +295,7 @@ it("returns 404 when checking a non-existent API key", async ({ expect }: { expe
 
 it("returns 400 when checking a team API key with the user endpoint", async ({ expect }: { expect: any }) => {
   await createAndSwitchToAPIEnabledProject();
-  const { userId } = await Auth.fastSignUp();
+  await Auth.fastSignUp();
   const { teamId } = await Team.create({ addCurrentUser: true });
 
   // Create a team API key
@@ -667,7 +667,7 @@ it("prevents updating API keys for other users on the client", async ({ expect }
 
   // Second user signs in and creates an API key
   await bumpEmailAddress();
-  const { userId: userId2 } = await Auth.fastSignUp();
+  await Auth.fastSignUp();
   // Second user tries to update first user's API key
 
   const unauthorizedResponse = await niceBackendFetch(urlString`/api/v1/user-api-keys/${firstUserApiKey.body.id}?user_id=${userId1}`, {

@@ -1544,7 +1544,7 @@ type SessionActivityEventSeedOptions = {
 };
 
 async function seedDummySessionActivityEvents(options: SessionActivityEventSeedOptions) {
-  const { tenancyId, projectId, userEmailToId } = options;
+  const { projectId, userEmailToId } = options;
 
   // List of diverse locations around the world with realistic coordinates
   const locations = [

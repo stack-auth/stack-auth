@@ -488,8 +488,8 @@ export namespace Auth {
         headers: expect.anything(),
       });
 
-      // the verification email is sent asynchronously, so let's give it a tiny bit of time to arrive
-      await wait(200);
+      // Wait for the verification email to arrive
+      await mailbox.waitForMessagesWithSubject("Verify your email");
 
       backendContext.set({
         userAuth: {
@@ -937,6 +937,8 @@ export namespace ContactChannels {
   export async function sendVerificationCode(options?: { contactChannelId?: string }) {
     const contactChannelId = options?.contactChannelId ?? (await ContactChannels.getTheOnlyContactChannel()).id;
     const mailbox = backendContext.value.mailbox;
+    const messagesBefore = await mailbox.fetchMessages({ noBody: true });
+    const countBefore = messagesBefore.filter(m => m.subject.includes("Verify your email")).length;
     const response = await niceBackendFetch(`/api/v1/contact-channels/me/${contactChannelId}/send-verification-code`, {
       method: "POST",
       accessType: "client",
@@ -951,9 +953,9 @@ export namespace ContactChannels {
         "headers": Headers { <some fields may have been hidden> },
       }
     `);
-    const messages = await mailbox.fetchMessages({ noBody: true });
-    const subjects = messages.map((message) => message.subject);
-    expect(subjects[0].includes("Verify your email")).toBe(true);
+    // Wait for a new verification email to arrive
+    const messages = await mailbox.waitForMessagesWithSubjectCount("Verify your email", countBefore + 1);
+    expect(messages.length).toBeGreaterThanOrEqual(countBefore + 1);
     return {
       sendSignInCodeResponse: response,
     };
@@ -962,7 +964,7 @@ export namespace ContactChannels {
   export async function verify(options?: { contactChannelId?: string }) {
     const mailbox = backendContext.value.mailbox;
     const sendVerificationCodeRes = await sendVerificationCode(options);
-    const messages = await mailbox.fetchMessages();
+    const messages = await mailbox.waitForMessagesWithSubject("Verify your email");
     const message = messages.findLast((message) => message.subject.includes("Verify your email")) ?? throwErr("Verification code message not found");
     const verificationCode = message.body?.text.match(/http:\/\/localhost:12345\/some-callback-url\?code=([a-zA-Z0-9]+)/)?.[1] ?? throwErr("Verification code not found");
     const response = await niceBackendFetch("/api/v1/contact-channels/verify", {

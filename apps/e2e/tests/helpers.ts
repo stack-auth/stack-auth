@@ -205,6 +205,7 @@ export const generatedEmailRegex = /[a-zA-Z0-9_.+\-]+@stack-generated\.example\.
 export class Mailbox {
   public readonly fetchMessages: (options?: { noBody?: boolean }) => Promise<MailboxMessage[]>;
   public readonly waitForMessagesWithSubject: (subject: string) => Promise<MailboxMessage[]>;
+  public readonly waitForMessagesWithSubjectCount: (subject: string, minCount: number) => Promise<MailboxMessage[]>;
 
   constructor(
     disclaimer: "USE_CREATE_MAILBOX_FUNCTION_INSTEAD",
@@ -230,17 +231,21 @@ export class Mailbox {
     };
 
     this.waitForMessagesWithSubject = async (subject: string) => {
+      return await this.waitForMessagesWithSubjectCount(subject, 1);
+    };
+
+    this.waitForMessagesWithSubjectCount = async (subject: string, minCount: number) => {
       const maxRetries = 20;
       let messages: MailboxMessage[] = [];
       for (let i = 0; i < maxRetries; i++) {
         messages = await this.fetchMessages();
-        const withSubject = messages.filter(m => m.subject === subject);
-        if (withSubject.length > 0) {
+        const withSubject = messages.filter(m => m.subject.includes(subject));
+        if (withSubject.length >= minCount) {
           return withSubject;
         }
         await wait(500);
       }
-      throw new StackAssertionError(`Message with subject ${subject} not found`, { messages });
+      throw new StackAssertionError(`Expected at least ${minCount} messages with subject containing "${subject}", but found ${messages.filter(m => m.subject.includes(subject)).length}`, { messages });
     };
   }
 }
