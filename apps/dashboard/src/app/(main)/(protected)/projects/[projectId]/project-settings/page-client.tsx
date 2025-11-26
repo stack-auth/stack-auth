@@ -6,7 +6,6 @@ import { FormSettingCard, SettingCard, SettingCopyableText, SettingSwitch } from
 import { getPublicEnvVar } from "@/lib/env";
 import { TeamSwitcher, useUser } from "@stackframe/stack";
 import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
-import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { ActionDialog, Alert, Avatar, AvatarFallback, AvatarImage, Button, SimpleTooltip, Typography, useToast } from "@stackframe/stack-ui";
 import { useCallback, useMemo, useState } from "react";
 import * as yup from "yup";
@@ -126,8 +125,8 @@ export default function PageClient() {
     await project.update({ logoUrl });
   }, [project]);
 
-  const handleFullLogoChange = useCallback(async (fullLogoUrl: string | null) => {
-    await project.update({ fullLogoUrl });
+  const handleFullLogoChange = useCallback(async (logoFullUrl: string | null) => {
+    await project.update({ logoFullUrl });
   }, [project]);
 
   // Memoize production mode change callback
@@ -218,7 +217,7 @@ export default function PageClient() {
 
         <LogoUpload
           label="Full Logo"
-          value={project.fullLogoUrl}
+          value={project.logoFullUrl}
           onValueChange={handleFullLogoChange}
           description="Upload a full logo with text. Recommended size: At least 100px tall, landscape format"
           type="full-logo"
@@ -325,7 +324,7 @@ export default function PageClient() {
                   title="Transfer Project"
                   okButton={{
                     label: "Transfer Project",
-                    onClick: () => runAsynchronouslyWithAlert(handleTransfer())
+                    onClick: handleTransfer
                   }}
                   cancelButton
                 >
