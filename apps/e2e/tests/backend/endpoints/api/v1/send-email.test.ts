@@ -117,7 +117,7 @@ describe("invalid requests", () => {
     `);
   });
 
-  it.skip("should return 400 when invalid notification category name is provided", async ({ expect }) => {
+  it("should return 400 when invalid notification category name is provided", async ({ expect }) => {
     await Project.createAndSwitch({
       display_name: "Test Successful Email Project",
       config: {
@@ -242,7 +242,7 @@ it("should return 200 with no primary email error in results when user does not 
   `);
 });
 
-it.skip("should return 200 and send email successfully", async ({ expect }) => {
+it("should return 200 and send email successfully", async ({ expect }) => {
   await Project.createAndSwitch({
     display_name: "Test Successful Email Project",
     config: {
@@ -284,14 +284,14 @@ it.skip("should return 200 and send email successfully", async ({ expect }) => {
         },
         "from": "Test Project <test@example.com>",
         "subject": "Custom Test Email Subject",
-        "to": ["<unindexed-mailbox--<stripped UUID>@stack-generated.example.com>"],
+        "to": ["<default-mailbox--<stripped UUID>@stack-generated.example.com>"],
         <some fields may have been hidden>,
       },
     ]
   `);
 });
 
-it.skip("should handle user that does not exist", async ({ expect }) => {
+it("should handle user that does not exist", async ({ expect }) => {
   await Project.createAndSwitch({
     display_name: "Test Mixed Results Project",
     config: {
@@ -339,7 +339,7 @@ it.skip("should handle user that does not exist", async ({ expect }) => {
   `);
 });
 
-it.skip("should send email using a draft_id and mark draft as sent", async ({ expect }) => {
+it("should send email using a draft_id and mark draft as sent", async ({ expect }) => {
   await Project.createAndSwitch({
     display_name: "Send Draft Project",
     config: {
@@ -527,7 +527,7 @@ describe("all users", () => {
     `);
   });
 
-  it.skip("should send one email per user when all_users is true", async ({ expect }) => {
+  it("should send one email per user when all_users is true", async ({ expect }) => {
     await Project.createAndSwitch({
       display_name: "Test All Users Email Project",
       config: {
@@ -536,11 +536,11 @@ describe("all users", () => {
     });
 
     const mailbox1 = await bumpEmailAddress();
-    const userA = await User.create();
+    const userA = await User.create({ primary_email: mailbox1.emailAddress, primary_email_verified: true });
     const mailbox2 = await bumpEmailAddress();
-    const userB = await User.create();
+    const userB = await User.create({ primary_email: mailbox2.emailAddress, primary_email_verified: true });
     const mailbox3 = await bumpEmailAddress();
-    const userC = await User.create();
+    const userC = await User.create({ primary_email: mailbox3.emailAddress, primary_email_verified: true });
 
     const subject = "Send to All Users Test Subject";
     const response = await niceBackendFetch(
@@ -679,7 +679,7 @@ describe("template-based emails", () => {
 });
 
 describe("notification categories", () => {
-  it.skip("should return 200 and send email successfully with Transactional category", async ({ expect }) => {
+  it("should return 200 and send email successfully with Transactional category", async ({ expect }) => {
     await Project.createAndSwitch({
       display_name: "Test Transactional Project",
       config: {
@@ -703,14 +703,7 @@ describe("notification categories", () => {
     expect(response).toMatchInlineSnapshot(`
       NiceResponse {
         "status": 200,
-        "body": {
-          "results": [
-            {
-              "user_email": "unindexed-mailbox--<stripped UUID>@stack-generated.example.com",
-              "user_id": "<stripped UUID>",
-            },
-          ],
-        },
+        "body": { "results": [{ "user_id": "<stripped UUID>" }] },
         "headers": Headers { <some fields may have been hidden> },
       }
     `);
@@ -719,7 +712,7 @@ describe("notification categories", () => {
     await backendContext.value.mailbox.waitForMessagesWithSubject("Transactional Test Subject");
   });
 
-  it.skip("should default to Transactional category when notification_category_name is not provided", async ({ expect }) => {
+  it("should default to Transactional category when notification_category_name is not provided", async ({ expect }) => {
     await Project.createAndSwitch({
       display_name: "Test Default Category Project",
       config: {
@@ -742,14 +735,7 @@ describe("notification categories", () => {
     expect(response).toMatchInlineSnapshot(`
       NiceResponse {
         "status": 200,
-        "body": {
-          "results": [
-            {
-              "user_email": "unindexed-mailbox--<stripped UUID>@stack-generated.example.com",
-              "user_id": "<stripped UUID>",
-            },
-          ],
-        },
+        "body": { "results": [{ "user_id": "<stripped UUID>" }] },
         "headers": Headers { <some fields may have been hidden> },
       }
     `);

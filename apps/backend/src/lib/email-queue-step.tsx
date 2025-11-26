@@ -95,7 +95,9 @@ async function updateLastExecutionTime(): Promise<number> {
     )
     SELECT
       CASE
-        WHEN (SELECT "lastExecutedAt" FROM existing) IS NULL THEN 0
+        -- First time running, use a reasonable default delta
+        WHEN (SELECT "lastExecutedAt" FROM existing) IS NULL THEN 60
+        -- Concurrent execution, skip
         WHEN (SELECT "lastExecutedAt" FROM action) = (SELECT "lastExecutedAt" FROM existing) THEN 0
         ELSE EXTRACT(EPOCH FROM (
           (SELECT "lastExecutedAt" FROM action) -
@@ -142,64 +144,34 @@ async function renderEmails(workerId: string, rows: EmailOutbox[]): Promise<void
 
 async function renderTenancyEmails(workerId: string, tenancyId: string, group: EmailOutbox[]): Promise<void> {
   const tenancy = await getTenancy(tenancyId) ?? throwErr("Tenancy not found in renderTenancyEmails? Was the tenancy deletion not cascaded?");
-
   const prisma = await getPrismaClientForTenancy(tenancy);
-  const userRecipientRows = group.filter((row) => {
-    const recipient = deserializeRecipient(row.to as Json);
-    return recipient.type !== "custom-emails";
-  });
 
+  // Prefetch all users referenced in the group
   const userIds = new Set<string>();
-  for (const row of userRecipientRows) {
+  for (const row of group) {
     const recipient = deserializeRecipient(row.to as Json);
     if ("userId" in recipient) {
       userIds.add(recipient.userId);
     }
   }
-
   const users = userIds.size > 0 ? await prisma.projectUser.findMany({
-    where: {
-      tenancyId: tenancy.id,
-      projectUserId: { in: Array.from(userIds) },
-    },
-    include: {
-      contactChannels: true,
-    },
+    where: { tenancyId: tenancy.id, projectUserId: { in: [...userIds] } },
+    include: { contactChannels: true },
   }) : [];
-
   const userMap = new Map(users.map(user => [user.projectUserId, user]));
 
-  const requests = await Promise.all(group.map(async (row) => {
-    const themeSource = getEmailThemeForThemeId(tenancy, row.themeId ?? false);
-
+  const buildRenderRequest = (row: EmailOutbox, unsubscribeLink: string | undefined) => {
     const recipient = deserializeRecipient(row.to as Json);
-    let userDisplayName: string | null = null;
-    let unsubscribeLink: string | undefined;
-    if ("userId" in recipient) {
-      const user = userMap.get(recipient.userId);
-      userDisplayName = user?.displayName ?? null;
-      if (row.renderedNotificationCategoryId) {
-        const category = getNotificationCategoryById(row.renderedNotificationCategoryId);
-        if (category?.can_disable) {
-          const unsubscribeResult = await Result.fromPromise(generateUnsubscribeLink(tenancy, recipient.userId, row.renderedNotificationCategoryId));
-          if (unsubscribeResult.status === "ok") {
-            unsubscribeLink = unsubscribeResult.data;
-          } else {
-            captureError("generate-unsubscribe-link", unsubscribeResult.error);
-          }
-        }
-      }
-    }
-
+    const userDisplayName = "userId" in recipient ? userMap.get(recipient.userId)?.displayName ?? null : null;
     return {
       templateSource: row.tsxSource,
-      themeSource,
+      themeSource: getEmailThemeForThemeId(tenancy, row.themeId ?? false),
       input: {
         user: { displayName: userDisplayName },
         project: { displayName: tenancy.project.display_name },
         variables: filterUndefined({
           projectDisplayName: tenancy.project.display_name,
-          userDisplayName: userDisplayName,
+          userDisplayName,
           ...filterUndefined((row.extraRenderVariables ?? {}) as Record<string, string | null>),
         }),
         themeProps: {
@@ -213,51 +185,45 @@ async function renderTenancyEmails(workerId: string, tenancyId: string, group: E
         unsubscribeLink,
       },
     };
-  }));
+  };
 
-  const renderResult = await renderEmailsForTenancyBatched(requests);
-  if (renderResult.status === "error") {
-    captureError("email-rendering-failed", renderResult.error);
-    for (const row of group) {
-      await globalPrismaClient.emailOutbox.updateMany({
-        where: {
-          tenancyId,
-          id: row.id,
-          renderedByWorkerId: workerId,
-        },
-        data: {
-          renderErrorExternalMessage: "An error occurred while rendering the email. Make sure the template/draft is valid and the theme is set correctly.",
-          renderErrorExternalDetails: {},
-          renderErrorInternalMessage: renderResult.error,
-          renderErrorInternalDetails: { error: renderResult.error },
-          finishedRenderingAt: new Date(),
-        },
-      });
+  const tryGenerateUnsubscribeLink = async (row: EmailOutbox, categoryId: string): Promise<string | undefined> => {
+    const recipient = deserializeRecipient(row.to as Json);
+    if (!("userId" in recipient)) return undefined;
+    const category = getNotificationCategoryById(categoryId);
+    if (!category?.can_disable) return undefined;
+    const result = await Result.fromPromise(generateUnsubscribeLink(tenancy, recipient.userId, categoryId));
+    if (result.status === "error") {
+      captureError("generate-unsubscribe-link", result.error);
+      return undefined;
     }
-    return;
-  }
+    return result.data;
+  };
 
-  const outputs = renderResult.data;
-  for (let index = 0; index < group.length; index++) {
-    const row = group[index];
-    const output = outputs[index];
-
-    const subject = row.overrideSubject ?? output.subject ?? "";
-    const categoryName = row.overrideNotificationCategoryId ? getNotificationCategoryById(row.overrideNotificationCategoryId)?.name : output.notificationCategory;
-
-    const notificationCategory = listNotificationCategories().find((category) => category.name === categoryName);
+  const markRenderError = async (row: EmailOutbox, error: string) => {
     await globalPrismaClient.emailOutbox.updateMany({
-      where: {
-        tenancyId,
-        id: row.id,
-        renderedByWorkerId: workerId,
+      where: { tenancyId, id: row.id, renderedByWorkerId: workerId },
+      data: {
+        renderErrorExternalMessage: "An error occurred while rendering the email. Make sure the template/draft is valid and the theme is set correctly.",
+        renderErrorExternalDetails: {},
+        renderErrorInternalMessage: error,
+        renderErrorInternalDetails: { error },
+        finishedRenderingAt: new Date(),
       },
+    });
+  };
+
+  const saveRenderedEmail = async (row: EmailOutbox, output: { html: string, text: string, subject?: string }, categoryId: string | undefined) => {
+    const subject = row.overrideSubject ?? output.subject ?? "";
+    const category = categoryId ? getNotificationCategoryById(categoryId) : undefined;
+    await globalPrismaClient.emailOutbox.updateMany({
+      where: { tenancyId, id: row.id, renderedByWorkerId: workerId },
       data: {
         renderedHtml: output.html,
         renderedText: output.text,
         renderedSubject: subject,
-        renderedNotificationCategoryId: notificationCategory?.id,
-        renderedIsTransactional: notificationCategory?.name === "Transactional",  // TODO this should use smarter logic for notification category handling
+        renderedNotificationCategoryId: category?.id,
+        renderedIsTransactional: category?.name === "Transactional",
         renderErrorExternalMessage: null,
         renderErrorExternalDetails: Prisma.DbNull,
         renderErrorInternalMessage: null,
@@ -265,6 +231,87 @@ async function renderTenancyEmails(workerId: string, tenancyId: string, group: E
         finishedRenderingAt: new Date(),
       },
     });
+  };
+
+  // Rows with overrideNotificationCategoryId can be rendered in one pass
+  const rowsWithKnownCategory = group.filter(row => row.overrideNotificationCategoryId);
+  if (rowsWithKnownCategory.length > 0) {
+    const requests = await Promise.all(rowsWithKnownCategory.map(async (row) => {
+      const unsubscribeLink = await tryGenerateUnsubscribeLink(row, row.overrideNotificationCategoryId!);
+      return buildRenderRequest(row, unsubscribeLink);
+    }));
+
+    const result = await renderEmailsForTenancyBatched(requests);
+    if (result.status === "error") {
+      captureError("email-rendering-failed", result.error);
+      for (const row of rowsWithKnownCategory) {
+        await markRenderError(row, result.error);
+      }
+    } else {
+      for (let i = 0; i < rowsWithKnownCategory.length; i++) {
+        await saveRenderedEmail(rowsWithKnownCategory[i], result.data[i], rowsWithKnownCategory[i].overrideNotificationCategoryId!);
+      }
+    }
+  }
+
+  // Rows without overrideNotificationCategoryId need two-pass rendering:
+  // 1. First pass without unsubscribe link to determine the notification category
+  // 2. Second pass with unsubscribe link if the category allows it
+  const rowsWithUnknownCategory = group.filter(row => !row.overrideNotificationCategoryId);
+  if (rowsWithUnknownCategory.length > 0) {
+    const firstPassRequests = rowsWithUnknownCategory.map(row => buildRenderRequest(row, undefined));
+    const firstPassResult = await renderEmailsForTenancyBatched(firstPassRequests);
+
+    if (firstPassResult.status === "error") {
+      captureError("email-rendering-failed", firstPassResult.error);
+      for (const row of rowsWithUnknownCategory) {
+        await markRenderError(row, firstPassResult.error);
+      }
+      return;
+    }
+
+    // Partition rows based on whether they need a second pass
+    const needsSecondPass: { row: EmailOutbox, categoryId: string }[] = [];
+    const noSecondPassNeeded: { row: EmailOutbox, output: typeof firstPassResult.data[0], categoryId: string | undefined }[] = [];
+
+    for (let i = 0; i < rowsWithUnknownCategory.length; i++) {
+      const row = rowsWithUnknownCategory[i];
+      const output = firstPassResult.data[i];
+      const category = listNotificationCategories().find(c => c.name === output.notificationCategory);
+      const recipient = deserializeRecipient(row.to as Json);
+      const hasUserId = "userId" in recipient;
+
+      if (category?.can_disable && hasUserId) {
+        needsSecondPass.push({ row, categoryId: category.id });
+      } else {
+        noSecondPassNeeded.push({ row, output, categoryId: category?.id });
+      }
+    }
+
+    // Save emails that don't need a second pass
+    for (const { row, output, categoryId } of noSecondPassNeeded) {
+      await saveRenderedEmail(row, output, categoryId);
+    }
+
+    // Second pass for emails that need an unsubscribe link
+    if (needsSecondPass.length > 0) {
+      const secondPassRequests = await Promise.all(needsSecondPass.map(async ({ row, categoryId }) => {
+        const unsubscribeLink = await tryGenerateUnsubscribeLink(row, categoryId);
+        return buildRenderRequest(row, unsubscribeLink);
+      }));
+
+      const secondPassResult = await renderEmailsForTenancyBatched(secondPassRequests);
+      if (secondPassResult.status === "error") {
+        captureError("email-rendering-failed-second-pass", secondPassResult.error);
+        for (const { row } of needsSecondPass) {
+          await markRenderError(row, secondPassResult.error);
+        }
+      } else {
+        for (let i = 0; i < needsSecondPass.length; i++) {
+          await saveRenderedEmail(needsSecondPass[i].row, secondPassResult.data[i], needsSecondPass[i].categoryId);
+        }
+      }
+    }
   }
 }
 

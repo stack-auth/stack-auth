@@ -1345,41 +1345,13 @@ export namespace User {
     return response.body;
   }
 
-  export async function create() {
-    // Create new mailbox
+  export async function create(body?: Record<string, unknown>) {
     const createUserResponse = await niceBackendFetch("/api/v1/users", {
       method: "POST",
       accessType: "server",
-      body: {},
+      body: body ?? {},
     });
-    expect(createUserResponse).toMatchInlineSnapshot(`
-      NiceResponse {
-        "status": 201,
-        "body": {
-          "auth_with_email": false,
-          "client_metadata": null,
-          "client_read_only_metadata": null,
-          "display_name": null,
-          "has_password": false,
-          "id": "<stripped UUID>",
-          "is_anonymous": false,
-          "last_active_at_millis": <stripped field 'last_active_at_millis'>,
-          "oauth_providers": [],
-          "otp_auth_enabled": false,
-          "passkey_auth_enabled": false,
-          "primary_email": null,
-          "primary_email_auth_enabled": false,
-          "primary_email_verified": false,
-          "profile_image_url": null,
-          "requires_totp_mfa": false,
-          "selected_team": null,
-          "selected_team_id": null,
-          "server_metadata": null,
-          "signed_up_at_millis": <stripped field 'signed_up_at_millis'>,
-        },
-        "headers": Headers { <some fields may have been hidden> },
-      }
-    `);
+    expect(createUserResponse.status).toBe(201);
     return {
       userId: createUserResponse.body.id,
     };

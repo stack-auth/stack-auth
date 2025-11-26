@@ -65,7 +65,10 @@ describe("with valid credentials", () => {
         },
       },
     }, true);
-    const { userId } = await User.create();
+    const { userId } = await User.create({
+      primary_email: "test-stats@example.com",
+      primary_email_verified: true,
+    });
 
     // Send an email
     const sendEmailResponse = await niceBackendFetch("/api/v1/emails/send-email", {

@@ -5,7 +5,7 @@ import { Auth, InternalApiKey, Project, ProjectApiKey, Team, backendContext, bum
 
 // TODO re-enable these tests when we re-enable credential scanning email notifications
 
-it.skip("should send email notification to user when revoking an API key through credential scanning", async ({ expect }: { expect: any }) => {
+it("should send email notification to user when revoking an API key through credential scanning", async ({ expect }: { expect: any }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true, allow_team_api_keys: true, allow_user_api_keys: true } });
 
   const mailbox2 = await bumpEmailAddress();
@@ -114,7 +114,7 @@ it.skip("should send email notification to user when revoking an API key through
   }
 });
 
-it.skip("should send email notification to team members when revoking a team API key through credential scanning", async ({ expect }: { expect: any }) => {
+it("should send email notification to team members when revoking a team API key through credential scanning", async ({ expect }: { expect: any }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true, allow_team_api_keys: true, allow_user_api_keys: true } });
 
   // this test may run longer than the admin access token is valid for, so let's create API keys
@@ -263,7 +263,7 @@ it.skip("should send email notification to team members when revoking a team API
     }
 }, { timeout: 120_000 });
 
-it.skip("should handle already revoked API keys gracefully", async ({ expect }: { expect: any }) => {
+it("should handle already revoked API keys gracefully", async ({ expect }: { expect: any }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true, allow_team_api_keys: true, allow_user_api_keys: true } });
 
   const user1 = await Auth.fastSignUp();
@@ -346,7 +346,7 @@ it.skip("should handle already revoked API keys gracefully", async ({ expect }: 
   }
 });
 
-it.skip("should error when api key is not found", async ({ expect }: { expect: any }) => {
+it("should error when api key is not found", async ({ expect }: { expect: any }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
 
   const fakeApiKey = `stack_test_nonexistent_${generateSecureRandomString()}`;

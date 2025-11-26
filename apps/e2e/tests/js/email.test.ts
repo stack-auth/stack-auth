@@ -2,6 +2,7 @@ import { KnownErrors } from "@stackframe/stack-shared";
 import { DEFAULT_EMAIL_THEME_ID, DEFAULT_TEMPLATE_IDS } from "@stackframe/stack-shared/dist/helpers/emails";
 import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { it } from "../helpers";
+import { withPortPrefix } from "../helpers/ports";
 import { createApp } from "./js-helpers";
 
 async function setupEmailServer(adminApp: any) {
@@ -11,9 +12,9 @@ async function setupEmailServer(adminApp: any) {
       server: {
         isShared: false,
         host: "localhost",
-        port: 1025,
+        port: Number(withPortPrefix("29")),
         username: "test",
-        password: "password",
+        password: "test",
         senderEmail: "test@example.com",
         senderName: "Test User",
       },
@@ -127,7 +128,7 @@ it("should throw RequiresCustomEmailServer error when email server is not config
   })).rejects.toThrow(KnownErrors.RequiresCustomEmailServer);
 });
 
-it.skip("should handle non-existent user IDs", async ({ expect }) => {
+it("should handle non-existent user IDs", async ({ expect }) => {
   const { adminApp, serverApp } = await createApp();
   await setupEmailServer(adminApp);
 
@@ -171,7 +172,7 @@ it("should handle html and templateId at the same time", async ({ expect }) => {
   } as any)).rejects.toThrow(KnownErrors.SchemaError);
 });
 
-it.skip("should provide delivery statistics", async ({ expect }) => {
+it("should provide delivery statistics", async ({ expect }) => {
   const { adminApp, serverApp } = await createApp();
   await setupEmailServer(adminApp);
 
@@ -194,32 +195,31 @@ it.skip("should provide delivery statistics", async ({ expect }) => {
   expect(info).toMatchInlineSnapshot(`
     {
       "capacity": {
-        "penaltyFactor": 1,
-        "ratePerSecond": 1.561904761904762,
+        "penalty_factor": 1,
+        "rate_per_second": 1.561904761904762,
       },
       "stats": {
         "day": {
           "bounced": 0,
-          "markedAsSpam": 0,
+          "marked_as_spam": 0,
           "sent": 1,
         },
         "hour": {
           "bounced": 0,
-          "markedAsSpam": 0,
+          "marked_as_spam": 0,
           "sent": 1,
         },
         "month": {
           "bounced": 0,
-          "markedAsSpam": 0,
+          "marked_as_spam": 0,
           "sent": 1,
         },
         "week": {
           "bounced": 0,
-          "markedAsSpam": 0,
+          "marked_as_spam": 0,
           "sent": 1,
         },
       },
-    },
-  }
+    }
   `);
 });

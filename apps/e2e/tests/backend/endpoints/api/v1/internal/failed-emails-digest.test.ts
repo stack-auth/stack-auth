@@ -58,7 +58,7 @@ describe("unauthorized requests", () => {
 });
 
 describe("with valid credentials", () => {
-  async function testFailedEmails(query: any) {
+  async function testFailedEmails(isDryRun: boolean) {
     backendContext.set({
       projectKeys: InternalProjectKeys,
       userAuth: null,
@@ -107,7 +107,7 @@ describe("with valid credentials", () => {
       method: "POST",
       headers: { "Authorization": "Bearer mock_cron_secret" },
       query: {
-        dry_run: "true",
+        dry_run: `${isDryRun}`,
       },
     });
     expect(response.status).toBe(200);
@@ -154,7 +154,7 @@ describe("with valid credentials", () => {
   }
 
   it("should return 200 and process dry run request", async ({ expect }) => {
-    const { projectOwnerMailbox } = await testFailedEmails({ dry_run: "true" });
+    const { projectOwnerMailbox } = await testFailedEmails(true);
 
     const messages = await projectOwnerMailbox.fetchMessages();
     expect(messages.filter(msg => !msg.subject.includes("Sign in to"))).toMatchInlineSnapshot(`[]`);
@@ -162,7 +162,7 @@ describe("with valid credentials", () => {
 
   // TODO: failed emails digest is currently disabled, fix that and then re-enable this test
   it.todo("should return 200 and process failed emails digest", async ({ expect }) => {
-    const { projectOwnerMailbox } = await testFailedEmails({ dry_run: "false" });
+    const { projectOwnerMailbox } = await testFailedEmails(false);
     const messages = await projectOwnerMailbox.fetchMessages();
     const digestEmail = messages.find(msg => msg.subject === "Failed emails digest");
     expect(digestEmail).toBeDefined();
