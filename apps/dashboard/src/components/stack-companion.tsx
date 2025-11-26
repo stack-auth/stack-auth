@@ -2,368 +2,330 @@
 
 import { cn } from '@/lib/utils';
 import { checkVersion, VersionCheckResult } from '@/lib/version-check';
-import { Button } from '@stackframe/stack-ui';
+import { Button, Tooltip, TooltipContent, TooltipTrigger } from '@stackframe/stack-ui';
 import { BookOpen, HelpCircle, Lightbulb, TimerReset, X } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import packageJson from '../../package.json';
 import { FeedbackForm } from './feedback-form';
 import { ChangelogWidget } from './stack-companion/changelog-widget';
 import { FeatureRequestBoard } from './stack-companion/feature-request-board';
 import { UnifiedDocsWidget } from './stack-companion/unified-docs-widget';
 
-type StackCompanionProps = {
-  className?: string,
-  onExpandedChange?: (expanded: boolean) => void,
-};
-
 type SidebarItem = {
   id: string,
   label: string,
   icon: React.ElementType,
   color: string,
+  hoverBg: string,
 };
-
-// Constants for resize constraints
-const MIN_SIDEBAR_WIDTH = 280;
-const MAX_SIDEBAR_WIDTH = 2000;
-const DEFAULT_SIDEBAR_WIDTH = 320;
-
-// Constants for cursor styles
-const CURSOR_STYLES = {
-  COL_RESIZE: 'col-resize',
-  DEFAULT: '',
-} as const;
-
-const USER_SELECT_VALUES = {
-  NONE: 'none',
-  DEFAULT: '',
-} as const;
 
 const sidebarItems: SidebarItem[] = [
   {
     id: 'docs',
     label: 'Docs',
     icon: BookOpen,
-    color: 'text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300',
+    color: 'text-blue-600 dark:text-blue-400',
+    hoverBg: 'hover:bg-blue-500/10',
   },
   {
     id: 'feedback',
     label: 'Feature Requests',
     icon: Lightbulb,
-    color: 'text-purple-600 hover:text-purple-700 dark:text-purple-400 dark:hover:text-purple-300',
+    color: 'text-purple-600 dark:text-purple-400',
+    hoverBg: 'hover:bg-purple-500/10',
   },
   {
     id: 'changelog',
     label: 'Changelog',
     icon: TimerReset,
-    color: 'text-green-600 hover:text-green-700 dark:text-green-400 dark:hover:text-green-300',
+    color: 'text-green-600 dark:text-green-400',
+    hoverBg: 'hover:bg-green-500/10',
   },
   {
     id: 'support',
     label: "Support",
     icon: HelpCircle,
-    color: 'text-orange-600 hover:text-orange-700 dark:text-orange-400 dark:hover:text-orange-300',
+    color: 'text-orange-600 dark:text-orange-400',
+    hoverBg: 'hover:bg-orange-500/10',
   }
 ];
 
-export function StackCompanion({ className, onExpandedChange }: StackCompanionProps) {
+const MIN_DRAWER_WIDTH = 400;
+const MAX_DRAWER_WIDTH = 800;
+const DEFAULT_DRAWER_WIDTH = 480;
+const CLOSE_THRESHOLD = 100;
+
+export function StackCompanion({ className }: { className?: string }) {
   const [activeItem, setActiveItem] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
   const [versionCheckResult, setVersionCheckResult] = useState<VersionCheckResult>(null);
-  const [width, setWidth] = useState(DEFAULT_SIDEBAR_WIDTH);
+  const [drawerWidth, setDrawerWidth] = useState(0);
   const [isResizing, setIsResizing] = useState(false);
-  const [nubStretch, setNubStretch] = useState({ scaleX: 1, scaleY: 1, translateY: 0 });
-  const [nubInitialY, setNubInitialY] = useState<number | null>(null);
-  const nubRef = useRef<HTMLDivElement>(null);
+  const [isAnimating, setIsAnimating] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
+  
+  const startXRef = useRef(0);
+  const startWidthRef = useRef(0);
+  const dragThresholdRef = useRef(false);
 
-  // Handle hydration
   useEffect(() => {
     setMounted(true);
   }, []);
 
-  // Version checking logic
   useEffect(() => {
     const cleanup = checkVersion(setVersionCheckResult, {
-      delay: 2000, // Give other API requests priority
-      silentFailure: true, // Silently fail for the companion
+      delay: 2000,
+      silentFailure: true,
       errorPrefix: "Version check failed in companion"
     });
-
     return cleanup;
   }, []);
 
-  // Notify parent when expanded state changes
-  useEffect(() => {
-    onExpandedChange?.(activeItem !== null);
-  }, [activeItem, onExpandedChange]);
+  const openDrawer = useCallback((itemId: string) => {
+    setActiveItem(itemId);
+    setIsAnimating(true);
+    // Start animation
+    requestAnimationFrame(() => {
+      setDrawerWidth(DEFAULT_DRAWER_WIDTH);
+      setTimeout(() => setIsAnimating(false), 300);
+    });
+  }, []);
 
-  // Handle resize logic
-  const handleMouseDown = (e: React.MouseEvent) => {
+  const closeDrawer = useCallback(() => {
+    setIsAnimating(true);
+    setDrawerWidth(0);
+    setTimeout(() => {
+      setActiveItem(null);
+      setIsAnimating(false);
+    }, 300);
+  }, []);
+
+  // Handle click vs drag
+  const handleItemClick = useCallback((itemId: string) => {
+    if (dragThresholdRef.current) return; // Ignore clicks if we were dragging
+    
+    if (activeItem === itemId) {
+      closeDrawer();
+    } else if (activeItem) {
+      setActiveItem(itemId);
+    } else {
+      openDrawer(itemId);
+    }
+  }, [activeItem, closeDrawer, openDrawer]);
+
+  const handleMouseDown = useCallback((e: React.MouseEvent | React.TouchEvent) => {
+    // Don't initiate drag if clicking resizing handle or scrollbar
+    if ((e.target as HTMLElement).closest('.no-drag')) return;
+
     setIsResizing(true);
-    setNubInitialY(e.clientY);
-    e.preventDefault();
-  };
+    setIsAnimating(false);
+    dragThresholdRef.current = false;
+    
+    startXRef.current = 'touches' in e ? e.touches[0].clientX : e.clientX;
+    startWidthRef.current = drawerWidth;
+    
+    // If drawer is closed, drag starts from 0 width
+    if (drawerWidth === 0) {
+      startWidthRef.current = 0;
+    }
+  }, [drawerWidth]);
 
   useEffect(() => {
     if (!isResizing) return;
 
-    const handleMouseMove = (e: MouseEvent) => {
-      const clientWidth = document.documentElement.clientWidth;
-
-      // Add bounds checking for edge cases
-      if (!clientWidth || clientWidth <= 0) return;
-
-      const newWidth = clientWidth - e.clientX;
-
-      // Constrain width between min and max values
-      const constrainedWidth = Math.max(MIN_SIDEBAR_WIDTH, Math.min(MAX_SIDEBAR_WIDTH, newWidth));
-      setWidth(constrainedWidth);
-
-      // Calculate vertical distance from initial position for stretch effect
-      if (nubInitialY !== null) {
-        const verticalDelta = e.clientY - nubInitialY;
-        const verticalDistance = Math.abs(verticalDelta);
-        const horizontalDistance = Math.abs(e.clientX - (nubRef.current?.getBoundingClientRect().left ?? e.clientX));
-        const distance = Math.sqrt(verticalDistance ** 2 + horizontalDistance ** 2);
-
-        const viewportHeight = window.innerHeight;
-        const viewportWidth = window.innerWidth;
-        const maxDistance = Math.sqrt(viewportHeight ** 2 + viewportWidth ** 2) * 0.3;
-        let normalizedDistance =
-          Math.min(Math.sqrt(distance / maxDistance));
-
-        const scaleY = Math.max(0, 1 - (normalizedDistance * 0.4));
-        const scaleX = Math.max(0, 1 + (normalizedDistance * 0.6));
-        const translateY = 0;
-
-        setNubStretch({ scaleX, scaleY, translateY });
+    const handleMouseMove = (e: MouseEvent | TouchEvent) => {
+      const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
+      const deltaX = startXRef.current - clientX;
+      
+      // Check for drag threshold to distinguish click vs drag
+      if (Math.abs(deltaX) > 5) {
+        dragThresholdRef.current = true;
+        setIsDragging(true);
       }
+
+      // Logic:
+      // - Moving left (positive deltaX) -> Width increases
+      // - Moving right (negative deltaX) -> Width decreases
+      // But only if we are starting from right edge.
+      // Since flex-row-reverse anchors to right, increasing width moves the handle left.
+      
+      let newWidth = startWidthRef.current + deltaX;
+      newWidth = Math.max(0, Math.min(MAX_DRAWER_WIDTH, newWidth));
+      
+      setDrawerWidth(newWidth);
     };
 
     const handleMouseUp = () => {
       setIsResizing(false);
-      setNubInitialY(null);
-      setNubStretch({ scaleX: 1, scaleY: 1, translateY: 0 });
+      setTimeout(() => setIsDragging(false), 0);
+
+      if (dragThresholdRef.current) {
+        // If we dragged, snap to state
+        if (drawerWidth < CLOSE_THRESHOLD) {
+          closeDrawer();
+        } else if (drawerWidth < MIN_DRAWER_WIDTH) {
+          setIsAnimating(true);
+          setDrawerWidth(MIN_DRAWER_WIDTH);
+          setTimeout(() => setIsAnimating(false), 200);
+        } else {
+          // Keep current width but ensure item is active
+          if (!activeItem) {
+             // If dragged open from closed state without clicking specific item, default to docs
+             setActiveItem('docs'); 
+          }
+        }
+      } else {
+        // If it was just a click (no drag), handleItemClick will trigger
+      }
+      dragThresholdRef.current = false;
     };
 
     document.addEventListener('mousemove', handleMouseMove);
     document.addEventListener('mouseup', handleMouseUp);
-    document.body.style.cursor = CURSOR_STYLES.COL_RESIZE;
-    document.body.style.userSelect = USER_SELECT_VALUES.NONE;
+    document.addEventListener('touchmove', handleMouseMove, { passive: false });
+    document.addEventListener('touchend', handleMouseUp);
 
     return () => {
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
-      document.body.style.cursor = CURSOR_STYLES.DEFAULT;
-      document.body.style.userSelect = USER_SELECT_VALUES.DEFAULT;
+      document.removeEventListener('touchmove', handleMouseMove);
+      document.removeEventListener('touchend', handleMouseUp);
     };
-  }, [isResizing, nubInitialY]);
+  }, [isResizing, drawerWidth, closeDrawer, activeItem]);
 
-  // Don't render anything until mounted to avoid hydration issues
-  if (!mounted) {
-    return null;
-  }
+  // Disable text selection during drag
+  useEffect(() => {
+    if (isDragging) {
+      document.body.style.userSelect = 'none';
+      document.body.style.cursor = 'ew-resize';
+    } else {
+      document.body.style.userSelect = '';
+      document.body.style.cursor = '';
+    }
+    return () => {
+      document.body.style.userSelect = '';
+      document.body.style.cursor = '';
+    };
+  }, [isDragging]);
 
-  const isExpanded = activeItem !== null;
+  if (!mounted) return null;
+
+  const isOpen = drawerWidth > 0;
+  const currentItem = sidebarItems.find(i => i.id === activeItem);
+  const showContent = drawerWidth >= CLOSE_THRESHOLD;
 
   return (
-    <div className={cn("relative", className)}>
-      {/* Resize Handle - positioned on outer container to straddle border */}
-      {isExpanded && (
+    <>
+      {/* Backdrop - transparent but blocks interaction with content if dragging? 
+          User asked for "work along side it", so NO backdrop pointer-events.
+          We only use it for closing on outside click if we really wanted, but requested behavior implies modeless.
+      */}
+      
+      {/* Main Container - Fixed Right Edge, Flex Reverse to push handle left */}
+      <div className="fixed inset-y-0 right-0 z-50 flex flex-row-reverse items-center pointer-events-none">
+        
+        {/* 1. Drawer Content (Rightmost in layout, stays anchored to right) */}
         <div
           className={cn(
-            "absolute left-0 top-1/2 -translate-y-1/2 -translate-x-1/2 w-6 h-12 cursor-col-resize group z-30 flex items-center justify-center",
-            "transition-colors"
+            "h-full bg-background/80 backdrop-blur-xl border-l border-foreground/[0.08] shadow-2xl overflow-hidden pointer-events-auto relative",
+            isAnimating && !isResizing && "transition-[width] duration-300 ease-out"
           )}
-          ref={nubRef}
-          onMouseDown={handleMouseDown}
-          title="Drag to resize panel"
+          style={{ width: drawerWidth }}
         >
-          {/* Pill-shaped Resize Nub */}
-          <div
-            className={cn(
-                "w-2 h-8 rounded-full transition-colors duration-200 flex items-center justify-center shadow-sm",
-                isResizing ? "bg-blue-600 border-blue-600 dark:bg-blue-400 dark:border-blue-400"
-                  : "bg-white dark:bg-black border border dark:border-white/50 group-hover:bg-gray-700 group-hover:border-gray-700 dark:group-hover:bg-gray-200 dark:group-hover:border-gray-200"
-              )}
-            style={{
-              transform: `scaleX(${nubStretch.scaleX * (isResizing ? 0.95 : 1)}) scaleY(${nubStretch.scaleY * (isResizing ? 1.05 : 1)}) translateY(${nubStretch.translateY}px)`
-            }}
-          >
-            {/* Grip lines */}
-            <div className="flex flex-col items-center justify-center space-y-0.5">
-              <div className={cn(
-                "w-0.5 h-1 rounded-full transition-colors",
-                "bg-black/50 dark:bg-white/50 group-hover:bg-white dark:group-hover:bg-black",
-                isResizing ? "bg-white dark:bg-black" : ""
-              )} />
-              <div className={cn(
-                "w-0.5 h-1 rounded-full transition-colors",
-                "bg-black/50 dark:bg-white/50 group-hover:bg-white dark:group-hover:bg-black",
-                isResizing ? "bg-white dark:bg-black" : ""
-              )} />
-              <div className={cn(
-                "w-0.5 h-1 rounded-full transition-colors",
-                "bg-black/50 dark:bg-white/50 group-hover:bg-white dark:group-hover:bg-black",
-                isResizing ? "bg-white dark:bg-black" : ""
-              )} />
-            </div>
-          </div>
-        </div>
-      )}
+          {/* Inner shadow/gradient for depth */}
+          <div className="absolute inset-y-0 left-0 w-px bg-gradient-to-b from-transparent via-foreground/10 to-transparent opacity-50" />
 
-      {/* Single Expanding Sidebar */}
-      <div
-        className={cn(
-          "h-full flex relative",
-          isExpanded ? "" : "w-16",
-          !isResizing ? "transition-all duration-300 ease-in-out" : ""
-        )}
-        style={isExpanded ? { width: `${width}px` } : undefined}
-      >
-        {/* Collapsed State - Vertical Buttons */}
-        {!isExpanded && (
-          <div className="flex flex-col w-full py-2">
-            {/* Navigation Items */}
-            <div className="flex flex-col items-center space-y-1">
-              {sidebarItems.map((item) => {
-                const Icon = item.icon;
-
-                return (
-                  <div key={item.id} className="relative">
-                    <button
-                      onClick={() => setActiveItem(String(activeItem) === item.id ? null : item.id)}
-                      className={cn(
-                        "flex items-center justify-center w-9 h-9 rounded-lg group transition-colors hover:bg-muted/80",
-                        item.color
-                      )}
-                    >
-                      <Icon className="h-[18px] w-[18px]" />
-
-                      {/* Tooltip */}
-                      <div className={cn(
-                        "absolute right-full top-1/2 -translate-y-1/2 mr-3 px-3 py-2 text-white text-sm font-medium rounded-lg shadow-lg opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-[9999] group-active:opacity-0 group-focus:opacity-0 transition-opacity duration-150 delay-0",
-                        item.id === 'docs' ? 'bg-blue-600' :
-                          item.id === 'feedback' ? 'bg-purple-600' :
-                            item.id === 'changelog' ? 'bg-green-600' :
-                              item.id === 'support' ? 'bg-orange-600' : 'bg-gray-900'
-                      )}>
-                        {item.label}
-                        <div className={cn(
-                          "absolute left-full top-1/2 -translate-y-1/2 border-4 border-transparent",
-                          item.id === 'docs' ? 'border-l-blue-600' :
-                            item.id === 'feedback' ? 'border-l-purple-600' :
-                              item.id === 'changelog' ? 'border-l-green-600' :
-                                item.id === 'support' ? 'border-l-orange-600' : 'border-l-gray-900'
-                        )}></div>
+          {isOpen && showContent && (
+            <div className="flex flex-col h-full w-full min-w-[360px]">
+              {/* Header */}
+              <div className="flex items-center justify-between px-5 py-4 border-b border-foreground/[0.06] shrink-0 bg-background/40">
+                <div className="flex items-center gap-2.5">
+                  {currentItem && (
+                    <>
+                      <div className={cn("p-1.5 rounded-lg bg-foreground/[0.04]")}>
+                        <currentItem.icon className={cn("h-4 w-4", currentItem.color)} />
                       </div>
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
-
-        {/* Expanded State - Full Content */}
-        {isExpanded && (
-          <div className="flex h-full w-full">
-            {/* Left side - Navigation */}
-            <div className="flex flex-col h-full w-12 border-r border-border/50">
-              {/* Header - Match navbar height */}
-              <div className="flex items-center justify-center h-14">
-                {/* Nothing here for now */}
-              </div>
-
-              {/* Navigation Items */}
-              <div className="flex-1 flex flex-col items-center justify-center py-6 space-y-4">
-                {sidebarItems.map((item) => {
-                  const Icon = item.icon;
-                  const isActive = activeItem === item.id;
-
-                  return (
-                    <button
-                      key={item.id}
-                      onClick={() => setActiveItem(String(activeItem) === item.id ? null : item.id)}
-                      className={cn(
-                          "flex items-center justify-center w-10 h-10 rounded-lg transition-none",
-                          isActive ? "bg-gray-200 dark:bg-muted shadow-md" : "hover:bg-muted",
-                          item.color
-                        )}
-                    >
-                      <Icon className="h-5 w-5" />
-                    </button>
-                  );
-                })}
-              </div>
-
-              {/* Footer - Normal orientation text */}
-              <div className={cn(
-                  "h-12 border-t border-border/50 flex items-center justify-center rounded-bl-2xl",
-                  versionCheckResult ? (versionCheckResult.severe ? "bg-red-500" : "bg-orange-500") : ""
-                )}>
-                <div className={cn(
-                    "text-[10px] font-medium text-center",
-                    versionCheckResult ? "text-white" : "text-muted-foreground"
-                  )}>
-                  v{packageJson.version}
-                </div>
-              </div>
-            </div>
-
-            {/* Right side - Content */}
-            <div className="flex-1 flex flex-col h-full">
-              {/* Content Header - Match navbar height */}
-              <div className="flex items-center justify-between p-3 h-14 border-b border-border/50 rounded-tr-2xl">
-                <div className="flex items-center gap-2">
-                  {(() => {
-                    const item = sidebarItems.find(i => i.id === activeItem);
-                    const Icon = item?.icon || BookOpen;
-                    return (
-                      <>
-                        <Icon className={cn("h-4 w-4", item?.color || "text-muted-foreground")} />
-                        <h3 className="text-sm font-semibold">{item?.label}</h3>
-                      </>
-                    );
-                  })()}
+                      <span className="font-semibold text-foreground">
+                        {currentItem.label}
+                      </span>
+                    </>
+                  )}
                 </div>
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={() => setActiveItem(null)}
-                  className="h-6 w-6 p-0 hover:bg-muted"
+                  className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06] rounded-lg no-drag"
+                  onClick={closeDrawer}
                 >
-                  <X className="h-3 w-3" />
+                  <X className="h-4 w-4" />
                 </Button>
               </div>
 
-              {/* Content Body */}
-              <div className="flex-1 overflow-y-auto p-3" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' } as React.CSSProperties}>
-                <style jsx>{`
-                    div::-webkit-scrollbar {
-                      display: none;
-                    }
-                  `}</style>
-                {activeItem === 'docs' && (
-                  <UnifiedDocsWidget isActive={true} />
-                )}
-
-                {activeItem === 'feedback' && (
-                  <FeatureRequestBoard isActive={true} />
-                )}
-
-                {activeItem === 'changelog' && (
-                  <ChangelogWidget isActive={true} />
-                )}
-
-                {activeItem === 'support' && (
-                  <FeedbackForm />
-                )}
+              {/* Content */}
+              <div className="flex-1 overflow-y-auto p-5 overflow-x-hidden no-drag cursor-auto">
+                {activeItem === 'docs' && <UnifiedDocsWidget isActive={true} />}
+                {activeItem === 'feedback' && <FeatureRequestBoard isActive={true} />}
+                {activeItem === 'changelog' && <ChangelogWidget isActive={true} />}
+                {activeItem === 'support' && <FeedbackForm />}
               </div>
             </div>
+          )}
+        </div>
+
+        {/* 2. Stack Companion Handle (Left of Drawer) */}
+        <div 
+          className="h-full flex items-center shrink-0 pointer-events-auto -mr-px z-10"
+          onMouseDown={handleMouseDown}
+          onTouchStart={handleMouseDown}
+        >
+          {/* The Handle Pill */}
+          <div className={cn(
+            "flex flex-col items-center gap-3 px-2 py-3 bg-background/80 backdrop-blur-xl border border-foreground/[0.08] shadow-lg transition-all duration-300 cursor-grab active:cursor-grabbing select-none",
+            // Shape morphing
+            isOpen ? "rounded-l-2xl rounded-r-none border-r-0 translate-x-px" : "rounded-full mr-3",
+            className
+          )}>
+            {/* Grip Indicator Removed here */}
+
+            {sidebarItems.map(item => (
+              <Tooltip key={item.id}>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className={cn(
+                      "h-10 w-10 p-0 text-muted-foreground transition-all duration-200 rounded-xl relative group",
+                      item.hoverBg,
+                      activeItem === item.id && "bg-foreground/10 text-foreground shadow-sm ring-1 ring-foreground/5"
+                    )}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleItemClick(item.id);
+                    }}
+                    // Pass mouse down to parent for drag
+                  >
+                    <item.icon className={cn("h-5 w-5 transition-transform duration-200 group-hover:scale-110", item.color)} />
+                    {/* Active indicator removed here */}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="left" className="z-[60] mr-2">
+                  {item.label}
+                </TooltipContent>
+              </Tooltip>
+            ))}
+            
+            {versionCheckResult && (
+              <div className={cn(
+                "mt-auto pt-2 px-2 py-1 text-[10px] rounded-full font-mono font-medium opacity-60 hover:opacity-100 transition-opacity",
+                versionCheckResult.severe ? "text-red-500" : "text-orange-500"
+              )}>
+                v{packageJson.version}
+              </div>
+            )}
           </div>
-        )}
+        </div>
+
       </div>
-    </div>
+    </>
   );
 }

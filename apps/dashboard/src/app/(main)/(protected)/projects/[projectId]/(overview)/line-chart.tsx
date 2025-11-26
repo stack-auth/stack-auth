@@ -3,8 +3,8 @@ import { ChartConfig, ChartContainer, ChartTooltip, ChartTooltipContent } from "
 import { UserAvatar } from '@stackframe/stack';
 import { fromNow } from '@stackframe/stack-shared/dist/utils/dates';
 import {
-    cn,
-    Typography
+  cn,
+  Typography
 } from "@stackframe/stack-ui";
 import { useState } from "react";
 import { Bar, BarChart, CartesianGrid, Cell, Pie, PieChart, TooltipProps, XAxis, YAxis } from "recharts";
@@ -51,20 +51,20 @@ const CustomTooltip = ({ active, payload }: TooltipProps<number, string>) => {
     : data.date;
 
   return (
-    <div className="rounded-xl border border-border/70 bg-background/90 px-3 py-2 text-xs shadow-xl backdrop-blur-sm">
-      <div className="flex flex-col gap-1.5">
-        <span className="text-[0.7rem] font-medium text-muted-foreground">
+    <div className="rounded-xl bg-background/95 px-3.5 py-2.5 shadow-lg backdrop-blur-xl ring-1 ring-foreground/[0.08]">
+      <div className="flex flex-col gap-2">
+        <span className="text-[11px] font-medium text-muted-foreground tracking-wide">
           {formattedDate}
         </span>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2.5">
           <span
-            className="h-2.5 w-2.5 rounded-full"
+            className="h-2 w-2 rounded-full ring-2 ring-white/20"
             style={{ backgroundColor: "var(--color-activity)" }}
           />
-          <span className="text-[0.7rem] text-muted-foreground">
+          <span className="text-[11px] text-muted-foreground">
             Activity
           </span>
-          <span className="ml-auto font-mono text-[0.7rem] font-semibold tabular-nums text-foreground">
+          <span className="ml-auto font-mono text-xs font-semibold tabular-nums text-foreground">
             {typeof data.activity === "number"
               ? data.activity.toLocaleString()
               : data.activity}
@@ -183,22 +183,27 @@ export function ChartCard({
   className?: string,
   gradientColor?: "blue" | "purple" | "green" | "orange" | "slate",
 }) {
-  const gradientColors = {
-    blue: "from-blue-500/5",
-    purple: "from-purple-500/5",
-    green: "from-emerald-500/5",
-    orange: "from-orange-500/5",
-    slate: "from-slate-500/5",
+  const hoverTints = {
+    blue: "group-hover:bg-blue-500/[0.03]",
+    purple: "group-hover:bg-purple-500/[0.03]",
+    green: "group-hover:bg-emerald-500/[0.03]",
+    orange: "group-hover:bg-orange-500/[0.03]",
+    slate: "group-hover:bg-slate-500/[0.02]",
   };
 
   return (
     <div className={cn(
-      "group relative overflow-hidden rounded-xl bg-card border border-border transition-all hover:shadow-md",
+      "group relative overflow-hidden rounded-2xl bg-background/60 backdrop-blur-xl transition-all duration-200",
+      "ring-1 ring-foreground/[0.06] hover:ring-foreground/[0.1]",
+      "shadow-sm hover:shadow-md",
       className
     )}>
+      {/* Subtle glassmorphic background */}
+      <div className="absolute inset-0 bg-gradient-to-br from-foreground/[0.02] to-transparent pointer-events-none" />
+      {/* Accent hover tint */}
       <div className={cn(
-        "absolute inset-0 bg-gradient-to-br to-transparent opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none",
-        gradientColors[gradientColor]
+        "absolute inset-0 transition-colors duration-200 pointer-events-none",
+        hoverTints[gradientColor]
       )} />
       <div className="relative h-full flex flex-col">
         {children}
@@ -221,17 +226,17 @@ export function TimeRangeToggle({
   ];
 
   return (
-    <div className="flex items-center gap-0.5 rounded-md border border-border/40 bg-background/50 p-0.5 backdrop-blur-sm">
+    <div className="flex items-center gap-1 rounded-xl bg-foreground/[0.04] p-1 backdrop-blur-sm">
       {options.map((option) => (
         <button
           key={option.value}
           type="button"
           onClick={() => onTimeRangeChange(option.value)}
           className={cn(
-            "px-2.5 py-1 text-xs font-medium rounded-[4px] transition-all",
+            "px-3 py-1.5 text-xs font-medium rounded-lg transition-all duration-150",
             timeRange === option.value
-              ? "bg-muted text-foreground shadow-sm"
-              : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+              ? "bg-background text-foreground shadow-sm ring-1 ring-foreground/[0.06]"
+              : "text-muted-foreground hover:text-foreground hover:bg-background/50"
           )}
         >
           {option.label}
@@ -286,36 +291,45 @@ export function TabbedMetricsCard({
     slate: "bg-slate-500",
   };
 
+  const hoverAccentColors = {
+    blue: "hover:bg-blue-500/[0.06]",
+    purple: "hover:bg-purple-500/[0.06]",
+    green: "hover:bg-emerald-500/[0.06]",
+    orange: "hover:bg-orange-500/[0.06]",
+    slate: "hover:bg-slate-500/[0.04]",
+  };
+
   const activeColorClass = activeTabColors[gradientColor];
+  const hoverAccentClass = hoverAccentColors[gradientColor];
 
   return (
     <ChartCard className="h-full flex flex-col" gradientColor={gradientColor}>
-      <div className={cn("flex items-center justify-between border-b border-border/40", compact ? "px-3" : "px-4")}>
-        <div className="flex items-center gap-4">
+      <div className={cn("flex items-center justify-between border-b border-foreground/[0.05]", compact ? "px-4" : "px-5")}>
+        <div className="flex items-center gap-1">
           <button
             type="button"
             onClick={() => setView('chart')}
             className={cn(
-              "relative py-3 text-xs font-medium transition-all",
+              "relative px-3 py-3.5 text-xs font-medium transition-all duration-150 rounded-t-lg",
               view === 'chart' ? "text-foreground" : "text-muted-foreground hover:text-foreground"
             )}
           >
             {config.name}
             {view === 'chart' && (
-              <div className={cn("absolute bottom-0 left-0 right-0 h-0.5 rounded-full", activeColorClass)} />
+              <div className={cn("absolute bottom-0 left-3 right-3 h-0.5 rounded-full", activeColorClass)} />
             )}
           </button>
           <button
             type="button"
             onClick={() => setView('list')}
             className={cn(
-              "relative py-3 text-xs font-medium transition-all",
+              "relative px-3 py-3.5 text-xs font-medium transition-all duration-150 rounded-t-lg",
               view === 'list' ? "text-foreground" : "text-muted-foreground hover:text-foreground"
             )}
           >
             {listTitle}
             {view === 'list' && (
-              <div className={cn("absolute bottom-0 left-0 right-0 h-0.5 rounded-full", activeColorClass)} />
+              <div className={cn("absolute bottom-0 left-3 right-3 h-0.5 rounded-full", activeColorClass)} />
             )}
           </button>
         </div>
@@ -328,12 +342,12 @@ export function TabbedMetricsCard({
       </div>
 
       {config.description && view === 'chart' && (
-        <div className={cn("text-xs text-muted-foreground", compact ? "px-3 pt-2" : "px-4 pt-3")}>
+        <div className={cn("text-xs text-muted-foreground", compact ? "px-4 pt-3" : "px-5 pt-4")}>
           {config.description}
         </div>
       )}
 
-      <div className={cn(compact ? "p-3 pt-2" : "p-4 pt-3", "flex flex-col justify-center flex-1 min-h-0")}>
+      <div className={cn(compact ? "p-4 pt-3" : "p-5 pt-4", "flex flex-col justify-center flex-1 min-h-0")}>
         {view === 'chart' ? (
           filteredDatapoints.length === 0 ? (
             <div className="flex-1 flex items-center justify-center">
@@ -358,12 +372,15 @@ export function TabbedMetricsCard({
                 </Typography>
               </div>
             ) : (
-              <div className="space-y-1">
+              <div className="space-y-0.5">
                 {listData.map((user) => (
                   <button
                     key={user.id}
                     onClick={() => router.push(`/projects/${projectId}/users/${user.id}`)}
-                    className="w-full flex items-center gap-3 p-2 rounded-lg hover:bg-muted/50 transition-colors text-left group"
+                    className={cn(
+                      "w-full flex items-center gap-3 p-2.5 rounded-xl transition-all duration-150 text-left group",
+                      hoverAccentClass
+                    )}
                   >
                     <div className="shrink-0">
                       <UserAvatar
@@ -372,15 +389,15 @@ export function TabbedMetricsCard({
                           displayName: user.display_name ?? undefined,
                           primaryEmail: user.primary_email ?? undefined,
                         }}
-                        size={28}
+                        size={32}
                         border
                       />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <div className="text-xs font-medium truncate text-foreground group-hover:text-primary transition-colors">
+                      <div className="text-sm font-medium truncate text-foreground group-hover:text-foreground transition-colors">
                         {user.display_name || user.primary_email || 'Anonymous User'}
                       </div>
-                      <div className="text-[10px] text-muted-foreground truncate flex items-center gap-1.5">
+                      <div className="text-[11px] text-muted-foreground truncate flex items-center gap-1.5 mt-0.5">
                         <span>
                           {config.name === 'Daily Active Users'
                             ? user.last_active_at_millis
@@ -425,21 +442,21 @@ export function LineChartDisplay({
 
   return (
     <ChartCard className={className} gradientColor={gradientColor}>
-      <div className={compact ? "p-3 pb-2" : "p-4 pb-3"}>
+      <div className={compact ? "p-4 pb-3" : "p-5 pb-4"}>
         <div className="flex items-center justify-between">
-          <div className="space-y-0.5">
-            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+          <div className="space-y-1">
+            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
               {config.name}
             </span>
             {config.description && (
-              <div className="text-xs text-muted-foreground mt-0.5">
+              <div className="text-xs text-muted-foreground">
                 {config.description}
               </div>
             )}
           </div>
         </div>
       </div>
-      <div className={cn(compact ? "p-3 pt-0" : "p-4 pt-0", "flex-1 min-h-0")}>
+      <div className={cn(compact ? "p-4 pt-0" : "p-5 pt-0", "flex-1 min-h-0")}>
         {filteredDatapoints.length === 0 ? (
           <div className="flex items-center justify-center h-full">
             <Typography variant="secondary" className="text-xs">
@@ -508,21 +525,21 @@ export function DonutChartDisplay({
 
   return (
     <ChartCard className={className} gradientColor={gradientColor}>
-      <div className={compact ? "p-3 pb-2" : "p-4 pb-3"}>
+      <div className={compact ? "p-4 pb-3" : "p-5 pb-4"}>
         <div className="flex items-center justify-between">
-          <div className="space-y-0.5">
-            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+          <div className="space-y-1">
+            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
               Auth Methods
             </span>
             {!compact && (
-              <div className="text-xs text-muted-foreground mt-0.5">
+              <div className="text-xs text-muted-foreground">
                 Login distribution
               </div>
             )}
           </div>
         </div>
       </div>
-      <div className={cn(compact ? "p-3 pt-0" : "p-4 pt-0", "flex-1 min-h-0 flex flex-col")}>
+      <div className={cn(compact ? "p-4 pt-0" : "p-5 pt-0", "flex-1 min-h-0 flex flex-col")}>
         {datapoints.length === 0 || total === 0 ? (
           <div className="flex-1 flex items-center justify-center">
             <Typography variant="secondary" className="text-xs text-center">
@@ -541,7 +558,7 @@ export function DonutChartDisplay({
                   cursor={false}
                   content={
                     <ChartTooltipContent
-                      className="rounded-xl border border-border/70 bg-background/90 px-3 py-1.5 text-xs shadow-xl backdrop-blur-sm"
+                      className="rounded-xl bg-background/95 px-3.5 py-2.5 shadow-lg backdrop-blur-xl ring-1 ring-foreground/[0.08]"
                       hideIndicator
                       nameKey="method"
                       formatter={(value, _name, item) => {
@@ -554,15 +571,15 @@ export function DonutChartDisplay({
                         }
 
                         return (
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2.5">
                             <span
-                              className="h-2.5 w-2.5 rounded-full"
+                              className="h-2 w-2 rounded-full ring-2 ring-white/20"
                               style={{ backgroundColor: `var(--color-${key})` }}
                             />
-                            <span className="text-[0.7rem] font-medium">
+                            <span className="text-[11px] font-medium">
                               {label}
                             </span>
-                            <span className="font-mono text-[0.7rem] font-semibold tabular-nums">
+                            <span className="font-mono text-xs font-semibold tabular-nums">
                               {value}
                             </span>
                           </div>
@@ -586,15 +603,15 @@ export function DonutChartDisplay({
                 />
               </PieChart>
             </ChartContainer>
-            <div className={cn("flex w-full flex-wrap justify-center gap-2 shrink-0", compact ? "mt-2" : "mt-4")}>
+            <div className={cn("flex w-full flex-wrap justify-center gap-2 shrink-0", compact ? "mt-3" : "mt-4")}>
               {datapoints.map((item) => {
                 const percentage = total > 0 ? ((item.count / total) * 100).toFixed(0) : 0;
                 return (
                   <div
                     key={item.method}
                     className={cn(
-                      "flex items-center gap-1.5 rounded-full border border-border/70 bg-background/80 shadow-sm transition-colors hover:bg-muted/40",
-                      compact ? "px-2 py-1 text-[10px]" : "px-3 py-1.5 text-xs"
+                      "flex items-center gap-1.5 rounded-full bg-foreground/[0.03] ring-1 ring-foreground/[0.06] transition-colors hover:bg-foreground/[0.05]",
+                      compact ? "px-2.5 py-1 text-[10px]" : "px-3 py-1.5 text-xs"
                     )}
                   >
                     <span

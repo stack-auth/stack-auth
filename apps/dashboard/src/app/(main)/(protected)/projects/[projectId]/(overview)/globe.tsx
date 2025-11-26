@@ -269,29 +269,29 @@ export function GlobeSection({ countryData, totalUsers, children }: {countryData
             {/* Tooltip */}
             {selectedCountry && (
               <div
-                className="fixed z-[100] min-w-[160px] p-3 rounded-xl shadow-2xl bg-background/90 backdrop-blur-md border border-border/50 pointer-events-none transition-all duration-75 ease-out"
+                className="fixed z-[100] min-w-[180px] p-4 rounded-2xl shadow-xl bg-background/95 backdrop-blur-xl ring-1 ring-foreground/[0.08] pointer-events-none transition-all duration-75 ease-out"
                 style={{
                   left: tooltipPos.x,
                   top: tooltipPos.y,
-                  transform: 'translate(-50%, -100%) translateY(-8px)',
+                  transform: 'translate(-50%, -100%) translateY(-12px)',
                 }}
               >
-                <div className="flex items-center gap-2 font-semibold mb-2">
+                <div className="flex items-center gap-2.5 font-semibold mb-3 pb-3 border-b border-foreground/[0.06]">
                   <span className="text-xl leading-none">
                     {selectedCountry.code.match(/^[a-zA-Z][a-zA-Z]$/) ? getFlagEmoji(selectedCountry.code) : '🌍'}
                   </span>
-                  <span className="truncate">{selectedCountry.name}</span>
+                  <span className="truncate text-sm">{selectedCountry.name}</span>
                 </div>
-                <div className="space-y-1 text-xs text-muted-foreground">
-                  <div className="flex justify-between items-center gap-4">
-                    <span>Users</span>
-                    <span className="font-mono font-medium text-foreground">
+                <div className="space-y-2 text-xs">
+                  <div className="flex justify-between items-center gap-6">
+                    <span className="text-muted-foreground">Users</span>
+                    <span className="font-mono font-semibold text-foreground tabular-nums">
                       {(countryData[selectedCountry.code] ?? 0).toLocaleString()}
                     </span>
                   </div>
-                  <div className="flex justify-between items-center gap-4">
-                    <span>Share</span>
-                    <span className="font-mono font-medium text-primary">
+                  <div className="flex justify-between items-center gap-6">
+                    <span className="text-muted-foreground">Share</span>
+                    <span className="font-mono font-semibold text-blue-500 dark:text-blue-400 tabular-nums">
                       {totalUsers > 0
                         ? `${((countryData[selectedCountry.code] ?? 0) / totalUsers * 100).toFixed(1)}%`
                         : 'N/A'}
