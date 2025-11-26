@@ -575,7 +575,7 @@ export default function SidebarLayout(props: { children?: React.ReactNode }) {
           </aside>
 
           {/* Main Content Area */}
-          <main className="flex-1 min-w-0 px-2 pb-3 pr-14 md:pr-16">
+          <main className="flex-1 min-w-0 px-2 pb-3 xl:pr-14">
             <div className="relative flex flex-col min-h-full">
               {props.children}
             </div>
@@ -583,7 +583,7 @@ export default function SidebarLayout(props: { children?: React.ReactNode }) {
         </div>
 
         {/* Stack Companion - Fixed right edge drawer */}
-        <div className="hidden md:block">
+        <div className="hidden xl:block">
           <StackCompanion />
         </div>
       </div>
