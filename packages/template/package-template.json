@@ -33,6 +33,15 @@
       "require": {
         "default": "./dist/integrations/convex/component/convex.config.js"
       }
+    },
+    "./convex-auth.config": {
+      "types": "./dist/integrations/convex.d.ts",
+      "import": {
+        "default": "./dist/esm/integrations/convex.js"
+      },
+      "require": {
+        "default": "./dist/integrations/convex.js"
+      }
     }
   },
   "homepage": "https://stack-auth.com",
