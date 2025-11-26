@@ -559,7 +559,7 @@ export default function SidebarLayout(props: { children?: React.ReactNode }) {
           </div>
         </div>
 
-        {/* Body Layout (Left Sidebar + Content + Right Sidebar) */}
+        {/* Body Layout (Left Sidebar + Content + Right Companion) */}
         <div className="flex flex-1 items-start w-full">
           {/* Left Sidebar - Sticky */}
           <aside
@@ -575,16 +575,18 @@ export default function SidebarLayout(props: { children?: React.ReactNode }) {
           </aside>
 
           {/* Main Content Area */}
-          <main className="flex-1 min-w-0 px-2 pb-3 xl:pr-14">
+          <main className="flex-1 min-w-0 px-2 pb-3 xl:pr-14 2xl:pr-2">
             <div className="relative flex flex-col min-h-full">
               {props.children}
             </div>
           </main>
-        </div>
 
-        {/* Stack Companion - Fixed right edge drawer */}
-        <div className="hidden xl:block">
-          <StackCompanion />
+          {/* Stack Companion - 
+              On 2xl+: inline split-screen that pushes content (renders inside flex)
+              On xl-2xl: fixed overlay mode (renders with fixed positioning)
+              The component handles its own positioning and wrapper internally
+          */}
+          <StackCompanion className="hidden xl:flex" />
         </div>
       </div>
     </TooltipProvider>
