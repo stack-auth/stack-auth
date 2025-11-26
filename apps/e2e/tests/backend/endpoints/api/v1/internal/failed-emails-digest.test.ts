@@ -80,7 +80,8 @@ describe("with valid credentials", () => {
         },
       },
     }, true);
-    const { userId } = await Auth.Password.signUpWithEmail();
+    // Don't wait for verification email since the SMTP is intentionally broken
+    const { userId } = await Auth.Password.signUpWithEmail({ noWaitForEmail: true });
     await Auth.signOut();
 
     const testEmailResponse = await niceBackendFetch("/api/v1/emails/send-email", {

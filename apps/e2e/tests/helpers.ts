@@ -204,8 +204,8 @@ export const generatedEmailRegex = /[a-zA-Z0-9_.+\-]+@stack-generated\.example\.
 
 export class Mailbox {
   public readonly fetchMessages: (options?: { noBody?: boolean }) => Promise<MailboxMessage[]>;
-  public readonly waitForMessagesWithSubject: (subject: string) => Promise<MailboxMessage[]>;
-  public readonly waitForMessagesWithSubjectCount: (subject: string, minCount: number) => Promise<MailboxMessage[]>;
+  public readonly waitForMessagesWithSubject: (subject: string, options?: { noBody?: boolean }) => Promise<MailboxMessage[]>;
+  public readonly waitForMessagesWithSubjectCount: (subject: string, minCount: number, options?: { noBody?: boolean }) => Promise<MailboxMessage[]>;
 
   constructor(
     disclaimer: "USE_CREATE_MAILBOX_FUNCTION_INSTEAD",
@@ -230,15 +230,15 @@ export class Mailbox {
       }));
     };
 
-    this.waitForMessagesWithSubject = async (subject: string) => {
-      return await this.waitForMessagesWithSubjectCount(subject, 1);
+    this.waitForMessagesWithSubject = async (subject: string, options?: { noBody?: boolean }) => {
+      return await this.waitForMessagesWithSubjectCount(subject, 1, options);
     };
 
-    this.waitForMessagesWithSubjectCount = async (subject: string, minCount: number) => {
+    this.waitForMessagesWithSubjectCount = async (subject: string, minCount: number, options?: { noBody?: boolean }) => {
       const maxRetries = 20;
       let messages: MailboxMessage[] = [];
       for (let i = 0; i < maxRetries; i++) {
-        messages = await this.fetchMessages();
+        messages = await this.fetchMessages(options);
         const withSubject = messages.filter(m => m.subject.includes(subject));
         if (withSubject.length >= minCount) {
           return withSubject;

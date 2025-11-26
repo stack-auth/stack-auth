@@ -25,28 +25,37 @@ type TenancySendBatch = {
 
 // note: there is no locking surrounding this function, so it may run multiple times concurrently. It needs to deal with that.
 export const runEmailQueueStep = withTraceSpan("runEmailQueueStep", async () => {
+  const start = performance.now();
   const workerId = randomUUID();
 
   const deltaSeconds = await withTraceSpan("runEmailQueueStep-updateLastExecutionTime", updateLastExecutionTime)();
   if (deltaSeconds <= 0) {
     return;
   }
+  const updateLastExecutionTimeEnd = performance.now();
 
 
   const pendingRender = await withTraceSpan("runEmailQueueStep-claimEmailsForRendering", claimEmailsForRendering)(workerId);
-  if (pendingRender.length > 0) {
-    console.log(`Rendering ${pendingRender.length} emails`);
-  }
   await withTraceSpan("runEmailQueueStep-renderEmails", renderEmails)(workerId, pendingRender);
   await withTraceSpan("runEmailQueueStep-retryEmailsStuckInRendering", retryEmailsStuckInRendering)();
+  const renderingEnd = performance.now();
 
   await withTraceSpan("runEmailQueueStep-queueReadyEmails", queueReadyEmails)();
+  const queueReadyEnd = performance.now();
 
   const sendPlan = await withTraceSpan("runEmailQueueStep-prepareSendPlan", prepareSendPlan)(deltaSeconds);
-  if (sendPlan.length > 0) {
-    console.log(`Sending emails from ${sendPlan.length} tenancies`);
-  }
   await withTraceSpan("runEmailQueueStep-processSendPlan", processSendPlan)(sendPlan);
+  const sendEnd = performance.now();
+
+  if (sendPlan.length > 0 || pendingRender.length > 0) {
+    const timings = {
+      meta: updateLastExecutionTimeEnd - start,
+      render: renderingEnd - updateLastExecutionTimeEnd,
+      queue: queueReadyEnd - renderingEnd,
+      send: sendEnd - queueReadyEnd,
+    };
+    console.log(`Rendered ${pendingRender.length} emails and sent emails from ${sendPlan.length} tenancies in ${(sendEnd - start).toFixed(1)}ms (${Object.entries(timings).map(([key, value]) => `${key}: ${value.toFixed(1)}ms`).join(", ")}, worker: ${workerId})`);
+  }
 });
 
 async function retryEmailsStuckInRendering(): Promise<void> {

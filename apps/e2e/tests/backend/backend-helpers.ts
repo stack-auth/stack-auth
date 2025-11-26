@@ -187,8 +187,8 @@ export async function bumpEmailAddress(options: { unindexed?: boolean } = {}) {
 }
 
 export namespace Auth {
-  export async function fastSignUp() {
-    const { userId } = await User.create();
+  export async function fastSignUp(body: any = {}) {
+    const { userId } = await User.create(body);
     const sessionResponse = await niceBackendFetch(`/api/v1/auth/sessions`, {
       method: "POST",
       accessType: "server",
@@ -465,7 +465,7 @@ export namespace Auth {
   }
 
   export namespace Password {
-    export async function signUpWithEmail(options: { password?: string } = {}) {
+    export async function signUpWithEmail(options: { password?: string, noWaitForEmail?: boolean } = {}) {
       const mailbox = backendContext.value.mailbox;
       const email = mailbox.emailAddress;
       const password = options.password ?? generateSecureRandomString();
@@ -488,8 +488,10 @@ export namespace Auth {
         headers: expect.anything(),
       });
 
-      // Wait for the verification email to arrive
-      await mailbox.waitForMessagesWithSubject("Verify your email");
+      // Wait for the verification email to arrive (unless explicitly disabled)
+      if (!options.noWaitForEmail) {
+        await mailbox.waitForMessagesWithSubject("Verify your email");
+      }
 
       backendContext.set({
         userAuth: {

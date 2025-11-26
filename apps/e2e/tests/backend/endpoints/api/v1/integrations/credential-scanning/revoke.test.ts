@@ -12,7 +12,7 @@ it("should send email notification to user when revoking an API key through cred
   await Auth.Password.signUpWithEmail();
   await Auth.signOut();
   const mailbox1 = await bumpEmailAddress();
-  const user1 = await Auth.fastSignUp();
+  const user1 = await Auth.fastSignUp({ primary_email: mailbox1.emailAddress, primary_email_verified: true });
 
   // Create a user API key
   const { createUserApiKeyResponse } = await ProjectApiKey.User.create({
@@ -77,34 +77,46 @@ it("should send email notification to user when revoking an API key through cred
     `);
 
     // Verify that an email notification was sent
-    const messages = (await mailbox1.fetchMessages({ noBody: true })).filter((m: MailboxMessage) => m.subject.includes("API Key Revoked"));
+    const messages = await mailbox1.waitForMessagesWithSubject("API Key Revoked");
     expect(messages).toMatchInlineSnapshot(`
       [
         MailboxMessage {
-          "from": "Stack Auth <noreply@example.com>",
+          "attachments": [],
+          "body": {
+            "html": deindent\`
+              <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd"><html dir="ltr" lang="en"><head></head><body><!--$--><div>
+                    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+                      <h2 style="color: #333;">API Key Revoked</h2>
+                      <p style="color: #555; font-size: 16px; line-height: 1.5;">
+                        Your API key "Test API Key to Revoke &lt;HTML Test &amp;&gt;" for New Project has been automatically revoked because it was found in a public repository.
+                      </p>
+                      <p style="color: #555; font-size: 16px; line-height: 1.5;">
+                        This is an automated security measure to protect your api keys from being leaked. If you believe this was a mistake, please contact support.
+                      </p>
+                      <p style="color: #555; font-size: 16px; line-height: 1.5;">
+                        Please create a new API key if needed.
+                      </p>
+                    </div>
+                  </div><!--3--><!--/$--></body></html>
+            \`,
+            "text": deindent\`
+              API KEY REVOKED
+              
+              Your API key "Test API Key to Revoke <HTML Test &>" for New Project has been
+              automatically revoked because it was found in a public repository.
+              
+              This is an automated security measure to protect your api keys from being
+              leaked. If you believe this was a mistake, please contact support.
+              
+              Please create a new API key if needed.
+            \`,
+          },
+          "from": "New Project <noreply@example.com>",
           "subject": "API Key Revoked: Test API Key to Revoke <HTML Test &>",
-          "to": ["<unindexed-mailbox--<stripped UUID>@stack-generated.example.com>"],
+          "to": ["<mailbox-2--<stripped UUID>@stack-generated.example.com>"],
           <some fields may have been hidden>,
         },
       ]
-    `);
-
-    // Verify the email content
-    const emailContent = await mailbox1.fetchMessages();
-    const revocationEmail = emailContent.find((m: MailboxMessage) => m.subject === "API Key Revoked: Test API Key to Revoke <HTML Test &>");
-    expect(revocationEmail).toBeDefined();
-    expect(revocationEmail?.body?.text).toMatchInlineSnapshot(`
-      deindent\`
-        ---------------
-        API Key Revoked
-        ---------------
-        
-        Your API key "Test API Key to Revoke <HTML Test &>" for New Project has been automatically revoked because it was found in a public repository.
-        
-        This is an automated security measure to protect your api keys from being leaked. If you believe this was a mistake, please contact support.
-        
-        Please create a new API key if needed.
-      \`
     `);
 
 
@@ -202,33 +214,53 @@ it("should send email notification to team members when revoking a team API key 
         }
       `);
 
-      // Verify that email notifications were sent to both team members
+      // Verify that email notifications were sent to user1 and user2 (who have the permission)
+      // user3 should NOT receive the email since they don't have the $manage_api_keys permission
 
-      const user1_revocation_email = (await mailbox1.fetchMessages()).filter((m: MailboxMessage) => m.subject === "API Key Revoked: Test Team API Key to Revoke");
-      const user2_revocation_email = (await mailbox2.fetchMessages()).filter((m: MailboxMessage) => m.subject === "API Key Revoked: Test Team API Key to Revoke");
-      const user3_revocation_email = (await mailbox3.fetchMessages()).filter((m: MailboxMessage) => m.subject === "API Key Revoked: Test Team API Key to Revoke");
+      const user1_messages = await mailbox1.waitForMessagesWithSubject("API Key Revoked: Test Team API Key to Revoke");
+      const user2_messages = await mailbox2.waitForMessagesWithSubject("API Key Revoked: Test Team API Key to Revoke");
+      // user3 should NOT receive the email - use fetchMessages instead of waitForMessagesWithSubject
+      const user3_messages = await mailbox3.fetchMessages();
+      const user1_revocation_email = user1_messages.filter((m: MailboxMessage) => m.subject === "API Key Revoked: Test Team API Key to Revoke");
+      const user2_revocation_email = user2_messages.filter((m: MailboxMessage) => m.subject === "API Key Revoked: Test Team API Key to Revoke");
+      const user3_revocation_email = user3_messages.filter((m: MailboxMessage) => m.subject === "API Key Revoked: Test Team API Key to Revoke");
 
       expect(user1_revocation_email).toMatchInlineSnapshot(`
         [
           MailboxMessage {
             "attachments": [],
             "body": {
-              "html": "\\n      <div style=\\"font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;\\">\\n        <h2 style=\\"color: #333;\\">API Key Revoked</h2>\\n        <p style=\\"color: #555; font-size: 16px; line-height: 1.5;\\">\\n          Your API key \\"Test Team API Key to Revoke\\" for New Project has been automatically revoked because it was found in a public repository.\\n        </p>\\n        <p style=\\"color: #555; font-size: 16px; line-height: 1.5;\\">\\n          This is an automated security measure to protect your api keys from being leaked. If you believe this was a mistake, please contact support.\\n        </p>\\n        <p style=\\"color: #555; font-size: 16px; line-height: 1.5;\\">\\n          Please create a new API key if needed.\\n        </p>\\n      </div>\\n    \\n",
+              "html": deindent\`
+                <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd"><html dir="ltr" lang="en"><head></head><body><!--$--><div>
+                      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+                        <h2 style="color: #333;">API Key Revoked</h2>
+                        <p style="color: #555; font-size: 16px; line-height: 1.5;">
+                          Your API key "Test Team API Key to Revoke" for New Project has been automatically revoked because it was found in a public repository.
+                        </p>
+                        <p style="color: #555; font-size: 16px; line-height: 1.5;">
+                          This is an automated security measure to protect your api keys from being leaked. If you believe this was a mistake, please contact support.
+                        </p>
+                        <p style="color: #555; font-size: 16px; line-height: 1.5;">
+                          Please create a new API key if needed.
+                        </p>
+                      </div>
+                    </div><!--3--><!--/$--></body></html>
+              \`,
               "text": deindent\`
-                ---------------
-                API Key Revoked
-                ---------------
+                API KEY REVOKED
                 
-                Your API key "Test Team API Key to Revoke" for New Project has been automatically revoked because it was found in a public repository.
+                Your API key "Test Team API Key to Revoke" for New Project has been
+                automatically revoked because it was found in a public repository.
                 
-                This is an automated security measure to protect your api keys from being leaked. If you believe this was a mistake, please contact support.
+                This is an automated security measure to protect your api keys from being
+                leaked. If you believe this was a mistake, please contact support.
                 
                 Please create a new API key if needed.
               \`,
             },
-            "from": "Stack Auth <noreply@example.com>",
+            "from": "New Project <noreply@example.com>",
             "subject": "API Key Revoked: Test Team API Key to Revoke",
-            "to": ["<unindexed-mailbox--<stripped UUID>@stack-generated.example.com>"],
+            "to": ["<mailbox-3--<stripped UUID>@stack-generated.example.com>"],
             <some fields may have been hidden>,
           },
         ]
@@ -238,22 +270,37 @@ it("should send email notification to team members when revoking a team API key 
           MailboxMessage {
             "attachments": [],
             "body": {
-              "html": "\\n      <div style=\\"font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;\\">\\n        <h2 style=\\"color: #333;\\">API Key Revoked</h2>\\n        <p style=\\"color: #555; font-size: 16px; line-height: 1.5;\\">\\n          Your API key \\"Test Team API Key to Revoke\\" for New Project has been automatically revoked because it was found in a public repository.\\n        </p>\\n        <p style=\\"color: #555; font-size: 16px; line-height: 1.5;\\">\\n          This is an automated security measure to protect your api keys from being leaked. If you believe this was a mistake, please contact support.\\n        </p>\\n        <p style=\\"color: #555; font-size: 16px; line-height: 1.5;\\">\\n          Please create a new API key if needed.\\n        </p>\\n      </div>\\n    \\n",
+              "html": deindent\`
+                <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd"><html dir="ltr" lang="en"><head></head><body><!--$--><div>
+                      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+                        <h2 style="color: #333;">API Key Revoked</h2>
+                        <p style="color: #555; font-size: 16px; line-height: 1.5;">
+                          Your API key "Test Team API Key to Revoke" for New Project has been automatically revoked because it was found in a public repository.
+                        </p>
+                        <p style="color: #555; font-size: 16px; line-height: 1.5;">
+                          This is an automated security measure to protect your api keys from being leaked. If you believe this was a mistake, please contact support.
+                        </p>
+                        <p style="color: #555; font-size: 16px; line-height: 1.5;">
+                          Please create a new API key if needed.
+                        </p>
+                      </div>
+                    </div><!--3--><!--/$--></body></html>
+              \`,
               "text": deindent\`
-                ---------------
-                API Key Revoked
-                ---------------
+                API KEY REVOKED
                 
-                Your API key "Test Team API Key to Revoke" for New Project has been automatically revoked because it was found in a public repository.
+                Your API key "Test Team API Key to Revoke" for New Project has been
+                automatically revoked because it was found in a public repository.
                 
-                This is an automated security measure to protect your api keys from being leaked. If you believe this was a mistake, please contact support.
+                This is an automated security measure to protect your api keys from being
+                leaked. If you believe this was a mistake, please contact support.
                 
                 Please create a new API key if needed.
               \`,
             },
-            "from": "Stack Auth <noreply@example.com>",
+            "from": "New Project <noreply@example.com>",
             "subject": "API Key Revoked: Test Team API Key to Revoke",
-            "to": ["<unindexed-mailbox--<stripped UUID>@stack-generated.example.com>"],
+            "to": ["<mailbox-1--<stripped UUID>@stack-generated.example.com>"],
             <some fields may have been hidden>,
           },
         ]
