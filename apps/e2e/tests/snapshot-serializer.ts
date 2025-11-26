@@ -68,6 +68,8 @@ const stripFields = [
   "nextAttempt",
   "lastFour",
   "port",
+  "wall_clock_time",
+  "cpu_time",
 ] as const;
 
 const stripFieldsIfString = [

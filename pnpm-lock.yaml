@@ -114,6 +114,9 @@ importers:
       '@aws-sdk/client-s3':
         specifier: ^3.855.0
         version: 3.864.0
+      '@clickhouse/client':
+        specifier: ^1.14.0
+        version: 1.14.0
       '@next/bundle-analyzer':
         specifier: 15.2.3
         version: 15.2.3
@@ -3207,6 +3210,13 @@ packages:
 
   '@chevrotain/utils@11.0.3':
     resolution: {integrity: sha512-YslZMgtJUyuMbZ+aKvfF3x1f5liK4mWNxghFRv7jqRR9C3R3fAOGTTKvxXDa2Y1s9zSbcpuO0cAxDYsc9SrXoQ==}
+
+  '@clickhouse/client-common@1.14.0':
+    resolution: {integrity: sha512-CyUcv2iCkZ1A++vmOSufYRpHR3aAWVfbrWed7ATzf0yyx/BW/2SEqlL07vBpSRa3BIkQe/DSOHVv8JkWZpUOwQ==}
+
+  '@clickhouse/client@1.14.0':
+    resolution: {integrity: sha512-co2spjR7wZoZ3Ck0H/jv76bpiuO3oJHtOmq9/gxFiod2DcT9NFg01u/hXcG8MJFnEJuMB6e3vGqS6IOnLwHqRw==}
+    engines: {node: '>=16'}
 
   '@date-fns/tz@1.2.0':
     resolution: {integrity: sha512-LBrd7MiJZ9McsOgxqWX7AaxrDjcFVjWH/tIKJd7pnR7McaslGYOP1QmmiBXdJH/H/yLCT+rcQ7FaPBUxRGUtrg==}
@@ -19464,6 +19474,12 @@ snapshots:
   '@chevrotain/types@11.0.3': {}
 
   '@chevrotain/utils@11.0.3': {}
+
+  '@clickhouse/client-common@1.14.0': {}
+
+  '@clickhouse/client@1.14.0':
+    dependencies:
+      '@clickhouse/client-common': 1.14.0
 
   '@date-fns/tz@1.2.0': {}
 
