@@ -25,7 +25,7 @@ export function PageLayout(props: {
           <div className="space-y-1">
             {props.title && (
               <Typography type="h2" className="text-xl sm:text-2xl font-semibold tracking-tight">
-              {props.title}
+                {props.title}
               </Typography>
             )}
             {props.description && (
@@ -36,7 +36,7 @@ export function PageLayout(props: {
           </div>
           {props.actions && (
             <div className="flex-shrink-0">
-          {props.actions}
+              {props.actions}
             </div>
           )}
         </div>

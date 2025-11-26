@@ -19,7 +19,7 @@ export default function AppDetailsPageClient({ appId }: { appId: AppId }) {
       [`apps.installed.${appId}.enabled`]: true,
     });
     const appFrontend = ALL_APPS_FRONTEND[appId];
-    if (!appFrontend) {
+    if (!(appFrontend as any)) {
       throw new StackAssertionError(`App frontend not found for appId: ${appId}`, { appId });
     }
     const path = getAppPath(project.id, appFrontend);

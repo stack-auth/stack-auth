@@ -756,7 +756,7 @@ function ChecklistRow({
 4. **Color Contrast**: Verify all text meets WCAG AA contrast requirements (4.5:1 for normal text, 3:1 for large text) in both modes
 5. **Status Colors**: Use emerald for success, blue for info, muted for neutral - ensure they maintain contrast in dark mode
 6. **Responsive**: Use `flex-wrap` and responsive gap utilities
-7. **Transitions**: Add `transition-all` to cards for smooth state changes
+7. **Transitions**: Add `transition-all` to cards for smooth state changes. When transitioning on hover, use make sure the transition is only applied on the way out; with very few exceptions, it should be instant on the way in. You can achieve this for example by using `transition-colors hover:transition-none`.
 8. **Typography**: Use Typography component with appropriate variants (prefer theme-aware over hardcoded colors)
 9. **Icons**: Use lucide-react icons consistently (CheckCircle2 for done, Circle for incomplete)
 10. **Opacity**: Use opacity modifiers (`/70`, `/60`, `/40`, `/20`, `/10`) for subtle effects - test in both modes
