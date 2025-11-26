@@ -1,7 +1,5 @@
 export * from './lib/stack-app';
 
-export { getConvexProvidersConfig } from "./integrations/convex";
-
 // IF_PLATFORM react-like
 export { default as StackHandler } from "./components-page/stack-handler";
 export { useStackApp, useUser } from "./lib/hooks";
