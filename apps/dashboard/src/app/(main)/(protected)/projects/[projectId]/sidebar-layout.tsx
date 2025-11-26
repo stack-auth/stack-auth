@@ -581,7 +581,7 @@ export default function SidebarLayout(props: { children?: React.ReactNode }) {
             </div>
           </main>
 
-          {/* Stack Companion - 
+          {/* Stack Companion -
               On 2xl+: inline split-screen that pushes content (renders inside flex)
               On xl-2xl: fixed overlay mode (renders with fixed positioning)
               The component handles its own positioning and wrapper internally

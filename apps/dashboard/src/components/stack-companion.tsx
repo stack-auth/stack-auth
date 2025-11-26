@@ -82,7 +82,7 @@ export function StackCompanion({ className }: { className?: string }) {
   const [isAnimating, setIsAnimating] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [isSplitScreenMode, setIsSplitScreenMode] = useState(false);
-  
+
   const startXRef = useRef(0);
   const startWidthRef = useRef(0);
   const dragThresholdRef = useRef(false);
@@ -96,7 +96,7 @@ export function StackCompanion({ className }: { className?: string }) {
     const checkScreenSize = () => {
       setIsSplitScreenMode(window.innerWidth >= SPLIT_SCREEN_BREAKPOINT);
     };
-    
+
     checkScreenSize();
     window.addEventListener('resize', checkScreenSize);
     return () => window.removeEventListener('resize', checkScreenSize);
@@ -133,7 +133,7 @@ export function StackCompanion({ className }: { className?: string }) {
   // Handle click vs drag
   const handleItemClick = useCallback((itemId: string) => {
     if (dragThresholdRef.current) return; // Ignore clicks if we were dragging
-    
+
     if (activeItem === itemId) {
       closeDrawer();
     } else if (activeItem) {
@@ -146,14 +146,14 @@ export function StackCompanion({ className }: { className?: string }) {
   const handleMouseDown = useCallback((e: React.MouseEvent | React.TouchEvent) => {
     // Don't initiate drag if clicking resizing handle or scrollbar
     if ((e.target as HTMLElement).closest('.no-drag')) return;
-    
+
     // Only allow dragging when an item is already selected (drawer is open)
     if (!activeItem) return;
 
     setIsResizing(true);
     setIsAnimating(false);
     dragThresholdRef.current = false;
-    
+
     startXRef.current = 'touches' in e ? e.touches[0].clientX : e.clientX;
     startWidthRef.current = drawerWidth;
   }, [drawerWidth, activeItem]);
@@ -164,7 +164,7 @@ export function StackCompanion({ className }: { className?: string }) {
     const handleMouseMove = (e: MouseEvent | TouchEvent) => {
       const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
       const deltaX = startXRef.current - clientX;
-      
+
       // Check for drag threshold to distinguish click vs drag
       if (Math.abs(deltaX) > 5) {
         dragThresholdRef.current = true;
@@ -176,10 +176,10 @@ export function StackCompanion({ className }: { className?: string }) {
       // - Moving right (negative deltaX) -> Width decreases
       // But only if we are starting from right edge.
       // Since flex-row-reverse anchors to right, increasing width moves the handle left.
-      
+
       let newWidth = startWidthRef.current + deltaX;
       newWidth = Math.max(0, Math.min(MAX_DRAWER_WIDTH, newWidth));
-      
+
       setDrawerWidth(newWidth);
     };
 
@@ -199,7 +199,7 @@ export function StackCompanion({ className }: { className?: string }) {
           // Keep current width but ensure item is active
           if (!activeItem) {
              // If dragged open from closed state without clicking specific item, default to docs
-             setActiveItem('docs'); 
+             setActiveItem('docs');
           }
         }
       } else {
@@ -240,13 +240,13 @@ export function StackCompanion({ className }: { className?: string }) {
 
   const isOpen = drawerWidth > 0;
   const currentItem = sidebarItems.find(i => i.id === activeItem);
-  
+
   // Calculate content opacity for smooth fade-out as width approaches close threshold
   const contentOpacity = Math.min(1, Math.max(0, (drawerWidth - CLOSE_THRESHOLD) / (MIN_DRAWER_WIDTH - CLOSE_THRESHOLD)));
 
   // Shared drawer content component
   const drawerContent = isOpen && activeItem && (
-    <div 
+    <div
       className="flex flex-col h-full w-full min-w-[360px] transition-opacity duration-150"
       style={{ opacity: contentOpacity }}
     >
@@ -286,7 +286,7 @@ export function StackCompanion({ className }: { className?: string }) {
 
   // Shared handle component
   const handleComponent = (
-    <div 
+    <div
       className={cn(
         "h-full flex items-center shrink-0 -mr-px z-10",
         !isSplitScreenMode && "pointer-events-auto"
@@ -327,7 +327,7 @@ export function StackCompanion({ className }: { className?: string }) {
             </TooltipContent>
           </Tooltip>
         ))}
-        
+
         {versionCheckResult && (
           <div className={cn(
             "mt-auto pt-2 px-2 py-1 text-[10px] rounded-full font-mono font-medium opacity-60 hover:opacity-100 transition-opacity",
@@ -346,7 +346,7 @@ export function StackCompanion({ className }: { className?: string }) {
   if (isSplitScreenMode) {
     return (
       <StackCompanionContext.Provider value={contextValue}>
-        <aside 
+        <aside
           className={cn(
             "sticky top-20 h-[calc(100vh-6rem)] mr-3 flex flex-row-reverse items-stretch shrink-0",
             isAnimating && !isResizing && "transition-[width] duration-300 ease-out",
@@ -378,7 +378,7 @@ export function StackCompanion({ className }: { className?: string }) {
     <StackCompanionContext.Provider value={contextValue}>
       {/* Main Container - Fixed Right Edge, Flex Reverse to push handle left */}
       <div className={cn("fixed inset-y-0 right-0 z-50 flex flex-row-reverse items-center pointer-events-none", className)}>
-        
+
         {/* 1. Drawer Content (Rightmost in layout, stays anchored to right) */}
         <div
           className={cn(

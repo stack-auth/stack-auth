@@ -207,8 +207,8 @@ export function GlobeSection({ countryData, totalUsers, children }: {countryData
                   ref={globeRef}
                   backgroundColor='rgba(0,0,0,0)'
                   globeImageUrl={globeImages[theme]}
-                  width={globeSize ?? 600}
-                  height={globeSize ?? 600}
+                  width={globeSize}
+                  height={globeSize}
                   onGlobeReady={() => {
                     const current = globeRef.current;
                     if (!current) return;
