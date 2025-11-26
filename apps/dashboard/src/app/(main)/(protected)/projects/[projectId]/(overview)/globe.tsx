@@ -189,8 +189,8 @@ export function GlobeSection({ countryData, totalUsers, children }: {countryData
                   const controls = current.controls();
                   controls.autoRotate = true;
                   controls.autoRotateSpeed = 0.5;
-                  controls.maxDistance = 1000;
-                  controls.minDistance = 200;
+                  controls.maxDistance = 420;
+                  controls.minDistance = 420;
                   controls.dampingFactor = 0.15;
                   controls.enableZoom = false;
                   controls.enableRotate = true;
@@ -252,14 +252,14 @@ export function GlobeSection({ countryData, totalUsers, children }: {countryData
                   resumeRender();
                   if (globeRef.current) {
                     globeRef.current.controls().autoRotate = false;
-                    globeRef.current.pointOfView({ lat: coords.lat, lng: coords.lng, altitude: 1.5 }, 2000);
+                    globeRef.current.pointOfView({ lat: coords.lat, lng: coords.lng }, 2000);
                   }
                 }}
                 onGlobeClick={() => {
                   resumeRender();
                   if (globeRef.current) {
                     globeRef.current.controls().autoRotate = true;
-                    globeRef.current.pointOfView({ altitude: 4.0 }, 2000);
+                    // globeRef.current.pointOfView({ altitude: 4.0 }, 2000);
                   }
                 }}
               />
