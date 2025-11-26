@@ -4,7 +4,7 @@ import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 export async function runClickhouseMigrations() {
   console.log("Running Clickhouse migrations...");
   const client = createClickhouseClient("admin");
-  const clickhouseExternalPassword = getEnvVariable("CLICKHOUSE_EXTERNAL_PASSWORD");
+  const clickhouseExternalPassword = getEnvVariable("STACK_CLICKHOUSE_EXTERNAL_PASSWORD");
   // todo: create migration files
   await client.exec({
     query: "CREATE USER IF NOT EXISTS limited_user IDENTIFIED WITH plaintext_password BY {clickhouseExternalPassword:String}",

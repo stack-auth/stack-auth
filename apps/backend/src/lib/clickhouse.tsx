@@ -1,12 +1,12 @@
 import { createClient, type ClickHouseClient } from "@clickhouse/client";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 
-const clickhouseUrl = getEnvVariable("CLICKHOUSE_URL");
-const clickhouseAdminUser = getEnvVariable("CLICKHOUSE_ADMIN_USER");
-const clickhouseExternalUser = getEnvVariable("CLICKHOUSE_EXTERNAL_USER");
-const clickhouseAdminPassword = getEnvVariable("CLICKHOUSE_ADMIN_PASSWORD");
-const clickhouseExternalPassword = getEnvVariable("CLICKHOUSE_EXTERNAL_PASSWORD");
-const clickhouseDatabase = getEnvVariable("CLICKHOUSE_DATABASE");
+const clickhouseUrl = getEnvVariable("STACK_CLICKHOUSE_URL");
+const clickhouseAdminUser = getEnvVariable("STACK_CLICKHOUSE_ADMIN_USER", "stackframe");
+const clickhouseExternalUser = getEnvVariable("STACK_CLICKHOUSE_EXTERNAL_USER", "limited_user");
+const clickhouseAdminPassword = getEnvVariable("STACK_CLICKHOUSE_ADMIN_PASSWORD");
+const clickhouseExternalPassword = getEnvVariable("STACK_CLICKHOUSE_EXTERNAL_PASSWORD");
+const clickhouseDatabase = getEnvVariable("STACK_CLICKHOUSE_DATABASE", "analytics");
 
 export function createClickhouseClient(authType: "admin" | "external", timeoutMs?: number) {
   return createClient({
