@@ -34,7 +34,7 @@
         "default": "./dist/integrations/convex/component/convex.config.js"
       }
     },
-    "./convex": {
+    "./convex-auth.config": {
       "types": "./dist/integrations/convex.d.ts",
       "import": {
         "default": "./dist/esm/integrations/convex.js"
