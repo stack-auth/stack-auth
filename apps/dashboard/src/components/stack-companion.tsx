@@ -116,6 +116,9 @@ export function StackCompanion({ className }: { className?: string }) {
   const handleMouseDown = useCallback((e: React.MouseEvent | React.TouchEvent) => {
     // Don't initiate drag if clicking resizing handle or scrollbar
     if ((e.target as HTMLElement).closest('.no-drag')) return;
+    
+    // Only allow dragging when an item is already selected (drawer is open)
+    if (!activeItem) return;
 
     setIsResizing(true);
     setIsAnimating(false);
@@ -123,12 +126,7 @@ export function StackCompanion({ className }: { className?: string }) {
     
     startXRef.current = 'touches' in e ? e.touches[0].clientX : e.clientX;
     startWidthRef.current = drawerWidth;
-    
-    // If drawer is closed, drag starts from 0 width
-    if (drawerWidth === 0) {
-      startWidthRef.current = 0;
-    }
-  }, [drawerWidth]);
+  }, [drawerWidth, activeItem]);
 
   useEffect(() => {
     if (!isResizing) return;
@@ -213,6 +211,9 @@ export function StackCompanion({ className }: { className?: string }) {
   const isOpen = drawerWidth > 0;
   const currentItem = sidebarItems.find(i => i.id === activeItem);
   const showContent = drawerWidth >= CLOSE_THRESHOLD;
+  
+  // Calculate content opacity for smooth fade-out as width approaches close threshold
+  const contentOpacity = Math.min(1, Math.max(0, (drawerWidth - CLOSE_THRESHOLD) / (MIN_DRAWER_WIDTH - CLOSE_THRESHOLD)));
 
   return (
     <>
@@ -235,8 +236,11 @@ export function StackCompanion({ className }: { className?: string }) {
           {/* Inner shadow/gradient for depth */}
           <div className="absolute inset-y-0 left-0 w-px bg-gradient-to-b from-transparent via-foreground/10 to-transparent opacity-50" />
 
-          {isOpen && showContent && (
-            <div className="flex flex-col h-full w-full min-w-[360px]">
+          {isOpen && activeItem && (
+            <div 
+              className="flex flex-col h-full w-full min-w-[360px] transition-opacity duration-150"
+              style={{ opacity: contentOpacity }}
+            >
               {/* Header */}
               <div className="flex items-center justify-between px-5 py-4 border-b border-foreground/[0.06] shrink-0 bg-background/40">
                 <div className="flex items-center gap-2.5">
@@ -280,7 +284,9 @@ export function StackCompanion({ className }: { className?: string }) {
         >
           {/* The Handle Pill */}
           <div className={cn(
-            "flex flex-col items-center gap-3 px-2 py-3 bg-background/80 backdrop-blur-xl border border-foreground/[0.08] shadow-lg transition-all duration-300 cursor-grab active:cursor-grabbing select-none",
+            "flex flex-col items-center gap-3 px-2 py-3 bg-foreground/5 backdrop-blur-xl border border-foreground/5 shadow-sm transition-all duration-300 select-none",
+            // Only show grab cursor when an item is selected (drawer can be resized)
+            activeItem && "cursor-grab active:cursor-grabbing",
             // Shape morphing
             isOpen ? "rounded-l-2xl rounded-r-none border-r-0 translate-x-px" : "rounded-full mr-3",
             className
@@ -294,7 +300,7 @@ export function StackCompanion({ className }: { className?: string }) {
                     variant="ghost"
                     size="sm"
                     className={cn(
-                      "h-10 w-10 p-0 text-muted-foreground transition-all duration-200 rounded-xl relative group",
+                      "h-10 w-10 p-0 text-muted-foreground transition-all duration-[50ms] rounded-xl relative group",
                       item.hoverBg,
                       activeItem === item.id && "bg-foreground/10 text-foreground shadow-sm ring-1 ring-foreground/5"
                     )}
@@ -304,7 +310,7 @@ export function StackCompanion({ className }: { className?: string }) {
                     }}
                     // Pass mouse down to parent for drag
                   >
-                    <item.icon className={cn("h-5 w-5 transition-transform duration-200 group-hover:scale-110", item.color)} />
+                    <item.icon className={cn("h-5 w-5 transition-transform duration-[50ms] group-hover:scale-110", item.color)} />
                     {/* Active indicator removed here */}
                   </Button>
                 </TooltipTrigger>

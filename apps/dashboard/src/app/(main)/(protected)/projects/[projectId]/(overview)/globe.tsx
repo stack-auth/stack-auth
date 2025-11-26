@@ -39,17 +39,30 @@ export function GlobeSection({ countryData, totalUsers, children }: {countryData
   const sectionContainerRef = useRef<HTMLDivElement>(null);
   const sectionContainerSize = useSize(sectionContainerRef);
 
-  // Simplified sizing for the new layout
-  const globeSize = [
-    globeContainerSize?.width ?? 400,
-    globeContainerSize?.height ?? 400,
-  ];
+  // Simplified sizing for the new layout - only use width
+  const globeSize = globeContainerSize?.width ?? 400;
+
+  // Calculate camera distance (zoom) based on canvas width
+  // Linear interpolation: zoom decreases as width increases (less aggressive slope)
+  // Lower zoom values = larger globe size
+  // - Canvas width 350: Hide globe
+  // - Canvas width 355: zoom = 360
+  // - Canvas width 500: zoom = 309
+  // Formula: zoom = 484 - 0.35 * width (for width >= 355)
+  const canvasWidth = globeContainerSize?.width ?? 0;
+  const GLOBE_MIN_WIDTH = 350;
+  const shouldShowGlobe = canvasWidth >= GLOBE_MIN_WIDTH;
+  
+  // Calculate zoom based on width
+  // For widths >= 355, use linear formula: zoom = 484 - 0.35 * width
+  // For widths between 350-355, use 360 (same as at 355px)
+  const cameraDistance = canvasWidth >= 355 
+    ? 484 - 0.35 * canvasWidth 
+    : 360; // For 350-355 range, use 360
 
   const [hexSelectedCountry, setHexSelectedCountry] = useState<{ code: string, name: string } | null>(null);
   const [polygonSelectedCountry, setPolygonSelectedCountry] = useState<{ code: string, name: string } | null>(null);
   const selectedCountry = hexSelectedCountry ?? polygonSelectedCountry ?? null;
-
-  const [isGlobeReady, setIsGlobeReady] = useState(false);
 
   const resumeRenderIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const resumeRender = () => {
@@ -84,6 +97,16 @@ export function GlobeSection({ countryData, totalUsers, children }: {countryData
   useEffect(() => {
     setIsFastEngine("chrome" in window && window.navigator.userAgent.includes("Chrome") && !window.navigator.userAgent.match(/Android|Mobi/));
   }, []);
+
+  // Update camera position when globe size changes (e.g., window resize)
+  useEffect(() => {
+    if (!globeRef.current || !shouldShowGlobe) return;
+    
+    const controls = globeRef.current.controls();
+    controls.maxDistance = cameraDistance;
+    controls.minDistance = cameraDistance;
+    globeRef.current.camera().position.z = cameraDistance;
+  }, [cameraDistance, shouldShowGlobe]);
 
   // calculate color values for each country
   const totalUsersInCountries = Object.values(countryData).reduce((acc, curr) => acc + curr, 0);
@@ -133,68 +156,62 @@ export function GlobeSection({ countryData, totalUsers, children }: {countryData
   const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 });
 
   return (
-    <div className='w-full'>
+    <div className='w-full h-full'>
       <div
         ref={sectionContainerRef}
-        className='relative flex items-center justify-center'
+        className='relative flex items-center justify-center w-full h-full'
       >
+        {/* Hidden measurement div - always rendered to track size */}
+        <div ref={globeContainerRef} className='absolute inset-0 pointer-events-none' aria-hidden="true" />
+        
         {/* Globe Container - Premium 3D */}
-        <div className='relative flex-shrink-0'>
-          <div
-            ref={globeContainerRef}
-            className='relative'
-            style={{
-              width: Math.min(globeWindowSize?.width ?? 600, 600),
-              height: Math.min(globeWindowSize?.height ?? 600, 600),
-            }}
-            onMouseEnter={() => {
-              if (globeRef.current) {
-                globeRef.current.controls().autoRotate = false;
-              }
-            }}
-            onMouseMove={(e) => {
-              resumeRender();
-              setTooltipPos({ x: e.clientX, y: e.clientY });
-            }}
-            onMouseLeave={() => {
-              setHexSelectedCountry(null);
-              setPolygonSelectedCountry(null);
-              if (globeRef.current) {
-                globeRef.current.controls().autoRotate = true;
-              }
-            }}
-            onTouchMove={resumeRender}
-          >
+        {shouldShowGlobe && (
+          <div className='relative flex-shrink-0 flex items-center justify-center -mt-16' style={{ width: globeSize, height: globeSize }}>
+            <div
+              className='relative w-full h-full'
+              style={{}}
+              onMouseEnter={() => {
+                if (globeRef.current) {
+                  globeRef.current.controls().autoRotate = false;
+                }
+              }}
+              onMouseMove={(e) => {
+                resumeRender();
+                setTooltipPos({ x: e.clientX, y: e.clientY });
+              }}
+              onMouseLeave={() => {
+                setHexSelectedCountry(null);
+                setPolygonSelectedCountry(null);
+                if (globeRef.current) {
+                  globeRef.current.controls().autoRotate = true;
+                }
+              }}
+              onTouchMove={resumeRender}
+            >
             {/* Subtle glow effect */}
             <div className='absolute inset-0 bg-gradient-radial from-primary/10 via-transparent to-transparent blur-3xl opacity-30' />
 
-            {!isGlobeReady && (
-              <div className='absolute inset-0 flex items-center justify-center'>
-                <PlanetLoader />
-              </div>
-            )}
             {mounted && isFastEngine !== null && (
               <Globe
                 key={errorRefreshCount}
                 ref={globeRef}
                 backgroundColor='rgba(0,0,0,0)'
                 globeImageUrl={globeImages[theme]}
-                width={globeSize[0] ?? 600}
-                height={globeSize[1] ?? 600}
+                width={globeSize ?? 600}
+                height={globeSize ?? 600}
                 onGlobeReady={() => {
-                  setTimeout(() => setIsGlobeReady(true), 100);
                   const current = globeRef.current;
                   if (!current) return;
 
                   const controls = current.controls();
                   controls.autoRotate = true;
                   controls.autoRotateSpeed = 0.5;
-                  controls.maxDistance = 420;
-                  controls.minDistance = 420;
+                  controls.maxDistance = cameraDistance;
+                  controls.minDistance = cameraDistance;
                   controls.dampingFactor = 0.15;
                   controls.enableZoom = false;
                   controls.enableRotate = true;
-                  current.camera().position.z = 420;
+                  current.camera().position.z = cameraDistance;
                   resumeRender();
                 }}
                 onZoom={resumeRender}
@@ -224,18 +241,24 @@ export function GlobeSection({ countryData, totalUsers, children }: {countryData
                   const highlight = isFastEngine && country.properties.ISO_A2_EH === selectedCountry?.code;
                   const value = colorValues.get(country.properties.ISO_A2_EH) ?? null;
 
-                  if (highlight) return "#ffffff";
+                  if (highlight) return theme === 'dark' ? "#ffffff" : "#1e293b";
 
-                  // Base color for all countries
-                  // Using slate-300 to allow white selection to stand out
+                  // Base color for all countries - theme-aware
                   if (Number.isNaN(value) || value === null || maxColorValue < 0.0001) {
-                    return "#cbd5e1";
+                    // Dark mode: light slate, Light mode: darker slate for visibility
+                    return theme === 'dark' ? "#cbd5e1" : "#64748b";
                   }
 
                   const scaled = value / maxColorValue;
-                  // Interpolate from bright slate to almost white (max 95% lightness)
-                  // This ensures the pure white highlight (100%) is always distinct
-                  return `hsl(210, ${30 + 60 * scaled}%, ${75 + 20 * scaled}%)`;
+                  if (theme === 'dark') {
+                    // Dark mode: vibrant teal/emerald that pops against slate
+                    // Goes from teal-400 to emerald-300 as scaled increases
+                    return `hsl(${168 - 8 * scaled}, ${70 + 15 * scaled}%, ${55 + 20 * scaled}%)`;
+                  } else {
+                    // Light mode: rich teal/emerald that stands out against slate
+                    // Goes from teal-600 to emerald-500 as scaled increases
+                    return `hsl(${168 - 8 * scaled}, ${70 + 20 * scaled}%, ${35 + 10 * scaled}%)`;
+                  }
                 }}
                 onHexPolygonHover={(d: any) => {
                   resumeRender();
@@ -246,7 +269,7 @@ export function GlobeSection({ countryData, totalUsers, children }: {countryData
                   }
                 }}
 
-                atmosphereColor={'rgba(14, 165, 233, 0.3)'} // Sky blue, more subtle to let the globe blue show through
+                atmosphereColor={theme === 'dark' ? 'rgba(14, 165, 233, 0.3)' : 'rgba(30, 64, 175, 0.25)'} // Dark: sky blue, Light: deeper blue for visibility
                 atmosphereAltitude={0.2}
                 onHexPolygonClick={(polygon: any, event: MouseEvent, coords: { lat: number, lng: number, altitude: number }) => {
                   resumeRender();
@@ -302,24 +325,8 @@ export function GlobeSection({ countryData, totalUsers, children }: {countryData
             )}
           </div>
         </div>
+        )}
       </div>
-    </div>
-  );
-}
-
-function PlanetLoader() {
-  return (
-    <div className="flex flex-col items-center justify-center gap-4">
-      {/* Simple elegant spinner */}
-      <div className="relative w-16 h-16">
-        {/* Outer ring */}
-        <div className="absolute inset-0 rounded-full border-4 border-transparent border-t-blue-500 border-r-purple-500 animate-spin" />
-        {/* Inner glow */}
-        <div className="absolute inset-2 rounded-full bg-gradient-to-br from-blue-500/20 to-purple-500/20 blur-md" />
-      </div>
-
-      {/* Simple text */}
-      <p className="text-xs font-medium text-muted-foreground">Loading</p>
     </div>
   );
 }
