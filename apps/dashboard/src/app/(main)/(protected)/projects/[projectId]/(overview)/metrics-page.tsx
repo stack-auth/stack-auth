@@ -160,7 +160,7 @@ function AppsWidget({ installedApps, projectId }: { installedApps: AppId[], proj
             </Typography>
           </div>
         ) : (
-          <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-7 gap-x-2 gap-y-5">
+          <div className="grid grid-cols-[repeat(auto-fill,minmax(90px,1fr))] gap-x-2 gap-y-5">
             {installedApps.map((appId) => {
               const appFrontend = ALL_APPS_FRONTEND[appId];
               const app = ALL_APPS[appId];
