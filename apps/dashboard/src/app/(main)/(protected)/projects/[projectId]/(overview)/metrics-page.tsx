@@ -14,7 +14,7 @@ import { Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from 
 import { PageLayout } from "../page-layout";
 import { useAdminApp, useProjectId } from '../use-admin-app';
 import { GlobeSectionWithData } from './globe-section-with-data';
-import { ChartCard, LineChartDisplayConfig, TabbedMetricsCard, TimeRange, TimeRangeToggle } from './line-chart';
+import { LineChartDisplayConfig, TabbedMetricsCard, TimeRange, TimeRangeToggle } from './line-chart';
 import { MetricsLoadingFallback } from './metrics-loading';
 
 // Widget definitions
@@ -162,91 +162,88 @@ function AppsWidget({ installedApps, projectId }: { installedApps: AppId[], proj
   const displayApps = showSeeAll ? installedApps.slice(0, maxItems - 1) : installedApps;
 
   return (
-    <ChartCard gradientColor="slate" className="shrink-0">
-      <div className="p-5 sm:p-6">
-        <div className="flex items-center gap-2.5 mb-6">
-          <div className="p-1.5 rounded-lg bg-foreground/[0.04]">
-            <LayoutGrid className="h-3.5 w-3.5 text-muted-foreground" />
-          </div>
-          <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-            Quick Access
-          </span>
+    <div className="shrink-0">
+      <div className="flex items-center gap-1 mb-4">
+        <div className="p-1.5 rounded-lg bg-foreground/[0.04]">
+          <LayoutGrid className="h-3.5 w-3.5" />
         </div>
-        {installedApps.length === 0 ? (
-          <div className="flex items-center justify-center py-10">
-            <Typography variant="secondary" className="text-sm text-center">
-              No apps installed
-            </Typography>
-          </div>
-        ) : (
-          <div
-            ref={setRef}
-            className="grid grid-cols-[repeat(auto-fill,minmax(90px,1fr))] gap-x-2 gap-y-5"
-          >
-            {displayApps.map((appId) => {
-              const appFrontend = ALL_APPS_FRONTEND[appId];
-              const app = ALL_APPS[appId];
-              const appPath = getAppPath(projectId, appFrontend);
-              return (
-                <Link
-                  key={appId}
-                  href={appPath}
-                  className="group flex flex-col items-center gap-2.5 p-2.5 rounded-xl hover:bg-foreground/[0.03] transition-all duration-[50ms]"
+        <span className="text-xs font-semibold text-foreground uppercase tracking-wider">
+          Quick Access
+        </span>
+      </div>
+      {installedApps.length === 0 ? (
+        <div className="flex items-center justify-center py-10">
+          <Typography variant="secondary" className="text-sm text-center">
+            No apps installed
+          </Typography>
+        </div>
+      ) : (
+        <div
+          ref={setRef}
+          className="grid grid-cols-[repeat(auto-fill,minmax(90px,1fr))] gap-x-2 gap-y-5"
+        >
+          {displayApps.map((appId) => {
+            const appFrontend = ALL_APPS_FRONTEND[appId];
+            const app = ALL_APPS[appId];
+            const appPath = getAppPath(projectId, appFrontend);
+            return (
+              <Link
+                key={appId}
+                href={appPath}
+                className="group flex flex-col items-center gap-2.5 rounded-xl hover:bg-foreground/[0.03] transition-all duration-150 hover:transition-none"
+                title={app.displayName}
+              >
+                <div className="relative transition-transform duration-150 group-hover:transition-none group-hover:scale-105">
+                  <AppIcon
+                    appId={appId}
+                    variant="installed"
+                    className="shadow-sm group-hover:shadow-[0_0_20px_rgba(34,197,94,0.35)] bg-background rounded-2xl ring-1 ring-foreground/[0.06] group-hover:ring-emerald-500/50 group-hover:ring-2 transition-all duration-150 group-hover:transition-none"
+                  />
+                </div>
+                <span
+                  className="text-[11px] font-medium text-center group-hover:text-foreground transition-colors duration-150 group-hover:transition-none leading-tight w-full"
                   title={app.displayName}
                 >
-                  <div className="relative transition-transform duration-[50ms] group-hover:scale-[1.02]">
-                    <AppIcon
-                      appId={appId}
-                      size="medium"
-                      variant="installed"
-                      className="shadow-sm group-hover:shadow-md bg-background rounded-2xl ring-1 ring-foreground/[0.06] group-hover:ring-foreground/[0.1]"
-                    />
-                  </div>
-                  <span
-                    className="text-[11px] font-medium text-center text-muted-foreground group-hover:text-foreground transition-colors duration-[50ms] truncate leading-tight w-full"
-                    title={app.displayName}
-                  >
-                    {'shortName' in app ? app.shortName : app.displayName}
-                  </span>
-                </Link>
-              );
-            })}
-            {showSeeAll && (
-              <button
-                onClick={() => setExpanded(true)}
-                className="group flex flex-col items-center gap-2.5 p-2.5 rounded-xl hover:bg-foreground/[0.03] transition-all duration-[50ms]"
-                title="See all apps"
-              >
-                <div className="relative transition-transform duration-[50ms] group-hover:scale-[1.02]">
-                  <div className="flex items-center justify-center w-12 h-12 sm:w-14 sm:h-14 shadow-sm group-hover:shadow-md bg-background rounded-2xl ring-1 ring-foreground/[0.06] group-hover:ring-foreground/[0.1]">
-                    <MoreHorizontal className="w-6 h-6 sm:w-7 sm:h-7 text-muted-foreground" />
-                  </div>
-                </div>
-                <span className="text-[11px] font-medium text-center text-muted-foreground group-hover:text-foreground transition-colors truncate leading-tight w-full">
-                  See all
+                  {app.displayName}
                 </span>
-              </button>
-            )}
-            {showShowLess && (
-              <button
-                onClick={() => setExpanded(false)}
-                className="group flex flex-col items-center gap-2.5 p-2.5 rounded-xl hover:bg-foreground/[0.03] transition-all duration-[50ms]"
-                title="Show less"
-              >
-                <div className="relative transition-transform duration-[50ms] group-hover:scale-[1.02]">
-                  <div className="flex items-center justify-center w-12 h-12 sm:w-14 sm:h-14 shadow-sm group-hover:shadow-md bg-background rounded-2xl ring-1 ring-foreground/[0.06] group-hover:ring-foreground/[0.1]">
-                    <ChevronUp className="w-6 h-6 sm:w-7 sm:h-7 text-muted-foreground" />
-                  </div>
+              </Link>
+            );
+          })}
+          {showSeeAll && (
+            <button
+              onClick={() => setExpanded(true)}
+              className="group flex flex-col items-center gap-2.5 rounded-xl hover:bg-foreground/[0.03] transition-all duration-150 hover:transition-none"
+              title="See all apps"
+            >
+              <div className="relative transition-transform duration-150 group-hover:transition-none group-hover:scale-105">
+                <div className="flex items-center justify-center w-12 h-12 sm:w-14 sm:h-14 shadow-sm group-hover:shadow-[0_0_20px_rgba(34,197,94,0.35)] bg-background rounded-2xl ring-1 ring-foreground/[0.06] group-hover:ring-emerald-500/50 group-hover:ring-2 transition-all duration-150 group-hover:transition-none">
+                  <MoreHorizontal className="w-6 h-6 sm:w-7 sm:h-7 text-muted-foreground" />
                 </div>
-                <span className="text-[11px] font-medium text-center text-muted-foreground group-hover:text-foreground transition-colors truncate leading-tight w-full">
-                  Less
-                </span>
-              </button>
-            )}
-          </div>
-        )}
-      </div>
-    </ChartCard>
+              </div>
+              <span className="text-[11px] font-medium text-center group-hover:text-foreground transition-colors duration-150 group-hover:transition-none leading-tight w-full">
+                See all
+              </span>
+            </button>
+          )}
+          {showShowLess && (
+            <button
+              onClick={() => setExpanded(false)}
+              className="group flex flex-col items-center gap-2.5 rounded-xl hover:bg-foreground/[0.03] transition-all duration-150 hover:transition-none"
+              title="Show less"
+            >
+              <div className="relative transition-transform duration-150 group-hover:transition-none group-hover:scale-105">
+                <div className="flex items-center justify-center w-12 h-12 sm:w-14 sm:h-14 shadow-sm group-hover:shadow-[0_0_20px_rgba(34,197,94,0.35)] bg-background rounded-2xl ring-1 ring-foreground/[0.06] group-hover:ring-emerald-500/50 group-hover:ring-2 transition-all duration-150 group-hover:transition-none">
+                  <ChevronUp className="w-6 h-6 sm:w-7 sm:h-7 text-muted-foreground" />
+                </div>
+              </div>
+              <span className="text-[11px] font-medium text-center text-muted-foreground group-hover:text-foreground transition-colors duration-150 group-hover:transition-none truncate leading-tight w-full">
+                Less
+              </span>
+            </button>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -309,7 +306,7 @@ export default function MetricsPage(props: { toSetup: () => void }) {
   const config = project.useConfig();
   // Currently always false - can be made configurable in the future
   const includeAnonymous = false;
-  const [timeRange, setTimeRange] = useState<TimeRange>('7d');
+  const [timeRange, setTimeRange] = useState<TimeRange>('30d');
   const [dashboardConfig, setDashboardConfig] = useState<DashboardConfig>(DEFAULT_CONFIG);
   const user = useUser();
 
@@ -405,6 +402,33 @@ function MetricsContent({
   const GLOBE_MIN_WIDTH = 352.5;
   const shouldShowGlobeSection = showGlobe && globeColumnWidth >= GLOBE_MIN_WIDTH;
 
+  // On lg screens, derive grid height from globe column width
+  // Formula: height = min(max(viewHeight, globeWidth), globeWidth * 1.75)
+  const [isLgScreen, setIsLgScreen] = useState(false);
+  const [viewHeight, setViewHeight] = useState(0);
+  useEffect(() => {
+    const mediaQuery = window.matchMedia('(min-width: 1024px)');
+    setIsLgScreen(mediaQuery.matches);
+    const handler = (e: MediaQueryListEvent) => setIsLgScreen(e.matches);
+    mediaQuery.addEventListener('change', handler);
+
+    // Track viewport height
+    const updateViewHeight = () => setViewHeight(window.innerHeight - 180); // same as calc(100vh - 180px)
+    updateViewHeight();
+    window.addEventListener('resize', updateViewHeight);
+
+    return () => {
+      mediaQuery.removeEventListener('change', handler);
+      window.removeEventListener('resize', updateViewHeight);
+    };
+  }, []);
+
+  // Calculate grid height based on globe column width on lg screens
+  // height = min(max(viewHeight, globeWidth), globeWidth * 1.75)
+  const gridHeightFromGlobe = isLgScreen && showGlobe && shouldShowGlobeSection && globeColumnWidth > 0 && viewHeight > 0
+    ? Math.min(Math.max(viewHeight, globeColumnWidth), globeColumnWidth * 1.75)
+    : undefined;
+
   // Render a widget by ID
   const renderWidget = (widgetId: WidgetId) => {
     switch (widgetId) {
@@ -446,9 +470,11 @@ function MetricsContent({
       <div
         ref={gridContainerRef}
         className={cn(
-          "grid gap-4 sm:gap-5 min-h-[400px] h-[calc(100vh-180px)]",
+          "grid gap-4 sm:gap-5 min-h-[400px]",
+          gridHeightFromGlobe ? "" : "h-[calc(100vh-180px)]",
           showGlobe ? "grid-cols-1 lg:grid-cols-12" : "grid-cols-1"
         )}
+        style={gridHeightFromGlobe ? { height: gridHeightFromGlobe } : undefined}
       >
         {/* Left Column: Globe - Hidden on mobile */}
         {showGlobe && shouldShowGlobeSection && (
@@ -478,7 +504,7 @@ function MetricsContent({
 
         {/* Right Column: Stats Grid */}
         <div className={cn(
-          "flex flex-col gap-4 h-full min-h-0",
+          "flex flex-col gap-12 h-full min-h-0",
           showGlobe && shouldShowGlobeSection ? "lg:col-span-7" : showGlobe ? "lg:col-span-12" : ""
         )}>
           {/* Stat Widgets Row (Apps) */}

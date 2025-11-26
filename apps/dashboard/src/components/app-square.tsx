@@ -16,15 +16,11 @@ type AppSquareVariant = "default" | "installed" | "featured";
 export function AppIcon({
   appId,
   className,
-  size = "medium",
-  showBadge = false,
   variant = "default",
   enabled = false,
 }: {
   appId: AppId,
   className?: string,
-  size?: "small" | "medium" | "large",
-  showBadge?: boolean,
   variant?: AppSquareVariant,
   enabled?: boolean,
 }) {
@@ -119,8 +115,6 @@ export function AppSquare({
           <div className="flex items-center justify-center w-full h-[45%]">
             <AppIcon
               appId={appId}
-              size="medium"
-              showBadge={false}
               variant={isEnabled ? "installed" : variant}
             />
           </div>
@@ -232,7 +226,6 @@ export function AppListItem({
     >
       <AppIcon
         appId={appId}
-        size="small"
         variant={isEnabled ? "installed" : "default"}
       />
 
