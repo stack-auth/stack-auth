@@ -26,6 +26,7 @@ import {
 import {
   Blocks,
   ChevronDown,
+  ChevronRight,
   Globe,
   KeyRound,
   LucideIcon,
@@ -378,10 +379,12 @@ function SidebarContent({
   projectId,
   onNavigate,
   isCollapsed,
+  onToggleCollapse,
 }: {
   projectId: string,
   onNavigate?: () => void,
   isCollapsed?: boolean,
+  onToggleCollapse?: () => void,
 }) {
   const stackAdminApp = useAdminApp();
   const pathname = usePathname();
@@ -401,6 +404,9 @@ function SidebarContent({
     const currentUrl = new URL(pathname, DUMMY_ORIGIN);
     for (const enabledApp of enabledApps) {
       const appFrontend = ALL_APPS_FRONTEND[enabledApp];
+      if (!(appFrontend as any)) {
+        continue;
+      }
       if (testAppPath(projectId, appFrontend, currentUrl)) {
         return new Set([enabledApp]);
       }
@@ -475,6 +481,33 @@ function SidebarContent({
             />
           ))}
         </div>
+
+        {/* User button and collapse toggle */}
+        <div className={cn(
+          "mt-4 pt-3 border-t border-border/30 flex items-center gap-2",
+          isCollapsed ? "justify-center" : "justify-between"
+        )}>
+          <div>
+            {!isCollapsed && <UserButton showUserInfo />}
+          </div>
+          {onToggleCollapse && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={onToggleCollapse}
+                  className="h-8 w-8 p-1 text-muted-foreground hover:text-foreground hover:bg-background/60 rounded-lg transition-all duration-150 hover:transition-none"
+                >
+                  <PanelLeft className={cn("h-4 w-4 transition-transform duration-200", isCollapsed && "rotate-180")} />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="right">
+                {isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+              </TooltipContent>
+            </Tooltip>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -495,18 +528,8 @@ export default function SidebarLayout(props: { children?: React.ReactNode }) {
       <div className="mx-auto w-full flex flex-col min-h-screen bg-background shadow-2xl border-x border-border/5">
         {/* Header - Sticky Floating */}
         <div className="sticky top-3 z-20 mx-3 mb-3 mt-3 flex h-14 items-center justify-between bg-foreground/5 border border-foreground/5 backdrop-blur-xl px-4 shadow-sm rounded-2xl">
-          {/* Left section: Toggle/Menu + Project Switcher */}
-          <div className="flex items-center gap-3">
-            {/* Desktop: Toggle button */}
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={toggleCollapsed}
-              className="hidden lg:flex h-9 w-9 p-0 text-muted-foreground hover:text-foreground"
-            >
-              <PanelLeft className="h-4 w-4" />
-            </Button>
-
+          {/* Left section: Logo + Menu + Project Switcher */}
+          <div className="flex items-center gap-2">
             {/* Mobile: Menu button */}
             <Sheet onOpenChange={(open) => setSidebarOpen(open)} open={sidebarOpen}>
               <SheetTitle className="hidden">
@@ -531,8 +554,10 @@ export default function SidebarLayout(props: { children?: React.ReactNode }) {
               </SheetContent>
             </Sheet>
 
-            {/* Desktop: Project Switcher */}
-            <div className="hidden lg:block max-w-xs">
+            {/* Desktop: Logo + Breadcrumb + Project Switcher */}
+            <div className="hidden lg:flex items-center gap-2">
+              <Logo height={24} href="/" />
+              <ChevronRight className="h-4 w-4 text-muted-foreground/50" />
               {getPublicEnvVar("NEXT_PUBLIC_STACK_EMULATOR_ENABLED") === "true" ? (
                 <Logo full width={96} href="/projects" />
               ) : (
@@ -571,6 +596,7 @@ export default function SidebarLayout(props: { children?: React.ReactNode }) {
             <SidebarContent
               projectId={projectId}
               isCollapsed={isCollapsed}
+              onToggleCollapse={toggleCollapsed}
             />
           </aside>
 

@@ -44,12 +44,25 @@ export function AppIcon({
     <div
       style={style}
       className={cn(
-        "relative w-16 h-16 rounded-[20%] overflow-hidden select-none border",
+        "relative w-16 h-16 overflow-hidden select-none border",
+        "border-radius-[20%] supports-[corner-shape:squircle]:[border-radius:40%] supports-[corner-shape:squircle]:[corner-shape:squircle]", // https://x.com/konstiwohlwend/status/1991221528206405685
         !disabled && "bg-gray-300 dark:bg-gray-900 border-gray-200 dark:border-gray-500/50",
         disabled && 'bg-gray-300 dark:bg-gray-900 border-gray-300 dark:border-gray-500 border-dashed',
         className,
       )}
     >
+      <style>{`
+        .squircleish {
+          border-radius: 30%;
+        }
+
+        @supports (corner-shape: squircle) {
+          .squircleish {
+            corner-shape: squircle;
+            border-radius: 50%;
+          }
+        }
+      `}</style>
       <div className={cn("w-full h-full isolate relative flex items-center justify-center")}>
         {LogoComponent ? (
           <div
