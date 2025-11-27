@@ -29,11 +29,13 @@ export const Link = React.forwardRef<HTMLAnchorElement, LinkProps>(({ onClick, h
     {...rest}
     onClick={(e: React.MouseEvent<HTMLAnchorElement>) => {
       if (needConfirm) {
+        // use our own router, which has a confirm dialog
         e.preventDefault();
         onClick?.(e);
         router.push(href.toString());
+      } else {
+        onClick?.(e);
       }
-      onClick?.(e);
     }}
   >
     <UrlPrefetcher href={href} />

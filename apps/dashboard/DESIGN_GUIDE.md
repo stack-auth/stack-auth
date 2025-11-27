@@ -764,6 +764,7 @@ function ChecklistRow({
 12. **Badges**: Match badge styles to status (emerald for done, outline for others)
 13. **Buttons**: Use `size="sm"` in cards, ghost variant for completed states
 14. **Testing**: Always test designs in both light and dark mode before finalizing
+15. **Loading indicators**: All async actions should show a loading indicator on the element that performs the action. Many components (like <Button />) already take an async onClick and show a loading indicator automatically, which is the preferred way to handle this.
 
 ---
 
