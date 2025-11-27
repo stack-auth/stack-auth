@@ -54,7 +54,7 @@ export function AppIcon({
             {/* drop shadow */}
             <feOffset dx="0" dy="2" in="SourceAlpha" result="dropOffset" />
             <feGaussianBlur stdDeviation="8" in="dropOffset" result="dropBlur" />
-            <feFlood floodColor="#4271FF" floodOpacity="1" result="dropFlood" />
+            <feFlood floodColor="#4271FF" floodOpacity="0.8" result="dropFlood" />
             <feComposite operator="in" in="dropFlood" in2="dropBlur" result="dropShadow" />
             {/* inset shadow */}
             <feMorphology operator="erode" radius="2" in="SourceAlpha" result="eroded" />
@@ -84,7 +84,7 @@ export function AppIcon({
           {LogoComponent ? (
             <div
               className={cn(
-                "w-[40%] h-[40%] flex items-center justify-center",
+                "w-[42%] h-[42%] flex items-center justify-center",
                 "[&_svg]:overflow-visible",
                 !enabled && "grayscale opacity-60"
               )}
@@ -95,7 +95,7 @@ export function AppIcon({
           ) : (
             <IconComponent
               className={cn(
-                "w-[40%] h-[40%]",
+                "w-[42%] h-[42%]",
                 enabled
                   ? "stroke-emerald-500 dark:stroke-emerald-400"
                   : "stroke-gray-400 dark:stroke-gray-500"
