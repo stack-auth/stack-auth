@@ -87,7 +87,7 @@ export function AppIcon({
                 "[&_svg]:overflow-visible",
                 !enabled && "grayscale opacity-60"
               )}
-              style={{ filter: "url(#${filterId})" }}
+              style={{ filter: `url(#${filterId})` }}
             >
               <LogoComponent />
             </div>
