@@ -56,15 +56,14 @@ export function AppIcon({
             <feGaussianBlur stdDeviation="8" in="dropOffset" result="dropBlur" />
             <feFlood floodColor="#4271FF" floodOpacity="0.8" result="dropFlood" />
             <feComposite operator="in" in="dropFlood" in2="dropBlur" result="dropShadow" />
-            {/* inset shadow */}
-            <feMorphology operator="erode" radius="2" in="SourceAlpha" result="eroded" />
-            <feComposite operator="out" in="SourceAlpha" in2="eroded" result="edge" />
-            <feGaussianBlur stdDeviation="2" in="edge" result="blurred" />
-            <feFlood floodColor="#00BBFF" floodOpacity={isExtenal ? "0.3" : "0.5"} result="insetFlood" />
-            <feComposite operator="in" in="insetFlood" in2="blurred" result="insetShadow" />
-            {/* Combine: drop shadow behind, then source graphic, then inset shadow on top */}
-            <feComposite operator="over" in="SourceGraphic" in2="dropShadow" result="withDrop" />
-            <feComposite operator="over" in="insetShadow" in2="withDrop" />
+            {/* outer shadow */}
+            <feOffset dx="0" dy="0" in="SourceAlpha" result="outerOffset" />
+            <feGaussianBlur stdDeviation="4" in="outerOffset" result="outerBlur" />
+            <feFlood floodColor="#00BBFF" floodOpacity="0.3" result="outerFlood" />
+            <feComposite operator="in" in="outerFlood" in2="outerBlur" result="outerShadow" />
+            {/* Combine: drop shadow behind, then outer shadow, then source graphic on top */}
+            <feComposite operator="over" in="outerShadow" in2="dropShadow" result="combinedShadows" />
+            <feComposite operator="over" in="SourceGraphic" in2="combinedShadows" />
           </filter>
         </defs>
       </svg>

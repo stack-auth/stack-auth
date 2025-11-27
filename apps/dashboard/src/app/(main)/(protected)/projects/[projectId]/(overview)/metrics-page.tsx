@@ -190,18 +190,18 @@ function AppsWidget({ installedApps, projectId }: { installedApps: AppId[], proj
               <Link
                 key={appId}
                 href={appPath}
-                className="group flex flex-col items-center gap-2.5 pt-3 pb-2 rounded-xl hover:bg-foreground/[0.03] transition-all duration-150 hover:transition-none"
+                className="group flex flex-col items-center gap-2.5 pt-3 pb-2 rounded-xl transition-all duration-750 hover:transition-none"
                 title={app.displayName}
               >
-                <div className="relative transition-transform duration-150 group-hover:transition-none group-hover:scale-105">
+                <div className="relative transition-transform duration-750 group-hover:transition-none group-hover:scale-105">
                   <AppIcon
                     appId={appId}
                     variant="installed"
-                    className="shadow-sm group-hover:shadow-[0_0_20px_rgba(34,197,94,0.35)] bg-background rounded-2xl ring-1 ring-foreground/[0.06] group-hover:ring-emerald-500/50 group-hover:ring-2 transition-all duration-150 group-hover:transition-none"
+                    className="shadow-sm group-hover:shadow-[0_0_20px_rgba(34,197,94,0.35)] group-hover:brightness-150 group-hover:saturate-150 transition-all duration-750 group-hover:transition-none"
                   />
                 </div>
                 <span
-                  className="text-[11px] font-medium text-center group-hover:text-foreground transition-colors duration-150 group-hover:transition-none leading-tight w-full"
+                  className="text-[11px] font-medium text-center group-hover:text-foreground transition-colors duration-750 group-hover:transition-none leading-tight w-full"
                   title={app.displayName}
                 >
                   {app.displayName}
