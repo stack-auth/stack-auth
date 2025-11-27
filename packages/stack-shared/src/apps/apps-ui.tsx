@@ -52,17 +52,18 @@ export function AppIcon({
         <defs>
           <filter id={filterId} colorInterpolationFilters="sRGB" x="-50%" y="-50%" width="200%" height="200%">
             {/* drop shadow */}
-            <feOffset dx="0" dy="4" in="SourceAlpha" result="dropOffset" />
-            <feGaussianBlur stdDeviation="12" in="dropOffset" result="dropBlur" />
-            <feFlood floodColor="#4271FF" floodOpacity="0.21" result="dropFlood" />
+            <feOffset dx="0" dy="2" in="SourceAlpha" result="dropOffset" />
+            <feGaussianBlur stdDeviation="8" in="dropOffset" result="dropBlur" />
+            <feFlood floodColor="#4271FF" floodOpacity="1" result="dropFlood" />
             <feComposite operator="in" in="dropFlood" in2="dropBlur" result="dropShadow" />
             {/* inset shadow */}
-            <feOffset dx="0" dy="0" in="SourceAlpha" result="insetOffset" />
-            <feGaussianBlur stdDeviation="8" in="insetOffset" result="insetBlur" />
-            <feFlood floodColor="#00BBFF" floodOpacity={isExtenal ? "0.5" : "1"} result="insetFlood" />
-            <feComposite operator="in" in="insetFlood" in2="insetBlur" result="insetShadow" />
-            {/* Combine: drop shadow behind, then inset shadow, then source graphic */}
-            <feComposite operator="over" in="dropShadow" in2="SourceGraphic" result="withDrop" />
+            <feMorphology operator="erode" radius="2" in="SourceAlpha" result="eroded" />
+            <feComposite operator="out" in="SourceAlpha" in2="eroded" result="edge" />
+            <feGaussianBlur stdDeviation="2" in="edge" result="blurred" />
+            <feFlood floodColor="#00BBFF" floodOpacity={isExtenal ? "0.3" : "0.5"} result="insetFlood" />
+            <feComposite operator="in" in="insetFlood" in2="blurred" result="insetShadow" />
+            {/* Combine: drop shadow behind, then source graphic, then inset shadow on top */}
+            <feComposite operator="over" in="SourceGraphic" in2="dropShadow" result="withDrop" />
             <feComposite operator="over" in="insetShadow" in2="withDrop" />
           </filter>
         </defs>
