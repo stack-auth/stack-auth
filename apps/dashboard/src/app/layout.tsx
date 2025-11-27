@@ -72,10 +72,10 @@ export default function RootLayout({
         <StyleLink defer href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.css" integrity="sha384-OH8qNTHoMMVNVcKdKewlipV4SErXqccxxlg6HC9Cwjr5oZu2AdBej1TndeCirael" crossOrigin="anonymous" />
 
         {/* eslint-disable-next-line @next/next/no-sync-scripts */}
-        <script
+        {process.env.NODE_ENV === 'development' && <script
           crossOrigin="anonymous"
           src="//unpkg.com/react-scan/dist/auto.global.js"
-        />
+        />}
 
         {headTags.map((tag, index) => {
           const { tagName, attributes, innerHTML } = tag;

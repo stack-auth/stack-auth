@@ -266,8 +266,8 @@ function NavItem({
               : "0px",
           }}
           className={cn(
-            "ml-[0.5px] w-[calc(100%-1px)] overflow-hidden transition-[height] duration-200",
-            !isExpanded && "h-0"
+            "ml-[0.5px] w-[calc(100%-1px)] transition-[height] duration-200",
+            !isExpanded && "h-0 overflow-hidden"
           )}
         >
           <div className="space-y-2 py-2 pl-3">

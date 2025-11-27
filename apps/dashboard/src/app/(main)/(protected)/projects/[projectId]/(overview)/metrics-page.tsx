@@ -478,8 +478,13 @@ function MetricsContent({
       >
         {/* Left Column: Globe - Hidden on mobile */}
         {showGlobe && shouldShowGlobeSection && (
-          <div className="hidden lg:flex lg:flex-col lg:col-span-5 h-full min-h-[300px]">
-            <div className="mb-4 px-1">
+          <div className="hidden lg:flex lg:col-span-5 h-full min-h-[300px] relative">
+            {/* Globe takes full space */}
+            <div className="absolute inset-0 flex items-center justify-center">
+              <GlobeSectionWithData includeAnonymous={includeAnonymous} />
+            </div>
+            {/* Total Users overlay */}
+            <div className="absolute top-0 left-0 px-1 z-10">
               <div className="flex items-center gap-2 mb-2">
                 <div className="p-1.5 rounded-lg bg-foreground/[0.04]">
                   <Globe2 className="h-3.5 w-3.5 text-muted-foreground" />
@@ -492,11 +497,6 @@ function MetricsContent({
                 <Suspense fallback="...">
                   <TotalUsersDisplay timeRange={timeRange} includeAnonymous={includeAnonymous} minimal />
                 </Suspense>
-              </div>
-            </div>
-            <div className="relative flex-1 w-full overflow-hidden flex items-center justify-center">
-              <div className="absolute inset-0 flex items-center justify-center">
-                <GlobeSectionWithData includeAnonymous={includeAnonymous} />
               </div>
             </div>
           </div>

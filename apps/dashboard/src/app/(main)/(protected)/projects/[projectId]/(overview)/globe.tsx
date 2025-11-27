@@ -75,6 +75,7 @@ export function GlobeSection({ countryData, totalUsers, children }: {countryData
 
   const resumeRenderIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const resumeRender = () => {
+    // the globe takes up a lot of CPU while it's rendering. by pausing it, we can essentially tell the globe it won't have to re-render
     if (!globeRef.current) {
       return;
     }
@@ -221,8 +222,8 @@ export function GlobeSection({ countryData, totalUsers, children }: {countryData
                     controls.dampingFactor = 0.15;
                     controls.enableZoom = false;
                     controls.enableRotate = true;
-                  current.camera().position.z = cameraDistance;
-                  resumeRender();
+                    current.camera().position.z = cameraDistance;
+                    resumeRender();
                   }}
                   onZoom={resumeRender}
                   animateIn={isFastEngine}
@@ -232,12 +233,12 @@ export function GlobeSection({ countryData, totalUsers, children }: {countryData
                   polygonSideColor={() => "transparent"}
                   polygonAltitude={0.001}
                   onPolygonHover={(d: any) => {
-                  resumeRender();
-                  if (d) {
-                    setPolygonSelectedCountry({ code: d.properties.ISO_A2_EH, name: d.properties.NAME });
-                  } else {
-                    setPolygonSelectedCountry(null);
-                  }
+                    resumeRender();
+                    if (d) {
+                      setPolygonSelectedCountry({ code: d.properties.ISO_A2_EH, name: d.properties.NAME });
+                    } else {
+                      setPolygonSelectedCountry(null);
+                    }
                   }}
 
                   hexPolygonsData={countries.features}
@@ -271,29 +272,29 @@ export function GlobeSection({ countryData, totalUsers, children }: {countryData
                     }
                   }}
                   onHexPolygonHover={(d: any) => {
-                  resumeRender();
-                  if (d) {
-                    setHexSelectedCountry({ code: d.properties.ISO_A2_EH, name: d.properties.NAME });
-                  } else {
-                    setHexSelectedCountry(null);
-                  }
+                    resumeRender();
+                    if (d) {
+                      setHexSelectedCountry({ code: d.properties.ISO_A2_EH, name: d.properties.NAME });
+                    } else {
+                      setHexSelectedCountry(null);
+                    }
                   }}
 
                   atmosphereColor={theme === 'dark' ? 'rgba(14, 165, 233, 0.3)' : 'rgba(30, 64, 175, 0.25)'} // Dark: sky blue, Light: deeper blue for visibility
                   atmosphereAltitude={0.2}
                   onHexPolygonClick={(polygon: any, event: MouseEvent, coords: { lat: number, lng: number, altitude: number }) => {
-                  resumeRender();
-                  if (globeRef.current) {
-                    globeRef.current.controls().autoRotate = false;
-                    globeRef.current.pointOfView({ lat: coords.lat, lng: coords.lng }, 2000);
-                  }
+                    resumeRender();
+                    if (globeRef.current) {
+                      globeRef.current.controls().autoRotate = false;
+                      globeRef.current.pointOfView({ lat: coords.lat, lng: coords.lng }, 2000);
+                    }
                   }}
                   onGlobeClick={() => {
-                  resumeRender();
-                  if (globeRef.current) {
-                    globeRef.current.controls().autoRotate = true;
-                    // globeRef.current.pointOfView({ altitude: 4.0 }, 2000);
-                  }
+                    resumeRender();
+                    if (globeRef.current) {
+                      globeRef.current.controls().autoRotate = true;
+                      // globeRef.current.pointOfView({ altitude: 4.0 }, 2000);
+                    }
                   }}
                 />
               )}
