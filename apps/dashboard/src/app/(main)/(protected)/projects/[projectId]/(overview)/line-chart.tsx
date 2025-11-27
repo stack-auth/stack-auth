@@ -129,6 +129,9 @@ function ActivityBarChart({
             opacity: 0.15,
             radius: 4,
           }}
+          offset={15}
+          position={{ y: 10 }}
+          allowEscapeViewBox={{ x: true, y: true }}
         />
         <Bar
           dataKey="activity"
@@ -564,6 +567,9 @@ export function DonutChartDisplay({
               <PieChart>
                 <ChartTooltip
                   cursor={false}
+                  offset={15}
+                  position={{ y: 10 }}
+                  allowEscapeViewBox={{ x: true, y: true }}
                   content={
                     <ChartTooltipContent
                       className="rounded-xl bg-background/95 px-3.5 py-2.5 shadow-lg backdrop-blur-xl ring-1 ring-foreground/[0.08]"

@@ -180,7 +180,7 @@ function AppsWidget({ installedApps, projectId }: { installedApps: AppId[], proj
       ) : (
         <div
           ref={setRef}
-          className="grid grid-cols-[repeat(auto-fill,minmax(90px,1fr))] gap-x-2 gap-y-5"
+          className="grid grid-cols-[repeat(auto-fill,minmax(90px,1fr))] gap-2"
         >
           {displayApps.map((appId) => {
             const appFrontend = ALL_APPS_FRONTEND[appId];
@@ -190,7 +190,7 @@ function AppsWidget({ installedApps, projectId }: { installedApps: AppId[], proj
               <Link
                 key={appId}
                 href={appPath}
-                className="group flex flex-col items-center gap-2.5 rounded-xl hover:bg-foreground/[0.03] transition-all duration-150 hover:transition-none"
+                className="group flex flex-col items-center gap-2.5 pt-3 pb-2 rounded-xl hover:bg-foreground/[0.03] transition-all duration-150 hover:transition-none"
                 title={app.displayName}
               >
                 <div className="relative transition-transform duration-150 group-hover:transition-none group-hover:scale-105">
@@ -212,7 +212,7 @@ function AppsWidget({ installedApps, projectId }: { installedApps: AppId[], proj
           {showSeeAll && (
             <button
               onClick={() => setExpanded(true)}
-              className="group flex flex-col items-center gap-2.5 rounded-xl hover:bg-foreground/[0.03] transition-all duration-150 hover:transition-none"
+              className="group flex flex-col items-center gap-2.5 pt-3 pb-2 rounded-xl hover:bg-foreground/[0.03] transition-all duration-150 hover:transition-none"
               title="See all apps"
             >
               <div className="relative transition-transform duration-150 group-hover:transition-none group-hover:scale-105">
@@ -228,7 +228,7 @@ function AppsWidget({ installedApps, projectId }: { installedApps: AppId[], proj
           {showShowLess && (
             <button
               onClick={() => setExpanded(false)}
-              className="group flex flex-col items-center gap-2.5 rounded-xl hover:bg-foreground/[0.03] transition-all duration-150 hover:transition-none"
+              className="group flex flex-col items-center gap-2.5 pt-3 pb-2 rounded-xl hover:bg-foreground/[0.03] transition-all duration-150 hover:transition-none"
               title="Show less"
             >
               <div className="relative transition-transform duration-150 group-hover:transition-none group-hover:scale-105">

@@ -194,7 +194,7 @@ export function GlobeSection({ countryData, totalUsers, children }: {countryData
                 setHexSelectedCountry(null);
                 setPolygonSelectedCountry(null);
                 if (globeRef.current) {
-                  globeRef.current.controls().autoRotate = true;
+                  //globeRef.current.controls().autoRotate = true;
                 }
               }}
               onTouchMove={resumeRender}
@@ -215,7 +215,7 @@ export function GlobeSection({ countryData, totalUsers, children }: {countryData
                     if (!current) return;
 
                     const controls = current.controls();
-                    controls.autoRotate = true;
+                    //controls.autoRotate = true;
                     controls.autoRotateSpeed = 0.5;
                     controls.maxDistance = cameraDistance;
                     controls.minDistance = cameraDistance;
@@ -292,7 +292,7 @@ export function GlobeSection({ countryData, totalUsers, children }: {countryData
                   onGlobeClick={() => {
                     resumeRender();
                     if (globeRef.current) {
-                      globeRef.current.controls().autoRotate = true;
+                      //globeRef.current.controls().autoRotate = true;
                       // globeRef.current.pointOfView({ altitude: 4.0 }, 2000);
                     }
                   }}
