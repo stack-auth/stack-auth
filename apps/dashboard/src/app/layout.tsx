@@ -129,7 +129,7 @@ function DevelopmentPortDisplay() {
     "93": "#e0e0ff",
   } as any)[prefix as any] || undefined;
   return (
-    <div inert className="fixed top-0 left-0 p-2 text-lg text-red-700 animate-[dev-port-slide_120s_linear_infinite] hover:hidden" style={{
+    <div inert className="fixed top-0 left-0 p-2 text-red-700 animate-[dev-port-slide_120s_linear_infinite] hover:hidden flex gap-2" style={{
       backgroundColor: color,
       zIndex: 10000000,
     }}>
@@ -139,7 +139,29 @@ function DevelopmentPortDisplay() {
           100% { transform: translateX(100vw); }
         }
       `}</style>
-      DEV PORT: {prefix}xx
+      <div className="text-lg">
+        PORT: {prefix}xx
+      </div>
+      <div className="text-xs">
+        <span className="hidden xs:inline sm:hidden">
+          xs
+        </span>
+        <span className="hidden sm:inline md:hidden">
+          sm
+        </span>
+        <span className="hidden md:inline lg:hidden">
+          md
+        </span>
+        <span className="hidden lg:inline xl:hidden">
+          lg
+        </span>
+        <span className="hidden xl:inline 2xl:hidden">
+          xl
+        </span>
+        <span className="hidden 2xl:inline">
+          2xl
+        </span>
+      </div>
     </div>
   );
 }

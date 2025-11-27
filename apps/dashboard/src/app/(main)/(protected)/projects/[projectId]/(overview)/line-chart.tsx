@@ -129,9 +129,9 @@ function ActivityBarChart({
             opacity: 0.15,
             radius: 4,
           }}
-          offset={15}
-          position={{ y: 10 }}
+          offset={20}
           allowEscapeViewBox={{ x: true, y: true }}
+          wrapperStyle={{ zIndex: 50 }}
         />
         <Bar
           dataKey="activity"
@@ -204,7 +204,7 @@ export function ChartCard({
 
   return (
     <div className={cn(
-      "group relative overflow-hidden rounded-2xl bg-background/60 backdrop-blur-xl transition-all duration-150 hover:transition-none",
+      "group relative rounded-2xl bg-background/60 backdrop-blur-xl transition-all duration-150 hover:transition-none",
       "ring-1 ring-foreground/[0.06] hover:ring-foreground/[0.1]",
       "shadow-sm hover:shadow-md",
       className
@@ -567,9 +567,9 @@ export function DonutChartDisplay({
               <PieChart>
                 <ChartTooltip
                   cursor={false}
-                  offset={15}
-                  position={{ y: 10 }}
+                  offset={20}
                   allowEscapeViewBox={{ x: true, y: true }}
+                  wrapperStyle={{ zIndex: 50 }}
                   content={
                     <ChartTooltipContent
                       className="rounded-xl bg-background/95 px-3.5 py-2.5 shadow-lg backdrop-blur-xl ring-1 ring-foreground/[0.08]"
