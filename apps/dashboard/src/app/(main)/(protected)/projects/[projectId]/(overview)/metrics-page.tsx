@@ -163,7 +163,7 @@ function AppsWidget({ installedApps, projectId }: { installedApps: AppId[], proj
 
   return (
     <div className="shrink-0">
-      <div className="flex items-center gap-1 mb-4">
+      <div className="flex items-center gap-2 mb-4">
         <div className="p-1.5 rounded-lg bg-foreground/[0.04]">
           <LayoutGrid className="h-3.5 w-3.5" />
         </div>
