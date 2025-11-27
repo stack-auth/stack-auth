@@ -23,6 +23,7 @@
     "@dnd-kit/sortable": "^10.0.0",
     "@hookform/resolvers": "^3.3.4",
     "@monaco-editor/react": "4.7.0",
+    "@phosphor-icons/react": "^2.1.10",
     "@radix-ui/react-slot": "^1.2.3",
     "@radix-ui/react-tooltip": "^1.1.3",
     "@react-hook/resize-observer": "^2.0.2",
@@ -60,8 +61,8 @@
     "svix": "^1.32.0",
     "svix-react": "^1.13.0",
     "tailwind-merge": "^2.3.0",
-    "three": "^0.169.0",
     "tailwindcss-animate": "^1.0.7",
+    "three": "^0.169.0",
     "use-debounce": "^10.0.5",
     "yup": "^1.4.0"
   },
