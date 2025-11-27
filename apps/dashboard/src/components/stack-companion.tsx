@@ -55,8 +55,8 @@ const MAX_DRAWER_WIDTH = 800;
 const DEFAULT_DRAWER_WIDTH = 480;
 const CLOSE_THRESHOLD = 100;
 
-// Breakpoint for split-screen mode (2xl = 1536px)
-const SPLIT_SCREEN_BREAKPOINT = 1536;
+// Breakpoint for split-screen mode
+const SPLIT_SCREEN_BREAKPOINT = 1000;
 
 // Context for sharing companion state with layout
 type StackCompanionContextType = {

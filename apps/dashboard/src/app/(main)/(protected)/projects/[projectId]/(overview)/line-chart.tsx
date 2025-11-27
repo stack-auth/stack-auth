@@ -3,8 +3,8 @@ import { ChartConfig, ChartContainer, ChartTooltip, ChartTooltipContent } from "
 import { UserAvatar } from '@stackframe/stack';
 import { fromNow } from '@stackframe/stack-shared/dist/utils/dates';
 import {
-  cn,
-  Typography
+    cn,
+    Typography
 } from "@stackframe/stack-ui";
 import { useState } from "react";
 import { Bar, BarChart, CartesianGrid, Cell, Pie, PieChart, TooltipProps, XAxis, YAxis } from "recharts";
@@ -201,7 +201,7 @@ export function ChartCard({
 
   return (
     <div className={cn(
-      "group relative overflow-hidden rounded-2xl bg-background/60 backdrop-blur-xl transition-all duration-[50ms]",
+      "group relative overflow-hidden rounded-2xl bg-background/60 backdrop-blur-xl transition-all duration-150 hover:transition-none",
       "ring-1 ring-foreground/[0.06] hover:ring-foreground/[0.1]",
       "shadow-sm hover:shadow-md",
       className
@@ -210,7 +210,7 @@ export function ChartCard({
       <div className="absolute inset-0 bg-gradient-to-br from-foreground/[0.02] to-transparent pointer-events-none" />
       {/* Accent hover tint */}
       <div className={cn(
-        "absolute inset-0 transition-colors duration-[50ms] pointer-events-none",
+        "absolute inset-0 transition-colors duration-150 group-hover:transition-none pointer-events-none",
         hoverTints[gradientColor]
       )} />
       <div className="relative h-full flex flex-col">
@@ -241,7 +241,7 @@ export function TimeRangeToggle({
           type="button"
           onClick={() => onTimeRangeChange(option.value)}
           className={cn(
-            "px-3 py-1.5 text-xs font-medium rounded-lg transition-all duration-[50ms]",
+            "px-3 py-1.5 text-xs font-medium rounded-lg transition-all duration-150 hover:transition-none",
             timeRange === option.value
               ? "bg-background text-foreground shadow-sm ring-1 ring-foreground/[0.06]"
               : "text-muted-foreground hover:text-foreground hover:bg-background/50"
@@ -318,7 +318,7 @@ export function TabbedMetricsCard({
             type="button"
             onClick={() => setView('chart')}
             className={cn(
-              "relative px-3 py-3.5 text-xs font-medium transition-all duration-[50ms] rounded-t-lg",
+              "relative px-3 py-3.5 text-xs font-medium transition-all duration-150 hover:transition-none rounded-t-lg",
               view === 'chart' ? "text-foreground" : "text-muted-foreground hover:text-foreground"
             )}
           >
@@ -331,7 +331,7 @@ export function TabbedMetricsCard({
             type="button"
             onClick={() => setView('list')}
             className={cn(
-              "relative px-3 py-3.5 text-xs font-medium transition-all duration-[50ms] rounded-t-lg",
+              "relative px-3 py-3.5 text-xs font-medium transition-all duration-150 hover:transition-none rounded-t-lg",
               view === 'list' ? "text-foreground" : "text-muted-foreground hover:text-foreground"
             )}
           >
@@ -386,7 +386,7 @@ export function TabbedMetricsCard({
                     key={user.id}
                     onClick={() => router.push(`/projects/${projectId}/users/${user.id}`)}
                     className={cn(
-                      "w-full flex items-center gap-3 p-2.5 rounded-xl transition-all duration-[50ms] text-left group",
+                      "w-full flex items-center gap-3 p-2.5 rounded-xl transition-all duration-150 hover:transition-none text-left group",
                       hoverAccentClass
                     )}
                   >
@@ -402,7 +402,7 @@ export function TabbedMetricsCard({
                       />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <div className="text-sm font-medium truncate text-foreground group-hover:text-foreground transition-colors duration-[50ms]">
+                      <div className="text-sm font-medium truncate text-foreground group-hover:text-foreground transition-colors duration-150 group-hover:transition-none">
                         {user.display_name || user.primary_email || 'Anonymous User'}
                       </div>
                       <div className="text-[11px] text-muted-foreground truncate flex items-center gap-1.5 mt-0.5">
@@ -618,7 +618,7 @@ export function DonutChartDisplay({
                   <div
                     key={item.method}
                     className={cn(
-                      "flex items-center gap-1.5 rounded-full bg-foreground/[0.03] ring-1 ring-foreground/[0.06] transition-colors duration-[50ms] hover:bg-foreground/[0.05]",
+                      "flex items-center gap-1.5 rounded-full bg-foreground/[0.03] ring-1 ring-foreground/[0.06] transition-colors duration-150 hover:transition-none hover:bg-foreground/[0.05]",
                       compact ? "px-2.5 py-1 text-[10px]" : "px-3 py-1.5 text-xs"
                     )}
                   >
