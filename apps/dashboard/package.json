@@ -60,6 +60,7 @@
     "svix": "^1.32.0",
     "svix-react": "^1.13.0",
     "tailwind-merge": "^2.3.0",
+    "three": "^0.169.0",
     "tailwindcss-animate": "^1.0.7",
     "use-debounce": "^10.0.5",
     "yup": "^1.4.0"
@@ -71,6 +72,7 @@
     "@types/react": "19.2.2",
     "@types/react-dom": "19.2.2",
     "@types/react-syntax-highlighter": "^15.5.13",
+    "@types/three": "^0.169.0",
     "autoprefixer": "^10.4.17",
     "glob": "^10.4.1",
     "import-in-the-middle": "1.14.2",

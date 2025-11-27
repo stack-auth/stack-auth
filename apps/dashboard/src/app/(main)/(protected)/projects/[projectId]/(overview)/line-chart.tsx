@@ -3,8 +3,8 @@ import { ChartConfig, ChartContainer, ChartTooltip, ChartTooltipContent } from "
 import { UserAvatar } from '@stackframe/stack';
 import { fromNow } from '@stackframe/stack-shared/dist/utils/dates';
 import {
-    cn,
-    Typography
+  cn,
+  Typography
 } from "@stackframe/stack-ui";
 import { useState } from "react";
 import { Bar, BarChart, CartesianGrid, Cell, Pie, PieChart, TooltipProps, XAxis, YAxis } from "recharts";

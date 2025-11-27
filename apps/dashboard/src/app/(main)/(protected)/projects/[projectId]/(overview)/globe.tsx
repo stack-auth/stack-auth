@@ -5,8 +5,9 @@ import { useUser } from '@stackframe/stack';
 import { use } from '@stackframe/stack-shared/dist/utils/react';
 import { getFlagEmoji } from '@stackframe/stack-shared/dist/utils/unicode';
 import dynamic from 'next/dynamic';
-import { RefObject, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { RefObject, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { GlobeMethods } from 'react-globe.gl';
+import { MeshLambertMaterial, Vector3 } from 'three';
 
 export const globeImages = {
   light: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAAXNSR0IArs4c6QAAAERlWElmTU0AKgAAAAgAAYdpAAQAAAABAAAAGgAAAAAAA6ABAAMAAAABAAEAAKACAAQAAAABAAAAAaADAAQAAAABAAAAAQAAAAD5Ip3+AAAADUlEQVQIHWO48vjffwAI+QO1AqIWWgAAAABJRU5ErkJggg==',
@@ -27,6 +28,22 @@ function useSize(target: RefObject<HTMLDivElement | null>) {
   // Where the magic happens
   useResizeObserver(target, (entry) => setSize(entry.contentRect));
   return size;
+}
+
+function calculateGlobeVisualDiameter(globeRef: RefObject<GlobeMethods | undefined>): number {
+  if (!globeRef.current) return 0;
+
+  const current = globeRef.current;
+  const globeRadius = current.getGlobeRadius();
+  const camera = current.camera();
+  const renderer = current.renderer();
+  const centerWorld = new Vector3(0, 0, 0);
+  const cameraPosition = camera.position;
+  const distanceToCenter = centerWorld.distanceTo(cameraPosition);
+  const fov = camera.fov * (Math.PI / 180);
+  const screenHeight = renderer.domElement.height;
+  const visualRadius = (globeRadius / distanceToCenter) * (screenHeight / (2 * Math.tan(fov / 2)));
+  return visualRadius * 1.065; // Return diameter
 }
 
 export function GlobeSection({ countryData, totalUsers, children }: {countryData: Record<string, number>, totalUsers: number, children?: React.ReactNode}) {
@@ -61,11 +78,25 @@ export function GlobeSection({ countryData, totalUsers, children }: {countryData
     ? 484 - 0.35 * canvasWidth
     : 360; // For 350-355 range, use 360
 
+  // Calculate border size using exact same formula structure as cameraDistance
+  // Uses same scale factor (0.35) but inverted direction (increases as width increases)
+  // - Canvas width 350: Hide border
+  // - Canvas width 355: borderSize = BORDER_BASE_SIZE
+  // - Canvas width 500: borderSize = BORDER_BASE_SIZE + 0.35 * (500 - 355)
+  // Formula: borderSize = BORDER_BASE_SIZE + 0.35 * (width - 355) for width >= 355
+  const BORDER_BASE_SIZE = 180; // Only variable to change - base size at 355px
+  const borderSize = canvasWidth >= 355
+    ? BORDER_BASE_SIZE + 0.35 * (canvasWidth - 355)
+    : canvasWidth >= GLOBE_MIN_WIDTH
+      ? BORDER_BASE_SIZE
+      : 0;
+
   const [hexSelectedCountry, setHexSelectedCountry] = useState<{ code: string, name: string } | null>(null);
   const [polygonSelectedCountry, setPolygonSelectedCountry] = useState<{ code: string, name: string } | null>(null);
   const selectedCountry = hexSelectedCountry ?? polygonSelectedCountry ?? null;
   const [previousSelectedCountry, setPreviousSelectedCountry] = useState<{ code: string, name: string } | null>(null);
   const lastSelectedCountry = selectedCountry ?? previousSelectedCountry;
+  const [borderSizeFromGlobe, setBorderSizeFromGlobe] = useState<number>(0);
 
   useEffect(() => {
     if (selectedCountry) {
@@ -102,6 +133,21 @@ export function GlobeSection({ countryData, totalUsers, children }: {countryData
 
   const { theme, mounted } = useThemeWatcher();
 
+
+  // Create a custom material without specular highlights
+  const globeMaterial = useMemo(() => {
+    return new MeshLambertMaterial({
+      emissive: 0x000000,
+      color: 0x00000000,
+      transparent: true,
+      opacity: 0.7,
+      depthWrite: true,
+      polygonOffset: true,
+      polygonOffsetFactor: 100,
+      polygonOffsetUnits: 100,
+    });
+  }, []);
+
   // Chromium's WebGL is much faster than other browsers, so we can do some extra animations
   const [isFastEngine, setIsFastEngine] = useState<boolean | null>(null);
   useEffect(() => {
@@ -117,6 +163,7 @@ export function GlobeSection({ countryData, totalUsers, children }: {countryData
     controls.minDistance = cameraDistance;
     globeRef.current.camera().position.z = cameraDistance;
   }, [cameraDistance, shouldShowGlobe]);
+
 
   // calculate color values for each country
   const totalUsersInCountries = Object.values(countryData).reduce((acc, curr) => acc + curr, 0);
@@ -176,9 +223,29 @@ export function GlobeSection({ countryData, totalUsers, children }: {countryData
 
         {/* Globe Container - Premium 3D */}
         {shouldShowGlobe && (
-          <div className='relative flex-shrink-0 flex items-center justify-center -mt-16' style={{ width: globeSize, height: globeSize }}>
+          <div className='relative w-full h-full flex items-center justify-center'>
+            {/* Border container - same approach as globe */}
+            <div className='absolute w-full h-full pointer-events-none flex items-center justify-center'>
+              {/* Inner square div - contain behavior (square, fills either width or height) */}
+              <div className='relative' style={{ aspectRatio: '1', width: '100%', maxWidth: '100%', maxHeight: '100%' }}>
+                {/* Border div - size calculated from actual globe visual size */}
+                {borderSizeFromGlobe > 0 && (
+                  <div
+                    className='absolute rounded-full border-sky-300/40 border-2 border-solid'
+                    style={{
+                      width: `${borderSizeFromGlobe}px`,
+                      height: `${borderSizeFromGlobe}px`,
+                      left: '50%',
+                      top: '50%',
+                      transform: 'translate(-50%, -50%)',
+                    }}
+                  />
+                )}
+              </div>
+            </div>
             <div
               className='relative w-full h-full'
+              style={{ aspectRatio: '1' }}
               onMouseEnter={() => {
                 if (globeRef.current) {
                   globeRef.current.controls().autoRotate = false;
@@ -203,100 +270,113 @@ export function GlobeSection({ countryData, totalUsers, children }: {countryData
               <div className='absolute inset-0 bg-gradient-radial from-primary/10 via-transparent to-transparent blur-3xl opacity-30' />
 
               {mounted && isFastEngine !== null && (
-                <Globe
-                  key={errorRefreshCount}
-                  ref={globeRef}
-                  backgroundColor='rgba(0,0,0,0)'
-                  globeImageUrl={globeImages[theme]}
-                  width={globeSize}
-                  height={globeSize}
-                  onGlobeReady={() => {
-                    const current = globeRef.current;
-                    if (!current) return;
+                <div className='w-full h-full flex items-center justify-center'>
+                  <Globe
+                    key={errorRefreshCount}
+                    ref={globeRef}
+                    backgroundColor='rgba(0,0,0,0)'
+                    // globeImageUrl={globeImages[theme]}
+                    globeMaterial={globeMaterial}
+                    width={globeSize}
+                    showGraticules
+                    showAtmosphere={false}
+                    height={globeSize}
+                    onGlobeReady={() => {
+                      const current = globeRef.current;
+                      if (!current) return;
 
-                    const controls = current.controls();
-                    //controls.autoRotate = true;
-                    controls.autoRotateSpeed = 0.5;
-                    controls.maxDistance = cameraDistance;
-                    controls.minDistance = cameraDistance;
-                    controls.dampingFactor = 0.15;
-                    controls.enableZoom = false;
-                    controls.enableRotate = true;
-                    current.camera().position.z = cameraDistance;
-                    resumeRender();
-                  }}
-                  onZoom={resumeRender}
-                  animateIn={isFastEngine}
+                      const controls = current.controls();
+                      //controls.autoRotate = true;
+                      controls.autoRotateSpeed = 0.5;
+                      controls.maxDistance = cameraDistance;
+                      controls.minDistance = cameraDistance;
+                      controls.dampingFactor = 0.15;
+                      controls.enableZoom = false;
+                      controls.enableRotate = true;
+                      current.camera().position.z = cameraDistance;
 
-                  polygonsData={countries.features}
-                  polygonCapColor={() => "transparent"}
-                  polygonSideColor={() => "transparent"}
-                  polygonAltitude={0.001}
-                  onPolygonHover={(d: any) => {
+                      // Calculate border size from actual globe visual size
+                      const visualDiameter = calculateGlobeVisualDiameter(globeRef);
+                      setBorderSizeFromGlobe(visualDiameter);
+
+                      resumeRender();
+                    }}
+                    onZoom={() => {
+                      // Update border size when camera/view changes (rotation, etc.)
+                      const visualDiameter = calculateGlobeVisualDiameter(globeRef);
+                      setBorderSizeFromGlobe(visualDiameter);
+                      resumeRender();
+                    }}
+                    animateIn={isFastEngine}
+
+                    polygonsData={countries.features}
+                    polygonCapColor={() => "transparent"}
+                    polygonSideColor={() => "transparent"}
+                    polygonAltitude={0.001}
+                    onPolygonHover={(d: any) => {
                     resumeRender();
                     if (d) {
                       setPolygonSelectedCountry({ code: d.properties.ISO_A2_EH, name: d.properties.NAME });
                     } else {
                       setPolygonSelectedCountry(null);
                     }
-                  }}
+                    }}
 
-                  hexPolygonsData={countries.features}
-                  hexPolygonResolution={3}
-                  hexPolygonMargin={0.6}
-                  hexPolygonAltitude={(d: any) => {
-                    const highlight = isFastEngine && d.properties.ISO_A2_EH === selectedCountry?.code;
-                    return highlight ? 0.02 : 0.005;
-                  }}
-                  hexPolygonColor={(country: any) => {
-                    const highlight = isFastEngine && country.properties.ISO_A2_EH === selectedCountry?.code;
-                    const value = colorValues.get(country.properties.ISO_A2_EH) ?? null;
+                    hexPolygonsData={countries.features}
+                    hexPolygonResolution={3}
+                    hexPolygonMargin={0.6}
+                    hexPolygonAltitude={(d: any) => {
+                      const highlight = isFastEngine && d.properties.ISO_A2_EH === selectedCountry?.code;
+                      return highlight ? 0.02 : 0.005;
+                    }}
+                    hexPolygonColor={(country: any) => {
+                      const highlight = isFastEngine && country.properties.ISO_A2_EH === selectedCountry?.code;
+                      const value = colorValues.get(country.properties.ISO_A2_EH) ?? null;
 
-                    if (highlight) return theme === 'dark' ? "#ffffff" : "#1e293b";
+                      if (highlight) return theme === 'dark' ? "#ffffff" : "#1e293b";
 
-                    // Base color for all countries - theme-aware
-                    if (Number.isNaN(value) || value === null || maxColorValue < 0.0001) {
+                      // Base color for all countries - theme-aware
+                      if (Number.isNaN(value) || value === null || maxColorValue < 0.0001) {
                       // Dark mode: light slate, Light mode: darker slate for visibility
-                      return theme === 'dark' ? "#cbd5e1" : "#64748b";
-                    }
+                        return theme === 'dark' ? "#7d93bc" : "#64748b";
+                      }
 
-                    const scaled = value / maxColorValue;
-                    if (theme === 'dark') {
+                      const scaled = value / maxColorValue;
+                      if (theme === 'dark') {
                       // Dark mode: vibrant teal/emerald that pops against slate
                       // Goes from teal-400 to emerald-300 as scaled increases
-                      return `hsl(${168 - 8 * scaled}, ${70 + 15 * scaled}%, ${55 + 20 * scaled}%)`;
-                    } else {
+                        return `hsl(${168 - 8 * scaled}, ${70 + 15 * scaled}%, ${55 + 20 * scaled}%)`;
+                      } else {
                       // Light mode: rich teal/emerald that stands out against slate
                       // Goes from teal-600 to emerald-500 as scaled increases
-                      return `hsl(${168 - 8 * scaled}, ${70 + 20 * scaled}%, ${35 + 10 * scaled}%)`;
-                    }
-                  }}
-                  onHexPolygonHover={(d: any) => {
+                        return `hsl(${168 - 8 * scaled}, ${70 + 20 * scaled}%, ${35 + 10 * scaled}%)`;
+                      }
+                    }}
+                    onHexPolygonHover={(d: any) => {
                     resumeRender();
                     if (d) {
                       setHexSelectedCountry({ code: d.properties.ISO_A2_EH, name: d.properties.NAME });
                     } else {
                       setHexSelectedCountry(null);
                     }
-                  }}
+                    }}
 
-                  atmosphereColor={theme === 'dark' ? 'rgba(14, 165, 233, 0.3)' : 'rgba(30, 64, 175, 0.25)'} // Dark: sky blue, Light: deeper blue for visibility
-                  atmosphereAltitude={0.2}
-                  onHexPolygonClick={(polygon: any, event: MouseEvent, coords: { lat: number, lng: number, altitude: number }) => {
+                    onHexPolygonClick={(polygon: any, event: MouseEvent, coords: { lat: number, lng: number, altitude: number }) => {
                     resumeRender();
                     if (globeRef.current) {
                       globeRef.current.controls().autoRotate = false;
                       globeRef.current.pointOfView({ lat: coords.lat, lng: coords.lng }, 2000);
                     }
-                  }}
-                  onGlobeClick={() => {
+                    }}
+                    onGlobeClick={() => {
                     resumeRender();
                     if (globeRef.current) {
                       //globeRef.current.controls().autoRotate = true;
                       // globeRef.current.pointOfView({ altitude: 4.0 }, 2000);
                     }
-                  }}
-                />
+                    }}
+                  />
+                </div>
               )}
               <div ref={globeWindowRef} className='absolute inset-0 pointer-events-none' />
 
