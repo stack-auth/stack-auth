@@ -94,7 +94,7 @@ const dailySignUpsConfig = {
       label: "Activity",
       theme: {
         light: "hsl(221, 83%, 53%)",
-        dark: "hsl(217, 91%, 60%)",
+        dark: "hsl(240, 71%, 70%)",
       },
     },
   }
@@ -107,7 +107,7 @@ const dauConfig = {
       label: "Activity",
       theme: {
         light: "hsl(142, 76%, 36%)",
-        dark: "hsl(142, 71%, 45%)",
+        dark: "hsl(200, 91%, 70%)",
       },
     },
   }
