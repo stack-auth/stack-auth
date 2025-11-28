@@ -487,9 +487,11 @@ function SidebarContent({
           "mt-4 pt-3 border-t border-border/30 flex items-center gap-2",
           isCollapsed ? "justify-center" : "justify-between"
         )}>
-          <div>
-            {!isCollapsed && <UserButton showUserInfo />}
-          </div>
+          {!isCollapsed && (
+            <div>
+              <UserButton showUserInfo />
+            </div>
+          )}
           {onToggleCollapse && (
             <Tooltip>
               <TooltipTrigger asChild>
@@ -527,7 +529,7 @@ export default function SidebarLayout(props: { children?: React.ReactNode }) {
     <TooltipProvider>
       <div className="mx-auto w-full flex flex-col min-h-screen bg-background shadow-2xl border-x border-border/5">
         {/* Header - Sticky Floating */}
-        <div className="sticky top-3 z-20 mx-3 mb-3 mt-3 flex h-14 items-center justify-between bg-foreground/5 border border-foreground/5 backdrop-blur-xl px-4 shadow-sm rounded-2xl">
+        <div className="sticky top-3 z-20 mx-3 mb-3 mt-3 flex h-14 items-center justify-between bg-gray-100/80 dark:bg-foreground/5 border border-border/10 dark:border-foreground/5 backdrop-blur-xl px-4 shadow-sm rounded-2xl">
           {/* Left section: Logo + Menu + Project Switcher */}
           <div className="flex items-center gap-2">
             {/* Mobile: Menu button */}
@@ -547,7 +549,7 @@ export default function SidebarLayout(props: { children?: React.ReactNode }) {
               <SheetContent
                 aria-describedby={undefined}
                 side='left'
-                className="w-[248px] bg-foreground/5 border-foreground/5 p-0 backdrop-blur-xl shadow-sm"
+                className="w-[248px] bg-gray-100/90 dark:bg-foreground/5 border-border/10 dark:border-foreground/5 p-0 backdrop-blur-xl shadow-sm"
                 hasCloseButton={false}
               >
                 <SidebarContent projectId={projectId} onNavigate={() => setSidebarOpen(false)} />
@@ -589,7 +591,7 @@ export default function SidebarLayout(props: { children?: React.ReactNode }) {
           {/* Left Sidebar - Sticky */}
           <aside
             className={cn(
-              "sticky top-20 h-[calc(100vh-6rem)] ml-3 hidden flex-col bg-foreground/5 border border-foreground/5 backdrop-blur-xl lg:flex z-[10] transition-[width] duration-200 ease-in-out rounded-2xl shadow-sm",
+              "sticky top-20 h-[calc(100vh-6rem)] ml-3 hidden flex-col bg-gray-100/80 dark:bg-foreground/5 border border-border/10 dark:border-foreground/5 backdrop-blur-xl lg:flex z-[10] transition-[width] duration-200 ease-in-out rounded-2xl shadow-sm",
               isCollapsed ? "w-[64px]" : "w-[248px]"
             )}
           >

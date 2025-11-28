@@ -383,7 +383,7 @@ export function StackCompanion({ className }: { className?: string }) {
           {/* Drawer Content */}
           <div
             className={cn(
-              "h-full bg-foreground/5 backdrop-blur-xl border border-foreground/5 overflow-hidden relative rounded-2xl shadow-sm",
+              "h-full bg-gray-100/80 dark:bg-foreground/5 backdrop-blur-xl border border-border/10 dark:border-foreground/5 overflow-hidden relative rounded-2xl shadow-sm",
               isAnimating && !isResizing && "transition-[width] duration-300 ease-out"
             )}
             style={{ width: drawerWidth }}

@@ -201,6 +201,11 @@ function GlobeSectionInner({ countryData, totalUsers, children }: {countryData: 
   const lastSelectedCountry = selectedCountry ?? previousSelectedCountry;
   const [borderSizeFromGlobe, setBorderSizeFromGlobe] = useState<number>(0);
 
+  // Use ref for selectedCountry so accessor functions always read the current value
+  // (react-globe.gl may cache accessor functions and not pick up closure changes)
+  const selectedCountryRef = useRef(selectedCountry);
+  selectedCountryRef.current = selectedCountry;
+
   useEffect(() => {
     if (selectedCountry) {
       setPreviousSelectedCountry(selectedCountry);
@@ -237,17 +242,17 @@ function GlobeSectionInner({ countryData, totalUsers, children }: {countryData: 
   const { theme, mounted } = useThemeWatcher();
 
 
-  // Create a custom material without specular highlights
+  // Create a custom material without specular highlights - theme-aware
   const globeMaterial = useMemo(() => {
     return new MeshLambertMaterial({
-      emissive: 0x000000,
-      color: 0x00000000,
-      transparent: false,
+      emissive: theme === 'dark' ? 0x000000 : 0x000000,
+      color: theme === 'dark' ? 0x00000000 : 0xe2e8f0, // Dark: transparent, Light: slate-200
+      transparent: theme === 'dark',
       opacity: 1,
       depthWrite: true,
       polygonOffset: true,
     });
-  }, []);
+  }, [theme]);
 
   // Chromium's WebGL is much faster than other browsers, so we can do some extra animations
   const [isFastEngine, setIsFastEngine] = useState<boolean | null>(null);
@@ -256,6 +261,7 @@ function GlobeSectionInner({ countryData, totalUsers, children }: {countryData: 
   }, []);
 
   // Update camera position when globe size changes (e.g., window resize)
+  // Also trigger a re-render since the globe pauses animation to save CPU
   useEffect(() => {
     if (!globeRef.current || !shouldShowGlobe) return;
 
@@ -263,7 +269,12 @@ function GlobeSectionInner({ countryData, totalUsers, children }: {countryData: 
     controls.maxDistance = cameraDistance;
     controls.minDistance = cameraDistance;
     globeRef.current.camera().position.z = cameraDistance;
-  }, [cameraDistance, shouldShowGlobe]);
+
+    // Update border size and trigger re-render when size changes
+    const visualDiameter = calculateGlobeVisualDiameter(globeRef);
+    setBorderSizeFromGlobe(visualDiameter);
+    resumeRender();
+  }, [cameraDistance, shouldShowGlobe, globeSize]);
 
 
   // calculate color values for each country
@@ -354,7 +365,7 @@ function GlobeSectionInner({ countryData, totalUsers, children }: {countryData: 
                 {/* Border div - size calculated from actual globe visual size */}
                 {borderSizeFromGlobe > 0 && (
                   <div
-                    className='absolute rounded-full border-sky-300/40 border border-solid'
+                    className='absolute rounded-full border-sky-300/40 dark:border-sky-300/40 border-slate-400/50 border border-solid'
                     style={{
                       width: `${borderSizeFromGlobe}px`,
                       height: `${borderSizeFromGlobe}px`,
@@ -366,7 +377,7 @@ function GlobeSectionInner({ countryData, totalUsers, children }: {countryData: 
                 )}
                 {borderSizeFromGlobe > 0 && (
                   <div
-                    className='absolute rounded-full border-sky-300/40 border-2 border-solid blur-sm'
+                    className='absolute rounded-full border-sky-300/40 dark:border-sky-300/40 border-slate-400/50 border-2 border-solid blur-sm'
                     style={{
                       width: `${borderSizeFromGlobe}px`,
                       height: `${borderSizeFromGlobe}px`,
@@ -407,13 +418,13 @@ function GlobeSectionInner({ countryData, totalUsers, children }: {countryData: 
               {mounted && isFastEngine !== null && (
                 <div className='w-full h-full flex justify-center'>
                   <Globe
-                    key={errorRefreshCount}
+                    key={`${errorRefreshCount}-${theme}`}
                     ref={globeRef}
                     backgroundColor='rgba(0,0,0,0)'
                     // globeImageUrl={globeImages[theme]}
                     globeMaterial={globeMaterial}
                     width={globeSize}
-                    showGraticules
+                    showGraticules={theme === 'dark'}
                     showAtmosphere={false}
                     height={globeSize}
                     onGlobeReady={() => {
@@ -466,11 +477,11 @@ function GlobeSectionInner({ countryData, totalUsers, children }: {countryData: 
                     hexPolygonResolution={3}
                     hexPolygonMargin={0.6}
                     hexPolygonAltitude={(d: any) => {
-                      const highlight = isFastEngine && d.properties.ISO_A2_EH === selectedCountry?.code;
+                      const highlight = isFastEngine && d.properties.ISO_A2_EH === selectedCountryRef.current?.code;
                       return highlight ? 0.02 : 0.005;
                     }}
                     hexPolygonColor={(country: any) => {
-                      const highlight = isFastEngine && country.properties.ISO_A2_EH === selectedCountry?.code;
+                      const highlight = isFastEngine && country.properties.ISO_A2_EH === selectedCountryRef.current?.code;
                       const value = colorValues.get(country.properties.ISO_A2_EH) ?? null;
 
                       if (highlight) return theme === 'dark' ? "#ffffff" : "#1e293b";

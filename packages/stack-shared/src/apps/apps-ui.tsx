@@ -70,14 +70,14 @@ export function AppIcon({
         className={cn(
           "relative w-[72px] h-[72px] overflow-hidden select-none",
           "rounded-[20%] supports-[corner-shape:superellipse(1.5)]:[border-radius:30%] supports-[corner-shape:superellipse(1.5)]:[corner-shape:superellipse(1.5)]",  // https://x.com/konstiwohlwend/status/1991221528206405685
-          "!shadow-[0_10px_24px_0_rgba(10,69,151,0.28)]",
-          "before:absolute before:inset-0 before:bg-gradient-to-br before:from-[#4E7598] before:via-[#0D233D] before:to-[#4E7598] before:rounded-[inherit] before:supports-[corner-shape:superellipse(1.5)]:[border-radius:30%] before:supports-[corner-shape:superellipse(1.5)]:[corner-shape:superellipse(1.5)]",
+          "shadow-[0_4px_12px_0_rgba(0,0,0,0.08)] dark:!shadow-[0_10px_24px_0_rgba(10,69,151,0.28)]",
+          "before:absolute before:inset-0 before:bg-gradient-to-br before:from-slate-300 before:via-slate-400 before:to-slate-300 dark:before:from-[#4E7598] dark:before:via-[#0D233D] dark:before:to-[#4E7598] before:rounded-[inherit] before:supports-[corner-shape:superellipse(1.5)]:[border-radius:30%] before:supports-[corner-shape:superellipse(1.5)]:[corner-shape:superellipse(1.5)]",
           // !disabled && "bg-gray-300 dark:bg-gray-900",
           // disabled && 'bg-gray-300 dark:bg-gray-900',
           className,
         )}
       >
-        <div className={cn("absolute inset-[1px] isolate flex items-center justify-center rounded-[inherit] supports-[corner-shape:superellipse(1.5)]:[border-radius:30%] supports-[corner-shape:superellipse(1.5)]:[corner-shape:superellipse(1.5)]", !disabled && "bg-gradient-to-br from-[#163050] to-[#090C11]", disabled && "bg-gray-300 dark:bg-gray-900")}>
+        <div className={cn("absolute inset-[1px] isolate flex items-center justify-center rounded-[inherit] supports-[corner-shape:superellipse(1.5)]:[border-radius:30%] supports-[corner-shape:superellipse(1.5)]:[corner-shape:superellipse(1.5)]", !disabled && "bg-gradient-to-br from-slate-100 to-slate-200 dark:from-[#163050] dark:to-[#090C11]", disabled && "bg-gray-300 dark:bg-gray-900")}>
           {LogoComponent ? (
             <div
               className={cn(
@@ -94,8 +94,8 @@ export function AppIcon({
               className={cn(
                 "w-[42%] h-[42%]",
                 enabled
-                  ? "stroke-emerald-500 dark:stroke-emerald-400"
-                  : "stroke-gray-400 dark:stroke-gray-500"
+                  ? "stroke-emerald-600 dark:stroke-emerald-400"
+                  : "stroke-slate-500 dark:stroke-gray-500"
               )}
               style={{
                 opacity: disabled ? 0.5 : 1,

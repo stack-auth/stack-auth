@@ -201,7 +201,7 @@ function AppsWidget({ installedApps, projectId }: { installedApps: AppId[], proj
                   <AppIcon
                     appId={appId}
                     variant="installed"
-                    className="shadow-sm group-hover:shadow-[0_0_20px_rgba(34,197,94,0.35)] group-hover:brightness-150 group-hover:saturate-150 transition-all duration-750 group-hover:transition-none"
+                    className="shadow-sm group-hover:shadow-[0_0_20px_rgba(59,130,246,0.45)] group-hover:brightness-110 group-hover:saturate-110 transition-all duration-750 group-hover:transition-none"
                   />
                 </div>
                 <span
@@ -286,7 +286,7 @@ function DailyActiveUsersWidget({
       projectId={projectId}
       router={router}
       compact
-      gradientColor="green"
+      gradientColor="cyan"
       timeRange={timeRange}
     />
   );

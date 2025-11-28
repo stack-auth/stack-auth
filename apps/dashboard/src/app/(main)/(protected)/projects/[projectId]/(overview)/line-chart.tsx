@@ -3,8 +3,8 @@ import { ChartConfig, ChartContainer, ChartTooltip, ChartTooltipContent } from "
 import { UserAvatar } from '@stackframe/stack';
 import { fromNow, isWeekend } from '@stackframe/stack-shared/dist/utils/dates';
 import {
-  cn,
-  Typography
+    cn,
+    Typography
 } from "@stackframe/stack-ui";
 import { useState } from "react";
 import { Bar, BarChart, CartesianGrid, Cell, Pie, PieChart, TooltipProps, XAxis, YAxis } from "recharts";
@@ -170,6 +170,8 @@ function ActivityBarChart({
   );
 }
 
+export type GradientColor = "blue" | "purple" | "green" | "orange" | "slate" | "cyan";
+
 export function ChartCard({
   children,
   className,
@@ -177,14 +179,15 @@ export function ChartCard({
 }: {
   children: React.ReactNode,
   className?: string,
-  gradientColor?: "blue" | "purple" | "green" | "orange" | "slate",
+  gradientColor?: GradientColor,
 }) {
-  const hoverTints = {
+  const hoverTints: Record<GradientColor, string> = {
     blue: "group-hover:bg-blue-500/[0.03]",
     purple: "group-hover:bg-purple-500/[0.03]",
     green: "group-hover:bg-emerald-500/[0.03]",
     orange: "group-hover:bg-orange-500/[0.03]",
     slate: "group-hover:bg-slate-500/[0.02]",
+    cyan: "group-hover:bg-cyan-500/[0.03]",
   };
 
   return (
@@ -260,7 +263,7 @@ export function TabbedMetricsCard({
   chartData: DataPoint[],
   listData: UserListItem[],
   listTitle: string,
-  gradientColor?: "blue" | "purple" | "green" | "orange" | "slate",
+  gradientColor?: GradientColor,
   projectId: string,
   router: ReturnType<typeof useRouter>,
   height?: number,
@@ -279,20 +282,22 @@ export function TabbedMetricsCard({
   // For "all" time range, use totalAllTime if provided (which includes data beyond 30 days)
   const displayTotal = timeRange === 'all' && totalAllTime !== undefined ? totalAllTime : total;
 
-  const activeTabColors = {
+  const activeTabColors: Record<GradientColor, string> = {
     blue: "bg-blue-500 dark:bg-[hsl(240,71%,70%)]",
     purple: "bg-purple-500 dark:bg-[hsl(200,91%,70%)]",
     green: "bg-emerald-500 dark:bg-[hsl(200,91%,70%)]",
     orange: "bg-orange-500 dark:bg-[hsl(240,71%,70%)]",
     slate: "bg-slate-500 dark:bg-[hsl(240,71%,70%)]",
+    cyan: "bg-cyan-500 dark:bg-[hsl(200,91%,70%)]",
   };
 
-  const hoverAccentColors = {
+  const hoverAccentColors: Record<GradientColor, string> = {
     blue: "hover:bg-blue-500/[0.06]",
     purple: "hover:bg-purple-500/[0.06]",
     green: "hover:bg-emerald-500/[0.06]",
     orange: "hover:bg-orange-500/[0.06]",
     slate: "hover:bg-slate-500/[0.04]",
+    cyan: "hover:bg-cyan-500/[0.06]",
   };
 
   const activeColorClass = activeTabColors[gradientColor];
@@ -431,7 +436,7 @@ export function LineChartDisplay({
   className?: string,
   height?: number,
   compact?: boolean,
-  gradientColor?: "blue" | "purple" | "green" | "orange" | "slate",
+  gradientColor?: GradientColor,
   timeRange: TimeRange,
 }) {
   const filteredDatapoints = filterDatapointsByTimeRange(datapoints, timeRange);
@@ -513,7 +518,7 @@ export function DonutChartDisplay({
   className?: string,
   height?: number,
   compact?: boolean,
-  gradientColor?: "blue" | "purple" | "green" | "orange" | "slate",
+  gradientColor?: GradientColor,
 }) {
   const total = datapoints.reduce((sum, d) => sum + d.count, 0);
   const innerRadius = compact ? 40 : 60;
