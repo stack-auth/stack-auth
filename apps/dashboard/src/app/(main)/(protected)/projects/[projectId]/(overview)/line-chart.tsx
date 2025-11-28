@@ -3,8 +3,8 @@ import { ChartConfig, ChartContainer, ChartTooltip, ChartTooltipContent } from "
 import { UserAvatar } from '@stackframe/stack';
 import { fromNow } from '@stackframe/stack-shared/dist/utils/dates';
 import {
-    cn,
-    Typography
+  cn,
+  Typography
 } from "@stackframe/stack-ui";
 import { useState } from "react";
 import { Bar, BarChart, CartesianGrid, Cell, Pie, PieChart, TooltipProps, XAxis, YAxis } from "recharts";
@@ -36,15 +36,6 @@ const isWeekend = (dateString: string): boolean => {
   if (isNaN(date.getTime())) return false;
   const dayOfWeek = date.getDay();
   return dayOfWeek === 0 || dayOfWeek === 6; // Sunday (0) or Saturday (6)
-};
-
-// Standardized weekend colors
-const WEEKEND_COLOR_BLUE = "hsl(217, 91%, 30%)";
-const WEEKEND_COLOR_GREEN = "hsl(142, 70%, 25%)";
-
-const getWeekendColor = (chartName: string) => {
-  if (chartName === 'Daily Active Users') return WEEKEND_COLOR_GREEN;
-  return WEEKEND_COLOR_BLUE;
 };
 
 const CustomTooltip = ({ active, payload }: TooltipProps<number, string>) => {
@@ -141,11 +132,11 @@ function ActivityBarChart({
         >
           {datapoints.map((entry, index) => {
             const isWeekendDay = isWeekend(entry.date);
-            const weekendColor = getWeekendColor(config.name);
             return (
               <Cell
                 key={`cell-${index}`}
-                fill={isWeekendDay ? weekendColor : "var(--color-activity)"}
+                fill="var(--color-activity)"
+                opacity={isWeekendDay ? 0.5 : 1}
               />
             );
           })}
@@ -246,7 +237,7 @@ export function TimeRangeToggle({
           className={cn(
             "px-3 py-1.5 text-xs font-medium rounded-lg transition-all duration-150 hover:transition-none",
             timeRange === option.value
-              ? "bg-background text-foreground shadow-sm ring-1 ring-foreground/[0.06]"
+              ? "bg-background text-foreground shadow-sm ring-1 ring-foreground/[0.06] dark:bg-[hsl(240,71%,70%)]/10 dark:text-[hsl(240,71%,90%)] dark:ring-[hsl(240,71%,70%)]/20"
               : "text-muted-foreground hover:text-foreground hover:bg-background/50"
           )}
         >
@@ -295,11 +286,11 @@ export function TabbedMetricsCard({
   const displayTotal = timeRange === 'all' && totalAllTime !== undefined ? totalAllTime : total;
 
   const activeTabColors = {
-    blue: "bg-blue-500",
-    purple: "bg-purple-500",
-    green: "bg-emerald-500",
-    orange: "bg-orange-500",
-    slate: "bg-slate-500",
+    blue: "bg-blue-500 dark:bg-[hsl(240,71%,70%)]",
+    purple: "bg-purple-500 dark:bg-[hsl(200,91%,70%)]",
+    green: "bg-emerald-500 dark:bg-[hsl(200,91%,70%)]",
+    orange: "bg-orange-500 dark:bg-[hsl(240,71%,70%)]",
+    slate: "bg-slate-500 dark:bg-[hsl(240,71%,70%)]",
   };
 
   const hoverAccentColors = {

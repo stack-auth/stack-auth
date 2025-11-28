@@ -296,7 +296,7 @@ export function StackCompanion({ className }: { className?: string }) {
     >
       {/* The Handle Pill */}
       <div className={cn(
-        "flex flex-col items-center gap-3 px-2 py-3 bg-foreground/5 backdrop-blur-xl border border-foreground/5 shadow-sm transition-all duration-300 select-none",
+        "flex flex-col items-center gap-3 px-2 py-3 bg-foreground/[0.03] backdrop-blur-xl border border-foreground/5 shadow-sm transition-all duration-300 select-none",
         // Only show grab cursor when an item is selected (drawer can be resized)
         activeItem && "cursor-grab active:cursor-grabbing",
         // Shape morphing
