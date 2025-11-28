@@ -41,9 +41,7 @@ export function AppIcon({
   cn,
 }: AppIconProps) {
 
-  // TODO: move this info to apps-frontend.tsx
-  const isExtenal = ["neon", "vercel", "convex"].includes(appId);
-  const filterId = isExtenal ? "glow-fx-external" : "glow-fx";
+  const filterId = "glow-fx";
 
   return (
     <>

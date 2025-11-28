@@ -319,7 +319,7 @@ export function StackCompanion({ className }: { className?: string }) {
                   handleItemClick(item.id);
                 }}
               >
-                <item.icon className={cn("h-5 w-5 transition-transform duration-[50ms] group-hover:scale-110 text-sky-200")} />
+                <item.icon className={cn("h-5 w-5 transition-transform duration-[50ms] group-hover:scale-110", item.color)} />
               </Button>
             </TooltipTrigger>
             <TooltipContent side="left" className="z-[60] mr-2">

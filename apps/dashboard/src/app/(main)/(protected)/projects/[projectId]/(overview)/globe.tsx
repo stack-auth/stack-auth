@@ -1,3 +1,4 @@
+import { useWaitForIdle } from '@/hooks/use-wait-for-idle';
 import { useThemeWatcher } from '@/lib/theme';
 import { cn } from '@/lib/utils';
 import useResizeObserver from '@react-hook/resize-observer';
@@ -5,7 +6,7 @@ import { useUser } from '@stackframe/stack';
 import { use } from '@stackframe/stack-shared/dist/utils/react';
 import { getFlagEmoji } from '@stackframe/stack-shared/dist/utils/unicode';
 import dynamic from 'next/dynamic';
-import { RefObject, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { RefObject, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { GlobeMethods } from 'react-globe.gl';
 import { MeshLambertMaterial, Vector3 } from 'three';
 
@@ -40,13 +41,33 @@ function calculateGlobeVisualDiameter(globeRef: RefObject<GlobeMethods | undefin
   const centerWorld = new Vector3(0, 0, 0);
   const cameraPosition = camera.position;
   const distanceToCenter = centerWorld.distanceTo(cameraPosition);
-  const fov = camera.fov * (Math.PI / 180);
+  const fov = (camera as any).fov * (Math.PI / 180);
   const screenHeight = renderer.domElement.height;
   const visualRadius = (globeRadius / distanceToCenter) * (screenHeight / (2 * Math.tan(fov / 2)));
   return visualRadius * 1.065; // Return diameter
 }
 
 export function GlobeSection({ countryData, totalUsers, children }: {countryData: Record<string, number>, totalUsers: number, children?: React.ReactNode}) {
+  const hasWaitedForIdle = useWaitForIdle(1000, 5000);
+  if (!hasWaitedForIdle) {
+    return <GlobeLoading devReason="waiting for cpu" />;
+  }
+  return (
+    <Suspense fallback={<GlobeLoading devReason="suspended" />}>
+      <GlobeSectionInner countryData={countryData} totalUsers={totalUsers} />
+    </Suspense>
+  );
+}
+
+function GlobeLoading(props: { devReason: string }) {
+  return <div className="w-full aspect-square flex items-center justify-center">
+    <span className="text-sm text-muted-foreground">
+      loading globe... {process.env.NODE_ENV === "development" ? props.devReason : ""}
+    </span>
+  </div>;
+}
+
+function GlobeSectionInner({ countryData, totalUsers, children }: {countryData: Record<string, number>, totalUsers: number, children?: React.ReactNode}) {
   const countries = use(countriesPromise);
   const globeRef = useRef<GlobeMethods | undefined>(undefined);
 
@@ -69,6 +90,7 @@ export function GlobeSection({ countryData, totalUsers, children }: {countryData
   // Formula: zoom = 484 - 0.35 * width (for width >= 355)
   const canvasWidth = globeContainerSize?.width ?? 0;
   const GLOBE_MIN_WIDTH = 350;
+
   const shouldShowGlobe = canvasWidth >= GLOBE_MIN_WIDTH;
 
   // Calculate zoom based on width
@@ -139,12 +161,10 @@ export function GlobeSection({ countryData, totalUsers, children }: {countryData
     return new MeshLambertMaterial({
       emissive: 0x000000,
       color: 0x00000000,
-      transparent: true,
-      opacity: 0.7,
+      transparent: false,
+      opacity: 1,
       depthWrite: true,
       polygonOffset: true,
-      polygonOffsetFactor: 100,
-      polygonOffsetUnits: 100,
     });
   }, []);
 
@@ -212,11 +232,27 @@ export function GlobeSection({ countryData, totalUsers, children }: {countryData
 
   const tooltipRef = useRef<HTMLDivElement>(null);
 
+  const [globeReady, setGlobeReady] = useState(false);
+
+  // set globeReady to true after a bit in case onGlobeReady was not called
+  useEffect(() => {
+    const timeout = setTimeout(() => {
+      setGlobeReady(true);
+    }, 5000);
+    return () => clearTimeout(timeout);
+  }, []);
+
   return (
-    <div className='w-full h-full'>
+    <div className='relative w-full aspect-square'>
+      <div inert className='absolute inset-0 pointer-events-none'>
+        {!globeReady && <GlobeLoading devReason="not ready" />}
+      </div>
       <div
         ref={sectionContainerRef}
-        className='relative flex items-center justify-center w-full h-full'
+        className={cn(
+          'relative flex items-center justify-center w-full h-full transition-all duration-500',
+          globeReady ? 'scale-[1]' : 'scale-[0.1]',
+        )}
       >
         {/* Hidden measurement div - always rendered to track size */}
         <div ref={globeContainerRef} className='absolute inset-0 pointer-events-none' aria-hidden="true" />
@@ -225,13 +261,25 @@ export function GlobeSection({ countryData, totalUsers, children }: {countryData
         {shouldShowGlobe && (
           <div className='relative w-full h-full flex items-center justify-center'>
             {/* Border container - same approach as globe */}
-            <div className='absolute w-full h-full pointer-events-none flex items-center justify-center'>
+            <div inert className='absolute top-0 left-0 right-0 pointer-events-none flex items-center justify-center'>
               {/* Inner square div - contain behavior (square, fills either width or height) */}
               <div className='relative' style={{ aspectRatio: '1', width: '100%', maxWidth: '100%', maxHeight: '100%' }}>
                 {/* Border div - size calculated from actual globe visual size */}
                 {borderSizeFromGlobe > 0 && (
                   <div
-                    className='absolute rounded-full border-sky-300/40 border-2 border-solid'
+                    className='absolute rounded-full border-sky-300/40 border border-solid'
+                    style={{
+                      width: `${borderSizeFromGlobe}px`,
+                      height: `${borderSizeFromGlobe}px`,
+                      left: '50%',
+                      top: '50%',
+                      transform: 'translate(-50%, -50%)',
+                    }}
+                  />
+                )}
+                {borderSizeFromGlobe > 0 && (
+                  <div
+                    className='absolute rounded-full border-sky-300/40 border-2 border-solid blur-sm'
                     style={{
                       width: `${borderSizeFromGlobe}px`,
                       height: `${borderSizeFromGlobe}px`,
@@ -270,7 +318,7 @@ export function GlobeSection({ countryData, totalUsers, children }: {countryData
               <div className='absolute inset-0 bg-gradient-radial from-primary/10 via-transparent to-transparent blur-3xl opacity-30' />
 
               {mounted && isFastEngine !== null && (
-                <div className='w-full h-full flex items-center justify-center'>
+                <div className='w-full h-full flex justify-center'>
                   <Globe
                     key={errorRefreshCount}
                     ref={globeRef}
@@ -282,22 +330,27 @@ export function GlobeSection({ countryData, totalUsers, children }: {countryData
                     showAtmosphere={false}
                     height={globeSize}
                     onGlobeReady={() => {
+                      console.log("globe ready");
+                      setGlobeReady(true);
+
                       const current = globeRef.current;
-                      if (!current) return;
+                      if (current) {
 
-                      const controls = current.controls();
-                      //controls.autoRotate = true;
-                      controls.autoRotateSpeed = 0.5;
-                      controls.maxDistance = cameraDistance;
-                      controls.minDistance = cameraDistance;
-                      controls.dampingFactor = 0.15;
-                      controls.enableZoom = false;
-                      controls.enableRotate = true;
-                      current.camera().position.z = cameraDistance;
+                        const controls = current.controls();
+                        controls.autoRotate = false;
+                        controls.autoRotateSpeed = 0.5;
+                        controls.maxDistance = cameraDistance;
+                        controls.minDistance = cameraDistance;
+                        controls.dampingFactor = 0.15;
+                        controls.enableZoom = false;
+                        controls.enableRotate = true;
+                        current.camera().position.z = cameraDistance;
 
-                      // Calculate border size from actual globe visual size
-                      const visualDiameter = calculateGlobeVisualDiameter(globeRef);
-                      setBorderSizeFromGlobe(visualDiameter);
+                        // Calculate border size from actual globe visual size
+                        const visualDiameter = calculateGlobeVisualDiameter(globeRef);
+                        setBorderSizeFromGlobe(visualDiameter);
+                      }
+
 
                       resumeRender();
                     }}
@@ -360,7 +413,6 @@ export function GlobeSection({ countryData, totalUsers, children }: {countryData
                       setHexSelectedCountry(null);
                     }
                     }}
-
                     onHexPolygonClick={(polygon: any, event: MouseEvent, coords: { lat: number, lng: number, altitude: number }) => {
                     resumeRender();
                     if (globeRef.current) {
@@ -380,43 +432,43 @@ export function GlobeSection({ countryData, totalUsers, children }: {countryData
               )}
               <div ref={globeWindowRef} className='absolute inset-0 pointer-events-none' />
 
-              {/* Tooltip */}
-              {lastSelectedCountry && (
-                <div
-                  ref={tooltipRef}
-                  className={cn(
-                    "fixed top-0 left-0 z-[100] min-w-[180px] p-4 rounded-2xl shadow-xl bg-background/95 backdrop-blur-xl ring-1 ring-foreground/[0.08] pointer-events-none",
-                    selectedCountry ? 'opacity-100' : 'opacity-0 transition-opacity duration-300 ease-out',
-                  )}
-                >
-                  <div className="flex items-center gap-2.5 font-semibold mb-3 pb-3 border-b border-foreground/[0.06]">
-                    <span className="text-xl leading-none">
-                      {lastSelectedCountry.code.match(/^[a-zA-Z][a-zA-Z]$/) ? getFlagEmoji(lastSelectedCountry.code) : '🌍'}
-                    </span>
-                    <span className="truncate text-sm">{lastSelectedCountry.name}</span>
-                  </div>
-                  <div className="space-y-2 text-xs">
-                    <div className="flex justify-between items-center gap-6">
-                      <span className="text-muted-foreground">Users</span>
-                      <span className="font-mono font-semibold text-foreground tabular-nums">
-                        {(countryData[lastSelectedCountry.code] ?? 0).toLocaleString()}
-                      </span>
-                    </div>
-                    <div className="flex justify-between items-center gap-6">
-                      <span className="text-muted-foreground">Share</span>
-                      <span className="font-mono font-semibold text-blue-500 dark:text-blue-400 tabular-nums">
-                        {totalUsers > 0
-                          ? `${((countryData[lastSelectedCountry.code] ?? 0) / totalUsers * 100).toFixed(1)}%`
-                          : 'N/A'}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              )}
             </div>
           </div>
         )}
       </div>
+      {/* Tooltip */}
+      {lastSelectedCountry && (
+        <div
+          ref={tooltipRef}
+          className={cn(
+                    "fixed top-0 left-0 z-[100] min-w-[180px] p-4 rounded-2xl shadow-xl bg-background/95 backdrop-blur-xl ring-1 ring-foreground/[0.08] pointer-events-none",
+                    selectedCountry ? 'opacity-100' : 'opacity-0 transition-opacity duration-300 ease-out',
+                  )}
+        >
+          <div className="flex items-center gap-2.5 font-semibold mb-3 pb-3 border-b border-foreground/[0.06]">
+            <span className="text-xl leading-none">
+              {lastSelectedCountry.code.match(/^[a-zA-Z][a-zA-Z]$/) ? getFlagEmoji(lastSelectedCountry.code) : '🌍'}
+            </span>
+            <span className="truncate text-sm">{lastSelectedCountry.name}</span>
+          </div>
+          <div className="space-y-2 text-xs">
+            <div className="flex justify-between items-center gap-6">
+              <span className="text-muted-foreground">Users</span>
+              <span className="font-mono font-semibold text-foreground tabular-nums">
+                {(countryData[lastSelectedCountry.code] ?? 0).toLocaleString()}
+              </span>
+            </div>
+            <div className="flex justify-between items-center gap-6">
+              <span className="text-muted-foreground">Share</span>
+              <span className="font-mono font-semibold text-blue-500 dark:text-blue-400 tabular-nums">
+                {totalUsers > 0
+                  ? `${((countryData[lastSelectedCountry.code] ?? 0) / totalUsers * 100).toFixed(1)}%`
+                  : 'N/A'}
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -402,6 +402,33 @@ function MetricsContent({
   const GLOBE_MIN_WIDTH = 352.5;
   const shouldShowGlobeSection = showGlobe && globeColumnWidth >= GLOBE_MIN_WIDTH;
 
+  // On lg screens, derive grid height from globe column width
+  // Formula: height = min(max(viewHeight, globeWidth), globeWidth * 1.75)
+  const [isLgScreen, setIsLgScreen] = useState(false);
+  const [viewHeight, setViewHeight] = useState(0);
+  useEffect(() => {
+    const mediaQuery = window.matchMedia('(min-width: 1024px)');
+    setIsLgScreen(mediaQuery.matches);
+    const handler = (e: MediaQueryListEvent) => setIsLgScreen(e.matches);
+    mediaQuery.addEventListener('change', handler);
+
+    // Track viewport height
+    const updateViewHeight = () => setViewHeight(window.innerHeight - 180); // same as calc(100vh - 180px)
+    updateViewHeight();
+    window.addEventListener('resize', updateViewHeight);
+
+    return () => {
+      mediaQuery.removeEventListener('change', handler);
+      window.removeEventListener('resize', updateViewHeight);
+    };
+  }, []);
+
+  // Calculate grid height based on globe column width on lg screens
+  // height = min(max(viewHeight, globeWidth), globeWidth * 1.75)
+  const gridHeightFromGlobe = isLgScreen && showGlobe && shouldShowGlobeSection && globeColumnWidth > 0 && viewHeight > 0
+    ? Math.min(Math.max(viewHeight, globeColumnWidth), globeColumnWidth * 1.75)
+    : undefined;
+
   // Render a widget by ID
   const renderWidget = (widgetId: WidgetId) => {
     switch (widgetId) {
@@ -444,88 +471,86 @@ function MetricsContent({
         ref={gridContainerRef}
         className={cn(
           "grid gap-4 sm:gap-5 min-h-[400px]",
+          gridHeightFromGlobe ? "" : "h-[calc(100vh-180px)]",
           showGlobe ? "grid-cols-1 lg:grid-cols-12" : "grid-cols-1"
         )}
+        style={gridHeightFromGlobe ? { height: gridHeightFromGlobe } : undefined}
       >
-        {/* Top Row: Globe + Apps */}
+        {/* Left Column: Globe - Hidden on mobile */}
         {showGlobe && shouldShowGlobeSection && (
-          <>
-            {/* Globe - Left side */}
-            <div className="hidden lg:flex lg:col-span-5 h-[480px] relative">
-              <div className="w-full flex items-center justify-center">
-                <GlobeSectionWithData includeAnonymous={includeAnonymous} />
-              </div>
-              {/* Total Users overlay */}
-              <div className="absolute top-0 left-0 px-1 z-10">
-                <div className="flex items-center gap-2 mb-2">
-                  <div className="p-1.5 rounded-lg bg-foreground/[0.04]">
-                    <Globe2 className="h-3.5 w-3.5 text-muted-foreground" />
-                  </div>
-                  <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                    Total Users
-                  </span>
-                </div>
-                <div className="text-4xl font-bold tracking-tight text-foreground pl-0.5">
-                  <Suspense fallback="...">
-                    <TotalUsersDisplay timeRange={timeRange} includeAnonymous={includeAnonymous} minimal />
-                  </Suspense>
-                </div>
-              </div>
+          <div className="hidden lg:flex lg:col-span-5 h-full min-h-[300px] relative">
+            {/* Globe takes full space */}
+            <div className="absolute inset-0 flex items-start justify-center">
+              <GlobeSectionWithData includeAnonymous={includeAnonymous} />
             </div>
-
-            {/* Apps - Right side of top row */}
-            {statWidgets.length > 0 && (
-              <div className="lg:col-span-7">
-                {statWidgets.map(widgetId => (
-                  <div key={widgetId}>
-                    {renderWidget(widgetId)}
-                  </div>
-                ))}
+            {/* Total Users overlay */}
+            <div className="absolute top-0 left-0 px-1 z-10">
+              <div className="flex items-center gap-2 mb-2">
+                <div className="p-1.5 rounded-lg bg-foreground/[0.04]">
+                  <Globe2 className="h-3.5 w-3.5 text-muted-foreground" />
+                </div>
+                <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                  Total Users
+                </span>
               </div>
-            )}
-          </>
-        )}
-
-        {/* Apps only (when globe is hidden) */}
-        {!showGlobe && statWidgets.length > 0 && (
-          <div className="grid gap-4 grid-cols-1 sm:grid-cols-2">
-            {statWidgets.map(widgetId => (
-              <div key={widgetId}>
-                {renderWidget(widgetId)}
+              <div className="text-4xl font-bold tracking-tight text-foreground pl-0.5">
+                <Suspense fallback="...">
+                  <TotalUsersDisplay timeRange={timeRange} includeAnonymous={includeAnonymous} minimal />
+                </Suspense>
               </div>
-            ))}
-          </div>
-        )}
-
-        {/* Bottom Row: Charts - Full width, 50:50 split */}
-        {chartWidgets.length > 0 && (
-          <div className={cn(
-            "grid gap-4",
-            chartWidgets.length === 1
-              ? "grid-cols-1 lg:col-span-12"
-              : "grid-cols-1 sm:grid-cols-2 lg:col-span-12"
-          )}>
-            {chartWidgets.map(widgetId => (
-              <div key={widgetId} className="h-[200px]">
-                {renderWidget(widgetId)}
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* Empty state when no widgets */}
-        {rightWidgets.length === 0 && !showGlobe && (
-          <div className="flex-1 flex items-center justify-center lg:col-span-12">
-            <div className="text-center p-10">
-              <div className="p-3 rounded-2xl bg-foreground/[0.03] w-fit mx-auto mb-4">
-                <LayoutGrid className="h-8 w-8 text-muted-foreground/40" />
-              </div>
-              <Typography variant="secondary" className="text-sm">
-                No widgets enabled
-              </Typography>
             </div>
           </div>
         )}
+
+        {/* Right Column: Stats Grid */}
+        <div className={cn(
+          "flex flex-col gap-12 h-full min-h-0",
+          showGlobe && shouldShowGlobeSection ? "lg:col-span-7" : showGlobe ? "lg:col-span-12" : ""
+        )}>
+          {/* Stat Widgets Row (Apps) */}
+          {statWidgets.length > 0 && (
+            <div className={cn(
+              "shrink-0 grid gap-4",
+              statWidgets.length === 1 ? "grid-cols-1" : "grid-cols-1 sm:grid-cols-2"
+            )}>
+              {statWidgets.map(widgetId => (
+                <div key={widgetId}>
+                  {renderWidget(widgetId)}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Charts Grid */}
+          {chartWidgets.length > 0 && (
+            <div className={cn(
+              "flex-1 min-h-0 grid gap-4",
+              chartWidgets.length === 1
+                ? "grid-cols-1"
+                : "grid-cols-1 sm:grid-cols-2"
+            )}>
+              {chartWidgets.map(widgetId => (
+                <div key={widgetId} className="h-full min-h-[220px]">
+                  {renderWidget(widgetId)}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Empty state when no widgets */}
+          {rightWidgets.length === 0 && !showGlobe && (
+            <div className="flex-1 flex items-center justify-center min-h-[300px]">
+              <div className="text-center p-10">
+                <div className="p-3 rounded-2xl bg-foreground/[0.03] w-fit mx-auto mb-4">
+                  <LayoutGrid className="h-8 w-8 text-muted-foreground/40" />
+                </div>
+                <Typography variant="secondary" className="text-sm">
+                  No widgets enabled
+                </Typography>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Mobile Globe Notice */}
