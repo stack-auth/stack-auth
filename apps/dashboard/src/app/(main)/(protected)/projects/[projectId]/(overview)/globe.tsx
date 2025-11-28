@@ -76,9 +76,9 @@ function GlobeLoading(props: { devReason: string, className?: string }) {
   const syncedAnimation = (duration: number, reverse = false) => ({
     animationDelay: `${syncDelay}ms`,
     animationDuration: `${duration}s`,
-    animationTimingFunction: 'linear',
+    animationTimingFunction: 'ease-in-out',
     animationIterationCount: 'infinite',
-    animationDirection: reverse ? 'reverse' : 'normal',
+    animationDirection: reverse ? 'alternate' : 'alternate-reverse',
   });
 
   return (
@@ -117,12 +117,8 @@ function GlobeLoading(props: { devReason: string, className?: string }) {
         {/* Meridian lines */}
         <div className="absolute inset-[15%] rounded-full border border-foreground/[0.04]" />
         <div
-          className="absolute inset-[15%] rounded-full border border-foreground/[0.04]"
+          className="absolute inset-[20%] rounded-full border border-foreground/[0.04]"
           style={{ transform: 'rotateY(60deg)' }}
-        />
-        <div
-          className="absolute inset-[15%] rounded-full border border-foreground/[0.04]"
-          style={{ transform: 'rotateY(-60deg)' }}
         />
 
         {/* Center glow */}
@@ -142,11 +138,11 @@ function GlobeLoading(props: { devReason: string, className?: string }) {
           />
         </div>
 
-        {process.env.NODE_ENV === "development" && (
+        {/*process.env.NODE_ENV === "development" && (
           <div className="absolute inset-0 flex items-center justify-center">
             <span className="text-[10px] text-muted-foreground/50">{props.devReason}</span>
           </div>
-        )}
+        )*/}
       </div>
     </div>
   );

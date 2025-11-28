@@ -220,13 +220,8 @@ function AppsWidget({ installedApps, projectId }: { installedApps: AppId[], proj
             title="Explore all apps"
           >
             <div className="relative transition-transform duration-750 group-hover:transition-none group-hover:scale-105">
-              <div className={cn(
-                "flex items-center justify-center w-12 h-12 sm:w-14 sm:h-14",
-                "rounded-[20%] supports-[corner-shape:superellipse(1.5)]:[border-radius:30%] supports-[corner-shape:superellipse(1.5)]:[corner-shape:superellipse(1.5)]",
-                "bg-muted/60 ring-1 ring-foreground/[0.08]",
-                "group-hover:ring-2 group-hover:ring-foreground/20 group-hover:bg-muted transition-all duration-750 group-hover:transition-none"
-              )}>
-                <Compass className="w-6 h-6 sm:w-7 sm:h-7 text-muted-foreground group-hover:text-foreground transition-colors duration-750 group-hover:transition-none" />
+              <div className="flex items-center justify-center w-[72px] h-[72px]">
+                <Compass className="w-[30px] h-[30px] text-muted-foreground group-hover:text-foreground transition-colors duration-750 group-hover:transition-none" />
               </div>
             </div>
             <span className="text-[11px] font-medium text-center text-muted-foreground group-hover:text-foreground transition-colors duration-750 group-hover:transition-none leading-tight w-full">
@@ -240,13 +235,8 @@ function AppsWidget({ installedApps, projectId }: { installedApps: AppId[], proj
               title="See all apps"
             >
               <div className="relative transition-transform duration-750 group-hover:transition-none group-hover:scale-105">
-                <div className={cn(
-                  "flex items-center justify-center w-12 h-12 sm:w-14 sm:h-14",
-                  "rounded-[20%] supports-[corner-shape:superellipse(1.5)]:[border-radius:30%] supports-[corner-shape:superellipse(1.5)]:[corner-shape:superellipse(1.5)]",
-                  "bg-muted/60 ring-1 ring-foreground/[0.08]",
-                  "group-hover:ring-2 group-hover:ring-foreground/20 group-hover:bg-muted transition-all duration-750 group-hover:transition-none"
-                )}>
-                  <MoreHorizontal className="w-6 h-6 sm:w-7 sm:h-7 text-muted-foreground group-hover:text-foreground transition-colors duration-750 group-hover:transition-none" />
+                <div className="flex items-center justify-center w-[72px] h-[72px]">
+                  <MoreHorizontal className="w-[30px] h-[30px] text-muted-foreground group-hover:text-foreground transition-colors duration-750 group-hover:transition-none" />
                 </div>
               </div>
               <span className="text-[11px] font-medium text-center text-muted-foreground group-hover:text-foreground transition-colors duration-750 group-hover:transition-none leading-tight w-full">
@@ -261,13 +251,8 @@ function AppsWidget({ installedApps, projectId }: { installedApps: AppId[], proj
               title="Show less"
             >
               <div className="relative transition-transform duration-750 group-hover:transition-none group-hover:scale-105">
-                <div className={cn(
-                  "flex items-center justify-center w-12 h-12 sm:w-14 sm:h-14",
-                  "rounded-[20%] supports-[corner-shape:superellipse(1.5)]:[border-radius:30%] supports-[corner-shape:superellipse(1.5)]:[corner-shape:superellipse(1.5)]",
-                  "bg-muted/60 ring-1 ring-foreground/[0.08]",
-                  "group-hover:ring-2 group-hover:ring-foreground/20 group-hover:bg-muted transition-all duration-750 group-hover:transition-none"
-                )}>
-                  <ChevronUp className="w-6 h-6 sm:w-7 sm:h-7 text-muted-foreground group-hover:text-foreground transition-colors duration-750 group-hover:transition-none" />
+                <div className="flex items-center justify-center w-[72px] h-[72px]">
+                  <ChevronUp className="w-[30px] h-[30px] text-muted-foreground group-hover:text-foreground transition-colors duration-750 group-hover:transition-none" />
                 </div>
               </div>
               <span className="text-[11px] font-medium text-center text-muted-foreground group-hover:text-foreground transition-colors duration-750 group-hover:transition-none truncate leading-tight w-full">
