@@ -33,7 +33,7 @@ We support Next.js, React, and JavaScript frontends, along with any backend that
 - [🏗 Development & Contribution](#-development--contribution)
   - [Requirements](#requirements)
   - [Setup](#setup)
-  - [Database migrations](#database-migrations)
+  - [Useful commands](#useful-commands)
   - [Chat with the codebase](#chat-with-the-codebase)
   - [Architecture overview](#architecture-overview)
 - [❤ Contributors](#-contributors)
