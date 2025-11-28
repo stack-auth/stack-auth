@@ -60,11 +60,60 @@ export function GlobeSection({ countryData, totalUsers, children }: {countryData
 }
 
 function GlobeLoading(props: { devReason: string }) {
-  return <div className="w-full aspect-square flex items-center justify-center">
-    <span className="text-sm text-muted-foreground">
-      loading globe... {process.env.NODE_ENV === "development" ? props.devReason : ""}
-    </span>
-  </div>;
+  return (
+    <div className="w-full aspect-square flex items-center justify-center">
+      <div className="relative w-[70%] aspect-square">
+        {/* Main globe circle with gradient */}
+        <div className="absolute inset-0 rounded-full bg-gradient-to-br from-foreground/[0.06] via-foreground/[0.03] to-transparent animate-pulse" />
+        
+        {/* Rotating orbit ring 1 */}
+        <div 
+          className="absolute inset-[-5%] rounded-full border border-foreground/[0.08] animate-[spin_8s_linear_infinite]"
+          style={{ transform: 'rotateX(70deg)' }}
+        />
+        
+        {/* Rotating orbit ring 2 */}
+        <div 
+          className="absolute inset-[5%] rounded-full border border-dashed border-foreground/[0.06] animate-[spin_12s_linear_infinite_reverse]"
+          style={{ transform: 'rotateX(70deg) rotateZ(30deg)' }}
+        />
+        
+        {/* Equator line */}
+        <div 
+          className="absolute inset-[10%] rounded-full border border-foreground/[0.05]"
+          style={{ transform: 'rotateX(80deg)' }}
+        />
+        
+        {/* Meridian lines */}
+        <div className="absolute inset-[15%] rounded-full border border-foreground/[0.04]" />
+        <div 
+          className="absolute inset-[15%] rounded-full border border-foreground/[0.04]"
+          style={{ transform: 'rotateY(60deg)' }}
+        />
+        <div 
+          className="absolute inset-[15%] rounded-full border border-foreground/[0.04]"
+          style={{ transform: 'rotateY(-60deg)' }}
+        />
+        
+        {/* Center glow */}
+        <div className="absolute inset-[30%] rounded-full bg-foreground/[0.02] blur-xl animate-pulse" />
+        
+        {/* Shimmer effect */}
+        <div className="absolute inset-0 rounded-full overflow-hidden">
+          <div 
+            className="absolute inset-0 bg-gradient-to-r from-transparent via-foreground/[0.03] to-transparent animate-[shimmer_2s_ease-in-out_infinite]"
+            style={{ transform: 'translateX(-100%)' }}
+          />
+        </div>
+        
+        {process.env.NODE_ENV === "development" && (
+          <div className="absolute inset-0 flex items-center justify-center">
+            <span className="text-[10px] text-muted-foreground/50">{props.devReason}</span>
+          </div>
+        )}
+      </div>
+    </div>
+  );
 }
 
 function GlobeSectionInner({ countryData, totalUsers, children }: {countryData: Record<string, number>, totalUsers: number, children?: React.ReactNode}) {

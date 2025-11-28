@@ -9,7 +9,7 @@ import { useUser } from '@stackframe/stack';
 import { ALL_APPS, type AppId } from "@stackframe/stack-shared/dist/apps/apps-config";
 import { typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import { cn, Typography } from '@stackframe/stack-ui';
-import { ChevronUp, Globe2, LayoutGrid, MoreHorizontal } from "lucide-react";
+import { ChevronUp, Compass, Globe2, LayoutGrid, MoreHorizontal } from "lucide-react";
 import { Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { PageLayout } from "../page-layout";
 import { useAdminApp, useProjectId } from '../use-admin-app';
@@ -156,10 +156,14 @@ function AppsWidget({ installedApps, projectId }: { installedApps: AppId[], proj
   const maxRows = 2;
   const maxItems = itemsPerRow * maxRows;
 
-  const canExpand = installedApps.length > maxItems && width > 0;
+  // Account for Explore button (always shown) and See all button (shown when can expand)
+  // Explore takes 1 slot, See all takes 1 slot when needed
+  const slotsForApps = maxItems - 1; // -1 for Explore (always shown)
+  const canExpand = installedApps.length > slotsForApps && width > 0;
   const showSeeAll = !expanded && canExpand;
   const showShowLess = expanded && canExpand;
-  const displayApps = showSeeAll ? installedApps.slice(0, maxItems - 1) : installedApps;
+  // When See all is shown, we need another slot for it
+  const displayApps = showSeeAll ? installedApps.slice(0, slotsForApps - 1) : installedApps;
 
   return (
     <div className="shrink-0">
@@ -190,7 +194,7 @@ function AppsWidget({ installedApps, projectId }: { installedApps: AppId[], proj
               <Link
                 key={appId}
                 href={appPath}
-                className="group flex flex-col items-center gap-2.5 pt-3 pb-2 rounded-xl transition-all duration-750 hover:transition-none"
+                className="group flex flex-col items-center gap-2.5 pt-3 pb-2 rounded-xl hover:bg-foreground/[0.03] transition-all duration-750 hover:transition-none"
                 title={app.displayName}
               >
                 <div className="relative transition-transform duration-750 group-hover:transition-none group-hover:scale-105">
@@ -209,18 +213,43 @@ function AppsWidget({ installedApps, projectId }: { installedApps: AppId[], proj
               </Link>
             );
           })}
+          {/* Explore Apps - always shown before See all/Less */}
+          <Link
+            href={`/projects/${projectId}/apps`}
+            className="group flex flex-col items-center gap-2.5 pt-3 pb-2 rounded-xl hover:bg-foreground/[0.03] transition-all duration-750 hover:transition-none"
+            title="Explore all apps"
+          >
+            <div className="relative transition-transform duration-750 group-hover:transition-none group-hover:scale-105">
+              <div className={cn(
+                "flex items-center justify-center w-12 h-12 sm:w-14 sm:h-14",
+                "rounded-[20%] supports-[corner-shape:superellipse(1.5)]:[border-radius:30%] supports-[corner-shape:superellipse(1.5)]:[corner-shape:superellipse(1.5)]",
+                "bg-muted/60 ring-1 ring-foreground/[0.08]",
+                "group-hover:ring-2 group-hover:ring-foreground/20 group-hover:bg-muted transition-all duration-750 group-hover:transition-none"
+              )}>
+                <Compass className="w-6 h-6 sm:w-7 sm:h-7 text-muted-foreground group-hover:text-foreground transition-colors duration-750 group-hover:transition-none" />
+              </div>
+            </div>
+            <span className="text-[11px] font-medium text-center text-muted-foreground group-hover:text-foreground transition-colors duration-750 group-hover:transition-none leading-tight w-full">
+              Explore
+            </span>
+          </Link>
           {showSeeAll && (
             <button
               onClick={() => setExpanded(true)}
-              className="group flex flex-col items-center gap-2.5 pt-3 pb-2 rounded-xl hover:bg-foreground/[0.03] transition-all duration-150 hover:transition-none"
+              className="group flex flex-col items-center gap-2.5 pt-3 pb-2 rounded-xl hover:bg-foreground/[0.03] transition-all duration-750 hover:transition-none"
               title="See all apps"
             >
-              <div className="relative transition-transform duration-150 group-hover:transition-none group-hover:scale-105">
-                <div className="flex items-center justify-center w-12 h-12 sm:w-14 sm:h-14 shadow-sm group-hover:shadow-[0_0_20px_rgba(34,197,94,0.35)] bg-background rounded-2xl ring-1 ring-foreground/[0.06] group-hover:ring-emerald-500/50 group-hover:ring-2 transition-all duration-150 group-hover:transition-none">
-                  <MoreHorizontal className="w-6 h-6 sm:w-7 sm:h-7 text-muted-foreground" />
+              <div className="relative transition-transform duration-750 group-hover:transition-none group-hover:scale-105">
+                <div className={cn(
+                  "flex items-center justify-center w-12 h-12 sm:w-14 sm:h-14",
+                  "rounded-[20%] supports-[corner-shape:superellipse(1.5)]:[border-radius:30%] supports-[corner-shape:superellipse(1.5)]:[corner-shape:superellipse(1.5)]",
+                  "bg-muted/60 ring-1 ring-foreground/[0.08]",
+                  "group-hover:ring-2 group-hover:ring-foreground/20 group-hover:bg-muted transition-all duration-750 group-hover:transition-none"
+                )}>
+                  <MoreHorizontal className="w-6 h-6 sm:w-7 sm:h-7 text-muted-foreground group-hover:text-foreground transition-colors duration-750 group-hover:transition-none" />
                 </div>
               </div>
-              <span className="text-[11px] font-medium text-center group-hover:text-foreground transition-colors duration-150 group-hover:transition-none leading-tight w-full">
+              <span className="text-[11px] font-medium text-center text-muted-foreground group-hover:text-foreground transition-colors duration-750 group-hover:transition-none leading-tight w-full">
                 See all
               </span>
             </button>
@@ -228,15 +257,20 @@ function AppsWidget({ installedApps, projectId }: { installedApps: AppId[], proj
           {showShowLess && (
             <button
               onClick={() => setExpanded(false)}
-              className="group flex flex-col items-center gap-2.5 pt-3 pb-2 rounded-xl hover:bg-foreground/[0.03] transition-all duration-150 hover:transition-none"
+              className="group flex flex-col items-center gap-2.5 pt-3 pb-2 rounded-xl hover:bg-foreground/[0.03] transition-all duration-750 hover:transition-none"
               title="Show less"
             >
-              <div className="relative transition-transform duration-150 group-hover:transition-none group-hover:scale-105">
-                <div className="flex items-center justify-center w-12 h-12 sm:w-14 sm:h-14 shadow-sm group-hover:shadow-[0_0_20px_rgba(34,197,94,0.35)] bg-background rounded-2xl ring-1 ring-foreground/[0.06] group-hover:ring-emerald-500/50 group-hover:ring-2 transition-all duration-150 group-hover:transition-none">
-                  <ChevronUp className="w-6 h-6 sm:w-7 sm:h-7 text-muted-foreground" />
+              <div className="relative transition-transform duration-750 group-hover:transition-none group-hover:scale-105">
+                <div className={cn(
+                  "flex items-center justify-center w-12 h-12 sm:w-14 sm:h-14",
+                  "rounded-[20%] supports-[corner-shape:superellipse(1.5)]:[border-radius:30%] supports-[corner-shape:superellipse(1.5)]:[corner-shape:superellipse(1.5)]",
+                  "bg-muted/60 ring-1 ring-foreground/[0.08]",
+                  "group-hover:ring-2 group-hover:ring-foreground/20 group-hover:bg-muted transition-all duration-750 group-hover:transition-none"
+                )}>
+                  <ChevronUp className="w-6 h-6 sm:w-7 sm:h-7 text-muted-foreground group-hover:text-foreground transition-colors duration-750 group-hover:transition-none" />
                 </div>
               </div>
-              <span className="text-[11px] font-medium text-center text-muted-foreground group-hover:text-foreground transition-colors duration-150 group-hover:transition-none truncate leading-tight w-full">
+              <span className="text-[11px] font-medium text-center text-muted-foreground group-hover:text-foreground transition-colors duration-750 group-hover:transition-none truncate leading-tight w-full">
                 Less
               </span>
             </button>
