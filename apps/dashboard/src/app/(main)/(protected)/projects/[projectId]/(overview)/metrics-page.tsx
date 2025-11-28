@@ -448,6 +448,19 @@ function MetricsContent({
     ? Math.min(Math.max(viewHeight, globeColumnWidth), globeColumnWidth * 1.75)
     : undefined;
 
+  // Track charts grid size to determine layout
+  const chartsGridRef = useRef<HTMLDivElement>(null);
+  const [chartsGridSize, setChartsGridSize] = useState<{ width: number, height: number }>({ width: 0, height: 0 });
+
+  useResizeObserver(chartsGridRef, (entry) => {
+    setChartsGridSize({ width: entry.contentRect.width, height: entry.contentRect.height });
+  });
+
+  // Determine chart layout based on charts grid dimensions:
+  // - If charts grid is at least 70% as tall as wide (tall/portrait), stack vertically
+  // - If charts grid is wide and less than 70% as tall, use 2 columns
+  const shouldUseTwoColumns = chartsGridSize.width > 400 && chartsGridSize.height > 0 && (chartsGridSize.height / chartsGridSize.width) < 0.7;
+
   // Render a widget by ID
   const renderWidget = (widgetId: WidgetId) => {
     switch (widgetId) {
@@ -522,10 +535,12 @@ function MetricsContent({
         )}
 
         {/* Right Column: Stats Grid */}
-        <div className={cn(
-          "flex flex-col gap-12 h-full min-h-0",
-          showGlobe && shouldShowGlobeSection ? "lg:col-span-7" : showGlobe ? "lg:col-span-12" : ""
-        )}>
+        <div
+          className={cn(
+            "flex flex-col gap-12 h-full min-h-0 overflow-hidden",
+            showGlobe && shouldShowGlobeSection ? "lg:col-span-7" : showGlobe ? "lg:col-span-12" : ""
+          )}
+        >
           {/* Stat Widgets Row (Apps) */}
           {statWidgets.length > 0 && (
             <div className={cn(
@@ -542,14 +557,17 @@ function MetricsContent({
 
           {/* Charts Grid */}
           {chartWidgets.length > 0 && (
-            <div className={cn(
-              "flex-1 min-h-0 grid gap-4",
-              chartWidgets.length === 1
-                ? "grid-cols-1"
-                : "grid-cols-1 sm:grid-cols-2"
-            )}>
+            <div
+              ref={chartsGridRef}
+              className={cn(
+                "flex-1 min-h-0 grid gap-4 overflow-hidden",
+                chartWidgets.length === 1
+                  ? "grid-cols-1"
+                  : shouldUseTwoColumns ? "grid-cols-2" : "grid-cols-1"
+              )}
+            >
               {chartWidgets.map(widgetId => (
-                <div key={widgetId} className="h-full min-h-[220px]">
+                <div key={widgetId} className="min-h-0 overflow-hidden">
                   {renderWidget(widgetId)}
                 </div>
               ))}
