@@ -59,53 +59,89 @@ export function GlobeSection({ countryData, totalUsers, children }: {countryData
   );
 }
 
-function GlobeLoading(props: { devReason: string }) {
+// Global start time for syncing animations across component remounts
+const pageLoadTime = typeof performance !== 'undefined' ? performance.now() : 0;
+
+function GlobeLoading(props: { devReason: string, className?: string }) {
+  // Calculate negative delay to sync animation with page load time
+  // This ensures animations don't restart when component remounts
+  const [syncDelay, setSyncDelay] = useState(0);
+
+  useLayoutEffect(() => {
+    const elapsed = performance.now() - pageLoadTime;
+    setSyncDelay(-elapsed);
+  }, []);
+
+  // Helper to create synced animation style
+  const syncedAnimation = (duration: number, reverse = false) => ({
+    animationDelay: `${syncDelay}ms`,
+    animationDuration: `${duration}s`,
+    animationTimingFunction: 'linear',
+    animationIterationCount: 'infinite',
+    animationDirection: reverse ? 'reverse' : 'normal',
+  });
+
   return (
-    <div className="w-full aspect-square flex items-center justify-center">
+    <div className={cn("w-full aspect-square flex items-center justify-center", props.className)}>
       <div className="relative w-[70%] aspect-square">
         {/* Main globe circle with gradient */}
-        <div className="absolute inset-0 rounded-full bg-gradient-to-br from-foreground/[0.06] via-foreground/[0.03] to-transparent animate-pulse" />
-        
+        <div
+          className="absolute inset-0 rounded-full bg-gradient-to-br from-foreground/[0.06] via-foreground/[0.03] to-transparent animate-pulse"
+          style={{ animationDelay: `${syncDelay}ms` }}
+        />
+
         {/* Rotating orbit ring 1 */}
-        <div 
-          className="absolute inset-[-5%] rounded-full border border-foreground/[0.08] animate-[spin_8s_linear_infinite]"
-          style={{ transform: 'rotateX(70deg)' }}
+        <div
+          className="absolute inset-[-5%] rounded-full border border-foreground/[0.08] animate-spin"
+          style={{
+            transform: 'rotateX(70deg)',
+            ...syncedAnimation(2.5),
+          }}
         />
-        
+
         {/* Rotating orbit ring 2 */}
-        <div 
-          className="absolute inset-[5%] rounded-full border border-dashed border-foreground/[0.06] animate-[spin_12s_linear_infinite_reverse]"
-          style={{ transform: 'rotateX(70deg) rotateZ(30deg)' }}
+        <div
+          className="absolute inset-[5%] rounded-full border border-dashed border-foreground/[0.06] animate-spin"
+          style={{
+            transform: 'rotateX(70deg) rotateZ(30deg)',
+            ...syncedAnimation(4, true),
+          }}
         />
-        
+
         {/* Equator line */}
-        <div 
+        <div
           className="absolute inset-[10%] rounded-full border border-foreground/[0.05]"
           style={{ transform: 'rotateX(80deg)' }}
         />
-        
+
         {/* Meridian lines */}
         <div className="absolute inset-[15%] rounded-full border border-foreground/[0.04]" />
-        <div 
+        <div
           className="absolute inset-[15%] rounded-full border border-foreground/[0.04]"
           style={{ transform: 'rotateY(60deg)' }}
         />
-        <div 
+        <div
           className="absolute inset-[15%] rounded-full border border-foreground/[0.04]"
           style={{ transform: 'rotateY(-60deg)' }}
         />
-        
+
         {/* Center glow */}
-        <div className="absolute inset-[30%] rounded-full bg-foreground/[0.02] blur-xl animate-pulse" />
-        
+        <div
+          className="absolute inset-[30%] rounded-full bg-foreground/[0.02] blur-xl animate-pulse"
+          style={{ animationDelay: `${syncDelay}ms` }}
+        />
+
         {/* Shimmer effect */}
         <div className="absolute inset-0 rounded-full overflow-hidden">
-          <div 
-            className="absolute inset-0 bg-gradient-to-r from-transparent via-foreground/[0.03] to-transparent animate-[shimmer_2s_ease-in-out_infinite]"
-            style={{ transform: 'translateX(-100%)' }}
+          <div
+            className="absolute inset-0 bg-gradient-to-r from-transparent via-foreground/[0.03] to-transparent animate-[shimmer_0.8s_ease-in-out_infinite]"
+            style={{
+              transform: 'translateX(-100%)',
+              animationDelay: `${syncDelay}ms`,
+            }}
           />
         </div>
-        
+
         {process.env.NODE_ENV === "development" && (
           <div className="absolute inset-0 flex items-center justify-center">
             <span className="text-[10px] text-muted-foreground/50">{props.devReason}</span>
@@ -294,13 +330,19 @@ function GlobeSectionInner({ countryData, totalUsers, children }: {countryData: 
   return (
     <div className='relative w-full aspect-square'>
       <div inert className='absolute inset-0 pointer-events-none'>
-        {!globeReady && <GlobeLoading devReason="not ready" />}
+        <GlobeLoading
+          devReason="not ready"
+          className={cn(
+            'transition-opacity duration-500 delay-1000',
+            globeReady ? 'opacity-0' : 'opacity-100',
+          )}
+        />
       </div>
       <div
         ref={sectionContainerRef}
         className={cn(
           'relative flex items-center justify-center w-full h-full transition-all duration-500',
-          globeReady ? 'scale-[1]' : 'scale-[0.1]',
+          globeReady ? 'opacity-100' : 'opacity-0',
         )}
       >
         {/* Hidden measurement div - always rendered to track size */}
