@@ -38,15 +38,6 @@ const isWeekend = (dateString: string): boolean => {
   return dayOfWeek === 0 || dayOfWeek === 6; // Sunday (0) or Saturday (6)
 };
 
-// Standardized weekend colors
-const WEEKEND_COLOR_BLUE = "hsl(217, 91%, 30%)";
-const WEEKEND_COLOR_GREEN = "hsl(142, 70%, 25%)";
-
-const getWeekendColor = (chartName: string) => {
-  if (chartName === 'Daily Active Users') return WEEKEND_COLOR_GREEN;
-  return WEEKEND_COLOR_BLUE;
-};
-
 const CustomTooltip = ({ active, payload }: TooltipProps<number, string>) => {
   if (!active || !payload?.length) return null;
 
@@ -141,11 +132,11 @@ function ActivityBarChart({
         >
           {datapoints.map((entry, index) => {
             const isWeekendDay = isWeekend(entry.date);
-            const weekendColor = getWeekendColor(config.name);
             return (
               <Cell
                 key={`cell-${index}`}
-                fill={isWeekendDay ? weekendColor : "var(--color-activity)"}
+                fill="var(--color-activity)"
+                opacity={isWeekendDay ? 0.5 : 1}
               />
             );
           })}

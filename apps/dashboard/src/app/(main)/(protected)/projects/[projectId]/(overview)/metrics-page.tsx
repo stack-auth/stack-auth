@@ -106,7 +106,7 @@ const dauConfig = {
     activity: {
       label: "Activity",
       theme: {
-        light: "hsl(142, 76%, 36%)",
+        light: "hsl(180, 95%, 53%)",
         dark: "hsl(200, 91%, 70%)",
       },
     },
