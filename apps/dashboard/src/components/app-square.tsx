@@ -180,7 +180,7 @@ export function AppSquare({
         <AppWarningModal
           isOpen={showWarningModal}
           onClose={() => setShowWarningModal(false)}
-          onConfirm={performToggle}
+          onConfirm={() => void performToggle()}
           appName={app.displayName}
           stage={app.stage as "alpha" | "beta"}
         />
@@ -214,7 +214,7 @@ export function AppListItem({
   const handleEnable = async (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    
+
     setIsLoading(true);
     try {
       await onEnable?.();
