@@ -150,12 +150,6 @@ export default function PageClient() {
     await stackAdminApp.redirectToHome();
   }, [project, stackAdminApp]);
 
-  // Memoize selected team for dialog
-  const selectedTeamForDialog = useMemo(
-    () => teams.find(t => t.id === selectedTeamId),
-    [teams, selectedTeamId]
-  );
-
   return (
     <PageLayout title="Project Settings" description="Manage your project">
       <SettingCard
@@ -329,7 +323,7 @@ export default function PageClient() {
                   cancelButton
                 >
                   <Typography>
-                    {`Are you sure you want to transfer "${project.displayName}" to ${selectedTeamForDialog?.displayName}?`}
+                    {`Are you sure you want to transfer "${project.displayName}" to ${selectedTeam?.displayName}?`}
                   </Typography>
                   <Typography className="mt-2" variant="secondary">
                     This will change the ownership of the project. Only team admins of the new team will be able to manage project settings.

@@ -63,9 +63,9 @@ export const SettingSwitch = React.memo(function SettingSwitch(props: {
   const showActions = !props.onlyShowActionsWhenChecked || checked;
   const { onCheckedChange: propOnCheckedChange } = props;
 
-  const onCheckedChange = useCallback(async (checked: boolean) => {
+  const onCheckedChange = useCallback((checked: boolean) => {
     setCheckedState(checked);
-    await propOnCheckedChange(checked);
+    runAsynchronouslyWithAlert(propOnCheckedChange(checked));
   }, [propOnCheckedChange]);
 
   return (
@@ -279,21 +279,20 @@ export function FormSettingCard<F extends FieldValues>(
   }, [propsOnSubmit, form, toast]);
 
   const handleFormSubmit = useCallback((e: React.FormEvent<HTMLFormElement>) => {
-    runAsynchronously(async () => {
-      setSubmitting(true);
-      try {
+    runAsynchronously(
+      async () => {
+        setSubmitting(true);
         await form.handleSubmit(onSubmit)(e);
-      } catch (error) {
-        toast({
-          title: 'Failed to save changes',
-          description: error instanceof Error ? error.message : 'An error occurred',
-          variant: 'destructive'
-        });
-      } finally {
         setSubmitting(false);
+      },
+      {
+        onError: (error) => {
+          alert(`Failed to save changes: ${error instanceof Error ? error.message : 'An error occurred'}`);
+          setSubmitting(false);
+        }
       }
-    });
-  }, [form, onSubmit, toast]);
+    );
+  }, [form, onSubmit]);
 
   const handleCancel = useCallback(() => {
     form.reset();

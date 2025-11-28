@@ -2,8 +2,7 @@ import { useAdminApp } from "@/app/(main)/(protected)/projects/[projectId]/use-a
 import { ALL_APPS_FRONTEND, AppFrontend, getAppPath } from "@/lib/apps-frontend";
 import { ALL_APPS, AppId } from "@stackframe/stack-shared/dist/apps/apps-config";
 import { AppIcon as SharedAppIcon, appSquarePaddingExpression, appSquareWidthExpression } from "@stackframe/stack-shared/dist/apps/apps-ui";
-import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
-import { cn } from "@stackframe/stack-ui";
+import { Button, cn } from "@stackframe/stack-ui";
 import { Check } from "lucide-react";
 import { useState } from "react";
 import { AppWarningModal } from "./app-warning-modal";
@@ -79,15 +78,11 @@ export function AppSquare({
 
   const performToggle = async () => {
     setIsProcessing(true);
-
     try {
       await project.updateConfig({
         [`apps.installed.${appId}.enabled`]: !isEnabled,
       });
       onToggleEnabled?.(!isEnabled);
-    } catch (error) {
-      console.error(`Failed to ${isEnabled ? 'disable' : 'enable'} app:`, error);
-      alert(`Failed to ${isEnabled ? 'disable' : 'enable'} ${app.displayName}. Please try again.`);
     } finally {
       setIsProcessing(false);
     }
@@ -138,22 +133,24 @@ export function AppSquare({
           {/* Hover actions */}
           <div className={cn(
             "absolute inset-x-0 bottom-3 sm:bottom-4 flex justify-center transition-all duration-200",
-            isHovered ? "opacity-100 translate-y-0" : "opacity-0 translate-y-2 pointer-events-none"
+            (isHovered || isProcessing) ? "opacity-100 translate-y-0" : "opacity-0 translate-y-2 pointer-events-none"
           )}>
-            <button
-              onClick={(event) => {
-                runAsynchronously(handleToggleEnabled(event));
-              }}
+            <Button
+              onClick={handleToggleEnabled}
+              loading={isProcessing}
+              variant="plain"
+              size="plain"
               className={cn(
-                "px-3 sm:px-4 py-1 sm:py-1.5 text-[10px] sm:text-xs font-medium rounded-full transition-all",
+                "px-3 sm:px-4 py-1 sm:py-1.5 text-[10px] sm:text-xs font-medium rounded-full transition-all h-auto min-h-0",
                 "shadow-lg backdrop-blur-sm",
+                isProcessing && "px-2 sm:px-3 py-1 text-[9px] sm:text-[10px]",
                 isEnabled
                   ? "bg-gray-900/90 dark:bg-gray-100/90 text-white dark:text-gray-900 hover:bg-gray-800 dark:hover:bg-gray-200"
                   : "bg-blue-600/90 text-white hover:bg-blue-700"
               )}
             >
               {isEnabled ? 'Disable' : 'Enable'}
-            </button>
+            </Button>
           </div>
         </div>
 
@@ -183,9 +180,7 @@ export function AppSquare({
         <AppWarningModal
           isOpen={showWarningModal}
           onClose={() => setShowWarningModal(false)}
-          onConfirm={() => {
-            runAsynchronously(performToggle());
-          }}
+          onConfirm={performToggle}
           appName={app.displayName}
           stage={app.stage as "alpha" | "beta"}
         />
@@ -201,11 +196,12 @@ export function AppListItem({
   showActions = true
 }: {
   appId: AppId,
-  onEnable?: () => void,
+  onEnable?: () => void | Promise<void>,
   showActions?: boolean,
 }) {
   const app = ALL_APPS[appId];
   const appFrontend = ALL_APPS_FRONTEND[appId];
+  const [isLoading, setIsLoading] = useState(false);
 
   const adminApp = useAdminApp()!;
   const project = adminApp.useProject();
@@ -214,6 +210,21 @@ export function AppListItem({
   const isEnabled = config.apps.installed[appId]?.enabled ?? false;
   const appPath = getAppPath(project.id, appFrontend);
   const appDetailsPath = `/projects/${project.id}/apps/${appId}`;
+
+  const handleEnable = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    setIsLoading(true);
+    try {
+      await onEnable?.();
+    } catch (error) {
+      // Re-throw to let Button component handle it via runAsynchronouslyWithAlert
+      throw error;
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   return (
     <Link
@@ -256,15 +267,15 @@ export function AppListItem({
           {isEnabled ? (
             <Check className="w-4 h-4 text-green-500" />
           ) : (
-            <button
-              onClick={(e) => {
-                e.preventDefault();
-                onEnable?.();
-              }}
+            <Button
+              onClick={handleEnable}
+              loading={isLoading}
+              variant="plain"
+              size="plain"
               className="px-3 py-1 text-xs font-medium bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors"
             >
               Enable
-            </button>
+            </Button>
           )}
         </div>
       )}

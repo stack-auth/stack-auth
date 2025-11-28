@@ -3,7 +3,7 @@
 import { EnvKeys } from "@/components/env-keys";
 import { InlineCode } from "@/components/inline-code";
 import { StyledLink } from "@/components/link";
-import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
+import { runAsynchronously, runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import {
   Alert,
   AlertDescription,
@@ -72,25 +72,30 @@ export default function PageClient() {
   const prevNextStepIdRef = useRef<StepId | null>(null);
   const prevAllCompletedRef = useRef<boolean | undefined>(undefined);
 
-  const handleGenerateKeys = async () => {
+  const handleGenerateKeys = () => {
     if (isGenerating) return;
     setIsGenerating(true);
     setError(null);
 
-    const newKey = await adminApp.createInternalApiKey({
-      hasPublishableClientKey: true,
-      hasSecretServerKey: true,
-      hasSuperSecretAdminKey: false,
-      expiresAt: new Date(Date.now() + TWO_HUNDRED_YEARS_IN_MS),
-      description: "Vercel Integration",
-    });
+    runAsynchronouslyWithAlert(async () => {
+      try {
+        const newKey = await adminApp.createInternalApiKey({
+          hasPublishableClientKey: true,
+          hasSecretServerKey: true,
+          hasSuperSecretAdminKey: false,
+          expiresAt: new Date(Date.now() + TWO_HUNDRED_YEARS_IN_MS),
+          description: "Vercel Integration",
+        });
 
-    setKeys({
-      projectId: adminApp.projectId,
-      publishableClientKey: newKey.publishableClientKey!,
-      secretServerKey: newKey.secretServerKey!,
+        setKeys({
+          projectId: adminApp.projectId,
+          publishableClientKey: newKey.publishableClientKey!,
+          secretServerKey: newKey.secretServerKey!,
+        });
+      } finally {
+        setIsGenerating(false);
+      }
     });
-    setIsGenerating(false);
   };
 
   const toggleStepCompletion = (id: StepId) => {

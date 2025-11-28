@@ -537,7 +537,7 @@ function MetricsContent({
         {/* Right Column: Stats Grid */}
         <div
           className={cn(
-            "flex flex-col gap-12 h-full min-h-0 overflow-hidden",
+            "flex flex-col gap-12 h-full min-h-0",
             showGlobe && shouldShowGlobeSection ? "lg:col-span-7" : showGlobe ? "lg:col-span-12" : ""
           )}
         >
@@ -560,14 +560,14 @@ function MetricsContent({
             <div
               ref={chartsGridRef}
               className={cn(
-                "flex-1 min-h-0 grid gap-4 overflow-hidden",
+                "flex-1 min-h-0 grid gap-4",
                 chartWidgets.length === 1
                   ? "grid-cols-1"
                   : shouldUseTwoColumns ? "grid-cols-2" : "grid-cols-1"
               )}
             >
               {chartWidgets.map(widgetId => (
-                <div key={widgetId} className="min-h-0 overflow-hidden">
+                <div key={widgetId} className="min-h-0">
                   {renderWidget(widgetId)}
                 </div>
               ))}

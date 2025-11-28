@@ -86,9 +86,23 @@ export function StackCompanion({ className }: { className?: string }) {
   const startXRef = useRef(0);
   const startWidthRef = useRef(0);
   const dragThresholdRef = useRef(false);
+  const animationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const draggingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     setMounted(true);
+  }, []);
+
+  // Cleanup animation timeouts on unmount
+  useEffect(() => {
+    return () => {
+      if (animationTimeoutRef.current) {
+        clearTimeout(animationTimeoutRef.current);
+      }
+      if (draggingTimeoutRef.current) {
+        clearTimeout(draggingTimeoutRef.current);
+      }
+    };
   }, []);
 
   // Detect screen size for split-screen mode
@@ -117,14 +131,20 @@ export function StackCompanion({ className }: { className?: string }) {
     // Start animation
     requestAnimationFrame(() => {
       setDrawerWidth(DEFAULT_DRAWER_WIDTH);
-      setTimeout(() => setIsAnimating(false), 300);
+      if (animationTimeoutRef.current) {
+        clearTimeout(animationTimeoutRef.current);
+      }
+      animationTimeoutRef.current = setTimeout(() => setIsAnimating(false), 300);
     });
   }, []);
 
   const closeDrawer = useCallback(() => {
     setIsAnimating(true);
     setDrawerWidth(0);
-    setTimeout(() => {
+    if (animationTimeoutRef.current) {
+      clearTimeout(animationTimeoutRef.current);
+    }
+    animationTimeoutRef.current = setTimeout(() => {
       setActiveItem(null);
       setIsAnimating(false);
     }, 300);
@@ -185,7 +205,10 @@ export function StackCompanion({ className }: { className?: string }) {
 
     const handleMouseUp = () => {
       setIsResizing(false);
-      setTimeout(() => setIsDragging(false), 0);
+      if (draggingTimeoutRef.current) {
+        clearTimeout(draggingTimeoutRef.current);
+      }
+      draggingTimeoutRef.current = setTimeout(() => setIsDragging(false), 0);
 
       if (dragThresholdRef.current) {
         // If we dragged, snap to state
@@ -194,7 +217,10 @@ export function StackCompanion({ className }: { className?: string }) {
         } else if (drawerWidth < MIN_DRAWER_WIDTH) {
           setIsAnimating(true);
           setDrawerWidth(MIN_DRAWER_WIDTH);
-          setTimeout(() => setIsAnimating(false), 200);
+          if (animationTimeoutRef.current) {
+            clearTimeout(animationTimeoutRef.current);
+          }
+          animationTimeoutRef.current = setTimeout(() => setIsAnimating(false), 200);
         } else {
           // Keep current width but ensure item is active
           if (!activeItem) {
@@ -210,7 +236,7 @@ export function StackCompanion({ className }: { className?: string }) {
 
     document.addEventListener('mousemove', handleMouseMove);
     document.addEventListener('mouseup', handleMouseUp);
-    document.addEventListener('touchmove', handleMouseMove, { passive: false });
+    document.addEventListener('touchmove', handleMouseMove);
     document.addEventListener('touchend', handleMouseUp);
 
     return () => {

@@ -1,7 +1,7 @@
 import { useRouter } from "@/components/router";
 import { ChartConfig, ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
 import { UserAvatar } from '@stackframe/stack';
-import { fromNow } from '@stackframe/stack-shared/dist/utils/dates';
+import { fromNow, isWeekend } from '@stackframe/stack-shared/dist/utils/dates';
 import {
   cn,
   Typography
@@ -30,13 +30,6 @@ type UserListItem = {
   last_active_at_millis?: number | null,
   signed_up_at_millis?: number | null,
 }
-
-const isWeekend = (dateString: string): boolean => {
-  const date = new Date(dateString);
-  if (isNaN(date.getTime())) return false;
-  const dayOfWeek = date.getDay();
-  return dayOfWeek === 0 || dayOfWeek === 6; // Sunday (0) or Saturday (6)
-};
 
 const CustomTooltip = ({ active, payload }: TooltipProps<number, string>) => {
   if (!active || !payload?.length) return null;
@@ -98,7 +91,7 @@ function ActivityBarChart({
   return (
     <ChartContainer
       config={config.chart}
-      className="w-full aspect-auto flex-1 min-h-0"
+      className="w-full aspect-auto flex-1 min-h-0 !overflow-visible [&_.recharts-wrapper]:!overflow-visible"
       maxHeight={height}
     >
       <BarChart
@@ -117,12 +110,12 @@ function ActivityBarChart({
           content={<CustomTooltip />}
           cursor={{
             fill: "var(--color-activity)",
-            opacity: 0.15,
+            opacity: 0.35,
             radius: 4,
           }}
           offset={20}
           allowEscapeViewBox={{ x: true, y: true }}
-          wrapperStyle={{ zIndex: 50 }}
+          wrapperStyle={{ zIndex: 9999 }}
         />
         <Bar
           dataKey="activity"
@@ -131,7 +124,7 @@ function ActivityBarChart({
           isAnimationActive={false}
         >
           {datapoints.map((entry, index) => {
-            const isWeekendDay = isWeekend(entry.date);
+            const isWeekendDay = isWeekend(new Date(entry.date));
             return (
               <Cell
                 key={`cell-${index}`}
@@ -155,6 +148,7 @@ function ActivityBarChart({
           tickLine={false}
           tickMargin={compact ? 4 : 8}
           axisLine={false}
+          interval="equidistantPreserveStart"
           tick={{
             fill: "hsl(var(--muted-foreground))",
             fontSize: compact ? 8 : 10,
@@ -197,14 +191,14 @@ export function ChartCard({
     <div className={cn(
       "group relative rounded-2xl bg-background/60 backdrop-blur-xl transition-all duration-150 hover:transition-none",
       "ring-1 ring-foreground/[0.06] hover:ring-foreground/[0.1]",
-      "shadow-sm hover:shadow-md",
+      "shadow-sm hover:shadow-md hover:z-10",
       className
     )}>
       {/* Subtle glassmorphic background */}
-      <div className="absolute inset-0 bg-gradient-to-br from-foreground/[0.02] to-transparent pointer-events-none" />
+      <div className="absolute inset-0 bg-gradient-to-br from-foreground/[0.02] to-transparent pointer-events-none rounded-2xl overflow-hidden" />
       {/* Accent hover tint */}
       <div className={cn(
-        "absolute inset-0 transition-colors duration-150 group-hover:transition-none pointer-events-none",
+        "absolute inset-0 transition-colors duration-150 group-hover:transition-none pointer-events-none rounded-2xl overflow-hidden",
         hoverTints[gradientColor]
       )} />
       <div className="relative h-full flex flex-col">
@@ -349,7 +343,7 @@ export function TabbedMetricsCard({
         </div>
       )}
 
-      <div className={cn(compact ? "p-4 pt-3" : "p-5 pt-4", "flex flex-col justify-center flex-1 min-h-0")}>
+      <div className={cn(compact ? "p-4 pt-3" : "p-5 pt-4", "flex flex-col justify-center flex-1 min-h-0 overflow-visible")}>
         {view === 'chart' ? (
           filteredDatapoints.length === 0 ? (
             <div className="flex-1 flex items-center justify-center">
@@ -458,7 +452,7 @@ export function LineChartDisplay({
           </div>
         </div>
       </div>
-      <div className={cn(compact ? "p-4 pt-0" : "p-5 pt-0", "flex-1 min-h-0")}>
+      <div className={cn(compact ? "p-4 pt-0" : "p-5 pt-0", "flex-1 min-h-0 overflow-visible")}>
         {filteredDatapoints.length === 0 ? (
           <div className="flex items-center justify-center h-full">
             <Typography variant="secondary" className="text-xs">
@@ -541,7 +535,7 @@ export function DonutChartDisplay({
           </div>
         </div>
       </div>
-      <div className={cn(compact ? "p-4 pt-0" : "p-5 pt-0", "flex-1 min-h-0 flex flex-col")}>
+      <div className={cn(compact ? "p-4 pt-0" : "p-5 pt-0", "flex-1 min-h-0 flex flex-col overflow-visible")}>
         {datapoints.length === 0 || total === 0 ? (
           <div className="flex-1 flex items-center justify-center">
             <Typography variant="secondary" className="text-xs text-center">
@@ -549,10 +543,10 @@ export function DonutChartDisplay({
             </Typography>
           </div>
         ) : (
-          <div className="flex flex-col items-center w-full h-full justify-center flex-1 min-h-0">
+          <div className="flex flex-col items-center w-full h-full justify-center flex-1 min-h-0 overflow-visible">
             <ChartContainer
               config={BRAND_CONFIG}
-              className="flex w-full items-center justify-center flex-1 min-h-0 pb-2"
+              className="flex w-full items-center justify-center flex-1 min-h-0 pb-2 !overflow-visible [&_.recharts-wrapper]:!overflow-visible"
               maxHeight={height}
             >
               <PieChart>
@@ -560,7 +554,7 @@ export function DonutChartDisplay({
                   cursor={false}
                   offset={20}
                   allowEscapeViewBox={{ x: true, y: true }}
-                  wrapperStyle={{ zIndex: 50 }}
+                  wrapperStyle={{ zIndex: 9999 }}
                   content={
                     <ChartTooltipContent
                       className="rounded-xl bg-background/95 px-3.5 py-2.5 shadow-lg backdrop-blur-xl ring-1 ring-foreground/[0.08]"
@@ -621,7 +615,7 @@ export function DonutChartDisplay({
                   >
                     <span
                       className="h-2 w-2 rounded-full shrink-0"
-                      style={{ backgroundColor: BRAND_CONFIG[item.method as keyof typeof BRAND_CONFIG].color ?? "var(--color-other)" }}
+                      style={{ backgroundColor: BRAND_CONFIG_MAP.get(item.method)?.color ?? "var(--color-other)" }}
                     />
                     <span className="font-medium text-foreground">
                       {BRAND_CONFIG_MAP.get(item.method)?.label ?? item.method}
