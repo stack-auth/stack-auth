@@ -1,4 +1,14 @@
 {
+  "crons": [
+    {
+      "path": "/api/latest/internal/external-db-sync/poller",
+      "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/latest/internal/external-db-sync/sequencer",
+      "schedule": "* * * * *"
+    }
+  ],
   "functions": {
     "**/*": {
       "maxDuration": 300

@@ -1,0 +1,129 @@
+import { upstash } from "@/lib/upstash";
+import { globalPrismaClient, retryTransaction } from "@/prisma-client";
+import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
+import { OutgoingRequest } from "@prisma/client";
+import {
+  yupBoolean,
+  yupNumber,
+  yupObject,
+  yupString,
+  yupTuple,
+} from "@stackframe/stack-shared/dist/schema-fields";
+import { getEnvVariable, getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
+import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
+import { wait } from "@stackframe/stack-shared/dist/utils/promises";
+
+export const GET = createSmartRouteHandler({
+  metadata: {
+    summary: "Poll outgoing requests and push to QStash",
+    description:
+      "Internal endpoint invoked by Vercel Cron to process pending outgoing requests.",
+    tags: ["External DB Sync"],
+    hidden: true,
+  },
+  request: yupObject({
+    auth: yupObject({}).nullable().optional(),
+    method: yupString().oneOf(["GET"]).defined(),
+    headers: yupObject({
+      authorization: yupTuple([yupString()]).defined(),
+    }).defined(),
+    query: yupObject({}).defined(),
+  }),
+  response: yupObject({
+    statusCode: yupNumber().oneOf([200]).defined(),
+    bodyType: yupString().oneOf(["json"]).defined(),
+    body: yupObject({
+      ok: yupBoolean().defined(),
+      requests_processed: yupNumber().defined(),
+    }).defined(),
+  }),
+  handler: async ({ headers }) => {
+    const authHeader = headers.authorization[0];
+    if (authHeader !== `Bearer ${getEnvVariable("CRON_SECRET")}`) {
+      throw new StatusError(401, "Unauthorized");
+    }
+
+    const startTime = performance.now();
+    const maxDurationMs = 2 * 60 * 1000;
+    const busySleepMs = 50;
+
+    let totalRequestsProcessed = 0;
+    async function claimPendingRequests(): Promise<OutgoingRequest[]> {
+      return await retryTransaction(globalPrismaClient, async (tx) => {
+        const rows = await tx.$queryRaw<OutgoingRequest[]>`
+          UPDATE "OutgoingRequest"
+          SET "fulfilledAt" = NOW()
+          WHERE "id" IN (
+            SELECT id
+            FROM "OutgoingRequest"
+            WHERE "fulfilledAt" IS NULL
+            ORDER BY "createdAt"
+            LIMIT 100
+            FOR UPDATE SKIP LOCKED
+          )
+          RETURNING *;
+        `;
+        return rows;
+      });
+    }
+    async function processRequests(requests: OutgoingRequest[]): Promise<number> {
+      let processed = 0;
+
+      for (const request of requests) {
+        try {
+          const options = request.qstashOptions as any;
+          const baseUrl = getEnvVariable("NEXT_PUBLIC_STACK_API_URL");
+
+          let fullUrl = options.url.startsWith("http")
+            ? options.url
+            : new URL(options.url, baseUrl).toString();
+
+          if (getNodeEnvironment().includes("development") || getNodeEnvironment().includes("test")) {
+            const url = new URL(fullUrl);
+            if (url.hostname === "localhost" || url.hostname === "127.0.0.1") {
+              url.hostname = "host.docker.internal";
+              fullUrl = url.toString();
+            }
+          }
+
+
+          await upstash.publishJSON({
+            url: fullUrl,
+            body: options.body,
+          });
+
+          processed++;
+        } catch (error) {
+          console.error(
+            `Failed to process outgoing request ${request.id}:`,
+            error,
+          );
+        }
+      }
+
+      return processed;
+    }
+
+    while (performance.now() - startTime < maxDurationMs) {
+      const pendingRequests = await claimPendingRequests();
+
+      totalRequestsProcessed += await processRequests(pendingRequests);
+
+      const elapsed = performance.now() - startTime;
+      if (elapsed >= maxDurationMs) {
+        break;
+      }
+
+      await wait(busySleepMs);
+    }
+
+    return {
+      statusCode: 200,
+      bodyType: "json" as const,
+      body: {
+        ok: true,
+        requests_processed: totalRequestsProcessed,
+      },
+    };
+  },
+});

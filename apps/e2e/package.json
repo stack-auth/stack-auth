@@ -18,7 +18,9 @@
     "dotenv": "^16.4.5"
   },
   "devDependencies": {
-    "jose": "^5.6.3"
+    "@types/pg": "^8.15.6",
+    "jose": "^5.6.3",
+    "pg": "^8.16.3"
   },
   "packageManager": "pnpm@10.23.0"
 }

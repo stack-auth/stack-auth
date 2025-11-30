@@ -173,6 +173,9 @@ model ProjectUser {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  sequenceId BigInt? @unique
+  shouldUpdateSequenceId Boolean @default(true)
+
   displayName            String?
   serverMetadata         Json?
   clientReadOnlyMetadata Json?
@@ -251,6 +254,9 @@ model ContactChannel {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  sequenceId BigInt? @unique
+  shouldUpdateSequenceId Boolean @default(true)
 
   type        ContactChannelType
   isPrimary   BooleanTrue?
@@ -861,7 +867,7 @@ model CacheEntry {
 
 model SubscriptionInvoice {
   id String @default(uuid()) @db.Uuid
-  tenancyId String @db.Uuid
+  tenancyId String  @db.Uuid
   stripeSubscriptionId String
   stripeInvoiceId String
   isSubscriptionCreationInvoice Boolean
@@ -873,4 +879,33 @@ model SubscriptionInvoice {
 
   @@id([tenancyId, id])
   @@unique([tenancyId, stripeInvoiceId])
+}
+
+model OutgoingRequest {
+  id String @id @default(uuid()) @db.Uuid
+
+  createdAt DateTime @default(now())
+
+  qstashOptions Json
+  fulfilledAt   DateTime?
+
+  @@index([fulfilledAt])
+}
+
+model DeletedRow {
+  id        String @id @default(uuid()) @db.Uuid
+  tenancyId String @db.Uuid
+  tableName String
+
+  sequenceId             BigInt?  @unique
+  shouldUpdateSequenceId Boolean  @default(true)
+
+  primaryKey Json
+  data       Json?
+
+  deletedAt   DateTime  @default(now())
+  fulfilledAt DateTime?
+
+  @@index([tableName])
+  @@index([tenancyId])
 }

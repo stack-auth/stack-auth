@@ -204,6 +204,19 @@ services:
     environment:
       HOST_ON_HOST: host.docker.internal
 
+  # ================= External DB Sync Test Postgres =================
+
+  external-db-test:
+    image: "docker.io/postgres:16.1"
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: external-db-test-password
+      POSTGRES_DB: postgres
+    ports:
+      - "${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}32:5432"
+    volumes:
+      - external-db-test-data:/var/lib/postgresql/data
+
 
 # ================= volumes =================
 
@@ -215,6 +228,7 @@ volumes:
   s3mock-data:
   deno-cache:
   localstack-data:
+  external-db-test-data:
 
 # ================= configs =================
 

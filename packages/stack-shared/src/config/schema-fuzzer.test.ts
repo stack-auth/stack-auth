@@ -49,6 +49,27 @@ const branchSchemaFuzzerConfig = [{
       }],
     }],
   }],
+  dbSync: [{
+    externalDatabases: [{
+      "some-external-db-id": [{
+        type: ["neon", "postgres"] as const,
+        connectionString: [
+          "postgres://user:password@host:port/database",
+          "some-connection-string",
+        ],
+        mappings: [{
+          "some-mapping-id": [{
+            sourceTables: [[["table1"], ["table2"]]],
+            targetTable: ["target_table"],
+            targetTableSchema: ["public"],
+            targetTablePrimaryKey: [[["id"]]] as const,
+            internalDbFetchQuery: ["SELECT * FROM table"],
+            externalDbUpdateQuery: ["UPDATE table SET ..."],
+          }]
+        }],
+      }],
+    }],
+  }],
   dataVault: [{
     stores: [{
       "some-store-id": [{
