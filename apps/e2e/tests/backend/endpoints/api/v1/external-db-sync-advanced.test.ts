@@ -309,7 +309,7 @@ describe.sequential('External DB Sync - Advanced Tests', () => {
         mappings: {
           "PartialUsers": DEFAULT_DB_SYNC_MAPPINGS.PartialUsers,
           "SimpleUsers": {
-            sourceTables: ['ContactChannel', 'ProjectUser'],
+            sourceTables: { "ContactChannel": "ContactChannel", "ProjectUser": "ProjectUser" },
             targetTable: 'SimpleUsers',
             targetTablePrimaryKey: ['value'],
             targetTableSchema: `

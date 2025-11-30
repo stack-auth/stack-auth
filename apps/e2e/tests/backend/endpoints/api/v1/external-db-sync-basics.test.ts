@@ -430,6 +430,7 @@ describe.sequential('External DB Sync - Basic Tests', () => {
     });
 
     await waitForSyncedData(client, 'cascade-delete@example.com', 'Cascade Delete User');
+    await waitForSyncedData(client, 'cascade-second@example.com');
 
     // Verify both are synced
     const beforeDelete = await client.query(`SELECT * FROM "PartialUsers"`);

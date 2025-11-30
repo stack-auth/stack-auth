@@ -1,6 +1,6 @@
 export const DEFAULT_DB_SYNC_MAPPINGS = {
   "PartialUsers": {
-    sourceTables: ["ContactChannel", "ProjectUser"],
+    sourceTables: { "ContactChannel": "ContactChannel", "ProjectUser": "ProjectUser" },
     targetTable: "PartialUsers",
     targetTablePrimaryKey: ["id"],
     targetTableSchema: `

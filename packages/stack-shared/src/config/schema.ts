@@ -210,7 +210,7 @@ export const branchConfigSchema = canNoLongerBeOverridden(projectConfigSchema, [
         mappings: yupRecord(
           userSpecifiedIdSchema("mappingId"),
           yupObject({
-            sourceTables: yupArray(yupString()).optional(),
+            sourceTables: yupRecord(yupString(), yupString()).optional(),
             targetTable: yupString().defined(),
             targetTableSchema: yupString().optional(),
             targetTablePrimaryKey: yupTuple([yupString().defined()]).optional(),
@@ -889,9 +889,12 @@ export async function getConfigOverrideErrors<T extends yup.AnySchema>(schema: T
         return yupMixed();
       }
       case "array": {
-        const arraySchema = schema as yup.ArraySchema<any, any, any, any>;
-        const innerType = arraySchema.innerType;
-        return yupArray(innerType ? getRestrictedSchema(path + ".[]", innerType as any) : yupMixed());
+        throw new StackAssertionError(`Arrays are not supported in config JSON files (besides tuples). Use a record instead.`, { schemaInfo, schema });
+
+        // This is how the implementation would look like, but we don't support arrays in config JSON files (besides tuples)
+        // const arraySchema = schema as yup.ArraySchema<any, any, any, any>;
+        // const innerType = arraySchema.innerType;
+        // return yupArray(innerType ? getRestrictedSchema(path + ".[]", innerType as any) : yupMixed());
       }
       case "tuple": {
         return yupTuple(schemaInfo.items.map((s, index) => getRestrictedSchema(path + `[${index}]`, s)) as any);

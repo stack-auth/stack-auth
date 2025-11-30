@@ -59,7 +59,7 @@ const branchSchemaFuzzerConfig = [{
         ],
         mappings: [{
           "some-mapping-id": [{
-            sourceTables: [[["table1"], ["table2"]]],
+            sourceTables: [{ table1: ["table1"], table2: ["table2"] }],
             targetTable: ["target_table"],
             targetTableSchema: ["public"],
             targetTablePrimaryKey: [[["id"]]] as const,
