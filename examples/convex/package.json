@@ -1,6 +1,6 @@
 {
   "name": "@stackframe/convex-example",
-  "version": "2.8.53",
+  "version": "2.8.54",
   "private": true,
   "scripts": {
     "convex": "convex",
