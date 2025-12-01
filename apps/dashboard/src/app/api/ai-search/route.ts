@@ -1,5 +1,6 @@
+import { formatDocsContext, searchDocs } from "@/lib/ai-docs";
 import { createOpenAI } from "@ai-sdk/openai";
-import { streamText } from "ai";
+import { streamText, type Message } from "ai";
 
 // Configure Groq API using OpenAI-compatible SDK
 const groq = createOpenAI({
@@ -7,31 +8,10 @@ const groq = createOpenAI({
   baseURL: "https://api.groq.com/openai/v1",
 });
 
-export async function POST(req: Request) {
-  try {
-    const { prompt } = await req.json();
-
-    if (!prompt || typeof prompt !== "string") {
-      return new Response(JSON.stringify({ error: "Prompt is required" }), {
-        status: 400,
-        headers: { "Content-Type": "application/json" },
-      });
-    }
-
-    if (!process.env.GROQ_API_KEY) {
-      return new Response(
-        JSON.stringify({ error: "AI search is not configured. Please set GROQ_API_KEY environment variable." }),
-        {
-          status: 500,
-          headers: { "Content-Type": "application/json" },
-        }
-      );
-    }
-
-    const result = streamText({
-      model: groq("moonshotai/kimi-k2-instruct-0905"),
-      system: `You are a helpful assistant integrated into the Stack Auth dashboard search bar.
+const SYSTEM_PROMPT = `You are a helpful assistant integrated into the Stack Auth dashboard search bar.
 Your role is to answer questions about Stack Auth, authentication, user management, and related topics.
+
+You have access to Stack Auth documentation which will be provided as context. Use this documentation to give accurate, specific answers.
 
 ## Response Style Guide
 
@@ -65,8 +45,46 @@ Your role is to answer questions about Stack Auth, authentication, user manageme
 - Unnecessary caveats and disclaimers
 - Repeating the question back
 
-If you don't know something specific about Stack Auth, provide general best practices for authentication.`,
-      prompt,
+When documentation context is provided, base your answers on it. If the documentation doesn't cover something, say so and provide general best practices.`;
+
+export async function POST(req: Request) {
+  try {
+    const { messages } = await req.json() as { messages: Message[] };
+
+    if (!messages || !Array.isArray(messages) || messages.length === 0) {
+      return new Response(JSON.stringify({ error: "Messages are required" }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    if (!process.env.GROQ_API_KEY) {
+      return new Response(
+        JSON.stringify({ error: "AI search is not configured. Please set GROQ_API_KEY environment variable." }),
+        {
+          status: 500,
+          headers: { "Content-Type": "application/json" },
+        }
+      );
+    }
+
+    // Get the latest user message for doc search
+    const lastUserMessage = messages.filter(m => m.role === "user").pop();
+    const query = lastUserMessage?.content || "";
+
+    // Search for relevant documentation
+    const relevantDocs = searchDocs(query, 5);
+    const docsContext = formatDocsContext(relevantDocs);
+
+    // Build the system prompt with docs context
+    const systemWithDocs = docsContext
+      ? `${SYSTEM_PROMPT}\n\n---\n\n${docsContext}`
+      : SYSTEM_PROMPT;
+
+    const result = streamText({
+      model: groq("moonshotai/kimi-k2-instruct-0905"),
+      system: systemWithDocs,
+      messages,
     });
 
     return result.toDataStreamResponse();
