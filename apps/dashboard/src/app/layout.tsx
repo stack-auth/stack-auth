@@ -15,7 +15,7 @@ import { GeistSans } from 'geist/font/sans';
 import type { Metadata } from 'next';
 import { Inter as FontSans } from "next/font/google";
 import React from 'react';
-import { VersionAlerter } from '../components/version-alerter';
+// import { VersionAlerter } from '../components/version-alerter';
 import '../polyfills';
 import { BackgroundShine } from './background-shine';
 import { ClientPolyfill } from './client-polyfill';
@@ -103,7 +103,7 @@ export default function RootLayout({
                 <ClientPolyfill />
                 <RouterProvider>
                   <UserIdentity />
-                  <VersionAlerter />
+                  {/* <VersionAlerter /> */}
                   <BackgroundShine />
                   {children}
                   <DevelopmentPortDisplay />
