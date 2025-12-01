@@ -1,9 +1,10 @@
 'use client';
 
 import { AppIcon } from "@/components/app-square";
-import { ALL_APPS_FRONTEND } from "@/lib/apps-frontend";
-import { ALL_APPS, ALL_APP_TAGS, AppId } from "@stackframe/stack-shared/dist/apps/apps-config";
-import { Badge, Button, ScrollArea } from "@stackframe/stack-ui";
+import { ALL_APPS_FRONTEND, type AppId } from "@/lib/apps-frontend";
+import { ALL_APPS, ALL_APP_TAGS } from "@stackframe/stack-shared/dist/apps/apps-config";
+import { Badge, Button, ScrollArea, cn } from "@stackframe/stack-ui";
+import { Check, Info, Shield, Zap } from "lucide-react";
 import Image from "next/image";
 import { FunctionComponent } from "react";
 
@@ -19,75 +20,174 @@ export function AppStoreEntry({
   const app = ALL_APPS[appId];
   const appFrontend = ALL_APPS_FRONTEND[appId];
 
+  // Feature highlights (can be customized per app in the future)
+  const features = [
+    { icon: Shield, label: "Secure & Compliant" },
+    { icon: Zap, label: "Quick Setup" },
+    { icon: Check, label: "Production Ready" },
+  ];
+
   return (
-    <div className="flex flex-col h-full">
-      {/* Header with app icon and basic info */}
-      <div className="p-6 border-b">
-        <div className="flex gap-4">
-          <AppIcon appId={appId} className="w-24 h-24 shadow-md" />
-          <div className="flex-1">
-            <TitleComponent className="text-2xl font-bold mb-1">{app.displayName}</TitleComponent>
-            <p className="text-gray-600 dark:text-gray-400 mb-2">{app.subtitle}</p>
-            <div className="flex items-center gap-2 text-sm text-gray-500">
-              {app.tags.map((tag) => (
-                <Badge key={tag} variant={tag === "expert" ? "destructive" : "outline"} >{ALL_APP_TAGS[tag].displayName}</Badge>
-              ))}
+    <div className="flex flex-col h-full bg-gradient-to-b from-gray-50 to-white dark:from-gray-900 dark:to-gray-950">
+      {/* Hero Section */}
+      <div className="relative px-6 py-8 border-b border-gray-200 dark:border-gray-800">
+        <div className="max-w-4xl mx-auto">
+          <div className="flex flex-col md:flex-row gap-6 items-start">
+            {/* App Icon */}
+            <div className="flex-shrink-0">
+              <AppIcon
+                appId={appId}
+                className="shadow-xl ring-1 ring-black/5 dark:ring-white/10"
+              />
+            </div>
+
+            {/* App Info */}
+            <div className="flex-1 min-w-0">
+              <div className="flex items-start gap-2 mb-2">
+                <TitleComponent className="text-3xl font-semibold text-gray-900 dark:text-gray-100">
+                  {app.displayName}
+                </TitleComponent>
+                {app.stage !== "stable" && (
+                  <Badge
+                    variant={app.stage === "alpha" ? "destructive" : "secondary"}
+                    className="text-xs px-2 py-0.5"
+                  >
+                    {app.stage === "alpha" ? "Alpha" : "Beta"}
+                  </Badge>
+                )}
+              </div>
+
+              <p className="text-lg text-gray-600 dark:text-gray-400 mb-4">
+                {app.subtitle}
+              </p>
+
+              {/* Tags */}
+              <div className="flex flex-wrap gap-2 mb-6">
+                {(app.tags as Array<keyof typeof ALL_APP_TAGS>).map((tag) => (
+                  <div
+                    key={tag}
+                    className={cn(
+                      "px-3 py-1 rounded-full text-xs font-medium",
+                      tag === "expert"
+                        ? "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300"
+                        : "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300"
+                    )}
+                  >
+                    {ALL_APP_TAGS[tag].displayName}
+                  </div>
+                ))}
+              </div>
+
+              {/* Features Grid */}
+              <div className="grid grid-cols-3 gap-3 mb-6">
+                {features.map((feature, index) => (
+                  <div
+                    key={index}
+                    className="flex flex-col items-center gap-1.5 p-3 rounded-lg bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800"
+                  >
+                    <feature.icon className="w-4 h-4 text-blue-500" />
+                    <span className="text-xs text-gray-600 dark:text-gray-400 text-center">
+                      {feature.label}
+                    </span>
+                  </div>
+                ))}
+              </div>
+
+              {/* CTA Button */}
+              <div className="flex items-center gap-4">
+                <Button
+                  onClick={onEnable}
+                  size="lg"
+                  className="px-8 bg-blue-600 hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600 text-white font-medium shadow-lg shadow-blue-500/20"
+                >
+                  Enable App
+                </Button>
+                <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
+                  <Info className="w-4 h-4" />
+                  <span>No additional cost</span>
+                </div>
+              </div>
             </div>
           </div>
-          <div className="text-right">
-            <Button
-              onClick={onEnable}
-              size="lg"
-              className="px-8"
+        </div>
+
+        {/* Stage Warning */}
+        {app.stage !== "stable" && (
+          <div className="max-w-4xl mx-auto mt-6">
+            <div
+              className={cn(
+                "p-4 rounded-xl border-l-4",
+                app.stage === "alpha"
+                  ? "bg-red-50 dark:bg-red-950/20 border-red-500 dark:border-red-600"
+                  : "bg-amber-50 dark:bg-amber-950/20 border-amber-500 dark:border-amber-600"
+              )}
             >
-              Enable
-            </Button>
-            <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
-              No additional cost
-            </p>
+              <p
+                className={cn(
+                  "text-sm font-medium",
+                  app.stage === "alpha"
+                    ? "text-red-800 dark:text-red-300"
+                    : "text-amber-800 dark:text-amber-300"
+                )}
+              >
+                {app.stage === "alpha" && (
+                  <>
+                    <strong>Alpha Release:</strong> This app is in early development and may have bugs or unexpected behavior. Use with caution in production environments.
+                  </>
+                )}
+                {app.stage === "beta" && (
+                  <>
+                    <strong>Beta Release:</strong> This app is being actively tested. You may encounter some issues, but it is generally stable for production use.
+                  </>
+                )}
+              </p>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Screenshots Section */}
+      {appFrontend.screenshots.length > 0 && (
+        <div className="border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950">
+          <div className="max-w-4xl mx-auto px-6 py-8">
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">
+              Preview
+            </h2>
+            <ScrollArea className="w-full">
+              <div className="flex gap-4 pb-4">
+                {appFrontend.screenshots.map((screenshot: string, index: number) => (
+                  <div
+                    key={index}
+                    className="relative h-64 w-96 rounded-xl shadow-lg flex-shrink-0 overflow-hidden border border-gray-200 dark:border-gray-800"
+                  >
+                    <Image
+                      src={screenshot}
+                      alt={`${app.displayName} screenshot ${index + 1}`}
+                      fill
+                      className="object-cover select-none"
+                      draggable={false}
+                    />
+                  </div>
+                ))}
+              </div>
+            </ScrollArea>
           </div>
         </div>
-      </div>
+      )}
 
-      {/* Screenshots */}
-      <div className="border-b">
-        <ScrollArea className="w-full">
-          <div className="flex gap-4 p-6">
-            {appFrontend.screenshots.map((screenshot: string, index: number) => (
-              <div
-                key={index}
-                className="relative h-48 w-72 rounded-lg shadow-md flex-shrink-0 overflow-hidden"
-              >
-                <Image
-                  src={screenshot}
-                  alt={`${app.displayName} screenshot ${index + 1}`}
-                  fill
-                  className="object-cover select-none"
-                  draggable={false}
-                />
-              </div>
-            ))}
-            {appFrontend.screenshots.length === 0 && (
-              <p className="text-gray-500 dark:text-gray-400">No screenshots available.</p>
+      {/* Description Section */}
+      <ScrollArea className="flex-1">
+        <div className="max-w-4xl mx-auto px-6 py-8">
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">
+            About This App
+          </h2>
+          <div className="prose prose-sm dark:prose-invert max-w-none prose-headings:text-gray-900 dark:prose-headings:text-gray-100 prose-p:text-gray-600 dark:prose-p:text-gray-400">
+            {appFrontend.storeDescription || (
+              <p className="text-gray-500 dark:text-gray-400 italic">
+                No additional information available.
+              </p>
             )}
           </div>
-        </ScrollArea>
-      </div>
-
-      {/* Long description */}
-      <ScrollArea className="flex-1 p-6">
-        <div className="prose dark:prose-invert max-w-none">
-          {app.stage === "alpha" && (
-            <p className="text-red-500 dark:text-red-400 bg-red-500/10 p-2 rounded-md text-sm text-center">
-              IMPORTANT: This app is in alpha. It is still under development, and may break in unexpected ways.
-            </p>
-          )}
-          {app.stage === "beta" && (
-            <p className="text-yellow-700 dark:text-yellow-400 bg-yellow-500/10 p-2 rounded-md text-sm text-center">
-              IMPORTANT: This app is in beta. You may still experience some bugs and issues.
-            </p>
-          )}
-          {appFrontend.storeDescription || <p>No additional information available.</p>}
         </div>
       </ScrollArea>
     </div>

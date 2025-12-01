@@ -1,5 +1,5 @@
-import { typedIncludes } from "../utils/arrays";
-import { ALL_APPS, AppId } from "./apps-config";
+import React from "react";
+import { AppId } from "./apps-config";
 
 export const appSquareWidthExpression = "max(min(11vw,180px),80px)";
 export const appSquarePaddingExpression = "max(min(1vw,1.5rem),0.25rem)";
@@ -15,6 +15,13 @@ export type AppIconProps = {
    */
   LogoComponent?: React.FunctionComponent<{}>,
   className?: string,
+  /**
+   * Whether this app is enabled/installed (shows green icon)
+   */
+  enabled?: boolean,
+  /**
+   * Whether this app is disabled (shows dashed border)
+   */
   disabled?: boolean,
   style?: React.CSSProperties,
   /**
@@ -28,91 +35,78 @@ export function AppIcon({
   IconComponent,
   LogoComponent,
   className,
+  enabled = false,
   disabled,
   style,
   cn,
 }: AppIconProps) {
-  const svgGradients = (gradients: Record<string, string[]>) => {
-    return (
-      <svg width="0" height="0">
-        {Object.entries(gradients).map(([id, gradient]) => {
-          return (
-            <linearGradient key={id} id={id} x1="100%" y1="100%" x2="0%" y2="0%">
-              {gradient.map((color, index) => {
-                return <stop key={index} stopColor={color} offset={`${index * 100 / (gradient.length - 1)}%`} />;
-              })}
-            </linearGradient>
-          );
-        })}
-      </svg>
-    );
-  };
 
-  const app = ALL_APPS[appId];
+  const filterId = "glow-fx";
 
   return (
-    <div
-      style={style}
-      className={cn(
-        "relative w-24 h-24 rounded-[24.154%] overflow-hidden select-none",
-        !disabled && "bg-[linear-gradient(45deg,#dde,#fff)] dark:bg-[linear-gradient(45deg,#222,#666)]",
-        disabled && 'border-gray-400/70 border-dashed border-4',
-        className,
-      )}
-    >
-      <div className={cn("w-full h-full isolate relative")}>
-        {LogoComponent ? (
-          <div
-            className="absolute inset-[20%] w-[60%] h-[60%] rounded-[24.154%] overflow-hidden flex items-center justify-center border"
-            style={{
-              opacity: disabled ? 0.6 : 1,
-            }}
-          >
-            <LogoComponent />
-          </div>
-        ) : (
-          <>
-            <svg width="0" height="0">
-              {svgGradients({
-                "app-icon-gradient-light": ["#c0f", "#66f", "#4af"],
-                "app-icon-gradient-dark": ["#3ec", "#9af", "#a5f"],
-                "app-icon-gradient-light-expert": ["#f0c", "#f66", "#fa4"],
-                "app-icon-gradient-dark-expert": ["#f0c", "#f66", "#fa4"],
-                "app-icon-gradient-light-integration": ["#E5AB00", "#FFBA00", "#F8DF80"],
-                "app-icon-gradient-dark-integration": ["#E5AB00", "#FFBA00", "#F8DF80"],
-              })}
-            </svg>
-            <IconComponent
-              opacity={disabled ? 0.75 : 1}
+    <>
+      {/* theoretically, this only needs to be in the dom once: */}
+      <svg height="0" width="0" style={{ position: "absolute", marginLeft: "-100%" }}>
+        <defs>
+          <filter id={filterId} colorInterpolationFilters="sRGB" x="-50%" y="-50%" width="200%" height="200%">
+            {/* drop shadow */}
+            <feOffset dx="0" dy="2" in="SourceAlpha" result="dropOffset" />
+            <feGaussianBlur stdDeviation="8" in="dropOffset" result="dropBlur" />
+            <feFlood floodColor="#4271FF" floodOpacity="0.8" result="dropFlood" />
+            <feComposite operator="in" in="dropFlood" in2="dropBlur" result="dropShadow" />
+            {/* outer shadow */}
+            <feOffset dx="0" dy="0" in="SourceAlpha" result="outerOffset" />
+            <feGaussianBlur stdDeviation="4" in="outerOffset" result="outerBlur" />
+            <feFlood floodColor="#00BBFF" floodOpacity="0.3" result="outerFlood" />
+            <feComposite operator="in" in="outerFlood" in2="outerBlur" result="outerShadow" />
+            {/* Combine: drop shadow behind, then outer shadow, then source graphic on top */}
+            <feComposite operator="over" in="outerShadow" in2="dropShadow" result="combinedShadows" />
+            <feComposite operator="over" in="SourceGraphic" in2="combinedShadows" />
+          </filter>
+        </defs>
+      </svg>
+      <div
+        style={style}
+        className={cn(
+          "relative w-[72px] h-[72px] overflow-hidden select-none",
+          "rounded-[20%] supports-[corner-shape:superellipse(1.5)]:[border-radius:30%] supports-[corner-shape:superellipse(1.5)]:[corner-shape:superellipse(1.5)]",  // https://x.com/konstiwohlwend/status/1991221528206405685
+          "shadow-[0_4px_12px_0_rgba(0,0,0,0.08)] dark:!shadow-[0_10px_24px_0_rgba(10,69,151,0.28)]",
+          "before:absolute before:inset-0 before:bg-gradient-to-br before:from-slate-300 before:via-slate-400 before:to-slate-300 dark:before:from-[#4E7598] dark:before:via-[#0D233D] dark:before:to-[#4E7598] before:rounded-[inherit] before:supports-[corner-shape:superellipse(1.5)]:[border-radius:30%] before:supports-[corner-shape:superellipse(1.5)]:[corner-shape:superellipse(1.5)]",
+          // !disabled && "bg-gray-300 dark:bg-gray-900",
+          // disabled && 'bg-gray-300 dark:bg-gray-900',
+          className,
+        )}
+      >
+        <div className={cn("absolute inset-[1px] isolate flex items-center justify-center rounded-[inherit] supports-[corner-shape:superellipse(1.5)]:[border-radius:30%] supports-[corner-shape:superellipse(1.5)]:[corner-shape:superellipse(1.5)]", !disabled && "bg-gradient-to-br from-slate-100 to-slate-200 dark:from-[#163050] dark:to-[#090C11]", disabled && "bg-gray-300 dark:bg-gray-900")}>
+          {LogoComponent ? (
+            <div
               className={cn(
-                "inset-[20%] w-[60%] h-[60%] bg-clip-text text-transparent text-white absolute",
-                (typedIncludes(app.tags, "expert")
-                  ? "stroke-[url(#app-icon-gradient-light-expert)] dark:stroke-[url(#app-icon-gradient-dark-expert)]"
-                  : typedIncludes(app.tags, "integration")
-                    ? "stroke-[url(#app-icon-gradient-light-integration)] dark:stroke-[url(#app-icon-gradient-dark-integration)]"
-                    : "stroke-[url(#app-icon-gradient-light)] dark:stroke-[url(#app-icon-gradient-dark)]"
-                )
+                "w-[42%] h-[42%] flex items-center justify-center",
+                "[&_svg]:overflow-visible",
+                !enabled && "grayscale opacity-60"
               )}
+              style={{ filter: `url(#${filterId})` }}
+            >
+              <LogoComponent />
+            </div>
+          ) : (
+            <IconComponent
+              className={cn(
+                "w-[42%] h-[42%]",
+                enabled
+                  ? "stroke-emerald-600 dark:stroke-emerald-400"
+                  : "stroke-slate-500 dark:stroke-gray-500"
+              )}
+              style={{
+                opacity: disabled ? 0.5 : 1,
+                filter: `url(#${filterId})`,
+              }}
+              overflow="visible"
             />
-          </>
-        )}
+          )}
+        </div>
       </div>
-      <div className="absolute top-0 left-[-100%] right-0 flex flex-col gap-1 [transform:_rotate(-45deg)_translateY(24px)] [transform-origin:top_center]">
-        {app.stage !== "stable" && (
-          <div className={cn(
-            "h-4 uppercase text-xs font-bold font-mono tracking-widest text-center",
-            disabled
-              ? "bg-gray-400/80 text-white"
-              : app.stage === "alpha"
-                ? "bg-red-500 text-white"
-                : "bg-yellow-600 text-white"
-            )}
-          >
-            {app.stage}
-          </div>
-        )}
-      </div>
-    </div>
+    </>
   );
 }
 

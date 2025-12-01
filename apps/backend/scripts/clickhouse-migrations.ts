@@ -23,3 +23,17 @@ export async function runClickhouseMigrations() {
   await client.close();
 }
 
+
+
+const EVENTS_TABLE_BASE_SQL = `
+CREATE TABLE IF NOT EXISTS events (
+    event_id    UUID DEFAULT generateUUIDv4(),
+    event_type  LowCardinality(String),
+    event_at    DateTime64(3, 'UTC'),
+    data        JSON,
+    created_at DateTime64(3, 'UTC') DEFAULT now64(3)
+)
+ENGINE MergeTree
+PARTITION BY toYYYYMM(event_at)
+ORDER BY (event_at, event_type);
+`;
