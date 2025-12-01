@@ -74,9 +74,7 @@ export const GET = createSmartRouteHandler({
           const options = request.qstashOptions as any;
           const baseUrl = getEnvVariable("NEXT_PUBLIC_STACK_API_URL");
 
-          let fullUrl = options.url.startsWith("http")
-            ? options.url
-            : new URL(options.url, baseUrl).toString();
+          let fullUrl = new URL(options.url, baseUrl).toString();
 
           if (getNodeEnvironment().includes("development") || getNodeEnvironment().includes("test")) {
             const url = new URL(fullUrl);
