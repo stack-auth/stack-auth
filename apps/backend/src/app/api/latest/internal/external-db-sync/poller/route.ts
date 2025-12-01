@@ -92,8 +92,8 @@ export const GET = createSmartRouteHandler({
 
           processed++;
         } catch (error) {
-          console.error(
-            `Failed to process outgoing request ${request.id}:`,
+          captureError(
+            `poller-iteration-error`,
             error,
           );
         }
