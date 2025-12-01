@@ -1,5 +1,6 @@
 'use client';
 
+import { CmdKSearch, CmdKTrigger } from "@/components/cmdk-search";
 import { Link } from "@/components/link";
 import { Logo } from "@/components/logo";
 import { ProjectSwitcher } from "@/components/project-switcher";
@@ -515,6 +516,21 @@ function SidebarContent({
   );
 }
 
+function SpotlightSearchWrapper({ projectId }: { projectId: string }) {
+  const stackAdminApp = useAdminApp();
+  const project = stackAdminApp.useProject();
+  const config = project.useConfig();
+
+  const enabledApps = useMemo(() =>
+    typedEntries(config.apps.installed)
+      .filter(([appId, appConfig]) => appConfig?.enabled && appId in ALL_APPS)
+      .map(([appId]) => appId as AppId),
+    [config.apps.installed]
+  );
+
+  return <CmdKSearch projectId={projectId} enabledApps={enabledApps} />;
+}
+
 export default function SidebarLayout(props: { children?: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(false);
@@ -573,8 +589,10 @@ export default function SidebarLayout(props: { children?: React.ReactNode }) {
             </div>
           </div>
 
-          {/* Right section: Theme toggle and User button */}
+          {/* Right section: Search, Theme toggle and User button */}
           <div className="flex gap-2 items-center">
+            {/* Search trigger button */}
+            <CmdKTrigger />
             {getPublicEnvVar("NEXT_PUBLIC_STACK_EMULATOR_ENABLED") === "true" ? (
               <ThemeToggle />
             ) : (
@@ -585,6 +603,9 @@ export default function SidebarLayout(props: { children?: React.ReactNode }) {
             )}
           </div>
         </div>
+
+        {/* Spotlight Search */}
+        <SpotlightSearchWrapper projectId={projectId} />
 
         {/* Body Layout (Left Sidebar + Content + Right Companion) */}
         <div className="flex flex-1 items-start w-full">
