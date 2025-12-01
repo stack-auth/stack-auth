@@ -23,9 +23,13 @@ async function main() {
   });
 
   for (const endpoint of endpoints) {
-    setInterval(() => {
-      run(endpoint);
-    }, 60000);
+    runAsynchronously(async () => {
+      while (true) {
+        run(endpoint);
+        // Vercel only guarantees minute-granularity for cron jobs, so we randomize the interval
+        await wait(Math.random() * 120_000);
+      }
+    }); 
   }
 }
 
