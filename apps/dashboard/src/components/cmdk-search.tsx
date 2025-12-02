@@ -31,7 +31,16 @@ export const CmdKResultsList = memo(function CmdKResultsList({
   /** When true, selection shows as outline only (for parent columns) */
   isParentColumn?: boolean,
 }) {
+  const itemRefs = useRef<Map<number, HTMLButtonElement>>(new Map());
   const hasResults = commands.length > 0;
+
+  // Scroll selected item into view
+  useEffect(() => {
+    const selectedElement = itemRefs.current.get(selectedIndex);
+    if (selectedElement) {
+      selectedElement.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    }
+  }, [selectedIndex]);
 
   if (!hasResults) {
     return (
@@ -70,6 +79,13 @@ export const CmdKResultsList = memo(function CmdKResultsList({
         return (
           <button
             key={cmd.id}
+            ref={(el) => {
+              if (el) {
+                itemRefs.current.set(index, el);
+              } else {
+                itemRefs.current.delete(index);
+              }
+            }}
             tabIndex={-1}
             onClick={() => onSelect(cmd)}
             onMouseEnter={() => onMouseEnter(index)}
@@ -567,22 +583,24 @@ export function CmdKSearch({
 
                 {/* Preview panel - shown on the right side when a command with visual preview is selected */}
                 {filteredCommands[selectedIndex]?.hasVisualPreview && filteredCommands[selectedIndex]?.preview && nestedColumns.length === 0 && (
-                  <div
-                    key={filteredCommands[selectedIndex].id}
-                    className="hidden md:flex flex-1 border-l border-foreground/[0.06] overflow-hidden"
-                    style={{ animation: "spotlight-slide-in-from-right 200ms ease-out" }}
-                  >
-                    {React.createElement(filteredCommands[selectedIndex].preview!, {
-                      isSelected: true,
-                      query,
-                      registerOnFocus,
-                      unregisterOnFocus,
-                      onBlur: handlePreviewBlur,
-                      registerNestedCommands: registerNestedCommandsDepth0,
-                      navigateToNested: navigateToNestedDepth1,
-                      depth: 0,
-                      pathname,
-                    })}
+                  <div className="hidden md:flex flex-1 border-l border-foreground/[0.06] overflow-hidden">
+                    <div
+                      key={filteredCommands[selectedIndex].id}
+                      className="w-full h-full"
+                      style={{ animation: "spotlight-preview-fade-in 150ms ease-out 100ms both" }}
+                    >
+                      {React.createElement(filteredCommands[selectedIndex].preview!, {
+                        isSelected: true,
+                        query,
+                        registerOnFocus,
+                        unregisterOnFocus,
+                        onBlur: handlePreviewBlur,
+                        registerNestedCommands: registerNestedCommandsDepth0,
+                        navigateToNested: navigateToNestedDepth1,
+                        depth: 0,
+                        pathname,
+                      })}
+                    </div>
                   </div>
                 )}
 
@@ -637,6 +655,10 @@ export function CmdKSearch({
             opacity: 1;
             transform: translateX(0);
           }
+        }
+        @keyframes spotlight-preview-fade-in {
+          from { opacity: 0; }
+          to { opacity: 1; }
         }
         @keyframes spotlight-rainbow {
           0% { background-position: 0% 50%; }
