@@ -114,10 +114,22 @@ export const CmdKResultsList = memo(function CmdKResultsList({
                 Current
               </span>
             )}
-            {cmd.highlightColor && (
-              <kbd className="flex h-5 items-center justify-center rounded bg-foreground/[0.05] px-1.5 font-mono text-[10px] font-medium text-muted-foreground/60">
-                ↵
-              </kbd>
+            {/* Keyboard hints - only show when selected */}
+            {isSelected && (
+              <div className="flex items-center gap-1">
+                {/* Show Enter key if action is executable (action or navigate) */}
+                {(cmd.onAction.type === "action" || cmd.onAction.type === "navigate") && (
+                  <kbd className="flex h-5 items-center justify-center rounded bg-foreground/[0.05] px-1.5 font-mono text-[10px] font-medium text-muted-foreground/60">
+                    ↵
+                  </kbd>
+                )}
+                {/* Show Arrow Right key if preview is available */}
+                {cmd.preview && (
+                  <kbd className="flex h-5 items-center justify-center rounded bg-foreground/[0.05] px-1.5 font-mono text-[10px] font-medium text-muted-foreground/60">
+                    →
+                  </kbd>
+                )}
+              </div>
             )}
           </button>
         );
@@ -582,14 +594,19 @@ export function CmdKSearch({
           setOpen(false);
         }
       } else {
-        // Preview type - on mobile, show preview fullscreen
-        if (typeof window !== "undefined" && window.innerWidth < 768) {
-          setPreviewMode(true);
+        // Focus type - trigger the right arrow action (navigate into preview)
+        if (command.preview) {
+          // On mobile, show preview fullscreen
+          if (typeof window !== "undefined" && window.innerWidth < 768) {
+            setPreviewMode(true);
+          } else {
+            // On desktop, trigger the focus handlers to navigate into nested commands
+            previewFocusHandlers.forEach((handler) => handler());
+          }
         }
-        // On desktop, preview is shown automatically via selectedIndex
       }
     },
-    [router]
+    [router, previewFocusHandlers]
   );
 
   const handleBackFromPreview = useCallback(() => {

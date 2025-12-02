@@ -29,7 +29,7 @@ export type CmdKCommand = {
   description: string,
   keywords?: string[],
   onAction: {
-    type: "preview",
+    type: "focus",
   } | {
     type: "action",
     action: () => void | Promise<void>,
@@ -164,7 +164,7 @@ export function useCmdKCommands({
       label: "Preview Test Command",
       description: "Test command with preview component",
       keywords: ["test", "preview", "demo", "example"],
-      onAction: { type: "preview" },
+      onAction: { type: "focus" },
       preview: TestPreview,
       highlightColor: "blue",
     });
