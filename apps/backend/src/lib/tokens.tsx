@@ -164,6 +164,7 @@ export async function generateAccessTokenFromRefreshTokenIfValid(options: {
       projectId: options.tenancy.project.id,
       branchId: options.tenancy.branchId,
       userId: options.refreshTokenObj.projectUserId,
+      teamId: user.selected_team_id ?? "",
       sessionId: options.refreshTokenObj.id,
       isAnonymous: user.is_anonymous,
     }

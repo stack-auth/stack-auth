@@ -42,7 +42,8 @@ export const POST = createSmartRouteHandler({
       query_id: queryId,
       query_params: body.params,
       clickhouse_settings: {
-        SQL_tenancy_id: auth.tenancy.id,
+        SQL_project_id: auth.tenancy.project.id,
+        SQL_branch_id: auth.tenancy.branchId,
       },
       format: "JSONEachRow",
     }));
