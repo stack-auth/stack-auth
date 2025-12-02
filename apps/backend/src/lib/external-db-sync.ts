@@ -1,52 +1,47 @@
 import { Tenancy } from "@/lib/tenancies";
 import { getPrismaClientForTenancy, PrismaClientTransaction } from "@/prisma-client";
+import { DEFAULT_DB_SYNC_MAPPINGS } from "@stackframe/stack-shared/dist/config/db-sync-mappings";
 import type { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
+import { captureError, StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { omit } from "@stackframe/stack-shared/dist/utils/objects";
 import { Client } from 'pg';
-
-export function getExternalDatabases(config: CompleteConfig) {
-  return config.dbSync.externalDatabases;
-}
 
 async function pushRowsToExternalDb(
   externalClient: Client,
   tableName: string,
   newRows: any[],
-  upsertQuery?: string,
+  upsertQuery: string,
+  expectedTenancyId: string,
+  mappingId: string,
 ) {
-  if (!upsertQuery) {
-    throw new Error(
-      `Cannot sync table "${tableName}": No upsertQuery configured.`
-    );
-  }
-
   if (newRows.length === 0) return;
-  const placeholderMatches = upsertQuery.match(/\$\d+/g) ?? [];
-  const expectedParamCount =
-    placeholderMatches.length === 0
-      ? 0
-      : Math.max(...placeholderMatches.map((m) => Number(m.slice(1))));
-
-  if (expectedParamCount === 0) {
-    throw new Error(
-      `upsertQuery for table "${tableName}" contains no positional parameters ($1, $2, ...).` +
-        ` Your mapping must use parameterized SQL.`
-    );
-  }
+  // Just for our own sanity, make sure that we have the right number of positional parameters
+  // The last parameter is mapping_name for metadata tracking
+  const placeholderMatches = upsertQuery.match(/\$\d+/g) ?? throwErr(`Could not find any positional parameters ($1, $2, ...) in the update SQL query.`);
+  const expectedParamCount = Math.max(...placeholderMatches.map((m: string) => Number(m.slice(1))));
   const sampleRow = newRows[0];
-  const { tenancyId: _ignore, ...restSample } = sampleRow;
-  const orderedKeys = Object.keys(restSample);
-
-  if (orderedKeys.length !== expectedParamCount) {
-    throw new Error(
-      ` Column count mismatch for table "${tableName}".\n` +
-        `→ upsertQuery expects ${expectedParamCount} parameters.\n` +
-        `→ internalDbFetchQuery returned ${orderedKeys.length} columns (excluding tenancyId).\n` +
-        `Fix your SELECT column order or your SQL parameter order.`
-    );
+  const orderedKeys = Object.keys(omit(sampleRow, ["tenancyId"]));
+  // +1 for mapping_name parameter which is appended
+  if (orderedKeys.length + 1 !== expectedParamCount) {
+    throw new StackAssertionError(`
+      Column count mismatch for table ${JSON.stringify(tableName)}
+       → upsertQuery expects ${expectedParamCount} parameters (last one should be mapping_name).
+       → internalDbFetchQuery returned ${orderedKeys.length} columns (excluding tenancyId) + 1 for mapping_name = ${orderedKeys.length + 1}.
+      Fix your SELECT column order or your SQL parameter order.
+    `);
   }
 
   for (const row of newRows) {
     const { tenancyId, ...rest } = row;
+
+    // Validate that all rows belong to the expected tenant
+    if (tenancyId !== expectedTenancyId) {
+      throw new StackAssertionError(
+        `Row has unexpected tenancyId. Expected ${expectedTenancyId}, got ${tenancyId}. ` +
+        `This indicates a bug in the internalDbFetchQuery.`
+      );
+    }
+
     const rowKeys = Object.keys(rest);
 
     const validShape =
@@ -54,7 +49,7 @@ async function pushRowsToExternalDb(
       rowKeys.every((k, i) => k === orderedKeys[i]);
 
     if (!validShape) {
-      throw new Error(
+      throw new StackAssertionError(
         `  Row shape mismatch for table "${tableName}".\n` +
           `Expected column order: [${orderedKeys.join(", ")}]\n` +
           `Received column order: [${rowKeys.join(", ")}]\n` +
@@ -62,10 +57,9 @@ async function pushRowsToExternalDb(
           `Fix the SELECT in internalDbFetchQuery immediately.`
       );
     }
-  }
-  for (const row of newRows) {
-    const { tenancyId, ...rest } = row;
-    await externalClient.query(upsertQuery, Object.values(rest));
+
+    // Append mapping_name as the last parameter for metadata tracking
+    await externalClient.query(upsertQuery, [...Object.values(rest), mappingId]);
   }
 }
 
@@ -73,71 +67,62 @@ async function pushRowsToExternalDb(
 async function syncMapping(
   externalClient: Client,
   mappingId: string,
-  mapping: CompleteConfig["dbSync"]["externalDatabases"][string]["mappings"][string],
+  mapping: typeof DEFAULT_DB_SYNC_MAPPINGS[keyof typeof DEFAULT_DB_SYNC_MAPPINGS],
   internalPrisma: PrismaClientTransaction,
   dbId: string,
   tenancyId: string,
+  dbType: 'postgres',
 ) {
-
-  const rawSourceTables: any = (mapping as any).sourceTables;
-  const sourceTables: string[] = rawSourceTables
-    ? Object.values(rawSourceTables)
-    : [];
-
-  const rawTargetPk: any = (mapping as any).targetTablePrimaryKey;
-  const targetTablePrimaryKey: string[] = rawTargetPk
-    ? Object.values(rawTargetPk)
-    : [];
-
-  if (sourceTables.length === 0) {
-    console.error(
-      ` Invalid configuration for mapping #${mappingId}: 'sourceTables' resolved to an empty list.`,
-    );
-    return;
-  }
-
-  if (targetTablePrimaryKey.length === 0) {
-    console.error(
-      ` Invalid configuration for mapping #${mappingId}: 'targetTablePrimaryKey' resolved to an empty list.`,
-    );
-    return;
-  }
-
   const fetchQuery = mapping.internalDbFetchQuery;
-  if (!fetchQuery || !mapping.targetTable) {
-    return;
-  }
-
+  const updateQuery = mapping.externalDbUpdateQueries[dbType];
   const tableName = mapping.targetTable;
 
-  if (mapping.targetTableSchema) {
-    const checkTableQuery = `
-      SELECT EXISTS (
-        SELECT FROM information_schema.tables 
-        WHERE table_schema = 'public'
-        AND table_name = $1
-      );
-    `;
-    const res = await externalClient.query(checkTableQuery, [tableName]);
-    if (!res.rows[0].exists) {
-      try {
-        await externalClient.query(mapping.targetTableSchema);
-      } catch (err: any) {
-        if (err.code !== '23505' || err.constraint !== 'pg_type_typname_nsp_index') {
-          throw err;
+  const tableSchema = mapping.targetTableSchemas[dbType];
+  await externalClient.query(tableSchema);
+
+  let lastSequenceId = -1;
+  const metadataResult = await externalClient.query(
+    `SELECT "last_synced_sequence_id" FROM "_stack_sync_metadata" WHERE "mapping_name" = $1`,
+    [mappingId]
+  );
+  if (metadataResult.rows.length > 0) {
+    lastSequenceId = Number(metadataResult.rows[0].last_synced_sequence_id);
+  }
+
+  const BATCH_LIMIT = 1000;
+
+  while (true) {
+    const rows = await internalPrisma.$queryRawUnsafe<any[]>(fetchQuery, tenancyId, lastSequenceId);
+
+    if (rows.length === 0) {
+      break;
+    }
+
+    await pushRowsToExternalDb(
+      externalClient,
+      tableName,
+      rows,
+      updateQuery,
+      tenancyId,
+      mappingId,
+    );
+
+    let maxSeqInBatch = lastSequenceId;
+    for (const row of rows) {
+      const seq = row.sequence_id;
+      if (seq != null) {
+        const seqNum = typeof seq === 'bigint' ? Number(seq) : Number(seq);
+        if (seqNum > maxSeqInBatch) {
+          maxSeqInBatch = seqNum;
         }
       }
     }
+    lastSequenceId = maxSeqInBatch;
+
+    if (rows.length < BATCH_LIMIT) {
+      break;
+    }
   }
-
-  const rows = await internalPrisma.$queryRawUnsafe<any[]>(fetchQuery, tenancyId);
-
-  await pushRowsToExternalDb(
-    externalClient,
-    tableName,
-    rows,
-    mapping.externalDbUpdateQuery,
-  );
 }
 
 
@@ -147,16 +132,16 @@ async function syncDatabase(
   internalPrisma: PrismaClientTransaction,
   tenancyId: string,
 ) {
-
-  const mappings = dbConfig.mappings;
-
-  const isArray = Array.isArray(mappings);
-  const mappingCount = mappings
-    ? (isArray ? (mappings as any[]).length : Object.keys(mappings as Record<string, unknown>).length)
-    : 0;
+  if (dbConfig.type !== 'postgres') {
+    throw new StackAssertionError(
+      `Unsupported database type '${dbConfig.type}' for external DB ${dbId}. Only 'postgres' is currently supported.`
+    );
+  }
 
   if (!dbConfig.connectionString) {
-    return;
+    throw new StackAssertionError(
+      `Invalid configuration for external DB ${dbId}: 'connectionString' is missing.`
+    );
   }
 
   const externalClient = new Client({
@@ -166,38 +151,41 @@ async function syncDatabase(
   try {
     await externalClient.connect();
 
-    if (!mappings || mappingCount === 0) {
-      return;
-    }
-
-    for (const [mappingId, mapping] of Object.entries(mappings)) {
+    // Always use DEFAULT_DB_SYNC_MAPPINGS - users cannot customize mappings
+    // because internalDbFetchQuery runs against Stack Auth's internal DB
+    for (const [mappingId, mapping] of Object.entries(DEFAULT_DB_SYNC_MAPPINGS)) {
       await syncMapping(
         externalClient,
         mappingId,
-        mapping as any,
+        mapping,
         internalPrisma,
         dbId,
         tenancyId,
+        dbConfig.type,
       );
     }
 
-  } catch (error: any) {
-    console.error(`Error syncing external DB ${dbId}:`, error);
-  } finally {
+  } catch (error) {
     await externalClient.end();
+    captureError(`external-db-sync-${dbId}`, error);
+    return;
   }
+
+  await externalClient.end();
 }
 
 
 export async function syncExternalDatabases(tenancy: Tenancy) {
-  const externalDatabases = getExternalDatabases(tenancy.config);
-  if (Object.keys(externalDatabases).length === 0) {
-    return;
-  }
-
+  const externalDatabases = tenancy.config.dbSync.externalDatabases;
   const internalPrisma = await getPrismaClientForTenancy(tenancy);
 
   for (const [dbId, dbConfig] of Object.entries(externalDatabases)) {
-    await syncDatabase(dbId, dbConfig, internalPrisma, tenancy.id);
+    try {
+      await syncDatabase(dbId, dbConfig, internalPrisma, tenancy.id);
+    } catch (error) {
+      // Log the error but continue syncing other databases
+      // This ensures one bad database config doesn't block successful syncs to other databases
+      captureError(`external-db-sync-${dbId}`, error);
+    }
   }
 }

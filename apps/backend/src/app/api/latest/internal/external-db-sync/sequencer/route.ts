@@ -8,8 +8,110 @@ import {
   yupTuple,
 } from "@stackframe/stack-shared/dist/schema-fields";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
-import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
+import { captureError, StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 import { wait } from "@stackframe/stack-shared/dist/utils/promises";
+
+// Assigns sequence IDs to rows that need them and queues sync requests for affected tenants.
+// Processes up to 1000 rows at a time from each table.
+async function backfillSequenceIds() {
+  const projectUserTenants = await globalPrismaClient.$queryRaw<{ tenancyId: string }[]>`
+    WITH rows_to_update AS (
+      SELECT "tenancyId", "projectUserId"
+      FROM "ProjectUser"
+      WHERE "shouldUpdateSequenceId" = TRUE
+      OR "sequenceId" IS NULL
+      LIMIT 1000
+      FOR UPDATE SKIP LOCKED
+    ),
+    updated_rows AS (
+      UPDATE "ProjectUser" pu
+      SET "sequenceId" = nextval('global_seq_id'),
+          "shouldUpdateSequenceId" = FALSE
+      FROM rows_to_update r
+      WHERE pu."tenancyId"     = r."tenancyId"
+        AND pu."projectUserId" = r."projectUserId"
+      RETURNING pu."tenancyId"
+    )
+    SELECT DISTINCT "tenancyId" FROM updated_rows
+  `;
+
+  // Enqueue sync for each affected tenant
+  for (const { tenancyId } of projectUserTenants) {
+    await enqueueTenantSync(tenancyId);
+  }
+
+  const contactChannelTenants = await globalPrismaClient.$queryRaw<{ tenancyId: string }[]>`
+    WITH rows_to_update AS (
+      SELECT "tenancyId", "projectUserId", "id"
+      FROM "ContactChannel"
+      WHERE "shouldUpdateSequenceId" = TRUE
+      OR "sequenceId" IS NULL
+      LIMIT 1000
+      FOR UPDATE SKIP LOCKED
+    ),
+    updated_rows AS (
+      UPDATE "ContactChannel" cc
+      SET "sequenceId" = nextval('global_seq_id'),
+          "shouldUpdateSequenceId" = FALSE
+      FROM rows_to_update r
+      WHERE cc."tenancyId"     = r."tenancyId"
+        AND cc."projectUserId" = r."projectUserId"
+        AND cc."id"            = r."id"
+      RETURNING cc."tenancyId"
+    )
+    SELECT DISTINCT "tenancyId" FROM updated_rows
+  `;
+
+  for (const { tenancyId } of contactChannelTenants) {
+    await enqueueTenantSync(tenancyId);
+  }
+
+  const deletedRowTenants = await globalPrismaClient.$queryRaw<{ tenancyId: string }[]>`
+    WITH rows_to_update AS (
+      SELECT "id", "tenancyId"
+      FROM "DeletedRow"
+      WHERE "shouldUpdateSequenceId" = TRUE
+      OR "sequenceId" IS NULL
+      LIMIT 1000
+      FOR UPDATE SKIP LOCKED
+    ),
+    updated_rows AS (
+      UPDATE "DeletedRow" dr
+      SET "sequenceId" = nextval('global_seq_id'),
+          "shouldUpdateSequenceId" = FALSE
+      FROM rows_to_update r
+      WHERE dr."id" = r."id"
+      RETURNING dr."tenancyId"
+    )
+    SELECT DISTINCT "tenancyId" FROM updated_rows
+  `;
+
+  for (const { tenancyId } of deletedRowTenants) {
+    await enqueueTenantSync(tenancyId);
+  }
+}
+
+// Queues a sync request for a specific tenant if one isn't already pending.
+// Prevents duplicate sync requests by checking for unfulfilled requests.
+async function enqueueTenantSync(tenancyId: string) {
+  await globalPrismaClient.$executeRaw`
+    INSERT INTO "OutgoingRequest" ("id", "createdAt", "qstashOptions", "startedFulfillingAt")
+    SELECT
+      gen_random_uuid(),
+      NOW(),
+      json_build_object(
+        'url',  '/api/latest/internal/external-db-sync/sync-engine',
+        'body', json_build_object('tenancyId', ${tenancyId})
+      ),
+      NULL
+    WHERE NOT EXISTS (
+      SELECT 1
+      FROM "OutgoingRequest"
+      WHERE "startedFulfillingAt" IS NULL
+        AND ("qstashOptions"->'body'->>'tenancyId')::uuid = ${tenancyId}::uuid
+    )
+  `;
+}
 
 export const GET = createSmartRouteHandler({
   metadata: {
@@ -42,26 +144,23 @@ export const GET = createSmartRouteHandler({
     }
 
     const startTime = performance.now();
-    const maxDurationMs = 2 * 60 * 1000;
-    const sleepMs = 50;
+    const maxDurationMs = 3 * 60 * 1000;
+    const pollIntervalMs = 50;
 
     let iterations = 0;
 
     while (performance.now() - startTime < maxDurationMs) {
       try {
-        await globalPrismaClient.$executeRaw`SELECT backfill_null_sequence_ids()`;
+        await backfillSequenceIds();
       } catch (error) {
-        console.warn('[sequencer] Failed to run backfill_null_sequence_ids:', error);
+        captureError(
+          `sequencer-iteration-error`,
+          error,
+        );
       }
 
       iterations++;
-
-      const elapsed = performance.now() - startTime;
-      if (elapsed >= maxDurationMs) {
-        break;
-      }
-
-      await wait(sleepMs);
+      await wait(pollIntervalMs);
     }
 
     return {

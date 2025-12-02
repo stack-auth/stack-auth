@@ -10,7 +10,7 @@ import {
   yupTuple,
 } from "@stackframe/stack-shared/dist/schema-fields";
 import { getEnvVariable, getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
-import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
+import { captureError, StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 
 export const GET = createSmartRouteHandler({
@@ -44,19 +44,19 @@ export const GET = createSmartRouteHandler({
     }
 
     const startTime = performance.now();
-    const maxDurationMs = 2 * 60 * 1000;
-    const busySleepMs = 50;
+    const maxDurationMs = 3 * 60 * 1000;
+    const pollIntervalMs = 50;
 
     let totalRequestsProcessed = 0;
     async function claimPendingRequests(): Promise<OutgoingRequest[]> {
       return await retryTransaction(globalPrismaClient, async (tx) => {
         const rows = await tx.$queryRaw<OutgoingRequest[]>`
           UPDATE "OutgoingRequest"
-          SET "fulfilledAt" = NOW()
+          SET "startedFulfillingAt" = NOW()
           WHERE "id" IN (
             SELECT id
             FROM "OutgoingRequest"
-            WHERE "fulfilledAt" IS NULL
+            WHERE "startedFulfillingAt" IS NULL
             ORDER BY "createdAt"
             LIMIT 100
             FOR UPDATE SKIP LOCKED
@@ -76,6 +76,8 @@ export const GET = createSmartRouteHandler({
 
           let fullUrl = new URL(options.url, baseUrl).toString();
 
+          // In dev/test, QStash runs in Docker so "localhost" won't work.
+          // Replace with "host.docker.internal" to reach the host machine.
           if (getNodeEnvironment().includes("development") || getNodeEnvironment().includes("test")) {
             const url = new URL(fullUrl);
             if (url.hostname === "localhost" || url.hostname === "127.0.0.1") {
@@ -107,12 +109,7 @@ export const GET = createSmartRouteHandler({
 
       totalRequestsProcessed += await processRequests(pendingRequests);
 
-      const elapsed = performance.now() - startTime;
-      if (elapsed >= maxDurationMs) {
-        break;
-      }
-
-      await wait(busySleepMs);
+      await wait(pollIntervalMs);
     }
 
     return {

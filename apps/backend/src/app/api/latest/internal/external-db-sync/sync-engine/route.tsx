@@ -2,7 +2,8 @@ import { syncExternalDatabases } from "@/lib/external-db-sync";
 import { getTenancy } from "@/lib/tenancies";
 import { ensureUpstashSignature } from "@/lib/upstash";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { yupBoolean, yupNumber, yupObject, yupString, yupTuple } from "@stackframe/stack-shared/dist/schema-fields";
+import { yupNumber, yupObject, yupString, yupTuple } from "@stackframe/stack-shared/dist/schema-fields";
+import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 
 export const POST = createSmartRouteHandler({
   metadata: {
@@ -16,53 +17,30 @@ export const POST = createSmartRouteHandler({
       "upstash-signature": yupTuple([yupString()]).defined(),
     }).defined(),
     body: yupObject({
-      tenantId: yupString().defined(),
+      tenancyId: yupString().defined(),
     }).defined(),
     method: yupString().oneOf(["POST"]).defined(),
   }),
   response: yupObject({
     statusCode: yupNumber().oneOf([200]).defined(),
-    bodyType: yupString().oneOf(["json"]).defined(),
-    body: yupObject({
-      success: yupBoolean().defined(),
-      tenantId: yupString().defined(),
-      timestamp: yupString().defined(),
-    }).defined(),
+    bodyType: yupString().oneOf(["success"]).defined(),
   }),
   handler: async ({ body }, fullReq) => {
     await ensureUpstashSignature(fullReq);
 
-    const { tenantId } = body;
-    const timestamp = new Date().toISOString();
+    const { tenancyId } = body;
 
-    const tenancy = await getTenancy(tenantId);
+    const tenancy = await getTenancy(tenancyId);
     if (!tenancy) {
-      console.error(`Tenant not found: ${tenantId}`);
-      return {
-        statusCode: 200,
-        bodyType: "json",
-        body: {
-          success: false,
-          tenantId,
-          timestamp,
-        },
-      };
+console.warn(`[sync-engine] Tenancy ${tenancyId} in queue but not found.`);
+throw new StatusError(404, `Tenancy ${tenancyId} not found.`);
     }
 
-    try {
-      await syncExternalDatabases(tenancy);
-    } catch (error: any) {
-      console.error(` Error syncing external databases for tenant ${tenantId}:`, error);
-    }
+    await syncExternalDatabases(tenancy);
 
     return {
       statusCode: 200,
-      bodyType: "json",
-      body: {
-        success: true,
-        tenantId,
-        timestamp,
-      },
+      bodyType: "success",
     };
   },
 });

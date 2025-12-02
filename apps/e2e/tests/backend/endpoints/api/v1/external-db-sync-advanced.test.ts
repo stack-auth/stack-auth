@@ -1,11 +1,12 @@
-import { DEFAULT_DB_SYNC_MAPPINGS } from '@stackframe/stack-shared/dist/config/db-sync-mappings';
-import { generateSecureRandomString } from '@stackframe/stack-shared/dist/utils/crypto';
 import { Client } from 'pg';
 import { afterAll, beforeAll, describe, expect } from 'vitest';
 import { test } from '../../../../helpers';
-import { InternalApiKey, User, niceBackendFetch } from '../../../backend-helpers';
+import { InternalApiKey, User, backendContext, niceBackendFetch } from '../../../backend-helpers';
 import {
   HIGH_VOLUME_TIMEOUT,
+  POSTGRES_HOST,
+  POSTGRES_PASSWORD,
+  POSTGRES_USER,
   TEST_TIMEOUT,
   TestDbManager,
   createProjectWithExternalDb,
@@ -94,65 +95,65 @@ describe.sequential('External DB Sync - Advanced Tests', () => {
     await waitForCondition(
       async () => {
         try {
-          const res1 = await clientA1.query(`SELECT * FROM "PartialUsers" WHERE "value" = $1`, ['user-a@example.com']);
-          const res2 = await clientA2.query(`SELECT * FROM "PartialUsers" WHERE "value" = $1`, ['user-a@example.com']);
+          const res1 = await clientA1.query(`SELECT * FROM "users" WHERE "primary_email" = $1`, ['user-a@example.com']);
+          const res2 = await clientA2.query(`SELECT * FROM "users" WHERE "primary_email" = $1`, ['user-a@example.com']);
           return res1.rows.length === 1 && res2.rows.length === 1;
         } catch (err: any) {
           if (err.code === '42P01') return false;
           throw err;
         }
       },
-      { description: 'User A to appear in both Project A databases', timeoutMs: 90000 }
+      { description: 'User A to appear in both Project A databases', timeoutMs: 120000 }
     );
 
     await waitForCondition(
       async () => {
         try {
-          const res1 = await clientB1.query(`SELECT * FROM "PartialUsers" WHERE "value" = $1`, ['user-b@example.com']);
-          const res2 = await clientB2.query(`SELECT * FROM "PartialUsers" WHERE "value" = $1`, ['user-b@example.com']);
-          const res3 = await clientB3.query(`SELECT * FROM "PartialUsers" WHERE "value" = $1`, ['user-b@example.com']);
+          const res1 = await clientB1.query(`SELECT * FROM "users" WHERE "primary_email" = $1`, ['user-b@example.com']);
+          const res2 = await clientB2.query(`SELECT * FROM "users" WHERE "primary_email" = $1`, ['user-b@example.com']);
+          const res3 = await clientB3.query(`SELECT * FROM "users" WHERE "primary_email" = $1`, ['user-b@example.com']);
           return res1.rows.length === 1 && res2.rows.length === 1 && res3.rows.length === 1;
         } catch (err: any) {
           if (err.code === '42P01') return false;
           throw err;
         }
       },
-      { description: 'User B to appear in all three Project B databases', timeoutMs: 90000 }
+      { description: 'User B to appear in all three Project B databases', timeoutMs: 120000 }
     );
 
-    const resA1 = await clientA1.query(`SELECT * FROM "PartialUsers" WHERE "value" = $1`, ['user-a@example.com']);
+    const resA1 = await clientA1.query(`SELECT * FROM "users" WHERE "primary_email" = $1`, ['user-a@example.com']);
     expect(resA1.rows.length).toBe(1);
-    expect(resA1.rows[0].displayName).toBe('User A');
+    expect(resA1.rows[0].display_name).toBe('User A');
 
-    const resA2 = await clientA2.query(`SELECT * FROM "PartialUsers" WHERE "value" = $1`, ['user-a@example.com']);
+    const resA2 = await clientA2.query(`SELECT * FROM "users" WHERE "primary_email" = $1`, ['user-a@example.com']);
     expect(resA2.rows.length).toBe(1);
-    expect(resA2.rows[0].displayName).toBe('User A');
+    expect(resA2.rows[0].display_name).toBe('User A');
 
-    const resB1_A = await clientB1.query(`SELECT * FROM "PartialUsers" WHERE "value" = $1`, ['user-a@example.com']);
+    const resB1_A = await clientB1.query(`SELECT * FROM "users" WHERE "primary_email" = $1`, ['user-a@example.com']);
     expect(resB1_A.rows.length).toBe(0);
 
-    const resB2_A = await clientB2.query(`SELECT * FROM "PartialUsers" WHERE "value" = $1`, ['user-a@example.com']);
+    const resB2_A = await clientB2.query(`SELECT * FROM "users" WHERE "primary_email" = $1`, ['user-a@example.com']);
     expect(resB2_A.rows.length).toBe(0);
 
-    const resB3_A = await clientB3.query(`SELECT * FROM "PartialUsers" WHERE "value" = $1`, ['user-a@example.com']);
+    const resB3_A = await clientB3.query(`SELECT * FROM "users" WHERE "primary_email" = $1`, ['user-a@example.com']);
     expect(resB3_A.rows.length).toBe(0);
 
-    const resB1 = await clientB1.query(`SELECT * FROM "PartialUsers" WHERE "value" = $1`, ['user-b@example.com']);
+    const resB1 = await clientB1.query(`SELECT * FROM "users" WHERE "primary_email" = $1`, ['user-b@example.com']);
     expect(resB1.rows.length).toBe(1);
-    expect(resB1.rows[0].displayName).toBe('User B');
+    expect(resB1.rows[0].display_name).toBe('User B');
 
-    const resB2 = await clientB2.query(`SELECT * FROM "PartialUsers" WHERE "value" = $1`, ['user-b@example.com']);
+    const resB2 = await clientB2.query(`SELECT * FROM "users" WHERE "primary_email" = $1`, ['user-b@example.com']);
     expect(resB2.rows.length).toBe(1);
-    expect(resB2.rows[0].displayName).toBe('User B');
+    expect(resB2.rows[0].display_name).toBe('User B');
 
-    const resB3 = await clientB3.query(`SELECT * FROM "PartialUsers" WHERE "value" = $1`, ['user-b@example.com']);
+    const resB3 = await clientB3.query(`SELECT * FROM "users" WHERE "primary_email" = $1`, ['user-b@example.com']);
     expect(resB3.rows.length).toBe(1);
-    expect(resB3.rows[0].displayName).toBe('User B');
+    expect(resB3.rows[0].display_name).toBe('User B');
 
-    const resA1_B = await clientA1.query(`SELECT * FROM "PartialUsers" WHERE "value" = $1`, ['user-b@example.com']);
+    const resA1_B = await clientA1.query(`SELECT * FROM "users" WHERE "primary_email" = $1`, ['user-b@example.com']);
     expect(resA1_B.rows.length).toBe(0);
 
-    const resA2_B = await clientA2.query(`SELECT * FROM "PartialUsers" WHERE "value" = $1`, ['user-b@example.com']);
+    const resA2_B = await clientA2.query(`SELECT * FROM "users" WHERE "primary_email" = $1`, ['user-b@example.com']);
     expect(resA2_B.rows.length).toBe(0);
   }, TEST_TIMEOUT);
 
@@ -162,10 +163,10 @@ describe.sequential('External DB Sync - Advanced Tests', () => {
    * - Compares sequenceIds to ensure the newest export exceeds the previous maximum.
    *
    * Why it matters:
-   * - Verifies ordering guarantees that drive pagination and conflict resolution.
+   * - Verifies metadata table tracks progress correctly for incremental sync.
    */
-  test('SequenceId Tracking: Verify sync uses sequenceId correctly', async () => {
-    const dbName = 'sequence_id_test';
+  test('Metadata Tracking: Verify sync progress is tracked in metadata table', async () => {
+    const dbName = 'metadata_tracking_test';
     const connectionString = await dbManager.createDatabase(dbName);
 
     await createProjectWithExternalDb({
@@ -197,28 +198,26 @@ describe.sequential('External DB Sync - Advanced Tests', () => {
       body: { display_name: 'User 3' }
     });
 
-    await waitForTable(client, 'PartialUsers');
+    await waitForTable(client, 'users');
 
     await waitForCondition(
       async () => {
-        const res = await client.query(`SELECT COUNT(*) as count FROM "PartialUsers"`);
+        const res = await client.query(`SELECT COUNT(*) as count FROM "users"`);
         return parseInt(res.rows[0].count) === 3;
       },
       { description: 'all 3 users to be synced' }
     );
 
-    const res1 = await client.query(`SELECT * FROM "PartialUsers" ORDER BY "sequenceId"`);
+    const res1 = await client.query(`SELECT * FROM "users" ORDER BY "primary_email"`);
     expect(res1.rows.length).toBe(3);
 
-    const seq1 = BigInt(res1.rows[0].sequenceId);
-    const seq2 = BigInt(res1.rows[1].sequenceId);
-    const seq3 = BigInt(res1.rows[2].sequenceId);
-
-    expect(seq2).toBeGreaterThan(seq1);
-    expect(seq3).toBeGreaterThan(seq2);
-
-    const maxSeqRes = await client.query(`SELECT MAX("sequenceId") as max_seq FROM "PartialUsers"`);
-    const maxSeq = BigInt(maxSeqRes.rows[0].max_seq);
+    // Check metadata table tracks progress
+    const metadata1 = await client.query(
+      `SELECT "last_synced_sequence_id" FROM "_stack_sync_metadata" WHERE "mapping_name" = 'users'`
+    );
+    expect(metadata1.rows.length).toBe(1);
+    const seq1 = Number(metadata1.rows[0].last_synced_sequence_id);
+    expect(seq1).toBeGreaterThan(0);
 
     const user4 = await User.create({ emailAddress: 'seq4@example.com' });
     await niceBackendFetch(`/api/v1/users/${user4.userId}`, {
@@ -228,21 +227,27 @@ describe.sequential('External DB Sync - Advanced Tests', () => {
     });
 
     await waitForSyncedData(client, 'seq4@example.com', 'User 4');
-    const res2 = await client.query(`SELECT * FROM "PartialUsers" WHERE "value" = $1`, ['seq4@example.com']);
+    const res2 = await client.query(`SELECT * FROM "users" WHERE "primary_email" = $1`, ['seq4@example.com']);
     expect(res2.rows.length).toBe(1);
-    const seq4 = BigInt(res2.rows[0].sequenceId);
-    expect(seq4).toBeGreaterThan(maxSeq);
-    const finalRes = await client.query(`SELECT COUNT(*) as count FROM "PartialUsers"`);
+
+    // Metadata should have advanced
+    const metadata2 = await client.query(
+      `SELECT "last_synced_sequence_id" FROM "_stack_sync_metadata" WHERE "mapping_name" = 'users'`
+    );
+    const seq2 = Number(metadata2.rows[0].last_synced_sequence_id);
+    expect(seq2).toBeGreaterThan(seq1);
+
+    const finalRes = await client.query(`SELECT COUNT(*) as count FROM "users"`);
     expect(parseInt(finalRes.rows[0].count)).toBe(4);
   }, TEST_TIMEOUT);
 
   /**
    * What it does:
-   * - Exports a single user, records its sequenceId, then syncs again after adding a second user.
-   * - Ensures the first user’s row count and sequenceId stay untouched.
+   * - Exports a single user, then syncs again after adding a second user.
+   * - Ensures the first user's data stays untouched and both users exist.
    *
    * Why it matters:
-   * - Confirms repeated sync runs don’t duplicate or rewrite already exported rows.
+   * - Confirms repeated sync runs don't duplicate or rewrite already exported rows.
    */
   test('Idempotency & Resume: Multiple syncs should not duplicate', async () => {
     const dbName = 'idempotency_test';
@@ -266,10 +271,10 @@ describe.sequential('External DB Sync - Advanced Tests', () => {
 
     await waitForSyncedData(client, 'user1@example.com', 'User 1');
 
-    let res = await client.query(`SELECT * FROM "PartialUsers" WHERE "value" = $1`, ['user1@example.com']);
+    let res = await client.query(`SELECT * FROM "users" WHERE "primary_email" = $1`, ['user1@example.com']);
     expect(res.rows.length).toBe(1);
-    expect(res.rows[0].displayName).toBe('User 1');
-    const user1SequenceId = res.rows[0].sequenceId;
+    expect(res.rows[0].display_name).toBe('User 1');
+    const user1Id = res.rows[0].id;
 
     const user2 = await User.create({ emailAddress: 'user2@example.com' });
     await niceBackendFetch(`/api/v1/users/${user2.userId}`, {
@@ -280,119 +285,21 @@ describe.sequential('External DB Sync - Advanced Tests', () => {
 
     await waitForSyncedData(client, 'user2@example.com', 'User 2');
 
-    const user1Row = await client.query(`SELECT * FROM "PartialUsers" WHERE "value" = $1`, ['user1@example.com']);
-    const user2Row = await client.query(`SELECT * FROM "PartialUsers" WHERE "value" = $1`, ['user2@example.com']);
+    const user1Row = await client.query(`SELECT * FROM "users" WHERE "primary_email" = $1`, ['user1@example.com']);
+    const user2Row = await client.query(`SELECT * FROM "users" WHERE "primary_email" = $1`, ['user2@example.com']);
 
     expect(user1Row.rows.length).toBe(1);
     expect(user2Row.rows.length).toBe(1);
-    expect(user1Row.rows[0].displayName).toBe('User 1');
-    expect(user2Row.rows[0].displayName).toBe('User 2');
-    expect(user1Row.rows[0].sequenceId).toBe(user1SequenceId);
+    expect(user1Row.rows[0].display_name).toBe('User 1');
+    expect(user2Row.rows[0].display_name).toBe('User 2');
+    // User 1's ID should be unchanged
+    expect(user1Row.rows[0].id).toBe(user1Id);
   }, TEST_TIMEOUT);
 
   /**
    * What it does:
-   * - Configures two mappings (PartialUsers and SimpleUsers), syncs once, and reads both tables.
-   * - Verifies the exported display name matches across tables.
-   *
-   * Why it matters:
-   * - Shows a single source mapping can feed multiple targets consistently.
-   */
-  test('Multiple Mappings: Sync to two different tables', async () => {
-    const dbName = 'multi_mapping_test';
-    const connectionString = await dbManager.createDatabase(dbName);
-
-    await createProjectWithExternalDb({
-      main: {
-        type: 'postgres',
-        connectionString,
-        mappings: {
-          "PartialUsers": DEFAULT_DB_SYNC_MAPPINGS.PartialUsers,
-          "SimpleUsers": {
-            sourceTables: { "ContactChannel": "ContactChannel", "ProjectUser": "ProjectUser" },
-            targetTable: 'SimpleUsers',
-            targetTablePrimaryKey: ['value'],
-            targetTableSchema: `
-              CREATE TABLE "SimpleUsers" (
-                "value" text PRIMARY KEY,
-                "displayName" text,
-                "sequenceId" bigint
-              );
-              CREATE INDEX ON "SimpleUsers" ("sequenceId");
-            `.trim(),
-            internalDbFetchQuery: `
-              SELECT
-                "ContactChannel"."value",
-                "ProjectUser"."displayName",
-                GREATEST("ContactChannel"."sequenceId", "ProjectUser"."sequenceId") as "sequenceId"
-              FROM "ContactChannel"
-              JOIN "ProjectUser" ON "ContactChannel"."projectUserId" = "ProjectUser"."projectUserId" 
-                AND "ContactChannel"."tenancyId" = "ProjectUser"."tenancyId"
-              WHERE "ContactChannel"."isPrimary" = 'TRUE'
-                AND "ContactChannel"."tenancyId" = $1::uuid
-              ORDER BY "sequenceId" ASC
-              LIMIT 1000
-            `.trim(),
-            externalDbUpdateQuery: `
-              INSERT INTO "SimpleUsers" ("value", "displayName", "sequenceId")
-              VALUES ($1, $2, $3)
-              ON CONFLICT ("value") DO UPDATE
-              SET
-                "displayName" = EXCLUDED."displayName",
-                "sequenceId" = EXCLUDED."sequenceId"
-              WHERE EXCLUDED."sequenceId" > "SimpleUsers"."sequenceId"
-            `.trim(),
-          }
-        }
-      }
-    });
-
-    const user = await User.create({ emailAddress: 'multi-map@example.com' });
-    await niceBackendFetch(`/api/v1/users/${user.userId}`, {
-      accessType: 'admin',
-      method: 'PATCH',
-      body: { display_name: 'Multi Map User' }
-    });
-
-    const client = dbManager.getClient(dbName);
-
-    await waitForCondition(
-      async () => {
-        try {
-          const res = await client.query(`SELECT * FROM "PartialUsers" WHERE "value" = $1`, ['multi-map@example.com']);
-          return res.rows.length === 1 && res.rows[0].displayName === 'Multi Map User';
-        } catch (err: any) {
-          if (err.code === '42P01') return false;
-          throw err;
-        }
-      },
-      { description: 'PartialUsers data to sync', timeoutMs: 90000 }
-    );
-
-    const res1 = await client.query(`SELECT * FROM "PartialUsers" WHERE "value" = $1`, ['multi-map@example.com']);
-    expect(res1.rows[0].displayName).toBe('Multi Map User');
-
-    await waitForCondition(
-      async () => {
-        try {
-          const res = await client.query(`SELECT * FROM "SimpleUsers" WHERE "value" = $1`, ['multi-map@example.com']);
-          return res.rows.length === 1;
-        } catch (err: any) {
-          if (err.code === '42P01') return false;
-          throw err;
-        }
-      },
-      { description: 'SimpleUsers data to sync', timeoutMs: 90000 }
-    );
-
-    const res2 = await client.query(`SELECT * FROM "SimpleUsers" WHERE "value" = $1`, ['multi-map@example.com']);
-    expect(res2.rows[0].displayName).toBe('Multi Map User');
-  });
-
-  /**
-   * What it does:
    * - Exports a user whose display name contains quotes, emoji, and non-Latin characters.
-   * - Queries PartialUsers to confirm the string survives unchanged.
+   * - Queries users to confirm the string survives unchanged.
    *
    * Why it matters:
    * - Ensures text encoding and escaping don’t corrupt data during sync.
@@ -419,89 +326,115 @@ describe.sequential('External DB Sync - Advanced Tests', () => {
     await waitForSyncedData(dbManager.getClient(dbName), 'special@example.com', specialName);
 
     const client = dbManager.getClient(dbName);
-    const res = await client.query(`SELECT * FROM "PartialUsers" WHERE "value" = $1`, ['special@example.com']);
+    const res = await client.query(`SELECT * FROM "users" WHERE "primary_email" = $1`, ['special@example.com']);
     expect(res.rows.length).toBe(1);
-    expect(res.rows[0].displayName).toBe(specialName);
+    expect(res.rows[0].display_name).toBe(specialName);
   });
 
   /**
    * What it does:
-   * - Creates 200 users, triggers sync repeatedly, and waits for the external row count to reach 200.
+   * - Creates 200 users directly in the internal database using SQL (much faster than API).
+   * - Waits for all of them to sync to the external database.
    *
    * Why it matters:
    * - Exercises batching code paths to ensure high volumes eventually flush completely.
    */
   test('High Volume: 200+ users to test batching', async () => {
     const dbName = 'high_volume_test';
-    const connectionString = await dbManager.createDatabase(dbName);
+    const externalConnectionString = await dbManager.createDatabase(dbName);
 
     await createProjectWithExternalDb({
       main: {
         type: 'postgres',
-        connectionString,
+        connectionString: externalConnectionString,
       }
     });
 
-    await InternalApiKey.createAndSetProjectKeys();
+    const projectKeys = backendContext.value.projectKeys;
+    if (projectKeys === "no-project") throw new Error("No project keys found");
+    const projectId = projectKeys.projectId;
+    const externalClient = dbManager.getClient(dbName);
 
-    const batchSize = 20;
-    const totalUsers = 200;
-    let usersCreated = 0;
-    let attemptCounter = 0;
+    // Connect to internal database to insert users directly
+    const internalClient = new Client({
+      connectionString: `postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${POSTGRES_HOST}/stackframe`,
+    });
+    await internalClient.connect();
 
-    const createUserWithRetry = async () => {
-      const maxRetries = 5;
-      for (let retry = 0; retry < maxRetries; retry++) {
-        const uniqueId = `${Date.now()}-${attemptCounter++}-${Math.floor(performance.now() * 1000000)}`;
-        const result = await niceBackendFetch('/api/v1/auth/password/sign-up', {
-          method: 'POST',
-          accessType: 'client',
-          body: {
-            email: `hv-${uniqueId}@example.com`,
-            password: 'testpassword123',
-            verification_callback_url: 'http://localhost:3000/verify',
-          },
-        });
-        if (result.status === 200) {
-          return result;
-        }
-        if (result.status === 409 && result.body?.code === 'USER_EMAIL_ALREADY_EXISTS') {
-          continue;
-        }
-        throw new Error(`Unexpected response: ${result.status} ${JSON.stringify(result.body)}`);
+    const userCount = 200;
+
+    try {
+      // Get the tenancy ID for this project
+      const tenancyRes = await internalClient.query(
+        `SELECT id FROM "Tenancy" WHERE "projectId" = $1 AND "branchId" = 'main' LIMIT 1`,
+        [projectId]
+      );
+      if (tenancyRes.rows.length === 0) {
+        throw new Error(`Tenancy not found for project ${projectId}`);
       }
-      throw new Error('Failed to create user after max retries');
-    };
+      const tenancyId = tenancyRes.rows[0].id;
 
-    while (usersCreated < totalUsers) {
-      const batchTarget = Math.min(batchSize, totalUsers - usersCreated);
-      const batchPromises = [];
-      for (let i = 0; i < batchTarget; i++) {
-        batchPromises.push(createUserWithRetry());
-      }
-      await Promise.all(batchPromises);
-      usersCreated += batchTarget;
+      // Insert all 200 users in a single batch
+      await internalClient.query(`
+        WITH generated AS (
+          SELECT
+            $1::uuid AS tenancy_id,
+            $2::uuid AS project_id,
+            gen_random_uuid() AS project_user_id,
+            gen_random_uuid() AS contact_id,
+            gs AS idx,
+            now() AS ts
+          FROM generate_series(1, $3::int) AS gs
+        ),
+        insert_users AS (
+          INSERT INTO "ProjectUser"
+            ("tenancyId", "projectUserId", "mirroredProjectId", "mirroredBranchId",
+             "displayName", "createdAt", "updatedAt", "isAnonymous")
+          SELECT
+            tenancy_id,
+            project_user_id,
+            project_id,
+            'main',
+            'HV User ' || idx,
+            ts,
+            ts,
+            false
+          FROM generated
+          RETURNING "tenancyId", "projectUserId"
+        )
+        INSERT INTO "ContactChannel"
+          ("tenancyId", "projectUserId", "id", "type", "isPrimary", "usedForAuth",
+           "isVerified", "value", "createdAt", "updatedAt")
+        SELECT
+          g.tenancy_id,
+          g.project_user_id,
+          g.contact_id,
+          'EMAIL',
+          'TRUE'::"BooleanTrue",
+          'TRUE'::"BooleanTrue",
+          false,
+          'hv-user-' || g.idx || '@test.example.com',
+          g.ts,
+          g.ts
+        FROM generated g
+      `, [tenancyId, projectId, userCount]);
 
-      if (usersCreated < totalUsers) {
-        await new Promise(resolve => setTimeout(resolve, 100));
-      }
+      await waitForTable(externalClient, 'users');
+
+      await waitForCondition(
+        async () => {
+          const res = await externalClient.query(`SELECT COUNT(*) as count FROM "users"`);
+          return parseInt(res.rows[0].count) >= userCount;
+        },
+        { description: `all ${userCount} users to be synced`, timeoutMs: 120000 }
+      );
+
+      const res = await externalClient.query(`SELECT COUNT(*) as count FROM "users"`);
+      const finalCount = parseInt(res.rows[0].count);
+      expect(finalCount).toBeGreaterThanOrEqual(userCount);
+    } finally {
+      await internalClient.end();
     }
-
-    const client = dbManager.getClient(dbName);
-
-    await waitForTable(client, 'PartialUsers');
-
-    await waitForCondition(
-      async () => {
-        const res = await client.query(`SELECT COUNT(*) as count FROM "PartialUsers"`);
-        return parseInt(res.rows[0].count) >= 200;
-      },
-      { description: 'all 200 users to be synced', timeoutMs: 180000 }
-    );
-
-    const res = await client.query(`SELECT COUNT(*) as count FROM "PartialUsers"`);
-    const finalCount = parseInt(res.rows[0].count);
-    expect(finalCount).toBeGreaterThanOrEqual(200);
   }, HIGH_VOLUME_TIMEOUT);
 
   /**
@@ -548,17 +481,17 @@ describe.sequential('External DB Sync - Advanced Tests', () => {
     await waitForCondition(
       async () => {
         try {
-          const res = await client.query(`SELECT COUNT(*) as count FROM "PartialUsers"`);
+          const res = await client.query(`SELECT COUNT(*) as count FROM "users"`);
           return parseInt(res.rows[0].count) === 3;
         } catch (err: any) {
           if (err.code === '42P01') return false;
           throw err;
         }
       },
-      { description: 'initial 3 users sync', timeoutMs: 90000 }
+      { description: 'initial 3 users sync', timeoutMs: 120000 }
     );
 
-    let res = await client.query(`SELECT COUNT(*) as count FROM "PartialUsers"`);
+    let res = await client.query(`SELECT COUNT(*) as count FROM "users"`);
     expect(parseInt(res.rows[0].count)).toBe(3);
 
     await niceBackendFetch(`/api/v1/users/${user2.userId}`, {
@@ -582,47 +515,47 @@ describe.sequential('External DB Sync - Advanced Tests', () => {
     await waitForCondition(
       async () => {
         try {
-          const res = await client.query(`SELECT * FROM "PartialUsers" ORDER BY "value"`);
+          const res = await client.query(`SELECT * FROM "users" ORDER BY "primary_email"`);
           if (res.rows.length !== 3) return false;
 
-          const emails = res.rows.map(r => r.value);
+          const emails = res.rows.map(r => r.primary_email);
           if (emails.includes('seq1@example.com')) return false;
           if (!emails.includes('seq2@example.com')) return false;
           if (!emails.includes('seq3@example.com')) return false;
           if (!emails.includes('seq4@example.com')) return false;
 
-          const user2Row = res.rows.find(r => r.value === 'seq2@example.com');
-          return user2Row.displayName === 'User 2 Updated';
+          const user2Row = res.rows.find(r => r.primary_email === 'seq2@example.com');
+          return user2Row.display_name === 'User 2 Updated';
         } catch (err: any) {
           if (err.code === '42P01') return false;
           throw err;
         }
       },
-      { description: 'final sync state correct', timeoutMs: 90000 }
+      { description: 'final sync state correct', timeoutMs: 120000 }
     );
 
-    res = await client.query(`SELECT * FROM "PartialUsers" ORDER BY "value"`);
+    res = await client.query(`SELECT * FROM "users" ORDER BY "primary_email"`);
     expect(res.rows.length).toBe(3);
 
-    const emails = res.rows.map(r => r.value);
+    const emails = res.rows.map(r => r.primary_email);
     expect(emails).not.toContain('seq1@example.com');
     expect(emails).toContain('seq2@example.com');
     expect(emails).toContain('seq3@example.com');
     expect(emails).toContain('seq4@example.com');
 
-    const user2Row = res.rows.find(r => r.value === 'seq2@example.com');
-    expect(user2Row.displayName).toBe('User 2 Updated');
+    const user2Row = res.rows.find(r => r.primary_email === 'seq2@example.com');
+    expect(user2Row.display_name).toBe('User 2 Updated');
   }, TEST_TIMEOUT);
 
   /**
    * What it does:
-   * - Creates a readonly database role, grants SELECT on PartialUsers, and tests SELECT/INSERT/UPDATE/DELETE commands.
+   * - Creates a readonly database role, grants SELECT on users, and tests SELECT/INSERT/UPDATE/DELETE commands.
    * - Expects reads to succeed while writes fail.
    *
    * Why it matters:
    * - Protects external tables from being mutated by consumers using readonly credentials.
    */
-  test('External write protection: readonly client cannot modify PartialUsers', async () => {
+  test('External write protection: readonly client cannot modify users', async () => {
     const dbName = 'write_protection_test';
     const connectionString = await dbManager.createDatabase(dbName);
 
@@ -641,7 +574,7 @@ describe.sequential('External DB Sync - Advanced Tests', () => {
       method: 'PATCH',
       body: { display_name: 'Write Protect User' },
     });
-    await waitForTable(superClient, 'PartialUsers');
+    await waitForTable(superClient, 'users');
     await waitForSyncedData(superClient, 'write-protect@example.com', 'Write Protect User');
 
     const readonlyUser = 'readonly_partialusers';
@@ -662,27 +595,27 @@ $$;`);
 
     try {
       const selectRes = await readonlyClient.query(
-        `SELECT * FROM "PartialUsers" WHERE "value" = $1`,
+        `SELECT * FROM "users" WHERE "primary_email" = $1`,
         ['write-protect@example.com'],
       );
       expect(selectRes.rows.length).toBe(1);
       await expect(
         readonlyClient.query(
-          `INSERT INTO "PartialUsers" ("id", "value") VALUES (gen_random_uuid(), $1)`,
+          `INSERT INTO "users" ("id", "primary_email") VALUES (gen_random_uuid(), $1)`,
           ['should-not-insert@example.com'],
         ),
       ).rejects.toThrow();
 
       await expect(
         readonlyClient.query(
-          `UPDATE "PartialUsers" SET "displayName" = 'Hacked' WHERE "value" = $1`,
+          `UPDATE "users" SET "display_name" = 'Hacked' WHERE "primary_email" = $1`,
           ['write-protect@example.com'],
         ),
       ).rejects.toThrow();
 
       await expect(
         readonlyClient.query(
-          `DELETE FROM "PartialUsers" WHERE "value" = $1`,
+          `DELETE FROM "users" WHERE "primary_email" = $1`,
           ['write-protect@example.com'],
         ),
       ).rejects.toThrow();
@@ -694,7 +627,7 @@ $$;`);
   /**
    * What it does:
    * - Patches the same user three times without syncing, then syncs once.
-   * - Checks PartialUsers to confirm only the final name persists.
+   * - Checks users to confirm only the final name persists.
    *
    * Why it matters:
    * - Verifies we export the latest snapshot instead of intermediate states.
@@ -730,21 +663,21 @@ $$;`);
       body: { display_name: 'Name v3' },
     });
 
-    await waitForTable(client, 'PartialUsers');
+    await waitForTable(client, 'users');
     await waitForSyncedData(client, 'multi-update@example.com', 'Name v3');
 
     const row = await client.query(
-      `SELECT * FROM "PartialUsers" WHERE "value" = $1`,
+      `SELECT * FROM "users" WHERE "primary_email" = $1`,
       ['multi-update@example.com'],
     );
     expect(row.rows.length).toBe(1);
-    expect(row.rows[0].displayName).toBe('Name v3');
+    expect(row.rows[0].display_name).toBe('Name v3');
   }, TEST_TIMEOUT);
 
   /**
    * What it does:
    * - Creates then deletes a user before the first sync happens.
-   * - Runs sync and checks that PartialUsers never receives the email.
+   * - Runs sync and checks that users never receives the email.
    *
    * Why it matters:
    * - Ensures we don’t leak records that were deleted before the initial export cycle.
@@ -773,21 +706,21 @@ $$;`);
       method: 'DELETE',
     });
 
-    await waitForTable(client, 'PartialUsers');
+    await waitForTable(client, 'users');
 
     await waitForCondition(
       async () => {
         const res = await client.query(
-          `SELECT * FROM "PartialUsers" WHERE "value" = $1`,
+          `SELECT * FROM "users" WHERE "primary_email" = $1`,
           ['delete-before-sync@example.com'],
         );
         return res.rows.length === 0;
       },
-      { description: 'deleted user should never appear', timeoutMs: 90000 }
+      { description: 'deleted user should never appear', timeoutMs: 120000 }
     );
 
     const res = await client.query(
-      `SELECT * FROM "PartialUsers" WHERE "value" = $1`,
+      `SELECT * FROM "users" WHERE "primary_email" = $1`,
       ['delete-before-sync@example.com'],
     );
     expect(res.rows.length).toBe(0);
@@ -825,12 +758,11 @@ $$;`);
     await waitForSyncedData(client, email, 'Original Export');
 
     let res = await client.query(
-      `SELECT "id", "sequenceId" FROM "PartialUsers" WHERE "value" = $1`,
+      `SELECT "id" FROM "users" WHERE "primary_email" = $1`,
       [email],
     );
     expect(res.rows.length).toBe(1);
-    const firstRow = res.rows[0];
-    const firstSequence = BigInt(firstRow.sequenceId);
+    const firstId = res.rows[0].id;
 
     await niceBackendFetch(`/api/v1/users/${firstUser.userId}`, {
       accessType: 'admin',
@@ -850,25 +782,24 @@ $$;`);
     await waitForSyncedData(client, email, 'Recreated Export');
 
     res = await client.query(
-      `SELECT "id", "sequenceId", "displayName" FROM "PartialUsers" WHERE "value" = $1`,
+      `SELECT "id", "display_name" FROM "users" WHERE "primary_email" = $1`,
       [email],
     );
     expect(res.rows.length).toBe(1);
 
     const recreatedRow = res.rows[0];
-    expect(recreatedRow.displayName).toBe('Recreated Export');
-    expect(recreatedRow.id).not.toBe(firstRow.id);
-    expect(BigInt(recreatedRow.sequenceId)).toBeGreaterThan(firstSequence);
+    expect(recreatedRow.display_name).toBe('Recreated Export');
+    expect(recreatedRow.id).not.toBe(firstId);
 
     await waitForCondition(
       async () => {
         const followUp = await client.query(
-          `SELECT "displayName" FROM "PartialUsers" WHERE "value" = $1`,
+          `SELECT "display_name" FROM "users" WHERE "primary_email" = $1`,
           [email],
         );
-        return followUp.rows.length === 1 && followUp.rows[0].displayName === 'Recreated Export';
+        return followUp.rows.length === 1 && followUp.rows[0].display_name === 'Recreated Export';
       },
-      { description: 'recreated row persists after extra sync', timeoutMs: 90000 },
+      { description: 'recreated row persists after extra sync', timeoutMs: 120000 },
     );
   }, TEST_TIMEOUT);
 
@@ -903,11 +834,10 @@ $$;`);
 
     await waitForSyncedData(client, email, 'Initial Name');
 
-    let res = await client.query(`SELECT * FROM "PartialUsers" WHERE "value" = $1`, [email]);
+    let res = await client.query(`SELECT * FROM "users" WHERE "primary_email" = $1`, [email]);
     expect(res.rows.length).toBe(1);
-    expect(res.rows[0].displayName).toBe('Initial Name');
+    expect(res.rows[0].display_name).toBe('Initial Name');
     const firstId = res.rows[0].id;
-    const firstSeq = BigInt(res.rows[0].sequenceId);
 
     await niceBackendFetch(`/api/v1/users/${user1.userId}`, {
       accessType: 'admin',
@@ -917,12 +847,10 @@ $$;`);
 
     await waitForSyncedData(client, email, 'Updated Once');
 
-    res = await client.query(`SELECT * FROM "PartialUsers" WHERE "value" = $1`, [email]);
+    res = await client.query(`SELECT * FROM "users" WHERE "primary_email" = $1`, [email]);
     expect(res.rows.length).toBe(1);
-    expect(res.rows[0].displayName).toBe('Updated Once');
+    expect(res.rows[0].display_name).toBe('Updated Once');
     expect(res.rows[0].id).toBe(firstId);
-    expect(BigInt(res.rows[0].sequenceId)).toBeGreaterThan(firstSeq);
-    const secondSeq = BigInt(res.rows[0].sequenceId);
 
     await niceBackendFetch(`/api/v1/users/${user1.userId}`, {
       accessType: 'admin',
@@ -932,11 +860,10 @@ $$;`);
 
     await waitForSyncedData(client, email, 'Updated Twice');
 
-    res = await client.query(`SELECT * FROM "PartialUsers" WHERE "value" = $1`, [email]);
+    res = await client.query(`SELECT * FROM "users" WHERE "primary_email" = $1`, [email]);
     expect(res.rows.length).toBe(1);
-    expect(res.rows[0].displayName).toBe('Updated Twice');
+    expect(res.rows[0].display_name).toBe('Updated Twice');
     expect(res.rows[0].id).toBe(firstId);
-    expect(BigInt(res.rows[0].sequenceId)).toBeGreaterThan(secondSeq);
 
     await niceBackendFetch(`/api/v1/users/${user1.userId}`, {
       accessType: 'admin',
@@ -945,7 +872,7 @@ $$;`);
 
     await waitForSyncedDeletion(client, email);
 
-    res = await client.query(`SELECT * FROM "PartialUsers" WHERE "value" = $1`, [email]);
+    res = await client.query(`SELECT * FROM "users" WHERE "primary_email" = $1`, [email]);
     expect(res.rows.length).toBe(0);
 
     const user2 = await User.create({ emailAddress: email });
@@ -957,12 +884,11 @@ $$;`);
 
     await waitForSyncedData(client, email, 'Recreated User');
 
-    res = await client.query(`SELECT * FROM "PartialUsers" WHERE "value" = $1`, [email]);
+    res = await client.query(`SELECT * FROM "users" WHERE "primary_email" = $1`, [email]);
     expect(res.rows.length).toBe(1);
-    expect(res.rows[0].displayName).toBe('Recreated User');
+    expect(res.rows[0].display_name).toBe('Recreated User');
     expect(res.rows[0].id).not.toBe(firstId);
     const newId = res.rows[0].id;
-    const newSeq = BigInt(res.rows[0].sequenceId);
 
     await niceBackendFetch(`/api/v1/users/${user2.userId}`, {
       accessType: 'admin',
@@ -972,17 +898,16 @@ $$;`);
 
     await waitForSyncedData(client, email, 'Final Name');
 
-    res = await client.query(`SELECT * FROM "PartialUsers" WHERE "value" = $1`, [email]);
+    res = await client.query(`SELECT * FROM "users" WHERE "primary_email" = $1`, [email]);
     expect(res.rows.length).toBe(1);
-    expect(res.rows[0].displayName).toBe('Final Name');
+    expect(res.rows[0].display_name).toBe('Final Name');
     expect(res.rows[0].id).toBe(newId);
-    expect(BigInt(res.rows[0].sequenceId)).toBeGreaterThan(newSeq);
   }, TEST_TIMEOUT);
 
   /**
    * What it does:
    * - Exports 50 users, deletes 10, inserts 10 replacements, and syncs again.
-   * - Validates the final PartialUsers dataset contains the remaining 40 originals plus 10 replacements (total 50).
+   * - Validates the final users dataset contains the remaining 40 originals plus 10 replacements (total 50).
    *
    * Why it matters:
    * - Proves high-volume batches stay accurate even when deletes and inserts interleave.
@@ -998,111 +923,190 @@ $$;`);
       },
     });
 
-    await InternalApiKey.createAndSetProjectKeys();
+    const projectKeys = backendContext.value.projectKeys;
+    if (projectKeys === "no-project") throw new Error("No project keys found");
+    const projectId = projectKeys.projectId;
 
-    const client = dbManager.getClient(dbName);
+    const externalClient = dbManager.getClient(dbName);
     const initialUserCount = 50;
     const deletions = 10;
     const replacements = 10;
 
-    const initialUsers: { userId: string, email: string }[] = [];
+    // Connect to internal database to insert users directly
+    const internalClient = new Client({
+      connectionString: `postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${POSTGRES_HOST}/stackframe`,
+    });
+    await internalClient.connect();
 
-    const batchSize = 10;
-    const testRunId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-    for (let batchStart = 0; batchStart < initialUserCount; batchStart += batchSize) {
-      const batchEnd = Math.min(batchStart + batchSize, initialUserCount);
+    let initialUsers: { projectUserId: string, email: string }[] = [];
 
-      const batchPromises = [];
-      for (let i = batchStart; i < batchEnd; i++) {
-        const email = `interleave-${i}-${testRunId}@example.com`;
-        batchPromises.push(
-          User.create({ emailAddress: email }).then(async (user) => {
-            await niceBackendFetch(`/api/v1/users/${user.userId}`, {
-              accessType: 'admin',
-              method: 'PATCH',
-              body: { display_name: `Interleave User ${i}` },
-            });
-            return { userId: user.userId, email };
-          })
-        );
-      }
-
-      const batchResults = await Promise.all(batchPromises);
-      initialUsers.push(...batchResults);
-
-      if (batchEnd < initialUserCount) {
-        await new Promise(resolve => setTimeout(resolve, 50));
-      }
-    }
-
-    await waitForTable(client, 'PartialUsers');
-
-    await waitForCondition(
-      async () => {
-        const countRes = await client.query(`SELECT COUNT(*) as count FROM "PartialUsers"`);
-        return parseInt(countRes.rows[0].count) === initialUserCount;
-      },
-      { description: 'initial batch exported', timeoutMs: 60000 },
-    );
-
-    const deletedUsers = initialUsers.slice(0, deletions);
-    for (const entry of deletedUsers) {
-      await niceBackendFetch(`/api/v1/users/${entry.userId}`, {
-        accessType: 'admin',
-        method: 'DELETE',
-      });
-    }
-    await waitForCondition(
-      async () => {
-        const countRes = await client.query(`SELECT COUNT(*) as count FROM "PartialUsers"`);
-        return parseInt(countRes.rows[0].count) === (initialUserCount - deletions);
-      },
-      { description: 'deletions synced to external DB', timeoutMs: 180000 },
-    );
-
-    const replacementEmails: string[] = [];
-
-    await InternalApiKey.createAndSetProjectKeys();
-
-    const replacementPromises = [];
-    for (let i = 0; i < replacements; i++) {
-      const email = `interleave-replacement-${i}-${testRunId}@example.com`;
-      replacementPromises.push(
-        User.create({ emailAddress: email }).then(async (user) => {
-          await niceBackendFetch(`/api/v1/users/${user.userId}`, {
-            accessType: 'admin',
-            method: 'PATCH',
-            body: { display_name: `Replacement ${i}` },
-          });
-          return email;
-        })
+    try {
+      // Get the tenancy ID for this project
+      const tenancyRes = await internalClient.query(
+        `SELECT id FROM "Tenancy" WHERE "projectId" = $1 AND "branchId" = 'main' LIMIT 1`,
+        [projectId]
       );
-    }
+      if (tenancyRes.rows.length === 0) {
+        throw new Error(`Tenancy not found for project ${projectId}`);
+      }
+      const tenancyId = tenancyRes.rows[0].id;
+      const testRunId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
-    const createdReplacementEmails = await Promise.all(replacementPromises);
-    replacementEmails.push(...createdReplacementEmails);
+      // Insert initial users and get their IDs back
+      const insertResult = await internalClient.query(`
+        WITH generated AS (
+          SELECT
+            $1::uuid AS tenancy_id,
+            $2::uuid AS project_id,
+            gen_random_uuid() AS project_user_id,
+            gen_random_uuid() AS contact_id,
+            gs AS idx,
+            now() AS ts
+          FROM generate_series(1, $3::int) AS gs
+        ),
+        insert_users AS (
+          INSERT INTO "ProjectUser"
+            ("tenancyId", "projectUserId", "mirroredProjectId", "mirroredBranchId",
+             "displayName", "createdAt", "updatedAt", "isAnonymous")
+          SELECT
+            tenancy_id,
+            project_user_id,
+            project_id,
+            'main',
+            'Interleave User ' || idx,
+            ts,
+            ts,
+            false
+          FROM generated
+          RETURNING "projectUserId"
+        ),
+        insert_contacts AS (
+          INSERT INTO "ContactChannel"
+            ("tenancyId", "projectUserId", "id", "type", "isPrimary", "usedForAuth",
+             "isVerified", "value", "createdAt", "updatedAt")
+          SELECT
+            g.tenancy_id,
+            g.project_user_id,
+            g.contact_id,
+            'EMAIL',
+            'TRUE'::"BooleanTrue",
+            'TRUE'::"BooleanTrue",
+            false,
+            'interleave-' || g.idx || '-' || $4 || '@example.com',
+            g.ts,
+            g.ts
+          FROM generated g
+          RETURNING "projectUserId", "value" AS email
+        )
+        SELECT "projectUserId"::text, email FROM insert_contacts ORDER BY email
+      `, [tenancyId, projectId, initialUserCount, testRunId]);
 
-    const expectedFinalCount = initialUserCount - deletions + replacements;
-    await waitForCondition(
-      async () => {
-        const countRes = await client.query(`SELECT COUNT(*) as count FROM "PartialUsers"`);
-        return parseInt(countRes.rows[0].count) === expectedFinalCount;
-      },
-      { description: 'final mixed batch exported', timeoutMs: 180000 },
-    );
+      initialUsers = insertResult.rows.map(row => ({
+        email: row.email,
+        projectUserId: row.projectUserId,
+      }));
 
-    const finalRows = await client.query(`SELECT "value" FROM "PartialUsers"`);
-    const finalEmails = new Set(finalRows.rows.map((row) => row.value));
-    expect(finalEmails.size).toBe(expectedFinalCount);
+      await waitForTable(externalClient, 'users');
 
-    for (const deleted of deletedUsers) {
-      expect(finalEmails.has(deleted.email)).toBe(false);
-    }
-    for (const survivor of initialUsers.slice(deletions)) {
-      expect(finalEmails.has(survivor.email)).toBe(true);
-    }
-    for (const replacement of replacementEmails) {
-      expect(finalEmails.has(replacement)).toBe(true);
+      await waitForCondition(
+        async () => {
+          const countRes = await externalClient.query(`SELECT COUNT(*) as count FROM "users"`);
+          return parseInt(countRes.rows[0].count) === initialUserCount;
+        },
+        { description: 'initial batch exported', timeoutMs: 60000 },
+      );
+
+      // Delete first 10 users
+      const deletedUsers = initialUsers.slice(0, deletions);
+      for (const entry of deletedUsers) {
+        await niceBackendFetch(`/api/v1/users/${entry.projectUserId}`, {
+          accessType: 'admin',
+          method: 'DELETE',
+        });
+      }
+      await waitForCondition(
+        async () => {
+          const countRes = await externalClient.query(`SELECT COUNT(*) as count FROM "users"`);
+          return parseInt(countRes.rows[0].count) === (initialUserCount - deletions);
+        },
+        { description: 'deletions synced to external DB', timeoutMs: 180000 },
+      );
+
+      // Insert replacement users via direct SQL
+      const replacementResult = await internalClient.query(`
+        WITH generated AS (
+          SELECT
+            $1::uuid AS tenancy_id,
+            $2::uuid AS project_id,
+            gen_random_uuid() AS project_user_id,
+            gen_random_uuid() AS contact_id,
+            gs AS idx,
+            now() AS ts
+          FROM generate_series(1, $3::int) AS gs
+        ),
+        insert_users AS (
+          INSERT INTO "ProjectUser"
+            ("tenancyId", "projectUserId", "mirroredProjectId", "mirroredBranchId",
+             "displayName", "createdAt", "updatedAt", "isAnonymous")
+          SELECT
+            tenancy_id,
+            project_user_id,
+            project_id,
+            'main',
+            'Replacement ' || idx,
+            ts,
+            ts,
+            false
+          FROM generated
+          RETURNING "projectUserId"
+        ),
+        insert_contacts AS (
+          INSERT INTO "ContactChannel"
+            ("tenancyId", "projectUserId", "id", "type", "isPrimary", "usedForAuth",
+             "isVerified", "value", "createdAt", "updatedAt")
+          SELECT
+            g.tenancy_id,
+            g.project_user_id,
+            g.contact_id,
+            'EMAIL',
+            'TRUE'::"BooleanTrue",
+            'TRUE'::"BooleanTrue",
+            false,
+            'interleave-replacement-' || g.idx || '-' || $4 || '@example.com',
+            g.ts,
+            g.ts
+          FROM generated g
+          RETURNING "value" AS email
+        )
+        SELECT email FROM insert_contacts
+      `, [tenancyId, projectId, replacements, testRunId]);
+
+      const replacementEmails = replacementResult.rows.map(row => row.email);
+
+      const expectedFinalCount = initialUserCount - deletions + replacements;
+      await waitForCondition(
+        async () => {
+          const countRes = await externalClient.query(`SELECT COUNT(*) as count FROM "users"`);
+          return parseInt(countRes.rows[0].count) === expectedFinalCount;
+        },
+        { description: 'final mixed batch exported', timeoutMs: 180000 },
+      );
+
+      const finalRows = await externalClient.query(`SELECT "primary_email" FROM "users"`);
+      const finalEmails = new Set(finalRows.rows.map((row) => row.primary_email));
+      expect(finalEmails.size).toBe(expectedFinalCount);
+
+      for (const deleted of deletedUsers) {
+        expect(finalEmails.has(deleted.email)).toBe(false);
+      }
+      for (const survivor of initialUsers.slice(deletions)) {
+        expect(finalEmails.has(survivor.email)).toBe(true);
+      }
+      for (const replacement of replacementEmails) {
+        expect(finalEmails.has(replacement)).toBe(true);
+      }
+    } finally {
+      await internalClient.end();
     }
   }, HIGH_VOLUME_TIMEOUT);
 });

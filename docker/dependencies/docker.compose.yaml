@@ -9,6 +9,8 @@ services:
       POSTGRES_PASSWORD: PASSWORD-PLACEHOLDER--uqfEC1hmmv
       POSTGRES_DB: stackframe
       POSTGRES_DELAY_MS: ${POSTGRES_DELAY_MS:-0}
+    # Increase max_connections for E2E tests that create many databases
+    command: postgres -c max_connections=500
     ports:
       - "${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}28:5432"
     volumes:
@@ -204,20 +206,6 @@ services:
     environment:
       HOST_ON_HOST: host.docker.internal
 
-  # ================= External DB Sync Test Postgres =================
-
-  external-db-test:
-    image: "docker.io/postgres:16.1"
-    environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: external-db-test-password
-      POSTGRES_DB: postgres
-    ports:
-      - "${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}32:5432"
-    volumes:
-      - external-db-test-data:/var/lib/postgresql/data
-
-
 # ================= volumes =================
 
 volumes:
@@ -228,7 +216,6 @@ volumes:
   s3mock-data:
   deno-cache:
   localstack-data:
-  external-db-test-data:
 
 # ================= configs =================
 

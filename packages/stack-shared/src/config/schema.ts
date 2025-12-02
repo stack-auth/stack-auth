@@ -8,14 +8,13 @@ import * as yup from "yup";
 import { ALL_APPS } from "../apps/apps-config";
 import { DEFAULT_EMAIL_TEMPLATES, DEFAULT_EMAIL_THEMES, DEFAULT_EMAIL_THEME_ID } from "../helpers/emails";
 import * as schemaFields from "../schema-fields";
-import { productSchema, userSpecifiedIdSchema, yupArray, yupBoolean, yupDate, yupMixed, yupNever, yupNumber, yupObject, yupRecord, yupString, yupTuple, yupUnion } from "../schema-fields";
+import { productSchema, userSpecifiedIdSchema, yupBoolean, yupDate, yupMixed, yupNever, yupNumber, yupObject, yupRecord, yupString, yupTuple, yupUnion } from "../schema-fields";
 import { SUPPORTED_CURRENCIES } from "../utils/currency-constants";
 import { StackAssertionError } from "../utils/errors";
 import { allProviders } from "../utils/oauth";
 import { DeepFilterUndefined, DeepMerge, DeepRequiredOrUndefined, filterUndefined, get, has, isObjectLike, mapValues, set, typedAssign, typedEntries, typedFromEntries } from "../utils/objects";
 import { Result } from "../utils/results";
 import { CollapseObjectUnion, Expand, IntersectAll, IsUnion, typeAssert, typeAssertExtends, typeAssertIs } from "../utils/types";
-import { DEFAULT_DB_SYNC_MAPPINGS } from "./db-sync-mappings";
 import { Config, NormalizationError, NormalizesTo, assertNormalized, getInvalidConfigReason, normalize } from "./format";
 
 export const configLevels = ['project', 'branch', 'environment', 'organization'] as const;
@@ -205,19 +204,8 @@ export const branchConfigSchema = canNoLongerBeOverridden(projectConfigSchema, [
     externalDatabases: yupRecord(
       userSpecifiedIdSchema("externalDatabaseId"),
       yupObject({
-        type: yupString().oneOf(['neon', 'postgres']).defined(),
+        type: yupString().oneOf(['postgres']).defined(),
         connectionString: yupString().defined(),
-        mappings: yupRecord(
-          userSpecifiedIdSchema("mappingId"),
-          yupObject({
-            sourceTables: yupRecord(yupString(), yupString()).optional(),
-            targetTable: yupString().defined(),
-            targetTableSchema: yupString().optional(),
-            targetTablePrimaryKey: yupTuple([yupString().defined()]).optional(),
-            internalDbFetchQuery: yupString().defined(),
-            externalDbUpdateQuery: yupString().optional(),
-          })
-        ).default(() => DEFAULT_DB_SYNC_MAPPINGS as any),
       })
     ),
   }),
@@ -593,7 +581,6 @@ const organizationConfigDefaults = {
     externalDatabases: (key: string) => ({
       type: undefined,
       connectionString: undefined,
-      mappings: DEFAULT_DB_SYNC_MAPPINGS as any,
     }),
   },
 
@@ -894,7 +881,7 @@ export async function getConfigOverrideErrors<T extends yup.AnySchema>(schema: T
         // This is how the implementation would look like, but we don't support arrays in config JSON files (besides tuples)
         // const arraySchema = schema as yup.ArraySchema<any, any, any, any>;
         // const innerType = arraySchema.innerType;
-        // return yupArray(innerType ? getRestrictedSchema(path + ".[]", innerType as any) : yupMixed());
+        // return yupArray(innerType ? getRestrictedSchema(path + ".[]", innerType as any) : undefined());
       }
       case "tuple": {
         return yupTuple(schemaInfo.items.map((s, index) => getRestrictedSchema(path + `[${index}]`, s)) as any);

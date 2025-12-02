@@ -1,166 +1,165 @@
 export const DEFAULT_DB_SYNC_MAPPINGS = {
-  "PartialUsers": {
-    sourceTables: { "ContactChannel": "ContactChannel", "ProjectUser": "ProjectUser" },
-    targetTable: "PartialUsers",
-    targetTablePrimaryKey: ["id"],
-    targetTableSchema: `
-   CREATE TABLE IF NOT EXISTS "PartialUsers" (
-        "id" uuid PRIMARY KEY,
-        "createdAt" timestamp with time zone,
-        "updatedAt" timestamp with time zone,
-        "type" text,
-        "isPrimary" boolean,
-        "isVerified" boolean,
-        "value" text,
-        "sequenceId" bigint,
-        "userUpdatedAt" timestamp with time zone,
-        "profileImageUrl" text,
-        "displayName" text,
-        "userCreatedAt" timestamp with time zone,
-        "isAnonymous" boolean
-      );
-      CREATE INDEX ON "PartialUsers" ("sequenceId");
-      REVOKE ALL ON "PartialUsers" FROM PUBLIC;
-      GRANT SELECT ON "PartialUsers" TO PUBLIC;
-    `.trim(),
+  "users": {
+    sourceTables: { "ProjectUser": "ProjectUser" },
+    targetTable: "users",
+    targetTableSchemas: {
+      postgres: `
+        CREATE TABLE IF NOT EXISTS "users" (
+          "id" uuid PRIMARY KEY NOT NULL,
+          "display_name" text,
+          "profile_image_url" text,
+          "primary_email" text,
+          "primary_email_verified" boolean NOT NULL DEFAULT false,
+          "signed_up_at" timestamp without time zone NOT NULL,
+          "client_metadata" jsonb NOT NULL DEFAULT '{}'::jsonb,
+          "client_read_only_metadata" jsonb NOT NULL DEFAULT '{}'::jsonb,
+          "server_metadata" jsonb NOT NULL DEFAULT '{}'::jsonb,
+          "is_anonymous" boolean NOT NULL DEFAULT false
+        );
+        REVOKE ALL ON "users" FROM PUBLIC;
+        GRANT SELECT ON "users" TO PUBLIC;
+
+        CREATE TABLE IF NOT EXISTS "_stack_sync_metadata" (
+          "mapping_name" text PRIMARY KEY NOT NULL,
+          "last_synced_sequence_id" bigint NOT NULL DEFAULT -1,
+          "updated_at" timestamp without time zone NOT NULL DEFAULT now()
+        );
+      `.trim(),
+    },
     internalDbFetchQuery: `
-  SELECT *
+      SELECT *
       FROM (
         SELECT
-          "ContactChannel"."id",
-          "ContactChannel"."createdAt",
-          "ContactChannel"."updatedAt",
-          "ContactChannel"."type"::text AS "type",
-          CASE WHEN "ContactChannel"."isPrimary" = 'TRUE' THEN true ELSE false END AS "isPrimary",
-          "ContactChannel"."isVerified",
-          "ContactChannel"."value",
-          GREATEST("ContactChannel"."sequenceId", "ProjectUser"."sequenceId") AS "sequenceId",
-          "ProjectUser"."updatedAt" AS "userUpdatedAt",
-          "ProjectUser"."profileImageUrl",
-          "ProjectUser"."displayName",
-          "ProjectUser"."createdAt" AS "userCreatedAt",
-          "ProjectUser"."isAnonymous",
-          "ContactChannel"."tenancyId",
-          false AS "isDeleted"
-        FROM "ContactChannel"
-        JOIN "ProjectUser"
-          ON "ContactChannel"."projectUserId" = "ProjectUser"."projectUserId"
-         AND "ContactChannel"."tenancyId" = "ProjectUser"."tenancyId"
-        WHERE "ContactChannel"."tenancyId" = $1::uuid
-        
+          "ProjectUser"."projectUserId" AS "id",
+          "ProjectUser"."displayName" AS "display_name",
+          "ProjectUser"."profileImageUrl" AS "profile_image_url",
+          (
+            SELECT "ContactChannel"."value"
+            FROM "ContactChannel"
+            WHERE "ContactChannel"."projectUserId" = "ProjectUser"."projectUserId"
+              AND "ContactChannel"."tenancyId" = "ProjectUser"."tenancyId"
+              AND "ContactChannel"."type" = 'EMAIL'
+              AND "ContactChannel"."isPrimary" = 'TRUE'
+            LIMIT 1
+          ) AS "primary_email",
+          COALESCE(
+            (
+              SELECT "ContactChannel"."isVerified"
+              FROM "ContactChannel"
+              WHERE "ContactChannel"."projectUserId" = "ProjectUser"."projectUserId"
+                AND "ContactChannel"."tenancyId" = "ProjectUser"."tenancyId"
+                AND "ContactChannel"."type" = 'EMAIL'
+                AND "ContactChannel"."isPrimary" = 'TRUE'
+              LIMIT 1
+            ),
+            false
+          ) AS "primary_email_verified",
+          "ProjectUser"."createdAt" AS "signed_up_at",
+          COALESCE("ProjectUser"."clientMetadata", '{}'::jsonb) AS "client_metadata",
+          COALESCE("ProjectUser"."clientReadOnlyMetadata", '{}'::jsonb) AS "client_read_only_metadata",
+          COALESCE("ProjectUser"."serverMetadata", '{}'::jsonb) AS "server_metadata",
+          "ProjectUser"."isAnonymous" AS "is_anonymous",
+          "ProjectUser"."sequenceId" AS "sequence_id",
+          "ProjectUser"."tenancyId",
+          false AS "is_deleted"
+        FROM "ProjectUser"
+        WHERE "ProjectUser"."tenancyId" = $1::uuid
+
         UNION ALL
+
         SELECT
-          ("DeletedRow"."primaryKey"->>'id')::uuid           AS "id",
-          NULL::timestamptz                                  AS "createdAt",
-          "DeletedRow"."deletedAt"                           AS "updatedAt",
-          NULL::text                                         AS "type",
-          NULL::boolean                                      AS "isPrimary",
-          NULL::boolean                                      AS "isVerified",
-          NULL::text                                         AS "value",
-          "DeletedRow"."sequenceId"                          AS "sequenceId",
-          NULL::timestamptz                                  AS "userUpdatedAt",
-          NULL::text                                         AS "profileImageUrl",
-          NULL::text                                         AS "displayName",
-          NULL::timestamptz                                  AS "userCreatedAt",
-          NULL::boolean                                      AS "isAnonymous",
+          ("DeletedRow"."primaryKey"->>'projectUserId')::uuid AS "id",
+          NULL::text AS "display_name",
+          NULL::text AS "profile_image_url",
+          NULL::text AS "primary_email",
+          false AS "primary_email_verified",
+          "DeletedRow"."deletedAt"::timestamp without time zone AS "signed_up_at",
+          '{}'::jsonb AS "client_metadata",
+          '{}'::jsonb AS "client_read_only_metadata",
+          '{}'::jsonb AS "server_metadata",
+          false AS "is_anonymous",
+          "DeletedRow"."sequenceId" AS "sequence_id",
           "DeletedRow"."tenancyId",
-          true                                               AS "isDeleted"
+          true AS "is_deleted"
         FROM "DeletedRow"
         WHERE
           "DeletedRow"."tenancyId" = $1::uuid
-          AND "DeletedRow"."tableName" = 'ContactChannel'
+          AND "DeletedRow"."tableName" = 'ProjectUser'
       ) AS "_src"
-      WHERE "sequenceId" IS NOT NULL
-      ORDER BY "sequenceId" ASC
+      WHERE "sequence_id" IS NOT NULL
+        AND "sequence_id" > $2::bigint
+      ORDER BY "sequence_id" ASC
       LIMIT 1000
     `.trim(),
-    externalDbUpdateQuery: `
-           WITH existing AS (
-        SELECT "sequenceId" AS "oldSeq"
-        FROM "PartialUsers"
-        WHERE "id" = $1::uuid
-      ),
-      decision AS (
-        SELECT
-          $1::uuid        AS "id",
-          $2::timestamptz AS "createdAt",
-          $3::timestamptz AS "updatedAt",
-          $4::text        AS "type",
-          $5::boolean     AS "isPrimary",
-          $6::boolean     AS "isVerified",
-          $7::text        AS "value",
-          $8::bigint      AS "newSeq",
-          $9::timestamptz AS "userUpdatedAt",
-          $10::text       AS "profileImageUrl",
-          $11::text       AS "displayName",
-          $12::timestamptz AS "userCreatedAt",
-          $13::boolean    AS "isAnonymous",
-          $14::boolean    AS "isDeleted",
-          (SELECT "oldSeq" FROM existing) AS "oldSeq"
-      ),
-      deleted AS (
-        DELETE FROM "PartialUsers" p
-        USING decision d
-        WHERE
-          d."isDeleted" = true
-                AND (
-        d."oldSeq" IS NULL
-        OR d."newSeq" >= d."oldSeq"
-      )
-          AND p."id" = d."id"
-        RETURNING 1
-      )
-      INSERT INTO "PartialUsers" (
-        "id",
-        "createdAt",
-        "updatedAt",
-        "type",
-        "isPrimary",
-        "isVerified",
-        "value",
-        "sequenceId",
-        "userUpdatedAt",
-        "profileImageUrl",
-        "displayName",
-        "userCreatedAt",
-        "isAnonymous"
-      )
-      SELECT
-        d."id",
-        d."createdAt",
-        d."updatedAt",
-        d."type",
-        d."isPrimary",
-        d."isVerified",
-        d."value",
-        d."newSeq"        AS "sequenceId",
-        d."userUpdatedAt",
-        d."profileImageUrl",
-        d."displayName",
-        d."userCreatedAt",
-        d."isAnonymous"
-      FROM decision d
-      WHERE
-  d."isDeleted" = false
-    AND (
-      d."oldSeq" IS NULL
-      OR d."newSeq" > d."oldSeq"
-    )
-      ON CONFLICT ("id") DO UPDATE SET
-        "createdAt"       = EXCLUDED."createdAt",
-        "updatedAt"       = EXCLUDED."updatedAt",
-        "type"            = EXCLUDED."type",
-        "isPrimary"       = EXCLUDED."isPrimary",
-        "isVerified"      = EXCLUDED."isVerified",
-        "value"           = EXCLUDED."value",
-        "sequenceId"      = EXCLUDED."sequenceId",
-        "userUpdatedAt"   = EXCLUDED."userUpdatedAt",
-        "profileImageUrl" = EXCLUDED."profileImageUrl",
-        "displayName"     = EXCLUDED."displayName",
-        "userCreatedAt"   = EXCLUDED."userCreatedAt",
-        "isAnonymous"     = EXCLUDED."isAnonymous"
-      WHERE
-        EXCLUDED."sequenceId" > "PartialUsers"."sequenceId";
-    `.trim(),
+    // Last parameter = mapping_name (for metadata tracking)
+    externalDbUpdateQueries: {
+      postgres: `
+        WITH params AS (
+          SELECT
+            $1::uuid AS "id",
+            $2::text AS "display_name",
+            $3::text AS "profile_image_url",
+            $4::text AS "primary_email",
+            $5::boolean AS "primary_email_verified",
+            $6::timestamp without time zone AS "signed_up_at",
+            $7::jsonb AS "client_metadata",
+            $8::jsonb AS "client_read_only_metadata",
+            $9::jsonb AS "server_metadata",
+            $10::boolean AS "is_anonymous",
+            $11::bigint AS "sequence_id",
+            $12::boolean AS "is_deleted",
+            $13::text AS "mapping_name"
+        ),
+        deleted AS (
+          DELETE FROM "users" u
+          USING params p
+          WHERE p."is_deleted" = true AND u."id" = p."id"
+          RETURNING 1
+        ),
+        upserted AS (
+          INSERT INTO "users" (
+            "id",
+            "display_name",
+            "profile_image_url",
+            "primary_email",
+            "primary_email_verified",
+            "signed_up_at",
+            "client_metadata",
+            "client_read_only_metadata",
+            "server_metadata",
+            "is_anonymous"
+          )
+          SELECT
+            p."id",
+            p."display_name",
+            p."profile_image_url",
+            p."primary_email",
+            p."primary_email_verified",
+            p."signed_up_at",
+            p."client_metadata",
+            p."client_read_only_metadata",
+            p."server_metadata",
+            p."is_anonymous"
+          FROM params p
+          WHERE p."is_deleted" = false
+          ON CONFLICT ("id") DO UPDATE SET
+            "display_name" = EXCLUDED."display_name",
+            "profile_image_url" = EXCLUDED."profile_image_url",
+            "primary_email" = EXCLUDED."primary_email",
+            "primary_email_verified" = EXCLUDED."primary_email_verified",
+            "signed_up_at" = EXCLUDED."signed_up_at",
+            "client_metadata" = EXCLUDED."client_metadata",
+            "client_read_only_metadata" = EXCLUDED."client_read_only_metadata",
+            "server_metadata" = EXCLUDED."server_metadata",
+            "is_anonymous" = EXCLUDED."is_anonymous"
+          RETURNING 1
+        )
+        INSERT INTO "_stack_sync_metadata" ("mapping_name", "last_synced_sequence_id", "updated_at")
+        SELECT p."mapping_name", p."sequence_id", now() FROM params p
+        ON CONFLICT ("mapping_name") DO UPDATE SET
+          "last_synced_sequence_id" = GREATEST("_stack_sync_metadata"."last_synced_sequence_id", EXCLUDED."last_synced_sequence_id"),
+          "updated_at" = now();
+      `.trim(),
+    },
   },
 } as const;

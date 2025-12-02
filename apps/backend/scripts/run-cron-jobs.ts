@@ -1,6 +1,6 @@
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
-import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
+import { runAsynchronously, wait } from "@stackframe/stack-shared/dist/utils/promises";
 
 const endpoints = [
     "/api/latest/internal/external-db-sync/sequencer",

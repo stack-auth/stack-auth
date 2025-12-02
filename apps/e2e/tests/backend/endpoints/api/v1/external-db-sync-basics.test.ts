@@ -29,7 +29,7 @@ describe.sequential('External DB Sync - Basic Tests', () => {
   /**
    * What it does:
    * - Creates a user, patches the display name, and triggers the sync once.
-   * - Checks PartialUsers for a matching row only after the sync completes.
+   * - Checks the users table for a matching row only after the sync completes.
    *
    * Why it matters:
    * - Ensures inserts never appear externally until the sync pipeline runs.
@@ -61,7 +61,7 @@ describe.sequential('External DB Sync - Basic Tests', () => {
 
   /**
    * What it does:
-   * - Exports a baseline row, mutates the display name, runs another sync, and reads PartialUsers.
+   * - Exports a baseline row, mutates the display name, runs another sync, and reads users table.
    * - Compares the stored display name to guarantee it reflects the latest mutation.
    *
    * Why it matters:
@@ -104,8 +104,8 @@ describe.sequential('External DB Sync - Basic Tests', () => {
 
   /**
    * What it does:
-   * - Syncs a user into PartialUsers, deletes the user internally, and waits for the deletion helper.
-   * - Queries PartialUsers to ensure the row disappears.
+   * - Syncs a user into the users table, deletes the user internally, and waits for the deletion helper.
+   * - Queries users table to ensure the row disappears.
    *
    * Why it matters:
    * - Validates deletion events propagate and prevent orphaned rows in external DBs.
@@ -151,7 +151,7 @@ describe.sequential('External DB Sync - Basic Tests', () => {
 
   /**
    * What it does:
-   * - Creates a user while verifying the PartialUsers table is absent before sync.
+   * - Creates a user while verifying the users table is absent before sync.
    * - Triggers sync, waits for table creation, and confirms the row appears afterward.
    *
    * Why it matters:
@@ -161,6 +161,19 @@ describe.sequential('External DB Sync - Basic Tests', () => {
     const dbName = 'sync_verification_test';
     const connectionString = await dbManager.createDatabase(dbName);
 
+    const client = dbManager.getClient(dbName);
+
+    // Verify the fresh database has no users table BEFORE we configure sync
+    const tableCheckBefore = await client.query(`
+      SELECT EXISTS (
+        SELECT FROM information_schema.tables 
+        WHERE table_schema = 'public'
+        AND table_name = 'users'
+      );
+    `);
+    expect(tableCheckBefore.rows[0].exists).toBe(false);
+
+    // Now configure the external DB - this will trigger sync
     await createProjectWithExternalDb({
       main: {
         type: 'postgres',
@@ -178,22 +191,12 @@ describe.sequential('External DB Sync - Basic Tests', () => {
       body: { display_name: 'Sync Verify User' }
     });
 
-    const client = dbManager.getClient(dbName);
-
-    const tableCheckBefore = await client.query(`
-      SELECT EXISTS (
-        SELECT FROM information_schema.tables 
-        WHERE table_schema = 'public'
-        AND table_name = 'PartialUsers'
-      );
-    `);
-    expect(tableCheckBefore.rows[0].exists).toBe(false);
-
-    await waitForTable(client, 'PartialUsers');
+    // Wait for sync to create the table and populate data
+    await waitForTable(client, 'users');
 
     await waitForCondition(
       async () => {
-        const res = await client.query(`SELECT * FROM "PartialUsers" WHERE "value" = $1`, ['sync-verify@example.com']);
+        const res = await client.query(`SELECT * FROM "users" WHERE "primary_email" = $1`, ['sync-verify@example.com']);
         return res.rows.length > 0;
       },
       { description: 'data to appear in external DB', timeoutMs: 90000 }
@@ -204,7 +207,7 @@ describe.sequential('External DB Sync - Basic Tests', () => {
   /**
    * What it does:
    * - Runs create, update, and delete actions in order while syncing between each step.
-   * - Verifies PartialUsers reflects each intermediate state.
+   * - Verifies the users table reflects each intermediate state.
    *
    * Why it matters:
    * - Confirms the sync handles the entire lifecycle without leaving stale records.
@@ -255,7 +258,7 @@ describe.sequential('External DB Sync - Basic Tests', () => {
   /**
    * What it does:
    * - Syncs a user into an empty database to trigger table auto-creation.
-   * - Queries `information_schema` and PartialUsers to confirm the table and row exist.
+   * - Queries `information_schema` and users table to confirm the table and row exist.
    *
    * Why it matters:
    * - Ensures mappings can provision their own schema without manual migrations.
@@ -286,7 +289,7 @@ describe.sequential('External DB Sync - Basic Tests', () => {
       SELECT EXISTS (
         SELECT FROM information_schema.tables 
         WHERE table_schema = 'public'
-        AND table_name = 'PartialUsers'
+        AND table_name = 'users'
       );
     `);
     expect(tableCheck.rows[0].exists).toBe(true);
@@ -327,22 +330,22 @@ describe.sequential('External DB Sync - Basic Tests', () => {
     await waitForSyncedData(dbManager.getClient(goodDbName), 'resilience@example.com', 'Resilience User');
 
     const client = dbManager.getClient(goodDbName);
-    const res = await client.query(`SELECT * FROM "PartialUsers" WHERE "value" = $1`, ['resilience@example.com']);
+    const res = await client.query(`SELECT * FROM "users" WHERE "primary_email" = $1`, ['resilience@example.com']);
     expect(res.rows.length).toBe(1);
-    expect(res.rows[0].displayName).toBe('Resilience User');
+    expect(res.rows[0].display_name).toBe('Resilience User');
   }, TEST_TIMEOUT);
-  
 
   /**
    * What it does:
-   * - Creates a user with two contact channels and runs the sync.
-   * - Reads PartialUsers to assert both channel values are present with the same display name.
+   * - Creates a user with a primary email and adds a secondary email.
+   * - Verifies only one user row exists (the new schema is user-centric, not channel-centric).
+   * - Confirms the primary_email field contains the primary email.
    *
    * Why it matters:
-   * - Confirms multi-channel users export all addresses instead of overwriting each other.
+   * - Validates that the new user-centric schema syncs users, not individual contact channels.
    */
-  test('Multi-ContactChannel: User with multiple contact channels syncs all', async () => {
-    const dbName = 'multi_contact_channel_test';
+  test('User with multiple emails: Only one row synced with primary email', async () => {
+    const dbName = 'multi_email_test';
     const connectionString = await dbManager.createDatabase(dbName);
 
     await createProjectWithExternalDb({
@@ -354,51 +357,48 @@ describe.sequential('External DB Sync - Basic Tests', () => {
 
     const client = dbManager.getClient(dbName);
 
-    const user = await User.create({ emailAddress: 'multi-contact@example.com' });
+    const user = await User.create({ emailAddress: 'primary@example.com' });
     await niceBackendFetch(`/api/v1/users/${user.userId}`, {
       accessType: 'admin',
       method: 'PATCH',
-      body: { display_name: 'Multi Contact User' }
+      body: { display_name: 'Multi Email User' }
     });
+
+    // Add a secondary email
     const secondEmailResponse = await niceBackendFetch(`/api/v1/contact-channels`, {
       accessType: 'admin',
       method: 'POST',
       body: {
         user_id: user.userId,
         type: 'email',
-        value: 'second-email@example.com',
+        value: 'secondary@example.com',
         is_verified: false,
         used_for_auth: false,
       }
     });
     expect(secondEmailResponse.status).toBe(201);
 
-    // Wait for BOTH contact channels to be synced
-    await waitForSyncedData(client, 'multi-contact@example.com', 'Multi Contact User');
-    await waitForSyncedData(client, 'second-email@example.com', 'Multi Contact User');
+    await waitForSyncedData(client, 'primary@example.com', 'Multi Email User');
 
-    const allRows = await client.query(`SELECT * FROM "PartialUsers" ORDER BY "value"`);
-    expect(allRows.rows.length).toBe(2);
+    // Should only have ONE row per user (the new schema is user-centric)
+    const allRows = await client.query(`SELECT * FROM "users"`);
+    expect(allRows.rows.length).toBe(1);
 
-    const emails = allRows.rows.map(r => r.value);
-    expect(emails).toContain('multi-contact@example.com');
-    expect(emails).toContain('second-email@example.com');
-
-    expect(allRows.rows[0].displayName).toBe('Multi Contact User');
-    expect(allRows.rows[1].displayName).toBe('Multi Contact User');
-
+    // The row should have the primary email
+    expect(allRows.rows[0].primary_email).toBe('primary@example.com');
+    expect(allRows.rows[0].display_name).toBe('Multi Email User');
   }, TEST_TIMEOUT);
 
   /**
    * What it does:
-   * - Exports a user with multiple channels, deletes the user, and waits for deletion sync.
-   * - Ensures PartialUsers no longer contains any row for that user.
+   * - Creates a user, updates it multiple times, verifies each update is reflected.
+   * - Checks that the metadata table tracks the last synced sequence_id.
    *
    * Why it matters:
-   * - Validates that cascading deletes remove every external row tied to the user.
+   * - Demonstrates that updates are properly synced and metadata tracking works.
    */
-  test('Multi-ContactChannel Deletion: Deleting user cascades all contact channels', async () => {
-    const dbName = 'multi_contact_deletion_test';
+  test('Updates are synced correctly and metadata tracks progress', async () => {
+    const dbName = 'update_tracking_test';
     const connectionString = await dbManager.createDatabase(dbName);
 
     await createProjectWithExternalDb({
@@ -410,137 +410,23 @@ describe.sequential('External DB Sync - Basic Tests', () => {
 
     const client = dbManager.getClient(dbName);
 
-    const user = await User.create({ emailAddress: 'cascade-delete@example.com' });
-    await niceBackendFetch(`/api/v1/users/${user.userId}`, {
-      accessType: 'admin',
-      method: 'PATCH',
-      body: { display_name: 'Cascade Delete User' }
-    });
-
-    await niceBackendFetch(`/api/v1/contact-channels`, {
-      accessType: 'admin',
-      method: 'POST',
-      body: {
-        user_id: user.userId,
-        type: 'email',
-        value: 'cascade-second@example.com',
-        is_verified: false,
-        used_for_auth: false,
-      }
-    });
-
-    await waitForSyncedData(client, 'cascade-delete@example.com', 'Cascade Delete User');
-    await waitForSyncedData(client, 'cascade-second@example.com');
-
-    // Verify both are synced
-    const beforeDelete = await client.query(`SELECT * FROM "PartialUsers"`);
-    expect(beforeDelete.rows.length).toBe(2);
-
-    await niceBackendFetch(`/api/v1/users/${user.userId}`, {
-      accessType: 'admin',
-      method: 'DELETE',
-    });
-
-    await waitForSyncedDeletion(client, 'cascade-delete@example.com');
-
-    const afterDelete = await client.query(`SELECT * FROM "PartialUsers"`);
-    expect(afterDelete.rows.length).toBe(0);
-  }, TEST_TIMEOUT);
-
-  /**
-   * What it does:
-   * - Creates two contact channels, deletes only the secondary one, and runs the deletion sync helper.
-   * - Confirms PartialUsers retains the primary contact while the secondary row is removed.
-   *
-   * Why it matters:
-   * - Ensures granular channel deletions do not wipe the entire user from external DBs.
-   */
-  test('Single ContactChannel Deletion: Deleting one channel keeps user and other channels', async () => {
-    const dbName = 'single_contact_deletion_test';
-    const connectionString = await dbManager.createDatabase(dbName);
-
-    await createProjectWithExternalDb({
-      main: {
-        type: 'postgres',
-        connectionString,
-      }
-    });
-
-    const client = dbManager.getClient(dbName);
-
-    const user = await User.create({ emailAddress: 'single-delete@example.com' });
-    await niceBackendFetch(`/api/v1/users/${user.userId}`, {
-      accessType: 'admin',
-      method: 'PATCH',
-      body: { display_name: 'Single Delete User' }
-    });
-
-    const secondEmailResponse = await niceBackendFetch(`/api/v1/contact-channels`, {
-      accessType: 'admin',
-      method: 'POST',
-      body: {
-        user_id: user.userId,
-        type: 'email',
-        value: 'single-keep@example.com',
-        is_verified: false,
-        used_for_auth: false,
-      }
-    });
-    const secondChannelId = secondEmailResponse.body.id;
-
-    await waitForSyncedData(client, 'single-delete@example.com', 'Single Delete User');
-    await waitForSyncedData(client, 'single-keep@example.com', 'Single Delete User');
-
-    const beforeDelete = await client.query(`SELECT * FROM "PartialUsers" ORDER BY "value"`);
-    expect(beforeDelete.rows.length).toBe(2);
-
-    const deleteResponse = await niceBackendFetch(`/api/v1/contact-channels/${user.userId}/${secondChannelId}`, {
-      accessType: 'admin',
-      method: 'DELETE',
-    });
-    expect(deleteResponse.status).toBe(200);
-
-    await waitForSyncedDeletion(client, 'single-keep@example.com');
-
-    const afterDelete = await client.query(`SELECT * FROM "PartialUsers"`);
-    expect(afterDelete.rows.length).toBe(1);
-    expect(afterDelete.rows[0].value).toBe('single-delete@example.com');
-    expect(afterDelete.rows[0].displayName).toBe('Single Delete User');
-
-  }, TEST_TIMEOUT);
-
-  /**
-   * What it does:
-   * - Exports a user, bumps its sequenceId with an update, and attempts to delete using the old sequenceId.
-   * - Verifies the row still exists with the latest data.
-   *
-   * Why it matters:
-   * - Demonstrates sequence guards prevent older deletes from clobbering newer updates.
-   */
-  test('Race Condition Protection: Old delete cannot remove newer record', async () => {
-    const dbName = 'race_condition_test';
-    const connectionString = await dbManager.createDatabase(dbName);
-
-    await createProjectWithExternalDb({
-      main: {
-        type: 'postgres',
-        connectionString,
-      }
-    });
-
-    const client = dbManager.getClient(dbName);
-
-    const user = await User.create({ emailAddress: 'race-test@example.com' });
+    const user = await User.create({ emailAddress: 'update-test@example.com' });
     await niceBackendFetch(`/api/v1/users/${user.userId}`, {
       accessType: 'admin',
       method: 'PATCH',
       body: { display_name: 'Original Name' }
     });
 
-    await waitForSyncedData(client, 'race-test@example.com', 'Original Name');
-    const firstRow = await verifyInExternalDb(client, 'race-test@example.com', 'Original Name');
-    const firstSequenceId = BigInt(firstRow.sequenceId);
-    const contactChannelId = firstRow.id;
+    await waitForSyncedData(client, 'update-test@example.com', 'Original Name');
+    await verifyInExternalDb(client, 'update-test@example.com', 'Original Name');
+
+    // Check metadata table exists and has a positive sequence_id
+    const metadata1 = await client.query(
+      `SELECT "last_synced_sequence_id" FROM "_stack_sync_metadata" WHERE "mapping_name" = 'users'`
+    );
+    expect(metadata1.rows.length).toBe(1);
+    const seq1 = Number(metadata1.rows[0].last_synced_sequence_id);
+    expect(seq1).toBeGreaterThan(0);
 
     await niceBackendFetch(`/api/v1/users/${user.userId}`, {
       accessType: 'admin',
@@ -548,19 +434,14 @@ describe.sequential('External DB Sync - Basic Tests', () => {
       body: { display_name: 'Updated Name' }
     });
 
-    await waitForSyncedData(client, 'race-test@example.com', 'Updated Name');
-    const secondRow = await verifyInExternalDb(client, 'race-test@example.com', 'Updated Name');
-    const secondSequenceId = BigInt(secondRow.sequenceId);
-    const deleteAttempt = await client.query(
-      `DELETE FROM "PartialUsers" WHERE "id" = $1 AND "sequenceId" <= $2`,
-      [contactChannelId, firstSequenceId.toString()]
+    await waitForSyncedData(client, 'update-test@example.com', 'Updated Name');
+    await verifyInExternalDb(client, 'update-test@example.com', 'Updated Name');
+
+    // Metadata should have advanced
+    const metadata2 = await client.query(
+      `SELECT "last_synced_sequence_id" FROM "_stack_sync_metadata" WHERE "mapping_name" = 'users'`
     );
-
-
-    expect(deleteAttempt.rowCount).toBe(0);
-
-    const afterDelete = await verifyInExternalDb(client, 'race-test@example.com', 'Updated Name');
-    expect(BigInt(afterDelete.sequenceId)).toBe(secondSequenceId);
-
+    const seq2 = Number(metadata2.rows[0].last_synced_sequence_id);
+    expect(seq2).toBeGreaterThan(seq1);
   }, TEST_TIMEOUT);
 });
