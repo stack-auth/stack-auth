@@ -399,8 +399,12 @@ const AIChatPreview = memo(function AIChatPreview({
     // Check if we already have this conversation cached
     const cached = conversationCache.get(trimmedQuery);
     if (cached && cached.messages.length > 0) {
-      // Restore cached conversation if messages are empty (e.g., after remount)
-      if (messages.length === 0) {
+      // Always restore cached conversation if messages don't match
+      // This handles both: query change AND component remount
+      const messagesMatch = messages.length === cached.messages.length &&
+        messages.every((m, i) => m.content === cached.messages[i].content);
+
+      if (!messagesMatch) {
         setMessages(cached.messages);
       }
       currentQueryRef.current = trimmedQuery;
@@ -410,8 +414,8 @@ const AIChatPreview = memo(function AIChatPreview({
       return;
     }
 
-    // Check if we already started this query and it's still loading
-    if (startedQueryRef.current === trimmedQuery && aiLoading) {
+    // Check if we already started this exact query (prevents duplicate requests)
+    if (startedQueryRef.current === trimmedQuery && (messages.length > 0 || aiLoading)) {
       return;
     }
 
@@ -447,7 +451,7 @@ const AIChatPreview = memo(function AIChatPreview({
     }, 400);
 
     // Don't return cleanup - we manage the timeout ourselves via ref
-  }, [query, append, setMessages, messages.length, aiLoading]);
+  }, [query, append, setMessages, messages.length, aiLoading, messages]);
 
   // Focus handler - select the follow-up input when focused (pressing right arrow or Enter)
   useEffect(() => {
