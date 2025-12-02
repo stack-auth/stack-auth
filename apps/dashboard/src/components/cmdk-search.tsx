@@ -117,16 +117,16 @@ export const CmdKResultsList = memo(function CmdKResultsList({
             {/* Keyboard hints - only show when selected */}
             {isSelected && (
               <div className="flex items-center gap-1">
-                {/* Show Enter key if action is executable (action or navigate) */}
-                {(cmd.onAction.type === "action" || cmd.onAction.type === "navigate") && (
-                  <kbd className="flex h-5 items-center justify-center rounded bg-foreground/[0.05] px-1.5 font-mono text-[10px] font-medium text-muted-foreground/60">
-                    ↵
-                  </kbd>
-                )}
                 {/* Show Arrow Right key if preview is available */}
                 {cmd.preview && (
                   <kbd className="flex h-5 items-center justify-center rounded bg-foreground/[0.05] px-1.5 font-mono text-[10px] font-medium text-muted-foreground/60">
                     →
+                  </kbd>
+                )}
+                {/* Show Enter key if action is executable (action or navigate) */}
+                {(cmd.onAction.type === "action" || cmd.onAction.type === "navigate") && (
+                  <kbd className="flex h-5 items-center justify-center rounded bg-foreground/[0.05] px-1.5 font-mono text-[10px] font-medium text-muted-foreground/60">
+                    ↵
                   </kbd>
                 )}
               </div>

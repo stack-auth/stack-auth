@@ -1,8 +1,9 @@
 "use client";
 
-import { ALL_APPS_FRONTEND, getItemPath } from "@/lib/apps-frontend";
+import { ALL_APPS_FRONTEND, getAppPath, getItemPath } from "@/lib/apps-frontend";
+import { getUninstalledAppIds } from "@/lib/apps-utils";
 import { ALL_APPS, type AppId } from "@stackframe/stack-shared/dist/apps/apps-config";
-import { Blocks, Globe, KeyRound, Settings, Sparkles, Zap } from "lucide-react";
+import { Blocks, Download, Globe, KeyRound, Settings, Sparkles, Zap } from "lucide-react";
 import React, { useEffect, useMemo } from "react";
 
 export type CmdKPreviewProps = {
@@ -42,91 +43,54 @@ export type CmdKCommand = {
   highlightColor?: string,
 };
 
-// Test Preview Component with nested navigation demo
-function TestPreview({
-  isSelected,
-  query,
-  registerOnFocus,
-  unregisterOnFocus,
-  registerNestedCommands,
-  navigateToNested,
-}: CmdKPreviewProps) {
-  // Create nested commands for this preview
-  const nestedCommands: CmdKCommand[] = useMemo(() => [
-    {
-      id: "test/preview/nested-1",
-      icon: <Zap className="h-3.5 w-3.5 text-green-400" />,
-      label: "Nested Item 1",
-      description: "A nested command item",
-      keywords: ["nested", "item", "one"],
-      onAction: { type: "navigate", href: `/test/nested-1` },
-      preview: null,
-    },
-    {
-      id: "test/preview/nested-2",
-      icon: <Zap className="h-3.5 w-3.5 text-green-400" />,
-      label: "Nested Item 2",
-      description: "Another nested command",
-      keywords: ["nested", "item", "two"],
-      onAction: { type: "navigate", href: `/test/nested-2` },
-      preview: null,
-    },
-    {
-      id: "test/preview/nested-3",
-      icon: <Zap className="h-3.5 w-3.5 text-green-400" />,
-      label: "Nested Item 3",
-      description: "Yet another nested command",
-      keywords: ["nested", "item", "three"],
-      onAction: { type: "navigate", href: `/test/nested-3` },
-      preview: null,
-    },
-  ], []);
+// Factory to create app preview components that show navigation items
+function createAppPreview(appId: AppId, projectId: string): React.ComponentType<CmdKPreviewProps> {
+  // Pre-compute these outside the component since they're static per appId
+  const app = ALL_APPS[appId];
+  const appFrontend = ALL_APPS_FRONTEND[appId];
 
-  useEffect(() => {
-    const focusHandler = () => {
-      // When this preview receives focus (arrow right), register nested commands
-      registerNestedCommands(nestedCommands);
-      navigateToNested();
-    };
-    registerOnFocus(focusHandler);
-    return () => unregisterOnFocus(focusHandler);
-  }, [registerOnFocus, unregisterOnFocus, registerNestedCommands, navigateToNested, nestedCommands]);
+  // Pre-compute nested commands since they're static
+  const IconComponent = appFrontend.icon;
+  const nestedCommands: CmdKCommand[] = appFrontend.navigationItems.map((navItem) => ({
+    id: `apps/${appId}/nav/${navItem.displayName.toLowerCase().replace(/\s+/g, '-')}`,
+    icon: <IconComponent className="h-3.5 w-3.5 text-muted-foreground" />,
+    label: navItem.displayName,
+    description: app.displayName,
+    keywords: [app.displayName.toLowerCase(), navItem.displayName.toLowerCase()],
+    onAction: { type: "navigate" as const, href: getItemPath(projectId, appFrontend, navItem) },
+    preview: null,
+  }));
 
-  return (
-    <div className="p-6 h-full flex flex-col">
-      <div className="mb-4">
-        <h3 className="text-lg font-semibold text-foreground mb-2">Preview Test Command</h3>
-        <p className="text-sm text-muted-foreground">
-          This is a preview component that demonstrates nested navigation.
-          Press → to navigate into the nested list.
-        </p>
-        {query && (
-          <p className="text-xs text-muted-foreground/70 mt-2">
-            Current query: &quot;{query}&quot;
-          </p>
-        )}
-      </div>
-      <div className="flex-1 space-y-3">
-        <div className="p-4 rounded-lg bg-foreground/[0.03] border border-foreground/[0.06]">
-          <div className="text-sm font-medium text-foreground mb-1">Feature 1</div>
-          <div className="text-xs text-muted-foreground">This is a preview of feature 1</div>
-        </div>
-        <div className="p-4 rounded-lg bg-foreground/[0.03] border border-foreground/[0.06]">
-          <div className="text-sm font-medium text-foreground mb-1">Feature 2</div>
-          <div className="text-xs text-muted-foreground">This is a preview of feature 2</div>
-        </div>
-        <div className="p-4 rounded-lg bg-foreground/[0.03] border border-foreground/[0.06]">
-          <div className="text-sm font-medium text-foreground mb-1">Feature 3</div>
-          <div className="text-xs text-muted-foreground">This is a preview of feature 3</div>
-        </div>
-      </div>
-      {isSelected && (
-        <div className="mt-4 p-3 rounded-lg bg-blue-500/10 border border-blue-500/20">
-          <div className="text-xs text-blue-400 font-medium">Press → to see nested items, Enter to execute</div>
-        </div>
-      )}
-    </div>
-  );
+  return function AppPreview({
+    registerOnFocus,
+    unregisterOnFocus,
+    registerNestedCommands,
+    navigateToNested,
+  }: CmdKPreviewProps) {
+    useEffect(() => {
+      const focusHandler = () => {
+        registerNestedCommands(nestedCommands);
+        navigateToNested();
+      };
+      registerOnFocus(focusHandler);
+      return () => unregisterOnFocus(focusHandler);
+    }, [registerOnFocus, unregisterOnFocus, registerNestedCommands, navigateToNested]);
+
+    return null; // No visual preview, just nested commands
+  };
+}
+
+// Cache for app preview components to avoid recreating them
+const appPreviewCache = new Map<string, React.ComponentType<CmdKPreviewProps>>();
+
+function getOrCreateAppPreview(appId: AppId, projectId: string): React.ComponentType<CmdKPreviewProps> {
+  const cacheKey = `${appId}:${projectId}`;
+  let preview = appPreviewCache.get(cacheKey);
+  if (!preview) {
+    preview = createAppPreview(appId, projectId);
+    appPreviewCache.set(cacheKey, preview);
+  }
+  return preview;
 }
 
 export function useCmdKCommands({
@@ -157,18 +121,6 @@ export function useCmdKCommands({
       });
     }
 
-    // Test command with preview
-    commands.push({
-      id: "test/preview",
-      icon: <Zap className="h-3.5 w-3.5 text-blue-400" />,
-      label: "Preview Test Command",
-      description: "Test command with preview component",
-      keywords: ["test", "preview", "demo", "example"],
-      onAction: { type: "focus" },
-      preview: TestPreview,
-      highlightColor: "blue",
-    });
-
     // Overview
     commands.push({
       id: "navigation/overview",
@@ -180,7 +132,7 @@ export function useCmdKCommands({
       preview: null,
     });
 
-    // App navigation items
+    // Installed apps - with preview for navigation items
     for (const appId of enabledApps) {
       const app = ALL_APPS[appId];
       const appFrontend = ALL_APPS_FRONTEND[appId];
@@ -189,18 +141,45 @@ export function useCmdKCommands({
       if (!app || !appFrontend) continue;
 
       const IconComponent = appFrontend.icon;
+      const hasNavigationItems = appFrontend.navigationItems.length > 0;
 
-      for (const navItem of appFrontend.navigationItems) {
-        commands.push({
-          id: `apps/${appId}/pages/${navItem.displayName.toLowerCase().replace(/\s+/g, '-')}`,
-          icon: <IconComponent className="h-3.5 w-3.5 text-muted-foreground" />,
-          label: navItem.displayName,
-          description: app.displayName,
-          keywords: [app.displayName.toLowerCase(), navItem.displayName.toLowerCase()],
-          onAction: { type: "navigate", href: getItemPath(projectId, appFrontend, navItem) },
-          preview: null,
-        });
-      }
+      // Add the app itself as a command
+      commands.push({
+        id: `apps/${appId}`,
+        icon: <IconComponent className="h-3.5 w-3.5 text-muted-foreground" />,
+        label: app.displayName,
+        description: "Installed app",
+        keywords: [app.displayName.toLowerCase(), ...app.tags, "installed", "app"],
+        onAction: { type: "navigate", href: getAppPath(projectId, appFrontend) },
+        preview: hasNavigationItems ? getOrCreateAppPreview(appId, projectId) : null,
+      });
+    }
+
+    // Available (uninstalled) apps
+    const uninstalledApps = getUninstalledAppIds(enabledApps);
+    for (const appId of uninstalledApps) {
+      const app = ALL_APPS[appId];
+      const appFrontend = ALL_APPS_FRONTEND[appId];
+      // Some apps might not have frontend metadata yet
+      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+      if (!app || !appFrontend) continue;
+
+      const IconComponent = appFrontend.icon;
+
+      commands.push({
+        id: `store/${appId}`,
+        icon: (
+          <div className="relative">
+            <IconComponent className="h-3.5 w-3.5 text-muted-foreground/50" />
+            <Download className="h-2 w-2 text-muted-foreground absolute -bottom-0.5 -right-0.5" />
+          </div>
+        ),
+        label: app.displayName,
+        description: "Available to install",
+        keywords: [app.displayName.toLowerCase(), ...app.tags, "available", "install", "store", "app"],
+        onAction: { type: "navigate", href: `/projects/${projectId}/apps/${appId}` },
+        preview: null,
+      });
     }
 
     // Settings items
