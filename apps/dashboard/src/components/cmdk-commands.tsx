@@ -3,7 +3,7 @@
 import { ALL_APPS_FRONTEND, getAppPath, getItemPath } from "@/lib/apps-frontend";
 import { getUninstalledAppIds } from "@/lib/apps-utils";
 import { ALL_APPS, type AppId } from "@stackframe/stack-shared/dist/apps/apps-config";
-import { Blocks, Download, Globe, KeyRound, Settings, Sparkles, Zap } from "lucide-react";
+import { Blocks, Download, Globe, KeyRound, Settings, Sparkles } from "lucide-react";
 import React, { useEffect, useMemo } from "react";
 
 export type CmdKPreviewProps = {

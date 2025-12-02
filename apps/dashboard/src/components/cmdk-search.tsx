@@ -500,14 +500,13 @@ export function CmdKSearch({
     return selectedIndices[activeDepth] ?? 0;
   }, [activeDepth, selectedIndices]);
 
-  // Reset selection when results change
+  // Reset selection and close nested columns when results change
   useEffect(() => {
     setSelectedIndex(0);
-    setSelectedIndices((prev) => {
-      const next = [...prev];
-      next[0] = 0;
-      return next;
-    });
+    setSelectedIndices([0]);
+    setNestedColumns([]);
+    setActiveDepth(0);
+    setNestedBlurHandlers([]);
   }, [filteredCommands.length]);
 
   // Clear nested columns when switching to a command without preview
@@ -981,7 +980,7 @@ export function CmdKSearch({
                 {/* Main Results List */}
                 <div className={cn(
                   "overflow-auto h-full",
-                  filteredCommands[selectedIndex]?.preview
+                  nestedColumns.length > 0
                     ? "md:w-[300px] md:flex-shrink-0 md:border-r md:border-foreground/[0.06]"
                     : "md:w-full md:flex-1"
                 )}>
@@ -1032,12 +1031,9 @@ export function CmdKSearch({
                   );
                 })}
 
-                {/* Preview Panel (Desktop) - shown when no nested columns but preview exists */}
+                {/* Hidden preview component - renders invisibly to register focus handlers */}
                 {filteredCommands[selectedIndex]?.preview && nestedColumns.length === 0 && (
-                  <div
-                    className="hidden md:block md:flex-1 overflow-auto"
-                    style={{ animation: "spotlight-slide-in-from-right 200ms ease-out" }}
-                  >
+                  <div className="hidden">
                     {React.createElement(filteredCommands[selectedIndex].preview!, {
                       isSelected: true,
                       query,
