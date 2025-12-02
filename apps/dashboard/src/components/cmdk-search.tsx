@@ -138,22 +138,22 @@ const CyclingPlaceholder = memo(function CyclingPlaceholder({
       {/* Feature highlights with floating icons */}
       <div className="relative w-fit">
         {/* Floating decorative icons - left and right sides only */}
-        <div className="absolute -left-10 top-0 w-9 h-9 rounded-xl bg-blue-500/10 flex items-center justify-center rotate-[-12deg] opacity-70">
+        <div className="absolute -left-6 top-0 w-9 h-9 rounded-xl bg-blue-500/10 flex items-center justify-center rotate-[-12deg] opacity-70">
           <Search className="h-4.5 w-4.5 text-blue-500" />
         </div>
-        <div className="absolute -right-8 top-2 w-8 h-8 rounded-xl bg-purple-500/10 flex items-center justify-center rotate-[15deg] opacity-60">
+        <div className="absolute -right-6 top-2 w-8 h-8 rounded-xl bg-purple-500/10 flex items-center justify-center rotate-[15deg] opacity-60">
           <Sparkles className="h-4 w-4 text-purple-500" />
         </div>
-        <div className="absolute -left-8 top-1/2 -translate-y-1/2 w-7 h-7 rounded-lg bg-green-500/10 flex items-center justify-center rotate-[20deg] opacity-50">
+        <div className="absolute -left-16 top-1/2 -translate-y-1/2 w-7 h-7 rounded-lg bg-green-500/10 flex items-center justify-center rotate-[20deg] opacity-50">
           <User className="h-3.5 w-3.5 text-green-500" />
         </div>
-        <div className="absolute -right-10 top-1/2 -translate-y-1/2 w-9 h-9 rounded-xl bg-cyan-500/10 flex items-center justify-center rotate-[-8deg] opacity-60">
+        <div className="absolute -right-20 top-1/2 -translate-y-1/2 w-9 h-9 rounded-xl bg-cyan-500/10 flex items-center justify-center rotate-[-8deg] opacity-60">
           <Layout className="h-4.5 w-4.5 text-cyan-500" />
         </div>
-        <div className="absolute -left-9 bottom-0 w-7 h-7 rounded-lg bg-amber-500/10 flex items-center justify-center rotate-[8deg] opacity-50">
+        <div className="absolute -left-7 bottom-0 w-7 h-7 rounded-lg bg-amber-500/10 flex items-center justify-center rotate-[8deg] opacity-50">
           <Play className="h-3.5 w-3.5 text-amber-500" />
         </div>
-        <div className="absolute -right-7 bottom-2 w-8 h-8 rounded-xl bg-rose-500/10 flex items-center justify-center rotate-[-18deg] opacity-50">
+        <div className="absolute -right-5 bottom-2 w-8 h-8 rounded-xl bg-rose-500/10 flex items-center justify-center rotate-[-18deg] opacity-50">
           <Sparkles className="h-4 w-4 text-rose-500" />
         </div>
 

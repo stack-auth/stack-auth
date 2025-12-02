@@ -1053,7 +1053,7 @@ export function useCmdKCommands({
       preview: null,
     });
 
-    // AI Assistant option (only when there's a query)
+    // AI-powered options (only when there's a query)
     if (query.trim()) {
       commands.push({
         id: "ai/ask",
@@ -1072,7 +1072,7 @@ export function useCmdKCommands({
         icon: <Play className="h-3.5 w-3.5 text-amber-500" />,
         label: `Run Query`,
         description: "Execute actions using natural language",
-        keywords: ["run", "execute", "query", "action", "command"],
+        keywords: ["run", "execute", "query", "action", "command", "vibecode"],
         onAction: { type: "focus" },
         preview: RunQueryPreview,
         hasVisualPreview: true,
