@@ -5,6 +5,23 @@ import { ALL_APPS, type AppId } from "@stackframe/stack-shared/dist/apps/apps-co
 import { Blocks, Globe, KeyRound, Settings, Sparkles, Zap } from "lucide-react";
 import React, { useEffect, useMemo } from "react";
 
+export type CmdKPreviewProps = {
+  isSelected: boolean,
+  query: string,
+  registerOnFocus: (onFocus: () => void) => void,
+  unregisterOnFocus: (onFocus: () => void) => void,
+  /** Called when user navigates back (left arrow) from this preview */
+  onBlur: () => void,
+  /** Register nested commands that will appear as a new column */
+  registerNestedCommands: (commands: CmdKCommand[]) => void,
+  /** Navigate into the nested column (call after registering commands) */
+  navigateToNested: () => void,
+  /** Current nesting depth (0 = first preview) */
+  depth: number,
+  /** Current pathname for checking active state */
+  pathname: string,
+};
+
 export type CmdKCommand = {
   id: string,
   icon: React.ReactNode,
@@ -20,42 +37,68 @@ export type CmdKCommand = {
     type: "navigate",
     href: string,
   },
-  preview: null | React.ComponentType<{
-    isSelected: boolean,
-    query: string,
-    registerOnFocus: (onFocus: () => void) => void,
-    unregisterOnFocus: (onFocus: () => void) => void,
-  }>,
+  preview: null | React.ComponentType<CmdKPreviewProps>,
   /** Optional highlight color for special styling (e.g., "purple" for AI commands) */
   highlightColor?: string,
 };
 
-// Test Preview Component
+// Test Preview Component with nested navigation demo
 function TestPreview({
   isSelected,
   query,
   registerOnFocus,
   unregisterOnFocus,
-}: {
-  isSelected: boolean,
-  query: string,
-  registerOnFocus: (onFocus: () => void) => void,
-  unregisterOnFocus: (onFocus: () => void) => void,
-}) {
+  registerNestedCommands,
+  navigateToNested,
+}: CmdKPreviewProps) {
+  // Create nested commands for this preview
+  const nestedCommands: CmdKCommand[] = useMemo(() => [
+    {
+      id: "test/preview/nested-1",
+      icon: <Zap className="h-3.5 w-3.5 text-green-400" />,
+      label: "Nested Item 1",
+      description: "A nested command item",
+      keywords: ["nested", "item", "one"],
+      onAction: { type: "navigate", href: `/test/nested-1` },
+      preview: null,
+    },
+    {
+      id: "test/preview/nested-2",
+      icon: <Zap className="h-3.5 w-3.5 text-green-400" />,
+      label: "Nested Item 2",
+      description: "Another nested command",
+      keywords: ["nested", "item", "two"],
+      onAction: { type: "navigate", href: `/test/nested-2` },
+      preview: null,
+    },
+    {
+      id: "test/preview/nested-3",
+      icon: <Zap className="h-3.5 w-3.5 text-green-400" />,
+      label: "Nested Item 3",
+      description: "Yet another nested command",
+      keywords: ["nested", "item", "three"],
+      onAction: { type: "navigate", href: `/test/nested-3` },
+      preview: null,
+    },
+  ], []);
+
   useEffect(() => {
     const focusHandler = () => {
-      // Focus logic can be added here if needed
+      // When this preview receives focus (arrow right), register nested commands
+      registerNestedCommands(nestedCommands);
+      navigateToNested();
     };
     registerOnFocus(focusHandler);
     return () => unregisterOnFocus(focusHandler);
-  }, [registerOnFocus, unregisterOnFocus]);
+  }, [registerOnFocus, unregisterOnFocus, registerNestedCommands, navigateToNested, nestedCommands]);
 
   return (
     <div className="p-6 h-full flex flex-col">
       <div className="mb-4">
         <h3 className="text-lg font-semibold text-foreground mb-2">Preview Test Command</h3>
         <p className="text-sm text-muted-foreground">
-          This is a preview component that demonstrates how previews work in the command palette.
+          This is a preview component that demonstrates nested navigation.
+          Press → to navigate into the nested list.
         </p>
         {query && (
           <p className="text-xs text-muted-foreground/70 mt-2">
@@ -79,7 +122,7 @@ function TestPreview({
       </div>
       {isSelected && (
         <div className="mt-4 p-3 rounded-lg bg-blue-500/10 border border-blue-500/20">
-          <div className="text-xs text-blue-400 font-medium">Press Enter to execute this command</div>
+          <div className="text-xs text-blue-400 font-medium">Press → to see nested items, Enter to execute</div>
         </div>
       )}
     </div>

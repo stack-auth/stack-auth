@@ -21,6 +21,111 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { useCmdKCommands, type CmdKCommand } from "./cmdk-commands";
 
+// Reusable Results List Component
+export const CmdKResultsList = memo(function CmdKResultsList({
+  commands,
+  selectedIndex,
+  onSelect,
+  onMouseEnter,
+  pathname,
+  emptyMessage = "Enter a search term or ask AI...",
+  isParentColumn = false,
+}: {
+  commands: CmdKCommand[],
+  selectedIndex: number,
+  onSelect: (cmd: CmdKCommand) => void,
+  onMouseEnter: (index: number) => void,
+  pathname: string,
+  emptyMessage?: string,
+  /** When true, selection shows as outline only (for parent columns) */
+  isParentColumn?: boolean,
+}) {
+  const hasResults = commands.length > 0;
+
+  if (!hasResults) {
+    return (
+      <div className="h-full flex items-center justify-center select-none pointer-events-none">
+        <div className="text-[13px] text-muted-foreground/50">{emptyMessage}</div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="overflow-y-auto py-1.5 px-2">
+      {commands.map((cmd, index) => {
+        const isSelected = index === selectedIndex;
+        const isCurrentPage = cmd.onAction.type === "navigate" && pathname === cmd.onAction.href;
+
+        // Parent column selection style: outline only
+        const parentSelectionStyle = isSelected && isParentColumn
+          ? "ring-1 ring-foreground/20 bg-transparent"
+          : null;
+
+        // Active column selection style: full background
+        const activeSelectionStyle = isSelected && !isParentColumn
+          ? cmd.highlightColor
+            ? cmd.highlightColor === "purple"
+              ? "bg-gradient-to-r from-purple-500/[0.15] to-purple-500/[0.08] ring-1 ring-purple-500/20"
+              : cmd.highlightColor === "blue"
+                ? "bg-gradient-to-r from-blue-500/[0.15] to-blue-500/[0.08] ring-1 ring-blue-500/20"
+                : cmd.highlightColor === "green"
+                  ? "bg-gradient-to-r from-green-500/[0.15] to-green-500/[0.08] ring-1 ring-green-500/20"
+                  : "bg-foreground/[0.06]"
+            : "bg-foreground/[0.06]"
+          : null;
+
+        return (
+          <button
+            key={cmd.id}
+            onClick={() => onSelect(cmd)}
+            onMouseEnter={() => onMouseEnter(index)}
+            className={cn(
+              "w-full flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left",
+              "transition-colors duration-75",
+              parentSelectionStyle,
+              activeSelectionStyle,
+              !isSelected && "bg-transparent"
+            )}
+          >
+            <div
+              className={cn(
+                "flex h-7 w-7 items-center justify-center rounded-md",
+                cmd.highlightColor === "purple"
+                  ? "bg-purple-500/10"
+                  : cmd.highlightColor === "blue"
+                    ? "bg-blue-500/10"
+                    : cmd.highlightColor === "green"
+                      ? "bg-green-500/10"
+                      : "bg-foreground/[0.05]"
+              )}
+            >
+              {cmd.icon}
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="text-[13px] font-medium text-foreground truncate">
+                {cmd.label}
+              </div>
+              <div className="text-[11px] text-muted-foreground/70 truncate">
+                {cmd.description}
+              </div>
+            </div>
+            {isCurrentPage && (
+              <span className="text-[10px] font-medium text-muted-foreground/50 uppercase tracking-wide">
+                Current
+              </span>
+            )}
+            {cmd.highlightColor && (
+              <kbd className="flex h-5 items-center justify-center rounded bg-foreground/[0.05] px-1.5 font-mono text-[10px] font-medium text-muted-foreground/60">
+                ↵
+              </kbd>
+            )}
+          </button>
+        );
+      })}
+    </div>
+  );
+});
+
 // Memoized copy button for performance
 const CopyButton = memo(function CopyButton({ text, className, size = "sm" }: {
   text: string,
@@ -249,6 +354,11 @@ export function CmdKSearch({
   const [followUpInput, setFollowUpInput] = useState("");
   const [previewMode, setPreviewMode] = useState(false); // Mobile preview mode
   const [previewFocusHandlers, setPreviewFocusHandlers] = useState<Set<() => void>>(new Set());
+  // Nested navigation state
+  const [nestedColumns, setNestedColumns] = useState<CmdKCommand[][]>([]); // Commands for each nested column
+  const [activeDepth, setActiveDepth] = useState(0); // Which column is active (0 = main list)
+  const [selectedIndices, setSelectedIndices] = useState<number[]>([0]); // Selected index in each column
+  const [nestedBlurHandlers, setNestedBlurHandlers] = useState<(() => void)[]>([]); // onBlur handlers for each depth
   const router = useRouter();
   const pathname = usePathname();
   const inputRef = useRef<HTMLInputElement>(null);
@@ -256,6 +366,7 @@ export function CmdKSearch({
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const lastMessageCountRef = useRef(0);
   const isNearBottomRef = useRef(true);
+  const columnsContainerRef = useRef<HTMLDivElement>(null);
 
   // AI chat hook for multi-turn conversation
   const {
@@ -366,17 +477,39 @@ export function CmdKSearch({
     });
   }, [query, commands]);
 
+  // Get current commands based on active depth
+  const getCurrentCommands = useCallback(() => {
+    if (activeDepth === 0) return filteredCommands;
+    return nestedColumns[activeDepth - 1] || [];
+  }, [activeDepth, filteredCommands, nestedColumns]);
+
+  // Get current selected index based on active depth
+  const getCurrentSelectedIndex = useCallback(() => {
+    return selectedIndices[activeDepth] ?? 0;
+  }, [activeDepth, selectedIndices]);
+
   // Reset selection when results change
   useEffect(() => {
     setSelectedIndex(0);
+    setSelectedIndices((prev) => {
+      const next = [...prev];
+      next[0] = 0;
+      return next;
+    });
   }, [filteredCommands.length]);
 
-  // Trigger focus handlers when selected command changes
+  // Clear nested columns when switching to a command without preview
   useEffect(() => {
-    if (filteredCommands[selectedIndex]?.preview) {
-      previewFocusHandlers.forEach((handler) => handler());
+    if (activeDepth === 0 && selectedIndex < filteredCommands.length) {
+      const selectedCommand = filteredCommands[selectedIndex];
+      if (!selectedCommand.preview) {
+        // Clear nested state when no preview
+        setNestedColumns([]);
+        setSelectedIndices([selectedIndex]);
+        setNestedBlurHandlers([]);
+      }
     }
-  }, [selectedIndex, filteredCommands, previewFocusHandlers]);
+  }, [selectedIndex, filteredCommands, activeDepth]);
 
   const registerOnFocus = useCallback((onFocus: () => void) => {
     setPreviewFocusHandlers((prev) => new Set(prev).add(onFocus));
@@ -388,6 +521,53 @@ export function CmdKSearch({
       next.delete(onFocus);
       return next;
     });
+  }, []);
+
+  // Register nested commands from a preview component
+  const registerNestedCommands = useCallback((commands: CmdKCommand[], depth: number) => {
+    setNestedColumns((prev) => {
+      const next = [...prev];
+      next[depth] = commands;
+      return next;
+    });
+    setSelectedIndices((prev) => {
+      const next = [...prev];
+      while (next.length <= depth) {
+        next.push(0);
+      }
+      return next;
+    });
+  }, []);
+
+  // Register onBlur handler for a depth level
+  const registerNestedBlur = useCallback((onBlur: () => void, depth: number) => {
+    setNestedBlurHandlers((prev) => {
+      const next = [...prev];
+      next[depth] = onBlur;
+      return next;
+    });
+  }, []);
+
+  // Stable wrapper for registerNestedCommands at depth 0
+  const registerNestedCommandsDepth0 = useCallback((commands: CmdKCommand[]) => {
+    registerNestedCommands(commands, 0);
+  }, [registerNestedCommands]);
+
+  // Stable wrapper for navigateToNested
+  const navigateToNestedDepth1 = useCallback(() => {
+    setActiveDepth(1);
+    setSelectedIndices((prev) => {
+      const next = [...prev];
+      if (next.length <= 1) {
+        next.push(0);
+      }
+      return next;
+    });
+  }, []);
+
+  // Stable no-op for onBlur
+  const noopOnBlur = useCallback(() => {
+    // Handle blur from preview
   }, []);
 
   const handleSelectCommand = useCallback(
@@ -434,6 +614,13 @@ export function CmdKSearch({
     });
   }, [setMessages]);
 
+  // Check if cursor is at end of input
+  const isCursorAtEnd = useCallback(() => {
+    const input = inputRef.current;
+    if (!input) return false;
+    return input.selectionStart === input.value.length;
+  }, []);
+
   // Handle keyboard navigation
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
@@ -451,23 +638,87 @@ export function CmdKSearch({
         return;
       }
 
+      const currentCommands = getCurrentCommands();
+      const currentSelectedIndex = getCurrentSelectedIndex();
+
       if (e.key === "ArrowDown") {
         e.preventDefault();
-        const maxIndex = filteredCommands.length > 0 ? filteredCommands.length - 1 : 0;
-        setSelectedIndex((prev) => (prev < maxIndex ? prev + 1 : prev));
+        const maxIndex = currentCommands.length > 0 ? currentCommands.length - 1 : 0;
+        setSelectedIndices((prev) => {
+          const next = [...prev];
+          next[activeDepth] = Math.min((next[activeDepth] ?? 0) + 1, maxIndex);
+          return next;
+        });
+        if (activeDepth === 0) {
+          setSelectedIndex((prev) => Math.min(prev + 1, maxIndex));
+        }
       } else if (e.key === "ArrowUp") {
         e.preventDefault();
-        setSelectedIndex((prev) => (prev > 0 ? prev - 1 : prev));
+        setSelectedIndices((prev) => {
+          const next = [...prev];
+          next[activeDepth] = Math.max((next[activeDepth] ?? 0) - 1, 0);
+          return next;
+        });
+        if (activeDepth === 0) {
+          setSelectedIndex((prev) => Math.max(prev - 1, 0));
+        }
+      } else if (e.key === "ArrowRight") {
+        // Navigate deeper into nested preview
+        if (activeDepth === 0 && !isCursorAtEnd()) {
+          // Don't navigate if cursor is not at end of input
+          return;
+        }
+        if (currentSelectedIndex >= 0 && currentSelectedIndex < currentCommands.length) {
+          const selectedCommand = currentCommands[currentSelectedIndex];
+          if (selectedCommand.preview) {
+            e.preventDefault();
+            // Call onFocus handlers - previews will register nested commands
+            // and call navigateToNested() which sets activeDepth
+            previewFocusHandlers.forEach((handler) => handler());
+            // Note: navigateToNested() already sets activeDepth, so we don't do it here
+          }
+        }
+      } else if (e.key === "ArrowLeft") {
+        // Navigate back from nested preview
+        if (activeDepth > 0) {
+          e.preventDefault();
+          const blurHandlerIndex = activeDepth - 1;
+          if (blurHandlerIndex >= 0 && blurHandlerIndex < nestedBlurHandlers.length) {
+            const blurHandler = nestedBlurHandlers[blurHandlerIndex];
+            blurHandler();
+          }
+          // Go back one level and clear nested columns
+          setActiveDepth((prev) => Math.max(prev - 1, 0));
+          // Clear nested columns when going back to main list
+          if (activeDepth === 1) {
+            setNestedColumns([]);
+            setNestedBlurHandlers([]);
+          }
+        }
       } else if (e.key === "Enter") {
         e.preventDefault();
-        if (filteredCommands.length > 0 && filteredCommands[selectedIndex]) {
-          handleSelectCommand(filteredCommands[selectedIndex]);
-        } else if (query.trim() && selectedIndex === 0) {
+        if (currentCommands.length > 0 && currentCommands[currentSelectedIndex]) {
+          handleSelectCommand(currentCommands[currentSelectedIndex]);
+        } else if (query.trim() && currentSelectedIndex === 0 && activeDepth === 0) {
           runAsynchronously(handleAskAI());
         }
       }
     },
-    [filteredCommands, selectedIndex, handleSelectCommand, handleAskAI, aiMode, handleBackToSearch, handleBackFromPreview, previewMode, query]
+    [
+      handleSelectCommand,
+      handleAskAI,
+      aiMode,
+      handleBackToSearch,
+      handleBackFromPreview,
+      previewMode,
+      query,
+      getCurrentCommands,
+      getCurrentSelectedIndex,
+      activeDepth,
+      previewFocusHandlers,
+      nestedBlurHandlers,
+      isCursorAtEnd,
+    ]
   );
 
   // Handle follow-up input keyboard
@@ -693,100 +944,81 @@ export function CmdKSearch({
                     query,
                     registerOnFocus,
                     unregisterOnFocus,
+                    onBlur: handleBackFromPreview,
+                    registerNestedCommands: registerNestedCommandsDepth0,
+                    navigateToNested: navigateToNestedDepth1,
+                    depth: 0,
+                    pathname,
                   })}
                 </div>
               </div>
             ) : (
               <div
+                ref={columnsContainerRef}
                 className={cn(
-                  "border-t border-foreground/[0.06] flex-grow-1 h-full flex",
+                  "border-t border-foreground/[0.06] flex-grow-1 h-full flex overflow-x-auto",
                   "md:flex-row flex-col"
                 )}
-                style={{ animation: "spotlight-results-in 100ms ease-out" }}
+                style={{ animation: "spotlight-results-in 100ms ease-out", scrollbarWidth: "thin" }}
               >
-                {/* Results List */}
+                {/* Main Results List */}
                 <div className={cn(
-                  "overflow-auto flex-grow-1 h-full transition-all duration-200",
+                  "overflow-auto h-full",
                   filteredCommands[selectedIndex]?.preview
                     ? "md:w-[300px] md:flex-shrink-0 md:border-r md:border-foreground/[0.06]"
-                    : "md:w-full"
+                    : "md:w-full md:flex-1"
                 )}>
-                  {hasQuery && hasResults ? (
-                    <div className="overflow-y-auto py-1.5 px-2">
-                      {filteredCommands.map((cmd, index) => {
-                        const isSelected = index === selectedIndex;
-                        const isCurrentPage = cmd.onAction.type === "navigate" && pathname === cmd.onAction.href;
-
-                        return (
-                          <button
-                            key={cmd.id}
-                            onClick={() => handleSelectCommand(cmd)}
-                            onMouseEnter={() => setSelectedIndex(index)}
-                            className={cn(
-                              "w-full flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left",
-                              "transition-colors duration-75",
-                              cmd.highlightColor && isSelected
-                                ? cmd.highlightColor === "purple"
-                                  ? "bg-gradient-to-r from-purple-500/[0.15] to-purple-500/[0.08] ring-1 ring-purple-500/20"
-                                  : cmd.highlightColor === "blue"
-                                    ? "bg-gradient-to-r from-blue-500/[0.15] to-blue-500/[0.08] ring-1 ring-blue-500/20"
-                                    : cmd.highlightColor === "green"
-                                      ? "bg-gradient-to-r from-green-500/[0.15] to-green-500/[0.08] ring-1 ring-green-500/20"
-                                      : "bg-foreground/[0.06]"
-                                : isSelected
-                                  ? "bg-foreground/[0.06]"
-                                  : "bg-transparent"
-                            )}
-                          >
-                            <div
-                              className={cn(
-                                "flex h-7 w-7 items-center justify-center rounded-md",
-                                cmd.highlightColor === "purple"
-                                  ? "bg-purple-500/10"
-                                  : cmd.highlightColor === "blue"
-                                    ? "bg-blue-500/10"
-                                    : cmd.highlightColor === "green"
-                                      ? "bg-green-500/10"
-                                      : "bg-foreground/[0.05]"
-                              )}
-                            >
-                              {cmd.icon}
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <div className="text-[13px] font-medium text-foreground truncate">
-                                {cmd.label}
-                              </div>
-                              <div className="text-[11px] text-muted-foreground/70 truncate">
-                                {cmd.description}
-                              </div>
-                            </div>
-                            {isCurrentPage && (
-                              <span className="text-[10px] font-medium text-muted-foreground/50 uppercase tracking-wide">
-                                Current
-                              </span>
-                            )}
-                            {cmd.highlightColor && (
-                              <kbd className="flex h-5 items-center justify-center rounded bg-foreground/[0.05] px-1.5 font-mono text-[10px] font-medium text-muted-foreground/60">
-                                ↵
-                              </kbd>
-                            )}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  ) : (
-                    <div className="h-full flex items-center justify-center select-none pointer-events-none">
-                      <div className="text-[13px] text-muted-foreground/50">
-                        Enter a search term or ask AI...
-                      </div>
-                    </div>
-                  )}
+                  <CmdKResultsList
+                    commands={filteredCommands}
+                    selectedIndex={selectedIndex}
+                    onSelect={handleSelectCommand}
+                    onMouseEnter={setSelectedIndex}
+                    pathname={pathname}
+                    emptyMessage="Enter a search term or ask AI..."
+                    isParentColumn={activeDepth > 0}
+                  />
                 </div>
 
-                {/* Preview Panel (Desktop) */}
-                {filteredCommands[selectedIndex]?.preview && (
+                {/* Nested Columns */}
+                {nestedColumns.map((commands, depth) => {
+                  const columnDepth = depth + 1;
+                  const isActive = columnDepth === activeDepth;
+                  const columnSelectedIndex = selectedIndices[columnDepth] ?? 0;
+
+                  return (
+                    <div
+                      key={depth}
+                      className={cn(
+                        "overflow-auto h-full flex-shrink-0 md:w-[300px] border-r border-foreground/[0.06]"
+                      )}
+                      style={depth === nestedColumns.length - 1 ? { animation: "spotlight-slide-in-from-right 200ms ease-out" } : undefined}
+                    >
+                      <CmdKResultsList
+                        commands={commands}
+                        selectedIndex={columnSelectedIndex}
+                        onSelect={(cmd) => {
+                          // Handle selection in nested column
+                          const newSelectedIndices = [...selectedIndices];
+                          newSelectedIndices[columnDepth] = commands.indexOf(cmd);
+                          setSelectedIndices(newSelectedIndices);
+                          handleSelectCommand(cmd);
+                        }}
+                        onMouseEnter={(index) => {
+                          const newSelectedIndices = [...selectedIndices];
+                          newSelectedIndices[columnDepth] = index;
+                          setSelectedIndices(newSelectedIndices);
+                        }}
+                        pathname={pathname}
+                        isParentColumn={columnDepth < activeDepth}
+                      />
+                    </div>
+                  );
+                })}
+
+                {/* Preview Panel (Desktop) - shown when no nested columns but preview exists */}
+                {filteredCommands[selectedIndex]?.preview && nestedColumns.length === 0 && (
                   <div
-                    className="hidden md:block md:flex-1 overflow-auto transition-all duration-200"
+                    className="hidden md:block md:flex-1 overflow-auto"
                     style={{ animation: "spotlight-slide-in-from-right 200ms ease-out" }}
                   >
                     {React.createElement(filteredCommands[selectedIndex].preview!, {
@@ -794,6 +1026,11 @@ export function CmdKSearch({
                       query,
                       registerOnFocus,
                       unregisterOnFocus,
+                      onBlur: noopOnBlur,
+                      registerNestedCommands: registerNestedCommandsDepth0,
+                      navigateToNested: navigateToNestedDepth1,
+                      depth: 0,
+                      pathname,
                     })}
                   </div>
                 )}
