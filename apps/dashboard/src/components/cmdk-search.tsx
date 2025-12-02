@@ -331,10 +331,9 @@ export function CmdKSearch({
     };
   }, []);
 
-  // Focus input when opening
+  // Focus and select input when opening
   useEffect(() => {
     if (open) {
-      setQuery("");
       setSelectedIndex(0);
       setAiMode(false);
       setFollowUpInput("");
@@ -343,6 +342,7 @@ export function CmdKSearch({
       isNearBottomRef.current = true;
       requestAnimationFrame(() => {
         inputRef.current?.focus();
+        inputRef.current?.select();
       });
     }
   }, [open, setMessages]);
@@ -510,7 +510,7 @@ export function CmdKSearch({
   if (!open) return null;
 
   const hasResults = filteredItems.length > 0;
-  const showResults = query.trim().length > 0;
+  const hasQuery = query.trim().length > 0;
 
   return (
     <>
@@ -523,15 +523,15 @@ export function CmdKSearch({
 
       {/* Spotlight Container */}
       <div
-        className="fixed left-1/2 top-[12%] z-50 w-full max-w-[max(540px,75vw)] -translate-x-1/2 px-4"
+        className="fixed inset-0 flex items-center justify-center z-50 px-4 pointer-events-none"
         style={{ animation: "spotlight-slide-in 150ms cubic-bezier(0.16, 1, 0.3, 1)" }}
       >
-        <div className="relative rounded-2xl ring-2 ring-inset ring-foreground/[0.08]">
+        <div className="relative rounded-2xl ring-2 ring-inset ring-foreground/[0.08] h-[76vh] min-h-[320px] w-full max-w-[max(540px,75vw)] pointer-events-auto">
           {/* Background layer */}
           <div className="absolute inset-[2px] rounded-[14px] -z-10 backdrop-blur-xl bg-gray-100/80 dark:bg-[#161616]/80" />
           <div
             className={cn(
-              "relative overflow-hidden rounded-2xl",
+              "relative overflow-hidden rounded-2xl h-full flex flex-col",
             )}
           >
             {/* AI Mode Header */}
@@ -696,13 +696,13 @@ export function CmdKSearch({
             )}
 
             {/* Results */}
-            {!aiMode && showResults && (
-              <div
-                className={cn("border-t border-foreground/[0.06]", "overflow-hidden")}
-                style={{ animation: "spotlight-results-in 100ms ease-out" }}
-              >
+            <div
+              className={cn("border-t border-foreground/[0.06]", "overflow-auto flex-grow-1 h-full")}
+              style={{ animation: "spotlight-results-in 100ms ease-out" }}
+            >
+              {hasQuery ? <>
                 {hasResults ? (
-                  <div className="max-h-[320px] overflow-y-auto py-2 px-2">
+                  <div className="overflow-y-auto py-1.5 px-2">
                     {filteredItems.map((item, index) => {
                       const IconComponent = item.icon;
                       const isSelected = index === selectedIndex;
@@ -714,24 +714,24 @@ export function CmdKSearch({
                           onClick={() => handleSelect(item.href)}
                           onMouseEnter={() => setSelectedIndex(index)}
                           className={cn(
-                            "w-full flex items-center gap-3 rounded-xl px-3 py-2.5 text-left",
+                            "w-full flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left",
                             "transition-colors duration-75",
                             isSelected ? "bg-foreground/[0.06]" : "bg-transparent"
                           )}
                         >
                           <div
                             className={cn(
-                              "flex h-9 w-9 items-center justify-center rounded-lg",
+                              "flex h-7 w-7 items-center justify-center rounded-md",
                               "bg-foreground/[0.05]"
                             )}
                           >
-                            <IconComponent className="h-4 w-4 text-muted-foreground" />
+                            <IconComponent className="h-3.5 w-3.5 text-muted-foreground" />
                           </div>
                           <div className="flex-1 min-w-0">
-                            <div className="text-sm font-medium text-foreground truncate">
+                            <div className="text-[13px] font-medium text-foreground truncate">
                               {item.name}
                             </div>
-                            <div className="text-xs text-muted-foreground/70 truncate">
+                            <div className="text-[11px] text-muted-foreground/70 truncate">
                               {item.category}
                             </div>
                           </div>
@@ -745,13 +745,13 @@ export function CmdKSearch({
                     })}
                   </div>
                 ) : (
-                  <div className="py-2 px-2">
+                  <div className="py-1.5 px-2">
                     {/* Ask AI option */}
                     <button
                       onClick={() => runAsynchronously(handleAskAI())}
                       onMouseEnter={() => setSelectedIndex(0)}
                       className={cn(
-                        "w-full flex items-center gap-3 rounded-xl px-3 py-2.5 text-left",
+                        "w-full flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left",
                         "transition-colors duration-75",
                         selectedIndex === 0
                           ? "bg-gradient-to-r from-purple-500/[0.15] to-purple-500/[0.08] ring-1 ring-purple-500/20"
@@ -760,17 +760,17 @@ export function CmdKSearch({
                     >
                       <div
                         className={cn(
-                          "flex h-9 w-9 items-center justify-center rounded-lg",
+                          "flex h-7 w-7 items-center justify-center rounded-md",
                           "bg-purple-500/10"
                         )}
                       >
-                        <Sparkles className="h-4 w-4 text-purple-400" />
+                        <Sparkles className="h-3.5 w-3.5 text-purple-400" />
                       </div>
                       <div className="flex-1 min-w-0">
-                        <div className="text-sm font-medium text-foreground truncate">
+                        <div className="text-[13px] font-medium text-foreground truncate">
                           Ask AI: &quot;{query}&quot;
                         </div>
-                        <div className="text-xs text-muted-foreground/70 truncate">
+                        <div className="text-[11px] text-muted-foreground/70 truncate">
                           Get an AI-powered answer from Stack Auth docs
                         </div>
                       </div>
@@ -780,8 +780,14 @@ export function CmdKSearch({
                     </button>
                   </div>
                 )}
-              </div>
-            )}
+              </> : (
+                <div className="h-full flex items-center justify-center">
+                  <div className="text-[13px] text-muted-foreground/50">
+                    Enter a search term or ask AI...
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>
