@@ -247,6 +247,8 @@ export function CmdKSearch({
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [aiMode, setAiMode] = useState(false);
   const [followUpInput, setFollowUpInput] = useState("");
+  const [previewMode, setPreviewMode] = useState(false); // Mobile preview mode
+  const [previewFocusHandlers, setPreviewFocusHandlers] = useState<Set<() => void>>(new Set());
   const router = useRouter();
   const pathname = usePathname();
   const inputRef = useRef<HTMLInputElement>(null);
@@ -323,6 +325,7 @@ export function CmdKSearch({
     if (open) {
       setSelectedIndex(0);
       setAiMode(false);
+      setPreviewMode(false);
       setFollowUpInput("");
       setMessages([]);
       lastMessageCountRef.current = 0;
@@ -334,8 +337,19 @@ export function CmdKSearch({
     }
   }, [open, setMessages]);
 
+  // Handle initial AI question
+  const handleAskAI = useCallback(async () => {
+    if (!query.trim()) return;
+    setAiMode(true);
+    setMessages([]);
+    await append({ role: "user", content: query });
+    requestAnimationFrame(() => {
+      followUpInputRef.current?.focus();
+    });
+  }, [query, append, setMessages]);
+
   // Get commands from the hook
-  const commands = useCmdKCommands({ projectId, enabledApps });
+  const commands = useCmdKCommands({ projectId, enabledApps, query, onAskAI: handleAskAI });
 
   // Filter commands based on query
   const filteredCommands = useMemo(() => {
@@ -343,6 +357,8 @@ export function CmdKSearch({
 
     const searchLower = query.toLowerCase().trim();
     return commands.filter((cmd) => {
+      // AI command is always included when there's a query
+      if (cmd.id === "ai/ask") return true;
       if (cmd.label.toLowerCase().includes(searchLower)) return true;
       if (cmd.description.toLowerCase().includes(searchLower)) return true;
       if (cmd.keywords?.some((k) => k.includes(searchLower))) return true;
@@ -355,30 +371,50 @@ export function CmdKSearch({
     setSelectedIndex(0);
   }, [filteredCommands.length]);
 
+  // Trigger focus handlers when selected command changes
+  useEffect(() => {
+    if (filteredCommands[selectedIndex]?.preview) {
+      previewFocusHandlers.forEach((handler) => handler());
+    }
+  }, [selectedIndex, filteredCommands, previewFocusHandlers]);
+
+  const registerOnFocus = useCallback((onFocus: () => void) => {
+    setPreviewFocusHandlers((prev) => new Set(prev).add(onFocus));
+  }, []);
+
+  const unregisterOnFocus = useCallback((onFocus: () => void) => {
+    setPreviewFocusHandlers((prev) => {
+      const next = new Set(prev);
+      next.delete(onFocus);
+      return next;
+    });
+  }, []);
+
   const handleSelectCommand = useCallback(
     (command: CmdKCommand) => {
-      if (command.onSelect.type === "navigate") {
+      if (command.onAction.type === "navigate") {
         setOpen(false);
-        router.push(command.onSelect.href);
-      } else if (command.onSelect.type === "action") {
-        runAsynchronously(Promise.resolve(command.onSelect.action()));
-        setOpen(false);
+        router.push(command.onAction.href);
+      } else if (command.onAction.type === "action") {
+        runAsynchronously(Promise.resolve(command.onAction.action()));
+        // Don't close for highlighted commands (like AI)
+        if (!command.highlightColor) {
+          setOpen(false);
+        }
+      } else {
+        // Preview type - on mobile, show preview fullscreen
+        if (typeof window !== "undefined" && window.innerWidth < 768) {
+          setPreviewMode(true);
+        }
+        // On desktop, preview is shown automatically via selectedIndex
       }
-      // "preview" type doesn't close the dialog
     },
     [router]
   );
 
-  // Handle initial AI question
-  const handleAskAI = useCallback(async () => {
-    if (!query.trim()) return;
-    setAiMode(true);
-    setMessages([]);
-    await append({ role: "user", content: query });
-    requestAnimationFrame(() => {
-      followUpInputRef.current?.focus();
-    });
-  }, [query, append, setMessages]);
+  const handleBackFromPreview = useCallback(() => {
+    setPreviewMode(false);
+  }, []);
 
   // Handle follow-up questions
   const handleFollowUp = useCallback(async () => {
@@ -401,6 +437,13 @@ export function CmdKSearch({
   // Handle keyboard navigation
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
+      if (previewMode && e.key === "Escape") {
+        e.preventDefault();
+        e.stopPropagation();
+        handleBackFromPreview();
+        return;
+      }
+
       if (aiMode && e.key === "Escape") {
         e.preventDefault();
         e.stopPropagation();
@@ -424,7 +467,7 @@ export function CmdKSearch({
         }
       }
     },
-    [filteredCommands, selectedIndex, handleSelectCommand, handleAskAI, aiMode, handleBackToSearch, query]
+    [filteredCommands, selectedIndex, handleSelectCommand, handleAskAI, aiMode, handleBackToSearch, handleBackFromPreview, previewMode, query]
   );
 
   // Handle follow-up input keyboard
@@ -629,98 +672,133 @@ export function CmdKSearch({
               </div>
             )}
 
-            {/* Results */}
-            <div
-              className={cn("border-t border-foreground/[0.06]", "overflow-auto flex-grow-1 h-full")}
-              style={{ animation: "spotlight-results-in 100ms ease-out" }}
-            >
-              {hasQuery ? <>
-                {hasResults ? (
-                  <div className="overflow-y-auto py-1.5 px-2">
-                    {filteredCommands.map((cmd, index) => {
-                      const isSelected = index === selectedIndex;
-                      const isCurrentPage = cmd.onSelect.type === "navigate" && pathname === cmd.onSelect.href;
+            {/* Results and Preview */}
+            {previewMode && filteredCommands[selectedIndex]?.preview ? (
+              // Mobile: Fullscreen preview
+              <div className="border-t border-foreground/[0.06] flex-grow-1 h-full flex flex-col">
+                <div className="flex items-center gap-2 px-5 py-3 border-b border-foreground/[0.06]">
+                  <button
+                    onClick={handleBackFromPreview}
+                    className="flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground transition-colors duration-150 hover:transition-none"
+                  >
+                    <span>←</span>
+                    <span>Back</span>
+                  </button>
+                  <div className="flex-1" />
+                  <div className="text-xs text-muted-foreground">{filteredCommands[selectedIndex]?.label}</div>
+                </div>
+                <div className="flex-1 overflow-auto">
+                  {React.createElement(filteredCommands[selectedIndex].preview!, {
+                    isSelected: true,
+                    query,
+                    registerOnFocus,
+                    unregisterOnFocus,
+                  })}
+                </div>
+              </div>
+            ) : (
+              <div
+                className={cn(
+                  "border-t border-foreground/[0.06] flex-grow-1 h-full flex",
+                  "md:flex-row flex-col"
+                )}
+                style={{ animation: "spotlight-results-in 100ms ease-out" }}
+              >
+                {/* Results List */}
+                <div className={cn(
+                  "overflow-auto flex-grow-1 h-full transition-all duration-200",
+                  filteredCommands[selectedIndex]?.preview
+                    ? "md:w-1/2 md:border-r md:border-foreground/[0.06]"
+                    : "md:w-full"
+                )}>
+                  {hasQuery && hasResults ? (
+                    <div className="overflow-y-auto py-1.5 px-2">
+                      {filteredCommands.map((cmd, index) => {
+                        const isSelected = index === selectedIndex;
+                        const isCurrentPage = cmd.onAction.type === "navigate" && pathname === cmd.onAction.href;
 
-                      return (
-                        <button
-                          key={cmd.id}
-                          onClick={() => handleSelectCommand(cmd)}
-                          onMouseEnter={() => setSelectedIndex(index)}
-                          className={cn(
-                            "w-full flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left",
-                            "transition-colors duration-75",
-                            isSelected ? "bg-foreground/[0.06]" : "bg-transparent"
-                          )}
-                        >
-                          <div
+                        return (
+                          <button
+                            key={cmd.id}
+                            onClick={() => handleSelectCommand(cmd)}
+                            onMouseEnter={() => setSelectedIndex(index)}
                             className={cn(
-                              "flex h-7 w-7 items-center justify-center rounded-md",
-                              "bg-foreground/[0.05]"
+                              "w-full flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left",
+                              "transition-colors duration-75",
+                              cmd.highlightColor && isSelected
+                                ? cmd.highlightColor === "purple"
+                                  ? "bg-gradient-to-r from-purple-500/[0.15] to-purple-500/[0.08] ring-1 ring-purple-500/20"
+                                  : cmd.highlightColor === "blue"
+                                    ? "bg-gradient-to-r from-blue-500/[0.15] to-blue-500/[0.08] ring-1 ring-blue-500/20"
+                                    : cmd.highlightColor === "green"
+                                      ? "bg-gradient-to-r from-green-500/[0.15] to-green-500/[0.08] ring-1 ring-green-500/20"
+                                      : "bg-foreground/[0.06]"
+                                : isSelected
+                                  ? "bg-foreground/[0.06]"
+                                  : "bg-transparent"
                             )}
                           >
-                            {cmd.icon}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="text-[13px] font-medium text-foreground truncate">
-                              {cmd.label}
+                            <div
+                              className={cn(
+                                "flex h-7 w-7 items-center justify-center rounded-md",
+                                cmd.highlightColor === "purple"
+                                  ? "bg-purple-500/10"
+                                  : cmd.highlightColor === "blue"
+                                    ? "bg-blue-500/10"
+                                    : cmd.highlightColor === "green"
+                                      ? "bg-green-500/10"
+                                      : "bg-foreground/[0.05]"
+                              )}
+                            >
+                              {cmd.icon}
                             </div>
-                            <div className="text-[11px] text-muted-foreground/70 truncate">
-                              {cmd.description}
+                            <div className="flex-1 min-w-0">
+                              <div className="text-[13px] font-medium text-foreground truncate">
+                                {cmd.label}
+                              </div>
+                              <div className="text-[11px] text-muted-foreground/70 truncate">
+                                {cmd.description}
+                              </div>
                             </div>
-                          </div>
-                          {isCurrentPage && (
-                            <span className="text-[10px] font-medium text-muted-foreground/50 uppercase tracking-wide">
-                              Current
-                            </span>
-                          )}
-                        </button>
-                      );
+                            {isCurrentPage && (
+                              <span className="text-[10px] font-medium text-muted-foreground/50 uppercase tracking-wide">
+                                Current
+                              </span>
+                            )}
+                            {cmd.highlightColor && (
+                              <kbd className="flex h-5 items-center justify-center rounded bg-foreground/[0.05] px-1.5 font-mono text-[10px] font-medium text-muted-foreground/60">
+                                ↵
+                              </kbd>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="h-full flex items-center justify-center select-none pointer-events-none">
+                      <div className="text-[13px] text-muted-foreground/50">
+                        Enter a search term or ask AI...
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Preview Panel (Desktop) */}
+                {filteredCommands[selectedIndex]?.preview && (
+                  <div
+                    className="hidden md:block md:w-1/2 overflow-auto transition-all duration-200"
+                    style={{ animation: "spotlight-slide-in-from-right 200ms ease-out" }}
+                  >
+                    {React.createElement(filteredCommands[selectedIndex].preview!, {
+                      isSelected: true,
+                      query,
+                      registerOnFocus,
+                      unregisterOnFocus,
                     })}
                   </div>
-                ) : (
-                  <div className="py-1.5 px-2">
-                    {/* Ask AI option */}
-                    <button
-                      onClick={() => runAsynchronously(handleAskAI())}
-                      onMouseEnter={() => setSelectedIndex(0)}
-                      className={cn(
-                        "w-full flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left",
-                        "transition-colors duration-75",
-                        selectedIndex === 0
-                          ? "bg-gradient-to-r from-purple-500/[0.15] to-purple-500/[0.08] ring-1 ring-purple-500/20"
-                          : "bg-transparent hover:bg-foreground/[0.03]"
-                      )}
-                    >
-                      <div
-                        className={cn(
-                          "flex h-7 w-7 items-center justify-center rounded-md",
-                          "bg-purple-500/10"
-                        )}
-                      >
-                        <Sparkles className="h-3.5 w-3.5 text-purple-400" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="text-[13px] font-medium text-foreground truncate">
-                          Ask AI: &quot;{query}&quot;
-                        </div>
-                        <div className="text-[11px] text-muted-foreground/70 truncate">
-                          Get an AI-powered answer from Stack Auth docs
-                        </div>
-                      </div>
-                      <kbd className="flex h-5 items-center justify-center rounded bg-foreground/[0.05] px-1.5 font-mono text-[10px] font-medium text-muted-foreground/60">
-                        ↵
-                      </kbd>
-                    </button>
-                  </div>
                 )}
-              </> : (
-                <div className="h-full flex items-center justify-center">
-                  <div className="text-[13px] text-muted-foreground/50">
-                    Enter a search term or ask AI...
-                  </div>
-                </div>
-              )}
-            </div>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -744,6 +822,16 @@ export function CmdKSearch({
         @keyframes spotlight-results-in {
           from { opacity: 0; }
           to { opacity: 1; }
+        }
+        @keyframes spotlight-slide-in-from-right {
+          from {
+            opacity: 0;
+            transform: translateX(20px);
+          }
+          to {
+            opacity: 1;
+            transform: translateX(0);
+          }
         }
         @keyframes spotlight-rainbow {
           0% { background-position: 0% 50%; }
