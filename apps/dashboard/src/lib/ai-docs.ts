@@ -24,7 +24,15 @@ let cachedDocs: DocChunk[] | null = null;
 export function loadDocs(): DocChunk[] {
   if (cachedDocs) return cachedDocs;
 
-  const docsDir = path.join(process.cwd(), "../docs/content/docs");
+  // From apps/dashboard, docs are at ../../docs/content/docs
+  // process.cwd() might be the monorepo root or apps/dashboard depending on how it's run
+  let docsDir = path.join(process.cwd(), "docs/content/docs");
+  if (!fs.existsSync(docsDir)) {
+    docsDir = path.join(process.cwd(), "../docs/content/docs");
+  }
+  if (!fs.existsSync(docsDir)) {
+    docsDir = path.join(process.cwd(), "../../docs/content/docs");
+  }
   const chunks: DocChunk[] = [];
 
   function processDirectory(dir: string, basePath: string = "") {
@@ -35,11 +43,11 @@ export function loadDocs(): DocChunk[] {
         const fullPath = path.join(dir, entry.name);
 
         if (entry.isDirectory()) {
-          // Skip directories starting with ( as they're route groups
-          const dirName = entry.name.startsWith("(")
-            ? entry.name.slice(1, -1)
-            : entry.name;
-          processDirectory(fullPath, `${basePath}/${dirName}`);
+          // Route groups like (guides) should be completely removed from URL path
+          // They're Next.js organizational folders that don't appear in the URL
+          const isRouteGroup = entry.name.startsWith("(") && entry.name.endsWith(")");
+          const newBasePath = isRouteGroup ? basePath : `${basePath}/${entry.name}`;
+          processDirectory(fullPath, newBasePath);
         } else if (entry.name.endsWith(".mdx")) {
           try {
             const content = fs.readFileSync(fullPath, "utf-8");
@@ -68,24 +76,33 @@ function parseDocFile(content: string, filePath: string, basePath: string): DocC
   const titleMatch = content.match(/^---[\s\S]*?title:\s*["']?([^"'\n]+)["']?[\s\S]*?---/);
   const title = titleMatch?.[1] || path.basename(filePath, ".mdx");
 
-  // Remove frontmatter and imports
+  // Clean content but preserve important technical information
   let cleanContent = content
+    // Remove frontmatter
     .replace(/^---[\s\S]*?---\n?/, "")
+    // Remove import statements
     .replace(/^import\s+.*$/gm, "")
-    .replace(/<[^>]+>/g, "") // Remove JSX/HTML tags
-    .replace(/```[\s\S]*?```/g, (match) => {
-      // Keep code blocks but simplify
-      return match.replace(/```\w*\n?/, "").replace(/```$/, "");
-    })
-    .replace(/\{[^}]+\}/g, "") // Remove JSX expressions
+    // Remove JSX component wrappers but keep their content
+    // e.g., <Step>content</Step> -> content
+    .replace(/<(\w+)[^>]*>([\s\S]*?)<\/\1>/g, "$2")
+    // Remove self-closing JSX tags like <Info> or <Steps>
+    .replace(/<\w+\s*\/>/g, "")
+    // Remove opening tags without content (like <Steps>)
+    .replace(/<\w+[^>]*>/g, "")
+    // Remove closing tags
+    .replace(/<\/\w+>/g, "")
+    // Remove JSX expressions like {variable}
+    .replace(/\{[^}]+\}/g, "")
+    // Clean up excessive whitespace but keep structure
+    .replace(/\n{3,}/g, "\n\n")
     .trim();
 
   // Extract keywords from content
   const keywords = extractKeywords(title + " " + cleanContent);
 
-  // Truncate content to reasonable size
-  if (cleanContent.length > 3000) {
-    cleanContent = cleanContent.slice(0, 3000) + "...";
+  // Truncate content to keep context focused (prevents hallucination from too much context)
+  if (cleanContent.length > 2500) {
+    cleanContent = cleanContent.slice(0, 2500) + "...";
   }
 
   return {
@@ -178,8 +195,12 @@ export function formatDocsContext(docs: DocChunk[]): string {
   if (docs.length === 0) return "";
 
   const sections = docs.map((doc) => {
-    return `## ${doc.title}\n\n${doc.content}`;
+    // Build the full documentation URL
+    // doc.path is like "/concepts/auth-providers/google"
+    // Full URL should be "https://docs.stack-auth.com/docs/concepts/auth-providers/google"
+    const docUrl = `https://docs.stack-auth.com/docs${doc.path}`;
+    return `## ${doc.title}\nDocumentation URL: ${docUrl}\n\n${doc.content}`;
   });
 
-  return `Here is relevant Stack Auth documentation:\n\n${sections.join("\n\n---\n\n")}`;
+  return `Here is the relevant Stack Auth documentation. Use ONLY this information to answer. Copy URLs and technical values EXACTLY as shown:\n\n${sections.join("\n\n---\n\n")}`;
 }
