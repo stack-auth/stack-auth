@@ -1,22 +1,17 @@
 "use client";
 
 import { useRouter } from "@/components/router";
-import { ALL_APPS_FRONTEND, getItemPath } from "@/lib/apps-frontend";
 import { cn } from "@/lib/utils";
-import { ALL_APPS, type AppId } from "@stackframe/stack-shared/dist/apps/apps-config";
+import { type AppId } from "@stackframe/stack-shared/dist/apps/apps-config";
 import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
 import { useChat } from "ai/react";
 import {
-  Blocks,
   Check,
   Copy,
   ExternalLink,
-  Globe,
-  KeyRound,
   Loader2,
   Search,
   Send,
-  Settings,
   Sparkles,
   User,
 } from "lucide-react";
@@ -24,15 +19,7 @@ import { usePathname } from "next/navigation";
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-
-type SearchItem = {
-  id: string,
-  name: string,
-  href: string,
-  icon: React.ComponentType<{ className?: string }>,
-  category: string,
-  keywords?: string[],
-};
+import { useCmdKCommands, type CmdKCommand } from "./cmdk-commands";
 
 // Memoized copy button for performance
 const CopyButton = memo(function CopyButton({ text, className, size = "sm" }: {
@@ -347,90 +334,37 @@ export function CmdKSearch({
     }
   }, [open, setMessages]);
 
-  // Build search items from enabled apps and navigation
-  const searchItems = useMemo(() => {
-    const items: SearchItem[] = [];
+  // Get commands from the hook
+  const commands = useCmdKCommands({ projectId, enabledApps });
 
-    items.push({
-      id: "overview",
-      name: "Overview",
-      href: `/projects/${projectId}`,
-      icon: Globe,
-      category: "Navigation",
-      keywords: ["home", "dashboard", "main"],
-    });
-
-    for (const appId of enabledApps) {
-      const app = ALL_APPS[appId];
-      const appFrontend = ALL_APPS_FRONTEND[appId];
-      // Some enabled apps might not have navigation metadata yet
-      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-      if (!app || !appFrontend) continue;
-
-      for (const navItem of appFrontend.navigationItems) {
-        items.push({
-          id: `${appId}-${navItem.displayName}`,
-          name: navItem.displayName,
-          href: getItemPath(projectId, appFrontend, navItem),
-          icon: appFrontend.icon,
-          category: app.displayName,
-          keywords: [app.displayName.toLowerCase(), navItem.displayName.toLowerCase()],
-        });
-      }
-    }
-
-    items.push({
-      id: "explore-apps",
-      name: "Explore Apps",
-      href: `/projects/${projectId}/apps`,
-      icon: Blocks,
-      category: "Settings",
-      keywords: ["apps", "marketplace", "store", "install"],
-    });
-
-    items.push({
-      id: "project-keys",
-      name: "Project Keys",
-      href: `/projects/${projectId}/project-keys`,
-      icon: KeyRound,
-      category: "Settings",
-      keywords: ["api", "keys", "credentials", "secret"],
-    });
-
-    items.push({
-      id: "project-settings",
-      name: "Project Settings",
-      href: `/projects/${projectId}/project-settings`,
-      icon: Settings,
-      category: "Settings",
-      keywords: ["config", "configuration", "options"],
-    });
-
-    return items;
-  }, [projectId, enabledApps]);
-
-  // Filter items based on query
-  const filteredItems = useMemo(() => {
+  // Filter commands based on query
+  const filteredCommands = useMemo(() => {
     if (!query.trim()) return [];
 
     const searchLower = query.toLowerCase().trim();
-    return searchItems.filter((item) => {
-      if (item.name.toLowerCase().includes(searchLower)) return true;
-      if (item.category.toLowerCase().includes(searchLower)) return true;
-      if (item.keywords?.some((k) => k.includes(searchLower))) return true;
+    return commands.filter((cmd) => {
+      if (cmd.label.toLowerCase().includes(searchLower)) return true;
+      if (cmd.description.toLowerCase().includes(searchLower)) return true;
+      if (cmd.keywords?.some((k) => k.includes(searchLower))) return true;
       return false;
     });
-  }, [query, searchItems]);
+  }, [query, commands]);
 
   // Reset selection when results change
   useEffect(() => {
     setSelectedIndex(0);
-  }, [filteredItems.length]);
+  }, [filteredCommands.length]);
 
-  const handleSelect = useCallback(
-    (href: string) => {
-      setOpen(false);
-      router.push(href);
+  const handleSelectCommand = useCallback(
+    (command: CmdKCommand) => {
+      if (command.onSelect.type === "navigate") {
+        setOpen(false);
+        router.push(command.onSelect.href);
+      } else if (command.onSelect.type === "action") {
+        runAsynchronously(Promise.resolve(command.onSelect.action()));
+        setOpen(false);
+      }
+      // "preview" type doesn't close the dialog
     },
     [router]
   );
@@ -476,21 +410,21 @@ export function CmdKSearch({
 
       if (e.key === "ArrowDown") {
         e.preventDefault();
-        const maxIndex = filteredItems.length > 0 ? filteredItems.length - 1 : 0;
+        const maxIndex = filteredCommands.length > 0 ? filteredCommands.length - 1 : 0;
         setSelectedIndex((prev) => (prev < maxIndex ? prev + 1 : prev));
       } else if (e.key === "ArrowUp") {
         e.preventDefault();
         setSelectedIndex((prev) => (prev > 0 ? prev - 1 : prev));
       } else if (e.key === "Enter") {
         e.preventDefault();
-        if (filteredItems.length > 0 && filteredItems[selectedIndex]) {
-          handleSelect(filteredItems[selectedIndex].href);
+        if (filteredCommands.length > 0 && filteredCommands[selectedIndex]) {
+          handleSelectCommand(filteredCommands[selectedIndex]);
         } else if (query.trim() && selectedIndex === 0) {
           runAsynchronously(handleAskAI());
         }
       }
     },
-    [filteredItems, selectedIndex, handleSelect, handleAskAI, aiMode, handleBackToSearch, query]
+    [filteredCommands, selectedIndex, handleSelectCommand, handleAskAI, aiMode, handleBackToSearch, query]
   );
 
   // Handle follow-up input keyboard
@@ -509,7 +443,7 @@ export function CmdKSearch({
 
   if (!open) return null;
 
-  const hasResults = filteredItems.length > 0;
+  const hasResults = filteredCommands.length > 0;
   const hasQuery = query.trim().length > 0;
 
   return (
@@ -703,15 +637,14 @@ export function CmdKSearch({
               {hasQuery ? <>
                 {hasResults ? (
                   <div className="overflow-y-auto py-1.5 px-2">
-                    {filteredItems.map((item, index) => {
-                      const IconComponent = item.icon;
+                    {filteredCommands.map((cmd, index) => {
                       const isSelected = index === selectedIndex;
-                      const isCurrentPage = pathname === item.href;
+                      const isCurrentPage = cmd.onSelect.type === "navigate" && pathname === cmd.onSelect.href;
 
                       return (
                         <button
-                          key={item.id}
-                          onClick={() => handleSelect(item.href)}
+                          key={cmd.id}
+                          onClick={() => handleSelectCommand(cmd)}
                           onMouseEnter={() => setSelectedIndex(index)}
                           className={cn(
                             "w-full flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left",
@@ -725,14 +658,14 @@ export function CmdKSearch({
                               "bg-foreground/[0.05]"
                             )}
                           >
-                            <IconComponent className="h-3.5 w-3.5 text-muted-foreground" />
+                            {cmd.icon}
                           </div>
                           <div className="flex-1 min-w-0">
                             <div className="text-[13px] font-medium text-foreground truncate">
-                              {item.name}
+                              {cmd.label}
                             </div>
                             <div className="text-[11px] text-muted-foreground/70 truncate">
-                              {item.category}
+                              {cmd.description}
                             </div>
                           </div>
                           {isCurrentPage && (
