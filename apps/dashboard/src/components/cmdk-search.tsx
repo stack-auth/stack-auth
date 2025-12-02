@@ -5,12 +5,208 @@ import { cn } from "@/lib/utils";
 import { type AppId } from "@stackframe/stack-shared/dist/apps/apps-config";
 import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
 import {
+  Layout,
+  Play,
   Search,
   Sparkles,
+  User,
 } from "lucide-react";
 import { usePathname } from "next/navigation";
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useCmdKCommands, type CmdKCommand } from "./cmdk-commands";
+
+// Example queries that cycle in the empty state
+const EXAMPLE_QUERIES = [
+  {
+    query: "query all users from the last ten days",
+    icon: User,
+    iconColor: "text-blue-500",
+    iconBg: "bg-blue-500/10",
+  },
+  {
+    query: "how do i set up password authentication?",
+    icon: Sparkles,
+    iconColor: "text-purple-500",
+    iconBg: "bg-purple-500/10",
+  },
+  {
+    query: "create a game where my users are the enemies",
+    icon: Play,
+    iconColor: "text-amber-500",
+    iconBg: "bg-amber-500/10",
+  },
+  {
+    query: "create a dashboard for my users",
+    icon: Layout,
+    iconColor: "text-cyan-500",
+    iconBg: "bg-cyan-500/10",
+  },
+];
+
+// Feature highlights for empty state (similar to Apple Spotlight)
+const FEATURE_HIGHLIGHTS = [
+  {
+    icon: Search,
+    iconBg: "bg-blue-500/10",
+    iconColor: "text-blue-500",
+    title: "Search & Navigate",
+    description: "Find pages, apps, and settings instantly.",
+  },
+  {
+    icon: Sparkles,
+    iconBg: "bg-purple-500/10",
+    iconColor: "text-purple-500",
+    title: "Ask AI",
+    description: "Get answers from the Stack Auth documentation.",
+  },
+  {
+    icon: Play,
+    iconBg: "bg-amber-500/10",
+    iconColor: "text-amber-500",
+    title: "Vibecode Queries",
+    description: "Execute queries using natural language.",
+  },
+];
+
+// Cycling example query component
+const CyclingExample = memo(function CyclingExample({
+  onSelectQuery,
+}: {
+  onSelectQuery?: (query: string) => void,
+}) {
+  const [currentIndex, setCurrentIndex] = useState(() =>
+    Math.floor(Math.random() * EXAMPLE_QUERIES.length)
+  );
+  const [isVisible, setIsVisible] = useState(true);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setIsVisible(false);
+      setTimeout(() => {
+        setCurrentIndex((prev) => (prev + 1) % EXAMPLE_QUERIES.length);
+        setIsVisible(true);
+      }, 300);
+    }, 7000);
+
+    return () => clearInterval(interval);
+  }, []);
+
+  const current = EXAMPLE_QUERIES[currentIndex];
+  const IconComponent = current.icon;
+
+  return (
+    <button
+      type="button"
+      onClick={() => onSelectQuery?.(current.query)}
+      className={cn(
+        "flex flex-col items-center gap-1 transition-all duration-300 rounded-xl px-4 py-3 -mx-4 -my-3",
+        "hover:bg-foreground/[0.04] cursor-pointer",
+        isVisible ? "opacity-100" : "opacity-0"
+      )}
+    >
+      <div className={cn("w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0", current.iconBg)}>
+        <IconComponent className={cn("h-4 w-4", current.iconColor)} />
+      </div>
+      <p className="text-[12px] text-muted-foreground/60 italic">
+        &ldquo;{current.query}&rdquo;
+      </p>
+    </button>
+  );
+});
+
+// Empty state placeholder component
+const CyclingPlaceholder = memo(function CyclingPlaceholder({
+  onSelectQuery,
+}: {
+  onSelectQuery?: (query: string) => void,
+}) {
+  return (
+    <div className="h-full flex flex-col gap-4 items-center select-none px-6 pt-8 pb-4">
+
+      <div className="flex-1" />
+
+      {/* Welcome header */}
+      <div className="text-center">
+        <h2 className="text-base font-semibold text-foreground mb-1">
+          Welcome to Command Bar
+        </h2>
+        <p className="text-[11px] text-muted-foreground/50">
+          Your shortcut to everything
+        </p>
+      </div>
+
+      {/* Feature highlights with floating icons */}
+      <div className="relative w-fit">
+        {/* Floating decorative icons - left and right sides only */}
+        <div className="absolute -left-10 top-0 w-9 h-9 rounded-xl bg-blue-500/10 flex items-center justify-center rotate-[-12deg] opacity-70">
+          <Search className="h-4.5 w-4.5 text-blue-500" />
+        </div>
+        <div className="absolute -right-8 top-2 w-8 h-8 rounded-xl bg-purple-500/10 flex items-center justify-center rotate-[15deg] opacity-60">
+          <Sparkles className="h-4 w-4 text-purple-500" />
+        </div>
+        <div className="absolute -left-8 top-1/2 -translate-y-1/2 w-7 h-7 rounded-lg bg-green-500/10 flex items-center justify-center rotate-[20deg] opacity-50">
+          <User className="h-3.5 w-3.5 text-green-500" />
+        </div>
+        <div className="absolute -right-10 top-1/2 -translate-y-1/2 w-9 h-9 rounded-xl bg-cyan-500/10 flex items-center justify-center rotate-[-8deg] opacity-60">
+          <Layout className="h-4.5 w-4.5 text-cyan-500" />
+        </div>
+        <div className="absolute -left-9 bottom-0 w-7 h-7 rounded-lg bg-amber-500/10 flex items-center justify-center rotate-[8deg] opacity-50">
+          <Play className="h-3.5 w-3.5 text-amber-500" />
+        </div>
+        <div className="absolute -right-7 bottom-2 w-8 h-8 rounded-xl bg-rose-500/10 flex items-center justify-center rotate-[-18deg] opacity-50">
+          <Sparkles className="h-4 w-4 text-rose-500" />
+        </div>
+
+        {/* Feature text content */}
+        <div className="flex flex-col justify-center space-y-4 py-4 px-6">
+          {FEATURE_HIGHLIGHTS.map((feature, index) => {
+            return (
+              <div key={index} className="flex items-center gap-3">
+                <div className="flex-1 min-w-0 text-center">
+                  <h3 className="text-[12px] font-medium text-foreground">
+                    {feature.title}
+                  </h3>
+                  <p className="text-[10px] text-muted-foreground/50">
+                    {feature.description}
+                  </p>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="w-full max-w-[max(50vw,320px)] pt-4 mt-2 border-t border-foreground/[0.06]"></div>
+
+      {/* Cycling example */}
+      <div className="w-full max-w-[max(50vw,320px)]">
+        <p className="text-[9px] text-muted-foreground/40 uppercase tracking-wider mb-2.5 text-center pointer-events-none">Try something like</p>
+        <div className="flex justify-center">
+          <CyclingExample onSelectQuery={onSelectQuery} />
+        </div>
+      </div>
+
+      <div className="flex-1" />
+
+      {/* Keyboard hints footer */}
+      <div className="pt-4 mt-4 -mx-6 px-6 border-t border-foreground/[0.06] w-full flex items-center justify-center gap-5 text-[10px] text-muted-foreground/40">
+        <div className="flex items-center gap-1.5">
+          <kbd className="px-1.5 py-0.5 rounded bg-foreground/[0.06] font-mono">↑</kbd>
+          <kbd className="px-1.5 py-0.5 rounded bg-foreground/[0.06] font-mono">↓</kbd>
+          <span>navigate</span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <kbd className="px-1.5 py-0.5 rounded bg-foreground/[0.06] font-mono">↵</kbd>
+          <span>select</span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <kbd className="px-1.5 py-0.5 rounded bg-foreground/[0.06] font-mono">esc</kbd>
+          <span>close</span>
+        </div>
+      </div>
+    </div>
+  );
+});
 
 // Reusable Results List Component
 export const CmdKResultsList = memo(function CmdKResultsList({
@@ -19,7 +215,8 @@ export const CmdKResultsList = memo(function CmdKResultsList({
   onSelect,
   onMouseEnter,
   pathname,
-  emptyMessage = "Enter a search term or ask AI...",
+  showCyclingPlaceholder = false,
+  onSelectExampleQuery,
   isParentColumn = false,
 }: {
   commands: CmdKCommand[],
@@ -27,7 +224,10 @@ export const CmdKResultsList = memo(function CmdKResultsList({
   onSelect: (cmd: CmdKCommand) => void,
   onMouseEnter: (index: number) => void,
   pathname: string,
-  emptyMessage?: string,
+  /** Show the cycling placeholder with example queries */
+  showCyclingPlaceholder?: boolean,
+  /** Callback when an example query is selected from the placeholder */
+  onSelectExampleQuery?: (query: string) => void,
   /** When true, selection shows as outline only (for parent columns) */
   isParentColumn?: boolean,
 }) {
@@ -43,11 +243,10 @@ export const CmdKResultsList = memo(function CmdKResultsList({
   }, [selectedIndex]);
 
   if (!hasResults) {
-    return (
-      <div className="h-full flex items-center justify-center select-none pointer-events-none">
-        <div className="text-[13px] text-muted-foreground/50">{emptyMessage}</div>
-      </div>
-    );
+    if (showCyclingPlaceholder) {
+      return <CyclingPlaceholder onSelectQuery={onSelectExampleQuery} />;
+    }
+    return null;
   }
 
   return (
@@ -70,9 +269,13 @@ export const CmdKResultsList = memo(function CmdKResultsList({
                 ? "bg-gradient-to-r from-blue-500/[0.15] to-blue-500/[0.08] ring-1 ring-blue-500/20"
                 : cmd.highlightColor === "green"
                   ? "bg-gradient-to-r from-green-500/[0.15] to-green-500/[0.08] ring-1 ring-green-500/20"
-                  : cmd.highlightColor === "app"
-                    ? "bg-gray-100 dark:bg-gray-800/80"
-                    : "bg-foreground/[0.06]"
+                  : cmd.highlightColor === "gold"
+                    ? "bg-gradient-to-r from-amber-500/[0.15] to-amber-500/[0.08] ring-1 ring-amber-500/20"
+                    : cmd.highlightColor === "cyan"
+                      ? "bg-gradient-to-r from-cyan-500/[0.15] to-cyan-500/[0.08] ring-1 ring-cyan-500/20"
+                      : cmd.highlightColor === "app"
+                        ? "bg-gray-100 dark:bg-gray-800/80"
+                        : "bg-foreground/[0.06]"
             : "bg-foreground/[0.06]"
           : null;
 
@@ -106,9 +309,13 @@ export const CmdKResultsList = memo(function CmdKResultsList({
                     ? "bg-blue-500/10"
                     : cmd.highlightColor === "green"
                       ? "bg-green-500/10"
-                      : cmd.highlightColor === "app"
-                        ? "bg-gradient-to-br from-slate-200 to-slate-300 dark:from-[#1a3a5c] dark:to-[#0d1117]"
-                        : "bg-foreground/[0.05]"
+                      : cmd.highlightColor === "gold"
+                        ? "bg-amber-500/10"
+                        : cmd.highlightColor === "cyan"
+                          ? "bg-cyan-500/10"
+                          : cmd.highlightColor === "app"
+                            ? "bg-gradient-to-br from-slate-200 to-slate-300 dark:from-[#1a3a5c] dark:to-[#0d1117]"
+                            : "bg-foreground/[0.05]"
               )}
             >
               {cmd.icon}
@@ -540,7 +747,8 @@ export function CmdKSearch({
                     onSelect={handleSelectCommand}
                     onMouseEnter={setSelectedIndex}
                     pathname={pathname}
-                    emptyMessage="Enter a search term or ask AI..."
+                    showCyclingPlaceholder={true}
+                    onSelectExampleQuery={setQuery}
                     isParentColumn={activeDepth > 0}
                   />
                 </div>

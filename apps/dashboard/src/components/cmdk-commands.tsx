@@ -8,7 +8,7 @@ import { ALL_APPS, ALL_APP_TAGS, type AppId } from "@stackframe/stack-shared/dis
 import { runAsynchronously, runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { Badge, Button, ScrollArea } from "@stackframe/stack-ui";
 import { useChat } from "ai/react";
-import { Blocks, Check, Copy, Download, ExternalLink, Globe, Info, KeyRound, Loader2, Send, Settings, Shield, Sparkles, User, Zap } from "lucide-react";
+import { Blocks, Check, Copy, Download, ExternalLink, Globe, Info, KeyRound, Layout, Loader2, Play, Send, Settings, Shield, Sparkles, User, Zap } from "lucide-react";
 import Image from "next/image";
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
@@ -629,6 +629,70 @@ const AIChatPreview = memo(function AIChatPreview({
   );
 });
 
+// Run Query Preview Component - shows a TODO message for now
+const RunQueryPreview = memo(function RunQueryPreview({
+  query,
+}: CmdKPreviewProps) {
+  return (
+    <div className="flex flex-col h-full w-full items-center justify-center p-6">
+      <div className="flex flex-col items-center gap-4 max-w-md text-center">
+        <div className="w-16 h-16 rounded-2xl bg-amber-500/10 flex items-center justify-center">
+          <Play className="h-8 w-8 text-amber-500" />
+        </div>
+        <div>
+          <h3 className="text-lg font-semibold text-foreground mb-2">Run Query</h3>
+          <p className="text-sm text-muted-foreground mb-4">
+            Execute actions using natural language commands.
+          </p>
+        </div>
+        <div className="w-full p-4 rounded-xl bg-amber-500/5 border border-amber-500/20">
+          <p className="text-xs text-amber-600 dark:text-amber-400 font-medium mb-2">Your query:</p>
+          <p className="text-sm text-foreground italic">&ldquo;{query}&rdquo;</p>
+        </div>
+        <div className="mt-4 p-4 rounded-xl bg-muted/50 border border-border">
+          <p className="text-xs text-muted-foreground">
+            🚧 <span className="font-medium">Coming Soon</span> — This feature is under development.
+            Soon you&apos;ll be able to run queries like &ldquo;create a new user&rdquo;,
+            &ldquo;list all teams&rdquo;, or &ldquo;update project settings&rdquo;.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+});
+
+// Create Dashboard Preview Component - shows a TODO message for now
+const CreateDashboardPreview = memo(function CreateDashboardPreview({
+  query,
+}: CmdKPreviewProps) {
+  return (
+    <div className="flex flex-col h-full w-full items-center justify-center p-6">
+      <div className="flex flex-col items-center gap-4 max-w-md text-center">
+        <div className="w-16 h-16 rounded-2xl bg-cyan-500/10 flex items-center justify-center">
+          <Layout className="h-8 w-8 text-cyan-500" />
+        </div>
+        <div>
+          <h3 className="text-lg font-semibold text-foreground mb-2">Create Dashboard</h3>
+          <p className="text-sm text-muted-foreground mb-4">
+            Generate custom dashboards for your users.
+          </p>
+        </div>
+        <div className="w-full p-4 rounded-xl bg-cyan-500/5 border border-cyan-500/20">
+          <p className="text-xs text-cyan-600 dark:text-cyan-400 font-medium mb-2">Your query:</p>
+          <p className="text-sm text-foreground italic">&ldquo;{query}&rdquo;</p>
+        </div>
+        <div className="mt-4 p-4 rounded-xl bg-muted/50 border border-border">
+          <p className="text-xs text-muted-foreground">
+            🚧 <span className="font-medium">Coming Soon</span> — This feature is under development.
+            Soon you&apos;ll be able to create custom dashboards like &ldquo;analytics overview&rdquo;,
+            &ldquo;user management panel&rdquo;, or &ldquo;team activity feed&rdquo;.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+});
+
 // Available App Preview Component - shows app store page in preview panel
 const AvailableAppPreview = memo(function AvailableAppPreview({
   appId,
@@ -1001,6 +1065,30 @@ export function useCmdKCommands({
         preview: AIChatPreview,
         hasVisualPreview: true,
         highlightColor: "purple",
+      });
+
+      commands.push({
+        id: "query/run",
+        icon: <Play className="h-3.5 w-3.5 text-amber-500" />,
+        label: `Run Query`,
+        description: "Execute actions using natural language",
+        keywords: ["run", "execute", "query", "action", "command"],
+        onAction: { type: "focus" },
+        preview: RunQueryPreview,
+        hasVisualPreview: true,
+        highlightColor: "gold",
+      });
+
+      commands.push({
+        id: "create/dashboard",
+        icon: <Layout className="h-3.5 w-3.5 text-cyan-500" />,
+        label: `Create Dashboard`,
+        description: "Generate custom dashboards for your users",
+        keywords: ["create", "dashboard", "generate", "ui", "interface", "panel"],
+        onAction: { type: "focus" },
+        preview: CreateDashboardPreview,
+        hasVisualPreview: true,
+        highlightColor: "cyan",
       });
     }
 
