@@ -146,16 +146,42 @@ function extractKeywords(text: string): string[] {
     .map(([word]) => word);
 }
 
+// Synonyms to expand search queries
+const SYNONYMS = new Map<string, string[]>([
+  ["team", ["teams", "orgs", "organization", "organizations", "org"]],
+  ["teams", ["team", "orgs", "organization", "organizations", "org"]],
+  ["password", ["credential", "credentials", "email", "signin", "signup"]],
+  ["email", ["credential", "credentials", "password", "magic", "otp"]],
+  ["credential", ["password", "email", "signin", "signup"]],
+  ["login", ["signin", "sign-in", "authentication", "auth"]],
+  ["signin", ["login", "sign-in", "authentication", "auth"]],
+  ["signup", ["register", "sign-up", "registration"]],
+  ["api", ["key", "keys", "secret", "token"]],
+  ["key", ["api", "keys", "secret", "token"]],
+  ["user", ["users", "account", "profile"]],
+]);
+
 /**
  * Search for relevant documentation based on query
  */
 export function searchDocs(query: string, maxResults: number = 5): DocChunk[] {
   const docs = loadDocs();
-  const queryWords = query
+  const baseWords = query
     .toLowerCase()
     .replace(/[^a-z0-9\s-]/g, " ")
     .split(/\s+/)
     .filter((w) => w.length > 2);
+
+  // Expand query words with synonyms
+  const queryWords = new Set(baseWords);
+  for (const word of baseWords) {
+    const synonyms = SYNONYMS.get(word);
+    if (synonyms) {
+      for (const syn of synonyms) {
+        queryWords.add(syn);
+      }
+    }
+  }
 
   // Score each doc by keyword matches
   const scored = docs.map((doc) => {
@@ -165,6 +191,12 @@ export function searchDocs(query: string, maxResults: number = 5): DocChunk[] {
     const titleLower = doc.title.toLowerCase();
     for (const word of queryWords) {
       if (titleLower.includes(word)) score += 10;
+    }
+
+    // Path matches (helps find orgs-and-teams, credential-sign-in, etc.)
+    const pathLower = doc.path.toLowerCase();
+    for (const word of queryWords) {
+      if (pathLower.includes(word)) score += 8;
     }
 
     // Keyword matches
