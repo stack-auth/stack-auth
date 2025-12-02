@@ -567,7 +567,11 @@ export function CmdKSearch({
 
                 {/* Preview panel - shown on the right side when a command with visual preview is selected */}
                 {filteredCommands[selectedIndex]?.hasVisualPreview && filteredCommands[selectedIndex]?.preview && nestedColumns.length === 0 && (
-                  <div className="hidden md:flex flex-1 border-l border-foreground/[0.06] overflow-hidden">
+                  <div
+                    key={filteredCommands[selectedIndex].id}
+                    className="hidden md:flex flex-1 border-l border-foreground/[0.06] overflow-hidden"
+                    style={{ animation: "spotlight-slide-in-from-right 200ms ease-out" }}
+                  >
                     {React.createElement(filteredCommands[selectedIndex].preview!, {
                       isSelected: true,
                       query,
