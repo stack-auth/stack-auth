@@ -4,6 +4,7 @@ import { Auth, Project, Team, backendContext, bumpEmailAddress, niceBackendFetch
 
 const queryEvents = async (params: {
   userId?: string,
+  teamId?: string,
   eventType?: string,
 }) => await niceBackendFetch("/api/v1/analytics/query", {
   method: "POST",
@@ -14,19 +15,21 @@ const queryEvents = async (params: {
       FROM events
       WHERE 1
         ${params.userId ? "AND user_id = {user_id:String}" : ""}
+        ${params.teamId ? "AND team_id = {team_id:String}" : ""}
         ${params.eventType ? "AND event_type = {event_type:String}" : ""}
       ORDER BY event_at DESC
       LIMIT 10
     `,
     params: {
       ...(params.userId ? { user_id: params.userId } : {}),
+      ...(params.teamId ? { team_id: params.teamId } : {}),
       ...(params.eventType ? { event_type: params.eventType } : {}),
     },
   },
 });
 
 const fetchEventsWithRetry = async (
-  params: { userId?: string, eventType?: string },
+  params: { userId?: string, teamId?: string, eventType?: string },
   options: { attempts?: number, delayMs?: number } = {}
 ) => {
   const attempts = options.attempts ?? 5;
@@ -155,6 +158,7 @@ it("stores the team id for session events when a user selected a team", async ({
 
   const userWithTeamResponse = await fetchEventsWithRetry({
     userId: userWithTeam,
+    teamId,
     eventType: "$session-activity",
   });
   expect(userWithTeamResponse.status).toBe(200);
