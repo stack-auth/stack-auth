@@ -61,13 +61,16 @@ export const CmdKResultsList = memo(function CmdKResultsList({
                 ? "bg-gradient-to-r from-blue-500/[0.15] to-blue-500/[0.08] ring-1 ring-blue-500/20"
                 : cmd.highlightColor === "green"
                   ? "bg-gradient-to-r from-green-500/[0.15] to-green-500/[0.08] ring-1 ring-green-500/20"
-                  : "bg-foreground/[0.06]"
+                  : cmd.highlightColor === "app"
+                    ? "bg-gray-100 dark:bg-gray-800/80"
+                    : "bg-foreground/[0.06]"
             : "bg-foreground/[0.06]"
           : null;
 
         return (
           <button
             key={cmd.id}
+            tabIndex={-1}
             onClick={() => onSelect(cmd)}
             onMouseEnter={() => onMouseEnter(index)}
             className={cn(
@@ -87,7 +90,9 @@ export const CmdKResultsList = memo(function CmdKResultsList({
                     ? "bg-blue-500/10"
                     : cmd.highlightColor === "green"
                       ? "bg-green-500/10"
-                      : "bg-foreground/[0.05]"
+                      : cmd.highlightColor === "app"
+                        ? "bg-gradient-to-br from-slate-200 to-slate-300 dark:from-[#1a3a5c] dark:to-[#0d1117]"
+                        : "bg-foreground/[0.05]"
               )}
             >
               {cmd.icon}

@@ -915,12 +915,13 @@ export function useCmdKCommands({
       // Add the app itself as a command
       commands.push({
         id: `apps/${appId}`,
-        icon: <IconComponent className="h-3.5 w-3.5 text-muted-foreground" />,
+        icon: <IconComponent className="h-3.5 w-3.5 stroke-emerald-600 dark:stroke-emerald-400" />,
         label: app.displayName,
         description: "Installed app",
         keywords: [app.displayName.toLowerCase(), ...app.tags, "installed", "app"],
         onAction: { type: "navigate", href: getAppPath(projectId, appFrontend) },
         preview: hasNavigationItems ? getOrCreateAppPreview(appId, projectId) : null,
+        highlightColor: "app",
       });
     }
 
