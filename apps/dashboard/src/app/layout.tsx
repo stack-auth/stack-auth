@@ -19,6 +19,7 @@ import React from 'react';
 import '../polyfills';
 import { BackgroundShine } from './background-shine';
 import { ClientPolyfill } from './client-polyfill';
+import { DevelopmentPortDisplay } from './development-port-display';
 import './globals.css';
 import PageView from './pageview';
 import { CSPostHogProvider, UserIdentity } from './providers';
@@ -117,51 +118,5 @@ export default function RootLayout({
         </body>
       </CSPostHogProvider>
     </html>
-  );
-}
-
-function DevelopmentPortDisplay() {
-  const prefix = getPublicEnvVar("NEXT_PUBLIC_STACK_PORT_PREFIX");
-  if (!prefix) return null;
-  const color = ({
-    "91": "#eee",
-    "92": "#fff8e0",
-    "93": "#e0e0ff",
-  } as any)[prefix as any] || undefined;
-  return (
-    <div inert className="fixed top-0 left-0 p-2 text-red-700 animate-[dev-port-slide_120s_linear_infinite] hover:hidden flex gap-2" style={{
-      backgroundColor: color,
-      zIndex: 10000000,
-    }}>
-      <style>{`
-        @keyframes dev-port-slide {
-          0% { transform: translateX(0); }
-          100% { transform: translateX(100vw); }
-        }
-      `}</style>
-      <div className="text-lg">
-        PORT: {prefix}xx
-      </div>
-      <div className="text-xs">
-        <span className="hidden xs:inline sm:hidden">
-          xs
-        </span>
-        <span className="hidden sm:inline md:hidden">
-          sm
-        </span>
-        <span className="hidden md:inline lg:hidden">
-          md
-        </span>
-        <span className="hidden lg:inline xl:hidden">
-          lg
-        </span>
-        <span className="hidden xl:inline 2xl:hidden">
-          xl
-        </span>
-        <span className="hidden 2xl:inline">
-          2xl
-        </span>
-      </div>
-    </div>
   );
 }

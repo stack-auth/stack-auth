@@ -7,18 +7,18 @@ import { ALL_APPS, type AppId } from "@stackframe/stack-shared/dist/apps/apps-co
 import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
 import { useChat } from "ai/react";
 import {
-    Blocks,
-    Check,
-    Copy,
-    ExternalLink,
-    Globe,
-    KeyRound,
-    Loader2,
-    Search,
-    Send,
-    Settings,
-    Sparkles,
-    User,
+  Blocks,
+  Check,
+  Copy,
+  ExternalLink,
+  Globe,
+  KeyRound,
+  Loader2,
+  Search,
+  Send,
+  Settings,
+  Sparkles,
+  User,
 } from "lucide-react";
 import { usePathname } from "next/navigation";
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -839,46 +839,70 @@ export function CmdKSearch({
 
 // Trigger button component that can be placed in the header
 export function CmdKTrigger() {
+  const mouseCursorRef = useRef<HTMLDivElement>(null);
+  const mouseCursorParentRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (mouseCursorRef.current && mouseCursorParentRef.current) {
+        const rect = mouseCursorParentRef.current.getBoundingClientRect();
+        mouseCursorRef.current.style.left = `${e.clientX - rect.left}px`;
+        mouseCursorRef.current.style.top = `${e.clientY - rect.top}px`;
+        mouseCursorRef.current.style.display = "block";
+      }
+    };
+    document.addEventListener("mousemove", handleMouseMove);
+    return () => document.removeEventListener("mousemove", handleMouseMove);
+  }, []);
+
   return (
-    <div className="relative hidden sm:block">
-      {/* Rainbow gradient border */}
-      <div
-        className="absolute -inset-[1px] rounded-xl opacity-50 blur-[2px]"
-        style={{
-          backgroundImage:
-            "linear-gradient(90deg, #f97316, #ec4899, #8b5cf6, #3b82f6, #06b6d4, #10b981, #f97316)",
-          backgroundSize: "200% 100%",
-          animation: "spotlight-rainbow 4s linear infinite",
-        }}
-      />
-      {/* Inner glow layer */}
-      <div
-        className="absolute -inset-[1px] rounded-xl opacity-30"
-        style={{
-          backgroundImage:
-            "linear-gradient(90deg, #f97316, #ec4899, #8b5cf6, #3b82f6, #06b6d4, #10b981, #f97316)",
-          backgroundSize: "200% 100%",
-          animation: "spotlight-rainbow 4s linear infinite",
-        }}
-      />
+    <div className="hidden sm:block">
       <button
         onClick={() => window.dispatchEvent(new CustomEvent("spotlight-toggle"))}
         className={cn(
-          "relative group flex items-center gap-3 h-9 px-3 min-w-[280px] rounded-xl",
-          "bg-background/95 backdrop-blur-sm",
-          "text-sm text-muted-foreground",
-          "transition-all duration-150 hover:transition-none"
+          "group relative flex items-center gap-3 h-9 px-4 min-w-[240px]",
+          "rounded-[12px]",
+          "ring-2 ring-inset ring-foreground/[0.06]",
+          "transition-all duration-300 hover:transition-none",
+          "hover:ring-blue-500/20 hover:shadow-[0_0_24px_rgba(59,130,246,0.15),inset_0_1px_0_rgba(255,255,255,0.05)]"
         )}
       >
-        <Search className="h-4 w-4 text-muted-foreground/60 group-hover:text-muted-foreground transition-colors duration-150 group-hover:transition-none" />
-        <span className="flex-1 text-left text-[13px] text-muted-foreground/70 group-hover:text-muted-foreground transition-colors duration-150 group-hover:transition-none">
-          Search or ask AI...
+        <div
+          ref={mouseCursorParentRef}
+          className={cn(
+            "absolute inset-[2px] overflow-hidden rounded-[10px] -z-20",
+            "group-hover:opacity-100 transition-opacity duration-300 group-hover:transition-none",
+          )}
+        >
+          <div
+            ref={mouseCursorRef}
+            className={cn(
+              "absolute w-32 h-32 group-hover:w-64 group-hover:h-64 transition-[width,height] duration-300",
+              "bg-blue-500/40 blur-lg",
+              "rounded-full",
+              "pointer-events-none",
+              "-translate-x-1/2 -translate-y-1/2",
+              "hidden",
+            )}
+          />
+        </div>
+        <div className={cn(
+          "absolute inset-1 rounded-[10px] -z-10",
+          "backdrop-blur-xl bg-gray-100/75 dark:bg-[#161616]/75",
+        )} />
+        {/* Subtle shimmer effect on hover */}
+        <div className="absolute inset-0 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity duration-300 group-hover:transition-none overflow-hidden">
+          <div className="absolute inset-0 bg-gradient-to-r from-transparent via-blue-500/[0.03] to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700" />
+        </div>
+        <Sparkles className="h-3.5 w-3.5 text-blue-400/40 group-hover:text-blue-400/70 transition-colors duration-300 group-hover:transition-none" />
+        <span className="flex-1 text-left text-[13px] text-muted-foreground/60 group-hover:text-muted-foreground transition-colors duration-300 group-hover:transition-none">
+          Command Bar
         </span>
         <div className="pointer-events-none flex items-center gap-1">
-          <kbd className="flex h-5 min-w-[20px] select-none items-center justify-center rounded bg-foreground/[0.05] px-1 font-mono text-[11px] font-medium text-muted-foreground/60">
+          <kbd className="flex h-5 min-w-[20px] select-none items-center justify-center rounded-md bg-foreground/[0.04] ring-1 ring-inset ring-foreground/[0.06] px-1.5 font-mono text-[10px] font-medium text-muted-foreground/50 group-hover:text-muted-foreground/70 transition-colors duration-300 group-hover:transition-none">
             ⌘
           </kbd>
-          <kbd className="flex h-5 min-w-[20px] select-none items-center justify-center rounded bg-foreground/[0.05] px-1 font-mono text-[11px] font-medium text-muted-foreground/60">
+          <kbd className="flex h-5 min-w-[20px] select-none items-center justify-center rounded-md bg-foreground/[0.04] ring-1 ring-inset ring-foreground/[0.06] px-1.5 font-mono text-[10px] font-medium text-muted-foreground/50 group-hover:text-muted-foreground/70 transition-colors duration-300 group-hover:transition-none">
             K
           </kbd>
         </div>

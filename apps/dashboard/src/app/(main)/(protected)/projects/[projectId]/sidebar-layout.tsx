@@ -547,7 +547,7 @@ export default function SidebarLayout(props: { children?: React.ReactNode }) {
         {/* Header - Sticky Floating */}
         <div className="sticky top-3 z-20 mx-3 mb-3 mt-3 flex h-14 items-center justify-between bg-gray-100/80 dark:bg-foreground/5 border border-border/10 dark:border-foreground/5 backdrop-blur-xl px-4 shadow-sm rounded-2xl">
           {/* Left section: Logo + Menu + Project Switcher */}
-          <div className="flex items-center gap-2">
+          <div className="flex flex-grow-1 items-center gap-2">
             {/* Mobile: Menu button */}
             <Sheet onOpenChange={(open) => setSidebarOpen(open)} open={sidebarOpen}>
               <SheetTitle className="hidden">
@@ -589,10 +589,13 @@ export default function SidebarLayout(props: { children?: React.ReactNode }) {
             </div>
           </div>
 
-          {/* Right section: Search, Theme toggle and User button */}
-          <div className="flex gap-2 items-center">
-            {/* Search trigger button */}
+          {/* Middle section: Command bar */}
+          <div className="flex-grow-1">
             <CmdKTrigger />
+          </div>
+
+          {/* Right section: Search, Theme toggle and User button */}
+          <div className="flex flex-grow-1 gap-2 items-center">
             {getPublicEnvVar("NEXT_PUBLIC_STACK_EMULATOR_ENABLED") === "true" ? (
               <ThemeToggle />
             ) : (
