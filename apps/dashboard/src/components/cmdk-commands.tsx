@@ -1,12 +1,15 @@
 "use client";
 
+import { AppIcon } from "@/components/app-square";
 import { ALL_APPS_FRONTEND, getAppPath, getItemPath } from "@/lib/apps-frontend";
 import { getUninstalledAppIds } from "@/lib/apps-utils";
 import { cn } from "@/lib/utils";
-import { ALL_APPS, type AppId } from "@stackframe/stack-shared/dist/apps/apps-config";
-import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
+import { ALL_APPS, ALL_APP_TAGS, type AppId } from "@stackframe/stack-shared/dist/apps/apps-config";
+import { runAsynchronously, runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
+import { Badge, Button, ScrollArea } from "@stackframe/stack-ui";
 import { useChat } from "ai/react";
-import { Blocks, Check, Copy, Download, ExternalLink, Globe, KeyRound, Loader2, Send, Settings, Sparkles, User } from "lucide-react";
+import { Blocks, Check, Copy, Download, ExternalLink, Globe, Info, KeyRound, Loader2, Send, Settings, Shield, Sparkles, User, Zap } from "lucide-react";
+import Image from "next/image";
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -376,69 +379,74 @@ const AIChatPreview = memo(function AIChatPreview({
     }
   }, [messages]);
 
-  // Track if we've started a request for the current query
-  const hasStartedForQueryRef = useRef<string>("");
+  // Track the pending timeout
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const startedQueryRef = useRef<string>("");
 
-  // Auto-start AI conversation with debounce when query changes
+  // Auto-start AI conversation with debounce when query changes or on mount
   useEffect(() => {
-    if (!query.trim()) {
+    const trimmedQuery = query.trim();
+
+    if (!trimmedQuery) {
+      setIsDebouncing(false);
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+        timeoutRef.current = null;
+      }
+      return;
+    }
+
+    // Check if we already have this conversation cached
+    const cached = conversationCache.get(trimmedQuery);
+    if (cached && cached.messages.length > 0) {
+      // Restore cached conversation if messages are empty (e.g., after remount)
+      if (messages.length === 0) {
+        setMessages(cached.messages);
+      }
+      currentQueryRef.current = trimmedQuery;
+      lastQueryRef.current = trimmedQuery;
+      startedQueryRef.current = trimmedQuery;
       setIsDebouncing(false);
       return;
     }
 
-    const queryChanged = query !== lastQueryRef.current;
+    // Check if we already started this query and it's still loading
+    if (startedQueryRef.current === trimmedQuery && aiLoading) {
+      return;
+    }
 
-    if (queryChanged) {
-      lastQueryRef.current = query;
-      currentQueryRef.current = query;
-      hasStartedForQueryRef.current = ""; // Reset started flag for new query
+    // Check if this is a new query we need to handle
+    const isNewQuery = lastQueryRef.current !== trimmedQuery;
+    const needsStart = isNewQuery || (messages.length === 0 && !aiLoading);
 
-      // Check if we have a cached conversation for this query
-      const cached = conversationCache.get(query);
-      if (cached && cached.messages.length > 0) {
-        // Restore cached conversation - no need to send request
-        setMessages(cached.messages);
-        setIsDebouncing(false);
-        hasStartedForQueryRef.current = query; // Mark as started (from cache)
-        return;
-      }
+    if (!needsStart) {
+      return;
+    }
 
-      // New query without cache - start fresh
-      setIsDebouncing(true);
+    // Clear any existing timeout
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+    }
+
+    // Update refs
+    lastQueryRef.current = trimmedQuery;
+    currentQueryRef.current = trimmedQuery;
+
+    // Clear previous messages and start debouncing
+    setIsDebouncing(true);
+    if (isNewQuery) {
       setMessages([]);
-
-      // Debounce the API call
-      const timeoutId = setTimeout(() => {
-        // Send the actual request (append will update messages)
-        runAsynchronously(append({ role: "user", content: query }));
-        setIsDebouncing(false);
-        hasStartedForQueryRef.current = query;
-      }, 400);
-
-      return () => clearTimeout(timeoutId);
     }
 
-    // Handle mount case: query exists but we haven't started yet
-    if (hasStartedForQueryRef.current !== query && messages.length === 0 && !aiLoading) {
-      // Check cache first
-      const cached = conversationCache.get(query);
-      if (cached && cached.messages.length > 0) {
-        setMessages(cached.messages);
-        setIsDebouncing(false);
-        hasStartedForQueryRef.current = query;
-        return;
-      }
+    // Debounce the API call
+    timeoutRef.current = setTimeout(() => {
+      timeoutRef.current = null;
+      startedQueryRef.current = trimmedQuery;
+      runAsynchronously(append({ role: "user", content: trimmedQuery }));
+      setIsDebouncing(false);
+    }, 400);
 
-      // Start fresh
-      setIsDebouncing(true);
-      const timeoutId = setTimeout(() => {
-        runAsynchronously(append({ role: "user", content: query }));
-        setIsDebouncing(false);
-        hasStartedForQueryRef.current = query;
-      }, 400);
-
-      return () => clearTimeout(timeoutId);
-    }
+    // Don't return cleanup - we manage the timeout ourselves via ref
   }, [query, append, setMessages, messages.length, aiLoading]);
 
   // Focus handler - select the follow-up input when focused (pressing right arrow or Enter)
@@ -617,6 +625,181 @@ const AIChatPreview = memo(function AIChatPreview({
   );
 });
 
+// Available App Preview Component - shows app store page in preview panel
+const AvailableAppPreview = memo(function AvailableAppPreview({
+  appId,
+  projectId,
+  onEnable,
+}: {
+  appId: AppId,
+  projectId: string,
+  onEnable: () => Promise<void>,
+}) {
+  const app = ALL_APPS[appId];
+  const appFrontend = ALL_APPS_FRONTEND[appId];
+
+  const features = [
+    { icon: Shield, label: "Secure" },
+    { icon: Zap, label: "Quick Setup" },
+    { icon: Check, label: "Production Ready" },
+  ];
+
+  return (
+    <div className="flex flex-col h-full w-full">
+      <ScrollArea className="flex-1">
+        <div className="p-4 space-y-4">
+          {/* Header */}
+          <div className="flex items-start gap-3">
+            <div className="w-12 h-12 flex-shrink-0">
+              <AppIcon
+                appId={appId}
+                className="shadow-md ring-1 ring-black/5 dark:ring-white/10 w-full h-full"
+              />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 mb-1">
+                <h3 className="text-base font-semibold text-foreground truncate">
+                  {app.displayName}
+                </h3>
+                {app.stage !== "stable" && (
+                  <Badge
+                    variant={app.stage === "alpha" ? "destructive" : "secondary"}
+                    className="text-[9px] px-1.5 py-0"
+                  >
+                    {app.stage === "alpha" ? "Alpha" : "Beta"}
+                  </Badge>
+                )}
+              </div>
+              <p className="text-xs text-muted-foreground line-clamp-2">
+                {app.subtitle}
+              </p>
+            </div>
+          </div>
+
+          {/* Tags */}
+          <div className="flex flex-wrap gap-1.5">
+            {(app.tags as Array<keyof typeof ALL_APP_TAGS>).map((tag) => (
+              <div
+                key={tag}
+                className={cn(
+                  "px-2 py-0.5 rounded-full text-[10px] font-medium",
+                  tag === "expert"
+                    ? "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300"
+                    : "bg-muted text-muted-foreground"
+                )}
+              >
+                {ALL_APP_TAGS[tag].displayName}
+              </div>
+            ))}
+          </div>
+
+          {/* Features */}
+          <div className="grid grid-cols-3 gap-2">
+            {features.map((feature, index) => (
+              <div
+                key={index}
+                className="flex flex-col items-center gap-1 p-2 rounded-lg bg-muted/50 border border-border/50"
+              >
+                <feature.icon className="w-3.5 h-3.5 text-blue-500" />
+                <span className="text-[9px] text-muted-foreground text-center">
+                  {feature.label}
+                </span>
+              </div>
+            ))}
+          </div>
+
+          {/* Enable Button */}
+          <div className="flex items-center gap-3">
+            <Button
+              onClick={() => runAsynchronouslyWithAlert(onEnable())}
+              size="sm"
+              className="flex-1 bg-blue-600 hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600 text-white font-medium"
+            >
+              Enable App
+            </Button>
+            <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
+              <Info className="w-3 h-3" />
+              <span>Free</span>
+            </div>
+          </div>
+
+          {/* Stage Warning */}
+          {app.stage !== "stable" && (
+            <div
+              className={cn(
+                "p-2.5 rounded-lg border-l-2 text-[11px]",
+                app.stage === "alpha"
+                  ? "bg-red-50 dark:bg-red-950/20 border-red-500 text-red-800 dark:text-red-300"
+                  : "bg-amber-50 dark:bg-amber-950/20 border-amber-500 text-amber-800 dark:text-amber-300"
+              )}
+            >
+              {app.stage === "alpha" && (
+                <><strong>Alpha:</strong> Early development, may have bugs.</>
+              )}
+              {app.stage === "beta" && (
+                <><strong>Beta:</strong> Being tested, generally stable.</>
+              )}
+            </div>
+          )}
+
+          {/* Screenshots */}
+          {appFrontend.screenshots.length > 0 && (
+            <div>
+              <h4 className="text-xs font-medium text-foreground mb-2">Preview</h4>
+              <div className="flex gap-2 overflow-x-auto pb-2">
+                {appFrontend.screenshots.map((screenshot: string, index: number) => (
+                  <div
+                    key={index}
+                    className="relative h-32 w-48 rounded-lg shadow-sm flex-shrink-0 overflow-hidden border border-border"
+                  >
+                    <Image
+                      src={screenshot}
+                      alt={`${app.displayName} screenshot ${index + 1}`}
+                      fill
+                      className="object-cover select-none"
+                      draggable={false}
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Description */}
+          {appFrontend.storeDescription && (
+            <div>
+              <h4 className="text-xs font-medium text-foreground mb-2">About</h4>
+              <div className="text-xs text-muted-foreground prose prose-sm dark:prose-invert max-w-none">
+                {appFrontend.storeDescription}
+              </div>
+            </div>
+          )}
+        </div>
+      </ScrollArea>
+    </div>
+  );
+});
+
+// Factory to create available app preview components
+function createAvailableAppPreview(appId: AppId, projectId: string, onEnable: () => Promise<void>): React.ComponentType<CmdKPreviewProps> {
+  return function AvailableAppPreviewWrapper() {
+    return <AvailableAppPreview appId={appId} projectId={projectId} onEnable={onEnable} />;
+  };
+}
+
+// Cache for available app preview components
+const availableAppPreviewCache = new Map<string, React.ComponentType<CmdKPreviewProps>>();
+
+function getOrCreateAvailableAppPreview(appId: AppId, projectId: string, onEnable: () => Promise<void>): React.ComponentType<CmdKPreviewProps> {
+  const cacheKey = `${appId}:${projectId}`;
+  let preview = availableAppPreviewCache.get(cacheKey);
+  if (!preview) {
+    preview = createAvailableAppPreview(appId, projectId, onEnable);
+    availableAppPreviewCache.set(cacheKey, preview);
+  }
+  return preview;
+}
+
 export type CmdKCommand = {
   id: string,
   icon: React.ReactNode,
@@ -693,10 +876,12 @@ export function useCmdKCommands({
   projectId,
   enabledApps,
   query,
+  onEnableApp,
 }: {
   projectId: string,
   enabledApps: AppId[],
   query: string,
+  onEnableApp?: (appId: AppId) => Promise<void>,
 }): CmdKCommand[] {
   return useMemo(() => {
     const commands: CmdKCommand[] = [];
@@ -745,6 +930,7 @@ export function useCmdKCommands({
       if (!app || !appFrontend) continue;
 
       const IconComponent = appFrontend.icon;
+      const hasPreview = onEnableApp !== undefined;
 
       commands.push({
         id: `store/${appId}`,
@@ -757,8 +943,13 @@ export function useCmdKCommands({
         label: app.displayName,
         description: "Available to install",
         keywords: [app.displayName.toLowerCase(), ...app.tags, "available", "install", "store", "app"],
-        onAction: { type: "navigate", href: `/projects/${projectId}/apps/${appId}` },
-        preview: null,
+        onAction: hasPreview
+          ? { type: "focus" }
+          : { type: "navigate", href: `/projects/${projectId}/apps/${appId}` },
+        preview: hasPreview
+          ? getOrCreateAvailableAppPreview(appId, projectId, () => onEnableApp(appId))
+          : null,
+        hasVisualPreview: hasPreview,
       });
     }
 
@@ -809,5 +1000,5 @@ export function useCmdKCommands({
     }
 
     return commands;
-  }, [projectId, enabledApps, query]);
+  }, [projectId, enabledApps, query, onEnableApp]);
 }

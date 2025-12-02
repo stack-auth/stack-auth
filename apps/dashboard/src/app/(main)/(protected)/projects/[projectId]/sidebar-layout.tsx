@@ -528,7 +528,13 @@ function SpotlightSearchWrapper({ projectId }: { projectId: string }) {
     [config.apps.installed]
   );
 
-  return <CmdKSearch projectId={projectId} enabledApps={enabledApps} />;
+  const handleEnableApp = useCallback(async (appId: AppId) => {
+    await project.updateConfig({
+      [`apps.installed.${appId}.enabled`]: true,
+    });
+  }, [project]);
+
+  return <CmdKSearch projectId={projectId} enabledApps={enabledApps} onEnableApp={handleEnableApp} />;
 }
 
 export default function SidebarLayout(props: { children?: React.ReactNode }) {

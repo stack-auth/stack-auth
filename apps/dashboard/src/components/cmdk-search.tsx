@@ -132,9 +132,11 @@ export const CmdKResultsList = memo(function CmdKResultsList({
 export function CmdKSearch({
   projectId,
   enabledApps,
+  onEnableApp,
 }: {
   projectId: string,
   enabledApps: AppId[],
+  onEnableApp?: (appId: AppId) => Promise<void>,
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -188,7 +190,7 @@ export function CmdKSearch({
   }, [open]);
 
   // Get commands from the hook
-  const commands = useCmdKCommands({ projectId, enabledApps, query });
+  const commands = useCmdKCommands({ projectId, enabledApps, query, onEnableApp });
 
   // Filter commands based on query
   const filteredCommands = useMemo(() => {
