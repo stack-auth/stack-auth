@@ -708,7 +708,7 @@ export function CmdKSearch({
                 <div className={cn(
                   "overflow-auto flex-grow-1 h-full transition-all duration-200",
                   filteredCommands[selectedIndex]?.preview
-                    ? "md:w-1/2 md:border-r md:border-foreground/[0.06]"
+                    ? "md:w-[300px] md:flex-shrink-0 md:border-r md:border-foreground/[0.06]"
                     : "md:w-full"
                 )}>
                   {hasQuery && hasResults ? (
@@ -786,7 +786,7 @@ export function CmdKSearch({
                 {/* Preview Panel (Desktop) */}
                 {filteredCommands[selectedIndex]?.preview && (
                   <div
-                    className="hidden md:block md:w-1/2 overflow-auto transition-all duration-200"
+                    className="hidden md:block md:flex-1 overflow-auto transition-all duration-200"
                     style={{ animation: "spotlight-slide-in-from-right 200ms ease-out" }}
                   >
                     {React.createElement(filteredCommands[selectedIndex].preview!, {
