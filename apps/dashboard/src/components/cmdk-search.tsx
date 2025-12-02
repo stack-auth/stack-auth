@@ -523,37 +523,15 @@ export function CmdKSearch({
 
       {/* Spotlight Container */}
       <div
-        className="fixed left-1/2 top-[12%] z-50 w-full max-w-[540px] -translate-x-1/2 px-4"
+        className="fixed left-1/2 top-[12%] z-50 w-full max-w-[max(540px,75vw)] -translate-x-1/2 px-4"
         style={{ animation: "spotlight-slide-in 150ms cubic-bezier(0.16, 1, 0.3, 1)" }}
       >
-        <div className="relative">
-          {/* Rainbow gradient border */}
-          <div
-            className="absolute -inset-[1px] rounded-2xl opacity-60 blur-[3px]"
-            style={{
-              backgroundImage: aiMode
-                ? "linear-gradient(90deg, #8b5cf6, #ec4899, #8b5cf6)"
-                : "linear-gradient(90deg, #f97316, #ec4899, #8b5cf6, #3b82f6, #06b6d4, #10b981, #f97316)",
-              backgroundSize: "200% 100%",
-              animation: "spotlight-rainbow 4s linear infinite",
-            }}
-          />
-          {/* Inner glow layer */}
-          <div
-            className="absolute -inset-[1px] rounded-2xl opacity-40"
-            style={{
-              backgroundImage: aiMode
-                ? "linear-gradient(90deg, #8b5cf6, #ec4899, #8b5cf6)"
-                : "linear-gradient(90deg, #f97316, #ec4899, #8b5cf6, #3b82f6, #06b6d4, #10b981, #f97316)",
-              backgroundSize: "200% 100%",
-              animation: "spotlight-rainbow 4s linear infinite",
-            }}
-          />
+        <div className="relative rounded-2xl ring-2 ring-inset ring-foreground/[0.08]">
+          {/* Background layer */}
+          <div className="absolute inset-[2px] rounded-[14px] -z-10 backdrop-blur-xl bg-gray-100/80 dark:bg-[#161616]/80" />
           <div
             className={cn(
               "relative overflow-hidden rounded-2xl",
-              "bg-background/95 backdrop-blur-xl",
-              "shadow-2xl"
             )}
           >
             {/* AI Mode Header */}
