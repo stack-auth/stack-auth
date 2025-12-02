@@ -99,15 +99,15 @@ const CyclingExample = memo(function CyclingExample({
       type="button"
       onClick={() => onSelectQuery?.(current.query)}
       className={cn(
-        "flex flex-col items-center gap-1 transition-all duration-300 rounded-xl px-4 py-3 -mx-4 -my-3",
-        "hover:bg-foreground/[0.04] cursor-pointer",
-        isVisible ? "opacity-100" : "opacity-0"
+        "flex flex-col items-center gap-1 cursor-pointer group",
+        isVisible ? "opacity-100" : "opacity-0",
+        "transition-opacity duration-300 hover:transition-none"
       )}
     >
       <div className={cn("w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0", current.iconBg)}>
         <IconComponent className={cn("h-4 w-4", current.iconColor)} />
       </div>
-      <p className="text-[12px] text-muted-foreground/60 italic">
+      <p className="text-[12px] text-muted-foreground/60 italic group-hover:text-muted-foreground transition-colors hover:transition-none">
         &ldquo;{current.query}&rdquo;
       </p>
     </button>
@@ -426,8 +426,9 @@ export function CmdKSearch({
 
     const searchLower = query.toLowerCase().trim();
     return commands.filter((cmd) => {
-      // AI command is always included when there's a query
+      // AI and Run Query commands are always included when there's a query
       if (cmd.id === "ai/ask") return true;
+      if (cmd.id === "query/run") return true;
       if (cmd.label.toLowerCase().includes(searchLower)) return true;
       if (cmd.description.toLowerCase().includes(searchLower)) return true;
       if (cmd.keywords?.some((k) => k.includes(searchLower))) return true;
