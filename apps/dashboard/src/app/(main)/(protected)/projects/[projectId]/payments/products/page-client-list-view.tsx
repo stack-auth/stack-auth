@@ -7,7 +7,7 @@ import { useHover } from "@stackframe/stack-shared/dist/hooks/use-hover";
 import { DayInterval } from "@stackframe/stack-shared/dist/utils/dates";
 import { prettyPrintWithMagnitudes } from "@stackframe/stack-shared/dist/utils/numbers";
 import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
-import { Button, Card, CardContent, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, toast } from "@stackframe/stack-ui";
+import { Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, toast } from "@stackframe/stack-ui";
 import { MoreVertical, Plus } from "lucide-react";
 import React, { ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { IllustratedInfo } from "../../../../../../../components/illustrated-info";
@@ -30,9 +30,12 @@ function ActionMenu({ items }: { items: ActionMenuItem[] }) {
         <Button
           variant="ghost"
           className={cn(
-            "h-8 w-8 p-0 relative",
-            "hover:bg-secondary/80",
-            isOpen && "bg-secondary/80"
+            "h-7 w-7 p-0 rounded-lg",
+            "text-muted-foreground hover:text-foreground",
+            "hover:bg-foreground/[0.05]",
+            "transition-all duration-150 hover:transition-none",
+            "opacity-0 group-hover:opacity-100",
+            isOpen && "opacity-100 bg-foreground/[0.05]"
           )}
         >
           <MoreVertical className="h-4 w-4" />
@@ -97,34 +100,38 @@ function ListItem({
     <div
       ref={itemRef}
       className={cn(
-        "px-3 py-3 cursor-pointer relative duration-200 hover:duration-0 hover:bg-primary/10 transition-colors flex items-center justify-between group",
-        isHovered && "duration-0",
-        isHighlighted && "bg-primary/10",
-        !isMenuHovered && isHovered && "bg-primary/10",
-        isMenuHovered && isHovered && "bg-primary/5",
-        isHighlighted && !isMenuHovered && isHovered && "hover:bg-primary/20"
+        "px-4 py-3.5 cursor-pointer relative rounded-xl mx-3 my-1",
+        "flex items-center justify-between gap-3 group",
+        "transition-all duration-150 hover:transition-none",
+        "bg-background/50 dark:bg-foreground/[0.02]",
+        "border border-transparent",
+        isHighlighted
+          ? "bg-cyan-500/[0.1] dark:bg-cyan-500/[0.08] border-cyan-500/30 shadow-sm"
+          : "hover:bg-background dark:hover:bg-foreground/[0.04] hover:border-border/40 dark:hover:border-foreground/[0.08] hover:shadow-sm",
+        isHighlighted && isHovered && "bg-cyan-500/[0.15] dark:bg-cyan-500/[0.12]"
       )}
       onClick={onClick}
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}
     >
-      <div className="flex-1">
-        <div className="text-xs text-muted-foreground">
-          <span className="uppercase font-medium">{customerType}</span>
-          <span className="mx-1">—</span>
-          <span className="font-mono">{id}</span>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+          <span className="uppercase font-semibold tracking-wide">{customerType}</span>
+          <span className="text-muted-foreground/50">—</span>
+          <span className="font-mono truncate">{id}</span>
         </div>
-        <div className="font-medium text-sm mt-1">
+        <div className="font-semibold text-sm mt-1 text-foreground truncate">
           {displayName || id}
         </div>
         {subtitle && (
-          <div className="text-xs text-muted-foreground mt-1">
+          <div className="text-xs text-muted-foreground mt-0.5 tabular-nums">
             {subtitle}
           </div>
         )}
       </div>
       {actionItems && (
         <div
+          className="shrink-0"
           onClick={(e) => e.stopPropagation()}
           onMouseEnter={() => setIsMenuHovered(true)}
           onMouseLeave={() => setIsMenuHovered(false)}
@@ -151,18 +158,15 @@ type ListGroupProps = {
 
 function ListGroup({ title, children }: ListGroupProps) {
   return (
-    <div className="mb-6 relative">
+    <div className="mb-2">
       {title && (
-        <div className="sticky top-0 bg-muted backdrop-blur-lg px-3 py-2 border-t z-[1]">
-          <h3 className="text-sm font-medium text-muted-foreground">
+        <div className="sticky top-0 z-[1] px-4 py-2.5 bg-gray-100/90 dark:bg-foreground/[0.04] backdrop-blur-sm border-b border-border/30 dark:border-foreground/[0.06]">
+          <h3 className="text-xs font-bold uppercase tracking-wider text-foreground/70">
             {title}
           </h3>
         </div>
       )}
-      <div className="absolute top-2 left-2 w-3 h-full border-l border-b rounded-bl-md">
-
-      </div>
-      <div className="pl-4">
+      <div className="py-2">
         {children}
       </div>
     </div>
@@ -227,30 +231,39 @@ function ConnectionLine({ fromRef, toRef, containerRef, quantity }: ConnectionLi
       className="absolute inset-0 pointer-events-none z-20"
       style={{ width: '100%', height: '100%' }}
     >
+      <defs>
+        <linearGradient id="lineGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+          <stop offset="0%" stopColor="hsl(200, 91%, 70%)" stopOpacity="0.4" />
+          <stop offset="100%" stopColor="hsl(200, 91%, 70%)" stopOpacity="0.4" />
+        </linearGradient>
+      </defs>
       <g>
         <path
           d={path}
           fill="none"
-          stroke="currentColor"
+          stroke="url(#lineGradient)"
           strokeWidth="2"
-          className="text-primary/30"
-          strokeDasharray="5 5"
+          strokeDasharray="6 4"
+          strokeLinecap="round"
         />
         {quantity && quantity > 0 && midpoint && (
           <>
             <circle
               cx={midpoint.x}
               cy={midpoint.y}
-              r="12"
+              r="14"
               className="fill-background"
-              strokeWidth="0"
+              stroke="hsl(200, 91%, 70%)"
+              strokeWidth="1"
+              strokeOpacity="0.3"
             />
             <text
               x={midpoint.x}
               y={midpoint.y}
               textAnchor="middle"
               dominantBaseline="middle"
-              className="text-xs font-medium fill-primary/50"
+              className="text-[11px] font-semibold"
+              fill="hsl(200, 91%, 70%)"
             >
               ×{prettyPrintWithMagnitudes(quantity)}
             </text>
@@ -764,15 +777,15 @@ export default function PageClient() {
   const innerContent = (
     <>
       {/* Mobile tabs */}
-      < div className="lg:hidden mb-4" >
-        <div className="flex space-x-1 bg-muted p-1 rounded-md">
+      <div className="lg:hidden mb-4">
+        <div className="inline-flex items-center gap-1 rounded-xl bg-foreground/[0.04] p-1 backdrop-blur-sm">
           <button
             onClick={() => setActiveTab("products")}
             className={cn(
-              "flex-1 px-3 py-2 rounded-sm text-sm font-medium transition-all",
+              "px-4 py-2 text-sm font-medium rounded-lg transition-all duration-150 hover:transition-none",
               activeTab === "products"
-                ? "bg-background text-foreground shadow-sm"
-                : "text-muted-foreground hover:text-foreground"
+                ? "bg-background text-foreground shadow-sm ring-1 ring-foreground/[0.06]"
+                : "text-muted-foreground hover:text-foreground hover:bg-background/50"
             )}
           >
             Products
@@ -780,57 +793,57 @@ export default function PageClient() {
           <button
             onClick={() => setActiveTab("items")}
             className={cn(
-              "flex-1 px-3 py-2 rounded-sm text-sm font-medium transition-all",
+              "px-4 py-2 text-sm font-medium rounded-lg transition-all duration-150 hover:transition-none",
               activeTab === "items"
-                ? "bg-background text-foreground shadow-sm"
-                : "text-muted-foreground hover:text-foreground"
+                ? "bg-background text-foreground shadow-sm ring-1 ring-foreground/[0.06]"
+                : "text-muted-foreground hover:text-foreground hover:bg-background/50"
             )}
           >
             Items
           </button>
         </div>
-      </div >
+      </div>
 
       {/* Content */}
-      <div className="flex gap-6 flex-1" style={{
-        flexBasis: "0px",
-        overflow: "scroll",
-      }
-      }>
+      <div className="flex gap-6 flex-1 min-h-0 overflow-auto">
         {/* Desktop two-column layout */}
-        <Card className="hidden lg:flex w-full relative" ref={containerRef} >
-          <CardContent className="flex w-full">
-            <div className="flex-1">
-              <ProductsList
-                groupedProducts={groupedProducts}
-                paymentsGroups={paymentsConfig.catalogs}
-                hoveredItemId={hoveredItemId}
-                getConnectedProducts={getConnectedProducts}
-                productRefs={productRefs}
-                onProductMouseEnter={setHoveredProductId}
-                onProductMouseLeave={() => setHoveredProductId(null)}
-                onProductAdd={handleCreateProduct}
-                setEditingProduct={setEditingProduct}
-                setShowProductDialog={setShowProductDialog}
-              />
-            </div>
-          </CardContent>
-          <div className="border-l" />
-          <CardContent className="flex gap-6 w-full">
-            <div className="flex-1">
-              <ItemsList
-                items={paymentsConfig.items}
-                hoveredProductId={hoveredProductId}
-                getConnectedItems={getConnectedItems}
-                itemRefs={itemRefs}
-                onItemMouseEnter={setHoveredItemId}
-                onItemMouseLeave={() => setHoveredItemId(null)}
-                onItemAdd={handleCreateItem}
-                setEditingItem={setEditingItem}
-                setShowItemDialog={setShowItemDialog}
-              />
-            </div>
-          </CardContent>
+        <div
+          ref={containerRef}
+          className={cn(
+            "hidden lg:flex w-full relative rounded-2xl overflow-hidden",
+            "bg-gray-100/80 dark:bg-foreground/[0.03]",
+            "border border-border/40 dark:border-foreground/[0.08]",
+            "shadow-sm backdrop-blur-xl"
+          )}
+        >
+          <div className="flex-1 min-w-0">
+            <ProductsList
+              groupedProducts={groupedProducts}
+              paymentsGroups={paymentsConfig.catalogs}
+              hoveredItemId={hoveredItemId}
+              getConnectedProducts={getConnectedProducts}
+              productRefs={productRefs}
+              onProductMouseEnter={setHoveredProductId}
+              onProductMouseLeave={() => setHoveredProductId(null)}
+              onProductAdd={handleCreateProduct}
+              setEditingProduct={setEditingProduct}
+              setShowProductDialog={setShowProductDialog}
+            />
+          </div>
+          <div className="w-px bg-border/60 dark:bg-foreground/[0.1]" />
+          <div className="flex-1 min-w-0">
+            <ItemsList
+              items={paymentsConfig.items}
+              hoveredProductId={hoveredProductId}
+              getConnectedItems={getConnectedItems}
+              itemRefs={itemRefs}
+              onItemMouseEnter={setHoveredItemId}
+              onItemMouseLeave={() => setHoveredItemId(null)}
+              onItemAdd={handleCreateItem}
+              setEditingItem={setEditingItem}
+              setShowItemDialog={setShowItemDialog}
+            />
+          </div>
 
           {/* Connection lines */}
           {
@@ -856,10 +869,15 @@ export default function PageClient() {
               />
             ))
           }
-        </Card >
+        </div>
 
         {/* Mobile single column with tabs */}
-        < div className="lg:hidden w-full" >
+        <div className={cn(
+          "lg:hidden w-full rounded-2xl overflow-hidden",
+          "bg-gray-100/80 dark:bg-foreground/[0.03]",
+          "border border-border/40 dark:border-foreground/[0.08]",
+          "shadow-sm backdrop-blur-xl"
+        )}>
           {activeTab === "products" ? (
             <ProductsList
               groupedProducts={groupedProducts}
@@ -884,8 +902,8 @@ export default function PageClient() {
               setShowItemDialog={setShowItemDialog}
             />
           )}
-        </div >
-      </div >
+        </div>
+      </div>
     </>
   );
 
