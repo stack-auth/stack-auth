@@ -8,12 +8,31 @@ import {
     SelectContent,
     SelectItem,
     SelectTrigger,
-    SelectValue
+    SelectValue,
+    SimpleTooltip
 } from "@stackframe/stack-ui";
-import { X } from "lucide-react";
+import { Info, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { IntervalPopover } from "./components";
 import { buildPriceUpdate, DEFAULT_INTERVAL_UNITS, freeTrialLabel, intervalLabel, PRICE_INTERVAL_UNITS, Product } from "./utils";
+
+/**
+ * Label with optional info tooltip
+ */
+function LabelWithInfo({ children, tooltip }: { children: React.ReactNode, tooltip?: string }) {
+  return (
+    <div className="flex items-center gap-1.5">
+      <Label className="text-[11px] font-medium uppercase tracking-[0.24em] text-muted-foreground">
+        {children}
+      </Label>
+      {tooltip && (
+        <SimpleTooltip tooltip={tooltip}>
+          <Info className="h-3 w-3 text-muted-foreground/60 cursor-help" />
+        </SimpleTooltip>
+      )}
+    </div>
+  );
+}
 
 type ProductPriceRowProps = {
   priceId: string,
@@ -103,9 +122,9 @@ export function ProductPriceRow({
   return (
     <div
       className={cn(
-        "relative rounded-xl px-4 py-4",
+        "relative rounded-2xl px-4 py-4",
         isEditing
-          ? "flex flex-col gap-4 border border-border/60 bg-muted/30"
+          ? "flex flex-col gap-4 border border-border/60 dark:border-foreground/[0.12] bg-background/60 dark:bg-[hsl(240,10%,7%)]"
           : "items-center justify-center text-center"
       )}
     >
@@ -142,13 +161,17 @@ export function ProductPriceRow({
               // Paid price - show full editor
               <>
                 {/* Amount */}
-                <div className="flex flex-col gap-1">
-                  <Label className="text-[11px] font-medium uppercase tracking-[0.24em] text-muted-foreground">
+                <div className="flex flex-col gap-1.5">
+                  <LabelWithInfo tooltip="The price in USD that customers will pay">
                     Amount
-                  </Label>
+                  </LabelWithInfo>
                   <div className="relative">
                     <Input
-                      className="h-10 w-full rounded-xl border border-border bg-background !pl-5 pr-3 text-base font-semibold tabular-nums"
+                      className={cn(
+                        "h-10 w-full !pl-5 pr-3 text-base font-semibold tabular-nums",
+                        "rounded-xl border border-border/60 dark:border-foreground/[0.1]",
+                        "bg-background dark:bg-[hsl(240,10%,10%)]"
+                      )}
                       tabIndex={0}
                       inputMode="decimal"
                       value={amount}
@@ -168,10 +191,10 @@ export function ProductPriceRow({
                 </div>
 
                 {/* Billing Frequency */}
-                <div className="flex flex-col gap-1">
-                  <Label className="text-[11px] font-medium uppercase tracking-[0.24em] text-muted-foreground">
+                <div className="flex flex-col gap-1.5">
+                  <LabelWithInfo tooltip="How often customers are charged (one-time for single purchases, or recurring for subscriptions)">
                     Billing Frequency
-                  </Label>
+                  </LabelWithInfo>
                   <IntervalPopover
                     readOnly={readOnly}
                     intervalText={intervalText}
@@ -182,7 +205,12 @@ export function ProductPriceRow({
                     setUnit={setPriceInterval}
                     setCount={setIntervalCount}
                     allowedUnits={PRICE_INTERVAL_UNITS}
-                    triggerClassName="flex h-10 w-full items-center justify-between rounded-xl border border-border bg-background px-3 text-sm font-medium capitalize text-foreground shadow-sm"
+                    triggerClassName={cn(
+                      "flex h-10 w-full items-center justify-between px-3 text-sm font-medium capitalize text-foreground",
+                      "rounded-xl border border-border/60 dark:border-foreground/[0.1]",
+                      "bg-background dark:bg-[hsl(240,10%,10%)]",
+                      "transition-colors duration-150 hover:transition-none hover:bg-foreground/[0.03]"
+                    )}
                     onChange={(interval) => {
                       savePriceUpdate();
                     }}
@@ -190,7 +218,7 @@ export function ProductPriceRow({
                 </div>
 
                 {/* Free Trial */}
-                <div className="flex flex-col gap-1">
+                <div className="flex flex-col gap-1.5">
                   <div className="flex items-center space-x-2 rounded-xl">
                     <Checkbox
                       id={`free-trial-enabled-${priceId}`}
@@ -200,7 +228,8 @@ export function ProductPriceRow({
                         if (checked) {
                           savePriceUpdate({ freeTrial: [freeTrialCount || 7, freeTrialUnit || 'day'] });
                         } else {
-                          savePriceUpdate({ freeTrial: undefined });
+                          // Pass null to explicitly remove free trial
+                          savePriceUpdate({ freeTrial: null });
                         }
                       }}
                     />
@@ -215,7 +244,11 @@ export function ProductPriceRow({
                     <div className="flex items-center gap-2 mt-2">
                       <div className="w-20">
                         <Input
-                          className="h-10 w-full rounded-xl border border-border bg-background text-right tabular-nums"
+                          className={cn(
+                            "h-10 w-full text-right tabular-nums",
+                            "rounded-xl border border-border/60 dark:border-foreground/[0.1]",
+                            "bg-background dark:bg-[hsl(240,10%,10%)]"
+                          )}
                           inputMode="numeric"
                           value={freeTrialCount}
                           onChange={(e) => {
@@ -238,7 +271,11 @@ export function ProductPriceRow({
                             savePriceUpdate({ freeTrial: [freeTrialCount, newUnit] });
                           }}
                         >
-                          <SelectTrigger className="h-10 rounded-xl border border-border bg-background">
+                          <SelectTrigger className={cn(
+                            "h-10",
+                            "rounded-xl border border-border/60 dark:border-foreground/[0.1]",
+                            "bg-background dark:bg-[hsl(240,10%,10%)]"
+                          )}>
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
@@ -281,7 +318,7 @@ export function ProductPriceRow({
 
           {onRemove && (
             <button
-              className="absolute right-3 top-3 text-muted-foreground transition-colors hover:text-foreground"
+              className="absolute right-3 top-3 p-1 rounded-md text-muted-foreground transition-colors duration-150 hover:transition-none hover:text-foreground hover:bg-foreground/[0.05]"
               onClick={onRemove}
               aria-label="Remove price"
             >

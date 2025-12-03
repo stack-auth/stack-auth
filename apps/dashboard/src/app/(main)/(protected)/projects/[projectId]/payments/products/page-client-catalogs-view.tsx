@@ -27,7 +27,7 @@ import {
   SimpleTooltip,
   toast
 } from "@stackframe/stack-ui";
-import { ChevronsUpDown, Code, Copy, FileText, Gift, Layers, MoreVertical, Pencil, Plus, Puzzle, Server, Trash2, X } from "lucide-react";
+import { ChevronsUpDown, Code, Copy, FileText, Gift, Info, Layers, MoreVertical, Pencil, Plus, Puzzle, Server, Trash2, X } from "lucide-react";
 import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useAdminApp } from "../../use-admin-app";
 import { IntervalPopover, OrSeparator, SectionHeading } from "./components";
@@ -113,24 +113,46 @@ function ProductEditableInput({
 }
 
 // ============================================================================
+// Helper Components
+// ============================================================================
+
+/**
+ * Label with optional info tooltip for technical terms
+ */
+function LabelWithInfo({ children, tooltip }: { children: React.ReactNode, tooltip?: string }) {
+  return (
+    <div className="flex items-center gap-1.5">
+      <Label className="text-[11px] font-medium uppercase tracking-[0.24em] text-muted-foreground">
+        {children}
+      </Label>
+      {tooltip && (
+        <SimpleTooltip tooltip={tooltip}>
+          <Info className="h-3 w-3 text-muted-foreground/60 cursor-help" />
+        </SimpleTooltip>
+      )}
+    </div>
+  );
+}
+
+// ============================================================================
 // Product Item Row Component
 // ============================================================================
 
 const EXPIRES_OPTIONS: Array<{ value: Product["includedItems"][string]["expires"], label: string, description: string }> = [
   {
     value: 'never' as const,
-    label: 'Never expires',
-    description: 'Items granted remain with the customer'
+    label: 'Never',
+    description: 'Customer keeps these items forever, even after subscription ends'
   },
   {
     value: 'when-purchase-expires' as const,
-    label: 'When purchase expires',
-    description: 'Items granted are removed when subscription ends'
+    label: 'With subscription',
+    description: 'Items are removed when the subscription ends or is cancelled'
   },
   {
     value: 'when-repeated' as const,
-    label: 'When repeated',
-    description: 'Items granted expire when they\'re granted again',
+    label: 'Until next renewal',
+    description: 'Items reset each billing cycle (e.g., monthly credits that refresh)'
   }
 ];
 
@@ -159,7 +181,7 @@ function ProductItemRow({
   allItems: Array<{ id: string, displayName: string, customerType: string }>,
   existingIncludedItemIds: string[],
   onChangeItemId: (newItemId: string) => void,
-  onCreateNewItem: (customerType?: 'user' | 'team' | 'custom') => void,
+  onCreateNewItem: (customerType?: 'user' | 'team' | 'custom', onCreated?: (itemId: string) => void) => void,
 }) {
   const [isEditing, setIsEditing] = useState<boolean>(false);
   const [quantity, setQuantity] = useState<string>(String(item.quantity));
@@ -192,76 +214,96 @@ function ProductItemRow({
   const repeatText = item.repeat === 'never' ? null : intervalLabel(item.repeat);
   const shortRepeatText = shortIntervalLabel(item.repeat);
 
+  // Consistent dropdown button styling
+  const dropdownButtonClass = cn(
+    "flex h-10 w-full items-center justify-between px-3 text-sm font-medium",
+    "rounded-xl border border-border/60 dark:border-foreground/[0.1]",
+    "bg-background dark:bg-[hsl(240,10%,10%)]",
+    "transition-colors duration-150 hover:transition-none hover:bg-foreground/[0.03]"
+  );
+
   if (isEditing) {
     return (
-      <div className="relative rounded-2xl border border-foreground bg-muted/30 p-4">
+      <div className={cn(
+        "relative rounded-2xl p-4",
+        "border border-border/60 dark:border-foreground/[0.12]",
+        "bg-background/60 dark:bg-[hsl(240,10%,7%)]"
+      )}>
         <div className="grid gap-4 sm:grid-cols-2">
-          <div className="flex flex-col gap-1">
-            <Label className="text-[11px] font-medium uppercase tracking-[0.24em] text-muted-foreground">
+          <div className="flex flex-col gap-1.5">
+            <LabelWithInfo tooltip="Select the type of resource or credit to grant when this product is purchased">
               Item Name
-            </Label>
+            </LabelWithInfo>
             <Popover open={itemSelectOpen} onOpenChange={setItemSelectOpen}>
               <PopoverTrigger asChild>
-                <button className="flex h-10 w-full items-center justify-between rounded-xl border border-border bg-background px-3 text-sm font-medium">
+                <button className={dropdownButtonClass}>
                   <span className="truncate">{itemDisplayName}</span>
                   <ChevronsUpDown className="h-4 w-4 text-muted-foreground" />
                 </button>
               </PopoverTrigger>
-              <PopoverContent align="start" className="w-72 p-2">
-                <div className="flex max-h-64 flex-col gap-1 overflow-auto">
+              <PopoverContent align="start" className="w-72 p-0 overflow-hidden">
+                <div className="flex max-h-64 flex-col overflow-auto p-1">
                   {allItems.filter(opt => opt.customerType === activeType).map((opt) => {
                     const isSelected = opt.id === itemId;
                     const isUsed = existingIncludedItemIds.includes(opt.id) && !isSelected;
                     return (
-                      <Button
+                      <button
                         key={opt.id}
-                        variant={isSelected ? 'secondary' : 'ghost'}
-                        size="sm"
-                        className="justify-start text-left"
                         disabled={isUsed}
+                        className={cn(
+                          "flex flex-col items-start w-full px-3 py-2 rounded-lg text-left",
+                          "transition-colors duration-150 hover:transition-none",
+                          isSelected
+                            ? "bg-foreground/[0.08] text-foreground"
+                            : "hover:bg-foreground/[0.04] text-foreground",
+                          isUsed && "opacity-40 cursor-not-allowed"
+                        )}
                         onClick={() => {
-                          if (isSelected) {
+                          if (isSelected || isUsed) {
                             setItemSelectOpen(false);
-                            return;
-                          }
-                          if (isUsed) {
-                            toast({ title: 'Item already included' });
                             return;
                           }
                           onChangeItemId(opt.id);
                           setItemSelectOpen(false);
                         }}
                       >
-                        <div className="flex flex-col items-start">
-                          <span>{opt.displayName || opt.id}</span>
-                          <span className="text-xs text-muted-foreground">{opt.customerType.toUpperCase()} • {opt.id}</span>
-                        </div>
-                      </Button>
+                        <span className="font-medium">{opt.displayName || opt.id}</span>
+                        <span className="text-xs text-muted-foreground">{opt.customerType.toUpperCase()} • {opt.id}</span>
+                      </button>
                     );
                   })}
-                  <div className="mt-1 border-t pt-1">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="justify-start text-primary"
-                      onClick={() => {
-                        setItemSelectOpen(false);
-                        onCreateNewItem(activeType);
-                      }}
-                    >
-                      <Plus className="mr-2 h-4 w-4" /> New Item
-                    </Button>
-                  </div>
+                </div>
+                <div className="border-t border-border/30 p-1">
+                  <button
+                    className={cn(
+                      "flex items-center w-full px-3 py-2 rounded-lg text-left text-sm font-medium",
+                      "text-primary hover:bg-primary/[0.08]",
+                      "transition-colors duration-150 hover:transition-none"
+                    )}
+                    onClick={() => {
+                      setItemSelectOpen(false);
+                      onCreateNewItem(activeType, (newItemId) => {
+                        // Auto-select the newly created item
+                        onChangeItemId(newItemId);
+                      });
+                    }}
+                  >
+                    <Plus className="mr-2 h-4 w-4" /> New Item
+                  </button>
                 </div>
               </PopoverContent>
             </Popover>
           </div>
-          <div className="flex flex-col gap-1">
-            <Label className="text-[11px] font-medium uppercase tracking-[0.24em] text-muted-foreground">
+          <div className="flex flex-col gap-1.5">
+            <LabelWithInfo tooltip="Number of units to grant each time (e.g., 100 credits, 5 seats)">
               Quantity
-            </Label>
+            </LabelWithInfo>
             <Input
-              className="h-10 w-full rounded-xl border border-border bg-background pr-3 text-right tabular-nums"
+              className={cn(
+                "h-10 w-full px-3 text-right tabular-nums",
+                "rounded-xl border border-border/60 dark:border-foreground/[0.1]",
+                "bg-background dark:bg-[hsl(240,10%,10%)]"
+              )}
               inputMode="numeric"
               value={quantity}
               onChange={(e) => {
@@ -274,46 +316,50 @@ function ProductItemRow({
         </div>
 
         <div className="mt-4 grid gap-4 sm:grid-cols-2">
-          <div className="flex flex-col gap-1">
-            <Label className="text-[11px] font-medium uppercase tracking-[0.24em] text-muted-foreground">
-              Purchase expires
-            </Label>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <button className="flex h-10 w-full items-center justify-between rounded-xl border border-border bg-background px-3 text-sm font-medium">
+          <div className="flex flex-col gap-1.5">
+            <LabelWithInfo tooltip="When should these items be removed from the customer?">
+              Expires
+            </LabelWithInfo>
+            <Popover>
+              <PopoverTrigger asChild>
+                <button className={dropdownButtonClass}>
                   <span className="truncate">
-                    {item.expires === 'never'
-                      ? 'Never expires'
-                      : EXPIRES_OPTIONS.find(o => o.value === item.expires)?.label ?? 'Custom'}
+                    {EXPIRES_OPTIONS.find(o => o.value === item.expires)?.label ?? 'Never'}
                   </span>
                   <ChevronsUpDown className="h-4 w-4 text-muted-foreground" />
                 </button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" className="p-2">
-                <div className="flex flex-col gap-2">
-                  {EXPIRES_OPTIONS.map((option) => (
-                    <DropdownMenuItem key={option.value} className="p-0">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="flex w-full flex-col items-start text-left"
+              </PopoverTrigger>
+              <PopoverContent align="start" className="w-80 p-0 overflow-hidden">
+                <div className="flex flex-col p-1">
+                  {EXPIRES_OPTIONS.map((option) => {
+                    const isSelected = item.expires === option.value;
+                    return (
+                      <button
+                        key={option.value}
+                        className={cn(
+                          "flex flex-col items-start w-full px-3 py-2.5 rounded-lg text-left",
+                          "transition-colors duration-150 hover:transition-none",
+                          isSelected
+                            ? "bg-foreground/[0.08] text-foreground"
+                            : "hover:bg-foreground/[0.04] text-foreground"
+                        )}
                         onClick={() => {
                           onSave(itemId, { ...item, expires: option.value });
                         }}
                       >
-                        {option.label}
+                        <span className="font-medium">{option.label}</span>
                         <span className="text-xs text-muted-foreground">{option.description}</span>
-                      </Button>
-                    </DropdownMenuItem>
-                  ))}
+                      </button>
+                    );
+                  })}
                 </div>
-              </DropdownMenuContent>
-            </DropdownMenu>
+              </PopoverContent>
+            </Popover>
           </div>
-          <div className="flex flex-col gap-1">
-            <Label className="text-[11px] font-medium uppercase tracking-[0.24em] text-muted-foreground">
+          <div className="flex flex-col gap-1.5">
+            <LabelWithInfo tooltip="How often should these items be granted? (e.g., monthly credits)">
               Repeat
-            </Label>
+            </LabelWithInfo>
             <IntervalPopover
               readOnly={readOnly}
               intervalText={repeatText}
@@ -323,8 +369,8 @@ function ProductItemRow({
               setIntervalSelection={setRepeatSelection}
               setUnit={setRepeatUnit}
               setCount={setRepeatCount}
-              noneLabel="one time"
-              triggerClassName="flex h-10 w-full items-center justify-between rounded-xl border border-border bg-background px-3 text-sm font-medium capitalize"
+              noneLabel="One-time only"
+              triggerClassName={dropdownButtonClass + " capitalize"}
               onChange={(interval) => {
                 if (readOnly) return;
                 const updated: Product['includedItems'][string] = {
@@ -339,7 +385,7 @@ function ProductItemRow({
 
         {onRemove && (
           <button
-            className="absolute right-4 top-4 text-muted-foreground transition-colors hover:text-foreground"
+            className="absolute right-3 top-3 p-1 rounded-md text-muted-foreground transition-colors duration-150 hover:transition-none hover:text-foreground hover:bg-foreground/[0.05]"
             onClick={onRemove}
             aria-label="Remove item"
           >
@@ -927,85 +973,106 @@ function ProductCard({ id, activeType, product, allProducts, existingItems, onSa
   };
 
   const editingContent = (
-    <div className={cn("flex h-full flex-col rounded-3xl border border-border bg-background/95 shadow-lg transition-colors duration-600",
+    <div className={cn(
+      "flex h-full flex-col rounded-2xl overflow-hidden",
+      "bg-gray-200/80 dark:bg-[hsl(240,10%,5.5%)]",
+      "border border-border/50 dark:border-foreground/[0.12]",
+      "shadow-lg transition-colors duration-150",
       isHashTarget && "border-primary shadow-[0_0_0_1px_rgba(59,130,246,0.35)]"
     )}>
-      <div className="flex flex-col gap-6 p-6">
-        <div>
-          <div className="text-xl font-semibold tracking-tight">
-            {isDraft ? "New product" : "Edit product"}
-          </div>
-        </div>
+      {/* Header */}
+      <div className="px-5 pt-5 pb-4 border-b border-border/20 dark:border-foreground/[0.06]">
+        <h2 className="text-lg font-semibold tracking-tight text-center">
+          {isDraft ? "New product" : "Edit product"}
+        </h2>
+      </div>
 
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div className="flex flex-col gap-1">
-            <Label className="text-[11px] font-medium uppercase tracking-[0.24em] text-muted-foreground">
-              Offer Name
-            </Label>
-            <Input
-              className="h-10 rounded-xl border border-border bg-background px-3 text-sm"
-              value={draft.displayName || ""}
-              onChange={(event) => {
-                const value = event.target.value;
-                setDraft(prev => ({ ...prev, displayName: value }));
-              }}
-              placeholder="Offer name"
-            />
-          </div>
-          <div className="flex flex-col gap-1">
-            <Label className="text-[11px] font-medium uppercase tracking-[0.24em] text-muted-foreground">
-              Offer ID
-            </Label>
-            <SimpleTooltip tooltip={isDraft ? undefined : "Offer IDs cannot be changed after creation"}>
+      {/* Content */}
+      <div className="flex-1 overflow-y-auto">
+        <div className="flex flex-col gap-5 p-5">
+          {/* Name & ID Fields */}
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="flex flex-col gap-1.5">
+              <LabelWithInfo tooltip="The display name shown to customers on checkout pages and invoices">
+                Offer Name
+              </LabelWithInfo>
               <Input
-                className="h-10 rounded-xl border border-border bg-background px-3 text-sm"
-                value={localProductId}
+                className="h-10 rounded-xl border border-border/60 dark:border-foreground/[0.1] bg-background dark:bg-[hsl(240,10%,8%)] px-3 text-sm"
+                value={draft.displayName || ""}
                 onChange={(event) => {
-                  const value = event.target.value.toLowerCase().replace(/[^a-z0-9_\-]/g, '-');
-                    setLocalProductId(value);
+                  const value = event.target.value;
+                  setDraft(prev => ({ ...prev, displayName: value }));
                 }}
-                placeholder="offer-id"
-                disabled={!isDraft}
+                placeholder="e.g., Pro Plan"
               />
-            </SimpleTooltip>
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <LabelWithInfo tooltip="A unique identifier used in your code to reference this product. Use lowercase letters, numbers, and hyphens only.">
+                Offer ID
+              </LabelWithInfo>
+              <SimpleTooltip tooltip={isDraft ? undefined : "Offer IDs cannot be changed after creation"}>
+                <Input
+                  className="h-10 rounded-xl border border-border/60 dark:border-foreground/[0.1] bg-background dark:bg-[hsl(240,10%,8%)] px-3 text-sm font-mono"
+                  value={localProductId}
+                  onChange={(event) => {
+                    const value = event.target.value.toLowerCase().replace(/[^a-z0-9_\-]/g, '-');
+                    setLocalProductId(value);
+                  }}
+                  placeholder="e.g., pro-plan"
+                  disabled={!isDraft}
+                />
+              </SimpleTooltip>
+            </div>
           </div>
-        </div>
 
-        <div className="flex flex-wrap gap-2">
-          {renderToggleButtons('editing')}
-        </div>
+          {/* Toggle Options */}
+          <div className="flex flex-wrap gap-2">
+            {renderToggleButtons('editing')}
+          </div>
 
-        <SectionHeading label="Prices" />
-        <div className="flex flex-col gap-3">
-          {renderPrimaryPrices('editing')}
-          {!editingPricesIsFreeMode && (
-            <div className="flex flex-row gap-4 items-center">
-              <Button
-                variant="outline"
-                className="flex h-10 w-full items-center justify-center gap-2 rounded-xl border border-dashed border-border/70 bg-background/80 text-sm font-medium"
-                onClick={() => {
-                  const tempId = `price-${Date.now().toString(36).slice(2, 8)}`;
-                  const newPrice: Price = { USD: '0.00', serverOnly: false };
-                  setDraft(prev => {
-                    const nextPrices: PricesObject = {
-                      ...getPricesObject(prev),
-                      [tempId]: newPrice,
-                    };
-                    return { ...prev, prices: nextPrices };
-                  });
-                  setEditingPriceId(tempId);
-                }}
-              >
-                <Plus className="h-4 w-4" />
-                {hasExistingPrices ? "Add alternative price" : "Add price"}
-              </Button>
-              {
-                !hasExistingPrices && (
+          {/* Prices Section */}
+          <SectionHeading label="Prices" />
+          <div className="flex flex-col gap-3">
+            {renderPrimaryPrices('editing')}
+            {!editingPricesIsFreeMode && (
+              <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center">
+                <Button
+                  variant="outline"
+                  className={cn(
+                    "flex h-10 flex-1 items-center justify-center gap-2",
+                    "rounded-xl border border-dashed border-foreground/[0.1]",
+                    "bg-background/40 dark:bg-[hsl(240,10%,8%)]/50 hover:bg-foreground/[0.03]",
+                    "text-sm font-medium text-muted-foreground hover:text-foreground",
+                    "transition-all duration-150 hover:transition-none"
+                  )}
+                  onClick={() => {
+                    const tempId = `price-${Date.now().toString(36).slice(2, 8)}`;
+                    const newPrice: Price = { USD: '0.00', serverOnly: false };
+                    setDraft(prev => {
+                      const nextPrices: PricesObject = {
+                        ...getPricesObject(prev),
+                        [tempId]: newPrice,
+                      };
+                      return { ...prev, prices: nextPrices };
+                    });
+                    setEditingPriceId(tempId);
+                  }}
+                >
+                  <Plus className="h-4 w-4" />
+                  {hasExistingPrices ? "Add alternative price" : "Add price"}
+                </Button>
+                {!hasExistingPrices && (
                   <>
-                    <span className="text-sm text-muted-foreground">OR</span>
+                    <span className="text-[10px] font-medium text-muted-foreground/60 uppercase tracking-wider text-center">or</span>
                     <Button
                       variant="outline"
-                      className="flex h-10 w-full items-center justify-center gap-2 rounded-xl border border-dashed border-border/70 bg-background/80 text-sm font-medium"
+                      className={cn(
+                        "flex h-10 flex-1 items-center justify-center gap-2",
+                        "rounded-xl border border-dashed border-foreground/[0.1]",
+                        "bg-background/40 dark:bg-[hsl(240,10%,8%)]/50 hover:bg-foreground/[0.03]",
+                        "text-sm font-medium text-muted-foreground hover:text-foreground",
+                        "transition-all duration-150 hover:transition-none"
+                      )}
                       onClick={() => {
                         setDraft(prev => ({ ...prev, prices: { free: { USD: '0.00', serverOnly: false } } }));
                         setEditingPricesIsFreeMode(true);
@@ -1015,106 +1082,120 @@ function ProductCard({ id, activeType, product, allProducts, existingItems, onSa
                       Make free
                     </Button>
                   </>
-                )
-              }
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Includes Section */}
+          <SectionHeading label="Includes" />
+          {itemsList.length === 0 ? (
+            <div className={cn(
+              "rounded-2xl border border-dashed border-foreground/[0.1]",
+              "bg-background/40 dark:bg-[hsl(240,10%,8%)]/50",
+              "py-8 text-center text-sm text-muted-foreground"
+            )}>
+              No items yet
+            </div>
+          ) : (
+            <div className="flex flex-col gap-3">
+              {itemsList.map(([itemId, item]) => {
+                const itemMeta = existingItems.find(i => i.id === itemId);
+                const itemLabel = itemMeta ? itemMeta.displayName : 'Select item';
+                return (
+                  <ProductItemRow
+                    key={itemId}
+                    activeType={activeType}
+                    itemId={itemId}
+                    item={item}
+                    itemDisplayName={itemLabel}
+                    allItems={existingItems}
+                    existingIncludedItemIds={Object.keys(draft.includedItems).filter(id => id !== itemId)}
+                    startEditing={true}
+                    readOnly={false}
+                    onSave={(id, updated) => handleAddOrEditIncludedItem(id, updated)}
+                    onChangeItemId={(newItemId) => {
+                      setDraft(prev => {
+                        if (Object.prototype.hasOwnProperty.call(prev.includedItems, newItemId)) {
+                          toast({ title: "Item already included" });
+                          return prev;
+                        }
+                        const next: Product['includedItems'] = { ...prev.includedItems };
+                        const value = next[itemId];
+                        delete next[itemId];
+                        next[newItemId] = value;
+                        return { ...prev, includedItems: next };
+                      });
+                    }}
+                    onRemove={() => handleRemoveIncludedItem(itemId)}
+                    onCreateNewItem={onCreateNewItem}
+                  />
+                );
+              })}
             </div>
           )}
-        </div>
-
-        <SectionHeading label="Includes" />
-        {itemsList.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-border/70 bg-background/50 py-6 text-center text-sm text-muted-foreground">
-            No items yet
-          </div>
-        ) : (
-          <div className="flex flex-col gap-4">
-            {itemsList.map(([itemId, item]) => {
-              const itemMeta = existingItems.find(i => i.id === itemId);
-              const itemLabel = itemMeta ? itemMeta.displayName : 'Select item';
-              return (
-                <ProductItemRow
-                  key={itemId}
-                  activeType={activeType}
-                  itemId={itemId}
-                  item={item}
-                  itemDisplayName={itemLabel}
-                  allItems={existingItems}
-                  existingIncludedItemIds={Object.keys(draft.includedItems).filter(id => id !== itemId)}
-                  startEditing={true}
-                  readOnly={false}
-                  onSave={(id, updated) => handleAddOrEditIncludedItem(id, updated)}
-                  onChangeItemId={(newItemId) => {
-                    setDraft(prev => {
-                      if (Object.prototype.hasOwnProperty.call(prev.includedItems, newItemId)) {
-                        toast({ title: "Item already included" });
-                        return prev;
-                      }
-                      const next: Product['includedItems'] = { ...prev.includedItems };
-                      const value = next[itemId];
-                      delete next[itemId];
-                      next[newItemId] = value;
-                      return { ...prev, includedItems: next };
-                    });
-                  }}
-                  onRemove={() => handleRemoveIncludedItem(itemId)}
-                  onCreateNewItem={onCreateNewItem}
-                />
-              );
-            })}
-          </div>
-        )}
-        <Button
-          variant="outline"
-          className="flex h-10 w-full items-center justify-center gap-2 rounded-xl border border-dashed border-border/70 bg-background/80 text-sm font-medium"
-          onClick={() => {
-            const available = existingItems.find(i => !Object.prototype.hasOwnProperty.call(draft.includedItems, i.id));
-            const newItemId = available?.id || `__new_item__${Date.now().toString(36).slice(2, 8)}`;
-            const newItem: Product['includedItems'][string] = { quantity: 1, repeat: 'never', expires: 'never' };
-            setDraft(prev => ({
-              ...prev,
-              includedItems: {
-                ...prev.includedItems,
-                [newItemId]: newItem,
-              }
-            }));
-          }}
-        >
-          <Plus className="h-4 w-4" />
-          Add Item
-        </Button>
-
-        <div className="mt-4 flex items-center justify-between gap-3">
-          <button
-            className="flex h-10 w-10 items-center justify-center rounded-xl text-destructive transition-colors hover:bg-destructive/10"
+          <Button
+            variant="outline"
+            className={cn(
+              "flex h-10 w-full items-center justify-center gap-2",
+              "rounded-xl border border-dashed border-foreground/[0.1]",
+              "bg-background/40 dark:bg-[hsl(240,10%,8%)]/50 hover:bg-foreground/[0.03]",
+              "text-sm font-medium text-muted-foreground hover:text-foreground",
+              "transition-all duration-150 hover:transition-none"
+            )}
             onClick={() => {
-              if (isDraft && onCancelDraft) {
-                onCancelDraft();
-              } else {
-                setShowDeleteDialog(true);
-              }
+              const available = existingItems.find(i => !Object.prototype.hasOwnProperty.call(draft.includedItems, i.id));
+              const newItemId = available?.id || `__new_item__${Date.now().toString(36).slice(2, 8)}`;
+              const newItem: Product['includedItems'][string] = { quantity: 1, repeat: 'never', expires: 'never' };
+              setDraft(prev => ({
+                ...prev,
+                includedItems: {
+                  ...prev.includedItems,
+                  [newItemId]: newItem,
+                }
+              }));
             }}
-            aria-label="Delete offer"
           >
-            <Trash2 className="h-5 w-5" />
-          </button>
-          <div className="ml-auto flex items-center gap-2">
+            <Plus className="h-4 w-4" />
+            Add Item
+          </Button>
+        </div>
+      </div>
+
+      {/* Footer */}
+      <div className="px-5 py-4 border-t border-border/20 dark:border-foreground/[0.06] flex items-center justify-between gap-3">
+        <button
+          className="flex h-9 w-9 items-center justify-center rounded-lg text-destructive transition-colors duration-150 hover:transition-none hover:bg-destructive/10"
+          onClick={() => {
+            if (isDraft && onCancelDraft) {
+              onCancelDraft();
+            } else {
+              setShowDeleteDialog(true);
+            }
+          }}
+          aria-label="Delete offer"
+        >
+          <Trash2 className="h-4 w-4" />
+        </button>
+        <div className="ml-auto flex items-center gap-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="rounded-lg px-4 text-muted-foreground hover:text-foreground"
+            onClick={handleCancelEdit}
+          >
+            Cancel
+          </Button>
+          <SimpleTooltip tooltip={saveDisabledReason} disabled={canSaveProduct}>
             <Button
-              variant="ghost"
-              className="rounded-xl px-4"
-              onClick={handleCancelEdit}
+              size="sm"
+              className="h-9 rounded-lg px-5 bg-foreground text-background hover:bg-foreground/90"
+              disabled={!canSaveProduct}
+              onClick={async () => { await handleSaveEdit(); }}
             >
-              Cancel
+              Save
             </Button>
-            <SimpleTooltip tooltip={saveDisabledReason} disabled={canSaveProduct}>
-              <Button
-                className="h-10 rounded-xl px-6"
-                disabled={!canSaveProduct}
-                onClick={async () => { await handleSaveEdit(); }}
-              >
-                Save
-              </Button>
-            </SimpleTooltip>
-          </div>
+          </SimpleTooltip>
         </div>
       </div>
     </div>
@@ -1272,7 +1353,7 @@ type CatalogViewProps = {
   existingItems: Array<{ id: string, displayName: string, customerType: string }>,
   onSaveProduct: (id: string, product: Product) => Promise<void>,
   onDeleteProduct: (id: string) => Promise<void>,
-  onCreateNewItem: (customerType?: 'user' | 'team' | 'custom') => void,
+  onCreateNewItem: (customerType?: 'user' | 'team' | 'custom', onCreated?: (itemId: string) => void) => void,
   onOpenProductDetails: (product: Product) => void,
   onSaveProductWithGroup: (catalogId: string, productId: string, product: Product) => Promise<void>,
   createDraftRequestId?: string,
@@ -1692,9 +1773,13 @@ export default function PageClient({ createDraftRequestId, draftCustomerType = '
     return sortedGroups;
   }, [paymentsConfig]);
 
+  // Callback to be called when a new item is created (for auto-selection)
+  const [onItemCreatedCallback, setOnItemCreatedCallback] = useState<((itemId: string) => void) | undefined>(undefined);
+
   // Handler for create item button
-  const handleCreateItem = (customerType?: 'user' | 'team' | 'custom') => {
+  const handleCreateItem = (customerType?: 'user' | 'team' | 'custom', onCreated?: (itemId: string) => void) => {
     setNewItemCustomerType(customerType);
+    setOnItemCreatedCallback(() => onCreated);
     setShowItemDialog(true);
   };
 
@@ -1711,6 +1796,11 @@ export default function PageClient({ createDraftRequestId, draftCustomerType = '
     setShowItemDialog(false);
     setEditingItem(null);
     toast({ title: editingItem ? "Item updated" : "Item created" });
+    // Call the callback to auto-select the newly created item
+    if (onItemCreatedCallback && !editingItem) {
+      onItemCreatedCallback(item.id);
+      setOnItemCreatedCallback(undefined);
+    }
   };
 
   // Prepare data for product dialog - update when items change
@@ -1793,6 +1883,7 @@ export default function PageClient({ createDraftRequestId, draftCustomerType = '
           if (!open) {
             setEditingItem(null);
             setNewItemCustomerType(undefined);
+            setOnItemCreatedCallback(undefined);
           }
         }}
         onSave={async (item) => await handleSaveItem(item)}
