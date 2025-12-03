@@ -14,6 +14,7 @@ import { GoogleProvider } from "./providers/google";
 import { LinkedInProvider } from "./providers/linkedin";
 import { MicrosoftProvider } from "./providers/microsoft";
 import { MockProvider } from "./providers/mock";
+import { OktaProvider } from "./providers/okta";
 import { SpotifyProvider } from "./providers/spotify";
 import { TwitchProvider } from "./providers/twitch";
 import { XProvider } from "./providers/x";
@@ -31,6 +32,7 @@ const _providers = {
   linkedin: LinkedInProvider,
   x: XProvider,
   twitch: TwitchProvider,
+  okta:OktaProvider,
 } as const;
 
 const mockProvider = MockProvider;
@@ -78,6 +80,7 @@ export async function getProvider(provider: Tenancy['config']['auth']['oauth']['
       clientSecret: provider.clientSecret || throwErr("Client secret is required for standard providers"),
       facebookConfigId: provider.facebookConfigId,
       microsoftTenantId: provider.microsoftTenantId,
+      oktaDomain:provider.oktaDomain,
     });
   }
 }
