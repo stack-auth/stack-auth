@@ -14,6 +14,7 @@ import { AdminUserProjectsCrud, ProjectsCrud } from '@stackframe/stack-shared/di
 import { DayInterval } from '@stackframe/stack-shared/dist/utils/dates';
 import { throwErr } from '@stackframe/stack-shared/dist/utils/errors';
 import { typedEntries, typedFromEntries } from '@stackframe/stack-shared/dist/utils/objects';
+import { generateUuid } from '@stackframe/stack-shared/dist/utils/uuids';
 
 const globalPrisma = new PrismaClient();
 const DUMMY_PROJECT_ID = '6fbbf22e-f4b2-4c6e-95a1-beab6fa41063';
@@ -1020,6 +1021,12 @@ async function seedDummyProject(options: DummyProjectSeedOptions) {
     userEmailToId,
   });
 
+  await seedDummySessionActivityEvents({
+    tenancyId: dummyTenancy.id,
+    projectId: DUMMY_PROJECT_ID,
+    userEmailToId,
+  });
+
   console.log('Seeded dummy project data');
 }
 
@@ -1573,4 +1580,140 @@ async function seedDummyEmails(options: EmailSeedOptions) {
       },
     });
   }
+}
+
+type SessionActivityEventSeedOptions = {
+  tenancyId: string,
+  projectId: string,
+  userEmailToId: Map<string, string>,
+};
+
+async function seedDummySessionActivityEvents(options: SessionActivityEventSeedOptions) {
+  const { tenancyId, projectId, userEmailToId } = options;
+
+  // List of diverse locations around the world with realistic coordinates
+  const locations = [
+    { countryCode: 'US', regionCode: 'CA', cityName: 'San Francisco', latitude: 37.7749, longitude: -122.4194, tzIdentifier: 'America/Los_Angeles' },
+    { countryCode: 'US', regionCode: 'NY', cityName: 'New York', latitude: 40.7128, longitude: -74.0060, tzIdentifier: 'America/New_York' },
+    { countryCode: 'GB', regionCode: 'ENG', cityName: 'London', latitude: 51.5074, longitude: -0.1278, tzIdentifier: 'Europe/London' },
+    { countryCode: 'DE', regionCode: 'BE', cityName: 'Berlin', latitude: 52.5200, longitude: 13.4050, tzIdentifier: 'Europe/Berlin' },
+    { countryCode: 'JP', regionCode: '13', cityName: 'Tokyo', latitude: 35.6762, longitude: 139.6503, tzIdentifier: 'Asia/Tokyo' },
+    { countryCode: 'AU', regionCode: 'NSW', cityName: 'Sydney', latitude: -33.8688, longitude: 151.2093, tzIdentifier: 'Australia/Sydney' },
+    { countryCode: 'IN', regionCode: 'KA', cityName: 'Bangalore', latitude: 12.9716, longitude: 77.5946, tzIdentifier: 'Asia/Kolkata' },
+    { countryCode: 'BR', regionCode: 'SP', cityName: 'São Paulo', latitude: -23.5505, longitude: -46.6333, tzIdentifier: 'America/Sao_Paulo' },
+    { countryCode: 'CA', regionCode: 'ON', cityName: 'Toronto', latitude: 43.6532, longitude: -79.3832, tzIdentifier: 'America/Toronto' },
+    { countryCode: 'FR', regionCode: 'IDF', cityName: 'Paris', latitude: 48.8566, longitude: 2.3522, tzIdentifier: 'Europe/Paris' },
+    { countryCode: 'SG', regionCode: 'SG', cityName: 'Singapore', latitude: 1.3521, longitude: 103.8198, tzIdentifier: 'Asia/Singapore' },
+    { countryCode: 'NL', regionCode: 'NH', cityName: 'Amsterdam', latitude: 52.3676, longitude: 4.9041, tzIdentifier: 'Europe/Amsterdam' },
+    { countryCode: 'SE', regionCode: 'AB', cityName: 'Stockholm', latitude: 59.3293, longitude: 18.0686, tzIdentifier: 'Europe/Stockholm' },
+    { countryCode: 'ES', regionCode: 'MD', cityName: 'Madrid', latitude: 40.4168, longitude: -3.7038, tzIdentifier: 'Europe/Madrid' },
+    { countryCode: 'IT', regionCode: 'RM', cityName: 'Rome', latitude: 41.9028, longitude: 12.4964, tzIdentifier: 'Europe/Rome' },
+    { countryCode: 'MX', regionCode: 'CMX', cityName: 'Mexico City', latitude: 19.4326, longitude: -99.1332, tzIdentifier: 'America/Mexico_City' },
+    { countryCode: 'KR', regionCode: '11', cityName: 'Seoul', latitude: 37.5665, longitude: 126.9780, tzIdentifier: 'Asia/Seoul' },
+    { countryCode: 'ZA', regionCode: 'GT', cityName: 'Johannesburg', latitude: -26.2041, longitude: 28.0473, tzIdentifier: 'Africa/Johannesburg' },
+    { countryCode: 'AE', regionCode: 'DU', cityName: 'Dubai', latitude: 25.2048, longitude: 55.2708, tzIdentifier: 'Asia/Dubai' },
+    { countryCode: 'CH', regionCode: 'ZH', cityName: 'Zurich', latitude: 47.3769, longitude: 8.5417, tzIdentifier: 'Europe/Zurich' },
+  ];
+
+  const now = new Date();
+  const twoMonthsAgo = new Date(now);
+  twoMonthsAgo.setMonth(twoMonthsAgo.getMonth() - 2);
+
+  const userEmails = Array.from(userEmailToId.keys());
+
+  console.log(`Seeding session activity events for ${userEmails.length} users...`);
+
+  for (const email of userEmails) {
+    const userId = userEmailToId.get(email);
+    if (!userId) continue;
+
+    // Create 15-25 session events per user over the past 2 months
+    const eventCount = 15 + Math.floor(Math.random() * 11);
+
+    for (let i = 0; i < eventCount; i++) {
+      // Random timestamp within the past 2 months
+      const randomTime = new Date(
+        twoMonthsAgo.getTime() + Math.random() * (now.getTime() - twoMonthsAgo.getTime())
+      );
+
+      // Pick a random location
+      const location = locations[Math.floor(Math.random() * locations.length)];
+
+      // Generate a session ID (simulating a refresh token ID)
+      const sessionId = `session-${userId.substring(0, 8)}-${i.toString().padStart(3, '0')}-${randomTime.getTime().toString(36)}`;
+
+      // Generate a unique IP address for this session
+      const ipAddress = `${10 + Math.floor(Math.random() * 200)}.${Math.floor(Math.random() * 256)}.${Math.floor(Math.random() * 256)}.${Math.floor(Math.random() * 256)}`;
+
+      // Create EventIpInfo entry with a proper UUID
+      const ipInfoId = generateUuid();
+      await globalPrismaClient.eventIpInfo.upsert({
+        where: { id: ipInfoId },
+        update: {
+          ip: ipAddress,
+          countryCode: location.countryCode,
+          regionCode: location.regionCode,
+          cityName: location.cityName,
+          latitude: location.latitude,
+          longitude: location.longitude,
+          tzIdentifier: location.tzIdentifier,
+          updatedAt: randomTime,
+        },
+        create: {
+          id: ipInfoId,
+          ip: ipAddress,
+          countryCode: location.countryCode,
+          regionCode: location.regionCode,
+          cityName: location.cityName,
+          latitude: location.latitude,
+          longitude: location.longitude,
+          tzIdentifier: location.tzIdentifier,
+          createdAt: randomTime,
+          updatedAt: randomTime,
+        },
+      });
+
+      // Create the Event entry with a proper UUID
+      const eventId = generateUuid();
+      await globalPrismaClient.event.upsert({
+        where: { id: eventId },
+        update: {
+          systemEventTypeIds: ['$session-activity', '$user-activity', '$project-activity', '$project'],
+          data: {
+            projectId,
+            branchId: DEFAULT_BRANCH_ID,
+            userId,
+            sessionId,
+            isAnonymous: false,
+          },
+          isEndUserIpInfoGuessTrusted: true,
+          endUserIpInfoGuessId: ipInfoId,
+          isWide: false,
+          eventStartedAt: randomTime,
+          eventEndedAt: randomTime,
+          updatedAt: randomTime,
+        },
+        create: {
+          id: eventId,
+          systemEventTypeIds: ['$session-activity', '$user-activity', '$project-activity', '$project'],
+          data: {
+            projectId,
+            branchId: DEFAULT_BRANCH_ID,
+            userId,
+            sessionId,
+            isAnonymous: false,
+          },
+          isEndUserIpInfoGuessTrusted: true,
+          endUserIpInfoGuessId: ipInfoId,
+          isWide: false,
+          eventStartedAt: randomTime,
+          eventEndedAt: randomTime,
+          createdAt: randomTime,
+          updatedAt: randomTime,
+        },
+      });
+    }
+  }
+
+  console.log('Finished seeding session activity events');
 }

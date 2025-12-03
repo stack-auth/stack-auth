@@ -1,4 +1,4 @@
-ARG NODE_VERSION=22.9.0
+ARG NODE_VERSION=22.21.1
 
 # Base
 FROM node:${NODE_VERSION} AS base
@@ -13,7 +13,7 @@ ENV PNPM_HOME=/pnpm
 ENV PATH=$PNPM_HOME:$PATH
 
 RUN corepack enable
-RUN corepack prepare pnpm@10.0.0 --activate
+RUN corepack prepare pnpm@10.23.0 --activate
 RUN pnpm add -g turbo
 RUN pnpm add -g tsx
 

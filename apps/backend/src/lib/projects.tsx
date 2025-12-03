@@ -259,7 +259,6 @@ export async function createOrUpdateProjectWithLegacyConfig(
 
     configOverrideOverride['apps.installed.authentication.enabled'] ??= true;
     configOverrideOverride['apps.installed.emails.enabled'] ??= true;
-    configOverrideOverride['apps.installed.api-keys.enabled'] ??= true;
   }
   await overrideEnvironmentConfigOverride({
     projectId: projectId,

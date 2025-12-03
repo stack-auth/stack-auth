@@ -1,4 +1,4 @@
-import { getConvexProvidersConfig } from "@stackframe/stack";
+import { getConvexProvidersConfig } from "@stackframe/stack/convex-auth.config";
 
 export default {
   providers: getConvexProvidersConfig({

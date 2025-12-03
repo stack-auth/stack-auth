@@ -1,12 +1,14 @@
 import { Link } from "@/components/link";
+import { CreditCardIcon, EnvelopeSimpleIcon, FingerprintSimpleIcon, KeyIcon, MailboxIcon, RocketIcon, SparkleIcon, TelevisionSimpleIcon, Triangle, UserGearIcon, UsersIcon, VaultIcon, WebhooksLogoIcon } from "@phosphor-icons/react/dist/ssr";
 import { StackAdminApp } from "@stackframe/stack";
-import { AppId } from "@stackframe/stack-shared/dist/apps/apps-config";
+import { ALL_APPS } from "@stackframe/stack-shared/dist/apps/apps-config";
 import { getRelativePart, isChildUrl } from "@stackframe/stack-shared/dist/utils/urls";
-import { CreditCard, KeyRound, Mail, Mails, Rocket, ShieldEllipsis, Sparkles, Triangle, Tv, UserCog, Users, Vault, Webhook } from "lucide-react";
 import Image, { StaticImageData } from "next/image";
 import ConvexLogo from "../../public/convex-logo.png";
 import NeonLogo from "../../public/neon-logo.png";
 import VercelLogo from "../../public/vercel-logo.svg";
+
+export type AppId = keyof typeof ALL_APPS;
 
 // Helper to generate screenshot paths
 const getScreenshots = (appName: string, count: number): string[] => {
@@ -67,7 +69,7 @@ export function testItemPath(projectId: string, appFrontend: AppFrontend, item: 
 
 export const ALL_APPS_FRONTEND = {
   authentication: {
-    icon: ShieldEllipsis,
+    icon: FingerprintSimpleIcon,
     href: "users",
     navigationItems: [
       { displayName: "Users", href: ".", getBreadcrumbItems: getUserBreadcrumbItems },
@@ -84,7 +86,7 @@ export const ALL_APPS_FRONTEND = {
     ),
   },
   teams: {
-    icon: Users,
+    icon: UsersIcon,
     href: "teams",
     navigationItems: [
       { displayName: "Teams", href: ".", getBreadcrumbItems: getTeamBreadcrumbItems },
@@ -100,7 +102,7 @@ export const ALL_APPS_FRONTEND = {
     ),
   },
   rbac: {
-    icon: UserCog,
+    icon: UserGearIcon,
     href: "./project-permissions",
     navigationItems: [
       { displayName: "Project Permissions", href: "../project-permissions" },
@@ -116,7 +118,7 @@ export const ALL_APPS_FRONTEND = {
     ),
   },
   "api-keys": {
-    icon: KeyRound,
+    icon: KeyIcon,
     href: "api-keys-app",
     navigationItems: [
       { displayName: "API Keys", href: "." },
@@ -131,7 +133,7 @@ export const ALL_APPS_FRONTEND = {
     ),
   },
   payments: {
-    icon: CreditCard,
+    icon: CreditCardIcon,
     href: "payments",
     navigationItems: [
       { displayName: "Products", href: "./products" },
@@ -148,7 +150,7 @@ export const ALL_APPS_FRONTEND = {
     ),
   },
   emails: {
-    icon: Mail,
+    icon: EnvelopeSimpleIcon,
     href: "emails",
     navigationItems: [
       { displayName: "Emails", href: "." },
@@ -166,7 +168,7 @@ export const ALL_APPS_FRONTEND = {
     ),
   },
   "email-api": {
-    icon: Mails,
+    icon: MailboxIcon,
     href: "email-api",
     navigationItems: [
       { displayName: "Email API", href: "." },
@@ -181,7 +183,7 @@ export const ALL_APPS_FRONTEND = {
     ),
   },
   "data-vault": {
-    icon: Vault,
+    icon: VaultIcon,
     href: "data-vault",
     navigationItems: [
       { displayName: "Data Vault", href: "." },
@@ -196,7 +198,7 @@ export const ALL_APPS_FRONTEND = {
     ),
   },
   webhooks: {
-    icon: Webhook,
+    icon: WebhooksLogoIcon,
     href: "webhooks",
     navigationItems: [
       { displayName: "Webhooks", href: "." },
@@ -211,7 +213,7 @@ export const ALL_APPS_FRONTEND = {
     ),
   },
   "tv-mode": {
-    icon: Tv,
+    icon: TelevisionSimpleIcon,
     href: "tv-mode",
     navigationItems: [
       { displayName: "TV mode", href: "." },
@@ -220,7 +222,7 @@ export const ALL_APPS_FRONTEND = {
     storeDescription: <></>,
   },
   "launch-checklist": {
-    icon: Rocket,
+    icon: RocketIcon,
     href: "launch-checklist",
     navigationItems: [
       { displayName: "Launch Checklist", href: "." },
@@ -235,7 +237,7 @@ export const ALL_APPS_FRONTEND = {
     ),
   },
   catalyst: {
-    icon: Sparkles,
+    icon: SparkleIcon,
     href: "catalyst",
     navigationItems: [
       { displayName: "Catalyst", href: "." },
@@ -273,8 +275,8 @@ export const ALL_APPS_FRONTEND = {
   },
   vercel: {
     icon: Triangle,
-    logo: () => <div>
-      <Image src={VercelLogo} alt="Vercel logo" className="bg-white p-4 pb-5 invert" />
+    logo: () => <div className="w-full h-full flex items-center justify-center">
+      <Image src={VercelLogo} alt="Vercel logo" className="bg-white invert w-full h-full object-contain p-2" />
     </div>,
     href: "vercel",
     navigationItems: [

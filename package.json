@@ -4,8 +4,8 @@
   "private": true,
   "repository": "",
   "scripts": {
-    "pre-no-codegen": "npx -y only-allow pnpm",
-    "pre-preinstall": "npx -y only-allow pnpm && node -e \"if(process.env.STACK_SKIP_TEMPLATE_GENERATION !== 'true') require('child_process').execSync('npx --package=tsx tsx ./scripts/generate-sdks.ts', {stdio: 'inherit'})\"",
+    "pre-no-codegen": "pnpx only-allow pnpm",
+    "pre-preinstall": "pnpx only-allow pnpm && node -e \"if(process.env.STACK_SKIP_TEMPLATE_GENERATION !== 'true') require('child_process').execSync('pnpx --package=tsx tsx ./scripts/generate-sdks.ts', {stdio: 'inherit'})\"",
     "pre": "pnpm pre-preinstall",
     "preinstall": "pnpm pre-preinstall",
     "typecheck": "pnpm pre && turbo typecheck --",
@@ -16,10 +16,7 @@
     "build:demo": "pnpm pre && turbo run build --filter=demo-app...",
     "build:docs": "pnpm run build:packages && pnpm run build:backend && turbo run generate-openapi-fumadocs && pnpm run --filter=@stackframe/stack-docs generate-openapi-docs && turbo run build --filter=@stackframe/stack-docs",
     "build:packages": "pnpm pre && turbo run build --filter=./packages/*",
-    "claude-code": "pnpm pre && npx -y @anthropic-ai/claude-code@latest",
-    "cmux": "pnpm pre && npx -y cmux@latest",
-    "codebuff": "pnpm pre && npx codebuff",
-    "restart-dev-in-background": "pnpm pre && pnpm run kill-dev:named && (pnpm run dev:named > dev-server.log.untracked.txt 2>&1 &) && echo 'Starting dev server in background... (Logs are in dev-server.log.untracked.txt)' && npx wait-on http://localhost:${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}02 -t 120000 && echo 'Dev server running.'",
+    "restart-dev-in-background": "pnpm pre && pnpm run kill-dev:named && (pnpm run dev:named > dev-server.log.untracked.txt 2>&1 &) && echo 'Starting dev server in background... (Logs are in dev-server.log.untracked.txt)' && pnpx wait-on http://localhost:${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}02 -t 120000 && echo 'Dev server running.'",
     "restart-dev-environment": "pnpm pre && concurrently \"pnpm run build:packages && pnpm run codegen\" \"pnpm run restart-deps\" && pnpm run restart-dev-in-background",
     "stop-dev-environment": "pnpm pre && pnpm run kill-dev:named && pnpm run stop-deps",
     "clean": "pnpm pre-no-codegen && turbo run clean && rimraf --glob **/.next && rimraf --glob **/.turbo && rimraf .turbo && rimraf --glob **/node_modules",
@@ -60,7 +57,7 @@
     "verify-data-integrity": "pnpm pre && pnpm -C apps/backend run verify-data-integrity",
     "generate-openapi-fumadocs": "turbo run generate-openapi-fumadocs",
     "generate-keys": "pnpm pre && turbo run generate-keys",
-    "generate-sdks": "npx --package=tsx tsx ./scripts/generate-sdks.ts",
+    "generate-sdks": "pnpx --package=tsx tsx ./scripts/generate-sdks.ts",
     "generate-sdks:watch": "chokidar --silent -c 'pnpm run generate-sdks' './packages/template' --ignore './packages/template/package.json' --ignore '**/node_modules/**' --ignore '**/dist/**' --ignore '**/.turbo/**' --throttle 2000",
     "generate-openapi-docs:watch": "chokidar --silent -c 'pnpm run --filter=@stackframe/stack-docs generate-openapi-docs' './docs/public/openapi/{admin,client,server,webhooks}.json' --throttle 2000"
   },
@@ -105,7 +102,7 @@
     "npm": ">=10.0.0",
     "node": ">=20.0.0"
   },
-  "packageManager": "pnpm@9.1.2",
+  "packageManager": "pnpm@10.23.0",
   "dependencies": {
     "commander": "^13.1.0",
     "tsx": "^4.19.3",
