@@ -307,7 +307,22 @@ const AssistantMessage = memo(function AssistantMessage({ content }: { content: 
   );
 });
 
-// AI Chat Preview Component
+/**
+ * AI Chat Preview Component
+ *
+ * Handles AI conversation with debounced query submission and caching.
+ *
+ * Key behaviors:
+ * 1. When query changes, wait 400ms (debounce) before sending API request
+ * 2. If query changes during debounce, cancel previous and start new debounce
+ * 3. Cached conversations are restored immediately without API call
+ * 4. Word-by-word streaming animation for assistant responses
+ *
+ * State management:
+ * - `activeQueryRef`: The query we're currently showing/processing (source of truth)
+ * - `pendingTimeoutId`: Current debounce timeout (null if none pending)
+ * - `conversationCache`: Global cache mapping query -> messages
+ */
 const AIChatPreview = memo(function AIChatPreview({
   query,
   registerOnFocus,
@@ -315,20 +330,32 @@ const AIChatPreview = memo(function AIChatPreview({
   onBlur,
 }: CmdKPreviewProps) {
   const [followUpInput, setFollowUpInput] = useState("");
-  const [isDebouncing, setIsDebouncing] = useState(true); // Start as debouncing
-  const [displayedWordCount, setDisplayedWordCount] = useState(0); // Word-by-word streaming
+  const [isDebouncing, setIsDebouncing] = useState(false);
+  const [displayedWordCount, setDisplayedWordCount] = useState(0);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const followUpInputRef = useRef<HTMLInputElement>(null);
   const lastMessageCountRef = useRef(0);
   const isNearBottomRef = useRef(true);
-  const lastQueryRef = useRef<string>("");
-  const currentQueryRef = useRef<string>(query); // Track current query for caching
+
+  /**
+   * The query that is currently "active" - either being debounced, loading, or displayed.
+   * This is the source of truth for which conversation we're working with.
+   * Updated synchronously when we decide to process a new query.
+   */
+  const activeQueryRef = useRef<string>("");
+
+  /**
+   * ID of the pending debounce timeout, or null if no debounce is pending.
+   * Used to cancel previous debounce when query changes.
+   */
+  const pendingTimeoutIdRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const {
     messages,
     isLoading: aiLoading,
     append,
     setMessages,
+    stop: stopChat,
     error: aiError,
   } = useChat({
     api: "/api/ai-search",
@@ -340,7 +367,7 @@ const AIChatPreview = memo(function AIChatPreview({
   const actualWordCount = lastAssistantContent ? countWords(lastAssistantContent) : 0;
   const isStreaming = aiLoading && lastAssistantMessage;
 
-  // Use ref to track target word count for the interval
+  // Use ref to track target word count for the interval (avoids stale closure)
   const targetWordCountRef = useRef(0);
   targetWordCountRef.current = actualWordCount;
 
@@ -352,7 +379,6 @@ const AIChatPreview = memo(function AIChatPreview({
       return;
     }
 
-    // Use interval to continuously catch up to target
     const intervalId = setInterval(() => {
       setDisplayedWordCount(prev => {
         if (prev < targetWordCountRef.current) {
@@ -363,95 +389,112 @@ const AIChatPreview = memo(function AIChatPreview({
     }, 15);
 
     return () => clearInterval(intervalId);
-  }, [hasAssistantContent]); // Only restart interval when message appears/disappears
+  }, [hasAssistantContent]);
 
   // Reset word count when query changes
   useEffect(() => {
     setDisplayedWordCount(0);
   }, [query]);
 
-  // Save messages to cache when they change (only if we have messages and a query)
+  /**
+   * Save messages to cache whenever they change.
+   * Only saves if we have an active query and messages to save.
+   */
   useEffect(() => {
-    if (messages.length > 0 && currentQueryRef.current) {
-      conversationCache.set(currentQueryRef.current, {
+    const currentQuery = activeQueryRef.current;
+    if (messages.length > 0 && currentQuery) {
+      conversationCache.set(currentQuery, {
         messages: messages.map(m => ({ id: m.id, role: m.role, content: m.content })),
       });
     }
   }, [messages]);
 
-  // Track the pending timeout
-  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const startedQueryRef = useRef<string>("");
-
-  // Auto-start AI conversation with debounce when query changes or on mount
+  /**
+   * Main effect: Handle query changes with debouncing and caching.
+   *
+   * This effect runs whenever `query` changes. It:
+   * 1. Cancels any pending debounce timeout
+   * 2. Checks if we already have this query cached
+   * 3. If cached: restore immediately
+   * 4. If not cached: start debounce, then send API request
+   *
+   * Race condition prevention:
+   * - We capture `trimmedQuery` at the start and use it throughout
+   * - The timeout callback checks if `activeQueryRef.current` still matches
+   * - If query changed during debounce, the callback becomes a no-op
+   */
   useEffect(() => {
     const trimmedQuery = query.trim();
 
+    // Always cancel any pending timeout when query changes
+    if (pendingTimeoutIdRef.current !== null) {
+      clearTimeout(pendingTimeoutIdRef.current);
+      pendingTimeoutIdRef.current = null;
+    }
+
+    // Handle empty query
     if (!trimmedQuery) {
+      // Stop any in-flight request and clear state
+      stopChat();
+      activeQueryRef.current = "";
       setIsDebouncing(false);
-      if (timeoutRef.current) {
-        clearTimeout(timeoutRef.current);
-        timeoutRef.current = null;
-      }
+      setMessages([]);
       return;
     }
 
-    // Check if we already have this conversation cached
+    // If this is the same query we're already processing, do nothing
+    if (trimmedQuery === activeQueryRef.current) {
+      return;
+    }
+
+    // IMPORTANT: Stop any in-flight request for the previous query
+    // This prevents the old response from being added to messages
+    stopChat();
+
+    // Update active query immediately (this is our source of truth)
+    activeQueryRef.current = trimmedQuery;
+
+    // Check cache first
     const cached = conversationCache.get(trimmedQuery);
     if (cached && cached.messages.length > 0) {
-      // Always restore cached conversation if messages don't match
-      // This handles both: query change AND component remount
-      const messagesMatch = messages.length === cached.messages.length &&
-        messages.every((m, i) => m.content === cached.messages[i].content);
-
-      if (!messagesMatch) {
-        setMessages(cached.messages);
-      }
-      currentQueryRef.current = trimmedQuery;
-      lastQueryRef.current = trimmedQuery;
-      startedQueryRef.current = trimmedQuery;
+      // Restore from cache immediately, no debounce needed
+      setMessages(cached.messages);
       setIsDebouncing(false);
       return;
     }
 
-    // Check if we already started this exact query (prevents duplicate requests)
-    if (startedQueryRef.current === trimmedQuery && (messages.length > 0 || aiLoading)) {
-      return;
-    }
-
-    // Check if this is a new query we need to handle
-    const isNewQuery = lastQueryRef.current !== trimmedQuery;
-    const needsStart = isNewQuery || (messages.length === 0 && !aiLoading);
-
-    if (!needsStart) {
-      return;
-    }
-
-    // Clear any existing timeout
-    if (timeoutRef.current) {
-      clearTimeout(timeoutRef.current);
-    }
-
-    // Update refs
-    lastQueryRef.current = trimmedQuery;
-    currentQueryRef.current = trimmedQuery;
-
-    // Clear previous messages and start debouncing
+    // Not cached - need to make API request with debounce
+    // Clear messages for the new query
+    setMessages([]);
     setIsDebouncing(true);
-    if (isNewQuery) {
-      setMessages([]);
-    }
 
-    // Debounce the API call
-    timeoutRef.current = setTimeout(() => {
-      timeoutRef.current = null;
-      startedQueryRef.current = trimmedQuery;
-      runAsynchronously(append({ role: "user", content: trimmedQuery }));
+    // Start debounce timer
+    // Capture the query in closure to verify it hasn't changed when timeout fires
+    const queryForThisTimeout = trimmedQuery;
+    pendingTimeoutIdRef.current = setTimeout(() => {
+      pendingTimeoutIdRef.current = null;
+
+      // CRITICAL: Check if this is still the active query
+      // If user typed more characters, activeQueryRef will have changed
+      // and we should NOT send this request
+      if (activeQueryRef.current !== queryForThisTimeout) {
+        return; // Query changed during debounce, abort
+      }
+
+      // Send the API request
       setIsDebouncing(false);
+      runAsynchronously(append({ role: "user", content: queryForThisTimeout }));
     }, 400);
 
-    // Don't return cleanup - we manage the timeout ourselves via ref
-  }, [query, append, setMessages, messages.length, aiLoading, messages]);
+    // Cleanup: cancel timeout and stop chat if component unmounts or query changes
+    return () => {
+      stopChat();
+      if (pendingTimeoutIdRef.current !== null) {
+        clearTimeout(pendingTimeoutIdRef.current);
+        pendingTimeoutIdRef.current = null;
+      }
+    };
+  }, [query, append, setMessages, stopChat]);
 
   // Focus handler - select the follow-up input when focused (pressing right arrow or Enter)
   useEffect(() => {

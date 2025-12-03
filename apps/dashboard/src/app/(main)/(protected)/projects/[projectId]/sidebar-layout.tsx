@@ -595,7 +595,7 @@ export default function SidebarLayout(props: { children?: React.ReactNode }) {
             </div>
           </div>
 
-          {/* Middle section: Command bar */}
+          {/* Middle section: Control Center */}
           <div className="flex-grow-1">
             <CmdKTrigger />
           </div>

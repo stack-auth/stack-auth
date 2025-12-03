@@ -128,7 +128,7 @@ const CyclingPlaceholder = memo(function CyclingPlaceholder({
       {/* Welcome header */}
       <div className="text-center">
         <h2 className="text-base font-semibold text-foreground mb-1">
-          Welcome to Command Bar
+          Welcome to Control Center
         </h2>
         <p className="text-[11px] text-muted-foreground/50">
           Your shortcut to everything
@@ -609,11 +609,15 @@ export function CmdKSearch({
         if (currentSelectedIndex >= 0 && currentSelectedIndex < currentCommands.length) {
           const selectedCommand = currentCommands[currentSelectedIndex];
           if (selectedCommand.preview) {
-        e.preventDefault();
-            // Call onFocus handlers - previews will register nested commands
-            // and call navigateToNested() which sets activeDepth
-            previewFocusHandlers.forEach((handler) => handler());
-            // Note: navigateToNested() already sets activeDepth, so we don't do it here
+            e.preventDefault();
+            // On mobile, show preview fullscreen (same as clicking a focus action)
+            if (typeof window !== "undefined" && window.innerWidth < 768) {
+              setPreviewMode(true);
+            } else {
+              // On desktop, call onFocus handlers - previews will register nested commands
+              // and call navigateToNested() which sets activeDepth
+              previewFocusHandlers.forEach((handler) => handler());
+            }
           }
         }
       } else if (e.key === "ArrowLeft") {
@@ -672,7 +676,7 @@ export function CmdKSearch({
         className="fixed inset-0 flex items-center justify-center z-50 px-4 pointer-events-none"
         style={{ animation: "spotlight-slide-in 150ms cubic-bezier(0.16, 1, 0.3, 1)" }}
       >
-        <div className="relative rounded-2xl ring-2 ring-inset ring-foreground/[0.08] h-[76vh] min-h-[320px] w-full max-w-[max(540px,75vw)] pointer-events-auto">
+        <div className="relative rounded-2xl ring-2 ring-inset ring-foreground/[0.08] h-[76vh] min-h-[320px] w-full max-w-[min(max(540px,75vw),1000px)] pointer-events-auto">
           {/* Background layer */}
           <div className="absolute inset-[2px] rounded-[14px] -z-10 backdrop-blur-xl bg-gray-100/80 dark:bg-[#161616]/80" />
           <div
@@ -937,7 +941,7 @@ export function CmdKTrigger() {
         </div>
         <Sparkles className="h-3.5 w-3.5 text-blue-400/40 group-hover:text-blue-400/70 transition-colors duration-300 group-hover:transition-none" />
         <span className="flex-1 text-left text-[13px] text-muted-foreground/60 group-hover:text-muted-foreground transition-colors duration-300 group-hover:transition-none">
-          Command Bar
+          Control Center
         </span>
         <div className="pointer-events-none flex items-center gap-1">
           <kbd className="flex h-5 min-w-[20px] select-none items-center justify-center rounded-md bg-foreground/[0.04] ring-1 ring-inset ring-foreground/[0.06] px-1.5 font-mono text-[10px] font-medium text-muted-foreground/50 group-hover:text-muted-foreground/70 transition-colors duration-300 group-hover:transition-none">
