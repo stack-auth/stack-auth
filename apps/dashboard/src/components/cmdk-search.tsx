@@ -126,8 +126,14 @@ const CyclingPlaceholder = memo(function CyclingPlaceholder({
       <div className="flex-1" />
 
       {/* Welcome header */}
-      <div className="text-center">
-        <h2 className="text-base font-semibold text-foreground mb-1">
+      <div className="relative text-center">
+        {/* Keybind reminder - like tape on the corner */}
+        <span className="absolute -top-4 -right-8 rotate-[30deg] flex items-center gap-0.5 text-[10px] text-muted-foreground/40">
+          <kbd className="px-1.5 py-0.5 rounded bg-foreground/[0.06] font-mono">⌘</kbd>
+          +
+          <kbd className="px-1.5 py-0.5 rounded bg-foreground/[0.06] font-mono">K</kbd>
+        </span>
+        <h2 className="relative text-base font-semibold text-foreground mb-1 inline-block">
           Welcome to Control Center
         </h2>
         <p className="text-[11px] text-muted-foreground/50">
@@ -191,8 +197,16 @@ const CyclingPlaceholder = memo(function CyclingPlaceholder({
       {/* Keyboard hints footer */}
       <div className="pt-4 mt-4 -mx-6 px-6 border-t border-foreground/[0.06] w-full flex items-center justify-center gap-5 text-[10px] text-muted-foreground/40">
         <div className="flex items-center gap-1.5">
+          <kbd className="px-1.5 py-0.5 rounded bg-foreground/[0.06] font-mono">⌘</kbd>
+          +
+          <kbd className="px-1.5 py-0.5 rounded bg-foreground/[0.06] font-mono">K</kbd>
+          <span>open</span>
+        </div>
+        <div className="flex items-center gap-1.5">
           <kbd className="px-1.5 py-0.5 rounded bg-foreground/[0.06] font-mono">↑</kbd>
           <kbd className="px-1.5 py-0.5 rounded bg-foreground/[0.06] font-mono">↓</kbd>
+          <kbd className="px-1.5 py-0.5 rounded bg-foreground/[0.06] font-mono">→</kbd>
+          <kbd className="px-1.5 py-0.5 rounded bg-foreground/[0.06] font-mono">←</kbd>
           <span>navigate</span>
         </div>
         <div className="flex items-center gap-1.5">
@@ -213,7 +227,7 @@ export const CmdKResultsList = memo(function CmdKResultsList({
   commands,
   selectedIndex,
   onSelect,
-  onMouseEnter,
+  onSetSelectedIndex,
   pathname,
   showCyclingPlaceholder = false,
   onSelectExampleQuery,
@@ -222,7 +236,8 @@ export const CmdKResultsList = memo(function CmdKResultsList({
   commands: CmdKCommand[],
   selectedIndex: number,
   onSelect: (cmd: CmdKCommand) => void,
-  onMouseEnter: (index: number) => void,
+  /** Called when clicking a row to update the selected index */
+  onSetSelectedIndex?: (index: number) => void,
   pathname: string,
   /** Show the cycling placeholder with example queries */
   showCyclingPlaceholder?: boolean,
@@ -290,14 +305,17 @@ export const CmdKResultsList = memo(function CmdKResultsList({
               }
             }}
             tabIndex={-1}
-            onClick={() => onSelect(cmd)}
-            onMouseEnter={() => onMouseEnter(index)}
+            onClick={() => {
+              // Set the selected index first (important for focus-type actions)
+              onSetSelectedIndex?.(index);
+              onSelect(cmd);
+            }}
             className={cn(
               "w-full flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left",
-              "transition-colors duration-75",
+              "transition-colors duration-75 hover:transition-none",
               parentSelectionStyle,
               activeSelectionStyle,
-              !isSelected && "bg-transparent"
+              !isSelected && "bg-transparent hover:bg-foreground/[0.04]"
             )}
           >
             <div
@@ -456,21 +474,27 @@ export function CmdKSearch({
     setNestedBlurHandlers([]);
   }, [filteredCommands.length]);
 
-  // Clear nested columns when switching to a command without preview
+  // Clear nested columns when switching to a different command
   useEffect(() => {
     if (activeDepth === 0 && selectedIndex < filteredCommands.length) {
-      const selectedCommand = filteredCommands[selectedIndex];
-      if (!selectedCommand.preview) {
-        // Clear nested state when no preview
-        setNestedColumns([]);
-        setSelectedIndices([selectedIndex]);
-        setNestedBlurHandlers([]);
-      }
+      // Always clear nested state when at depth 0 and selection changes
+      // This ensures switching from an app with nested items to Ask AI clears the nested columns
+      setNestedColumns([]);
+      setSelectedIndices([selectedIndex]);
+      setNestedBlurHandlers([]);
     }
   }, [selectedIndex, filteredCommands, activeDepth]);
 
   const registerOnFocus = useCallback((onFocus: () => void) => {
     setPreviewFocusHandlers((prev) => new Set(prev).add(onFocus));
+    // If there's a pending focus action (from clicking before preview mounted), trigger it now
+    if (pendingFocusRef.current) {
+      pendingFocusRef.current = false;
+      // Defer to next frame to ensure state has settled
+      requestAnimationFrame(() => {
+        onFocus();
+      });
+    }
   }, []);
 
   const unregisterOnFocus = useCallback((onFocus: () => void) => {
@@ -528,6 +552,9 @@ export function CmdKSearch({
     inputRef.current?.focus();
   }, []);
 
+  // Track pending focus action to handle click-then-focus timing
+  const pendingFocusRef = useRef(false);
+
   const handleSelectCommand = useCallback(
     (command: CmdKCommand) => {
       if (command.onAction.type === "navigate") {
@@ -547,7 +574,14 @@ export function CmdKSearch({
             setPreviewMode(true);
           } else {
             // On desktop, trigger the focus handlers to navigate into nested commands
-            previewFocusHandlers.forEach((handler) => handler());
+            // If handlers exist, call them immediately; otherwise mark pending for when preview mounts
+            if (previewFocusHandlers.size > 0) {
+              previewFocusHandlers.forEach((handler) => handler());
+            } else {
+              // Preview hasn't mounted yet (e.g., clicking from a different command)
+              // Mark as pending so we can call focus when the preview registers its handler
+              pendingFocusRef.current = true;
+            }
           }
         }
       }
@@ -750,7 +784,7 @@ export function CmdKSearch({
                     commands={filteredCommands}
                     selectedIndex={selectedIndex}
                     onSelect={handleSelectCommand}
-                    onMouseEnter={setSelectedIndex}
+                    onSetSelectedIndex={setSelectedIndex}
                     pathname={pathname}
                     showCyclingPlaceholder={true}
                     onSelectExampleQuery={setQuery}
@@ -776,13 +810,9 @@ export function CmdKSearch({
                         commands={commands}
                         selectedIndex={columnSelectedIndex}
                         onSelect={(cmd) => {
-                          // Handle selection in nested column
-                          const newSelectedIndices = [...selectedIndices];
-                          newSelectedIndices[columnDepth] = commands.indexOf(cmd);
-                          setSelectedIndices(newSelectedIndices);
                           handleSelectCommand(cmd);
                         }}
-                        onMouseEnter={(index) => {
+                        onSetSelectedIndex={(index) => {
                           const newSelectedIndices = [...selectedIndices];
                           newSelectedIndices[columnDepth] = index;
                           setSelectedIndices(newSelectedIndices);
