@@ -32,7 +32,7 @@ const _providers = {
   linkedin: LinkedInProvider,
   x: XProvider,
   twitch: TwitchProvider,
-  okta:OktaProvider,
+  okta: OktaProvider,
 } as const;
 
 const mockProvider = MockProvider;
@@ -80,7 +80,7 @@ export async function getProvider(provider: Tenancy['config']['auth']['oauth']['
       clientSecret: provider.clientSecret || throwErr("Client secret is required for standard providers"),
       facebookConfigId: provider.facebookConfigId,
       microsoftTenantId: provider.microsoftTenantId,
-      oktaDomain:provider.oktaDomain,
+      oktaDomain: provider.oktaDomain,
     });
   }
 }

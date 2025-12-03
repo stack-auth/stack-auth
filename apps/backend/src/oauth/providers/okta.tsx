@@ -18,9 +18,9 @@ export class OktaProvider extends OAuthBaseProvider {
   static async create(options: {
     clientId: string;
     clientSecret: string;
-    okta_issuer: string;
+    oktaDomain: string;
   }) {
-    const  oktaDomain  = options.okta_issuer;
+    const  oktaDomain  = options.oktaDomain;
 
     if(!oktaDomain) throw new StackAssertionError("Okta domain is required ")
 
@@ -41,7 +41,7 @@ export class OktaProvider extends OAuthBaseProvider {
   }
 
   async postProcessUserInfo(tokenSet: TokenSet): Promise<OAuthUserInfo> {
-    const rawUserInfoRes = await fetch(`${this.oktaDomain}/v1/userinfo`, { 
+    const rawUserInfoRes = await fetch(`https://${this.oktaDomain}/v1/userinfo`,{ 
       headers: {
         Authorization: `Bearer ${tokenSet.accessToken}`,
       },
@@ -69,7 +69,7 @@ export class OktaProvider extends OAuthBaseProvider {
     });
   }
   async checkAccessTokenValidity(accessToken: string): Promise<boolean> {
-    const res = await fetch(`${this.oktaDomain}/v1/userinfo`, {
+    const res = await fetch(`https://${this.oktaDomain}/v1/userinfo`,{
       headers: {
         Authorization: `Bearer ${accessToken}`,
       },
