@@ -1,4 +1,4 @@
-import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
+import { runAsynchronously, wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { cn } from "@stackframe/stack-ui";
 import { useChat } from "ai/react";
 import { Check, Copy, ExternalLink, Loader2, Send, Sparkles, User } from "lucide-react";
@@ -222,13 +222,6 @@ const markdownComponents = {
   hr: () => <hr className="my-3 border-foreground/[0.06]" />,
 };
 
-// In-memory cache for AI conversations by query
-type CachedMessage = { id: string, role: "user" | "assistant" | "system" | "data", content: string };
-type CachedConversation = {
-  messages: CachedMessage[],
-};
-const conversationCache = new Map<string, CachedConversation>();
-
 // Helper to count words in a string
 function countWords(text: string): number {
   return text.split(/\s+/).filter(Boolean).length;
@@ -263,7 +256,7 @@ const UserMessage = memo(function UserMessage({ content }: { content: string }) 
   );
 });
 
-// Memoized assistant message component with word-by-word streaming
+// Memoized assistant message component
 const AssistantMessage = memo(function AssistantMessage({ content }: { content: string }) {
   return (
     <div className="flex gap-2.5 justify-start">
@@ -284,72 +277,17 @@ const AssistantMessage = memo(function AssistantMessage({ content }: { content: 
   );
 });
 
-/**
- * AI Chat Preview Component
- *
- * Handles AI conversation with debounced query submission and caching.
- *
- * Key behaviors:
- * 1. When query changes, wait 400ms (debounce) before sending API request
- * 2. If query changes during debounce, cancel previous and start new debounce
- * 3. Cached conversations are restored immediately without API call
- * 4. Word-by-word streaming animation for assistant responses
- *
- * State management:
- * - `activeQueryRef`: The query we're currently showing/processing (source of truth)
- * - `pendingTimeoutId`: Current debounce timeout (null if none pending)
- * - `conversationCache`: Global cache mapping query -> messages
- */
-export const AIChatPreview = memo(function AIChatPreview({
-  query,
-  registerOnFocus,
-  unregisterOnFocus,
-  onBlur,
-}: CmdKPreviewProps) {
-  const [followUpInput, setFollowUpInput] = useState("");
-  const [isDebouncing, setIsDebouncing] = useState(false);
+// Word streaming hook - handles the progressive word reveal animation
+function useWordStreaming(content: string) {
   const [displayedWordCount, setDisplayedWordCount] = useState(0);
-  const messagesContainerRef = useRef<HTMLDivElement>(null);
-  const followUpInputRef = useRef<HTMLInputElement>(null);
-  const lastMessageCountRef = useRef(0);
-  const isNearBottomRef = useRef(true);
+  const targetWordCount = content ? countWords(content) : 0;
+  const targetWordCountRef = useRef(targetWordCount);
+  targetWordCountRef.current = targetWordCount;
 
-  /**
-   * Track the query we are currently processing/displaying.
-   * Used to detect query changes and handle remounts.
-   */
-  const currentQueryRef = useRef<string | null>(null);
-
-  /**
-   * ID of the pending debounce timeout.
-   */
-  const pendingTimeoutIdRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const {
-    messages,
-    isLoading: aiLoading,
-    append,
-    setMessages,
-    stop: stopChat,
-    error: aiError,
-  } = useChat({
-    api: "/api/ai-search",
-  });
-
-  // Get the last assistant message for word-by-word streaming
-  const lastAssistantMessage = messages.slice(1).findLast(m => m.role === "assistant");
-  const lastAssistantContent = lastAssistantMessage?.content ?? "";
-  const actualWordCount = lastAssistantContent ? countWords(lastAssistantContent) : 0;
-  const isStreaming = aiLoading && lastAssistantMessage;
-
-  // Use ref to track target word count for the interval (avoids stale closure)
-  const targetWordCountRef = useRef(0);
-  targetWordCountRef.current = actualWordCount;
-
-  // Progressive word reveal effect using interval
-  const hasAssistantContent = Boolean(lastAssistantContent);
+  // Reset when content is cleared
+  const hasContent = Boolean(content);
   useEffect(() => {
-    if (!hasAssistantContent) {
+    if (!hasContent) {
       setDisplayedWordCount(0);
       return;
     }
@@ -364,102 +302,74 @@ export const AIChatPreview = memo(function AIChatPreview({
     }, 15);
 
     return () => clearInterval(intervalId);
-  }, [hasAssistantContent]);
+  }, [hasContent]);
 
-  // Reset word count when query changes
+  return {
+    displayedWordCount,
+    targetWordCount,
+    getDisplayContent: (text: string) => getFirstNWords(text, displayedWordCount),
+    isRevealing: displayedWordCount < targetWordCount,
+  };
+}
+
+/**
+ * AI Chat Preview Component
+ *
+ * Displays an AI chat conversation. Sends the initial query on mount
+ * and supports follow-up questions.
+ */
+export function AIChatPreview({ query, ...rest }: CmdKPreviewProps) {
+  return <AIChatPreviewInner key={query} query={query} {...rest} />;
+}
+
+
+const AIChatPreviewInner = memo(function AIChatPreview({
+  query,
+  registerOnFocus,
+  unregisterOnFocus,
+  onBlur,
+}: CmdKPreviewProps) {
+  const [followUpInput, setFollowUpInput] = useState("");
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const followUpInputRef = useRef<HTMLInputElement>(null);
+  const lastMessageCountRef = useRef(0);
+  const isNearBottomRef = useRef(true);
+  const hasSentInitialQuery = useRef(false);
+
+  const trimmedQuery = query.trim();
+
+  const {
+    messages,
+    isLoading: aiLoading,
+    append,
+    error: aiError,
+  } = useChat({
+    api: "/api/ai-search",
+  });
+
+  // Send initial query on mount (once)
   useEffect(() => {
-    setDisplayedWordCount(0);
-  }, [query]);
-
-  /**
-   * Save messages to cache whenever they change.
-   */
-  useEffect(() => {
-    const trimmedQuery = query.trim();
-    if (messages.length > 0 && trimmedQuery) {
-      conversationCache.set(trimmedQuery, {
-        messages: messages.map(m => ({ id: m.id, role: m.role, content: m.content })),
-      });
-    }
-  }, [messages, query]);
-
-  // Store stable refs to useChat functions
-  const appendRef = useRef(append);
-  const setMessagesRef = useRef(setMessages);
-  const stopChatRef = useRef(stopChat);
-  appendRef.current = append;
-  setMessagesRef.current = setMessages;
-  stopChatRef.current = stopChat;
-
-  /**
-   * Main effect: Handle query changes.
-   */
-  useEffect(() => {
-    const trimmedQuery = query.trim();
-
-    // If query hasn't changed from what we're tracking, do nothing.
-    // Note: On remount, currentQueryRef.current is null, so we proceed.
-    if (currentQueryRef.current === trimmedQuery) {
-      return;
-    }
-
-    // Update current query
-    currentQueryRef.current = trimmedQuery;
-
-    // Cancel any pending timeout
-    if (pendingTimeoutIdRef.current !== null) {
-      clearTimeout(pendingTimeoutIdRef.current);
-      pendingTimeoutIdRef.current = null;
-    }
-
-    // Stop any in-flight request
-    stopChatRef.current();
-
-    // Handle empty query
-    if (!trimmedQuery) {
-      setIsDebouncing(false);
-      setMessagesRef.current([]);
-      return;
-    }
-
-    // Check cache first
-    const cached = conversationCache.get(trimmedQuery);
-    if (cached && cached.messages.length > 0) {
-      setMessagesRef.current(cached.messages);
-      setIsDebouncing(false);
-      return;
-    }
-
-    // Not cached - start fresh with debounce
-    setMessagesRef.current([]);
-    setIsDebouncing(true);
-
-    // Start debounce timer
-    const queryForTimeout = trimmedQuery;
-    pendingTimeoutIdRef.current = setTimeout(() => {
-      pendingTimeoutIdRef.current = null;
-
-      // Verify query hasn't changed during debounce
-      if (currentQueryRef.current !== queryForTimeout) {
-        return;
+    let cancelled = false;
+    runAsynchronously(async () => {
+      await wait(400);
+      if (cancelled) return;
+      if (trimmedQuery && !hasSentInitialQuery.current) {
+        hasSentInitialQuery.current = true;
+        await append({ role: "user", content: trimmedQuery });
       }
-
-      setIsDebouncing(false);
-      runAsynchronously(appendRef.current({ role: "user", content: queryForTimeout }));
-    }, 400);
-
-    // Cleanup on unmount or query change
+    });
     return () => {
-      if (pendingTimeoutIdRef.current !== null) {
-        clearTimeout(pendingTimeoutIdRef.current);
-        pendingTimeoutIdRef.current = null;
-      }
-      // Note: we don't call stopChat() here because useChat handles it on unmount,
-      // and we handle it manually when query changes above.
+      cancelled = true;
     };
-  }, [query]);
+  }, [trimmedQuery, append]);
 
-  // Focus handler - select the follow-up input when focused (pressing right arrow or Enter)
+  // Word streaming for the last assistant message
+  const lastAssistantMessage = messages.slice(1).findLast(m => m.role === "assistant");
+  const lastAssistantContent = lastAssistantMessage?.content ?? "";
+  const { displayedWordCount, targetWordCount, getDisplayContent, isRevealing } = useWordStreaming(lastAssistantContent);
+  const isStreaming = aiLoading && lastAssistantMessage;
+
+  // Focus handler registration
   useEffect(() => {
     const focusHandler = () => {
       followUpInputRef.current?.focus();
@@ -476,7 +386,7 @@ export const AIChatPreview = memo(function AIChatPreview({
     isNearBottomRef.current = scrollHeight - scrollTop - clientHeight < 100;
   }, []);
 
-  // Auto-scroll only when new messages are added or when already at bottom
+  // Auto-scroll when new messages are added or when already at bottom
   useEffect(() => {
     if (!messagesContainerRef.current) return;
 
@@ -499,7 +409,6 @@ export const AIChatPreview = memo(function AIChatPreview({
     const input = followUpInput;
     setFollowUpInput("");
     await append({ role: "user", content: input });
-    // Refocus the input after sending
     requestAnimationFrame(() => {
       followUpInputRef.current?.focus();
     });
@@ -513,7 +422,6 @@ export const AIChatPreview = memo(function AIChatPreview({
         e.stopPropagation();
         runAsynchronously(handleFollowUp());
       } else if (e.key === "ArrowLeft") {
-        // If cursor is at the start of the input, blur the preview
         const input = e.currentTarget;
         if (input.selectionStart === 0 && input.selectionEnd === 0) {
           e.preventDefault();
@@ -521,7 +429,6 @@ export const AIChatPreview = memo(function AIChatPreview({
           onBlur();
         }
       } else if (e.key === "ArrowUp" || e.key === "ArrowDown") {
-        // Scroll the chat history
         e.preventDefault();
         e.stopPropagation();
         const container = messagesContainerRef.current;
@@ -533,6 +440,9 @@ export const AIChatPreview = memo(function AIChatPreview({
     },
     [handleFollowUp, onBlur]
   );
+
+  // Determine what to show in the loading state
+  const showLoadingIndicator = messages.length === 0 || (aiLoading && !messages.some(m => m.role === "assistant" && m.content));
 
   return (
     <div className="flex flex-col h-full w-full">
@@ -548,7 +458,7 @@ export const AIChatPreview = memo(function AIChatPreview({
           const isLastAssistant = message.role === "assistant" &&
             index === arr.length - 1 - (arr[arr.length - 1]?.role === "user" ? 1 : 0);
           const displayContent = message.role === "assistant" && isLastAssistant
-            ? getFirstNWords(message.content, displayedWordCount)
+            ? getDisplayContent(message.content)
             : message.content;
 
           // Don't render if no content to show yet
@@ -562,8 +472,8 @@ export const AIChatPreview = memo(function AIChatPreview({
           return <AssistantMessage key={message.id || index} content={displayContent} />;
         })}
 
-        {/* Loading indicator - show during debounce or when waiting for response */}
-        {(isDebouncing || (aiLoading && !messages.some(m => m.role === "assistant" && m.content))) && (
+        {/* Loading indicator */}
+        {showLoadingIndicator && (
           <div className="flex gap-2.5 justify-start">
             <div className="shrink-0 w-6 h-6 rounded-full bg-purple-500/10 flex items-center justify-center">
               <Sparkles className="h-3 w-3 text-purple-400" />
@@ -577,8 +487,8 @@ export const AIChatPreview = memo(function AIChatPreview({
           </div>
         )}
 
-        {/* Streaming indicator at the end - show when still loading or still revealing words */}
-        {(isStreaming || displayedWordCount < actualWordCount) && displayedWordCount > 0 && (
+        {/* Streaming indicator - show when still loading or still revealing words */}
+        {(isStreaming || isRevealing) && displayedWordCount > 0 && (
           <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground/50 pl-8">
             <span className="inline-flex gap-0.5">
               <span className="w-1 h-1 rounded-full bg-purple-400/60 animate-pulse" />
