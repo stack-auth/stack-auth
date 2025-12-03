@@ -160,6 +160,10 @@ export default function PageClient() {
           value={project.id}
         />
 
+        <span className="text-xs text-muted-foreground">
+          NOTE: Looking for project API keys? Head over to the <StyledLink href={`/projects/${project.id}/project-keys`}>Project Keys</StyledLink> page.
+        </span>
+
         <SettingCopyableText
           label={renderInfoLabel("JWKS URL", "Use this url to allow other services to verify Stack Auth-issued sessions for this project.")}
           value={jwksUrl}
