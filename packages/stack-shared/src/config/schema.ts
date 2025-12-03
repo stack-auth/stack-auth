@@ -200,6 +200,16 @@ export const branchConfigSchema = canNoLongerBeOverridden(projectConfigSchema, [
 
   payments: branchPaymentsSchema,
 
+  dbSync: yupObject({
+    externalDatabases: yupRecord(
+      userSpecifiedIdSchema("externalDatabaseId"),
+      yupObject({
+        type: yupString().oneOf(['postgres']).defined(),
+        connectionString: yupString().defined(),
+      })
+    ),
+  }),
+
   dataVault: yupObject({
     stores: yupRecord(
       userSpecifiedIdSchema("storeId"),
@@ -566,6 +576,14 @@ const organizationConfigDefaults = {
     } as const)
   },
 
+
+  dbSync: {
+    externalDatabases: (key: string) => ({
+      type: undefined,
+      connectionString: undefined,
+    }),
+  },
+
   dataVault: {
     stores: (key: string) => ({
       displayName: "Unnamed Vault",
@@ -863,7 +881,7 @@ export async function getConfigOverrideErrors<T extends yup.AnySchema>(schema: T
         // This is how the implementation would look like, but we don't support arrays in config JSON files (besides tuples)
         // const arraySchema = schema as yup.ArraySchema<any, any, any, any>;
         // const innerType = arraySchema.innerType;
-        // return yupArray(innerType ? getRestrictedSchema(path + ".[]", innerType as any) : undefined);
+        // return yupArray(innerType ? getRestrictedSchema(path + ".[]", innerType as any) : undefined());
       }
       case "tuple": {
         return yupTuple(schemaInfo.items.map((s, index) => getRestrictedSchema(path + `[${index}]`, s)) as any);

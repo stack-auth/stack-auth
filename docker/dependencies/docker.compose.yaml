@@ -9,6 +9,8 @@ services:
       POSTGRES_PASSWORD: PASSWORD-PLACEHOLDER--uqfEC1hmmv
       POSTGRES_DB: stackframe
       POSTGRES_DELAY_MS: ${POSTGRES_DELAY_MS:-0}
+    # Increase max_connections for E2E tests that create many databases
+    command: postgres -c max_connections=500
     ports:
       - "${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}28:5432"
     volumes:
@@ -203,7 +205,6 @@ services:
       - "host.docker.internal:host-gateway"  # noop on Docker Desktop/Orbstack, enables host.docker.internal on Linux
     environment:
       HOST_ON_HOST: host.docker.internal
-
 
 # ================= volumes =================
 
