@@ -44,7 +44,7 @@ function toTitle(id: string) {
     linkedin: "LinkedIn",
     twitch: "Twitch",
     x: "X",
-    okta: "okta"
+    okta: "Okta"
   }[id];
 }
 

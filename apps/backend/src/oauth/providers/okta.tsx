@@ -28,10 +28,10 @@ export class OktaProvider extends OAuthBaseProvider {
       oktaDomain,
       ...await OAuthBaseProvider.createConstructorArgs({
         issuer: `https://${oktaDomain}`,
-        authorizationEndpoint: `${oktaDomain}/v1/authorize`,
-        tokenEndpoint: `${oktaDomain}/v1/token`,
+        authorizationEndpoint: `https://${oktaDomain}/v1/authorize`,
+        tokenEndpoint: `https://${oktaDomain}/v1/token`,
         redirectUri: getEnvVariable("OAUTH_REDIRECT_URI")!,
-        jwksUri: `${oktaDomain}/v1/keys`,
+        jwksUri: `https://${oktaDomain}/v1/keys`,
         baseScope: "openid email profile",
         authorizationExtraParams: { response_mode: "form_post" },
         tokenEndpointAuthMethod: "client_secret_basic",
