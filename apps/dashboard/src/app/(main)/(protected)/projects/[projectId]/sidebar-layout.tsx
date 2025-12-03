@@ -12,27 +12,27 @@ import { UserButton } from "@stackframe/stack";
 import { ALL_APPS, type AppId } from "@stackframe/stack-shared/dist/apps/apps-config";
 import { typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import {
-  Button,
-  Sheet,
-  SheetContent,
-  SheetTitle,
-  SheetTrigger,
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-  Typography,
+    Button,
+    Sheet,
+    SheetContent,
+    SheetTitle,
+    SheetTrigger,
+    Tooltip,
+    TooltipContent,
+    TooltipProvider,
+    TooltipTrigger,
+    Typography,
 } from "@stackframe/stack-ui";
 import {
-  Blocks,
-  ChevronDown,
-  ChevronRight,
-  Globe,
-  KeyRound,
-  LucideIcon,
-  Menu,
-  PanelLeft,
-  Settings,
+    Blocks,
+    ChevronDown,
+    ChevronRight,
+    Globe,
+    KeyRound,
+    LucideIcon,
+    Menu,
+    PanelLeft,
+    Settings,
 } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { useCallback, useMemo, useRef, useState } from "react";
@@ -603,8 +603,8 @@ export default function SidebarLayout(props: { children?: React.ReactNode }) {
           </aside>
 
           {/* Main Content Area */}
-          <main className="flex-1 min-w-0 px-2 pb-3">
-            <div className="relative flex flex-col min-h-full">
+          <main className="flex-1 min-w-0 px-2 pb-3 h-[calc(100vh-6rem)]">
+            <div className="relative flex flex-col h-full overflow-auto">
               {props.children}
             </div>
           </main>
