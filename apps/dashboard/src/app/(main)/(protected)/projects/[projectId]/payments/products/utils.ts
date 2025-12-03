@@ -1,5 +1,5 @@
-import type { DayInterval } from "@stackframe/stack-shared/dist/utils/dates";
 import { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
+import type { DayInterval } from "@stackframe/stack-shared/dist/utils/dates";
 
 // ============================================================================
 // Types
@@ -60,6 +60,7 @@ export function freeTrialLabel(tuple: DayInterval | undefined): string | null {
 
 /**
  * Builds a Price object from current state with all required fields
+ * @param freeTrial - Pass `null` to explicitly remove free trial, `undefined` to compute from selection, or a DayInterval to set
  */
 export function buildPriceUpdate(params: {
   amount: string,
@@ -70,7 +71,7 @@ export function buildPriceUpdate(params: {
   freeTrialSelection: 'one-time' | 'custom' | DayInterval[1],
   freeTrialCount: number,
   freeTrialUnit: DayInterval[1] | undefined,
-  freeTrial?: DayInterval,
+  freeTrial?: DayInterval | null,
 }): Price {
   const { amount, serverOnly, intervalSelection, intervalCount, priceInterval, freeTrialSelection, freeTrialCount, freeTrialUnit, freeTrial } = params;
 
@@ -81,10 +82,20 @@ export function buildPriceUpdate(params: {
     (intervalSelection === 'custom' ? (priceInterval || 'month') : intervalSelection) as DayInterval[1]
   ] as DayInterval);
 
-  const freeTrialObj = freeTrial || (freeTrialSelection === 'one-time' ? undefined : ([
-    freeTrialSelection === 'custom' ? freeTrialCount : 1,
-    (freeTrialSelection === 'custom' ? (freeTrialUnit || 'day') : freeTrialSelection) as DayInterval[1]
-  ] as DayInterval));
+  // If freeTrial is explicitly null, don't include it
+  // If freeTrial is a DayInterval, use it
+  // If freeTrial is undefined, compute from selection state
+  let freeTrialObj: DayInterval | undefined;
+  if (freeTrial === null) {
+    freeTrialObj = undefined;
+  } else if (freeTrial !== undefined) {
+    freeTrialObj = freeTrial;
+  } else {
+    freeTrialObj = freeTrialSelection === 'one-time' ? undefined : ([
+      freeTrialSelection === 'custom' ? freeTrialCount : 1,
+      (freeTrialSelection === 'custom' ? (freeTrialUnit || 'day') : freeTrialSelection) as DayInterval[1]
+    ] as DayInterval);
+  }
 
   return {
     USD: normalized,
