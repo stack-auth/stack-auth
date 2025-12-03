@@ -474,17 +474,6 @@ export function CmdKSearch({
     setNestedBlurHandlers([]);
   }, [filteredCommands.length]);
 
-  // Clear nested columns when switching to a different command
-  useEffect(() => {
-    if (activeDepth === 0 && selectedIndex < filteredCommands.length) {
-      // Always clear nested state when at depth 0 and selection changes
-      // This ensures switching from an app with nested items to Ask AI clears the nested columns
-      setNestedColumns([]);
-      setSelectedIndices([selectedIndex]);
-      setNestedBlurHandlers([]);
-    }
-  }, [selectedIndex, filteredCommands, activeDepth]);
-
   const registerOnFocus = useCallback((onFocus: () => void) => {
     setPreviewFocusHandlers((prev) => new Set(prev).add(onFocus));
     // If there's a pending focus action (from clicking before preview mounted), trigger it now
@@ -552,6 +541,19 @@ export function CmdKSearch({
     inputRef.current?.focus();
   }, []);
 
+  // Handle selection change from clicking - clears nested state synchronously
+  const handleSetSelectedIndex = useCallback((index: number) => {
+    // Clear nested state synchronously when selection changes via click
+    // This is important because useEffect runs after render, but we need
+    // the nested columns cleared BEFORE the next render so the preview can mount
+    setNestedColumns([]);
+    setSelectedIndices([index]);
+    setNestedBlurHandlers([]);
+    setPreviewFocusHandlers(new Set()); // Clear stale focus handlers from previous command
+    setActiveDepth(0);
+    setSelectedIndex(index);
+  }, []);
+
   // Track pending focus action to handle click-then-focus timing
   const pendingFocusRef = useRef(false);
 
@@ -616,23 +618,43 @@ export function CmdKSearch({
       if (e.key === "ArrowDown") {
         e.preventDefault();
         const maxIndex = currentCommands.length > 0 ? currentCommands.length - 1 : 0;
-        setSelectedIndices((prev) => {
-          const next = [...prev];
-          next[activeDepth] = Math.min((next[activeDepth] ?? 0) + 1, maxIndex);
-          return next;
-        });
+
         if (activeDepth === 0) {
-          setSelectedIndex((prev) => Math.min(prev + 1, maxIndex));
+          // Main list navigation - clear nested state
+          const nextIndex = Math.min(selectedIndex + 1, maxIndex);
+          if (nextIndex !== selectedIndex) {
+            setSelectedIndex(nextIndex);
+            setSelectedIndices([nextIndex]);
+            setNestedColumns([]);
+            setNestedBlurHandlers([]);
+          }
+        } else {
+          // Nested list navigation
+          setSelectedIndices((prev) => {
+            const next = [...prev];
+            next[activeDepth] = Math.min((next[activeDepth] ?? 0) + 1, maxIndex);
+            return next;
+          });
         }
       } else if (e.key === "ArrowUp") {
         e.preventDefault();
-        setSelectedIndices((prev) => {
-          const next = [...prev];
-          next[activeDepth] = Math.max((next[activeDepth] ?? 0) - 1, 0);
-          return next;
-        });
+
         if (activeDepth === 0) {
-          setSelectedIndex((prev) => Math.max(prev - 1, 0));
+          // Main list navigation - clear nested state
+          const nextIndex = Math.max(selectedIndex - 1, 0);
+          if (nextIndex !== selectedIndex) {
+            setSelectedIndex(nextIndex);
+            setSelectedIndices([nextIndex]);
+            setNestedColumns([]);
+            setNestedBlurHandlers([]);
+          }
+        } else {
+          // Nested list navigation
+          setSelectedIndices((prev) => {
+            const next = [...prev];
+            next[activeDepth] = Math.max((next[activeDepth] ?? 0) - 1, 0);
+            return next;
+          });
         }
       } else if (e.key === "ArrowRight") {
         // Navigate deeper into nested preview
@@ -688,6 +710,7 @@ export function CmdKSearch({
       previewFocusHandlers,
       nestedBlurHandlers,
       isCursorAtEnd,
+      selectedIndex,
     ]
   );
 
@@ -738,7 +761,7 @@ export function CmdKSearch({
             {/* Results and Preview */}
             {previewMode && filteredCommands[selectedIndex]?.preview ? (
               // Mobile: Fullscreen preview
-              <div className="border-t border-foreground/[0.06] flex-grow-1 h-full flex flex-col">
+              <div className="border-t border-foreground/[0.06] grow-1 h-full flex flex-col">
                 <div className="flex items-center gap-2 px-5 py-3 border-b border-foreground/[0.06]">
                   <button
                     onClick={handleBackFromPreview}
@@ -768,7 +791,7 @@ export function CmdKSearch({
               <div
                 ref={columnsContainerRef}
                 className={cn(
-                  "border-t border-foreground/[0.06] flex-grow-1 h-full flex overflow-x-auto",
+                  "border-t border-foreground/[0.06] grow-1 h-full flex overflow-x-auto",
                   "md:flex-row flex-col"
                 )}
                 style={{ animation: "spotlight-results-in 100ms ease-out", scrollbarWidth: "thin" }}
@@ -784,7 +807,7 @@ export function CmdKSearch({
                     commands={filteredCommands}
                     selectedIndex={selectedIndex}
                     onSelect={handleSelectCommand}
-                    onSetSelectedIndex={setSelectedIndex}
+                    onSetSelectedIndex={handleSetSelectedIndex}
                     pathname={pathname}
                     showCyclingPlaceholder={true}
                     onSelectExampleQuery={setQuery}
@@ -825,44 +848,56 @@ export function CmdKSearch({
                 })}
 
                 {/* Preview panel - shown on the right side when a command with visual preview is selected */}
-                {filteredCommands[selectedIndex]?.hasVisualPreview && filteredCommands[selectedIndex]?.preview && nestedColumns.length === 0 && (
-                  <div className="hidden md:flex flex-1 border-l border-foreground/[0.06] overflow-hidden">
-                    <div
-                      key={filteredCommands[selectedIndex].id}
-                      className="w-full h-full"
-                      style={{ animation: "spotlight-preview-fade-in 150ms ease-out 100ms both" }}
-                    >
-                      {React.createElement(filteredCommands[selectedIndex].preview!, {
-                        isSelected: true,
-                        query,
-                        registerOnFocus,
-                        unregisterOnFocus,
-                        onBlur: handlePreviewBlur,
-                        registerNestedCommands: registerNestedCommandsDepth0,
-                        navigateToNested: navigateToNestedDepth1,
-                        depth: 0,
-                        pathname,
-                      })}
-                    </div>
-                  </div>
-                )}
+                {(() => {
+                  if (selectedIndex >= filteredCommands.length) return null;
+                  const selectedCommand = filteredCommands[selectedIndex];
+                  const showVisualPreview = selectedCommand.hasVisualPreview && selectedCommand.preview && nestedColumns.length === 0;
+                  const showHiddenPreview = selectedCommand.preview && !selectedCommand.hasVisualPreview && nestedColumns.length === 0;
 
-                {/* Hidden preview component - renders invisibly to register focus handlers for non-visual previews */}
-                {filteredCommands[selectedIndex]?.preview && !filteredCommands[selectedIndex]?.hasVisualPreview && nestedColumns.length === 0 && (
-                  <div className="hidden">
-                    {React.createElement(filteredCommands[selectedIndex].preview!, {
-                      isSelected: true,
-                      query,
-                      registerOnFocus,
-                      unregisterOnFocus,
-                      onBlur: handlePreviewBlur,
-                      registerNestedCommands: registerNestedCommandsDepth0,
-                      navigateToNested: navigateToNestedDepth1,
-                      depth: 0,
-                      pathname,
-                    })}
-                  </div>
-                )}
+                  if (showVisualPreview) {
+                    return (
+                      <div className="hidden md:flex flex-1 border-l border-foreground/[0.06] overflow-hidden">
+                        <div
+                          key={`${selectedCommand.id}-${selectedIndex}`}
+                          className="w-full h-full"
+                          style={{ animation: "spotlight-preview-fade-in 150ms ease-out 100ms both" }}
+                        >
+                          {React.createElement(selectedCommand.preview!, {
+                            isSelected: true,
+                            query,
+                            registerOnFocus,
+                            unregisterOnFocus,
+                            onBlur: handlePreviewBlur,
+                            registerNestedCommands: registerNestedCommandsDepth0,
+                            navigateToNested: navigateToNestedDepth1,
+                            depth: 0,
+                            pathname,
+                          })}
+                        </div>
+                      </div>
+                    );
+                  }
+
+                  if (showHiddenPreview) {
+                    return (
+                      <div className="hidden">
+                        {React.createElement(selectedCommand.preview!, {
+                          isSelected: true,
+                          query,
+                          registerOnFocus,
+                          unregisterOnFocus,
+                          onBlur: handlePreviewBlur,
+                          registerNestedCommands: registerNestedCommandsDepth0,
+                          navigateToNested: navigateToNestedDepth1,
+                          depth: 0,
+                          pathname,
+                        })}
+                      </div>
+                    );
+                  }
+
+                  return null;
+                })()}
               </div>
             )}
           </div>
@@ -878,11 +913,11 @@ export function CmdKSearch({
         @keyframes spotlight-slide-in {
           from {
             opacity: 0;
-            transform: translateX(-50%) translateY(-8px) scale(0.98);
+            transform: translateY(-8px) scale(0.95);
           }
           to {
             opacity: 1;
-            transform: translateX(-50%) translateY(0) scale(1);
+            transform: translateY(0) scale(1);
           }
         }
         @keyframes spotlight-results-in {
