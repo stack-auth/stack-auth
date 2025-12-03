@@ -59,7 +59,7 @@ export function CodeBlock(props: CodeBlockProps) {
           <CopyButton content={props.content} variant={props.neutralBackground ? "ghost" : "secondary"} />
         </div>
       </div>
-      <div>
+      <div className="overflow-x-auto">
         {props.customRender ?? <SyntaxHighlighter
           language={props.language}
           style={theme === 'dark' ? dark : prism}
@@ -72,12 +72,15 @@ export function CodeBlock(props: CodeBlockProps) {
             fontSize: '0.875rem',
             maxHeight: props.maxHeight,
             overflow: 'auto',
+            whiteSpace: 'pre-wrap',
+            wordBreak: 'break-word',
             ...(props.compact && {
               padding: '0.75em',
               fontSize: '0.75rem',
             }),
           }}
           wrapLines
+          wrapLongLines
         >
           {props.content}
         </SyntaxHighlighter>}

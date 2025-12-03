@@ -1,6 +1,5 @@
 "use client";
 
-import { CodeBlock } from '@/components/code-block';
 import { Link } from '@/components/link';
 import { ItemDialog } from "@/components/payments/item-dialog";
 import { cn } from "@/lib/utils";
@@ -14,9 +13,6 @@ import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
 import {
   ActionDialog,
   Button,
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
   DropdownMenu,
   DropdownMenuCheckboxItem,
   DropdownMenuContent,
@@ -31,7 +27,7 @@ import {
   SimpleTooltip,
   toast
 } from "@stackframe/stack-ui";
-import { ChevronDown, ChevronsUpDown, Gift, Layers, MoreVertical, Pencil, PencilIcon, Plus, Puzzle, Server, Trash2, X } from "lucide-react";
+import { ChevronsUpDown, Code, Copy, FileText, Gift, Layers, MoreVertical, Pencil, Plus, Puzzle, Server, Trash2, X } from "lucide-react";
 import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useAdminApp } from "../../use-admin-app";
 import { IntervalPopover, OrSeparator, SectionHeading } from "./components";
@@ -166,7 +162,6 @@ function ProductItemRow({
   onCreateNewItem: (customerType?: 'user' | 'team' | 'custom') => void,
 }) {
   const [isEditing, setIsEditing] = useState<boolean>(false);
-  const [isOpen, setIsOpen] = useState<boolean>(false);
   const [quantity, setQuantity] = useState<string>(String(item.quantity));
   const [repeatUnit, setRepeatUnit] = useState<DayInterval[1] | undefined>(item.repeat !== 'never' ? item.repeat[1] : undefined);
   const [repeatCount, setRepeatCount] = useState<number>(item.repeat !== 'never' ? item.repeat[0] : 1);
@@ -354,56 +349,15 @@ function ProductItemRow({
       </div>
     );
   } else {
+    // Simplified view mode - just show the essential info
     return (
-      <div className="flex flex-row">
-        <div className="flex items-center gap-2 w-full">
-          <Collapsible open={isOpen} onOpenChange={setIsOpen} className="w-full">
-            <div className="flex items-center gap-2 w-full">
-              <CollapsibleTrigger asChild>
-                <button className="h-5 w-5 inline-flex items-center justify-center rounded hover:bg-muted">
-                  <ChevronDown className={cn("h-4 w-4 transition-transform", isOpen ? "rotate-0" : "-rotate-90")} />
-                </button>
-              </CollapsibleTrigger >
-              <div className="text-sm">{itemDisplayName}</div>
-              <div className="ml-auto w-16 text-right text-sm text-muted-foreground tabular-nums">{prettyPrintWithMagnitudes(item.quantity)}</div>
-              <div className="ml-2">
-                <div className="text-xs px-2 py-0.5 rounded bg-muted text-muted-foreground">{shortRepeatText}</div>
-              </div>
-              {
-                !readOnly && (
-                  <>
-                    <button
-                      className="ml-2 text-muted-foreground hover:text-foreground"
-                      onClick={() => setIsEditing(true)}
-                      aria-label="Edit item"
-                    >
-                      <Pencil className="h-4 w-4" />
-                    </button>
-                    {onRemove && (
-                      <button className="text-destructive ml-1" onClick={onRemove} aria-label="Remove item">
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    )}
-                  </>
-                )
-              }
-            </div >
-            <CollapsibleContent>
-              <div className="space-y-2">
-                <div className="text-xs px-4 pt-2 text-muted-foreground">{item.expires !== 'never' ? `Expires: ${String(item.expires).replace(/-/g, ' ')}` : 'Never expires'}</div>
-                <CodeBlock
-                  language="typescript"
-                  content={`const item = await ${activeType === "user" ? "user" : "team"}.getItem("${itemId}");\nconst count = item.quantity;\n`}
-                  title="Item example"
-                  icon="code"
-                  compact
-                  tooltip="Retrieves this item for the active customer and reads the current quantity they hold."
-                />
-              </div>
-            </CollapsibleContent>
-          </Collapsible >
-        </div >
-      </div >
+      <div className="flex items-center gap-3 py-1">
+        <span className="text-sm text-foreground truncate">{itemDisplayName}</span>
+        <div className="ml-auto flex items-center gap-1.5 shrink-0">
+          <span className="text-sm text-muted-foreground tabular-nums">{prettyPrintWithMagnitudes(item.quantity)}</span>
+          <span className="text-xs text-muted-foreground">{shortRepeatText}</span>
+        </div>
+      </div>
     );
   }
 }
@@ -524,6 +478,256 @@ function ProductCard({ id, activeType, product, allProducts, existingItems, onSa
     });
   };
 
+  const generateComprehensivePrompt = (): string => {
+    const pricesObj = getPricesObject(draft);
+    const priceEntries = typedEntries(pricesObj);
+    
+    let prompt = `# Product Implementation Guide: ${draft.displayName || localProductId}\n\n`;
+    
+    prompt += `## Product Overview\n`;
+    prompt += `- **Product ID**: \`${localProductId}\`\n`;
+    prompt += `- **Display Name**: ${draft.displayName || 'Untitled Product'}\n`;
+    prompt += `- **Customer Type**: ${draft.customerType}\n`;
+    if (draft.freeTrial) {
+      const [count, unit] = draft.freeTrial;
+      prompt += `- **Free Trial**: ${count} ${count === 1 ? unit : unit + 's'}\n`;
+    }
+    prompt += `- **Server Only**: ${draft.serverOnly ? 'Yes' : 'No'}\n`;
+    prompt += `- **Stackable**: ${draft.stackable ? 'Yes' : 'No'}\n`;
+    if (draft.isAddOnTo && typeof draft.isAddOnTo === 'object') {
+      const addOnProductIds = Object.keys(draft.isAddOnTo);
+      prompt += `- **Add-on To**: ${addOnProductIds.join(', ')}\n`;
+    }
+    if (draft.catalogId) {
+      prompt += `- **Catalog ID**: ${draft.catalogId}\n`;
+    }
+    prompt += `\n`;
+    
+    prompt += `## Pricing Structure\n`;
+    if (draft.prices === 'include-by-default') {
+      prompt += `This product is included by default (free).\n\n`;
+    } else if (priceEntries.length === 0) {
+      prompt += `No prices configured.\n\n`;
+    } else {
+      priceEntries.forEach(([priceId, price], index) => {
+        prompt += `### Price Tier ${index + 1}${priceId !== 'free' ? ` (ID: \`${priceId}\`)` : ''}\n`;
+        
+        const currencyCodes = ['USD', 'EUR', 'GBP', 'JPY', 'AUD', 'CAD', 'CHF', 'CNY', 'SEK', 'NOK', 'DKK', 'PLN', 'BRL', 'MXN', 'INR', 'SGD', 'HKD', 'NZD', 'ZAR', 'KRW'] as const;
+        const currencies = currencyCodes
+          .map(code => ({ code, amount: (price as any)[code] }))
+          .filter(({ amount }) => amount !== undefined && amount !== null);
+        
+        if (currencies.length > 0) {
+          prompt += `**Pricing**:\n`;
+          currencies.forEach(({ code, amount }) => {
+            prompt += `- ${code}: $${amount}\n`;
+          });
+        }
+        
+        if (price.interval) {
+          const [count, unit] = price.interval;
+          prompt += `**Billing Interval**: ${intervalLabel(price.interval) || `${count} ${unit}${count !== 1 ? 's' : ''}`}\n`;
+        } else {
+          prompt += `**Billing**: One-time payment\n`;
+        }
+        
+        if (price.freeTrial) {
+          const [count, unit] = price.freeTrial;
+          prompt += `**Free Trial**: ${count} ${count === 1 ? unit : unit + 's'}\n`;
+        }
+        
+        if (price.serverOnly) {
+          prompt += `**Note**: Server-side purchase only\n`;
+        }
+        
+        prompt += `\n`;
+      });
+    }
+    
+    const itemsList = Object.entries(draft.includedItems);
+    if (itemsList.length > 0) {
+      prompt += `## Included Items\n`;
+      itemsList.forEach(([itemId, item]) => {
+        const itemMeta = existingItems.find(i => i.id === itemId);
+        const itemLabel = itemMeta ? itemMeta.displayName : itemId;
+        prompt += `### ${itemLabel} (\`${itemId}\`)\n`;
+        prompt += `- **Quantity**: ${prettyPrintWithMagnitudes(item.quantity)}\n`;
+        if (item.repeat) {
+          if (item.repeat === 'never') {
+            prompt += `- **Repeat**: Never (one-time grant)\n`;
+          } else {
+            const [count, unit] = item.repeat;
+            prompt += `- **Repeat**: Every ${count} ${count === 1 ? unit : unit + 's'}\n`;
+          }
+        }
+        if (item.expires) {
+          prompt += `- **Expires**: ${item.expires === 'never' ? 'Never' : item.expires === 'when-purchase-expires' ? 'When purchase expires' : 'When repeated'}\n`;
+        }
+        prompt += `\n`;
+      });
+    } else {
+      prompt += `## Included Items\n`;
+      prompt += `No items included.\n\n`;
+    }
+    
+    prompt += `## Implementation Code\n\n`;
+    prompt += `To create a checkout URL for this product:\n\n`;
+    prompt += `\`\`\`typescript\n`;
+    prompt += `const url = await ${draft.customerType}.createCheckoutUrl({ productId: "${localProductId}" });\n`;
+    prompt += `window.open(url, "_blank");\n`;
+    prompt += `\`\`\`\n\n`;
+    
+    prompt += `## Implementation Notes\n\n`;
+    if (draft.serverOnly) {
+      prompt += `- This product can only be purchased from server-side code. Use \`stackServerApp\` instead of \`stackClientApp\`.\n`;
+    }
+    if (draft.stackable) {
+      prompt += `- This product is stackable, meaning customers can purchase it multiple times and quantities will accumulate.\n`;
+    }
+    if (draft.isAddOnTo && typeof draft.isAddOnTo === 'object') {
+      prompt += `- This is an add-on product. Customers must already have one of the base products to purchase this.\n`;
+    }
+    if (draft.freeTrial) {
+      prompt += `- This product includes a free trial period. Customers will not be charged until the trial ends.\n`;
+    }
+    if (itemsList.length > 0) {
+      prompt += `- When a customer purchases this product, they will automatically receive the included items listed above.\n`;
+    }
+    
+    if (itemsList.length > 0) {
+      prompt += `\n## Item Implementation Guide\n\n`;
+      prompt += `Items are automatically granted to customers when they purchase this product. Here's how to work with items in your code:\n\n`;
+      
+      prompt += `### Getting Item Quantities\n\n`;
+      prompt += `**Server-side (recommended)**:\n\n`;
+      prompt += `\`\`\`typescript\n`;
+      if (draft.customerType === 'user') {
+        prompt += `// Get a user and their item\n`;
+        prompt += `const user = await stackServerApp.getUser({ userId: "user_123" });\n`;
+        prompt += `const item = await user.getItem("${itemsList[0][0]}");\n`;
+        prompt += `console.log(\`Current quantity: \${item.quantity}\`);\n`;
+        prompt += `console.log(\`Display name: \${item.displayName}\`);\n`;
+      } else if (draft.customerType === 'team') {
+        prompt += `// Get a team and their item\n`;
+        prompt += `const team = await stackServerApp.getTeam({ teamId: "team_123" });\n`;
+        prompt += `const item = await team.getItem("${itemsList[0][0]}");\n`;
+        prompt += `console.log(\`Current quantity: \${item.quantity}\`);\n`;
+        prompt += `console.log(\`Display name: \${item.displayName}\`);\n`;
+      } else {
+        prompt += `// Get a custom customer and their item\n`;
+        prompt += `const customer = await stackServerApp.getCustomCustomer({ customCustomerId: "customer_123" });\n`;
+        prompt += `const item = await customer.getItem("${itemsList[0][0]}");\n`;
+        prompt += `console.log(\`Current quantity: \${item.quantity}\`);\n`;
+        prompt += `console.log(\`Display name: \${item.displayName}\`);\n`;
+      }
+      prompt += `\`\`\`\n\n`;
+      
+      prompt += `**Client-side (React)**:\n\n`;
+      prompt += `\`\`\`typescript\n`;
+      if (draft.customerType === 'user') {
+        prompt += `// In a React component\n`;
+        prompt += `const user = useUser();\n`;
+        prompt += `const item = user?.useItem("${itemsList[0][0]}");\n`;
+        prompt += `if (item) {\n`;
+        prompt += `  console.log(\`Current quantity: \${item.quantity}\`);\n`;
+        prompt += `  // Use item.nonNegativeQuantity for display (clamps to 0)\n`;
+        prompt += `  console.log(\`Available: \${item.nonNegativeQuantity}\`);\n`;
+        prompt += `}\n`;
+      } else if (draft.customerType === 'team') {
+        prompt += `// In a React component with team context\n`;
+        prompt += `const team = useTeam();\n`;
+        prompt += `const item = team?.useItem("${itemsList[0][0]}");\n`;
+        prompt += `if (item) {\n`;
+        prompt += `  console.log(\`Current quantity: \${item.quantity}\`);\n`;
+        prompt += `  console.log(\`Available: \${item.nonNegativeQuantity}\`);\n`;
+        prompt += `}\n`;
+      }
+      prompt += `\`\`\`\n\n`;
+      
+      prompt += `### Modifying Item Quantities (Server-side only)\n\n`;
+      prompt += `**Increase quantity** (add credits/resources):\n\n`;
+      prompt += `\`\`\`typescript\n`;
+      if (draft.customerType === 'user') {
+        prompt += `const user = await stackServerApp.getUser({ userId: "user_123" });\n`;
+        prompt += `const item = await user.getItem("${itemsList[0][0]}");\n`;
+        prompt += `// Add 100 units\n`;
+        prompt += `await item.increaseQuantity(100);\n`;
+      } else if (draft.customerType === 'team') {
+        prompt += `const team = await stackServerApp.getTeam({ teamId: "team_123" });\n`;
+        prompt += `const item = await team.getItem("${itemsList[0][0]}");\n`;
+        prompt += `// Add 100 units\n`;
+        prompt += `await item.increaseQuantity(100);\n`;
+      } else {
+        prompt += `const customer = await stackServerApp.getCustomCustomer({ customCustomerId: "customer_123" });\n`;
+        prompt += `const item = await customer.getItem("${itemsList[0][0]}");\n`;
+        prompt += `// Add 100 units\n`;
+        prompt += `await item.increaseQuantity(100);\n`;
+      }
+      prompt += `\`\`\`\n\n`;
+      
+      prompt += `**Decrease quantity** (consume credits/resources):\n\n`;
+      prompt += `\`\`\`typescript\n`;
+      if (draft.customerType === 'user') {
+        prompt += `const user = await stackServerApp.getUser({ userId: "user_123" });\n`;
+        prompt += `const item = await user.getItem("${itemsList[0][0]}");\n`;
+        prompt += `// Consume 50 units (allows negative balance)\n`;
+        prompt += `await item.decreaseQuantity(50);\n`;
+        prompt += `\n`;
+        prompt += `// Or use tryDecreaseQuantity to prevent going below 0\n`;
+        prompt += `const success = await item.tryDecreaseQuantity(50);\n`;
+        prompt += `if (!success) {\n`;
+        prompt += `  // Insufficient quantity - handle accordingly\n`;
+        prompt += `  throw new Error("Insufficient credits");\n`;
+        prompt += `}\n`;
+      } else if (draft.customerType === 'team') {
+        prompt += `const team = await stackServerApp.getTeam({ teamId: "team_123" });\n`;
+        prompt += `const item = await team.getItem("${itemsList[0][0]}");\n`;
+        prompt += `// Consume 50 units\n`;
+        prompt += `await item.decreaseQuantity(50);\n`;
+        prompt += `\n`;
+        prompt += `// Or use tryDecreaseQuantity to prevent going below 0\n`;
+        prompt += `const success = await item.tryDecreaseQuantity(50);\n`;
+        prompt += `if (!success) {\n`;
+        prompt += `  throw new Error("Insufficient quantity");\n`;
+        prompt += `}\n`;
+      } else {
+        prompt += `const customer = await stackServerApp.getCustomCustomer({ customCustomerId: "customer_123" });\n`;
+        prompt += `const item = await customer.getItem("${itemsList[0][0]}");\n`;
+        prompt += `// Consume 50 units\n`;
+        prompt += `await item.decreaseQuantity(50);\n`;
+        prompt += `\n`;
+        prompt += `// Or use tryDecreaseQuantity to prevent going below 0\n`;
+        prompt += `const success = await item.tryDecreaseQuantity(50);\n`;
+        prompt += `if (!success) {\n`;
+        prompt += `  throw new Error("Insufficient quantity");\n`;
+        prompt += `}\n`;
+      }
+      prompt += `\`\`\`\n\n`;
+      
+      prompt += `### Item Properties\n\n`;
+      prompt += `- \`quantity\`: The current quantity (can be negative)\n`;
+      prompt += `- \`nonNegativeQuantity\`: Quantity clamped to minimum 0 (use for display)\n`;
+      prompt += `- \`displayName\`: Human-readable name of the item\n`;
+      prompt += `- \`increaseQuantity(amount)\`: Add to the quantity (server-side only)\n`;
+      prompt += `- \`decreaseQuantity(amount)\`: Subtract from quantity, allows negative (server-side only)\n`;
+      prompt += `- \`tryDecreaseQuantity(amount)\`: Subtract if sufficient, returns false if would go negative (server-side only)\n\n`;
+      
+      prompt += `### Important Notes\n\n`;
+      prompt += `- Items are automatically granted when customers purchase this product based on the included items configuration.\n`;
+      if (itemsList.some(([, item]) => item.repeat && item.repeat !== 'never')) {
+        prompt += `- Some items repeat automatically based on their repeat interval configuration.\n`;
+      }
+      if (itemsList.some(([, item]) => item.expires && item.expires !== 'never')) {
+        prompt += `- Some items expire based on their expiration rules (when purchase expires, when repeated, etc.).\n`;
+      }
+      prompt += `- Item quantity modifications are atomic and safe for concurrent use.\n`;
+      prompt += `- Use \`tryDecreaseQuantity()\` for pre-paid credits to prevent overdrafts.\n`;
+      prompt += `- Use \`nonNegativeQuantity\` when displaying quantities to users to avoid showing negative numbers.\n`;
+    }
+    
+    return prompt;
+  };
+
   const renderPrimaryPrices = (mode: 'editing' | 'view') => {
     const entries = Object.entries(pricesObject);
     if (entries.length === 0) {
@@ -584,28 +788,31 @@ function ProductCard({ id, activeType, product, allProducts, existingItems, onSa
   const PRODUCT_TOGGLE_OPTIONS = [{
     key: 'serverOnly' as const,
     label: 'Server only',
-    description: "Restricts this product to only be purchased from server-side calls",
+    shortLabel: 'Server only',
+    description: "Restricts this product to only be purchased from server-side calls. Use this for backend-initiated purchases.",
     active: !!draft.serverOnly,
     visible: true,
-    icon: <Server size={16} />,
+    icon: <Server size={14} />,
     onToggle: () => setDraft(prev => ({ ...prev, serverOnly: !prev.serverOnly })),
     wrapButton: (button: ReactNode) => button,
   }, {
     key: 'stackable' as const,
     label: 'Stackable',
-    description: "Allow customers to purchase this product multiple times",
+    shortLabel: 'Stackable',
+    description: "Allows customers to purchase this product multiple times. Each purchase adds to their existing quantity.",
     active: !!draft.stackable,
     visible: true,
-    icon: <Layers size={16} />,
+    icon: <Layers size={14} />,
     onToggle: () => setDraft(prev => ({ ...prev, stackable: !prev.stackable })),
     wrapButton: (button: ReactNode) => button,
   }, {
     key: 'addon' as const,
     label: 'Add-on',
-    description: "Make this product an add-on. An add-on can be purchased along with the product(s) it is an add-on to.",
+    shortLabel: 'Add-on',
+    description: "Makes this an optional extra that customers can purchase alongside a main product.",
     visible: draft.isAddOnTo !== false || couldBeAddOnTo.length > 0,
     active: draft.isAddOnTo !== false,
-    icon: <Puzzle size={16} />,
+    icon: <Puzzle size={14} />,
     onToggle: isAddOnTo.length === 0 && draft.isAddOnTo !== false ? () => setDraft(prev => ({ ...prev, isAddOnTo: false })) : undefined,
     wrapButton: (button: ReactNode) => isAddOnTo.length === 0 && draft.isAddOnTo !== false ? button : (
       <DropdownMenu>
@@ -668,7 +875,7 @@ function ProductCard({ id, activeType, product, allProducts, existingItems, onSa
             <>
               {i > 0 && ", "}
               {editing ? o.product.displayName : (
-                <Link className="underline hover:text-primary" href={`#product-${o.id}`}>
+                <Link className="underline hover:text-foreground transition-colors" href={`#product-${o.id}`}>
                   {o.product.displayName}
                 </Link>
               )}
@@ -676,7 +883,7 @@ function ProductCard({ id, activeType, product, allProducts, existingItems, onSa
           ))}
         </span>;
       }
-      return b.label;
+      return b.shortLabel;
     };
     return mode === 'editing' ? (
       PRODUCT_TOGGLE_OPTIONS
@@ -688,7 +895,7 @@ function ProductCard({ id, activeType, product, allProducts, existingItems, onSa
               {wrap(
                 <button
                   className={cn(
-                    "flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-medium transition-colors",
+                    "flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors duration-150 hover:transition-none",
                     b.active
                       ? "border-primary/40 bg-primary/10 text-primary"
                       : "border-border bg-background/80 text-muted-foreground line-through"
@@ -707,10 +914,14 @@ function ProductCard({ id, activeType, product, allProducts, existingItems, onSa
         .filter(b => b.visible !== false)
         .filter(b => b.active)
         .map((b) => {
-          return <span className="flex items-center gap-2 text-xs" key={b.key}>
-            {b.icon}
-            {getLabel(b, false)}
-          </span>;
+          return (
+            <SimpleTooltip tooltip={b.description} key={b.key}>
+              <span className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-help">
+                {b.icon}
+                {getLabel(b, false)}
+              </span>
+            </SimpleTooltip>
+          );
         })
     );
   };
@@ -819,7 +1030,7 @@ function ProductCard({ id, activeType, product, allProducts, existingItems, onSa
           <div className="flex flex-col gap-4">
             {itemsList.map(([itemId, item]) => {
               const itemMeta = existingItems.find(i => i.id === itemId);
-              const itemLabel = itemMeta ? itemMeta.id : 'Select item';
+              const itemLabel = itemMeta ? itemMeta.displayName : 'Select item';
               return (
                 <ProductItemRow
                   key={itemId}
@@ -910,111 +1121,115 @@ function ProductCard({ id, activeType, product, allProducts, existingItems, onSa
   );
 
   const viewingContent = (
-    <div className={cn("group relative flex flex-col rounded-2xl border bg-background transition-colors overflow-hidden",
+    <div className={cn(
+      "group relative flex flex-col rounded-2xl overflow-hidden",
+      "bg-gray-200/80 dark:bg-[hsl(240,10%,5.5%)]",
+      "border border-border/50 dark:border-foreground/[0.12]",
+      "shadow-sm hover:shadow-md transition-all duration-150 hover:transition-none",
       isHashTarget && "border-primary shadow-[0_0_0_1px_rgba(59,130,246,0.35)]"
     )}>
-      <div className="flex flex-col items-center justify-center px-4 pt-4">
-        <div className="flex w-full flex-col items-center justify-center gap-0.5">
-          <ProductEditableInput
-            value={localProductId}
-            onUpdate={(value) => setLocalProductId(value)}
-            readOnly
-            placeholder={"Product ID"}
-            inputClassName="text-xs font-mono text-center text-muted-foreground"
-            transform={(value) => value.toLowerCase()}
-          />
-          <ProductEditableInput
-            value={draft.displayName || ""}
-            onUpdate={(value) => setDraft(prev => ({ ...prev, displayName: value }))}
-            readOnly
-            placeholder={"Product display name"}
-            inputClassName="text-lg font-bold text-center w-full"
-          />
+      {/* Header section */}
+      <div className="relative px-5 pt-5 pb-3">
+        {/* Product ID badge */}
+        <div className="flex justify-center mb-2">
+          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-mono text-muted-foreground bg-foreground/[0.04] ring-1 ring-foreground/[0.06]">
+            {localProductId}
+          </span>
         </div>
-        <div className="absolute right-4 top-4 opacity-0 transition-opacity group-hover:opacity-100">
-          <button
-            className="inline-flex h-7 w-7 items-center justify-center rounded hover:bg-muted"
-            aria-label="Edit product"
-            onClick={() => {
-              setIsEditing(true);
-              setDraft(product);
-            }}
-          >
-            <PencilIcon className="h-4 w-4" />
-          </button>
+        {/* Product name */}
+        <h3 className="text-lg font-semibold text-center tracking-tight">
+          {draft.displayName || "Untitled Product"}
+        </h3>
+
+        {/* Action menu - appears on hover */}
+        <div className="absolute right-3 top-3 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-hover:transition-none">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <button className="inline-flex h-7 w-7 items-center justify-center rounded hover:bg-muted" aria-label="Open menu">
+              <button className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-foreground/[0.05] transition-colors duration-150 hover:transition-none" aria-label="Options">
                 <MoreVertical className="h-4 w-4" />
               </button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="min-w-[160px]">
-              <DropdownMenuItem onClick={() => {
-                setIsEditing(true);
-                setDraft(product);
-              }}>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem icon={<Pencil className="h-4 w-4" />} onClick={() => { setIsEditing(true); setDraft(product); }}>
                 Edit
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => { onDuplicate(product); }}>
+              <DropdownMenuItem icon={<Copy className="h-4 w-4" />} onClick={() => { onDuplicate(product); }}>
                 Duplicate
               </DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => { setShowDeleteDialog(true); }}>
+              <DropdownMenuItem
+                icon={<Trash2 className="h-4 w-4" />}
+                className="text-destructive focus:text-destructive"
+                onClick={() => { setShowDeleteDialog(true); }}
+              >
                 Delete
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
       </div>
-      <div className="flex flex-wrap justify-center gap-2 px-4 pb-3 pt-1 text-muted-foreground">
-        {renderToggleButtons('view')}
-      </div>
-      <div className="border-y border-border px-4 py-4">
+
+      {/* Toggle badges */}
+      {PRODUCT_TOGGLE_OPTIONS.some(b => b.visible !== false && b.active) && (
+        <div className="flex flex-wrap justify-center gap-1.5 px-4 pb-3">
+          {renderToggleButtons('view')}
+        </div>
+      )}
+
+      {/* Pricing section */}
+      <div className="border-t border-border/20 dark:border-foreground/[0.06] px-5 py-4 dark:bg-[hsl(240,10%,6%)]">
         {renderPrimaryPrices('view')}
       </div>
 
-      <div className="px-4 py-3">
-        {itemsList.length === 0 ? (
-          <div className="text-center text-sm text-muted-foreground">Grants no items</div>
-        ) : (
-          <div className="space-y-2">
+      {/* Items section */}
+      {itemsList.length > 0 && (
+        <div className="border-t border-border/20 dark:border-foreground/[0.06] px-5 py-3">
+          <div className="space-y-1">
             {itemsList.map(([itemId, item]) => {
               const itemMeta = existingItems.find(i => i.id === itemId);
-              const itemLabel = itemMeta ? itemMeta.id : 'Select item';
+              const itemLabel = itemMeta ? itemMeta.displayName : itemId;
               return (
-                <ProductItemRow
-                  key={itemId}
-                  activeType={activeType}
-                  itemId={itemId}
-                  item={item}
-                  itemDisplayName={itemLabel}
-                  allItems={existingItems}
-                  existingIncludedItemIds={Object.keys(draft.includedItems).filter(id => id !== itemId)}
-                  startEditing={false}
-                  readOnly
-                  onSave={(id, updated) => handleAddOrEditIncludedItem(id, updated)}
-                  onChangeItemId={(_newItemId) => { }}
-                  onRemove={undefined}
-                  onCreateNewItem={onCreateNewItem}
-                />
+                <div key={itemId} className="flex items-center justify-between text-sm">
+                  <span className="text-muted-foreground">{itemLabel}</span>
+                  <span className="text-foreground tabular-nums">
+                    {prettyPrintWithMagnitudes(item.quantity)}
+                    <span className="text-muted-foreground text-xs ml-1">{shortIntervalLabel(item.repeat)}</span>
+                  </span>
+                </div>
               );
             })}
           </div>
-        )}
-      </div>
+        </div>
+      )}
+
+      {/* Quick actions footer */}
       {activeType !== "custom" && (
-        <div className="border-t">
-          <CodeBlock
-            language="typescript"
-            content={`const checkoutUrl = await ${activeType === "user" ? "user" : "team"}.createCheckoutUrl({ productId: "${id}" });\nwindow.open(checkoutUrl, "_blank");`}
-            title="Checkout example"
-            icon="code"
-            compact
-            fullWidth
-            neutralBackground
-            noSeparator
-            tooltip="Creates a checkout URL for this product and opens it so the customer can finish their purchase."
-          />
+        <div className="border-t border-border/20 dark:border-foreground/[0.06] px-4 py-2.5 flex items-center justify-center gap-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 px-3 text-xs text-muted-foreground hover:text-foreground gap-1.5"
+            onClick={() => {
+              navigator.clipboard.writeText(`const url = await ${activeType}.createCheckoutUrl({ productId: "${id}" });\nwindow.open(url, "_blank");`);
+              toast({ title: "Copied to clipboard" });
+            }}
+          >
+            <Code className="h-3 w-3" />
+            Copy code
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 px-3 text-xs text-muted-foreground hover:text-foreground gap-1.5"
+            onClick={() => {
+              const prompt = generateComprehensivePrompt();
+              navigator.clipboard.writeText(prompt);
+              toast({ title: "Prompt copied to clipboard" });
+            }}
+          >
+            <FileText className="h-3 w-3" />
+            Copy prompt
+          </Button>
         </div>
       )}
     </div>
@@ -1155,21 +1370,31 @@ function CatalogView({ groupedProducts, groups, existingItems, onSaveProduct, on
     return creatingGroupKey ? [creatingGroupKey, ...ordered] : ordered;
   }, [filtered, creatingGroupKey]);
 
+  const typeDescriptions = {
+    user: 'Products purchasable by individual users',
+    team: 'Products purchasable by teams or organizations',
+    custom: 'Products managed through custom server-side logic',
+  };
+
   return (
-    <div className="space-y-10">
-      <div className="flex items-center">
-        <div className="inline-flex rounded-md bg-muted p-1">
+    <div className="space-y-8">
+      {/* Tab selector and AI prompt */}
+      <div className="flex items-center justify-between gap-4">
+        <div className="inline-flex items-center gap-1 rounded-xl bg-foreground/[0.04] p-1 backdrop-blur-sm">
           {(['user', 'team', 'custom'] as const).map(t => (
-            <button
-              key={t}
-              onClick={() => setActiveType(t)}
-              className={cn(
-                "px-4 py-2 text-sm rounded-sm capitalize",
-                activeType === t ? "bg-background shadow-sm" : "text-muted-foreground hover:text-foreground"
-              )}
-            >
-              {t} catalogs
-            </button>
+            <SimpleTooltip key={t} tooltip={typeDescriptions[t]}>
+              <button
+                onClick={() => setActiveType(t)}
+                className={cn(
+                  "px-4 py-2 text-sm font-medium rounded-lg transition-all duration-150 hover:transition-none capitalize",
+                  activeType === t
+                    ? "bg-background text-foreground shadow-sm ring-1 ring-foreground/[0.06]"
+                    : "text-muted-foreground hover:text-foreground hover:bg-background/50"
+                )}
+              >
+                {t}
+              </button>
+            </SimpleTooltip>
           ))}
         </div>
       </div>
@@ -1205,10 +1430,10 @@ function CatalogView({ groupedProducts, groups, existingItems, onSaveProduct, on
                 </button>
               </div>
             ) : (
-              <h3 className="text-lg font-semibold mb-3">{groupName}</h3>
+              <h3 className="text-base font-semibold mb-3 text-foreground">{groupName}</h3>
             )}
-            <div className="relative rounded-xl bg-slate-100 dark:bg-muted border-slate-100 dark:border-muted border-2">
-              <div className="flex gap-4 justify-start overflow-x-auto p-4 min-h-20 pr-16">
+            <div className="relative rounded-2xl bg-foreground/[0.04] ring-1 ring-foreground/[0.06]">
+              <div className="flex gap-4 justify-start overflow-x-auto p-5 min-h-20 pr-16">
                 <div className="flex max-w-max gap-4 items-start">
                   {products.map(({ id, product }) => (
                     <ProductCard
@@ -1295,7 +1520,13 @@ function CatalogView({ groupedProducts, groups, existingItems, onSaveProduct, on
                     <Button
                       variant="outline"
                       size="plain"
-                      className="self-stretch border border-dashed rounded-xl w-[320px] py-32 flex flex-col items-center justify-center bg-background"
+                      className={cn(
+                        "self-stretch w-[320px] py-24 flex flex-col items-center justify-center",
+                        "rounded-2xl border border-dashed border-foreground/[0.1]",
+                        "bg-background/40 hover:bg-foreground/[0.03]",
+                        "text-muted-foreground hover:text-foreground",
+                        "transition-all duration-150 hover:transition-none"
+                      )}
                       onClick={() => {
                         const key = generateProductId("product");
                         const newProduct: Product = {
@@ -1313,8 +1544,8 @@ function CatalogView({ groupedProducts, groups, existingItems, onSaveProduct, on
                       }}
                     >
                       <div className="flex flex-col items-center gap-2">
-                        <Plus className="h-8 w-8" />
-                        Create product
+                        <Plus className="h-6 w-6" />
+                        <span className="text-sm font-medium">Add product</span>
                       </div>
                     </Button>
                   )}
@@ -1327,7 +1558,13 @@ function CatalogView({ groupedProducts, groups, existingItems, onSaveProduct, on
       <Button
         variant="outline"
         size="plain"
-        className="w-full h-40 flex items-center justify-center border border-dashed rounded-xl"
+        className={cn(
+          "w-full h-32 flex items-center justify-center",
+          "rounded-2xl border border-dashed border-foreground/[0.1]",
+          "bg-background/40 hover:bg-foreground/[0.03]",
+          "text-muted-foreground hover:text-foreground",
+          "transition-all duration-150 hover:transition-none"
+        )}
         onClick={() => {
           const tempKey = `__new_catalog__${Date.now().toString(36).slice(2, 8)}`;
           setCreatingGroupKey(tempKey);
@@ -1348,8 +1585,8 @@ function CatalogView({ groupedProducts, groups, existingItems, onSaveProduct, on
         }}
       >
         <div className="flex flex-col items-center gap-2">
-          <Plus className="h-8 w-8" />
-          Create catalog
+          <Plus className="h-6 w-6" />
+          <span className="text-sm font-medium">New catalog</span>
         </div>
       </Button>
     </div>
