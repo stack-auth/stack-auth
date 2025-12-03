@@ -1,21 +1,19 @@
 import { cn } from "@/lib/utils";
 import type { DayInterval } from "@stackframe/stack-shared/dist/utils/dates";
 import {
-  Button,
-  Checkbox,
-  Input,
-  Label,
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-  SimpleTooltip,
+    Checkbox,
+    Input,
+    Label,
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue
 } from "@stackframe/stack-ui";
 import { X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { IntervalPopover } from "./components";
-import { buildPriceUpdate, DEFAULT_INTERVAL_UNITS, freeTrialLabel, intervalLabel, Price, PRICE_INTERVAL_UNITS, Product } from "./utils";
+import { buildPriceUpdate, DEFAULT_INTERVAL_UNITS, freeTrialLabel, intervalLabel, PRICE_INTERVAL_UNITS, Product } from "./utils";
 
 type ProductPriceRowProps = {
   priceId: string,
@@ -105,8 +103,10 @@ export function ProductPriceRow({
   return (
     <div
       className={cn(
-        "relative rounded-2xl border border-border/60 bg-muted/30 px-4 py-4",
-        isEditing ? "flex flex-col gap-4" : "items-center justify-center text-center"
+        "relative rounded-xl px-4 py-4",
+        isEditing
+          ? "flex flex-col gap-4 border border-border/60 bg-muted/30"
+          : "items-center justify-center text-center"
       )}
     >
       {isEditing ? (
@@ -290,32 +290,25 @@ export function ProductPriceRow({
           )}
         </>
       ) : (
-        // View mode
-        <>
-          <div className="text-xl font-semibold tabular-nums">
+        // View mode - minimal, centered display
+        <div className="flex flex-col items-center gap-0.5">
+          <div className="text-2xl font-semibold tabular-nums tracking-tight">
             {isFree ? 'Free' : `$${niceAmount}`}
           </div>
           {!isFree && (
-            <div className="text-xs text-muted-foreground capitalize">{intervalText ?? 'one-time'}</div>
+            <div className="text-xs text-muted-foreground capitalize">{intervalText ?? 'One-time'}</div>
           )}
           {includeByDefault && (
-            <SimpleTooltip tooltip="Customers automatically receive this product when they are created">
-              <div className="text-xs text-muted-foreground mt-1">
-                Included by default
-              </div>
-            </SimpleTooltip>
+            <div className="text-[11px] text-muted-foreground mt-1">Included by default</div>
           )}
           {!isFree && price.freeTrial && (
-            <div className="text-xs text-muted-foreground mt-1">
-              Free trial: {freeTrialLabel(price.freeTrial)}
+            <div className="mt-1.5">
+              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 ring-1 ring-emerald-500/20">
+                {freeTrialLabel(price.freeTrial)} free trial
+              </span>
             </div>
           )}
-          {!isFree && price.serverOnly && (
-            <div className="text-xs text-muted-foreground mt-1">
-              Server only
-            </div>
-          )}
-        </>
+        </div>
       )}
     </div>
   );

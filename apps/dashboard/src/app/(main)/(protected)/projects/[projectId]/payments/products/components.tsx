@@ -1,21 +1,21 @@
 import { cn } from "@/lib/utils";
 import type { DayInterval } from "@stackframe/stack-shared/dist/utils/dates";
 import {
-  Button,
-  Input,
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-  Separator,
+    Button,
+    Input,
+    Popover,
+    PopoverContent,
+    PopoverTrigger,
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+    Separator,
 } from "@stackframe/stack-ui";
 import { ChevronsUpDown } from "lucide-react";
 import { useState } from "react";
-import { DEFAULT_INTERVAL_UNITS, intervalLabel } from "./utils";
+import { DEFAULT_INTERVAL_UNITS } from "./utils";
 
 // ============================================================================
 // Small UI Components
@@ -26,14 +26,10 @@ import { DEFAULT_INTERVAL_UNITS, intervalLabel } from "./utils";
  */
 export function OrSeparator() {
   return (
-    <div className="flex items-center justify-center stack-scope mx-8">
-      <div className="flex-1">
-        <Separator />
-      </div>
-      <div className="mx-2 text-sm text-zinc-500">OR</div>
-      <div className="flex-1">
-        <Separator />
-      </div>
+    <div className="flex items-center justify-center my-1">
+      <div className="flex-1 h-px bg-foreground/[0.06]" />
+      <span className="mx-3 text-[10px] font-medium text-muted-foreground/60 uppercase tracking-wider">or</span>
+      <div className="flex-1 h-px bg-foreground/[0.06]" />
     </div>
   );
 }

@@ -62,8 +62,8 @@ const DropdownMenuSubTrigger = forwardRefIfNeeded<
   <DropdownMenuPrimitive.SubTrigger
     ref={ref}
     className={cn(
-      "stack-scope flex cursor-default select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none focus:bg-accent data-[state=open]:bg-accent",
-      inset && "pl-8",
+      "stack-scope flex cursor-default select-none items-center rounded-sm px-3 py-2 text-sm outline-none focus:bg-accent data-[state=open]:bg-accent",
+      inset && "pl-9",
       className
     )}
     {...props}
@@ -81,10 +81,10 @@ const DropdownMenuSubContent = forwardRefIfNeeded<
 >(({ className, ...props }, ref) => (
   <DropdownMenuPrimitive.SubContent
     ref={ref}
-    className={cn(
-      "stack-scope z-50 min-w-[8rem] overflow-hidden rounded-md border bg-popover p-1 text-popover-foreground shadow-lg data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2",
-      className
-    )}
+      className={cn(
+        "stack-scope z-50 min-w-[8rem] overflow-hidden rounded-xl border border-border/50 bg-popover p-1.5 text-popover-foreground shadow-lg data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2",
+        className
+      )}
     {...props}
   />
 ));
@@ -100,7 +100,7 @@ const DropdownMenuContent = forwardRefIfNeeded<
       ref={ref}
       sideOffset={sideOffset}
       className={cn(
-        "stack-scope z-50 min-w-[8rem] overflow-hidden rounded-md border bg-popover p-1 text-popover-foreground shadow-md",
+        "stack-scope z-50 min-w-[8rem] overflow-hidden rounded-xl border border-border/50 bg-popover p-1.5 text-popover-foreground shadow-md",
         "data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2",
         className
       )}
@@ -115,8 +115,9 @@ const DropdownMenuItem = forwardRefIfNeeded<
   Omit<React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.Item>, "onClick"> & {
     inset?: boolean,
     onClick?: (event: React.MouseEvent<HTMLDivElement, MouseEvent>) => void | Promise<void>,
+    icon?: React.ReactNode,
   }
->(({ className, inset, ...props }, ref) => {
+>(({ className, inset, icon, ...props }, ref) => {
   const { setOpen } = React.useContext(DropdownMenuContext) ?? throwErr("No DropdownMenuContext found");
   const [handleClick, isLoading] = useAsyncCallback(async (e: React.MouseEvent<HTMLDivElement, MouseEvent>) => {
     await props.onClick?.(e);
@@ -126,8 +127,8 @@ const DropdownMenuItem = forwardRefIfNeeded<
   return <DropdownMenuPrimitive.Item
     ref={ref}
     className={cn(
-      "stack-scope relative flex cursor-default select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
-      inset && "pl-8",
+      "stack-scope relative flex cursor-default select-none items-center rounded-sm px-3 py-2 text-sm outline-none focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
+      (inset || icon) && "pl-9",
       className
     )}
     {...props}
@@ -141,6 +142,11 @@ const DropdownMenuItem = forwardRefIfNeeded<
     <div style={{ visibility: isLoading ? "visible" : "hidden", position: "absolute", inset: 0, display: "flex", justifyContent: "center", alignItems: "center" }}>
       <Spinner />
     </div>
+    {icon && (
+      <span className="absolute left-2.5 flex h-4 w-4 items-center justify-center">
+        {icon}
+      </span>
+    )}
     <div style={{ visibility: isLoading ? "hidden" : "visible" }}>
       {props.children}
     </div>
@@ -155,13 +161,13 @@ const DropdownMenuCheckboxItem = forwardRefIfNeeded<
   <DropdownMenuPrimitive.CheckboxItem
     ref={ref}
     className={cn(
-      "relative flex cursor-default select-none items-center rounded-sm py-1.5 pl-8 pr-2 text-sm outline-none focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
+      "relative flex cursor-default select-none items-center rounded-sm py-2 pl-9 pr-3 text-sm outline-none focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
       className
     )}
     checked={checked}
     {...props}
   >
-    <span className="absolute left-2 flex h-3.5 w-3.5 items-center justify-center">
+    <span className="absolute left-2.5 flex h-3.5 w-3.5 items-center justify-center">
       <DropdownMenuPrimitive.ItemIndicator>
         <CheckIcon className="h-4 w-4" />
       </DropdownMenuPrimitive.ItemIndicator>
@@ -179,12 +185,12 @@ const DropdownMenuRadioItem = forwardRefIfNeeded<
   <DropdownMenuPrimitive.RadioItem
     ref={ref}
     className={cn(
-      "relative flex cursor-default select-none items-center rounded-sm py-1.5 pl-8 pr-2 text-sm outline-none focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
+      "relative flex cursor-default select-none items-center rounded-sm py-2 pl-9 pr-3 text-sm outline-none focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
       className
     )}
     {...props}
   >
-    <span className="absolute left-2 flex h-3.5 w-3.5 items-center justify-center">
+    <span className="absolute left-2.5 flex h-3.5 w-3.5 items-center justify-center">
       <DropdownMenuPrimitive.ItemIndicator>
         <DotFilledIcon className="h-4 w-4 fill-current" />
       </DropdownMenuPrimitive.ItemIndicator>
@@ -203,8 +209,8 @@ const DropdownMenuLabel = forwardRefIfNeeded<
   <DropdownMenuPrimitive.Label
     ref={ref}
     className={cn(
-      "px-2 py-1.5 text-sm font-semibold",
-      inset && "pl-8",
+      "px-3 py-2 text-sm font-semibold",
+      inset && "pl-9",
       className
     )}
     {...props}
@@ -238,8 +244,9 @@ const DropdownMenuShortcut = ({
 DropdownMenuShortcut.displayName = "DropdownMenuShortcut";
 
 export {
-  DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuLabel, DropdownMenuPortal, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator,
-  DropdownMenuShortcut, DropdownMenuSub,
-  DropdownMenuSubContent,
-  DropdownMenuSubTrigger, DropdownMenuTrigger
+    DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuLabel, DropdownMenuPortal, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator,
+    DropdownMenuShortcut, DropdownMenuSub,
+    DropdownMenuSubContent,
+    DropdownMenuSubTrigger, DropdownMenuTrigger
 };
+
