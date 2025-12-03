@@ -996,7 +996,7 @@ export function CmdKTrigger() {
             ref={mouseCursorRef}
             className={cn(
               "absolute w-32 h-32 group-hover:w-64 group-hover:h-64 transition-[width,height] duration-300",
-              "bg-blue-500/40 blur-lg",
+              "bg-blue-700/60 blur-lg",
               "rounded-full",
               "pointer-events-none",
               "-translate-x-1/2 -translate-y-1/2",
