@@ -1,6 +1,7 @@
 "use client";
 
 import { Stepper, StepperPage } from "@/components/stepper";
+import { cn } from "@/lib/utils";
 import { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
 import { Button, Card, CardDescription, CardHeader, CardTitle, Checkbox, Dialog, DialogContent, DialogFooter, DialogTitle, Input, Label, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Typography } from "@stackframe/stack-ui";
 import { ArrowLeft, ArrowRight, CreditCard, Package, Plus, Repeat, Trash2 } from "lucide-react";
@@ -270,7 +271,12 @@ export function ProductDialog({
   return (
     <>
       <Dialog open={open} onOpenChange={handleClose}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className={cn(
+          "max-w-2xl rounded-2xl",
+          "bg-background/95 backdrop-blur-xl",
+          "border border-border/50 dark:border-foreground/[0.1]",
+          "shadow-2xl"
+        )}>
           <Stepper currentStep={currentStep} onStepChange={setCurrentStep} className="min-h-[400px]">
             {/* Step 0: Template Selection (only for new products) */}
             {!editingProduct && (
@@ -285,17 +291,23 @@ export function ProductDialog({
 
                   <div className="grid gap-3 mt-6">
                     <Card
-                      className="cursor-pointer hover:border-primary transition-colors"
+                      className={cn(
+                        "cursor-pointer group",
+                        "rounded-xl border border-border/50 dark:border-foreground/[0.1]",
+                        "bg-foreground/[0.02] hover:bg-foreground/[0.04]",
+                        "hover:border-cyan-500/40 hover:shadow-[0_0_12px_rgba(6,182,212,0.1)]",
+                        "transition-all duration-150 hover:transition-none"
+                      )}
                       onClick={() => applyTemplate('one-time')}
                     >
                       <CardHeader className="pb-3">
                         <div className="flex items-center gap-3">
-                          <div className="p-2 rounded-lg bg-primary/10">
-                            <CreditCard className="h-5 w-5 text-primary" />
+                          <div className="p-2.5 rounded-xl bg-cyan-500/10 dark:bg-cyan-500/[0.15] group-hover:bg-cyan-500/20 transition-colors duration-150 group-hover:transition-none">
+                            <CreditCard className="h-5 w-5 text-cyan-600 dark:text-cyan-400" />
                           </div>
                           <div>
-                            <CardTitle className="text-base">One-time Purchase</CardTitle>
-                            <CardDescription className="text-sm mt-1">
+                            <CardTitle className="text-base font-semibold">One-time Purchase</CardTitle>
+                            <CardDescription className="text-sm mt-1 text-muted-foreground">
                               A single payment for lifetime access to features
                             </CardDescription>
                           </div>
@@ -304,17 +316,23 @@ export function ProductDialog({
                     </Card>
 
                     <Card
-                      className="cursor-pointer hover:border-primary transition-colors"
+                      className={cn(
+                        "cursor-pointer group",
+                        "rounded-xl border border-border/50 dark:border-foreground/[0.1]",
+                        "bg-foreground/[0.02] hover:bg-foreground/[0.04]",
+                        "hover:border-purple-500/40 hover:shadow-[0_0_12px_rgba(168,85,247,0.1)]",
+                        "transition-all duration-150 hover:transition-none"
+                      )}
                       onClick={() => applyTemplate('subscription')}
                     >
                       <CardHeader className="pb-3">
                         <div className="flex items-center gap-3">
-                          <div className="p-2 rounded-lg bg-primary/10">
-                            <Repeat className="h-5 w-5 text-primary" />
+                          <div className="p-2.5 rounded-xl bg-purple-500/10 dark:bg-purple-500/[0.15] group-hover:bg-purple-500/20 transition-colors duration-150 group-hover:transition-none">
+                            <Repeat className="h-5 w-5 text-purple-600 dark:text-purple-400" />
                           </div>
                           <div>
-                            <CardTitle className="text-base">Subscription</CardTitle>
-                            <CardDescription className="text-sm mt-1">
+                            <CardTitle className="text-base font-semibold">Subscription</CardTitle>
+                            <CardDescription className="text-sm mt-1 text-muted-foreground">
                               Recurring payments for continuous access
                             </CardDescription>
                           </div>
@@ -323,17 +341,23 @@ export function ProductDialog({
                     </Card>
 
                     {!isFirstProduct && <Card
-                      className="cursor-pointer hover:border-primary transition-colors"
+                      className={cn(
+                        "cursor-pointer group",
+                        "rounded-xl border border-border/50 dark:border-foreground/[0.1]",
+                        "bg-foreground/[0.02] hover:bg-foreground/[0.04]",
+                        "hover:border-emerald-500/40 hover:shadow-[0_0_12px_rgba(16,185,129,0.1)]",
+                        "transition-all duration-150 hover:transition-none"
+                      )}
                       onClick={() => applyTemplate('addon')}
                     >
                       <CardHeader className="pb-3">
                         <div className="flex items-center gap-3">
-                          <div className="p-2 rounded-lg bg-primary/10">
-                            <Package className="h-5 w-5 text-primary" />
+                          <div className="p-2.5 rounded-xl bg-emerald-500/10 dark:bg-emerald-500/[0.15] group-hover:bg-emerald-500/20 transition-colors duration-150 group-hover:transition-none">
+                            <Package className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
                           </div>
                           <div>
-                            <CardTitle className="text-base">Add-on</CardTitle>
-                            <CardDescription className="text-sm mt-1">
+                            <CardTitle className="text-base font-semibold">Add-on</CardTitle>
+                            <CardDescription className="text-sm mt-1 text-muted-foreground">
                               Additional features that complement existing products
                             </CardDescription>
                           </div>
@@ -342,17 +366,23 @@ export function ProductDialog({
                     </Card>}
 
                     <Card
-                      className="cursor-pointer hover:border-primary transition-colors border-dashed"
+                      className={cn(
+                        "cursor-pointer group",
+                        "rounded-xl border border-dashed border-border/60 dark:border-foreground/[0.15]",
+                        "bg-transparent hover:bg-foreground/[0.02]",
+                        "hover:border-foreground/30",
+                        "transition-all duration-150 hover:transition-none"
+                      )}
                       onClick={() => applyTemplate('scratch')}
                     >
                       <CardHeader className="pb-3">
                         <div className="flex items-center gap-3">
-                          <div className="p-2 rounded-lg bg-muted">
+                          <div className="p-2.5 rounded-xl bg-foreground/[0.05] group-hover:bg-foreground/[0.08] transition-colors duration-150 group-hover:transition-none">
                             <Plus className="h-5 w-5 text-muted-foreground" />
                           </div>
                           <div>
-                            <CardTitle className="text-base">Create from Scratch</CardTitle>
-                            <CardDescription className="text-sm mt-1">
+                            <CardTitle className="text-base font-semibold">Create from Scratch</CardTitle>
+                            <CardDescription className="text-sm mt-1 text-muted-foreground">
                               Start with a blank product and configure everything yourself
                             </CardDescription>
                           </div>
@@ -374,15 +404,15 @@ export function ProductDialog({
                   </Typography>
                 </div>
 
-                <div className="grid gap-4 mt-6">
+                <div className="grid gap-5 mt-6">
                   {/* Product ID */}
                   <div className="grid gap-2">
-                    <Label htmlFor="product-id">Product ID</Label>
+                    <Label htmlFor="product-id" className="text-sm font-medium">Product ID</Label>
                     <Input
                       id="product-id"
                       value={productId}
                       onChange={(e) => {
-                        const nextValue = e.target.value.toLowerCase();
+                        const nextValue = e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '');
                         setProductId(nextValue);
                         if (errors.productId) {
                           setErrors(prev => {
@@ -394,14 +424,20 @@ export function ProductDialog({
                       }}
                       placeholder="e.g., pro-plan"
                       disabled={!!editingProduct}
-                      className={errors.productId ? "border-destructive" : ""}
+                      className={cn(
+                        "h-10 rounded-xl font-mono text-sm",
+                        "bg-foreground/[0.03] border-border/50 dark:border-foreground/[0.1]",
+                        "focus:ring-1 focus:ring-cyan-500/30 focus:border-cyan-500/50",
+                        "transition-all duration-150 hover:transition-none",
+                        errors.productId && "border-destructive focus:ring-destructive/30"
+                      )}
                     />
                     {errors.productId ? (
-                      <Typography type="label" className="text-destructive">
+                      <Typography type="label" className="text-destructive text-xs">
                         {errors.productId}
                       </Typography>
                     ) : (
-                      <Typography type="label" className="text-muted-foreground">
+                      <Typography type="label" className="text-muted-foreground text-xs">
                         Unique identifier used to reference this product in code
                       </Typography>
                     )}
@@ -409,7 +445,7 @@ export function ProductDialog({
 
                   {/* Display Name */}
                   <div className="grid gap-2">
-                    <Label htmlFor="display-name">Display Name</Label>
+                    <Label htmlFor="display-name" className="text-sm font-medium">Display Name</Label>
                     <Input
                       id="display-name"
                       value={displayName}
@@ -424,14 +460,20 @@ export function ProductDialog({
                         }
                       }}
                       placeholder="e.g., Pro Plan"
-                      className={errors.displayName ? "border-destructive" : ""}
+                      className={cn(
+                        "h-10 rounded-xl text-sm",
+                        "bg-foreground/[0.03] border-border/50 dark:border-foreground/[0.1]",
+                        "focus:ring-1 focus:ring-cyan-500/30 focus:border-cyan-500/50",
+                        "transition-all duration-150 hover:transition-none",
+                        errors.displayName && "border-destructive focus:ring-destructive/30"
+                      )}
                     />
                     {errors.displayName ? (
-                      <Typography type="label" className="text-destructive">
+                      <Typography type="label" className="text-destructive text-xs">
                         {errors.displayName}
                       </Typography>
                     ) : (
-                      <Typography type="label" className="text-muted-foreground">
+                      <Typography type="label" className="text-muted-foreground text-xs">
                         How this product will be displayed to customers
                       </Typography>
                     )}
@@ -439,18 +481,22 @@ export function ProductDialog({
 
                   {/* Customer Type */}
                   <div className="grid gap-2">
-                    <Label htmlFor="customer-type">Customer Type</Label>
+                    <Label htmlFor="customer-type" className="text-sm font-medium">Customer Type</Label>
                     <Select value={customerType} onValueChange={(value) => setCustomerType(value as typeof customerType)}>
-                      <SelectTrigger>
+                      <SelectTrigger className={cn(
+                        "h-10 rounded-xl text-sm",
+                        "bg-foreground/[0.03] border-border/50 dark:border-foreground/[0.1]",
+                        "focus:ring-1 focus:ring-cyan-500/30 focus:border-cyan-500/50"
+                      )}>
                         <SelectValue />
                       </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="user">User</SelectItem>
-                        <SelectItem value="team">Team</SelectItem>
-                        <SelectItem value="custom">Custom</SelectItem>
+                      <SelectContent className="rounded-xl">
+                        <SelectItem value="user" className="rounded-lg">User</SelectItem>
+                        <SelectItem value="team" className="rounded-lg">Team</SelectItem>
+                        <SelectItem value="custom" className="rounded-lg">Custom</SelectItem>
                       </SelectContent>
                     </Select>
-                    <Typography type="label" className="text-muted-foreground">
+                    <Typography type="label" className="text-muted-foreground text-xs">
                       The type of customer this product is for
                     </Typography>
                   </div>
@@ -741,26 +787,60 @@ export function ProductDialog({
             </StepperPage>
           </Stepper>
 
-          <DialogFooter className="flex justify-between">
+          <DialogFooter className="flex justify-between pt-4 border-t border-border/30 dark:border-foreground/[0.06]">
             <div className="flex gap-2">
               {currentStep > (editingProduct ? 1 : 0) && (
-                <Button variant="outline" onClick={handleBack}>
+                <Button
+                  variant="outline"
+                  onClick={handleBack}
+                  className={cn(
+                    "rounded-xl px-4",
+                    "border-border/50 dark:border-foreground/[0.1]",
+                    "hover:bg-foreground/[0.03]",
+                    "transition-all duration-150 hover:transition-none"
+                  )}
+                >
                   <ArrowLeft className="h-4 w-4 mr-2" />
                   Back
                 </Button>
               )}
             </div>
             {currentStep > 0 && <div className="flex gap-2">
-              <Button variant="outline" onClick={handleClose}>
+              <Button
+                variant="outline"
+                onClick={handleClose}
+                className={cn(
+                  "rounded-xl px-5",
+                  "border-border/50 dark:border-foreground/[0.1]",
+                  "hover:bg-foreground/[0.03]",
+                  "transition-all duration-150 hover:transition-none"
+                )}
+              >
                 Cancel
               </Button>
               {currentStep < 3 ? (
-                <Button onClick={handleNext}>
+                <Button
+                  onClick={handleNext}
+                  className={cn(
+                    "rounded-xl px-5",
+                    "bg-foreground text-background",
+                    "hover:bg-foreground/90",
+                    "transition-all duration-150 hover:transition-none"
+                  )}
+                >
                   Next
                   <ArrowRight className="h-4 w-4 ml-2" />
                 </Button>
               ) : (
-                <Button onClick={handleSave}>
+                <Button
+                  onClick={handleSave}
+                  className={cn(
+                    "rounded-xl px-5",
+                    "bg-foreground text-background",
+                    "hover:bg-foreground/90",
+                    "transition-all duration-150 hover:transition-none"
+                  )}
+                >
                   {editingProduct ? "Save Changes" : "Create Product"}
                 </Button>
               )}

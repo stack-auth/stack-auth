@@ -11,21 +11,21 @@ import { typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import { useQueryState } from '@stackframe/stack-shared/dist/utils/react';
 import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
 import {
-  ActionDialog,
-  Button,
-  DropdownMenu,
-  DropdownMenuCheckboxItem,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-  Input,
-  Label,
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-  SimpleTooltip,
-  toast
+    ActionDialog,
+    Button,
+    DropdownMenu,
+    DropdownMenuCheckboxItem,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuSeparator,
+    DropdownMenuTrigger,
+    Input,
+    Label,
+    Popover,
+    PopoverContent,
+    PopoverTrigger,
+    SimpleTooltip,
+    toast
 } from "@stackframe/stack-ui";
 import { ChevronsUpDown, Code, Copy, FileText, Gift, Info, Layers, MoreVertical, Pencil, Plus, Puzzle, Server, Trash2, X } from "lucide-react";
 import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
@@ -34,13 +34,21 @@ import { IntervalPopover, OrSeparator, SectionHeading } from "./components";
 import { ProductDialog } from "./product-dialog";
 import { ProductPriceRow } from "./product-price-row";
 import {
-  generateUniqueId,
-  intervalLabel,
-  shortIntervalLabel,
-  type Price,
-  type PricesObject,
-  type Product
+    generateUniqueId,
+    intervalLabel,
+    shortIntervalLabel,
+    type Price,
+    type PricesObject,
+    type Product
 } from "./utils";
+
+// Custom error class to signal validation failures without closing edit mode
+class ValidationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'ValidationError';
+  }
+}
 
 // ============================================================================
 // Helper Functions
@@ -268,7 +276,7 @@ function ProductItemRow({
                         }}
                       >
                         <span className="font-medium">{opt.displayName || opt.id}</span>
-                        <span className="text-xs text-muted-foreground">{opt.customerType.toUpperCase()} • {opt.id}</span>
+                          <span className="text-xs text-muted-foreground">{opt.customerType.toUpperCase()} • {opt.id}</span>
                       </button>
                     );
                   })}
@@ -280,15 +288,15 @@ function ProductItemRow({
                       "text-primary hover:bg-primary/[0.08]",
                       "transition-colors duration-150 hover:transition-none"
                     )}
-                    onClick={() => {
-                      setItemSelectOpen(false);
+                      onClick={() => {
+                        setItemSelectOpen(false);
                       onCreateNewItem(activeType, (newItemId) => {
                         // Auto-select the newly created item
                         onChangeItemId(newItemId);
                       });
-                    }}
-                  >
-                    <Plus className="mr-2 h-4 w-4" /> New Item
+                      }}
+                    >
+                      <Plus className="mr-2 h-4 w-4" /> New Item
                   </button>
                 </div>
               </PopoverContent>
@@ -903,14 +911,22 @@ function ProductCard({ id, activeType, product, allProducts, existingItems, onSa
   const handleSaveEdit = async () => {
     const trimmed = localProductId.trim();
     const validId = trimmed && /^[a-z0-9-]+$/.test(trimmed) ? trimmed : id;
-    if (validId !== id) {
-      await onSave(validId, draft);
-      await onDelete(id);
-    } else {
-      await onSave(id, draft);
+    try {
+      if (validId !== id) {
+        await onSave(validId, draft);
+        await onDelete(id);
+      } else {
+        await onSave(id, draft);
+      }
+      setIsEditing(false);
+      setEditingPriceId(undefined);
+    } catch (e) {
+      // Validation error - don't close edit mode
+      if (e instanceof ValidationError) {
+        return;
+      }
+      throw e;
     }
-    setIsEditing(false);
-    setEditingPriceId(undefined);
   };
 
   const renderToggleButtons = (mode: 'editing' | 'view') => {
@@ -1336,7 +1352,7 @@ function ProductCard({ id, activeType, product, allProducts, existingItems, onSa
           label: "Delete",
           onClick: async () => {
             await onDelete(id);
-            setShowDeleteDialog(false);
+            setIsEditing(false);
           }
         }}
         cancelButton
@@ -1447,9 +1463,14 @@ function CatalogView({ groupedProducts, groups, existingItems, onSaveProduct, on
     filtered.forEach((_products, gid) => s.add(gid));
     const arr = Array.from(s.values());
     const withoutUndefined = arr.filter((gid): gid is string => gid !== undefined);
-    const ordered: Array<string | undefined> = [...withoutUndefined, undefined];
+    // Only include "No catalog" (undefined) if there are ungrouped products or drafts
+    const hasUngroupedProducts = filtered.has(undefined);
+    const hasUngroupedDrafts = drafts.some(d => d.catalogId === undefined && d.product.customerType === activeType);
+    const ordered: Array<string | undefined> = hasUngroupedProducts || hasUngroupedDrafts
+      ? [...withoutUndefined, undefined]
+      : withoutUndefined;
     return creatingGroupKey ? [creatingGroupKey, ...ordered] : ordered;
-  }, [filtered, creatingGroupKey]);
+  }, [filtered, creatingGroupKey, drafts, activeType]);
 
   const typeDescriptions = {
     user: 'Products purchasable by individual users',
@@ -1554,16 +1575,16 @@ function CatalogView({ groupedProducts, groups, existingItems, onSaveProduct, on
                         if (isNewGroupPlaceholder) {
                           const id = newCatalogId.trim();
                           if (!id) {
-                            alert("Catalog ID is required");
-                            return;
+                            toast({ title: "Catalog ID is required", variant: "destructive" });
+                            throw new ValidationError("Catalog ID is required");
                           }
                           if (!/^[a-z0-9-]+$/.test(id)) {
-                            alert("Catalog ID must be lowercase letters, numbers, and hyphens");
-                            return;
+                            toast({ title: "Catalog ID must be lowercase letters, numbers, and hyphens", variant: "destructive" });
+                            throw new ValidationError("Catalog ID must be lowercase letters, numbers, and hyphens");
                           }
                           if (Object.prototype.hasOwnProperty.call(groups, id)) {
-                            alert("Catalog ID already exists");
-                            return;
+                            toast({ title: "Catalog ID already exists", variant: "destructive" });
+                            throw new ValidationError("Catalog ID already exists");
                           }
                           const productWithGroup: Product = { ...product, catalogId: id };
                           await onSaveProductWithGroup(id, newId, productWithGroup);
@@ -1691,13 +1712,16 @@ export default function PageClient({ createDraftRequestId, draftCustomerType = '
   const config = project.useConfig();
   const paymentsConfig: CompleteConfig['payments'] = config.payments;
 
+  // Use product IDs as a key to ensure re-render when products change
+  const productIds = Object.keys(paymentsConfig.products).sort().join(',');
 
   // Group products by catalogId and sort by customer type priority
   const groupedProducts = useMemo(() => {
     const groups = new Map<string | undefined, Array<{ id: string, product: Product }>>();
 
-    // Group products
+    // Group products (filter out null/undefined products that may occur during deletion)
     for (const [id, product] of typedEntries(paymentsConfig.products)) {
+      if (!product) continue; // Skip deleted/null products
       const catalogId = product.catalogId;
       if (!groups.has(catalogId)) {
         groups.set(catalogId, []);
@@ -1771,7 +1795,7 @@ export default function PageClient({ createDraftRequestId, draftCustomerType = '
     });
 
     return sortedGroups;
-  }, [paymentsConfig]);
+  }, [paymentsConfig, productIds]);
 
   // Callback to be called when a new item is created (for auto-selection)
   const [onItemCreatedCallback, setOnItemCreatedCallback] = useState<((itemId: string) => void) | undefined>(undefined);
@@ -1823,8 +1847,27 @@ export default function PageClient({ createDraftRequestId, draftCustomerType = '
   };
 
   const handleDeleteProduct = async (productId: string) => {
-    await project.updateConfig({ [`payments.products.${productId}`]: null });
-    toast({ title: "Product deleted" });
+    // Get the product's catalog before deleting
+    const product = paymentsConfig.products[productId];
+    const catalogId = product?.catalogId;
+
+    // Count products in the same catalog (before deletion)
+    const productsInCatalog = catalogId
+      ? Object.entries(paymentsConfig.products).filter(([id, p]) => p && p.catalogId === catalogId)
+      : [];
+    const isLastProductInCatalog = catalogId && productsInCatalog.length === 1;
+
+    // Delete the product (and catalog if it will be empty)
+    if (isLastProductInCatalog) {
+      await project.updateConfig({
+        [`payments.products.${productId}`]: null,
+        [`payments.catalogs.${catalogId}`]: null,
+      });
+      toast({ title: "Product and empty catalog deleted" });
+    } else {
+      await project.updateConfig({ [`payments.products.${productId}`]: null });
+      toast({ title: "Product deleted" });
+    }
   };
 
   const innerContent = (

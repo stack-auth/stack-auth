@@ -102,7 +102,7 @@ export function ProductPriceRow({
   }, [startEditing, readOnly]);
 
   // Helper to build and save price updates
-  const savePriceUpdate = (overrides: Partial<ReturnType<typeof buildPriceUpdate>> = {}) => {
+  const savePriceUpdate = (overrides: Partial<Parameters<typeof buildPriceUpdate>[0]> = {}) => {
     if (readOnly) return;
     const updated = buildPriceUpdate({
       amount,
@@ -212,7 +212,20 @@ export function ProductPriceRow({
                       "transition-colors duration-150 hover:transition-none hover:bg-foreground/[0.03]"
                     )}
                     onChange={(interval) => {
-                      savePriceUpdate();
+                      // Pass the new interval values directly since state updates are async
+                      if (interval) {
+                        savePriceUpdate({
+                          intervalSelection: interval[0] === 1 ? interval[1] : 'custom',
+                          intervalCount: interval[0],
+                          priceInterval: interval[1],
+                        });
+                      } else {
+                        savePriceUpdate({
+                          intervalSelection: 'one-time',
+                          intervalCount: 1,
+                          priceInterval: undefined,
+                        });
+                      }
                     }}
                   />
                 </div>

@@ -137,11 +137,11 @@ export function IntervalPopover({
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger>
-        <div className={cn(triggerClasses, readOnly && "cursor-default")}>
+      <PopoverTrigger asChild>
+        <button type="button" className={cn(triggerClasses, readOnly && "cursor-default")}>
           {triggerLabel}
           <ChevronsUpDown className="h-4 w-4 text-muted-foreground" />
-        </div>
+        </button>
       </PopoverTrigger>
       <PopoverContent align="start" className="w-60 p-0 overflow-hidden">
         <div className="flex flex-col p-1">
@@ -177,48 +177,48 @@ export function IntervalPopover({
           ))}
         </div>
 
-        {/* Custom interval option */}
+          {/* Custom interval option */}
         <div className="border-t border-border/30 p-3">
-          <div className="text-xs font-medium text-muted-foreground mb-2">Custom</div>
-          <div className="flex gap-2">
-            <Input
-              type="number"
-              min={1}
+            <div className="text-xs font-medium text-muted-foreground mb-2">Custom</div>
+            <div className="flex gap-2">
+              <Input
+                type="number"
+                min={1}
               className={cn(
                 "w-20 h-9 text-sm",
                 "rounded-lg border border-border/60 dark:border-foreground/[0.1]",
                 "bg-background dark:bg-[hsl(240,10%,10%)]"
               )}
-              value={effectiveSelection === 'custom' ? count : 1}
-              onChange={(e) => {
-                const val = parseInt(e.target.value, 10);
-                if (val > 0) {
-                  applyCustom(val, effectiveUnit);
-                }
-              }}
-            />
-            <Select
-              value={effectiveUnit}
-              onValueChange={(v) => {
-                const newUnit = v as DayInterval[1];
-                applyCustom(effectiveSelection === 'custom' ? count : 1, newUnit);
-              }}
-            >
+                value={effectiveSelection === 'custom' ? count : 1}
+                onChange={(e) => {
+                  const val = parseInt(e.target.value, 10);
+                  if (val > 0) {
+                    applyCustom(val, effectiveUnit);
+                  }
+                }}
+              />
+              <Select
+                value={effectiveUnit}
+                onValueChange={(v) => {
+                  const newUnit = v as DayInterval[1];
+                  applyCustom(effectiveSelection === 'custom' ? count : 1, newUnit);
+                }}
+              >
               <SelectTrigger className={cn(
                 "h-9 text-sm flex-1",
                 "rounded-lg border border-border/60 dark:border-foreground/[0.1]",
                 "bg-background dark:bg-[hsl(240,10%,10%)]"
               )}>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {normalizedUnits.map((u) => (
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {normalizedUnits.map((u) => (
                   <SelectItem key={u} value={u} className="text-sm">
-                    {u}{count !== 1 ? 's' : ''}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+                      {u}{count !== 1 ? 's' : ''}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
           </div>
         </div>
       </PopoverContent>
