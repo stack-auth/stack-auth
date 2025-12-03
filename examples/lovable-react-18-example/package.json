@@ -1,7 +1,7 @@
 {
   "name": "@stackframe/lovable-react-18-example",
   "private": true,
-  "version": "2.8.53",
+  "version": "2.8.54",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -81,5 +81,6 @@
     "typescript": "^5.8.3",
     "typescript-eslint": "^8.38.0",
     "vite": "^5.4.19"
-  }
+  },
+  "packageManager": "pnpm@10.23.0"
 }

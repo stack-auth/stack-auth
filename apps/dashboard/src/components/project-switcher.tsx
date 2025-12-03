@@ -1,7 +1,7 @@
 "use client";
 import { useRouter } from "@/components/router";
 import { useUser } from "@stackframe/stack";
-import { Button, Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@stackframe/stack-ui";
+import { Button, Select, SelectContent, SelectItem, SelectTrigger } from "@stackframe/stack-ui";
 import { PlusIcon } from "lucide-react";
 import { useMemo } from "react";
 
@@ -26,36 +26,35 @@ export function ProjectSwitcher(props: { currentProjectId: string }) {
   }, [props.currentProjectId, rawProjects]);
 
   return (
-    <Select defaultValue={props.currentProjectId} onValueChange={(value) => { router.push(`/projects/${value}`); }}>
-      <SelectTrigger
-        className="h-10 flex items-center gap-2 [&>span]:line-clamp-1 [&>span]:flex [&>span]:w-full [&>span]:items-center [&>span]:gap-1 [&>span]:truncate"
-        aria-label="Select account"
-      >
-        <SelectValue placeholder="Select an account">
-          <div className="flex items-center gap-1">
-            <ProjectAvatar displayName={currentProject?.displayName || ""} />
-            <span className="truncate">
-              { currentProject?.displayName }
-            </span>
-          </div>
-        </SelectValue>
-      </SelectTrigger>
-      <SelectContent>
-        {projects.map((p) => (
-          <SelectItem key={p.id} value={p.id}>
-            <div className="flex items-center gap-2">
-              <ProjectAvatar displayName={p.displayName} />
-              <span className="max-w-64 truncate">
-                { p.displayName }
-              </span>
-            </div>
-          </SelectItem>
-        ))}
-        <Button onClick={() => router.push("/new-project")} variant="outline" className="w-full mt-2 gap-1">
-          <PlusIcon className="h-4 w-4" />
-          Create new project
-        </Button>
-      </SelectContent>
-    </Select>
+    <div className="flex items-center gap-1">
+      <div className="flex items-center gap-1">
+        <ProjectAvatar displayName={currentProject?.displayName || ""} />
+        <span className="truncate text-sm font-medium">
+          {currentProject?.displayName}
+        </span>
+      </div>
+      <Select defaultValue={props.currentProjectId} onValueChange={(value) => { router.push(`/projects/${value}`); }}>
+        <SelectTrigger
+          className="h-6 w-6 p-0 border border-transparent bg-transparent shadow-none hover:bg-accent hover:border-border rounded-md justify-center transition-all"
+          aria-label="Select account"
+        />
+        <SelectContent>
+          {projects.map((p) => (
+            <SelectItem key={p.id} value={p.id}>
+              <div className="flex items-center gap-2">
+                <ProjectAvatar displayName={p.displayName} />
+                <span className="max-w-64 truncate">
+                  { p.displayName }
+                </span>
+              </div>
+            </SelectItem>
+          ))}
+          <Button onClick={() => router.push("/new-project")} variant="outline" className="w-full mt-2 gap-1">
+            <PlusIcon className="h-4 w-4" />
+            Create new project
+          </Button>
+        </SelectContent>
+      </Select>
+    </div>
   );
 }

@@ -17,9 +17,9 @@ npx @stackframe/init-stack@latest
 Next, update or create a file in `convex/auth.config.ts`:
 
 ```ts
-import { getConvexProvidersConfig } from "@stackframe/js";  // Vanilla JS
-// or: import { getConvexProvidersConfig } from "@stackframe/react";  // React
-// or: import { getConvexProvidersConfig } from "@stackframe/stack";  // Next.js
+import { getConvexProvidersConfig } from "@stackframe/js/convex-auth.config";  // Vanilla JS
+// or: import { getConvexProvidersConfig } from "@stackframe/react/convex-auth.config";  // React
+// or: import { getConvexProvidersConfig } from "@stackframe/stack/convex-auth.config";  // Next.js
 
 export default {
   providers: getConvexProvidersConfig({
