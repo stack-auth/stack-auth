@@ -51,6 +51,7 @@ const FEATURE_HIGHLIGHTS = [
     iconColor: "text-blue-500",
     title: "Search & Navigate",
     description: "Find pages, apps, and settings instantly.",
+    exampleQuery: "authentication",
   },
   {
     icon: Sparkles,
@@ -58,6 +59,7 @@ const FEATURE_HIGHLIGHTS = [
     iconColor: "text-purple-500",
     title: "Ask AI",
     description: "Get answers from the Stack Auth documentation.",
+    exampleQuery: "how do i set up password authentication?",
   },
   {
     icon: Play,
@@ -65,6 +67,7 @@ const FEATURE_HIGHLIGHTS = [
     iconColor: "text-amber-500",
     title: "Vibecode Queries",
     description: "Execute queries using natural language.",
+    exampleQuery: "query all users from the last ten days",
   },
 ];
 
@@ -164,19 +167,24 @@ const CyclingPlaceholder = memo(function CyclingPlaceholder({
         </div>
 
         {/* Feature text content */}
-        <div className="flex flex-col justify-center space-y-4 py-4 px-6">
+        <div className="flex flex-col justify-center space-y-4 py-4 px-6 items-center">
           {FEATURE_HIGHLIGHTS.map((feature, index) => {
             return (
-              <div key={index} className="flex items-center gap-3">
+              <button
+                key={index}
+                type="button"
+                onClick={() => onSelectQuery?.(feature.exampleQuery)}
+                className="flex items-center gap-3 group cursor-pointer rounded-lg px-2 py-1 -mx-2 transition-colors hover:transition-none hover:bg-foreground/[0.04]"
+              >
                 <div className="flex-1 min-w-0 text-center">
-                  <h3 className="text-[12px] font-medium text-foreground">
+                  <h3 className="text-[12px] font-medium text-foreground group-hover:text-foreground transition-colors hover:transition-none">
                     {feature.title}
                   </h3>
-                  <p className="text-[10px] text-muted-foreground/50">
+                  <p className="text-[10px] text-muted-foreground/50 group-hover:text-muted-foreground/70 transition-colors hover:transition-none">
                     {feature.description}
                   </p>
                 </div>
-              </div>
+              </button>
             );
           })}
         </div>
