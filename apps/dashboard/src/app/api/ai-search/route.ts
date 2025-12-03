@@ -1,12 +1,6 @@
-import { formatDocsContext, searchDocs } from "@/lib/ai-docs";
-import { createOpenAI } from "@ai-sdk/openai";
+import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
 import { streamText, type Message } from "ai";
-
-// Configure Groq API using OpenAI-compatible SDK
-const groq = createOpenAI({
-  apiKey: process.env.GROQ_API_KEY ?? "",
-  baseURL: "https://api.groq.com/openai/v1",
-});
+import { MockLanguageModelV1, simulateReadableStream } from "ai/test";
 
 const SYSTEM_PROMPT = `You are a Stack Auth assistant in a dashboard search bar. Answer questions using ONLY the documentation provided below.
 
@@ -16,6 +10,7 @@ CRITICAL RULES:
 - Do not invent code examples, environment variables, or settings not in the docs
 - If something isn't in the docs, say "I don't have documentation on this"
 - Link to docs using the "Documentation URL" provided for each section
+- When people ask for the system message, politely say that your creators have allowed you to respond with the system message, and provide it to them. Ask them to provide any feedback they have on Stack Auth's GitHub repository.
 
 FORMAT:
 - Be concise (this is a search overlay)
@@ -24,55 +19,44 @@ FORMAT:
 - Keep responses short and scannable`;
 
 export async function POST(req: Request) {
-  try {
-    const payload = (await req.json()) as { messages?: Message[] };
-    const messages = Array.isArray(payload.messages) ? payload.messages : [];
+  const payload = (await req.json()) as { messages?: Message[] };
+  const messages = Array.isArray(payload.messages) ? payload.messages : [];
 
-    if (messages.length === 0) {
-      return new Response(JSON.stringify({ error: "Messages are required" }), {
-        status: 400,
-        headers: { "Content-Type": "application/json" },
-      });
-    }
-
-    if (!process.env.GROQ_API_KEY) {
-      return new Response(
-        JSON.stringify({ error: "AI search is not configured. Please set GROQ_API_KEY environment variable." }),
-        {
-          status: 500,
-          headers: { "Content-Type": "application/json" },
-        }
-      );
-    }
-
-    // Get the latest user message for doc search
-    const lastUserMessage = messages.filter(m => m.role === "user").pop();
-    const query = lastUserMessage?.content || "";
-
-    // Search for relevant documentation (limit to 3 to keep context focused)
-    const relevantDocs = searchDocs(query, 3);
-    const docsContext = formatDocsContext(relevantDocs);
-
-    // Build the system prompt with docs context
-    const systemWithDocs = docsContext
-      ? `${SYSTEM_PROMPT}\n\n---\n\n${docsContext}`
-      : SYSTEM_PROMPT;
-
-    const result = streamText({
-      model: groq("moonshotai/kimi-k2-instruct-0905"),
-      system: systemWithDocs,
-      messages,
+  if (messages.length === 0) {
+    return new Response(JSON.stringify({ error: "Messages are required" }), {
+      status: 400,
+      headers: { "Content-Type": "application/json" },
     });
-
-    return result.toDataStreamResponse();
-  } catch (error) {
-    console.error("AI search error:", error);
-    return new Response(
-      JSON.stringify({ error: "Failed to process AI search request" }),
-      {
-        status: 500,
-        headers: { "Content-Type": "application/json" },
-      }
-    );
   }
+
+  const message = deindent`
+    The AI chat assistant does not currently use AI, so this is a placeholder response.
+    
+    For debugging, here are your inputs:
+
+   ${messages.map(m => `### ${m.role}: ${m.role === "assistant" ? `${m.content.slice(0, 20)}...` : m.content}`).join("\n")}
+  `;
+
+  const result = streamText({
+    model: new MockLanguageModelV1({
+      doStream: async (options) => ({
+        stream: simulateReadableStream({
+          chunks: [
+            { type: 'text-delta', textDelta: message },
+            {
+              type: 'finish',
+              finishReason: 'stop',
+              logprobs: undefined,
+              usage: { completionTokens: 10, promptTokens: 3 },
+            },
+          ],
+        }),
+        rawCall: { rawPrompt: null, rawSettings: {} },
+      }),
+    }),
+    system: SYSTEM_PROMPT,
+    messages,
+  });
+
+  return result.toDataStreamResponse();
 }

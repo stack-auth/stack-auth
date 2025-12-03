@@ -82,6 +82,7 @@ To see all development ports, refer to the index.html of `apps/dev-launchpad/pub
 - Whenever you make backwards-incompatible changes to the config schema, you must update the migration functions in `packages/stack-shared/src/config/schema.ts`!
 - NEVER try-catch-all, NEVER void a promise, and NEVER .catch(console.error) (or similar). In most cases you don't actually need to be asynchronous, especially when UI is involved (instead, use a loading indicator! eg. our <Button> component already takes an async callback for onClick and sets its loading state accordingly — if whatever component doesn't do that, update the component instead). If you really do need things to be asynchronous, use `runAsynchronously` or `runAsynchronouslyWithAlert` instead as it deals with error logging.
 - WHENEVER you create hover transitions, avoid hover-enter transitions, and just use hover-exit transitions. For example, `transition-colors hover:transition-none`.
+- Any environment variables you create should be prefixed with `STACK_` (or NEXT_PUBLIC_STACK_ if they are public). This ensures that their changes are picked up by Turborepo (and helps readability).
 
 ### Code-related
 - Use ES6 maps instead of records wherever you can.

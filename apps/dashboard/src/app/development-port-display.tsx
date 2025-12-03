@@ -14,7 +14,7 @@ export function DevelopmentPortDisplay() {
     "93": "#e0e0ff",
   } as any)[prefix as any] || undefined;
   return (
-    <div onClick={() => setIsVisible(false)} className="fixed top-0 left-0 p-2 text-red-700 animate-[dev-port-slide_120s_linear_infinite] hover:hidden flex gap-2" style={{
+    <div onClick={() => setIsVisible(false)} className="fixed top-0 left-0 p-2 text-red-700 animate-[dev-port-slide_120s_linear_infinite] flex gap-2" style={{
       backgroundColor: color,
       zIndex: 10000000,
     }}>

@@ -80,41 +80,31 @@ const CyclingExample = memo(function CyclingExample({
   const [currentIndex, setCurrentIndex] = useState(() =>
     Math.floor(Math.random() * EXAMPLE_QUERIES.length)
   );
-  const [isVisible, setIsVisible] = useState(true);
-
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setIsVisible(false);
-      setTimeout(() => {
-        setCurrentIndex((prev) => (prev + 1) % EXAMPLE_QUERIES.length);
-        setIsVisible(true);
-      }, 300);
-    }, 7000);
-
-    return () => clearInterval(interval);
-  }, []);
 
   const current = EXAMPLE_QUERIES[currentIndex];
   const IconComponent = current.icon;
 
-  return (
-    <button
-      type="button"
-      onClick={() => onSelectQuery?.(current.query)}
-      className={cn(
-        "flex flex-col items-center gap-1 cursor-pointer group",
-        isVisible ? "opacity-100" : "opacity-0",
-        "transition-opacity duration-300 hover:transition-none"
-      )}
-    >
-      <div className={cn("w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0", current.iconBg)}>
-        <IconComponent className={cn("h-4 w-4", current.iconColor)} />
-      </div>
-      <p className="text-[12px] text-muted-foreground/60 italic group-hover:text-muted-foreground transition-colors hover:transition-none">
-        &ldquo;{current.query}&rdquo;
-      </p>
-    </button>
-  );
+  return <>
+    {EXAMPLE_QUERIES.map((example, index) => {
+      return <button
+        key={index}
+        type="button"
+        onClick={() => onSelectQuery?.(current.query)}
+        className={cn(
+          "flex flex-col items-center gap-1 cursor-pointer group",
+          index === currentIndex ? "opacity-100" : "opacity-0",
+          "transition-opacity duration-300"
+        )}
+      >
+        <div className={cn("w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0", current.iconBg)}>
+          <IconComponent className={cn("h-4 w-4", current.iconColor)} />
+        </div>
+        <p className="text-[12px] text-muted-foreground/60 italic group-hover:text-muted-foreground transition-colors hover:transition-none">
+          &ldquo;{current.query}&rdquo;
+        </p>
+      </button>;
+    })}
+  </>;
 });
 
 // Empty state placeholder component
@@ -723,9 +713,6 @@ export function CmdKSearch({
   );
 
   if (!open) return null;
-
-  const hasResults = filteredCommands.length > 0;
-  const hasQuery = query.trim().length > 0;
 
   return (
     <>
