@@ -103,7 +103,7 @@ export function AppSquare({
         <Link
           href={appDetailsPath}
           className={cn(
-            "absolute inset-0 flex flex-col items-center p-3 sm:p-4 rounded-xl sm:rounded-2xl transition-all duration-200 cursor-pointer overflow-hidden",
+            "absolute inset-0 flex flex-col items-center p-3 sm:p-4 rounded-xl sm:rounded-2xl transition-all duration-200 hover:transition-none cursor-pointer overflow-hidden",
             "bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800",
             "hover:border-gray-300 dark:hover:border-gray-700 hover:shadow-lg",
             isEnabled && "border-green-500/40 dark:border-green-500/30 bg-green-50/30 dark:bg-green-950/20"
