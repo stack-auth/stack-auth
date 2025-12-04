@@ -1,4 +1,4 @@
-import { useAdminApp } from "@/app/(main)/(protected)/projects/[projectId]/use-admin-app";
+import { useAdminApp, useProjectId } from "@/app/(main)/(protected)/projects/[projectId]/use-admin-app";
 import { ALL_APPS_FRONTEND, AppFrontend, getAppPath } from "@/lib/apps-frontend";
 import { ALL_APPS, AppId } from "@stackframe/stack-shared/dist/apps/apps-config";
 import { AppIcon as SharedAppIcon, appSquarePaddingExpression, appSquareWidthExpression } from "@stackframe/stack-shared/dist/apps/apps-ui";
@@ -54,11 +54,13 @@ export function AppSquare({
   const [isProcessing, setIsProcessing] = useState(false);
   const [showWarningModal, setShowWarningModal] = useState(false);
 
+  const projectId = useProjectId();
   const adminApp = useAdminApp()!;
   const project = adminApp.useProject();
   const config = project.useConfig();
 
   const isEnabled = config.apps.installed[appId]?.enabled ?? false;
+  const appDetailsPath = `/projects/${projectId}/apps/${appId}`;
 
   const handleToggleEnabled = async (e: React.MouseEvent) => {
     e.preventDefault();
@@ -98,9 +100,10 @@ export function AppSquare({
         onMouseEnter={() => setIsHovered(true)}
         onMouseLeave={() => setIsHovered(false)}
       >
-        <div
+        <Link
+          href={appDetailsPath}
           className={cn(
-            "absolute inset-0 flex flex-col items-center p-3 sm:p-4 rounded-xl sm:rounded-2xl transition-all duration-200 cursor-default overflow-hidden",
+            "absolute inset-0 flex flex-col items-center p-3 sm:p-4 rounded-xl sm:rounded-2xl transition-all duration-200 cursor-pointer overflow-hidden",
             "bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800",
             "hover:border-gray-300 dark:hover:border-gray-700 hover:shadow-lg",
             isEnabled && "border-green-500/40 dark:border-green-500/30 bg-green-50/30 dark:bg-green-950/20"
@@ -129,29 +132,29 @@ export function AppSquare({
               </span>
             )}
           </div>
+        </Link>
 
-          {/* Hover actions */}
-          <div className={cn(
-            "absolute inset-x-0 bottom-3 sm:bottom-4 flex justify-center transition-all duration-200",
-            (isHovered || isProcessing) ? "opacity-100 translate-y-0" : "opacity-0 translate-y-2 pointer-events-none"
-          )}>
-            <Button
-              onClick={handleToggleEnabled}
-              loading={isProcessing}
-              variant="plain"
-              size="plain"
-              className={cn(
-                "px-3 sm:px-4 py-1 sm:py-1.5 text-[10px] sm:text-xs font-medium rounded-full transition-all h-auto min-h-0",
-                "shadow-lg backdrop-blur-sm",
-                isProcessing && "px-2 sm:px-3 py-1 text-[9px] sm:text-[10px]",
-                isEnabled
-                  ? "bg-gray-900/90 dark:bg-gray-100/90 text-white dark:text-gray-900 hover:bg-gray-800 dark:hover:bg-gray-200"
-                  : "bg-blue-600/90 text-white hover:bg-blue-700"
-              )}
-            >
-              {isEnabled ? 'Disable' : 'Enable'}
-            </Button>
-          </div>
+        {/* Hover actions */}
+        <div className={cn(
+          "absolute inset-x-0 bottom-3 sm:bottom-4 flex justify-center gap-2 transition-all duration-200 z-10",
+          (isHovered || isProcessing) ? "opacity-100 translate-y-0" : "opacity-0 translate-y-2 pointer-events-none"
+        )}>
+          <Button
+            onClick={handleToggleEnabled}
+            loading={isProcessing}
+            variant="plain"
+            size="plain"
+            className={cn(
+              "px-3 sm:px-4 py-1 sm:py-1.5 text-[10px] sm:text-xs font-medium rounded-full transition-all h-auto min-h-0",
+              "shadow-lg backdrop-blur-sm",
+              isProcessing && "px-2 sm:px-3 py-1 text-[9px] sm:text-[10px]",
+              isEnabled
+                ? "bg-gray-900/90 dark:bg-gray-100/90 text-white dark:text-gray-900 hover:bg-gray-800 dark:hover:bg-gray-200"
+                : "bg-blue-600/90 text-white hover:bg-blue-700"
+            )}
+          >
+            {isEnabled ? 'Disable' : 'Enable'}
+          </Button>
         </div>
 
         {/* Status badges in top-right corner */}
