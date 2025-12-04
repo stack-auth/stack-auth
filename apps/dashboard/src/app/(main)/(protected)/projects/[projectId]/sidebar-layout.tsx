@@ -13,27 +13,27 @@ import { UserButton } from "@stackframe/stack";
 import { ALL_APPS, type AppId } from "@stackframe/stack-shared/dist/apps/apps-config";
 import { typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import {
-    Button,
-    Sheet,
-    SheetContent,
-    SheetTitle,
-    SheetTrigger,
-    Tooltip,
-    TooltipContent,
-    TooltipProvider,
-    TooltipTrigger,
-    Typography,
+  Button,
+  Sheet,
+  SheetContent,
+  SheetTitle,
+  SheetTrigger,
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+  Typography,
 } from "@stackframe/stack-ui";
 import {
-    Blocks,
-    ChevronDown,
-    ChevronRight,
-    Globe,
-    KeyRound,
-    LucideIcon,
-    Menu,
-    PanelLeft,
-    Settings,
+  Blocks,
+  ChevronDown,
+  ChevronRight,
+  Globe,
+  KeyRound,
+  LucideIcon,
+  Menu,
+  PanelLeft,
+  Settings,
 } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { useCallback, useMemo, useRef, useState } from "react";

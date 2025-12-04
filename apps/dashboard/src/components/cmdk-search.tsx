@@ -81,26 +81,30 @@ const CyclingExample = memo(function CyclingExample({
     Math.floor(Math.random() * EXAMPLE_QUERIES.length)
   );
 
-  const current = EXAMPLE_QUERIES[currentIndex];
-  const IconComponent = current.icon;
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setCurrentIndex((currentIndex + 1) % EXAMPLE_QUERIES.length);
+    }, 3000);
+    return () => clearInterval(interval);
+  }, [currentIndex]);
 
   return <>
     {EXAMPLE_QUERIES.map((example, index) => {
       return <button
         key={index}
         type="button"
-        onClick={() => onSelectQuery?.(current.query)}
+        onClick={() => onSelectQuery?.(example.query)}
         className={cn(
           "flex flex-col items-center gap-1 cursor-pointer group",
           index === currentIndex ? "opacity-100" : "opacity-0",
           "transition-opacity duration-300"
         )}
       >
-        <div className={cn("w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0", current.iconBg)}>
-          <IconComponent className={cn("h-4 w-4", current.iconColor)} />
+        <div className={cn("w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0", example.iconBg)}>
+          <example.icon className={cn("h-4 w-4", example.iconColor)} />
         </div>
         <p className="text-[12px] text-muted-foreground/60 italic group-hover:text-muted-foreground transition-colors hover:transition-none">
-          &ldquo;{current.query}&rdquo;
+          &ldquo;{example.query}&rdquo;
         </p>
       </button>;
     })}
