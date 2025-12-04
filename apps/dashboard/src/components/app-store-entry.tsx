@@ -194,12 +194,35 @@ export function AppStoreEntry({
             <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">
               Preview
             </h2>
-            <ScrollArea className="w-full">
-              <div className="flex gap-4 pb-4">
+            <div className="relative group/screenshots">
+              {/* Left scroll button */}
+              <button
+                onClick={() => scrollScreenshots('left')}
+                className="absolute left-0 top-1/2 -translate-y-1/2 z-10 bg-white/90 dark:bg-gray-900/90 hover:bg-white dark:hover:bg-gray-800 p-2 rounded-full shadow-lg border border-gray-200 dark:border-gray-700 opacity-0 group-hover/screenshots:opacity-100 transition-opacity focus:opacity-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                aria-label="Scroll left"
+              >
+                <ChevronLeft className="w-5 h-5 text-gray-700 dark:text-gray-300" />
+              </button>
+
+              {/* Right scroll button */}
+              <button
+                onClick={() => scrollScreenshots('right')}
+                className="absolute right-0 top-1/2 -translate-y-1/2 z-10 bg-white/90 dark:bg-gray-900/90 hover:bg-white dark:hover:bg-gray-800 p-2 rounded-full shadow-lg border border-gray-200 dark:border-gray-700 opacity-0 group-hover/screenshots:opacity-100 transition-opacity focus:opacity-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                aria-label="Scroll right"
+              >
+                <ChevronRight className="w-5 h-5 text-gray-700 dark:text-gray-300" />
+              </button>
+
+              <div
+                ref={screenshotContainerRef}
+                className="flex gap-4 pb-4 overflow-x-auto scrollbar-hide scroll-smooth"
+                style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+              >
                 {appFrontend.screenshots.map((screenshot: string, index: number) => (
-                  <div
+                  <button
                     key={index}
-                    className="relative h-64 w-96 rounded-xl shadow-lg flex-shrink-0 overflow-hidden border border-gray-200 dark:border-gray-800"
+                    onClick={() => setPreviewIndex(index)}
+                    className="relative h-64 w-96 rounded-xl shadow-lg flex-shrink-0 overflow-hidden border border-gray-200 dark:border-gray-800 cursor-pointer hover:ring-2 hover:ring-blue-500/50 transition-shadow focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
                     <Image
                       src={screenshot}
@@ -208,10 +231,10 @@ export function AppStoreEntry({
                       className="object-cover select-none"
                       draggable={false}
                     />
-                  </div>
+                  </button>
                 ))}
               </div>
-            </ScrollArea>
+            </div>
           </div>
         </div>
       )}
