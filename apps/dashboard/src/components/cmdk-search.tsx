@@ -446,9 +446,10 @@ export function CmdKSearch({
 
     const searchLower = query.toLowerCase().trim();
     return commands.filter((cmd) => {
-      // AI and Run Query commands are always included when there's a query
+      // AI-powered commands are always included when there's a query
       if (cmd.id === "ai/ask") return true;
       if (cmd.id === "query/run") return true;
+      if (cmd.id === "create/dashboard") return true;
       if (cmd.label.toLowerCase().includes(searchLower)) return true;
       if (cmd.description.toLowerCase().includes(searchLower)) return true;
       if (cmd.keywords?.some((k) => k.includes(searchLower))) return true;
