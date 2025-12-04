@@ -8,10 +8,9 @@ import { DayInterval } from "@stackframe/stack-shared/dist/utils/dates";
 import { prettyPrintWithMagnitudes } from "@stackframe/stack-shared/dist/utils/numbers";
 import { typedEntries, typedFromEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
-import { Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, toast } from "@stackframe/stack-ui";
-import { MoreVertical, Plus } from "lucide-react";
+import { ActionDialog, Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, toast } from "@stackframe/stack-ui";
+import { MoreVertical } from "lucide-react";
 import React, { ReactNode, useEffect, useMemo, useRef, useState } from "react";
-import { IllustratedInfo } from "../../../../../../../components/illustrated-info";
 import { useAdminApp } from "../../use-admin-app";
 import { ListSection } from "./list-section";
 import { ProductDialog } from "./product-dialog";
@@ -342,6 +341,8 @@ function ProductsList({
   const stackAdminApp = useAdminApp();
   const project = stackAdminApp.useProject();
   const [searchQuery, setSearchQuery] = useState("");
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [productToDelete, setProductToDelete] = useState<{ id: string, displayName: string } | null>(null);
   let globalIndex = 0;
 
   // Filter products based on search query
@@ -416,16 +417,9 @@ function ProductsList({
                       '-',
                       {
                         item: "Delete",
-                        onClick: async () => {
-                          if (confirm(`Are you sure you want to delete the product "${product.displayName}"?`)) {
-                            const config = project.useConfig();
-                            const updatedProducts = typedFromEntries(
-                              typedEntries(config.payments.products)
-                                .filter(([productId]) => productId !== id)
-                            );
-                            await project.updateConfig({ "payments.products": updatedProducts });
-                            toast({ title: "Product deleted" });
-                          }
+                        onClick: () => {
+                          setProductToDelete({ id, displayName: product.displayName });
+                          setDeleteDialogOpen(true);
                         },
                         danger: true,
                       },
@@ -437,6 +431,30 @@ function ProductsList({
           );
         })}
       </GroupedList>
+
+      <ActionDialog
+        open={deleteDialogOpen}
+        onOpenChange={setDeleteDialogOpen}
+        title="Delete Product"
+        danger
+        cancelButton
+        okButton={{
+          label: "Delete",
+          onClick: async () => {
+            if (!productToDelete) return;
+            const config = project.useConfig();
+            const updatedProducts = typedFromEntries(
+              typedEntries(config.payments.products)
+                .filter(([productId]) => productId !== productToDelete.id)
+            );
+            await project.updateConfig({ "payments.products": updatedProducts });
+            toast({ title: "Product deleted" });
+            setProductToDelete(null);
+          }
+        }}
+      >
+        Are you sure you want to delete the product &quot;{productToDelete?.displayName}&quot;?
+      </ActionDialog>
     </ListSection>
   );
 }
@@ -468,6 +486,8 @@ function ItemsList({
   const stackAdminApp = useAdminApp();
   const project = stackAdminApp.useProject();
   const [searchQuery, setSearchQuery] = useState("");
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [itemToDelete, setItemToDelete] = useState<{ id: string, displayName: string } | null>(null);
 
   // Sort items by customer type, then by ID
   const sortedItems = useMemo(() => {
@@ -537,11 +557,9 @@ function ItemsList({
                 '-',
                 {
                   item: "Delete",
-                  onClick: async () => {
-                    if (confirm(`Are you sure you want to delete the item "${item.displayName}"?`)) {
-                      await project.updateConfig({ [`payments.items.${id}`]: null });
-                      toast({ title: "Item deleted" });
-                    }
+                  onClick: () => {
+                    setItemToDelete({ id, displayName: item.displayName });
+                    setDeleteDialogOpen(true);
                   },
                   danger: true,
                 },
@@ -550,59 +568,26 @@ function ItemsList({
           );
         })}
       </GroupedList>
-    </ListSection>
-  );
-}
 
-function WelcomeScreen({ onCreateProduct }: { onCreateProduct: () => void }) {
-  return (
-    <div className="flex flex-col items-center justify-center h-full px-4 py-12 max-w-3xl mx-auto">
-      <IllustratedInfo
-        illustration={(
-          <div className="grid grid-cols-3 gap-2">
-            {/* Simple pricing table representation */}
-            <div className="bg-background rounded p-3 shadow-sm">
-              <div className="h-2 bg-muted rounded mb-2"></div>
-              <div className="h-8 bg-primary/20 rounded mb-2"></div>
-              <div className="space-y-1">
-                <div className="h-1.5 bg-muted rounded"></div>
-                <div className="h-1.5 bg-muted rounded"></div>
-                <div className="h-1.5 bg-muted rounded"></div>
-              </div>
-            </div>
-            <div className="bg-background rounded p-3 shadow-sm border-2 border-primary">
-              <div className="h-2 bg-muted rounded mb-2"></div>
-              <div className="h-8 bg-primary/40 rounded mb-2"></div>
-              <div className="space-y-1">
-                <div className="h-1.5 bg-muted rounded"></div>
-                <div className="h-1.5 bg-muted rounded"></div>
-                <div className="h-1.5 bg-muted rounded"></div>
-              </div>
-            </div>
-            <div className="bg-background rounded p-3 shadow-sm">
-              <div className="h-2 bg-muted rounded mb-2"></div>
-              <div className="h-8 bg-primary/20 rounded mb-2"></div>
-              <div className="space-y-1">
-                <div className="h-1.5 bg-muted rounded"></div>
-                <div className="h-1.5 bg-muted rounded"></div>
-                <div className="h-1.5 bg-muted rounded"></div>
-              </div>
-            </div>
-          </div>
-        )}
-        title="Welcome to Payments!"
-        description={[
-          <>Stack Auth Payments is built on two primitives: products and items.</>,
-          <>Products are what customers buy — the columns of your pricing table. Each product has one or more prices and may or may not include items.</>,
-          <>Items are what customers receive — the rows of your pricing table. A user can hold multiple of the same item. Items are powerful; they can unlock feature access, raise limits, or meter consumption for usage-based billing.</>,
-          <>Create your first product to get started!</>,
-        ]}
-      />
-      <Button onClick={onCreateProduct}>
-        <Plus className="h-4 w-4 mr-2" />
-        Create Your First Product
-      </Button>
-    </div>
+      <ActionDialog
+        open={deleteDialogOpen}
+        onOpenChange={setDeleteDialogOpen}
+        title="Delete Item"
+        danger
+        cancelButton
+        okButton={{
+          label: "Delete",
+          onClick: async () => {
+            if (!itemToDelete) return;
+            await project.updateConfig({ [`payments.items.${itemToDelete.id}`]: null });
+            toast({ title: "Item deleted" });
+            setItemToDelete(null);
+          }
+        }}
+      >
+        Are you sure you want to delete the item &quot;{itemToDelete?.displayName}&quot;?
+      </ActionDialog>
+    </ListSection>
   );
 }
 
