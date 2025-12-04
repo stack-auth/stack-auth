@@ -7,25 +7,25 @@ import { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
 import { typedIncludes } from '@stackframe/stack-shared/dist/utils/arrays';
 import type { DayInterval } from "@stackframe/stack-shared/dist/utils/dates";
 import { prettyPrintWithMagnitudes } from "@stackframe/stack-shared/dist/utils/numbers";
-import { typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
+import { typedEntries, typedFromEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import { useQueryState } from '@stackframe/stack-shared/dist/utils/react';
 import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
 import {
-    ActionDialog,
-    Button,
-    DropdownMenu,
-    DropdownMenuCheckboxItem,
-    DropdownMenuContent,
-    DropdownMenuItem,
-    DropdownMenuSeparator,
-    DropdownMenuTrigger,
-    Input,
-    Label,
-    Popover,
-    PopoverContent,
-    PopoverTrigger,
-    SimpleTooltip,
-    toast
+  ActionDialog,
+  Button,
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+  Input,
+  Label,
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+  SimpleTooltip,
+  toast
 } from "@stackframe/stack-ui";
 import { ChevronsUpDown, Code, Copy, FileText, Gift, Info, Layers, MoreVertical, Pencil, Plus, Puzzle, Server, Trash2, X } from "lucide-react";
 import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
@@ -34,12 +34,12 @@ import { IntervalPopover, OrSeparator, SectionHeading } from "./components";
 import { ProductDialog } from "./product-dialog";
 import { ProductPriceRow } from "./product-price-row";
 import {
-    generateUniqueId,
-    intervalLabel,
-    shortIntervalLabel,
-    type Price,
-    type PricesObject,
-    type Product
+  generateUniqueId,
+  intervalLabel,
+  shortIntervalLabel,
+  type Price,
+  type PricesObject,
+  type Product
 } from "./utils";
 
 // Custom error class to signal validation failures without closing edit mode
@@ -1707,13 +1707,37 @@ export default function PageClient({ createDraftRequestId, draftCustomerType = '
   const [showItemDialog, setShowItemDialog] = useState(false);
   const [editingItem, setEditingItem] = useState<{ id: string, displayName: string, customerType: 'user' | 'team' | 'custom' } | null>(null);
   const [newItemCustomerType, setNewItemCustomerType] = useState<'user' | 'team' | 'custom' | undefined>(undefined);
+  const [refreshKey, setRefreshKey] = useState(0);
   const stackAdminApp = useAdminApp();
   const project = stackAdminApp.useProject();
   const config = project.useConfig();
   const paymentsConfig: CompleteConfig['payments'] = config.payments;
 
   // Use product IDs as a key to ensure re-render when products change
-  const productIds = Object.keys(paymentsConfig.products).sort().join(',');
+  // Filter out null/undefined products to ensure the dependency changes when products are deleted
+  const productIds = Object.entries(paymentsConfig.products)
+    .filter(([, product]) => product != null)
+    .map(([id]) => id)
+    .sort()
+    .join(',');
+
+  // Create a stable serialized representation of products to detect changes
+  // This ensures React detects when products are deleted even if the object reference doesn't change
+  const productsKey = useMemo(() => {
+    return JSON.stringify(
+      Object.entries(paymentsConfig.products)
+        .filter(([, product]) => product != null)
+        .map(([id]) => id)
+        .sort()
+    );
+  }, [paymentsConfig.products]);
+
+  // Watch for changes in products and force re-render if needed
+  useEffect(() => {
+    // This effect will run whenever paymentsConfig.products changes
+    // The productsKey dependency in useMemo above should handle most cases,
+    // but this ensures we catch any edge cases
+  }, [productsKey]);
 
   // Group products by catalogId and sort by customer type priority
   const groupedProducts = useMemo(() => {
@@ -1795,7 +1819,7 @@ export default function PageClient({ createDraftRequestId, draftCustomerType = '
     });
 
     return sortedGroups;
-  }, [paymentsConfig, productIds]);
+  }, [productsKey, paymentsConfig.products]);
 
   // Callback to be called when a new item is created (for auto-selection)
   const [onItemCreatedCallback, setOnItemCreatedCallback] = useState<((itemId: string) => void) | undefined>(undefined);
@@ -1828,12 +1852,14 @@ export default function PageClient({ createDraftRequestId, draftCustomerType = '
   };
 
   // Prepare data for product dialog - update when items change
-  const existingProductsList = typedEntries(paymentsConfig.products).map(([id, product]) => ({
-    id,
-    displayName: product.displayName,
-    catalogId: product.catalogId,
-    customerType: product.customerType
-  }));
+  const existingProductsList = typedEntries(paymentsConfig.products)
+    .filter(([, product]) => product != null)
+    .map(([id, product]) => ({
+      id,
+      displayName: product.displayName,
+      catalogId: product.catalogId,
+      customerType: product.customerType
+    }));
 
   const existingItemsList = typedEntries(paymentsConfig.items).map(([id, item]) => ({
     id,
@@ -1857,21 +1883,36 @@ export default function PageClient({ createDraftRequestId, draftCustomerType = '
       : [];
     const isLastProductInCatalog = catalogId && productsInCatalog.length === 1;
 
+    // Rebuild the products object without the deleted product
+    // This is the correct way to delete - rebuild the object instead of setting to null
+    const updatedProducts = typedFromEntries(
+      typedEntries(paymentsConfig.products)
+        .filter(([id]) => id !== productId)
+    );
+
     // Delete the product (and catalog if it will be empty)
     if (isLastProductInCatalog) {
+      // Also rebuild catalogs without the empty catalog
+      const updatedCatalogs = typedFromEntries(
+        typedEntries(paymentsConfig.catalogs)
+          .filter(([id]) => id !== catalogId)
+      );
       await project.updateConfig({
-        [`payments.products.${productId}`]: null,
-        [`payments.catalogs.${catalogId}`]: null,
+        "payments.products": updatedProducts,
+        "payments.catalogs": updatedCatalogs,
       });
       toast({ title: "Product and empty catalog deleted" });
     } else {
-      await project.updateConfig({ [`payments.products.${productId}`]: null });
+      await project.updateConfig({ "payments.products": updatedProducts });
       toast({ title: "Product deleted" });
     }
+    
+    // Force a re-render by updating the refresh key
+    setRefreshKey(prev => prev + 1);
   };
 
   const innerContent = (
-    <div className="flex-1">
+    <div className="flex-1" key={`${productsKey}-${refreshKey}`}>
       <CatalogView
         groupedProducts={groupedProducts}
         groups={paymentsConfig.catalogs}
