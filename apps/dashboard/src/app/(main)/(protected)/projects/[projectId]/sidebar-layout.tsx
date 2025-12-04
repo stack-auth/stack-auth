@@ -603,8 +603,8 @@ export default function SidebarLayout(props: { children?: React.ReactNode }) {
           </aside>
 
           {/* Main Content Area */}
-          <main className="flex-1 min-w-0 px-2 pb-3">
-            <div className="relative flex flex-col min-h-full">
+          <main className="flex-1 min-w-0 px-2 pb-3 h-[calc(100vh-6rem)]">
+            <div className="relative flex flex-col h-full overflow-auto">
               {props.children}
             </div>
           </main>
