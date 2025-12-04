@@ -690,6 +690,7 @@ enum EmailOutboxSkippedReason {
   USER_UNSUBSCRIBED
   USER_ACCOUNT_DELETED
   USER_HAS_NO_PRIMARY_EMAIL
+  NO_EMAIL_PROVIDED
 }
 
 enum EmailOutboxCreatedWith {

@@ -264,6 +264,14 @@ export type RenderEmailRequestForTenancy = {
     project: { displayName: string },
     variables?: Record<string, any>,
     unsubscribeLink?: string,
+    themeProps?: {
+      projectLogos: {
+        logoUrl?: string,
+        logoFullUrl?: string,
+        logoDarkModeUrl?: string,
+        logoFullDarkModeUrl?: string,
+      },
+    },
   },
 };
 
@@ -288,6 +296,7 @@ export async function renderEmailsForTenancyBatched(requests: RenderEmailRequest
     project: request.input.project,
     variables: request.input.variables ?? null,
     unsubscribeLink: request.input.unsubscribeLink ?? null,
+    themeProps: request.input.themeProps ?? null,
   })));
 
   files["/render.tsx"] = deindent`
@@ -313,7 +322,7 @@ export async function renderEmailsForTenancyBatched(requests: RenderEmailRequest
             throw new Error(variables.summary);
           }
           const TemplateWithProps = <EmailTemplate${index} variables={variables} user={input.user} project={input.project} />;
-          const Email = <EmailTheme${index} unsubscribeLink={input.unsubscribeLink ?? undefined}>
+          const Email = <EmailTheme${index} unsubscribeLink={input.unsubscribeLink ?? undefined} projectLogos={input.themeProps?.projectLogos ?? {}}>
             {TemplateWithProps}
           </EmailTheme${index}>;
           results.push({

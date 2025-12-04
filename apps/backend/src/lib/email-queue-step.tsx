@@ -532,6 +532,9 @@ async function resolveRecipientEmails(
   recipient: ReturnType<typeof deserializeRecipient>,
 ): Promise<ResolvedRecipient> {
   if (recipient.type === "custom-emails") {
+    if (recipient.emails.length === 0) {
+      return { status: "skip", reason: EmailOutboxSkippedReason.NO_EMAIL_PROVIDED };
+    }
     return { status: "ok", emails: recipient.emails };
   }
 
@@ -554,6 +557,9 @@ async function resolveRecipientEmails(
   let emails: string[] = [];
   if (recipient.type === "user-custom-emails") {
     emails = recipient.emails.length > 0 ? recipient.emails : primaryEmail ? [primaryEmail] : [];
+    if (emails.length === 0) {
+      return { status: "skip", reason: EmailOutboxSkippedReason.NO_EMAIL_PROVIDED };
+    }
   } else {
     if (!primaryEmail) {
       return { status: "skip", reason: EmailOutboxSkippedReason.USER_HAS_NO_PRIMARY_EMAIL };
