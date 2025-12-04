@@ -6,6 +6,7 @@ import { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
 import { useHover } from "@stackframe/stack-shared/dist/hooks/use-hover";
 import { DayInterval } from "@stackframe/stack-shared/dist/utils/dates";
 import { prettyPrintWithMagnitudes } from "@stackframe/stack-shared/dist/utils/numbers";
+import { typedEntries, typedFromEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
 import { Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, toast } from "@stackframe/stack-ui";
 import { MoreVertical, Plus } from "lucide-react";
@@ -417,7 +418,12 @@ function ProductsList({
                         item: "Delete",
                         onClick: async () => {
                           if (confirm(`Are you sure you want to delete the product "${product.displayName}"?`)) {
-                            await project.updateConfig({ [`payments.products.${id}`]: null });
+                            const config = project.useConfig();
+                            const updatedProducts = typedFromEntries(
+                              typedEntries(config.payments.products)
+                                .filter(([productId]) => productId !== id)
+                            );
+                            await project.updateConfig({ "payments.products": updatedProducts });
                             toast({ title: "Product deleted" });
                           }
                         },
@@ -619,8 +625,9 @@ export default function PageClient() {
   // Create refs for all products and items
   const productRefs = useMemo(() => {
     const refs = Object.fromEntries(
-      Object.keys(paymentsConfig.products)
-        .map(id => [id, React.createRef<HTMLDivElement>()])
+      Object.entries(paymentsConfig.products)
+        .filter(([, product]) => product != null)
+        .map(([id]) => [id, React.createRef<HTMLDivElement>()])
     );
     return refs;
   }, [paymentsConfig.products]);
@@ -637,8 +644,9 @@ export default function PageClient() {
   const groupedProducts = useMemo(() => {
     const groups = new Map<string | undefined, Array<{ id: string, product: typeof paymentsConfig.products[keyof typeof paymentsConfig.products] }>>();
 
-    // Group products
+    // Group products (filter out null/undefined products that may occur during deletion)
     Object.entries(paymentsConfig.products).forEach(([id, product]: [string, any]) => {
+      if (!product) return; // Skip deleted/null products
       const catalogId = product.catalogId;
       if (!groups.has(catalogId)) {
         groups.set(catalogId, []);
