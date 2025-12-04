@@ -1,15 +1,15 @@
 import { cn } from "@/lib/utils";
 import type { DayInterval } from "@stackframe/stack-shared/dist/utils/dates";
 import {
-    Input,
-    Popover,
-    PopoverContent,
-    PopoverTrigger,
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
+  Input,
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
 } from "@stackframe/stack-ui";
 import { ChevronsUpDown } from "lucide-react";
 import { useState } from "react";
@@ -136,9 +136,9 @@ export function IntervalPopover({
   const triggerClasses = triggerClassName ?? "text-xs px-2 py-0.5 rounded bg-muted text-muted-foreground cursor-pointer select-none flex items-center gap-1";
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <button type="button" className={cn(triggerClasses, readOnly && "cursor-default")}>
+    <Popover open={open} onOpenChange={(isOpen) => !readOnly && setOpen(isOpen)}>
+      <PopoverTrigger asChild disabled={readOnly}>
+        <button type="button" className={cn(triggerClasses, readOnly && "cursor-default pointer-events-none")}>
           {triggerLabel}
           <ChevronsUpDown className="h-4 w-4 text-muted-foreground" />
         </button>
@@ -177,48 +177,48 @@ export function IntervalPopover({
           ))}
         </div>
 
-          {/* Custom interval option */}
+        {/* Custom interval option */}
         <div className="border-t border-border/30 p-3">
-            <div className="text-xs font-medium text-muted-foreground mb-2">Custom</div>
-            <div className="flex gap-2">
-              <Input
-                type="number"
-                min={1}
+          <div className="text-xs font-medium text-muted-foreground mb-2">Custom</div>
+          <div className="flex gap-2">
+            <Input
+              type="number"
+              min={1}
               className={cn(
                 "w-20 h-9 text-sm",
                 "rounded-lg border border-border/60 dark:border-foreground/[0.1]",
                 "bg-background dark:bg-[hsl(240,10%,10%)]"
               )}
-                value={effectiveSelection === 'custom' ? count : 1}
-                onChange={(e) => {
-                  const val = parseInt(e.target.value, 10);
-                  if (val > 0) {
+              value={effectiveSelection === 'custom' ? count : 1}
+              onChange={(e) => {
+                const val = parseInt(e.target.value, 10);
+                if (val > 0) {
                     applyCustom(val, effectiveUnit);
-                  }
-                }}
-              />
-              <Select
-                value={effectiveUnit}
-                onValueChange={(v) => {
-                  const newUnit = v as DayInterval[1];
+                }
+              }}
+            />
+            <Select
+              value={effectiveUnit}
+              onValueChange={(v) => {
+                const newUnit = v as DayInterval[1];
                   applyCustom(effectiveSelection === 'custom' ? count : 1, newUnit);
-                }}
-              >
+              }}
+            >
               <SelectTrigger className={cn(
                 "h-9 text-sm flex-1",
                 "rounded-lg border border-border/60 dark:border-foreground/[0.1]",
                 "bg-background dark:bg-[hsl(240,10%,10%)]"
               )}>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {normalizedUnits.map((u) => (
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {normalizedUnits.map((u) => (
                   <SelectItem key={u} value={u} className="text-sm">
-                      {u}{count !== 1 ? 's' : ''}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                    {u}{count !== 1 ? 's' : ''}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
         </div>
       </PopoverContent>

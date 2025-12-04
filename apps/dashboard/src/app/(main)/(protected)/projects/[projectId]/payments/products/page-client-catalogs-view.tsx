@@ -35,6 +35,7 @@ import { ProductDialog } from "./product-dialog";
 import { ProductPriceRow } from "./product-price-row";
 import {
   generateUniqueId,
+  getPricesObject,
   intervalLabel,
   shortIntervalLabel,
   type Price,
@@ -276,7 +277,7 @@ function ProductItemRow({
                         }}
                       >
                         <span className="font-medium">{opt.displayName || opt.id}</span>
-                          <span className="text-xs text-muted-foreground">{opt.customerType.toUpperCase()} • {opt.id}</span>
+                        <span className="text-xs text-muted-foreground">{opt.customerType.toUpperCase()} • {opt.id}</span>
                       </button>
                     );
                   })}
@@ -288,15 +289,15 @@ function ProductItemRow({
                       "text-primary hover:bg-primary/[0.08]",
                       "transition-colors duration-150 hover:transition-none"
                     )}
-                      onClick={() => {
+                    onClick={() => {
                         setItemSelectOpen(false);
                       onCreateNewItem(activeType, (newItemId) => {
                         // Auto-select the newly created item
                         onChangeItemId(newItemId);
                       });
-                      }}
-                    >
-                      <Plus className="mr-2 h-4 w-4" /> New Item
+                    }}
+                  >
+                    <Plus className="mr-2 h-4 w-4" /> New Item
                   </button>
                 </div>
               </PopoverContent>
@@ -482,18 +483,6 @@ function ProductCard({ id, activeType, product, allProducts, existingItems, onSa
     };
   }, [hashAnchor, isHashTarget, currentHash]);
 
-  const getPricesObject = (draft: Product): PricesObject => {
-    if (draft.prices === 'include-by-default') {
-      return {
-        "free": {
-          USD: '0.00',
-          serverOnly: false,
-        },
-      };
-    }
-    return draft.prices;
-  };
-
   const pricesObject: PricesObject = getPricesObject(draft);
   const priceCount = Object.keys(pricesObject).length;
   const hasExistingPrices = priceCount > 0;
@@ -535,9 +524,9 @@ function ProductCard({ id, activeType, product, allProducts, existingItems, onSa
   const generateComprehensivePrompt = (): string => {
     const pricesObj = getPricesObject(draft);
     const priceEntries = typedEntries(pricesObj);
-    
+
     let prompt = `# Product Implementation Guide: ${draft.displayName || localProductId}\n\n`;
-    
+
     prompt += `## Product Overview\n`;
     prompt += `- **Product ID**: \`${localProductId}\`\n`;
     prompt += `- **Display Name**: ${draft.displayName || 'Untitled Product'}\n`;
@@ -556,7 +545,7 @@ function ProductCard({ id, activeType, product, allProducts, existingItems, onSa
       prompt += `- **Catalog ID**: ${draft.catalogId}\n`;
     }
     prompt += `\n`;
-    
+
     prompt += `## Pricing Structure\n`;
     if (draft.prices === 'include-by-default') {
       prompt += `This product is included by default (free).\n\n`;
@@ -565,39 +554,39 @@ function ProductCard({ id, activeType, product, allProducts, existingItems, onSa
     } else {
       priceEntries.forEach(([priceId, price], index) => {
         prompt += `### Price Tier ${index + 1}${priceId !== 'free' ? ` (ID: \`${priceId}\`)` : ''}\n`;
-        
+
         const currencyCodes = ['USD', 'EUR', 'GBP', 'JPY', 'AUD', 'CAD', 'CHF', 'CNY', 'SEK', 'NOK', 'DKK', 'PLN', 'BRL', 'MXN', 'INR', 'SGD', 'HKD', 'NZD', 'ZAR', 'KRW'] as const;
         const currencies = currencyCodes
           .map(code => ({ code, amount: (price as any)[code] }))
           .filter(({ amount }) => amount !== undefined && amount !== null);
-        
+
         if (currencies.length > 0) {
           prompt += `**Pricing**:\n`;
           currencies.forEach(({ code, amount }) => {
             prompt += `- ${code}: $${amount}\n`;
           });
         }
-        
+
         if (price.interval) {
           const [count, unit] = price.interval;
           prompt += `**Billing Interval**: ${intervalLabel(price.interval) || `${count} ${unit}${count !== 1 ? 's' : ''}`}\n`;
         } else {
           prompt += `**Billing**: One-time payment\n`;
         }
-        
+
         if (price.freeTrial) {
           const [count, unit] = price.freeTrial;
           prompt += `**Free Trial**: ${count} ${count === 1 ? unit : unit + 's'}\n`;
         }
-        
+
         if (price.serverOnly) {
           prompt += `**Note**: Server-side purchase only\n`;
         }
-        
+
         prompt += `\n`;
       });
     }
-    
+
     const itemsList = Object.entries(draft.includedItems);
     if (itemsList.length > 0) {
       prompt += `## Included Items\n`;
@@ -623,14 +612,14 @@ function ProductCard({ id, activeType, product, allProducts, existingItems, onSa
       prompt += `## Included Items\n`;
       prompt += `No items included.\n\n`;
     }
-    
+
     prompt += `## Implementation Code\n\n`;
     prompt += `To create a checkout URL for this product:\n\n`;
     prompt += `\`\`\`typescript\n`;
     prompt += `const url = await ${draft.customerType}.createCheckoutUrl({ productId: "${localProductId}" });\n`;
     prompt += `window.open(url, "_blank");\n`;
     prompt += `\`\`\`\n\n`;
-    
+
     prompt += `## Implementation Notes\n\n`;
     if (draft.serverOnly) {
       prompt += `- This product can only be purchased from server-side code. Use \`stackServerApp\` instead of \`stackClientApp\`.\n`;
@@ -647,11 +636,11 @@ function ProductCard({ id, activeType, product, allProducts, existingItems, onSa
     if (itemsList.length > 0) {
       prompt += `- When a customer purchases this product, they will automatically receive the included items listed above.\n`;
     }
-    
+
     if (itemsList.length > 0) {
       prompt += `\n## Item Implementation Guide\n\n`;
       prompt += `Items are automatically granted to customers when they purchase this product. Here's how to work with items in your code:\n\n`;
-      
+
       prompt += `### Getting Item Quantities\n\n`;
       prompt += `**Server-side (recommended)**:\n\n`;
       prompt += `\`\`\`typescript\n`;
@@ -675,7 +664,7 @@ function ProductCard({ id, activeType, product, allProducts, existingItems, onSa
         prompt += `console.log(\`Display name: \${item.displayName}\`);\n`;
       }
       prompt += `\`\`\`\n\n`;
-      
+
       prompt += `**Client-side (React)**:\n\n`;
       prompt += `\`\`\`typescript\n`;
       if (draft.customerType === 'user') {
@@ -697,7 +686,7 @@ function ProductCard({ id, activeType, product, allProducts, existingItems, onSa
         prompt += `}\n`;
       }
       prompt += `\`\`\`\n\n`;
-      
+
       prompt += `### Modifying Item Quantities (Server-side only)\n\n`;
       prompt += `**Increase quantity** (add credits/resources):\n\n`;
       prompt += `\`\`\`typescript\n`;
@@ -718,7 +707,7 @@ function ProductCard({ id, activeType, product, allProducts, existingItems, onSa
         prompt += `await item.increaseQuantity(100);\n`;
       }
       prompt += `\`\`\`\n\n`;
-      
+
       prompt += `**Decrease quantity** (consume credits/resources):\n\n`;
       prompt += `\`\`\`typescript\n`;
       if (draft.customerType === 'user') {
@@ -757,7 +746,7 @@ function ProductCard({ id, activeType, product, allProducts, existingItems, onSa
         prompt += `}\n`;
       }
       prompt += `\`\`\`\n\n`;
-      
+
       prompt += `### Item Properties\n\n`;
       prompt += `- \`quantity\`: The current quantity (can be negative)\n`;
       prompt += `- \`nonNegativeQuantity\`: Quantity clamped to minimum 0 (use for display)\n`;
@@ -765,7 +754,7 @@ function ProductCard({ id, activeType, product, allProducts, existingItems, onSa
       prompt += `- \`increaseQuantity(amount)\`: Add to the quantity (server-side only)\n`;
       prompt += `- \`decreaseQuantity(amount)\`: Subtract from quantity, allows negative (server-side only)\n`;
       prompt += `- \`tryDecreaseQuantity(amount)\`: Subtract if sufficient, returns false if would go negative (server-side only)\n\n`;
-      
+
       prompt += `### Important Notes\n\n`;
       prompt += `- Items are automatically granted when customers purchase this product based on the included items configuration.\n`;
       if (itemsList.some(([, item]) => item.repeat && item.repeat !== 'never')) {
@@ -778,7 +767,7 @@ function ProductCard({ id, activeType, product, allProducts, existingItems, onSa
       prompt += `- Use \`tryDecreaseQuantity()\` for pre-paid credits to prevent overdrafts.\n`;
       prompt += `- Use \`nonNegativeQuantity\` when displaying quantities to users to avoid showing negative numbers.\n`;
     }
-    
+
     return prompt;
   };
 
@@ -795,7 +784,6 @@ function ProductCard({ id, activeType, product, allProducts, existingItems, onSa
         {entries.map(([pid, price], index) => (
           <Fragment key={pid}>
             <ProductPriceRow
-              key={pid}
               priceId={pid}
               price={price}
               isFree={editingPricesIsFreeMode}
@@ -1875,7 +1863,7 @@ export default function PageClient({ createDraftRequestId, draftCustomerType = '
   const handleDeleteProduct = async (productId: string) => {
     // Get the product's catalog before deleting
     const product = paymentsConfig.products[productId];
-    const catalogId = product?.catalogId;
+    const catalogId = product.catalogId;
 
     // Count products in the same catalog (before deletion)
     const productsInCatalog = catalogId
@@ -1906,7 +1894,7 @@ export default function PageClient({ createDraftRequestId, draftCustomerType = '
       await project.updateConfig({ "payments.products": updatedProducts });
       toast({ title: "Product deleted" });
     }
-    
+
     // Force a re-render by updating the refresh key
     setRefreshKey(prev => prev + 1);
   };

@@ -1,15 +1,15 @@
 import { cn } from "@/lib/utils";
 import type { DayInterval } from "@stackframe/stack-shared/dist/utils/dates";
 import {
-    Checkbox,
-    Input,
-    Label,
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-    SimpleTooltip
+  Checkbox,
+  Input,
+  Label,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+  SimpleTooltip
 } from "@stackframe/stack-ui";
 import { Info, X } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -180,8 +180,11 @@ export function ProductPriceRow({
                       aria-label="Amount in USD"
                       onChange={(e) => {
                         const v = e.target.value;
-                        if (v === '' || /^\d*(?:\.?\d{0,2})?$/.test(v)) setAmount(v);
-                        savePriceUpdate();
+                        if (v === '' || /^\d*(?:\.?\d{0,2})?$/.test(v)) {
+                          setAmount(v);
+                          // Pass the new amount directly since setState is async
+                          savePriceUpdate({ amount: v });
+                        }
                       }}
                     />
                     <span className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 font-semibold text-base text-muted-foreground">
