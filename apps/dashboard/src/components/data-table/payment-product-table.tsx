@@ -2,6 +2,7 @@
 import { useAdminApp } from "@/app/(main)/(protected)/projects/[projectId]/use-admin-app";
 import { ProductDialog } from "@/components/payments/product-dialog";
 import { branchPaymentsSchema } from "@stackframe/stack-shared/dist/config/schema";
+import { typedEntries, typedFromEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import { ActionCell, ActionDialog, DataTable, DataTableColumnHeader, TextCell, toast } from "@stackframe/stack-ui";
 import { ColumnDef } from "@tanstack/react-table";
 import { useState } from "react";
@@ -49,10 +50,12 @@ const columns: ColumnDef<PaymentProduct>[] = [
 ];
 
 export function PaymentProductTable({ products }: { products: Record<string, yup.InferType<typeof branchPaymentsSchema>["products"][string]> }) {
-  const data: PaymentProduct[] = Object.entries(products).map(([id, product]) => ({
-    id,
-    ...product,
-  }));
+  const data: PaymentProduct[] = Object.entries(products)
+    .filter(([, product]) => product != null)
+    .map(([id, product]) => ({
+      id,
+      ...product,
+    }));
 
   return <DataTable
     data={data}
@@ -102,7 +105,12 @@ function ActionsCell({ product }: { product: PaymentProduct }) {
         okButton={{
           label: "Delete",
           onClick: async () => {
-            await project.updateConfig({ [`payments.products.${product.id}`]: null });
+            const config = project.useConfig();
+            const updatedProducts = typedFromEntries(
+              typedEntries(config.payments.products)
+                .filter(([productId]) => productId !== product.id)
+            );
+            await project.updateConfig({ "payments.products": updatedProducts });
             toast({ title: "Product deleted" });
           },
         }}
