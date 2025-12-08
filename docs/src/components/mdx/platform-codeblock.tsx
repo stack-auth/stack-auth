@@ -11,7 +11,7 @@ import { BaseCodeblock } from './base-codeblock';
 type PlatformChangeListener = (platform: string) => void;
 type FrameworkChangeListener = (platform: string, framework: string) => void;
 
-type VariantSelections = Partial<Record<string, Partial<Record<string, 'server' | 'client'>>>>;
+type VariantSelections = Partial<Record<string, Partial<Record<string, string>>>>;
 
 const platformListeners = new Map<string, PlatformChangeListener[]>();
 const frameworkListeners = new Map<string, FrameworkChangeListener[]>();
@@ -126,6 +126,14 @@ export type PlatformCodeblockProps = {
   className?: string,
 }
 
+type VariantConfig = {
+  code: string,
+  language?: string,
+  filename?: string,
+};
+
+type FrameworkConfig = VariantConfig | { [variantName: string]: VariantConfig };
+
 /**
  * Converts CodeExample[] from code-examples.ts to the platforms format
  * Only includes platforms/frameworks defined in the global config
@@ -133,27 +141,14 @@ export type PlatformCodeblockProps = {
 function convertExamplesToPlatforms(examples: CodeExample[]) {
   const platforms: {
     [platformName: string]: {
-      [frameworkName: string]: {
-        code: string,
-        language?: string,
-        filename?: string,
-      } | {
-        server: {
-          code: string,
-          language?: string,
-          filename?: string,
-        },
-        client: {
-          code: string,
-          language?: string,
-          filename?: string,
-        },
-      },
+      [frameworkName: string]: FrameworkConfig,
     },
   } = {};
 
   const defaultFrameworks: { [platformName: string]: string } = {};
   const defaultVariants: VariantSelections = {};
+  // Track which variants exist for each platform/framework
+  const variantKeys: { [platform: string]: { [framework: string]: string[] } } = {};
 
   // Initialize default frameworks from global config
   for (const platformConfig of PLATFORMS) {
@@ -180,34 +175,38 @@ function convertExamplesToPlatforms(examples: CodeExample[]) {
     }
 
     if (variant) {
-      // Has server/client variant - initialize if not already a variant config
-      // We check if 'server' exists to determine if it's already been initialized as a variant config
-      if (!('server' in (platforms[language][framework] ?? {}))) {
-        platforms[language][framework] = {
-          server: { code: '', language: highlightLanguage },
-          client: { code: '', language: highlightLanguage }
-        };
+      // Has variant - initialize tracking if needed
+      if (!(language in variantKeys)) {
+        variantKeys[language] = {};
+      }
+      if (!(framework in variantKeys[language])) {
+        variantKeys[language][framework] = [];
       }
 
-      const variantConfig = platforms[language][framework] as {
-        server: { code: string, language?: string, filename?: string },
-        client: { code: string, language?: string, filename?: string },
-      };
+      // Track this variant key
+      if (!variantKeys[language][framework].includes(variant)) {
+        variantKeys[language][framework].push(variant);
+      }
 
-      // Explicitly narrow the variant type
-      const variantType: 'server' | 'client' = variant;
-      variantConfig[variantType] = {
+      // Initialize framework config as variant object if needed
+      const existingConfig = platforms[language][framework] as FrameworkConfig | undefined;
+      if (existingConfig === undefined || 'code' in existingConfig) {
+        platforms[language][framework] = {};
+      }
+
+      const variantConfig = platforms[language][framework] as { [key: string]: VariantConfig };
+      variantConfig[variant] = {
         code,
         language: highlightLanguage,
         filename
       };
 
-      // Initialize default variants
+      // Initialize default variants (use first variant seen)
       if (!(language in defaultVariants)) {
         defaultVariants[language] = {};
       }
       if (!defaultVariants[language]?.[framework]) {
-        defaultVariants[language]![framework] = 'server';
+        defaultVariants[language]![framework] = variant;
       }
     } else {
       // No variant
@@ -233,7 +232,7 @@ function convertExamplesToPlatforms(examples: CodeExample[]) {
     ? DEFAULT_PLATFORM
     : Object.keys(sortedPlatforms)[0];
 
-  return { platforms: sortedPlatforms, defaultPlatform, defaultFrameworks, defaultVariants };
+  return { platforms: sortedPlatforms, defaultPlatform, defaultFrameworks, defaultVariants, variantKeys };
 }
 
 export function PlatformCodeblock({
@@ -255,9 +254,9 @@ export function PlatformCodeblock({
   }
 
   // Convert to the internal platforms format
-  const { platforms, defaultPlatform, defaultFrameworks, defaultVariants } = allExamples.length > 0
+  const { platforms, defaultPlatform, defaultFrameworks, defaultVariants, variantKeys } = allExamples.length > 0
     ? convertExamplesToPlatforms(allExamples)
-    : { platforms: {}, defaultPlatform: '', defaultFrameworks: {}, defaultVariants: {} };
+    : { platforms: {}, defaultPlatform: '', defaultFrameworks: {}, defaultVariants: {}, variantKeys: {} };
 
   const platformNames = Object.keys(platforms);
   const firstPlatform = defaultPlatform || platformNames[0];
@@ -366,20 +365,24 @@ export function PlatformCodeblock({
   const currentFrameworks = Object.keys(platforms[selectedPlatform] ?? {});
   const currentFramework = selectedFrameworks[selectedPlatform] || currentFrameworks[0];
 
-  // Helper functions for server/client variants
-  const hasVariants = (platform: string, framework: string) => {
-    const platformConfig = platforms[platform];
-    const config = platformConfig[framework];
-    if (typeof config !== 'object') {
-      return false;
-    }
-
-    return 'server' in config && 'client' in config;
+  // Helper functions for variants (supports dynamic variant names like 'server'/'client' or 'html'/'script')
+  const getVariantKeys = (platform: string, framework: string): string[] => {
+    if (!(platform in variantKeys)) return [];
+    const platformVariants = variantKeys[platform];
+    if (!(framework in platformVariants)) return [];
+    return platformVariants[framework];
   };
 
-  const getCurrentVariant = (): 'server' | 'client' => {
+  const hasVariants = (platform: string, framework: string) => {
+    return getVariantKeys(platform, framework).length > 0;
+  };
+
+  const getCurrentVariant = (): string => {
     const platformVariants = selectedVariants[selectedPlatform];
-    return platformVariants?.[currentFramework] ?? 'server';
+    const keys = getVariantKeys(selectedPlatform, currentFramework);
+    const selectedVariant = platformVariants?.[currentFramework];
+    if (selectedVariant) return selectedVariant;
+    return keys[0] || '';
   };
 
   const getCurrentCodeConfig = () => {
@@ -390,17 +393,17 @@ export function PlatformCodeblock({
     }
 
     // Get the config for the current framework - may be undefined
-    const config = platformConfig[currentFramework] as typeof platformConfig[string] | undefined;
+    const config = platformConfig[currentFramework] as FrameworkConfig | undefined;
     if (!config) {
       return null;
     }
 
     if (hasVariants(selectedPlatform, currentFramework)) {
       const variant = getCurrentVariant();
-      return (config as { server: { code: string, language?: string, filename?: string }, client: { code: string, language?: string, filename?: string } })[variant];
+      return (config as { [key: string]: VariantConfig })[variant];
     }
 
-    return config as { code: string, language?: string, filename?: string };
+    return config as VariantConfig;
   };
 
   const currentCodeConfig = getCurrentCodeConfig();
@@ -500,7 +503,7 @@ export function PlatformCodeblock({
     });
   };
 
-  const handleVariantChange = (variant: 'server' | 'client') => {
+  const handleVariantChange = (variant: string) => {
     setSelectedVariants(prev => ({
       ...prev,
       [selectedPlatform]: {
@@ -615,20 +618,27 @@ export function PlatformCodeblock({
           hasVariants(selectedPlatform, currentFramework) ? (
             <div className="mb-3 flex">
               <div className="inline-flex items-center gap-1 rounded-full border border-fd-border/60 bg-fd-muted/20 p-1">
-                {(['server', 'client'] as const).map((variant) => (
-                  <button
-                    key={variant}
-                    onClick={() => handleVariantChange(variant)}
-                    className={cn(
-                      "inline-flex items-center justify-center whitespace-nowrap rounded-full px-3 py-1 text-xs font-medium transition-colors duration-150",
-                      getCurrentVariant() === variant
-                        ? "bg-fd-background text-fd-foreground shadow-sm border border-fd-border"
-                        : "border border-transparent text-fd-muted-foreground hover:text-fd-foreground hover:bg-fd-muted/40"
-                    )}
-                  >
-                    {variant.charAt(0).toUpperCase() + variant.slice(1)}
-                  </button>
-                ))}
+                {getVariantKeys(selectedPlatform, currentFramework).map((variant) => {
+                  // Get the filename for this variant to use as label
+                  const config = platforms[selectedPlatform][currentFramework] as { [key: string]: VariantConfig } | undefined;
+                  const variantConfig = config?.[variant];
+                  const label = variantConfig?.filename || variant.charAt(0).toUpperCase() + variant.slice(1);
+
+                  return (
+                    <button
+                      key={variant}
+                      onClick={() => handleVariantChange(variant)}
+                      className={cn(
+                        "inline-flex items-center justify-center whitespace-nowrap rounded-full px-3 py-1 text-xs font-medium transition-colors duration-150",
+                        getCurrentVariant() === variant
+                          ? "bg-fd-background text-fd-foreground shadow-sm border border-fd-border"
+                          : "border border-transparent text-fd-muted-foreground hover:text-fd-foreground hover:bg-fd-muted/40"
+                      )}
+                    >
+                      {label}
+                    </button>
+                  );
+                })}
               </div>
             </div>
           ) : undefined
