@@ -59,27 +59,32 @@ export const oauthProviderCrud = createCrud({
     clientRead: {
       summary: "Get an OAuth provider",
       description: "Retrieves a specific OAuth provider by the user ID and the OAuth provider ID.",
-      tags: ["OAuth Providers"],
+      tags: ["Oauth"],
     },
     serverCreate: {
       summary: "Create an OAuth provider",
       description: "Add a new OAuth provider for a user.",
-      tags: ["OAuth Providers"],
+      tags: ["Oauth"],
     },
     serverUpdate: {
       summary: "Update an OAuth provider",
       description: "Updates an existing OAuth provider. Only the values provided will be updated.",
-      tags: ["OAuth Providers"],
+      tags: ["Oauth"],
+    },
+    clientUpdate: {
+      summary: "Update an OAuth provider",
+      description: "Updates an existing OAuth provider for a user.",
+      tags: ["Oauth"],
     },
     clientDelete: {
       summary: "Delete an OAuth provider",
       description: "Removes an OAuth provider for a given user.",
-      tags: ["OAuth Providers"],
+      tags: ["Oauth"],
     },
     clientList: {
       summary: "List OAuth providers",
       description: "Retrieves a list of all OAuth providers for a user.",
-      tags: ["OAuth Providers"],
+      tags: ["Oauth"],
     },
   }
 });

@@ -121,7 +121,7 @@ export function MyComponent() {
                 <span className="text-blue-600">→ Using mock data (sign in to see your account)</span>
               )}
             </div>
-            <div className="relative overflow-hidden rounded-lg border border-dashed border-blue-500/40 dark:border-blue-400/20 bg-gray-200/90 dark:bg-slate-900/30 shadow-sm p-4">
+            <div className="not-prose relative overflow-hidden rounded-lg border border-dashed border-blue-500/40 dark:border-blue-400/20 bg-gray-200/90 dark:bg-slate-900/30 shadow-sm p-4">
               {/* Component demo label */}
               <div className="absolute top-0 right-0 px-2 py-1 text-xs font-medium rounded-bl-md bg-gray-200/90 dark:bg-slate-800/80 border-l border-b border-gray-400/60 dark:border-gray-600/40">
                 <span className="text-blue-600/80 dark:text-blue-400/70">Component Demo</span>
