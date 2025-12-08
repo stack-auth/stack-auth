@@ -274,7 +274,7 @@ function _internalShouldSetPartitionedClient() {
 
 
   // check whether Partitioned cookies are supported by the browser
-  // TODO: See comment at the top. Feels like we should ifnd a better way to do this
+  // TODO: See comment at the top. Feels like we should find a better way to do this
   const cookie2Name = "__Host-stack-temporary-chips-test-" + Math.random().toString(36).substring(2, 15);
 
   // just to be safe, delete the cookie first to avoid weird RNG-prediction attacks
