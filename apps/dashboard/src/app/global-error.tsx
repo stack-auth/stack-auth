@@ -26,7 +26,7 @@ export default function GlobalError({ error }: any) {
 
   return (
     <html>
-      <body>
+      <body className="flex items-center justify-center min-h-screen">
         {isProdLike ? (
           <Spinner />
         ) : (

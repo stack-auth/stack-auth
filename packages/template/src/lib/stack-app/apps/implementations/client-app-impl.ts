@@ -20,6 +20,7 @@ import { encodeBase32 } from "@stackframe/stack-shared/dist/utils/bytes";
 import { scrambleDuringCompileTime } from "@stackframe/stack-shared/dist/utils/compile-time";
 import { isBrowserLike } from "@stackframe/stack-shared/dist/utils/env";
 import { StackAssertionError, captureError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { parseJson } from "@stackframe/stack-shared/dist/utils/json";
 import { DependenciesMap } from "@stackframe/stack-shared/dist/utils/maps";
 import { ProviderType } from "@stackframe/stack-shared/dist/utils/oauth";
 import { deepPlainEquals, omit } from "@stackframe/stack-shared/dist/utils/objects";
@@ -27,7 +28,7 @@ import { neverResolve, runAsynchronously, wait } from "@stackframe/stack-shared/
 import { suspend, suspendIfSsr } from "@stackframe/stack-shared/dist/utils/react";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { Store, storeLock } from "@stackframe/stack-shared/dist/utils/stores";
-import { deindent, mergeScopeStrings, stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
+import { deindent, mergeScopeStrings } from "@stackframe/stack-shared/dist/utils/strings";
 import { getRelativePart, isRelative } from "@stackframe/stack-shared/dist/utils/urls";
 import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
 import * as cookie from "cookie";
@@ -36,7 +37,7 @@ import React, { useCallback, useMemo } from "react"; // THIS_LINE_PLATFORM react
 import type * as yup from "yup";
 import { constructRedirectUrl } from "../../../../utils/url";
 import { addNewOAuthProviderOrScope, callOAuthCallback, signInWithOAuth } from "../../../auth";
-import { CookieHelper, createBrowserCookieHelper, createCookieHelper, createPlaceholderCookieHelper, deleteCookieClient, isSecure as isSecureCookieContext, setOrDeleteCookie, setOrDeleteCookieClient } from "../../../cookie";
+import { CookieHelper, createBrowserCookieHelper, createCookieHelper, createPlaceholderCookieHelper, deleteCookie, deleteCookieClient, isSecure as isSecureCookieContext, setOrDeleteCookie, setOrDeleteCookieClient } from "../../../cookie";
 import { ApiKey, ApiKeyCreationOptions, ApiKeyUpdateOptions, apiKeyCreationOptionsToCrud } from "../../api-keys";
 import { ConvexCtx, GetCurrentPartialUserOptions, GetCurrentUserOptions, HandlerUrls, OAuthScopesOnSignIn, RedirectMethod, RedirectToOptions, RequestLike, TokenStoreInit, stackAppInternalsSymbol } from "../../common";
 import { OAuthConnection } from "../../connected-accounts";
@@ -50,7 +51,6 @@ import { ActiveSession, Auth, BaseUser, CurrentUser, InternalUserExtra, OAuthPro
 import { StackClientApp, StackClientAppConstructorOptions, StackClientAppJson } from "../interfaces/client-app";
 import { _StackAdminAppImplIncomplete } from "./admin-app-impl";
 import { TokenObject, clientVersion, createCache, createCacheBySession, createEmptyTokenStore, getBaseUrl, getDefaultExtraRequestHeaders, getDefaultProjectId, getDefaultPublishableClientKey, getUrls, resolveConstructorOptions } from "./common";
-import { parseJson } from "@stackframe/stack-shared/dist/utils/json";
 
 // IF_PLATFORM react-like
 import { useAsyncCache } from "./common";
@@ -605,9 +605,10 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       }
       const domain = await this._trustedParentDomainCache.getOrWait([hostname], "read-write");
 
+      const cookieOptions = { maxAge: 60 * 60 * 24 * 365, noOpIfServerComponent: true };
       const setCookie = async (targetDomain: string, value: string | null) => {
         const name = this._getCustomRefreshCookieName(targetDomain);
-        const options = { maxAge: 60 * 60 * 24 * 365, domain: targetDomain, noOpIfServerComponent: true };
+        const options = { ...cookieOptions, domain: targetDomain };
         if (context === "browser") {
           setOrDeleteCookieClient(name, value, options);
         } else {
@@ -621,7 +622,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       const value = refreshToken && updatedAt ? this._formatRefreshCookieValue(refreshToken, updatedAt) : null;
       await setCookie(domain.data, value);
       const isSecure = await isSecureCookieContext();
-      await setOrDeleteCookie(this._getRefreshTokenDefaultCookieNameForSecure(isSecure), null);
+      await setOrDeleteCookie(this._getRefreshTokenDefaultCookieNameForSecure(isSecure), null, cookieOptions);
     });
   }
   private async _getTrustedParentDomain(currentDomain: string): Promise<string | null> {
@@ -677,7 +678,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
           );
           setOrDeleteCookieClient(defaultName, refreshCookieValue, { maxAge: 60 * 60 * 24 * 365, secure });
           setOrDeleteCookieClient(this._accessTokenCookieName, accessTokenPayload, { maxAge: 60 * 60 * 24 });
-          cookieNamesToDelete.forEach((name) => deleteCookieClient(name));
+          cookieNamesToDelete.forEach((name) => deleteCookieClient(name, {}));
           this._queueCustomRefreshCookieUpdate(refreshToken, updatedAt, "browser");
           hasSucceededInWriting = true;
         } catch (e) {
@@ -735,7 +736,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
               if (cookieNamesToDelete.length > 0) {
                 await Promise.all(
                   cookieNamesToDelete.map((name) =>
-                    setOrDeleteCookie(name, null, { noOpIfServerComponent: true }),
+                    deleteCookie(name, { noOpIfServerComponent: true }),
                   ),
                 );
               }
