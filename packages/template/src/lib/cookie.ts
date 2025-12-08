@@ -180,6 +180,7 @@ function createNextCookieHelper(
           secure: isSecureCookie,
           maxAge: options.maxAge === "session" ? undefined : options.maxAge,
           domain: options.domain,
+          sameSite: "lax",
         });
       } catch (e) {
         handleCookieError(e, options);
@@ -251,7 +252,11 @@ function determineSecureFromServerContext(
 // END_PLATFORM
 
 
+let _shouldSetPartitionedClientCache: boolean | undefined = undefined;
 function shouldSetPartitionedClient() {
+  return _shouldSetPartitionedClientCache ??= _internalShouldSetPartitionedClient();
+}
+function _internalShouldSetPartitionedClient() {
   ensureClient();
 
   if (!(determineSecureFromClientContext())) {
