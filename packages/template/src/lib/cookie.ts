@@ -264,7 +264,6 @@ function shouldSetPartitionedClient() {
   const cookies1 = document.cookie.split("; ");
   document.cookie = `${cookie1Name}=delete1; Secure; path=/; expires=Thu, 01 Jan 1970 00:00:00 UTC;`;
   if (cookies1.some((c) => c.startsWith(cookie1Name + "="))) {
-    console.log("not using partitioned cookies because we can set & retrieve normal cookies");
     return false;
   }
 
@@ -286,7 +285,6 @@ function shouldSetPartitionedClient() {
   // check if there are two cookies
   const cookies2 = document.cookie.split("; ");
   const numberOfCookiesWithThisName = cookies2.filter((c) => c.startsWith(cookie2Name + "=")).length;
-  console.log("numberOfCookiesWithThisName", numberOfCookiesWithThisName);
 
   // clean up
   document.cookie = `${cookie2Name}=delete3; Secure; SameSite=None; Partitioned; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/`;
@@ -298,7 +296,6 @@ function shouldSetPartitionedClient() {
 function setCookieClientInternal(name: string, value: string, options: SetCookieOptions) {
   const secure = options.secure ?? determineSecureFromClientContext();
   const partitioned = shouldSetPartitionedClient();
-  console.log("setting cookie on client", name, value, options, { secure, partitioned });
   Cookies.set(name, value, {
     expires: options.maxAge === "session" ? undefined : new Date(Date.now() + (options.maxAge) * 1000),
     domain: options.domain,
