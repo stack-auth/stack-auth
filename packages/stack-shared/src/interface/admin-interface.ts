@@ -40,6 +40,30 @@ export type InternalApiKeyCreateCrudResponse = InternalApiKeysCrud["Admin"]["Rea
   super_secret_admin_key?: string,
 };
 
+export type ClickhouseMigrationRequest = {
+  min_created_at: string,
+  max_created_at: string,
+  cursor?: {
+    created_at: string,
+    id: string,
+  },
+  limit?: number,
+};
+
+export type ClickhouseMigrationResponse = {
+  total_events: number,
+  processed_events: number,
+  remaining_events: number,
+  migrated_events: number,
+  skipped_existing_events: number,
+  inserted_rows: number,
+  progress: number,
+  next_cursor: {
+    created_at: string,
+    id: string,
+  } | null,
+};
+
 export class StackAdminInterface extends StackServerInterface {
   constructor(public readonly options: AdminAuthApplicationOptions) {
     super(options);
@@ -613,6 +637,21 @@ export class StackAdminInterface extends StackServerInterface {
   async refundTransaction(options: { type: "subscription" | "one-time-purchase", id: string }): Promise<{ success: boolean }> {
     const response = await this.sendAdminRequest(
       "/internal/payments/transactions/refund",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify(options),
+      },
+      null,
+    );
+    return await response.json();
+  }
+
+  async migrateEventsToClickhouse(options: ClickhouseMigrationRequest): Promise<ClickhouseMigrationResponse> {
+    const response = await this.sendAdminRequest(
+      "/internal/clickhouse/migrate-events",
       {
         method: "POST",
         headers: {
