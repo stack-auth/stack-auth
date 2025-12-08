@@ -173,16 +173,19 @@ export const projectsCrud = createCrud({
       summary: 'Get the current project',
       description: 'Get the current project information and configuration including display name, OAuth providers, email configuration, etc.',
       tags: ['Projects'],
+      hidden: true,
     },
     adminUpdate: {
       summary: 'Update the current project',
       description: 'Update the current project information and configuration including display name, OAuth providers, email configuration, etc.',
       tags: ['Projects'],
+      hidden: true,
     },
     adminDelete: {
       summary: 'Delete the current project',
       description: 'Delete the current project and all associated data (including users, teams, API keys, project configs, etc.). Be careful, this action is irreversible.',
       tags: ['Projects'],
+      hidden: true,
     },
   },
 });
