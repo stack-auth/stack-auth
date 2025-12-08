@@ -153,7 +153,7 @@ function createApiKeyHandlers<Type extends "user" | "team">(type: Type) {
       metadata: {
         hidden: false,
         description: "Create a new API key for a user or team",
-        summary: "Create API key",
+        summary: `Create ${type} API key`,
         tags: ["API Keys"],
       },
       request: yupObject({
