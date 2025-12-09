@@ -52,7 +52,7 @@ const branchSchemaFuzzerConfig = [{
   dbSync: [{
     externalDatabases: [{
       "some-external-db-id": [{
-        type: ["postgres"] as const,
+        type: ["postgres", "clickhouse"] as const,
         connectionString: [
           "postgres://user:password@host:port/database",
           "some-connection-string",

@@ -11,6 +11,10 @@ export const POSTGRES_PASSWORD = process.env.EXTERNAL_DB_TEST_PASSWORD || 'PASSW
 export const TEST_TIMEOUT = 120000;
 export const HIGH_VOLUME_TIMEOUT = 600000; // 10 minutes for 1500+ users
 
+const CLICKHOUSE_BASE_HOST = process.env.EXTERNAL_CLICKHOUSE_TEST_HOST || `http://localhost:${PORT_PREFIX}33`;
+export const CLICKHOUSE_USER = process.env.EXTERNAL_CLICKHOUSE_TEST_USER || 'stackframe';
+export const CLICKHOUSE_PASSWORD = process.env.EXTERNAL_CLICKHOUSE_TEST_PASSWORD || 'PASSWORD-PLACEHOLDER--9gKyMxJeMx';
+
 // Connection settings to prevent connection leaks
 const CLIENT_CONFIG: Partial<ClientConfig> = {
   // Timeout for connecting (10 seconds)
@@ -262,6 +266,155 @@ export async function countUsersInExternalDb(client: Client): Promise<number> {
     }
     throw err;
   }
+}
+
+const CLICKHOUSE_BASE_URL = CLICKHOUSE_BASE_HOST.startsWith('http')
+  ? CLICKHOUSE_BASE_HOST
+  : `http://${CLICKHOUSE_BASE_HOST}`;
+
+function getClickhouseBaseUrl() {
+  try {
+    return new URL(CLICKHOUSE_BASE_URL);
+  } catch (err) {
+    throw new Error(`Invalid ClickHouse base URL: ${CLICKHOUSE_BASE_URL}`);
+  }
+}
+
+function escapeClickhouseLiteral(value: string) {
+  return value.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+}
+
+async function clickhouseRequest(
+  query: string,
+  options: { database?: string, format?: 'JSON' | 'TabSeparated' } = {},
+) {
+  const url = getClickhouseBaseUrl();
+  url.pathname = '/';
+  if (options.database) {
+    url.searchParams.set('database', options.database);
+  }
+  url.searchParams.set('default_format', options.format ?? 'JSON');
+
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'text/plain',
+      Authorization: `Basic ${Buffer.from(`${CLICKHOUSE_USER}:${CLICKHOUSE_PASSWORD}`).toString('base64')}`,
+    },
+    body: query,
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`ClickHouse query failed (${response.status}): ${errorText}`);
+  }
+
+  if ((options.format ?? 'JSON') === 'JSON') {
+    return await response.json();
+  }
+  return await response.text();
+}
+
+function buildClickhouseConnectionString(databaseName: string) {
+  const url = getClickhouseBaseUrl();
+  url.username = CLICKHOUSE_USER;
+  url.password = CLICKHOUSE_PASSWORD;
+  url.pathname = `/${databaseName}`;
+  return url.toString();
+}
+
+export class ClickhouseTestDbManager {
+  private databaseNames: Set<string> = new Set();
+
+  async init() {
+    await clickhouseRequest('SELECT 1', { database: 'system' });
+  }
+
+  async createDatabase(dbName: string): Promise<{ databaseName: string, connectionString: string }> {
+    const uniqueDbName = `${dbName}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    await clickhouseRequest(`CREATE DATABASE IF NOT EXISTS ${uniqueDbName}`, { database: 'default', format: 'TabSeparated' });
+    this.databaseNames.add(uniqueDbName);
+
+    return {
+      databaseName: uniqueDbName,
+      connectionString: buildClickhouseConnectionString(uniqueDbName),
+    };
+  }
+
+  async cleanup() {
+    await cleanupAllProjectConfigs();
+
+    for (const name of this.databaseNames) {
+      try {
+        await clickhouseRequest(`DROP DATABASE IF EXISTS ${name}`, { database: 'default', format: 'TabSeparated' });
+      } catch (err) {
+        console.warn(`Failed to drop ClickHouse database ${name}:`, err);
+      }
+    }
+    this.databaseNames.clear();
+  }
+}
+
+async function fetchClickhouseUsers(databaseName: string, email: string) {
+  const escapedEmail = escapeClickhouseLiteral(email);
+  try {
+    const result: any = await clickhouseRequest(
+      `
+      SELECT *
+      FROM users FINAL
+      WHERE primary_email = '${escapedEmail}' AND is_deleted = 0
+      FORMAT JSON
+    `,
+      { database: databaseName },
+    );
+    return result?.data ?? [];
+  } catch (err: any) {
+    if (
+      err instanceof Error &&
+      (
+        err.message.includes('does not exist') ||
+        err.message.includes("doesn't exist") ||
+        err.message.includes('Unknown table')
+      )
+    ) {
+      return [];
+    }
+    throw err;
+  }
+}
+
+export async function waitForClickhouseUser(databaseName: string, email: string, expectedName?: string) {
+  await waitForCondition(
+    async () => {
+      const rows = await fetchClickhouseUsers(databaseName, email);
+      if (rows.length === 0) {
+        return false;
+      }
+      if (expectedName && rows[0].display_name !== expectedName) {
+        return false;
+      }
+      return true;
+    },
+    {
+      description: `ClickHouse data for ${email} to appear in external DB`,
+      timeoutMs: 120000,
+      intervalMs: 500,
+    }
+  );
+}
+
+export async function waitForClickhouseDeletion(databaseName: string, email: string) {
+  await waitForCondition(
+    async () => {
+      const rows = await fetchClickhouseUsers(databaseName, email);
+      return rows.length === 0;
+    },
+    {
+      description: `ClickHouse data for ${email} to be removed from external DB`,
+      timeoutMs: 120000,
+      intervalMs: 500,
+    }
+  );
 }
 
 /**

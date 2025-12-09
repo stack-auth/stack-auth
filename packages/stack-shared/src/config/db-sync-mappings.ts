@@ -25,6 +25,33 @@ export const DEFAULT_DB_SYNC_MAPPINGS = {
           "updated_at" timestamp without time zone NOT NULL DEFAULT now()
         );
       `.trim(),
+      clickhouse: `
+        CREATE TABLE IF NOT EXISTS users (
+          id UUID,
+          display_name Nullable(String),
+          profile_image_url Nullable(String),
+          primary_email Nullable(String),
+          primary_email_verified Bool,
+          signed_up_at DateTime64(3, 'UTC'),
+          client_metadata String,
+          client_read_only_metadata String,
+          server_metadata String,
+          is_anonymous Bool,
+          sequence_id Int64,
+          is_deleted Bool
+        )
+        ENGINE = ReplacingMergeTree(sequence_id)
+        ORDER BY (id)
+        SETTINGS allow_nullable_key = 1;
+
+        CREATE TABLE IF NOT EXISTS _stack_sync_metadata (
+          mapping_name String,
+          last_synced_sequence_id Int64,
+          updated_at DateTime DEFAULT now()
+        )
+        ENGINE = ReplacingMergeTree(updated_at)
+        ORDER BY (mapping_name);
+      `.trim(),
     },
     internalDbFetchQuery: `
       SELECT *
@@ -159,6 +186,9 @@ export const DEFAULT_DB_SYNC_MAPPINGS = {
         ON CONFLICT ("mapping_name") DO UPDATE SET
           "last_synced_sequence_id" = GREATEST("_stack_sync_metadata"."last_synced_sequence_id", EXCLUDED."last_synced_sequence_id"),
           "updated_at" = now();
+      `.trim(),
+      clickhouse: `
+        -- Updates are handled by the sync engine for ClickHouse.
       `.trim(),
     },
   },

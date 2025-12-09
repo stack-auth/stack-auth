@@ -17,6 +17,6 @@ export default defineConfig({
   noExternal: [...customNoExternal],
   clean: true,
   esbuildPlugins: [
-    createBasePlugin({}),
+    createBasePlugin({}) as unknown as any,
   ],
 });
