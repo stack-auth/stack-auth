@@ -67,6 +67,12 @@ export default async function Page(props: {
           })}
         />
       </DocsBody>
+      {/* Show last modified date at the bottom, tucked away */}
+      {page.data.lastModified && (
+        <p className="text-xs text-fd-muted-foreground/50 mt-6">
+          Last updated {page.data.lastModified}
+        </p>
+      )}
     </DocsPage>
   );
 }
