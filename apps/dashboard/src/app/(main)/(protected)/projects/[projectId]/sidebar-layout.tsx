@@ -1,5 +1,6 @@
 'use client';
 
+import { CmdKSearch, CmdKTrigger } from "@/components/cmdk-search";
 import { Link } from "@/components/link";
 import { Logo } from "@/components/logo";
 import { ProjectSwitcher } from "@/components/project-switcher";
@@ -515,6 +516,27 @@ function SidebarContent({
   );
 }
 
+function SpotlightSearchWrapper({ projectId }: { projectId: string }) {
+  const stackAdminApp = useAdminApp();
+  const project = stackAdminApp.useProject();
+  const config = project.useConfig();
+
+  const enabledApps = useMemo(() =>
+    typedEntries(config.apps.installed)
+      .filter(([appId, appConfig]) => appConfig?.enabled && appId in ALL_APPS)
+      .map(([appId]) => appId as AppId),
+    [config.apps.installed]
+  );
+
+  const handleEnableApp = useCallback(async (appId: AppId) => {
+    await project.updateConfig({
+      [`apps.installed.${appId}.enabled`]: true,
+    });
+  }, [project]);
+
+  return <CmdKSearch projectId={projectId} enabledApps={enabledApps} onEnableApp={handleEnableApp} />;
+}
+
 export default function SidebarLayout(props: { children?: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(false);
@@ -531,7 +553,7 @@ export default function SidebarLayout(props: { children?: React.ReactNode }) {
         {/* Header - Sticky Floating */}
         <div className="sticky top-3 z-20 mx-3 mb-3 mt-3 flex h-14 items-center justify-between bg-gray-100/80 dark:bg-foreground/5 border border-border/10 dark:border-foreground/5 backdrop-blur-xl px-4 shadow-sm rounded-2xl">
           {/* Left section: Logo + Menu + Project Switcher */}
-          <div className="flex items-center gap-2">
+          <div className="flex grow-1 items-center gap-2">
             {/* Mobile: Menu button */}
             <Sheet onOpenChange={(open) => setSidebarOpen(open)} open={sidebarOpen}>
               <SheetTitle className="hidden">
@@ -573,8 +595,15 @@ export default function SidebarLayout(props: { children?: React.ReactNode }) {
             </div>
           </div>
 
-          {/* Right section: Theme toggle and User button */}
-          <div className="flex gap-2 items-center">
+          {/* Middle section: Control Center (development only) */}
+          {process.env.NODE_ENV === "development" && (
+            <div className="grow-1">
+              <CmdKTrigger />
+            </div>
+          )}
+
+          {/* Right section: Search, Theme toggle and User button */}
+          <div className="flex grow-1 gap-2 items-center">
             {getPublicEnvVar("NEXT_PUBLIC_STACK_EMULATOR_ENABLED") === "true" ? (
               <ThemeToggle />
             ) : (
@@ -585,6 +614,11 @@ export default function SidebarLayout(props: { children?: React.ReactNode }) {
             )}
           </div>
         </div>
+
+        {/* Spotlight Search (development only) */}
+        {process.env.NODE_ENV === "development" && (
+          <SpotlightSearchWrapper projectId={projectId} />
+        )}
 
         {/* Body Layout (Left Sidebar + Content + Right Companion) */}
         <div className="flex flex-1 items-start w-full">
@@ -603,8 +637,8 @@ export default function SidebarLayout(props: { children?: React.ReactNode }) {
           </aside>
 
           {/* Main Content Area */}
-          <main className="flex-1 min-w-0 px-2 pb-3">
-            <div className="relative flex flex-col min-h-full">
+          <main className="flex-1 min-w-0 px-2 pb-3 h-[calc(100vh-6rem)]">
+            <div className="relative flex flex-col h-full overflow-auto">
               {props.children}
             </div>
           </main>

@@ -23,6 +23,12 @@ jobs:
           sleep 5
           docker logs db
 
+      - name: Setup clickhouse
+        run: |
+          docker run -d --name clickhouse -e CLICKHOUSE_DB=analytics -e CLICKHOUSE_USER=stackframe -e CLICKHOUSE_PASSWORD=password -e CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT=1 -p 8133:8123 clickhouse/clickhouse-server:25.10
+          sleep 5
+          docker logs clickhouse
+
       - name: Build Docker image
         run: docker build -f docker/server/Dockerfile -t server .
 

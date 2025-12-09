@@ -1,7 +1,7 @@
 {
   "name": "react-example",
   "private": true,
-  "version": "2.8.54",
+  "version": "2.8.55",
   "type": "module",
   "scripts": {
     "dev": "vite --force --port ${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}20",
@@ -13,8 +13,8 @@
   },
   "dependencies": {
     "@stackframe/react": "workspace:*",
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0",
+    "react": "^19.0.1",
+    "react-dom": "^19.0.1",
     "react-router-dom": "^7.2.0"
   },
   "devDependencies": {

@@ -188,7 +188,7 @@ export default function PageClient() {
 
         {/* Apps Grid */}
         {filteredApps.length > 0 ? (
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
+          <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))" }}>
             {filteredApps.map(appId => (
               <AppSquare
                 key={appId}
