@@ -386,20 +386,33 @@ export function PlatformCodeblock({
   };
 
   const getCurrentCodeConfig = () => {
-    // Get platform config - may be undefined if platform was switched to one not in this block
-    const platformConfig = platforms[selectedPlatform] as typeof platforms[string] | undefined;
-    if (!platformConfig) {
-      return null;
+    // Get platform config - fall back to first available platform if selected doesn't exist
+    let platformToUse = selectedPlatform;
+    if (!(platformToUse in platforms)) {
+      // Selected platform doesn't exist in this code block, fall back to first available
+      platformToUse = platformNames[0];
+      if (!platformToUse) {
+        return null;
+      }
     }
+    const platformConfig = platforms[platformToUse];
 
-    // Get the config for the current framework - may be undefined
-    const config = platformConfig[currentFramework] as FrameworkConfig | undefined;
-    if (!config) {
-      return null;
+    // Get framework config - fall back to first available framework if selected doesn't exist
+    let frameworkToUse = currentFramework;
+    const availableFrameworks = Object.keys(platformConfig);
+    if (!(frameworkToUse in platformConfig)) {
+      // Selected framework doesn't exist, fall back to first available
+      frameworkToUse = availableFrameworks[0];
+      if (!frameworkToUse) {
+        return null;
+      }
     }
+    const config = platformConfig[frameworkToUse];
 
-    if (hasVariants(selectedPlatform, currentFramework)) {
-      const variant = getCurrentVariant();
+    if (hasVariants(platformToUse, frameworkToUse)) {
+      const keys = getVariantKeys(platformToUse, frameworkToUse);
+      const platformVariants = selectedVariants[platformToUse];
+      const variant = platformVariants?.[frameworkToUse] || keys[0] || '';
       return (config as { [key: string]: VariantConfig })[variant];
     }
 
