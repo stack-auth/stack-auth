@@ -1,27 +1,28 @@
 'use client';
 
+import { CmdKSearch, CmdKTrigger } from "@/components/cmdk-search";
 import { Link } from "@/components/link";
 import { Logo } from "@/components/logo";
 import { ProjectSwitcher } from "@/components/project-switcher";
 import { StackCompanion } from "@/components/stack-companion";
 import ThemeToggle from "@/components/theme-toggle";
-import { ALL_APPS_FRONTEND, AppFrontend, DUMMY_ORIGIN, getAppPath, getItemPath, testAppPath, testItemPath } from "@/lib/apps-frontend";
+import { ALL_APPS_FRONTEND, DUMMY_ORIGIN, getAppPath, getItemPath, testAppPath, testItemPath } from "@/lib/apps-frontend";
 import { getPublicEnvVar } from '@/lib/env';
 import { cn } from "@/lib/utils";
-import { UserButton, useUser } from "@stackframe/stack";
+import { UserButton } from "@stackframe/stack";
 import { ALL_APPS, type AppId } from "@stackframe/stack-shared/dist/apps/apps-config";
 import { typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
-import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
-import { getRelativePart } from "@stackframe/stack-shared/dist/utils/urls";
 import {
-  Breadcrumb,
-  BreadcrumbItem,
-  BreadcrumbList,
-  BreadcrumbPage,
-  BreadcrumbSeparator, Button, Sheet,
+  Button,
+  Sheet,
   SheetContent,
   SheetTitle,
-  SheetTrigger
+  SheetTrigger,
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+  Typography,
 } from "@stackframe/stack-ui";
 import {
   Blocks,
@@ -31,14 +32,12 @@ import {
   KeyRound,
   LucideIcon,
   Menu,
+  PanelLeft,
   Settings,
 } from "lucide-react";
-import { useTheme } from "next-themes";
 import { usePathname } from "next/navigation";
-import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { useAdminApp, useProjectId } from "./use-admin-app";
-
-type BreadcrumbItem = { item: React.ReactNode, href: string };
 
 type Item = {
   name: React.ReactNode,
@@ -57,6 +56,7 @@ type AppSection = {
     href: string,
     match: (fullUrl: URL) => boolean,
   }[],
+  firstItemHref?: string,
 };
 
 type BottomItem = {
@@ -65,11 +65,6 @@ type BottomItem = {
   icon: LucideIcon,
   external?: boolean,
   regex?: RegExp,
-};
-
-type BreadcrumbSource = {
-  item: string,
-  href: string,
 };
 
 // Bottom navigation items (always visible)
@@ -103,167 +98,185 @@ const overviewItem: Item = {
   type: 'item'
 };
 
-const normalizePath = (path: string) => {
-  if (!path) return "/";
-  return path !== "/" && path.endsWith("/") ? path.slice(0, -1) : path;
-};
-
-const resolveWithin = (basePath: string, href: string) => {
-  const normalizedBase = basePath.endsWith("/") ? basePath : `${basePath}/`;
-  const baseUrl = new URL(normalizedBase, DUMMY_ORIGIN);
-  const target = href === "/" ? "./" : href;
-  const resolved = new URL(target, baseUrl);
-  return normalizePath(getRelativePart(resolved));
-};
-
-const relativeTo = (path: string, base: string) => {
-  const normalizedBase = base.endsWith("/") ? base.slice(0, -1) : base;
-  if (!path.startsWith(normalizedBase)) return path;
-  const rest = path.slice(normalizedBase.length);
-  if (!rest) return "/";
-  return rest.startsWith("/") ? rest : `/${rest}`;
-};
-
-async function resolveBreadcrumbs({
-  pathname,
-  projectId,
-  stackAdminApp,
-}: {
-  pathname: string,
-  projectId: string,
-  stackAdminApp: ReturnType<typeof useAdminApp>,
-}): Promise<BreadcrumbItem[]> {
-  const projectBasePath = `/projects/${projectId}`;
-
-  if (overviewItem.regex?.test(pathname)) {
-    return [{
-      item: overviewItem.name,
-      href: resolveWithin(projectBasePath, overviewItem.href),
-    }];
-  }
-
-  const bottomMatch = bottomItems.find((item) => item.regex?.test(pathname));
-  if (bottomMatch) {
-    return [{
-      item: bottomMatch.name,
-      href: bottomMatch.external
-        ? bottomMatch.href
-        : resolveWithin(projectBasePath, bottomMatch.href),
-    }];
-  }
-
-  const currentUrl = new URL(pathname, DUMMY_ORIGIN);
-  const projectRelativePart = relativeTo(pathname, projectBasePath);
-
-  const matchedAppEntry = typedEntries(ALL_APPS).find(([appId]) => {
-    const appFrontend = ALL_APPS_FRONTEND[appId];
-    return testAppPath(projectId, appFrontend, currentUrl);
-  });
-
-  if (!matchedAppEntry) {
-    return [];
-  }
-
-  const [matchedAppId, app] = matchedAppEntry;
-  const appFrontend: AppFrontend = ALL_APPS_FRONTEND[matchedAppId];
-  const appBreadcrumbsRaw = await appFrontend.getBreadcrumbItems?.(stackAdminApp, projectRelativePart);
-  const appBreadcrumbs = appBreadcrumbsRaw?.length
-    ? appBreadcrumbsRaw.map((crumb: BreadcrumbSource) => ({
-      item: crumb.item,
-      href: resolveWithin(projectBasePath, crumb.href),
-    }))
-    : [{
-      item: app.displayName,
-      href: getAppPath(projectId, appFrontend),
-    }];
-
-  const navItem = appFrontend.navigationItems.find((item) =>
-    testItemPath(projectId, appFrontend, item, currentUrl)
-  );
-
-  if (!navItem) {
-    return appBreadcrumbs;
-  }
-
-  const itemHref = getItemPath(projectId, appFrontend, navItem);
-  const itemRelativePart = relativeTo(pathname, itemHref);
-  const itemBreadcrumbsRaw = await navItem.getBreadcrumbItems?.(stackAdminApp, itemRelativePart);
-  const itemBreadcrumbs = itemBreadcrumbsRaw?.length
-    ? itemBreadcrumbsRaw.map((crumb: BreadcrumbSource) => ({
-      item: crumb.item,
-      href: resolveWithin(itemHref, crumb.href),
-    }))
-    : [{
-      item: navItem.displayName,
-      href: itemHref,
-    }];
-
-  return [...appBreadcrumbs, ...itemBreadcrumbs];
-}
-
 function NavItem({
   item,
   href,
   onClick,
   isExpanded,
   onToggle,
+  isCollapsed,
+  onExpandSidebar,
 }: {
   item: Item | AppSection,
   href?: string,
   onClick?: () => void,
   isExpanded?: boolean,
   onToggle?: () => void,
+  isCollapsed?: boolean,
+  onExpandSidebar?: () => void,
 }) {
   const pathname = usePathname();
   const isSection = 'items' in item;
   const subItemsRef = useRef<HTMLDivElement>(null);
+  const currentUrl = useMemo(() => {
+    try {
+      return new URL(pathname, DUMMY_ORIGIN);
+    } catch {
+      return null;
+    }
+  }, [pathname]);
 
   // If this is a collapsible section
   const IconComponent = item.icon;
-  const ButtonComponent: any = isSection ? "button" : Link;
+  const isDirectItemActive = "type" in item && item.regex?.test(pathname);
 
-  const isActive = "type" in item && item.regex?.test(pathname);
+  const matchesCurrentUrl = (sectionItem: AppSection["items"][number]) => {
+    if (!currentUrl) {
+      return false;
+    }
+    try {
+      return sectionItem.match(currentUrl);
+    } catch {
+      return false;
+    }
+  };
+
+  const isSectionActive = isSection
+    ? item.items.some((sectionItem) => matchesCurrentUrl(sectionItem))
+    : false;
+
+  const isHighlighted = isDirectItemActive || isSectionActive;
+
+  const inactiveClasses = cn(
+    "hover:bg-background/60",
+    "text-muted-foreground hover:text-foreground"
+  );
+
+  const buttonClasses = cn(
+    "group flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm font-medium transition-all duration-150 hover:transition-none",
+    isHighlighted
+      ? "bg-gradient-to-r from-blue-500/[0.15] to-blue-500/[0.08] text-foreground shadow-[0_0_12px_rgba(59,130,246,0.15)] ring-1 ring-blue-500/20"
+      : inactiveClasses,
+    isSection ? "cursor-default" : "cursor-pointer",
+    isSection && isExpanded && !isHighlighted && "bg-background/30"
+  );
+
+  const iconClasses = cn(
+    "h-4 w-4 flex-shrink-0 transition-colors duration-150 group-hover:transition-none",
+    isHighlighted
+      ? "text-blue-600 dark:text-blue-400"
+      : "text-muted-foreground group-hover:text-foreground"
+  );
+
+  const caretClasses = cn(
+    "h-4 w-4 flex-shrink-0 transition-all duration-150 group-hover:transition-none",
+    isHighlighted
+      ? "text-blue-600 dark:text-blue-400"
+      : "text-muted-foreground group-hover:text-foreground",
+    isSection && isExpanded && "rotate-180"
+  );
+
+  if (isCollapsed) {
+    // For sections, navigate to the first item when collapsed
+    const collapsedHref = isSection && item.firstItemHref ? item.firstItemHref : href;
+
+    return (
+      <div className="flex justify-center">
+        <Tooltip>
+          <TooltipTrigger asChild>
+            {isSection ? (
+              <Button
+                asChild
+                variant="ghost"
+                size="sm"
+                className={cn(
+                  "h-9 w-9 p-0 justify-center rounded-lg transition-all duration-150 hover:transition-none",
+                  isHighlighted
+                    ? "bg-blue-500/[0.12] shadow-[0_0_12px_rgba(59,130,246,0.15)] ring-1 ring-blue-500/20"
+                    : "hover:bg-background/60 text-muted-foreground hover:text-foreground"
+                )}
+              >
+                <Link href={collapsedHref ?? "#"} onClick={onClick}>
+                  <IconComponent className={iconClasses} />
+                </Link>
+              </Button>
+            ) : (
+              <Button
+                asChild
+                variant="ghost"
+                size="sm"
+                className={cn(
+                  "h-9 w-9 p-0 justify-center rounded-lg transition-all duration-150 hover:transition-none",
+                  isHighlighted
+                    ? "bg-blue-500/[0.12] shadow-[0_0_12px_rgba(59,130,246,0.15)] ring-1 ring-blue-500/20"
+                    : "hover:bg-background/60 text-muted-foreground hover:text-foreground"
+                )}
+              >
+                <Link href={href ?? "#"} onClick={onClick} className="flex items-center justify-center">
+                  <IconComponent className={iconClasses} />
+                </Link>
+              </Button>
+            )}
+          </TooltipTrigger>
+          <TooltipContent side="right">
+            {item.name}
+          </TooltipContent>
+        </Tooltip>
+      </div>
+    );
+  }
 
   return (
-    <div className={cn(
-      "transition-[margin] duration-200",
-      isExpanded && "my-1",
-    )}>
-      <ButtonComponent
-        {...(isSection ? { onClick: onToggle } : { href })}
-        className={cn(
-          "flex items-center w-full py-1.5 px-4 text-left hover:bg-foreground/5",
-          isActive && "bg-foreground/5",
-          isSection && "cursor-default"
-        )}
-      >
-        <IconComponent className="mr-2 h-4 w-4" />
-        <span className="flex-1 text-md">{item.name}</span>
-        {isSection ? (
-          isExpanded ? (
-            <ChevronDown strokeWidth={2} className="h-4 w-4" />
-          ) : (
-            <ChevronRight strokeWidth={2} className="h-4 w-4" />
-          )
-        ) : (
-          <div className=" h-4" />
-        )}
-      </ButtonComponent>
+    <div className="transition-[margin] duration-200">
+      {isSection ? (
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          onClick={onToggle}
+          aria-expanded={isExpanded}
+          className={buttonClasses}
+        >
+          <span className="flex min-w-0 flex-1 items-center gap-3">
+            <IconComponent className={iconClasses} />
+            <span className="truncate text-sm font-semibold">{item.name}</span>
+          </span>
+          <ChevronDown strokeWidth={2} className={caretClasses} />
+        </Button>
+      ) : (
+        <Button
+          asChild
+          variant="ghost"
+          size="sm"
+          className={buttonClasses}
+        >
+          <Link href={href ?? "#"} onClick={onClick} className="flex w-full items-center gap-3">
+            <IconComponent className={iconClasses} />
+            <span className="flex-1 truncate text-sm">{item.name}</span>
+          </Link>
+        </Button>
+      )}
 
       {isSection && (
         <div
           ref={subItemsRef}
           style={{
-            height: isExpanded ? (subItemsRef.current ? subItemsRef.current.scrollHeight + 'px' : undefined) : '0px',
+            height: isExpanded
+              ? subItemsRef.current
+                ? `${subItemsRef.current.scrollHeight}px`
+                : undefined
+              : "0px",
           }}
           className={cn(
-            "transition-[height] duration-200 overflow-hidden max-h-[999999px]",
-            !isExpanded && "h-0",  // hidden, but still rendered, so we correctly prefetch the pages
+            "ml-[0.5px] w-[calc(100%-1px)] transition-[height] duration-200",
+            !isExpanded && "h-0 overflow-hidden"
           )}
         >
-          {item.items.map((item) => (
-            <NavSubItem key={item.href} item={item} href={item.href} onClick={onClick} />
-          ))}
+          <div className="space-y-2 py-2 pl-3">
+            {item.items.map((navItem) => (
+              <NavSubItem key={navItem.href} item={navItem} href={navItem.href} onClick={onClick} />
+            ))}
+          </div>
         </div>
       )}
     </div>
@@ -292,24 +305,119 @@ function NavSubItem({
       href={href}
       onClick={onClick}
       className={cn(
-        "flex items-center pl-10 pr-2 py-1 text-sm text-muted-foreground hover:bg-foreground/5 hover:text-foreground",
-        isActive && "bg-foreground/5 text-foreground"
+        "group flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-150 hover:transition-none",
+        isActive
+          ? "bg-gradient-to-r from-blue-500/[0.15] to-blue-500/[0.08] text-foreground shadow-[0_0_12px_rgba(59,130,246,0.15)] ring-1 ring-blue-500/20"
+          : "text-muted-foreground hover:text-foreground hover:bg-background/60"
       )}
     >
-      <span>{item.name}</span>
+      <span className="relative flex h-2 w-2 items-center justify-center">
+        <span
+          className={cn(
+            "h-2 w-2 rounded-full transition-all duration-150 group-hover:transition-none",
+            isActive
+              ? "bg-blue-600 dark:bg-blue-400"
+              : "bg-muted-foreground/40 group-hover:bg-blue-500/50"
+          )}
+        />
+      </span>
+      <span className="truncate leading-none">{item.name}</span>
     </Link>
   );
 }
 
-function SidebarContent({ projectId, onNavigate }: { projectId: string, onNavigate?: () => void }) {
+// Memoized component for app navigation items to prevent unnecessary re-renders
+function AppNavItem({
+  appId,
+  projectId,
+  isExpanded,
+  onToggle,
+  isCollapsed,
+  onExpandSidebar,
+  onClick,
+}: {
+  appId: AppId,
+  projectId: string,
+  isExpanded: boolean,
+  onToggle: () => void,
+  isCollapsed?: boolean,
+  onExpandSidebar?: () => void,
+  onClick?: () => void,
+}) {
+  const app = ALL_APPS[appId];
+  const appFrontend = ALL_APPS_FRONTEND[appId];
+
+  // Memoize the item object to prevent NavItem re-renders
+  const navItemData = useMemo(() => {
+    const items = appFrontend.navigationItems.map((navItem) => ({
+      name: navItem.displayName,
+      href: getItemPath(projectId, appFrontend, navItem),
+      match: (fullUrl: URL) => testItemPath(projectId, appFrontend, navItem, fullUrl),
+    }));
+    return {
+      name: app.displayName,
+      appId,
+      items,
+      href: getAppPath(projectId, appFrontend),
+      icon: appFrontend.icon,
+      firstItemHref: items[0]?.href,
+    };
+  }, [app.displayName, appId, appFrontend, projectId]);
+
+  return (
+    <NavItem
+      item={navItemData}
+      isExpanded={isExpanded}
+      onToggle={onToggle}
+      isCollapsed={isCollapsed}
+      onExpandSidebar={onExpandSidebar}
+      onClick={onClick}
+    />
+  );
+}
+
+function SidebarContent({
+  projectId,
+  onNavigate,
+  isCollapsed,
+  onToggleCollapse,
+}: {
+  projectId: string,
+  onNavigate?: () => void,
+  isCollapsed?: boolean,
+  onToggleCollapse?: () => void,
+}) {
   const stackAdminApp = useAdminApp();
   const pathname = usePathname();
   const project = stackAdminApp.useProject();
   const config = project.useConfig();
-  const enabledApps = typedEntries(config.apps.installed).filter(([appId, appConfig]) => appConfig?.enabled && appId in ALL_APPS).map(([appId]) => appId as AppId);
-  const [expandedSections, setExpandedSections] = useState<Set<AppId>>(getDefaultExpandedSections());
 
-  const toggleSection = (appId: AppId) => {
+  // Memoize enabledApps to prevent recalculation on every render
+  const enabledApps = useMemo(() =>
+    typedEntries(config.apps.installed)
+      .filter(([appId, appConfig]) => appConfig?.enabled && appId in ALL_APPS)
+      .map(([appId]) => appId as AppId),
+    [config.apps.installed]
+  );
+
+  // Memoize getDefaultExpandedSections to prevent recreating the function
+  const getDefaultExpandedSections = useCallback((): Set<AppId> => {
+    const currentUrl = new URL(pathname, DUMMY_ORIGIN);
+    for (const enabledApp of enabledApps) {
+      const appFrontend = ALL_APPS_FRONTEND[enabledApp];
+      if (!(appFrontend as any)) {
+        continue;
+      }
+      if (testAppPath(projectId, appFrontend, currentUrl)) {
+        return new Set([enabledApp]);
+      }
+    }
+    return new Set(["authentication"]);
+  }, [enabledApps, pathname, projectId]);
+
+  const [expandedSections, setExpandedSections] = useState<Set<AppId>>(() => getDefaultExpandedSections());
+
+  const toggleSection = useCallback((appId: AppId) => {
     setExpandedSections(prev => {
       const newSet = new Set(prev);
       if (newSet.has(appId)) {
@@ -319,66 +427,46 @@ function SidebarContent({ projectId, onNavigate }: { projectId: string, onNaviga
       }
       return newSet;
     });
-  };
-
-  function getDefaultExpandedSections(): Set<AppId> {
-    for (const enabledApp of enabledApps) {
-      const appFrontend = ALL_APPS_FRONTEND[enabledApp];
-      if (testAppPath(projectId, appFrontend, new URL(pathname, DUMMY_ORIGIN))) {
-        return new Set([enabledApp]);
-      }
-    }
-    return new Set(["authentication"]);
-  };
+  }, []);
 
   return (
-    <div className="flex flex-col h-full items-stretch">
-      <div className="h-14 border-b flex items-center px-2 shrink-0">
-        {getPublicEnvVar("NEXT_PUBLIC_STACK_EMULATOR_ENABLED") === "true" ? (
-          <div className="flex-grow mx-2">
-            <Logo full width={80} />
-          </div>
-        ) : (
-          <ProjectSwitcher currentProjectId={projectId} />
-        )}
-      </div>
-      <div className="flex flex-grow flex-col pt-2 overflow-y-auto">
-        {/* Overview - always at top */}
-        <NavItem item={overviewItem} onClick={onNavigate} href={`/projects/${projectId}${overviewItem.href}`} />
-
-
-        <div className="mt-4 text-xs uppercase text-muted-foreground px-2 py-1 flex justify-start items-center gap-2">
-          My Apps
+    <div className="flex h-full flex-col">
+      <div className={cn("flex flex-grow flex-col overflow-y-auto py-4 transition-all duration-200", isCollapsed ? "px-2" : "px-3")}>
+        <div className="space-y-3">
+          <NavItem
+            item={overviewItem}
+            onClick={onNavigate}
+            href={`/projects/${projectId}${overviewItem.href}`}
+            isCollapsed={isCollapsed}
+          />
         </div>
-        {/* App Sections */}
-        {enabledApps.map((appId) => {
-          const app = ALL_APPS[appId as AppId];
-          const appFrontend = ALL_APPS_FRONTEND[appId as AppId];
-          return (
-            <NavItem
+
+        <div className={cn("mt-6 mb-3 transition-opacity duration-200", isCollapsed ? "opacity-0 h-0 mt-2 mb-0 overflow-hidden" : "opacity-100")}>
+          <Typography className="px-1 text-xs font-semibold uppercase tracking-wide text-foreground/70">
+            My Apps
+          </Typography>
+        </div>
+
+        <div className={cn("space-y-2", isCollapsed && "mt-2")}>
+          {enabledApps.map((appId) => (
+            <AppNavItem
               key={appId}
-              item={{
-                name: app.displayName,
-                appId,
-                items: appFrontend.navigationItems.map((navItem) => ({
-                  name: navItem.displayName,
-                  href: getItemPath(projectId, appFrontend, navItem),
-                  match: (fullUrl: URL) => testItemPath(projectId, appFrontend, navItem, fullUrl),
-                })),
-                href: getAppPath(projectId, appFrontend),
-                icon: appFrontend.icon,
-              }}
+              appId={appId}
+              projectId={projectId}
               isExpanded={expandedSections.has(appId)}
               onToggle={() => toggleSection(appId)}
+              isCollapsed={isCollapsed}
+              onClick={onNavigate}
             />
-          );
-        })}
+          ))}
+        </div>
 
         <div className="flex-grow" />
+      </div>
 
-        {/* Bottom Items */}
-        <div className="py-2 mt-2 border-t sticky bottom-0 backdrop-blur-md bg-background/20">
-          {bottomItems.map((item, i) => (
+      <div className={cn("sticky bottom-0 border-t border-border/30 py-3 backdrop-blur-sm transition-all duration-200 rounded-b-2xl", isCollapsed ? "px-2" : "px-3")}>
+        <div className="space-y-2">
+          {bottomItems.map((item) => (
             <NavItem
               key={item.name}
               onClick={onNavigate}
@@ -390,160 +478,176 @@ function SidebarContent({ projectId, onNavigate }: { projectId: string, onNaviga
                 regex: item.regex,
               }}
               href={item.external ? item.href : `/projects/${projectId}${item.href}`}
+              isCollapsed={isCollapsed}
             />
           ))}
+        </div>
+
+        {/* User button and collapse toggle */}
+        <div className={cn(
+          "mt-4 pt-3 border-t border-border/30 flex items-center gap-2",
+          isCollapsed ? "justify-center" : "justify-between"
+        )}>
+          {!isCollapsed && (
+            <div>
+              <UserButton showUserInfo />
+            </div>
+          )}
+          {onToggleCollapse && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={onToggleCollapse}
+                  className="h-8 w-8 p-1 text-muted-foreground hover:text-foreground hover:bg-background/60 rounded-lg transition-all duration-150 hover:transition-none"
+                >
+                  <PanelLeft className={cn("h-4 w-4 transition-transform duration-200", isCollapsed && "rotate-180")} />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="right">
+                {isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+              </TooltipContent>
+            </Tooltip>
+          )}
         </div>
       </div>
     </div>
   );
 }
 
-function HeaderBreadcrumb({
-  mobile,
-  projectId
-}: {
-  projectId: string,
-  mobile?: boolean,
-}) {
-  const pathname = usePathname();
+function SpotlightSearchWrapper({ projectId }: { projectId: string }) {
   const stackAdminApp = useAdminApp();
+  const project = stackAdminApp.useProject();
+  const config = project.useConfig();
 
-  const user = useUser({ or: 'redirect', projectIdMustMatch: "internal" });
-  const projects = user.useOwnedProjects();
-  const [breadcrumbItems, setBreadcrumbItems] = useState<BreadcrumbItem[]>([]);
+  const enabledApps = useMemo(() =>
+    typedEntries(config.apps.installed)
+      .filter(([appId, appConfig]) => appConfig?.enabled && appId in ALL_APPS)
+      .map(([appId]) => appId as AppId),
+    [config.apps.installed]
+  );
 
-  useEffect(() => {
-    let cancelled = false;
-    runAsynchronously(async () => {
-      const items = await resolveBreadcrumbs({ pathname, projectId, stackAdminApp });
-      if (!cancelled) setBreadcrumbItems(items);
+  const handleEnableApp = useCallback(async (appId: AppId) => {
+    await project.updateConfig({
+      [`apps.installed.${appId}.enabled`]: true,
     });
+  }, [project]);
 
-    return () => {
-      cancelled = true;
-    };
-  }, [pathname, projectId, stackAdminApp]);
-
-  const selectedProject = projects.find((project) => project.id === projectId);
-
-  if (mobile) {
-    return (
-      <Logo full height={24} href="/projects" />
-    );
-  } else {
-    return (
-      <Breadcrumb>
-        <BreadcrumbList>
-          {getPublicEnvVar("NEXT_PUBLIC_STACK_EMULATOR_ENABLED") !== "true" &&
-            <>
-              <BreadcrumbItem>
-                <Link href="/projects">Home</Link>
-              </BreadcrumbItem>
-              <BreadcrumbSeparator />
-              <BreadcrumbItem>
-                <span className="max-w-40 truncate">
-                  <Link href={`/projects/${projectId}`}>{selectedProject?.displayName}</Link>
-                </span>
-              </BreadcrumbItem>
-              <BreadcrumbSeparator />
-            </>}
-
-          {breadcrumbItems.map((name, index) => (
-            index < breadcrumbItems.length - 1 ?
-              <Fragment key={index}>
-                <BreadcrumbItem>
-                  <Link href={name.href}>
-                    {name.item}
-                  </Link>
-                </BreadcrumbItem>
-                <BreadcrumbSeparator />
-              </Fragment> :
-              <BreadcrumbPage key={index}>
-                <Link href={name.href}>
-                  {name.item}
-                </Link>
-              </BreadcrumbPage>
-          ))}
-        </BreadcrumbList>
-      </Breadcrumb>
-    );
-  }
+  return <CmdKSearch projectId={projectId} enabledApps={enabledApps} onEnableApp={handleEnableApp} />;
 }
 
 export default function SidebarLayout(props: { children?: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [companionExpanded, setCompanionExpanded] = useState(false);
-  const { resolvedTheme, setTheme } = useTheme();
+  const [isCollapsed, setIsCollapsed] = useState(false);
+
   const projectId = useProjectId();
 
+  const toggleCollapsed = useCallback(() => {
+    setIsCollapsed(prev => !prev);
+  }, []);
+
   return (
-    <div className="w-full flex">
-      {/* Left Sidebar */}
-      <div className="flex-col border-r min-w-[240px] h-screen sticky top-0 hidden lg:flex bg-slate-200/20 dark:bg-black/20 z-[10] relative">
-        {/*
-          If we put a backdrop blur on the sidebar div, it will create a new backdrop root,
-          which would then make us unable to properly do a nested blur for the bottom elements
-          of the sidebar. By putting the backdrop, and with it the backdrop root, in an element
-          right behind all the contents, we get the same behavior but better.
-
-          https://drafts.fxtf.org/filter-effects-2/#BackdropRoot
-        */}
-        <div className="absolute inset-0 backdrop-blur-md z-[-1]"></div>
-
-        <SidebarContent projectId={projectId} />
-      </div>
-
-      {/* Main Content Area */}
-      <div className="flex flex-col flex-grow w-0">
-        {/* Header */}
-        <div className="h-14 border-b flex items-center justify-between sticky top-0 backdrop-blur-md bg-slate-200/20 dark:bg-black/20 z-10 px-4 lg:px-6">
-          <div className="hidden lg:flex">
-            <HeaderBreadcrumb projectId={projectId} />
-          </div>
-
-          <div className="flex lg:hidden items-center">
+    <TooltipProvider>
+      <div className="mx-auto w-full flex flex-col min-h-screen bg-background shadow-2xl border-x border-border/5">
+        {/* Header - Sticky Floating */}
+        <div className="sticky top-3 z-20 mx-3 mb-3 mt-3 flex h-14 items-center justify-between bg-gray-100/80 dark:bg-foreground/5 border border-border/10 dark:border-foreground/5 backdrop-blur-xl px-4 shadow-sm rounded-2xl">
+          {/* Left section: Logo + Menu + Project Switcher */}
+          <div className="flex grow-1 items-center gap-2">
+            {/* Mobile: Menu button */}
             <Sheet onOpenChange={(open) => setSidebarOpen(open)} open={sidebarOpen}>
               <SheetTitle className="hidden">
                 Sidebar Menu
               </SheetTitle>
-              <SheetTrigger>
-                <Menu />
+              <SheetTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="lg:hidden h-9 w-9 p-0 text-muted-foreground hover:text-foreground"
+                >
+                  <Menu className="h-4 w-4" />
+                </Button>
               </SheetTrigger>
               <SheetContent
                 aria-describedby={undefined}
-                side='left' className="w-[240px] p-0" hasCloseButton={false}>
+                side='left'
+                className="w-[248px] bg-gray-100/90 dark:bg-foreground/5 border-border/10 dark:border-foreground/5 p-0 backdrop-blur-xl shadow-sm"
+                hasCloseButton={false}
+              >
                 <SidebarContent projectId={projectId} onNavigate={() => setSidebarOpen(false)} />
               </SheetContent>
             </Sheet>
 
-            <div className="ml-4 flex lg:hidden">
-              <HeaderBreadcrumb projectId={projectId} mobile />
+            {/* Desktop: Logo + Breadcrumb + Project Switcher */}
+            <div className="hidden lg:flex items-center gap-2">
+              <Logo height={24} href="/" />
+              <ChevronRight className="h-4 w-4 text-muted-foreground/50" />
+              {getPublicEnvVar("NEXT_PUBLIC_STACK_EMULATOR_ENABLED") === "true" ? (
+                <Logo full width={96} href="/projects" />
+              ) : (
+                <ProjectSwitcher currentProjectId={projectId} />
+              )}
+            </div>
+
+            {/* Mobile: Logo */}
+            <div className="lg:hidden">
+              <Logo full height={24} href="/projects" />
             </div>
           </div>
 
-          <div className="flex gap-2 relative items-center">
-            <Button asChild variant="ghost" size="icon" className="hidden lg:flex">
-              <Link href={`/projects/${projectId}/project-settings`}>
-                <Settings className="w-4 h-4" />
-              </Link>
-            </Button>
-            {getPublicEnvVar("NEXT_PUBLIC_STACK_EMULATOR_ENABLED") === "true" ?
-              <ThemeToggle /> :
-              <UserButton colorModeToggle={() => setTheme(resolvedTheme === 'light' ? 'dark' : 'light')} />
-            }
+          {/* Middle section: Control Center (development only) */}
+          {process.env.NODE_ENV === "development" && (
+            <div className="grow-1">
+              <CmdKTrigger />
+            </div>
+          )}
+
+          {/* Right section: Search, Theme toggle and User button */}
+          <div className="flex grow-1 gap-2 items-center">
+            {getPublicEnvVar("NEXT_PUBLIC_STACK_EMULATOR_ENABLED") === "true" ? (
+              <ThemeToggle />
+            ) : (
+              <>
+                <ThemeToggle />
+                <UserButton />
+              </>
+            )}
           </div>
         </div>
 
-        {/* Content Body - Normal scrolling */}
-        <div className="flex-grow relative flex flex-col">
-          {props.children}
+        {/* Spotlight Search (development only) */}
+        {process.env.NODE_ENV === "development" && (
+          <SpotlightSearchWrapper projectId={projectId} />
+        )}
+
+        {/* Body Layout (Left Sidebar + Content + Right Companion) */}
+        <div className="flex flex-1 items-start w-full">
+          {/* Left Sidebar - Sticky */}
+          <aside
+            className={cn(
+              "sticky top-20 h-[calc(100vh-6rem)] ml-3 hidden flex-col bg-gray-100/80 dark:bg-foreground/5 border border-border/10 dark:border-foreground/5 backdrop-blur-xl lg:flex z-[10] transition-[width] duration-200 ease-in-out rounded-2xl shadow-sm",
+              isCollapsed ? "w-[64px]" : "w-[248px]"
+            )}
+          >
+            <SidebarContent
+              projectId={projectId}
+              isCollapsed={isCollapsed}
+              onToggleCollapse={toggleCollapsed}
+            />
+          </aside>
+
+          {/* Main Content Area */}
+          <main className="flex-1 min-w-0 px-2 pb-3 h-[calc(100vh-6rem)]">
+            <div className="relative flex flex-col h-full overflow-auto">
+              {props.children}
+            </div>
+          </main>
+
+          {/* Stack Companion -
+          */}
+          <StackCompanion className="hidden lg:flex" />
         </div>
       </div>
-
-      {/* Stack Companion - Sticky positioned like left sidebar */}
-      <div className="hidden sm:block h-screen sticky top-0 backdrop-blur-md bg-slate-200/20 dark:bg-black/20 z-[10]">
-        <StackCompanion onExpandedChange={setCompanionExpanded} />
-      </div>
-    </div>
+    </TooltipProvider>
   );
 }

@@ -20,14 +20,15 @@ import { encodeBase32 } from "@stackframe/stack-shared/dist/utils/bytes";
 import { scrambleDuringCompileTime } from "@stackframe/stack-shared/dist/utils/compile-time";
 import { isBrowserLike } from "@stackframe/stack-shared/dist/utils/env";
 import { StackAssertionError, captureError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { parseJson } from "@stackframe/stack-shared/dist/utils/json";
 import { DependenciesMap } from "@stackframe/stack-shared/dist/utils/maps";
 import { ProviderType } from "@stackframe/stack-shared/dist/utils/oauth";
 import { deepPlainEquals, omit } from "@stackframe/stack-shared/dist/utils/objects";
 import { neverResolve, runAsynchronously, wait } from "@stackframe/stack-shared/dist/utils/promises";
-import { suspend, suspendIfSsr } from "@stackframe/stack-shared/dist/utils/react";
+import { suspend, suspendIfSsr, use } from "@stackframe/stack-shared/dist/utils/react";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { Store, storeLock } from "@stackframe/stack-shared/dist/utils/stores";
-import { deindent, mergeScopeStrings, stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
+import { deindent, mergeScopeStrings } from "@stackframe/stack-shared/dist/utils/strings";
 import { getRelativePart, isRelative } from "@stackframe/stack-shared/dist/utils/urls";
 import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
 import * as cookie from "cookie";
@@ -36,7 +37,7 @@ import React, { useCallback, useMemo } from "react"; // THIS_LINE_PLATFORM react
 import type * as yup from "yup";
 import { constructRedirectUrl } from "../../../../utils/url";
 import { addNewOAuthProviderOrScope, callOAuthCallback, signInWithOAuth } from "../../../auth";
-import { CookieHelper, createBrowserCookieHelper, createCookieHelper, createPlaceholderCookieHelper, deleteCookieClient, isSecure as isSecureCookieContext, setOrDeleteCookie, setOrDeleteCookieClient } from "../../../cookie";
+import { CookieHelper, createBrowserCookieHelper, createCookieHelper, createPlaceholderCookieHelper, deleteCookie, deleteCookieClient, isSecure as isSecureCookieContext, setOrDeleteCookie, setOrDeleteCookieClient } from "../../../cookie";
 import { ApiKey, ApiKeyCreationOptions, ApiKeyUpdateOptions, apiKeyCreationOptionsToCrud } from "../../api-keys";
 import { ConvexCtx, GetCurrentPartialUserOptions, GetCurrentUserOptions, HandlerUrls, OAuthScopesOnSignIn, RedirectMethod, RedirectToOptions, RequestLike, TokenStoreInit, stackAppInternalsSymbol } from "../../common";
 import { OAuthConnection } from "../../connected-accounts";
@@ -50,7 +51,6 @@ import { ActiveSession, Auth, BaseUser, CurrentUser, InternalUserExtra, OAuthPro
 import { StackClientApp, StackClientAppConstructorOptions, StackClientAppJson } from "../interfaces/client-app";
 import { _StackAdminAppImplIncomplete } from "./admin-app-impl";
 import { TokenObject, clientVersion, createCache, createCacheBySession, createEmptyTokenStore, getBaseUrl, getDefaultExtraRequestHeaders, getDefaultProjectId, getDefaultPublishableClientKey, getUrls, resolveConstructorOptions } from "./common";
-import { parseJson } from "@stackframe/stack-shared/dist/utils/json";
 
 // IF_PLATFORM react-like
 import { useAsyncCache } from "./common";
@@ -605,9 +605,10 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       }
       const domain = await this._trustedParentDomainCache.getOrWait([hostname], "read-write");
 
+      const cookieOptions = { maxAge: 60 * 60 * 24 * 365, noOpIfServerComponent: true };
       const setCookie = async (targetDomain: string, value: string | null) => {
         const name = this._getCustomRefreshCookieName(targetDomain);
-        const options = { maxAge: 60 * 60 * 24 * 365, domain: targetDomain, noOpIfServerComponent: true };
+        const options = { ...cookieOptions, domain: targetDomain };
         if (context === "browser") {
           setOrDeleteCookieClient(name, value, options);
         } else {
@@ -621,7 +622,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       const value = refreshToken && updatedAt ? this._formatRefreshCookieValue(refreshToken, updatedAt) : null;
       await setCookie(domain.data, value);
       const isSecure = await isSecureCookieContext();
-      await setOrDeleteCookie(this._getRefreshTokenDefaultCookieNameForSecure(isSecure), null);
+      await setOrDeleteCookie(this._getRefreshTokenDefaultCookieNameForSecure(isSecure), null, cookieOptions);
     });
   }
   private async _getTrustedParentDomain(currentDomain: string): Promise<string | null> {
@@ -677,7 +678,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
           );
           setOrDeleteCookieClient(defaultName, refreshCookieValue, { maxAge: 60 * 60 * 24 * 365, secure });
           setOrDeleteCookieClient(this._accessTokenCookieName, accessTokenPayload, { maxAge: 60 * 60 * 24 });
-          cookieNamesToDelete.forEach((name) => deleteCookieClient(name));
+          cookieNamesToDelete.forEach((name) => deleteCookieClient(name, {}));
           this._queueCustomRefreshCookieUpdate(refreshToken, updatedAt, "browser");
           hasSucceededInWriting = true;
         } catch (e) {
@@ -735,7 +736,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
               if (cookieNamesToDelete.length > 0) {
                 await Promise.all(
                   cookieNamesToDelete.map((name) =>
-                    setOrDeleteCookie(name, null, { noOpIfServerComponent: true }),
+                    deleteCookie(name, { noOpIfServerComponent: true }),
                   ),
                 );
               }
@@ -1115,7 +1116,9 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
             {
               allow_sign_in: data.allowSignIn,
               allow_connected_accounts: data.allowConnectedAccounts,
-            }, session);
+            },
+            session
+          );
           await app._currentUserOAuthProvidersCache.refresh([session]);
           return Result.ok(undefined);
         } catch (error) {
@@ -1160,22 +1163,77 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       _internalSession: session,
       currentSession: {
         async getTokens() {
-          const tokens = await session.getOrFetchLikelyValidTokens(20_000);
+          const tokens = await session.getOrFetchLikelyValidTokens(20_000, 75_000);
           return {
             accessToken: tokens?.accessToken.token ?? null,
             refreshToken: tokens?.refreshToken?.token ?? null,
           };
         },
+        // IF_PLATFORM react-like
+        useTokens() {
+          const [_, setCounter] = React.useState(0);
+          React.useEffect(() => {
+            const { unsubscribe: unsubscribeRefresh } = session.startRefreshingAccessToken(30_000, 60_000);
+            const { unsubscribe: unsubscribeInvalidate } = session.onInvalidate(() => setCounter(c => c + 1));
+            const { unsubscribe: unsubscribeAccessTokenChange } = session.onAccessTokenChange(() => setCounter(c => c + 1));
+            return () => {
+              unsubscribeRefresh();
+              unsubscribeInvalidate();
+              unsubscribeAccessTokenChange();
+            };
+          }, []);
+
+          let accessToken = session.isKnownToBeInvalid() ? null : session.getAccessTokenIfNotExpiredYet(20_000, 75_000);
+          if (accessToken === null) {
+            // note: tokens is never actually assigned here in practice because getOrFetchLikelyValidTokens is always a fresh promise so the `use` hook always throws, but this is more idiomatic and makes the type checker happy
+            accessToken = use(session.getOrFetchLikelyValidTokens(20_000, 75_000))?.accessToken ?? null;
+          }
+          return {
+            accessToken: accessToken?.token ?? null,
+            refreshToken: session.getRefreshToken()?.token ?? null,
+          };
+        },
+        // END_PLATFORM
       },
+      async getAccessToken(): Promise<string | null> {
+        const tokens = await this.currentSession.getTokens();
+        return tokens.accessToken;
+      },
+      // IF_PLATFORM react-like
+      useAccessToken(): string | null {
+        return this.currentSession.useTokens().accessToken;
+      },
+      // END_PLATFORM
+      async getRefreshToken(): Promise<string | null> {
+        const tokens = await this.currentSession.getTokens();
+        return tokens.refreshToken;
+      },
+      // IF_PLATFORM react-like
+      useRefreshToken(): string | null {
+        return this.currentSession.useTokens().refreshToken;
+      },
+      // END_PLATFORM
       async getAuthHeaders(): Promise<{ "x-stack-auth": string }> {
         return {
           "x-stack-auth": JSON.stringify(await this.getAuthJson()),
         };
       },
+      // IF_PLATFORM react-like
+      useAuthHeaders(): { "x-stack-auth": string } {
+        return {
+          "x-stack-auth": JSON.stringify(this.useAuthJson()),
+        };
+      },
+      // END_PLATFORM
       async getAuthJson(): Promise<{ accessToken: string | null, refreshToken: string | null }> {
         const tokens = await this.currentSession.getTokens();
         return tokens;
       },
+      // IF_PLATFORM react-like
+      useAuthJson(): { accessToken: string | null, refreshToken: string | null } {
+        return this.currentSession.useTokens();
+      },
+      // END_PLATFORM
       signOut(options?: { redirectUrl?: URL | string }) {
         return app._signOut(session, options);
       },
@@ -1897,7 +1955,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
   // END_PLATFORM
 
   _getTokenPartialUserFromSession(session: InternalSession, options: GetCurrentPartialUserOptions<HasTokenStore>): TokenPartialUser | null {
-    const accessToken = session.getAccessTokenIfNotExpiredYet(0);
+    const accessToken = session.getAccessTokenIfNotExpiredYet(0, null);
     if (!accessToken) {
       return null;
     }
@@ -1971,7 +2029,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     return async (args: { forceRefreshToken: boolean }) => {
       const session = await this._getSession(options.tokenStore ?? this._tokenStoreInit);
       if (!args.forceRefreshToken) {
-        const tokens = await session.getOrFetchLikelyValidTokens(20_000);
+        const tokens = await session.getOrFetchLikelyValidTokens(20_000, 75_000);
         return tokens?.accessToken.token ?? null;
       }
       const tokens = await session.fetchNewTokens();
@@ -1981,7 +2039,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
 
   async getConvexHttpClientAuth(options: { tokenStore: TokenStoreInit }): Promise<string> {
     const session = await this._getSession(options.tokenStore);
-    const tokens = await session.getOrFetchLikelyValidTokens(20_000);
+    const tokens = await session.getOrFetchLikelyValidTokens(20_000, 75_000);
     return tokens?.accessToken.token ?? "";
   }
 
@@ -2396,11 +2454,55 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     }
   }
 
+  async getAccessToken(options?: { tokenStore?: TokenStoreInit }): Promise<string | null> {
+    const user = await this.getUser({ tokenStore: options?.tokenStore ?? undefined as any });
+    if (user) {
+      return await user.getAccessToken();
+    }
+    return null;
+  }
+
+  // IF_PLATFORM react-like
+  useAccessToken(options?: { tokenStore?: TokenStoreInit }): string | null {
+    const user = this.useUser({ tokenStore: options?.tokenStore ?? undefined as any });
+    if (user) {
+      return user.useAccessToken();
+    }
+    return null;
+  }
+  // END_PLATFORM
+
+  async getRefreshToken(options?: { tokenStore?: TokenStoreInit }): Promise<string | null> {
+    const user = await this.getUser({ tokenStore: options?.tokenStore ?? undefined as any });
+    if (user) {
+      return await user.getRefreshToken();
+    }
+    return null;
+  }
+
+  // IF_PLATFORM react-like
+  useRefreshToken(options?: { tokenStore?: TokenStoreInit }): string | null {
+    const user = this.useUser({ tokenStore: options?.tokenStore ?? undefined as any });
+    if (user) {
+      return user.useRefreshToken();
+    }
+    return null;
+  }
+  // END_PLATFORM
+
   async getAuthHeaders(options?: { tokenStore?: TokenStoreInit }): Promise<{ "x-stack-auth": string }> {
     return {
       "x-stack-auth": JSON.stringify(await this.getAuthJson(options)),
     };
   }
+
+  // IF_PLATFORM react-like
+  useAuthHeaders(options?: { tokenStore?: TokenStoreInit }): { "x-stack-auth": string } {
+    return {
+      "x-stack-auth": JSON.stringify(this.useAuthJson(options)),
+    };
+  }
+  // END_PLATFORM
 
   async getAuthJson(options?: { tokenStore?: TokenStoreInit }): Promise<{ accessToken: string | null, refreshToken: string | null }> {
     const user = await this.getUser({ tokenStore: options?.tokenStore ?? undefined as any });
@@ -2409,6 +2511,16 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     }
     return { accessToken: null, refreshToken: null };
   }
+
+  // IF_PLATFORM react-like
+  useAuthJson(options?: { tokenStore?: TokenStoreInit }): { accessToken: string | null, refreshToken: string | null } {
+    const user = this.useUser({ tokenStore: options?.tokenStore ?? undefined as any });
+    if (user) {
+      return user.useAuthJson();
+    }
+    return { accessToken: null, refreshToken: null };
+  }
+  // END_PLATFORM
 
   async getProject(): Promise<Project> {
     const crud = Result.orThrow(await this._currentProjectCache.getOrWait([], "write-only"));

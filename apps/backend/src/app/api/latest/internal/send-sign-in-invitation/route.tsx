@@ -9,6 +9,7 @@ export const POST = createSmartRouteHandler({
     summary: "Send an email to invite a user to a team",
     description: "The user receiving this email can join the team by clicking on the link in the email. If the user does not have an account yet, they will be prompted to create one.",
     tags: ["Teams"],
+    hidden: true,
   },
   request: yupObject({
     auth: yupObject({

@@ -31,6 +31,7 @@ export const POST = createSmartRouteHandler({
   metadata: {
     summary: "Send email",
     description: "Send an email to a list of users. The content field should contain either {html} for HTML emails, {template_id, variables} for template-based emails, or {draft_id} for a draft email.",
+    tags: ["Emails"],
   },
   request: yupObject({
     auth: yupObject({

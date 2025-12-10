@@ -1,6 +1,6 @@
 {
   "name": "@stackframe/stack-shared",
-  "version": "2.8.53",
+  "version": "2.8.56",
   "scripts": {
     "build": "rimraf dist && tsup-node",
     "typecheck": "tsc --noEmit",
@@ -75,8 +75,8 @@
     "@types/elliptic": "^6.4.18",
     "@types/semver": "^7.5.8",
     "@types/uuid": "^9.0.8",
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0",
+    "react": "^19.0.1",
+    "react-dom": "^19.0.1",
     "rimraf": "^5.0.5"
   },
   "packageManager": "pnpm@10.23.0"

@@ -15,10 +15,12 @@ import { GeistSans } from 'geist/font/sans';
 import type { Metadata } from 'next';
 import { Inter as FontSans } from "next/font/google";
 import React from 'react';
-import { VersionAlerter } from '../components/version-alerter';
+// import { VersionAlerter } from '../components/version-alerter';
+import { VersionAlerter } from '@/components/version-alerter';
 import '../polyfills';
 import { BackgroundShine } from './background-shine';
 import { ClientPolyfill } from './client-polyfill';
+import { DevelopmentPortDisplay } from './development-port-display';
 import './globals.css';
 import PageView from './pageview';
 import { CSPostHogProvider, UserIdentity } from './providers';
@@ -71,6 +73,12 @@ export default function RootLayout({
         <StyleLink href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded&display=block" />
         <StyleLink defer href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.css" integrity="sha384-OH8qNTHoMMVNVcKdKewlipV4SErXqccxxlg6HC9Cwjr5oZu2AdBej1TndeCirael" crossOrigin="anonymous" />
 
+        {/* eslint-disable-next-line @next/next/no-sync-scripts */}
+        {process.env.NODE_ENV === 'development' && <script
+          crossOrigin="anonymous"
+          src="//unpkg.com/react-scan/dist/auto.global.js"
+        />}
+
         {headTags.map((tag, index) => {
           const { tagName, attributes, innerHTML } = tag;
           return React.createElement(tagName, {
@@ -111,29 +119,5 @@ export default function RootLayout({
         </body>
       </CSPostHogProvider>
     </html>
-  );
-}
-
-function DevelopmentPortDisplay() {
-  const prefix = getPublicEnvVar("NEXT_PUBLIC_STACK_PORT_PREFIX");
-  if (!prefix) return null;
-  const color = ({
-    "91": "#eee",
-    "92": "#fff8e0",
-    "93": "#e0e0ff",
-  } as any)[prefix as any] || undefined;
-  return (
-    <div inert className="fixed top-0 left-0 p-2 text-lg text-red-700 animate-[dev-port-slide_120s_linear_infinite] hover:hidden" style={{
-      backgroundColor: color,
-      zIndex: 10000000,
-    }}>
-      <style>{`
-        @keyframes dev-port-slide {
-          0% { transform: translateX(0); }
-          100% { transform: translateX(100vw); }
-        }
-      `}</style>
-      DEV PORT: {prefix}xx
-    </div>
   );
 }

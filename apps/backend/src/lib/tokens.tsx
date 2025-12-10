@@ -169,7 +169,7 @@ export async function generateAccessTokenFromRefreshTokenIfValid(options: {
     }
   );
 
-  const payload: Omit<AccessTokenPayload, "iss" | "aud"> = {
+  const payload: Omit<AccessTokenPayload, "iss" | "aud" | "iat"> = {
     sub: options.refreshTokenObj.projectUserId,
     project_id: options.tenancy.project.id,
     branch_id: options.tenancy.branchId,

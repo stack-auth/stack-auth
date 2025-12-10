@@ -1,14 +1,19 @@
 import { Link } from "@/components/link";
+import { CreditCardIcon, EnvelopeSimpleIcon, FingerprintSimpleIcon, KeyIcon, MailboxIcon, RocketIcon, SparkleIcon, TelevisionSimpleIcon, Triangle, UserGearIcon, UsersIcon, VaultIcon, WebhooksLogoIcon } from "@phosphor-icons/react/dist/ssr";
 import { StackAdminApp } from "@stackframe/stack";
-import { AppId } from "@stackframe/stack-shared/dist/apps/apps-config";
+import { ALL_APPS } from "@stackframe/stack-shared/dist/apps/apps-config";
 import { getRelativePart, isChildUrl } from "@stackframe/stack-shared/dist/utils/urls";
-import { CreditCard, KeyRound, Mail, Mails, Rocket, ShieldEllipsis, Sparkles, Triangle, Tv, UserCog, Users, Vault, Webhook } from "lucide-react";
-import Image from "next/image";
+import Image, { StaticImageData } from "next/image";
 import ConvexLogo from "../../public/convex-logo.png";
-import LogoBright from "../../public/logo-bright.svg";
 import NeonLogo from "../../public/neon-logo.png";
-import OpenGraphImage from "../../public/open-graph-image.png";
 import VercelLogo from "../../public/vercel-logo.svg";
+
+export type AppId = keyof typeof ALL_APPS;
+
+// Helper to generate screenshot paths
+const getScreenshots = (appName: string, count: number): string[] => {
+  return Array.from({ length: count }, (_, i) => `/storeDesc-${appName}-${i + 1}.png`);
+};
 
 export const DUMMY_ORIGIN = "https://example.com";
 
@@ -31,8 +36,8 @@ export type AppFrontend = {
   matchPath?: (relativePart: string) => boolean,
   getBreadcrumbItems?: (stackAdminApp: StackAdminApp<false>, relativePart: string) => Promise<BreadcrumbDefinition | null | undefined>,
   navigationItems: AppNavigationItem[],
-  screenshots: string[],
-  storeDescription: React.ReactNode,
+  screenshots: (string | StaticImageData)[],
+  storeDescription: JSX.Element,
 };
 
 export function getAppPath(projectId: string, appFrontend: AppFrontend) {
@@ -64,61 +69,88 @@ export function testItemPath(projectId: string, appFrontend: AppFrontend, item: 
 
 export const ALL_APPS_FRONTEND = {
   authentication: {
-    icon: ShieldEllipsis,
+    icon: FingerprintSimpleIcon,
     href: "users",
     navigationItems: [
       { displayName: "Users", href: ".", getBreadcrumbItems: getUserBreadcrumbItems },
       { displayName: "Auth Methods", href: "../auth-methods" },
       { displayName: "Trusted Domains", href: "../domains" },
     ],
-    screenshots: [
-      LogoBright,
-      OpenGraphImage,
-    ],
-    storeDescription: <></>,
+    screenshots: getScreenshots('auth', 6),
+    storeDescription: (
+      <>
+        <p>Authentication centralizes everything you need to operate your Stack Auth user directory.</p>
+        <p>Browse and create users, tune sign-up behavior, and configure auth methods without leaving the dashboard.</p>
+        <p>When it is time to harden production, manage trusted domains and other guardrails in the same place.</p>
+      </>
+    ),
   },
   teams: {
-    icon: Users,
+    icon: UsersIcon,
     href: "teams",
     navigationItems: [
       { displayName: "Teams", href: ".", getBreadcrumbItems: getTeamBreadcrumbItems },
       { displayName: "Team Settings", href: "../team-settings" },
     ],
-    screenshots: [],
-    storeDescription: <></>,
+    screenshots: getScreenshots('teams', 4),
+    storeDescription: (
+      <>
+        <p>Teams gives your project first-class multi-tenancy without extra plumbing.</p>
+        <p>Create organizations in seconds, keep their metadata tidy with inline edits, and invite teammates or add existing users while memberships stay in sync.</p>
+        <p>Whenever you need deeper context, you can jump straight into team settings, billing, or permissions from the same place.</p>
+      </>
+    ),
   },
   rbac: {
-    icon: UserCog,
+    icon: UserGearIcon,
     href: "./project-permissions",
     navigationItems: [
       { displayName: "Project Permissions", href: "../project-permissions" },
       { displayName: "Team Permissions", href: "../team-permissions" },
     ],
-    screenshots: [],
-    storeDescription: <></>,
+    screenshots: getScreenshots('rbac', 4),
+    storeDescription: (
+      <>
+        <p>RBAC helps you model the authorization surface of your product in a structured, auditable way.</p>
+        <p>Define project and team permissions with IDs that map directly into your code and compose them into higher-level roles.</p>
+        <p>The Stack SDK exposes those definitions everywhere so each environment enforces the same checks.</p>
+      </>
+    ),
   },
   "api-keys": {
-    icon: KeyRound,
+    icon: KeyIcon,
     href: "api-keys-app",
     navigationItems: [
       { displayName: "API Keys", href: "." },
     ],
-    screenshots: [],
-    storeDescription: <></>,
+    screenshots: getScreenshots('api-keys', 1),
+    storeDescription: (
+      <>
+        <p>API Keys keeps every environment credentialed without sacrificing control.</p>
+        <p>Issue publishable client keys or secret server keys with configurable expirations and copy the values before they disappear.</p>
+        <p>When a credential is no longer trusted, revoke or rotate it instantly from the dashboard.</p>
+      </>
+    ),
   },
   payments: {
-    icon: CreditCard,
+    icon: CreditCardIcon,
     href: "payments",
     navigationItems: [
       { displayName: "Products", href: "./products" },
       { displayName: "Customers", href: "./customers" },
       { displayName: "Transactions", href: "./transactions" },
     ],
-    screenshots: [],
-    storeDescription: "",
+    screenshots: getScreenshots('payments', 7),
+    storeDescription: (
+      <>
+        <p>Payments brings Stack&apos;s product-first pricing model into the dashboard.</p>
+        <p>Design catalogs of products, prices, and entitlements, segment user or team customers, and generate checkout URLs with the right guardrails.</p>
+        <p>Purchase history and transactions stay visible without leaving the console.</p>
+      </>
+    ),
   },
   emails: {
-    icon: Mail,
+    icon: EnvelopeSimpleIcon,
     href: "emails",
     navigationItems: [
       { displayName: "Emails", href: "." },
@@ -126,38 +158,62 @@ export const ALL_APPS_FRONTEND = {
       { displayName: "Templates", href: "../email-templates", getBreadcrumbItems: getEmailTemplatesBreadcrumbItems },
       { displayName: "Themes", href: "../email-themes", getBreadcrumbItems: getEmailThemeBreadcrumbItems },
     ],
-    screenshots: [],
-    storeDescription: <></>,
+    screenshots: getScreenshots('emails', 8),
+    storeDescription: (
+      <>
+        <p>Emails gives you a full control room for transactional communication.</p>
+        <p>Configure shared delivery, Resend, or custom SMTP without touching code, then send test or operational messages whenever you need.</p>
+        <p>Draft, templatize, and theme email content so every notification stays on brand while delivery logs remain close by.</p>
+      </>
+    ),
   },
   "email-api": {
-    icon: Mails,
+    icon: MailboxIcon,
     href: "email-api",
     navigationItems: [
       { displayName: "Email API", href: "." },
     ],
     screenshots: [],
-    storeDescription: <></>,
+    storeDescription: (
+      <>
+        <p>The Email API unlocks programmatic messaging flows directly from the Stack SDK.</p>
+        <p>Trigger transactional emails from your server code, reuse the templates and themes you author in the dashboard, and capture delivery results in the same log.</p>
+        <p>It is the fastest path from an automation idea to a production-ready notification.</p>
+      </>
+    ),
   },
   "data-vault": {
-    icon: Vault,
+    icon: VaultIcon,
     href: "data-vault",
     navigationItems: [
       { displayName: "Data Vault", href: "." },
     ],
-    screenshots: [],
-    storeDescription: <></>,
+    screenshots: getScreenshots('data-vault', 4),
+    storeDescription: (
+      <>
+        <p>Data Vault is an encrypted key-value store for the secrets your app should never expose.</p>
+        <p>Create isolated stores for API tokens, recovery codes, or other sensitive values, all protected by your own vault secret.</p>
+        <p>Stack only keeps hashed keys and ciphertext, and the SDK ships with examples for reading and writing data safely.</p>
+      </>
+    ),
   },
   webhooks: {
-    icon: Webhook,
+    icon: WebhooksLogoIcon,
     href: "webhooks",
     navigationItems: [
       { displayName: "Webhooks", href: "." },
     ],
-    screenshots: [],
-    storeDescription: <></>,
+    screenshots: getScreenshots('webhooks', 2),
+    storeDescription: (
+      <>
+        <p>Webhooks keep user and team events in sync between Stack and your own servers.</p>
+        <p>Create and manage Svix-powered endpoints without leaving the dashboard, edit descriptions as your integrations evolve, and retire endpoints safely when they are no longer needed.</p>
+        <p>Every notification keeps billing, analytics, and downstream services in sync.</p>
+      </>
+    ),
   },
   "tv-mode": {
-    icon: Tv,
+    icon: TelevisionSimpleIcon,
     href: "tv-mode",
     navigationItems: [
       { displayName: "TV mode", href: "." },
@@ -166,16 +222,22 @@ export const ALL_APPS_FRONTEND = {
     storeDescription: <></>,
   },
   "launch-checklist": {
-    icon: Rocket,
+    icon: RocketIcon,
     href: "launch-checklist",
     navigationItems: [
       { displayName: "Launch Checklist", href: "." },
     ],
     screenshots: [],
-    storeDescription: <></>,
+    storeDescription: (
+      <>
+        <p>The Launch Checklist keeps your go-live to-dos inside the product.</p>
+        <p>Track implementation progress across the tasks that matter, follow guided instructions for each requirement, and keep teammates aligned as you move from sandbox to production.</p>
+        <p>It becomes the shared source of truth when launch day approaches.</p>
+      </>
+    ),
   },
   catalyst: {
-    icon: Sparkles,
+    icon: SparkleIcon,
     href: "catalyst",
     navigationItems: [
       { displayName: "Catalyst", href: "." },
@@ -213,14 +275,14 @@ export const ALL_APPS_FRONTEND = {
   },
   vercel: {
     icon: Triangle,
-    logo: () => <div>
-      <Image src={VercelLogo} alt="Vercel logo" className="bg-white p-4 pb-5 invert" />
+    logo: () => <div className="w-full h-full flex items-center justify-center">
+      <Image src={VercelLogo} alt="Vercel logo" className="bg-white invert w-full h-full object-contain p-2" />
     </div>,
     href: "vercel",
     navigationItems: [
       { displayName: "Setup", href: "." },
     ],
-    screenshots: [],
+    screenshots: getScreenshots('vercel', 2),
     storeDescription: <>Deploy your Stack Auth project to <Link href="https://vercel.com" target="_blank">Vercel</Link> with the Vercel x Stack Auth integration.</>,
   },
 } as const satisfies Record<AppId, AppFrontend>;

@@ -90,10 +90,10 @@ jobs:
         run: pnpm run wait-until-postgres-is-ready:pg_isready
 
       - name: Wait on Inbucket
-        run: npx wait-on tcp:localhost:6729
+        run: pnpx wait-on tcp:localhost:6729
 
       - name: Wait on Svix
-        run: npx wait-on tcp:localhost:6713
+        run: pnpx wait-on tcp:localhost:6713
 
       - name: Initialize database
         run: pnpm run db:init

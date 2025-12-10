@@ -33,7 +33,7 @@ We support Next.js, React, and JavaScript frontends, along with any backend that
 - [🏗 Development & Contribution](#-development--contribution)
   - [Requirements](#requirements)
   - [Setup](#setup)
-  - [Database migrations](#database-migrations)
+  - [Useful commands](#useful-commands)
   - [Chat with the codebase](#chat-with-the-codebase)
   - [Architecture overview](#architecture-overview)
 - [❤ Contributors](#-contributors)
@@ -123,7 +123,7 @@ This is for you if you want to contribute to the Stack Auth project or run the S
 
 ### Setup
 
-Pre-populated .env files for the setup below are available and used by default in `.env.development` in each of the packages. (Note: If you're creating a production build (eg. with `pnpm run build`), you must supply the environment variables manually.)
+Note: 24GB+ of RAM is recommended for a smooth development experience.
 
 In a new terminal:
 
@@ -137,14 +137,9 @@ pnpm codegen
 # Start the dependencies (DB, Inbucket, etc.) as Docker containers, seeding the DB with the Prisma schema
 # Make sure you have Docker (or OrbStack) installed and running
 pnpm restart-deps
-# restart-deps is the same as:
-#   pnpm stop-deps  (if the containers are already running)
-#   pnpm start-deps
 
 # Start the dev server
 pnpm dev
-# For systems with limited resources, you can run a minimal development setup with just the backend and dashboard
-# pnpm run dev:basic
 
 # In a different terminal, run tests in watch mode
 pnpm test
@@ -154,14 +149,52 @@ You can now open the dev launchpad at [http://localhost:8100](http://localhost:8
 
 Your IDE may show an error on all `@stackframe/XYZ` imports. To fix this, simply restart the TypeScript language server; for example, in VSCode you can open the command palette (Ctrl+Shift+P) and run `Developer: Reload Window` or `TypeScript: Restart TS server`.
 
+Pre-populated .env files for the setup below are available and used by default in `.env.development` in each of the packages. However, if you're creating a production build (eg. with `pnpm run build`), you must supply the environment variables manually (see below).
 
-### Database migrations
-
-If you make changes to the Prisma schema, you need to run the following command to create a migration file:
+### Useful commands
 
 ```sh
-pnpm run db:migration-gen
+# NOTE:
+# Please see the dev launchpad (default: http://localhost:8100) for a list of all running services.
+
+# Installation commands
+pnpm install: Installs dependencies
+
+# Types & linting commands
+pnpm typecheck: Runs the TypeScript type checker. May require a build or dev server to run first.
+pnpm lint: Runs the ESLint linter. Optionally, pass `--fix` to fix some of the linting errors. May require a build or dev server to run first.
+
+# Build commands
+pnpm build: Builds all projects, including apps, packages, examples, and docs. Also runs code-generation tasks. Before you can run this, you will have to copy all `.env.development` files in the folders to `.env.production.local` or set the environment variables manually.
+pnpm build:packages: Builds all the npm packages.
+pnpm codegen: Runs all the code-generation tasks, eg. Prisma client and OpenAPI docs generation.
+
+# Development commands
+pnpm dev: Runs the development servers of the main projects, excluding most examples. On the first run, requires the packages to be built and codegen to be run. After that, it will watch for file changes (including those in code-generation files). If you have to restart the development server for anything, that is a bug that you can report.
+pnpm dev:full: Runs the development servers for all projects, including examples.
+pnpm dev:basic: Runs the development servers only for the necessary services (backend and dashboard). Not recommended for most users, upgrade your machine instead.
+
+# Environment commands
+pnpm start-deps: Starts the Docker dependencies (DB, Inbucket, etc.) as Docker containers, and initializes them with the seed script & migrations. Note: The started dependencies will be visible on the dev launchpad (port 8100 by default).
+pnpm stop-deps: Stops the Docker dependencies (DB, Inbucket, etc.) and deletes the data on them.
+pnpm restart-deps: Stops and starts the dependencies.
+
+# Database commands
+pnpm db:migration-gen: Currently not used. Please generate Prisma migrations manually (or with AI).
+pnpm db:reset: Resets the database to the initial state. Run automatically by `pnpm start-deps`.
+pnpm db:init: Initializes the database with the seed script & migrations. Run automatically by `pnpm db:reset`.
+pnpm db:seed: Re-seeds the database with the seed script. Run automatically by `pnpm db:init`.
+pnpm db:migrate: Runs the migrations. Run automatically by `pnpm db:init`.
+
+# Testing commands
+pnpm test <file-filters>: Runs the tests. Pass `--bail 1` to make the test only run until the first failure. Pass `--no-watch` to run the tests once instead of in watch mode.
+
+# Various commands
+pnpm explain-query: Paste a SQL query to get an explanation of the query plan, helping you debug performance issues.
+pnpm verify-data-integrity: Verify the integrity of the data in the database by running a bunch of integrity checks. This should never fail at any point in time (unless you messed with the DB manually).
 ```
+
+Note: When working with AI, you should keep a terminal tab with the dev server open so the AI can run queries against it.
 
 ### Chat with the codebase
 

@@ -69,13 +69,13 @@ function UserButtonInnerInner(props: UserButtonProps & { user: CurrentUser | nul
 
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger className="outline-none stack-scope">
+      <DropdownMenuTrigger className="outline-none stack-scope rounded-lg hover:bg-muted/50 transition-colors hover:transition-none p-1.5">
         <div className="flex gap-2 items-center">
           <UserAvatar user={user} />
           {user && props.showUserInfo &&
-            <div className="flex flex-col justify-center text-left">
-              <div className="max-w-40 truncate">{user.displayName}</div>
-              <div className="max-w-40 truncate text-sm text-gray-500">{user.primaryEmail}</div>
+            <div className="flex flex-col justify-center text-left min-w-0">
+              <div className="max-w-40 truncate text-sm font-medium">{user.displayName}</div>
+              <div className="max-w-40 truncate text-xs text-muted-foreground">{user.primaryEmail}</div>
             </div>
           }
         </div>

@@ -5,7 +5,7 @@ import { getPasswordError } from "@stackframe/stack-shared/dist/helpers/password
 import { passwordSchema, strictEmailSchema, yupObject } from "@stackframe/stack-shared/dist/schema-fields";
 import { runAsynchronously, runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { Button, Input, Label, PasswordInput } from "@stackframe/stack-ui";
-import { useState } from "react";
+import React, { useState } from "react";
 import { useForm } from "react-hook-form";
 import * as yup from "yup";
 import { useStackApp } from "..";
@@ -70,7 +70,7 @@ export function CredentialSignUp(props: { noPasswordRepeat?: boolean }) {
         id="password"
         autoComplete="new-password"
         {...registerPassword}
-        onChange={(e) => {
+        onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
           clearErrors('password');
           clearErrors('passwordRepeat');
           runAsynchronously(registerPassword.onChange(e));
@@ -84,7 +84,7 @@ export function CredentialSignUp(props: { noPasswordRepeat?: boolean }) {
             <PasswordInput
               id="repeat-password"
               {...registerPasswordRepeat}
-              onChange={(e) => {
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
               clearErrors('password');
               clearErrors('passwordRepeat');
               runAsynchronously(registerPasswordRepeat.onChange(e));

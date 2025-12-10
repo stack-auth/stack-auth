@@ -51,14 +51,14 @@ export default function SetupPage(props: { toMetrics: () => void }) {
       title: "Install Stack Auth",
       content: <>
         <Typography>
-          In a new or existing Next.js project, run:
+          In a new or existing Next.js project, install Stack Auth as a dependency into your project:
         </Typography>
         <CodeBlock
           language="bash"
           content={`npx @stackframe/init-stack@latest`}
           customRender={
             <div className="p-4 font-mono text-sm">
-              <span className={commandClasses}>npx</span> <span className={nameClasses}>@stackframe/init-stack@latest</span>
+              <span className={commandClasses}>pnpx</span> <span className={nameClasses}>@stackframe/init-stack@latest</span>
             </div>
           }
           title="Terminal"
@@ -93,7 +93,7 @@ export default function SetupPage(props: { toMetrics: () => void }) {
       title: "Install Stack Auth",
       content: <>
         <Typography>
-          In a new or existing React project, run:
+          In a new or existing React project, install Stack Auth&apos;s dependencies:
         </Typography>
         <CodeBlock
           language="bash"

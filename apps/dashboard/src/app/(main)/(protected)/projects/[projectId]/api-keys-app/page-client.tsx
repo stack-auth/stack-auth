@@ -1,4 +1,5 @@
 "use client";
+import { StyledLink } from "@/components/link";
 import { SettingCard, SettingSwitch } from "@/components/settings";
 import { Typography } from "@stackframe/stack-ui";
 import { AppEnabledGuard } from "../app-enabled-guard";
@@ -12,6 +13,13 @@ export default function PageClient() {
   return (
     <AppEnabledGuard appId="api-keys">
       <PageLayout title="API Keys" description="Configure API key settings for your project">
+        <span className="bg-blue-500/10 p-4 rounded-lg border">
+          Note: This app allows your users to create API keys for their accounts and teams. It is helpful if you have your own API that you would like to secure with Stack Auth.<br /><br />
+
+          If you are looking to create or manage keys for your Stack Auth project, head over to the <StyledLink href={`/projects/${project.id}/project-keys`}>Project Keys</StyledLink> settings.<br /><br />
+
+          For more information, see the <StyledLink href="https://docs.stack-auth.com/docs/apps/api-keys">API Keys docs</StyledLink>.
+        </span>
         <SettingCard
           title="API Key Settings"
           description="Configure which types of API keys are allowed in your project."

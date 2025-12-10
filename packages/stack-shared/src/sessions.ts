@@ -2,6 +2,7 @@ import * as jose from 'jose';
 import { InferType } from 'yup';
 import { accessTokenPayloadSchema } from './schema-fields';
 import { StackAssertionError, throwErr } from "./utils/errors";
+import { runAsynchronously, wait } from './utils/promises';
 import { Store } from "./utils/stores";
 
 
@@ -41,11 +42,20 @@ export class AccessToken {
     return new Date(exp * 1000);
   }
 
+  get issuedAt(): Date {
+    const { iat } = this.payload;
+    return new Date(iat * 1000);
+  }
+
   /**
    * @returns The number of milliseconds until the access token expires, or 0 if it has already expired.
    */
   get expiresInMillis(): number {
     return Math.max(0, this.expiresAt.getTime() - Date.now());
+  }
+
+  get issuedMillisAgo(): number {
+    return Math.max(0, Date.now() - this.issuedAt.getTime());
   }
 
   isExpired(): boolean {
@@ -125,7 +135,8 @@ export class InternalSession {
   }
 
   /**
-   * Marks the session object as invalid, meaning that the refresh and access tokens can no longer be used.
+   * Marks the session object as invalid, meaning that the refresh and access tokens can no longer be used. There is no
+   * way out of this state, and the session object will never return valid tokens again.
    */
   markInvalid() {
     this._accessToken.set(null);
@@ -136,16 +147,25 @@ export class InternalSession {
     return this._knownToBeInvalid.onChange(() => callback());
   }
 
+  getRefreshToken(): RefreshToken | null {
+    if (this.isKnownToBeInvalid()) return null;
+    return this._refreshToken;
+  }
+
   /**
    * Returns the access token if it is found in the cache and not expired yet, or null otherwise. Never fetches new tokens.
    */
-  getAccessTokenIfNotExpiredYet(minMillisUntilExpiration: number): AccessToken | null {
-    if (minMillisUntilExpiration > 60_000) {
-      throw new Error(`Required access token expiry ${minMillisUntilExpiration}ms is too long; access tokens are too short to be used for more than 60s`);
+  getAccessTokenIfNotExpiredYet(minMillisUntilExpiration: number, maxMillisSinceIssued: number | null): AccessToken | null {
+    if (minMillisUntilExpiration > 45_000) {
+      throw new Error(`Required access token expiry ${minMillisUntilExpiration}ms is too long; access tokens are too short to be used for more than 45s`);
+    }
+    if (maxMillisSinceIssued !== null && maxMillisSinceIssued < 15_000) {
+      throw new Error(`Required access token issuance ${maxMillisSinceIssued}ms is too short; assume that access token generation can take at least 15s`);
     }
 
     const accessToken = this._getPotentiallyInvalidAccessTokenIfAvailable();
     if (!accessToken || accessToken.expiresInMillis < minMillisUntilExpiration) return null;
+    if (maxMillisSinceIssued !== null && accessToken.issuedMillisAgo > maxMillisSinceIssued) return null;
     return accessToken;
   }
 
@@ -156,17 +176,24 @@ export class InternalSession {
    *
    * @returns null if the session is known to be invalid, cached tokens if they exist in the cache and the access token hasn't expired yet (the refresh token might still be invalid), or new tokens otherwise.
    */
-  async getOrFetchLikelyValidTokens(minMillisUntilExpiration: number): Promise<{ accessToken: AccessToken, refreshToken: RefreshToken | null } | null> {
-    const accessToken = this.getAccessTokenIfNotExpiredYet(minMillisUntilExpiration);
+  async getOrFetchLikelyValidTokens(minMillisUntilExpiration: number, maxMillisSinceIssued: number | null): Promise<{ accessToken: AccessToken, refreshToken: RefreshToken | null } | null> {
+    // fast path to save a roundtrip to the server if the session is known to be invalid
+    if (this.isKnownToBeInvalid()) return null;
+
+    const accessToken = this.getAccessTokenIfNotExpiredYet(minMillisUntilExpiration, maxMillisSinceIssued);
     if (!accessToken) {
       const newTokens = await this.fetchNewTokens();
       const expiresInMillis = newTokens?.accessToken.expiresInMillis;
+      const issuedMillisAgo = newTokens?.accessToken.issuedMillisAgo;
       if (expiresInMillis && expiresInMillis < minMillisUntilExpiration) {
         throw new StackAssertionError(`Required access token expiry ${minMillisUntilExpiration}ms is too long; access tokens are too short when they're generated (${expiresInMillis}ms)`);
       }
+      if (maxMillisSinceIssued !== null && issuedMillisAgo && issuedMillisAgo > maxMillisSinceIssued) {
+        throw new StackAssertionError(`Required access token issuance ${maxMillisSinceIssued}ms is too short; access token issuance is too slow (${issuedMillisAgo}ms)`);
+      }
       return newTokens;
     }
-    return { accessToken, refreshToken: this._refreshToken };
+    return { accessToken, refreshToken: this.getRefreshToken() };
   }
 
   /**
@@ -188,6 +215,26 @@ export class InternalSession {
     if (this._accessToken.get() === accessToken) {
       this._accessToken.set(null);
     }
+  }
+
+  startRefreshingAccessToken(minMillisUntilExpiration: number, maxMillisSinceIssued: number | null): { unsubscribe: () => void } {
+    let canceled = false;
+    runAsynchronously(async () => {
+      while (!canceled) {
+        const tokens = await this.getOrFetchLikelyValidTokens(minMillisUntilExpiration, maxMillisSinceIssued);
+        if (!tokens) return;  // session is invalid, stop refreshing
+        const nextRefreshIn = Math.min(
+          tokens.accessToken.expiresInMillis - minMillisUntilExpiration,
+          (maxMillisSinceIssued ?? Infinity) - tokens.accessToken.issuedMillisAgo,
+        );
+        await wait(Math.max(1, nextRefreshIn));
+      }
+    });
+    return {
+      unsubscribe: () => {
+        canceled = true;
+      },
+    };
   }
 
   /**
