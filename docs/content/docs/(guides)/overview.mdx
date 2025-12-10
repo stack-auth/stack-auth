@@ -5,36 +5,38 @@ lastModified: "December 9, 2025"
 
 <div className="flex flex-col items-center text-center not-prose">
   <StackAuthIcon size={56} className="mb-2" />
-  <p className="text-3xl font-bold tracking-tight mb-0.5">Welcome to Stack Auth </p>
-  <p className="text-base text-fd-muted-foreground mb-4">
-    Open-source authentication that gets you started in minutes.
-  </p>
-  <p className="text-lg font-semibold text-fd-foreground">Quick Start ↓</p>
+  <p className="text-3xl font-bold tracking-tight mb-0.5">Welcome to Stack Auth</p>
+  <p className="text-base text-fd-muted-foreground mb-4">Open-source authentication that gets you started in minutes.</p>
 </div>
 
-<Steps>
-  <Step>
-    ### Install the SDK
-    ```bash
-    npx @stackframe/init-stack@latest
-    ```
-  </Step>
-  <Step>
-    ### Add the Provider
-    Wrap your app with the `StackProvider` and `StackTheme` components.
-  </Step>
-  <Step>
-    ### Use authentication
-    ```tsx
-    const user = useUser({ or: "redirect" });
-    return <div>Hi, {user.displayName}</div>;
-    ```
-  </Step>
-</Steps>
+### Quick Start (Next.js)
 
-<div className="flex justify-center mt-4 mb-8">
-  <Button href="./getting-started/setup" color="primary">Full Setup Guide →</Button>
-</div>
+**1. Install the SDK**
+
+<PlatformCodeblock document="setup/overview" examples={["install"]} />
+
+**2. Use authentication**
+
+<PlatformCodeblock document="setup/overview" examples={["use-auth"]} />
+
+For other frameworks or detailed configuration, see the [full setup guide](./getting-started/setup).
+
+{/* IF_PLATFORM: react-like */}
+## Components
+
+Pre-built UI components ready to use:
+
+<CardGroup>
+  <Card href="./components/sign-in">`<SignIn />`</Card>
+  <Card href="./components/sign-up">`<SignUp />`</Card>
+  <Card href="./components/user-button">`<UserButton />`</Card>
+  <Card href="./components/account-settings">`<AccountSettings />`</Card>
+  <Card href="./components/selected-team-switcher">`<SelectedTeamSwitcher />`</Card>
+  <Card href="./components/stack-handler">`<StackHandler />`</Card>
+</CardGroup>
+
+[View all components →](./components)
+{/* END_PLATFORM */}
 
 ## Explore
 
