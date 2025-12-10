@@ -65,16 +65,15 @@ export type ServerOAuthProvider = {
 };
 
 
-export type Session = {
-  getTokens(): Promise<{ accessToken: string | null, refreshToken: string | null }>,
-};
-
 /**
  * Contains everything related to the current user session.
  */
 export type Auth = AuthLike<{}> & {
   readonly _internalSession: InternalSession,
-  readonly currentSession: Session,
+  readonly currentSession: {
+    getTokens(): Promise<{ accessToken: string | null, refreshToken: string | null }>,
+    useTokens(): { accessToken: string | null, refreshToken: string | null }, // THIS_LINE_PLATFORM react-like
+  },
 };
 
 /**
@@ -333,7 +332,9 @@ export type ServerBaseUser = {
   /**
    * Creates a new session object with a refresh token for this user. Can be used to impersonate them.
    */
-  createSession(options?: { expiresInMillis?: number, isImpersonation?: boolean }): Promise<Session>,
+  createSession(options?: { expiresInMillis?: number, isImpersonation?: boolean }): Promise<{
+    getTokens(): Promise<{ accessToken: string | null, refreshToken: string | null }>,
+  }>,
 }
 & AsyncStoreProperty<"team", [id: string], ServerTeam | null, false>
 & AsyncStoreProperty<"teams", [], ServerTeam[], true>
