@@ -1,6 +1,6 @@
 
 import { it, localRedirectUrl, updateCookiesFromResponse } from "../../../../../../helpers";
-import { Auth, InternalApiKey, Project, niceBackendFetch } from "../../../../../backend-helpers";
+import { Auth, InternalApiKey, Project, backendContext, niceBackendFetch } from "../../../../../backend-helpers";
 
 it("should return outer authorization code when inner callback url is valid", async ({ expect }) => {
   const response = await Auth.OAuth.getAuthorizationCode();
@@ -235,6 +235,93 @@ it("should fail if an untrusted redirect URL is provided that is similar to a tr
       "headers": Headers {
         "set-cookie": <deleting cookie 'stack-oauth-inner-<stripped cookie name key>' at path '/'>,
         "x-stack-known-error": "REDIRECT_URL_NOT_WHITELISTED",
+        <some fields may have been hidden>,
+      },
+    }
+  `);
+});
+
+it("should link OAuth account to existing user when sign-ups are disabled but user exists with matching email", async ({ expect }) => {
+  // Test Case A: sign-ups disabled, existing user with matching email, no existing connected account → OAuth login succeeds, links account, and signs in.
+  await Project.createAndSwitch({ config: { sign_up_enabled: false, oauth_providers: [ { id: "spotify", type: "shared" } ] } });
+  await InternalApiKey.createAndSetProjectKeys();
+  
+  // Create a user via the server API with the same email that will be returned by OAuth
+  const createUserResponse = await niceBackendFetch("/api/v1/users", {
+    method: "POST",
+    accessType: "server",
+    body: {
+      primary_email: backendContext.value.mailbox.emailAddress,
+      primary_email_verified: true,
+    },
+  });
+  expect(createUserResponse.status).toBe(201);
+  const existingUserId = createUserResponse.body.id;
+  
+  // Now attempt OAuth sign-in with the same email
+  // Since a user with this email already exists, it should link the OAuth account instead of throwing SIGN_UP_NOT_ENABLED
+  const getInnerCallbackUrlResponse = await Auth.OAuth.getInnerCallbackUrl();
+  const cookie = updateCookiesFromResponse("", getInnerCallbackUrlResponse.authorizeResponse);
+  const response = await niceBackendFetch(getInnerCallbackUrlResponse.innerCallbackUrl, {
+    redirect: "manual",
+    headers: {
+      cookie,
+    },
+  });
+  
+  // The OAuth callback should succeed and return an authorization code
+  expect(response.status).toBe(303);
+  expect(response.headers.get("location")).toBeTruthy();
+  const outerCallbackUrl = new URL(response.headers.get("location")!);
+  expect(outerCallbackUrl.searchParams.get("code")).toBeTruthy();
+  
+  // Exchange the authorization code for tokens
+  const projectKeys = backendContext.value.projectKeys;
+  if (projectKeys === "no-project") throw new Error("No project keys found");
+  const tokenResponse = await niceBackendFetch("/api/v1/auth/oauth/token", {
+    method: "POST",
+    accessType: "client",
+    body: {
+      client_id: projectKeys.projectId,
+      client_secret: projectKeys.publishableClientKey,
+      code: outerCallbackUrl.searchParams.get("code")!,
+      redirect_uri: localRedirectUrl,
+      grant_type: "authorization_code",
+      code_verifier: "some-code-challenge",
+    },
+  });
+  
+  expect(tokenResponse.status).toBe(200);
+  expect(tokenResponse.body.user_id).toBe(existingUserId);
+  expect(tokenResponse.body.is_new_user).toBe(false);
+});
+
+it("should still fail with SIGN_UP_NOT_ENABLED when no user exists with that email", async ({ expect }) => {
+  // Test Case B: sign-ups disabled, NO user with that email → still returns SIGN_UP_NOT_ENABLED (unchanged behavior).
+  await Project.createAndSwitch({ config: { sign_up_enabled: false, oauth_providers: [ { id: "spotify", type: "shared" } ] } });
+  await InternalApiKey.createAndSetProjectKeys();
+  
+  // Do NOT create a user first - attempt OAuth sign-in directly
+  const getInnerCallbackUrlResponse = await Auth.OAuth.getInnerCallbackUrl();
+  const cookie = updateCookiesFromResponse("", getInnerCallbackUrlResponse.authorizeResponse);
+  const response = await niceBackendFetch(getInnerCallbackUrlResponse.innerCallbackUrl, {
+    redirect: "manual",
+    headers: {
+      cookie,
+    },
+  });
+  
+  // Should still throw SIGN_UP_NOT_ENABLED as before
+  expect(response).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 400,
+      "body": {
+        "code": "SIGN_UP_NOT_ENABLED",
+        "error": "Creation of new accounts is not enabled for this project. Please ask the project owner to enable it.",
+      },
+      "headers": Headers {
+        "set-cookie": <deleting cookie 'stack-oauth-inner-<stripped cookie name key>' at path '/'>,
+        "x-stack-known-error": "SIGN_UP_NOT_ENABLED",
         <some fields may have been hidden>,
       },
     }
