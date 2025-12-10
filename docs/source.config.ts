@@ -26,7 +26,7 @@ export const docs = defineDocs({
 export const api = defineDocs({
   dir: './content/api',
   docs: {
-    schema: frontmatterSchema,
+    schema: extendedFrontmatterSchema,
   },
   meta: {
     schema: metaSchema,
@@ -37,7 +37,7 @@ export const api = defineDocs({
 export const dashboard = defineDocs({
   dir: './content/dashboard',
   docs: {
-    schema: frontmatterSchema,
+    schema: extendedFrontmatterSchema,
   },
   meta: {
     schema: metaSchema,
