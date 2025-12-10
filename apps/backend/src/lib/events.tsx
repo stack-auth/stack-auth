@@ -9,6 +9,7 @@ import { filterUndefined, typedKeys } from "@stackframe/stack-shared/dist/utils/
 import { UnionToIntersection } from "@stackframe/stack-shared/dist/utils/types";
 import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
 import * as yup from "yup";
+import { createClickhouseClient } from "./clickhouse";
 import { getEndUserInfo } from "./end-users";
 import { DEFAULT_BRANCH_ID } from "./tenancies";
 
@@ -51,6 +52,7 @@ const UserActivityEventType = {
     userId: yupString().uuid().defined(),
     // old events of this type may not have an isAnonymous field, so we default to false
     isAnonymous: yupBoolean().defined().default(false),
+    teamId: yupString().optional().default(""),
   }),
   inherits: [ProjectActivityEventType],
 } as const satisfies SystemEventTypeBase;
@@ -152,6 +154,18 @@ export async function logEvent<T extends EventType[]>(
   // get end user information
   const endUserInfo = await getEndUserInfo();  // this is a dynamic API, can't run it asynchronously
   const endUserInfoInner = endUserInfo?.maybeSpoofed ? endUserInfo.spoofedInfo : endUserInfo?.exactInfo;
+  const eventTypesArray = [...allEventTypes];
+  const clickhouseEventData = {
+    ...data as Record<string, unknown>,
+    is_wide: isWide,
+    event_started_at: timeRange.start,
+    event_ended_at: timeRange.end,
+  };
+  const dataRecord = data as Record<string, unknown> | null | undefined;
+  const projectId = typeof dataRecord === "object" && dataRecord && typeof dataRecord.projectId === "string" ? dataRecord.projectId : "";
+  const branchId = typeof dataRecord === "object" && dataRecord && typeof dataRecord.branchId === "string" ? dataRecord.branchId : DEFAULT_BRANCH_ID;
+  const userId = typeof dataRecord === "object" && dataRecord && typeof dataRecord.userId === "string" ? dataRecord.userId : "";
+  const teamId = typeof dataRecord === "object" && dataRecord && typeof dataRecord.teamId === "string" ? dataRecord.teamId : "";
 
 
   // rest is no more dynamic APIs so we can run it asynchronously
@@ -159,7 +173,7 @@ export async function logEvent<T extends EventType[]>(
     // log event in DB
     await globalPrismaClient.event.create({
       data: {
-        systemEventTypeIds: [...allEventTypes].map(eventType => eventType.id),
+        systemEventTypeIds: eventTypesArray.map(eventType => eventType.id),
         data: data as any,
         isEndUserIpInfoGuessTrusted: !endUserInfo?.maybeSpoofed,
         endUserIpInfoGuess: endUserInfoInner ? {
@@ -178,6 +192,29 @@ export async function logEvent<T extends EventType[]>(
         eventEndedAt: timeRange.end,
       },
     });
+
+    const clickhouseClient = createClickhouseClient("admin");
+    try {
+      await clickhouseClient.insert({
+        table: "events",
+        values: eventTypesArray.map(eventType => ({
+          event_type: eventType.id,
+          event_at: timeRange.end,
+          data: clickhouseEventData,
+          project_id: projectId,
+          branch_id: branchId,
+          user_id: userId,
+          team_id: teamId,
+        })),
+        format: "JSONEachRow",
+        clickhouse_settings: {
+          date_time_input_format: "best_effort",
+          async_insert: 1,
+        },
+      });
+    } finally {
+      await clickhouseClient.close();
+    }
 
     // log event in PostHog
     if (getNodeEnvironment().includes("production") && !getEnvVariable("CI", "")) {
