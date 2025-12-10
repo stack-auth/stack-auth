@@ -8,6 +8,14 @@ const clickhouseAdminPassword = getEnvVariable("STACK_CLICKHOUSE_ADMIN_PASSWORD"
 const clickhouseExternalPassword = getEnvVariable("STACK_CLICKHOUSE_EXTERNAL_PASSWORD");
 const clickhouseDatabase = getEnvVariable("STACK_CLICKHOUSE_DATABASE", "analytics");
 
+export function getClickhouseAdminConnectionString() {
+  const url = new URL(clickhouseUrl);
+  url.username = clickhouseAdminUser;
+  url.password = clickhouseAdminPassword;
+  url.pathname = `/${clickhouseDatabase}`;
+  return url.toString();
+}
+
 export function createClickhouseClient(authType: "admin" | "external", timeoutMs?: number) {
   return createClient({
     url: clickhouseUrl,
@@ -53,4 +61,3 @@ export const getQueryTimingStats = async (client: ClickHouseClient, queryId: str
   }>();
   return stats.data[0];
 };
-

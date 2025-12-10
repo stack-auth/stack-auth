@@ -11,6 +11,7 @@ import * as schemaFields from "../schema-fields";
 import { productSchema, userSpecifiedIdSchema, yupBoolean, yupDate, yupMixed, yupNever, yupNumber, yupObject, yupRecord, yupString, yupTuple, yupUnion } from "../schema-fields";
 import { SUPPORTED_CURRENCIES } from "../utils/currency-constants";
 import { StackAssertionError } from "../utils/errors";
+import { getEnvVariable } from "../utils/env";
 import { allProviders } from "../utils/oauth";
 import { DeepFilterUndefined, DeepMerge, DeepRequiredOrUndefined, filterUndefined, get, has, isObjectLike, mapValues, set, typedAssign, typedEntries, typedFromEntries } from "../utils/objects";
 import { Result } from "../utils/results";
@@ -21,6 +22,7 @@ export const configLevels = ['project', 'branch', 'environment', 'organization']
 export type ConfigLevel = typeof configLevels[number];
 const permissionRegex = /^\$?[a-z0-9_:]+$/;
 const customPermissionRegex = /^[a-z0-9_:]+$/;
+export const DEFAULT_CLICKHOUSE_EXTERNAL_DB_ID = "stack-auth-clickhouse";
 declare module "yup" {
   // eslint-disable-next-line @typescript-eslint/consistent-type-definitions
   export interface CustomSchemaMetadata {
@@ -761,6 +763,18 @@ export async function sanitizeEnvironmentConfig<T extends EnvironmentRenderedCon
   };
 }
 
+function getDefaultClickhouseExternalDatabase(): { type: "clickhouse", connectionString: string } {
+  const url = new URL(getEnvVariable("STACK_CLICKHOUSE_URL"));
+  url.username = getEnvVariable("STACK_CLICKHOUSE_ADMIN_USER", "stackframe");
+  url.password = getEnvVariable("STACK_CLICKHOUSE_ADMIN_PASSWORD");
+  url.pathname = `/${getEnvVariable("STACK_CLICKHOUSE_DATABASE", "analytics")}`;
+
+  return {
+    type: "clickhouse",
+    connectionString: url.toString(),
+  };
+}
+
 export async function sanitizeOrganizationConfig(config: OrganizationRenderedConfigBeforeSanitization) {
   assertNormalized(config);
   const prepared = await sanitizeEnvironmentConfig(config);
@@ -791,6 +805,14 @@ export async function sanitizeOrganizationConfig(config: OrganizationRenderedCon
 
   const appSortIndices = new Map(Object.keys(ALL_APPS).map((appId, index) => [appId, index]));
 
+  const externalDatabases = prepared.dbSync.externalDatabases;
+  const filteredExternalDatabases = Object.fromEntries(
+    Object.entries(externalDatabases).filter(([key]) => key !== DEFAULT_CLICKHOUSE_EXTERNAL_DB_ID),
+  );
+  const defaultExternalDatabases: Record<string, { type: "clickhouse", connectionString: string }> = {
+    [DEFAULT_CLICKHOUSE_EXTERNAL_DB_ID]: getDefaultClickhouseExternalDatabase(),
+  };
+
   return {
     ...prepared,
     emails: {
@@ -802,6 +824,13 @@ export async function sanitizeOrganizationConfig(config: OrganizationRenderedCon
     payments: {
       ...prepared.payments,
       products
+    },
+    dbSync: {
+      ...prepared.dbSync,
+      externalDatabases: {
+        ...filteredExternalDatabases,
+        ...defaultExternalDatabases,
+      },
     },
     apps: {
       installed: typedFromEntries(

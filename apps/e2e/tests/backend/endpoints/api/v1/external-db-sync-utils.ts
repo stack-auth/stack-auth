@@ -315,7 +315,7 @@ async function clickhouseRequest(
   return await response.text();
 }
 
-function buildClickhouseConnectionString(databaseName: string) {
+export function buildClickhouseConnectionString(databaseName: string) {
   const url = getClickhouseBaseUrl();
   url.username = CLICKHOUSE_USER;
   url.password = CLICKHOUSE_PASSWORD;
