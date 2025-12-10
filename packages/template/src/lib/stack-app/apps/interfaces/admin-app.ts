@@ -1,5 +1,5 @@
 import { ChatContent } from "@stackframe/stack-shared/dist/interface/admin-interface";
-import type { AdminTransaction } from "@stackframe/stack-shared/dist/interface/crud/transactions";
+import type { Transaction, TransactionType } from "@stackframe/stack-shared/dist/interface/crud/transactions";
 import { InternalSession } from "@stackframe/stack-shared/dist/sessions";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { AsyncStoreProperty, EmailConfig } from "../../common";
@@ -32,10 +32,13 @@ export type StackAdminApp<HasTokenStore extends boolean = boolean, ProjectId ext
   & AsyncStoreProperty<"stripeAccountInfo", [], { account_id: string, charges_enabled: boolean, details_submitted: boolean, payouts_enabled: boolean } | null, false>
   & AsyncStoreProperty<
     "transactions",
-    [
-      { cursor?: string, limit?: number, type?: 'subscription' | 'one_time' | 'item_quantity_change', customerType?: 'user' | 'team' | 'custom' }
-    ],
-    { transactions: AdminTransaction[], nextCursor: string | null },
+    [{
+      cursor?: string,
+      limit?: number,
+      type?: TransactionType,
+      customerType?: 'user' | 'team' | 'custom',
+    }],
+    { transactions: Transaction[], nextCursor: string | null },
     true
   >
   & {
@@ -86,6 +89,7 @@ export type StackAdminApp<HasTokenStore extends boolean = boolean, ProjectId ext
       { teamId: string, itemId: string, quantity: number, expiresAt?: string, description?: string } |
       { customCustomerId: string, itemId: string, quantity: number, expiresAt?: string, description?: string }
     )): Promise<void>,
+    refundTransaction(options: { type: "subscription" | "one-time-purchase", id: string }): Promise<void>,
   }
   & StackServerApp<HasTokenStore, ProjectId>
 );
@@ -94,6 +98,6 @@ export type StackAdminAppConstructor = {
     HasTokenStore extends boolean,
     ProjectId extends string
   >(options: StackAdminAppConstructorOptions<HasTokenStore, ProjectId>): StackAdminApp<HasTokenStore, ProjectId>,
-  new (options: StackAdminAppConstructorOptions<boolean, string>): StackAdminApp<boolean, string>,
+  new(options: StackAdminAppConstructorOptions<boolean, string>): StackAdminApp<boolean, string>,
 };
 export const StackAdminApp: StackAdminAppConstructor = _StackAdminAppImpl;

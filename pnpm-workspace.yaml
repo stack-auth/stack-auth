@@ -3,3 +3,11 @@ packages:
   - apps/*
   - examples/*
   - docs
+
+minimumReleaseAge: 2880
+minimumReleaseAgeExclude:
+  - next
+  - "@next/env"
+  - react
+  - react-dom
+  - "@next/*"

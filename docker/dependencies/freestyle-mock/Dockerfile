@@ -8,8 +8,9 @@ RUN cat <<'EOF' > package.json
 {
   "name": "freestyle-mock",
   "dependencies": {
-    "arktype": "2.1.2",
+    "arktype": "2.1.20",
     "react": "19.1.1",
+    "react-dom": "19.1.1",
     "@react-email/components": "0.1.1"
   }
 }
@@ -26,6 +27,13 @@ import { join } from "path";
 import { spawn } from "child_process";
 
 type LogLine = { message: string; type: string };
+const preinstalledNodeModules = new Map<string, string>([
+  ["arktype", "2.1.20"],
+  ["react-dom", "19.1.1"],
+  ["react", "19.1.1"],
+  ["@react-email/components", "0.1.1"],
+]);
+const baseWorkDir = "/app/tmp";
 
 serve({
   port: 8080,
@@ -38,41 +46,13 @@ serve({
     const { script, config = {} } = await req.json();
 
     // 1. temp dir --------------------------------------------------------------
-    const workDir = join("/tmp", "job-" + crypto.randomUUID());
+    await mkdir(baseWorkDir, { recursive: true });
+    const workDir = join(baseWorkDir, "job-" + crypto.randomUUID());
     await mkdir(workDir, { recursive: true });
 
-    // 2. write user script and runner files -----------------------------------
-    // Write the user script as-is
+    // 2. write user script ----------------------------------------------------
     const scriptFile = join(workDir, "script.ts");
     await writeFile(scriptFile, script);
-    
-    // Write a runner that imports from the user script
-    const runnerScript = `
-const logs: Array<{ message: string; type: string }> = [];
-
-// Capture console output
-const originalConsole = { ...console };
-const logMethods = ['log', 'info', 'warn', 'error', 'debug'];
-logMethods.forEach(method => {
-  (console as any)[method] = (...args: any[]) => {
-    logs.push({ message: args.map(String).join(' '), type: method });
-    (originalConsole as any)[method](...args);
-  };
-});
-
-// Import the user function
-import userFunction from './script.ts';
-
-try {
-  const result = await (typeof userFunction === 'function' ? userFunction() : userFunction);
-  console.log(JSON.stringify({ result, logs }));
-} catch (error) {
-  console.error(JSON.stringify({ error: error.message, logs }));
-  process.exit(1);
-}
-`;
-    const runnerFile = join(workDir, "runner.ts");
-    await writeFile(runnerFile, runnerScript);
 
     // 2.1. create package.json for dependencies -------------------------------
     const packageJson = {
@@ -83,7 +63,12 @@ try {
     await writeFile(packageJsonFile, JSON.stringify(packageJson, null, 2));
 
     // 3. install dependencies -------------------------------------------------
-    if (config.nodeModules && Object.keys(config.nodeModules).length) {
+    const requestedNodeModules = config.nodeModules || {};
+    const needsInstall = Object.entries(requestedNodeModules).some(([name, version]) => {
+      return preinstalledNodeModules.get(name) !== version;
+    });
+
+    if (needsInstall && Object.keys(requestedNodeModules).length) {
       const installProcess = spawn("bun", ["install"], {
         cwd: workDir,
         stdio: "pipe"
@@ -99,67 +84,44 @@ try {
 
     // 4. run user script & capture logs ---------------------------------------
     const logs: LogLine[] = [];
-    
     let result: unknown = null;
+    const logMethods = ['log', 'info', 'warn', 'error', 'debug'] as const;
+
+    const originalConsole = Object.fromEntries(logMethods.map((method) => [method, console[method]]));
+    logMethods.forEach(method => {
+      (console as any)[method] = (...args: any[]) => {
+        logs.push({ message: args.map(String).join(' '), type: method });
+        (originalConsole as any)[method](...args);
+      };
+    });
+
+    const envVars = config.envVars || {};
+    const previousEnv = new Map<string, string | undefined>();
+    Object.entries(envVars).forEach(([key, value]) => {
+      previousEnv.set(key, process.env[key]);
+      process.env[key] = value;
+    });
+
     try {
-      // Set environment variables
-      const env = { ...process.env, ...(config.envVars ?? {}) };
-
-      // ── spawn a new Bun process ──
-      const bunProcess = spawn("bun", ["run", runnerFile], {
-        cwd: workDir,
-        env,
-        stdio: "pipe"
-      });
-
-      let stdout = "";
-      let stderr = "";
-
-      bunProcess.stdout?.on("data", (data) => {
-        stdout += data.toString();
-      });
-
-      bunProcess.stderr?.on("data", (data) => {
-        stderr += data.toString();
-      });
-
-      await new Promise((resolve, reject) => {
-        bunProcess.on("close", (code) => {
-          if (code === 0) resolve(void 0);
-          else reject(new Error(stderr || `Process exited with code ${code}`));
-        });
-      });
-
-      if (stderr) {
-        throw new Error(stderr);
-      }
-
-      // Parse the wrapped script output
-      try {
-        const lines = stdout.trim().split('\n');
-        const lastLine = lines[lines.length - 1];
-        const parsed = JSON.parse(lastLine);
-        
-        if (parsed && typeof parsed === "object") {
-          if ("error" in parsed) {
-            throw new Error(parsed.error);
-          }
-          result = parsed.result;
-          logs.push(...(parsed.logs || []));
-        } else {
-          result = parsed;
-        }
-      } catch (parseError) {
-        // If JSON parsing fails, treat stdout as the result
-        result = stdout.trim();
-      }
-
+      const userModule = await import(`file://${scriptFile}`);
+      const userFunction = (userModule as any).default ?? userModule;
+      result = await (typeof userFunction === 'function' ? userFunction() : userFunction);
     } catch (err: any) {
-      return new Response(JSON.stringify({ error: err.message, logs }), {
+      return new Response(JSON.stringify({ error: err.message || String(err), logs }), {
         status: 500,
         headers: { "Content-Type": "application/json" },
       });
     } finally {
+      previousEnv.forEach((value, key) => {
+        if (value === undefined) {
+          delete process.env[key];
+        } else {
+          process.env[key] = value;
+        }
+      });
+      logMethods.forEach(method => {
+        (console as any)[method] = originalConsole[method];
+      });
       try { await rm(workDir, { recursive: true }); } catch { /* ignore */ }
     }
 

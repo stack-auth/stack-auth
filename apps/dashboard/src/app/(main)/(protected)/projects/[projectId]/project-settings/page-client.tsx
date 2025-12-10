@@ -2,12 +2,12 @@
 import { InputField } from "@/components/form-fields";
 import { Link, StyledLink } from "@/components/link";
 import { LogoUpload } from "@/components/logo-upload";
-import { FormSettingCard, SettingCard, SettingSwitch, SettingText } from "@/components/settings";
+import { FormSettingCard, SettingCard, SettingCopyableText, SettingSwitch } from "@/components/settings";
 import { getPublicEnvVar } from "@/lib/env";
 import { TeamSwitcher, useUser } from "@stackframe/stack";
 import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
-import { ActionDialog, Alert, Avatar, AvatarFallback, AvatarImage, Button, SimpleTooltip, Typography } from "@stackframe/stack-ui";
-import { useState } from "react";
+import { ActionDialog, Alert, Avatar, AvatarFallback, AvatarImage, Button, SimpleTooltip, Typography, useToast } from "@stackframe/stack-ui";
+import { useCallback, useMemo, useState } from "react";
 import * as yup from "yup";
 import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";
@@ -17,6 +17,32 @@ const projectInformationSchema = yup.object().shape({
   description: yup.string(),
 });
 
+function TeamMemberItem({ member }: { member: any }) {
+  const displayName = member.teamProfile.displayName?.trim() || "Name not set";
+  const avatarFallback = displayName === "Name not set"
+    ? "?"
+    : displayName.charAt(0).toUpperCase();
+
+  return (
+    <li className="flex items-center gap-3 p-3">
+      <Avatar className="h-10 w-10">
+        <AvatarImage src={member.teamProfile.profileImageUrl || undefined} alt={displayName} />
+        <AvatarFallback>{avatarFallback}</AvatarFallback>
+      </Avatar>
+      <div className="flex flex-col">
+        <Typography className="font-medium">
+          {displayName}
+        </Typography>
+        {displayName === "Name not set" && (
+          <Typography variant="secondary" type="footnote">
+            Display name not set
+          </Typography>
+        )}
+      </div>
+    </li>
+  );
+}
+
 export default function PageClient() {
   const stackAdminApp = useAdminApp();
   const project = stackAdminApp.useProject();
@@ -25,65 +51,128 @@ export default function PageClient() {
   const teams = user.useTeams();
   const [selectedTeamId, setSelectedTeamId] = useState<string | null>(null);
   const [isTransferring, setIsTransferring] = useState(false);
-  const baseApiUrl = getPublicEnvVar('NEXT_PUBLIC_STACK_API_URL');
-  const jwksUrl = `${baseApiUrl}/api/v1/projects/${project.id}/.well-known/jwks.json`;
-  const anonymousJwksUrl = `${jwksUrl}?include_anonymous=true`;
+  const { toast } = useToast();
 
-  const renderInfoLabel = (label: string, tooltip: string) => (
+  const baseApiUrl = getPublicEnvVar('NEXT_PUBLIC_STACK_API_URL');
+
+  // Memoize computed URLs
+  const jwksUrl = useMemo(
+    () => `${baseApiUrl}/api/v1/projects/${project.id}/.well-known/jwks.json`,
+    [baseApiUrl, project.id]
+  );
+
+  const anonymousJwksUrl = useMemo(
+    () => `${jwksUrl}?include_anonymous=true`,
+    [jwksUrl]
+  );
+
+  // Memoize renderInfoLabel callback
+  const renderInfoLabel = useCallback((label: string, tooltip: string) => (
     <div className="flex items-center gap-2">
       <span>{label}</span>
       <SimpleTooltip type="info" tooltip={tooltip}>
         <span className="sr-only">{`More info about ${label}`}</span>
       </SimpleTooltip>
     </div>
-  );
+  ), []);
 
-  // Get current owner team
-  const currentOwnerTeam = teams.find(team => team.id === project.ownerTeamId) ?? throwErr(`Owner team of project ${project.id} not found in user's teams?`, { projectId: project.id, teams });
+  // Memoize current owner team lookup
+  const currentOwnerTeam = useMemo(
+    () => teams.find(team => team.id === project.ownerTeamId) ?? throwErr(`Owner team of project ${project.id} not found in user's teams?`, { projectId: project.id, teams }),
+    [teams, project.ownerTeamId, project.id]
+  );
 
   // Check if user has team_admin permission for the current team
   const hasAdminPermissionForCurrentTeam = user.usePermission(currentOwnerTeam, "team_admin");
 
-  // Check if user has team_admin permission for teams
-  // We'll check permissions in the backend, but for UI we can check if user is in the team
-  const selectedTeam = teams.find(team => team.id === selectedTeamId);
-  const currentTeamMembers = currentOwnerTeam.useUsers();
-  const teamSettingsPath = `/projects?team_settings=${encodeURIComponent(currentOwnerTeam.id)}`;
+  // Memoize selected team lookup
+  const selectedTeam = useMemo(
+    () => teams.find(team => team.id === selectedTeamId),
+    [teams, selectedTeamId]
+  );
 
-  const handleTransfer = async () => {
+  const currentTeamMembers = currentOwnerTeam.useUsers();
+
+  // Memoize team settings path
+  const teamSettingsPath = useMemo(
+    () => `/projects?team_settings=${encodeURIComponent(currentOwnerTeam.id)}`,
+    [currentOwnerTeam.id]
+  );
+
+  const handleTransfer = useCallback(async () => {
     if (!selectedTeamId || selectedTeamId === project.ownerTeamId) return;
+    if (isTransferring) return;
 
     setIsTransferring(true);
     try {
       await user.transferProject(project.id, selectedTeamId);
 
+      toast({
+        title: 'Project transferred successfully',
+        variant: 'success'
+      });
+
       // Reload the page to reflect changes
       // we don't actually need this, but it's a nicer UX as it clearly indicates to the user that a "big" change was made
       window.location.reload();
-    } catch (error) {
-      console.error('Failed to transfer project:', error);
-      alert(`Failed to transfer project: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setIsTransferring(false);
     }
-  };
+  }, [selectedTeamId, project.ownerTeamId, project.id, user, toast, isTransferring]);
+
+  // Memoize logo update callbacks
+  const handleLogoChange = useCallback(async (logoUrl: string | null) => {
+    await project.update({ logoUrl });
+  }, [project]);
+
+  const handleFullLogoChange = useCallback(async (logoFullUrl: string | null) => {
+    await project.update({ logoFullUrl });
+  }, [project]);
+
+  // Memoize production mode change callback
+  const handleProductionModeChange = useCallback(async (checked: boolean) => {
+    await project.update({ isProductionMode: checked });
+  }, [project]);
+
+  // Memoize team switcher change callback
+  const handleTeamSwitcherChange = useCallback(async (team: any) => {
+    setSelectedTeamId(team.id);
+  }, []);
+
+  // Memoize project details submit callback
+  const handleProjectDetailsSubmit = useCallback(async (values: any) => {
+    await project.update(values);
+  }, [project]);
+
+  // Memoize project delete callback
+  const handleProjectDelete = useCallback(async () => {
+    await project.delete();
+    await stackAdminApp.redirectToHome();
+  }, [project, stackAdminApp]);
 
   return (
     <PageLayout title="Project Settings" description="Manage your project">
       <SettingCard
         title="Project Information"
       >
-        <SettingText label="Project ID">
-          {project.id}
-        </SettingText>
+        <SettingCopyableText
+          label="Project ID"
+          value={project.id}
+        />
 
-        <SettingText label={renderInfoLabel("JWKS URL", "Use this url to allow other services to verify Stack Auth-issued sessions for this project.")}>
-          {jwksUrl}
-        </SettingText>
+        <span className="text-xs text-muted-foreground">
+          NOTE: Looking for project API keys? Head over to the <StyledLink href={`/projects/${project.id}/project-keys`}>Project Keys</StyledLink> page.
+        </span>
 
-        <SettingText label={renderInfoLabel("Anonymous JWKS URL", "Includes keys for anonymous sessions when you treat them as authenticated users.")}>
-          {anonymousJwksUrl}
-        </SettingText>
+        <SettingCopyableText
+          label={renderInfoLabel("JWKS URL", "Use this url to allow other services to verify Stack Auth-issued sessions for this project.")}
+          value={jwksUrl}
+        />
+
+        <SettingCopyableText
+          label={renderInfoLabel("Anonymous JWKS URL", "Includes keys for anonymous sessions when you treat them as authenticated users.")}
+          value={anonymousJwksUrl}
+        />
       </SettingCard>
       <FormSettingCard
         title="Project Details"
@@ -92,9 +181,7 @@ export default function PageClient() {
           description: project.description || undefined,
         }}
         formSchema={projectInformationSchema}
-        onSubmit={async (values) => {
-          await project.update(values);
-        }}
+        onSubmit={handleProjectDetailsSubmit}
         render={(form) => (
           <>
             <InputField
@@ -121,20 +208,36 @@ export default function PageClient() {
         <LogoUpload
           label="Logo"
           value={project.logoUrl}
-          onValueChange={async (logoUrl) => {
-            await project.update({ logoUrl });
-          }}
+          onValueChange={handleLogoChange}
           description="Upload a logo for your project. Recommended size: 200x200px"
           type="logo"
         />
 
         <LogoUpload
           label="Full Logo"
-          value={project.fullLogoUrl}
-          onValueChange={async (fullLogoUrl) => {
-            await project.update({ fullLogoUrl });
-          }}
+          value={project.logoFullUrl}
+          onValueChange={handleFullLogoChange}
           description="Upload a full logo with text. Recommended size: At least 100px tall, landscape format"
+          type="full-logo"
+        />
+
+        <LogoUpload
+          label="Logo (Dark Mode)"
+          value={project.logoDarkModeUrl}
+          onValueChange={async (logoDarkModeUrl) => {
+            await project.update({ logoDarkModeUrl });
+          }}
+          description="Upload a dark mode version of your logo. Recommended size: 200x200px"
+          type="logo"
+        />
+
+        <LogoUpload
+          label="Full Logo (Dark Mode)"
+          value={project.logoFullDarkModeUrl}
+          onValueChange={async (logoFullDarkModeUrl) => {
+            await project.update({ logoFullDarkModeUrl });
+          }}
+          description="Upload a dark mode version of your full logo. Recommended size: At least 100px tall, landscape format"
           type="full-logo"
         />
 
@@ -177,30 +280,9 @@ export default function PageClient() {
             ) : (
               <div className="rounded-lg border border-border bg-card">
                 <ul className="divide-y divide-border/60">
-                  {currentTeamMembers.map((member) => {
-                    const displayName = member.teamProfile.displayName?.trim() || "Name not set";
-                    const avatarFallback = displayName === "Name not set"
-                      ? "?"
-                      : displayName.charAt(0).toUpperCase();
-                    return (
-                      <li key={member.id} className="flex items-center gap-3 p-3">
-                        <Avatar className="h-10 w-10">
-                          <AvatarImage src={member.teamProfile.profileImageUrl || undefined} alt={displayName} />
-                          <AvatarFallback>{avatarFallback}</AvatarFallback>
-                        </Avatar>
-                        <div className="flex flex-col">
-                          <Typography className="font-medium">
-                            {displayName}
-                          </Typography>
-                          {displayName === "Name not set" && (
-                            <Typography variant="secondary" type="footnote">
-                              Display name not set
-                            </Typography>
-                          )}
-                        </div>
-                      </li>
-                    );
-                  })}
+                  {currentTeamMembers.map((member) => (
+                    <TeamMemberItem key={member.id} member={member} />
+                  ))}
                 </ul>
               </div>
             )}
@@ -218,16 +300,12 @@ export default function PageClient() {
                 {`You need to be a team admin of "${currentOwnerTeam.displayName || 'the current team'}" to transfer this project.`}
               </Alert>
             ) : (
-              <div className="flex flex-col gap-3 sm:flex-row">
-                <div className="sm:w-full sm:max-w-sm">
-                  <TeamSwitcher
-                    triggerClassName="w-full"
-                    teamId={selectedTeamId || ""}
-                    onChange={async (team) => {
-                      setSelectedTeamId(team.id);
-                    }}
-                  />
-                </div>
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:gap-2">
+                <TeamSwitcher
+                  triggerClassName="w-full sm:w-96"
+                  teamId={selectedTeamId || ""}
+                  onChange={handleTeamSwitcherChange}
+                />
                 <ActionDialog
                   trigger={
                     <Button
@@ -249,7 +327,7 @@ export default function PageClient() {
                   cancelButton
                 >
                   <Typography>
-                    {`Are you sure you want to transfer "${project.displayName}" to ${teams.find(t => t.id === selectedTeamId)?.displayName}?`}
+                    {`Are you sure you want to transfer "${project.displayName}" to ${selectedTeam?.displayName}?`}
                   </Typography>
                   <Typography className="mt-2" variant="secondary">
                     This will change the ownership of the project. Only team admins of the new team will be able to manage project settings.
@@ -262,43 +340,6 @@ export default function PageClient() {
       </SettingCard>
 
       <SettingCard
-        title="API Key Settings"
-        description="Configure which types of API keys are allowed in your project."
-      >
-        <SettingSwitch
-          label="Allow User API Keys"
-          checked={project.config.allowUserApiKeys}
-          onCheckedChange={async (checked) => {
-            await project.update({
-              config: {
-                allowUserApiKeys: checked
-              }
-            });
-          }}
-        />
-        <Typography variant="secondary" type="footnote">
-          Enable to allow users to create API keys for their accounts. Enables user-api-keys backend routes.
-        </Typography>
-
-        <SettingSwitch
-          label="Allow Team API Keys"
-          checked={project.config.allowTeamApiKeys}
-          onCheckedChange={async (checked) => {
-            await project.update({
-              config: {
-                allowTeamApiKeys: checked
-              }
-            });
-          }}
-        />
-        <Typography variant="secondary" type="footnote">
-          Enable to allow users to create API keys for their teams. Enables team-api-keys backend routes.
-        </Typography>
-
-
-      </SettingCard>
-
-      <SettingCard
         title="Production mode"
         description="Production mode disallows certain configuration options that are useful for development but deemed unsafe for production usage. To prevent accidental misconfigurations, it is strongly recommended to enable production mode on your production environments."
       >
@@ -308,9 +349,7 @@ export default function PageClient() {
           disabled={
             !project.isProductionMode && productionModeErrors.length > 0
           }
-          onCheckedChange={async (checked) => {
-            await project.update({ isProductionMode: checked });
-          }}
+          onCheckedChange={handleProductionModeChange}
         />
 
         {productionModeErrors.length === 0 ? (
@@ -353,10 +392,7 @@ export default function PageClient() {
               danger
               okButton={{
                 label: "Delete Project",
-                onClick: async () => {
-                  await project.delete();
-                  await stackAdminApp.redirectToHome();
-                }
+                onClick: handleProjectDelete
               }}
               cancelButton
               confirmText="I understand this action is IRREVERSIBLE and will delete ALL associated data."

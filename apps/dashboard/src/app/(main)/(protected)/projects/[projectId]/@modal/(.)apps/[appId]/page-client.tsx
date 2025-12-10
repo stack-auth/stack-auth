@@ -25,7 +25,7 @@ export default function AppDetailsModalPageClient({ appId }: { appId: AppId }) {
 
   return (
     <Dialog open={true} onOpenChange={(open) => !open && router.back()} modal>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden p-0" noCloseButton>
+      <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden p-0 flex flex-col" noCloseButton>
         <AppStoreEntry
           appId={appId}
           onEnable={handleEnable}

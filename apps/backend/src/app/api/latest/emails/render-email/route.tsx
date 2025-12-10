@@ -75,6 +75,14 @@ export const POST = createSmartRouteHandler({
       {
         project: { displayName: tenancy.project.display_name },
         previewMode: true,
+        themeProps: {
+          projectLogos: {
+            logoUrl: tenancy.project.logo_url ?? undefined,
+            logoFullUrl: tenancy.project.logo_full_url ?? undefined,
+            logoDarkModeUrl: tenancy.project.logo_dark_mode_url ?? undefined,
+            logoFullDarkModeUrl: tenancy.project.logo_full_dark_mode_url ?? undefined,
+          },
+        },
       },
     );
     if (result.status === "error") {

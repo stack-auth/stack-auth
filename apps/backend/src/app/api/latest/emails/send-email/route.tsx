@@ -31,6 +31,7 @@ export const POST = createSmartRouteHandler({
   metadata: {
     summary: "Send email",
     description: "Send an email to a list of users. The content field should contain either {html} for HTML emails, {template_id, variables} for template-based emails, or {draft_id} for a draft email.",
+    tags: ["Emails"],
   },
   request: yupObject({
     auth: yupObject({
@@ -195,6 +196,14 @@ export const POST = createSmartRouteHandler({
         project: { displayName: auth.tenancy.project.display_name },
         variables,
         unsubscribeLink: unsubLinks.get(user.projectUserId),
+        themeProps: {
+          projectLogos: {
+            logoUrl: auth.tenancy.project.logo_url ?? undefined,
+            logoFullUrl: auth.tenancy.project.logo_full_url ?? undefined,
+            logoDarkModeUrl: auth.tenancy.project.logo_dark_mode_url ?? undefined,
+            logoFullDarkModeUrl: auth.tenancy.project.logo_full_dark_mode_url ?? undefined,
+          },
+        },
       }));
 
       const inputChunks = getChunks(finalInputs, BATCH_SIZE);

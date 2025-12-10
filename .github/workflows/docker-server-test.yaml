@@ -15,7 +15,7 @@ jobs:
   docker:
     runs-on: ubicloud-standard-8
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v6
 
       - name: Setup postgres
         run: |

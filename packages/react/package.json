@@ -1,7 +1,7 @@
 {
   "//": "THIS FILE IS AUTO-GENERATED FROM TEMPLATE. DO NOT EDIT IT DIRECTLY",
   "name": "@stackframe/react",
-  "version": "2.8.52",
+  "version": "2.8.56",
   "sideEffects": false,
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -22,6 +22,15 @@
       },
       "require": {
         "default": "./dist/integrations/convex/component/convex.config.js"
+      }
+    },
+    "./convex-auth.config": {
+      "types": "./dist/integrations/convex.d.ts",
+      "import": {
+        "default": "./dist/esm/integrations/convex.js"
+      },
+      "require": {
+        "default": "./dist/integrations/convex.js"
       }
     }
   },

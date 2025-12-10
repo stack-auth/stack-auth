@@ -73,7 +73,7 @@ services:
     environment:
       PG_META_PORT: 8080
       PG_META_DB_HOST: db
-      PG_META_DB_PORT: 8128
+      PG_META_DB_PORT: 5432
       PG_META_DB_NAME: stackframe
       PG_META_DB_USER: postgres
       PG_META_DB_PASSWORD: PASSWORD-PLACEHOLDER--uqfEC1hmmv
@@ -204,22 +204,6 @@ services:
     environment:
       HOST_ON_HOST: host.docker.internal
 
-  # ================= MCPJam Inspector =================
-
-  mcpjam-inspector:
-    image: node:20-alpine
-    ports:
-      - "${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}26:3001"
-    command: >
-      sh -c "echo '{\"mcpServers\":{\"local-stack-auth-docs\":{\"url\":\"http://host.docker.internal:${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}04/api/internal/mcp\"}}}' > /app/mcp.json && npx -y @mcpjam/inspector@latest --port 3001 --config /app/mcp.json"
-    working_dir: /app
-    volumes:
-      - mcpjam-inspector-data:/root
-    extra_hosts:
-      - "host.docker.internal:host-gateway"  # noop on Docker Desktop/Orbstack, enables host.docker.internal on Linux
-    environment:
-      HOST_ON_HOST: host.docker.internal
-
 
 # ================= volumes =================
 
@@ -231,7 +215,6 @@ volumes:
   s3mock-data:
   deno-cache:
   localstack-data:
-  mcpjam-inspector-data:
 
 # ================= configs =================
 

@@ -13,7 +13,7 @@ import { TeamsCrud } from "@stackframe/stack-shared/dist/interface/crud/teams";
 import { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
 import { InternalSession } from "@stackframe/stack-shared/dist/sessions";
 import type { AsyncCache } from "@stackframe/stack-shared/dist/utils/caches";
-import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { captureError, StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { ProviderType } from "@stackframe/stack-shared/dist/utils/oauth";
 import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
 import { suspend } from "@stackframe/stack-shared/dist/utils/react";
@@ -35,6 +35,7 @@ import { ProjectCurrentServerUser, ServerOAuthProvider, ServerUser, ServerUserCr
 import { StackServerAppConstructorOptions } from "../interfaces/server-app";
 import { _StackClientAppImplIncomplete } from "./client-app-impl";
 import { clientVersion, createCache, createCacheBySession, getBaseUrl, getDefaultExtraRequestHeaders, getDefaultProjectId, getDefaultPublishableClientKey, getDefaultSecretServerKey, resolveConstructorOptions } from "./common";
+import { startRegistration, WebAuthnError } from "@simplewebauthn/browser";
 
 import { useAsyncCache } from "./common"; // THIS_LINE_PLATFORM react-like
 
@@ -731,15 +732,12 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
 
         let attResp;
         try {
-          const { startRegistration } = await import("@simplewebauthn/browser");
           attResp = await startRegistration({ optionsJSON: options_json });
         } catch (error: any) {
-          const { WebAuthnError } = await import("@simplewebauthn/browser");
           if (error instanceof WebAuthnError) {
             return Result.error(new KnownErrors.PasskeyWebAuthnError(error.message, error.name));
           } else {
             // This should never happen
-            const { captureError } = await import("@stackframe/stack-shared/dist/utils/errors");
             captureError("passkey-registration-failed", error);
             return Result.error(new KnownErrors.PasskeyRegistrationFailed("Failed to start passkey registration due to unknown error"));
           }
