@@ -20,6 +20,8 @@ type ExternalSyncRow = {
   server_metadata?: unknown,
   sequence_id?: unknown,
   is_deleted?: unknown,
+  project_id?: unknown,
+  branch_id?: unknown,
   [key: string]: unknown,
 };
 
@@ -165,6 +167,12 @@ async function pushRowsToClickhouse(
       throw new StackAssertionError(`Invalid signed_up_at value for table "${tableName}"`);
     }
 
+    const projectId = rest.project_id;
+    const branchId = rest.branch_id;
+    if (typeof projectId !== "string" || typeof branchId !== "string") {
+      throw new StackAssertionError(`Missing project_id or branch_id for table "${tableName}"`);
+    }
+
     const toJsonString = (value: unknown) =>
       typeof value === "string" ? value : JSON.stringify(value ?? {});
 
@@ -179,6 +187,8 @@ async function pushRowsToClickhouse(
       client_read_only_metadata: toJsonString(rest.client_read_only_metadata),
       server_metadata: toJsonString(rest.server_metadata),
       is_anonymous: Boolean(rest.is_anonymous),
+      project_id: projectId,
+      branch_id: branchId,
       sequence_id: Number(rest.sequence_id ?? 0),
       is_deleted: Boolean(rest.is_deleted),
     };
@@ -188,6 +198,9 @@ async function pushRowsToClickhouse(
     table: tableName,
     values: rowsToInsert,
     format: "JSONEachRow",
+    clickhouse_settings: {
+      async_insert: 1,
+    }
   });
 }
 

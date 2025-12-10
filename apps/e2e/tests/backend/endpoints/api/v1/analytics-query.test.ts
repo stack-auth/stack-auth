@@ -1,5 +1,43 @@
 import { it } from "../../../../helpers";
-import { Auth, Project, niceBackendFetch } from "../../../backend-helpers";
+import { Auth, Project, backendContext, bumpEmailAddress, niceBackendFetch } from "../../../backend-helpers";
+
+async function waitForAnalyticsUser(
+  email: string,
+  expectedProjectId: string,
+  expectedBranchId: string,
+  expect: typeof import("vitest").expect,
+  { timeoutMs = 120_000, intervalMs = 500 } = {},
+) {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    const response = await niceBackendFetch("/api/v1/analytics/query", {
+      method: "POST",
+      accessType: "server",
+      body: {
+        query: `
+          SELECT primary_email, project_id, branch_id
+          FROM users FINAL
+          WHERE primary_email = {email:String}
+          LIMIT 1
+        `,
+        params: { email },
+      },
+    });
+
+    if (response.status === 200 && response.body.result.length > 0) {
+      expect(response.body.result[0]).toEqual({
+        primary_email: email,
+        project_id: expectedProjectId,
+        branch_id: expectedBranchId,
+      });
+      return;
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, intervalMs));
+  }
+
+  throw new Error(`Timed out waiting for analytics.users row for ${email}`);
+}
 
 it("can execute a basic query with server access", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
@@ -273,6 +311,100 @@ it("sets SQL_project_id and SQL_branch_id settings in query", async ({ expect })
       "headers": Headers { <some fields may have been hidden> },
     }
   `);
+});
+
+it("scopes analytics.users rows by project and branch", async ({ expect }) => {
+  const fetchSettings = async () => {
+    const settingsResponse = await niceBackendFetch("/api/v1/analytics/query", {
+      method: "POST",
+      accessType: "server",
+      body: {
+        query: "SELECT getSetting('SQL_project_id') AS project_id, getSetting('SQL_branch_id') AS branch_id",
+      },
+    });
+
+    expect(settingsResponse.status).toBe(200);
+    const [row] = settingsResponse.body.result as { project_id: string, branch_id: string }[];
+    return row;
+  };
+
+  const projectA = await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+  await bumpEmailAddress();
+  await Auth.Otp.signIn();
+  const emailA = backendContext.value.mailbox.emailAddress;
+  const settingsA = await fetchSettings();
+  await waitForAnalyticsUser(emailA, settingsA.project_id, settingsA.branch_id, expect);
+
+  const projectB = await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+  await bumpEmailAddress();
+  await Auth.Otp.signIn();
+  const emailB = backendContext.value.mailbox.emailAddress;
+  const settingsB = await fetchSettings();
+  await waitForAnalyticsUser(emailB, settingsB.project_id, settingsB.branch_id, expect);
+
+  backendContext.set({
+    projectKeys: { projectId: projectA.projectId, adminAccessToken: projectA.adminAccessToken },
+    currentBranchId: settingsA.branch_id,
+    userAuth: null,
+  });
+
+  const projectAResponse = await niceBackendFetch("/api/v1/analytics/query", {
+    method: "POST",
+    accessType: "server",
+    body: {
+      query: `
+        SELECT primary_email, project_id, branch_id
+        FROM users FINAL
+        WHERE primary_email IN ({email_a:String}, {email_b:String})
+        ORDER BY primary_email
+      `,
+      params: {
+        email_a: emailA,
+        email_b: emailB,
+      },
+    },
+  });
+
+  expect(projectAResponse.status).toBe(200);
+  expect(projectAResponse.body.result).toEqual([
+    {
+      branch_id: settingsA.branch_id,
+      primary_email: emailA,
+      project_id: settingsA.project_id,
+    },
+  ]);
+
+  backendContext.set({
+    projectKeys: { projectId: projectB.projectId, adminAccessToken: projectB.adminAccessToken },
+    currentBranchId: settingsB.branch_id,
+    userAuth: null,
+  });
+
+  const projectBResponse = await niceBackendFetch("/api/v1/analytics/query", {
+    method: "POST",
+    accessType: "server",
+    body: {
+      query: `
+        SELECT primary_email, project_id, branch_id
+        FROM users FINAL
+        WHERE primary_email IN ({email_a:String}, {email_b:String})
+        ORDER BY primary_email
+      `,
+      params: {
+        email_a: emailA,
+        email_b: emailB,
+      },
+    },
+  });
+
+  expect(projectBResponse.status).toBe(200);
+  expect(projectBResponse.body.result).toEqual([
+    {
+      branch_id: settingsB.branch_id,
+      primary_email: emailB,
+      project_id: settingsB.project_id,
+    },
+  ]);
 });
 
 

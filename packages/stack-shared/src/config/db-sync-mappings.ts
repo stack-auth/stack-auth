@@ -14,10 +14,15 @@ export const DEFAULT_DB_SYNC_MAPPINGS = {
           "client_metadata" jsonb NOT NULL DEFAULT '{}'::jsonb,
           "client_read_only_metadata" jsonb NOT NULL DEFAULT '{}'::jsonb,
           "server_metadata" jsonb NOT NULL DEFAULT '{}'::jsonb,
-          "is_anonymous" boolean NOT NULL DEFAULT false
+          "is_anonymous" boolean NOT NULL DEFAULT false,
+          "project_id" text,
+          "branch_id" text
         );
         REVOKE ALL ON "users" FROM PUBLIC;
         GRANT SELECT ON "users" TO PUBLIC;
+
+        ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "project_id" text;
+        ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "branch_id" text;
 
         CREATE TABLE IF NOT EXISTS "_stack_sync_metadata" (
           "mapping_name" text PRIMARY KEY NOT NULL,
@@ -37,12 +42,15 @@ export const DEFAULT_DB_SYNC_MAPPINGS = {
           client_read_only_metadata String,
           server_metadata String,
           is_anonymous Bool,
+          project_id String,
+          branch_id String,
           sequence_id Int64,
           is_deleted Bool
         )
         ENGINE = ReplacingMergeTree(sequence_id)
-        ORDER BY (id)
+        ORDER BY (project_id, branch_id, id)
         SETTINGS allow_nullable_key = 1;
+
 
         CREATE TABLE IF NOT EXISTS _stack_sync_metadata (
           mapping_name String,
@@ -86,6 +94,8 @@ export const DEFAULT_DB_SYNC_MAPPINGS = {
           COALESCE("ProjectUser"."clientReadOnlyMetadata", '{}'::jsonb) AS "client_read_only_metadata",
           COALESCE("ProjectUser"."serverMetadata", '{}'::jsonb) AS "server_metadata",
           "ProjectUser"."isAnonymous" AS "is_anonymous",
+          "ProjectUser"."mirroredProjectId" AS "project_id",
+          "ProjectUser"."mirroredBranchId" AS "branch_id",
           "ProjectUser"."sequenceId" AS "sequence_id",
           "ProjectUser"."tenancyId",
           false AS "is_deleted"
@@ -105,6 +115,18 @@ export const DEFAULT_DB_SYNC_MAPPINGS = {
           '{}'::jsonb AS "client_read_only_metadata",
           '{}'::jsonb AS "server_metadata",
           false AS "is_anonymous",
+          (
+            SELECT "Tenancy"."projectId"
+            FROM "Tenancy"
+            WHERE "Tenancy"."id" = "DeletedRow"."tenancyId"
+            LIMIT 1
+          ) AS "project_id",
+          (
+            SELECT "Tenancy"."branchId"
+            FROM "Tenancy"
+            WHERE "Tenancy"."id" = "DeletedRow"."tenancyId"
+            LIMIT 1
+          ) AS "branch_id",
           "DeletedRow"."sequenceId" AS "sequence_id",
           "DeletedRow"."tenancyId",
           true AS "is_deleted"
@@ -133,9 +155,11 @@ export const DEFAULT_DB_SYNC_MAPPINGS = {
             $8::jsonb AS "client_read_only_metadata",
             $9::jsonb AS "server_metadata",
             $10::boolean AS "is_anonymous",
-            $11::bigint AS "sequence_id",
-            $12::boolean AS "is_deleted",
-            $13::text AS "mapping_name"
+            $11::text AS "project_id",
+            $12::text AS "branch_id",
+            $13::bigint AS "sequence_id",
+            $14::boolean AS "is_deleted",
+            $15::text AS "mapping_name"
         ),
         deleted AS (
           DELETE FROM "users" u
@@ -154,7 +178,9 @@ export const DEFAULT_DB_SYNC_MAPPINGS = {
             "client_metadata",
             "client_read_only_metadata",
             "server_metadata",
-            "is_anonymous"
+            "is_anonymous",
+            "project_id",
+            "branch_id"
           )
           SELECT
             p."id",
@@ -166,7 +192,9 @@ export const DEFAULT_DB_SYNC_MAPPINGS = {
             p."client_metadata",
             p."client_read_only_metadata",
             p."server_metadata",
-            p."is_anonymous"
+            p."is_anonymous",
+            p."project_id",
+            p."branch_id"
           FROM params p
           WHERE p."is_deleted" = false
           ON CONFLICT ("id") DO UPDATE SET
@@ -178,7 +206,9 @@ export const DEFAULT_DB_SYNC_MAPPINGS = {
             "client_metadata" = EXCLUDED."client_metadata",
             "client_read_only_metadata" = EXCLUDED."client_read_only_metadata",
             "server_metadata" = EXCLUDED."server_metadata",
-            "is_anonymous" = EXCLUDED."is_anonymous"
+            "is_anonymous" = EXCLUDED."is_anonymous",
+            "project_id" = EXCLUDED."project_id",
+            "branch_id" = EXCLUDED."branch_id"
           RETURNING 1
         )
         INSERT INTO "_stack_sync_metadata" ("mapping_name", "last_synced_sequence_id", "updated_at")
