@@ -77,12 +77,6 @@ const bottomItems: BottomItem[] = [
     regex: /^\/projects\/[^\/]+\/apps(\/.*)?$/,
   },
   {
-    name: 'Query Analytics',
-    href: '/query-analytics',
-    icon: Activity,
-    regex: /^\/projects\/[^\/]+\/query-analytics$/,
-  },
-  {
     name: 'Project Keys',
     href: '/project-keys',
     icon: KeyRound,
