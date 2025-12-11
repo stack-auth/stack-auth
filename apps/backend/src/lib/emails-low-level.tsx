@@ -72,7 +72,7 @@ async function _lowLevelSendEmailWithoutRetries(options: LowLevelSendEmailOption
               const res = await fetch(`https://api.emailable.com/v1/verify?email=${encodeURIComponent(to)}&api_key=${emailableApiKey}`);
               if (res.status === 249) {
                 const text = await res.text();
-                console.log('Emailable is taking longer than expected, retrying...', text, { to: options.to });
+                console.log('Emailable is taking longer than expected, retrying...', text, { to });
                 return Result.error(new Error("Emailable API returned a 249 error for " + to + ". This means it takes some more time to verify the email address. Response body: " + text));
               }
               return Result.ok(res);
