@@ -76,7 +76,6 @@ export const signInVerificationCodeHandler = createVerificationCodeHandler({
   data: yupObject({}),
   method: yupObject({
     email: emailSchema.defined(),
-    type: yupString().oneOf(["legacy", "standard"]).defined(),
   }),
   response: yupObject({
     statusCode: yupNumber().oneOf([200]).defined(),
@@ -95,7 +94,6 @@ export const signInVerificationCodeHandler = createVerificationCodeHandler({
         otp: codeObj.code.slice(0, 6).toUpperCase(),
       },
       shouldSkipDeliverabilityCheck: true,
-      version: createOptions.method.type === "legacy" ? 1 : undefined,
     });
 
     return {
