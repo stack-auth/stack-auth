@@ -71,6 +71,13 @@ describe("email queue edge cases", () => {
     expect(createDraftResponse.status).toBe(200);
     const draftId = createDraftResponse.body.id;
 
+    // Since we're essentially testing a race condition here, make sure that the DELETE endpoint is already compiled by the time we call it, so the race condition is consistent
+    const deleteEndpointResponse = await niceBackendFetch(`/api/v1/users/01234567-89ab-cdef-0123-456789abcdef`, {
+      method: "DELETE",
+      accessType: "server",
+    });
+    expect(deleteEndpointResponse.status).toBe(400);
+
     // Send an email using the slow-rendering template
     const sendResponse = await niceBackendFetch("/api/v1/emails/send-email", {
       method: "POST",
@@ -129,6 +136,13 @@ describe("email queue edge cases", () => {
     expect(createDraftResponse.status).toBe(200);
     const draftId = createDraftResponse.body.id;
 
+    // Since we're essentially testing a race condition here, make sure that the DELETE endpoint is already compiled by the time we call it, so the race condition is consistent
+    const deleteEndpointResponse = await niceBackendFetch(`/api/v1/contact-channels/01234567-89ab-cdef-0123-456789abcdef/01234567-89ab-cdef-0123-456789abcdef`, {
+      method: "DELETE",
+      accessType: "server",
+    });
+    expect(deleteEndpointResponse.status).toBe(400);
+
     // Send an email using the slow-rendering template
     const sendResponse = await niceBackendFetch("/api/v1/emails/send-email", {
       method: "POST",
@@ -177,6 +191,13 @@ describe("email queue edge cases", () => {
     });
     expect(createDraftResponse.status).toBe(200);
     const draftId = createDraftResponse.body.id;
+
+    // Since we're essentially testing a race condition here, make sure that the PATCH endpoint is already compiled by the time we call it, so the race condition is consistent
+    const patchEndpointResponse = await niceBackendFetch(`/api/v1/emails/notification-preference/01234567-89ab-cdef-0123-456789abcdef/4f6f8873-3d04-46bd-8bef-18338b1a1b4c`, {
+      method: "PATCH",
+      accessType: "server",
+    });
+    expect(patchEndpointResponse.status).toBe(400);
 
     // Send an email using the slow-rendering template
     const sendResponse = await niceBackendFetch("/api/v1/emails/send-email", {

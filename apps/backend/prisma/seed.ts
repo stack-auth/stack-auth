@@ -1474,7 +1474,7 @@ async function seedDummyEmails(options: EmailSeedOptions) {
     {
       id: DUMMY_SEED_IDS.emails.invitePriya,
       subject: 'Dashboard invite for Ops',
-      html: '<p>Your admin invitation could not be delivered.</p>',
+      html: '<p>Welcome to the dashboard!</p>',
       hasError: true,
       createdAt: new Date('2024-05-04T18:30:00.000Z'),
       userEmail: 'priya.narang@dummy.dev',
@@ -1531,6 +1531,8 @@ async function seedDummyEmails(options: EmailSeedOptions) {
         canHaveDeliveryInfo: false,
         sendServerErrorExternalMessage: email.hasError ? 'Delivery failed' : null,
         sendServerErrorExternalDetails: email.hasError ? {} : Prisma.DbNull,
+        sendServerErrorInternalMessage: email.hasError ? "Delivery failed. This is the internal error message." : null,
+        sendServerErrorInternalDetails: email.hasError ? { internalError: "No internal error details." } : Prisma.DbNull,
         createdAt: email.createdAt,
       },
     });
@@ -1601,7 +1603,7 @@ async function seedDummySessionActivityEvents(options: SessionActivityEventSeedO
       const ipAddress = `${10 + Math.floor(Math.random() * 200)}.${Math.floor(Math.random() * 256)}.${Math.floor(Math.random() * 256)}.${Math.floor(Math.random() * 256)}`;
 
       // Create EventIpInfo entry with a proper UUID
-      const ipInfoId = generateUuid();
+      const ipInfoId = generateUuid();  // TODO: This should be a deterministic UUID so we don't keep recreating the session info
       await globalPrismaClient.eventIpInfo.upsert({
         where: { id: ipInfoId },
         update: {

@@ -35,9 +35,8 @@ if (getNodeEnvironment().includes('development')) {
   globalVar.__stack_prisma_clients = prismaClientsStore;  // store globally so fast refresh doesn't recreate too many Prisma clients
 }
 
-const neonPrismaClientsStore: Map<string, PrismaClient> = globalVar.__stack_neon_prisma_clients ??= new Map();
 function getNeonPrismaClient(connectionString: string) {
-  let neonPrismaClient = neonPrismaClientsStore.get(connectionString);
+  let neonPrismaClient = prismaClientsStore.neon.get(connectionString);
   if (!neonPrismaClient) {
     const schema = getSchemaFromConnectionString(connectionString);
     const adapter = new PrismaNeon({ connectionString }, { schema });
