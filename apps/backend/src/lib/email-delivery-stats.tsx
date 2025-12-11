@@ -27,7 +27,7 @@ export function calculatePenaltyFactor(sent: number, bounced: number, spam: numb
 
 const defaultEmailCapacityPerHour = Number.parseInt(getEnvVariable("STACK_DEFAULT_EMAIL_CAPACITY_PER_HOUR", "200"));
 if (!Number.isFinite(defaultEmailCapacityPerHour)) {
-  throw new StackAssertionError(`Invalid STACK_DEFAULT_EMAIL_CAPACITY_PER_HOUR environment variable: ${defaultEmailCapacityPerHour}`);
+  throw new StackAssertionError(`Invalid STACK_DEFAULT_EMAIL_CAPACITY_PER_HOUR environment variable: ${getEnvVariable("STACK_DEFAULT_EMAIL_CAPACITY_PER_HOUR", "<not set>")}`);
 }
 
 export function calculateCapacityRate(stats: EmailDeliveryStats) {

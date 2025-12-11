@@ -129,7 +129,7 @@ let actualGlobalConnectionString: string = globalVar.__stack_actual_global_conne
 })();
 
 
-export const { client: globalPrismaClient, schema: globalPrismaSchema } = actualGlobalConnectionString ? getPostgresPrismaClient(actualGlobalConnectionString) : ({} as never);
+export const { client: globalPrismaClient, schema: globalPrismaSchema } = actualGlobalConnectionString ? getPostgresPrismaClient(actualGlobalConnectionString) : ({ client: "No STACK_DATABASE_CONNECTION_STRING environment variable set", schema: null } as never);
 
 export async function getPrismaClientForSourceOfTruth(sourceOfTruth: CompleteConfig["sourceOfTruth"], branchId: string) {
   switch (sourceOfTruth.type) {

@@ -46,7 +46,7 @@ export function getEnvVariable(name: string, defaultValue?: string | undefined):
     }
   }
 
-  if (value === undefined) {
+  if (!value) {
     if (defaultValue !== undefined) {
       value = defaultValue;
     } else {
