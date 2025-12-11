@@ -1500,7 +1500,7 @@ async function seedDummyEmails(options: EmailSeedOptions) {
       ? { type: 'user-primary-email', userId }
       : { type: 'custom-emails', emails: ['unknown@dummy.dev'] };
 
-    await prisma.emailOutbox.upsert({
+    await globalPrismaClient.emailOutbox.upsert({
       where: {
         tenancyId_id: {
           tenancyId,
