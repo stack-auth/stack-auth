@@ -47,7 +47,6 @@ describe("GET /api/v1/internal/email-queue-step", () => {
     `);
   });
 
-  // note: this test is long-running because the endpoint loops for 2 minutes
   it("should return 200 when valid authorization header is provided", async ({ expect }) => {
     const response = await niceBackendFetch("/api/v1/internal/email-queue-step", {
       method: "GET",

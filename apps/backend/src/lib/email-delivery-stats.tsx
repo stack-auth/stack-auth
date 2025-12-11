@@ -1,6 +1,7 @@
 import { globalPrismaClient, PrismaClientTransaction, RawQuery, rawQuery } from "@/prisma-client";
 import { Prisma } from "@prisma/client";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
+import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 
 export type EmailDeliveryWindowStats = {
   sent: number,
@@ -25,6 +26,9 @@ export function calculatePenaltyFactor(sent: number, bounced: number, spam: numb
 }
 
 const defaultEmailCapacityPerHour = Number.parseInt(getEnvVariable("STACK_DEFAULT_EMAIL_CAPACITY_PER_HOUR", "200"));
+if (!Number.isFinite(defaultEmailCapacityPerHour)) {
+  throw new StackAssertionError(`Invalid STACK_DEFAULT_EMAIL_CAPACITY_PER_HOUR environment variable: ${defaultEmailCapacityPerHour}`);
+}
 
 export function calculateCapacityRate(stats: EmailDeliveryStats) {
   const penaltyFactor = Math.min(

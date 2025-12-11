@@ -42,6 +42,7 @@ export const runEmailQueueStep = withTraceSpan("runEmailQueueStep", async () => 
 
   const sendPlan = await withTraceSpan("runEmailQueueStep-prepareSendPlan", prepareSendPlan)(deltaSeconds);
   await withTraceSpan("runEmailQueueStep-processSendPlan", processSendPlan)(sendPlan);
+  await withTraceSpan("runEmailQueueStep-logEmailsStuckInSending", logEmailsStuckInSending)();
   const sendEnd = performance.now();
 
   if (sendPlan.length > 0 || queuedCount > 0 || pendingRender.length > 0) {
@@ -69,11 +70,29 @@ async function retryEmailsStuckInRendering(): Promise<void> {
     },
   });
   if (res.length > 0) {
-    captureError("email-queue-step-stuck-in-rendering", new StackAssertionError("Emails stuck in rendering! This should never happen. Resetting them to be re-rendered.", {
+    captureError("email-queue-step-stuck-in-rendering", new StackAssertionError(`${res.length} emails stuck in rendering! This should never happen. Resetting them to be re-rendered.`, {
       emails: res.map(e => e.id),
     }));
   }
 }
+
+async function logEmailsStuckInSending(): Promise<void> {
+  const res = await globalPrismaClient.emailOutbox.findMany({
+    where: {
+      startedSendingAt: {
+        lte: new Date(Date.now() - 1000 * 60 * 20),
+      },
+      finishedSendingAt: null,
+    },
+    select: { id: true, tenancyId: true, startedSendingAt: true },
+  });
+  if (res.length > 0) {
+    captureError("email-queue-step-stuck-in-sending", new StackAssertionError(`${res.length} emails stuck in sending! This should never happen. It was NOT correctly marked as an error! Manual intervention is required.`, {
+      emails: res.map(e => ({ id: e.id, tenancyId: e.tenancyId, startedSendingAt: e.startedSendingAt })),
+    }));
+  }
+}
+
 async function updateLastExecutionTime(): Promise<number> {
   const key = "EMAIL_QUEUE_METADATA_KEY";
 
@@ -616,6 +635,7 @@ async function markSkipped(row: EmailOutbox, reason: EmailOutboxSkippedReason): 
         tenancyId: row.tenancyId,
         id: row.id,
       },
+      finishedSendingAt: null,
     },
     data: {
       skippedReason: reason,
