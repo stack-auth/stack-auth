@@ -10,6 +10,10 @@ function expandStackPortPrefix(value?: string | null) {
 }
 
 const sentryErrorSink = (location: string, error: unknown) => {
+  if (!("captureException" in Sentry)) {
+    // this happens if somehow this is called outside of a Next.js script (eg. in the Prisma seed.ts), just ignore
+    return;
+  }
   Sentry.captureException(error, { extra: { location } });
 };
 
