@@ -153,6 +153,7 @@ export async function renderEmailWithTemplate(
   return Result.ok(executeResult.data.result as { html: string, text: string, subject: string, notificationCategory: string });
 }
 
+// unused, but kept for reference & in case we need it again
 export async function renderEmailsWithTemplateBatched(
   templateOrDraftComponent: string,
   themeComponent: string,

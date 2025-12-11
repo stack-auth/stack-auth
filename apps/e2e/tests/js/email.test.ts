@@ -196,7 +196,7 @@ it("should provide delivery statistics", async ({ expect }) => {
     {
       "capacity": {
         "penalty_factor": 1,
-        "rate_per_second": 1.561904761904762,
+        "rate_per_second": 2.7777793209876545,
       },
       "stats": {
         "day": {

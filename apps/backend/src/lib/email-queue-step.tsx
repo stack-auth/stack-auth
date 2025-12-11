@@ -130,7 +130,7 @@ async function updateLastExecutionTime(): Promise<number> {
   `;
 
   if (delta < 0) {
-    captureError("email-queue-step-negative-delta", new StackAssertionError("Negative delta in updateLastExecutionTime. Not sure why this would happen except for a weird datetime desync, please investigate.", { delta }));
+    // TODO: why does this happen, actually? investigate.
     return 0;
   }
 

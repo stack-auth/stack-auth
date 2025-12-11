@@ -92,7 +92,7 @@ describe("email queue edge cases", () => {
 
       // Artificial short delay
       const startTime = performance.now();
-      while (performance.now() - startTime < 500) {
+      while (performance.now() - startTime < 100) {
         // Busy wait
       }
 

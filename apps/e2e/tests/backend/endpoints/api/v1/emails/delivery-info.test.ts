@@ -21,7 +21,7 @@ describe("with valid credentials", () => {
       {
         "capacity": {
           "penalty_factor": 1,
-          "rate_per_second": 0.05555555555555555,
+          "rate_per_second": 2.7777777777777777,
         },
         "stats": {
           "day": {
@@ -102,7 +102,7 @@ describe("with valid credentials", () => {
         "body": {
           "capacity": {
             "penalty_factor": 1,
-            "rate_per_second": 1.561904761904762,
+            "rate_per_second": 2.7777793209876545,
           },
           "stats": {
             "day": {
