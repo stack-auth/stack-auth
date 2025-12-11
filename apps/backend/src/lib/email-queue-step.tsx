@@ -29,9 +29,6 @@ export const runEmailQueueStep = withTraceSpan("runEmailQueueStep", async () => 
   const workerId = randomUUID();
 
   const deltaSeconds = await withTraceSpan("runEmailQueueStep-updateLastExecutionTime", updateLastExecutionTime)();
-  if (deltaSeconds <= 0) {
-    return;
-  }
   const updateLastExecutionTimeEnd = performance.now();
 
 
@@ -131,6 +128,11 @@ async function updateLastExecutionTime(): Promise<number> {
         )
       END AS delta;
   `;
+
+  if (delta < 0) {
+    captureError("email-queue-step-negative-delta", new StackAssertionError("Negative delta in updateLastExecutionTime. Not sure why this would happen except for a weird datetime desync, please investigate.", { delta }));
+    return 0;
+  }
 
   return delta;
 }
@@ -342,7 +344,7 @@ async function renderTenancyEmails(workerId: string, tenancyId: string, group: E
 }
 
 async function queueReadyEmails(): Promise<{ queuedCount: number }> {
-  const res = await globalPrismaClient.$queryRaw<{ queuedCount: number }>`
+  const res = await globalPrismaClient.$queryRaw<{ id: string }[]>`
     UPDATE "EmailOutbox"
     SET "isQueued" = TRUE
     WHERE "isQueued" = FALSE

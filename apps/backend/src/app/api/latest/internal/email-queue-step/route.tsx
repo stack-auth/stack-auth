@@ -38,6 +38,7 @@ export const GET = createSmartRouteHandler({
     const startTime = performance.now();
 
     while (performance.now() - startTime < 2 * 60 * 1000) {
+      console.log("eqs...");
       await runEmailQueueStep();
       await wait(1000);
       if (query.only_one_step === "true") {

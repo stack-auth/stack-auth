@@ -1,5 +1,6 @@
 import { globalPrismaClient, PrismaClientTransaction, RawQuery, rawQuery } from "@/prisma-client";
 import { Prisma } from "@prisma/client";
+import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 
 export type EmailDeliveryWindowStats = {
   sent: number,
@@ -23,15 +24,17 @@ export function calculatePenaltyFactor(sent: number, bounced: number, spam: numb
   return Math.max(0.1, Math.min(1, 1 - failureRate));
 }
 
+const defaultEmailCapacityPerHour = Number.parseInt(getEnvVariable("STACK_DEFAULT_EMAIL_CAPACITY_PER_HOUR", "200"));
+
 export function calculateCapacityRate(stats: EmailDeliveryStats) {
   const penaltyFactor = Math.min(
     calculatePenaltyFactor(stats.week.sent, stats.week.bounced, stats.week.markedAsSpam),
     calculatePenaltyFactor(stats.day.sent, stats.day.bounced, stats.day.markedAsSpam),
     calculatePenaltyFactor(stats.hour.sent, stats.hour.bounced, stats.hour.markedAsSpam)
   );
-  const weeklyBaseline = 200 * 24 * 7 + (8 * stats.month.sent);  // 8 * monthly average
-  const ratePerWeek = Math.max(weeklyBaseline * penaltyFactor, 7 * 24 * 60);  // multiply by penalty factor, at least 1 email per minute
-  const ratePerSecond = ratePerWeek / (7 * 24 * 60 * 60);
+  const hourlyBaseline = defaultEmailCapacityPerHour + (4 * stats.month.sent / 30 / 24);  // default capacity + 4x the average throughput during the last month
+  const ratePerHour = Math.max(hourlyBaseline * penaltyFactor, defaultEmailCapacityPerHour / 4);  // multiply by penalty factor, at least 1/4th of the default capacity
+  const ratePerSecond = ratePerHour / 60 / 60;
   return { ratePerSecond, penaltyFactor };
 }
 

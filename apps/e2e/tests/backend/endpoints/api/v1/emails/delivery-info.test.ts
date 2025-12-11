@@ -21,7 +21,7 @@ describe("with valid credentials", () => {
       {
         "capacity": {
           "penalty_factor": 1,
-          "rate_per_second": 1.3333333333333333,
+          "rate_per_second": 0.05555555555555555,
         },
         "stats": {
           "day": {
