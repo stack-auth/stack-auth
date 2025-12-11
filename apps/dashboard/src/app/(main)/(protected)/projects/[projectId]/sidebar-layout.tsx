@@ -25,6 +25,7 @@ import {
   Typography,
 } from "@stackframe/stack-ui";
 import {
+  Activity,
   Blocks,
   ChevronDown,
   ChevronRight,
@@ -74,6 +75,12 @@ const bottomItems: BottomItem[] = [
     href: '/apps',
     icon: Blocks,
     regex: /^\/projects\/[^\/]+\/apps(\/.*)?$/,
+  },
+  {
+    name: 'Query Analytics',
+    href: '/query-analytics',
+    icon: Activity,
+    regex: /^\/projects\/[^\/]+\/query-analytics$/,
   },
   {
     name: 'Project Keys',

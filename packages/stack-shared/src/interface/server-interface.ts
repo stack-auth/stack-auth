@@ -11,6 +11,7 @@ import {
   ClientInterfaceOptions,
   StackClientInterface
 } from "./client-interface";
+import type { AnalyticsQueryOptions, AnalyticsQueryResponse } from "./crud/analytics";
 import { ConnectedAccountAccessTokenCrud } from "./crud/connected-accounts";
 import { ContactChannelsCrud } from "./crud/contact-channels";
 import { CurrentUserCrud } from "./crud/current-user";
@@ -32,7 +33,7 @@ export type ServerAuthApplicationOptions = (
     | {
       readonly secretServerKey: string,
     }
-    | {
+  | {
       readonly projectOwnerSession: InternalSession,
     }
   )
@@ -802,6 +803,28 @@ export class StackServerInterface extends StackClientInterface {
       null,
     );
     return Result.ok(undefined);
+  }
+
+  async queryAnalytics(options: AnalyticsQueryOptions): Promise<AnalyticsQueryResponse> {
+    const response = await this.sendServerRequest(
+      "/analytics/query",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          query: options.query,
+          params: options.params ?? {},
+          timeout_ms: options.timeout_ms ?? 1000,
+          include_all_branches: options.include_all_branches ?? false,
+        }),
+      },
+      null,
+    );
+
+    const data = await response.json();
+    return {
+      result: data.result,
+    };
   }
 
   async updateItemQuantity(

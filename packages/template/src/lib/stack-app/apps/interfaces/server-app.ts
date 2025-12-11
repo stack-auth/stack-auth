@@ -1,4 +1,5 @@
 import { KnownErrors } from "@stackframe/stack-shared";
+import { AnalyticsQueryOptions, AnalyticsQueryResponse } from "@stackframe/stack-shared/dist/interface/crud/analytics";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import type { GenericQueryCtx } from "convex/server";
 import { AsyncStoreProperty, GetCurrentPartialUserOptions, GetCurrentUserOptions } from "../../common";
@@ -78,6 +79,7 @@ export type StackServerApp<HasTokenStore extends boolean = boolean, ProjectId ex
     }): Promise<Result<ServerOAuthProvider, InstanceType<typeof KnownErrors.OAuthProviderAccountIdAlreadyUsedForSignIn>>>,
 
     sendEmail(options: SendEmailOptions): Promise<void>,
+    queryAnalytics(options: AnalyticsQueryOptions): Promise<AnalyticsQueryResponse>,
   }
   & AsyncStoreProperty<"user", [id: string], ServerUser | null, false>
   & Omit<AsyncStoreProperty<"users", [], ServerUser[], true>, "listUsers" | "useUsers">
