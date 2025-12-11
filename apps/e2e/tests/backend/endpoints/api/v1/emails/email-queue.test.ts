@@ -1,4 +1,5 @@
 import { wait } from "@stackframe/stack-shared/dist/utils/promises";
+import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
 import { describe } from "vitest";
 import { it } from "../../../../../helpers";
 import { withPortPrefix } from "../../../../../helpers/ports";
@@ -84,30 +85,62 @@ describe("email queue edge cases", () => {
     expect(contactChannelsResponse.status).toBe(200);
     const contactChannelId = contactChannelsResponse.body.items[0].id;
 
-    // Send an email to the user
+    // Create a template that takes 1 second to render, giving us time to remove the primary email
+    const slowTemplate = deindent`
+      import { Container } from "@react-email/components";
+      import { Subject, NotificationCategory, Props } from "@stackframe/emails";
+
+      // Artificial short delay
+      const startTime = performance.now();
+      while (performance.now() - startTime < 500) {
+        // Busy wait
+      }
+
+      export function EmailTemplate({ user, project }) {
+        return (
+          <Container>
+            <Subject value="Remove Email Test" />
+            <NotificationCategory value="Marketing" />
+            <div>Test email</div>
+          </Container>
+        );
+      }
+    `;
+
+    const createDraftResponse = await niceBackendFetch("/api/v1/internal/email-drafts", {
+      method: "POST",
+      accessType: "admin",
+      body: {
+        display_name: "Slow Render Draft",
+        tsx_source: slowTemplate,
+        theme_id: false,
+      },
+    });
+    expect(createDraftResponse.status).toBe(200);
+    const draftId = createDraftResponse.body.id;
+
+    // Send an email using the slow-rendering template
     const sendResponse = await niceBackendFetch("/api/v1/emails/send-email", {
       method: "POST",
       accessType: "server",
       body: {
         user_ids: [userId],
-        html: "<p>Test email</p>",
-        subject: "Remove Email Test",
-        notification_category_name: "Marketing",
+        draft_id: draftId,
       },
     });
     expect(sendResponse.status).toBe(200);
 
-    // Remove the primary email immediately
+    // Remove the primary email while the email is still rendering
     const deleteChannelResponse = await niceBackendFetch(`/api/v1/contact-channels/${userId}/${contactChannelId}`, {
       method: "DELETE",
       accessType: "server",
     });
     expect(deleteChannelResponse.status).toBe(200);
 
-    // Wait for email processing
-    await wait(3000);
+    // Wait for email processing to complete (rendering + sending)
+    await wait(10_000);
 
-    // Verify no email with our subject was received (primary email was removed)
+    // Verify no email with our subject was received (primary email was removed before sending)
     const messages = await mailbox.fetchMessages();
     const testEmails = messages.filter(m => m.subject === "Remove Email Test");
     expect(testEmails).toHaveLength(0);
