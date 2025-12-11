@@ -15,6 +15,28 @@ const testEmailConfig = {
   sender_email: "test@example.com",
 } as const;
 
+// A template that is slow to render, giving us time to remove the primary email
+const slowTemplate = deindent`
+  import { Container } from "@react-email/components";
+  import { Subject, NotificationCategory, Props } from "@stackframe/emails";
+
+  // Artificial delay to make the email slow to render
+  const startTime = performance.now();
+  while (performance.now() - startTime < 100) {
+    // Busy wait
+  }
+
+  export function EmailTemplate({ user, project }) {
+    return (
+      <Container>
+        <Subject value="Slow Render Test Email" />
+        <NotificationCategory value="Marketing" />
+        <div>Test email</div>
+      </Container>
+    );
+  }
+`;
+
 describe("email queue edge cases", () => {
   it("should skip email when user is deleted after email is queued", async ({ expect }) => {
     await Project.createAndSwitch({
@@ -37,15 +59,25 @@ describe("email queue edge cases", () => {
     expect(createUserResponse.status).toBe(201);
     const userId = createUserResponse.body.id;
 
-    // Send an email to the user
+    const createDraftResponse = await niceBackendFetch("/api/v1/internal/email-drafts", {
+      method: "POST",
+      accessType: "admin",
+      body: {
+        display_name: "Slow Render Draft",
+        tsx_source: slowTemplate,
+        theme_id: false,
+      },
+    });
+    expect(createDraftResponse.status).toBe(200);
+    const draftId = createDraftResponse.body.id;
+
+    // Send an email using the slow-rendering template
     const sendResponse = await niceBackendFetch("/api/v1/emails/send-email", {
       method: "POST",
       accessType: "server",
       body: {
         user_ids: [userId],
-        html: "<p>Test email</p>",
-        subject: "User Deletion Test",
-        notification_category_name: "Marketing",
+        draft_id: draftId,
       },
     });
     expect(sendResponse.status).toBe(200);
@@ -58,11 +90,11 @@ describe("email queue edge cases", () => {
     expect(deleteResponse.status).toBe(200);
 
     // Wait for email processing
-    await wait(3000);
+    await wait(10_000);
 
     // Verify no email was received (user was deleted)
     const messages = await mailbox.fetchMessages();
-    const testEmails = messages.filter(m => m.subject === "User Deletion Test");
+    const testEmails = messages.filter(m => m.subject === "Slow Render Test Email");
     expect(testEmails).toHaveLength(0);
   });
 
@@ -84,28 +116,6 @@ describe("email queue edge cases", () => {
     });
     expect(contactChannelsResponse.status).toBe(200);
     const contactChannelId = contactChannelsResponse.body.items[0].id;
-
-    // Create a template that takes 1 second to render, giving us time to remove the primary email
-    const slowTemplate = deindent`
-      import { Container } from "@react-email/components";
-      import { Subject, NotificationCategory, Props } from "@stackframe/emails";
-
-      // Artificial short delay
-      const startTime = performance.now();
-      while (performance.now() - startTime < 100) {
-        // Busy wait
-      }
-
-      export function EmailTemplate({ user, project }) {
-        return (
-          <Container>
-            <Subject value="Remove Email Test" />
-            <NotificationCategory value="Marketing" />
-            <div>Test email</div>
-          </Container>
-        );
-      }
-    `;
 
     const createDraftResponse = await niceBackendFetch("/api/v1/internal/email-drafts", {
       method: "POST",
@@ -142,7 +152,7 @@ describe("email queue edge cases", () => {
 
     // Verify no email with our subject was received (primary email was removed before sending)
     const messages = await mailbox.fetchMessages();
-    const testEmails = messages.filter(m => m.subject === "Remove Email Test");
+    const testEmails = messages.filter(m => m.subject === "Slow Render Test Email");
     expect(testEmails).toHaveLength(0);
   });
 
@@ -156,15 +166,25 @@ describe("email queue edge cases", () => {
 
     const { userId } = await Auth.Password.signUpWithEmail();
 
-    // Send an email to the user
+    const createDraftResponse = await niceBackendFetch("/api/v1/internal/email-drafts", {
+      method: "POST",
+      accessType: "admin",
+      body: {
+        display_name: "Slow Render Draft",
+        tsx_source: slowTemplate,
+        theme_id: false,
+      },
+    });
+    expect(createDraftResponse.status).toBe(200);
+    const draftId = createDraftResponse.body.id;
+
+    // Send an email using the slow-rendering template
     const sendResponse = await niceBackendFetch("/api/v1/emails/send-email", {
       method: "POST",
       accessType: "server",
       body: {
         user_ids: [userId],
-        html: "<p>Test email</p>",
-        subject: "Unsubscribe After Queue Test",
-        notification_category_name: "Marketing",
+        draft_id: draftId,
       },
     });
     expect(sendResponse.status).toBe(200);
@@ -183,11 +203,11 @@ describe("email queue edge cases", () => {
     expect(unsubscribeResponse.status).toBe(200);
 
     // Wait for email processing
-    await wait(3000);
+    await wait(10_000);
 
     // Verify no email with our subject was received (user unsubscribed)
     const messages = await backendContext.value.mailbox.fetchMessages();
-    const testEmails = messages.filter(m => m.subject === "Unsubscribe After Queue Test");
+    const testEmails = messages.filter(m => m.subject === "Slow Render Test Email");
     expect(testEmails).toHaveLength(0);
   });
 
