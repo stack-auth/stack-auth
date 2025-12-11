@@ -5,12 +5,45 @@ import { captureError } from "@stackframe/stack-shared/dist/utils/errors";
 import { getGlobal, setGlobal } from "@stackframe/stack-shared/dist/utils/globals";
 import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
 import { ErrorBoundary } from "next/dist/client/components/error-boundary";
-import { Suspense, useEffect } from "react";
+import React, { Suspense, memo, useEffect } from "react";
 
 let isPrefetchingCounter = 0;
 let hasSetupHookPrefetcher = false;
 
 export type HookPrefetcherCallback = () => HookPrefetcherCallback[] | void;
+
+// PrefetchMany is now defined outside of HookPrefetcher to maintain a stable component reference
+const PrefetchMany = memo(function PrefetchMany(props: { callbacks: HookPrefetcherCallback[] }): React.ReactNode {
+  return <>
+    {props.callbacks.map((callback, i) => (
+      <PrefetchCallback key={i} callback={callback} />
+    ))}
+  </>;
+});
+
+// Separate component for each callback to isolate renders
+const PrefetchCallback = memo(function PrefetchCallback({ callback }: { callback: HookPrefetcherCallback }) {
+  return (
+    <ErrorBoundary errorComponent={HookPrefetcherErrorComponent}>
+      <Suspense fallback={null}>
+        <PrefetchCallbackInner callback={callback} />
+      </Suspense>
+    </ErrorBoundary>
+  );
+});
+
+function PrefetchCallbackInner({ callback }: { callback: HookPrefetcherCallback }) {
+  isPrefetchingCounter++;
+  try {
+    const componentCallbacks = callback();
+    if (componentCallbacks) {
+      return <PrefetchMany callbacks={componentCallbacks} />;
+    }
+    return null;
+  } finally {
+    isPrefetchingCounter--;
+  }
+}
 
 export function HookPrefetcher(props: {
   callbacks: HookPrefetcherCallback[],
@@ -39,36 +72,6 @@ export function HookPrefetcher(props: {
       },
     ]);
   }, []);
-
-  const PrefetchMany = (props: { callbacks: HookPrefetcherCallback[] }): React.ReactNode => {
-    return <>
-      {props.callbacks.map((callback, i) => {
-        const Component = () => {
-          isPrefetchingCounter++;
-          try {
-            const componentCallbacks = callback();
-            if (componentCallbacks) {
-              return <PrefetchMany callbacks={componentCallbacks} />;
-            }
-            return null;
-          } finally {
-            isPrefetchingCounter--;
-          }
-        };
-
-        return (
-          <ErrorBoundary
-            key={i}
-            errorComponent={HookPrefetcherErrorComponent}
-          >
-            <Suspense fallback={null}>
-              <Component />
-            </Suspense>
-          </ErrorBoundary>
-        );
-      })}
-    </>;
-  };
 
   return <PrefetchMany callbacks={props.callbacks} />;
 }

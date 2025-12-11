@@ -8,6 +8,7 @@ import path from "path";
 import * as readline from "readline";
 import { seed } from "../prisma/seed";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
+import { runClickhouseMigrations } from "./clickhouse-migrations";
 
 const dropSchema = async () => {
   await globalPrismaClient.$executeRaw(Prisma.sql`DROP SCHEMA ${sqlQuoteIdent(globalPrismaSchema)} CASCADE`);
@@ -150,6 +151,8 @@ const migrate = async (selectedMigrationFiles?: { migrationName: string, sql: st
   }
 
   console.log('='.repeat(60) + '\n');
+
+  await runClickhouseMigrations();
 
   return result;
 };

@@ -109,10 +109,12 @@ export function AppGrid({ appIds, className }: {
   className?: string,
 }) {
   return (
-    <div className={cn("flex gap-1 lg:gap-8 flex-wrap", className)}>
-      {appIds.map(appId => (
-        <AppCard key={appId} appId={appId} />
-      ))}
+    <div className="max-w-3xl mx-auto">
+      <div className={cn("flex gap-1 lg:gap-8 flex-wrap justify-center", className)}>
+        {appIds.map(appId => (
+          <AppCard key={appId} appId={appId} />
+        ))}
+      </div>
     </div>
   );
 }

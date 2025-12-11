@@ -2,7 +2,7 @@
 //     <StackHandler app={stackServerApp} routeProps={props} />
 // does not throw the following error:
 //     Only plain objects, and a few built-ins, can be passed to Client Components from Server Components. Classes or null prototypes are not supported.
-// This file exists as a component that can be both client and server, ignores its parameters, and returns <StackHandlerClient />
+// This file exists as a component that can be both client and server, ignores the non-serializable props, and returns <StackHandlerClient />
 
 import { BaseHandlerProps, StackHandlerClient } from "./stack-handler-client";
 

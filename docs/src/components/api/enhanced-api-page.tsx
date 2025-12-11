@@ -617,36 +617,38 @@ function ModernAPIPlayground({
 
       {/* Content - Stacked Layout */}
       <div className="space-y-8">
-        {/* Request Panel */}
-        <div className="bg-fd-card border border-fd-border rounded-lg">
-          <div className="px-6 py-4 border-b border-fd-border bg-fd-muted/30">
-            <div className="flex items-center gap-2">
-              <Send className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-              <div className="font-semibold text-fd-foreground text-base leading-none">Request</div>
+        {/* Request Panel - only show if there are parameters or request body */}
+        {((operation.parameters && operation.parameters.length > 0) || operation.requestBody) && (
+          <div className="bg-fd-card border border-fd-border rounded-lg">
+            <div className="px-6 py-4 border-b border-fd-border bg-fd-muted/30">
+              <div className="flex items-center gap-2">
+                <Send className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                <div className="font-semibold text-fd-foreground text-base leading-none">Request</div>
+              </div>
+            </div>
+
+            <div className="p-6 space-y-6">
+              {/* Parameters */}
+              {operation.parameters && operation.parameters.length > 0 && (
+                <ParametersSection
+                  parameters={operation.parameters}
+                  values={requestState.parameters}
+                  onChange={(params) => setRequestState(prev => ({ ...prev, parameters: params }))}
+                />
+              )}
+
+              {/* Request Body Fields */}
+              {operation.requestBody && (
+                <RequestBodyFieldsSection
+                  requestBody={operation.requestBody}
+                  spec={spec}
+                  values={requestState.bodyFields}
+                  onChange={(bodyFields) => setRequestState(prev => ({ ...prev, bodyFields }))}
+                />
+              )}
             </div>
           </div>
-
-          <div className="p-6 space-y-6">
-            {/* Parameters */}
-            {operation.parameters && operation.parameters.length > 0 && (
-              <ParametersSection
-                parameters={operation.parameters}
-                values={requestState.parameters}
-                onChange={(params) => setRequestState(prev => ({ ...prev, parameters: params }))}
-              />
-            )}
-
-            {/* Request Body Fields */}
-            {operation.requestBody && (
-              <RequestBodyFieldsSection
-                requestBody={operation.requestBody}
-                spec={spec}
-                values={requestState.bodyFields}
-                onChange={(bodyFields) => setRequestState(prev => ({ ...prev, bodyFields }))}
-              />
-            )}
-          </div>
-        </div>
+        )}
 
         {/* Response Panel */}
         <ResponsePanel

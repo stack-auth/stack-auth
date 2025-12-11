@@ -17,7 +17,7 @@ export default function VibeCodeLayout({
 }: VibeCodeEditorLayoutProps) {
   return (
     <ResizablePanelGroup direction="horizontal" className="flex h-full">
-      <ResizablePanel className="flex-1 flex flex-col" defaultSize={75}>
+      <ResizablePanel className="flex-1 flex flex-col" style={{ height: 'calc(100vh - 100px)' }} defaultSize={75}>
         <ResizablePanelGroup direction="vertical" className="flex h-full">
           <ResizablePanel className="flex flex-col flex-1 flex-shrink h-full" minSize={10}>
             {previewComponent}

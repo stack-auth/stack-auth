@@ -43,6 +43,11 @@ export const POST = createSmartRouteHandler({
 
     const serverVersion = packageJson.version;
 
+    // https://vercel.com/changelog/cve-2025-55182
+    if (semver.lt(clientVersion, "2.8.55")) {
+      return err(true, `It seems that you may be running on an old version of Next.js/React. Please update to the newest version immediately to apply the latest security updates including one urgent vulnerability in React Server Components. See: https://vercel.com/changelog/cve-2025-55182`);
+    }
+
     if (semver.major(clientVersion) !== semver.major(serverVersion) || semver.minor(clientVersion) !== semver.minor(serverVersion)) {
       return err(true, `YOUR VERSION OF STACK AUTH IS SEVERELY OUTDATED. YOU SHOULD UPDATE IT AS SOON AS POSSIBLE. WE CAN'T APPLY SECURITY UPDATES IF YOU DON'T UPDATE STACK AUTH REGULARLY. (your version is v${clientVersion}; the current version is v${serverVersion}).`);
     }

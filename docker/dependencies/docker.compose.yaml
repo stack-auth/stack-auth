@@ -206,6 +206,42 @@ services:
     environment:
       HOST_ON_HOST: host.docker.internal
 
+  # ================= MCPJam Inspector =================
+
+  mcpjam-inspector:
+    image: node:20-alpine
+    ports:
+      - "${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}26:3001"
+    command: >
+      sh -c "echo '{\"mcpServers\":{\"local-stack-auth-docs\":{\"url\":\"http://host.docker.internal:${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}04/api/internal/mcp\"}}}' > /app/mcp.json && npx -y @mcpjam/inspector@latest --port 3001 --config /app/mcp.json"
+    working_dir: /app
+    volumes:
+      - mcpjam-inspector-data:/root
+    extra_hosts:
+      - "host.docker.internal:host-gateway"  # noop on Docker Desktop/Orbstack, enables host.docker.internal on Linux
+    environment:
+      HOST_ON_HOST: host.docker.internal
+
+  # ================= ClickHouse =================
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:25.10
+    ports:
+      - "${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}33:8123"  # HTTP interface
+      - "${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}34:9000"  # Native interface
+    environment:
+      CLICKHOUSE_DB: analytics
+      CLICKHOUSE_USER: stackframe
+      CLICKHOUSE_PASSWORD: PASSWORD-PLACEHOLDER--9gKyMxJeMx
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
+    volumes:
+      - clickhouse-data:/var/lib/clickhouse
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+
+
 # ================= volumes =================
 
 volumes:
@@ -216,6 +252,8 @@ volumes:
   s3mock-data:
   deno-cache:
   localstack-data:
+  mcpjam-inspector-data:
+  clickhouse-data:
 
 # ================= configs =================
 

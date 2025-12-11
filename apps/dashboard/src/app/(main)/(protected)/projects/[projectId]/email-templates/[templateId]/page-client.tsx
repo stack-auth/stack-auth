@@ -67,9 +67,7 @@ export default function PageClient(props: { templateId: string }) {
     <AppEnabledGuard appId="emails">
       <VibeCodeLayout
         previewComponent={
-          <div className="p-4 w-full h-full">
-            <EmailPreview themeId={selectedThemeId} templateTsxSource={currentCode} />
-          </div>
+          <EmailPreview themeId={selectedThemeId} templateTsxSource={currentCode} />
         }
         editorComponent={
           <CodeEditor

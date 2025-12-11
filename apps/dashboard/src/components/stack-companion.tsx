@@ -314,7 +314,8 @@ export function StackCompanion({ className }: { className?: string }) {
   const handleComponent = (
     <div
       className={cn(
-        "h-full flex items-center shrink-0 -mr-px z-10",
+        "flex items-center shrink-0 z-10",
+        isOpen ? "h-full -mr-px" : "h-auto",
         !isSplitScreenMode && "pointer-events-auto"
       )}
       onMouseDown={handleMouseDown}
@@ -326,8 +327,7 @@ export function StackCompanion({ className }: { className?: string }) {
         // Only show grab cursor when an item is selected (drawer can be resized)
         activeItem && "cursor-grab active:cursor-grabbing",
         // Shape morphing
-        isOpen ? "rounded-l-2xl rounded-r-none border-r-0 translate-x-px" : "rounded-full mr-3",
-        className
+        isOpen ? "rounded-l-2xl rounded-r-none border-r-0 translate-x-px" : "rounded-full mr-3"
       )}>
         {sidebarItems.map(item => (
           <Tooltip key={item.id}>
@@ -369,6 +369,9 @@ export function StackCompanion({ className }: { className?: string }) {
   const contextValue = { drawerWidth, isSplitScreenMode };
 
   // Split-screen mode: inline layout that pushes content
+  // Only show drawer container when open or animating (to allow close animation)
+  const showDrawerContainerSplit = isOpen || isAnimating;
+
   if (isSplitScreenMode) {
     return (
       <StackCompanionContext.Provider value={contextValue}>
@@ -381,16 +384,18 @@ export function StackCompanion({ className }: { className?: string }) {
           style={{ width: drawerWidth > 0 ? drawerWidth + 56 : 56 }} // 56px for handle width
         >
           {/* Drawer Content */}
-          <div
-            className={cn(
-              "h-full bg-gray-100/80 dark:bg-foreground/5 backdrop-blur-xl border border-border/10 dark:border-foreground/5 overflow-hidden relative rounded-2xl shadow-sm",
-              isAnimating && !isResizing && "transition-[width] duration-300 ease-out"
-            )}
-            style={{ width: drawerWidth }}
-          >
-            <div className="absolute inset-y-0 left-0 w-px bg-gradient-to-b from-transparent via-foreground/10 to-transparent opacity-50" />
-            {drawerContent}
-          </div>
+          {showDrawerContainerSplit && (
+            <div
+              className={cn(
+                "h-full bg-gray-100/80 dark:bg-foreground/5 backdrop-blur-xl border border-border/10 dark:border-foreground/5 overflow-hidden relative rounded-2xl shadow-sm",
+                isAnimating && !isResizing && "transition-[width] duration-300 ease-out"
+              )}
+              style={{ width: drawerWidth }}
+            >
+              <div className="absolute inset-y-0 left-0 w-px bg-gradient-to-b from-transparent via-foreground/10 to-transparent opacity-50" />
+              {drawerContent}
+            </div>
+          )}
 
           {/* Handle */}
           {handleComponent}
@@ -400,23 +405,28 @@ export function StackCompanion({ className }: { className?: string }) {
   }
 
   // Overlay mode: fixed position sliding drawer (default for smaller screens)
+  // Only show drawer container when open or animating (to allow close animation)
+  const showDrawerContainer = isOpen || isAnimating;
+
   return (
     <StackCompanionContext.Provider value={contextValue}>
       {/* Main Container - Fixed Right Edge, Flex Reverse to push handle left */}
       <div className={cn("fixed inset-y-0 right-0 z-50 flex flex-row-reverse items-center pointer-events-none", className)}>
 
         {/* 1. Drawer Content (Rightmost in layout, stays anchored to right) */}
-        <div
-          className={cn(
-            "h-full bg-background/80 backdrop-blur-xl border-l border-foreground/[0.08] shadow-2xl overflow-hidden pointer-events-auto relative",
-            isAnimating && !isResizing && "transition-[width] duration-300 ease-out"
-          )}
-          style={{ width: drawerWidth }}
-        >
-          {/* Inner shadow/gradient for depth */}
-          <div className="absolute inset-y-0 left-0 w-px bg-gradient-to-b from-transparent via-foreground/10 to-transparent opacity-50" />
-          {drawerContent}
-        </div>
+        {showDrawerContainer && (
+          <div
+            className={cn(
+              "h-full overflow-hidden pointer-events-auto relative bg-background/80 backdrop-blur-xl border-l border-foreground/[0.08] shadow-2xl",
+              isAnimating && !isResizing && "transition-[width] duration-300 ease-out"
+            )}
+            style={{ width: drawerWidth }}
+          >
+            {/* Inner shadow/gradient for depth */}
+            <div className="absolute inset-y-0 left-0 w-px bg-gradient-to-b from-transparent via-foreground/10 to-transparent opacity-50" />
+            {drawerContent}
+          </div>
+        )}
 
         {/* 2. Stack Companion Handle (Left of Drawer) */}
         {handleComponent}

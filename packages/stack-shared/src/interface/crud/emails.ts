@@ -14,6 +14,11 @@ export const sentEmailReadSchema = fieldSchema.yupObject({
 
 export const internalEmailsCrud = createCrud({
   adminReadSchema: sentEmailReadSchema,
+  docs: {
+    adminList: {
+      hidden: true,
+    },
+  },
 });
 
 export type InternalEmailsCrud = CrudTypeOf<typeof internalEmailsCrud>;

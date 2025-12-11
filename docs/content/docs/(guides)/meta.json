@@ -44,6 +44,7 @@
     "others/self-host",
     "others/supabase",
     "others/convex",
+    "others/mcp-setup",
     "sdk",
     "components"
   ]

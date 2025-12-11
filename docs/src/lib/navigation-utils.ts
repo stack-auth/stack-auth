@@ -7,7 +7,7 @@ export type NavLink = {
 }
 
 const DOCS_OVERVIEW_PATH = '/docs/overview';
-const DOCS_GUIDES_PATH = '/docs/overview';
+const DOCS_GUIDES_PATH = '/docs/getting-started/setup';
 const DOCS_SDK_PATH = '/docs/sdk';
 const DOCS_COMPONENTS_PATH = '/docs/components';
 const API_OVERVIEW_PATH = '/api/overview';

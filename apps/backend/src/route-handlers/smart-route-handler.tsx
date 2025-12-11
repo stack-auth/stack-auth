@@ -13,6 +13,11 @@ import * as yup from "yup";
 import { DeepPartialSmartRequestWithSentinel, MergeSmartRequest, SmartRequest, createSmartRequest, validateSmartRequest } from "./smart-request";
 import { SmartResponse, createResponse, validateSmartResponse } from "./smart-response";
 
+function toArrayBuffer(body: Uint8Array): ArrayBuffer {
+  const { buffer, byteOffset, byteLength } = body;
+  return buffer.slice(byteOffset, byteOffset + byteLength) as ArrayBuffer;
+}
+
 class InternalServerError extends StatusError {
   constructor(error: unknown, requestId: string) {
     super(
@@ -139,7 +144,7 @@ export function handleApiRequest(handler: (req: NextRequest, options: any, reque
           const res = await createResponse(req, requestId, {
             statusCode: statusError.statusCode,
             bodyType: "binary",
-            body: statusError.getBody(),  // if you get a type error on this line, it's likely you'll have to run `pnpm clean && pnpm i && pnpm run build:packages && pnpm run codegen` again. If you're a coding agent, just ignore the error.
+            body: toArrayBuffer(statusError.getBody()),  // if you get a type error on this line, it's likely you'll have to run `pnpm clean && pnpm i && pnpm run build:packages && pnpm run codegen` again. If you're a coding agent, just ignore the error.
             headers: {
               ...statusError.getHeaders(),
             },

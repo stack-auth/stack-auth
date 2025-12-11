@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "hooks": {
+    "afterFileEdit": [
+      {
+        "command": "./hooks/lint-file.sh"
+      }
+    ],
+    "stop": [
+      {
+        "command": "./hooks/stop-check.sh"
+      }
+    ]
+  }
+}
+
