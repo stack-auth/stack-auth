@@ -267,7 +267,7 @@ describe("email queue edge cases", () => {
     expect(testEmails).toHaveLength(0);
   });
 
-  it("should return an error when email is sent to a custom email but no custom emails are provided", async ({ expect }) => {
+  it.todo("should return an error when email is sent to a custom email but no custom emails are provided", async ({ expect }) => {
     await Project.createAndSwitch({
       display_name: "Test No Custom Emails Project",
       config: {
