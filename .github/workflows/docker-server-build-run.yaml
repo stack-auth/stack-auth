@@ -44,8 +44,8 @@ jobs:
           fi
           
           echo "Attempting to connect to backend..."
-          curl -v http://localhost:8102
-          response_code=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8102)
+          curl -v http://localhost:8102/health
+          response_code=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8102/health)
           echo "Response code: $response_code"
           if [ $response_code -ne 200 ]; then
             echo "Backend health check failed with status code: $response_code"

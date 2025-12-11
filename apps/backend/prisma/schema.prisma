@@ -723,9 +723,9 @@ model EmailOutbox {
   shouldSkipDeliverabilityCheck  Boolean
 
   createdWith                     EmailOutboxCreatedWith
-  // If the email was created from a draft, it is kept around so we can later group by it. Must be set if and only if createdWith is DRAFT.
+  // If the email was created from a draft, it is kept around so we can later group by it. Must be set if and only if createdWith is DRAFT. (Enforced by EmailOutbox_email_draft_check and EmailOutbox_email_draft_reverse_check constraints.)
   emailDraftId                    String?
-  // If the email was created from a template programmatically, it is kept around so we can later group by it. Must be NOT set if createdWith is NOT PROGRAMMATIC_CALL. If createdWith is PROGRAMMATIC_CALL and this is not set, then no template was used (eg. email was sent directly as HTML).
+  // If the email was created from a template programmatically, it is kept around so we can later group by it. Must be NOT set if createdWith is NOT PROGRAMMATIC_CALL. If createdWith is PROGRAMMATIC_CALL and this is not set, then no template was used (eg. email was sent directly as HTML). (Enforced by EmailOutbox_email_programmatic_call_template_check constraint.)
   emailProgrammaticCallTemplateId String?
 
   // Computed from EmailOutbox can be the `status` of the email:

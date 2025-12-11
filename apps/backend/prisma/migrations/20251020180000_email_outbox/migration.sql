@@ -174,6 +174,10 @@ CREATE TABLE "EmailOutbox" (
         ),
     CONSTRAINT "EmailOutbox_email_draft_check"
         CHECK ("createdWith" <> 'DRAFT' OR "emailDraftId" IS NOT NULL),
+    CONSTRAINT "EmailOutbox_email_draft_reverse_check"
+        CHECK ("emailDraftId" IS NULL OR "createdWith" = 'DRAFT'),
+    CONSTRAINT "EmailOutbox_email_programmatic_call_template_check"
+        CHECK ("createdWith" = 'PROGRAMMATIC_CALL' OR "emailProgrammaticCallTemplateId" IS NULL),
     CONSTRAINT "EmailOutbox_finished_sending_check"
         CHECK ("finishedSendingAt" IS NULL OR "startedSendingAt" IS NOT NULL),
     CONSTRAINT "EmailOutbox_send_payload_when_not_finished_check"
