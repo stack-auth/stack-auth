@@ -1,6 +1,6 @@
 {
   "name": "@stackframe/stack-dashboard",
-  "version": "2.8.56",
+  "version": "2.8.57",
   "private": true,
   "scripts": {
     "clean": "rimraf .next && rimraf node_modules",
@@ -49,7 +49,7 @@
     "jose": "^5.2.2",
     "lodash": "^4.17.21",
     "lucide-react": "^0.508.0",
-    "next": "16.0.7",
+    "next": "16.0.9",
     "next-themes": "^0.2.1",
     "posthog-js": "^1.235.0",
     "react": "19.2.1",
