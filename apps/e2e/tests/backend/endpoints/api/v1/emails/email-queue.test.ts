@@ -247,14 +247,15 @@ describe("email queue edge cases", () => {
       method: "POST",
       accessType: "server",
       body: {
-        user_ids: [userId],
+        emails: [],
         html: "<p>Test email</p>",
         subject: "No Custom Emails Test",
         notification_category_name: "Transactional",
       },
     });
-    expect(sendResponse.status).toBe(400);
-    expect(sendResponse).toMatchInlineSnapshot("todooo");
+    expect(sendResponse).toMatchInlineSnapshot(`
+      todo
+    `);
   });
 });
 

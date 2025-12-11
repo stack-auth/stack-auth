@@ -29,9 +29,9 @@ export function calculateCapacityRate(stats: EmailDeliveryStats) {
     calculatePenaltyFactor(stats.day.sent, stats.day.bounced, stats.day.markedAsSpam),
     calculatePenaltyFactor(stats.hour.sent, stats.hour.bounced, stats.hour.markedAsSpam)
   );
-  const hourlyBaseline = 200 * 24 * 7 + (8 * 30 * 24 * stats.month.sent);
-  const adjusted = Math.max(hourlyBaseline * penaltyFactor, 7 * 24 * 60);
-  const ratePerSecond = adjusted / (7 * 60 * 60);
+  const weeklyBaseline = 200 * 24 * 7 + (8 * stats.month.sent);  // 8 * monthly average
+  const ratePerWeek = Math.max(weeklyBaseline * penaltyFactor, 7 * 24 * 60);  // multiply by penalty factor, at least 1 email per minute
+  const ratePerSecond = ratePerWeek / (7 * 24 * 60 * 60);
   return { ratePerSecond, penaltyFactor };
 }
 

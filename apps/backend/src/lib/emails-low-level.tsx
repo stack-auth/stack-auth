@@ -253,6 +253,7 @@ export async function lowLevelSendEmailDirectWithoutRetries(options: LowLevelSen
   return await _lowLevelSendEmailWithoutRetries(options);
 }
 
+// currently unused, although in the future we may want to use this to minimize the number of requests to Resend
 export async function lowLevelSendEmailResendBatchedDirect(resendApiKey: string, emailOptions: LowLevelSendEmailOptions[]) {
   if (emailOptions.length === 0) {
     return Result.ok([]);
@@ -281,9 +282,10 @@ export async function lowLevelSendEmailResendBatchedDirect(resendApiKey: string,
       return Result.ok(data.data);
     }
     if (error.name === "rate_limit_exceeded" || error.name === "internal_server_error") {
+      // these are the errors we want to retry
       return Result.error(error);
     }
-    return Result.ok(null);
+    throw new StackAssertionError("Failed to send email with Resend", { error });
   }, 3, { exponentialDelayBase: 2000 });
 
   return result;

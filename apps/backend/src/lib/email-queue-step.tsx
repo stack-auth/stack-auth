@@ -40,21 +40,21 @@ export const runEmailQueueStep = withTraceSpan("runEmailQueueStep", async () => 
   await withTraceSpan("runEmailQueueStep-retryEmailsStuckInRendering", retryEmailsStuckInRendering)();
   const renderingEnd = performance.now();
 
-  await withTraceSpan("runEmailQueueStep-queueReadyEmails", queueReadyEmails)();
+  const { queuedCount } = await withTraceSpan("runEmailQueueStep-queueReadyEmails", queueReadyEmails)();
   const queueReadyEnd = performance.now();
 
   const sendPlan = await withTraceSpan("runEmailQueueStep-prepareSendPlan", prepareSendPlan)(deltaSeconds);
   await withTraceSpan("runEmailQueueStep-processSendPlan", processSendPlan)(sendPlan);
   const sendEnd = performance.now();
 
-  if (sendPlan.length > 0 || pendingRender.length > 0) {
+  if (sendPlan.length > 0 || queuedCount > 0 || pendingRender.length > 0) {
     const timings = {
       meta: updateLastExecutionTimeEnd - start,
       render: renderingEnd - updateLastExecutionTimeEnd,
       queue: queueReadyEnd - renderingEnd,
       send: sendEnd - queueReadyEnd,
     };
-    console.log(`Rendered ${pendingRender.length} emails and sent emails from ${sendPlan.length} tenancies in ${(sendEnd - start).toFixed(1)}ms (${Object.entries(timings).map(([key, value]) => `${key}: ${value.toFixed(1)}ms`).join(", ")}, worker: ${workerId})`);
+    console.log(`Rendered ${pendingRender.length} emails, queued ${queuedCount} emails, and sent emails from ${sendPlan.length} tenancies in ${(sendEnd - start).toFixed(1)}ms (${Object.entries(timings).map(([key, value]) => `${key}: ${value.toFixed(1)}ms`).join(", ")}, worker: ${workerId})`);
   }
 });
 
@@ -80,39 +80,56 @@ async function retryEmailsStuckInRendering(): Promise<void> {
 async function updateLastExecutionTime(): Promise<number> {
   const key = "EMAIL_QUEUE_METADATA_KEY";
 
+  // This query atomically claims the next execution slot and returns the delta.
+  // It uses FOR UPDATE to lock the row, preventing concurrent workers from reading
+  // the same previous timestamp. The pattern is:
+  // 1. Try UPDATE first (locks row with FOR UPDATE, returns old and new timestamps)
+  // 2. If no row exists, INSERT (with ON CONFLICT DO NOTHING for race handling)
+  // 3. Compute delta based on the result
   const [{ delta }] = await globalPrismaClient.$queryRaw<{ delta: number }[]>`
     WITH now_ts AS (
       SELECT NOW() AS now
     ),
-    existing AS (
-      SELECT "lastExecutedAt"
-      FROM "EmailOutboxProcessingMetadata"
-      WHERE "key" = ${key}
-    ),
-    action AS (
-      INSERT INTO "EmailOutboxProcessingMetadata" ("key", "lastExecutedAt", "updatedAt")
-      VALUES (${key}, (SELECT now FROM now_ts), (SELECT now FROM now_ts))
-      ON CONFLICT ("key") DO UPDATE SET
+    do_update AS (
+      -- Update existing row, locking it first and capturing the old timestamp
+      UPDATE "EmailOutboxProcessingMetadata" AS m
+      SET 
         "updatedAt" = (SELECT now FROM now_ts),
-        "lastExecutedAt" = CASE
-          WHEN "EmailOutboxProcessingMetadata"."lastExecutedAt" IS NULL
-            OR "EmailOutboxProcessingMetadata"."lastExecutedAt" < (SELECT now FROM now_ts)
-          THEN (SELECT now FROM now_ts)
-          ELSE "EmailOutboxProcessingMetadata"."lastExecutedAt"
-        END
-      RETURNING "lastExecutedAt"
+        "lastExecutedAt" = (SELECT now FROM now_ts)
+      FROM (
+        SELECT "key", "lastExecutedAt" AS previous_timestamp
+        FROM "EmailOutboxProcessingMetadata"
+        WHERE "key" = ${key}
+        FOR UPDATE
+      ) AS old
+      WHERE m."key" = old."key"
+      RETURNING old.previous_timestamp, m."lastExecutedAt" AS new_timestamp
+    ),
+    do_insert AS (
+      -- Insert new row if no existing row was updated
+      INSERT INTO "EmailOutboxProcessingMetadata" ("key", "lastExecutedAt", "updatedAt")
+      SELECT ${key}, (SELECT now FROM now_ts), (SELECT now FROM now_ts)
+      WHERE NOT EXISTS (SELECT 1 FROM do_update)
+      ON CONFLICT ("key") DO NOTHING
+      RETURNING NULL::timestamp AS previous_timestamp, "lastExecutedAt" AS new_timestamp
+    ),
+    result AS (
+      SELECT * FROM do_update
+      UNION ALL
+      SELECT * FROM do_insert
     )
     SELECT
       CASE
-        -- First time running, use a reasonable default delta
-        WHEN (SELECT "lastExecutedAt" FROM existing) IS NULL THEN 60
-        -- Concurrent execution, skip
-        WHEN (SELECT "lastExecutedAt" FROM action) = (SELECT "lastExecutedAt" FROM existing) THEN 0
-        ELSE EXTRACT(EPOCH FROM (
-          (SELECT "lastExecutedAt" FROM action) -
-          (SELECT "lastExecutedAt" FROM existing)
-        ))
-    END AS delta;
+        -- Concurrent insert race: another worker just inserted, skip this run
+        WHEN NOT EXISTS (SELECT 1 FROM result) THEN 0.0
+        -- First run (inserted new row), use reasonable default delta
+        WHEN (SELECT previous_timestamp FROM result) IS NULL THEN 60.0
+        -- Normal update case: compute actual delta
+        ELSE EXTRACT(EPOCH FROM 
+          (SELECT new_timestamp FROM result) - 
+          (SELECT previous_timestamp FROM result)
+        )
+      END AS delta;
   `;
 
   return delta;
@@ -324,8 +341,8 @@ async function renderTenancyEmails(workerId: string, tenancyId: string, group: E
   }
 }
 
-async function queueReadyEmails(): Promise<void> {
-  await globalPrismaClient.$executeRaw`
+async function queueReadyEmails(): Promise<{ queuedCount: number }> {
+  const res = await globalPrismaClient.$queryRaw<{ queuedCount: number }>`
     UPDATE "EmailOutbox"
     SET "isQueued" = TRUE
     WHERE "isQueued" = FALSE
@@ -333,7 +350,11 @@ async function queueReadyEmails(): Promise<void> {
       AND "finishedRenderingAt" IS NOT NULL
       AND "renderedHtml" IS NOT NULL
       AND "scheduledAt" <= NOW()
+    RETURNING "id";
   `;
+  return {
+    queuedCount: res.length,
+  };
 }
 
 async function prepareSendPlan(deltaSeconds: number): Promise<TenancySendBatch[]> {
@@ -411,14 +432,6 @@ async function processTenancyBatch(batch: TenancySendBatch): Promise<void> {
 
   const prisma = await getPrismaClientForTenancy(tenancy);
   const emailConfig = await getEmailConfig(tenancy);
-
-  const userIds = new Set<string>();
-  for (const row of batch.rows) {
-    const recipient = deserializeRecipient(row.to as Json);
-    if ("userId" in recipient) {
-      userIds.add(recipient.userId);
-    }
-  }
 
   const context: TenancyProcessingContext = {
     tenancy,

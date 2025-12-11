@@ -78,7 +78,6 @@ export async function sendEmailFromDefaultTemplate(options: {
   templateType: keyof typeof DEFAULT_TEMPLATE_IDS,
   extraVariables: Record<string, string | null>,
   shouldSkipDeliverabilityCheck: boolean,
-  version?: 1 | 2,
 }) {
   const template = getDefaultEmailTemplate(options.tenancy, options.templateType);
 

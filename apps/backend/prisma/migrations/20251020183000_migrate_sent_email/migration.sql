@@ -57,7 +57,7 @@ SELECT
         'emails', COALESCE(to_jsonb(se."to"), '[]'::jsonb)
     ),
     NULL,
-    NULL,
+    '{}'::jsonb,
     'PROGRAMMATIC_CALL',
     NULL,
     NULL,

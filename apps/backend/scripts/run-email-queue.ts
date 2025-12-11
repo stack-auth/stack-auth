@@ -11,6 +11,7 @@ async function main() {
   const run = () => runAsynchronously(async () => {
     console.log("Running email queue step...");
     const res = await fetch(`${baseUrl}/api/latest/internal/email-queue-step`, {
+      method: "GET",
       headers: { 'Authorization': `Bearer ${cronSecret}` },
     });
     if (!res.ok) throw new StackAssertionError(`Failed to call email queue step: ${res.status} ${res.statusText}\n${await res.text()}`, { res });

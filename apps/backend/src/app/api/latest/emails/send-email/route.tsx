@@ -141,18 +141,19 @@ export const POST = createSmartRouteHandler({
 
     // Sanity check that the user IDs are valid so the user gets an error here instead of only once the email is rendered.
     if (!body.all_users && body.user_ids) {
+      const uniqueUserIds = [...new Set(body.user_ids)];
       const users = await prisma.projectUser.findMany({
         where: {
           tenancyId: auth.tenancy.id,
-          projectUserId: { in: body.user_ids },
+          projectUserId: { in: uniqueUserIds },
         },
         select: {
           projectUserId: true,
         },
       });
-      if (users.length !== body.user_ids.length) {
+      if (users.length !== uniqueUserIds.length) {
         const foundUserIds = new Set(users.map(u => u.projectUserId));
-        const missingUserId = body.user_ids.find(id => !foundUserIds.has(id));
+        const missingUserId = uniqueUserIds.find(id => !foundUserIds.has(id));
         // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
         throw new KnownErrors.UserIdDoesNotExist(missingUserId!);
       }
