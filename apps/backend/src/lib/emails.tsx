@@ -88,7 +88,7 @@ export async function sendEmailFromDefaultTemplate(options: {
     extraVariables: options.extraVariables,
     themeId: template.themeId === false ? null : (template.themeId ?? options.tenancy.config.emails.selectedThemeId),
     createdWith: { type: "programmatic-call", templateId: DEFAULT_TEMPLATE_IDS[options.templateType] },
-    isHighPriority: options.shouldSkipDeliverabilityCheck,  // always make emails sent via default template high priority
+    isHighPriority: true,  // always make emails sent via default template high priority
     shouldSkipDeliverabilityCheck: options.shouldSkipDeliverabilityCheck,
     scheduledAt: new Date(),
   });
