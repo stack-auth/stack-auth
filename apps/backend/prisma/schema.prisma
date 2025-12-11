@@ -824,9 +824,9 @@ model EmailOutbox {
   tenancy Tenancy @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
 
   @@id([tenancyId, id])
-  @@index([tenancyId, finishedSendingAt, scheduledAtIfNotYetQueued, priority, id])
-  @@index([tenancyId, simpleStatus])
-  @@index([tenancyId, status])
+  @@index([tenancyId, finishedSendingAt(sort: Desc), scheduledAtIfNotYetQueued(sort: Desc), priority, id], map: "EmailOutbox_ordering_idx")
+  @@index([tenancyId, simpleStatus], map: "EmailOutbox_simple_status_tenancy_idx")
+  @@index([tenancyId, status], map: "EmailOutbox_status_tenancy_idx")
 }
 
 model EmailOutboxProcessingMetadata {
