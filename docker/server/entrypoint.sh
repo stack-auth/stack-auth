@@ -1,6 +1,6 @@
 #!/bin/bash
 
-set -exo pipefail
+set -eo pipefail
 
 # ============= FORWARD MOCK OAUTH SERVER =============
 

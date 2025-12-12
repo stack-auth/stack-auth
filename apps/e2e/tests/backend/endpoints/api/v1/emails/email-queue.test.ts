@@ -668,6 +668,271 @@ describe("multiple recipients", () => {
     expect(messages2.length).toBeGreaterThanOrEqual(1);
   });
 });
+describe("template variables", () => {
+  it("should support various variable types (strings, numbers, booleans, arrays, objects)", async ({ expect }) => {
+    await Project.createAndSwitch({
+      display_name: "Test Variables Project",
+      config: {
+        email_config: testEmailConfig,
+      },
+    });
+
+    const mailbox = backendContext.value.mailbox;
+    const { userId } = await User.create({ primary_email: mailbox.emailAddress, primary_email_verified: true });
+
+    // Create a template that uses different variable types
+    // Note: We need default values and a variablesSchema for preview rendering
+    // Variable keys use snake_case as required by the API
+    const templateWithVariables = deindent`
+      import { type } from "arktype";
+      import { Container } from "@react-email/components";
+      import { Subject, NotificationCategory, Props } from "@stackframe/emails";
+
+      // Define the variables schema - this allows variables to be passed to the template
+      export const variablesSchema = type({
+        string_var: "string",
+        number_var: "number",
+        boolean_var: "boolean",
+        array_var: "string[]",
+        object_var: {
+          nested_key: {
+            deep_key: "string"
+          }
+        },
+        null_var: "null",
+      });
+
+      export function EmailTemplate({ user, project, variables }: Props<typeof variablesSchema.infer>) {
+        return (
+          <Container>
+            <Subject value="Variables Test Email" />
+            <NotificationCategory value="Transactional" />
+            <div data-testid="string">String: {variables.string_var}</div>
+            <div data-testid="number">Number: {variables.number_var}</div>
+            <div data-testid="boolean">Boolean: {variables.boolean_var ? "true" : "false"}</div>
+            <div data-testid="array">Array: {variables.array_var.join(", ")}</div>
+            <div data-testid="object">Object: {variables.object_var.nested_key.deep_key}</div>
+            <div data-testid="null">Null: {variables.null_var === null ? "is null" : "not null"}</div>
+          </Container>
+        );
+      }
+
+      // Preview variables for template editing/testing
+      EmailTemplate.PreviewVariables = {
+        string_var: "preview string",
+        number_var: 0,
+        boolean_var: false,
+        array_var: [],
+        object_var: { nested_key: { deep_key: "preview" } },
+        null_var: null,
+      } satisfies typeof variablesSchema.infer;
+    `;
+
+    // Create a template using the internal API
+    const createTemplateResponse = await niceBackendFetch("/api/v1/internal/email-templates", {
+      method: "POST",
+      accessType: "admin",
+      body: {
+        display_name: "Variables Template",
+      },
+    });
+    expect(createTemplateResponse.status).toBe(200);
+    const templateId = createTemplateResponse.body.id;
+
+    // Update the template with our custom source
+    const updateTemplateResponse = await niceBackendFetch(`/api/v1/internal/email-templates/${templateId}`, {
+      method: "PATCH",
+      accessType: "admin",
+      body: {
+        tsx_source: templateWithVariables,
+      },
+    });
+    expect(updateTemplateResponse.status).toBe(200);
+
+    // Send email with various variable types (using snake_case keys)
+    const sendResponse = await niceBackendFetch("/api/v1/emails/send-email", {
+      method: "POST",
+      accessType: "server",
+      body: {
+        user_ids: [userId],
+        template_id: templateId,
+        variables: {
+          string_var: "hello world",
+          number_var: 42,
+          boolean_var: true,
+          array_var: ["apple", "banana", "cherry"],
+          object_var: { nested_key: { deep_key: "deeply nested value" } },
+          null_var: null,
+        },
+      },
+    });
+    expect(sendResponse.status).toBe(200);
+
+    // Verify the email contains all variable values
+    const messages = await mailbox.waitForMessagesWithSubject("Variables Test Email");
+    expect(messages.length).toBeGreaterThanOrEqual(1);
+    const html = messages[0].body?.html ?? "";
+
+    // Verify string variable
+    expect(html).toContain("String: hello world");
+
+    // Verify number variable
+    expect(html).toContain("Number: 42");
+
+    // Verify boolean variable
+    expect(html).toContain("Boolean: true");
+
+    // Verify array variable
+    expect(html).toContain("Array: apple, banana, cherry");
+
+    // Verify deep object variable
+    expect(html).toContain("Object: deeply nested value");
+
+    // Verify null variable
+    expect(html).toContain("Null: is null");
+  });
+
+  it("should reject non-object variables field", async ({ expect }) => {
+    await Project.createAndSwitch({
+      display_name: "Test Non-Object Variables Project",
+      config: {
+        email_config: testEmailConfig,
+      },
+    });
+
+    const { userId } = await Auth.Password.signUpWithEmail();
+
+    // Create a simple template
+    const simpleTemplate = deindent`
+      import { Container } from "@react-email/components";
+      import { Subject, NotificationCategory, Props } from "@stackframe/emails";
+
+      export function EmailTemplate({ user, project }: Props) {
+        return (
+          <Container>
+            <Subject value="Non-Object Variables Test" />
+            <NotificationCategory value="Transactional" />
+            <div>Test</div>
+          </Container>
+        );
+      }
+    `;
+
+    // Create a template
+    const createTemplateResponse = await niceBackendFetch("/api/v1/internal/email-templates", {
+      method: "POST",
+      accessType: "admin",
+      body: {
+        display_name: "Non-Object Template",
+      },
+    });
+    expect(createTemplateResponse.status).toBe(200);
+    const templateId = createTemplateResponse.body.id;
+
+    // Update with our source
+    const updateTemplateResponse = await niceBackendFetch(`/api/v1/internal/email-templates/${templateId}`, {
+      method: "PATCH",
+      accessType: "admin",
+      body: {
+        tsx_source: simpleTemplate,
+      },
+    });
+    expect(updateTemplateResponse.status).toBe(200);
+
+    // Try to send email with variables as an array instead of object
+    const sendResponse = await niceBackendFetch("/api/v1/emails/send-email", {
+      method: "POST",
+      accessType: "server",
+      body: {
+        user_ids: [userId],
+        template_id: templateId,
+        variables: ["not", "an", "object"],
+      },
+    });
+    expect(sendResponse).toMatchInlineSnapshot(`
+      NiceResponse {
+        "status": 400,
+        "body": {
+          "code": "SCHEMA_ERROR",
+          "details": { "message": "Request validation failed on POST /api/v1/emails/send-email:\\n  - body does not match any of the allowed schemas" },
+          "error": "Request validation failed on POST /api/v1/emails/send-email:\\n  - body does not match any of the allowed schemas",
+        },
+        "headers": Headers { <some fields may have been hidden> },
+      }
+    `);
+  });
+
+  it("should reject variables as a primitive value", async ({ expect }) => {
+    await Project.createAndSwitch({
+      display_name: "Test Primitive Variables Project",
+      config: {
+        email_config: testEmailConfig,
+      },
+    });
+
+    const { userId } = await Auth.Password.signUpWithEmail();
+
+    // Create a simple template
+    const simpleTemplate = deindent`
+      import { Container } from "@react-email/components";
+      import { Subject, NotificationCategory, Props } from "@stackframe/emails";
+
+      export function EmailTemplate({ user, project }: Props) {
+        return (
+          <Container>
+            <Subject value="Primitive Variables Test" />
+            <NotificationCategory value="Transactional" />
+            <div>Test</div>
+          </Container>
+        );
+      }
+    `;
+
+    // Create a template
+    const createTemplateResponse = await niceBackendFetch("/api/v1/internal/email-templates", {
+      method: "POST",
+      accessType: "admin",
+      body: {
+        display_name: "Primitive Template",
+      },
+    });
+    expect(createTemplateResponse.status).toBe(200);
+    const templateId = createTemplateResponse.body.id;
+
+    // Update with our source
+    const updateTemplateResponse = await niceBackendFetch(`/api/v1/internal/email-templates/${templateId}`, {
+      method: "PATCH",
+      accessType: "admin",
+      body: {
+        tsx_source: simpleTemplate,
+      },
+    });
+    expect(updateTemplateResponse.status).toBe(200);
+
+    // Try to send email with variables as a string
+    const sendResponse = await niceBackendFetch("/api/v1/emails/send-email", {
+      method: "POST",
+      accessType: "server",
+      body: {
+        user_ids: [userId],
+        template_id: templateId,
+        variables: "not an object",
+      },
+    });
+    expect(sendResponse).toMatchInlineSnapshot(`
+      NiceResponse {
+        "status": 400,
+        "body": {
+          "code": "SCHEMA_ERROR",
+          "details": { "message": "Request validation failed on POST /api/v1/emails/send-email:\\n  - body does not match any of the allowed schemas" },
+          "error": "Request validation failed on POST /api/v1/emails/send-email:\\n  - body does not match any of the allowed schemas",
+        },
+        "headers": Headers { <some fields may have been hidden> },
+      }
+    `);
+  });
+});
+
 describe("project logos in email themes", () => {
   it("should include project logo in rendered email when using a theme that references it", async ({ expect }) => {
     // Create a project with email config
