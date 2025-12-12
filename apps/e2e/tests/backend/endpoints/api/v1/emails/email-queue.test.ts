@@ -1,5 +1,6 @@
 import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
+import beautify from "js-beautify";
 import { describe } from "vitest";
 import { it } from "../../../../../helpers";
 import { withPortPrefix } from "../../../../../helpers/ports";
@@ -773,23 +774,44 @@ describe("template variables", () => {
     expect(messages.length).toBeGreaterThanOrEqual(1);
     const html = messages[0].body?.html ?? "";
 
-    // Verify string variable
-    expect(html).toContain("String: hello world");
-
-    // Verify number variable
-    expect(html).toContain("Number: 42");
-
-    // Verify boolean variable
-    expect(html).toContain("Boolean: true");
-
-    // Verify array variable
-    expect(html).toContain("Array: apple, banana, cherry");
-
-    // Verify deep object variable
-    expect(html).toContain("Object: deeply nested value");
-
-    // Verify null variable
-    expect(html).toContain("Null: is null");
+    expect(beautify.html(html)).toMatchInlineSnapshot(`
+      deindent\`
+        <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+        <html dir="ltr" lang="en">
+        
+        <head>
+            <meta content="text/html; charset=UTF-8" http-equiv="Content-Type" />
+            <meta name="x-apple-disable-message-reformatting" />
+        </head>
+        
+        <body style="background-color:rgb(250,251,251);font-family:ui-sans-serif, system-ui, sans-serif, &quot;Apple Color Emoji&quot;, &quot;Segoe UI Emoji&quot;, &quot;Segoe UI Symbol&quot;, &quot;Noto Color Emoji&quot;;font-size:1rem;line-height:1.5rem"><!--$-->
+            <table align="center" width="100%" border="0" cellPadding="0" cellSpacing="0" role="presentation" style="background-color:rgb(255,255,255);padding:45px;border-radius:0.5rem;max-width:37.5em">
+                <tbody>
+                    <tr style="width:100%">
+                        <td>
+                            <table align="center" width="100%" border="0" cellPadding="0" cellSpacing="0" role="presentation" style="max-width:37.5em">
+                                <tbody>
+                                    <tr style="width:100%">
+                                        <td>
+                                            <div data-testid="string">String: <!-- -->hello world</div>
+                                            <div data-testid="number">Number: <!-- -->42</div>
+                                            <div data-testid="boolean">Boolean: <!-- -->true</div>
+                                            <div data-testid="array">Array: <!-- -->apple, banana, cherry</div>
+                                            <div data-testid="object">Object: <!-- -->deeply nested value</div>
+                                            <div data-testid="null">Null: <!-- -->is null</div>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </td>
+                    </tr>
+                </tbody>
+            </table><!--7--><!--/$-->
+        </body>
+        
+        </html>
+      \`
+    `);
   });
 
   it("should reject non-object variables field", async ({ expect }) => {
@@ -854,10 +876,49 @@ describe("template variables", () => {
         "status": 400,
         "body": {
           "code": "SCHEMA_ERROR",
-          "details": { "message": "Request validation failed on POST /api/v1/emails/send-email:\\n  - body does not match any of the allowed schemas" },
-          "error": "Request validation failed on POST /api/v1/emails/send-email:\\n  - body does not match any of the allowed schemas",
+          "details": {
+            "message": deindent\`
+              Request validation failed on POST /api/v1/emails/send-email:
+                - body is not matched by any of the provided schemas:
+                  Schema 0:
+                    body.html must be defined
+                    body contains unknown properties: template_id, variables
+                    body contains unknown properties: template_id, variables
+                  Schema 1:
+                    body.variables must be a \\\`object\\\` type, but the final value was: \\\`[
+                      "\\\\"not\\\\"",
+                      "\\\\"an\\\\"",
+                      "\\\\"object\\\\""
+                    ]\\\`.
+                  Schema 2:
+                    body.draft_id must be defined
+                    body contains unknown properties: template_id, variables
+                    body contains unknown properties: template_id, variables
+            \`,
+          },
+          "error": deindent\`
+            Request validation failed on POST /api/v1/emails/send-email:
+              - body is not matched by any of the provided schemas:
+                Schema 0:
+                  body.html must be defined
+                  body contains unknown properties: template_id, variables
+                  body contains unknown properties: template_id, variables
+                Schema 1:
+                  body.variables must be a \\\`object\\\` type, but the final value was: \\\`[
+                    "\\\\"not\\\\"",
+                    "\\\\"an\\\\"",
+                    "\\\\"object\\\\""
+                  ]\\\`.
+                Schema 2:
+                  body.draft_id must be defined
+                  body contains unknown properties: template_id, variables
+                  body contains unknown properties: template_id, variables
+          \`,
         },
-        "headers": Headers { <some fields may have been hidden> },
+        "headers": Headers {
+          "x-stack-known-error": "SCHEMA_ERROR",
+          <some fields may have been hidden>,
+        },
       }
     `);
   });
@@ -924,10 +985,41 @@ describe("template variables", () => {
         "status": 400,
         "body": {
           "code": "SCHEMA_ERROR",
-          "details": { "message": "Request validation failed on POST /api/v1/emails/send-email:\\n  - body does not match any of the allowed schemas" },
-          "error": "Request validation failed on POST /api/v1/emails/send-email:\\n  - body does not match any of the allowed schemas",
+          "details": {
+            "message": deindent\`
+              Request validation failed on POST /api/v1/emails/send-email:
+                - body is not matched by any of the provided schemas:
+                  Schema 0:
+                    body.html must be defined
+                    body contains unknown properties: template_id, variables
+                    body contains unknown properties: template_id, variables
+                  Schema 1:
+                    body.variables must be a \\\`object\\\` type, but the final value was: \\\`"not an object"\\\`.
+                  Schema 2:
+                    body.draft_id must be defined
+                    body contains unknown properties: template_id, variables
+                    body contains unknown properties: template_id, variables
+            \`,
+          },
+          "error": deindent\`
+            Request validation failed on POST /api/v1/emails/send-email:
+              - body is not matched by any of the provided schemas:
+                Schema 0:
+                  body.html must be defined
+                  body contains unknown properties: template_id, variables
+                  body contains unknown properties: template_id, variables
+                Schema 1:
+                  body.variables must be a \\\`object\\\` type, but the final value was: \\\`"not an object"\\\`.
+                Schema 2:
+                  body.draft_id must be defined
+                  body contains unknown properties: template_id, variables
+                  body contains unknown properties: template_id, variables
+          \`,
         },
-        "headers": Headers { <some fields may have been hidden> },
+        "headers": Headers {
+          "x-stack-known-error": "SCHEMA_ERROR",
+          <some fields may have been hidden>,
+        },
       }
     `);
   });

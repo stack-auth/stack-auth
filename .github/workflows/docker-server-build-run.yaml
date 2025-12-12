@@ -34,20 +34,43 @@ jobs:
 
       - name: Check server health
         run: |
-          echo "Attempting to connect to dashboard..."
-          curl -v http://localhost:8101
-          response_code=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8101)
-          echo "Response code: $response_code"
-          if [ $response_code -ne 200 ]; then
-            echo "Server health check failed with status code: $response_code"
-            exit 1
-          fi
+          check_health() {
+            local name="$1"
+            local url="$2"
+            
+            echo "Attempting to connect to $name at $url..."
+            # Verbose request for debugging (ignore exit code)
+            curl -v "$url" || true
+            
+            # Capture response code, allowing curl to fail without exiting the script
+            set +e
+            response_code=$(curl -s -o /dev/null -w "%{http_code}" "$url" 2>/dev/null)
+            curl_exit=$?
+            set -e
+            
+            echo "Response code: '$response_code' (curl exit: $curl_exit)"
+            
+            # Check if curl failed completely
+            if [ "$curl_exit" -ne 0 ]; then
+              echo "$name health check failed: curl exited with code $curl_exit"
+              return 1
+            fi
+            
+            # Check if response code is empty
+            if [ -z "$response_code" ]; then
+              echo "$name health check failed: curl returned empty response code"
+              return 1
+            fi
+            
+            # Check if response code is 200
+            if [ "$response_code" -ne 200 ]; then
+              echo "$name health check failed with status code: $response_code"
+              return 1
+            fi
+            
+            echo "$name health check passed!"
+            return 0
+          }
           
-          echo "Attempting to connect to backend..."
-          curl -v http://localhost:8102/health
-          response_code=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8102/health)
-          echo "Response code: $response_code"
-          if [ $response_code -ne 200 ]; then
-            echo "Backend health check failed with status code: $response_code"
-            exit 1
-          fi
+          check_health "dashboard" "http://localhost:8101" || exit 1
+          check_health "backend" "http://localhost:8102/health" || exit 1
