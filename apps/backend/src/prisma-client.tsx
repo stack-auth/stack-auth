@@ -1,4 +1,4 @@
-import { stackServerApp } from "@/stack";
+import { getStackServerApp } from "@/stack";
 import { PrismaNeon } from "@prisma/adapter-neon";
 import { PrismaPg } from '@prisma/adapter-pg';
 import { Prisma, PrismaClient } from "@prisma/client";
@@ -54,7 +54,7 @@ async function resolveNeonConnectionString(entry: string): Promise<string> {
   if (!isUuid(entry)) {
     return entry;
   }
-  const store = await stackServerApp.getDataVaultStore('neon-connection-strings');
+  const store = await getStackServerApp().getDataVaultStore('neon-connection-strings');
   const secret = "no client side encryption";
   const value = await store.getValue(entry, { secret });
   if (!value) throw new Error('No Neon connection string found for UUID');

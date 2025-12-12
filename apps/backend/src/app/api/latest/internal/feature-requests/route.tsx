@@ -156,6 +156,10 @@ export const POST = createSmartRouteHandler({
     }).defined(),
   }),
   handler: async ({ auth, body }) => {
+    if (!STACK_FEATUREBASE_API_KEY) {
+      throw new StackAssertionError("STACK_FEATUREBASE_API_KEY environment variable is not set");
+    }
+
     // Get or create Featurebase user for consistent email handling
     const featurebaseUser = await getOrCreateFeaturebaseUser({
       id: auth.user.id,
