@@ -68,10 +68,17 @@ inserted AS (
         NULL,
         TRUE,
         FALSE,
-        jsonb_build_object(
-            'type', 'custom-emails',
-            'emails', COALESCE(to_jsonb(se."to"), '[]'::jsonb)
-        ),
+        CASE
+            WHEN se."userId" IS NOT NULL THEN jsonb_build_object(
+                'type', 'user-custom-emails',
+                'userId', se."userId",
+                'emails', COALESCE(to_jsonb(se."to"), '[]'::jsonb)
+            )
+            ELSE jsonb_build_object(
+                'type', 'custom-emails',
+                'emails', COALESCE(to_jsonb(se."to"), '[]'::jsonb)
+            )
+        END,
         NULL,
         '{}'::jsonb,
         'PROGRAMMATIC_CALL',
