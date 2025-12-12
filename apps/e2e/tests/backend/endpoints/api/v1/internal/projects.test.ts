@@ -1,5 +1,5 @@
 import { it } from "../../../../../helpers";
-import { Auth, InternalProjectClientKeys, Project, backendContext, niceBackendFetch } from "../../../../backend-helpers";
+import { Auth, InternalProjectClientKeys, InternalProjectKeys, Project, backendContext, niceBackendFetch } from "../../../../backend-helpers";
 
 
 it("should not have have access to the project", async ({ expect }) => {
@@ -44,7 +44,7 @@ it("is not allowed to list all current projects without signing in", async ({ ex
 });
 
 it("lists all current projects (empty list)", async ({ expect }) => {
-  await Auth.Otp.signIn();
+  await Auth.fastSignUp();
   const response = await niceBackendFetch("/api/v1/internal/projects", { accessType: "client" });
   expect(response).toMatchInlineSnapshot(`
     NiceResponse {
@@ -59,8 +59,9 @@ it("lists all current projects (empty list)", async ({ expect }) => {
 });
 
 it("creates a new project", async ({ expect }) => {
+  backendContext.set({ projectKeys: InternalProjectKeys });
+  await Auth.fastSignUp();
   backendContext.set({ projectKeys: InternalProjectClientKeys });
-  await Auth.Otp.signIn();
   const result = await Project.createAndGetAdminToken({
     display_name: "Test Project",
   });
@@ -106,8 +107,9 @@ it("creates a new project", async ({ expect }) => {
 });
 
 it("creates a new project with different configurations", async ({ expect }) => {
+  backendContext.set({ projectKeys: InternalProjectKeys });
+  await Auth.fastSignUp();
   backendContext.set({ projectKeys: InternalProjectClientKeys });
-  await Auth.Otp.signIn();
   const { createProjectResponse: response1 } = await Project.create({
     display_name: "Test Project",
     description: "Test description",
@@ -396,7 +398,7 @@ it("creates a new project with different configurations", async ({ expect }) => 
 });
 
 it("lists the current projects after creating a new project", async ({ expect }) => {
-  await Auth.Otp.signIn();
+  await Auth.fastSignUp();
   await Project.create();
   const response = await niceBackendFetch("/api/v1/internal/projects", { accessType: "client" });
   expect(response).toMatchInlineSnapshot(`

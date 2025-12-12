@@ -337,7 +337,7 @@ it("should error when deducting more quantity than available", async ({ expect }
 
 it("allows team admins to be added when item quantity is increased", async ({ expect }) => {
   backendContext.set({ projectKeys: InternalProjectKeys });
-  await Auth.Otp.signIn();
+  await Auth.fastSignUp();
   const { createProjectResponse } = await Project.create();
   const ownerTeamId: string = createProjectResponse.body.owner_team_id;
 
@@ -371,7 +371,7 @@ it("allows team admins to be added when item quantity is increased", async ({ ex
   `);
 
   backendContext.set({ mailbox: mailboxB });
-  await Auth.Otp.signIn();
+  await Auth.fastSignUp();
 
   const invitationMessages = await mailboxB.waitForMessagesWithSubject("join");
   const acceptResponse = await niceBackendFetch("/api/v1/team-invitations/accept", {
