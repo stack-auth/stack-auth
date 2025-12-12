@@ -56,8 +56,8 @@ CREATE TABLE "EmailOutbox" (
             -- rendering
             WHEN "finishedRenderingAt" IS NULL THEN 'RENDERING'::"EmailOutboxStatus"
 
-            -- rendering error
-            WHEN "renderedHtml" IS NULL THEN 'RENDER_ERROR'::"EmailOutboxStatus"  -- EmailOutbox_render_payload_consistency_check ensures that renderedHtml being null implies that the error fields are set 
+            -- rendering error (check error fields directly, not renderedHtml, since text-only renders may have NULL renderedHtml)
+            WHEN "renderErrorExternalMessage" IS NOT NULL THEN 'RENDER_ERROR'::"EmailOutboxStatus"
 
             -- queued or scheduled
             WHEN "startedSendingAt" IS NULL AND "isQueued" IS FALSE THEN 'SCHEDULED'::"EmailOutboxStatus"

@@ -5,7 +5,7 @@ import { getNotificationCategoryByName } from "@/lib/notification-categories";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@stackframe/stack-shared";
-import { adaptSchema, serverOrHigherAuthTypeSchema, templateThemeIdSchema, yupArray, yupBoolean, yupNumber, yupObject, yupRecord, yupString, yupUnion } from "@stackframe/stack-shared/dist/schema-fields";
+import { adaptSchema, jsonSchema, serverOrHigherAuthTypeSchema, templateThemeIdSchema, yupArray, yupBoolean, yupNumber, yupObject, yupRecord, yupString, yupUnion } from "@stackframe/stack-shared/dist/schema-fields";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { StatusError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 
@@ -44,7 +44,7 @@ export const POST = createSmartRouteHandler({
       })),
       bodyBase.concat(yupObject({
         template_id: yupString().uuid().defined(),
-        variables: yupRecord(yupString(), yupString().defined()).optional(),
+        variables: yupRecord(yupString(), jsonSchema.defined()).optional(),
       })),
       bodyBase.concat(yupObject({
         draft_id: yupString().defined(),

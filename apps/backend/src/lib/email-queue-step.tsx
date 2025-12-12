@@ -219,7 +219,7 @@ async function renderTenancyEmails(workerId: string, tenancyId: string, group: E
         variables: filterUndefined({
           projectDisplayName: tenancy.project.display_name,
           userDisplayName,
-          ...filterUndefined((row.extraRenderVariables ?? {}) as Record<string, string | null>),
+          ...filterUndefined((row.extraRenderVariables ?? {}) as Record<string, Json>),
         }),
         themeProps: {
           projectLogos: {

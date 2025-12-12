@@ -5,6 +5,7 @@ import { DEFAULT_TEMPLATE_IDS } from '@stackframe/stack-shared/dist/helpers/emai
 import { UsersCrud } from '@stackframe/stack-shared/dist/interface/crud/users';
 import { getEnvVariable } from '@stackframe/stack-shared/dist/utils/env';
 import { StackAssertionError } from '@stackframe/stack-shared/dist/utils/errors';
+import { Json } from '@stackframe/stack-shared/dist/utils/json';
 import { runEmailQueueStep, serializeRecipient } from './email-queue-step';
 import { LowLevelEmailConfig, isSecureEmailPort } from './emails-low-level';
 import { Tenancy } from './tenancies';
@@ -40,7 +41,7 @@ export async function sendEmailToMany(options: {
   tenancy: Tenancy,
   recipients: EmailOutboxRecipient[],
   tsxSource: string,
-  extraVariables: Record<string, string | null>,
+  extraVariables: Record<string, Json>,
   themeId: string | null,
   isHighPriority: boolean,
   shouldSkipDeliverabilityCheck: boolean,
@@ -76,7 +77,7 @@ export async function sendEmailFromDefaultTemplate(options: {
   user: UsersCrud["Admin"]["Read"] | null,
   email: string,
   templateType: keyof typeof DEFAULT_TEMPLATE_IDS,
-  extraVariables: Record<string, string | null>,
+  extraVariables: Record<string, Json>,
   shouldSkipDeliverabilityCheck: boolean,
 }) {
   const template = getDefaultEmailTemplate(options.tenancy, options.templateType);
