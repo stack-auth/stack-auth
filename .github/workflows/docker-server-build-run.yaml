@@ -1,0 +1,76 @@
+name: Docker Server Build and Run
+
+on:
+  push:
+    branches:
+      - main
+      - dev
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' && github.ref != 'refs/heads/dev' }}
+
+jobs:
+  docker:
+    runs-on: ubicloud-standard-8
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup postgres
+        run: |
+          docker run -d --name db -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=password -e POSTGRES_DB=stackframe -p 8128:5432 postgres:latest
+          sleep 5
+          docker logs db
+
+      - name: Build Docker image
+        run: docker build -f docker/server/Dockerfile -t server .
+
+      - name: Run Docker container and check logs
+        run: |
+          docker run --add-host=host.docker.internal:host-gateway --env-file docker/server/.env.example -p 8101:8101 -p 8102:8102 -d --name stackframe-server server
+          sleep 60
+          docker logs -t stackframe-server
+
+      - name: Check server health
+        run: |
+          check_health() {
+            local name="$1"
+            local url="$2"
+            
+            echo "Attempting to connect to $name at $url..."
+            # Verbose request for debugging (ignore exit code)
+            curl -v "$url" || true
+            
+            # Capture response code, allowing curl to fail without exiting the script
+            set +e
+            response_code=$(curl -s -o /dev/null -w "%{http_code}" "$url" 2>/dev/null)
+            curl_exit=$?
+            set -e
+            
+            echo "Response code: '$response_code' (curl exit: $curl_exit)"
+            
+            # Check if curl failed completely
+            if [ "$curl_exit" -ne 0 ]; then
+              echo "$name health check failed: curl exited with code $curl_exit"
+              return 1
+            fi
+            
+            # Check if response code is empty
+            if [ -z "$response_code" ]; then
+              echo "$name health check failed: curl returned empty response code"
+              return 1
+            fi
+            
+            # Check if response code is 200
+            if [ "$response_code" -ne 200 ]; then
+              echo "$name health check failed with status code: $response_code"
+              return 1
+            fi
+            
+            echo "$name health check passed!"
+            return 0
+          }
+          
+          check_health "dashboard" "http://localhost:8101" || exit 1
+          check_health "backend" "http://localhost:8102/health" || exit 1

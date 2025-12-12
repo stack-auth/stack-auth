@@ -2,12 +2,13 @@
   "name": "@stackframe/stack-backend",
   "version": "2.8.57",
   "private": true,
+  "type": "module",
   "scripts": {
     "clean": "rimraf src/generated && rimraf .next && rimraf node_modules",
     "typecheck": "tsc --noEmit",
     "with-env": "dotenv -c development --",
     "with-env:prod": "dotenv -c --",
-    "dev": "concurrently -n \"dev,codegen,prisma-studio\" -k \"next dev --turbopack --port ${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}02\" \"pnpm run codegen:watch\" \"pnpm run prisma-studio\"",
+    "dev": "concurrently -n \"dev,codegen,prisma-studio,email-queue\" -k \"next dev --turbopack --port ${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}02\" \"pnpm run codegen:watch\" \"pnpm run prisma-studio\" \"pnpm run run-email-queue\"",
     "build": "pnpm run codegen && next build",
     "docker-build": "pnpm run codegen && next build --experimental-build-mode compile",
     "build-self-host-migration-script": "tsup --config scripts/db-migrations.tsup.config.ts",
@@ -35,7 +36,8 @@
     "generate-openapi-fumadocs": "pnpm run with-env tsx scripts/generate-openapi-fumadocs.ts",
     "generate-keys": "pnpm run with-env tsx scripts/generate-keys.ts",
     "db-seed-script": "pnpm run db:seed",
-    "verify-data-integrity": "pnpm run with-env tsx scripts/verify-data-integrity.ts"
+    "verify-data-integrity": "pnpm run with-env tsx scripts/verify-data-integrity.ts",
+    "run-email-queue": "pnpm run with-env tsx scripts/run-email-queue.ts"
   },
   "prisma": {
     "seed": "pnpm run db-seed-script"

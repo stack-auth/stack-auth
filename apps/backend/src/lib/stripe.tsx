@@ -7,7 +7,7 @@ import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/uti
 import Stripe from "stripe";
 import { createStripeProxy, type StripeOverridesMap } from "./stripe-proxy";
 
-const stripeSecretKey = getEnvVariable("STACK_STRIPE_SECRET_KEY");
+const stripeSecretKey = getEnvVariable("STACK_STRIPE_SECRET_KEY", "");
 const useStripeMock = stripeSecretKey === "sk_test_mockstripekey" && ["development", "test"].includes(getNodeEnvironment());
 const stackPortPrefix = getEnvVariable("NEXT_PUBLIC_STACK_PORT_PREFIX", "81");
 const stripeConfig: Stripe.StripeConfig = useStripeMock ? {
@@ -17,6 +17,9 @@ const stripeConfig: Stripe.StripeConfig = useStripeMock ? {
 } : {};
 
 export const getStackStripe = (overrides?: StripeOverridesMap) => {
+  if (!stripeSecretKey) {
+    throw new StackAssertionError("STACK_STRIPE_SECRET_KEY environment variable is not set");
+  }
   if (overrides && !useStripeMock) {
     throw new StackAssertionError("Stripe overrides are not supported in production");
   }
@@ -24,6 +27,9 @@ export const getStackStripe = (overrides?: StripeOverridesMap) => {
 };
 
 export const getStripeForAccount = async (options: { tenancy?: Tenancy, accountId?: string }, overrides?: StripeOverridesMap) => {
+  if (!stripeSecretKey) {
+    throw new StackAssertionError("STACK_STRIPE_SECRET_KEY environment variable is not set");
+  }
   if (overrides && !useStripeMock) {
     throw new StackAssertionError("Stripe overrides are not supported in production");
   }

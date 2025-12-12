@@ -29,3 +29,26 @@ export type SendEmailOptions = SendEmailOptionsBase
     },
     { draftId: string }
   ]>
+
+export type EmailDeliveryWindowStats = {
+  sent: number,
+  bounced: number,
+  marked_as_spam: number,
+};
+
+export type EmailDeliveryStats = {
+  hour: EmailDeliveryWindowStats,
+  day: EmailDeliveryWindowStats,
+  week: EmailDeliveryWindowStats,
+  month: EmailDeliveryWindowStats,
+};
+
+export type EmailDeliveryCapacity = {
+  rate_per_second: number,
+  penalty_factor: number,
+};
+
+export type EmailDeliveryInfo = {
+  stats: EmailDeliveryStats,
+  capacity: EmailDeliveryCapacity,
+};
