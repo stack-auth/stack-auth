@@ -8,6 +8,7 @@ import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors"
 import { globalVar } from "@stackframe/stack-shared/dist/utils/globals";
 import { deepPlainEquals, filterUndefined, typedFromEntries, typedKeys } from "@stackframe/stack-shared/dist/utils/objects";
 import { concatStacktracesIfRejected, ignoreUnhandledRejection } from "@stackframe/stack-shared/dist/utils/promises";
+import { throwingProxy } from "@stackframe/stack-shared/dist/utils/proxies";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { traceSpan } from "@stackframe/stack-shared/dist/utils/telemetry";
 import { isUuid } from "@stackframe/stack-shared/dist/utils/uuids";
@@ -129,7 +130,12 @@ let actualGlobalConnectionString: string = globalVar.__stack_actual_global_conne
 })();
 
 
-export const { client: globalPrismaClient, schema: globalPrismaSchema } = actualGlobalConnectionString ? getPostgresPrismaClient(actualGlobalConnectionString) : ({ client: "No STACK_DATABASE_CONNECTION_STRING environment variable set", schema: null } as never);
+export const { client: globalPrismaClient, schema: globalPrismaSchema } = actualGlobalConnectionString
+  ? getPostgresPrismaClient(actualGlobalConnectionString)
+  : {
+    client: throwingProxy<PrismaClient>("STACK_DATABASE_CONNECTION_STRING environment variable is not set. Please set it to a valid PostgreSQL connection string, or use a mock Prisma client for testing."),
+    schema: throwingProxy<string>("STACK_DATABASE_CONNECTION_STRING environment variable is not set. Please set it to a valid PostgreSQL connection string, or use a mock Prisma client for testing."),
+  };
 
 export async function getPrismaClientForSourceOfTruth(sourceOfTruth: CompleteConfig["sourceOfTruth"], branchId: string) {
   switch (sourceOfTruth.type) {

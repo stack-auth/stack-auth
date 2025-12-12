@@ -795,7 +795,7 @@ model EmailOutbox {
   // if startedSendingAt is not set, then finishedSendingAt is also not set
   finishedSendingAt DateTime?
 
-  // A generated column that is equal to finishedSendingAt if canHaveDeliveryInfo is true, otherwise deliveredAt.
+  // A generated column that is equal to finishedSendingAt if canHaveDeliveryInfo is false, otherwise deliveredAt.
   sentAt DateTime? @default(dbgenerated("\nCASE\n    WHEN (\"canHaveDeliveryInfo\" IS TRUE) THEN \"deliveredAt\"\n    WHEN (\"canHaveDeliveryInfo\" IS FALSE) THEN \"finishedSendingAt\"\n    ELSE NULL::timestamp without time zone\nEND"))
 
   // either all or none of [sendServerErrorExternalMessage, sendServerErrorExternalDetails, sendServerErrorInternalMessage, sendServerErrorInternalDetails] must be set. If finishedSendingAt is not set, then none of these are set.
