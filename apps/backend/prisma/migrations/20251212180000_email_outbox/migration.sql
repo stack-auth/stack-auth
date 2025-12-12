@@ -165,9 +165,9 @@ CREATE TABLE "EmailOutbox" (
                     ("renderedHtml" IS NULL AND "renderedText" IS NULL AND "renderedSubject" IS NULL AND "renderedIsTransactional" IS NULL AND "renderedNotificationCategoryId" IS NULL)
                     AND (
                         "renderErrorExternalMessage" IS NOT NULL
-                        OR "renderErrorExternalDetails" IS NOT NULL
-                        OR "renderErrorInternalMessage" IS NOT NULL
-                        OR "renderErrorInternalDetails" IS NOT NULL
+                        AND "renderErrorExternalDetails" IS NOT NULL
+                        AND "renderErrorInternalMessage" IS NOT NULL
+                        AND "renderErrorInternalDetails" IS NOT NULL
                     )
                 )
             )
@@ -219,7 +219,12 @@ CREATE TABLE "EmailOutbox" (
             <= 1
         ),
     CONSTRAINT "EmailOutbox_click_implies_open_check"
-        CHECK ("clickedAt" IS NULL OR "openedAt" IS NOT NULL)
+        CHECK ("clickedAt" IS NULL OR "openedAt" IS NOT NULL),
+    CONSTRAINT "EmailOutbox_send_server_error_all_or_none_check"
+        CHECK (
+            ("sendServerErrorExternalMessage" IS NULL AND "sendServerErrorExternalDetails" IS NULL AND "sendServerErrorInternalMessage" IS NULL AND "sendServerErrorInternalDetails" IS NULL)
+            OR ("sendServerErrorExternalMessage" IS NOT NULL AND "sendServerErrorExternalDetails" IS NOT NULL AND "sendServerErrorInternalMessage" IS NOT NULL AND "sendServerErrorInternalDetails" IS NOT NULL)
+        )
 );
 
 -- CreateTable
