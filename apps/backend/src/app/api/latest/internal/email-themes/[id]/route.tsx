@@ -1,11 +1,7 @@
-import { overrideEnvironmentConfigOverride } from "@/lib/config";
-import { renderEmailWithTemplate } from "@/lib/email-rendering";
-import { globalPrismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { previewTemplateSource } from "@stackframe/stack-shared/dist/helpers/emails";
-import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
 import { adaptSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
+import { internalEmailThemesCudHandlers } from "../cud";
 
 export const GET = createSmartRouteHandler({
   metadata: {
@@ -29,17 +25,17 @@ export const GET = createSmartRouteHandler({
     }).defined(),
   }),
   async handler({ auth: { tenancy }, params: { id } }) {
-    const themeList = tenancy.config.emails.themes;
-    if (!Object.keys(themeList).includes(id)) {
-      throw new StatusError(404, "No theme found with given id");
-    }
-    const theme = themeList[id];
+    const theme = await internalEmailThemesCudHandlers.adminRead({
+      tenancy,
+      allowedErrorTypes: [StatusError],
+      id,
+    });
     return {
       statusCode: 200,
       bodyType: "json",
       body: {
-        display_name: theme.displayName,
-        tsx_source: theme.tsxSource,
+        display_name: theme.display_name,
+        tsx_source: theme.tsx_source,
       },
     };
   },
@@ -69,31 +65,24 @@ export const PATCH = createSmartRouteHandler({
     }).defined(),
   }),
   async handler({ auth: { tenancy }, params: { id }, body }) {
-    const themeList = tenancy.config.emails.themes;
-    if (!Object.keys(themeList).includes(id)) {
-      throw new StatusError(404, "No theme found with given id");
-    }
-    const theme = themeList[id];
-    const result = await renderEmailWithTemplate(
-      previewTemplateSource,
-      body.tsx_source,
-      { previewMode: true },
-    );
-    if (result.status === "error") {
-      throw new KnownErrors.EmailRenderingError(result.error);
-    }
-    await overrideEnvironmentConfigOverride({
-      projectId: tenancy.project.id,
-      branchId: tenancy.branchId,
-      environmentConfigOverrideOverride: {
-        [`emails.themes.${id}.tsxSource`]: body.tsx_source,
-      },
+    const result = await internalEmailThemesCudHandlers.adminUpdate({
+      tenancy,
+      allowedErrorTypes: [StatusError],
+      id,
+      data: [{
+        tsx_source: body.tsx_source,
+      }],
     });
+
+    const updated = result.items.find((t) => t.id === id);
+    if (!updated) {
+      throw new StatusError(500, "Theme was updated but could not be found afterwards");
+    }
     return {
       statusCode: 200,
       bodyType: "json",
       body: {
-        display_name: theme.displayName,
+        display_name: updated.display_name,
       },
     };
   },
