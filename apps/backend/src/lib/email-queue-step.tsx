@@ -8,14 +8,110 @@ import { withTraceSpan } from "@/utils/telemetry";
 import { allPromisesAndWaitUntilEach } from "@/utils/vercel";
 import { EmailOutbox, EmailOutboxSkippedReason, Prisma } from "@prisma/client";
 import { groupBy } from "@stackframe/stack-shared/dist/utils/arrays";
+import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { captureError, errorToNiceString, StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { Json } from "@stackframe/stack-shared/dist/utils/json";
 import { filterUndefined } from "@stackframe/stack-shared/dist/utils/objects";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
+import { traceSpan } from "@stackframe/stack-shared/dist/utils/telemetry";
 import { randomUUID } from "node:crypto";
 import { lowLevelSendEmailDirectViaProvider } from "./emails-low-level";
 
 const MAX_RENDER_BATCH = 50;
+
+// Domain that is always rejected when emailable API key is not set (for testing purposes)
+const EMAILABLE_NOT_DELIVERABLE_TEST_DOMAIN = "emailable-not-deliverable.example.com";
+
+type EmailableVerificationResult =
+  | { status: "ok" }
+  | { status: "not-deliverable", emailableResponse: Record<string, unknown> };
+
+/**
+ * Verifies email deliverability using the Emailable API.
+ *
+ * If STACK_EMAILABLE_API_KEY is set, it calls the Emailable API to verify the email.
+ * If the API key is not set, it falls back to a default behavior where emails
+ * with the domain "emailable-not-deliverable.example.com" are rejected (for testing).
+ */
+async function verifyEmailDeliverability(
+  email: string,
+  shouldSkipDeliverabilityCheck: boolean,
+  emailConfigType: "shared" | "standard"
+): Promise<EmailableVerificationResult> {
+  // Skip deliverability check if requested or using non-shared email config
+  if (shouldSkipDeliverabilityCheck || emailConfigType !== "shared") {
+    return { status: "ok" };
+  }
+
+  const emailableApiKey = getEnvVariable("STACK_EMAILABLE_API_KEY", "");
+
+  if (emailableApiKey) {
+    // Use Emailable API for verification
+    return await traceSpan("verifying email address with Emailable", async () => {
+      try {
+        const emailableResponseResult = await Result.retry(async () => {
+          const res = await fetch(
+            `https://api.emailable.com/v1/verify?email=${encodeURIComponent(email)}&api_key=${emailableApiKey}`
+          );
+          if (res.status === 249) {
+            const text = await res.text();
+            console.log("Emailable is taking longer than expected, retrying...", text, { email });
+            return Result.error(
+              new Error(
+                `Emailable API returned a 249 error for ${email}. This means it takes some more time to verify the email address. Response body: ${text}`
+              )
+            );
+          }
+          return Result.ok(res);
+        }, 4, { exponentialDelayBase: 4000 });
+
+        if (emailableResponseResult.status === "error") {
+          throw new StackAssertionError("Timed out while verifying email address with Emailable", {
+            email,
+            emailableResponseResult,
+          });
+        }
+
+        const emailableResponse = emailableResponseResult.data;
+        if (!emailableResponse.ok) {
+          throw new StackAssertionError("Failed to verify email address with Emailable", {
+            email,
+            emailableResponse,
+            emailableResponseText: await emailableResponse.text(),
+          });
+        }
+
+        const json = await emailableResponse.json() as Record<string, unknown>;
+        console.log("emailableResponse", json);
+
+        if (json.state === "undeliverable" || json.disposable) {
+          console.log("email not deliverable", email, json);
+          return { status: "not-deliverable", emailableResponse: json };
+        }
+
+        return { status: "ok" };
+      } catch (error) {
+        // If something goes wrong with the Emailable API (eg. 500, ran out of credits, etc.), we just send the email anyway
+        captureError("emailable-api-error", error);
+        return { status: "ok" };
+      }
+    });
+  } else {
+    // Fallback behavior when no API key is set: reject test domain for testing purposes
+    const emailDomain = email.split("@")[1]?.toLowerCase();
+    if (emailDomain === EMAILABLE_NOT_DELIVERABLE_TEST_DOMAIN) {
+      return {
+        status: "not-deliverable",
+        emailableResponse: {
+          state: "undeliverable",
+          reason: "test_domain_rejection",
+          message: `Emails to ${EMAILABLE_NOT_DELIVERABLE_TEST_DOMAIN} are rejected in test mode when STACK_EMAILABLE_API_KEY is not set`,
+        },
+      };
+    }
+    return { status: "ok" };
+  }
+}
 
 type TenancySendBatch = {
   tenancyId: string,
@@ -114,8 +210,8 @@ async function updateLastExecutionTime(): Promise<number> {
         "lastExecutedAt" = (SELECT now FROM now_ts)
       FROM (
         SELECT "key", "lastExecutedAt" AS previous_timestamp
-        FROM "EmailOutboxProcessingMetadata"
-        WHERE "key" = ${key}
+      FROM "EmailOutboxProcessingMetadata"
+      WHERE "key" = ${key}
         FOR UPDATE
       ) AS old
       WHERE m."key" = old."key"
@@ -145,7 +241,7 @@ async function updateLastExecutionTime(): Promise<number> {
           (SELECT new_timestamp FROM result) - 
           (SELECT previous_timestamp FROM result)
         )
-      END AS delta;
+    END AS delta;
   `;
 
   if (delta < 0) {
@@ -473,7 +569,7 @@ function getPrimaryEmail(user: ProjectUserWithContacts | undefined): string | un
 
 type ResolvedRecipient =
   | { status: "ok", emails: string[] }
-  | { status: "skip", reason: EmailOutboxSkippedReason }
+  | { status: "skip", reason: EmailOutboxSkippedReason, details?: Record<string, unknown> }
   | { status: "unsubscribe" };
 
 async function processSingleEmail(context: TenancyProcessingContext, row: EmailOutbox): Promise<void> {
@@ -482,13 +578,30 @@ async function processSingleEmail(context: TenancyProcessingContext, row: EmailO
     const resolution = await resolveRecipientEmails(context, row, recipient);
 
     if (resolution.status === "skip") {
-      await markSkipped(row, resolution.reason);
+      await markSkipped(row, resolution.reason, resolution.details);
       return;
     }
 
     if (resolution.status === "unsubscribe") {
       await markSkipped(row, EmailOutboxSkippedReason.USER_UNSUBSCRIBED);
       return;
+    }
+
+    // Verify email deliverability for each email address
+    // If any email fails verification, skip the entire email with LIKELY_NOT_DELIVERABLE reason
+    for (const email of resolution.emails) {
+      const verifyResult = await verifyEmailDeliverability(
+        email,
+        row.shouldSkipDeliverabilityCheck,
+        context.emailConfig.type
+      );
+      if (verifyResult.status === "not-deliverable") {
+        await markSkipped(row, EmailOutboxSkippedReason.LIKELY_NOT_DELIVERABLE, {
+          emailableResponse: verifyResult.emailableResponse,
+          email,
+        });
+        return;
+      }
     }
 
     const result = await lowLevelSendEmailDirectViaProvider({
@@ -498,7 +611,6 @@ async function processSingleEmail(context: TenancyProcessingContext, row: EmailO
       subject: row.renderedSubject ?? "",
       html: row.renderedHtml ?? undefined,
       text: row.renderedText ?? undefined,
-      shouldSkipDeliverabilityCheck: row.shouldSkipDeliverabilityCheck,
     });
 
     if (result.status === "error") {
@@ -628,7 +740,7 @@ async function shouldSendEmail(
   return enabled;
 }
 
-async function markSkipped(row: EmailOutbox, reason: EmailOutboxSkippedReason): Promise<void> {
+async function markSkipped(row: EmailOutbox, reason: EmailOutboxSkippedReason, details: Record<string, unknown> = {}): Promise<void> {
   await globalPrismaClient.emailOutbox.update({
     where: {
       tenancyId_id: {
@@ -639,6 +751,7 @@ async function markSkipped(row: EmailOutbox, reason: EmailOutboxSkippedReason): 
     },
     data: {
       skippedReason: reason,
+      skippedDetails: details,
       finishedSendingAt: new Date(),
       canHaveDeliveryInfo: false,
     },

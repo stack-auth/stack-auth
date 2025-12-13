@@ -691,6 +691,7 @@ enum EmailOutboxSkippedReason {
   USER_ACCOUNT_DELETED
   USER_HAS_NO_PRIMARY_EMAIL
   NO_EMAIL_PROVIDED
+  LIKELY_NOT_DELIVERABLE
 }
 
 enum EmailOutboxCreatedWith {
@@ -804,8 +805,9 @@ model EmailOutbox {
   sendServerErrorInternalMessage String?
   sendServerErrorInternalDetails Json?
 
-  // The reason why the email was skipped. If finishedSendingAt is not set, then this is also not set. Usually one of: 
-  skippedReason EmailOutboxSkippedReason?
+  // The reason why the email was skipped. If finishedSendingAt is not set, then this is also not set. skippedDetails must be set if and only if skippedReason is set. (Enforced by EmailOutbox_skipped_details_consistency_check constraint.)
+  skippedReason  EmailOutboxSkippedReason?
+  skippedDetails Json?
 
   // Whether this email was sent through a server that provides delivery info. This is set if and only if finishedSendingAt is set (it is only determined once the email has been sent). If canHaveDeliveryInfo is false, then [deliveredAt, deliveryDelayedAt, bouncedAt] are all not set. This flag is usually set to true if the email provider is Resend.
   canHaveDeliveryInfo Boolean?
