@@ -1,3 +1,4 @@
+import { EmailOutbox, EmailOutboxSkippedReason, Prisma } from "@/generated/prisma/client";
 import { calculateCapacityRate, getEmailDeliveryStatsForTenancy } from "@/lib/email-delivery-stats";
 import { getEmailThemeForThemeId, renderEmailsForTenancyBatched } from "@/lib/email-rendering";
 import { EmailOutboxRecipient, getEmailConfig, } from "@/lib/emails";
@@ -6,7 +7,6 @@ import { getTenancy, Tenancy } from "@/lib/tenancies";
 import { getPrismaClientForTenancy, globalPrismaClient, PrismaClientTransaction } from "@/prisma-client";
 import { withTraceSpan } from "@/utils/telemetry";
 import { allPromisesAndWaitUntilEach } from "@/utils/vercel";
-import { EmailOutbox, EmailOutboxSkippedReason, Prisma } from "@prisma/client";
 import { groupBy } from "@stackframe/stack-shared/dist/utils/arrays";
 import { captureError, errorToNiceString, StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { Json } from "@stackframe/stack-shared/dist/utils/json";

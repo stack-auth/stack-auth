@@ -1,7 +1,7 @@
 import { getStackServerApp } from "@/stack";
 import { PrismaNeon } from "@prisma/adapter-neon";
 import { PrismaPg } from '@prisma/adapter-pg';
-import { Prisma, PrismaClient } from "@prisma/client";
+import { Prisma, PrismaClient } from "@/generated/prisma/client";
 import { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
 import { getEnvVariable, getNodeEnvironment } from '@stackframe/stack-shared/dist/utils/env';
 import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
@@ -25,7 +25,6 @@ export type PrismaClientTransaction = PrismaClient | Parameters<Parameters<Prism
 
 // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
 const prismaClientsStore = (globalVar.__stack_prisma_clients as undefined) || {
-  global: new PrismaClient(),
   neon: new Map<string, PrismaClient>(),
   postgres: new Map<string, {
     client: PrismaClient,

@@ -2,12 +2,12 @@
 import { teamMembershipsCrudHandlers } from '@/app/api/latest/team-memberships/crud';
 import { teamsCrudHandlers } from '@/app/api/latest/teams/crud';
 import { usersCrudHandlers } from '@/app/api/latest/users/crud';
+import { CustomerType, EmailOutboxCreatedWith, Prisma, PrismaClient, PurchaseCreationSource, SubscriptionStatus } from '@/generated/prisma/client';
 import { overrideEnvironmentConfigOverride } from '@/lib/config';
 import { ensurePermissionDefinition, grantTeamPermission } from '@/lib/permissions';
 import { createOrUpdateProjectWithLegacyConfig, getProject } from '@/lib/projects';
 import { DEFAULT_BRANCH_ID, getSoleTenancyFromProjectBranch, type Tenancy } from '@/lib/tenancies';
 import { getPrismaClientForTenancy, globalPrismaClient } from '@/prisma-client';
-import { CustomerType, EmailOutboxCreatedWith, Prisma, PrismaClient, PurchaseCreationSource, SubscriptionStatus } from '@prisma/client';
 import { ALL_APPS } from '@stackframe/stack-shared/dist/apps/apps-config';
 import { DEFAULT_EMAIL_THEME_ID } from '@stackframe/stack-shared/dist/helpers/emails';
 import { AdminUserProjectsCrud, ProjectsCrud } from '@stackframe/stack-shared/dist/interface/crud/projects';
@@ -16,7 +16,7 @@ import { throwErr } from '@stackframe/stack-shared/dist/utils/errors';
 import { typedEntries, typedFromEntries } from '@stackframe/stack-shared/dist/utils/objects';
 import { generateUuid } from '@stackframe/stack-shared/dist/utils/uuids';
 
-const globalPrisma = new PrismaClient();
+const globalPrisma = globalPrismaClient;
 const DUMMY_PROJECT_ID = '6fbbf22e-f4b2-4c6e-95a1-beab6fa41063';
 const EXPLORATORY_TEAM_DISPLAY_NAME = 'Exploratory Research and Insight Partnership With Very Long Collaborative Name For Testing';
 

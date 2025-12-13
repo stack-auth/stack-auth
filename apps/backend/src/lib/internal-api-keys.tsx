@@ -1,7 +1,7 @@
 // TODO remove and replace with CRUD handler
 
 import { RawQuery, globalPrismaClient, rawQuery } from '@/prisma-client';
-import { ApiKeySet, Prisma } from '@prisma/client';
+import { ApiKeySet, Prisma } from '@/generated/prisma/client';
 import { InternalApiKeysCrud } from '@stackframe/stack-shared/dist/interface/crud/internal-api-keys';
 import { yupString } from '@stackframe/stack-shared/dist/schema-fields';
 import { typedIncludes } from '@stackframe/stack-shared/dist/utils/arrays';
