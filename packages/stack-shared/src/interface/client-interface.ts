@@ -1806,6 +1806,29 @@ export class StackClientInterface {
     return await response.json();
   }
 
+  async cancelSubscription(
+    options: {
+      customer_type: "user" | "team" | "custom",
+      customer_id: string,
+      product_id: string,
+    },
+    session: InternalSession | null,
+  ): Promise<void> {
+    await this.sendClientRequest(
+      urlString`/payments/products/${options.customer_type}/${options.customer_id}`,
+      {
+        method: "DELETE",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          product_id: options.product_id,
+        }),
+      },
+      session,
+    );
+  }
+
   async createCheckoutUrl(
     customer_type: "user" | "team" | "custom",
     customer_id: string,
