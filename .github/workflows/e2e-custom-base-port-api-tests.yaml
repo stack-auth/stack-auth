@@ -97,13 +97,13 @@ jobs:
 
       - name: Initialize database
         run: pnpm run db:init
-  
+        
       - name: Start stack-backend in background
         uses: JarvusInnovations/background-action@v1.0.7
         with:
           run: pnpm run start:backend --log-order=stream &
           wait-on: |
-            http://localhost:6702
+            http://localhost:8102
           tail: true
           wait-for: 30s
           log-output-if: true
@@ -112,7 +112,7 @@ jobs:
         with:
           run: pnpm run start:dashboard --log-order=stream &
           wait-on: |
-            http://localhost:6702
+            http://localhost:8101
           tail: true
           wait-for: 30s
           log-output-if: true
@@ -121,7 +121,16 @@ jobs:
         with:
           run: pnpm run start:mock-oauth-server --log-order=stream &
           wait-on: |
-            http://localhost:6702
+            http://localhost:8114
+          tail: true
+          wait-for: 30s
+          log-output-if: true
+      - name: Start run-email-queue in background
+        uses: JarvusInnovations/background-action@v1.0.7
+        with:
+          run: pnpm -C apps/backend run run-email-queue --log-order=stream &
+          wait-on: |
+            http://localhost:8102
           tail: true
           wait-for: 30s
           log-output-if: true

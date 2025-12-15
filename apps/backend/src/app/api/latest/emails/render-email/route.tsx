@@ -1,4 +1,4 @@
-import { getEmailThemeForTemplate, renderEmailWithTemplate } from "@/lib/email-rendering";
+import { getEmailThemeForThemeId, renderEmailWithTemplate } from "@/lib/email-rendering";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
 import { adaptSchema, templateThemeIdSchema, yupNumber, yupObject, yupString, yupUnion } from "@stackframe/stack-shared/dist/schema-fields";
@@ -53,7 +53,7 @@ export const POST = createSmartRouteHandler({
       if (typeof body.theme_id === "string" && !themeList.has(body.theme_id)) {
         throw new StatusError(400, "No theme found with given id");
       }
-      themeSource = getEmailThemeForTemplate(tenancy, body.theme_id);
+      themeSource = getEmailThemeForThemeId(tenancy, body.theme_id);
     }
 
     let contentSource: string;

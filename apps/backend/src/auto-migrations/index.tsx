@@ -1,6 +1,7 @@
 import { sqlQuoteIdent, sqlQuoteIdentToString } from '@/prisma-client';
 import { Prisma, PrismaClient } from '@prisma/client';
 import { StackAssertionError } from '@stackframe/stack-shared/dist/utils/errors';
+import { wait } from '@stackframe/stack-shared/dist/utils/promises';
 import { MIGRATION_FILES } from './../generated/migration-files';
 
 // The bigint key for the pg advisory lock
@@ -149,6 +150,7 @@ export async function applyMigrations(options: {
                 }
                 if (res[0].should_repeat_migration) {
                   log(`  |> Migration ${migration.migrationName} requested to be repeated. This is normal and *not* indicative of a problem.`);
+                  await wait(500);  // give the database a chance to catch up with everything else that's happening
                   // Commit the transaction and continue re-running the migration
                   return;
                 }

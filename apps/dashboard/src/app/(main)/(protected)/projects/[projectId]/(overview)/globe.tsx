@@ -428,7 +428,6 @@ function GlobeSectionInner({ countryData, totalUsers, children }: {countryData: 
                     showAtmosphere={false}
                     height={globeSize}
                     onGlobeReady={() => {
-                      console.log("globe ready");
                       setGlobeReady(true);
 
                       const current = globeRef.current;

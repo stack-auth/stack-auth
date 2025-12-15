@@ -2,9 +2,8 @@ import { createApiKeySet } from "@/lib/internal-api-keys";
 import { createOrUpdateProjectWithLegacyConfig } from "@/lib/projects";
 import { getPrismaClientForSourceOfTruth, globalPrismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { stackServerApp } from "@/stack";
+import { getStackServerApp } from "@/stack";
 import { neonAuthorizationHeaderSchema, projectDisplayNameSchema, yupArray, yupNumber, yupObject, yupString, yupTuple } from "@stackframe/stack-shared/dist/schema-fields";
-import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { decodeBasicAuthorizationHeader } from "@stackframe/stack-shared/dist/utils/http";
 import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
 
@@ -40,7 +39,7 @@ export const POST = createSmartRouteHandler({
     const uuidConnectionStrings: Record<string, string> = {};
 
     if (hasNeonConnections) {
-      const store = await stackServerApp.getDataVaultStore('neon-connection-strings');
+      const store = await getStackServerApp().getDataVaultStore('neon-connection-strings');
       const secret = "no client side encryption";
 
       for (const c of req.body.connection_strings!) {

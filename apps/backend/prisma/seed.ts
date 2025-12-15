@@ -7,7 +7,7 @@ import { ensurePermissionDefinition, grantTeamPermission } from '@/lib/permissio
 import { createOrUpdateProjectWithLegacyConfig, getProject } from '@/lib/projects';
 import { DEFAULT_BRANCH_ID, getSoleTenancyFromProjectBranch, type Tenancy } from '@/lib/tenancies';
 import { getPrismaClientForTenancy, globalPrismaClient } from '@/prisma-client';
-import { CustomerType, Prisma, PrismaClient, PurchaseCreationSource, SubscriptionStatus } from '@prisma/client';
+import { CustomerType, EmailOutboxCreatedWith, Prisma, PrismaClient, PurchaseCreationSource, SubscriptionStatus } from '@prisma/client';
 import { ALL_APPS } from '@stackframe/stack-shared/dist/apps/apps-config';
 import { DEFAULT_EMAIL_THEME_ID } from '@stackframe/stack-shared/dist/helpers/emails';
 import { AdminUserProjectsCrud, ProjectsCrud } from '@stackframe/stack-shared/dist/interface/crud/projects';
@@ -1085,16 +1085,14 @@ type EmailSeedOptions = {
   userEmailToId: Map<string, string>,
 };
 
-type EmailSeed = {
+type EmailOutboxSeed = {
   id: string,
   subject: string,
-  to: string[],
-  senderConfig: Prisma.InputJsonValue,
   html?: string,
   text?: string,
-  error?: Prisma.InputJsonValue | null,
   createdAt: Date,
   userEmail?: string,
+  hasError?: boolean,
 };
 
 const cloneJson = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
@@ -1456,19 +1454,10 @@ async function seedDummyEmails(options: EmailSeedOptions) {
     return userId;
   };
 
-  const emailSeeds: EmailSeed[] = [
+  const emailSeeds: EmailOutboxSeed[] = [
     {
       id: DUMMY_SEED_IDS.emails.welcomeAmelia,
       subject: 'Welcome to Dummy Project',
-      to: ['amelia.chen@dummy.dev'],
-      senderConfig: {
-        type: 'standard',
-        host: 'smtp.stack.local',
-        port: 587,
-        username: 'stack-app',
-        senderName: 'Dummy Project',
-        senderEmail: 'hello@dummy.dev',
-      },
       html: '<p>Hi Amelia,<br/>Welcome to Dummy Project.</p>',
       text: 'Hi Amelia,\nWelcome to Dummy Project.',
       createdAt: new Date('2024-05-01T13:00:00.000Z'),
@@ -1477,15 +1466,6 @@ async function seedDummyEmails(options: EmailSeedOptions) {
     {
       id: DUMMY_SEED_IDS.emails.passkeyMilo,
       subject: 'Your passkey sign-in link',
-      to: ['milo.adeyemi@dummy.dev'],
-      senderConfig: {
-        type: 'standard',
-        host: 'smtp.stack.local',
-        port: 587,
-        username: 'auth-service',
-        senderName: 'Dummy Auth',
-        senderEmail: 'auth@dummy.dev',
-      },
       html: '<p>Complete your sign-in within <strong>10 minutes</strong>.</p>',
       text: 'Complete your sign-in within 10 minutes.',
       createdAt: new Date('2024-05-02T10:00:00.000Z'),
@@ -1494,88 +1474,65 @@ async function seedDummyEmails(options: EmailSeedOptions) {
     {
       id: DUMMY_SEED_IDS.emails.invitePriya,
       subject: 'Dashboard invite for Ops',
-      to: ['priya.narang@dummy.dev', 'ops@dummy.dev'],
-      senderConfig: {
-        type: 'standard',
-        host: 'smtp-relay.dummy.dev',
-        port: 2525,
-        username: 'relay-invite',
-        senderName: 'Stack Invitations',
-        senderEmail: 'invites@dummy.dev',
-      },
-      html: '<p>Your admin invitation could not be delivered.</p>',
-      error: {
-        message: 'Mailbox full',
-        code: 'MAILBOX_FULL',
-        smtpResponse: '552 Requested mail action aborted: exceeded storage allocation',
-      },
+      html: '<p>Welcome to the dashboard!</p>',
+      hasError: true,
       createdAt: new Date('2024-05-04T18:30:00.000Z'),
       userEmail: 'priya.narang@dummy.dev',
     },
     {
       id: DUMMY_SEED_IDS.emails.statusDigest,
       subject: 'Nightly status digest',
-      to: ['ops@dummy.dev', 'observer@dummy.dev'],
-      senderConfig: {
-        type: 'standard',
-        host: 'api.resend.com',
-        port: 443,
-        username: 'resend-live',
-        senderName: 'Dummy Alerts',
-        senderEmail: 'alerts@dummy.dev',
-      },
       text: 'All services operational. 3 warnings acknowledged.',
       createdAt: new Date('2024-05-06T07:45:00.000Z'),
     },
     {
       id: DUMMY_SEED_IDS.emails.templateFailure,
       subject: 'Template rendering failed - Review',
-      to: ['dev@dummy.dev'],
-      senderConfig: {
-        type: 'standard',
-        host: 'smtp.stack.local',
-        port: 465,
-        username: 'template-engine',
-        senderName: 'Dummy System',
-        senderEmail: 'system@dummy.dev',
-      },
       html: '<p>Rendering failed due to <code>undefined</code> data from billing.</p>',
-      error: {
-        message: 'Template render error',
-        stack: 'ReferenceError: account is not defined',
-      },
+      hasError: true,
       createdAt: new Date('2024-05-08T12:05:00.000Z'),
     },
   ];
 
   for (const email of emailSeeds) {
     const userId = resolveOptionalUserId(email.userEmail);
-    await prisma.sentEmail.upsert({
+    const recipient = userId
+      ? { type: 'user-primary-email', userId }
+      : { type: 'custom-emails', emails: ['unknown@dummy.dev'] };
+
+    await globalPrismaClient.emailOutbox.upsert({
       where: {
         tenancyId_id: {
           tenancyId,
           id: email.id,
         },
       },
-      update: {
-        subject: email.subject,
-        to: email.to,
-        senderConfig: email.senderConfig,
-        html: email.html ?? null,
-        text: email.text ?? null,
-        error: email.error ?? Prisma.JsonNull,
-        userId,
-      },
+      update: {},
       create: {
         tenancyId,
         id: email.id,
-        subject: email.subject,
-        to: email.to,
-        senderConfig: email.senderConfig,
-        html: email.html ?? null,
-        text: email.text ?? null,
-        error: email.error ?? Prisma.JsonNull,
-        userId,
+        tsxSource: '',
+        isHighPriority: false,
+        to: recipient,
+        extraRenderVariables: {},
+        shouldSkipDeliverabilityCheck: false,
+        createdWith: EmailOutboxCreatedWith.PROGRAMMATIC_CALL,
+        scheduledAt: email.createdAt,
+        // Rendering fields - renderedByWorkerId and startedRenderingAt must both be set or both be null
+        renderedByWorkerId: email.id, // use the email id as a dummy worker id
+        startedRenderingAt: email.createdAt,
+        finishedRenderingAt: email.createdAt,
+        renderedSubject: email.subject,
+        renderedHtml: email.html ?? null,
+        renderedText: email.text ?? null,
+        // Sending fields
+        startedSendingAt: email.createdAt,
+        finishedSendingAt: email.createdAt,
+        canHaveDeliveryInfo: false,
+        sendServerErrorExternalMessage: email.hasError ? 'Delivery failed' : null,
+        sendServerErrorExternalDetails: email.hasError ? {} : Prisma.DbNull,
+        sendServerErrorInternalMessage: email.hasError ? "Delivery failed. This is the internal error message." : null,
+        sendServerErrorInternalDetails: email.hasError ? { internalError: "No internal error details." } : Prisma.DbNull,
         createdAt: email.createdAt,
       },
     });
@@ -1646,7 +1603,7 @@ async function seedDummySessionActivityEvents(options: SessionActivityEventSeedO
       const ipAddress = `${10 + Math.floor(Math.random() * 200)}.${Math.floor(Math.random() * 256)}.${Math.floor(Math.random() * 256)}.${Math.floor(Math.random() * 256)}`;
 
       // Create EventIpInfo entry with a proper UUID
-      const ipInfoId = generateUuid();
+      const ipInfoId = generateUuid();  // TODO: This should be a deterministic UUID so we don't keep recreating the session info
       await globalPrismaClient.eventIpInfo.upsert({
         where: { id: ipInfoId },
         update: {

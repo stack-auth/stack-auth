@@ -1,0 +1,49 @@
+name: "Run setup tests with custom base port"
+
+on:
+  push:
+    branches:
+      - main
+      - dev
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' && github.ref != 'refs/heads/dev' }}
+
+env:
+  SHELL: /usr/bin/bash
+
+jobs:
+  setup-tests-with-custom-base-port:
+    runs-on: ubicloud-standard-8
+    env:
+      NEXT_PUBLIC_STACK_PORT_PREFIX: "69"
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup Node.js v20
+        uses: actions/setup-node@v6
+        with:
+          node-version: 20
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Install packages
+        run: pnpm install
+
+      - run: pnpm run build:packages
+      - run: pnpm run codegen
+      - run: pnpm run start-deps
+
+      - uses: JarvusInnovations/background-action@v1.0.7
+        with:
+          run: pnpm run dev &
+          wait-on: |
+            http://localhost:6902
+          tail: true
+          wait-for: 120s
+          log-output-if: true
+      - run: pnpm run test --reporter=verbose

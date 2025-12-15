@@ -1,4 +1,4 @@
-import { stackServerApp } from "@/stack";
+import { getStackServerApp } from "@/stack";
 import { PrismaNeon } from "@prisma/adapter-neon";
 import { PrismaPg } from '@prisma/adapter-pg';
 import { Prisma, PrismaClient } from "@prisma/client";
@@ -8,9 +8,11 @@ import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors"
 import { globalVar } from "@stackframe/stack-shared/dist/utils/globals";
 import { deepPlainEquals, filterUndefined, typedFromEntries, typedKeys } from "@stackframe/stack-shared/dist/utils/objects";
 import { concatStacktracesIfRejected, ignoreUnhandledRejection } from "@stackframe/stack-shared/dist/utils/promises";
+import { throwingProxy } from "@stackframe/stack-shared/dist/utils/proxies";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { traceSpan } from "@stackframe/stack-shared/dist/utils/telemetry";
 import { isUuid } from "@stackframe/stack-shared/dist/utils/uuids";
+import net from "node:net";
 import { isPromise } from "util/types";
 import { runMigrationNeeded } from "./auto-migrations";
 import { Tenancy } from "./lib/tenancies";
@@ -34,11 +36,6 @@ if (getNodeEnvironment().includes('development')) {
   globalVar.__stack_prisma_clients = prismaClientsStore;  // store globally so fast refresh doesn't recreate too many Prisma clients
 }
 
-export const globalPrismaClient = prismaClientsStore.global;
-const dbString = getEnvVariable("STACK_DIRECT_DATABASE_CONNECTION_STRING", "");
-export const globalPrismaSchema = dbString === "" ? "public" : getSchemaFromConnectionString(dbString);
-
-
 function getNeonPrismaClient(connectionString: string) {
   let neonPrismaClient = prismaClientsStore.neon.get(connectionString);
   if (!neonPrismaClient) {
@@ -58,7 +55,7 @@ async function resolveNeonConnectionString(entry: string): Promise<string> {
   if (!isUuid(entry)) {
     return entry;
   }
-  const store = await stackServerApp.getDataVaultStore('neon-connection-strings');
+  const store = await getStackServerApp().getDataVaultStore('neon-connection-strings');
   const secret = "no client side encryption";
   const value = await store.getValue(entry, { secret });
   if (!value) throw new Error('No Neon connection string found for UUID');
@@ -74,8 +71,12 @@ export async function getPrismaSchemaForTenancy(tenancy: Tenancy) {
 }
 
 
+const postgresPrismaClientsStore: Map<string, {
+  client: PrismaClient,
+  schema: string,
+}> = globalVar.__stack_postgres_prisma_clients ??= new Map();
 function getPostgresPrismaClient(connectionString: string) {
-  let postgresPrismaClient = prismaClientsStore.postgres.get(connectionString);
+  let postgresPrismaClient = postgresPrismaClientsStore.get(connectionString);
   if (!postgresPrismaClient) {
     const schema = getSchemaFromConnectionString(connectionString);
     const adapter = new PrismaPg({ connectionString }, schema ? { schema } : undefined);
@@ -83,10 +84,58 @@ function getPostgresPrismaClient(connectionString: string) {
       client: new PrismaClient({ adapter }),
       schema,
     };
-    prismaClientsStore.postgres.set(connectionString, postgresPrismaClient);
+    postgresPrismaClientsStore.set(connectionString, postgresPrismaClient);
   }
   return postgresPrismaClient;
 }
+
+async function tcpPing(host: string, port: number, timeout = 2000) {
+  return await new Promise<boolean>((resolve) => {
+    const s = net.connect({ host, port }).setTimeout(timeout);
+
+    const done = (result: boolean) => {
+      s.destroy();
+      resolve(result);
+    };
+
+    s.on("connect", () => done(true));
+    s.on("timeout", () => done(false));
+    s.on("error",  () => done(false));
+  });
+}
+
+const originalGlobalConnectionString = getEnvVariable("STACK_DATABASE_CONNECTION_STRING", "");
+let actualGlobalConnectionString: string = globalVar.__stack_actual_global_connection_string ??= await (async () => {
+  if (!originalGlobalConnectionString) {
+    return originalGlobalConnectionString;
+  }
+
+  // If we are on a Mac with OrbStack installed, it's much much faster to use the OrbStack-provided domain instead of
+  // the container's port forwarding.
+  //
+  // For this reason, we check whether we can connect to the database using the OrbStack-provided domain, and if so,
+  // we use it instead of the original connection string.
+  if (getNodeEnvironment() === 'development' && process.platform === 'darwin') {
+    const match = originalGlobalConnectionString.match(/^postgres:\/\/postgres:(.*)@localhost:(\d\d)28\/(.*)$/);
+    if (match) {
+      const [, password, portPrefix, schema] = match;
+      const orbStackDomain = `db.stack-dependencies-${portPrefix}.orb.local`;
+      const ok = await tcpPing(orbStackDomain, 5432, 50);  // extremely short timeout; OrbStack should be fast to respond, otherwise why are we doing this?
+      if (ok) {
+        return `postgres://postgres:${password}@${orbStackDomain}:5432/${schema}`;
+      }
+    }
+  }
+  return originalGlobalConnectionString;
+})();
+
+
+export const { client: globalPrismaClient, schema: globalPrismaSchema } = actualGlobalConnectionString
+  ? getPostgresPrismaClient(actualGlobalConnectionString)
+  : {
+    client: throwingProxy<PrismaClient>("STACK_DATABASE_CONNECTION_STRING environment variable is not set. Please set it to a valid PostgreSQL connection string, or use a mock Prisma client for testing."),
+    schema: throwingProxy<string>("STACK_DATABASE_CONNECTION_STRING environment variable is not set. Please set it to a valid PostgreSQL connection string, or use a mock Prisma client for testing."),
+  };
 
 export async function getPrismaClientForSourceOfTruth(sourceOfTruth: CompleteConfig["sourceOfTruth"], branchId: string) {
   switch (sourceOfTruth.type) {
