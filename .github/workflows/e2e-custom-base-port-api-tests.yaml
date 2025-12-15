@@ -129,8 +129,6 @@ jobs:
         uses: JarvusInnovations/background-action@v1.0.7
         with:
           run: pnpm -C apps/backend run run-email-queue --log-order=stream &
-          wait-on: |
-            http://localhost:8102
           tail: true
           wait-for: 30s
           log-output-if: true
