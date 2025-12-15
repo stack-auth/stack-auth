@@ -1,9 +1,9 @@
 "use client";
 
 import { CodeBlock } from "@/components/code-block";
+import { ArrowLeftIcon, CheckIcon, CopyIcon, PencilSimpleIcon, TrashIcon, XIcon } from "@phosphor-icons/react";
 import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
 import { Button, Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Input, Label, toast } from "@stackframe/stack-ui";
-import { ArrowLeft, Check, Copy, Edit2, Trash2, X } from "lucide-react";
 import { useState } from "react";
 import { useRouter } from "../../../../../../../../components/router";
 import { AppEnabledGuard } from "../../../app-enabled-guard";
@@ -34,7 +34,7 @@ export default function PageClient({ storeId }: PageClientProps) {
           <div className="flex flex-col items-center justify-center py-12">
             <p className="text-muted-foreground mb-4">This data vault store does not exist.</p>
             <Button onClick={() => router.push(`/projects/${project.id}/data-vault/stores`)}>
-              <ArrowLeft className="h-4 w-4 mr-2" />
+              <ArrowLeftIcon className="h-4 w-4 mr-2" />
               Back to Stores
             </Button>
           </div>
@@ -124,7 +124,7 @@ export default function PageClient({ storeId }: PageClientProps) {
                   size="sm"
                   onClick={() => copyToClipboard(storeId)}
                 >
-                  <Copy className="h-4 w-4" />
+                  <CopyIcon className="h-4 w-4" />
                 </Button>
               </div>
             </div>
@@ -144,14 +144,14 @@ export default function PageClient({ storeId }: PageClientProps) {
                     size="sm"
                     onClick={handleUpdateDisplayName}
                   >
-                    <Check className="h-4 w-4" />
+                    <CheckIcon className="h-4 w-4" />
                   </Button>
                   <Button
                     variant="ghost"
                     size="sm"
                     onClick={() => setIsEditingName(false)}
                   >
-                    <X className="h-4 w-4" />
+                    <XIcon className="h-4 w-4" />
                   </Button>
                 </div>
               ) : (
@@ -164,7 +164,7 @@ export default function PageClient({ storeId }: PageClientProps) {
                     size="sm"
                     onClick={startEditingName}
                   >
-                    <Edit2 className="h-4 w-4" />
+                    <PencilSimpleIcon className="h-4 w-4" />
                   </Button>
                 </div>
               )}
@@ -174,7 +174,7 @@ export default function PageClient({ storeId }: PageClientProps) {
               size="sm"
               onClick={() => setIsDeleteDialogOpen(true)}
             >
-              <Trash2 className="h-4 w-4 mr-2" />
+              <TrashIcon className="h-4 w-4 mr-2" />
               Delete Store
             </Button>
           </div>

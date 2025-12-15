@@ -1,7 +1,7 @@
 import { cn } from "@/lib/utils";
+import { XIcon } from "@phosphor-icons/react";
 import type { DayInterval } from "@stackframe/stack-shared/dist/utils/dates";
 import {
-  Button,
   Checkbox,
   Input,
   Label,
@@ -10,12 +10,11 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-  SimpleTooltip,
+  SimpleTooltip
 } from "@stackframe/stack-ui";
-import { X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { IntervalPopover } from "./components";
-import { buildPriceUpdate, DEFAULT_INTERVAL_UNITS, freeTrialLabel, intervalLabel, Price, PRICE_INTERVAL_UNITS, Product } from "./utils";
+import { buildPriceUpdate, DEFAULT_INTERVAL_UNITS, freeTrialLabel, intervalLabel, PRICE_INTERVAL_UNITS, Product } from "./utils";
 
 type ProductPriceRowProps = {
   priceId: string,
@@ -285,7 +284,7 @@ export function ProductPriceRow({
               onClick={onRemove}
               aria-label="Remove price"
             >
-              <X className="h-4 w-4" />
+              <XIcon className="h-4 w-4" />
             </button>
           )}
         </>

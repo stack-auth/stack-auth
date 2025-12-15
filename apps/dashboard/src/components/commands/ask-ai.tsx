@@ -1,7 +1,7 @@
+import { ArrowSquareOutIcon, CheckIcon, CopyIcon, PaperPlaneTiltIcon, SparkleIcon, SpinnerGapIcon, UserIcon } from "@phosphor-icons/react";
 import { runAsynchronously, wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { cn } from "@stackframe/stack-ui";
 import { useChat } from "ai/react";
-import { Check, Copy, ExternalLink, Loader2, Send, Sparkles, User } from "lucide-react";
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -42,7 +42,7 @@ const CopyButton = memo(function CopyButton({ text, className, size = "sm" }: {
       title={copied ? "Copied!" : "Copy"}
       type="button"
     >
-      {copied ? <Check className={iconSize} /> : <Copy className={iconSize} />}
+      {copied ? <CheckIcon className={iconSize} /> : <CopyIcon className={iconSize} />}
     </button>
   );
 });
@@ -143,7 +143,7 @@ const SmartLink = memo(function SmartLink({ href, children }: {
       >
         <span className="min-w-0">{truncatedDisplay}</span>
         {isFullUrl && !isDocsLink && (
-          <ExternalLink className="shrink-0 h-2.5 w-2.5 opacity-60" />
+          <ArrowSquareOutIcon className="shrink-0 h-2.5 w-2.5 opacity-60" />
         )}
       </a>
       {isFullUrl && href && <CopyButton text={href} size="xs" />}
@@ -250,7 +250,7 @@ const UserMessage = memo(function UserMessage({ content }: { content: string }) 
         <p className="text-[13px] leading-relaxed break-words">{content}</p>
       </div>
       <div className="shrink-0 w-6 h-6 mt-0.5 rounded-full bg-blue-500/10 flex items-center justify-center">
-        <User className="h-3 w-3 text-blue-400" />
+        <UserIcon className="h-3 w-3 text-blue-400" />
       </div>
     </div>
   );
@@ -261,7 +261,7 @@ const AssistantMessage = memo(function AssistantMessage({ content }: { content: 
   return (
     <div className="flex gap-2.5 justify-start">
       <div className="shrink-0 w-6 h-6 mt-0.5 rounded-full bg-purple-500/10 flex items-center justify-center">
-        <Sparkles className="h-3 w-3 text-purple-400" />
+        <SparkleIcon className="h-3 w-3 text-purple-400" />
       </div>
       <div className="min-w-0 rounded-xl px-3.5 py-2 max-w-[calc(100%-2rem)] bg-foreground/[0.02]">
         <div className="min-w-0 overflow-hidden">
@@ -476,11 +476,11 @@ const AIChatPreviewInner = memo(function AIChatPreview({
         {showLoadingIndicator && (
           <div className="flex gap-2.5 justify-start">
             <div className="shrink-0 w-6 h-6 rounded-full bg-purple-500/10 flex items-center justify-center">
-              <Sparkles className="h-3 w-3 text-purple-400" />
+              <SparkleIcon className="h-3 w-3 text-purple-400" />
             </div>
             <div className="bg-foreground/[0.02] rounded-xl px-3.5 py-2">
               <div className="flex items-center gap-2 text-[13px] text-muted-foreground">
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                <SpinnerGapIcon className="h-3.5 w-3.5 animate-spin" />
                 <span>Thinking...</span>
               </div>
             </div>
@@ -534,7 +534,7 @@ const AIChatPreviewInner = memo(function AIChatPreview({
             )}
             type="button"
           >
-            <Send className="h-3.5 w-3.5" />
+            <PaperPlaneTiltIcon className="h-3.5 w-3.5" />
           </button>
         </div>
         <p className="text-[9px] text-muted-foreground/40 mt-1.5 text-center">

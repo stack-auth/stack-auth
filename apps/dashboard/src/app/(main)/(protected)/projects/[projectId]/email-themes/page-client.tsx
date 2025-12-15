@@ -6,10 +6,10 @@ import { InputField } from "@/components/form-fields";
 import { Link } from "@/components/link";
 import { useRouter } from "@/components/router";
 import { SettingCard } from "@/components/settings";
+import { CheckIcon, PencilSimpleIcon } from "@phosphor-icons/react";
 import { previewTemplateSource } from "@stackframe/stack-shared/dist/helpers/emails";
 import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { ActionDialog, Button, Typography } from "@stackframe/stack-ui";
-import { Check, Pencil } from "lucide-react";
 import { useState } from "react";
 import * as yup from "yup";
 import { AppEnabledGuard } from "../app-enabled-guard";
@@ -101,7 +101,7 @@ function ThemeOption({
         <EmailPreview themeId={theme.id} templateTsxSource={previewTemplateSource} disableResizing />
       </div>
       <div className="flex items-center gap-2">
-        {isSelected && <Check />}
+        {isSelected && <CheckIcon />}
         <Typography variant="secondary" >{theme.displayName}</Typography>
       </div>
       <Link href={`/projects/${project.id}/email-themes/${theme.id}`}>
@@ -110,7 +110,7 @@ function ThemeOption({
           size="icon"
           className="absolute top-2 right-2 bg-secondary opacity-0 group-hover:opacity-100 transition-opacity"
         >
-          <Pencil className="w-4 h-4" />
+          <PencilSimpleIcon className="w-4 h-4" />
         </Button>
       </Link>
     </div>

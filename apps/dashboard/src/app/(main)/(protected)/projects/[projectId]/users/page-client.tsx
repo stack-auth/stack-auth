@@ -5,8 +5,8 @@ import { UserTable } from "@/components/data-table/user-table";
 import { ExportUsersDialog } from "@/components/export-users-dialog";
 import { StyledLink } from "@/components/link";
 import { UserDialog } from "@/components/user-dialog";
+import { DownloadSimpleIcon } from "@phosphor-icons/react";
 import { Alert, Button, Skeleton } from "@stackframe/stack-ui";
-import { Download } from "lucide-react";
 import { Suspense, useState } from "react";
 import { AppEnabledGuard } from "../app-enabled-guard";
 import { PageLayout } from "../page-layout";
@@ -54,7 +54,7 @@ export default function PageClient() {
             <ExportUsersDialog
               trigger={
                 <Button variant="outline">
-                  <Download className="mr-2 h-4 w-4" />
+                  <DownloadSimpleIcon className="mr-2 h-4 w-4" />
                   Export
                 </Button>
               }

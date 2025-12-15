@@ -4,6 +4,7 @@ import { CodeBlock } from '@/components/code-block';
 import { Link } from '@/components/link';
 import { ItemDialog } from "@/components/payments/item-dialog";
 import { cn } from "@/lib/utils";
+import { CaretDownIcon, CaretUpDownIcon, DotsThreeVerticalIcon, GiftIcon, HardDriveIcon, PencilSimpleIcon, PlusIcon, PuzzlePieceIcon, StackIcon, TrashIcon, XIcon } from "@phosphor-icons/react";
 import { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
 import { typedIncludes } from '@stackframe/stack-shared/dist/utils/arrays';
 import type { DayInterval } from "@stackframe/stack-shared/dist/utils/dates";
@@ -31,7 +32,6 @@ import {
   SimpleTooltip,
   toast
 } from "@stackframe/stack-ui";
-import { ChevronDown, ChevronsUpDown, Gift, Layers, MoreVertical, Pencil, PencilIcon, Plus, Puzzle, Server, Trash2, X } from "lucide-react";
 import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useAdminApp } from "../../use-admin-app";
 import { IntervalPopover, OrSeparator, SectionHeading } from "./components";
@@ -209,7 +209,7 @@ function ProductItemRow({
               <PopoverTrigger asChild>
                 <button className="flex h-10 w-full items-center justify-between rounded-xl border border-border bg-background px-3 text-sm font-medium">
                   <span className="truncate">{itemDisplayName}</span>
-                  <ChevronsUpDown className="h-4 w-4 text-muted-foreground" />
+                  <CaretUpDownIcon className="h-4 w-4 text-muted-foreground" />
                 </button>
               </PopoverTrigger>
               <PopoverContent align="start" className="w-72 p-2">
@@ -254,7 +254,7 @@ function ProductItemRow({
                         onCreateNewItem(activeType);
                       }}
                     >
-                      <Plus className="mr-2 h-4 w-4" /> New Item
+                      <PlusIcon className="mr-2 h-4 w-4" /> New Item
                     </Button>
                   </div>
                 </div>
@@ -291,7 +291,7 @@ function ProductItemRow({
                       ? 'Never expires'
                       : EXPIRES_OPTIONS.find(o => o.value === item.expires)?.label ?? 'Custom'}
                   </span>
-                  <ChevronsUpDown className="h-4 w-4 text-muted-foreground" />
+                  <CaretUpDownIcon className="h-4 w-4 text-muted-foreground" />
                 </button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="start" className="p-2">
@@ -348,7 +348,7 @@ function ProductItemRow({
             onClick={onRemove}
             aria-label="Remove item"
           >
-            <X className="h-4 w-4" />
+            <XIcon className="h-4 w-4" />
           </button>
         )}
       </div>
@@ -361,7 +361,7 @@ function ProductItemRow({
             <div className="flex items-center gap-2 w-full">
               <CollapsibleTrigger asChild>
                 <button className="h-5 w-5 inline-flex items-center justify-center rounded hover:bg-muted">
-                  <ChevronDown className={cn("h-4 w-4 transition-transform", isOpen ? "rotate-0" : "-rotate-90")} />
+                  <CaretDownIcon className={cn("h-4 w-4 transition-transform", isOpen ? "rotate-0" : "-rotate-90")} />
                 </button>
               </CollapsibleTrigger >
               <div className="text-sm">{itemDisplayName}</div>
@@ -377,11 +377,11 @@ function ProductItemRow({
                       onClick={() => setIsEditing(true)}
                       aria-label="Edit item"
                     >
-                      <Pencil className="h-4 w-4" />
+                      <PencilSimpleIcon className="h-4 w-4" />
                     </button>
                     {onRemove && (
                       <button className="text-destructive ml-1" onClick={onRemove} aria-label="Remove item">
-                        <Trash2 className="h-4 w-4" />
+                        <TrashIcon className="h-4 w-4" />
                       </button>
                     )}
                   </>
@@ -587,7 +587,7 @@ function ProductCard({ id, activeType, product, allProducts, existingItems, onSa
     description: "Restricts this product to only be purchased from server-side calls",
     active: !!draft.serverOnly,
     visible: true,
-    icon: <Server size={16} />,
+    icon: <HardDriveIcon size={16} />,
     onToggle: () => setDraft(prev => ({ ...prev, serverOnly: !prev.serverOnly })),
     wrapButton: (button: ReactNode) => button,
   }, {
@@ -596,7 +596,7 @@ function ProductCard({ id, activeType, product, allProducts, existingItems, onSa
     description: "Allow customers to purchase this product multiple times",
     active: !!draft.stackable,
     visible: true,
-    icon: <Layers size={16} />,
+    icon: <StackIcon size={16} />,
     onToggle: () => setDraft(prev => ({ ...prev, stackable: !prev.stackable })),
     wrapButton: (button: ReactNode) => button,
   }, {
@@ -605,7 +605,7 @@ function ProductCard({ id, activeType, product, allProducts, existingItems, onSa
     description: "Make this product an add-on. An add-on can be purchased along with the product(s) it is an add-on to.",
     visible: draft.isAddOnTo !== false || couldBeAddOnTo.length > 0,
     active: draft.isAddOnTo !== false,
-    icon: <Puzzle size={16} />,
+    icon: <PuzzlePieceIcon size={16} />,
     onToggle: isAddOnTo.length === 0 && draft.isAddOnTo !== false ? () => setDraft(prev => ({ ...prev, isAddOnTo: false })) : undefined,
     wrapButton: (button: ReactNode) => isAddOnTo.length === 0 && draft.isAddOnTo !== false ? button : (
       <DropdownMenu>
@@ -785,7 +785,7 @@ function ProductCard({ id, activeType, product, allProducts, existingItems, onSa
                   setEditingPriceId(tempId);
                 }}
               >
-                <Plus className="h-4 w-4" />
+                <PlusIcon className="h-4 w-4" />
                 {hasExistingPrices ? "Add alternative price" : "Add price"}
               </Button>
               {
@@ -800,7 +800,7 @@ function ProductCard({ id, activeType, product, allProducts, existingItems, onSa
                         setEditingPricesIsFreeMode(true);
                       }}
                     >
-                      <Gift className="h-4 w-4" />
+                      <GiftIcon className="h-4 w-4" />
                       Make free
                     </Button>
                   </>
@@ -868,7 +868,7 @@ function ProductCard({ id, activeType, product, allProducts, existingItems, onSa
             }));
           }}
         >
-          <Plus className="h-4 w-4" />
+          <PlusIcon className="h-4 w-4" />
           Add Item
         </Button>
 
@@ -884,7 +884,7 @@ function ProductCard({ id, activeType, product, allProducts, existingItems, onSa
             }}
             aria-label="Delete offer"
           >
-            <Trash2 className="h-5 w-5" />
+            <TrashIcon className="h-5 w-5" />
           </button>
           <div className="ml-auto flex items-center gap-2">
             <Button
@@ -940,12 +940,12 @@ function ProductCard({ id, activeType, product, allProducts, existingItems, onSa
               setDraft(product);
             }}
           >
-            <PencilIcon className="h-4 w-4" />
+            <PencilSimpleIcon className="h-4 w-4" />
           </button>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button className="inline-flex h-7 w-7 items-center justify-center rounded hover:bg-muted" aria-label="Open menu">
-                <MoreVertical className="h-4 w-4" />
+                <DotsThreeVerticalIcon className="h-4 w-4" />
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="min-w-[160px]">
@@ -1201,7 +1201,7 @@ function CatalogView({ groupedProducts, groups, existingItems, onSaveProduct, on
                   }}
                   aria-label="Cancel new catalog"
                 >
-                  <X className="h-4 w-4" />
+                  <XIcon className="h-4 w-4" />
                 </button>
               </div>
             ) : (
@@ -1313,7 +1313,7 @@ function CatalogView({ groupedProducts, groups, existingItems, onSaveProduct, on
                       }}
                     >
                       <div className="flex flex-col items-center gap-2">
-                        <Plus className="h-8 w-8" />
+                        <PlusIcon className="h-8 w-8" />
                         Create product
                       </div>
                     </Button>
@@ -1348,7 +1348,7 @@ function CatalogView({ groupedProducts, groups, existingItems, onSaveProduct, on
         }}
       >
         <div className="flex flex-col items-center gap-2">
-          <Plus className="h-8 w-8" />
+          <PlusIcon className="h-8 w-8" />
           Create catalog
         </div>
       </Button>

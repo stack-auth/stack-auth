@@ -4,12 +4,12 @@ import { AppIcon } from "@/components/app-square";
 import { Link } from "@/components/link";
 import { useRouter } from "@/components/router";
 import { ALL_APPS_FRONTEND, getAppPath } from "@/lib/apps-frontend";
+import { CaretUpIcon, CompassIcon, DotsThreeIcon, GlobeIcon, SquaresFourIcon } from "@phosphor-icons/react";
 import useResizeObserver from '@react-hook/resize-observer';
 import { useUser } from '@stackframe/stack';
 import { ALL_APPS, type AppId } from "@stackframe/stack-shared/dist/apps/apps-config";
 import { typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import { cn, Typography } from '@stackframe/stack-ui';
-import { ChevronUp, Compass, Globe2, LayoutGrid, MoreHorizontal } from "lucide-react";
 import { Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { PageLayout } from "../page-layout";
 import { useAdminApp, useProjectId } from '../use-admin-app';
@@ -160,7 +160,7 @@ function AppsWidget({ installedApps, projectId }: { installedApps: AppId[], proj
     <div className="shrink-0">
       <div className="flex items-center gap-2 mb-4">
         <div className="p-1.5 rounded-lg bg-foreground/[0.04]">
-          <LayoutGrid className="h-3.5 w-3.5" />
+          <SquaresFourIcon className="h-3.5 w-3.5" />
         </div>
         <span className="text-xs font-semibold text-foreground uppercase tracking-wider">
           Quick Access
@@ -212,7 +212,7 @@ function AppsWidget({ installedApps, projectId }: { installedApps: AppId[], proj
           >
             <div className="relative transition-transform duration-750 group-hover:transition-none group-hover:scale-105">
               <div className="flex items-center justify-center w-[72px] h-[72px]">
-                <Compass className="w-[30px] h-[30px] text-muted-foreground group-hover:text-foreground transition-colors duration-750 group-hover:transition-none" />
+                <CompassIcon className="w-[30px] h-[30px] text-muted-foreground group-hover:text-foreground transition-colors duration-750 group-hover:transition-none" />
               </div>
             </div>
             <span className="text-[11px] font-medium text-center text-muted-foreground group-hover:text-foreground transition-colors duration-750 group-hover:transition-none leading-tight w-full">
@@ -227,7 +227,7 @@ function AppsWidget({ installedApps, projectId }: { installedApps: AppId[], proj
             >
               <div className="relative transition-transform duration-750 group-hover:transition-none group-hover:scale-105">
                 <div className="flex items-center justify-center w-[72px] h-[72px]">
-                  <MoreHorizontal className="w-[30px] h-[30px] text-muted-foreground group-hover:text-foreground transition-colors duration-750 group-hover:transition-none" />
+                  <DotsThreeIcon className="w-[30px] h-[30px] text-muted-foreground group-hover:text-foreground transition-colors duration-750 group-hover:transition-none" />
                 </div>
               </div>
               <span className="text-[11px] font-medium text-center text-muted-foreground group-hover:text-foreground transition-colors duration-750 group-hover:transition-none leading-tight w-full">
@@ -243,7 +243,7 @@ function AppsWidget({ installedApps, projectId }: { installedApps: AppId[], proj
             >
               <div className="relative transition-transform duration-750 group-hover:transition-none group-hover:scale-105">
                 <div className="flex items-center justify-center w-[72px] h-[72px]">
-                  <ChevronUp className="w-[30px] h-[30px] text-muted-foreground group-hover:text-foreground transition-colors duration-750 group-hover:transition-none" />
+                  <CaretUpIcon className="w-[30px] h-[30px] text-muted-foreground group-hover:text-foreground transition-colors duration-750 group-hover:transition-none" />
                 </div>
               </div>
               <span className="text-[11px] font-medium text-center text-muted-foreground group-hover:text-foreground transition-colors duration-750 group-hover:transition-none truncate leading-tight w-full">
@@ -510,7 +510,7 @@ function MetricsContent({
             <div className="absolute top-0 left-0 px-1 z-10">
               <div className="flex items-center gap-2 mb-2">
                 <div className="p-1.5 rounded-lg bg-foreground/[0.04]">
-                  <Globe2 className="h-3.5 w-3.5 text-muted-foreground" />
+                  <GlobeIcon className="h-3.5 w-3.5 text-muted-foreground" />
                 </div>
                 <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                   Total Users
@@ -570,7 +570,7 @@ function MetricsContent({
             <div className="flex-1 flex items-center justify-center min-h-[300px]">
               <div className="text-center p-10">
                 <div className="p-3 rounded-2xl bg-foreground/[0.03] w-fit mx-auto mb-4">
-                  <LayoutGrid className="h-8 w-8 text-muted-foreground/40" />
+                  <SquaresFourIcon className="h-8 w-8 text-muted-foreground/40" />
                 </div>
                 <Typography variant="secondary" className="text-sm">
                   No widgets enabled
@@ -585,7 +585,7 @@ function MetricsContent({
       {showGlobe && (
         <div className="lg:hidden mt-5 p-4 rounded-2xl bg-foreground/[0.02] ring-1 ring-foreground/[0.05] text-center">
           <Typography variant="secondary" className="text-xs">
-            <Globe2 className="h-3.5 w-3.5 inline-block mr-1.5 -mt-0.5" />
+            <GlobeIcon className="h-3.5 w-3.5 inline-block mr-1.5 -mt-0.5" />
             Globe visualization is available on larger screens
           </Typography>
         </div>

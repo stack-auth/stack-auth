@@ -1,8 +1,8 @@
 "use client";
 
 import { cn } from "@/lib/utils";
+import { MagnifyingGlassIcon, PlusIcon } from "@phosphor-icons/react";
 import { Button, Input, SimpleTooltip } from "@stackframe/stack-ui";
-import { Plus, Search } from "lucide-react";
 import React, { ReactNode, useState } from "react";
 
 export type ListSectionProps = {
@@ -50,7 +50,7 @@ export function ListSection({
               "relative transition-all",
               isSearchFocused ? "max-w-[200px]" : "max-w-[140px]"
             )}>
-                <Search className={cn(
+                <MagnifyingGlassIcon className={cn(
                 "absolute left-2.5 text-muted-foreground transition-all duration-200",
                 isSearchFocused ? "top-[6px] h-4 w-4" : "top-[6px] h-3 w-3.5"
               )} />
@@ -76,7 +76,7 @@ export function ListSection({
               className="h-8 w-8 p-0"
               onClick={onAddClick}
             >
-              <Plus className="h-4 w-4" />
+              <PlusIcon className="h-4 w-4" />
             </Button>
           )}
         </div>

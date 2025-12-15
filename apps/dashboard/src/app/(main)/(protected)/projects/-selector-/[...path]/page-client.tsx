@@ -2,21 +2,21 @@
 
 import { ProjectAvatar } from "@/components/project-switcher";
 import { useRouter } from "@/components/router";
+import { PlusIcon } from "@phosphor-icons/react";
 import { useUser } from "@stackframe/stack";
 import {
-  Button,
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue
+    Button,
+    Card,
+    CardContent,
+    CardDescription,
+    CardHeader,
+    CardTitle,
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue
 } from "@stackframe/stack-ui";
-import { PlusIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 
 export function ProjectSelectorPageClient(props: { deepPath: string }) {

@@ -5,10 +5,10 @@ import { SelectField } from "@/components/form-fields";
 import { Link } from "@/components/link";
 import { StripeConnectProvider } from "@/components/payments/stripe-connect-provider";
 import { cn } from "@/lib/utils";
+import { ArrowRightIcon, ArrowsClockwiseIcon, ChartBarIcon, FlaskIcon, ShieldIcon, WalletIcon, WarningIcon, WebhooksLogoIcon } from "@phosphor-icons/react";
 import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { ActionDialog, Button, Card, CardContent, Typography } from "@stackframe/stack-ui";
 import { ConnectNotificationBanner } from "@stripe/react-connect-js";
-import { AlertTriangle, ArrowRight, BarChart3, FlaskConical, Repeat, Shield, Wallet, Webhook } from "lucide-react";
 import { useState } from "react";
 import * as yup from "yup";
 import { AppEnabledGuard } from "../../app-enabled-guard";
@@ -45,7 +45,7 @@ function PaymentsLayoutInner({ children }: { children: React.ReactNode }) {
         <Card className="w-full">
           <CardContent className="p-8 text-center">
             <div className="mx-auto mb-4 grid h-12 w-12 place-items-center rounded-full bg-primary/10 text-primary">
-              <Wallet className="h-6 w-6" />
+              <WalletIcon className="h-6 w-6" />
             </div>
             <Typography type="h3" className="mb-4">Setup Payments</Typography>
             <Typography type="p" variant="secondary" className="mt-2">
@@ -53,15 +53,15 @@ function PaymentsLayoutInner({ children }: { children: React.ReactNode }) {
             </Typography>
             <ul className="mt-6 grid gap-3 text-left text-sm text-muted-foreground">
               <li className="flex items-center gap-2">
-                <Webhook className="h-4 w-4 text-primary" />
+                <WebhooksLogoIcon className="h-4 w-4 text-primary" />
                 <span>No webhooks or syncing</span>
               </li>
               <li className="flex items-center gap-2">
-                <Repeat className="h-4 w-4 text-primary" />
+                <ArrowsClockwiseIcon className="h-4 w-4 text-primary" />
                 <span>One-time and recurring</span>
               </li>
               <li className="flex items-center gap-2">
-                <BarChart3 className="h-4 w-4 text-primary" />
+                <ChartBarIcon className="h-4 w-4 text-primary" />
                 <span>Usage-based billing</span>
               </li>
             </ul>
@@ -69,7 +69,7 @@ function PaymentsLayoutInner({ children }: { children: React.ReactNode }) {
               <SetupPaymentsButton setupPayments={setupPayments} />
             </div>
             <div className="mt-4 flex items-center justify-center gap-2 text-xs text-muted-foreground">
-              <Shield className="h-3.5 w-3.5" />
+              <ShieldIcon className="h-3.5 w-3.5" />
               <span>Powered by Stripe</span>
             </div>
           </CardContent>
@@ -86,7 +86,7 @@ function PaymentsLayoutInner({ children }: { children: React.ReactNode }) {
             <div className="flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
               <div className="space-y-3">
                 <div className="flex items-center gap-2 text-blue-900 dark:text-blue-300">
-                  <FlaskConical className="h-5 w-5" />
+                  <FlaskIcon className="h-5 w-5" />
                   <Typography type="h4" className="font-semibold">
                     You are currently in test mode
                   </Typography>
@@ -114,7 +114,7 @@ function PaymentsLayoutInner({ children }: { children: React.ReactNode }) {
             <div className="flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
               <div className="space-y-3">
                 <div className="flex items-center gap-2 text-amber-900 dark:text-amber-300">
-                  <AlertTriangle className="h-5 w-5" />
+                  <WarningIcon className="h-5 w-5" />
                   <Typography type="h4" className="font-semibold">
                     Finish setting up payments
                   </Typography>
@@ -141,7 +141,7 @@ function PaymentsLayoutInner({ children }: { children: React.ReactNode }) {
                   className="inline-flex items-center gap-2 mb-auto"
                 >
                   Continue setup
-                  <ArrowRight className="h-4 w-4" />
+                  <ArrowRightIcon className="h-4 w-4" />
                 </Button>
               </div>
             </div>
@@ -228,7 +228,7 @@ function SetupPaymentsButton({ setupPayments }: { setupPayments: () => Promise<v
           <Button className="group" onClick={() => setIsOpen(true)}>
             <span className="inline-flex items-center gap-2">
               Start Setup
-              <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
+              <ArrowRightIcon className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
             </span>
           </Button>
         }
@@ -246,7 +246,7 @@ function SetupPaymentsButton({ setupPayments }: { setupPayments: () => Promise<v
         <Button className="group" onClick={() => setIsOpen(true)}>
           <span className="inline-flex items-center gap-2">
             Start Setup
-            <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
+            <ArrowRightIcon className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
           </span>
         </Button>
         <ActionDialog
@@ -284,7 +284,7 @@ function SetupPaymentsButton({ setupPayments }: { setupPayments: () => Promise<v
       <Button className="group" onClick={() => setIsOpen(true)}>
         <span className="inline-flex items-center gap-2">
           Start Setup
-          <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
+          <ArrowRightIcon className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
         </span>
       </Button>
       <ActionDialog

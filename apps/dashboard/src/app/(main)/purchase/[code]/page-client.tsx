@@ -3,14 +3,14 @@
 import { CheckoutForm } from "@/components/payments/checkout";
 import { StripeElementsProvider } from "@/components/payments/stripe-elements-provider";
 import { getPublicEnvVar } from "@/lib/env";
+import { MinusIcon, PlusIcon } from "@phosphor-icons/react";
 import { inlineProductSchema } from "@stackframe/stack-shared/dist/schema-fields";
 import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import { Alert, AlertDescription, AlertTitle, Button, Card, CardContent, Input, Skeleton, Typography } from "@stackframe/stack-ui";
-import { Minus, Plus } from "lucide-react";
+import Image from 'next/image';
 import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import Image from 'next/image';
 import * as yup from "yup";
 
 type ProductData = {
@@ -318,7 +318,7 @@ export default function PageClient({ code }: { code: string }) {
                             disabled={quantityNumber <= 1}
                             onClick={() => setQuantityInput(String(Math.max(1, quantityNumber - 1)))}
                           >
-                            <Minus className="w-3.5 h-3.5" />
+                            <MinusIcon className="w-3.5 h-3.5" />
                           </Button>
                           <Input
                             className="text-center w-20 h-8 text-sm font-semibold"
@@ -338,7 +338,7 @@ export default function PageClient({ code }: { code: string }) {
                             className="h-8 w-8"
                             onClick={() => setQuantityInput(String(quantityNumber + 1))}
                           >
-                            <Plus className="w-3.5 h-3.5" />
+                            <PlusIcon className="w-3.5 h-3.5" />
                           </Button>
                         </div>
                       </div>

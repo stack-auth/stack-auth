@@ -2,13 +2,13 @@
 
 import { ItemDialog } from "@/components/payments/item-dialog";
 import { cn } from "@/lib/utils";
+import { DotsThreeVerticalIcon, PlusIcon } from "@phosphor-icons/react";
 import { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
 import { useHover } from "@stackframe/stack-shared/dist/hooks/use-hover";
 import { DayInterval } from "@stackframe/stack-shared/dist/utils/dates";
 import { prettyPrintWithMagnitudes } from "@stackframe/stack-shared/dist/utils/numbers";
 import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
 import { Button, Card, CardContent, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, toast } from "@stackframe/stack-ui";
-import { MoreVertical, Plus } from "lucide-react";
 import React, { ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { IllustratedInfo } from "../../../../../../../components/illustrated-info";
 import { useAdminApp } from "../../use-admin-app";
@@ -35,7 +35,7 @@ function ActionMenu({ items }: { items: ActionMenuItem[] }) {
             isOpen && "bg-secondary/80"
           )}
         >
-          <MoreVertical className="h-4 w-4" />
+          <DotsThreeVerticalIcon className="h-4 w-4" />
           <span className="sr-only">Open menu</span>
         </Button>
       </DropdownMenuTrigger>
@@ -580,7 +580,7 @@ function WelcomeScreen({ onCreateProduct }: { onCreateProduct: () => void }) {
         ]}
       />
       <Button onClick={onCreateProduct}>
-        <Plus className="h-4 w-4 mr-2" />
+        <PlusIcon className="h-4 w-4 mr-2" />
         Create Your First Product
       </Button>
     </div>

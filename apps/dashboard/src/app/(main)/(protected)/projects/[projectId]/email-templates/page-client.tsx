@@ -3,8 +3,8 @@
 import { FormDialog } from "@/components/form-dialog";
 import { InputField } from "@/components/form-fields";
 import { useRouter } from "@/components/router";
+import { WarningCircleIcon } from "@phosphor-icons/react";
 import { ActionDialog, Alert, AlertDescription, AlertTitle, Button, Card, Typography } from "@stackframe/stack-ui";
-import { AlertCircle } from "lucide-react";
 import { useState } from "react";
 import * as yup from "yup";
 import { AppEnabledGuard } from "../app-enabled-guard";
@@ -27,7 +27,7 @@ export default function PageClient() {
         actions={<NewTemplateButton />}
       >
         {emailConfig?.type === 'shared' && <Alert variant="default">
-          <AlertCircle className="h-4 w-4" />
+          <WarningCircleIcon className="h-4 w-4" />
           <AlertTitle>Warning</AlertTitle>
           <AlertDescription>
             You are using a shared email server. If you want to customize the email templates, you need to configure a custom SMTP server.
@@ -69,7 +69,7 @@ export default function PageClient() {
           cancelButton={{ label: "Cancel" }}
         >
           <Alert variant="default">
-            <AlertCircle className="h-4 w-4" />
+            <WarningCircleIcon className="h-4 w-4" />
             <AlertTitle>Warning</AlertTitle>
             <AlertDescription>
               You are using a shared email server. If you want to customize the email templates, you need to configure a custom SMTP server.

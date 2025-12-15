@@ -2,6 +2,7 @@
 
 import { useAdminApp } from "@/app/(main)/(protected)/projects/[projectId]/use-admin-app";
 import { useRouter } from "@/components/router";
+import { ArrowDownIcon, ArrowUpIcon, CaretLeftIcon, CaretRightIcon, CheckCircleIcon, CopyIcon, DotsThreeIcon, MagnifyingGlassIcon, XCircleIcon, XIcon } from "@phosphor-icons/react";
 import type { ServerUser } from "@stackframe/stack";
 import { fromNow } from "@stackframe/stack-shared/dist/utils/dates";
 import { runAsynchronously, runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
@@ -33,7 +34,6 @@ import {
   getCoreRowModel,
   useReactTable,
 } from "@tanstack/react-table";
-import { ArrowDown, ArrowUp, CheckCircle2, ChevronLeft, ChevronRight, Copy, MoreHorizontal, Search, X, XCircle } from "lucide-react";
 import { Suspense, useEffect, useMemo, useState } from "react";
 import * as yup from "yup";
 import { Link } from "../link";
@@ -262,7 +262,7 @@ function UserTableHeader(props: {
             className="!px-8"
             autoComplete="off"
           />
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <MagnifyingGlassIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           {searchValue.length > 0 && (
             <button
               type="button"
@@ -270,7 +270,7 @@ function UserTableHeader(props: {
               className="absolute right-2 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full text-muted-foreground transition hover:bg-muted/60 hover:text-foreground"
               aria-label="Clear search"
             >
-              <X className="h-4 w-4" />
+              <XIcon className="h-4 w-4" />
             </button>
           )}
         </div>
@@ -384,7 +384,7 @@ function UserTableBody(props: {
         renderEmptyState={() => (
           <div className="mx-auto flex max-w-md flex-col items-center gap-4">
             <div className="flex h-12 w-12 items-center justify-center rounded-full bg-muted">
-              <Search className="h-6 w-6 text-muted-foreground" />
+              <MagnifyingGlassIcon className="h-6 w-6 text-muted-foreground" />
             </div>
             <div className="text-base font-medium text-foreground">No users found</div>
             <p className="text-sm text-muted-foreground">
@@ -513,7 +513,7 @@ function UserTableSkeleton(props: { pageSize: number }) {
         </div>
         <div className="flex items-center gap-2">
           <Button variant="ghost" size="sm" disabled>
-            <ChevronLeft className="mr-1 h-4 w-4" />
+            <CaretLeftIcon className="mr-1 h-4 w-4" />
             Previous
           </Button>
           <span className="rounded-md border border-border px-3 py-1 text-xs font-medium text-muted-foreground">
@@ -521,7 +521,7 @@ function UserTableSkeleton(props: { pageSize: number }) {
           </span>
           <Button variant="ghost" size="sm" disabled>
             Next
-            <ChevronRight className="ml-1 h-4 w-4" />
+            <CaretRightIcon className="ml-1 h-4 w-4" />
           </Button>
         </div>
       </div>
@@ -565,7 +565,7 @@ function createUserColumns(
           aria-label={`Sort by signed up (${isSignedUpDesc ? "newest first" : "oldest first"})`}
         >
           <span>Signed up</span>
-          {isSignedUpDesc ? <ArrowDown className="h-3 w-3" /> : <ArrowUp className="h-3 w-3" />}
+          {isSignedUpDesc ? <ArrowDownIcon className="h-3 w-3" /> : <ArrowUpIcon className="h-3 w-3" />}
         </button>
       ),
       cell: ({ row }) => <DateMetaCell value={row.original.signedUpAt} emptyLabel="Unknown" />,
@@ -598,7 +598,7 @@ function UserActions(props: { user: ExtendedServerUser }) {
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button variant="ghost" size="icon" className="h-8 w-8" aria-label="User actions">
-            <MoreHorizontal className="h-4 w-4" />
+            <DotsThreeIcon className="h-4 w-4" />
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-56">
@@ -862,7 +862,7 @@ function UserIdCell(props: { user: ExtendedServerUser }) {
         title={user.id}
       >
         <span className="truncate">{idLabel}</span>
-        <Copy className="h-3 w-3" />
+        <CopyIcon className="h-3 w-3" />
       </Button>
     </SimpleTooltip>
   );
@@ -885,9 +885,9 @@ function EmailStatusCell(props: { user: ExtendedServerUser }) {
   return (
     <div className="flex items-center justify-start">
       {isVerified ? (
-        <CheckCircle2 className="h-4 w-4 text-success" aria-label="Email verified" />
+        <CheckCircleIcon className="h-4 w-4 text-success" aria-label="Email verified" />
       ) : (
-        <XCircle className="h-4 w-4 text-amber-500" aria-label="Email unverified" />
+        <XCircleIcon className="h-4 w-4 text-amber-500" aria-label="Email unverified" />
       )}
     </div>
   );

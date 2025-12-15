@@ -1,21 +1,21 @@
 'use client';
 
 import { useAdminApp } from '@/app/(main)/(protected)/projects/[projectId]/use-admin-app';
+import type { Icon as PhosphorIcon } from '@phosphor-icons/react';
+import { ArrowClockwiseIcon, ArrowCounterClockwiseIcon, BankIcon, CircleNotchIcon, GearIcon, ShoppingCartIcon, ShuffleIcon } from '@phosphor-icons/react';
 import type { Transaction, TransactionEntry, TransactionType } from '@stackframe/stack-shared/dist/interface/crud/transactions';
 import { TRANSACTION_TYPES } from '@stackframe/stack-shared/dist/interface/crud/transactions';
 import { deepPlainEquals } from '@stackframe/stack-shared/dist/utils/objects';
 import { ActionCell, ActionDialog, AvatarCell, Badge, DataTableColumnHeader, DataTableManualPagination, DateCell, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, TextCell, Tooltip, TooltipContent, TooltipTrigger } from '@stackframe/stack-ui';
 import type { ColumnDef, ColumnFiltersState, SortingState } from '@tanstack/react-table';
-import type { LucideIcon } from 'lucide-react';
-import { Ban, CircleHelp, RefreshCcw, RotateCcw, Settings, ShoppingCart, Shuffle } from 'lucide-react';
-import { Link } from '../link';
 import React from 'react';
+import { Link } from '../link';
 
 type SourceType = 'subscription' | 'one_time' | 'item_quantity_change' | 'other';
 
 type TransactionTypeDisplay = {
   label: string,
-  Icon: LucideIcon,
+  Icon: PhosphorIcon,
 };
 
 type TransactionSummary = {
@@ -77,25 +77,25 @@ function deriveSourceType(transaction: Transaction): SourceType {
 function formatTransactionTypeLabel(transactionType: TransactionType | null): TransactionTypeDisplay {
   switch (transactionType) {
     case 'purchase': {
-      return { label: 'Purchase', Icon: ShoppingCart };
+      return { label: 'Purchase', Icon: ShoppingCartIcon };
     }
     case 'subscription-renewal': {
-      return { label: 'Subscription Renewal', Icon: RefreshCcw };
+      return { label: 'Subscription Renewal', Icon: ArrowClockwiseIcon };
     }
     case 'subscription-cancellation': {
-      return { label: 'Subscription Cancellation', Icon: Ban };
+      return { label: 'Subscription Cancellation', Icon: BankIcon };
     }
     case 'chargeback': {
-      return { label: 'Chargeback', Icon: RotateCcw };
+      return { label: 'Chargeback', Icon: ArrowCounterClockwiseIcon };
     }
     case 'manual-item-quantity-change': {
-      return { label: 'Manual Item Quantity Change', Icon: Settings };
+      return { label: 'Manual Item Quantity Change', Icon: GearIcon };
     }
     case 'product-change': {
-      return { label: 'Product Change', Icon: Shuffle };
+      return { label: 'Product Change', Icon: ShuffleIcon };
     }
     default: {
-      return { label: (transactionType as any) ?? '—', Icon: CircleHelp };
+      return { label: (transactionType as any) ?? '—', Icon: CircleNotchIcon };
     }
   }
 }

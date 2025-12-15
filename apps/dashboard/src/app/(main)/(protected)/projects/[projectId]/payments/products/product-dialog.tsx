@@ -1,9 +1,9 @@
 "use client";
 
 import { Stepper, StepperPage } from "@/components/stepper";
+import { ArrowLeftIcon, ArrowRightIcon, ArrowsClockwiseIcon, CreditCardIcon, PackageIcon, PlusIcon, TrashIcon } from "@phosphor-icons/react";
 import { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
 import { Button, Card, CardDescription, CardHeader, CardTitle, Checkbox, Dialog, DialogContent, DialogFooter, DialogTitle, Input, Label, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Typography } from "@stackframe/stack-ui";
-import { ArrowLeft, ArrowRight, CreditCard, Package, Plus, Repeat, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { CreateCatalogDialog } from "./create-catalog-dialog";
 import { IncludedItemDialog } from "./included-item-dialog";
@@ -291,7 +291,7 @@ export function ProductDialog({
                       <CardHeader className="pb-3">
                         <div className="flex items-center gap-3">
                           <div className="p-2 rounded-lg bg-primary/10">
-                            <CreditCard className="h-5 w-5 text-primary" />
+                            <CreditCardIcon className="h-5 w-5 text-primary" />
                           </div>
                           <div>
                             <CardTitle className="text-base">One-time Purchase</CardTitle>
@@ -310,7 +310,7 @@ export function ProductDialog({
                       <CardHeader className="pb-3">
                         <div className="flex items-center gap-3">
                           <div className="p-2 rounded-lg bg-primary/10">
-                            <Repeat className="h-5 w-5 text-primary" />
+                            <ArrowsClockwiseIcon className="h-5 w-5 text-primary" />
                           </div>
                           <div>
                             <CardTitle className="text-base">Subscription</CardTitle>
@@ -329,7 +329,7 @@ export function ProductDialog({
                       <CardHeader className="pb-3">
                         <div className="flex items-center gap-3">
                           <div className="p-2 rounded-lg bg-primary/10">
-                            <Package className="h-5 w-5 text-primary" />
+                            <PackageIcon className="h-5 w-5 text-primary" />
                           </div>
                           <div>
                             <CardTitle className="text-base">Add-on</CardTitle>
@@ -348,7 +348,7 @@ export function ProductDialog({
                       <CardHeader className="pb-3">
                         <div className="flex items-center gap-3">
                           <div className="p-2 rounded-lg bg-muted">
-                            <Plus className="h-5 w-5 text-muted-foreground" />
+                            <PlusIcon className="h-5 w-5 text-muted-foreground" />
                           </div>
                           <div>
                             <CardTitle className="text-base">Create from Scratch</CardTitle>
@@ -660,7 +660,7 @@ export function ProductDialog({
                                     size="sm"
                                     onClick={() => removePrice(id)}
                                   >
-                                    <Trash2 className="h-4 w-4 text-destructive" />
+                                    <TrashIcon className="h-4 w-4 text-destructive" />
                                   </Button>
                                 </div>
                               </div>
@@ -728,7 +728,7 @@ export function ProductDialog({
                                 size="sm"
                                 onClick={() => removeIncludedItem(itemId)}
                               >
-                                <Trash2 className="h-4 w-4 text-destructive" />
+                                <TrashIcon className="h-4 w-4 text-destructive" />
                               </Button>
                             </div>
                           </div>
@@ -745,7 +745,7 @@ export function ProductDialog({
             <div className="flex gap-2">
               {currentStep > (editingProduct ? 1 : 0) && (
                 <Button variant="outline" onClick={handleBack}>
-                  <ArrowLeft className="h-4 w-4 mr-2" />
+                  <ArrowLeftIcon className="h-4 w-4 mr-2" />
                   Back
                 </Button>
               )}
@@ -757,7 +757,7 @@ export function ProductDialog({
               {currentStep < 3 ? (
                 <Button onClick={handleNext}>
                   Next
-                  <ArrowRight className="h-4 w-4 ml-2" />
+                  <ArrowRightIcon className="h-4 w-4 ml-2" />
                 </Button>
               ) : (
                 <Button onClick={handleSave}>
