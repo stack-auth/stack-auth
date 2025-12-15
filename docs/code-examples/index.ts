@@ -1,10 +1,11 @@
 import { CodeExample } from '../lib/code-examples';
 import { apiKeysExamples } from './api-keys';
+import { paymentsExamples } from './payments';
 import { setupExamples } from './setup';
 
 const allExamples: Record<string, Record<string, Record<string, CodeExample[]>>> = {
   'setup': setupExamples,
-  'apps': apiKeysExamples,
+  'apps': { ...apiKeysExamples, ...paymentsExamples },
   // Add more sections here as needed:
   // 'auth': authExamples,
   // 'customization': customizationExamples,

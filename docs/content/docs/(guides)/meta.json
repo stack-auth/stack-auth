@@ -19,6 +19,7 @@
     "apps/orgs-and-teams",
     "apps/permissions",
     "apps/webhooks",
+    "apps/payments",
     "---Concepts---",
     "concepts/api-keys",
     "concepts/backend-integration",
