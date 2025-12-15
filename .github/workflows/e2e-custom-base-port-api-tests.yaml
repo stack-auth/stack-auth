@@ -97,7 +97,7 @@ jobs:
 
       - name: Initialize database
         run: pnpm run db:init
-        
+
       - name: Start stack-backend in background
         uses: JarvusInnovations/background-action@v1.0.7
         with:
@@ -121,7 +121,7 @@ jobs:
         with:
           run: pnpm run start:mock-oauth-server --log-order=stream &
           wait-on: |
-            http://localhost:8114
+            http://localhost:8102
           tail: true
           wait-for: 30s
           log-output-if: true
