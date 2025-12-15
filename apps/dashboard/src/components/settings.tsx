@@ -79,7 +79,7 @@ export const SettingSwitch = React.memo(function SettingSwitch(props: {
             disabled={props.disabled}
           />
           <Label className="cursor-pointer" htmlFor={id}>
-            <Typography className="text-sm font-medium leading-none">
+            <Typography type="div" className="text-sm font-medium leading-none">
               {props.label}
             </Typography>
           </Label>

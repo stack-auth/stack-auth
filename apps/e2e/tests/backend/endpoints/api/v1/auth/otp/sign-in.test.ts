@@ -155,7 +155,7 @@ it("should not allow signing in when MFA is required", async ({ expect }) => {
 
   const mailbox = backendContext.value.mailbox;
   await Auth.Otp.sendSignInCode();
-  const messages = await mailbox.fetchMessages();
+  const messages = await mailbox.waitForMessagesWithSubject("Sign in to");
   const message = messages.findLast((message) => message.subject.includes("Sign in to")) ?? throwErr("Sign-in code message not found");
   const signInCode = message.body?.text.match(/http:\/\/localhost:12345\/some-callback-url\?code=([a-zA-Z0-9]+)/)?.[1] ?? throwErr("Sign-in URL not found");
   const response = await niceBackendFetch("/api/v1/auth/otp/sign-in", {
@@ -196,7 +196,9 @@ it("should sign in with otp code", async ({ expect }) => {
   expect(sendSignInCodeResponse.status).toBe(200);
   expect(sendSignInCodeResponse.body.nonce).toBeDefined();
 
-  const email = (await backendContext.value.mailbox.fetchMessages()).findLast((message) => message.subject.includes("Sign in to")) ?? throwErr("Sign-in code message not found");
+  // Wait for 2 emails (one from sendSignInCode helper, one from the above call)
+  const emails = await backendContext.value.mailbox.waitForMessagesWithSubjectCount("Sign in to", 2);
+  const email = emails.findLast((message) => message.subject.includes("Sign in to")) ?? throwErr("Sign-in code message not found");
   const match = email.body?.html.match(/\>([A-Z0-9]{6})\<\/p\>/);
 
   const signInResponse = await niceBackendFetch("/api/v1/auth/otp/sign-in", {
@@ -269,7 +271,9 @@ it("should set the code to invalid after too many attempts", async ({ expect }) 
     },
   });
 
-  const email = (await backendContext.value.mailbox.fetchMessages()).findLast((message) => message.subject.includes("Sign in to")) ?? throwErr("Sign-in code message not found");
+  // Wait for 2 emails (one from sendSignInCode helper, one from the above call)
+  const emails = await backendContext.value.mailbox.waitForMessagesWithSubjectCount("Sign in to", 2);
+  const email = emails.findLast((message) => message.subject.includes("Sign in to")) ?? throwErr("Sign-in code message not found");
   const match = email.body?.html.match(/\>([A-Z0-9]{6})\<\/p\>/);
 
   for (let i = 0; i < 25; i++) {

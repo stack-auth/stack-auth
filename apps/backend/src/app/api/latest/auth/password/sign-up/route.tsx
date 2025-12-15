@@ -79,6 +79,7 @@ export const POST = createSmartRouteHandler({
           callbackUrl: verificationCallbackUrl,
         }, {
           user: createdUser,
+          shouldSkipDeliverabilityCheck: false,
         });
       })());
     }

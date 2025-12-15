@@ -317,8 +317,6 @@ export class OAuthModel implements AuthorizationCodeModel {
       },
     });
 
-    console.log("getAuthorizationCode", authorizationCode, code);
-
     if (!code) {
       return false;
     }
