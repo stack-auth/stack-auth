@@ -2,7 +2,7 @@
 
 import { useAdminApp } from '@/app/(main)/(protected)/projects/[projectId]/use-admin-app';
 import type { Icon as PhosphorIcon } from '@phosphor-icons/react';
-import { ArrowClockwiseIcon, ArrowCounterClockwiseIcon, BankIcon, CircleNotchIcon, GearIcon, ShoppingCartIcon, ShuffleIcon } from '@phosphor-icons/react';
+import { ArrowClockwiseIcon, ArrowCounterClockwiseIcon, GearIcon, ProhibitIcon, QuestionIcon, ShoppingCartIcon, ShuffleIcon } from '@phosphor-icons/react';
 import type { Transaction, TransactionEntry, TransactionType } from '@stackframe/stack-shared/dist/interface/crud/transactions';
 import { TRANSACTION_TYPES } from '@stackframe/stack-shared/dist/interface/crud/transactions';
 import { deepPlainEquals } from '@stackframe/stack-shared/dist/utils/objects';
@@ -83,7 +83,7 @@ function formatTransactionTypeLabel(transactionType: TransactionType | null): Tr
       return { label: 'Subscription Renewal', Icon: ArrowClockwiseIcon };
     }
     case 'subscription-cancellation': {
-      return { label: 'Subscription Cancellation', Icon: BankIcon };
+      return { label: 'Subscription Cancellation', Icon: ProhibitIcon };
     }
     case 'chargeback': {
       return { label: 'Chargeback', Icon: ArrowCounterClockwiseIcon };
@@ -95,7 +95,7 @@ function formatTransactionTypeLabel(transactionType: TransactionType | null): Tr
       return { label: 'Product Change', Icon: ShuffleIcon };
     }
     default: {
-      return { label: (transactionType as any) ?? '—', Icon: CircleNotchIcon };
+      return { label: (transactionType as any) ?? '—', Icon: QuestionIcon };
     }
   }
 }
