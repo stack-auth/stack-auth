@@ -1,5 +1,5 @@
 import { yupResolver } from "@hookform/resolvers/yup";
-import { GearIcon } from "@phosphor-icons/react/dist/ssr";
+import { GearIcon } from "@phosphor-icons/react";
 import { runAsynchronously, runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { forwardRefIfNeeded } from "@stackframe/stack-shared/dist/utils/react";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger, Button, Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle, cn, DelayedInput, Form, Label, Select, SelectContent, SelectTrigger, SelectValue, Switch, Typography, useToast } from "@stackframe/stack-ui";
