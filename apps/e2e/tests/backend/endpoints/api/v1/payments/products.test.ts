@@ -1,6 +1,6 @@
 import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
 import { it } from "../../../../../helpers";
-import { Auth, niceBackendFetch, Payments, Project, User } from "../../../../backend-helpers";
+import { Auth, niceBackendFetch, Payments, Project, Team, User } from "../../../../backend-helpers";
 
 async function configureProduct(config: any) {
   await Project.updateConfig({
@@ -131,6 +131,160 @@ it("should grant configured subscription product and expose it via listing", asy
         ],
         "pagination": { "next_cursor": null },
       },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+});
+
+it("should allow a signed-in user to cancel their own subscription product", async ({ expect }) => {
+  await Project.createAndSwitch();
+  await Payments.setup();
+  await configureProduct({
+    products: {
+      "pro-plan": {
+        displayName: "Pro Plan",
+        customerType: "user",
+        serverOnly: false,
+        stackable: false,
+        prices: {
+          monthly: {
+            USD: "1000",
+            interval: [1, "month"],
+          },
+        },
+        includedItems: {},
+      },
+    },
+  });
+
+  const { userId } = await Auth.fastSignUp();
+  await niceBackendFetch(`/api/v1/payments/products/user/${userId}`, {
+    method: "POST",
+    accessType: "server",
+    body: {
+      product_id: "pro-plan",
+    },
+  });
+
+  const cancelResponse = await niceBackendFetch(`/api/v1/payments/products/user/${userId}`, {
+    method: "DELETE",
+    accessType: "client",
+    body: {
+      product_id: "pro-plan",
+    },
+  });
+  expect(cancelResponse).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": { "success": true },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+
+  const listResponse = await niceBackendFetch(`/api/v1/payments/products/user/${userId}`, {
+    accessType: "client",
+  });
+  expect(listResponse).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": {
+        "is_paginated": true,
+        "items": [],
+        "pagination": { "next_cursor": null },
+      },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+});
+
+it("should reject canceling a one-time purchase product", async ({ expect }) => {
+  await Project.createAndSwitch();
+  await Payments.setup();
+  await configureProduct({
+    products: {
+      "one-time": {
+        displayName: "One Time",
+        customerType: "user",
+        serverOnly: false,
+        stackable: false,
+        prices: {
+          once: {
+            USD: "1000",
+          },
+        },
+        includedItems: {},
+      },
+    },
+  });
+
+  const { userId } = await Auth.fastSignUp();
+  await niceBackendFetch(`/api/v1/payments/products/user/${userId}`, {
+    method: "POST",
+    accessType: "server",
+    body: {
+      product_id: "one-time",
+    },
+  });
+
+  const cancelResponse = await niceBackendFetch(`/api/v1/payments/products/user/${userId}`, {
+    method: "DELETE",
+    accessType: "client",
+    body: {
+      product_id: "one-time",
+    },
+  });
+  expect(cancelResponse).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 400,
+      "body": "This product is a one time purchase and cannot be canceled.",
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+});
+
+it("should allow a team admin to cancel a team's subscription product", async ({ expect }) => {
+  await Project.createAndSwitch();
+  await Payments.setup();
+  await configureProduct({
+    products: {
+      "team-pro-plan": {
+        displayName: "Team Pro Plan",
+        customerType: "team",
+        serverOnly: false,
+        stackable: false,
+        prices: {
+          monthly: {
+            USD: "1000",
+            interval: [1, "month"],
+          },
+        },
+        includedItems: {},
+      },
+    },
+  });
+
+  const { userId } = await Auth.fastSignUp();
+  const { teamId } = await Team.create({ accessType: "server", creatorUserId: userId });
+
+  await niceBackendFetch(`/api/v1/payments/products/team/${teamId}`, {
+    method: "POST",
+    accessType: "server",
+    body: {
+      product_id: "team-pro-plan",
+    },
+  });
+
+  const cancelResponse = await niceBackendFetch(`/api/v1/payments/products/team/${teamId}`, {
+    method: "DELETE",
+    accessType: "client",
+    body: {
+      product_id: "team-pro-plan",
+    },
+  });
+  expect(cancelResponse).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": { "success": true },
       "headers": Headers { <some fields may have been hidden> },
     }
   `);
