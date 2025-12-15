@@ -97,13 +97,13 @@ export function AuthPanel() {
       const authJson = await user.getAuthJson();
       if (authJson.accessToken) {
         // Update only the admin access token in headers
-        updateSharedHeaders({
-          ...headers,
+        updateSharedHeaders(prevHeaders => ({
+          ...prevHeaders,
           'X-Stack-Admin-Access-Token': authJson.accessToken,
-        });
+        }));
       }
     });
-  }, [selectedProjectId, user, headers, updateSharedHeaders]);
+  }, [selectedProjectId, user, updateSharedHeaders]);
 
   const [isHomePage, setIsHomePage] = useState(false);
   const [isScrolled, setIsScrolled] = useState(false);
