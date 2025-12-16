@@ -1,12 +1,12 @@
 import { Freestyle } from '@/lib/freestyle';
 import { emptyEmailTheme } from '@stackframe/stack-shared/dist/helpers/emails';
+import { getEnvVariable } from '@stackframe/stack-shared/dist/utils/env';
 import { captureError, StackAssertionError } from '@stackframe/stack-shared/dist/utils/errors';
 import { bundleJavaScript } from '@stackframe/stack-shared/dist/utils/esbuild';
 import { get, has } from '@stackframe/stack-shared/dist/utils/objects';
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
 import { Tenancy } from './tenancies';
-import { getEnvVariable } from '@stackframe/stack-shared/dist/utils/env';
 
 export function getActiveEmailTheme(tenancy: Tenancy) {
   const themeList = tenancy.config.emails.themes;
@@ -20,12 +20,17 @@ export function getActiveEmailTheme(tenancy: Tenancy) {
   return get(themeList, currentActiveTheme);
 }
 
-export function getEmailThemeForTemplate(tenancy: Tenancy, templateThemeId: string | null | false | undefined) {
+/**
+ * If themeId is a string, and it is a valid theme id, return the theme's tsxSource.
+ * If themeId is false, return the empty email theme.
+ * If themeId is null or undefined, return the currently active email theme.
+ */
+export function getEmailThemeForThemeId(tenancy: Tenancy, themeId: string | null | false | undefined) {
   const themeList = tenancy.config.emails.themes;
-  if (templateThemeId && has(themeList, templateThemeId)) {
-    return get(themeList, templateThemeId).tsxSource;
+  if (themeId && has(themeList, themeId)) {
+    return get(themeList, themeId).tsxSource;
   }
-  if (templateThemeId === false) {
+  if (themeId === false) {
     return emptyEmailTheme;
   }
   return getActiveEmailTheme(tenancy).tsxSource;
@@ -148,6 +153,7 @@ export async function renderEmailWithTemplate(
   return Result.ok(executeResult.data.result as { html: string, text: string, subject: string, notificationCategory: string });
 }
 
+// unused, but kept for reference & in case we need it again
 export async function renderEmailsWithTemplateBatched(
   templateOrDraftComponent: string,
   themeComponent: string,
@@ -249,6 +255,127 @@ export async function renderEmailsWithTemplateBatched(
     throw noResultError;
   }
   return Result.ok(executeResult.data.result as Array<{ html: string, text: string, subject?: string, notificationCategory?: string }>);
+}
+
+export type RenderEmailRequestForTenancy = {
+  templateSource: string,
+  themeSource: string,
+  input: {
+    user: { displayName: string | null },
+    project: { displayName: string },
+    variables?: Record<string, any>,
+    unsubscribeLink?: string,
+    themeProps?: {
+      projectLogos: {
+        logoUrl?: string,
+        logoFullUrl?: string,
+        logoDarkModeUrl?: string,
+        logoFullDarkModeUrl?: string,
+      },
+    },
+  },
+};
+
+export async function renderEmailsForTenancyBatched(requests: RenderEmailRequestForTenancy[]): Promise<Result<Array<{ html: string, text: string, subject?: string, notificationCategory?: string }>, string>> {
+  if (requests.length === 0) {
+    return Result.ok([]);
+  }
+
+  const apiKey = getEnvVariable("STACK_FREESTYLE_API_KEY");
+  const files: Record<string, string> = {
+    "/utils.tsx": findComponentValueUtil,
+  };
+
+  for (let index = 0; index < requests.length; index++) {
+    const request = requests[index];
+    files[`/template-${index}.tsx`] = request.templateSource;
+    files[`/theme-${index}.tsx`] = request.themeSource;
+  }
+
+  const serializedInputs = JSON.stringify(requests.map((request) => ({
+    user: request.input.user,
+    project: request.input.project,
+    variables: request.input.variables ?? null,
+    unsubscribeLink: request.input.unsubscribeLink ?? null,
+    themeProps: request.input.themeProps ?? null,
+  })));
+
+  files["/render.tsx"] = deindent`
+    import { configure } from "arktype/config";
+    configure({ onUndeclaredKey: "delete" });
+    import React from "react";
+    import { render } from "@react-email/components";
+    import { type } from "arktype";
+    import { findComponentValue } from "./utils.tsx";
+    ${requests.map((_, index) => `import * as TemplateModule${index} from "./template-${index}.tsx";`).join("\n")}
+    ${requests.map((_, index) => `const { variablesSchema: variablesSchema${index}, EmailTemplate: EmailTemplate${index} } = TemplateModule${index};`).join("\n")}
+    ${requests.map((_, index) => `import { EmailTheme as EmailTheme${index} } from "./theme-${index}.tsx";`).join("\n")}
+
+    export const renderAll = async () => {
+      const inputs = ${serializedInputs};
+      const results = [];
+      ${requests.map((_, index) => deindent`
+        {
+          const input = inputs[${index}];
+          const schema = variablesSchema${index};
+          const variables = schema ? schema({ ...(input.variables || {}) }) : {};
+          if (variables instanceof type.errors) {
+            throw new Error(variables.summary);
+          }
+          const TemplateWithProps = <EmailTemplate${index} variables={variables} user={input.user} project={input.project} />;
+          const Email = <EmailTheme${index} unsubscribeLink={input.unsubscribeLink ?? undefined} projectLogos={input.themeProps?.projectLogos ?? {}}>
+            {TemplateWithProps}
+          </EmailTheme${index}>;
+          results.push({
+            html: await render(Email),
+            text: await render(Email, { plainText: true }),
+            subject: findComponentValue(TemplateWithProps, "Subject"),
+            notificationCategory: findComponentValue(TemplateWithProps, "NotificationCategory"),
+          });
+        }
+      `).join("\n")}
+      return results;
+    };
+  `;
+
+  files["/entry.js"] = deindent`
+    import { renderAll } from "./render.tsx";
+    export default renderAll;
+  `;
+
+  const bundle = await bundleJavaScript(files as Record<string, string> & { '/entry.js': string }, {
+    keepAsImports: ["arktype", "react", "react/jsx-runtime", "@react-email/components"],
+    externalPackages: { "@stackframe/emails": stackframeEmailsPackage },
+    format: "esm",
+    sourcemap: false,
+  });
+
+  if (bundle.status === "error") {
+    return Result.error(bundle.error);
+  }
+
+  const freestyle = new Freestyle({ apiKey });
+  const nodeModules = {
+    "react-dom": "19.1.1",
+    "react": "19.1.1",
+    "@react-email/components": "0.1.1",
+    "arktype": "2.1.20",
+  };
+
+  const execution = await freestyle.executeScript(bundle.data, { nodeModules });
+  if (execution.status === "error") {
+    return Result.error(execution.error);
+  }
+  if (!execution.data.result) {
+    const noResultError = new StackAssertionError("No result from Freestyle", {
+      execution,
+      requests,
+    });
+    captureError("freestyle-no-result", noResultError);
+    throw noResultError;
+  }
+
+  return Result.ok(execution.data.result as Array<{ html: string, text: string, subject?: string, notificationCategory?: string }>);
 }
 
 const findComponentValueUtil = `import React from 'react';

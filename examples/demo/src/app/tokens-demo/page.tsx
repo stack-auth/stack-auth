@@ -2,7 +2,7 @@
 
 import { useStackApp, useUser } from "@stackframe/stack";
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
-import { Button, Card, Typography } from "@stackframe/stack-ui";
+import { Button, Card, Switch, Typography } from "@stackframe/stack-ui";
 import { useState } from "react";
 
 // Decode JWT without verification (for display purposes only)
@@ -252,11 +252,12 @@ function AsyncBasedTokens() {
 }
 
 export default function TokensDemoPage() {
+  const [hooksEnabled, setHooksEnabled] = useState(false);
   const user = useUser();
 
   return (
     <div className="stack-scope min-h-screen flex items-center justify-center p-4 md:p-8">
-      <div className="max-w-5xl w-full">
+      <div className="max-w-5xl w-full mx-auto">
         <div className="mb-8 text-center">
           <Typography variant="primary" className="text-2xl font-bold mb-2">
             🔑 Token Functions Demo
@@ -282,10 +283,24 @@ export default function TokensDemoPage() {
 
         <div className="grid gap-8 md:grid-cols-2">
           <div>
-            <Typography variant="primary" className="text-xl font-semibold mb-4 text-center">
-              React Hooks (Synchronous)
-            </Typography>
-            <HookBasedTokens />
+            <div className="flex items-center justify-center gap-3 mb-4">
+              <Typography variant="primary" className="text-xl font-semibold text-center">
+                React Hooks (Synchronous)
+              </Typography>
+              <Switch
+                checked={hooksEnabled}
+                onCheckedChange={setHooksEnabled}
+              />
+            </div>
+            {hooksEnabled ? (
+              <HookBasedTokens />
+            ) : (
+              <Card className="p-8 text-center">
+                <Typography variant="secondary" className="text-gray-500">
+                  Enable the toggle to render hooks
+                </Typography>
+              </Card>
+            )}
           </div>
 
           <div>

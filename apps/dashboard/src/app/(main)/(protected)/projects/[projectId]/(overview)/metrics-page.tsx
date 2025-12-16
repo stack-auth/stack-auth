@@ -115,20 +115,11 @@ const dauConfig = {
 
 const stackAppInternalsSymbol = Symbol.for("StackAuth--DO-NOT-USE-OR-YOU-WILL-BE-FIRED--StackAppInternals");
 
-function TotalUsersDisplay({ timeRange, includeAnonymous, minimal = false }: { timeRange: TimeRange, includeAnonymous: boolean, minimal?: boolean }) {
+function TotalUsersDisplay({ includeAnonymous, minimal = false }: { includeAnonymous: boolean, minimal?: boolean }) {
   const adminApp = useAdminApp();
   const data = (adminApp as any)[stackAppInternalsSymbol].useMetrics(includeAnonymous);
 
-  const calculateTotalUsers = () => {
-    if (timeRange === 'all') {
-      return data.total_users || 0;
-    }
-    const dailyUsers = data.daily_users || [];
-    const filteredData = timeRange === '7d' ? dailyUsers.slice(-7) : dailyUsers.slice(-30);
-    return filteredData.reduce((sum: any, point: { activity: any }) => sum + point.activity, 0);
-  };
-
-  const totalUsers = calculateTotalUsers();
+  const totalUsers = data.total_users || 0;
 
   if (minimal) {
     return <>{totalUsers.toLocaleString()}</>;
@@ -527,7 +518,7 @@ function MetricsContent({
               </div>
               <div className="text-4xl font-bold tracking-tight text-foreground pl-0.5">
                 <Suspense fallback="...">
-                  <TotalUsersDisplay timeRange={timeRange} includeAnonymous={includeAnonymous} minimal />
+                  <TotalUsersDisplay includeAnonymous={includeAnonymous} minimal />
                 </Suspense>
               </div>
             </div>
