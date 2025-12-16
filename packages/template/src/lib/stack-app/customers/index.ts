@@ -55,22 +55,6 @@ export type CustomerProductsRequestOptions =
   | ({ teamId: string } & CustomerProductsListOptions)
   | ({ customCustomerId: string } & CustomerProductsListOptions);
 
-export type CustomerBillingAddress = {
-  line1: string | null,
-  line2: string | null,
-  city: string | null,
-  state: string | null,
-  postal_code: string | null,
-  country: string | null,
-} | null;
-
-export type CustomerBillingDetails = {
-  name: string | null,
-  email: string | null,
-  phone: string | null,
-  address: CustomerBillingAddress,
-};
-
 export type CustomerDefaultPaymentMethod = {
   id: string,
   brand: string | null,
@@ -81,22 +65,7 @@ export type CustomerDefaultPaymentMethod = {
 
 export type CustomerBilling = {
   hasCustomer: boolean,
-  billingDetails: CustomerBillingDetails,
   defaultPaymentMethod: CustomerDefaultPaymentMethod,
-};
-
-export type CustomerBillingUpdate = {
-  name?: string,
-  email?: string,
-  phone?: string,
-  address?: {
-    line1?: string,
-    line2?: string,
-    city?: string,
-    state?: string,
-    postal_code?: string,
-    country?: string,
-  },
 };
 
 export type CustomerPaymentMethodSetupIntent = {
@@ -112,8 +81,6 @@ export type Customer<IsServer extends boolean = false> =
       | { productId: string, returnUrl?: string }
       | (IsServer extends true ? { product: InlineProduct, returnUrl?: string } : never)
     )): Promise<string>,
-
-    updateBilling(update: CustomerBillingUpdate): Promise<void>,
 
     createPaymentMethodSetupIntent(): Promise<CustomerPaymentMethodSetupIntent>,
 

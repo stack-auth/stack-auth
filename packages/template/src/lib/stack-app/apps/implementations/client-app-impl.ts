@@ -42,7 +42,7 @@ import { ApiKey, ApiKeyCreationOptions, ApiKeyUpdateOptions, apiKeyCreationOptio
 import { ConvexCtx, GetCurrentPartialUserOptions, GetCurrentUserOptions, HandlerUrls, OAuthScopesOnSignIn, RedirectMethod, RedirectToOptions, RequestLike, TokenStoreInit, stackAppInternalsSymbol } from "../../common";
 import { OAuthConnection } from "../../connected-accounts";
 import { ContactChannel, ContactChannelCreateOptions, ContactChannelUpdateOptions, contactChannelCreateOptionsToCrud, contactChannelUpdateOptionsToCrud } from "../../contact-channels";
-import { Customer, CustomerBilling, CustomerBillingUpdate, CustomerDefaultPaymentMethod, CustomerPaymentMethodSetupIntent, CustomerProductsList, CustomerProductsListOptions, CustomerProductsRequestOptions, Item } from "../../customers";
+import { Customer, CustomerBilling, CustomerDefaultPaymentMethod, CustomerPaymentMethodSetupIntent, CustomerProductsList, CustomerProductsListOptions, CustomerProductsRequestOptions, Item } from "../../customers";
 import { NotificationCategory } from "../../notification-categories";
 import { TeamPermission } from "../../permissions";
 import { AdminOwnedProject, AdminProjectUpdateOptions, Project, adminProjectCreateOptionsToCrud } from "../../projects";
@@ -284,19 +284,6 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
 
   private readonly _customerBillingCache = createCacheBySession<["user" | "team", string], {
     has_customer: boolean,
-    billing_details: {
-      name: string | null,
-      email: string | null,
-      phone: string | null,
-      address: {
-        line1: string | null,
-        line2: string | null,
-        city: string | null,
-        state: string | null,
-        postal_code: string | null,
-        country: string | null,
-      } | null,
-    },
     default_payment_method: {
       id: string,
       brand: string | null,
@@ -1211,19 +1198,6 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
 
   protected _customerBillingFromResponse(response: {
     has_customer: boolean,
-    billing_details: {
-      name: string | null,
-      email: string | null,
-      phone: string | null,
-      address: {
-        line1: string | null,
-        line2: string | null,
-        city: string | null,
-        state: string | null,
-        postal_code: string | null,
-        country: string | null,
-      } | null,
-    },
     default_payment_method: {
       id: string,
       brand: string | null,
@@ -1234,12 +1208,6 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
   }): CustomerBilling {
     return {
       hasCustomer: response.has_customer,
-      billingDetails: {
-        name: response.billing_details.name,
-        email: response.billing_details.email,
-        phone: response.billing_details.phone,
-        address: response.billing_details.address,
-      },
       defaultPaymentMethod: response.default_payment_method,
     };
   }
@@ -1687,28 +1655,6 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         return app._customerBillingFromResponse(response);
       },
       // END_PLATFORM
-      async updateBilling(update: CustomerBillingUpdate) {
-        const requestType = app._getDefaultAuthenticatedRequestType();
-        await app._interface.sendClientRequest(
-          `/payments/billing/${type}/${userIdOrTeamId}`,
-          {
-            method: "POST",
-            headers: {
-              ...app._getSecretServerKeyHeader(),
-              "content-type": "application/json",
-            },
-            body: JSON.stringify({
-              name: update.name,
-              email: update.email,
-              phone: update.phone,
-              address: update.address,
-            }),
-          },
-          effectiveSession,
-          requestType,
-        );
-        await app._customerBillingCache.refresh([effectiveSession, type, userIdOrTeamId]);
-      },
       async createPaymentMethodSetupIntent(): Promise<CustomerPaymentMethodSetupIntent> {
         const requestType = app._getDefaultAuthenticatedRequestType();
         const response = await app._interface.sendClientRequest(

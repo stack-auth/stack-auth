@@ -458,7 +458,7 @@ export async function getStripeCustomerForCustomerOrNull(options: {
     // Stripe's search is eventually consistent; fall back to listing to ensure we can find a newly created customer.
     let startingAfter: string | undefined = undefined;
     for (let i = 0; i < 10; i++) {
-      const page = await options.stripe.customers.list({
+      const page: Stripe.ApiList<Stripe.Customer> = await options.stripe.customers.list({
         limit: 100,
         ...startingAfter ? { starting_after: startingAfter } : {},
       });

@@ -1,7 +1,7 @@
 import { it } from "../../../../../helpers";
 import { Auth, niceBackendFetch, Payments, Project, Team, User } from "../../../../backend-helpers";
 
-it("should allow a signed-in user to update and read their own billing details", async ({ expect }) => {
+it("should allow a signed-in user to read their own billing status", async ({ expect }) => {
   await Project.createAndSwitch();
   await Payments.setup();
 
@@ -14,12 +14,6 @@ it("should allow a signed-in user to update and read their own billing details",
     NiceResponse {
       "status": 200,
       "body": {
-        "billing_details": {
-          "address": null,
-          "email": null,
-          "name": null,
-          "phone": null,
-        },
         "default_payment_method": null,
         "has_customer": false,
       },
@@ -27,29 +21,16 @@ it("should allow a signed-in user to update and read their own billing details",
     }
   `);
 
-  const update = await niceBackendFetch(`/api/v1/payments/billing/user/${userId}`, {
+  const setupIntent = await niceBackendFetch(`/api/v1/payments/payment-method/user/${userId}/setup-intent`, {
     method: "POST",
     accessType: "client",
-    body: {
-      name: "Acme Inc",
-      email: "billing@acme.example",
-      phone: "+15551234567",
-      address: {
-        line1: "123 Main St",
-        city: "San Francisco",
-        state: "CA",
-        postal_code: "94105",
-        country: "US",
-      },
-    },
+    body: {},
   });
-  expect(update).toMatchInlineSnapshot(`
-    NiceResponse {
-      "status": 200,
-      "body": { "success": true },
-      "headers": Headers { <some fields may have been hidden> },
-    }
-  `);
+  expect(setupIntent.status).toBe(200);
+  expect(setupIntent.body).toMatchObject({
+    client_secret: expect.any(String),
+    stripe_account_id: expect.any(String),
+  });
 
   const getAfter = await niceBackendFetch(`/api/v1/payments/billing/user/${userId}`, {
     accessType: "client",
@@ -58,19 +39,6 @@ it("should allow a signed-in user to update and read their own billing details",
     NiceResponse {
       "status": 200,
       "body": {
-        "billing_details": {
-          "address": {
-            "city": "San Francisco",
-            "country": "US",
-            "line1": "123 Main St",
-            "line2": null,
-            "postal_code": "94105",
-            "state": "CA",
-          },
-          "email": "billing@acme.example",
-          "name": "Acme Inc",
-          "phone": "+15551234567",
-        },
         "default_payment_method": null,
         "has_customer": true,
       },
@@ -79,7 +47,7 @@ it("should allow a signed-in user to update and read their own billing details",
   `);
 });
 
-it("should reject a signed-in user updating another user's billing details", async ({ expect }) => {
+it("should reject a signed-in user reading another user's billing status", async ({ expect }) => {
   await Project.createAndSwitch();
   await Payments.setup();
 
@@ -87,11 +55,7 @@ it("should reject a signed-in user updating another user's billing details", asy
   const { userId: userId2 } = await User.create();
 
   const response = await niceBackendFetch(`/api/v1/payments/billing/user/${userId2}`, {
-    method: "POST",
     accessType: "client",
-    body: {
-      name: "Not allowed",
-    },
   });
   expect(response).toMatchInlineSnapshot(`
     NiceResponse {
@@ -129,14 +93,10 @@ it("should allow a team admin (but not a normal member) to manage team billing",
   const { userId: memberUserId } = await Auth.fastSignUp();
   await Team.addMember(teamId, memberUserId);
 
-  const memberUpdate = await niceBackendFetch(`/api/v1/payments/billing/team/${teamId}`, {
-    method: "POST",
+  const memberGet = await niceBackendFetch(`/api/v1/payments/billing/team/${teamId}`, {
     accessType: "client",
-    body: {
-      name: "Should fail",
-    },
   });
-  expect(memberUpdate).toMatchInlineSnapshot(`
+  expect(memberGet).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 401,
       "body": {

@@ -15,7 +15,6 @@ export function TeamPaymentsSection(props: { team: Team }) {
   if (isTeamAdmin) {
     return (
       <PaymentsPanel
-        title={t("Team payments")}
         customer={props.team}
       />
     );
@@ -24,7 +23,7 @@ export function TeamPaymentsSection(props: { team: Team }) {
   return (
     <Section
       title={t("Team payments")}
-      description={t("Manage billing details and the default payment method for this team.")}
+      description={t("Manage the default payment method for this team.")}
     >
       <Typography variant="secondary" type="footnote">
         {t("You need team admin permissions to manage team billing.")}
