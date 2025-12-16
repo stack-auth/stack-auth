@@ -118,7 +118,7 @@ jobs:
         with:
           run: pnpm run start:dashboard --log-order=stream &
           wait-on: |
-            http://localhost:8102
+            http://localhost:8101
           tail: true
           wait-for: 30s
           log-output-if: true
