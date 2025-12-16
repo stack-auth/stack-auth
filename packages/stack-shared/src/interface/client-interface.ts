@@ -1854,6 +1854,80 @@ export class StackClientInterface {
     return url;
   }
 
+  async getCustomerBilling(
+    customerType: "user" | "team",
+    customerId: string,
+    session: InternalSession | null,
+  ): Promise<{
+    has_customer: boolean,
+    default_payment_method: {
+      id: string,
+      brand: string | null,
+      last4: string | null,
+      exp_month: number | null,
+      exp_year: number | null,
+    } | null,
+  }> {
+    const response = await this.sendClientRequest(
+      urlString`/payments/billing/${customerType}/${customerId}`,
+      {},
+      session,
+    );
+    return await response.json();
+  }
+
+  async createCustomerPaymentMethodSetupIntent(
+    customerType: "user" | "team",
+    customerId: string,
+    session: InternalSession | null,
+  ): Promise<{
+    client_secret: string,
+    stripe_account_id: string,
+  }> {
+    const response = await this.sendClientRequest(
+      urlString`/payments/payment-method/${customerType}/${customerId}/setup-intent`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({}),
+      },
+      session,
+    );
+    return await response.json();
+  }
+
+  async setDefaultCustomerPaymentMethodFromSetupIntent(
+    customerType: "user" | "team",
+    customerId: string,
+    setupIntentId: string,
+    session: InternalSession | null,
+  ): Promise<{
+    default_payment_method: {
+      id: string,
+      brand: string | null,
+      last4: string | null,
+      exp_month: number | null,
+      exp_year: number | null,
+    },
+  }> {
+    const response = await this.sendClientRequest(
+      urlString`/payments/payment-method/${customerType}/${customerId}/set-default`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          setup_intent_id: setupIntentId,
+        }),
+      },
+      session,
+    );
+    return await response.json();
+  }
+
   async transferProject(internalProjectSession: InternalSession, projectIdToTransfer: string, newTeamId: string): Promise<void> {
     if (this.options.projectId !== "internal") {
       throw new StackAssertionError("StackClientInterface.transferProject() is only available for internal projects (please specify the project ID in the constructor)");

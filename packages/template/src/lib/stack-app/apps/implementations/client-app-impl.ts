@@ -96,19 +96,6 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
   private __DEMO_ENABLE_SLIGHT_FETCH_DELAY = false;
   private readonly _ownedAdminApps = new DependenciesMap<[InternalSession, string], _StackAdminAppImplIncomplete<false, string>>();
 
-  protected _getDefaultAuthenticatedRequestType(): "client" | "server" {
-    const options = this._interface.options as any;
-    return options && typeof options.secretServerKey === "string" && options.secretServerKey.length > 0 ? "server" : "client";
-  }
-
-  protected _getSecretServerKeyHeader(): Record<string, string> {
-    const options = this._interface.options as any;
-    if (options && typeof options.secretServerKey === "string" && options.secretServerKey.length > 0) {
-      return { "x-stack-secret-server-key": options.secretServerKey };
-    }
-    return {};
-  }
-
   private readonly _currentUserCache = createCacheBySession(async (session) => {
     if (this.__DEMO_ENABLE_SLIGHT_FETCH_DELAY) {
       await wait(2000);
@@ -293,18 +280,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     } | null,
   }>(
     async (session, [customerType, customerId]) => {
-      const requestType = this._getDefaultAuthenticatedRequestType();
-      const response = await this._interface.sendClientRequest(
-        `/payments/billing/${customerType}/${customerId}`,
-        {
-          headers: {
-            ...this._getSecretServerKeyHeader(),
-          },
-        },
-        session,
-        requestType,
-      );
-      return await response.json();
+      return await this._interface.getCustomerBilling(customerType, customerId, session);
     }
   );
 
@@ -1656,44 +1632,14 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       },
       // END_PLATFORM
       async createPaymentMethodSetupIntent(): Promise<CustomerPaymentMethodSetupIntent> {
-        const requestType = app._getDefaultAuthenticatedRequestType();
-        const response = await app._interface.sendClientRequest(
-          `/payments/payment-method/${type}/${userIdOrTeamId}/setup-intent`,
-          {
-            method: "POST",
-            headers: {
-              ...app._getSecretServerKeyHeader(),
-              "content-type": "application/json",
-            },
-            body: JSON.stringify({}),
-          },
-          effectiveSession,
-          requestType,
-        );
-        const body = await response.json() as { client_secret: string, stripe_account_id: string };
+        const body = await app._interface.createCustomerPaymentMethodSetupIntent(type, userIdOrTeamId, effectiveSession);
         return {
           clientSecret: body.client_secret,
           stripeAccountId: body.stripe_account_id,
         };
       },
       async setDefaultPaymentMethodFromSetupIntent(setupIntentId: string): Promise<CustomerDefaultPaymentMethod> {
-        const requestType = app._getDefaultAuthenticatedRequestType();
-        const response = await app._interface.sendClientRequest(
-          `/payments/payment-method/${type}/${userIdOrTeamId}/set-default`,
-          {
-            method: "POST",
-            headers: {
-              ...app._getSecretServerKeyHeader(),
-              "content-type": "application/json",
-            },
-            body: JSON.stringify({
-              setup_intent_id: setupIntentId,
-            }),
-          },
-          effectiveSession,
-          requestType,
-        );
-        const body = await response.json() as { default_payment_method: CustomerDefaultPaymentMethod };
+        const body = await app._interface.setDefaultCustomerPaymentMethodFromSetupIntent(type, userIdOrTeamId, setupIntentId, effectiveSession);
         await app._customerBillingCache.refresh([effectiveSession, type, userIdOrTeamId]);
         return body.default_payment_method;
       },
