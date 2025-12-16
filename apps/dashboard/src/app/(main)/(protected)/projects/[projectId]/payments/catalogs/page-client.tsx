@@ -6,11 +6,15 @@ import { useMemo, useState } from "react";
 import { IllustratedInfo } from "../../../../../../../components/illustrated-info";
 import { PageLayout } from "../../page-layout";
 import { useAdminApp } from "../../use-admin-app";
-import PageClientListView from "./page-client-list-view";
+import PageClientCatalogsView from "../products/page-client-catalogs-view";
+
+function generateTriggerId() {
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
 
 function WelcomeScreen({ onCreateProduct }: { onCreateProduct: () => void }) {
   return (
-    <PageLayout title="Products & Items" description="Manage your products and items.">
+    <PageLayout title="Catalogs" description="Set up your pricing table by creating catalogs and products.">
       <div className="flex flex-col items-center justify-center h-full px-4 py-12 max-w-3xl mx-auto">
         <IllustratedInfo
           illustration={(
@@ -44,10 +48,11 @@ function WelcomeScreen({ onCreateProduct }: { onCreateProduct: () => void }) {
               </div>
             </div>
           )}
-          title="Welcome to Products & Items!"
+          title="Welcome to Catalogs!"
           description={[
-            <>Products are what customers buy — each product has one or more prices.</>,
-            <>Items are what customers receive — they unlock features, limits, or usage metering.</>,
+            <>Catalogs group products that are mutually exclusive — customers can only have one active product from each catalog at a time.</>,
+            <>Products are what customers buy — the columns in your pricing table. Each product has one or more prices.</>,
+            <>Items are what customers receive — the rows in your pricing table. They unlock features, limits, or usage metering.</>,
             <>Create your first product to get started!</>,
           ]}
         />
@@ -62,6 +67,8 @@ function WelcomeScreen({ onCreateProduct }: { onCreateProduct: () => void }) {
 
 export default function PageClient() {
   const [welcomeDismissed, setWelcomeDismissed] = useState(false);
+  const [draftCustomerType, setDraftCustomerType] = useState<'user' | 'team' | 'custom'>("user");
+  const [draftRequestId, setDraftRequestId] = useState<string | undefined>(undefined);
 
   const adminApp = useAdminApp();
   const paymentsConfig = adminApp.useProject().useConfig().payments;
@@ -77,6 +84,12 @@ export default function PageClient() {
 
   const handleCreateFirstProduct = () => {
     setWelcomeDismissed(true);
+    setDraftCustomerType("user");
+    setDraftRequestId(generateTriggerId());
+  };
+
+  const handleDraftHandled = () => {
+    setDraftRequestId(undefined);
   };
 
   if (showWelcome) {
@@ -84,8 +97,13 @@ export default function PageClient() {
   }
 
   return (
-    <PageLayout title='Products & Items'>
-      <PageClientListView />
+    <PageLayout title='Catalogs' description="Mutually exclusive sets of products. Customers can purchase one product of each catalog.">
+      <PageClientCatalogsView
+        createDraftRequestId={draftRequestId}
+        draftCustomerType={draftCustomerType}
+        onDraftHandled={handleDraftHandled}
+      />
     </PageLayout>
   );
 }
+

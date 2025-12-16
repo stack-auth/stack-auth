@@ -4,11 +4,9 @@ import { Link } from '@/components/link';
 import { ItemDialog } from "@/components/payments/item-dialog";
 import { cn } from "@/lib/utils";
 import { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
-import { typedIncludes } from '@stackframe/stack-shared/dist/utils/arrays';
 import type { DayInterval } from "@stackframe/stack-shared/dist/utils/dates";
 import { prettyPrintWithMagnitudes } from "@stackframe/stack-shared/dist/utils/numbers";
 import { typedEntries, typedFromEntries } from "@stackframe/stack-shared/dist/utils/objects";
-import { useQueryState } from '@stackframe/stack-shared/dist/utils/react';
 import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
 import {
   ActionDialog,
@@ -420,7 +418,6 @@ function ProductItemRow({
 
 type ProductCardProps = {
   id: string,
-  activeType: 'user' | 'team' | 'custom',
   product: Product,
   allProducts: Array<{ id: string, product: Product }>,
   existingItems: Array<{ id: string, displayName: string, customerType: string }>,
@@ -431,9 +428,21 @@ type ProductCardProps = {
   onOpenDetails: (product: Product) => void,
   isDraft?: boolean,
   onCancelDraft?: () => void,
+  // Table mode props - when part of a pricing table
+  isColumnInTable?: boolean,
+  isFirstColumn?: boolean,
+  isLastColumn?: boolean,
 };
 
-function ProductCard({ id, activeType, product, allProducts, existingItems, onSave, onDelete, onDuplicate, onCreateNewItem, onOpenDetails, isDraft, onCancelDraft }: ProductCardProps) {
+// Customer type badge colors
+const CUSTOMER_TYPE_COLORS = {
+  user: 'bg-blue-500/15 text-blue-600 dark:bg-blue-500/20 dark:text-blue-400 ring-blue-500/30',
+  team: 'bg-emerald-500/15 text-emerald-600 dark:bg-emerald-500/20 dark:text-emerald-400 ring-emerald-500/30',
+  custom: 'bg-amber-500/15 text-amber-600 dark:bg-amber-500/20 dark:text-amber-400 ring-amber-500/30',
+} as const;
+
+function ProductCard({ id, product, allProducts, existingItems, onSave, onDelete, onDuplicate, onCreateNewItem, onOpenDetails, isDraft, onCancelDraft, isColumnInTable, isFirstColumn, isLastColumn }: ProductCardProps) {
+  const customerType = product.customerType;
   const [isEditing, setIsEditing] = useState(!!isDraft);
   const [draft, setDraft] = useState<Product>(product);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
@@ -922,14 +931,14 @@ function ProductCard({ id, activeType, product, allProducts, existingItems, onSa
       if (b.key === "addon" && isAddOnTo.length > 0) {
         return <span key={b.key}>
           Add-on to {isAddOnTo.map((o, i) => (
-            <>
+            <Fragment key={o.id}>
               {i > 0 && ", "}
               {editing ? o.product.displayName : (
                 <Link className="underline hover:text-foreground transition-colors" href={`#product-${o.id}`}>
                   {o.product.displayName}
                 </Link>
               )}
-            </>
+            </Fragment>
           ))}
         </span>;
       }
@@ -994,8 +1003,8 @@ function ProductCard({ id, activeType, product, allProducts, existingItems, onSa
       {/* Content */}
       <div className="flex-1 overflow-y-auto">
         <div className="flex flex-col gap-5 p-5">
-          {/* Name & ID Fields */}
-          <div className="grid gap-4 sm:grid-cols-2">
+          {/* Name, ID & Type Fields */}
+          <div className="grid gap-4 sm:grid-cols-3">
             <div className="flex flex-col gap-1.5">
               <LabelWithInfo tooltip="The display name shown to customers on checkout pages and invoices">
                 Offer Name
@@ -1026,6 +1035,64 @@ function ProductCard({ id, activeType, product, allProducts, existingItems, onSa
                   disabled={!isDraft}
                 />
               </SimpleTooltip>
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <LabelWithInfo tooltip="Who can purchase this product: individual users, teams, or custom customers managed via server-side code">
+                Customer Type
+              </LabelWithInfo>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <button className={cn(
+                    "flex h-10 w-full items-center justify-between px-3 text-sm font-medium",
+                    "rounded-xl border border-border/60 dark:border-foreground/[0.1]",
+                    "bg-background dark:bg-[hsl(240,10%,8%)]",
+                    "transition-colors duration-150 hover:transition-none hover:bg-foreground/[0.03]"
+                  )}>
+                    <span className={cn(
+                      "inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wide ring-1",
+                      CUSTOMER_TYPE_COLORS[draft.customerType]
+                    )}>
+                      {draft.customerType}
+                    </span>
+                    <ChevronsUpDown className="h-4 w-4 text-muted-foreground" />
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent align="start" className="w-64 p-0 overflow-hidden">
+                  <div className="flex flex-col p-1">
+                    {(['user', 'team', 'custom'] as const).map((type) => {
+                      const isSelected = draft.customerType === type;
+                      const descriptions = {
+                        user: 'For individual users',
+                        team: 'For teams or organizations',
+                        custom: 'Server-side managed customers',
+                      };
+                      return (
+                        <button
+                          key={type}
+                          className={cn(
+                            "flex items-center gap-3 w-full px-3 py-2.5 rounded-lg text-left",
+                            "transition-colors duration-150 hover:transition-none",
+                            isSelected
+                              ? "bg-foreground/[0.08] text-foreground"
+                              : "hover:bg-foreground/[0.04] text-foreground"
+                          )}
+                          onClick={() => {
+                            setDraft(prev => ({ ...prev, customerType: type, includedItems: {} }));
+                          }}
+                        >
+                          <span className={cn(
+                            "inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wide ring-1",
+                            CUSTOMER_TYPE_COLORS[type]
+                          )}>
+                            {type}
+                          </span>
+                          <span className="text-xs text-muted-foreground">{descriptions[type]}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </PopoverContent>
+              </Popover>
             </div>
           </div>
 
@@ -1109,7 +1176,7 @@ function ProductCard({ id, activeType, product, allProducts, existingItems, onSa
                 return (
                   <ProductItemRow
                     key={itemId}
-                    activeType={activeType}
+                    activeType={customerType}
                     itemId={itemId}
                     item={item}
                     itemDisplayName={itemLabel}
@@ -1207,112 +1274,147 @@ function ProductCard({ id, activeType, product, allProducts, existingItems, onSa
 
   const viewingContent = (
     <div className={cn(
-      "group relative flex flex-col rounded-2xl overflow-hidden",
-      "bg-gray-200/80 dark:bg-[hsl(240,10%,5.5%)]",
-      "border border-border/50 dark:border-foreground/[0.12]",
-      "shadow-sm hover:shadow-md transition-all duration-150 hover:transition-none",
+      "group relative flex flex-col h-full",
+      // Card mode (standalone)
+      !isColumnInTable && [
+        "rounded-2xl overflow-hidden",
+        "bg-gray-200/80 dark:bg-[hsl(240,10%,5.5%)]",
+        "border border-border/50 dark:border-foreground/[0.12]",
+        "shadow-sm hover:shadow-md transition-all duration-150 hover:transition-none",
+      ],
+      // Table column mode
+      isColumnInTable && [
+        !isFirstColumn && "border-l border-border/30 dark:border-foreground/[0.08]",
+      ],
       isHashTarget && "border-primary shadow-[0_0_0_1px_rgba(59,130,246,0.35)]"
     )}>
-      {/* Header section */}
-      <div className="relative px-5 pt-5 pb-3">
-        {/* Product ID badge */}
-        <div className="flex justify-center mb-2">
-          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-mono text-muted-foreground bg-foreground/[0.04] ring-1 ring-foreground/[0.06]">
-            {localProductId}
-          </span>
-        </div>
-        {/* Product name */}
-        <h3 className="text-lg font-semibold text-center tracking-tight">
-          {draft.displayName || "Untitled Product"}
-        </h3>
+      {/* Main content wrapper */}
+      <div className="flex-1 flex flex-col">
+        {/* Header section */}
+        <div className="relative px-5 pt-5 pb-3">
+          {/* Customer type badge and Product ID */}
+          <div className="flex items-center justify-center gap-2 mb-2">
+            <span className={cn(
+              "inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wide ring-1",
+              CUSTOMER_TYPE_COLORS[customerType]
+            )}>
+              {customerType}
+            </span>
+            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-mono text-muted-foreground bg-foreground/[0.04] ring-1 ring-foreground/[0.06]">
+              ID: {localProductId}
+            </span>
+          </div>
+          {/* Product name */}
+          <h3 className="text-lg font-semibold text-center tracking-tight flex items-center justify-center gap-1.5">
+            {draft.isAddOnTo !== false && <Puzzle className="h-4 w-4 text-muted-foreground shrink-0" />}
+            {draft.displayName || "Untitled Product"}
+          </h3>
 
-        {/* Action menu - appears on hover */}
-        <div className="absolute right-3 top-3 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-hover:transition-none">
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <button className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-foreground/[0.05] transition-colors duration-150 hover:transition-none" aria-label="Options">
-                <MoreVertical className="h-4 w-4" />
-              </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem icon={<Pencil className="h-4 w-4" />} onClick={() => { setIsEditing(true); setDraft(product); }}>
-                Edit
-              </DropdownMenuItem>
-              <DropdownMenuItem icon={<Copy className="h-4 w-4" />} onClick={() => { onDuplicate(product); }}>
-                Duplicate
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem
-                icon={<Trash2 className="h-4 w-4" />}
-                className="text-destructive focus:text-destructive"
-                onClick={() => { setShowDeleteDialog(true); }}
-              >
-                Delete
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
-      </div>
-
-      {/* Toggle badges */}
-      {PRODUCT_TOGGLE_OPTIONS.some(b => b.visible !== false && b.active) && (
-        <div className="flex flex-wrap justify-center gap-1.5 px-4 pb-3">
-          {renderToggleButtons('view')}
-        </div>
-      )}
-
-      {/* Pricing section */}
-      <div className="border-t border-border/20 dark:border-foreground/[0.06] px-5 py-4 dark:bg-[hsl(240,10%,6%)]">
-        {renderPrimaryPrices('view')}
-      </div>
-
-      {/* Items section */}
-      {itemsList.length > 0 && (
-        <div className="border-t border-border/20 dark:border-foreground/[0.06] px-5 py-3">
-          <div className="space-y-1">
-            {itemsList.map(([itemId, item]) => {
-              const itemMeta = existingItems.find(i => i.id === itemId);
-              const itemLabel = itemMeta ? itemMeta.displayName : itemId;
-              return (
-                <div key={itemId} className="flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground">{itemLabel}</span>
-                  <span className="text-foreground tabular-nums">
-                    {prettyPrintWithMagnitudes(item.quantity)}
-                    <span className="text-muted-foreground text-xs ml-1">{shortIntervalLabel(item.repeat)}</span>
-                  </span>
-                </div>
-              );
-            })}
+          {/* Action menu - appears on hover */}
+          <div className="absolute right-3 top-3 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-hover:transition-none">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-foreground/[0.05] transition-colors duration-150 hover:transition-none" aria-label="Options">
+                  <MoreVertical className="h-4 w-4" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem icon={<Pencil className="h-4 w-4" />} onClick={() => { setIsEditing(true); setDraft(product); }}>
+                  Edit
+                </DropdownMenuItem>
+                <DropdownMenuItem icon={<Copy className="h-4 w-4" />} onClick={() => { onDuplicate(product); }}>
+                  Duplicate
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  icon={<Trash2 className="h-4 w-4" />}
+                  className="text-destructive focus:text-destructive"
+                  onClick={() => { setShowDeleteDialog(true); }}
+                >
+                  Delete
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </div>
-      )}
 
-      {/* Quick actions footer */}
-      {activeType !== "custom" && (
-        <div className="border-t border-border/20 dark:border-foreground/[0.06] px-4 py-2.5 flex items-center justify-center gap-2">
+        {/* Toggle badges */}
+        {PRODUCT_TOGGLE_OPTIONS.some(b => b.visible !== false && b.active) && (
+          <div className="flex flex-col items-center gap-1.5 px-4 pb-3">
+            {renderToggleButtons('view')}
+          </div>
+        )}
+
+        {/* Pricing section - grows if no items */}
+        <div className={cn(
+          "border-t border-border/20 dark:border-foreground/[0.06] px-5 py-4 dark:bg-[hsl(240,10%,6%)]",
+          itemsList.length === 0 && "flex-1"
+        )}>
+          {renderPrimaryPrices('view')}
+        </div>
+
+        {/* Items section - grows to fill available space */}
+        {itemsList.length > 0 && (
+          <div className="flex-1 border-t border-border/20 dark:border-foreground/[0.06] px-5 py-3">
+            <div className="space-y-1">
+              {itemsList.map(([itemId, item]) => {
+                const itemMeta = existingItems.find(i => i.id === itemId);
+                const itemLabel = itemMeta ? itemMeta.displayName : itemId;
+                return (
+                  <div key={itemId} className="flex items-center justify-between text-sm">
+                    <span className="text-muted-foreground">{itemLabel}</span>
+                    <span className="text-foreground tabular-nums">
+                      {prettyPrintWithMagnitudes(item.quantity)}
+                      <span className="text-muted-foreground text-xs ml-1">{shortIntervalLabel(item.repeat)}</span>
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Quick actions footer - stays at bottom */}
+      {customerType !== "custom" && (
+        <div className="border-t border-border/20 dark:border-foreground/[0.06] px-4 py-3 flex items-center justify-center gap-2">
           <Button
-            variant="ghost"
+            variant="outline"
             size="sm"
-            className="h-7 px-3 text-xs text-muted-foreground hover:text-foreground gap-1.5"
+            className={cn(
+              "h-8 px-3 text-xs gap-1.5 rounded-lg",
+              "bg-background/60 dark:bg-foreground/[0.03]",
+              "border-border/60 dark:border-foreground/[0.1]",
+              "text-muted-foreground hover:text-foreground",
+              "hover:bg-background dark:hover:bg-foreground/[0.06]",
+              "transition-colors duration-150 hover:transition-none"
+            )}
             onClick={() => {
-              navigator.clipboard.writeText(`const url = await ${activeType}.createCheckoutUrl({ productId: "${id}" });\nwindow.open(url, "_blank");`);
+              navigator.clipboard.writeText(`const url = await ${customerType}.createCheckoutUrl({ productId: "${id}" });\nwindow.open(url, "_blank");`);
               toast({ title: "Copied to clipboard" });
             }}
           >
-            <Code className="h-3 w-3" />
+            <Code className="h-3.5 w-3.5" />
             Copy code
           </Button>
           <Button
-            variant="ghost"
+            variant="outline"
             size="sm"
-            className="h-7 px-3 text-xs text-muted-foreground hover:text-foreground gap-1.5"
+            className={cn(
+              "h-8 px-3 text-xs gap-1.5 rounded-lg",
+              "bg-background/60 dark:bg-foreground/[0.03]",
+              "border-border/60 dark:border-foreground/[0.1]",
+              "text-muted-foreground hover:text-foreground",
+              "hover:bg-background dark:hover:bg-foreground/[0.06]",
+              "transition-colors duration-150 hover:transition-none"
+            )}
             onClick={() => {
               const prompt = generateComprehensivePrompt();
               navigator.clipboard.writeText(prompt);
               toast({ title: "Prompt copied to clipboard" });
             }}
           >
-            <FileText className="h-3 w-3" />
+            <FileText className="h-3.5 w-3.5" />
             Copy prompt
           </Button>
         </div>
@@ -1325,8 +1427,10 @@ function ProductCard({ id, activeType, product, allProducts, existingItems, onSa
       ref={cardRef}
       id={`product-${id}`}
       className={cn(
-        "shrink-0 transition-all",
-        isEditing ? "w-[420px]" : "w-[320px]"
+        "shrink-0 transition-all h-full",
+        isColumnInTable
+          ? (isEditing ? "w-[420px]" : "w-[260px]")
+          : (isEditing ? "w-[420px]" : "w-[320px]")
       )}
     >
       {isEditing ? editingContent : viewingContent}
@@ -1360,27 +1464,47 @@ type CatalogViewProps = {
   onCreateNewItem: (customerType?: 'user' | 'team' | 'custom', onCreated?: (itemId: string) => void) => void,
   onOpenProductDetails: (product: Product) => void,
   onSaveProductWithGroup: (catalogId: string, productId: string, product: Product) => Promise<void>,
+  onCreateCatalog: (catalogId: string) => Promise<void>,
   createDraftRequestId?: string,
   draftCustomerType: 'user' | 'team' | 'custom',
   onDraftHandled?: () => void,
 };
 
-function CatalogView({ groupedProducts, groups, existingItems, onSaveProduct, onDeleteProduct, onCreateNewItem, onOpenProductDetails, onSaveProductWithGroup, createDraftRequestId, draftCustomerType, onDraftHandled }: CatalogViewProps) {
-  const [activeTypeUnfiltered, setActiveType] = useQueryState('catalog_type', 'user');
-  const activeType = typedIncludes(['user', 'team', 'custom'] as const, activeTypeUnfiltered) ? activeTypeUnfiltered : 'user';
+// Combined key for catalog + customer type grouping
+type CatalogTypeKey = {
+  catalogId: string | undefined,
+  customerType: 'user' | 'team' | 'custom',
+};
+
+function catalogTypeKeyToString(key: CatalogTypeKey): string {
+  return `${key.catalogId ?? '__none__'}::${key.customerType}`;
+}
+
+function CatalogView({ groupedProducts, groups, existingItems, onSaveProduct, onDeleteProduct, onCreateNewItem, onOpenProductDetails, onSaveProductWithGroup, onCreateCatalog, createDraftRequestId, draftCustomerType, onDraftHandled }: CatalogViewProps) {
   const [drafts, setDrafts] = useState<Array<{ key: string, catalogId: string | undefined, product: Product }>>([]);
   const [creatingGroupKey, setCreatingGroupKey] = useState<string | undefined>(undefined);
   const [newCatalogId, setNewCatalogId] = useState("");
+  const [newCatalogCustomerType, setNewCatalogCustomerType] = useState<'user' | 'team' | 'custom'>('user');
   const newGroupInputRef = useRef<HTMLInputElement | null>(null);
 
-  const filtered = useMemo(() => {
-    const res = new Map<string | undefined, Array<{ id: string, product: Product }>>();
-    groupedProducts.forEach((products, gid) => {
-      const f = products.filter(o => o.product.customerType === activeType);
-      if (f.length) res.set(gid, f);
+  // Regroup products by both catalogId AND customerType
+  const groupedByCatalogAndType = useMemo(() => {
+    const result = new Map<string, { key: CatalogTypeKey, products: Array<{ id: string, product: Product }> }>();
+
+    groupedProducts.forEach((products, _catalogId) => {
+      products.forEach(({ id, product }) => {
+        const key: CatalogTypeKey = { catalogId: product.catalogId, customerType: product.customerType };
+        const keyStr = catalogTypeKeyToString(key);
+
+        if (!result.has(keyStr)) {
+          result.set(keyStr, { key, products: [] });
+        }
+        result.get(keyStr)!.products.push({ id, product });
+      });
     });
-    return res;
-  }, [groupedProducts, activeType]);
+
+    return result;
+  }, [groupedProducts]);
 
   useEffect(() => {
     if (creatingGroupKey && newGroupInputRef.current) {
@@ -1388,18 +1512,6 @@ function CatalogView({ groupedProducts, groups, existingItems, onSaveProduct, on
       newGroupInputRef.current.select();
     }
   }, [creatingGroupKey]);
-
-  // If user switches tabs while creating a new catalog, remove the temporary group and its drafts
-  const prevActiveTypeRef = useRef(activeType);
-  useEffect(() => {
-    const tabChanged = prevActiveTypeRef.current !== activeType;
-    prevActiveTypeRef.current = activeType;
-    if (!tabChanged) return;
-    if (!creatingGroupKey) return;
-    setDrafts(prev => prev.filter(d => d.catalogId !== creatingGroupKey));
-    setCreatingGroupKey(undefined);
-    setNewCatalogId("");
-  }, [activeType, creatingGroupKey]);
 
 
   const usedIds = useMemo(() => {
@@ -1434,10 +1546,9 @@ function CatalogView({ groupedProducts, groups, existingItems, onSaveProduct, on
       freeTrial: undefined,
     };
 
-    setActiveType(draftCustomerType);
     setDrafts((prev) => [...prev, { key: candidate, catalogId: undefined, product: newProduct }]);
     onDraftHandled?.();
-  }, [createDraftRequestId, draftCustomerType, onDraftHandled, usedIds, setActiveType]);
+  }, [createDraftRequestId, draftCustomerType, onDraftHandled, usedIds]);
 
   const generateProductId = (base: string) => {
     let id = base;
@@ -1446,90 +1557,188 @@ function CatalogView({ groupedProducts, groups, existingItems, onSaveProduct, on
     return id;
   };
 
-  const catalogIdsToRender = useMemo(() => {
-    const s = new Set<string | undefined>();
-    filtered.forEach((_products, gid) => s.add(gid));
-    const arr = Array.from(s.values());
-    const withoutUndefined = arr.filter((gid): gid is string => gid !== undefined);
-    // Only include "No catalog" (undefined) if there are ungrouped products or drafts
-    const hasUngroupedProducts = filtered.has(undefined);
-    const hasUngroupedDrafts = drafts.some(d => d.catalogId === undefined && d.product.customerType === activeType);
-    const ordered: Array<string | undefined> = hasUngroupedProducts || hasUngroupedDrafts
-      ? [...withoutUndefined, undefined]
-      : withoutUndefined;
-    return creatingGroupKey ? [creatingGroupKey, ...ordered] : ordered;
-  }, [filtered, creatingGroupKey, drafts, activeType]);
+  // Build list of catalog+type combinations to render (only for named catalogs)
+  const catalogTypeKeysToRender = useMemo(() => {
+    const keys: CatalogTypeKey[] = [];
+    const seenKeyStrings = new Set<string>();
 
-  const typeDescriptions = {
-    user: 'Products purchasable by individual users',
-    team: 'Products purchasable by teams or organizations',
-    custom: 'Products managed through custom server-side logic',
-  };
+    // Add keys from existing products (only named catalogs, not "No catalog")
+    groupedByCatalogAndType.forEach(({ key }) => {
+      if (key.catalogId === undefined) return; // Skip "No catalog" - handled separately
+      const keyStr = catalogTypeKeyToString(key);
+      if (!seenKeyStrings.has(keyStr)) {
+        seenKeyStrings.add(keyStr);
+        keys.push(key);
+      }
+    });
+
+    // Add keys from drafts (only named catalogs)
+    drafts.forEach(d => {
+      if (d.catalogId === undefined) return; // Skip "No catalog" - handled separately
+      const key: CatalogTypeKey = { catalogId: d.catalogId, customerType: d.product.customerType };
+      const keyStr = catalogTypeKeyToString(key);
+      if (!seenKeyStrings.has(keyStr)) {
+        seenKeyStrings.add(keyStr);
+        keys.push(key);
+      }
+    });
+
+    // Sort: by customer type priority, then by catalog name
+    const customerTypePriority = { user: 1, team: 2, custom: 3 };
+    keys.sort((a, b) => {
+      const priorityA = customerTypePriority[a.customerType];
+      const priorityB = customerTypePriority[b.customerType];
+      if (priorityA !== priorityB) return priorityA - priorityB;
+
+      // Sort by catalog name
+      const nameA = a.catalogId ? (groups[a.catalogId].displayName || a.catalogId) : '';
+      const nameB = b.catalogId ? (groups[b.catalogId].displayName || b.catalogId) : '';
+      return stringCompare(nameA, nameB);
+    });
+
+    return keys;
+  }, [groupedByCatalogAndType, drafts, groups]);
+
+  // Get all "No catalog" products (all customer types combined)
+  const noCatalogProducts = useMemo(() => {
+    const products: Array<{ id: string, product: Product }> = [];
+    groupedByCatalogAndType.forEach(({ key, products: prods }) => {
+      if (key.catalogId === undefined) {
+        products.push(...prods);
+      }
+    });
+    // Sort by customer type, then by ID
+    const customerTypePriority = { user: 1, team: 2, custom: 3 };
+    products.sort((a, b) => {
+      const priorityA = customerTypePriority[a.product.customerType];
+      const priorityB = customerTypePriority[b.product.customerType];
+      if (priorityA !== priorityB) return priorityA - priorityB;
+      return stringCompare(a.id, b.id);
+    });
+    return products;
+  }, [groupedByCatalogAndType]);
+
+  // Get drafts for "No catalog"
+  const noCatalogDrafts = useMemo(() => {
+    return drafts.filter(d => d.catalogId === undefined);
+  }, [drafts]);
 
   return (
     <div className="space-y-8">
-      {/* Tab selector and AI prompt */}
-      <div className="flex items-center justify-between gap-4">
-        <div className="inline-flex items-center gap-1 rounded-xl bg-foreground/[0.04] p-1 backdrop-blur-sm">
-          {(['user', 'team', 'custom'] as const).map(t => (
-            <SimpleTooltip key={t} tooltip={typeDescriptions[t]}>
-              <button
-                onClick={() => setActiveType(t)}
-                className={cn(
-                  "px-4 py-2 text-sm font-medium rounded-lg transition-all duration-150 hover:transition-none capitalize",
-                  activeType === t
-                    ? "bg-background text-foreground shadow-sm ring-1 ring-foreground/[0.06]"
-                    : "text-muted-foreground hover:text-foreground hover:bg-background/50"
-                )}
-              >
-                {t}
-              </button>
-            </SimpleTooltip>
-          ))}
-        </div>
-      </div>
+      {catalogTypeKeysToRender.map((catalogTypeKey) => {
+        const keyStr = catalogTypeKeyToString(catalogTypeKey);
+        const groupData = groupedByCatalogAndType.get(keyStr);
+        const products = groupData?.products || [];
+        const catalogId = catalogTypeKey.catalogId;
+        const customerType = catalogTypeKey.customerType;
+        const groupName = catalogId ? (groups[catalogId].displayName || catalogId) : 'No catalog';
 
-      {catalogIdsToRender.map((catalogId) => {
-        const isNewGroupPlaceholder = !!creatingGroupKey && catalogId === creatingGroupKey;
-        const products = isNewGroupPlaceholder ? [] : (filtered.get(catalogId) || []);
-        const groupName = !isNewGroupPlaceholder ? (catalogId ? ((groups[catalogId].displayName || catalogId)) : 'No catalog') : '';
+        // Filter drafts for this catalog+type combination
+        const matchingDrafts = drafts.filter(d =>
+          d.catalogId === catalogId && d.product.customerType === customerType
+        );
+
+        // Separate non-add-on and add-on products for pricing table layout
+        const nonAddOnProducts = products.filter(({ product }) => product.isAddOnTo === false);
+        const addOnProducts = products.filter(({ product }) => product.isAddOnTo !== false);
+        const nonAddOnDrafts = matchingDrafts.filter(d => d.product.isAddOnTo === false);
+        const addOnDrafts = matchingDrafts.filter(d => d.product.isAddOnTo !== false);
+
+        const hasNonAddOns = nonAddOnProducts.length > 0 || nonAddOnDrafts.length > 0;
+
         return (
-          <div key={catalogId || 'ungrouped'}>
-            {isNewGroupPlaceholder ? (
-              <div className="mb-3 flex items-center gap-2">
-                <Input
-                  ref={newGroupInputRef}
-                  value={newCatalogId}
-                  onChange={(e) => {
-                    const value = e.target.value.toLowerCase().replace(/[^a-z0-9_\-]/g, '-');
-                    setNewCatalogId(value);
-                  }}
-                  placeholder="catalog-id"
-                  className="w-56"
-                />
-                <button
-                  className="h-8 w-8 inline-flex items-center justify-center rounded hover:bg-muted"
-                  onClick={() => {
-                    setCreatingGroupKey(undefined);
-                    setNewCatalogId("");
-                    setDrafts(prev => prev.filter(d => d.catalogId !== catalogId));
-                  }}
-                  aria-label="Cancel new catalog"
-                >
-                  <X className="h-4 w-4" />
-                </button>
+          <div key={keyStr}>
+            <div className="mb-3">
+              <div className="flex items-center gap-2">
+                <h3 className="text-base font-semibold text-foreground">{groupName}</h3>
+                <span className={cn(
+                  "inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wide ring-1",
+                  CUSTOMER_TYPE_COLORS[customerType]
+                )}>
+                  {customerType}
+                </span>
               </div>
-            ) : (
-              <h3 className="text-base font-semibold mb-3 text-foreground">{groupName}</h3>
-            )}
+              <p className="text-xs text-muted-foreground mt-1">
+                {catalogId
+                  ? "Products in this catalog are mutually exclusive (except add-ons)"
+                  : "Products that are not in a catalog are not mutually exclusive"}
+              </p>
+            </div>
             <div className="relative rounded-2xl bg-foreground/[0.04] ring-1 ring-foreground/[0.06]">
               <div className="flex gap-4 justify-start overflow-x-auto p-5 min-h-20 pr-16">
-                <div className="flex max-w-max gap-4 items-start">
-                  {products.map(({ id, product }) => (
+                <div className="flex max-w-max gap-4 items-stretch">
+                  {/* Non-add-on products as a pricing table (single card, multiple columns) */}
+                  {/* Only saved products go in the table - drafts are rendered separately since they're in edit mode */}
+                  {nonAddOnProducts.length > 0 && (
+                    <div className={cn(
+                      "flex rounded-2xl overflow-hidden",
+                      "bg-gray-200/80 dark:bg-[hsl(240,10%,5.5%)]",
+                      "border border-border/50 dark:border-foreground/[0.12]",
+                      "shadow-sm"
+                    )}>
+                      {nonAddOnProducts.map(({ id, product }, index) => (
+                        <ProductCard
+                          key={id}
+                          id={id}
+                          product={product}
+                          allProducts={products}
+                          existingItems={existingItems}
+                          onSave={onSaveProduct}
+                          onDelete={onDeleteProduct}
+                          onDuplicate={(srcProduct) => {
+                            const key = generateProductId("product");
+                            const duplicated: Product = {
+                              ...srcProduct,
+                              displayName: `${srcProduct.displayName || id} Copy`,
+                            };
+                            setDrafts(prev => [...prev, { key, catalogId, product: duplicated }]);
+                          }}
+                          onCreateNewItem={onCreateNewItem}
+                          onOpenDetails={(o) => onOpenProductDetails(o)}
+                          isColumnInTable
+                          isFirstColumn={index === 0}
+                          isLastColumn={index === nonAddOnProducts.length - 1}
+                        />
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Non-add-on drafts as separate cards (since they're always in edit mode) */}
+                  {nonAddOnDrafts.map((d) => (
+                    <ProductCard
+                      key={d.key}
+                      id={d.key}
+                      product={d.product}
+                      allProducts={products}
+                      existingItems={existingItems}
+                      isDraft
+                      onSave={async (specifiedId, product) => {
+                        const newId = specifiedId && specifiedId.trim() && /^[a-z0-9-]+$/.test(specifiedId.trim()) && !usedIds.has(specifiedId.trim())
+                          ? specifiedId.trim()
+                          : generateProductId('product');
+                        await onSaveProduct(newId, product);
+                        setDrafts(prev => prev.filter(x => x.key !== d.key));
+                      }}
+                      onDelete={async () => {
+                        setDrafts(prev => prev.filter(x => x.key !== d.key));
+                      }}
+                      onDuplicate={() => {
+                        const cloneKey = `${d.key}-copy`;
+                        setDrafts(prev => ([...prev, { key: cloneKey, catalogId: d.catalogId, product: { ...d.product, displayName: `${d.product.displayName} Copy` } }]));
+                      }}
+                      onCreateNewItem={onCreateNewItem}
+                      onOpenDetails={(o) => onOpenProductDetails(o)}
+                      onCancelDraft={() => {
+                        setDrafts(prev => prev.filter(x => x.key !== d.key));
+                      }}
+                    />
+                  ))}
+
+                  {/* Add-on products as separate cards */}
+                  {addOnProducts.map(({ id, product }) => (
                     <ProductCard
                       key={id}
                       id={id}
-                      activeType={activeType}
                       product={product}
                       allProducts={products}
                       existingItems={existingItems}
@@ -1547,11 +1756,10 @@ function CatalogView({ groupedProducts, groups, existingItems, onSaveProduct, on
                       onOpenDetails={(o) => onOpenProductDetails(o)}
                     />
                   ))}
-                  {drafts.filter(d => d.catalogId === catalogId && d.product.customerType === activeType).map((d) => (
+                  {addOnDrafts.map((d) => (
                     <ProductCard
                       key={d.key}
                       id={d.key}
-                      activeType={activeType}
                       product={d.product}
                       allProducts={products}
                       existingItems={existingItems}
@@ -1560,36 +1768,11 @@ function CatalogView({ groupedProducts, groups, existingItems, onSaveProduct, on
                         const newId = specifiedId && specifiedId.trim() && /^[a-z0-9-]+$/.test(specifiedId.trim()) && !usedIds.has(specifiedId.trim())
                           ? specifiedId.trim()
                           : generateProductId('product');
-                        if (isNewGroupPlaceholder) {
-                          const id = newCatalogId.trim();
-                          if (!id) {
-                            toast({ title: "Catalog ID is required", variant: "destructive" });
-                            throw new ValidationError("Catalog ID is required");
-                          }
-                          if (!/^[a-z0-9-]+$/.test(id)) {
-                            toast({ title: "Catalog ID must be lowercase letters, numbers, and hyphens", variant: "destructive" });
-                            throw new ValidationError("Catalog ID must be lowercase letters, numbers, and hyphens");
-                          }
-                          if (Object.prototype.hasOwnProperty.call(groups, id)) {
-                            toast({ title: "Catalog ID already exists", variant: "destructive" });
-                            throw new ValidationError("Catalog ID already exists");
-                          }
-                          const productWithGroup: Product = { ...product, catalogId: id };
-                          await onSaveProductWithGroup(id, newId, productWithGroup);
-                          setCreatingGroupKey(undefined);
-                          setNewCatalogId("");
-                          setDrafts(prev => prev.filter(x => x.key !== d.key));
-                          return;
-                        }
                         await onSaveProduct(newId, product);
                         setDrafts(prev => prev.filter(x => x.key !== d.key));
                       }}
                       onDelete={async () => {
                         setDrafts(prev => prev.filter(x => x.key !== d.key));
-                        if (isNewGroupPlaceholder) {
-                          setCreatingGroupKey(undefined);
-                          setNewCatalogId("");
-                        }
                       }}
                       onDuplicate={() => {
                         const cloneKey = `${d.key}-copy`;
@@ -1599,86 +1782,248 @@ function CatalogView({ groupedProducts, groups, existingItems, onSaveProduct, on
                       onOpenDetails={(o) => onOpenProductDetails(o)}
                       onCancelDraft={() => {
                         setDrafts(prev => prev.filter(x => x.key !== d.key));
-                        if (isNewGroupPlaceholder) {
-                          setCreatingGroupKey(undefined);
-                          setNewCatalogId("");
-                        }
                       }}
                     />
                   ))}
-                  {!isNewGroupPlaceholder && (
-                    <Button
-                      variant="outline"
-                      size="plain"
-                      className={cn(
-                        "self-stretch w-[320px] py-24 flex flex-col items-center justify-center",
-                        "rounded-2xl border border-dashed border-foreground/[0.1]",
-                        "bg-background/40 hover:bg-foreground/[0.03]",
-                        "text-muted-foreground hover:text-foreground",
-                        "transition-all duration-150 hover:transition-none"
-                      )}
-                      onClick={() => {
-                        const key = generateProductId("product");
-                        const newProduct: Product = {
-                          displayName: 'New Product',
-                          customerType: activeType,
-                          catalogId: catalogId || undefined,
-                          isAddOnTo: false,
-                          stackable: false,
-                          prices: {},
-                          includedItems: {},
-                          serverOnly: false,
-                          freeTrial: undefined,
-                        };
-                        setDrafts(prev => [...prev, { key, catalogId, product: newProduct }]);
-                      }}
-                    >
-                      <div className="flex flex-col items-center gap-2">
-                        <Plus className="h-6 w-6" />
-                        <span className="text-sm font-medium">Add product</span>
-                      </div>
-                    </Button>
-                  )}
+
+                  {/* Add product button */}
+                  <Button
+                    variant="outline"
+                    size="plain"
+                    className={cn(
+                      "h-full min-h-[200px] w-[320px] flex flex-col items-center justify-center",
+                      "rounded-2xl border border-dashed border-foreground/[0.1]",
+                      "bg-background/40 hover:bg-foreground/[0.03]",
+                      "text-muted-foreground hover:text-foreground",
+                      "transition-all duration-150 hover:transition-none"
+                    )}
+                    onClick={() => {
+                      const key = generateProductId("product");
+                      const newProduct: Product = {
+                        displayName: 'New Product',
+                        customerType: customerType,
+                        catalogId: catalogId || undefined,
+                        isAddOnTo: false,
+                        stackable: false,
+                        prices: {},
+                        includedItems: {},
+                        serverOnly: false,
+                        freeTrial: undefined,
+                      };
+                      setDrafts(prev => [...prev, { key, catalogId, product: newProduct }]);
+                    }}
+                  >
+                    <div className="flex flex-col items-center gap-2">
+                      <Plus className="h-6 w-6" />
+                      <span className="text-sm font-medium">Add product</span>
+                    </div>
+                  </Button>
                 </div>
               </div>
             </div>
           </div>
         );
       })}
-      <Button
-        variant="outline"
-        size="plain"
-        className={cn(
-          "w-full h-32 flex items-center justify-center",
-          "rounded-2xl border border-dashed border-foreground/[0.1]",
-          "bg-background/40 hover:bg-foreground/[0.03]",
-          "text-muted-foreground hover:text-foreground",
-          "transition-all duration-150 hover:transition-none"
-        )}
-        onClick={() => {
-          const tempKey = `__new_catalog__${Date.now().toString(36).slice(2, 8)}`;
-          setCreatingGroupKey(tempKey);
-          setNewCatalogId("");
-          const draftKey = generateProductId("product");
-          const newProduct: Product = {
-            displayName: 'New Product',
-            customerType: activeType,
-            catalogId: tempKey,
-            isAddOnTo: false,
-            stackable: false,
-            prices: {},
-            includedItems: {},
-            serverOnly: false,
-            freeTrial: undefined,
-          };
-          setDrafts(prev => [...prev, { key: draftKey, catalogId: tempKey, product: newProduct }]);
-        }}
-      >
-        <div className="flex flex-col items-center gap-2">
-          <Plus className="h-6 w-6" />
-          <span className="text-sm font-medium">New catalog</span>
+
+      {/* No catalog section - shows all products without a catalog, regardless of customer type */}
+      <div>
+        <div className="mb-3">
+          <h3 className="text-base font-semibold text-foreground">No catalog</h3>
+          <p className="text-xs text-muted-foreground mt-1">
+            Products that are not in a catalog are not mutually exclusive
+          </p>
         </div>
-      </Button>
+        <div className="relative rounded-2xl bg-foreground/[0.04] ring-1 ring-foreground/[0.06]">
+          <div className="flex gap-4 justify-start overflow-x-auto p-5 min-h-20 pr-16">
+            <div className="flex max-w-max gap-4 items-stretch">
+              {noCatalogProducts.map(({ id, product }) => (
+                <ProductCard
+                  key={id}
+                  id={id}
+                  product={product}
+                  allProducts={noCatalogProducts}
+                  existingItems={existingItems}
+                  onSave={onSaveProduct}
+                  onDelete={onDeleteProduct}
+                  onDuplicate={(srcProduct) => {
+                    const key = generateProductId("product");
+                    const duplicated: Product = {
+                      ...srcProduct,
+                      displayName: `${srcProduct.displayName || id} Copy`,
+                    };
+                    setDrafts(prev => [...prev, { key, catalogId: undefined, product: duplicated }]);
+                  }}
+                  onCreateNewItem={onCreateNewItem}
+                  onOpenDetails={(o) => onOpenProductDetails(o)}
+                />
+              ))}
+              {noCatalogDrafts.map((d) => (
+                <ProductCard
+                  key={d.key}
+                  id={d.key}
+                  product={d.product}
+                  allProducts={noCatalogProducts}
+                  existingItems={existingItems}
+                  isDraft
+                  onSave={async (specifiedId, product) => {
+                    const newId = specifiedId && specifiedId.trim() && /^[a-z0-9-]+$/.test(specifiedId.trim()) && !usedIds.has(specifiedId.trim())
+                      ? specifiedId.trim()
+                      : generateProductId('product');
+                    await onSaveProduct(newId, product);
+                    setDrafts(prev => prev.filter(x => x.key !== d.key));
+                  }}
+                  onDelete={async () => {
+                    setDrafts(prev => prev.filter(x => x.key !== d.key));
+                  }}
+                  onDuplicate={() => {
+                    const cloneKey = `${d.key}-copy`;
+                    setDrafts(prev => ([...prev, { key: cloneKey, catalogId: undefined, product: { ...d.product, displayName: `${d.product.displayName} Copy` } }]));
+                  }}
+                  onCreateNewItem={onCreateNewItem}
+                  onOpenDetails={(o) => onOpenProductDetails(o)}
+                  onCancelDraft={() => {
+                    setDrafts(prev => prev.filter(x => x.key !== d.key));
+                  }}
+                />
+              ))}
+              <Button
+                variant="outline"
+                size="plain"
+                className={cn(
+                  "h-full min-h-[200px] w-[320px] flex flex-col items-center justify-center",
+                  "rounded-2xl border border-dashed border-foreground/[0.1]",
+                  "bg-background/40 hover:bg-foreground/[0.03]",
+                  "text-muted-foreground hover:text-foreground",
+                  "transition-all duration-150 hover:transition-none"
+                )}
+                onClick={() => {
+                  const key = generateProductId("product");
+                  const newProduct: Product = {
+                    displayName: 'New Product',
+                    customerType: 'user',
+                    catalogId: undefined,
+                    isAddOnTo: false,
+                    stackable: false,
+                    prices: {},
+                    includedItems: {},
+                    serverOnly: false,
+                    freeTrial: undefined,
+                  };
+                  setDrafts(prev => [...prev, { key, catalogId: undefined, product: newProduct }]);
+                }}
+              >
+                <div className="flex flex-col items-center gap-2">
+                  <Plus className="h-6 w-6" />
+                  <span className="text-sm font-medium">Add product</span>
+                </div>
+              </Button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* New catalog button with customer type selector */}
+      <Popover>
+        <PopoverTrigger asChild>
+          <Button
+            variant="outline"
+            size="plain"
+            className={cn(
+              "w-full h-32 flex items-center justify-center",
+              "rounded-2xl border border-dashed border-foreground/[0.1]",
+              "bg-background/40 hover:bg-foreground/[0.03]",
+              "text-muted-foreground hover:text-foreground",
+              "transition-all duration-150 hover:transition-none"
+            )}
+          >
+            <div className="flex flex-col items-center gap-2">
+              <Plus className="h-6 w-6" />
+              <span className="text-sm font-medium">New catalog</span>
+            </div>
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent className="w-80 p-4">
+          <div className="space-y-4">
+            <div>
+              <p className="text-xs text-muted-foreground mb-3">
+                A catalog groups products that are mutually exclusive — besides add-ons, customers can only have one active product from each catalog at a time.
+              </p>
+            </div>
+            <div>
+              <Label className="text-xs font-medium text-muted-foreground mb-1.5 block">Catalog ID</Label>
+              <Input
+                ref={newGroupInputRef}
+                value={newCatalogId}
+                onChange={(e) => {
+                  const value = e.target.value.toLowerCase().replace(/[^a-z0-9_\-]/g, '-');
+                  setNewCatalogId(value);
+                }}
+                placeholder="e.g., pricing-plans"
+                className="h-9"
+              />
+            </div>
+            <div>
+              <Label className="text-xs font-medium text-muted-foreground mb-1.5 block">Customer Type</Label>
+              <div className="flex gap-1.5">
+                {(['user', 'team', 'custom'] as const).map((type) => (
+                  <button
+                    key={type}
+                    onClick={() => setNewCatalogCustomerType(type)}
+                    className={cn(
+                      "flex-1 px-2 py-1.5 rounded-lg text-xs font-medium capitalize",
+                      "transition-colors duration-150 hover:transition-none",
+                      newCatalogCustomerType === type
+                        ? cn("ring-1", CUSTOMER_TYPE_COLORS[type])
+                        : "bg-foreground/[0.04] text-muted-foreground hover:bg-foreground/[0.08]"
+                    )}
+                  >
+                    {type}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <Button
+              size="sm"
+              className="w-full"
+              disabled={!newCatalogId.trim()}
+              onClick={async () => {
+                const id = newCatalogId.trim();
+                if (!id) return;
+                if (!/^[a-z0-9-]+$/.test(id)) {
+                  toast({ title: "Catalog ID must be lowercase letters, numbers, and hyphens", variant: "destructive" });
+                  return;
+                }
+                if (Object.prototype.hasOwnProperty.call(groups, id)) {
+                  toast({ title: "Catalog ID already exists", variant: "destructive" });
+                  return;
+                }
+
+                // Create the catalog (no product yet)
+                await onCreateCatalog(id);
+
+                // Add a local draft so the "add product" form shows immediately
+                const draftKey = generateProductId("product");
+                const newProduct: Product = {
+                  displayName: 'New Product',
+                  customerType: newCatalogCustomerType,
+                  catalogId: id,
+                  isAddOnTo: false,
+                  stackable: false,
+                  prices: {},
+                  includedItems: {},
+                  serverOnly: false,
+                  freeTrial: undefined,
+                };
+                setDrafts(prev => [...prev, { key: draftKey, catalogId: id, product: newProduct }]);
+                setNewCatalogId("");
+                toast({ title: "Catalog created" });
+              }}
+            >
+              Create Catalog
+            </Button>
+          </div>
+        </PopoverContent>
+      </Popover>
     </div>
   );
 }
@@ -1918,6 +2263,11 @@ export default function PageClient({ createDraftRequestId, draftCustomerType = '
             [`payments.products.${productId}`]: product,
           });
           toast({ title: "Product created" });
+        }}
+        onCreateCatalog={async (catalogId) => {
+          await project.updateConfig({
+            [`payments.catalogs.${catalogId}`]: {},
+          });
         }}
         createDraftRequestId={createDraftRequestId}
         draftCustomerType={draftCustomerType}
