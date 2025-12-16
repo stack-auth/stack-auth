@@ -1,6 +1,7 @@
 "use client";
 
 import { Link } from '@/components/link';
+import { useRouter } from 'next/navigation';
 import { ItemDialog } from "@/components/payments/item-dialog";
 import { cn } from "@/lib/utils";
 import { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
@@ -25,9 +26,9 @@ import {
   SimpleTooltip,
   toast
 } from "@stackframe/stack-ui";
-import { ChevronsUpDown, Code, Copy, FileText, Gift, Info, Layers, MoreVertical, Pencil, Plus, Puzzle, Server, Trash2, X } from "lucide-react";
+import { ChevronsUpDown, Code, Copy, ExternalLink, FileText, Gift, Info, Layers, MoreVertical, Pencil, Plus, Puzzle, Server, Trash2, X } from "lucide-react";
 import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { useAdminApp } from "../../use-admin-app";
+import { useAdminApp, useProjectId } from "../../use-admin-app";
 import { IntervalPopover, OrSeparator, SectionHeading } from "./components";
 import { ProductDialog } from "./product-dialog";
 import { ProductPriceRow } from "./product-price-row";
@@ -442,6 +443,8 @@ const CUSTOMER_TYPE_COLORS = {
 } as const;
 
 function ProductCard({ id, product, allProducts, existingItems, onSave, onDelete, onDuplicate, onCreateNewItem, onOpenDetails, isDraft, onCancelDraft, isColumnInTable, isFirstColumn, isLastColumn }: ProductCardProps) {
+  const projectId = useProjectId();
+  const router = useRouter();
   const customerType = product.customerType;
   const [isEditing, setIsEditing] = useState(!!isDraft);
   const [draft, setDraft] = useState<Product>(product);
@@ -1319,6 +1322,13 @@ function ProductCard({ id, product, allProducts, existingItems, onSave, onDelete
                 </button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
+                <DropdownMenuItem
+                  icon={<ExternalLink className="h-4 w-4" />}
+                  onClick={() => router.push(`/projects/${projectId}/payments/products/${id}`)}
+                >
+                  View Details
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
                 <DropdownMenuItem icon={<Pencil className="h-4 w-4" />} onClick={() => { setIsEditing(true); setDraft(product); }}>
                   Edit
                 </DropdownMenuItem>

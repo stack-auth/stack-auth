@@ -31,9 +31,10 @@ export function ListSection({
   return (
     <div className="flex flex-col h-full">
       <div className={cn("sticky top-0 z-10 bg-gray-50/95 dark:bg-background/95 backdrop-blur-sm")}>
-        <div className="flex items-center justify-between gap-3 px-4 py-3.5">
-          <div className="flex items-center gap-2">
-            <h2 className="text-base font-semibold text-foreground">{title}</h2>
+        <div className="flex items-center gap-3 px-4 py-3">
+          {/* Left: Title */}
+          <div className="flex items-center gap-2 shrink-0">
+            <h2 className="text-sm font-semibold text-foreground">{title}</h2>
             {titleTooltip && (
               <SimpleTooltip
                 tooltip={titleTooltip}
@@ -44,14 +45,16 @@ export function ListSection({
               />
             )}
           </div>
-          <div className="flex items-center gap-2">
-            {onSearchChange && (
+
+          {/* Center: Search bar or spacer */}
+          {onSearchChange ? (
+            <div className="flex-1 flex justify-center">
               <div className={cn(
                 "relative flex items-center transition-all duration-150 hover:transition-none",
-                isSearchFocused ? "w-[180px]" : "w-[150px]"
+                isSearchFocused ? "w-[160px]" : "w-[140px]"
               )}>
-                <div className="absolute left-3 flex items-center justify-center pointer-events-none z-10">
-                  <Search className="h-4 w-4 text-foreground/60" />
+                <div className="absolute left-2.5 flex items-center justify-center pointer-events-none z-10">
+                  <Search className="h-3 w-3 text-foreground/50" />
                 </div>
                 <input
                   type="text"
@@ -61,31 +64,35 @@ export function ListSection({
                   onFocus={() => setIsSearchFocused(true)}
                   onBlur={() => setIsSearchFocused(false)}
                   className={cn(
-                    "w-full h-9 pl-10 pr-3 text-sm rounded-xl",
+                    "w-full h-7 pl-7 pr-2 text-xs rounded-lg",
                     "bg-background dark:bg-foreground/[0.04] border border-border/50 dark:border-foreground/[0.08]",
                     "focus:bg-background dark:focus:bg-foreground/[0.06] focus:outline-none focus:ring-1 focus:ring-foreground/[0.1] focus:border-border dark:focus:border-foreground/[0.12]",
-                    "placeholder:text-muted-foreground/60",
+                    "placeholder:text-muted-foreground/50",
                     "transition-all duration-150 hover:transition-none"
                   )}
                 />
               </div>
-            )}
-            {onAddClick && (
-              <Button
-                variant="ghost"
-                size="sm"
-                className={cn(
-                  "h-9 w-9 p-0 rounded-xl",
-                  "text-muted-foreground hover:text-foreground",
-                  "hover:bg-foreground/[0.06] border border-transparent hover:border-border/40 dark:hover:border-foreground/[0.08]",
-                  "transition-all duration-150 hover:transition-none"
-                )}
-                onClick={onAddClick}
-              >
-                <Plus className="h-4 w-4" />
-              </Button>
-            )}
-          </div>
+            </div>
+          ) : onAddClick ? (
+            <div className="flex-1" />
+          ) : null}
+
+          {/* Right: Add button */}
+          {onAddClick && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className={cn(
+                "h-7 w-7 p-0 rounded-lg shrink-0",
+                "text-muted-foreground hover:text-foreground",
+                "hover:bg-foreground/[0.06] border border-transparent hover:border-border/40 dark:hover:border-foreground/[0.08]",
+                "transition-all duration-150 hover:transition-none"
+              )}
+              onClick={onAddClick}
+            >
+              <Plus className="h-3.5 w-3.5" />
+            </Button>
+          )}
         </div>
         {hasTitleBorder && <div className="h-px bg-border/50 dark:bg-foreground/[0.08]" />}
       </div>
