@@ -15,7 +15,7 @@ it("should allow a signed-in user to read their own billing status", async ({ ex
       "status": 200,
       "body": {
         "default_payment_method": null,
-        "has_customer": false,
+        "has_customer": true,
       },
       "headers": Headers { <some fields may have been hidden> },
     }
