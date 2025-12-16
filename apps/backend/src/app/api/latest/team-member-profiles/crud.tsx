@@ -12,13 +12,17 @@ import { getUserLastActiveAtMillis, getUsersLastActiveAtMillis, userFullInclude,
 
 const fullInclude = { projectUser: { include: userFullInclude } };
 
-function prismaToCrud(prisma: Prisma.TeamMemberGetPayload<{ include: typeof fullInclude }>, lastActiveAtMillis: number) {
+function prismaToCrud(
+  prisma: Prisma.TeamMemberGetPayload<{ include: typeof fullInclude }>,
+  lastActiveAtMillis: number,
+  config: { onboarding?: { requireEmailVerification?: boolean } },
+) {
   return {
     team_id: prisma.teamId,
     user_id: prisma.projectUserId,
     display_name: prisma.displayName ?? prisma.projectUser.displayName,
     profile_image_url: prisma.profileImageUrl ?? prisma.projectUser.profileImageUrl,
-    user: userPrismaToCrud(prisma.projectUser, lastActiveAtMillis),
+    user: userPrismaToCrud(prisma.projectUser, lastActiveAtMillis, config),
   };
 }
 
@@ -81,7 +85,7 @@ export const teamMemberProfilesCrudHandlers = createLazyProxy(() => createCrudHa
       const lastActiveAtMillis = await getUsersLastActiveAtMillis(auth.project.id, auth.branchId, db.map(user => user.projectUserId), db.map(user => user.createdAt));
 
       return {
-        items: db.map((user, index) => prismaToCrud(user, lastActiveAtMillis[index])),
+        items: db.map((user, index) => prismaToCrud(user, lastActiveAtMillis[index], auth.tenancy.config)),
         is_paginated: false,
       };
     });
@@ -121,7 +125,7 @@ export const teamMemberProfilesCrudHandlers = createLazyProxy(() => createCrudHa
         throw new KnownErrors.TeamMembershipNotFound(params.team_id, params.user_id);
       }
 
-      return prismaToCrud(db, await getUserLastActiveAtMillis(auth.project.id, auth.branchId, db.projectUser.projectUserId) ?? db.projectUser.createdAt.getTime());
+      return prismaToCrud(db, await getUserLastActiveAtMillis(auth.project.id, auth.branchId, db.projectUser.projectUserId) ?? db.projectUser.createdAt.getTime(), auth.tenancy.config);
     });
   },
   onUpdate: async ({ auth, data, params }) => {
@@ -155,7 +159,7 @@ export const teamMemberProfilesCrudHandlers = createLazyProxy(() => createCrudHa
         include: fullInclude,
       });
 
-      return prismaToCrud(db, await getUserLastActiveAtMillis(auth.project.id, auth.branchId, db.projectUser.projectUserId) ?? db.projectUser.createdAt.getTime());
+      return prismaToCrud(db, await getUserLastActiveAtMillis(auth.project.id, auth.branchId, db.projectUser.projectUserId) ?? db.projectUser.createdAt.getTime(), auth.tenancy.config);
     });
   },
 }));

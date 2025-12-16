@@ -628,4 +628,31 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
     return data;
   }
   // END_PLATFORM
+
+  async previewAffectedUsersByOnboardingChange(
+    onboarding: { requireEmailVerification?: boolean },
+    limit?: number,
+  ): Promise<{
+    affectedUsers: Array<{
+      id: string,
+      displayName: string | null,
+      primaryEmail: string | null,
+      restrictedReason: { type: "anonymous" | "email_not_verified" },
+    }>,
+    totalAffectedCount: number,
+  }> {
+    const result = await this._interface.previewAffectedUsersByOnboardingChange(
+      { require_email_verification: onboarding.requireEmailVerification },
+      limit,
+    );
+    return {
+      affectedUsers: result.affected_users.map(u => ({
+        id: u.id,
+        displayName: u.display_name,
+        primaryEmail: u.primary_email,
+        restrictedReason: u.restricted_reason as { type: "anonymous" | "email_not_verified" },
+      })),
+      totalAffectedCount: result.total_affected_count,
+    };
+  }
 }

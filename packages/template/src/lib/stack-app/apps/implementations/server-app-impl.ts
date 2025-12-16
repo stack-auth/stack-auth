@@ -1,3 +1,4 @@
+import { WebAuthnError, startRegistration } from "@simplewebauthn/browser";
 import { KnownErrors, StackServerInterface } from "@stackframe/stack-shared";
 import { ContactChannelsCrud } from "@stackframe/stack-shared/dist/interface/crud/contact-channels";
 import { ItemCrud } from "@stackframe/stack-shared/dist/interface/crud/items";
@@ -13,7 +14,7 @@ import { TeamsCrud } from "@stackframe/stack-shared/dist/interface/crud/teams";
 import { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
 import { InternalSession } from "@stackframe/stack-shared/dist/sessions";
 import type { AsyncCache } from "@stackframe/stack-shared/dist/utils/caches";
-import { captureError, StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { StackAssertionError, captureError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { ProviderType } from "@stackframe/stack-shared/dist/utils/oauth";
 import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
 import { suspend } from "@stackframe/stack-shared/dist/utils/react";
@@ -35,7 +36,6 @@ import { ProjectCurrentServerUser, ServerOAuthProvider, ServerUser, ServerUserCr
 import { StackServerAppConstructorOptions } from "../interfaces/server-app";
 import { _StackClientAppImplIncomplete } from "./client-app-impl";
 import { clientVersion, createCache, createCacheBySession, getBaseUrl, getDefaultExtraRequestHeaders, getDefaultProjectId, getDefaultPublishableClientKey, getDefaultSecretServerKey, resolveConstructorOptions } from "./common";
-import { startRegistration, WebAuthnError } from "@simplewebauthn/browser";
 
 import { useAsyncCache } from "./common"; // THIS_LINE_PLATFORM react-like
 
@@ -56,9 +56,10 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
     orderBy?: 'signedUpAt',
     desc?: boolean,
     query?: string,
+    includeRestricted?: boolean,
     includeAnonymous?: boolean,
-  ], UsersCrud['Server']['List']>(async ([cursor, limit, orderBy, desc, query, includeAnonymous]) => {
-    return await this._interface.listServerUsers({ cursor, limit, orderBy, desc, query, includeAnonymous });
+  ], UsersCrud['Server']['List']>(async ([cursor, limit, orderBy, desc, query, includeRestricted, includeAnonymous]) => {
+    return await this._interface.listServerUsers({ cursor, limit, orderBy, desc, query, includeRestricted, includeAnonymous });
   });
   private readonly _serverUserCache = createCache<string[], UsersCrud['Server']['Read'] | null>(async ([userId]) => {
     const user = await this._interface.getServerUserById(userId);
@@ -1042,18 +1043,28 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
       return await this._getUserByConvex(options.ctx, "or" in options && options.or === "anonymous");
     } else {
       options = options as GetCurrentUserOptions<HasTokenStore> | undefined;
+
+      // Validate that includeRestricted: false and or: 'anonymous' are mutually exclusive
+      if (options?.or === 'anonymous' && options.includeRestricted === false) {
+        throw new Error("Cannot use { or: 'anonymous' } with { includeRestricted: false }. Anonymous users implicitly include restricted users.");
+      }
+
       // TODO this code is duplicated from the client app; fix that
       this._ensurePersistentTokenStore(options?.tokenStore);
       const session = await this._getSession(options?.tokenStore);
       let crud = Result.orThrow(await this._currentServerUserCache.getOrWait([session], "write-only"));
-      if (crud?.is_anonymous && options?.or !== "anonymous" && options?.or !== "anonymous-if-exists[deprecated]") {
-        crud = null;
-      }
+      const includeAnonymous = options?.or === "anonymous" || options?.or === "anonymous-if-exists[deprecated]";
+      const includeRestricted = options?.includeRestricted === true || includeAnonymous;
 
-      if (crud === null) {
+      if (crud === null || (crud.is_anonymous && !includeAnonymous) || (crud.is_restricted && !includeRestricted)) {
         switch (options?.or) {
           case 'redirect': {
-            await this.redirectToSignIn({ replace: true });
+            if (!crud?.is_anonymous && crud?.is_restricted) {
+              await this.redirectToOnboarding({ replace: true });
+            } else {
+              await this.redirectToSignIn({ replace: true });
+            }
+            // TODO: see client-app-impl. We probably want to `await neverResolve()` here instead of returning null
             break;
           }
           case 'throw': {
@@ -1061,7 +1072,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
           }
           case 'anonymous': {
             const tokens = await this._signUpAnonymously();
-            return await this.getUser({ tokenStore: tokens, or: "anonymous-if-exists[deprecated]" }) ?? throwErr("Something went wrong while signing up anonymously");
+            return await this.getUser({ tokenStore: tokens, or: "anonymous-if-exists[deprecated]", includeRestricted: true }) ?? throwErr("Something went wrong while signing up anonymously");
           }
           case undefined:
           case "anonymous-if-exists[deprecated]":
@@ -1103,13 +1114,18 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
     } else {
       options = options as GetCurrentUserOptions<HasTokenStore> | undefined;
       // TODO this code is duplicated from the client app; fix that
+
+      // Validate that includeRestricted: false and or: 'anonymous' are mutually exclusive
+      if (options?.or === 'anonymous' && options.includeRestricted === false) {
+        throw new Error("Cannot use { or: 'anonymous' } with { includeRestricted: false }. Anonymous users implicitly include restricted users.");
+      }
+
       this._ensurePersistentTokenStore(options?.tokenStore);
 
       const session = this._useSession(options?.tokenStore);
       let crud = useAsyncCache(this._currentServerUserCache, [session] as const, "serverApp.useUser()");
-      if (crud?.is_anonymous && options?.or !== "anonymous" && options?.or !== "anonymous-if-exists[deprecated]") {
-        crud = null;
-      }
+      const includeAnonymous = options?.or === "anonymous" || options?.or === "anonymous-if-exists[deprecated]";
+      const includeRestricted = options?.includeRestricted === true || includeAnonymous;
 
       if (crud === null) {
         switch (options?.or) {
@@ -1157,7 +1173,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
   // END_PLATFORM
 
   async listUsers(options?: ServerListUsersOptions): Promise<ServerUser[] & { nextCursor: string | null }> {
-    const crud = Result.orThrow(await this._serverUsersCache.getOrWait([options?.cursor, options?.limit, options?.orderBy, options?.desc, options?.query, options?.includeAnonymous], "write-only"));
+    const crud = Result.orThrow(await this._serverUsersCache.getOrWait([options?.cursor, options?.limit, options?.orderBy, options?.desc, options?.query, options?.includeRestricted, options?.includeAnonymous], "write-only"));
     const result: any = crud.items.map((j) => this._serverUserFromCrud(j));
     result.nextCursor = crud.pagination?.next_cursor ?? null;
     return result as any;
@@ -1165,7 +1181,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
 
   // IF_PLATFORM react-like
   useUsers(options?: ServerListUsersOptions): ServerUser[] & { nextCursor: string | null } {
-    const crud = useAsyncCache(this._serverUsersCache, [options?.cursor, options?.limit, options?.orderBy, options?.desc, options?.query, options?.includeAnonymous] as const, "serverApp.useUsers()");
+    const crud = useAsyncCache(this._serverUsersCache, [options?.cursor, options?.limit, options?.orderBy, options?.desc, options?.query, options?.includeRestricted, options?.includeAnonymous] as const, "serverApp.useUsers()");
     const result: any = crud.items.map((j) => this._serverUserFromCrud(j));
     result.nextCursor = crud.pagination?.next_cursor ?? null;
     return result as any;

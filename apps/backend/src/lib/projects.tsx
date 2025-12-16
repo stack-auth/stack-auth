@@ -259,6 +259,9 @@ export async function createOrUpdateProjectWithLegacyConfig(
 
     configOverrideOverride['apps.installed.authentication.enabled'] ??= true;
     configOverrideOverride['apps.installed.emails.enabled'] ??= true;
+
+    // Enable email verification requirement by default for new projects
+    configOverrideOverride['onboarding.requireEmailVerification'] ??= true;
   }
   await overrideEnvironmentConfigOverride({
     projectId: projectId,
