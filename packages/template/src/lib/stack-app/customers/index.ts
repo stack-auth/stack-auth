@@ -55,6 +55,55 @@ export type CustomerProductsRequestOptions =
   | ({ teamId: string } & CustomerProductsListOptions)
   | ({ customCustomerId: string } & CustomerProductsListOptions);
 
+export type CustomerBillingAddress = {
+  line1: string | null,
+  line2: string | null,
+  city: string | null,
+  state: string | null,
+  postal_code: string | null,
+  country: string | null,
+} | null;
+
+export type CustomerBillingDetails = {
+  name: string | null,
+  email: string | null,
+  phone: string | null,
+  address: CustomerBillingAddress,
+};
+
+export type CustomerDefaultPaymentMethod = {
+  id: string,
+  brand: string | null,
+  last4: string | null,
+  exp_month: number | null,
+  exp_year: number | null,
+} | null;
+
+export type CustomerBilling = {
+  hasCustomer: boolean,
+  billingDetails: CustomerBillingDetails,
+  defaultPaymentMethod: CustomerDefaultPaymentMethod,
+};
+
+export type CustomerBillingUpdate = {
+  name?: string,
+  email?: string,
+  phone?: string,
+  address?: {
+    line1?: string,
+    line2?: string,
+    city?: string,
+    state?: string,
+    postal_code?: string,
+    country?: string,
+  },
+};
+
+export type CustomerPaymentMethodSetupIntent = {
+  clientSecret: string,
+  stripeAccountId: string,
+};
+
 export type Customer<IsServer extends boolean = false> =
   & {
     readonly id: string,
@@ -63,7 +112,19 @@ export type Customer<IsServer extends boolean = false> =
       | { productId: string, returnUrl?: string }
       | (IsServer extends true ? { product: InlineProduct, returnUrl?: string } : never)
     )): Promise<string>,
+
+    updateBilling(update: CustomerBillingUpdate): Promise<void>,
+
+    createPaymentMethodSetupIntent(): Promise<CustomerPaymentMethodSetupIntent>,
+
+    setDefaultPaymentMethodFromSetupIntent(setupIntentId: string): Promise<CustomerDefaultPaymentMethod>,
   }
+  & AsyncStoreProperty<
+    "billing",
+    [],
+    CustomerBilling,
+    false
+  >
   & AsyncStoreProperty<
     "item",
     [itemId: string],

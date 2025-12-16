@@ -42,7 +42,7 @@ import { ApiKey, ApiKeyCreationOptions, ApiKeyUpdateOptions, apiKeyCreationOptio
 import { ConvexCtx, GetCurrentPartialUserOptions, GetCurrentUserOptions, HandlerUrls, OAuthScopesOnSignIn, RedirectMethod, RedirectToOptions, RequestLike, TokenStoreInit, stackAppInternalsSymbol } from "../../common";
 import { OAuthConnection } from "../../connected-accounts";
 import { ContactChannel, ContactChannelCreateOptions, ContactChannelUpdateOptions, contactChannelCreateOptionsToCrud, contactChannelUpdateOptionsToCrud } from "../../contact-channels";
-import { Customer, CustomerProductsList, CustomerProductsListOptions, CustomerProductsRequestOptions, Item } from "../../customers";
+import { Customer, CustomerBilling, CustomerBillingUpdate, CustomerDefaultPaymentMethod, CustomerPaymentMethodSetupIntent, CustomerProductsList, CustomerProductsListOptions, CustomerProductsRequestOptions, Item } from "../../customers";
 import { NotificationCategory } from "../../notification-categories";
 import { TeamPermission } from "../../permissions";
 import { AdminOwnedProject, AdminProjectUpdateOptions, Project, adminProjectCreateOptionsToCrud } from "../../projects";
@@ -95,6 +95,19 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
 
   private __DEMO_ENABLE_SLIGHT_FETCH_DELAY = false;
   private readonly _ownedAdminApps = new DependenciesMap<[InternalSession, string], _StackAdminAppImplIncomplete<false, string>>();
+
+  protected _getDefaultAuthenticatedRequestType(): "client" | "server" {
+    const options = this._interface.options as any;
+    return options && typeof options.secretServerKey === "string" && options.secretServerKey.length > 0 ? "server" : "client";
+  }
+
+  protected _getSecretServerKeyHeader(): Record<string, string> {
+    const options = this._interface.options as any;
+    if (options && typeof options.secretServerKey === "string" && options.secretServerKey.length > 0) {
+      return { "x-stack-secret-server-key": options.secretServerKey };
+    }
+    return {};
+  }
 
   private readonly _currentUserCache = createCacheBySession(async (session) => {
     if (this.__DEMO_ENABLE_SLIGHT_FETCH_DELAY) {
@@ -266,6 +279,45 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         cursor: cursor ?? undefined,
         limit: limit ?? undefined,
       }, session);
+    }
+  );
+
+  private readonly _customerBillingCache = createCacheBySession<["user" | "team", string], {
+    has_customer: boolean,
+    billing_details: {
+      name: string | null,
+      email: string | null,
+      phone: string | null,
+      address: {
+        line1: string | null,
+        line2: string | null,
+        city: string | null,
+        state: string | null,
+        postal_code: string | null,
+        country: string | null,
+      } | null,
+    },
+    default_payment_method: {
+      id: string,
+      brand: string | null,
+      last4: string | null,
+      exp_month: number | null,
+      exp_year: number | null,
+    } | null,
+  }>(
+    async (session, [customerType, customerId]) => {
+      const requestType = this._getDefaultAuthenticatedRequestType();
+      const response = await this._interface.sendClientRequest(
+        `/payments/billing/${customerType}/${customerId}`,
+        {
+          headers: {
+            ...this._getSecretServerKeyHeader(),
+          },
+        },
+        session,
+        requestType,
+      );
+      return await response.json();
     }
   );
 
@@ -1157,6 +1209,41 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     return Object.assign(products, { nextCursor: response.pagination.next_cursor ?? null });
   }
 
+  protected _customerBillingFromResponse(response: {
+    has_customer: boolean,
+    billing_details: {
+      name: string | null,
+      email: string | null,
+      phone: string | null,
+      address: {
+        line1: string | null,
+        line2: string | null,
+        city: string | null,
+        state: string | null,
+        postal_code: string | null,
+        country: string | null,
+      } | null,
+    },
+    default_payment_method: {
+      id: string,
+      brand: string | null,
+      last4: string | null,
+      exp_month: number | null,
+      exp_year: number | null,
+    } | null,
+  }): CustomerBilling {
+    return {
+      hasCustomer: response.has_customer,
+      billingDetails: {
+        name: response.billing_details.name,
+        email: response.billing_details.email,
+        phone: response.billing_details.phone,
+        address: response.billing_details.address,
+      },
+      defaultPaymentMethod: response.default_payment_method,
+    };
+  }
+
   protected _createAuth(session: InternalSession): Auth {
     const app = this;
     return {
@@ -1587,8 +1674,83 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
 
   protected _createCustomer(userIdOrTeamId: string, type: "user" | "team", session: InternalSession | null): Omit<Customer, "id"> {
     const app = this;
+    const effectiveSession = session ?? app._interface.createSession({ refreshToken: null });
     const customerOptions = type === "user" ? { userId: userIdOrTeamId } : { teamId: userIdOrTeamId };
     return {
+      async getBilling() {
+        const response = Result.orThrow(await app._customerBillingCache.getOrWait([effectiveSession, type, userIdOrTeamId], "write-only"));
+        return app._customerBillingFromResponse(response);
+      },
+      // IF_PLATFORM react-like
+      useBilling() {
+        const response = useAsyncCache(app._customerBillingCache, [effectiveSession, type, userIdOrTeamId] as const, "customer.useBilling()");
+        return app._customerBillingFromResponse(response);
+      },
+      // END_PLATFORM
+      async updateBilling(update: CustomerBillingUpdate) {
+        const requestType = app._getDefaultAuthenticatedRequestType();
+        await app._interface.sendClientRequest(
+          `/payments/billing/${type}/${userIdOrTeamId}`,
+          {
+            method: "POST",
+            headers: {
+              ...app._getSecretServerKeyHeader(),
+              "content-type": "application/json",
+            },
+            body: JSON.stringify({
+              name: update.name,
+              email: update.email,
+              phone: update.phone,
+              address: update.address,
+            }),
+          },
+          effectiveSession,
+          requestType,
+        );
+        await app._customerBillingCache.refresh([effectiveSession, type, userIdOrTeamId]);
+      },
+      async createPaymentMethodSetupIntent(): Promise<CustomerPaymentMethodSetupIntent> {
+        const requestType = app._getDefaultAuthenticatedRequestType();
+        const response = await app._interface.sendClientRequest(
+          `/payments/payment-method/${type}/${userIdOrTeamId}/setup-intent`,
+          {
+            method: "POST",
+            headers: {
+              ...app._getSecretServerKeyHeader(),
+              "content-type": "application/json",
+            },
+            body: JSON.stringify({}),
+          },
+          effectiveSession,
+          requestType,
+        );
+        const body = await response.json() as { client_secret: string, stripe_account_id: string };
+        return {
+          clientSecret: body.client_secret,
+          stripeAccountId: body.stripe_account_id,
+        };
+      },
+      async setDefaultPaymentMethodFromSetupIntent(setupIntentId: string): Promise<CustomerDefaultPaymentMethod> {
+        const requestType = app._getDefaultAuthenticatedRequestType();
+        const response = await app._interface.sendClientRequest(
+          `/payments/payment-method/${type}/${userIdOrTeamId}/set-default`,
+          {
+            method: "POST",
+            headers: {
+              ...app._getSecretServerKeyHeader(),
+              "content-type": "application/json",
+            },
+            body: JSON.stringify({
+              setup_intent_id: setupIntentId,
+            }),
+          },
+          effectiveSession,
+          requestType,
+        );
+        const body = await response.json() as { default_payment_method: CustomerDefaultPaymentMethod };
+        await app._customerBillingCache.refresh([effectiveSession, type, userIdOrTeamId]);
+        return body.default_payment_method;
+      },
       async getItem(itemId: string) {
         return await app.getItem({ itemId, ...customerOptions });
       },
@@ -1606,7 +1768,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       },
       // END_PLATFORM
       async createCheckoutUrl(options: { productId: string, returnUrl?: string }) {
-        return await app._interface.createCheckoutUrl(type, userIdOrTeamId, options.productId, session, options.returnUrl);
+        return await app._interface.createCheckoutUrl(type, userIdOrTeamId, options.productId, effectiveSession, options.returnUrl);
       },
     };
   }
