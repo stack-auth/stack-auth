@@ -401,7 +401,7 @@ export namespace Auth {
         if (containsSubstring) {
           break;
         }
-        await wait(100 + i * 10);
+        await wait(100 + i * 20);
         if (i >= 30) {
           throw new StackAssertionError(`Sign-in code message not found after ${i} attempts`, { messages });
         }
