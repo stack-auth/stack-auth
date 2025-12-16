@@ -7,6 +7,7 @@ import { TeamMemberInvitationSection } from "./team-member-invitation-section";
 import { TeamMemberListSection } from "./team-member-list-section";
 import { TeamProfileImageSection } from "./team-profile-image-section";
 import { TeamUserProfileSection } from "./team-profile-user-section";
+import { TeamPaymentsSection } from "./team-payments-section";
 
 
 export function TeamPage(props: { team: Team }) {
@@ -17,6 +18,7 @@ export function TeamPage(props: { team: Team }) {
       <TeamDisplayNameSection key={`display-name-${props.team.id}`} team={props.team} />
       <TeamMemberListSection key={`member-list-${props.team.id}`} team={props.team} />
       <TeamMemberInvitationSection key={`member-invitation-${props.team.id}`} team={props.team} />
+      <TeamPaymentsSection key={`payments-${props.team.id}`} team={props.team} />
       <TeamApiKeysSection key={`api-keys-${props.team.id}`} team={props.team} />
       <LeaveTeamSection key={`leave-team-${props.team.id}`} team={props.team} />
     </PageLayout>

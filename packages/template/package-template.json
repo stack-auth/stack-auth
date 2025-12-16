@@ -86,6 +86,10 @@
   ],
   "dependencies": {
     "@hookform/resolvers": "^3.3.4",
+    "//": "NEXT_LINE_PLATFORM react-like",
+    "@stripe/react-stripe-js": "^3.8.1",
+    "//": "NEXT_LINE_PLATFORM react-like",
+    "@stripe/stripe-js": "^7.7.0",
     "@simplewebauthn/browser": "^11.0.0",
     "//": "NEXT_LINE_PLATFORM next",
     "@stackframe/stack-sc": "workspace:*",
