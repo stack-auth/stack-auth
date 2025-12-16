@@ -88,7 +88,7 @@ type EditableGridProps = {
 // Reusable label component
 function GridLabel({ icon, name, tooltip }: { icon: React.ReactNode, name: string, tooltip?: string }) {
   const label = (
-    <span className="flex gap-2 items-start pt-0.5">
+    <span className="flex gap-2 items-center">
       <span className="opacity-75">{icon}</span>
       <span className="font-semibold whitespace-nowrap mr-2">{name}</span>
     </span>

@@ -3,7 +3,7 @@
 import { EditableGrid, type EditableGridItem } from "@/components/editable-grid";
 import { EditableInput } from "@/components/editable-input";
 import { StyledLink } from "@/components/link";
-import { SettingCard } from "@/components/settings";
+import { RepeatingInput } from "@/components/repeating-input";
 import { CompleteConfig, Product } from "@stackframe/stack-shared/dist/config/schema";
 import type { Transaction, TransactionEntry } from "@stackframe/stack-shared/dist/interface/crud/transactions";
 import type { DayInterval } from "@stackframe/stack-shared/dist/utils/dates";
@@ -49,13 +49,12 @@ import {
   toast,
   Typography,
 } from "@stackframe/stack-ui";
-import { Calendar, Clock, Copy, DollarSign, Gift, Hash, Layers, MoreHorizontal, Package, Pencil, Plus, Puzzle, Server, Trash2, Users } from "lucide-react";
+import { Clock, Copy, DollarSign, Gift, Layers, MoreHorizontal, Package, Pencil, Plus, Puzzle, Server, Trash2, Users, X } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Suspense, useMemo, useState } from "react";
 import { PageLayout } from "../../../page-layout";
 import { useAdminApp, useProjectId } from "../../../use-admin-app";
-import { IntervalPopover } from "../components";
 import { DEFAULT_INTERVAL_UNITS, generateUniqueId, intervalLabel, PRICE_INTERVAL_UNITS, shortIntervalLabel, type Price } from "../utils";
 
 const CUSTOMER_TYPE_COLORS = {
@@ -271,16 +270,8 @@ function ProductDetailsSection({ productId, product, config }: ProductDetailsSec
       }));
   }, [config.payments.products, productId, product.customerType, product.catalogId]);
 
-  // Check if any price has a free trial
-  const freeTrialInfo = useMemo(() => {
-    if (product.prices === 'include-by-default' || typeof product.prices !== 'object') return null;
-    for (const [, price] of typedEntries(product.prices as Record<string, Price>)) {
-      if (price.freeTrial) {
-        return price.freeTrial;
-      }
-    }
-    return null;
-  }, [product.prices]);
+  // Get product-level free trial
+  const freeTrialInfo = product.freeTrial || null;
 
   const freeTrialDisplayText = useMemo(() => {
     if (!freeTrialInfo) return 'None';
@@ -288,11 +279,8 @@ function ProductDetailsSection({ productId, product, config }: ProductDetailsSec
     return `${count} ${count === 1 ? unit : unit + 's'}`;
   }, [freeTrialInfo]);
 
-  // Check if any price is server-only
-  const hasServerOnlyPrice = useMemo(() => {
-    if (product.prices === 'include-by-default' || typeof product.prices !== 'object') return false;
-    return Object.values(product.prices as Record<string, Price>).some(price => price.serverOnly);
-  }, [product.prices]);
+  // Get product-level server-only status
+  const isServerOnly = !!product.serverOnly;
 
   // Handlers
   const handleStackableUpdate = async (value: boolean) => {
@@ -303,21 +291,10 @@ function ProductDetailsSection({ productId, product, config }: ProductDetailsSec
   };
 
   const handleServerOnlyUpdate = async (value: boolean) => {
-    // Update all prices to have the new serverOnly value
-    if (product.prices === 'include-by-default' || typeof product.prices !== 'object') return;
-
-    const updatedPrices: Record<string, object> = {};
-    for (const [priceId, price] of typedEntries(product.prices as Record<string, Price>)) {
-      updatedPrices[priceId] = {
-        ...price,
-        serverOnly: value,
-      };
-    }
-
     await project.updateConfig({
-      [`payments.products.${productId}.prices`]: updatedPrices,
+      [`payments.products.${productId}.serverOnly`]: value || null,
     });
-    toast({ title: value ? "All prices are now server only" : "Prices are no longer server only" });
+    toast({ title: value ? "Product is now server only" : "Product is no longer server only" });
   };
 
   const handleAddOnSave = async () => {
@@ -338,61 +315,23 @@ function ProductDetailsSection({ productId, product, config }: ProductDetailsSec
   };
 
   const handleFreeTrialSave = async (count: number, unit: DayInterval[1]) => {
-    // Update all prices to have the new free trial
-    if (product.prices === 'include-by-default' || typeof product.prices !== 'object') return;
-
-    const updatedPrices: Record<string, object> = {};
-    for (const [priceId, price] of typedEntries(product.prices as Record<string, Price>)) {
-      // Only add free trial to recurring prices
-      if (price.interval) {
-        updatedPrices[priceId] = {
-          ...price,
-          freeTrial: [count, unit] as DayInterval,
-        };
-      } else {
-        updatedPrices[priceId] = price;
-      }
-    }
-
     await project.updateConfig({
-      [`payments.products.${productId}.prices`]: updatedPrices,
+      [`payments.products.${productId}.freeTrial`]: [count, unit] as DayInterval,
     });
     setFreeTrialPopoverOpen(false);
     toast({ title: "Free trial updated" });
   };
 
   const handleRemoveFreeTrial = async () => {
-    if (product.prices === 'include-by-default' || typeof product.prices !== 'object') return;
-
-    const updatedPrices: Record<string, object> = {};
-    for (const [priceId, price] of typedEntries(product.prices as Record<string, Price>)) {
-      const { freeTrial: _, ...rest } = price;
-      updatedPrices[priceId] = rest;
-    }
-
     await project.updateConfig({
-      [`payments.products.${productId}.prices`]: updatedPrices,
+      [`payments.products.${productId}.freeTrial`]: null,
     });
     setFreeTrialPopoverOpen(false);
     toast({ title: "Free trial removed" });
   };
 
-  // Check if product has recurring prices (for free trial availability)
-  const hasRecurringPrices = useMemo(() => {
-    if (product.prices === 'include-by-default' || typeof product.prices !== 'object') return false;
-    return Object.values(product.prices as Record<string, Price>).some(price => price.interval);
-  }, [product.prices]);
-
   // Build grid items for EditableGrid
   const gridItems: EditableGridItem[] = [
-    {
-      type: 'text',
-      icon: <Hash size={16} />,
-      name: "Product ID",
-      tooltip: "The unique identifier for this product. Used in API calls and code.",
-      value: productId,
-      readOnly: true,
-    },
     {
       type: 'boolean',
       icon: <Layers size={16} />,
@@ -432,18 +371,16 @@ function ProductDetailsSection({ productId, product, config }: ProductDetailsSec
       type: 'custom',
       icon: <Clock size={16} />,
       name: "Free Trial",
-      tooltip: "Free trial period for recurring subscriptions. Customers won't be charged during this period.",
+      tooltip: "Free trial period before billing starts. Customers won't be charged during this period.",
       children: (
         <Popover open={freeTrialPopoverOpen} onOpenChange={setFreeTrialPopoverOpen}>
           <PopoverTrigger asChild>
             <button
-              disabled={!hasRecurringPrices}
               className={cn(
                 "w-full px-1 py-0 h-[unset] border-transparent rounded text-left text-foreground",
-                hasRecurringPrices && "hover:ring-1 hover:ring-slate-300 dark:hover:ring-gray-500 hover:bg-slate-50 dark:hover:bg-gray-800 hover:cursor-pointer",
+                "hover:ring-1 hover:ring-slate-300 dark:hover:ring-gray-500 hover:bg-slate-50 dark:hover:bg-gray-800 hover:cursor-pointer",
                 "focus:outline-none focus-visible:ring-1 focus-visible:ring-slate-500 dark:focus-visible:ring-gray-50",
-                "transition-colors duration-150 hover:transition-none",
-                !hasRecurringPrices && "opacity-50 cursor-not-allowed"
+                "transition-colors duration-150 hover:transition-none"
               )}
             >
               {freeTrialDisplayText}
@@ -499,17 +436,9 @@ function ProductDetailsSection({ productId, product, config }: ProductDetailsSec
       type: 'boolean',
       icon: <Server size={16} />,
       name: "Server Only",
-      tooltip: "Server-only prices can only be assigned through server-side API calls, not by customers directly.",
-      value: hasServerOnlyPrice,
+      tooltip: "Server-only products are only available through checkout sessions created by server-side APIs.",
+      value: isServerOnly,
       onUpdate: handleServerOnlyUpdate,
-    },
-    {
-      type: 'text',
-      icon: <Calendar size={16} />,
-      name: "Customer Type",
-      tooltip: "Determines whether this product is for individual users, teams, or custom entities.",
-      value: product.customerType,
-      readOnly: true,
     },
     {
       type: 'custom',
@@ -627,13 +556,17 @@ function ProductPricesSection({ productId, product, inline = false }: ProductPri
   const prices = product.prices;
   const [editingPrice, setEditingPrice] = useState<EditingPrice | null>(null);
   const [isAddingPrice, setIsAddingPrice] = useState(false);
+  const [priceFreeTrialPopoverOpen, setPriceFreeTrialPopoverOpen] = useState(false);
+  const [priceFreeTrialCount, setPriceFreeTrialCount] = useState(7);
+  const [priceFreeTrialUnit, setPriceFreeTrialUnit] = useState<DayInterval[1]>('day');
+  const [deletingPriceIds, setDeletingPriceIds] = useState<Set<string>>(new Set());
 
   const handleSavePrice = async (editing: EditingPrice, isNew: boolean) => {
     const interval: DayInterval | undefined = editing.intervalSelection === 'one-time'
       ? undefined
       : [editing.intervalCount, editing.priceInterval || 'month'];
 
-    const freeTrial: DayInterval | undefined = editing.freeTrialEnabled && interval
+    const freeTrial: DayInterval | undefined = editing.freeTrialEnabled
       ? [editing.freeTrialCount, editing.freeTrialUnit]
       : undefined;
 
@@ -660,23 +593,25 @@ function ProductPricesSection({ productId, product, inline = false }: ProductPri
   };
 
   const handleDeletePrice = async (priceId: string) => {
-    const currentPrices = typeof prices === 'object' && prices !== null ? prices : {};
-    const { [priceId]: _, ...remainingPrices } = currentPrices as Record<string, Price>;
+    setDeletingPriceIds(prev => new Set(prev).add(priceId));
+    try {
+      const currentPrices = typeof prices === 'object' && prices !== null ? prices : {};
+      const { [priceId]: _, ...remainingPrices } = currentPrices as Record<string, Price>;
 
-    await project.updateConfig({
-      [`payments.products.${productId}.prices`]: Object.keys(remainingPrices).length > 0 ? remainingPrices : null,
-    });
+      await project.updateConfig({
+        [`payments.products.${productId}.prices`]: Object.keys(remainingPrices).length > 0 ? remainingPrices : {},
+      });
 
-    toast({ title: "Price deleted" });
+      toast({ title: "Price deleted" });
+    } finally {
+      setDeletingPriceIds(prev => {
+        const next = new Set(prev);
+        next.delete(priceId);
+        return next;
+      });
+    }
   };
 
-  const handleMakeFree = async () => {
-    await project.updateConfig({
-      [`payments.products.${productId}.prices`]: 'include-by-default',
-    });
-
-    toast({ title: "Product is now free" });
-  };
 
   const openEditDialog = (priceId: string, price: Price) => {
     setEditingPrice({
@@ -708,35 +643,127 @@ function ProductPricesSection({ productId, product, inline = false }: ProductPri
     setIsAddingPrice(true);
   };
 
-  // Handle "include-by-default" string value (free product)
-  if (prices === 'include-by-default') {
-    const content = (
-      <div className="flex items-center gap-2 text-sm pl-1">
-        <span className="font-semibold text-foreground">Free</span>
-        <span className="text-muted-foreground">— Included by default</span>
-      </div>
-    );
-    if (inline) return content;
-    return (
-      <div className="flex flex-col gap-2">
-        <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Prices</h3>
-        {content}
-      </div>
-    );
-  }
+  const isIncludeByDefault = prices === 'include-by-default';
+  const priceEntries = !isIncludeByDefault && prices && typeof prices === 'object' ? typedEntries(prices as Record<string, Price>) : [];
+  // Check if the product has a single $0 price (free but not included by default)
+  const isFreeNotIncluded = priceEntries.length === 1 && priceEntries[0][1].USD === '0' || priceEntries.length === 1 && priceEntries[0][1].USD === '0.00';
+  const isFree = isIncludeByDefault || isFreeNotIncluded;
+  const hasNoPrices = !isIncludeByDefault && priceEntries.length === 0;
 
-  const priceEntries = prices && typeof prices === 'object' ? typedEntries(prices as Record<string, Price>) : [];
+  const handleAddPrices = async () => {
+    // Convert from include-by-default to empty prices object, then open add dialog
+    await project.updateConfig({
+      [`payments.products.${productId}.prices`]: {},
+    });
+    openAddDialog();
+  };
+
+  const handleSetIncludeByDefault = async () => {
+    await project.updateConfig({
+      [`payments.products.${productId}.prices`]: 'include-by-default',
+    });
+    toast({ title: "Product is now included by default" });
+  };
+
+  const handleSetFreeNotIncluded = async () => {
+    // Set a $0 price to make it free but not included by default
+    const newPriceId = generateUniqueId('price');
+    await project.updateConfig({
+      [`payments.products.${productId}.prices`]: {
+        [newPriceId]: { USD: '0', serverOnly: false },
+      },
+    });
+    toast({ title: "Product is no longer included by default" });
+  };
 
   const listContent = (
     <div className="pl-1">
-      {priceEntries.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No prices configured</p>
+      {isFree ? (
+        // Free product - show "Free" with option to toggle include-by-default
+        <div className="flex flex-col">
+          <div className="flex items-center text-sm leading-6">
+            <span className="font-semibold text-foreground">Free</span>
+            <span className="text-muted-foreground mx-1.5">—</span>
+            {isIncludeByDefault ? (
+              <SimpleTooltip tooltip="This product will automatically be given to all new and existing customers">
+                <span className="text-muted-foreground cursor-help border-b border-dotted border-muted-foreground/50">Included by default</span>
+              </SimpleTooltip>
+            ) : (
+              <span className="text-muted-foreground">Not included by default</span>
+            )}
+          </div>
+          <div className="flex items-center gap-2 mt-1">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="w-fit h-6 px-1 text-xs text-muted-foreground hover:text-foreground"
+              onClick={async () => {
+                await project.updateConfig({
+                  [`payments.products.${productId}.prices`]: {},
+                });
+                toast({ title: "Product is no longer free" });
+              }}
+            >
+              <DollarSign className="h-3 w-3 mr-1" />
+              Make paid
+            </Button>
+            {isIncludeByDefault ? (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="w-fit h-6 px-1 text-xs text-muted-foreground hover:text-foreground"
+                onClick={handleSetFreeNotIncluded}
+              >
+                <X className="h-3 w-3 mr-1" />
+                {"Don't include by default"}
+              </Button>
+            ) : (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="w-fit h-6 px-1 text-xs text-muted-foreground hover:text-foreground"
+                onClick={handleSetIncludeByDefault}
+              >
+                <Gift className="h-3 w-3 mr-1" />
+                Include by default
+              </Button>
+            )}
+          </div>
+        </div>
+      ) : hasNoPrices ? (
+        // No prices configured - show error state
+        <div className="flex flex-col">
+          <p className="text-sm text-destructive leading-6">No prices configured</p>
+          <div className="flex items-center gap-2 mt-1">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="w-fit h-6 px-1 text-xs text-muted-foreground hover:text-foreground"
+              onClick={openAddDialog}
+            >
+              <Plus className="h-3 w-3 mr-1" />
+              Add price option
+            </Button>
+            <span className="text-[10px] font-medium text-muted-foreground/60 uppercase tracking-wider">or</span>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="w-fit h-6 px-1 text-xs text-muted-foreground hover:text-foreground"
+              onClick={handleSetIncludeByDefault}
+            >
+              <Gift className="h-3 w-3 mr-1" />
+              Make free
+            </Button>
+          </div>
+        </div>
       ) : (
+        // Has prices - show them with both options
         <div className="flex flex-col">
           {priceEntries.map(([priceId, price]) => {
             const intervalText = price.interval ? intervalLabel(price.interval) : 'One-time';
+            const isDeleting = deletingPriceIds.has(priceId);
             return (
-              <div key={priceId} className="group flex items-center text-sm leading-6">
+              <div key={priceId} className={cn("group flex items-center text-sm leading-6", isDeleting && "opacity-50")}>
                 <span className="font-semibold text-foreground">${price.USD}</span>
                 <span className="text-muted-foreground ml-1.5">{intervalText}</span>
                 {price.freeTrial && (
@@ -747,13 +774,14 @@ function ProductPricesSection({ productId, product, inline = false }: ProductPri
                 {price.serverOnly && (
                   <Badge variant="outline" className="text-[10px] ml-1.5 h-4 py-0 leading-none">Server only</Badge>
                 )}
-                <div className="opacity-0 group-hover:opacity-100 flex items-center ml-1">
+                <div className={cn("flex items-center ml-1", isDeleting ? "opacity-100" : "opacity-0 group-hover:opacity-100")}>
                   <SimpleTooltip tooltip="Edit">
                     <Button
                       variant="ghost"
                       size="sm"
                       className="h-5 w-5 p-0"
                       onClick={() => openEditDialog(priceId, price)}
+                      disabled={isDeleting}
                     >
                       <Pencil className="h-3 w-3" />
                     </Button>
@@ -764,41 +792,38 @@ function ProductPricesSection({ productId, product, inline = false }: ProductPri
                       size="sm"
                       className="h-5 w-5 p-0 text-destructive hover:text-destructive"
                       onClick={() => handleDeletePrice(priceId)}
+                      disabled={isDeleting}
                     >
-                      <Trash2 className="h-3 w-3" />
+                      <Trash2 className={cn("h-3 w-3", isDeleting && "animate-pulse")} />
                     </Button>
                   </SimpleTooltip>
                 </div>
               </div>
             );
           })}
-        </div>
-      )}
-      <div className="flex items-center gap-2 mt-1">
-        <Button
-          variant="ghost"
-          size="sm"
-          className="w-fit h-6 px-1 text-xs text-muted-foreground hover:text-foreground"
-          onClick={openAddDialog}
-        >
-          <Plus className="h-3 w-3 mr-1" />
-          Add price option
-        </Button>
-        {priceEntries.length === 0 && (
-          <>
+          <div className="flex items-center gap-2 mt-1">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="w-fit h-6 px-1 text-xs text-muted-foreground hover:text-foreground"
+              onClick={openAddDialog}
+            >
+              <Plus className="h-3 w-3 mr-1" />
+              Add price option
+            </Button>
             <span className="text-[10px] font-medium text-muted-foreground/60 uppercase tracking-wider">or</span>
             <Button
               variant="ghost"
               size="sm"
               className="w-fit h-6 px-1 text-xs text-muted-foreground hover:text-foreground"
-              onClick={handleMakeFree}
+              onClick={handleSetIncludeByDefault}
             >
               <Gift className="h-3 w-3 mr-1" />
               Make free
             </Button>
-          </>
-        )}
-      </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 
@@ -814,43 +839,23 @@ function ProductPricesSection({ productId, product, inline = false }: ProductPri
         </DialogHeader>
         {editingPrice && (
           <div className="grid gap-4 py-4">
-            {/* Amount */}
+            {/* Amount with Billing Frequency */}
             <div className="grid gap-2">
-              <Label>Amount (USD)</Label>
-              <div className="relative">
-                <Input
-                  className="pl-6"
-                  value={editingPrice.amount}
-                  onChange={(e) => {
-                    const v = e.target.value;
-                    if (v === '' || /^\d*(?:\.?\d{0,2})?$/.test(v)) {
-                      setEditingPrice({ ...editingPrice, amount: v });
-                    }
-                  }}
-                  placeholder="9.99"
-                />
-                <span className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground">$</span>
-              </div>
-            </div>
-
-            {/* Billing Frequency */}
-            <div className="grid gap-2">
-              <Label>Billing Frequency</Label>
-              <IntervalPopover
-                intervalText={intervalLabel(
-                  editingPrice.intervalSelection === 'one-time'
-                    ? undefined
-                    : [editingPrice.intervalCount, editingPrice.priceInterval || 'month']
-                )}
+              <Label>Price</Label>
+              <RepeatingInput
+                value={editingPrice.amount}
+                onValueChange={(v) => {
+                  if (v === '' || /^\d*(?:\.?\d{0,2})?$/.test(v)) {
+                    setEditingPrice({ ...editingPrice, amount: v });
+                  }
+                }}
+                inputType="text"
+                placeholder="9.99"
+                prefix="$"
                 intervalSelection={editingPrice.intervalSelection}
-                unit={editingPrice.priceInterval}
-                count={editingPrice.intervalCount}
-                setIntervalSelection={(v) => setEditingPrice({ ...editingPrice, intervalSelection: v })}
-                setUnit={(v) => setEditingPrice({ ...editingPrice, priceInterval: v })}
-                setCount={(v) => setEditingPrice({ ...editingPrice, intervalCount: v })}
-                allowedUnits={PRICE_INTERVAL_UNITS}
-                triggerClassName="h-10 w-full justify-between rounded-md border border-input bg-background px-3 py-2 text-sm"
-                onChange={(interval) => {
+                intervalCount={editingPrice.intervalCount}
+                intervalUnit={editingPrice.priceInterval}
+                onIntervalChange={(interval) => {
                   if (interval) {
                     setEditingPrice({
                       ...editingPrice,
@@ -864,62 +869,122 @@ function ProductPricesSection({ productId, product, inline = false }: ProductPri
                       intervalSelection: 'one-time',
                       intervalCount: 1,
                       priceInterval: undefined,
-                      freeTrialEnabled: false,
                     });
                   }
                 }}
+                onIntervalSelectionChange={(v) => setEditingPrice({ ...editingPrice, intervalSelection: v })}
+                onIntervalCountChange={(v) => setEditingPrice({ ...editingPrice, intervalCount: v })}
+                onIntervalUnitChange={(v) => setEditingPrice({ ...editingPrice, priceInterval: v })}
+                allowedUnits={PRICE_INTERVAL_UNITS}
               />
             </div>
 
-            {/* Free Trial (only for recurring) */}
-            {editingPrice.intervalSelection !== 'one-time' && (
-              <div className="grid gap-2">
-                <div className="flex items-center gap-2">
-                  <Checkbox
-                    id="free-trial"
-                    checked={editingPrice.freeTrialEnabled}
-                    onCheckedChange={(checked) => setEditingPrice({ ...editingPrice, freeTrialEnabled: !!checked })}
-                  />
-                  <Label htmlFor="free-trial" className="cursor-pointer">Free trial</Label>
-                </div>
-                {editingPrice.freeTrialEnabled && (
-                  <div className="flex items-center gap-2 ml-6">
-                    <Input
-                      className="w-20"
-                      type="number"
-                      min={1}
-                      value={editingPrice.freeTrialCount}
-                      onChange={(e) => setEditingPrice({ ...editingPrice, freeTrialCount: parseInt(e.target.value) || 1 })}
-                    />
-                    <Select
-                      value={editingPrice.freeTrialUnit}
-                      onValueChange={(v) => setEditingPrice({ ...editingPrice, freeTrialUnit: v as DayInterval[1] })}
+            {/* Free Trial & Server Only as EditableGrid */}
+            <EditableGrid
+              columns={1}
+              items={[
+                // Free Trial
+                {
+                  type: 'custom' as const,
+                  icon: <Clock size={16} />,
+                  name: "Free Trial",
+                  tooltip: "Free trial period before billing starts.",
+                  children: (
+                    <Popover
+                      open={priceFreeTrialPopoverOpen}
+                      onOpenChange={(open) => {
+                        setPriceFreeTrialPopoverOpen(open);
+                        if (open) {
+                          // Initialize popover state from editingPrice
+                          setPriceFreeTrialCount(editingPrice.freeTrialCount);
+                          setPriceFreeTrialUnit(editingPrice.freeTrialUnit);
+                        }
+                      }}
                     >
-                      <SelectTrigger className="w-24">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {DEFAULT_INTERVAL_UNITS.map((unit) => (
-                          <SelectItem key={unit} value={unit}>
-                            {unit}{editingPrice.freeTrialCount !== 1 ? 's' : ''}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Server Only */}
-            <div className="flex items-center gap-2">
-              <Checkbox
-                id="server-only"
-                checked={editingPrice.serverOnly}
-                onCheckedChange={(checked) => setEditingPrice({ ...editingPrice, serverOnly: !!checked })}
-              />
-              <Label htmlFor="server-only" className="cursor-pointer">Server only</Label>
-            </div>
+                      <PopoverTrigger asChild>
+                        <button
+                          className={cn(
+                            "w-full px-1 py-0 h-[unset] border-transparent rounded text-left text-foreground",
+                            "hover:ring-1 hover:ring-slate-300 dark:hover:ring-gray-500 hover:bg-slate-50 dark:hover:bg-gray-800 hover:cursor-pointer",
+                            "focus:outline-none focus-visible:ring-1 focus-visible:ring-slate-500 dark:focus-visible:ring-gray-50",
+                            "transition-colors duration-150 hover:transition-none"
+                          )}
+                        >
+                          {editingPrice.freeTrialEnabled
+                            ? `${editingPrice.freeTrialCount} ${editingPrice.freeTrialCount === 1 ? editingPrice.freeTrialUnit : editingPrice.freeTrialUnit + 's'}`
+                            : 'None'}
+                        </button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-64 p-3">
+                        <div className="space-y-3">
+                          <div className="flex items-center gap-2">
+                            <Input
+                              className="w-20"
+                              type="number"
+                              min={1}
+                              value={priceFreeTrialCount}
+                              onChange={(e) => setPriceFreeTrialCount(parseInt(e.target.value) || 1)}
+                            />
+                            <Select value={priceFreeTrialUnit} onValueChange={(v) => setPriceFreeTrialUnit(v as DayInterval[1])}>
+                              <SelectTrigger className="w-24">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {DEFAULT_INTERVAL_UNITS.map((unit) => (
+                                  <SelectItem key={unit} value={unit}>
+                                    {unit}{priceFreeTrialCount !== 1 ? 's' : ''}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div className="flex gap-2">
+                            <Button
+                              size="sm"
+                              className="flex-1"
+                              onClick={() => {
+                                setEditingPrice({
+                                  ...editingPrice,
+                                  freeTrialEnabled: true,
+                                  freeTrialCount: priceFreeTrialCount,
+                                  freeTrialUnit: priceFreeTrialUnit,
+                                });
+                                setPriceFreeTrialPopoverOpen(false);
+                              }}
+                            >
+                              Save
+                            </Button>
+                            {editingPrice.freeTrialEnabled && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => {
+                                  setEditingPrice({ ...editingPrice, freeTrialEnabled: false });
+                                  setPriceFreeTrialPopoverOpen(false);
+                                }}
+                              >
+                                Remove
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+                      </PopoverContent>
+                    </Popover>
+                  ),
+                },
+                // Server Only
+                {
+                  type: 'boolean' as const,
+                  icon: <Server size={16} />,
+                  name: "Server Only",
+                  tooltip: "Server-only prices can only be assigned through server-side API calls.",
+                  value: editingPrice.serverOnly,
+                  onUpdate: async (value: boolean) => {
+                    setEditingPrice({ ...editingPrice, serverOnly: value });
+                  },
+                },
+              ]}
+            />
           </div>
         )}
         <DialogFooter>
@@ -974,6 +1039,7 @@ function ProductItemsSection({ productId, product, config, inline = false }: Pro
   const [editingItem, setEditingItem] = useState<EditingItem | null>(null);
   const [isAddingItem, setIsAddingItem] = useState(false);
   const [selectedItemId, setSelectedItemId] = useState<string>('');
+  const [deletingItemIds, setDeletingItemIds] = useState<Set<string>>(new Set());
 
   // Get all available items for this customer type
   const availableItems = useMemo(() => {
@@ -1009,14 +1075,23 @@ function ProductItemsSection({ productId, product, config, inline = false }: Pro
   };
 
   const handleDeleteItem = async (itemId: string) => {
-    const currentItems = items || {};
-    const { [itemId]: _, ...remainingItems } = currentItems;
+    setDeletingItemIds(prev => new Set(prev).add(itemId));
+    try {
+      const currentItems = items || {};
+      const { [itemId]: _, ...remainingItems } = currentItems;
 
-    await project.updateConfig({
-      [`payments.products.${productId}.includedItems`]: Object.keys(remainingItems).length > 0 ? remainingItems : null,
-    });
+      await project.updateConfig({
+        [`payments.products.${productId}.includedItems`]: Object.keys(remainingItems).length > 0 ? remainingItems : null,
+      });
 
-    toast({ title: "Item removed" });
+      toast({ title: "Item removed" });
+    } finally {
+      setDeletingItemIds(prev => {
+        const next = new Set(prev);
+        next.delete(itemId);
+        return next;
+      });
+    }
   };
 
   const openEditDialog = (itemId: string, item: { quantity: number, repeat: DayInterval | 'once' }) => {
@@ -1045,6 +1120,7 @@ function ProductItemsSection({ productId, product, config, inline = false }: Pro
       });
       setSelectedItemId(firstAvailable.id);
     } else if (availableItems.length > 0) {
+      // All items are already included, use the first one (will update existing)
       setEditingItem({
         itemId: availableItems[0].id,
         quantity: 1,
@@ -1053,6 +1129,16 @@ function ProductItemsSection({ productId, product, config, inline = false }: Pro
         repeatUnit: 'month',
       });
       setSelectedItemId(availableItems[0].id);
+    } else {
+      // No items available - still open the dialog to show empty state
+      setEditingItem({
+        itemId: '',
+        quantity: 1,
+        repeatSelection: 'once',
+        repeatCount: 1,
+        repeatUnit: 'month',
+      });
+      setSelectedItemId('');
     }
     setIsAddingItem(true);
   };
@@ -1074,18 +1160,22 @@ function ProductItemsSection({ productId, product, config, inline = false }: Pro
           {itemEntries.map(([itemId, item]) => {
             const itemConfig = config.payments.items[itemId];
             const displayName = itemConfig.displayName || itemId;
+            const isDeleting = deletingItemIds.has(itemId);
             return (
-              <div key={itemId} className="group flex items-center text-sm leading-6">
+              <div key={itemId} className={cn("group flex items-center text-sm leading-6", isDeleting && "opacity-50")}>
                 <span className="font-semibold tabular-nums text-foreground">{prettyPrintWithMagnitudes(item.quantity)}×</span>
-                <span className="ml-1.5 text-foreground">{displayName}</span>
+                <SimpleTooltip tooltip={`ID: ${itemId}`}>
+                  <span className="ml-1.5 text-foreground cursor-help">{displayName}</span>
+                </SimpleTooltip>
                 <span className="text-muted-foreground ml-1.5">{shortIntervalLabel(item.repeat)}</span>
-                <div className="opacity-0 group-hover:opacity-100 flex items-center ml-1">
+                <div className={cn("flex items-center ml-1", isDeleting ? "opacity-100" : "opacity-0 group-hover:opacity-100")}>
                   <SimpleTooltip tooltip="Copy prompt">
                     <Button
                       variant="ghost"
                       size="sm"
                       className="h-5 w-5 p-0"
                       onClick={() => handleCopyPrompt(itemId, displayName)}
+                      disabled={isDeleting}
                     >
                       <Copy className="h-3 w-3" />
                     </Button>
@@ -1096,6 +1186,7 @@ function ProductItemsSection({ productId, product, config, inline = false }: Pro
                       size="sm"
                       className="h-5 w-5 p-0"
                       onClick={() => openEditDialog(itemId, item)}
+                      disabled={isDeleting}
                     >
                       <Pencil className="h-3 w-3" />
                     </Button>
@@ -1106,8 +1197,9 @@ function ProductItemsSection({ productId, product, config, inline = false }: Pro
                       size="sm"
                       className="h-5 w-5 p-0 text-destructive hover:text-destructive"
                       onClick={() => handleDeleteItem(itemId)}
+                      disabled={isDeleting}
                     >
-                      <Trash2 className="h-3 w-3" />
+                      <Trash2 className={cn("h-3 w-3", isDeleting && "animate-pulse")} />
                     </Button>
                   </SimpleTooltip>
                 </div>
@@ -1122,7 +1214,6 @@ function ProductItemsSection({ productId, product, config, inline = false }: Pro
           size="sm"
           className="w-fit h-6 px-1 text-xs text-muted-foreground hover:text-foreground"
           onClick={openAddDialog}
-          disabled={availableItems.length === 0}
         >
           <Plus className="h-3 w-3 mr-1" />
           Add included item
@@ -1141,7 +1232,20 @@ function ProductItemsSection({ productId, product, config, inline = false }: Pro
             Configure how much of this item customers receive.
           </DialogDescription>
         </DialogHeader>
-        {editingItem && (
+        {editingItem && availableItems.length === 0 && isAddingItem ? (
+          <div className="flex flex-col items-center gap-3 py-8">
+            <Package className="h-10 w-10 text-muted-foreground/50" />
+            <p className="text-sm text-muted-foreground text-center">
+              No items available for this customer type.
+            </p>
+            <p className="text-xs text-muted-foreground/70 text-center">
+              Create items in the Items list first before adding them to a product.
+            </p>
+            <Button variant="outline" onClick={() => { setEditingItem(null); setIsAddingItem(false); }}>
+              Close
+            </Button>
+          </div>
+        ) : editingItem && (
           <div className="grid gap-4 py-4">
             {/* Item Selection (only for adding) */}
             {isAddingItem && (
@@ -1269,33 +1373,38 @@ function ProductItemsSection({ productId, product, config, inline = false }: Pro
 
 function CustomersSkeleton() {
   return (
-    <SettingCard
-      title="Customers"
-      description="Customers who have purchased this product"
-    >
-      <div className="rounded-md border">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Customer</TableHead>
-              <TableHead>Type</TableHead>
-              <TableHead>Purchased</TableHead>
-              <TableHead className="w-[80px]"></TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {Array.from({ length: 3 }).map((_, i) => (
-              <TableRow key={i}>
-                <TableCell><Skeleton className="h-8 w-32" /></TableCell>
-                <TableCell><Skeleton className="h-4 w-16" /></TableCell>
-                <TableCell><Skeleton className="h-4 w-24" /></TableCell>
-                <TableCell><Skeleton className="h-8 w-8" /></TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+    <div className="relative rounded-2xl bg-foreground/[0.04] ring-1 ring-foreground/[0.06]">
+      <div className="px-5 pt-4 pb-3">
+        <h3 className="text-base font-semibold">Customers</h3>
+        <p className="text-sm text-muted-foreground">
+          Customers who have purchased this product
+        </p>
       </div>
-    </SettingCard>
+      <div className="px-5 pb-5">
+        <div className="rounded-xl overflow-hidden bg-background/50 ring-1 ring-foreground/[0.06]">
+          <Table>
+            <TableHeader>
+              <TableRow className="hover:bg-transparent">
+                <TableHead>Customer</TableHead>
+                <TableHead>Type</TableHead>
+                <TableHead>Purchased</TableHead>
+                <TableHead className="w-[80px]"></TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {Array.from({ length: 3 }).map((_, i) => (
+                <TableRow key={i}>
+                  <TableCell><Skeleton className="h-8 w-32" /></TableCell>
+                  <TableCell><Skeleton className="h-4 w-16" /></TableCell>
+                  <TableCell><Skeleton className="h-4 w-24" /></TableCell>
+                  <TableCell><Skeleton className="h-8 w-8" /></TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -1350,42 +1459,47 @@ function ProductCustomersSection({ productId, product }: ProductCustomersSection
   }, [transactions, productId]);
 
   return (
-    <SettingCard
-      title="Customers"
-      description={`Customers who have purchased this product (${customersWithTransactions.length} found)`}
-    >
-      {customersWithTransactions.length === 0 ? (
-        <div className="flex flex-col items-center gap-2 p-8 border rounded-md bg-muted/10">
-          <Users className="h-8 w-8 text-muted-foreground/50" />
-          <p className="text-sm text-muted-foreground text-center">
-            No customers have purchased this product yet
-          </p>
-        </div>
-      ) : (
-        <div className="rounded-md border">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Customer</TableHead>
-                <TableHead>Type</TableHead>
-                <TableHead>Purchased</TableHead>
-                <TableHead className="w-[80px]"></TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {customersWithTransactions.map(({ customerType, customerId, latestTransaction }) => (
-                <CustomerRow
-                  key={`${customerType}:${customerId}`}
-                  customerType={customerType}
-                  customerId={customerId}
-                  purchasedAt={new Date(latestTransaction.created_at_millis)}
-                />
-              ))}
-            </TableBody>
-          </Table>
-        </div>
-      )}
-    </SettingCard>
+    <div className="relative rounded-2xl bg-foreground/[0.04] ring-1 ring-foreground/[0.06]">
+      <div className="px-5 pt-4 pb-3">
+        <h3 className="text-base font-semibold">Customers</h3>
+        <p className="text-sm text-muted-foreground">
+          Customers who have purchased this product ({customersWithTransactions.length} found)
+        </p>
+      </div>
+      <div className="px-5 pb-5">
+        {customersWithTransactions.length === 0 ? (
+          <div className="flex flex-col items-center gap-2 p-8 rounded-xl bg-foreground/[0.02]">
+            <Users className="h-8 w-8 text-muted-foreground/50" />
+            <p className="text-sm text-muted-foreground text-center">
+              No customers have purchased this product yet
+            </p>
+          </div>
+        ) : (
+          <div className="rounded-xl overflow-hidden bg-background/50 ring-1 ring-foreground/[0.06]">
+            <Table>
+              <TableHeader>
+                <TableRow className="hover:bg-transparent">
+                  <TableHead>Customer</TableHead>
+                  <TableHead>Type</TableHead>
+                  <TableHead>Purchased</TableHead>
+                  <TableHead className="w-[80px]"></TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {customersWithTransactions.map(({ customerType, customerId, latestTransaction }) => (
+                  <CustomerRow
+                    key={`${customerType}:${customerId}`}
+                    customerType={customerType}
+                    customerId={customerId}
+                    purchasedAt={new Date(latestTransaction.created_at_millis)}
+                  />
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
 

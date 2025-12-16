@@ -26,7 +26,7 @@ import {
   SimpleTooltip,
   toast
 } from "@stackframe/stack-ui";
-import { ChevronsUpDown, Code, Copy, ExternalLink, FileText, Gift, Info, Layers, MoreVertical, Pencil, Plus, Puzzle, Server, Trash2, X } from "lucide-react";
+import { ChevronsUpDown, Code, Copy, Eye, ExternalLink, FileText, Gift, Info, Layers, MoreVertical, Pencil, Plus, Puzzle, Server, Trash2, X } from "lucide-react";
 import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useAdminApp, useProjectId } from "../../use-admin-app";
 import { IntervalPopover, OrSeparator, SectionHeading } from "./components";
@@ -1275,22 +1275,35 @@ function ProductCard({ id, product, allProducts, existingItems, onSave, onDelete
     </div>
   );
 
+  const handleCardClick = (e: React.MouseEvent) => {
+    // Don't navigate if clicking on interactive elements
+    const target = e.target as HTMLElement;
+    if (target.closest('button') || target.closest('a') || target.closest('[role="menuitem"]') || target.closest('[data-radix-collection-item]')) {
+      return;
+    }
+    router.push(`/projects/${projectId}/payments/products/${id}`);
+  };
+
   const viewingContent = (
-    <div className={cn(
-      "group relative flex flex-col h-full",
-      // Card mode (standalone)
-      !isColumnInTable && [
-        "rounded-2xl overflow-hidden",
-        "bg-gray-200/80 dark:bg-[hsl(240,10%,5.5%)]",
-        "border border-border/50 dark:border-foreground/[0.12]",
-        "shadow-sm hover:shadow-md transition-all duration-150 hover:transition-none",
-      ],
-      // Table column mode
-      isColumnInTable && [
-        !isFirstColumn && "border-l border-border/30 dark:border-foreground/[0.08]",
-      ],
-      isHashTarget && "border-primary shadow-[0_0_0_1px_rgba(59,130,246,0.35)]"
-    )}>
+    <div
+      className={cn(
+        "group relative flex flex-col h-full cursor-pointer",
+        // Card mode (standalone)
+        !isColumnInTable && [
+          "rounded-2xl overflow-hidden",
+          "bg-gray-200/80 dark:bg-[hsl(240,10%,5.5%)]",
+          "border border-border/50 dark:border-foreground/[0.12]",
+          "shadow-sm hover:shadow-md hover:bg-gray-300/80 dark:hover:bg-[hsl(240,10%,7%)] transition-all duration-150 hover:transition-none",
+        ],
+        // Table column mode
+        isColumnInTable && [
+          !isFirstColumn && "border-l border-border/30 dark:border-foreground/[0.08]",
+          "hover:bg-foreground/[0.02] transition-colors duration-150 hover:transition-none",
+        ],
+        isHashTarget && "border-primary shadow-[0_0_0_1px_rgba(59,130,246,0.35)]"
+      )}
+      onClick={handleCardClick}
+    >
       {/* Main content wrapper */}
       <div className="flex-1 flex flex-col">
         {/* Header section */}
@@ -1323,7 +1336,7 @@ function ProductCard({ id, product, allProducts, existingItems, onSave, onDelete
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
                 <DropdownMenuItem
-                  icon={<ExternalLink className="h-4 w-4" />}
+                  icon={<Eye className="h-4 w-4" />}
                   onClick={() => router.push(`/projects/${projectId}/payments/products/${id}`)}
                 >
                   View Details
@@ -1357,7 +1370,7 @@ function ProductCard({ id, product, allProducts, existingItems, onSave, onDelete
 
         {/* Pricing section - grows if no items */}
         <div className={cn(
-          "border-t border-border/20 dark:border-foreground/[0.06] px-5 py-4 dark:bg-[hsl(240,10%,6%)]",
+          "border-t border-border/20 dark:border-foreground/[0.06] px-5 py-4",
           itemsList.length === 0 && "flex-1"
         )}>
           {renderPrimaryPrices('view')}

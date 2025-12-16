@@ -11,7 +11,8 @@ import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
 import { ActionDialog, Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, toast } from "@stackframe/stack-ui";
 import { MoreVertical } from "lucide-react";
 import React, { ReactNode, useEffect, useMemo, useRef, useState } from "react";
-import { useAdminApp } from "../../use-admin-app";
+import { useRouter } from "@/components/router";
+import { useAdminApp, useProjectId } from "../../use-admin-app";
 import { ListSection } from "./list-section";
 import { ProductDialog } from "./product-dialog";
 
@@ -340,6 +341,8 @@ function ProductsList({
 }: ProductsListProps) {
   const stackAdminApp = useAdminApp();
   const project = stackAdminApp.useProject();
+  const projectId = useProjectId();
+  const router = useRouter();
   const [searchQuery, setSearchQuery] = useState("");
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [productToDelete, setProductToDelete] = useState<{ id: string, displayName: string } | null>(null);
@@ -404,6 +407,7 @@ function ProductsList({
                     isEven={isEven}
                     isHighlighted={isHighlighted}
                     itemRef={productRefs?.[id]}
+                    onClick={() => router.push(`/projects/${projectId}/payments/products/${id}`)}
                     onMouseEnter={() => onProductMouseEnter(id)}
                     onMouseLeave={onProductMouseLeave}
                     actionItems={[
