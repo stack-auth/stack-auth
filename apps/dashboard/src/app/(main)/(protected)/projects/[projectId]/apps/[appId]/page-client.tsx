@@ -13,24 +13,41 @@ export default function AppDetailsPageClient({ appId }: { appId: AppId }) {
 
   const adminApp = useAdminApp()!;
   const project = adminApp.useProject();
+  const config = project.useConfig();
+
+  const isEnabled = config.apps.installed[appId]?.enabled ?? false;
+
+  const appFrontend = ALL_APPS_FRONTEND[appId];
+  if (!(appFrontend as any)) {
+    throw new StackAssertionError(`App frontend not found for appId: ${appId}`, { appId });
+  }
+  const appPath = getAppPath(project.id, appFrontend);
 
   const handleEnable = async () => {
     await project.updateConfig({
       [`apps.installed.${appId}.enabled`]: true,
     });
-    const appFrontend = ALL_APPS_FRONTEND[appId];
-    if (!(appFrontend as any)) {
-      throw new StackAssertionError(`App frontend not found for appId: ${appId}`, { appId });
-    }
-    const path = getAppPath(project.id, appFrontend);
-    router.push(path);
+    router.push(appPath);
+  };
+
+  const handleOpen = () => {
+    router.push(appPath);
+  };
+
+  const handleDisable = async () => {
+    await project.updateConfig({
+      [`apps.installed.${appId}.enabled`]: false,
+    });
   };
 
   return (
     <PageLayout fillWidth>
       <AppStoreEntry
         appId={appId}
+        isEnabled={isEnabled}
         onEnable={async () => runAsynchronouslyWithAlert(handleEnable())}
+        onOpen={handleOpen}
+        onDisable={async () => runAsynchronouslyWithAlert(handleDisable())}
       />
     </PageLayout>
   );

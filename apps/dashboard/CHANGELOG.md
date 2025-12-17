@@ -1,5 +1,35 @@
 # @stackframe/stack-dashboard
 
+## 2.8.57
+
+### Patch Changes
+
+- Various changes
+- Updated dependencies
+  - @stackframe/stack-shared@2.8.57
+  - @stackframe/stack@2.8.57
+  - @stackframe/stack-ui@2.8.57
+
+## 2.8.56
+
+### Patch Changes
+
+- Various changes
+- Updated dependencies
+  - @stackframe/stack-shared@2.8.56
+  - @stackframe/stack@2.8.56
+  - @stackframe/stack-ui@2.8.56
+
+## 2.8.55
+
+### Patch Changes
+
+- Various changes
+- Updated dependencies
+  - @stackframe/stack-shared@2.8.55
+  - @stackframe/stack-ui@2.8.55
+  - @stackframe/stack@2.8.55
+
 ## 2.8.54
 
 ### Patch Changes

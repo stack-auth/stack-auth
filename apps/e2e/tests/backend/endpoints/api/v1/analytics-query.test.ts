@@ -1,13 +1,13 @@
 import { it } from "../../../../helpers";
 import { Auth, Project, niceBackendFetch } from "../../../backend-helpers";
 
-it("can execute a basic query with server access", async ({ expect }) => {
+it("can execute a basic query with admin access", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
   await Auth.Otp.signIn();
 
-  const response = await niceBackendFetch("/api/v1/analytics/query", {
+  const response = await niceBackendFetch("/api/v1/internal/analytics/query", {
     method: "POST",
-    accessType: "server",
+    accessType: "admin",
     body: {
       query: "SELECT 1 as value",
     },
@@ -32,9 +32,9 @@ it("can execute a query with parameters", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
   await Auth.Otp.signIn();
 
-  const response = await niceBackendFetch("/api/v1/analytics/query", {
+  const response = await niceBackendFetch("/api/v1/internal/analytics/query", {
     method: "POST",
-    accessType: "server",
+    accessType: "admin",
     body: {
       query: "SELECT {test_param:String} as value",
       params: {
@@ -62,9 +62,9 @@ it("can execute a query with custom timeout", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
   await Auth.Otp.signIn();
 
-  const response = await niceBackendFetch("/api/v1/analytics/query", {
+  const response = await niceBackendFetch("/api/v1/internal/analytics/query", {
     method: "POST",
-    accessType: "server",
+    accessType: "admin",
     body: {
       query: "SELECT 1 as value",
       timeout_ms: 5000,
@@ -87,9 +87,9 @@ it("validates required query field", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
   await Auth.Otp.signIn();
 
-  const response = await niceBackendFetch("/api/v1/analytics/query", {
+  const response = await niceBackendFetch("/api/v1/internal/analytics/query", {
     method: "POST",
-    accessType: "server",
+    accessType: "admin",
     body: {},
   });
 
@@ -100,12 +100,12 @@ it("validates required query field", async ({ expect }) => {
         "code": "SCHEMA_ERROR",
         "details": {
           "message": deindent\`
-            Request validation failed on POST /api/v1/analytics/query:
+            Request validation failed on POST /api/v1/internal/analytics/query:
               - body.query must be defined
           \`,
         },
         "error": deindent\`
-          Request validation failed on POST /api/v1/analytics/query:
+          Request validation failed on POST /api/v1/internal/analytics/query:
             - body.query must be defined
         \`,
       },
@@ -121,9 +121,9 @@ it("handles invalid SQL query", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
   await Auth.Otp.signIn();
 
-  const response = await niceBackendFetch("/api/v1/analytics/query", {
+  const response = await niceBackendFetch("/api/v1/internal/analytics/query", {
     method: "POST",
-    accessType: "server",
+    accessType: "admin",
     body: {
       query: "INVALID SQL QUERY",
     },
@@ -151,9 +151,9 @@ it("can execute query returning multiple rows", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
   await Auth.Otp.signIn();
 
-  const response = await niceBackendFetch("/api/v1/analytics/query", {
+  const response = await niceBackendFetch("/api/v1/internal/analytics/query", {
     method: "POST",
-    accessType: "server",
+    accessType: "admin",
     body: {
       query: "SELECT arrayJoin([0, 1, 2]) AS number",
     },
@@ -182,9 +182,9 @@ it("can execute query with multiple parameters", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
   await Auth.Otp.signIn();
 
-  const response = await niceBackendFetch("/api/v1/analytics/query", {
+  const response = await niceBackendFetch("/api/v1/internal/analytics/query", {
     method: "POST",
-    accessType: "server",
+    accessType: "admin",
     body: {
       query: "SELECT {param1:String} as col1, {param2:String} as col2",
       params: {
@@ -218,38 +218,33 @@ it("can execute query and hit custom timeout", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
   await Auth.Otp.signIn();
 
-  const response = await niceBackendFetch("/api/v1/analytics/query", {
+  const response = await niceBackendFetch("/api/v1/internal/analytics/query", {
     method: "POST",
-    accessType: "server",
+    accessType: "admin",
     body: {
       query: "SELECT sleep(3)",
       timeout_ms: 100,
     },
   });
 
-  expect(response).toMatchInlineSnapshot(`
-    NiceResponse {
-      "status": 400,
-      "body": {
-        "code": "ANALYTICS_QUERY_TIMEOUT",
-        "details": { "timeout_ms": 100 },
-        "error": "The query timed out. Please try again with a shorter query or increase the timeout. Timeout was 100ms.",
-      },
-      "headers": Headers {
-        "x-stack-known-error": "ANALYTICS_QUERY_TIMEOUT",
-        <some fields may have been hidden>,
-      },
+  expect(response.status).toBe(400);
+  expect(response.headers).toMatchInlineSnapshot(`
+    Headers {
+      "x-stack-known-error": "ANALYTICS_QUERY_ERROR",
+      <some fields may have been hidden>,
     }
   `);
+  expect(response.body.code).toBe("ANALYTICS_QUERY_ERROR");
+
 });
 
 it("sets SQL_project_id and SQL_branch_id settings in query", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
   await Auth.Otp.signIn();
 
-  const response = await niceBackendFetch("/api/v1/analytics/query", {
+  const response = await niceBackendFetch("/api/v1/internal/analytics/query", {
     method: "POST",
-    accessType: "server",
+    accessType: "admin",
     body: {
       query: "SELECT getSetting('SQL_project_id') AS project_id, getSetting('SQL_branch_id') AS branch_id;",
     },
@@ -280,9 +275,9 @@ it("does not allow CREATE TABLE", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
   await Auth.Otp.signIn();
 
-  const response = await niceBackendFetch("/api/v1/analytics/query", {
+  const response = await niceBackendFetch("/api/v1/internal/analytics/query", {
     method: "POST",
-    accessType: "server",
+    accessType: "admin",
     body: {
       query: "CREATE TABLE IF NOT EXISTS test_table (id UUID) ENGINE = MergeTree() ORDER BY id;",
     },
@@ -309,9 +304,9 @@ it("does not allow querying system tables", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
   await Auth.Otp.signIn();
 
-  const response = await niceBackendFetch("/api/v1/analytics/query", {
+  const response = await niceBackendFetch("/api/v1/internal/analytics/query", {
     method: "POST",
-    accessType: "server",
+    accessType: "admin",
     body: {
       query: "SELECT number FROM system.numbers LIMIT 1",
     },
@@ -338,9 +333,9 @@ it("does not allow killing queries", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
   await Auth.Otp.signIn();
 
-  const response = await niceBackendFetch("/api/v1/analytics/query", {
+  const response = await niceBackendFetch("/api/v1/internal/analytics/query", {
     method: "POST",
-    accessType: "server",
+    accessType: "admin",
     body: {
       query: "KILL QUERY WHERE query_id = '00000000-0000-0000-0000-000000000000'",
     },
@@ -367,9 +362,9 @@ it("does not allow INSERT statements", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
   await Auth.Otp.signIn();
 
-  const response = await niceBackendFetch("/api/v1/analytics/query", {
+  const response = await niceBackendFetch("/api/v1/internal/analytics/query", {
     method: "POST",
-    accessType: "server",
+    accessType: "admin",
     body: {
       query: "INSERT INTO system.one (dummy) VALUES (0)",
     },

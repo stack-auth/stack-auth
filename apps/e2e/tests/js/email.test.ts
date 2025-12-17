@@ -1,6 +1,8 @@
 import { KnownErrors } from "@stackframe/stack-shared";
 import { DEFAULT_EMAIL_THEME_ID, DEFAULT_TEMPLATE_IDS } from "@stackframe/stack-shared/dist/helpers/emails";
+import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { it } from "../helpers";
+import { withPortPrefix } from "../helpers/ports";
 import { createApp } from "./js-helpers";
 
 async function setupEmailServer(adminApp: any) {
@@ -10,9 +12,9 @@ async function setupEmailServer(adminApp: any) {
       server: {
         isShared: false,
         host: "localhost",
-        port: 1025,
+        port: Number(withPortPrefix("29")),
         username: "test",
-        password: "password",
+        password: "test",
         senderEmail: "test@example.com",
         senderName: "Test User",
       },
@@ -168,4 +170,56 @@ it("should handle html and templateId at the same time", async ({ expect }) => {
     templateId: DEFAULT_TEMPLATE_IDS.sign_in_invitation,
     subject: "Test Email",
   } as any)).rejects.toThrow(KnownErrors.SchemaError);
+});
+
+it("should provide delivery statistics", async ({ expect }) => {
+  const { adminApp, serverApp } = await createApp();
+  await setupEmailServer(adminApp);
+
+  const user = await serverApp.createUser({
+    primaryEmail: "stats@example.com",
+    primaryEmailVerified: true,
+  });
+
+  await serverApp.sendEmail({
+    userIds: [user.id],
+    html: "<p>Stats</p>",
+    subject: "Stats",
+  });
+
+  // wait until the email is sent
+  await wait(5000);
+
+  const info = await serverApp.getEmailDeliveryStats();
+
+  expect(info).toMatchInlineSnapshot(`
+    {
+      "capacity": {
+        "penalty_factor": 1,
+        "rate_per_second": 2.7777793209876545,
+      },
+      "stats": {
+        "day": {
+          "bounced": 0,
+          "marked_as_spam": 0,
+          "sent": 1,
+        },
+        "hour": {
+          "bounced": 0,
+          "marked_as_spam": 0,
+          "sent": 1,
+        },
+        "month": {
+          "bounced": 0,
+          "marked_as_spam": 0,
+          "sent": 1,
+        },
+        "week": {
+          "bounced": 0,
+          "marked_as_spam": 0,
+          "sent": 1,
+        },
+      },
+    }
+  `);
 });

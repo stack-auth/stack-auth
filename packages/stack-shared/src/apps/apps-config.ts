@@ -76,7 +76,7 @@ export const ALL_APPS = {
     displayName: "Payments",
     subtitle: "Payment processing and subscription management",
     tags: ["operations", "gtm"],
-    stage: "stable",
+    stage: "beta",
   },
   "emails": {
     displayName: "Emails",

@@ -34,7 +34,7 @@ async function main() {
     const midfix = suffix.slice(0, suffix.lastIndexOf("/route."));
     const importPath = `${importPathPrefix}${suffix}`;
     const urlPath = midfix.replaceAll("[", "{").replaceAll("]", "}").replaceAll(/\/\(.*\)/g, "");
-    const myModule = require(importPath);
+    const myModule = await import(importPath);
     const handlersByMethod = new Map(
       typedKeys(HTTP_METHODS).map(method => [method, myModule[method]] as const)
         .filter(([_, handler]) => isSmartRouteHandler(handler))
@@ -79,6 +79,7 @@ async function main() {
   console.log("Successfully updated Fumadocs OpenAPI schemas with proper audience filtering");
 }
 
+// eslint-disable-next-line no-restricted-syntax
 main().catch((...args) => {
   console.error(`ERROR! Could not update Fumadocs OpenAPI schema`, ...args);
   process.exit(1);

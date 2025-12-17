@@ -17,8 +17,8 @@ it("each verification code that was already requested can be used exactly once",
   await ContactChannels.sendVerificationCode();
   await ContactChannels.sendVerificationCode();
   const mailbox = backendContext.value.mailbox;
-  const messages = await mailbox.fetchMessages();
-  const verifyMessages = messages.filter((message) => message.subject === "Verify your email at Stack Dashboard");
+  // Wait for all 3 verification emails: 1 from signup + 2 from sendVerificationCode calls
+  const verifyMessages = await mailbox.waitForMessagesWithSubjectCount("Verify your email", 3);
   const verificationCodes = verifyMessages.map((message) => message.body?.text.match(/http:\/\/localhost:12345\/some-callback-url\?code=([a-zA-Z0-9]+)/)?.[1] ?? throwErr("Verification code not found"));
   expect(verificationCodes).toHaveLength(3);
 
@@ -87,7 +87,7 @@ it("should not allow verify a code that doesn't exist", async ({ expect }) => {
 it("should not allow verification of a code that is sent from a different endpoint", async ({ expect }) => {
   await Auth.Otp.sendSignInCode();
   const mailbox = backendContext.value.mailbox;
-  const messages = await mailbox.fetchMessages();
+  const messages = await mailbox.waitForMessagesWithSubject("Sign in");
   const verifyMessage = messages.find((message) => message.subject.includes("Sign in"));
   const verificationCode = verifyMessage?.body?.text.match(/http:\/\/localhost:12345\/some-callback-url\?code=([a-zA-Z0-9]+)/)?.[1] ?? throwErr("Verification code not found");
 

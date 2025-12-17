@@ -101,7 +101,6 @@ export type {
   OAuthProvider,
   ServerOAuthProvider,
   ServerUser,
-  Session,
   User
 } from "./users";
 
