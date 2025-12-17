@@ -617,7 +617,6 @@ export default function PageClient() {
   const productRefs = useMemo(() => {
     const refs = Object.fromEntries(
       Object.entries(paymentsConfig.products)
-        .filter(([, product]) => product != null)
         .map(([id]) => [id, React.createRef<HTMLDivElement>()])
     );
     return refs;

@@ -1,6 +1,7 @@
 "use client";
 
 import { cn } from "@/lib/utils";
+import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
 import { SimpleTooltip } from "@stackframe/stack-ui";
 import {
   Select,
@@ -154,7 +155,7 @@ function EditableBooleanField({
   return (
     <Select
       value={value ? 'true' : 'false'}
-      onValueChange={handleChange}
+      onValueChange={(v) => runAsynchronously(handleChange(v))}
       disabled={isUpdating}
     >
       <SelectTrigger
@@ -215,7 +216,7 @@ function EditableDropdownField({
   return (
     <Select
       value={value}
-      onValueChange={handleChange}
+      onValueChange={(v) => runAsynchronously(handleChange(v))}
       disabled={isUpdating}
     >
       <SelectTrigger
@@ -324,7 +325,7 @@ function CustomDropdownField({
 // Render a single grid item's value
 function GridItemValue({ item }: { item: EditableGridItem }) {
   switch (item.type) {
-    case 'text':
+    case 'text': {
       return (
         <EditableInput
           value={item.value}
@@ -333,8 +334,9 @@ function GridItemValue({ item }: { item: EditableGridItem }) {
           placeholder={item.placeholder}
         />
       );
+    }
 
-    case 'boolean':
+    case 'boolean': {
       return (
         <EditableBooleanField
           value={item.value}
@@ -344,6 +346,7 @@ function GridItemValue({ item }: { item: EditableGridItem }) {
           falseLabel={item.falseLabel}
         />
       );
+    }
 
     case 'dropdown': {
       return (
@@ -357,15 +360,16 @@ function GridItemValue({ item }: { item: EditableGridItem }) {
       );
     }
 
-    case 'custom-dropdown':
+    case 'custom-dropdown': {
       return (
         <CustomDropdownField
           triggerContent={item.triggerContent}
           disabled={item.disabled}
         />
       );
+    }
 
-    case 'custom-button':
+    case 'custom-button': {
       return (
         <CustomButtonField
           onClick={item.onClick}
@@ -374,9 +378,11 @@ function GridItemValue({ item }: { item: EditableGridItem }) {
           {item.children}
         </CustomButtonField>
       );
+    }
 
-    case 'custom':
+    case 'custom': {
       return <>{item.children}</>;
+    }
   }
 }
 

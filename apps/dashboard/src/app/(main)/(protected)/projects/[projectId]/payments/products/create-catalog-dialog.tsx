@@ -1,12 +1,13 @@
 "use client";
 
+import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
 import { Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, Input, Label, SimpleTooltip, Typography } from "@stackframe/stack-ui";
 import { useState } from "react";
 
 type CreateCatalogDialogProps = {
   open: boolean,
   onOpenChange: (open: boolean) => void,
-  onCreate: (catalog: { id: string, displayName: string }) => void,
+  onCreate: (catalog: { id: string, displayName: string }) => void | Promise<void>,
 };
 
 export function CreateCatalogDialog({ open, onOpenChange, onCreate }: CreateCatalogDialogProps) {
@@ -34,7 +35,7 @@ export function CreateCatalogDialog({ open, onOpenChange, onCreate }: CreateCata
       return;
     }
 
-    onCreate({ id: catalogId.trim(), displayName: displayName.trim() });
+    runAsynchronously(onCreate({ id: catalogId.trim(), displayName: displayName.trim() }));
 
     // Reset form
     setCatalogId("");

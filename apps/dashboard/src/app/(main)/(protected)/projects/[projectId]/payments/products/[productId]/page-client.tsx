@@ -74,9 +74,9 @@ export default function PageClient({ productId }: { productId: string }) {
   const adminApp = useAdminApp();
   const project = adminApp.useProject();
   const config = project.useConfig();
-  const product = config.payments.products[productId];
+  const product = config.payments.products[productId] as Product | undefined;
 
-  if (!product) {
+  if (product == null) {
     return (
       <PageLayout title="Product Not Found">
         <div className="flex flex-col items-center justify-center py-12 gap-4">
@@ -246,17 +246,17 @@ function ProductDetailsSection({ productId, product, config }: ProductDetailsSec
 
   // Get all catalogs with their customer types
   const catalogOptions = useMemo(() => {
-    const catalogs = Object.entries(config.payments.catalogs || {}).map(([id, catalog]) => {
+    const catalogs = Object.entries(config.payments.catalogs).map(([id, catalog]) => {
       // Determine customer type from existing products in this catalog
-      const productsInCatalog = Object.values(config.payments.products).filter(p => p.catalogId === id);
-      const catalogCustomerType = productsInCatalog[0]?.customerType;
+      const productsInCatalog = Object.values(config.payments.products).filter(p => (p as Product | undefined)?.catalogId === id);
+      const catalogCustomerType = productsInCatalog[0]?.customerType as 'user' | 'team' | 'custom' | undefined;
 
       return {
         value: id,
         label: catalog.displayName || id,
         customerType: catalogCustomerType,
-        disabled: catalogCustomerType !== undefined && catalogCustomerType !== product.customerType,
-        disabledReason: catalogCustomerType !== undefined && catalogCustomerType !== product.customerType
+        disabled: catalogCustomerType != null && catalogCustomerType !== product.customerType,
+        disabledReason: catalogCustomerType != null && catalogCustomerType !== product.customerType
           ? `This catalog is for ${catalogCustomerType} products`
           : undefined,
       };
@@ -324,7 +324,7 @@ function ProductDetailsSection({ productId, product, config }: ProductDetailsSec
   };
 
   const handleCatalogUpdate = async (catalogId: string) => {
-    const actualCatalogId = catalogId === '__none__' ? undefined : catalogId;
+    const actualCatalogId = catalogId === '__none__' ? null : catalogId;
     await project.updateConfig({
       [`payments.products.${productId}.catalogId`]: actualCatalogId,
     });
@@ -639,7 +639,7 @@ function ProductPricesSection({ productId, product, inline = false }: ProductPri
   const handleSavePrice = async (editing: EditingPrice, isNew: boolean) => {
     const newPrice = editingPriceToPrice(editing);
 
-    const currentPrices = typeof prices === 'object' && prices !== null ? prices : {};
+    const currentPrices = prices === 'include-by-default' ? {} : prices;
     const updatedPrices = {
       ...currentPrices,
       [editing.priceId]: newPrice,
@@ -657,7 +657,7 @@ function ProductPricesSection({ productId, product, inline = false }: ProductPri
   const handleDeletePrice = async (priceId: string) => {
     setDeletingPriceIds(prev => new Set(prev).add(priceId));
     try {
-      const currentPrices = typeof prices === 'object' && prices !== null ? prices : {};
+      const currentPrices = prices === 'include-by-default' ? {} : prices;
       const { [priceId]: _, ...remainingPrices } = currentPrices as Record<string, Price>;
 
       await project.updateConfig({
@@ -686,7 +686,7 @@ function ProductPricesSection({ productId, product, inline = false }: ProductPri
   };
 
   const isIncludeByDefault = prices === 'include-by-default';
-  const priceEntries = !isIncludeByDefault && prices && typeof prices === 'object' ? typedEntries(prices as Record<string, Price>) : [];
+  const priceEntries = !isIncludeByDefault ? typedEntries(prices as Record<string, Price>) : [];
   // Check if the product has a single $0 price (free but not included by default)
   const isFreeNotIncluded = priceEntries.length === 1 && priceEntries[0][1].USD === '0' || priceEntries.length === 1 && priceEntries[0][1].USD === '0.00';
   const isFree = isIncludeByDefault || isFreeNotIncluded;
@@ -944,9 +944,8 @@ function ProductItemsSection({ productId, product, config, inline = false }: Pro
       repeat,
     };
 
-    const currentItems = items || {};
     const updatedItems = {
-      ...currentItems,
+      ...items,
       [editing.itemId]: newItem,
     };
 
@@ -963,8 +962,7 @@ function ProductItemsSection({ productId, product, config, inline = false }: Pro
   const handleDeleteItem = async (itemId: string) => {
     setDeletingItemIds(prev => new Set(prev).add(itemId));
     try {
-      const currentItems = items || {};
-      const { [itemId]: _, ...remainingItems } = currentItems;
+      const { [itemId]: _, ...remainingItems } = items;
 
       await project.updateConfig({
         [`payments.products.${productId}.includedItems`]: Object.keys(remainingItems).length > 0 ? remainingItems : null,
@@ -995,7 +993,7 @@ function ProductItemsSection({ productId, product, config, inline = false }: Pro
 
   const openAddDialog = () => {
     // Find first available item not already included
-    const includedIds = new Set(Object.keys(items || {}));
+    const includedIds = new Set(Object.keys(items));
     const firstAvailable = availableItems.find(i => !includedIds.has(i.id));
     if (firstAvailable) {
       setEditingItem({
@@ -1030,13 +1028,13 @@ function ProductItemsSection({ productId, product, config, inline = false }: Pro
     setIsAddingItem(true);
   };
 
-  const handleCopyPrompt = (itemId: string, displayName: string) => {
+  const handleCopyPrompt = async (itemId: string, displayName: string) => {
     const prompt = `Check if the current user has the "${displayName}" (${itemId}) item.`;
-    navigator.clipboard.writeText(prompt);
+    await navigator.clipboard.writeText(prompt);
     toast({ title: "Prompt copied to clipboard" });
   };
 
-  const itemEntries = items ? typedEntries(items) as [string, typeof items[keyof typeof items]][] : [];
+  const itemEntries = typedEntries(items) as [string, typeof items[keyof typeof items]][];
 
   const listContent = (
     <div className="pl-1">
@@ -1111,7 +1109,13 @@ function ProductItemsSection({ productId, product, config, inline = false }: Pro
 
   const itemDialog = (
     /* Item Edit Dialog */
-    <Dialog open={!!editingItem} onOpenChange={(open) => { if (!open) { setEditingItem(null); setIsAddingItem(false); setSelectedItemId(''); } }}>
+    <Dialog open={!!editingItem} onOpenChange={(open) => {
+      if (!open) {
+        setEditingItem(null);
+        setIsAddingItem(false);
+        setSelectedItemId('');
+      }
+    }}>
       <DialogContent className="sm:max-w-[420px]">
         <DialogHeader>
           <DialogTitle>{isAddingItem ? "Add Included Item" : "Edit Included Item"}</DialogTitle>
@@ -1128,7 +1132,10 @@ function ProductItemsSection({ productId, product, config, inline = false }: Pro
             <p className="text-xs text-muted-foreground/70 text-center">
               Create items in the Items list first before adding them to a product.
             </p>
-            <Button variant="outline" onClick={() => { setEditingItem(null); setIsAddingItem(false); }}>
+            <Button variant="outline" onClick={() => {
+              setEditingItem(null);
+              setIsAddingItem(false);
+            }}>
               Close
             </Button>
           </div>
@@ -1229,7 +1236,11 @@ function ProductItemsSection({ productId, product, config, inline = false }: Pro
           </div>
         )}
         <DialogFooter>
-          <Button variant="outline" onClick={() => { setEditingItem(null); setIsAddingItem(false); setSelectedItemId(''); }}>
+          <Button variant="outline" onClick={() => {
+            setEditingItem(null);
+            setIsAddingItem(false);
+            setSelectedItemId('');
+          }}>
             Cancel
           </Button>
           <Button onClick={editingItem ? () => handleSaveItem(editingItem, isAddingItem) : undefined}>
@@ -1416,7 +1427,7 @@ function CustomerRow({ customerType, customerId, purchasedAt }: CustomerRowProps
       <TableCell>
         <span className={cn(
           "inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wide ring-1",
-          CUSTOMER_TYPE_COLORS[customerType as keyof typeof CUSTOMER_TYPE_COLORS] || CUSTOMER_TYPE_COLORS.custom
+          CUSTOMER_TYPE_COLORS[customerType as keyof typeof CUSTOMER_TYPE_COLORS]
         )}>
           {customerType}
         </span>

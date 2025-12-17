@@ -607,17 +607,13 @@ function ProductCard({ id, product, allProducts, existingItems, onSave, onDelete
         const itemLabel = itemMeta ? itemMeta.displayName : itemId;
         prompt += `### ${itemLabel} (\`${itemId}\`)\n`;
         prompt += `- **Quantity**: ${prettyPrintWithMagnitudes(item.quantity)}\n`;
-        if (item.repeat) {
-          if (item.repeat === 'never') {
-            prompt += `- **Repeat**: Never (one-time grant)\n`;
-          } else {
-            const [count, unit] = item.repeat;
-            prompt += `- **Repeat**: Every ${count} ${count === 1 ? unit : unit + 's'}\n`;
-          }
+        if (item.repeat === 'never') {
+          prompt += `- **Repeat**: Never (one-time grant)\n`;
+        } else {
+          const [count, unit] = item.repeat;
+          prompt += `- **Repeat**: Every ${count} ${count === 1 ? unit : unit + 's'}\n`;
         }
-        if (item.expires) {
-          prompt += `- **Expires**: ${item.expires === 'never' ? 'Never' : item.expires === 'when-purchase-expires' ? 'When purchase expires' : 'When repeated'}\n`;
-        }
+        prompt += `- **Expires**: ${item.expires === 'never' ? 'Never' : item.expires === 'when-purchase-expires' ? 'When purchase expires' : 'When repeated'}\n`;
         prompt += `\n`;
       });
     } else {
@@ -769,10 +765,10 @@ function ProductCard({ id, product, allProducts, existingItems, onSave, onDelete
 
       prompt += `### Important Notes\n\n`;
       prompt += `- Items are automatically granted when customers purchase this product based on the included items configuration.\n`;
-      if (itemsList.some(([, item]) => item.repeat && item.repeat !== 'never')) {
+      if (itemsList.some(([, item]) => item.repeat !== 'never')) {
         prompt += `- Some items repeat automatically based on their repeat interval configuration.\n`;
       }
-      if (itemsList.some(([, item]) => item.expires && item.expires !== 'never')) {
+      if (itemsList.some(([, item]) => item.expires !== 'never')) {
         prompt += `- Some items expire based on their expiration rules (when purchase expires, when repeated, etc.).\n`;
       }
       prompt += `- Item quantity modifications are atomic and safe for concurrent use.\n`;
@@ -1342,7 +1338,10 @@ function ProductCard({ id, product, allProducts, existingItems, onSave, onDelete
                   View Details
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem icon={<Pencil className="h-4 w-4" />} onClick={() => { setIsEditing(true); setDraft(product); }}>
+                <DropdownMenuItem icon={<Pencil className="h-4 w-4" />} onClick={() => {
+                  setIsEditing(true);
+                  setDraft(product);
+                }}>
                   Edit
                 </DropdownMenuItem>
                 <DropdownMenuItem icon={<Copy className="h-4 w-4" />} onClick={() => { onDuplicate(product); }}>
@@ -1412,8 +1411,8 @@ function ProductCard({ id, product, allProducts, existingItems, onSave, onDelete
               "hover:bg-background dark:hover:bg-foreground/[0.06]",
               "transition-colors duration-150 hover:transition-none"
             )}
-            onClick={() => {
-              navigator.clipboard.writeText(`const url = await ${customerType}.createCheckoutUrl({ productId: "${id}" });\nwindow.open(url, "_blank");`);
+            onClick={async () => {
+              await navigator.clipboard.writeText(`const url = await ${customerType}.createCheckoutUrl({ productId: "${id}" });\nwindow.open(url, "_blank");`);
               toast({ title: "Copied to clipboard" });
             }}
           >
@@ -1431,9 +1430,9 @@ function ProductCard({ id, product, allProducts, existingItems, onSave, onDelete
               "hover:bg-background dark:hover:bg-foreground/[0.06]",
               "transition-colors duration-150 hover:transition-none"
             )}
-            onClick={() => {
+            onClick={async () => {
               const prompt = generateComprehensivePrompt();
-              navigator.clipboard.writeText(prompt);
+              await navigator.clipboard.writeText(prompt);
               toast({ title: "Prompt copied to clipboard" });
             }}
           >
@@ -2045,38 +2044,17 @@ export default function PageClient({ createDraftRequestId, draftCustomerType = '
   const paymentsConfig: CompleteConfig['payments'] = config.payments;
 
   // Use product IDs as a key to ensure re-render when products change
-  // Filter out null/undefined products to ensure the dependency changes when products are deleted
   const productIds = Object.entries(paymentsConfig.products)
-    .filter(([, product]) => product != null)
     .map(([id]) => id)
     .sort()
     .join(',');
-
-  // Create a stable serialized representation of products to detect changes
-  // This ensures React detects when products are deleted even if the object reference doesn't change
-  const productsKey = useMemo(() => {
-    return JSON.stringify(
-      Object.entries(paymentsConfig.products)
-        .filter(([, product]) => product != null)
-        .map(([id]) => id)
-        .sort()
-    );
-  }, [paymentsConfig.products]);
-
-  // Watch for changes in products and force re-render if needed
-  useEffect(() => {
-    // This effect will run whenever paymentsConfig.products changes
-    // The productsKey dependency in useMemo above should handle most cases,
-    // but this ensures we catch any edge cases
-  }, [productsKey]);
 
   // Group products by catalogId and sort by customer type priority
   const groupedProducts = useMemo(() => {
     const groups = new Map<string | undefined, Array<{ id: string, product: Product }>>();
 
-    // Group products (filter out null/undefined products that may occur during deletion)
+    // Group products
     for (const [id, product] of typedEntries(paymentsConfig.products)) {
-      if (!product) continue; // Skip deleted/null products
       const catalogId = product.catalogId;
       if (!groups.has(catalogId)) {
         groups.set(catalogId, []);
@@ -2150,7 +2128,7 @@ export default function PageClient({ createDraftRequestId, draftCustomerType = '
     });
 
     return sortedGroups;
-  }, [productsKey, paymentsConfig.products]);
+  }, [paymentsConfig.products]);
 
   // Callback to be called when a new item is created (for auto-selection)
   const [onItemCreatedCallback, setOnItemCreatedCallback] = useState<((itemId: string) => void) | undefined>(undefined);
@@ -2184,7 +2162,6 @@ export default function PageClient({ createDraftRequestId, draftCustomerType = '
 
   // Prepare data for product dialog - update when items change
   const existingProductsList = typedEntries(paymentsConfig.products)
-    .filter(([, product]) => product != null)
     .map(([id, product]) => ({
       id,
       displayName: product.displayName,
@@ -2210,7 +2187,7 @@ export default function PageClient({ createDraftRequestId, draftCustomerType = '
 
     // Count products in the same catalog (before deletion)
     const productsInCatalog = catalogId
-      ? Object.entries(paymentsConfig.products).filter(([id, p]) => p && p.catalogId === catalogId)
+      ? Object.entries(paymentsConfig.products).filter(([, p]) => p.catalogId === catalogId)
       : [];
     const isLastProductInCatalog = catalogId && productsInCatalog.length === 1;
 
@@ -2243,7 +2220,7 @@ export default function PageClient({ createDraftRequestId, draftCustomerType = '
   };
 
   const innerContent = (
-    <div className="flex-1" key={`${productsKey}-${refreshKey}`}>
+    <div className="flex-1" key={`${productIds}-${refreshKey}`}>
       <CatalogView
         groupedProducts={groupedProducts}
         groups={paymentsConfig.catalogs}

@@ -6,12 +6,12 @@ import { typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import { Gift, Layers, Puzzle, Server } from "lucide-react";
 import { Fragment } from "react";
 import {
-    freeTrialLabel,
-    getPricesObject,
-    intervalLabel,
-    shortIntervalLabel,
-    type PricesObject,
-    type Product,
+  freeTrialLabel,
+  getPricesObject,
+  intervalLabel,
+  shortIntervalLabel,
+  type PricesObject,
+  type Product,
 } from "./utils";
 
 // Customer type badge colors

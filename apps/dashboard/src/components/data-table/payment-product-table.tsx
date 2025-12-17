@@ -51,7 +51,6 @@ const columns: ColumnDef<PaymentProduct>[] = [
 
 export function PaymentProductTable({ products }: { products: Record<string, yup.InferType<typeof branchPaymentsSchema>["products"][string]> }) {
   const data: PaymentProduct[] = Object.entries(products)
-    .filter(([, product]) => product != null)
     .map(([id, product]) => ({
       id,
       ...product,
