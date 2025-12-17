@@ -194,27 +194,23 @@ export async function logEvent<T extends EventType[]>(
     });
 
     const clickhouseClient = clickhouseAdminClient;
-    try {
-      await clickhouseClient.insert({
-        table: "events",
-        values: eventTypesArray.map(eventType => ({
-          event_type: eventType.id,
-          event_at: timeRange.end,
-          data: clickhouseEventData,
-          project_id: projectId,
-          branch_id: branchId,
-          user_id: userId,
-          team_id: teamId,
-        })),
-        format: "JSONEachRow",
-        clickhouse_settings: {
-          date_time_input_format: "best_effort",
-          async_insert: 1,
-        },
-      });
-    } finally {
-      await clickhouseClient.close();
-    }
+    await clickhouseClient.insert({
+      table: "events",
+      values: eventTypesArray.map(eventType => ({
+        event_type: eventType.id,
+        event_at: timeRange.end,
+        data: clickhouseEventData,
+        project_id: projectId,
+        branch_id: branchId,
+        user_id: userId,
+        team_id: teamId,
+      })),
+      format: "JSONEachRow",
+      clickhouse_settings: {
+        date_time_input_format: "best_effort",
+        async_insert: 1,
+      },
+    });
 
     // log event in PostHog
     if (getNodeEnvironment().includes("production") && !getEnvVariable("CI", "")) {

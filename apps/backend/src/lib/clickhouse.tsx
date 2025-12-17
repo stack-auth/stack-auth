@@ -9,17 +9,17 @@ const clickhouseAdminPassword = getEnvVariable("STACK_CLICKHOUSE_ADMIN_PASSWORD"
 const clickhouseExternalPassword = getEnvVariable("STACK_CLICKHOUSE_EXTERNAL_PASSWORD");
 const clickhouseDatabase = getEnvVariable("STACK_CLICKHOUSE_DATABASE", "analytics");
 
-function createClickhouseClient(authType: "admin" | "external") {
+export function createClickhouseClient(authType: "admin" | "external", database?: string) {
   return createClient({
     url: clickhouseUrl,
     username: authType === "admin" ? clickhouseAdminUser : clickhouseExternalUser,
     password: authType === "admin" ? clickhouseAdminPassword : clickhouseExternalPassword,
-    database: clickhouseDatabase,
+    database,
   });
 }
 
-export const clickhouseAdminClient = createClickhouseClient("admin");
-export const clickhouseExternalClient = createClickhouseClient("external");
+export const clickhouseAdminClient = createClickhouseClient("admin", clickhouseDatabase);
+export const clickhouseExternalClient = createClickhouseClient("external", clickhouseDatabase);
 
 export const getQueryTimingStats = async (client: ClickHouseClient, queryId: string) => {
   // Flush logs to ensure system.query_log has latest query result.

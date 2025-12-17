@@ -28,13 +28,17 @@ export async function runClickhouseMigrations() {
 
 const EVENTS_TABLE_BASE_SQL = `
 CREATE TABLE IF NOT EXISTS events (
-    event_type  LowCardinality(String),
-    event_at    DateTime64(3, 'UTC'),
-    data        JSON,
-    project_id  String,
-    branch_id   String,
-    user_id     String,
-    team_id     String,
+    event_type       LowCardinality(String),
+    event_at         DateTime64(3, 'UTC'),
+    data             JSON,
+    project_id       String,
+    branch_id        String,
+    user_id          String,
+    team_id          String,
+    refresh_token_id String,
+    is_anonymous     Boolean,
+    session_id       String,
+    ip_address       String,
     created_at DateTime64(3, 'UTC') DEFAULT now64(3)
 )
 ENGINE MergeTree
