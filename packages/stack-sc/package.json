@@ -1,6 +1,6 @@
 {
   "name": "@stackframe/stack-sc",
-  "version": "2.8.55",
+  "version": "2.8.57",
   "exports": {
     "./force-react-server": {
       "types": "./dist/index.react-server.d.ts",
@@ -48,7 +48,7 @@
     "rimraf": "^5.0.5",
     "react": "^19.0.1",
     "react-dom": "^19.0.1",
-    "next": "^14.1.0"
+    "next": "^14.2.34"
   },
   "packageManager": "pnpm@10.23.0"
 }

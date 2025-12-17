@@ -498,11 +498,12 @@ it("errors with item_quantity_insufficient_amount when accepting invite without 
   backendContext.set({ mailbox: mailboxB });
   await Auth.Otp.signIn();
 
+  const invitationMessages = await mailboxB.waitForMessagesWithSubject("join");
   const acceptResponse = await niceBackendFetch("/api/v1/team-invitations/accept", {
     method: "POST",
     accessType: "client",
     body: {
-      code: (await mailboxB.fetchMessages()).findLast((m) => m.subject.includes("join"))?.body?.text.match(/http:\/\/localhost:12345\/some-callback-url\?code=([a-zA-Z0-9]+)/)?.[1],
+      code: invitationMessages.findLast((m) => m.subject.includes("join"))?.body?.text.match(/http:\/\/localhost:12345\/some-callback-url\?code=([a-zA-Z0-9]+)/)?.[1],
     },
   });
 

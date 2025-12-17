@@ -1,10 +1,11 @@
+import { EmailOutboxRecipient } from "@/lib/emails";
 import { globalPrismaClient } from "@/prisma-client";
 
 type FailedEmailsQueryResult = {
   tenancyId: string,
   projectId: string,
-  to: string[],
-  subject: string,
+  to: EmailOutboxRecipient,
+  subject: string | null,
   contactEmail: string,
 }
 
@@ -18,13 +19,13 @@ export const getFailedEmailsByTenancy = async (after: Date) => {
   // Only email digest for hosted DB is supported for now.
   const result = await globalPrismaClient.$queryRaw<Array<FailedEmailsQueryResult>>`
   SELECT
-    se."tenancyId",
+    eo."tenancyId",
     t."projectId",
-    se."to",
-    se."subject",
+    eo."to",
+    eo."renderedSubject" as "subject",
     cc."value" as "contactEmail"
-  FROM "SentEmail" se
-  INNER JOIN "Tenancy" t ON se."tenancyId" = t.id
+  FROM "EmailOutbox" eo
+  INNER JOIN "Tenancy" t ON eo."tenancyId" = t.id
   INNER JOIN "Project" p ON t."projectId" = p.id
   LEFT JOIN "ProjectUser" pu ON pu."mirroredProjectId" = 'internal'
     AND pu."mirroredBranchId" = 'main'
@@ -34,8 +35,8 @@ export const getFailedEmailsByTenancy = async (after: Date) => {
   INNER JOIN "ContactChannel" cc ON tm."projectUserId" = cc."projectUserId" 
     AND cc."isPrimary" = 'TRUE' 
     AND cc."type" = 'EMAIL'
-  WHERE se."error" IS NOT NULL
-    AND se."createdAt" >= ${after}
+  WHERE eo."simpleStatus" = 'ERROR'::"EmailOutboxSimpleStatus"
+    AND eo."createdAt" >= ${after}
 `;
 
   const failedEmailsByTenancy = new Map<string, FailedEmailsByTenancyData>();
@@ -45,8 +46,26 @@ export const getFailedEmailsByTenancy = async (after: Date) => {
       tenantOwnerEmails: [],
       projectId: failedEmail.projectId
     };
-    failedEmails.emails.push({ subject: failedEmail.subject, to: failedEmail.to });
-    failedEmails.tenantOwnerEmails.push(failedEmail.contactEmail);
+
+    let to: string[] = [];
+    const recipient = failedEmail.to;
+    switch (recipient.type) {
+      case 'user-primary-email': {
+        to = [`User ID: ${recipient.userId}`];
+        break;
+      }
+      case 'user-custom-emails': {
+        to = Array.isArray(recipient.emails) ? recipient.emails : [];
+        break;
+      }
+      case 'custom-emails': {
+        to = Array.isArray(recipient.emails) ? recipient.emails : [];
+        break;
+      }
+    }
+
+    failedEmails.emails.push({ subject: failedEmail.subject ?? "(No Subject)", to });
+    failedEmails.tenantOwnerEmails.push(failedEmail.contactEmail);  // TODO: this needs some deduplication
     failedEmailsByTenancy.set(failedEmail.tenancyId, failedEmails);
   }
   return failedEmailsByTenancy;

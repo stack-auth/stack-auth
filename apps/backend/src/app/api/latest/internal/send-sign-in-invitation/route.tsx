@@ -1,4 +1,4 @@
-import { sendEmailFromTemplate } from "@/lib/emails";
+import { sendEmailFromDefaultTemplate } from "@/lib/emails";
 import { validateRedirectUrl } from "@/lib/redirect-urls";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@stackframe/stack-shared";
@@ -33,7 +33,7 @@ export const POST = createSmartRouteHandler({
       throw new KnownErrors.RedirectUrlNotWhitelisted();
     }
 
-    await sendEmailFromTemplate({
+    await sendEmailFromDefaultTemplate({
       email: body.email,
       tenancy: auth.tenancy,
       user: null,
@@ -42,6 +42,7 @@ export const POST = createSmartRouteHandler({
         signInInvitationLink: body.callback_url,
         teamDisplayName: auth.tenancy.project.display_name,
       },
+      shouldSkipDeliverabilityCheck: true,
     });
 
     return {

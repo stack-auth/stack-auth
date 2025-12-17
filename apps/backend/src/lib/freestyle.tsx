@@ -34,8 +34,16 @@ export class Freestyle {
       }
     }, async () => {
       try {
-        const res = await this.freestyle.executeScript(script, options);
-        return Result.ok(res);
+        return Result.ok(Result.orThrow(await Result.retry(async () => {
+          try {
+            return Result.ok(await this.freestyle.executeScript(script, options));
+          } catch (e: unknown) {
+            if (e instanceof Error && (e as any).code === "ETIMEDOUT") {
+              return Result.error(new StackAssertionError("Freestyle timeout", { cause: e }));
+            }
+            throw e;
+          }
+        }, 3)));
       } catch (e: unknown) {
         // for whatever reason, Freestyle's errors are sometimes returned in JSON.parse(e.error.error).error (lol)
         const wrap1 = e && typeof e === "object" && "error" in e ? e.error : e;
