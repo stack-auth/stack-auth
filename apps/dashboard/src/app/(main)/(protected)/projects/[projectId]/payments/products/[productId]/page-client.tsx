@@ -2,9 +2,10 @@
 
 import { EditableGrid, type EditableGridItem } from "@/components/editable-grid";
 import { EditableInput } from "@/components/editable-input";
-import { StyledLink } from "@/components/link";
+import { Link, StyledLink } from "@/components/link";
+import { useRouter } from "@/components/router";
 import { RepeatingInput } from "@/components/repeating-input";
-import { CompleteConfig, Product } from "@stackframe/stack-shared/dist/config/schema";
+import type { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
 import type { Transaction, TransactionEntry } from "@stackframe/stack-shared/dist/interface/crud/transactions";
 import type { DayInterval } from "@stackframe/stack-shared/dist/utils/dates";
 import { fromNow } from "@stackframe/stack-shared/dist/utils/dates";
@@ -49,13 +50,12 @@ import {
   toast,
   Typography,
 } from "@stackframe/stack-ui";
-import { Clock, Copy, DollarSign, Gift, Layers, MoreHorizontal, Package, Pencil, Plus, Puzzle, Server, Trash2, Users, X } from "lucide-react";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { Clock, Copy, DollarSign, FolderOpen, Gift, Layers, MoreHorizontal, Package, Pencil, Plus, Puzzle, Server, Tag, Trash2, Users, X } from "lucide-react";
 import { Suspense, useMemo, useState } from "react";
 import { PageLayout } from "../../../page-layout";
 import { useAdminApp, useProjectId } from "../../../use-admin-app";
-import { DEFAULT_INTERVAL_UNITS, generateUniqueId, intervalLabel, PRICE_INTERVAL_UNITS, shortIntervalLabel, type Price } from "../utils";
+import { CreateCatalogDialog } from "../create-catalog-dialog";
+import { DEFAULT_INTERVAL_UNITS, generateUniqueId, intervalLabel, PRICE_INTERVAL_UNITS, shortIntervalLabel, type Price, type Product } from "../utils";
 
 const CUSTOMER_TYPE_COLORS = {
   user: 'bg-blue-500/15 text-blue-600 dark:bg-blue-500/20 dark:text-blue-400 ring-blue-500/30',
@@ -126,12 +126,12 @@ function ProductHeader({ productId, product, catalogName }: ProductHeaderProps) 
   const config = project.useConfig();
   const router = useRouter();
   const displayName = product.displayName || productId;
-  const isAddOn = !!product.isAddOnTo?.length;
+  const isAddOn = product.isAddOnTo !== false && typeof product.isAddOnTo === 'object';
 
   // Find add-on parent products
   const addOnParents = useMemo(() => {
-    if (!product.isAddOnTo?.length) return [];
-    return product.isAddOnTo.map(parentId => ({
+    if (product.isAddOnTo === false || typeof product.isAddOnTo !== 'object') return [];
+    return Object.keys(product.isAddOnTo).map((parentId: string) => ({
       id: parentId,
       displayName: config.payments.products[parentId].displayName || parentId,
     }));
@@ -189,7 +189,7 @@ function ProductHeader({ productId, product, catalogName }: ProductHeaderProps) 
         <div className="flex items-center gap-2 mt-1 text-sm text-muted-foreground flex-wrap">
           <span className={cn(
             "inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wide ring-1",
-            CUSTOMER_TYPE_COLORS[product.customerType]
+            CUSTOMER_TYPE_COLORS[product.customerType as keyof typeof CUSTOMER_TYPE_COLORS]
           )}>
             {product.customerType}
           </span>
@@ -205,7 +205,7 @@ function ProductHeader({ productId, product, catalogName }: ProductHeaderProps) 
               <span>•</span>
               <span className="flex items-center gap-1">
                 Add-on to{' '}
-                {addOnParents.map((p, i) => (
+                {addOnParents.map((p: { id: string, displayName: string }, i: number) => (
                   <span key={p.id}>
                     {i > 0 && ", "}
                     <StyledLink href={`/projects/${adminApp.projectId}/payments/products/${p.id}`}>
@@ -235,11 +235,37 @@ function ProductDetailsSection({ productId, product, config }: ProductDetailsSec
   // Dialog states
   const [addOnDialogOpen, setAddOnDialogOpen] = useState(false);
   const [freeTrialPopoverOpen, setFreeTrialPopoverOpen] = useState(false);
+  const [createCatalogDialogOpen, setCreateCatalogDialogOpen] = useState(false);
+
+  // Get all catalogs with their customer types
+  const catalogOptions = useMemo(() => {
+    const catalogs = Object.entries(config.payments.catalogs || {}).map(([id, catalog]) => {
+      // Determine customer type from existing products in this catalog
+      const productsInCatalog = Object.values(config.payments.products).filter(p => p.catalogId === id);
+      const catalogCustomerType = productsInCatalog[0]?.customerType;
+
+      return {
+        value: id,
+        label: catalog.displayName || id,
+        customerType: catalogCustomerType,
+        disabled: catalogCustomerType !== undefined && catalogCustomerType !== product.customerType,
+        disabledReason: catalogCustomerType !== undefined && catalogCustomerType !== product.customerType
+          ? `This catalog is for ${catalogCustomerType} products`
+          : undefined,
+      };
+    });
+
+    // Also add "No catalog" option (using __none__ since Select.Item can't have empty string value)
+    return [
+      { value: '__none__', label: 'No catalog', disabled: false, disabledReason: undefined, customerType: undefined },
+      ...catalogs,
+    ];
+  }, [config.payments.catalogs, config.payments.products, product.customerType]);
 
   // Add-on dialog state
-  const [isAddOn, setIsAddOn] = useState(() => !!product.isAddOnTo && product.isAddOnTo !== false);
+  const [isAddOn, setIsAddOn] = useState(() => product.isAddOnTo !== false && typeof product.isAddOnTo === 'object');
   const [selectedAddOnProducts, setSelectedAddOnProducts] = useState<Set<string>>(() => {
-    if (!product.isAddOnTo || product.isAddOnTo === false) return new Set();
+    if (product.isAddOnTo === false || typeof product.isAddOnTo !== 'object') return new Set();
     return new Set(Object.keys(product.isAddOnTo));
   });
 
@@ -249,7 +275,7 @@ function ProductDetailsSection({ productId, product, config }: ProductDetailsSec
 
   // Get add-on parent products
   const addOnParents = useMemo(() => {
-    if (!product.isAddOnTo || product.isAddOnTo === false) return [];
+    if (product.isAddOnTo === false || typeof product.isAddOnTo !== 'object') return [];
     return Object.keys(product.isAddOnTo).map((parentId: string) => ({
       id: parentId,
       displayName: config.payments.products[parentId].displayName || parentId,
@@ -283,6 +309,34 @@ function ProductDetailsSection({ productId, product, config }: ProductDetailsSec
   const isServerOnly = !!product.serverOnly;
 
   // Handlers
+  const handleDisplayNameUpdate = async (value: string) => {
+    await project.updateConfig({
+      [`payments.products.${productId}.displayName`]: value || null,
+    });
+    toast({ title: "Display name updated" });
+  };
+
+  const handleCatalogUpdate = async (catalogId: string) => {
+    const actualCatalogId = catalogId === '__none__' ? undefined : catalogId;
+    await project.updateConfig({
+      [`payments.products.${productId}.catalogId`]: actualCatalogId,
+    });
+    toast({ title: actualCatalogId ? "Product moved to catalog" : "Product removed from catalog" });
+  };
+
+  const handleCreateCatalog = async (catalog: { id: string, displayName: string }) => {
+    // Create the catalog first
+    await project.updateConfig({
+      [`payments.catalogs.${catalog.id}`]: { displayName: catalog.displayName || null },
+    });
+    // Then update the product to use this catalog
+    await project.updateConfig({
+      [`payments.products.${productId}.catalogId`]: catalog.id,
+    });
+    setCreateCatalogDialogOpen(false);
+    toast({ title: "Catalog created and product moved" });
+  };
+
   const handleStackableUpdate = async (value: boolean) => {
     await project.updateConfig({
       [`payments.products.${productId}.stackable`]: value || null,
@@ -333,6 +387,28 @@ function ProductDetailsSection({ productId, product, config }: ProductDetailsSec
   // Build grid items for EditableGrid
   const gridItems: EditableGridItem[] = [
     {
+      type: 'text',
+      icon: <Tag size={16} />,
+      name: "Display Name",
+      tooltip: "The name shown to customers. Leave empty to use the product ID.",
+      value: product.displayName || '',
+      placeholder: productId,
+      onUpdate: handleDisplayNameUpdate,
+    },
+    {
+      type: 'dropdown',
+      icon: <FolderOpen size={16} />,
+      name: "Catalog",
+      tooltip: "Catalogs group products together. Customers can only have one active product per catalog.",
+      value: product.catalogId || '__none__',
+      options: catalogOptions,
+      onUpdate: handleCatalogUpdate,
+      extraAction: {
+        label: "+ Create new catalog",
+        onClick: () => setCreateCatalogDialogOpen(true),
+      },
+    },
+    {
       type: 'boolean',
       icon: <Layers size={16} />,
       name: "Stackable",
@@ -347,9 +423,9 @@ function ProductDetailsSection({ productId, product, config }: ProductDetailsSec
       tooltip: "Add-ons are optional extras that can only be purchased alongside a parent product.",
       onClick: () => {
         // Reset dialog state when opening
-        setIsAddOn(!!product.isAddOnTo && product.isAddOnTo !== false);
+        setIsAddOn(product.isAddOnTo !== false && typeof product.isAddOnTo === 'object');
         setSelectedAddOnProducts(
-          product.isAddOnTo && product.isAddOnTo !== false
+          product.isAddOnTo !== false && typeof product.isAddOnTo === 'object'
             ? new Set(Object.keys(product.isAddOnTo))
             : new Set()
         );
@@ -528,6 +604,13 @@ function ProductDetailsSection({ productId, product, config }: ProductDetailsSec
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Create Catalog Dialog */}
+      <CreateCatalogDialog
+        open={createCatalogDialogOpen}
+        onOpenChange={setCreateCatalogDialogOpen}
+        onCreate={handleCreateCatalog}
+      />
     </>
   );
 }
@@ -572,9 +655,9 @@ function ProductPricesSection({ productId, product, inline = false }: ProductPri
 
     const newPrice: Price = {
       USD: editing.amount,
+      serverOnly: !!editing.serverOnly,
       ...(interval && { interval }),
       ...(freeTrial && { freeTrial }),
-      ...(editing.serverOnly && { serverOnly: true }),
     };
 
     const currentPrices = typeof prices === 'object' && prices !== null ? prices : {};
@@ -991,7 +1074,7 @@ function ProductPricesSection({ productId, product, inline = false }: ProductPri
           <Button variant="outline" onClick={() => { setEditingPrice(null); setIsAddingPrice(false); }}>
             Cancel
           </Button>
-          <Button onClick={() => editingPrice && handleSavePrice(editingPrice, isAddingPrice)}>
+          <Button onClick={editingPrice ? () => handleSavePrice(editingPrice, isAddingPrice) : undefined}>
             {isAddingPrice ? "Add Price" : "Save Changes"}
           </Button>
         </DialogFooter>
@@ -1094,14 +1177,15 @@ function ProductItemsSection({ productId, product, config, inline = false }: Pro
     }
   };
 
-  const openEditDialog = (itemId: string, item: { quantity: number, repeat: DayInterval | 'once' }) => {
-    const repeatInterval = item.repeat === 'once' ? undefined : item.repeat;
+  const openEditDialog = (itemId: string, item: { quantity: number, repeat: DayInterval | 'once' | 'never' }) => {
+    const isOnce = item.repeat === 'once' || item.repeat === 'never';
+    const repeatInterval: DayInterval | undefined = isOnce ? undefined : (item.repeat as DayInterval);
     setEditingItem({
       itemId,
       quantity: item.quantity,
-      repeatSelection: item.repeat === 'once' ? 'once' : (repeatInterval?.[0] === 1 ? repeatInterval[1] : 'custom'),
+      repeatSelection: isOnce ? 'once' : (repeatInterval?.[0] === 1 ? repeatInterval[1] : 'custom') as EditingItem['repeatSelection'],
       repeatCount: repeatInterval?.[0] || 1,
-      repeatUnit: repeatInterval?.[1],
+      repeatUnit: repeatInterval?.[1] as DayInterval[1] | undefined,
     });
     setSelectedItemId(itemId);
   };
@@ -1149,7 +1233,7 @@ function ProductItemsSection({ productId, product, config, inline = false }: Pro
     toast({ title: "Prompt copied to clipboard" });
   };
 
-  const itemEntries = items ? typedEntries(items) : [];
+  const itemEntries = items ? typedEntries(items) as [string, typeof items[keyof typeof items]][] : [];
 
   const listContent = (
     <div className="pl-1">
@@ -1345,7 +1429,7 @@ function ProductItemsSection({ productId, product, config, inline = false }: Pro
           <Button variant="outline" onClick={() => { setEditingItem(null); setIsAddingItem(false); setSelectedItemId(''); }}>
             Cancel
           </Button>
-          <Button onClick={() => editingItem && handleSaveItem(editingItem, isAddingItem)}>
+          <Button onClick={editingItem ? () => handleSaveItem(editingItem, isAddingItem) : undefined}>
             {isAddingItem ? "Add Item" : "Save Changes"}
           </Button>
         </DialogFooter>

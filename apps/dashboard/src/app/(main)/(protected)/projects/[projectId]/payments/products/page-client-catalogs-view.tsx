@@ -1,8 +1,8 @@
 "use client";
 
 import { Link } from '@/components/link';
-import { useRouter } from 'next/navigation';
 import { ItemDialog } from "@/components/payments/item-dialog";
+import { useRouter } from "@/components/router";
 import { cn } from "@/lib/utils";
 import { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
 import type { DayInterval } from "@stackframe/stack-shared/dist/utils/dates";
@@ -26,7 +26,7 @@ import {
   SimpleTooltip,
   toast
 } from "@stackframe/stack-ui";
-import { ChevronsUpDown, Code, Copy, Eye, ExternalLink, FileText, Gift, Info, Layers, MoreVertical, Pencil, Plus, Puzzle, Server, Trash2, X } from "lucide-react";
+import { ChevronsUpDown, Code, Copy, Eye, FileText, Gift, Info, Layers, MoreVertical, Pencil, Plus, Puzzle, Server, Trash2, X } from "lucide-react";
 import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useAdminApp, useProjectId } from "../../use-admin-app";
 import { IntervalPopover, OrSeparator, SectionHeading } from "./components";

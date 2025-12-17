@@ -38,13 +38,25 @@ type BooleanItem = BaseItemProps & {
   falseLabel?: string,
 };
 
+// Dropdown option with optional disabled state
+type DropdownOption = {
+  value: string,
+  label: string,
+  disabled?: boolean,
+  disabledReason?: string,
+};
+
 // Dropdown with predefined options
 type DropdownItem = BaseItemProps & {
   type: 'dropdown',
   value: string,
-  options: { value: string, label: string }[],
+  options: DropdownOption[],
   onUpdate?: (value: string) => Promise<void>,
   readOnly?: boolean,
+  extraAction?: {
+    label: string,
+    onClick: () => void,
+  },
 };
 
 // Custom dropdown (like Free Trial) - you provide trigger text and popover content
@@ -170,11 +182,13 @@ function EditableDropdownField({
   options,
   onUpdate,
   readOnly,
+  extraAction,
 }: {
   value: string,
-  options: { value: string, label: string }[],
+  options: DropdownOption[],
   onUpdate?: (value: string) => Promise<void>,
   readOnly?: boolean,
+  extraAction?: { label: string, onClick: () => void },
 }) {
   const [isUpdating, setIsUpdating] = useState(false);
 
@@ -216,11 +230,41 @@ function EditableDropdownField({
         <SelectValue />
       </SelectTrigger>
       <SelectContent>
-        {options.map((option) => (
-          <SelectItem key={option.value} value={option.value}>
-            {option.label}
-          </SelectItem>
-        ))}
+        {options.map((option) => {
+          const item = (
+            <SelectItem
+              key={option.value}
+              value={option.value}
+              disabled={option.disabled}
+              className={option.disabled ? "opacity-50" : undefined}
+            >
+              {option.label}
+            </SelectItem>
+          );
+          if (option.disabled && option.disabledReason) {
+            return (
+              <SimpleTooltip key={option.value} tooltip={option.disabledReason}>
+                <div>{item}</div>
+              </SimpleTooltip>
+            );
+          }
+          return item;
+        })}
+        {extraAction && (
+          <>
+            <div className="h-px bg-border my-1" />
+            <button
+              type="button"
+              className="w-full px-2 py-1.5 text-left text-sm text-primary hover:bg-accent rounded-sm cursor-pointer"
+              onClick={(e) => {
+                e.preventDefault();
+                extraAction.onClick();
+              }}
+            >
+              {extraAction.label}
+            </button>
+          </>
+        )}
       </SelectContent>
     </Select>
   );
@@ -301,15 +345,17 @@ function GridItemValue({ item }: { item: EditableGridItem }) {
         />
       );
 
-    case 'dropdown':
+    case 'dropdown': {
       return (
         <EditableDropdownField
           value={item.value}
           options={item.options}
           onUpdate={item.onUpdate}
           readOnly={item.readOnly}
+          extraAction={item.extraAction}
         />
       );
+    }
 
     case 'custom-dropdown':
       return (
