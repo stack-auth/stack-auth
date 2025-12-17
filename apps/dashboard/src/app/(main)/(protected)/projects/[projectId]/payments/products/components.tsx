@@ -2,17 +2,17 @@ import { cn } from "@/lib/utils";
 import { CaretUpDownIcon } from "@phosphor-icons/react";
 import type { DayInterval } from "@stackframe/stack-shared/dist/utils/dates";
 import {
-    Button,
-    Input,
-    Popover,
-    PopoverContent,
-    PopoverTrigger,
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-    Separator,
+  Button,
+  Input,
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+  Separator,
 } from "@stackframe/stack-ui";
 import { useState } from "react";
 import { DEFAULT_INTERVAL_UNITS } from "./utils";
