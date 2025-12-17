@@ -106,6 +106,22 @@ export function buildPriceUpdate(params: {
 }
 
 /**
+ * Formats a price for display (e.g., "$9.99 / month (7 days free)")
+ */
+export function formatPriceDisplay(price: Price): string {
+  let display = `$${price.USD}`;
+  if (price.interval) {
+    const [count, unit] = price.interval;
+    display += count === 1 ? ` / ${unit}` : ` / ${count} ${unit}s`;
+  }
+  if (price.freeTrial) {
+    const [count, unit] = price.freeTrial;
+    display += ` (${count} ${unit}${count > 1 ? 's' : ''} free)`;
+  }
+  return display;
+}
+
+/**
  * Converts prices object to array format, handling 'include-by-default' case
  */
 export function getPricesObject(draft: Product): PricesObject {

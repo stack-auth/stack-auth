@@ -55,7 +55,14 @@ import { Suspense, useMemo, useState } from "react";
 import { PageLayout } from "../../../page-layout";
 import { useAdminApp, useProjectId } from "../../../use-admin-app";
 import { CreateCatalogDialog } from "../create-catalog-dialog";
-import { DEFAULT_INTERVAL_UNITS, generateUniqueId, intervalLabel, PRICE_INTERVAL_UNITS, shortIntervalLabel, type Price, type Product } from "../utils";
+import {
+  createNewEditingPrice,
+  editingPriceToPrice,
+  type EditingPrice,
+  PriceEditDialog,
+  priceToEditingPrice,
+} from "../price-edit-dialog";
+import { DEFAULT_INTERVAL_UNITS, generateUniqueId, intervalLabel, shortIntervalLabel, type Price, type Product } from "../utils";
 
 const CUSTOMER_TYPE_COLORS = {
   user: 'bg-blue-500/15 text-blue-600 dark:bg-blue-500/20 dark:text-blue-400 ring-blue-500/30',
@@ -621,44 +628,16 @@ type ProductPricesSectionProps = {
   inline?: boolean,
 };
 
-type EditingPrice = {
-  priceId: string,
-  amount: string,
-  intervalSelection: 'one-time' | 'custom' | DayInterval[1],
-  intervalCount: number,
-  priceInterval: DayInterval[1] | undefined,
-  freeTrialEnabled: boolean,
-  freeTrialCount: number,
-  freeTrialUnit: DayInterval[1],
-  serverOnly: boolean,
-};
-
 function ProductPricesSection({ productId, product, inline = false }: ProductPricesSectionProps) {
   const adminApp = useAdminApp();
   const project = adminApp.useProject();
   const prices = product.prices;
   const [editingPrice, setEditingPrice] = useState<EditingPrice | null>(null);
   const [isAddingPrice, setIsAddingPrice] = useState(false);
-  const [priceFreeTrialPopoverOpen, setPriceFreeTrialPopoverOpen] = useState(false);
-  const [priceFreeTrialCount, setPriceFreeTrialCount] = useState(7);
-  const [priceFreeTrialUnit, setPriceFreeTrialUnit] = useState<DayInterval[1]>('day');
   const [deletingPriceIds, setDeletingPriceIds] = useState<Set<string>>(new Set());
 
   const handleSavePrice = async (editing: EditingPrice, isNew: boolean) => {
-    const interval: DayInterval | undefined = editing.intervalSelection === 'one-time'
-      ? undefined
-      : [editing.intervalCount, editing.priceInterval || 'month'];
-
-    const freeTrial: DayInterval | undefined = editing.freeTrialEnabled
-      ? [editing.freeTrialCount, editing.freeTrialUnit]
-      : undefined;
-
-    const newPrice: Price = {
-      USD: editing.amount,
-      serverOnly: !!editing.serverOnly,
-      ...(interval && { interval }),
-      ...(freeTrial && { freeTrial }),
-    };
+    const newPrice = editingPriceToPrice(editing);
 
     const currentPrices = typeof prices === 'object' && prices !== null ? prices : {};
     const updatedPrices = {
@@ -697,32 +676,12 @@ function ProductPricesSection({ productId, product, inline = false }: ProductPri
 
 
   const openEditDialog = (priceId: string, price: Price) => {
-    setEditingPrice({
-      priceId,
-      amount: price.USD || '0.00',
-      intervalSelection: price.interval ? (price.interval[0] === 1 ? price.interval[1] : 'custom') : 'one-time',
-      intervalCount: price.interval?.[0] || 1,
-      priceInterval: price.interval?.[1],
-      freeTrialEnabled: !!price.freeTrial,
-      freeTrialCount: price.freeTrial?.[0] || 7,
-      freeTrialUnit: price.freeTrial?.[1] || 'day',
-      serverOnly: !!price.serverOnly,
-    });
+    setEditingPrice(priceToEditingPrice(priceId, price));
   };
 
   const openAddDialog = () => {
     const newId = generateUniqueId('price');
-    setEditingPrice({
-      priceId: newId,
-      amount: '9.99',
-      intervalSelection: 'month',
-      intervalCount: 1,
-      priceInterval: 'month',
-      freeTrialEnabled: false,
-      freeTrialCount: 7,
-      freeTrialUnit: 'day',
-      serverOnly: false,
-    });
+    setEditingPrice(createNewEditingPrice(newId));
     setIsAddingPrice(true);
   };
 
@@ -911,175 +870,19 @@ function ProductPricesSection({ productId, product, inline = false }: ProductPri
   );
 
   const priceDialog = (
-    /* Price Edit Dialog */
-    <Dialog open={!!editingPrice} onOpenChange={(open) => { if (!open) { setEditingPrice(null); setIsAddingPrice(false); } }}>
-      <DialogContent className="sm:max-w-[420px]">
-        <DialogHeader>
-          <DialogTitle>{isAddingPrice ? "Add Price" : "Edit Price"}</DialogTitle>
-          <DialogDescription>
-            Configure the pricing option for this product.
-          </DialogDescription>
-        </DialogHeader>
-        {editingPrice && (
-          <div className="grid gap-4 py-4">
-            {/* Amount with Billing Frequency */}
-            <div className="grid gap-2">
-              <Label>Price</Label>
-              <RepeatingInput
-                value={editingPrice.amount}
-                onValueChange={(v) => {
-                  if (v === '' || /^\d*(?:\.?\d{0,2})?$/.test(v)) {
-                    setEditingPrice({ ...editingPrice, amount: v });
-                  }
-                }}
-                inputType="text"
-                placeholder="9.99"
-                prefix="$"
-                intervalSelection={editingPrice.intervalSelection}
-                intervalCount={editingPrice.intervalCount}
-                intervalUnit={editingPrice.priceInterval}
-                onIntervalChange={(interval) => {
-                  if (interval) {
-                    setEditingPrice({
-                      ...editingPrice,
-                      intervalSelection: interval[0] === 1 ? interval[1] : 'custom',
-                      intervalCount: interval[0],
-                      priceInterval: interval[1],
-                    });
-                  } else {
-                    setEditingPrice({
-                      ...editingPrice,
-                      intervalSelection: 'one-time',
-                      intervalCount: 1,
-                      priceInterval: undefined,
-                    });
-                  }
-                }}
-                onIntervalSelectionChange={(v) => setEditingPrice({ ...editingPrice, intervalSelection: v })}
-                onIntervalCountChange={(v) => setEditingPrice({ ...editingPrice, intervalCount: v })}
-                onIntervalUnitChange={(v) => setEditingPrice({ ...editingPrice, priceInterval: v })}
-                allowedUnits={PRICE_INTERVAL_UNITS}
-              />
-            </div>
-
-            {/* Free Trial & Server Only as EditableGrid */}
-            <EditableGrid
-              columns={1}
-              items={[
-                // Free Trial
-                {
-                  type: 'custom' as const,
-                  icon: <Clock size={16} />,
-                  name: "Free Trial",
-                  tooltip: "Free trial period before billing starts.",
-                  children: (
-                    <Popover
-                      open={priceFreeTrialPopoverOpen}
-                      onOpenChange={(open) => {
-                        setPriceFreeTrialPopoverOpen(open);
-                        if (open) {
-                          // Initialize popover state from editingPrice
-                          setPriceFreeTrialCount(editingPrice.freeTrialCount);
-                          setPriceFreeTrialUnit(editingPrice.freeTrialUnit);
-                        }
-                      }}
-                    >
-                      <PopoverTrigger asChild>
-                        <button
-                          className={cn(
-                            "w-full px-1 py-0 h-[unset] border-transparent rounded text-left text-foreground",
-                            "hover:ring-1 hover:ring-slate-300 dark:hover:ring-gray-500 hover:bg-slate-50 dark:hover:bg-gray-800 hover:cursor-pointer",
-                            "focus:outline-none focus-visible:ring-1 focus-visible:ring-slate-500 dark:focus-visible:ring-gray-50",
-                            "transition-colors duration-150 hover:transition-none"
-                          )}
-                        >
-                          {editingPrice.freeTrialEnabled
-                            ? `${editingPrice.freeTrialCount} ${editingPrice.freeTrialCount === 1 ? editingPrice.freeTrialUnit : editingPrice.freeTrialUnit + 's'}`
-                            : 'None'}
-                        </button>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-64 p-3">
-                        <div className="space-y-3">
-                          <div className="flex items-center gap-2">
-                            <Input
-                              className="w-20"
-                              type="number"
-                              min={1}
-                              value={priceFreeTrialCount}
-                              onChange={(e) => setPriceFreeTrialCount(parseInt(e.target.value) || 1)}
-                            />
-                            <Select value={priceFreeTrialUnit} onValueChange={(v) => setPriceFreeTrialUnit(v as DayInterval[1])}>
-                              <SelectTrigger className="w-24">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {DEFAULT_INTERVAL_UNITS.map((unit) => (
-                                  <SelectItem key={unit} value={unit}>
-                                    {unit}{priceFreeTrialCount !== 1 ? 's' : ''}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </div>
-                          <div className="flex gap-2">
-                            <Button
-                              size="sm"
-                              className="flex-1"
-                              onClick={() => {
-                                setEditingPrice({
-                                  ...editingPrice,
-                                  freeTrialEnabled: true,
-                                  freeTrialCount: priceFreeTrialCount,
-                                  freeTrialUnit: priceFreeTrialUnit,
-                                });
-                                setPriceFreeTrialPopoverOpen(false);
-                              }}
-                            >
-                              Save
-                            </Button>
-                            {editingPrice.freeTrialEnabled && (
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => {
-                                  setEditingPrice({ ...editingPrice, freeTrialEnabled: false });
-                                  setPriceFreeTrialPopoverOpen(false);
-                                }}
-                              >
-                                Remove
-                              </Button>
-                            )}
-                          </div>
-                        </div>
-                      </PopoverContent>
-                    </Popover>
-                  ),
-                },
-                // Server Only
-                {
-                  type: 'boolean' as const,
-                  icon: <Server size={16} />,
-                  name: "Server Only",
-                  tooltip: "Server-only prices can only be assigned through server-side API calls.",
-                  value: editingPrice.serverOnly,
-                  onUpdate: async (value: boolean) => {
-                    setEditingPrice({ ...editingPrice, serverOnly: value });
-                  },
-                },
-              ]}
-            />
-          </div>
-        )}
-        <DialogFooter>
-          <Button variant="outline" onClick={() => { setEditingPrice(null); setIsAddingPrice(false); }}>
-            Cancel
-          </Button>
-          <Button onClick={editingPrice ? () => handleSavePrice(editingPrice, isAddingPrice) : undefined}>
-            {isAddingPrice ? "Add Price" : "Save Changes"}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+    <PriceEditDialog
+      open={!!editingPrice}
+      onOpenChange={(open) => {
+        if (!open) {
+          setEditingPrice(null);
+          setIsAddingPrice(false);
+        }
+      }}
+      editingPrice={editingPrice}
+      onEditingPriceChange={setEditingPrice}
+      isAdding={isAddingPrice}
+      onSave={handleSavePrice}
+    />
   );
 
   if (inline) {

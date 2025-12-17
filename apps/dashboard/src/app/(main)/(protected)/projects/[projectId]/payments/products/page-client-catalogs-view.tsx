@@ -1504,6 +1504,7 @@ function catalogTypeKeyToString(key: CatalogTypeKey): string {
 }
 
 function CatalogView({ groupedProducts, groups, existingItems, onSaveProduct, onDeleteProduct, onCreateNewItem, onOpenProductDetails, onSaveProductWithGroup, onCreateCatalog, createDraftRequestId, draftCustomerType, onDraftHandled }: CatalogViewProps) {
+  const projectId = useProjectId();
   const [drafts, setDrafts] = useState<Array<{ key: string, catalogId: string | undefined, product: Product }>>([]);
   const [creatingGroupKey, setCreatingGroupKey] = useState<string | undefined>(undefined);
   const [newCatalogId, setNewCatalogId] = useState("");
@@ -1810,37 +1811,24 @@ function CatalogView({ groupedProducts, groups, existingItems, onSaveProduct, on
                   ))}
 
                   {/* Add product button */}
-                  <Button
-                    variant="outline"
-                    size="plain"
-                    className={cn(
-                      "h-full min-h-[200px] w-[320px] flex flex-col items-center justify-center",
-                      "rounded-2xl border border-dashed border-foreground/[0.1]",
-                      "bg-background/40 hover:bg-foreground/[0.03]",
-                      "text-muted-foreground hover:text-foreground",
-                      "transition-all duration-150 hover:transition-none"
-                    )}
-                    onClick={() => {
-                      const key = generateProductId("product");
-                      const newProduct: Product = {
-                        displayName: 'New Product',
-                        customerType: customerType,
-                        catalogId: catalogId || undefined,
-                        isAddOnTo: false,
-                        stackable: false,
-                        prices: {},
-                        includedItems: {},
-                        serverOnly: false,
-                        freeTrial: undefined,
-                      };
-                      setDrafts(prev => [...prev, { key, catalogId, product: newProduct }]);
-                    }}
-                  >
-                    <div className="flex flex-col items-center gap-2">
-                      <Plus className="h-6 w-6" />
-                      <span className="text-sm font-medium">Add product</span>
-                    </div>
-                  </Button>
+                  <Link href={`/projects/${projectId}/payments/products/new`}>
+                    <Button
+                      variant="outline"
+                      size="plain"
+                      className={cn(
+                        "h-full min-h-[200px] w-[320px] flex flex-col items-center justify-center",
+                        "rounded-2xl border border-dashed border-foreground/[0.1]",
+                        "bg-background/40 hover:bg-foreground/[0.03]",
+                        "text-muted-foreground hover:text-foreground",
+                        "transition-all duration-150 hover:transition-none"
+                      )}
+                    >
+                      <div className="flex flex-col items-center gap-2">
+                        <Plus className="h-6 w-6" />
+                        <span className="text-sm font-medium">Add product</span>
+                      </div>
+                    </Button>
+                  </Link>
                 </div>
               </div>
             </div>
@@ -1909,37 +1897,24 @@ function CatalogView({ groupedProducts, groups, existingItems, onSaveProduct, on
                   }}
                 />
               ))}
-              <Button
-                variant="outline"
-                size="plain"
-                className={cn(
-                  "h-full min-h-[200px] w-[320px] flex flex-col items-center justify-center",
-                  "rounded-2xl border border-dashed border-foreground/[0.1]",
-                  "bg-background/40 hover:bg-foreground/[0.03]",
-                  "text-muted-foreground hover:text-foreground",
-                  "transition-all duration-150 hover:transition-none"
-                )}
-                onClick={() => {
-                  const key = generateProductId("product");
-                  const newProduct: Product = {
-                    displayName: 'New Product',
-                    customerType: 'user',
-                    catalogId: undefined,
-                    isAddOnTo: false,
-                    stackable: false,
-                    prices: {},
-                    includedItems: {},
-                    serverOnly: false,
-                    freeTrial: undefined,
-                  };
-                  setDrafts(prev => [...prev, { key, catalogId: undefined, product: newProduct }]);
-                }}
-              >
-                <div className="flex flex-col items-center gap-2">
-                  <Plus className="h-6 w-6" />
-                  <span className="text-sm font-medium">Add product</span>
-                </div>
-              </Button>
+              <Link href={`/projects/${projectId}/payments/products/new`}>
+                <Button
+                  variant="outline"
+                  size="plain"
+                  className={cn(
+                    "h-full min-h-[200px] w-[320px] flex flex-col items-center justify-center",
+                    "rounded-2xl border border-dashed border-foreground/[0.1]",
+                    "bg-background/40 hover:bg-foreground/[0.03]",
+                    "text-muted-foreground hover:text-foreground",
+                    "transition-all duration-150 hover:transition-none"
+                  )}
+                >
+                  <div className="flex flex-col items-center gap-2">
+                    <Plus className="h-6 w-6" />
+                    <span className="text-sm font-medium">Add product</span>
+                  </div>
+                </Button>
+              </Link>
             </div>
           </div>
         </div>

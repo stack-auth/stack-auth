@@ -1,14 +1,15 @@
 "use client";
 
+import { Link } from "@/components/link";
 import { Button } from "@stackframe/stack-ui";
 import { Plus } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { IllustratedInfo } from "../../../../../../../components/illustrated-info";
 import { PageLayout } from "../../page-layout";
-import { useAdminApp } from "../../use-admin-app";
+import { useAdminApp, useProjectId } from "../../use-admin-app";
 import PageClientListView from "./page-client-list-view";
 
-function WelcomeScreen({ onCreateProduct }: { onCreateProduct: () => void }) {
+function WelcomeScreen({ projectId }: { projectId: string }) {
   return (
     <PageLayout title="Products & Items" description="Manage your products and items.">
       <div className="flex flex-col items-center justify-center h-full px-4 py-12 max-w-3xl mx-auto">
@@ -51,18 +52,19 @@ function WelcomeScreen({ onCreateProduct }: { onCreateProduct: () => void }) {
             <>Create your first product to get started!</>,
           ]}
         />
-        <Button className="mt-8" onClick={onCreateProduct}>
-          <Plus className="h-4 w-4 mr-2" />
-          Create Your First Product
-        </Button>
+        <Link href={`/projects/${projectId}/payments/products/new`}>
+          <Button className="mt-8">
+            <Plus className="h-4 w-4 mr-2" />
+            Create Your First Product
+          </Button>
+        </Link>
       </div>
     </PageLayout>
   );
 }
 
 export default function PageClient() {
-  const [welcomeDismissed, setWelcomeDismissed] = useState(false);
-
+  const projectId = useProjectId();
   const adminApp = useAdminApp();
   const paymentsConfig = adminApp.useProject().useConfig().payments;
 
@@ -73,14 +75,8 @@ export default function PageClient() {
     );
   }, [paymentsConfig.products, paymentsConfig.items]);
 
-  const showWelcome = !welcomeDismissed && !hasAnyProductsOrItems;
-
-  const handleCreateFirstProduct = () => {
-    setWelcomeDismissed(true);
-  };
-
-  if (showWelcome) {
-    return <WelcomeScreen onCreateProduct={handleCreateFirstProduct} />;
+  if (!hasAnyProductsOrItems) {
+    return <WelcomeScreen projectId={projectId} />;
   }
 
   return (

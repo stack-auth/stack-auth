@@ -9,13 +9,12 @@ import { useState } from "react";
 import { CreateCatalogDialog } from "./create-catalog-dialog";
 import { IncludedItemDialog } from "./included-item-dialog";
 import { ListSection } from "./list-section";
-import { PriceDialog } from "./price-dialog";
+import { PricingSection } from "./pricing-section";
+import { type Product, type Price } from "./utils";
 
 type Template = 'one-time' | 'subscription' | 'addon' | 'scratch';
 
-type Product = CompleteConfig['payments']['products'][string];
 type IncludedItem = Product['includedItems'][string];
-type Price = (Product['prices'] & object)[string];
 
 type ProductDialogProps = {
   open: boolean,
@@ -75,8 +74,6 @@ export function ProductDialog({
 
   // Dialog states
   const [showCatalogDialog, setShowCatalogDialog] = useState(false);
-  const [showPriceDialog, setShowPriceDialog] = useState(false);
-  const [editingPriceId, setEditingPriceId] = useState<string | undefined>();
   const [showItemDialog, setShowItemDialog] = useState(false);
   const [editingItemId, setEditingItemId] = useState<string | undefined>();
 
@@ -199,28 +196,6 @@ export function ProductDialog({
     onOpenChange(false);
   };
 
-  const addPrice = (priceId: string, price: Price) => {
-    setPrices(prev => ({
-      ...prev,
-      [priceId]: price,
-    }));
-  };
-
-  const editPrice = (priceId: string, price: Price) => {
-    setPrices(prev => ({
-      ...prev,
-      [priceId]: price,
-    }));
-  };
-
-  const removePrice = (priceId: string) => {
-    setPrices(prev => {
-      const newPrices = { ...prev };
-      delete newPrices[priceId];
-      return newPrices;
-    });
-  };
-
   const addIncludedItem = (itemId: string, item: IncludedItem) => {
     setIncludedItems(prev => ({ ...prev, [itemId]: item }));
   };
@@ -239,19 +214,6 @@ export function ProductDialog({
       delete newItems[itemId];
       return newItems;
     });
-  };
-
-  const formatPriceDisplay = (price: Price) => {
-    let display = `$${price.USD}`;
-    if (price.interval) {
-      const [count, unit] = price.interval;
-      display += count === 1 ? ` / ${unit}` : ` / ${count} ${unit}s`;
-    }
-    if (price.freeTrial) {
-      const [count, unit] = price.freeTrial;
-      display += ` (${count} ${unit}${count > 1 ? 's' : ''} free)`;
-    }
-    return display;
   };
 
   const getItemDisplay = (itemId: string, item: IncludedItem) => {
@@ -474,7 +436,7 @@ export function ProductDialog({
                       </Typography>
                     ) : (
                       <Typography type="label" className="text-muted-foreground text-xs">
-                        How this product will be displayed to customers
+                        This will be displayed to customers
                       </Typography>
                     )}
                   </div>
@@ -662,57 +624,12 @@ export function ProductDialog({
                   {/* Prices list */}
                   {!freeByDefault && (
                     <div className="border rounded-lg">
-                      <ListSection
-                        title="Prices"
-                        onAddClick={() => {
-                          setEditingPriceId(undefined);
-                          setShowPriceDialog(true);
-                        }}
-                      >
-                        {Object.values(prices).length === 0 ? (
-                          <div className="p-8 text-center text-muted-foreground">
-                            <Typography type="p">No prices configured yet</Typography>
-                            <Typography type="p" className="text-sm mt-1">
-                              Click the + button to add your first price
-                            </Typography>
-                          </div>
-                        ) : (
-                          <div>
-                            {Object.entries(prices).map(([id, price]) => (
-                              <div
-                                key={id}
-                                className="px-3 py-3 hover:bg-muted/50 flex items-center justify-between catalog transition-colors"
-                              >
-                                <div>
-                                  <div className="font-medium">{formatPriceDisplay(price)}</div>
-                                  <div className="text-xs text-muted-foreground mt-1">
-                                    ID: {id}
-                                    {price.serverOnly && ' • Server-only'}
-                                  </div>
-                                </div>
-                                <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    onClick={() => {
-                                      setEditingPriceId(id);
-                                      setShowPriceDialog(true);
-                                    }}
-                                  >
-                                    Edit
-                                  </Button>
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    onClick={() => removePrice(id)}
-                                  >
-                                    <Trash2 className="h-4 w-4 text-destructive" />
-                                  </Button>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        )}
+                      <ListSection title="Prices">
+                        <PricingSection
+                          prices={prices}
+                          onPricesChange={setPrices}
+                          variant="dialog"
+                        />
                       </ListSection>
                     </div>
                   )}
@@ -858,22 +775,6 @@ export function ProductDialog({
           setCatalogId(catalog.id);
           setShowCatalogDialog(false);
         }}
-      />
-
-      <PriceDialog
-        open={showPriceDialog}
-        onOpenChange={setShowPriceDialog}
-        onSave={(priceId, price) => {
-          if (editingPriceId) {
-            editPrice(editingPriceId, price);
-          } else {
-            addPrice(priceId, price);
-          }
-          setShowPriceDialog(false);
-        }}
-        editingPriceId={editingPriceId}
-        editingPrice={editingPriceId ? prices[editingPriceId] : undefined}
-        existingPriceIds={Object.keys(prices)}
       />
 
       <IncludedItemDialog

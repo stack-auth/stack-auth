@@ -9,6 +9,7 @@ import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { ActionDialog, Button, Card, CardContent, Typography } from "@stackframe/stack-ui";
 import { ConnectNotificationBanner } from "@stripe/react-connect-js";
 import { AlertTriangle, ArrowRight, BarChart3, FlaskConical, Repeat, Shield, Wallet, Webhook } from "lucide-react";
+import { usePathname } from "next/navigation";
 import { useState } from "react";
 import * as yup from "yup";
 import { AppEnabledGuard } from "../../app-enabled-guard";
@@ -23,11 +24,15 @@ export default function PaymentsLayout({ children }: { children: React.ReactNode
 }
 
 function PaymentsLayoutInner({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname();
   const [bannerHasItems, setBannerHasItems] = useState(false);
   const stackAdminApp = useAdminApp();
   const stripeAccountInfo = stackAdminApp.useStripeAccountInfo();
   const project = stackAdminApp.useProject();
   const paymentsConfig = project.useConfig().payments;
+
+  // Hide banners on the new product page for a cleaner creation experience
+  const isNewProductPage = pathname.endsWith('/products/new');
 
   const setupPayments = async () => {
     const { url } = await stackAdminApp.setupPayments();
@@ -79,6 +84,15 @@ function PaymentsLayoutInner({ children }: { children: React.ReactNode }) {
           </CardContent>
         </Card>
       </div>
+    );
+  }
+
+  // On the new product page, skip all banners for a cleaner experience
+  if (isNewProductPage) {
+    return (
+      <StripeConnectProvider>
+        {children}
+      </StripeConnectProvider>
     );
   }
 

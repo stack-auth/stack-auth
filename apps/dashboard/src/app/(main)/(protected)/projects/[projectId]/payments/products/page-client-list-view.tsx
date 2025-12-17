@@ -1,6 +1,7 @@
 "use client";
 
 import { ItemDialog } from "@/components/payments/item-dialog";
+import { useRouter } from "@/components/router";
 import { cn } from "@/lib/utils";
 import { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
 import { useHover } from "@stackframe/stack-shared/dist/hooks/use-hover";
@@ -11,7 +12,6 @@ import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
 import { ActionDialog, Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, toast } from "@stackframe/stack-ui";
 import { MoreVertical } from "lucide-react";
 import React, { ReactNode, useEffect, useMemo, useRef, useState } from "react";
-import { useRouter } from "@/components/router";
 import { useAdminApp, useProjectId } from "../../use-admin-app";
 import { ListSection } from "./list-section";
 import { ProductDialog } from "./product-dialog";
@@ -596,6 +596,8 @@ function ItemsList({
 }
 
 export default function PageClient() {
+  const projectId = useProjectId();
+  const router = useRouter();
   const [activeTab, setActiveTab] = useState<"products" | "items">("products");
   const [hoveredProductId, setHoveredProductId] = useState<string | null>(null);
   const [hoveredItemId, setHoveredItemId] = useState<string | null>(null);
@@ -734,7 +736,7 @@ export default function PageClient() {
   // Check if there are no products and no items
   // Handler for create product button
   const handleCreateProduct = () => {
-    setShowProductDialog(true);
+    router.push(`/projects/${projectId}/payments/products/new`);
   };
 
   // Handler for create item button
