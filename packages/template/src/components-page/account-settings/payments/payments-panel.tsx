@@ -5,6 +5,8 @@ import { ActionDialog, Button, Skeleton, Typography } from "@stackframe/stack-ui
 import { loadStripe } from "@stripe/stripe-js";
 import { CardElement, Elements, useElements, useStripe } from "@stripe/react-stripe-js";
 import React, { useMemo, useState } from "react";
+import { useStackApp } from "../../..";
+import { useTranslation } from "../../../lib/translations";
 import { Section } from "../section";
 
 type PaymentMethodSummary = {
@@ -35,7 +37,19 @@ type CustomerPaymentMethodSetupIntent = {
 };
 
 type CustomerLike = {
+  id: string,
   useBilling: () => CustomerBilling,
+  useProducts: () => Array<{
+    id: string | null,
+    quantity: number,
+    displayName: string,
+    type: "one_time" | "subscription",
+    subscription: null | {
+      currentPeriodEnd: Date | null,
+      cancelAtPeriodEnd: boolean,
+      isCancelable: boolean,
+    },
+  }>,
   createPaymentMethodSetupIntent: () => Promise<CustomerPaymentMethodSetupIntent>,
   setDefaultPaymentMethodFromSetupIntent: (setupIntentId: string) => Promise<PaymentMethodSummary>,
 };
@@ -97,6 +111,7 @@ function SetDefaultPaymentMethodForm(props: {
 export function PaymentsPanel(props: {
   title?: string,
   customer?: CustomerLike,
+  customerType?: "user" | "team",
   mockMode?: boolean,
 }) {
   if (props.mockMode) {
@@ -105,10 +120,11 @@ export function PaymentsPanel(props: {
   if (!props.customer) {
     return null;
   }
-  return <RealPaymentsPanel title={props.title} customer={props.customer} />;
+  return <RealPaymentsPanel title={props.title} customer={props.customer} customerType={props.customerType ?? "user"} />;
 }
 
 function MockPaymentsPanel(props: { title?: string }) {
+  const { t } = useTranslation();
   const defaultPaymentMethod: PaymentMethodSummary = {
     id: "pm_mock",
     brand: "visa",
@@ -121,25 +137,52 @@ function MockPaymentsPanel(props: { title?: string }) {
     <div className="space-y-4">
       {props.title && <Typography className="font-medium">{props.title}</Typography>}
       <Section
-        title="Payment method"
-        description="Manage the default payment method used for subscriptions and invoices."
+        title={t("Payment method")}
+        description={t("Manage the default payment method used for subscriptions and invoices.")}
       >
         <Typography>{formatPaymentMethod(defaultPaymentMethod)}</Typography>
         <Button disabled>
-          Update payment method
+          {t("Update payment method")}
         </Button>
+      </Section>
+
+      <Section
+        title={t("Active plans")}
+        description={t("View your active plans and purchases.")}
+      >
+        <div className="space-y-3">
+          <div className="flex items-start justify-between gap-4">
+            <div className="min-w-0">
+              <Typography className="truncate">{t("Pro")}</Typography>
+              <Typography variant="secondary" type="footnote">{t("Renews on")} Jan 1, 2030</Typography>
+            </div>
+            <Button disabled variant="secondary" color="neutral">
+              {t("Cancel subscription")}
+            </Button>
+          </div>
+          <div className="flex items-start justify-between gap-4">
+            <div className="min-w-0">
+              <Typography className="truncate">{t("Credits pack")}</Typography>
+              <Typography variant="secondary" type="footnote">{t("One-time purchase")}</Typography>
+            </div>
+          </div>
+        </div>
       </Section>
     </div>
   );
 }
 
-function RealPaymentsPanel(props: { title?: string, customer: CustomerLike }) {
+function RealPaymentsPanel(props: { title?: string, customer: CustomerLike, customerType: "user" | "team" }) {
+  const { t } = useTranslation();
+  const stackApp = useStackApp();
   const billing = props.customer.useBilling();
   const defaultPaymentMethod = billing.defaultPaymentMethod;
+  const products = props.customer.useProducts();
 
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
   const [setupIntentClientSecret, setSetupIntentClientSecret] = useState<string | null>(null);
   const [setupIntentStripeAccountId, setSetupIntentStripeAccountId] = useState<string | null>(null);
+  const [cancelProductId, setCancelProductId] = useState<string | null>(null);
 
   const stripePromise = useMemo(() => {
     if (!setupIntentStripeAccountId) return null;
@@ -168,17 +211,17 @@ function RealPaymentsPanel(props: { title?: string, customer: CustomerLike }) {
       {props.title && <Typography className="font-medium">{props.title}</Typography>}
 
       <Section
-        title="Payment method"
-        description="Manage the default payment method used for subscriptions and invoices."
+        title={t("Payment method")}
+        description={t("Manage the default payment method used for subscriptions and invoices.")}
       >
         {defaultPaymentMethod ? (
           <Typography>{formatPaymentMethod(defaultPaymentMethod)}</Typography>
         ) : (
-          <Typography variant="secondary" type="footnote">No payment method on file.</Typography>
+          <Typography variant="secondary" type="footnote">{t("No payment method on file.")}</Typography>
         )}
 
         <Button onClick={openPaymentDialog}>
-          {defaultPaymentMethod ? "Update payment method" : "Add payment method"}
+          {defaultPaymentMethod ? t("Update payment method") : t("Add payment method")}
         </Button>
 
         <ActionDialog
@@ -190,7 +233,7 @@ function RealPaymentsPanel(props: { title?: string, customer: CustomerLike }) {
               setPaymentDialogOpen(true);
             }
           }}
-          title="Update payment method"
+          title={t("Update payment method")}
         >
           {!setupIntentClientSecret || !setupIntentStripeAccountId || !stripePromise ? (
             <Skeleton className="h-10 w-full" />
@@ -211,6 +254,74 @@ function RealPaymentsPanel(props: { title?: string, customer: CustomerLike }) {
             </Elements>
           )}
         </ActionDialog>
+      </Section>
+
+      <Section
+        title={t("Active plans")}
+        description={t("View your active plans and purchases.")}
+      >
+        {products.length === 0 ? (
+          <Typography variant="secondary" type="footnote">{t("No active plans.")}</Typography>
+        ) : (
+          <div className="space-y-3">
+            {products.map((product, index) => {
+              const quantitySuffix = product.quantity !== 1 ? ` ×${product.quantity}` : "";
+              const isSubscription = product.type === "subscription";
+              const isCancelable = isSubscription && !!product.id && !!product.subscription?.isCancelable;
+              const renewsAt = isSubscription ? (product.subscription?.currentPeriodEnd ?? null) : null;
+
+              const subtitle =
+                product.type === "one_time"
+                  ? t("One-time purchase")
+                  : renewsAt
+                    ? `${t("Renews on")} ${new Intl.DateTimeFormat(undefined, { year: "numeric", month: "short", day: "numeric" }).format(renewsAt)}`
+                    : t("Subscription");
+
+              return (
+                <div key={product.id ?? `${product.displayName}-${index}`} className="flex items-start justify-between gap-4">
+                  <div className="min-w-0">
+                    <Typography className="truncate">{product.displayName}{quantitySuffix}</Typography>
+                    <Typography variant="secondary" type="footnote">{subtitle}</Typography>
+                  </div>
+
+                  {isCancelable && (
+                    <Button
+                      variant="secondary"
+                      color="neutral"
+                      onClick={() => setCancelProductId(product.id!)}
+                    >
+                      {t("Cancel subscription")}
+                    </Button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        <ActionDialog
+          open={cancelProductId !== null}
+          onOpenChange={(open) => {
+            if (!open) setCancelProductId(null);
+          }}
+          title={t("Cancel subscription")}
+          description={t("Canceling will stop future renewals for this subscription.")}
+          danger
+          cancelButton
+          okButton={{
+            label: t("Cancel subscription"),
+            onClick: async () => {
+              const productId = cancelProductId;
+              if (!productId) return;
+              if (props.customerType === "team") {
+                await stackApp.cancelSubscription({ teamId: props.customer.id, productId });
+              } else {
+                await stackApp.cancelSubscription({ productId });
+              }
+              setCancelProductId(null);
+            },
+          }}
+        />
       </Section>
     </div>
   );

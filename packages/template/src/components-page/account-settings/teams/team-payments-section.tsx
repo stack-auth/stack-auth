@@ -16,6 +16,7 @@ export function TeamPaymentsSection(props: { team: Team }) {
     return (
       <PaymentsPanel
         customer={props.team}
+        customerType="team"
       />
     );
   }

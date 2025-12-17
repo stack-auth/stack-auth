@@ -57,6 +57,7 @@ const stripFields = [
   "token",
   "createdAt",
   "updatedAt",
+  "current_period_end",
   "response",
   "msgId",
   "endpointId",

@@ -39,6 +39,12 @@ export type CustomerProduct = {
   customerType: "user" | "team" | "custom",
   isServerOnly: boolean,
   stackable: boolean,
+  type: "one_time" | "subscription",
+  subscription: null | {
+    currentPeriodEnd: Date | null,
+    cancelAtPeriodEnd: boolean,
+    isCancelable: boolean,
+  },
 };
 
 export type CustomerProductsList = CustomerProduct[] & {

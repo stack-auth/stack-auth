@@ -1168,6 +1168,12 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       customerType: item.product.customer_type,
       isServerOnly: item.product.server_only,
       stackable: item.product.stackable,
+      type: item.type,
+      subscription: item.subscription ? {
+        currentPeriodEnd: item.subscription.current_period_end ? new Date(item.subscription.current_period_end) : null,
+        cancelAtPeriodEnd: item.subscription.cancel_at_period_end,
+        isCancelable: item.subscription.is_cancelable,
+      } : null,
     }));
     return Object.assign(products, { nextCursor: response.pagination.next_cursor ?? null });
   }
