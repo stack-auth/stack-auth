@@ -17,8 +17,6 @@ describe("/api/v1/users performance", () => {
     const durationMs = performance.now() - start;
 
     expect(response.status).toBe(200);
-    console.log("items length", response.body.items.length);
-    console.log("durationMs", durationMs);
   });
 });
 

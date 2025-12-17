@@ -103,7 +103,7 @@ jobs:
         with:
           run: pnpm run start:backend --log-order=stream &
           wait-on: |
-            http://localhost:8102
+            http://localhost:6702
           tail: true
           wait-for: 30s
           log-output-if: true
@@ -112,7 +112,7 @@ jobs:
         with:
           run: pnpm run start:dashboard --log-order=stream &
           wait-on: |
-            http://localhost:8101
+            http://localhost:6701
           tail: true
           wait-for: 30s
           log-output-if: true
@@ -121,7 +121,7 @@ jobs:
         with:
           run: pnpm run start:mock-oauth-server --log-order=stream &
           wait-on: |
-            http://localhost:8102
+            http://localhost:6702
           tail: true
           wait-for: 30s
           log-output-if: true
@@ -130,7 +130,7 @@ jobs:
         with:
           run: pnpm -C apps/backend run run-email-queue --log-order=stream &
           wait-on: |
-            http://localhost:8102
+            http://localhost:6702
           tail: true
           wait-for: 30s
           log-output-if: true
