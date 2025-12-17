@@ -50,7 +50,7 @@ import {
   toast,
   Typography,
 } from "@stackframe/stack-ui";
-import { Clock, Copy, DollarSign, FolderOpen, Gift, Layers, MoreHorizontal, Package, Pencil, Plus, Puzzle, Server, Tag, Trash2, Users, X } from "lucide-react";
+import { ArrowLeft, Clock, Copy, DollarSign, FolderOpen, Gift, Layers, MoreHorizontal, Package, Pencil, Plus, Puzzle, Server, Tag, Trash2, Users, X } from "lucide-react";
 import { Suspense, useMemo, useState } from "react";
 import { PageLayout } from "../../../page-layout";
 import { useAdminApp, useProjectId } from "../../../use-admin-app";
@@ -102,12 +102,25 @@ type ProductPageProps = {
 };
 
 function ProductPage({ productId, product, config }: ProductPageProps) {
+  const router = useRouter();
   const catalogId = product.catalogId;
   const catalogName = catalogId ? config.payments.catalogs[catalogId].displayName || catalogId : null;
+  const canGoBack = typeof window !== 'undefined' && window.history.length > 1;
 
   return (
     <PageLayout>
       <div className="flex flex-col gap-6">
+        {canGoBack && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="w-fit -ml-2 text-muted-foreground hover:text-foreground"
+            onClick={() => router.back()}
+          >
+            <ArrowLeft className="h-4 w-4 mr-1" />
+            Back
+          </Button>
+        )}
         <ProductHeader productId={productId} product={product} catalogName={catalogName} />
         <Separator />
         <ProductDetailsSection productId={productId} product={product} config={config} />
