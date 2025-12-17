@@ -1,6 +1,27 @@
 import { CodeExample } from '../lib/code-examples';
 
 export const setupExamples = {
+  'overview': {
+    'install': [
+      {
+        language: 'JavaScript',
+        framework: 'Next.js',
+        code: `npx @stackframe/init-stack@latest`,
+        highlightLanguage: 'bash',
+        filename: 'Terminal'
+      }
+    ] as CodeExample[],
+    'use-auth': [
+      {
+        language: 'JavaScript',
+        framework: 'Next.js',
+        code: `const user = useUser({ or: "redirect" });
+return <div>Hi, {user.displayName}</div>;`,
+        highlightLanguage: 'tsx',
+        filename: 'page.tsx'
+      }
+    ] as CodeExample[],
+  },
   'setup': {
     'env-wizard': [
       {
