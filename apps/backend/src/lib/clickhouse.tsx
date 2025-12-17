@@ -9,7 +9,7 @@ const clickhouseAdminPassword = getEnvVariable("STACK_CLICKHOUSE_ADMIN_PASSWORD"
 const clickhouseExternalPassword = getEnvVariable("STACK_CLICKHOUSE_EXTERNAL_PASSWORD");
 const clickhouseDatabase = getEnvVariable("STACK_CLICKHOUSE_DATABASE", "analytics");
 
-export function createClickhouseClient(authType: "admin" | "external") {
+function createClickhouseClient(authType: "admin" | "external") {
   return createClient({
     url: clickhouseUrl,
     username: authType === "admin" ? clickhouseAdminUser : clickhouseExternalUser,

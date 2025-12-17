@@ -9,7 +9,7 @@ import { filterUndefined, typedKeys } from "@stackframe/stack-shared/dist/utils/
 import { UnionToIntersection } from "@stackframe/stack-shared/dist/utils/types";
 import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
 import * as yup from "yup";
-import { createClickhouseClient } from "./clickhouse";
+import { clickhouseAdminClient } from "./clickhouse";
 import { getEndUserInfo } from "./end-users";
 import { DEFAULT_BRANCH_ID } from "./tenancies";
 
@@ -193,7 +193,7 @@ export async function logEvent<T extends EventType[]>(
       },
     });
 
-    const clickhouseClient = createClickhouseClient("admin");
+    const clickhouseClient = clickhouseAdminClient;
     try {
       await clickhouseClient.insert({
         table: "events",
