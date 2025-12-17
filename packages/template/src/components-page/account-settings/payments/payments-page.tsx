@@ -29,6 +29,7 @@ export function PaymentsPage(props: { mockMode?: boolean }) {
       <PaymentsPanel
         title={t("Personal payments")}
         customer={user}
+        customerType="user"
       />
     </PageLayout>
   );

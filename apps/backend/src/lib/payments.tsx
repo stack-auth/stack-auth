@@ -265,6 +265,7 @@ type Subscription = {
   quantity: number,
   currentPeriodStart: Date,
   currentPeriodEnd: Date | null,
+  cancelAtPeriodEnd: boolean,
   status: SubscriptionStatus,
   createdAt: Date,
 };
@@ -301,6 +302,7 @@ export async function getSubscriptions(options: {
       quantity: s.quantity,
       currentPeriodStart: s.currentPeriodStart,
       currentPeriodEnd: s.currentPeriodEnd,
+      cancelAtPeriodEnd: s.cancelAtPeriodEnd,
       status: s.status,
       createdAt: s.createdAt,
       stripeSubscriptionId: s.stripeSubscriptionId,
@@ -329,6 +331,7 @@ export async function getSubscriptions(options: {
         quantity: 1,
         currentPeriodStart: DEFAULT_PRODUCT_START_DATE,
         currentPeriodEnd: null,
+        cancelAtPeriodEnd: false,
         status: SubscriptionStatus.active,
         createdAt: DEFAULT_PRODUCT_START_DATE,
         stripeSubscriptionId: null,
@@ -347,6 +350,7 @@ export async function getSubscriptions(options: {
       quantity: 1,
       currentPeriodStart: DEFAULT_PRODUCT_START_DATE,
       currentPeriodEnd: null,
+      cancelAtPeriodEnd: false,
       status: SubscriptionStatus.active,
       createdAt: DEFAULT_PRODUCT_START_DATE,
       stripeSubscriptionId: null,
@@ -759,6 +763,11 @@ export type OwnedProduct = {
   product: Product,
   createdAt: Date,
   sourceId: string,
+  subscription: null | {
+    currentPeriodEnd: Date | null,
+    cancelAtPeriodEnd: boolean,
+    isCancelable: boolean,
+  },
 };
 
 export async function getOwnedProductsForCustomer(options: {
@@ -806,6 +815,11 @@ export async function getOwnedProductsForCustomer(options: {
       product: subscription.product,
       createdAt: subscription.createdAt,
       sourceId,
+      subscription: {
+        currentPeriodEnd: subscription.currentPeriodEnd,
+        cancelAtPeriodEnd: subscription.cancelAtPeriodEnd,
+        isCancelable: subscription.id !== null && subscription.productId !== null,
+      },
     });
   }
 
@@ -818,6 +832,7 @@ export async function getOwnedProductsForCustomer(options: {
       product,
       createdAt: purchase.createdAt,
       sourceId: purchase.id,
+      subscription: null,
     });
   }
 
