@@ -230,7 +230,7 @@ services:
     image: ghcr.io/drizzle-team/gateway:latest
     restart: always
     ports:
-      - "${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}33:1133"
+      - "${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}35:1133"
     environment:
       PORT: 1133
       STORE_PATH: /app
