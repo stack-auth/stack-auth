@@ -235,7 +235,7 @@ it("can execute query and hit custom timeout", async ({ expect }) => {
     }
   `);
   expect(response.body.code).toBe("ANALYTICS_QUERY_ERROR");
-  
+
 });
 
 it("sets SQL_tenancy_id setting in query", async ({ expect }) => {
