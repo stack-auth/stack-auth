@@ -1,7 +1,7 @@
 "use client";
 
 import { ClickhouseMigrationRequest, ClickhouseMigrationResponse } from "@stackframe/stack-shared/dist/interface/admin-interface";
-import { Button, Card, CardContent, CardHeader, CardTitle, Input, Typography, Alert } from "@stackframe/stack-ui";
+import { Button, Card, CardContent, CardHeader, CardTitle, Input, Typography, Alert } from "@/components/ui";
 import React from "react";
 import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";
