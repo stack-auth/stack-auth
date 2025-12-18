@@ -7,12 +7,12 @@ import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 import type { Prisma } from "@prisma/client";
 
 type Cursor = {
-  created_at: string,
+  created_at_millis: number,
   id: string,
 };
 
-const parseDateOrThrow = (value: string | undefined, field: string) => {
-  if (!value) {
+const parseMillisOrThrow = (value: number | undefined, field: string) => {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
     throw new StatusError(400, `Invalid ${field}`);
   }
   const parsed = new Date(value);
@@ -71,10 +71,10 @@ export const POST = createSmartRouteHandler({
       }).optional(),
     }).defined(),
     body: yupObject({
-      min_created_at: yupString().defined(),
-      max_created_at: yupString().defined(),
+      min_created_at_millis: yupNumber().integer().defined(),
+      max_created_at_millis: yupNumber().integer().defined(),
       cursor: yupObject({
-        created_at: yupString().defined(),
+        created_at_millis: yupNumber().integer().defined(),
         id: yupString().uuid().defined(),
       }).optional(),
       limit: yupNumber().integer().min(1).default(1000),
@@ -92,18 +92,19 @@ export const POST = createSmartRouteHandler({
       inserted_rows: yupNumber().defined(),
       progress: yupNumber().min(0).max(1).defined(),
       next_cursor: yupObject({
-        created_at: yupString().defined(),
+        created_at_millis: yupNumber().integer().defined(),
         id: yupString().defined(),
       }).nullable().defined(),
     }).defined(),
   }),
   async handler({ body }) {
-    const minCreatedAt = parseDateOrThrow(body.min_created_at, "min_created_at");
-    const maxCreatedAt = parseDateOrThrow(body.max_created_at, "max_created_at");
+    const minCreatedAt = parseMillisOrThrow(body.min_created_at_millis, "min_created_at_millis");
+    const maxCreatedAt = parseMillisOrThrow(body.max_created_at_millis, "max_created_at_millis");
     if (minCreatedAt >= maxCreatedAt) {
-      throw new StatusError(400, "min_created_at must be before max_created_at");
+      throw new StatusError(400, "min_created_at_millis must be before max_created_at_millis");
     }
-    const cursorCreatedAt = body.cursor ? parseDateOrThrow(body.cursor.created_at, "cursor.created_at") : undefined;
+    const cursorCreatedAt = body.cursor ? parseMillisOrThrow(body.cursor.created_at_millis, "cursor.created_at_millis") : undefined;
+    const cursorId = body.cursor?.id;
     const limit = body.limit;
 
     const baseWhere: Prisma.EventWhereInput = {
@@ -113,10 +114,10 @@ export const POST = createSmartRouteHandler({
       },
     };
 
-    const cursorFilter: Prisma.EventWhereInput | undefined = cursorCreatedAt ? {
+    const cursorFilter: Prisma.EventWhereInput | undefined = (cursorCreatedAt && cursorId) ? {
       OR: [
         { createdAt: { gt: cursorCreatedAt } },
-        { createdAt: cursorCreatedAt, id: { gt: body.cursor?.id } },
+        { createdAt: cursorCreatedAt, id: { gt: cursorId } },
       ],
     } : undefined;
 
@@ -164,21 +165,22 @@ export const POST = createSmartRouteHandler({
 
     const lastEvent = events.at(-1);
     const nextCursor: Cursor | null = lastEvent ? {
-      created_at: lastEvent.createdAt.toISOString(),
+      created_at_millis: lastEvent.createdAt.getTime(),
       id: lastEvent.id,
     } : null;
     const progressCursor: Cursor | null = nextCursor ?? (cursorCreatedAt && body.cursor ? {
-      created_at: body.cursor.created_at,
+      created_at_millis: body.cursor.created_at_millis,
       id: body.cursor.id,
     } : null);
 
+    const progressCursorCreatedAt = progressCursor ? new Date(progressCursor.created_at_millis) : null;
     const remainingWhere = progressCursor ? {
       AND: [
         baseWhere,
         {
           OR: [
-            { createdAt: { gt: new Date(progressCursor.created_at) } },
-            { createdAt: new Date(progressCursor.created_at), id: { gt: progressCursor.id } },
+            { createdAt: { gt: progressCursorCreatedAt! } },
+            { createdAt: progressCursorCreatedAt!, id: { gt: progressCursor.id } },
           ],
         },
       ],

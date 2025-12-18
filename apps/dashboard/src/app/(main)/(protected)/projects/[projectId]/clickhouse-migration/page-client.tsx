@@ -8,7 +8,7 @@ import { useAdminApp } from "../use-admin-app";
 import { notFound } from "next/navigation";
 
 type MigrationCursor = {
-  createdAt: string,
+  createdAtMillis: number,
   id: string,
 };
 
@@ -32,7 +32,7 @@ const normalizeResponse = (response: ClickhouseMigrationResponse): MigrationSnap
   insertedRows: response.inserted_rows,
   progress: response.progress,
   nextCursor: response.next_cursor ? {
-    createdAt: response.next_cursor.created_at,
+    createdAtMillis: response.next_cursor.created_at_millis,
     id: response.next_cursor.id,
   } : null,
 });
@@ -51,28 +51,38 @@ export default function PageClient() {
   const [running, setRunning] = React.useState(false);
   const runningRef = React.useRef(false);
   const cursorRef = React.useRef<MigrationCursor | null>(null);
+  const timeWindowRef = React.useRef<{ minCreatedAtMillis: number, maxCreatedAtMillis: number } | null>(null);
   const [error, setError] = React.useState<string | null>(null);
 
-  const validateDate = React.useCallback((value: string | undefined) => {
-    if (!value) return false;
-    const parsed = new Date(value);
-    return !Number.isNaN(parsed.getTime());
+  const parseCreatedAtMillis = React.useCallback((value: string | undefined) => {
+    if (!value) return null;
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+    if (/^-?\d+$/.test(trimmed)) {
+      const parsed = Number(trimmed);
+      return Number.isFinite(parsed) ? parsed : null;
+    }
+    const parsed = new Date(trimmed).getTime();
+    return Number.isNaN(parsed) ? null : parsed;
   }, []);
 
   const buildRequestBody = React.useCallback(() => {
     const safeLimit = Number.isFinite(limit) && limit > 0 ? Math.min(1000, limit) : 1000;
-    const minIso = new Date(minCreatedAt).toISOString();
-    const maxIso = new Date(maxCreatedAt).toISOString();
+    const minCreatedAtMillis = timeWindowRef.current?.minCreatedAtMillis ?? parseCreatedAtMillis(minCreatedAt);
+    const maxCreatedAtMillis = timeWindowRef.current?.maxCreatedAtMillis ?? parseCreatedAtMillis(maxCreatedAt);
+    if (minCreatedAtMillis === null || maxCreatedAtMillis === null) {
+      throw new Error("Please provide valid unix millis (Date.now()) or ISO/datetime-local values for min/max created at.");
+    }
     return {
-      min_created_at: minIso,
-      max_created_at: maxIso,
+      min_created_at_millis: minCreatedAtMillis,
+      max_created_at_millis: maxCreatedAtMillis,
       cursor: cursorRef.current ? {
-        created_at: cursorRef.current.createdAt,
+        created_at_millis: cursorRef.current.createdAtMillis,
         id: cursorRef.current.id,
       } : undefined,
       limit: safeLimit,
     };
-  }, [limit, maxCreatedAt, minCreatedAt]);
+  }, [limit, maxCreatedAt, minCreatedAt, parseCreatedAtMillis]);
 
   const runBatch = React.useCallback(async () => {
     const response = await adminInterface.migrateEventsToClickhouse(buildRequestBody());
@@ -91,6 +101,7 @@ export default function PageClient() {
   const resetMigration = React.useCallback(() => {
     stopMigration();
     cursorRef.current = null;
+    timeWindowRef.current = null;
     setCursor(null);
     setStats(null);
     setError(null);
@@ -98,15 +109,18 @@ export default function PageClient() {
 
   const startMigration = React.useCallback(async () => {
     if (runningRef.current) return;
-    if (!validateDate(minCreatedAt) || !validateDate(maxCreatedAt)) {
-      setError("Please provide valid ISO dates for min/max created at.");
+    const minCreatedAtMillis = parseCreatedAtMillis(minCreatedAt);
+    const maxCreatedAtMillis = parseCreatedAtMillis(maxCreatedAt);
+    if (minCreatedAtMillis === null || maxCreatedAtMillis === null) {
+      setError("Please provide valid unix millis (Date.now()) or ISO/datetime-local values for min/max created at.");
       return;
     }
-    if (new Date(minCreatedAt) >= new Date(maxCreatedAt)) {
+    if (minCreatedAtMillis >= maxCreatedAtMillis) {
       setError("Min created at must be before max created at.");
       return;
     }
     setError(null);
+    timeWindowRef.current = { minCreatedAtMillis, maxCreatedAtMillis };
     runningRef.current = true;
     setRunning(true);
 
@@ -122,7 +136,7 @@ export default function PageClient() {
       setError(e?.message ?? "Migration failed");
       stopMigration();
     }
-  }, [maxCreatedAt, minCreatedAt, runBatch, stopMigration, validateDate]);
+  }, [maxCreatedAt, minCreatedAt, parseCreatedAtMillis, runBatch, stopMigration]);
 
   const progressPercent = Math.min(100, Math.max(0, Math.round((stats?.progress ?? 0) * 100)));
 
@@ -144,27 +158,27 @@ export default function PageClient() {
           <CardContent className="flex flex-col gap-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Typography type="label">Min created at (ISO or datetime-local)</Typography>
+                <Typography type="label">Min created at (unix millis or ISO/datetime-local)</Typography>
                 <Input
-                  type="datetime-local"
+                  type="text"
                   value={minCreatedAt}
                   onChange={(e) => {
                     setMinCreatedAt(e.target.value);
                     resetMigration();
                   }}
-                  placeholder="2024-08-01T00:00"
+                  placeholder="1735689600000 or 2024-08-01T00:00"
                 />
               </div>
               <div className="space-y-2">
                 <Typography type="label">Max created at (use to exclude new dual-written events)</Typography>
                 <Input
-                  type="datetime-local"
+                  type="text"
                   value={maxCreatedAt}
                   onChange={(e) => {
                     setMaxCreatedAt(e.target.value);
                     resetMigration();
                   }}
-                  placeholder="2024-12-01T00:00"
+                  placeholder="1767225600000 or 2024-12-01T00:00"
                 />
               </div>
               <div className="space-y-2">
@@ -183,7 +197,7 @@ export default function PageClient() {
               <div className="space-y-2">
                 <Typography type="label">Cursor</Typography>
                 <Typography variant="secondary" className="text-sm break-all">
-                  {cursor ? `${cursor.createdAt} · ${cursor.id}` : "Not started"}
+                  {cursor ? `${cursor.createdAtMillis} · ${cursor.id}` : "Not started"}
                 </Typography>
               </div>
             </div>

@@ -41,10 +41,10 @@ export type InternalApiKeyCreateCrudResponse = InternalApiKeysCrud["Admin"]["Rea
 };
 
 export type ClickhouseMigrationRequest = {
-  min_created_at: string,
-  max_created_at: string,
+  min_created_at_millis: number,
+  max_created_at_millis: number,
   cursor?: {
-    created_at: string,
+    created_at_millis: number,
     id: string,
   },
   limit?: number,
@@ -59,7 +59,7 @@ export type ClickhouseMigrationResponse = {
   inserted_rows: number,
   progress: number,
   next_cursor: {
-    created_at: string,
+    created_at_millis: number,
     id: string,
   } | null,
 };
