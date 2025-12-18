@@ -1,4 +1,4 @@
-import { createClickhouseClient } from "@/lib/clickhouse";
+import { clickhouseAdminClient, createClickhouseClient } from "@/lib/clickhouse";
 import { DEFAULT_BRANCH_ID } from "@/lib/tenancies";
 import { globalPrismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
@@ -41,6 +41,8 @@ const createClickhouseRows = (event: {
   const branchId = DEFAULT_BRANCH_ID;
   const userId = typeof dataRecord.userId === "string" ? dataRecord.userId : "";
   const teamId = typeof dataRecord.teamId === "string" ? dataRecord.teamId : "";
+  const sessionId = typeof dataRecord.sessionId === "string" ? dataRecord.sessionId : "";
+  const isAnonymous = typeof dataRecord.isAnonymous === "boolean" ? dataRecord.isAnonymous : false;
 
   const eventTypes = [...new Set(event.systemEventTypeIds)];
 
@@ -52,6 +54,8 @@ const createClickhouseRows = (event: {
     branch_id: branchId,
     user_id: userId,
     team_id: teamId,
+    session_id: sessionId,
+    is_anonymous: isAnonymous,
   }));
 };
 
@@ -140,7 +144,7 @@ export const POST = createSmartRouteHandler({
     let migratedEvents = 0;
 
     if (events.length) {
-      const clickhouseClient = createClickhouseClient("admin");
+      const clickhouseClient = clickhouseAdminClient;
       try {
         const rowsByEvent = events.map(createClickhouseRows);
         const rowsToInsert = rowsByEvent.flat();
