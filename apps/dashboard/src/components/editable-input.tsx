@@ -1,7 +1,7 @@
 import { cn } from "@/lib/utils";
 import { useAsyncCallback } from "@stackframe/stack-shared/dist/hooks/use-async-callback";
 import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
-import { Button, Input } from "@stackframe/stack-ui";
+import { Button, Input } from "@/components/ui";
 import { Check, X } from "lucide-react";
 import { useRef, useState } from "react";
 

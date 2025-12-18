@@ -3,7 +3,7 @@ import { useAdminApp } from "@/app/(main)/(protected)/projects/[projectId]/use-a
 import { ProductDialog } from "@/components/payments/product-dialog";
 import { branchPaymentsSchema } from "@stackframe/stack-shared/dist/config/schema";
 import { typedEntries, typedFromEntries } from "@stackframe/stack-shared/dist/utils/objects";
-import { ActionCell, ActionDialog, DataTable, DataTableColumnHeader, TextCell, toast } from "@stackframe/stack-ui";
+import { ActionCell, ActionDialog, DataTable, DataTableColumnHeader, TextCell, toast } from "@/components/ui";
 import { ColumnDef } from "@tanstack/react-table";
 import { useState } from "react";
 import * as yup from "yup";

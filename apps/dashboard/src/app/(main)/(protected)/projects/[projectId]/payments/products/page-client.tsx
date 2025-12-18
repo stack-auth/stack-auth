@@ -1,7 +1,7 @@
 "use client";
 
 import { Link } from "@/components/link";
-import { Button } from "@stackframe/stack-ui";
+import { Button } from "@/components/ui";
 import { Plus } from "lucide-react";
 import { useMemo } from "react";
 import { IllustratedInfo } from "../../../../../../../components/illustrated-info";

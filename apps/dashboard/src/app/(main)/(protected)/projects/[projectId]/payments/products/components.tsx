@@ -10,7 +10,7 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@stackframe/stack-ui";
+} from "@/components/ui";
 import { ChevronsUpDown } from "lucide-react";
 import { useState } from "react";
 import { DEFAULT_INTERVAL_UNITS } from "./utils";

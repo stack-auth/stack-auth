@@ -1,4 +1,4 @@
-import { Typography } from "@stackframe/stack-ui";
+import { Typography } from "@/components/ui";
 import React from "react";
 
 export function IllustratedInfo(options: {

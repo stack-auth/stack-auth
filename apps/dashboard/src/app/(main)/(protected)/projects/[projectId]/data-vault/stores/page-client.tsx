@@ -1,7 +1,7 @@
 "use client";
 
 import { typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
-import { Button, Card, CardContent, CardHeader, Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Input, Label, toast } from "@stackframe/stack-ui";
+import { Button, Card, CardContent, CardHeader, Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Input, Label, toast } from "@/components/ui";
 import { Database, Plus } from "lucide-react";
 import { useState } from "react";
 import { useRouter } from "../../../../../../../components/router";

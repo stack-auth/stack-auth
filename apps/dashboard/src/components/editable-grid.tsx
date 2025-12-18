@@ -2,14 +2,14 @@
 
 import { cn } from "@/lib/utils";
 import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
-import { SimpleTooltip } from "@stackframe/stack-ui";
+import { SimpleTooltip } from "@/components/ui";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@stackframe/stack-ui";
+} from "@/components/ui";
 import { useState } from "react";
 import { EditableInput } from "./editable-input";
 

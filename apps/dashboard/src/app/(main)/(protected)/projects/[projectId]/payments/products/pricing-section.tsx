@@ -1,7 +1,7 @@
 "use client";
 
 import { cn } from "@/lib/utils";
-import { Button, Checkbox, Typography } from "@stackframe/stack-ui";
+import { Button, Checkbox, Typography } from "@/components/ui";
 import { Gift, Plus, Trash2 } from "lucide-react";
 import { useState } from "react";
 import {

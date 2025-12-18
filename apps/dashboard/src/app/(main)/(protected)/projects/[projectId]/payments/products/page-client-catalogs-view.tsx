@@ -25,7 +25,7 @@ import {
   PopoverTrigger,
   SimpleTooltip,
   toast
-} from "@stackframe/stack-ui";
+} from "@/components/ui";
 import { ChevronsUpDown, Code, Copy, Eye, FileText, Gift, Info, Layers, MoreVertical, Pencil, Plus, Puzzle, Server, Trash2, X } from "lucide-react";
 import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useAdminApp, useProjectId } from "../../use-admin-app";

@@ -1,7 +1,7 @@
 "use client";
 
 import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
-import { Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, Input, Label, SimpleTooltip, Typography } from "@stackframe/stack-ui";
+import { Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, Input, Label, SimpleTooltip, Typography } from "@/components/ui";
 import { useState } from "react";
 
 type CreateCatalogDialogProps = {

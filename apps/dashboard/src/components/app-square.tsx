@@ -2,7 +2,7 @@ import { useAdminApp, useProjectId } from "@/app/(main)/(protected)/projects/[pr
 import { ALL_APPS_FRONTEND, AppFrontend, getAppPath } from "@/lib/apps-frontend";
 import { ALL_APPS, AppId } from "@stackframe/stack-shared/dist/apps/apps-config";
 import { appSquarePaddingExpression, appSquareWidthExpression, AppIcon as SharedAppIcon } from "@stackframe/stack-shared/dist/apps/apps-ui";
-import { Button, cn, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@stackframe/stack-ui";
+import { Button, cn, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui";
 import { Check, MoreVertical } from "lucide-react";
 import { useState } from "react";
 import { AppWarningModal } from "./app-warning-modal";

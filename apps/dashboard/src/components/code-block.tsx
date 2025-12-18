@@ -2,7 +2,7 @@
 
 import { useThemeWatcher } from '@/lib/theme';
 import { cn } from '@/lib/utils';
-import { CopyButton, SimpleTooltip } from "@stackframe/stack-ui";
+import { CopyButton, SimpleTooltip } from "@/components/ui";
 import { Code, Terminal } from "lucide-react";
 import type { ReactNode } from 'react';
 import { PrismLight as SyntaxHighlighter } from 'react-syntax-highlighter';

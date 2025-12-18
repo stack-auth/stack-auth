@@ -2,7 +2,7 @@
 import { useAdminApp } from "@/app/(main)/(protected)/projects/[projectId]/use-admin-app";
 import { useRouter } from "@/components/router";
 import { ServerTeam } from '@stackframe/stack';
-import { ActionCell, ActionDialog, DataTable, DataTableColumnHeader, DateCell, SearchToolbarItem, TextCell, Typography } from "@stackframe/stack-ui";
+import { ActionCell, ActionDialog, DataTable, DataTableColumnHeader, DateCell, SearchToolbarItem, TextCell, Typography } from "@/components/ui";
 import { ColumnDef, Row, Table } from "@tanstack/react-table";
 import { useState } from "react";
 import * as yup from "yup";

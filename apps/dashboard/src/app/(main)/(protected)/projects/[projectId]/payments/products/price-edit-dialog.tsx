@@ -22,7 +22,7 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@stackframe/stack-ui";
+} from "@/components/ui";
 import { Clock, Server } from "lucide-react";
 import { useState } from "react";
 import { DEFAULT_INTERVAL_UNITS, PRICE_INTERVAL_UNITS, type Price } from "./utils";

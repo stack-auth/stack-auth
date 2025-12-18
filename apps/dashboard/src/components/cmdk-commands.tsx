@@ -6,7 +6,7 @@ import { getUninstalledAppIds } from "@/lib/apps-utils";
 import { cn } from "@/lib/utils";
 import { ALL_APPS, ALL_APP_TAGS, type AppId } from "@stackframe/stack-shared/dist/apps/apps-config";
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
-import { Badge, Button, ScrollArea } from "@stackframe/stack-ui";
+import { Badge, Button, ScrollArea } from "@/components/ui";
 import { Blocks, Check, Download, Globe, Info, KeyRound, Layout, Play, Settings, Shield, Sparkles, Zap } from "lucide-react";
 import Image from "next/image";
 import React, { memo, useEffect, useMemo } from "react";

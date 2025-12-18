@@ -1,6 +1,6 @@
 "use client";
 
-import { Button } from "@stackframe/stack-ui";
+import { Button } from "@/components/ui";
 import { Plus } from "lucide-react";
 import { useMemo, useState } from "react";
 import { IllustratedInfo } from "../../../../../../../components/illustrated-info";

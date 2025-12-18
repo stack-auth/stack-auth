@@ -1,6 +1,6 @@
 'use client';
 
-import { Card, CardContent, cn } from '@stackframe/stack-ui';
+import { Card, CardContent, cn } from '@/components/ui';
 import { Loader2 } from 'lucide-react';
 
 export function MetricsLoadingFallback({ className }: { className?: string }) {

@@ -6,7 +6,7 @@ import { Link } from "@/components/link";
 import { StripeConnectProvider } from "@/components/payments/stripe-connect-provider";
 import { cn } from "@/lib/utils";
 import { wait } from "@stackframe/stack-shared/dist/utils/promises";
-import { ActionDialog, Button, Card, CardContent, Typography } from "@stackframe/stack-ui";
+import { ActionDialog, Button, Card, CardContent, Typography } from "@/components/ui";
 import { ConnectNotificationBanner } from "@stripe/react-connect-js";
 import { AlertTriangle, ArrowRight, BarChart3, FlaskConical, Repeat, Shield, Wallet, Webhook } from "lucide-react";
 import { usePathname } from "next/navigation";

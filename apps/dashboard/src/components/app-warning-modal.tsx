@@ -1,6 +1,6 @@
 'use client';
 
-import { cn } from "@stackframe/stack-ui";
+import { cn } from "@/components/ui";
 import { AlertTriangle, Beaker, X } from "lucide-react";
 import { useEffect, useState } from "react";
 

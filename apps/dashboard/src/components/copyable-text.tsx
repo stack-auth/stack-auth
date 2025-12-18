@@ -1,6 +1,6 @@
 "use client";
 
-import { Button, cn } from "@stackframe/stack-ui";
+import { Button, cn } from "@/components/ui";
 import { Check, Copy } from "lucide-react";
 import React, { useCallback, useEffect, useState } from "react";
 import { InlineCode } from "./inline-code";

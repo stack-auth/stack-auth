@@ -27,7 +27,7 @@ import {
   SimpleTooltip,
   toast,
   Typography,
-} from "@stackframe/stack-ui";
+} from "@/components/ui";
 import { ArrowLeft, Building2, ChevronDown, Clock, Code, Copy, Layers, MessageSquare, Plus, Puzzle, Server, Settings2, Trash2, User, Zap } from "lucide-react";
 import { useLayoutEffect, useRef, useState } from "react";
 import { useAdminApp, useProjectId } from "../../../use-admin-app";

@@ -10,7 +10,7 @@ import {
   SelectTrigger,
   SelectValue,
   SimpleTooltip
-} from "@stackframe/stack-ui";
+} from "@/components/ui";
 import { Info, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { IntervalPopover } from "./components";

@@ -49,7 +49,7 @@ import {
   TableRow,
   toast,
   Typography,
-} from "@stackframe/stack-ui";
+} from "@/components/ui";
 import { ArrowLeft, Clock, Copy, DollarSign, FolderOpen, Gift, Layers, MoreHorizontal, Package, Pencil, Plus, Puzzle, Server, Tag, Trash2, Users, X } from "lucide-react";
 import { Suspense, useMemo, useState } from "react";
 import { PageLayout } from "../../../page-layout";
