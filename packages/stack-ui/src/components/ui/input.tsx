@@ -13,7 +13,7 @@ export const Input = forwardRefIfNeeded<HTMLInputElement, InputProps>(
 
     if (prefixItem) {
       return (
-        <div className="flex flex-row items-center flex-1">
+        <div className="flex flex-row items-center backdrop-blur-md bg-white/20 dark:bg-black/20 flex-1">
           <div className={'flex self-stretch justify-center items-center text-muted-foreground pl-3 select-none bg-muted/70 pr-3 border-r border-input rounded-l-md'}>
             {prefixItem}
           </div>
@@ -27,7 +27,7 @@ export const Input = forwardRefIfNeeded<HTMLInputElement, InputProps>(
       );
     } else {
       return (
-        <div className="flex flex-row items-center flex-1">
+        <div className="flex flex-row items-center backdrop-blur-md bg-white/20 dark:bg-black/20 flex-1">
           <input
             type={type}
             className={cn(baseClasses, className)}
