@@ -1,7 +1,7 @@
 "use client";
 import { StyledLink } from "@/components/link";
 import { SettingCard, SettingSwitch } from "@/components/settings";
-import { Typography } from "@stackframe/stack-ui";
+import { Typography } from "@/components/ui";
 import { AppEnabledGuard } from "../app-enabled-guard";
 import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";

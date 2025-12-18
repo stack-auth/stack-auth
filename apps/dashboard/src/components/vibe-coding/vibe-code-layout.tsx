@@ -2,7 +2,7 @@ import {
   ResizableHandle,
   ResizablePanel,
   ResizablePanelGroup,
-} from "@stackframe/stack-ui";
+} from "@/components/ui";
 
 type VibeCodeEditorLayoutProps = {
   previewComponent: React.ReactNode,

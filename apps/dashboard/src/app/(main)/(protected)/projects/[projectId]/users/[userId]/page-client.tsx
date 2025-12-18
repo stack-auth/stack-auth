@@ -40,7 +40,7 @@ import {
   Typography,
   cn,
   useToast
-} from "@stackframe/stack-ui";
+} from "@/components/ui";
 import { AtSign, Calendar, Check, Hash, Mail, MoreHorizontal, Shield, SquareAsterisk, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import * as yup from "yup";

@@ -1,5 +1,5 @@
 import React, { useState, ReactNode } from 'react';
-import { Button } from "@stackframe/stack-ui";
+import { Button } from "@/components/ui";
 
 type DialogState = {
   isOpen: boolean,

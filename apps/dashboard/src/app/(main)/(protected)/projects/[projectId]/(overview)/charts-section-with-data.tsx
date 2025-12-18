@@ -10,7 +10,7 @@ import {
   CardHeader,
   CardTitle,
   Typography,
-} from "@stackframe/stack-ui";
+} from "@/components/ui";
 import { useAdminApp, useProjectId } from '../use-admin-app';
 import { DonutChartDisplay, LineChartDisplay, LineChartDisplayConfig } from './line-chart';
 
