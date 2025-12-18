@@ -166,6 +166,8 @@ export async function logEvent<T extends EventType[]>(
   const branchId = typeof dataRecord === "object" && dataRecord && typeof dataRecord.branchId === "string" ? dataRecord.branchId : DEFAULT_BRANCH_ID;
   const userId = typeof dataRecord === "object" && dataRecord && typeof dataRecord.userId === "string" ? dataRecord.userId : "";
   const teamId = typeof dataRecord === "object" && dataRecord && typeof dataRecord.teamId === "string" ? dataRecord.teamId : "";
+  const sessionId = typeof dataRecord === "object" && dataRecord && typeof dataRecord.sessionId === "string" ? dataRecord.sessionId : "";
+  const isAnonymous = typeof dataRecord === "object" && dataRecord && typeof dataRecord.isAnonymous === "boolean" ? dataRecord.isAnonymous : false;
 
 
   // rest is no more dynamic APIs so we can run it asynchronously
@@ -204,6 +206,8 @@ export async function logEvent<T extends EventType[]>(
         branch_id: branchId,
         user_id: userId,
         team_id: teamId,
+        is_anonymous: isAnonymous,
+        session_id: sessionId,
       })),
       format: "JSONEachRow",
       clickhouse_settings: {
