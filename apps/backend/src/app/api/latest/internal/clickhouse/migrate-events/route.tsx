@@ -145,25 +145,21 @@ export const POST = createSmartRouteHandler({
 
     if (events.length) {
       const clickhouseClient = clickhouseAdminClient;
-      try {
-        const rowsByEvent = events.map(createClickhouseRows);
-        const rowsToInsert = rowsByEvent.flat();
-        migratedEvents = rowsByEvent.reduce((acc, rows) => acc + (rows.length ? 1 : 0), 0);
+      const rowsByEvent = events.map(createClickhouseRows);
+      const rowsToInsert = rowsByEvent.flat();
+      migratedEvents = rowsByEvent.reduce((acc, rows) => acc + (rows.length ? 1 : 0), 0);
 
-        if (rowsToInsert.length) {
-          await clickhouseClient.insert({
-            table: "events",
-            values: rowsToInsert,
-            format: "JSONEachRow",
-            clickhouse_settings: {
-              date_time_input_format: "best_effort",
-              async_insert: 1,
-            },
-          });
-          insertedRows = rowsToInsert.length;
-        }
-      } finally {
-        await clickhouseClient.close();
+      if (rowsToInsert.length) {
+        await clickhouseClient.insert({
+          table: "events",
+          values: rowsToInsert,
+          format: "JSONEachRow",
+          clickhouse_settings: {
+            date_time_input_format: "best_effort",
+            async_insert: 1,
+          },
+        });
+        insertedRows = rowsToInsert.length;
       }
     }
 
