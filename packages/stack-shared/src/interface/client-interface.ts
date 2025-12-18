@@ -269,10 +269,10 @@ export class StackClientInterface {
     /**
      * `tokenObj === null` means the session is invalid/not logged in
      */
-    let tokenObj = await session.getOrFetchLikelyValidTokens(20_000);
+    let tokenObj = await session.getOrFetchLikelyValidTokens(20_000, null);
 
     let adminSession = "projectOwnerSession" in this.options ? this.options.projectOwnerSession : null;
-    let adminTokenObj = adminSession ? await adminSession.getOrFetchLikelyValidTokens(20_000) : null;
+    let adminTokenObj = adminSession ? await adminSession.getOrFetchLikelyValidTokens(20_000, null) : null;
 
     // all requests should be dynamic to prevent Next.js caching
     await this.options.prepareRequest?.();
@@ -988,7 +988,9 @@ export class StackClientInterface {
     url.searchParams.set("type", options.type);
     url.searchParams.set("error_redirect_url", options.errorRedirectUrl);
 
-    const tokens = await options.session.getOrFetchLikelyValidTokens(20_000);
+    // TODO: This token will expire after 45s if the token lifetime is 60s, which may be shorter than the OAuth flow.
+    // We should probably find a way to request a longer-lived token here.
+    const tokens = await options.session.getOrFetchLikelyValidTokens(45_000, 60_000);
     if (tokens) {
       url.searchParams.set("token", tokens.accessToken.token);
     }
@@ -1054,7 +1056,7 @@ export class StackClientInterface {
   }
 
   async signOut(session: InternalSession): Promise<void> {
-    const tokenObj = await session.getOrFetchLikelyValidTokens(20_000);
+    const tokenObj = await session.getOrFetchLikelyValidTokens(20_000, null);
     if (tokenObj) {
       const resOrError = await this.sendClientRequestAndCatchKnownError(
         "/auth/sessions/current",

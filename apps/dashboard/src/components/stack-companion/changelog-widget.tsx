@@ -1,7 +1,7 @@
 'use client';
 
 import { runAsynchronously } from '@stackframe/stack-shared/dist/utils/promises';
-import { Button } from '@stackframe/stack-ui';
+import { Button } from '@/components/ui';
 import { Calendar, ChevronDown, ChevronUp } from 'lucide-react';
 import Image from 'next/image';
 import Script from 'next/script';

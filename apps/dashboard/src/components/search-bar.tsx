@@ -1,7 +1,7 @@
 import React from "react";
 
 import { forwardRefIfNeeded } from "@stackframe/stack-shared/dist/utils/react";
-import { Input } from "@stackframe/stack-ui";
+import { Input } from "@/components/ui";
 import { Search } from "lucide-react";
 
 export const SearchBar = forwardRefIfNeeded<

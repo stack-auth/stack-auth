@@ -1,7 +1,7 @@
 import Editor, { Monaco } from '@monaco-editor/react';
 import { runAsynchronously } from '@stackframe/stack-shared/dist/utils/promises';
 import { deindent } from '@stackframe/stack-shared/dist/utils/strings';
-import { Typography } from "@stackframe/stack-ui";
+import { Typography } from "@/components/ui";
 import { useTheme } from 'next-themes';
 import { dtsBundles } from './dts';
 
