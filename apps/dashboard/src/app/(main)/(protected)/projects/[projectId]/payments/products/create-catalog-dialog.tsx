@@ -1,8 +1,8 @@
 "use client";
 
+import { Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, Input, Label, SimpleTooltip, Typography } from "@/components/ui";
 import { getUserSpecifiedIdErrorMessage, isValidUserSpecifiedId, sanitizeUserSpecifiedId } from "@stackframe/stack-shared/dist/schema-fields";
 import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
-import { Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, Input, Label, SimpleTooltip, Typography } from "@/components/ui";
 import { useState } from "react";
 
 type CreateCatalogDialogProps = {

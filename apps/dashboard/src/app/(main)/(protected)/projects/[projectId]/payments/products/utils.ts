@@ -142,7 +142,7 @@ export function getPricesObject(draft: Product): PricesObject {
 // ============================================================================
 
 // Re-export utilities from schema-fields for convenience
-export { isValidUserSpecifiedId, sanitizeUserSpecifiedId, getUserSpecifiedIdErrorMessage } from "@stackframe/stack-shared/dist/schema-fields";
+export { getUserSpecifiedIdErrorMessage, isValidUserSpecifiedId, sanitizeUserSpecifiedId } from "@stackframe/stack-shared/dist/schema-fields";
 
 /**
  * Validates if an ID matches the required pattern.

@@ -4,13 +4,6 @@ import { EditableGrid, type EditableGridItem } from "@/components/editable-grid"
 import { EditableInput } from "@/components/editable-input";
 import { Link, StyledLink } from "@/components/link";
 import { useRouter } from "@/components/router";
-import { RepeatingInput } from "@/components/repeating-input";
-import type { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
-import type { Transaction, TransactionEntry } from "@stackframe/stack-shared/dist/interface/crud/transactions";
-import type { DayInterval } from "@stackframe/stack-shared/dist/utils/dates";
-import { fromNow } from "@stackframe/stack-shared/dist/utils/dates";
-import { prettyPrintWithMagnitudes } from "@stackframe/stack-shared/dist/utils/numbers";
-import { typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import {
   ActionCell,
   AvatarCell,
@@ -50,6 +43,12 @@ import {
   toast,
   Typography,
 } from "@/components/ui";
+import type { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
+import type { Transaction, TransactionEntry } from "@stackframe/stack-shared/dist/interface/crud/transactions";
+import type { DayInterval } from "@stackframe/stack-shared/dist/utils/dates";
+import { fromNow } from "@stackframe/stack-shared/dist/utils/dates";
+import { prettyPrintWithMagnitudes } from "@stackframe/stack-shared/dist/utils/numbers";
+import { typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import { ArrowLeft, Clock, Copy, DollarSign, FolderOpen, Gift, Layers, MoreHorizontal, Package, Pencil, Plus, Puzzle, Server, Tag, Trash2, Users, X } from "lucide-react";
 import { Suspense, useMemo, useState } from "react";
 import { PageLayout } from "../../../page-layout";
@@ -58,9 +57,9 @@ import { CreateCatalogDialog } from "../create-catalog-dialog";
 import {
   createNewEditingPrice,
   editingPriceToPrice,
-  type EditingPrice,
   PriceEditDialog,
   priceToEditingPrice,
+  type EditingPrice,
 } from "../price-edit-dialog";
 import { DEFAULT_INTERVAL_UNITS, generateUniqueId, intervalLabel, shortIntervalLabel, type Price, type Product } from "../utils";
 
@@ -104,7 +103,7 @@ type ProductPageProps = {
 function ProductPage({ productId, product, config }: ProductPageProps) {
   const router = useRouter();
   const catalogId = product.catalogId;
-  const catalogName = catalogId ? config.payments.catalogs[catalogId].displayName || catalogId : null;
+  const catalogName = catalogId && catalogId in config.payments.catalogs ? config.payments.catalogs[catalogId].displayName || catalogId : null;
   const canGoBack = typeof window !== 'undefined' && window.history.length > 1;
 
   return (
