@@ -5,7 +5,7 @@ import { UserTable } from "@/components/data-table/user-table";
 import { ExportUsersDialog } from "@/components/export-users-dialog";
 import { StyledLink } from "@/components/link";
 import { UserDialog } from "@/components/user-dialog";
-import { Alert, Button, Skeleton } from "@stackframe/stack-ui";
+import { Alert, Button, Skeleton } from "@/components/ui";
 import { Download } from "lucide-react";
 import { Suspense, useState } from "react";
 import { AppEnabledGuard } from "../app-enabled-guard";

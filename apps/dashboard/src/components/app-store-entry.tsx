@@ -3,7 +3,7 @@
 import { AppIcon } from "@/components/app-square";
 import { ALL_APPS_FRONTEND, type AppId } from "@/lib/apps-frontend";
 import { ALL_APPS, ALL_APP_TAGS } from "@stackframe/stack-shared/dist/apps/apps-config";
-import { Badge, Button, Dialog, DialogContent, DialogTitle, ScrollArea, cn } from "@stackframe/stack-ui";
+import { Badge, Button, Dialog, DialogContent, DialogTitle, ScrollArea, cn } from "@/components/ui";
 import { Check, ChevronLeft, ChevronRight, ExternalLink, Shield, X, Zap } from "lucide-react";
 import Image from "next/image";
 import { FunctionComponent, useCallback, useEffect, useRef, useState } from "react";

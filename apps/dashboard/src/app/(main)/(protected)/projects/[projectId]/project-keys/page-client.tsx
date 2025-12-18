@@ -4,7 +4,7 @@ import { EnvKeys } from "@/components/env-keys";
 import { SmartFormDialog } from "@/components/form-dialog";
 import { SelectField } from "@/components/form-fields";
 import { InternalApiKeyFirstView } from "@stackframe/stack";
-import { ActionDialog, Button, Typography } from "@stackframe/stack-ui";
+import { ActionDialog, Button, Typography } from "@/components/ui";
 import { useSearchParams } from "next/navigation";
 import { useState } from "react";
 import * as yup from "yup";

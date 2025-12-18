@@ -6,7 +6,7 @@ import { useUser } from '@stackframe/stack';
 import { StackAssertionError } from '@stackframe/stack-shared/dist/utils/errors';
 import { htmlToText } from '@stackframe/stack-shared/dist/utils/html';
 import { runAsynchronously } from '@stackframe/stack-shared/dist/utils/promises';
-import { Button } from '@stackframe/stack-ui';
+import { Button } from '@/components/ui';
 import { ChevronUp, Lightbulb, Loader2, Plus, Send, X } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 

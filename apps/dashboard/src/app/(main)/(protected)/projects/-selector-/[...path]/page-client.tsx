@@ -15,7 +15,7 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue
-} from "@stackframe/stack-ui";
+} from "@/components/ui";
 import { PlusIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 

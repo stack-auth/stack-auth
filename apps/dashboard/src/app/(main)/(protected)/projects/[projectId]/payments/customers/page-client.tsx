@@ -28,7 +28,7 @@ import {
   TableRow,
   Typography,
   toast,
-} from "@stackframe/stack-ui";
+} from "@/components/ui";
 import { ChevronsUpDown } from "lucide-react";
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { useWatch } from "react-hook-form";

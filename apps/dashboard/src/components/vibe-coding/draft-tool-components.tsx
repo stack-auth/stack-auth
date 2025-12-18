@@ -1,5 +1,5 @@
 import { makeAssistantToolUI } from "@assistant-ui/react";
-import { Button, Card } from "@stackframe/stack-ui";
+import { Button, Card } from "@/components/ui";
 import { Undo2 } from "lucide-react";
 
 type EmailDraftUIProps = {
