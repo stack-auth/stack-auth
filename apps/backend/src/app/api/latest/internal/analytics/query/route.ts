@@ -17,7 +17,7 @@ export const POST = createSmartRouteHandler({
       include_all_branches: yupBoolean().default(false),
       query: yupString().defined().nonEmpty(),
       params: yupRecord(yupString().defined(), yupMixed().defined()).default({}),
-      timeout_ms: yupNumber().integer().min(1).max(60000).default(1000),
+      timeout_ms: yupNumber().integer().min(10_000).default(10_000),
     }).defined(),
   }),
   response: yupObject({
@@ -45,6 +45,8 @@ export const POST = createSmartRouteHandler({
         SQL_project_id: auth.tenancy.project.id,
         SQL_branch_id: auth.tenancy.branchId,
         max_execution_time: body.timeout_ms / 1000,
+        readonly: "1",
+        allow_ddl: 0,
       },
       format: "JSONEachRow",
     }));

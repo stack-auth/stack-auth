@@ -6,7 +6,7 @@ export async function runClickhouseMigrations() {
   const client = clickhouseAdminClient;
   const clickhouseExternalPassword = getEnvVariable("STACK_CLICKHOUSE_EXTERNAL_PASSWORD");
   await client.exec({
-    query: "CREATE USER IF NOT EXISTS limited_user IDENTIFIED WITH plaintext_password BY {clickhouseExternalPassword:String}",
+    query: "CREATE USER IF NOT EXISTS limited_user IDENTIFIED WITH sha256_password BY {clickhouseExternalPassword:String}",
     query_params: { clickhouseExternalPassword },
   });
   // todo: create migration files

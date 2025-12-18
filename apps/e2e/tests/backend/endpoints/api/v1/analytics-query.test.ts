@@ -385,3 +385,34 @@ it("does not allow INSERT statements", async ({ expect }) => {
     }
   `);
 });
+
+
+it("does not allow updating ClickHouse settings", async ({ expect }) => {
+  await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+  await Auth.Otp.signIn();
+
+  const response = await niceBackendFetch("/api/v1/internal/analytics/query", {
+    method: "POST",
+    accessType: "admin",
+    body: {
+      query: `SELECT *
+FROM events
+SETTINGS max_memory_usage = 10000000000;`,
+    },
+  });
+
+  expect(response).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 400,
+      "body": {
+        "code": "ANALYTICS_QUERY_ERROR",
+        "details": { "error": "Cannot modify 'max_memory_usage' setting in readonly mode. " },
+        "error": "The query failed to execute: Cannot modify 'max_memory_usage' setting in readonly mode. ",
+      },
+      "headers": Headers {
+        "x-stack-known-error": "ANALYTICS_QUERY_ERROR",
+        <some fields may have been hidden>,
+      },
+    }
+  `);
+});
