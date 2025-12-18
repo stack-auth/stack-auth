@@ -1,4 +1,6 @@
 // If not set, set the process title to an abridged version of the command that was used to start the process
+// Use by putting this into your .envrc:
+// export NODE_OPTIONS="--require=/path/to/workspace/scripts/set-process-title.js $NODE_OPTIONS"
 
 function escapeBashString(str) {
   return str.replace(/'/g, "'\\''");

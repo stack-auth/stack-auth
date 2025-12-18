@@ -40,7 +40,16 @@ export const withGeneratorLock = async <T>(fn: () => Promise<T>) => {
   try {
     return await fn();
   } finally {
-    fs.unlinkSync(lockFilePath);
+    try {
+      fs.unlinkSync(lockFilePath);
+    } catch (e) {
+      if ("code" in e && e.code === "ENOENT") {
+        // Someone else already deleted the lock file, not sure why but let's keep going
+        console.warn(`Generator lock file ${lockFilePath} already deleted by someone else, not sure why but let's keep going. You may want to investigate this.`);
+        return;
+      }
+      throw e;
+    }
   }
 }
 
