@@ -7,6 +7,7 @@ import { InternalApiKeysCrud } from "./crud/internal-api-keys";
 import { ProjectPermissionDefinitionsCrud } from "./crud/project-permissions";
 import { ProjectsCrud } from "./crud/projects";
 import { SvixTokenCrud } from "./crud/svix-token";
+import type { AnalyticsQueryOptions, AnalyticsQueryResponse } from "./crud/analytics";
 import { TeamPermissionDefinitionsCrud } from "./crud/team-permissions";
 import type { Transaction, TransactionType } from "./crud/transactions";
 import { ServerAuthApplicationOptions, StackServerInterface } from "./server-interface";
@@ -662,6 +663,28 @@ export class StackAdminInterface extends StackServerInterface {
       null,
     );
     return await response.json();
+  }
+
+  async queryAnalytics(options: AnalyticsQueryOptions): Promise<AnalyticsQueryResponse> {
+    const response = await this.sendAdminRequest(
+      "/internal/analytics/query",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          query: options.query,
+          params: options.params ?? {},
+          timeout_ms: options.timeout_ms ?? 1000,
+          include_all_branches: options.include_all_branches ?? false,
+        }),
+      },
+      null,
+    );
+
+    const data = await response.json();
+    return {
+      result: data.result,
+    };
   }
 
 }
