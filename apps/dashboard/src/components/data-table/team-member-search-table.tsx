@@ -1,9 +1,9 @@
 'use client';
 import { useAdminApp } from '@/app/(main)/(protected)/projects/[projectId]/use-admin-app';
-import { ServerUser } from '@stackframe/stack';
 import { AvatarCell, DataTableColumnHeader, DataTableManualPagination, SearchToolbarItem, TextCell } from "@/components/ui";
+import { ServerUser } from '@stackframe/stack';
 import { ColumnDef, ColumnFiltersState, SortingState } from "@tanstack/react-table";
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { extendUsers } from "./user-table";
 
 export function TeamMemberSearchTable(props: {
@@ -38,7 +38,7 @@ export function TeamMemberSearchTable(props: {
     },
   ];
 
-  const onUpdate = async (options: {
+  const onUpdate = useCallback(async (options: {
     cursor: string,
     limit: number,
     sorting: SortingState,
@@ -54,7 +54,7 @@ export function TeamMemberSearchTable(props: {
     setFilters(filters);
     const users = await stackAdminApp.listUsers(filters);
     return { nextCursor: users.nextCursor };
-  };
+  }, [stackAdminApp]);
 
   return <DataTableManualPagination
     showDefaultToolbar={false}
