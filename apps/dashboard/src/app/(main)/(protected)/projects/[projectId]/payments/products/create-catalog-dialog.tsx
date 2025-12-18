@@ -1,12 +1,14 @@
 "use client";
 
-import { Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, Input, Label, SimpleTooltip, Typography } from "@stackframe/stack-ui";
+import { Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, Input, Label, SimpleTooltip, Typography } from "@/components/ui";
+import { getUserSpecifiedIdErrorMessage, isValidUserSpecifiedId, sanitizeUserSpecifiedId } from "@stackframe/stack-shared/dist/schema-fields";
+import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
 import { useState } from "react";
 
 type CreateCatalogDialogProps = {
   open: boolean,
   onOpenChange: (open: boolean) => void,
-  onCreate: (catalog: { id: string, displayName: string }) => void,
+  onCreate: (catalog: { id: string, displayName: string }) => void | Promise<void>,
 };
 
 export function CreateCatalogDialog({ open, onOpenChange, onCreate }: CreateCatalogDialogProps) {
@@ -20,8 +22,8 @@ export function CreateCatalogDialog({ open, onOpenChange, onCreate }: CreateCata
     // Validate catalog ID
     if (!catalogId.trim()) {
       newErrors.id = "Catalog ID is required";
-    } else if (!/^[a-z0-9-]+$/.test(catalogId)) {
-      newErrors.id = "Catalog ID must contain only lowercase letters, numbers, and hyphens";
+    } else if (!isValidUserSpecifiedId(catalogId)) {
+      newErrors.id = getUserSpecifiedIdErrorMessage("catalogId");
     }
 
     // Validate display name
@@ -34,7 +36,7 @@ export function CreateCatalogDialog({ open, onOpenChange, onCreate }: CreateCata
       return;
     }
 
-    onCreate({ id: catalogId.trim(), displayName: displayName.trim() });
+    runAsynchronously(onCreate({ id: catalogId.trim(), displayName: displayName.trim() }));
 
     // Reset form
     setCatalogId("");
@@ -71,7 +73,7 @@ export function CreateCatalogDialog({ open, onOpenChange, onCreate }: CreateCata
               id="catalog-id"
               value={catalogId}
               onChange={(e) => {
-                const value = e.target.value.toLowerCase().replace(/[^a-z0-9_\-]/g, '-');
+                const value = sanitizeUserSpecifiedId(e.target.value);
                 setCatalogId(value);
                 setErrors(prev => ({ ...prev, id: undefined }));
               }}

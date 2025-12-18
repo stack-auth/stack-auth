@@ -1,5 +1,5 @@
 import { runAsynchronously, wait } from "@stackframe/stack-shared/dist/utils/promises";
-import { cn } from "@stackframe/stack-ui";
+import { cn } from "@/components/ui";
 import { useChat } from "ai/react";
 import { Check, Copy, ExternalLink, Loader2, Send, Sparkles, User } from "lucide-react";
 import { memo, useCallback, useEffect, useRef, useState } from "react";

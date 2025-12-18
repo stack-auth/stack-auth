@@ -23,7 +23,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
   Typography,
-} from "@stackframe/stack-ui";
+} from "@/components/ui";
 import {
   Blocks,
   ChevronDown,

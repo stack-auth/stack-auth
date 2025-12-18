@@ -1,5 +1,5 @@
 import { getPublicEnvVar } from '@/lib/env';
-import { Button, CopyField, Tabs, TabsContent, TabsList, TabsTrigger } from "@stackframe/stack-ui";
+import { Button, CopyField, Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui";
 
 function getEnvFileContent(props: {
   projectId: string,

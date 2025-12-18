@@ -20,7 +20,7 @@ import {
   TabsTrigger,
   Typography,
   cn
-} from "@stackframe/stack-ui";
+} from "@/components/ui";
 import * as confetti from "canvas-confetti";
 import { CheckCircle2, ChevronDown, ChevronUp, Circle, Clock } from "lucide-react";
 import { useEffect, useRef, useState } from "react";

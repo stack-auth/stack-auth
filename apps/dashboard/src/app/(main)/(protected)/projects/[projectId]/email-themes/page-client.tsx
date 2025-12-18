@@ -8,7 +8,7 @@ import { useRouter } from "@/components/router";
 import { SettingCard } from "@/components/settings";
 import { previewTemplateSource } from "@stackframe/stack-shared/dist/helpers/emails";
 import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
-import { ActionDialog, Button, Typography } from "@stackframe/stack-ui";
+import { ActionDialog, Button, Typography } from "@/components/ui";
 import { Check, Pencil } from "lucide-react";
 import { useState } from "react";
 import * as yup from "yup";

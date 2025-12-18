@@ -2,7 +2,7 @@
 
 import { CodeBlock } from "@/components/code-block";
 import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
-import { Button, Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Input, Label, toast } from "@stackframe/stack-ui";
+import { Button, Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Input, Label, toast } from "@/components/ui";
 import { ArrowLeft, Check, Copy, Edit2, Trash2, X } from "lucide-react";
 import { useState } from "react";
 import { useRouter } from "../../../../../../../../components/router";
