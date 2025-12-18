@@ -3,6 +3,7 @@
 import { Stepper, StepperPage } from "@/components/stepper";
 import { cn } from "@/lib/utils";
 import { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
+import { getUserSpecifiedIdErrorMessage, isValidUserSpecifiedId, sanitizeUserSpecifiedId } from "@stackframe/stack-shared/dist/schema-fields";
 import { Button, Card, CardDescription, CardHeader, CardTitle, Checkbox, Dialog, DialogContent, DialogFooter, DialogTitle, Input, Label, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Typography } from "@/components/ui";
 import { ArrowLeft, ArrowRight, CreditCard, Package, Plus, Repeat, Trash2 } from "lucide-react";
 import { useState } from "react";
@@ -117,8 +118,8 @@ export function ProductDialog({
 
     if (!productId.trim()) {
       newErrors.productId = "Product ID is required";
-    } else if (!/^[a-z0-9-]+$/.test(productId)) {
-      newErrors.productId = "Product ID must contain only lowercase letters, numbers, and hyphens";
+    } else if (!isValidUserSpecifiedId(productId)) {
+      newErrors.productId = getUserSpecifiedIdErrorMessage("productId");
     } else if (!editingProduct && existingProducts.some(o => o.id === productId)) {
       newErrors.productId = "This product ID already exists";
     }
@@ -374,7 +375,7 @@ export function ProductDialog({
                       id="product-id"
                       value={productId}
                       onChange={(e) => {
-                        const nextValue = e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '');
+                        const nextValue = sanitizeUserSpecifiedId(e.target.value);
                         setProductId(nextValue);
                         if (errors.productId) {
                           setErrors(prev => {

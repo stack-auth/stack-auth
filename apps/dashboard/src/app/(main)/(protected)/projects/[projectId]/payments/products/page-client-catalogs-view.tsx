@@ -5,6 +5,7 @@ import { ItemDialog } from "@/components/payments/item-dialog";
 import { useRouter } from "@/components/router";
 import { cn } from "@/lib/utils";
 import { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
+import { getUserSpecifiedIdErrorMessage, isValidUserSpecifiedId } from "@stackframe/stack-shared/dist/schema-fields";
 import type { DayInterval } from "@stackframe/stack-shared/dist/utils/dates";
 import { prettyPrintWithMagnitudes } from "@stackframe/stack-shared/dist/utils/numbers";
 import { typedEntries, typedFromEntries } from "@stackframe/stack-shared/dist/utils/objects";
@@ -906,7 +907,7 @@ function ProductCard({ id, product, allProducts, existingItems, onSave, onDelete
 
   const handleSaveEdit = async () => {
     const trimmed = localProductId.trim();
-    const validId = trimmed && /^[a-z0-9-]+$/.test(trimmed) ? trimmed : id;
+    const validId = trimmed && isValidUserSpecifiedId(trimmed) ? trimmed : id;
     try {
       if (validId !== id) {
         await onSave(validId, draft);
@@ -1736,7 +1737,7 @@ function CatalogView({ groupedProducts, groups, existingItems, onSaveProduct, on
                       existingItems={existingItems}
                       isDraft
                       onSave={async (specifiedId, product) => {
-                        const newId = specifiedId && specifiedId.trim() && /^[a-z0-9-]+$/.test(specifiedId.trim()) && !usedIds.has(specifiedId.trim())
+                        const newId = specifiedId && specifiedId.trim() && isValidUserSpecifiedId(specifiedId.trim()) && !usedIds.has(specifiedId.trim())
                           ? specifiedId.trim()
                           : generateProductId('product');
                         await onSaveProduct(newId, product);
@@ -1788,7 +1789,7 @@ function CatalogView({ groupedProducts, groups, existingItems, onSaveProduct, on
                       existingItems={existingItems}
                       isDraft
                       onSave={async (specifiedId, product) => {
-                        const newId = specifiedId && specifiedId.trim() && /^[a-z0-9-]+$/.test(specifiedId.trim()) && !usedIds.has(specifiedId.trim())
+                        const newId = specifiedId && specifiedId.trim() && isValidUserSpecifiedId(specifiedId.trim()) && !usedIds.has(specifiedId.trim())
                           ? specifiedId.trim()
                           : generateProductId('product');
                         await onSaveProduct(newId, product);
@@ -1876,7 +1877,7 @@ function CatalogView({ groupedProducts, groups, existingItems, onSaveProduct, on
                   existingItems={existingItems}
                   isDraft
                   onSave={async (specifiedId, product) => {
-                    const newId = specifiedId && specifiedId.trim() && /^[a-z0-9-]+$/.test(specifiedId.trim()) && !usedIds.has(specifiedId.trim())
+                    const newId = specifiedId && specifiedId.trim() && isValidUserSpecifiedId(specifiedId.trim()) && !usedIds.has(specifiedId.trim())
                       ? specifiedId.trim()
                       : generateProductId('product');
                     await onSaveProduct(newId, product);
@@ -1986,8 +1987,8 @@ function CatalogView({ groupedProducts, groups, existingItems, onSaveProduct, on
               onClick={async () => {
                 const id = newCatalogId.trim();
                 if (!id) return;
-                if (!/^[a-z0-9-]+$/.test(id)) {
-                  toast({ title: "Catalog ID must be lowercase letters, numbers, and hyphens", variant: "destructive" });
+                if (!isValidUserSpecifiedId(id)) {
+                  toast({ title: getUserSpecifiedIdErrorMessage("catalogId"), variant: "destructive" });
                   return;
                 }
                 if (Object.prototype.hasOwnProperty.call(groups, id)) {

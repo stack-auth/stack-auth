@@ -1,4 +1,5 @@
 import { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
+import { isValidUserSpecifiedId, sanitizeUserSpecifiedId } from "@stackframe/stack-shared/dist/schema-fields";
 import type { DayInterval } from "@stackframe/stack-shared/dist/utils/dates";
 
 // ============================================================================
@@ -140,13 +141,15 @@ export function getPricesObject(draft: Product): PricesObject {
 // ID Validation & Generation
 // ============================================================================
 
-const ID_PATTERN = /^[a-z0-9-]+$/;
+// Re-export utilities from schema-fields for convenience
+export { isValidUserSpecifiedId, sanitizeUserSpecifiedId, getUserSpecifiedIdErrorMessage } from "@stackframe/stack-shared/dist/schema-fields";
 
 /**
- * Validates if an ID matches the required pattern
+ * Validates if an ID matches the required pattern.
+ * @deprecated Use isValidUserSpecifiedId instead for consistency with schema validation
  */
 export function isValidId(id: string): boolean {
-  return ID_PATTERN.test(id);
+  return isValidUserSpecifiedId(id);
 }
 
 /**
@@ -157,8 +160,9 @@ export function generateUniqueId(prefix: string): string {
 }
 
 /**
- * Sanitizes user input into a valid ID format (lowercase, hyphenated)
+ * Sanitizes user input into a valid ID format.
+ * @deprecated Use sanitizeUserSpecifiedId instead for consistency with schema validation
  */
 export function sanitizeId(input: string): string {
-  return input.toLowerCase().replace(/[^a-z0-9_\-]/g, '-');
+  return sanitizeUserSpecifiedId(input);
 }

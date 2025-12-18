@@ -4,6 +4,7 @@ import { ItemDialog } from "@/components/payments/item-dialog";
 import { useRouter } from "@/components/router";
 import { cn } from "@/lib/utils";
 import { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
+import { getUserSpecifiedIdErrorMessage, isValidUserSpecifiedId, sanitizeUserSpecifiedId } from "@stackframe/stack-shared/dist/schema-fields";
 import { typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import {
@@ -295,8 +296,8 @@ export default function PageClient() {
 
     if (!productId.trim()) {
       newErrors.productId = "Product ID is required";
-    } else if (!/^[a-z0-9-]+$/.test(productId)) {
-      newErrors.productId = "Product ID must contain only lowercase letters, numbers, and hyphens";
+    } else if (!isValidUserSpecifiedId(productId)) {
+      newErrors.productId = getUserSpecifiedIdErrorMessage("productId");
     } else if (existingProducts.some(o => o.id === productId)) {
       newErrors.productId = "This product ID already exists";
     }
@@ -607,7 +608,7 @@ ${Object.entries(prices).map(([id, price]) => {
                   id="product-id"
                   value={productId}
                   onChange={(e) => {
-                    const nextValue = e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '-').replace(/-+/g, '-');
+                    const nextValue = sanitizeUserSpecifiedId(e.target.value);
                     setProductId(nextValue);
                     setHasManuallyEditedId(true);
                     if (errors.productId) {

@@ -1,6 +1,7 @@
 "use client";
 
 import { cn } from "@/lib/utils";
+import { getUserSpecifiedIdErrorMessage, isValidUserSpecifiedId, sanitizeUserSpecifiedId } from "@stackframe/stack-shared/dist/schema-fields";
 import { Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, Input, Label, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Typography } from "@/components/ui";
 import { Package } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -37,8 +38,8 @@ export function ItemDialog({
     // Validate item ID
     if (!itemId.trim()) {
       newErrors.itemId = "Item ID is required";
-    } else if (!/^[a-z0-9_-]+$/.test(itemId)) {
-      newErrors.itemId = "Item ID must contain only lowercase letters, numbers, underscores, and hyphens";
+    } else if (!isValidUserSpecifiedId(itemId)) {
+      newErrors.itemId = getUserSpecifiedIdErrorMessage("itemId");
     } else if (!editingItem && existingItemIds.includes(itemId)) {
       newErrors.itemId = "This item ID already exists";
     }
@@ -112,7 +113,7 @@ export function ItemDialog({
               id="item-id"
               value={itemId}
               onChange={(e) => {
-                const nextValue = e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, '');
+                const nextValue = sanitizeUserSpecifiedId(e.target.value);
                 setItemId(nextValue);
                 if (errors.itemId) {
                   setErrors(prev => {

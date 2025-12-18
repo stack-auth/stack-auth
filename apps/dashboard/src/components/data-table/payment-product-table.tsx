@@ -1,9 +1,9 @@
 'use client';
 import { useAdminApp } from "@/app/(main)/(protected)/projects/[projectId]/use-admin-app";
 import { ProductDialog } from "@/components/payments/product-dialog";
+import { ActionCell, ActionDialog, DataTable, DataTableColumnHeader, TextCell, toast } from "@/components/ui";
 import { branchPaymentsSchema } from "@stackframe/stack-shared/dist/config/schema";
 import { typedEntries, typedFromEntries } from "@stackframe/stack-shared/dist/utils/objects";
-import { ActionCell, ActionDialog, DataTable, DataTableColumnHeader, TextCell, toast } from "@/components/ui";
 import { ColumnDef } from "@tanstack/react-table";
 import { useState } from "react";
 import * as yup from "yup";
@@ -104,7 +104,7 @@ function ActionsCell({ product }: { product: PaymentProduct }) {
         okButton={{
           label: "Delete",
           onClick: async () => {
-            const config = project.useConfig();
+            const config = await project.getConfig();
             const updatedProducts = typedFromEntries(
               typedEntries(config.payments.products)
                 .filter(([productId]) => productId !== product.id)

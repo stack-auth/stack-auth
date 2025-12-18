@@ -1,15 +1,14 @@
 "use client";
 
-import { cn } from "@/lib/utils";
-import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
-import { SimpleTooltip } from "@/components/ui";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
-  SelectValue,
+  SelectValue, SimpleTooltip
 } from "@/components/ui";
+import { cn } from "@/lib/utils";
+import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { useState } from "react";
 import { EditableInput } from "./editable-input";
 
@@ -155,7 +154,7 @@ function EditableBooleanField({
   return (
     <Select
       value={value ? 'true' : 'false'}
-      onValueChange={(v) => runAsynchronously(handleChange(v))}
+      onValueChange={(v) => runAsynchronouslyWithAlert(handleChange(v))}
       disabled={isUpdating}
     >
       <SelectTrigger
@@ -216,7 +215,7 @@ function EditableDropdownField({
   return (
     <Select
       value={value}
-      onValueChange={(v) => runAsynchronously(handleChange(v))}
+      onValueChange={(v) => runAsynchronouslyWithAlert(handleChange(v))}
       disabled={isUpdating}
     >
       <SelectTrigger
