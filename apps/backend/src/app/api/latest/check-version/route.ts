@@ -43,8 +43,8 @@ export const POST = createSmartRouteHandler({
 
     const serverVersion = packageJson.version;
 
-    // https://vercel.com/changelog/cve-2025-55182
-    if (semver.lt(clientVersion, "2.8.55")) {
+    // https://vercel.com/changelog/cve-2025-55182 and https://nextjs.org/blog/security-update-2025-12-11
+    if (semver.lt(clientVersion, "2.8.57")) {
       return err(true, `It seems that you may be running on an old version of Next.js/React. Please update to the newest version immediately to apply the latest security updates including one urgent vulnerability in React Server Components. See: https://vercel.com/changelog/cve-2025-55182`);
     }
 

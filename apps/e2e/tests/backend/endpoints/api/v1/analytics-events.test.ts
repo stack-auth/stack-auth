@@ -6,9 +6,9 @@ const queryEvents = async (params: {
   userId?: string,
   teamId?: string,
   eventType?: string,
-}) => await niceBackendFetch("/api/v1/analytics/query", {
+}) => await niceBackendFetch("/api/v1/internal/analytics/query", {
   method: "POST",
-  accessType: "server",
+  accessType: "admin",
   body: {
     query: `
       SELECT event_type, project_id, branch_id, user_id, team_id
@@ -122,52 +122,6 @@ it("cannot read events from other projects", async ({ expect }) => {
   expect(queryResponse.status).toBe(200);
   const results = Array.isArray(queryResponse.body?.result) ? queryResponse.body.result : [];
   expect(results.length).toBe(0);
-});
-
-it("stores the team id for session events when a user selected a team", async ({ expect }) => {
-  await Project.createAndSwitch({ config: { magic_link_enabled: true } });
-  const { userId: userWithoutTeam } = await Auth.Otp.signIn();
-
-  const userWithoutTeamResponse = await fetchEventsWithRetry({
-    userId: userWithoutTeam,
-    eventType: "$session-activity",
-  });
-  expect(userWithoutTeamResponse.status).toBe(200);
-  const userWithoutTeamResults = Array.isArray(userWithoutTeamResponse.body?.result) ? userWithoutTeamResponse.body.result : [];
-  expect(userWithoutTeamResults.length).toBeGreaterThan(0);
-  expect(userWithoutTeamResults[0]).toMatchObject({
-    user_id: userWithoutTeam,
-    team_id: "",
-  });
-
-  await bumpEmailAddress();
-  const { userId: userWithTeam } = await Auth.Otp.signIn();
-  const { teamId } = await Team.createWithCurrentAsCreator({});
-  const updateSelectedTeamResponse = await niceBackendFetch("/api/v1/users/me", {
-    accessType: "client",
-    method: "PATCH",
-    body: {
-      selected_team_id: teamId,
-    },
-  });
-  expect(updateSelectedTeamResponse.status).toBe(200);
-  expect(updateSelectedTeamResponse.body.selected_team_id).toBe(teamId);
-
-  // Refresh the session to emit a new session activity event with the updated team
-  await Auth.refreshAccessToken();
-
-  const userWithTeamResponse = await fetchEventsWithRetry({
-    userId: userWithTeam,
-    teamId,
-    eventType: "$session-activity",
-  });
-  expect(userWithTeamResponse.status).toBe(200);
-  const userWithTeamResults = Array.isArray(userWithTeamResponse.body?.result) ? userWithTeamResponse.body.result : [];
-  expect(userWithTeamResults.length).toBeGreaterThan(0);
-  expect(userWithTeamResults[0]).toMatchObject({
-    user_id: userWithTeam,
-    team_id: teamId,
-  });
 });
 
 it("filters analytics events by user within a project", async ({ expect }) => {

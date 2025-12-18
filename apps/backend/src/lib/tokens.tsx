@@ -164,13 +164,13 @@ export async function generateAccessTokenFromRefreshTokenIfValid(options: {
       projectId: options.tenancy.project.id,
       branchId: options.tenancy.branchId,
       userId: options.refreshTokenObj.projectUserId,
-      teamId: user.selected_team_id ?? "",
       sessionId: options.refreshTokenObj.id,
       isAnonymous: user.is_anonymous,
+      teamId: "",
     }
   );
 
-  const payload: Omit<AccessTokenPayload, "iss" | "aud"> = {
+  const payload: Omit<AccessTokenPayload, "iss" | "aud" | "iat"> = {
     sub: options.refreshTokenObj.projectUserId,
     project_id: options.tenancy.project.id,
     branch_id: options.tenancy.branchId,

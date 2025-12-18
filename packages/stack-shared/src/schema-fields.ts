@@ -695,6 +695,7 @@ export const userTotpSecretMutationSchema = base64Schema.nullable().meta({ opena
 export const accessTokenPayloadSchema = yupObject({
   sub: yupString().defined(),
   exp: yupNumber().optional(),
+  iat: yupNumber().defined(),
   iss: yupString().defined(),
   aud: yupString().defined(),
   project_id: yupString().defined(),

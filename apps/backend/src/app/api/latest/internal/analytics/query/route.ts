@@ -1,19 +1,16 @@
-import { createClickhouseClient, getQueryTimingStats } from "@/lib/clickhouse";
+import { clickhouseExternalClient, getQueryTimingStats } from "@/lib/clickhouse";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@stackframe/stack-shared";
-import { adaptSchema, jsonSchema, serverOrHigherAuthTypeSchema, yupBoolean, yupMixed, yupNumber, yupObject, yupRecord, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+import { adaptSchema, jsonSchema, adminAuthTypeSchema, yupBoolean, yupMixed, yupNumber, yupObject, yupRecord, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { randomUUID } from "crypto";
 
 export const POST = createSmartRouteHandler({
-  metadata: {
-    summary: "Execute analytics query",
-    description: "Execute a ClickHouse query against the analytics database",
-    tags: ["Analytics"],
-  },
+  metadata: { hidden: true },
   request: yupObject({
     auth: yupObject({
-      type: serverOrHigherAuthTypeSchema,
+      type: adminAuthTypeSchema,
       tenancy: adaptSchema,
     }).defined(),
     body: yupObject({
@@ -35,7 +32,10 @@ export const POST = createSmartRouteHandler({
     }).defined(),
   }),
   async handler({ body, auth }) {
-    const client = createClickhouseClient("external", body.timeout_ms);
+    if (body.include_all_branches) {
+      throw new StackAssertionError("include_all_branches is not supported yet");
+    }
+    const client = clickhouseExternalClient;
     const queryId = randomUUID();
     const resultSet = await Result.fromPromise(client.query({
       query: body.query,
@@ -44,15 +44,13 @@ export const POST = createSmartRouteHandler({
       clickhouse_settings: {
         SQL_project_id: auth.tenancy.project.id,
         SQL_branch_id: auth.tenancy.branchId,
+        max_execution_time: body.timeout_ms / 1000,
       },
       format: "JSONEachRow",
     }));
 
     if (resultSet.status === "error") {
       const message = resultSet.error instanceof Error ? resultSet.error.message : null;
-      if (message === "Timeout error.") {
-        throw new KnownErrors.AnalyticsQueryTimeout(body.timeout_ms);
-      }
       throw new KnownErrors.AnalyticsQueryError(message ?? "Unknown error");
     }
 

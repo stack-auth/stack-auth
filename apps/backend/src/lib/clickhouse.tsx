@@ -1,5 +1,6 @@
 import { createClient, type ClickHouseClient } from "@clickhouse/client";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
+import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 
 const clickhouseUrl = getEnvVariable("STACK_CLICKHOUSE_URL");
 const clickhouseAdminUser = getEnvVariable("STACK_CLICKHOUSE_ADMIN_USER", "stackframe");
@@ -8,16 +9,17 @@ const clickhouseAdminPassword = getEnvVariable("STACK_CLICKHOUSE_ADMIN_PASSWORD"
 const clickhouseExternalPassword = getEnvVariable("STACK_CLICKHOUSE_EXTERNAL_PASSWORD");
 const clickhouseDatabase = getEnvVariable("STACK_CLICKHOUSE_DATABASE", "analytics");
 
-export function createClickhouseClient(authType: "admin" | "external", timeoutMs?: number) {
+export function createClickhouseClient(authType: "admin" | "external", database?: string) {
   return createClient({
     url: clickhouseUrl,
     username: authType === "admin" ? clickhouseAdminUser : clickhouseExternalUser,
     password: authType === "admin" ? clickhouseAdminPassword : clickhouseExternalPassword,
-    database: clickhouseDatabase,
-    request_timeout: timeoutMs,
+    database,
   });
 }
 
+export const clickhouseAdminClient = createClickhouseClient("admin", clickhouseDatabase);
+export const clickhouseExternalClient = createClickhouseClient("external", clickhouseDatabase);
 
 export const getQueryTimingStats = async (client: ClickHouseClient, queryId: string) => {
   // Flush logs to ensure system.query_log has latest query result.
@@ -51,6 +53,9 @@ export const getQueryTimingStats = async (client: ClickHouseClient, queryId: str
     cpu_time_ms: number,
     wall_clock_time_ms: number,
   }>();
+  if (stats.data.length !== 1) {
+    throw new StackAssertionError("Unexpected number of query log results", { data: stats.data });
+  }
   return stats.data[0];
 };
 

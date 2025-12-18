@@ -9,6 +9,7 @@ services:
       POSTGRES_PASSWORD: PASSWORD-PLACEHOLDER--uqfEC1hmmv
       POSTGRES_DB: stackframe
       POSTGRES_DELAY_MS: ${POSTGRES_DELAY_MS:-0}
+      POSTGRES_INITDB_ARGS: --nosync
     ports:
       - "${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}28:5432"
     volumes:
@@ -204,22 +205,6 @@ services:
     environment:
       HOST_ON_HOST: host.docker.internal
 
-  # ================= MCPJam Inspector =================
-
-  mcpjam-inspector:
-    image: node:20-alpine
-    ports:
-      - "${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}26:3001"
-    command: >
-      sh -c "echo '{\"mcpServers\":{\"local-stack-auth-docs\":{\"url\":\"http://host.docker.internal:${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}04/api/internal/mcp\"}}}' > /app/mcp.json && npx -y @mcpjam/inspector@latest --port 3001 --config /app/mcp.json"
-    working_dir: /app
-    volumes:
-      - mcpjam-inspector-data:/root
-    extra_hosts:
-      - "host.docker.internal:host-gateway"  # noop on Docker Desktop/Orbstack, enables host.docker.internal on Linux
-    environment:
-      HOST_ON_HOST: host.docker.internal
-
   # ================= ClickHouse =================
 
   clickhouse:
@@ -239,6 +224,18 @@ services:
         soft: 262144
         hard: 262144
 
+  # ================= Drizzle Gateway =================
+
+  drizzle-gateway:
+    image: ghcr.io/drizzle-team/gateway:latest
+    restart: always
+    ports:
+      - "${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}35:1133"
+    environment:
+      PORT: 1133
+      STORE_PATH: /app
+    volumes:
+      - drizzle-gateway:/app
 
 # ================= volumes =================
 
@@ -250,8 +247,8 @@ volumes:
   s3mock-data:
   deno-cache:
   localstack-data:
-  mcpjam-inspector-data:
   clickhouse-data:
+  drizzle-gateway:
 
 # ================= configs =================
 

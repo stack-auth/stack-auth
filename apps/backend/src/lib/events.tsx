@@ -9,7 +9,7 @@ import { filterUndefined, typedKeys } from "@stackframe/stack-shared/dist/utils/
 import { UnionToIntersection } from "@stackframe/stack-shared/dist/utils/types";
 import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
 import * as yup from "yup";
-import { createClickhouseClient } from "./clickhouse";
+import { clickhouseAdminClient } from "./clickhouse";
 import { getEndUserInfo } from "./end-users";
 import { DEFAULT_BRANCH_ID } from "./tenancies";
 
@@ -193,28 +193,24 @@ export async function logEvent<T extends EventType[]>(
       },
     });
 
-    const clickhouseClient = createClickhouseClient("admin");
-    try {
-      await clickhouseClient.insert({
-        table: "events",
-        values: eventTypesArray.map(eventType => ({
-          event_type: eventType.id,
-          event_at: timeRange.end,
-          data: clickhouseEventData,
-          project_id: projectId,
-          branch_id: branchId,
-          user_id: userId,
-          team_id: teamId,
-        })),
-        format: "JSONEachRow",
-        clickhouse_settings: {
-          date_time_input_format: "best_effort",
-          async_insert: 1,
-        },
-      });
-    } finally {
-      await clickhouseClient.close();
-    }
+    const clickhouseClient = clickhouseAdminClient;
+    await clickhouseClient.insert({
+      table: "events",
+      values: eventTypesArray.map(eventType => ({
+        event_type: eventType.id,
+        event_at: timeRange.end,
+        data: clickhouseEventData,
+        project_id: projectId,
+        branch_id: branchId,
+        user_id: userId,
+        team_id: teamId,
+      })),
+      format: "JSONEachRow",
+      clickhouse_settings: {
+        date_time_input_format: "best_effort",
+        async_insert: 1,
+      },
+    });
 
     // log event in PostHog
     if (getNodeEnvironment().includes("production") && !getEnvVariable("CI", "")) {

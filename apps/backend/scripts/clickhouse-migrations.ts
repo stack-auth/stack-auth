@@ -1,9 +1,9 @@
-import { createClickhouseClient } from "@/lib/clickhouse";
+import { clickhouseAdminClient } from "@/lib/clickhouse";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 
 export async function runClickhouseMigrations() {
-  console.log("Running Clickhouse migrations...");
-  const client = createClickhouseClient("admin");
+  console.log("[Clickhouse] Running Clickhouse migrations...");
+  const client = clickhouseAdminClient;
   const clickhouseExternalPassword = getEnvVariable("STACK_CLICKHOUSE_EXTERNAL_PASSWORD");
   await client.exec({
     query: "CREATE USER IF NOT EXISTS limited_user IDENTIFIED WITH plaintext_password BY {clickhouseExternalPassword:String}",
@@ -22,19 +22,23 @@ export async function runClickhouseMigrations() {
   for (const query of queries) {
     await client.exec({ query });
   }
-  console.log("Clickhouse migrations complete");
+  console.log("[Clickhouse] Clickhouse migrations complete");
   await client.close();
 }
 
 const EVENTS_TABLE_BASE_SQL = `
 CREATE TABLE IF NOT EXISTS events (
-    event_type  LowCardinality(String),
-    event_at    DateTime64(3, 'UTC'),
-    data        JSON,
-    project_id  String,
-    branch_id   String,
-    user_id     String,
-    team_id     String,
+    event_type       LowCardinality(String),
+    event_at         DateTime64(3, 'UTC'),
+    data             JSON,
+    project_id       String,
+    branch_id        String,
+    user_id          String,
+    team_id          String,
+    refresh_token_id String,
+    is_anonymous     Boolean,
+    session_id       String,
+    ip_address       String,
     created_at DateTime64(3, 'UTC') DEFAULT now64(3)
 )
 ENGINE MergeTree

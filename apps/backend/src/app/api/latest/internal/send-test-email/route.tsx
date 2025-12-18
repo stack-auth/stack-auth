@@ -1,4 +1,4 @@
-import { isSecureEmailPort, sendEmailWithoutRetries } from "@/lib/emails";
+import { isSecureEmailPort, lowLevelSendEmailDirectWithoutRetries } from "@/lib/emails-low-level";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import * as schemaFields from "@stackframe/stack-shared/dist/schema-fields";
 import { adaptSchema, adminAuthTypeSchema, emailSchema, yupBoolean, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
@@ -37,7 +37,8 @@ export const POST = createSmartRouteHandler({
     }).defined(),
   }),
   handler: async ({ body, auth }) => {
-    const resultOuter = await timeout(sendEmailWithoutRetries({
+    const resultOuter = await timeout(lowLevelSendEmailDirectWithoutRetries({
+      shouldSkipDeliverabilityCheck: true,
       tenancyId: auth.tenancy.id,
       emailConfig: {
         type: 'standard',
