@@ -1,7 +1,7 @@
 import { clickhouseExternalClient, getQueryTimingStats } from "@/lib/clickhouse";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@stackframe/stack-shared";
-import { adaptSchema, jsonSchema, adminAuthTypeSchema, yupBoolean, yupMixed, yupNumber, yupObject, yupRecord, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+import { adaptSchema, adminAuthTypeSchema, jsonSchema, yupBoolean, yupMixed, yupNumber, yupObject, yupRecord, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { randomUUID } from "crypto";
@@ -17,7 +17,7 @@ export const POST = createSmartRouteHandler({
       include_all_branches: yupBoolean().default(false),
       query: yupString().defined().nonEmpty(),
       params: yupRecord(yupString().defined(), yupMixed().defined()).default({}),
-      timeout_ms: yupNumber().integer().min(10_000).default(10_000),
+      timeout_ms: yupNumber().integer().min(1_000).default(10_000),
     }).defined(),
   }),
   response: yupObject({

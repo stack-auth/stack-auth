@@ -1,17 +1,21 @@
+import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
 import { it } from "../../../../helpers";
-import { Auth, Project, niceBackendFetch } from "../../../backend-helpers";
+import { Project, niceBackendFetch } from "../../../backend-helpers";
 
-it("can execute a basic query with admin access", async ({ expect }) => {
+async function runQuery(body: { query: string, params?: Record<string, string>, timeout_ms?: number }) {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
-  await Auth.Otp.signIn();
 
   const response = await niceBackendFetch("/api/v1/internal/analytics/query", {
     method: "POST",
     accessType: "admin",
-    body: {
-      query: "SELECT 1 as value",
-    },
+    body,
   });
+
+  return response;
+}
+
+it("can execute a basic query with admin access", async ({ expect }) => {
+  const response = await runQuery({ query: "SELECT 1 as value" });
 
   expect(response).toMatchInlineSnapshot(`
     NiceResponse {
@@ -29,17 +33,10 @@ it("can execute a basic query with admin access", async ({ expect }) => {
 });
 
 it("can execute a query with parameters", async ({ expect }) => {
-  await Project.createAndSwitch({ config: { magic_link_enabled: true } });
-  await Auth.Otp.signIn();
-
-  const response = await niceBackendFetch("/api/v1/internal/analytics/query", {
-    method: "POST",
-    accessType: "admin",
-    body: {
-      query: "SELECT {test_param:String} as value",
-      params: {
-        test_param: "hello world",
-      },
+  const response = await runQuery({
+    query: "SELECT {test_param:String} as value",
+    params: {
+      test_param: "hello world",
     },
   });
 
@@ -59,39 +56,28 @@ it("can execute a query with parameters", async ({ expect }) => {
 });
 
 it("can execute a query with custom timeout", async ({ expect }) => {
-  await Project.createAndSwitch({ config: { magic_link_enabled: true } });
-  await Auth.Otp.signIn();
-
-  const response = await niceBackendFetch("/api/v1/internal/analytics/query", {
-    method: "POST",
-    accessType: "admin",
-    body: {
-      query: "SELECT 1 as value",
-      timeout_ms: 5000,
-    },
+  const response = await runQuery({
+    query: "SELECT 1 as value",
+    timeout_ms: 15000,
   });
 
-  expect(response.status).toBe(200);
-  expect(response.body).toMatchInlineSnapshot(`
-    {
-      "result": [{ "value": 1 }],
-      "stats": {
-        "cpu_time": <stripped field 'cpu_time'>,
-        "wall_clock_time": <stripped field 'wall_clock_time'>,
+  expect(response).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": {
+        "result": [{ "value": 1 }],
+        "stats": {
+          "cpu_time": <stripped field 'cpu_time'>,
+          "wall_clock_time": <stripped field 'wall_clock_time'>,
+        },
       },
+      "headers": Headers { <some fields may have been hidden> },
     }
   `);
 });
 
 it("validates required query field", async ({ expect }) => {
-  await Project.createAndSwitch({ config: { magic_link_enabled: true } });
-  await Auth.Otp.signIn();
-
-  const response = await niceBackendFetch("/api/v1/internal/analytics/query", {
-    method: "POST",
-    accessType: "admin",
-    body: {},
-  });
+  const response = await runQuery({} as any);
 
   expect(response).toMatchInlineSnapshot(`
     NiceResponse {
@@ -118,16 +104,7 @@ it("validates required query field", async ({ expect }) => {
 });
 
 it("handles invalid SQL query", async ({ expect }) => {
-  await Project.createAndSwitch({ config: { magic_link_enabled: true } });
-  await Auth.Otp.signIn();
-
-  const response = await niceBackendFetch("/api/v1/internal/analytics/query", {
-    method: "POST",
-    accessType: "admin",
-    body: {
-      query: "INVALID SQL QUERY",
-    },
-  });
+  const response = await runQuery({ query: "INVALID SQL QUERY" });
 
   expect(response.status).toBe(400);
   expect(response.body).toMatchInlineSnapshot(`
@@ -148,16 +125,7 @@ it("handles invalid SQL query", async ({ expect }) => {
 });
 
 it("can execute query returning multiple rows", async ({ expect }) => {
-  await Project.createAndSwitch({ config: { magic_link_enabled: true } });
-  await Auth.Otp.signIn();
-
-  const response = await niceBackendFetch("/api/v1/internal/analytics/query", {
-    method: "POST",
-    accessType: "admin",
-    body: {
-      query: "SELECT arrayJoin([0, 1, 2]) AS number",
-    },
-  });
+  const response = await runQuery({ query: "SELECT arrayJoin([0, 1, 2]) AS number" });
 
   expect(response).toMatchInlineSnapshot(`
     NiceResponse {
@@ -179,18 +147,11 @@ it("can execute query returning multiple rows", async ({ expect }) => {
 });
 
 it("can execute query with multiple parameters", async ({ expect }) => {
-  await Project.createAndSwitch({ config: { magic_link_enabled: true } });
-  await Auth.Otp.signIn();
-
-  const response = await niceBackendFetch("/api/v1/internal/analytics/query", {
-    method: "POST",
-    accessType: "admin",
-    body: {
-      query: "SELECT {param1:String} as col1, {param2:String} as col2",
-      params: {
-        param1: "value1",
-        param2: "value2",
-      },
+  const response = await runQuery({
+    query: "SELECT {param1:String} as col1, {param2:String} as col2",
+    params: {
+      param1: "value1",
+      param2: "value2",
     },
   });
 
@@ -215,39 +176,30 @@ it("can execute query with multiple parameters", async ({ expect }) => {
 });
 
 it("can execute query and hit custom timeout", async ({ expect }) => {
-  await Project.createAndSwitch({ config: { magic_link_enabled: true } });
-  await Auth.Otp.signIn();
-
-  const response = await niceBackendFetch("/api/v1/internal/analytics/query", {
-    method: "POST",
-    accessType: "admin",
-    body: {
-      query: "SELECT sleep(3)",
-      timeout_ms: 100,
-    },
+  const response = await runQuery({
+    query: "SELECT sleep(3)",
+    timeout_ms: 1000,
   });
 
-  expect(response.status).toBe(400);
-  expect(response.headers).toMatchInlineSnapshot(`
-    Headers {
-      "x-stack-known-error": "ANALYTICS_QUERY_ERROR",
-      <some fields may have been hidden>,
+  expect(response).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 400,
+      "body": {
+        "code": "ANALYTICS_QUERY_ERROR",
+        "details": { "error": "Timeout exceeded: elapsed <stripped time> ms, maximum: 1000 ms. " },
+        "error": "The query failed to execute: Timeout exceeded: elapsed <stripped time> ms, maximum: 1000 ms. ",
+      },
+      "headers": Headers {
+        "x-stack-known-error": "ANALYTICS_QUERY_ERROR",
+        <some fields may have been hidden>,
+      },
     }
   `);
-  expect(response.body.code).toBe("ANALYTICS_QUERY_ERROR");
-
 });
 
 it("sets SQL_project_id and SQL_branch_id settings in query", async ({ expect }) => {
-  await Project.createAndSwitch({ config: { magic_link_enabled: true } });
-  await Auth.Otp.signIn();
-
-  const response = await niceBackendFetch("/api/v1/internal/analytics/query", {
-    method: "POST",
-    accessType: "admin",
-    body: {
-      query: "SELECT getSetting('SQL_project_id') AS project_id, getSetting('SQL_branch_id') AS branch_id;",
-    },
+  const response = await runQuery({
+    query: "SELECT getSetting('SQL_project_id') AS project_id, getSetting('SQL_branch_id') AS branch_id;",
   });
 
   expect(response).toMatchInlineSnapshot(`
@@ -272,15 +224,8 @@ it("sets SQL_project_id and SQL_branch_id settings in query", async ({ expect })
 
 
 it("does not allow CREATE TABLE", async ({ expect }) => {
-  await Project.createAndSwitch({ config: { magic_link_enabled: true } });
-  await Auth.Otp.signIn();
-
-  const response = await niceBackendFetch("/api/v1/internal/analytics/query", {
-    method: "POST",
-    accessType: "admin",
-    body: {
-      query: "CREATE TABLE IF NOT EXISTS test_table (id UUID) ENGINE = MergeTree() ORDER BY id;",
-    },
+  const response = await runQuery({
+    query: "CREATE TABLE IF NOT EXISTS test_table (id UUID) ENGINE = MergeTree() ORDER BY id;",
   });
 
   expect(response).toMatchInlineSnapshot(`
@@ -301,16 +246,7 @@ it("does not allow CREATE TABLE", async ({ expect }) => {
 
 
 it("does not allow querying system tables", async ({ expect }) => {
-  await Project.createAndSwitch({ config: { magic_link_enabled: true } });
-  await Auth.Otp.signIn();
-
-  const response = await niceBackendFetch("/api/v1/internal/analytics/query", {
-    method: "POST",
-    accessType: "admin",
-    body: {
-      query: "SELECT number FROM system.numbers LIMIT 1",
-    },
-  });
+  const response = await runQuery({ query: "SELECT number FROM system.numbers LIMIT 1" });
 
   expect(response).toMatchInlineSnapshot(`
     NiceResponse {
@@ -330,15 +266,8 @@ it("does not allow querying system tables", async ({ expect }) => {
 
 
 it("does not allow killing queries", async ({ expect }) => {
-  await Project.createAndSwitch({ config: { magic_link_enabled: true } });
-  await Auth.Otp.signIn();
-
-  const response = await niceBackendFetch("/api/v1/internal/analytics/query", {
-    method: "POST",
-    accessType: "admin",
-    body: {
-      query: "KILL QUERY WHERE query_id = '00000000-0000-0000-0000-000000000000'",
-    },
+  const response = await runQuery({
+    query: "KILL QUERY WHERE query_id = '00000000-0000-0000-0000-000000000000'",
   });
 
   expect(response).toMatchInlineSnapshot(`
@@ -359,16 +288,7 @@ it("does not allow killing queries", async ({ expect }) => {
 
 
 it("does not allow INSERT statements", async ({ expect }) => {
-  await Project.createAndSwitch({ config: { magic_link_enabled: true } });
-  await Auth.Otp.signIn();
-
-  const response = await niceBackendFetch("/api/v1/internal/analytics/query", {
-    method: "POST",
-    accessType: "admin",
-    body: {
-      query: "INSERT INTO system.one (dummy) VALUES (0)",
-    },
-  });
+  const response = await runQuery({ query: "INSERT INTO system.one (dummy) VALUES (0)" });
 
   expect(response).toMatchInlineSnapshot(`
     NiceResponse {
@@ -388,17 +308,12 @@ it("does not allow INSERT statements", async ({ expect }) => {
 
 
 it("does not allow updating ClickHouse settings", async ({ expect }) => {
-  await Project.createAndSwitch({ config: { magic_link_enabled: true } });
-  await Auth.Otp.signIn();
-
-  const response = await niceBackendFetch("/api/v1/internal/analytics/query", {
-    method: "POST",
-    accessType: "admin",
-    body: {
-      query: `SELECT *
-FROM events
-SETTINGS max_memory_usage = 10000000000;`,
-    },
+  const response = await runQuery({
+    query: deindent`
+      SELECT *
+      FROM events
+      SETTINGS max_memory_usage = 10000000000;
+    `,
   });
 
   expect(response).toMatchInlineSnapshot(`
@@ -413,6 +328,91 @@ SETTINGS max_memory_usage = 10000000000;`,
         "x-stack-known-error": "ANALYTICS_QUERY_ERROR",
         <some fields may have been hidden>,
       },
+    }
+  `);
+});
+
+it("has limited grants", async ({ expect }) => {
+  const response = await runQuery({
+    query: "SHOW GRANTS",
+  });
+
+  expect(response).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": {
+        "result": [{ "GRANTS FORMAT JSONEachRow": "GRANT SELECT ON analytics.events TO limited_user" }],
+        "stats": {
+          "cpu_time": <stripped field 'cpu_time'>,
+          "wall_clock_time": <stripped field 'wall_clock_time'>,
+        },
+      },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+});
+
+it("can see only some tables", async ({ expect }) => {
+  const response = await runQuery({
+    query: "SELECT database, name FROM system.tables",
+  });
+
+  expect(response).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": {
+        "result": [
+          {
+            "database": "analytics",
+            "name": "events",
+          },
+        ],
+        "stats": {
+          "cpu_time": <stripped field 'cpu_time'>,
+          "wall_clock_time": <stripped field 'wall_clock_time'>,
+        },
+      },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+});
+
+it("can see only some tables", async ({ expect }) => {
+  const response = await runQuery({
+    query: "SELECT name FROM system.databases",
+  });
+
+  expect(response).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": {
+        "result": [{ "name": "analytics" }],
+        "stats": {
+          "cpu_time": <stripped field 'cpu_time'>,
+          "wall_clock_time": <stripped field 'wall_clock_time'>,
+        },
+      },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+});
+
+it("can read the current database", async ({ expect }) => {
+  const response = await runQuery({
+    query: "SELECT currentDatabase()",
+  });
+
+  expect(response).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": {
+        "result": [{ "currentDatabase()": "default" }],
+        "stats": {
+          "cpu_time": <stripped field 'cpu_time'>,
+          "wall_clock_time": <stripped field 'wall_clock_time'>,
+        },
+      },
+      "headers": Headers { <some fields may have been hidden> },
     }
   `);
 });

@@ -4,10 +4,10 @@ import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors"
 
 const clickhouseUrl = getEnvVariable("STACK_CLICKHOUSE_URL");
 const clickhouseAdminUser = getEnvVariable("STACK_CLICKHOUSE_ADMIN_USER", "stackframe");
-const clickhouseExternalUser = getEnvVariable("STACK_CLICKHOUSE_EXTERNAL_USER", "limited_user");
+const clickhouseExternalUser = "limited_user";
 const clickhouseAdminPassword = getEnvVariable("STACK_CLICKHOUSE_ADMIN_PASSWORD");
 const clickhouseExternalPassword = getEnvVariable("STACK_CLICKHOUSE_EXTERNAL_PASSWORD");
-const clickhouseDatabase = getEnvVariable("STACK_CLICKHOUSE_DATABASE", "analytics");
+const clickhouseDefaultDatabase = getEnvVariable("STACK_CLICKHOUSE_DATABASE", "default");
 
 export function createClickhouseClient(authType: "admin" | "external", database?: string) {
   return createClient({
@@ -18,8 +18,8 @@ export function createClickhouseClient(authType: "admin" | "external", database?
   });
 }
 
-export const clickhouseAdminClient = createClickhouseClient("admin", clickhouseDatabase);
-export const clickhouseExternalClient = createClickhouseClient("external", clickhouseDatabase);
+export const clickhouseAdminClient = createClickhouseClient("admin", clickhouseDefaultDatabase);
+export const clickhouseExternalClient = createClickhouseClient("external", clickhouseDefaultDatabase);
 
 export const getQueryTimingStats = async (client: ClickHouseClient, queryId: string) => {
   // Flush logs to ensure system.query_log has latest query result.
