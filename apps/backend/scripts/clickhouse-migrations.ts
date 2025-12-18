@@ -15,9 +15,9 @@ export async function runClickhouseMigrations() {
     query: "CREATE ROW POLICY IF NOT EXISTS events_project_isolation ON events FOR SELECT USING project_id = getSetting('SQL_project_id') AND branch_id = getSetting('SQL_branch_id') TO limited_user",
   });
   const queries = [
+    "REVOKE ALL PRIVILEGES ON *.* FROM limited_user;",
+    "REVOKE ALL FROM limited_user;",
     "GRANT SELECT ON analytics.events TO limited_user;",
-    "REVOKE ALL ON system.* FROM limited_user;",
-    "REVOKE CREATE, ALTER, DROP, INSERT ON *.* FROM limited_user;"
   ];
   for (const query of queries) {
     await client.exec({ query });
