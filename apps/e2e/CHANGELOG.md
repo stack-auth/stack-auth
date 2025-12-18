@@ -1,3 +1,5 @@
+> ⚠️ This CHANGELOG is deprecated. Going forward, use the root `/CHANGELOG.md` for Stack Auth.
+
 # @stackframe/e2e-tests
 
 ## 2.8.57

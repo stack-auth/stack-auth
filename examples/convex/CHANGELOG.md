@@ -1,3 +1,5 @@
+> ⚠️ This CHANGELOG is deprecated. Going forward, use the root `/CHANGELOG.md` for Stack Auth.
+
 # @stackframe/convex-example
 
 ## 2.8.57

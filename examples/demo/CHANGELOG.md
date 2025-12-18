@@ -1,3 +1,5 @@
+> ⚠️ This CHANGELOG is deprecated. Going forward, use the root `/CHANGELOG.md` for Stack Auth.
+
 # @stackframe/example-demo-app
 
 ## 2.8.57
