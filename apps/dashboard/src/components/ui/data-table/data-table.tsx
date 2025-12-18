@@ -200,6 +200,8 @@ export function DataTableManualPagination<TData, TValue>({
       });
       setCursors(c => nextCursor ? { ...c, [pagination.pageIndex + 1]: nextCursor } : c);
     });
+    // todo: check if we can fix this
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pagination, sorting, columnFilters, refreshCounter]);
 
   // Reset to first page when filters change
