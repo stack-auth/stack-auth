@@ -1,0 +1,26 @@
+{
+  "name": "@stackframe/changelog",
+  "version": "2.8.57",
+  "private": true,
+  "scripts": {
+    "dev": "next dev -p ${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}09",
+    "build": "next build",
+    "start": "next start -p ${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}09",
+    "lint": "next lint",
+    "typecheck": "tsc --noEmit",
+    "clean": "rimraf node_modules .next"
+  },
+  "dependencies": {
+    "next": "16.0.9",
+    "react": "19.2.1",
+    "react-dom": "19.2.1",
+    "react-markdown": "^9.0.1",
+    "remark-gfm": "^4.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "20.17.6",
+    "@types/react": "19.2.2",
+    "@types/react-dom": "19.2.2"
+  },
+  "packageManager": "pnpm@10.23.0"
+}
