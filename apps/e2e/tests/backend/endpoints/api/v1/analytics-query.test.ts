@@ -238,7 +238,7 @@ it("can execute query and hit custom timeout", async ({ expect }) => {
 
 });
 
-it("sets SQL_tenancy_id setting in query", async ({ expect }) => {
+it("sets SQL_project_id and SQL_branch_id settings in query", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
   await Auth.Otp.signIn();
 
@@ -246,7 +246,7 @@ it("sets SQL_tenancy_id setting in query", async ({ expect }) => {
     method: "POST",
     accessType: "admin",
     body: {
-      query: "SELECT getSetting('SQL_tenancy_id') AS tenancy_id;",
+      query: "SELECT getSetting('SQL_project_id') AS project_id, getSetting('SQL_branch_id') AS branch_id;",
     },
   });
 
@@ -254,7 +254,12 @@ it("sets SQL_tenancy_id setting in query", async ({ expect }) => {
     NiceResponse {
       "status": 200,
       "body": {
-        "result": [{ "tenancy_id": "<stripped UUID>" }],
+        "result": [
+          {
+            "branch_id": "main",
+            "project_id": "<stripped UUID>",
+          },
+        ],
         "stats": {
           "cpu_time": <stripped field 'cpu_time'>,
           "wall_clock_time": <stripped field 'wall_clock_time'>,
