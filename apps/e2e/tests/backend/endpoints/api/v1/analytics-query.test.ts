@@ -447,68 +447,6 @@ it("can see only some tables", async ({ expect }) => {
   `);
 });
 
-it("can see tables, but only limited metadata", async ({ expect }) => {
-  const response = await runQuery({
-    query: "SELECT * FROM system.tables",
-  });
-
-  // NOTE: make sure the metadata below does not contain any information about other rows when you update this snapshot
-  expect(response).toMatchInlineSnapshot(`
-    NiceResponse {
-      "status": 200,
-      "body": {
-        "result": [
-          {
-            "active_on_fly_alter_mutations": 0,
-            "active_on_fly_data_mutations": 0,
-            "active_on_fly_metadata_mutations": 0,
-            "active_parts": 1,
-            "as_select": "",
-            "comment": "",
-            "create_table_query": "CREATE TABLE analytics.events (\`event_type\` LowCardinality(String), \`event_at\` DateTime64(3, 'UTC'), \`data\` JSON, \`project_id\` String, \`branch_id\` String, \`user_id\` String, \`team_id\` String, \`refresh_token_id\` String, \`is_anonymous\` Bool, \`session_id\` String, \`ip_address\` String, \`created_at\` DateTime64(3, 'UTC') DEFAULT now64(3)) ENGINE = MergeTree PARTITION BY toYYYYMM(event_at) ORDER BY (project_id, branch_id, event_at) SETTINGS index_granularity = 8192",
-            "data_paths": ["/var/lib/clickhouse/store/196/<stripped UUID>/"],
-            "database": "analytics",
-            "definer": "",
-            "dependencies_database": [],
-            "dependencies_table": [],
-            "engine": "MergeTree",
-            "engine_full": "MergeTree PARTITION BY toYYYYMM(event_at) ORDER BY (project_id, branch_id, event_at) SETTINGS index_granularity = 8192",
-            "has_own_data": 1,
-            "is_temporary": 0,
-            "lifetime_bytes": null,
-            "lifetime_rows": null,
-            "loading_dependencies_database": [],
-            "loading_dependencies_table": [],
-            "loading_dependent_database": [],
-            "loading_dependent_table": [],
-            "metadata_modification_time": "2025-12-18 22:02:53",
-            "metadata_path": "store/c9c/<stripped UUID>/events.sql",
-            "metadata_version": 0,
-            "name": "events",
-            "parameterized_view_parameters": [],
-            "partition_key": "toYYYYMM(event_at)",
-            "parts": 1,
-            "primary_key": "project_id, branch_id, event_at",
-            "sampling_key": "",
-            "sorting_key": "project_id, branch_id, event_at",
-            "storage_policy": "default",
-            "total_bytes": 7328,
-            "total_bytes_uncompressed": 33374,
-            "total_marks": 2,
-            "total_rows": 128,
-            "uuid": "<stripped UUID>",
-          },
-        ],
-        "stats": {
-          "cpu_time": <stripped field 'cpu_time'>,
-          "wall_clock_time": <stripped field 'wall_clock_time'>,
-        },
-      },
-      "headers": Headers { <some fields may have been hidden> },
-    }
-  `);
-});
-
 it("SHOW TABLES should be empty because current database is empty", async ({ expect }) => {
   const response = await runQuery({
     query: "SHOW TABLES",

@@ -4,7 +4,6 @@ import { Auth, Project, backendContext, bumpEmailAddress, niceBackendFetch } fro
 
 const queryEvents = async (params: {
   userId?: string,
-  teamId?: string,
   eventType?: string,
 }) => await niceBackendFetch("/api/v1/internal/analytics/query", {
   method: "POST",
@@ -15,28 +14,26 @@ const queryEvents = async (params: {
       FROM analytics.events
       WHERE 1
         ${params.userId ? "AND user_id = {user_id:String}" : ""}
-        ${params.teamId ? "AND team_id = {team_id:String}" : ""}
         ${params.eventType ? "AND event_type = {event_type:String}" : ""}
       ORDER BY event_at DESC
       LIMIT 10
     `,
     params: {
       ...(params.userId ? { user_id: params.userId } : {}),
-      ...(params.teamId ? { team_id: params.teamId } : {}),
       ...(params.eventType ? { event_type: params.eventType } : {}),
     },
   },
 });
 
 const fetchEventsWithRetry = async (
-  params: { userId?: string, teamId?: string, eventType?: string },
+  params: { userId?: string, eventType?: string },
   options: { attempts?: number, delayMs?: number } = {}
 ) => {
   const attempts = options.attempts ?? 5;
   const delayMs = options.delayMs ?? 250;
 
   let response = await queryEvents(params);
-  for (let attempt = 1; attempt < attempts; attempt++) {
+  for (let attempt = 0; attempt < attempts; attempt++) {
     if (response.status !== 200) {
       break;
     }
@@ -56,23 +53,10 @@ it("stores backend events in ClickHouse", async ({ expect }) => {
   const { projectId } = await Project.createAndSwitch({ config: { magic_link_enabled: true } });
   const { userId } = await Auth.Otp.signIn();
 
-  const fetchEvents = async () => await queryEvents({
+  const queryResponse = await fetchEventsWithRetry({
     userId,
     eventType: "$session-activity",
   });
-
-  let queryResponse = await fetchEvents();
-  for (let attempt = 0; attempt < 3; attempt++) {
-    if (queryResponse.status !== 200) {
-      throw new Error(`Analytics query failed: ${JSON.stringify(queryResponse.body)}`);
-    }
-    const results = Array.isArray(queryResponse.body?.result) ? queryResponse.body.result : [];
-    if (results.length > 0) {
-      break;
-    }
-    await wait(500);
-    queryResponse = await fetchEvents();
-  }
 
   expect(queryResponse.status).toBe(200);
   const results = Array.isArray(queryResponse.body?.result) ? queryResponse.body.result : [];
@@ -86,30 +70,39 @@ it("stores backend events in ClickHouse", async ({ expect }) => {
 });
 
 it("cannot read events from other projects", async ({ expect }) => {
-  const projectA = await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+  await Project.createAndSwitch({ config: { magic_link_enabled: true } });
   const projectAKeys = backendContext.value.projectKeys;
   await Auth.Otp.signIn();
 
   // Switch to another project and generate its own event
-  const projectB = await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+  await Project.createAndSwitch({ config: { magic_link_enabled: true } });
   const { userId: projectBUserId } = await Auth.Otp.signIn();
-  const ensureProjectBEvent = async () => {
-    let response = await queryEvents({
-      userId: projectBUserId,
-      eventType: "$session-activity",
-    });
-    for (let attempt = 0; attempt < 3 && Array.isArray(response.body?.result) && response.body.result.length === 0; attempt++) {
-      await wait(250);
-      response = await queryEvents({
-        userId: projectBUserId,
-        eventType: "$session-activity",
-      });
+  const projectBResponse = await fetchEventsWithRetry({
+    userId: projectBUserId,
+    eventType: "$session-activity",
+  });
+  expect(projectBResponse).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": {
+        "result": [
+          {
+            "branch_id": "main",
+            "event_type": "$session-activity",
+            "project_id": "<stripped UUID>",
+            "team_id": "",
+            "user_id": "<stripped UUID>",
+          },
+        ],
+        "stats": {
+          "cpu_time": <stripped field 'cpu_time'>,
+          "wall_clock_time": <stripped field 'wall_clock_time'>,
+        },
+      },
+      "headers": Headers { <some fields may have been hidden> },
     }
-    expect(response.status).toBe(200);
-    const results = Array.isArray(response.body?.result) ? response.body.result : [];
-    expect(results.length).toBeGreaterThan(0);
-  };
-  await ensureProjectBEvent();
+  `);
+
 
   // Switch back to project A context
   backendContext.set({ projectKeys: projectAKeys, userAuth: null });
@@ -118,10 +111,19 @@ it("cannot read events from other projects", async ({ expect }) => {
     userId: projectBUserId,
     eventType: "$session-activity",
   });
-
-  expect(queryResponse.status).toBe(200);
-  const results = Array.isArray(queryResponse.body?.result) ? queryResponse.body.result : [];
-  expect(results.length).toBe(0);
+  expect(queryResponse).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": {
+        "result": [],
+        "stats": {
+          "cpu_time": <stripped field 'cpu_time'>,
+          "wall_clock_time": <stripped field 'wall_clock_time'>,
+        },
+      },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
 });
 
 it("filters analytics events by user within a project", async ({ expect }) => {

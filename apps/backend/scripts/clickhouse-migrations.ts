@@ -11,14 +11,14 @@ export async function runClickhouseMigrations() {
   });
   // todo: create migration files
   await client.exec({ query: EVENTS_TABLE_BASE_SQL });
-  await client.exec({
-    query: "CREATE ROW POLICY IF NOT EXISTS events_project_isolation ON events FOR SELECT USING project_id = getSetting('SQL_project_id') AND branch_id = getSetting('SQL_branch_id') TO limited_user",
-  });
   const queries = [
     "REVOKE ALL PRIVILEGES ON *.* FROM limited_user;",
     "REVOKE ALL FROM limited_user;",
     "GRANT SELECT ON analytics.events TO limited_user;",
   ];
+  await client.exec({
+    query: "CREATE ROW POLICY IF NOT EXISTS events_project_isolation ON analytics.events FOR SELECT USING project_id = getSetting('SQL_project_id') AND branch_id = getSetting('SQL_branch_id') TO limited_user",
+  });
   for (const query of queries) {
     await client.exec({ query });
   }
@@ -27,7 +27,7 @@ export async function runClickhouseMigrations() {
 }
 
 const EVENTS_TABLE_BASE_SQL = `
-CREATE TABLE IF NOT EXISTS events (
+CREATE TABLE IF NOT EXISTS analytics.events (
     event_type       LowCardinality(String),
     event_at         DateTime64(3, 'UTC'),
     data             JSON,
