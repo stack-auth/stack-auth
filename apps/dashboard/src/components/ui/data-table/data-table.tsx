@@ -2,14 +2,6 @@
 
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "../table";
-import {
   ColumnDef,
   ColumnFiltersState,
   GlobalFiltering,
@@ -28,6 +20,14 @@ import {
   useReactTable,
 } from "@tanstack/react-table";
 import React from "react";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "../table";
 import { DataTablePagination } from "./pagination";
 import { DataTableToolbar } from "./toolbar";
 
@@ -200,9 +200,7 @@ export function DataTableManualPagination<TData, TValue>({
       });
       setCursors(c => nextCursor ? { ...c, [pagination.pageIndex + 1]: nextCursor } : c);
     });
-    // todo: check if we can fix this
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pagination, sorting, columnFilters, refreshCounter]);
+  }, [pagination, sorting, columnFilters, refreshCounter, cursors, globalFilter, onUpdate]);
 
   // Reset to first page when filters change
   React.useEffect(() => {
