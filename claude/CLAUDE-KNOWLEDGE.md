@@ -8,9 +8,3 @@ A: Use the shared `TextAreaField` component's `helperText` prop in `apps/dashboa
 
 Q: Why did `pnpm typecheck` fail after deleting a Next.js route?
 A: The generated `.next/types/validator.ts` can keep stale imports for removed routes. Deleting that file (or regenerating Next build output) clears the outdated references so `pnpm typecheck` succeeds again.
-
-Q: How can I attach changelog bullet metadata to rendered Markdown without mutating render-time state?
-A: Generate a remark plugin for the entry that walks the Markdown AST once before rendering, annotates each `listItem` node with the corresponding metadata object, and then read that metadata from the custom `li` renderer in ReactMarkdown. This keeps React renders pure and still pairs tags with their bullets deterministically.
-
-Q: What happened to the standalone changelog app?
-A: We removed `apps/changelog` entirely and now rely solely on the root-level `CHANGELOG.md`, which future work will fetch from GitHub via a server component with hourly revalidation. All other `CHANGELOG.md` copies across the repo were deleted so the root file is the single source of truth.
