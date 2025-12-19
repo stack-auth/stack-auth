@@ -1,37 +1,12 @@
 # Stack Auth Changelog
 
-This is the single source of truth for all Stack Auth changes. Individual package CHANGELOG.md files are deprecated and kept for historical purposes only. *Do not edit historical changelogs*
-
-## How to Add Entries
-
-When making changes, add a new entry under the appropriate version heading. Use the following format:
-
-```markdown
-## X.Y.Z
-
-### Major Changes
-- Description of breaking change
-
-### Minor Changes  
-- Description of new feature
-
-### Patch Changes
-- Description of bug fix or improvement
-```
-
----
-
-## Unreleased
-
-### Patch Changes
-- [all] Changelog app introduced.
-
 ---
 
 ## 2.8.57 (2025-02-14)
 
 ### Patch Changes
 - [all] Internal improvements and dependency updates
+- [Dashboard] Updated entire UI on dashboard
 
 ## 2.8.56
 
