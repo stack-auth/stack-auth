@@ -47,13 +47,19 @@ export const POST = createSmartRouteHandler({
         max_execution_time: body.timeout_ms / 1000,
         readonly: "1",
         allow_ddl: 0,
+        max_result_rows: MAX_RESULT_ROWS.toString(),
+        max_result_bytes: MAX_RESULT_BYTES.toString(),
+        result_overflow_mode: "throw",
       },
       format: "JSONEachRow",
     }));
 
     if (resultSet.status === "error") {
-      const message = resultSet.error instanceof Error ? resultSet.error.message : null;
-      throw new KnownErrors.AnalyticsQueryError(message ?? "Unknown error");
+      const message = getSafeClickhouseErrorMessage(resultSet.error);
+      if (message === null) {
+        throw new StackAssertionError("Unknown Clickhouse error", { cause: resultSet.error });
+      }
+      throw new KnownErrors.AnalyticsQueryError(message);
     }
 
     const rows = await resultSet.data.json<Record<string, unknown>[]>();
@@ -73,3 +79,39 @@ export const POST = createSmartRouteHandler({
   },
 });
 
+const SAFE_CLICKHOUSE_ERROR_CODES = [
+  62, // SYNTAX_ERROR
+  159, // TIMEOUT_EXCEEDED
+  164, // READONLY
+  158, // TOO_MANY_ROWS
+  396, // TOO_MANY_ROWS_OR_BYTES
+  636, // CANNOT_EXTRACT_TABLE_STRUCTURE
+];
+
+const UNSAFE_CLICKHOUSE_ERROR_CODES = [
+  36, // BAD_ARGUMENTS
+  60, // UNKNOWN_TABLE
+  497, // ACCESS_DENIED
+];
+
+const DEFAULT_CLICKHOUSE_ERROR_MESSAGE = "Query not permitted.";
+const MAX_RESULT_ROWS = 10_000;
+const MAX_RESULT_BYTES = 10 * 1024 * 1024;
+
+function getSafeClickhouseErrorMessage(error: unknown): string | null {
+  if (typeof error !== "object" || error === null || !("code" in error) || typeof error.code !== "string") {
+    return null;
+  }
+  const errorCode = Number(error.code);
+  if (isNaN(errorCode)) {
+    return null;
+  }
+  const message = "message" in error && typeof error.message === "string" ? error.message : null;
+  if (SAFE_CLICKHOUSE_ERROR_CODES.includes(errorCode)) {
+    return message;
+  }
+  if (UNSAFE_CLICKHOUSE_ERROR_CODES.includes(errorCode)) {
+    return DEFAULT_CLICKHOUSE_ERROR_MESSAGE;
+  }
+  return null;
+}

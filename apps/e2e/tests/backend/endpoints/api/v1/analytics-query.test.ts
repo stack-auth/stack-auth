@@ -233,8 +233,8 @@ it("does not allow CREATE TABLE", async ({ expect }) => {
       "status": 400,
       "body": {
         "code": "ANALYTICS_QUERY_ERROR",
-        "details": { "error": "limited_user: Not enough privileges. To execute this query, it's necessary to have the grant CREATE TABLE ON default.test_table. " },
-        "error": "The query failed to execute: limited_user: Not enough privileges. To execute this query, it's necessary to have the grant CREATE TABLE ON default.test_table. ",
+        "details": { "error": "Query not permitted." },
+        "error": "The query failed to execute: Query not permitted.",
       },
       "headers": Headers {
         "x-stack-known-error": "ANALYTICS_QUERY_ERROR",
@@ -253,8 +253,8 @@ it("does not allow querying system tables", async ({ expect }) => {
       "status": 400,
       "body": {
         "code": "ANALYTICS_QUERY_ERROR",
-        "details": { "error": "limited_user: Not enough privileges. To execute this query, it's necessary to have the grant SELECT(number) ON system.numbers. " },
-        "error": "The query failed to execute: limited_user: Not enough privileges. To execute this query, it's necessary to have the grant SELECT(number) ON system.numbers. ",
+        "details": { "error": "Query not permitted." },
+        "error": "The query failed to execute: Query not permitted.",
       },
       "headers": Headers {
         "x-stack-known-error": "ANALYTICS_QUERY_ERROR",
@@ -275,8 +275,8 @@ it("does not allow killing queries", async ({ expect }) => {
       "status": 400,
       "body": {
         "code": "ANALYTICS_QUERY_ERROR",
-        "details": { "error": "limited_user: Not enough privileges. To execute this query, it's necessary to have the grant SELECT(query_id, user, query) ON system.processes. " },
-        "error": "The query failed to execute: limited_user: Not enough privileges. To execute this query, it's necessary to have the grant SELECT(query_id, user, query) ON system.processes. ",
+        "details": { "error": "Query not permitted." },
+        "error": "The query failed to execute: Query not permitted.",
       },
       "headers": Headers {
         "x-stack-known-error": "ANALYTICS_QUERY_ERROR",
@@ -295,8 +295,8 @@ it("does not allow INSERT statements", async ({ expect }) => {
       "status": 400,
       "body": {
         "code": "ANALYTICS_QUERY_ERROR",
-        "details": { "error": "limited_user: Not enough privileges. To execute this query, it's necessary to have the grant INSERT(dummy) ON system.one. " },
-        "error": "The query failed to execute: limited_user: Not enough privileges. To execute this query, it's necessary to have the grant INSERT(dummy) ON system.one. ",
+        "details": { "error": "Query not permitted." },
+        "error": "The query failed to execute: Query not permitted.",
       },
       "headers": Headers {
         "x-stack-known-error": "ANALYTICS_QUERY_ERROR",
@@ -459,7 +459,44 @@ it("can see tables, but only limited metadata", async ({ expect }) => {
       "body": {
         "result": [
           {
-            TODO: THIS SHOULD BE THE METADATA OF THE VIEW
+            "active_on_fly_alter_mutations": 0,
+            "active_on_fly_data_mutations": 0,
+            "active_on_fly_metadata_mutations": 0,
+            "active_parts": 1,
+            "as_select": "",
+            "comment": "",
+            "create_table_query": "CREATE TABLE analytics.events (\`event_type\` LowCardinality(String), \`event_at\` DateTime64(3, 'UTC'), \`data\` JSON, \`project_id\` String, \`branch_id\` String, \`user_id\` String, \`team_id\` String, \`refresh_token_id\` String, \`is_anonymous\` Bool, \`session_id\` String, \`ip_address\` String, \`created_at\` DateTime64(3, 'UTC') DEFAULT now64(3)) ENGINE = MergeTree PARTITION BY toYYYYMM(event_at) ORDER BY (project_id, branch_id, event_at) SETTINGS index_granularity = 8192",
+            "data_paths": ["/var/lib/clickhouse/store/196/<stripped UUID>/"],
+            "database": "analytics",
+            "definer": "",
+            "dependencies_database": [],
+            "dependencies_table": [],
+            "engine": "MergeTree",
+            "engine_full": "MergeTree PARTITION BY toYYYYMM(event_at) ORDER BY (project_id, branch_id, event_at) SETTINGS index_granularity = 8192",
+            "has_own_data": 1,
+            "is_temporary": 0,
+            "lifetime_bytes": null,
+            "lifetime_rows": null,
+            "loading_dependencies_database": [],
+            "loading_dependencies_table": [],
+            "loading_dependent_database": [],
+            "loading_dependent_table": [],
+            "metadata_modification_time": "2025-12-18 22:02:53",
+            "metadata_path": "store/c9c/<stripped UUID>/events.sql",
+            "metadata_version": 0,
+            "name": "events",
+            "parameterized_view_parameters": [],
+            "partition_key": "toYYYYMM(event_at)",
+            "parts": 1,
+            "primary_key": "project_id, branch_id, event_at",
+            "sampling_key": "",
+            "sorting_key": "project_id, branch_id, event_at",
+            "storage_policy": "default",
+            "total_bytes": 7328,
+            "total_bytes_uncompressed": 33374,
+            "total_marks": 2,
+            "total_rows": 128,
+            "uuid": "<stripped UUID>",
           },
         ],
         "stats": {
@@ -585,8 +622,8 @@ it("does not allow accessing system tables via subquery", async ({ expect }) => 
       "status": 400,
       "body": {
         "code": "ANALYTICS_QUERY_ERROR",
-        "details": { "error": "limited_user: Not enough privileges. To execute this query, it's necessary to have the grant SELECT for at least one column on system.users. " },
-        "error": "The query failed to execute: limited_user: Not enough privileges. To execute this query, it's necessary to have the grant SELECT for at least one column on system.users. ",
+        "details": { "error": "Query not permitted." },
+        "error": "The query failed to execute: Query not permitted.",
       },
       "headers": Headers {
         "x-stack-known-error": "ANALYTICS_QUERY_ERROR",
@@ -606,8 +643,8 @@ it("does not allow UNION to access restricted data", async ({ expect }) => {
       "status": 400,
       "body": {
         "code": "ANALYTICS_QUERY_ERROR",
-        "details": { "error": "limited_user: Not enough privileges. To execute this query, it's necessary to have the grant SELECT(number) ON system.numbers. " },
-        "error": "The query failed to execute: limited_user: Not enough privileges. To execute this query, it's necessary to have the grant SELECT(number) ON system.numbers. ",
+        "details": { "error": "Query not permitted." },
+        "error": "The query failed to execute: Query not permitted.",
       },
       "headers": Headers {
         "x-stack-known-error": "ANALYTICS_QUERY_ERROR",
@@ -627,8 +664,8 @@ it("does not allow file system access via file() function", async ({ expect }) =
       "status": 400,
       "body": {
         "code": "ANALYTICS_QUERY_ERROR",
-        "details": { "error": "limited_user: Not enough privileges. To execute this query, it's necessary to have the grant READ ON FILE. " },
-        "error": "The query failed to execute: limited_user: Not enough privileges. To execute this query, it's necessary to have the grant READ ON FILE. ",
+        "details": { "error": "Query not permitted." },
+        "error": "The query failed to execute: Query not permitted.",
       },
       "headers": Headers {
         "x-stack-known-error": "ANALYTICS_QUERY_ERROR",
@@ -648,8 +685,8 @@ it("does not allow network access via url() function", async ({ expect }) => {
       "status": 400,
       "body": {
         "code": "ANALYTICS_QUERY_ERROR",
-        "details": { "error": "limited_user: Not enough privileges. To execute this query, it's necessary to have the grant READ ON URL. " },
-        "error": "The query failed to execute: limited_user: Not enough privileges. To execute this query, it's necessary to have the grant READ ON URL. ",
+        "details": { "error": "Query not permitted." },
+        "error": "The query failed to execute: Query not permitted.",
       },
       "headers": Headers {
         "x-stack-known-error": "ANALYTICS_QUERY_ERROR",
@@ -669,8 +706,8 @@ it("does not allow remote table access", async ({ expect }) => {
       "status": 400,
       "body": {
         "code": "ANALYTICS_QUERY_ERROR",
-        "details": { "error": "limited_user: Not enough privileges. To execute this query, it's necessary to have the grant READ ON REMOTE. " },
-        "error": "The query failed to execute: limited_user: Not enough privileges. To execute this query, it's necessary to have the grant READ ON REMOTE. ",
+        "details": { "error": "Query not permitted." },
+        "error": "The query failed to execute: Query not permitted.",
       },
       "headers": Headers {
         "x-stack-known-error": "ANALYTICS_QUERY_ERROR",
@@ -690,8 +727,8 @@ it("does not allow cluster table access", async ({ expect }) => {
       "status": 400,
       "body": {
         "code": "ANALYTICS_QUERY_ERROR",
-        "details": { "error": "limited_user: Not enough privileges. To execute this query, it's necessary to have the grant READ ON REMOTE. " },
-        "error": "The query failed to execute: limited_user: Not enough privileges. To execute this query, it's necessary to have the grant READ ON REMOTE. ",
+        "details": { "error": "Query not permitted." },
+        "error": "The query failed to execute: Query not permitted.",
       },
       "headers": Headers {
         "x-stack-known-error": "ANALYTICS_QUERY_ERROR",
@@ -740,8 +777,8 @@ it("does not allow CTE to bypass restrictions", async ({ expect }) => {
       "status": 400,
       "body": {
         "code": "ANALYTICS_QUERY_ERROR",
-        "details": { "error": "limited_user: Not enough privileges. To execute this query, it's necessary to have the grant SELECT(name, id, storage, auth_type, auth_params, host_ip, host_names, host_names_regexp, host_names_like, default_roles_all, default_roles_list, default_roles_except, grantees_any, grantees_list, grantees_except, default_database) ON system.users. " },
-        "error": "The query failed to execute: limited_user: Not enough privileges. To execute this query, it's necessary to have the grant SELECT(name, id, storage, auth_type, auth_params, host_ip, host_names, host_names_regexp, host_names_like, default_roles_all, default_roles_list, default_roles_except, grantees_any, grantees_list, grantees_except, default_database) ON system.users. ",
+        "details": { "error": "Query not permitted." },
+        "error": "The query failed to execute: Query not permitted.",
       },
       "headers": Headers {
         "x-stack-known-error": "ANALYTICS_QUERY_ERROR",
@@ -761,8 +798,8 @@ it("does not allow accessing tables of other databases", async ({ expect }) => {
       "status": 400,
       "body": {
         "code": "ANALYTICS_QUERY_ERROR",
-        "details": { "error": "Unknown table expression identifier 'analytics.some_table' in scope SELECT * FROM analytics.some_table. " },
-        "error": "The query failed to execute: Unknown table expression identifier 'analytics.some_table' in scope SELECT * FROM analytics.some_table. ",
+        "details": { "error": "Query not permitted." },
+        "error": "The query failed to execute: Query not permitted.",
       },
       "headers": Headers {
         "x-stack-known-error": "ANALYTICS_QUERY_ERROR",
@@ -778,15 +815,12 @@ it("does not allow accessing information_schema", async ({ expect }) => {
   });
 
   expect(response).toMatchInlineSnapshot(`
-    TODO: THIS SHOULD NOT LEAK THE COLUMN INFORMATION
-
-
     NiceResponse {
       "status": 400,
       "body": {
         "code": "ANALYTICS_QUERY_ERROR",
-        "details": { "error": "limited_user: Not enough privileges. To execute this query, it's necessary to have the grant SELECT(table_catalog, table_schema, table_name, table_type, table_rows, data_length, index_length, table_collation, table_comment, TABLE_CATALOG, TABLE_SCHEMA, TABLE_NAME, TABLE_TYPE, TABLE_ROWS, DATA_LENGTH, TABLE_COLLATION, TABLE_COMMENT) ON information_schema.tables. " },
-        "error": "The query failed to execute: limited_user: Not enough privileges. To execute this query, it's necessary to have the grant SELECT(table_catalog, table_schema, table_name, table_type, table_rows, data_length, index_length, table_collation, table_comment, TABLE_CATALOG, TABLE_SCHEMA, TABLE_NAME, TABLE_TYPE, TABLE_ROWS, DATA_LENGTH, TABLE_COLLATION, TABLE_COMMENT) ON information_schema.tables. ",
+        "details": { "error": "Query not permitted." },
+        "error": "The query failed to execute: Query not permitted.",
       },
       "headers": Headers {
         "x-stack-known-error": "ANALYTICS_QUERY_ERROR",
@@ -806,8 +840,8 @@ it("does not allow dictionary access", async ({ expect }) => {
       "status": 400,
       "body": {
         "code": "ANALYTICS_QUERY_ERROR",
-        "details": { "error": "Dictionary (\`some_dict\`) not found: In scope SELECT dictGet('some_dict', 'value', 'key'). " },
-        "error": "The query failed to execute: Dictionary (\`some_dict\`) not found: In scope SELECT dictGet('some_dict', 'value', 'key'). ",
+        "details": { "error": "Query not permitted." },
+        "error": "The query failed to execute: Query not permitted.",
       },
       "headers": Headers {
         "x-stack-known-error": "ANALYTICS_QUERY_ERROR",
@@ -827,8 +861,8 @@ it("does not allow query log snooping", async ({ expect }) => {
       "status": 400,
       "body": {
         "code": "ANALYTICS_QUERY_ERROR",
-        "details": { "error": "limited_user: Not enough privileges. To execute this query, it's necessary to have the grant SELECT(query) ON system.query_log. " },
-        "error": "The query failed to execute: limited_user: Not enough privileges. To execute this query, it's necessary to have the grant SELECT(query) ON system.query_log. ",
+        "details": { "error": "Query not permitted." },
+        "error": "The query failed to execute: Query not permitted.",
       },
       "headers": Headers {
         "x-stack-known-error": "ANALYTICS_QUERY_ERROR",
@@ -890,8 +924,8 @@ it("does not allow S3 access", async ({ expect }) => {
       "status": 400,
       "body": {
         "code": "ANALYTICS_QUERY_ERROR",
-        "details": { "error": "limited_user: Not enough privileges. To execute this query, it's necessary to have the grant READ ON S3. " },
-        "error": "The query failed to execute: limited_user: Not enough privileges. To execute this query, it's necessary to have the grant READ ON S3. ",
+        "details": { "error": "Query not permitted." },
+        "error": "The query failed to execute: Query not permitted.",
       },
       "headers": Headers {
         "x-stack-known-error": "ANALYTICS_QUERY_ERROR",
@@ -911,8 +945,8 @@ it("does not allow executable table function", async ({ expect }) => {
       "status": 400,
       "body": {
         "code": "ANALYTICS_QUERY_ERROR",
-        "details": { "error": "limited_user: Not enough privileges. To execute this query, it's necessary to have the grant CREATE TEMPORARY TABLE ON *.*. " },
-        "error": "The query failed to execute: limited_user: Not enough privileges. To execute this query, it's necessary to have the grant CREATE TEMPORARY TABLE ON *.*. ",
+        "details": { "error": "Query not permitted." },
+        "error": "The query failed to execute: Query not permitted.",
       },
       "headers": Headers {
         "x-stack-known-error": "ANALYTICS_QUERY_ERROR",
@@ -932,8 +966,8 @@ it("does not allow comment obfuscation to bypass restrictions", async ({ expect 
       "status": 400,
       "body": {
         "code": "ANALYTICS_QUERY_ERROR",
-        "details": { "error": "limited_user: Not enough privileges. To execute this query, it's necessary to have the grant SELECT(name, id, storage, auth_type, auth_params, host_ip, host_names, host_names_regexp, host_names_like, default_roles_all, default_roles_list, default_roles_except, grantees_any, grantees_list, grantees_except, default_database) ON system.users. " },
-        "error": "The query failed to execute: limited_user: Not enough privileges. To execute this query, it's necessary to have the grant SELECT(name, id, storage, auth_type, auth_params, host_ip, host_names, host_names_regexp, host_names_like, default_roles_all, default_roles_list, default_roles_except, grantees_any, grantees_list, grantees_except, default_database) ON system.users. ",
+        "details": { "error": "Query not permitted." },
+        "error": "The query failed to execute: Query not permitted.",
       },
       "headers": Headers {
         "x-stack-known-error": "ANALYTICS_QUERY_ERROR",
@@ -953,8 +987,8 @@ it("does not allow comment obfuscation in table names", async ({ expect }) => {
       "status": 400,
       "body": {
         "code": "ANALYTICS_QUERY_ERROR",
-        "details": { "error": "limited_user: Not enough privileges. To execute this query, it's necessary to have the grant SELECT(name, id, storage, auth_type, auth_params, host_ip, host_names, host_names_regexp, host_names_like, default_roles_all, default_roles_list, default_roles_except, grantees_any, grantees_list, grantees_except, default_database) ON system.users. " },
-        "error": "The query failed to execute: limited_user: Not enough privileges. To execute this query, it's necessary to have the grant SELECT(name, id, storage, auth_type, auth_params, host_ip, host_names, host_names_regexp, host_names_like, default_roles_all, default_roles_list, default_roles_except, grantees_any, grantees_list, grantees_except, default_database) ON system.users. ",
+        "details": { "error": "Query not permitted." },
+        "error": "The query failed to execute: Query not permitted.",
       },
       "headers": Headers {
         "x-stack-known-error": "ANALYTICS_QUERY_ERROR",
@@ -974,8 +1008,8 @@ it("does not allow creating materialized views", async ({ expect }) => {
       "status": 400,
       "body": {
         "code": "ANALYTICS_QUERY_ERROR",
-        "details": { "error": "limited_user: Not enough privileges. To execute this query, it's necessary to have the grant CREATE VIEW ON default.evil. " },
-        "error": "The query failed to execute: limited_user: Not enough privileges. To execute this query, it's necessary to have the grant CREATE VIEW ON default.evil. ",
+        "details": { "error": "Query not permitted." },
+        "error": "The query failed to execute: Query not permitted.",
       },
       "headers": Headers {
         "x-stack-known-error": "ANALYTICS_QUERY_ERROR",
@@ -1016,8 +1050,8 @@ it("does not allow DROP TABLE", async ({ expect }) => {
       "status": 400,
       "body": {
         "code": "ANALYTICS_QUERY_ERROR",
-        "details": { "error": "limited_user: Not enough privileges. To execute this query, it's necessary to have the grant DROP TABLE ON analytics.events. " },
-        "error": "The query failed to execute: limited_user: Not enough privileges. To execute this query, it's necessary to have the grant DROP TABLE ON analytics.events. ",
+        "details": { "error": "Query not permitted." },
+        "error": "The query failed to execute: Query not permitted.",
       },
       "headers": Headers {
         "x-stack-known-error": "ANALYTICS_QUERY_ERROR",
@@ -1037,8 +1071,8 @@ it("does not allow ALTER TABLE", async ({ expect }) => {
       "status": 400,
       "body": {
         "code": "ANALYTICS_QUERY_ERROR",
-        "details": { "error": "limited_user: Not enough privileges. To execute this query, it's necessary to have the grant ALTER ADD COLUMN(malicious) ON analytics.events. " },
-        "error": "The query failed to execute: limited_user: Not enough privileges. To execute this query, it's necessary to have the grant ALTER ADD COLUMN(malicious) ON analytics.events. ",
+        "details": { "error": "Query not permitted." },
+        "error": "The query failed to execute: Query not permitted.",
       },
       "headers": Headers {
         "x-stack-known-error": "ANALYTICS_QUERY_ERROR",
@@ -1058,8 +1092,8 @@ it("does not allow TRUNCATE TABLE", async ({ expect }) => {
       "status": 400,
       "body": {
         "code": "ANALYTICS_QUERY_ERROR",
-        "details": { "error": "limited_user: Not enough privileges. To execute this query, it's necessary to have the grant TRUNCATE ON analytics.events. " },
-        "error": "The query failed to execute: limited_user: Not enough privileges. To execute this query, it's necessary to have the grant TRUNCATE ON analytics.events. ",
+        "details": { "error": "Query not permitted." },
+        "error": "The query failed to execute: Query not permitted.",
       },
       "headers": Headers {
         "x-stack-known-error": "ANALYTICS_QUERY_ERROR",
@@ -1121,8 +1155,8 @@ it("does not allow accessing system.users", async ({ expect }) => {
       "status": 400,
       "body": {
         "code": "ANALYTICS_QUERY_ERROR",
-        "details": { "error": "limited_user: Not enough privileges. To execute this query, it's necessary to have the grant SELECT(name, id, storage, auth_type, auth_params, host_ip, host_names, host_names_regexp, host_names_like, default_roles_all, default_roles_list, default_roles_except, grantees_any, grantees_list, grantees_except, default_database) ON system.users. " },
-        "error": "The query failed to execute: limited_user: Not enough privileges. To execute this query, it's necessary to have the grant SELECT(name, id, storage, auth_type, auth_params, host_ip, host_names, host_names_regexp, host_names_like, default_roles_all, default_roles_list, default_roles_except, grantees_any, grantees_list, grantees_except, default_database) ON system.users. ",
+        "details": { "error": "Query not permitted." },
+        "error": "The query failed to execute: Query not permitted.",
       },
       "headers": Headers {
         "x-stack-known-error": "ANALYTICS_QUERY_ERROR",
@@ -1131,6 +1165,7 @@ it("does not allow accessing system.users", async ({ expect }) => {
     }
   `);
 });
+
 
 it("does not allow accessing system.processes", async ({ expect }) => {
   const response = await runQuery({
@@ -1142,8 +1177,8 @@ it("does not allow accessing system.processes", async ({ expect }) => {
       "status": 400,
       "body": {
         "code": "ANALYTICS_QUERY_ERROR",
-        "details": { "error": "limited_user: Not enough privileges. To execute this query, it's necessary to have the grant SELECT(is_initial_query, user, query_id, address, port, initial_user, initial_query_id, initial_address, initial_port, interface, os_user, client_hostname, client_name, client_revision, client_version_major, client_version_minor, client_version_patch, http_method, http_user_agent, http_referer, forwarded_for, quota_key, distributed_depth, elapsed, is_cancelled, is_all_data_sent, read_rows, read_bytes, total_rows_approx, written_rows, written_bytes, memory_usage, peak_memory_usage, query, normalized_query_hash, query_kind, thread_ids, ProfileEvents, Settings, current_database) ON system.processes. " },
-        "error": "The query failed to execute: limited_user: Not enough privileges. To execute this query, it's necessary to have the grant SELECT(is_initial_query, user, query_id, address, port, initial_user, initial_query_id, initial_address, initial_port, interface, os_user, client_hostname, client_name, client_revision, client_version_major, client_version_minor, client_version_patch, http_method, http_user_agent, http_referer, forwarded_for, quota_key, distributed_depth, elapsed, is_cancelled, is_all_data_sent, read_rows, read_bytes, total_rows_approx, written_rows, written_bytes, memory_usage, peak_memory_usage, query, normalized_query_hash, query_kind, thread_ids, ProfileEvents, Settings, current_database) ON system.processes. ",
+        "details": { "error": "Query not permitted." },
+        "error": "The query failed to execute: Query not permitted.",
       },
       "headers": Headers {
         "x-stack-known-error": "ANALYTICS_QUERY_ERROR",
@@ -1163,8 +1198,8 @@ it("does not allow input() function", async ({ expect }) => {
       "status": 400,
       "body": {
         "code": "ANALYTICS_QUERY_ERROR",
-        "details": { "error": "limited_user: Not enough privileges. To execute this query, it's necessary to have the grant CREATE TEMPORARY TABLE ON *.*. " },
-        "error": "The query failed to execute: limited_user: Not enough privileges. To execute this query, it's necessary to have the grant CREATE TEMPORARY TABLE ON *.*. ",
+        "details": { "error": "Query not permitted." },
+        "error": "The query failed to execute: Query not permitted.",
       },
       "headers": Headers {
         "x-stack-known-error": "ANALYTICS_QUERY_ERROR",
@@ -1179,7 +1214,20 @@ it("does not allow generateRandom table function", async ({ expect }) => {
     query: "SELECT * FROM generateRandom('x UInt64') LIMIT 1000000000",
   });
 
-  expect(response).toMatchInlineSnapshot();
+  expect(response).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 400,
+      "body": {
+        "code": "ANALYTICS_QUERY_ERROR",
+        "details": { "error": "Limit for result exceeded, max rows: 10.00 thousand, current rows: 65.41 thousand. " },
+        "error": "The query failed to execute: Limit for result exceeded, max rows: 10.00 thousand, current rows: 65.41 thousand. ",
+      },
+      "headers": Headers {
+        "x-stack-known-error": "ANALYTICS_QUERY_ERROR",
+        <some fields may have been hidden>,
+      },
+    }
+  `);
 });
 
 it("does not allow numbers table function with large values", async ({ expect }) => {
@@ -1187,7 +1235,20 @@ it("does not allow numbers table function with large values", async ({ expect })
     query: "SELECT * FROM numbers(1000000000)",
   });
 
-  expect(response).toMatchInlineSnapshot();
+  expect(response).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 400,
+      "body": {
+        "code": "ANALYTICS_QUERY_ERROR",
+        "details": { "error": "Limit for result exceeded, max rows: 10.00 thousand, current rows: 65.41 thousand. " },
+        "error": "The query failed to execute: Limit for result exceeded, max rows: 10.00 thousand, current rows: 65.41 thousand. ",
+      },
+      "headers": Headers {
+        "x-stack-known-error": "ANALYTICS_QUERY_ERROR",
+        <some fields may have been hidden>,
+      },
+    }
+  `);
 });
 
 it("does not allow jdbc table function", async ({ expect }) => {
@@ -1195,7 +1256,20 @@ it("does not allow jdbc table function", async ({ expect }) => {
     query: "SELECT * FROM jdbc('jdbc:mysql://localhost:3306/db', 'table')",
   });
 
-  expect(response).toMatchInlineSnapshot();
+  expect(response).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 400,
+      "body": {
+        "code": "ANALYTICS_QUERY_ERROR",
+        "details": { "error": "Query not permitted." },
+        "error": "The query failed to execute: Query not permitted.",
+      },
+      "headers": Headers {
+        "x-stack-known-error": "ANALYTICS_QUERY_ERROR",
+        <some fields may have been hidden>,
+      },
+    }
+  `);
 });
 
 it("does not allow mysql table function", async ({ expect }) => {
@@ -1203,7 +1277,20 @@ it("does not allow mysql table function", async ({ expect }) => {
     query: "SELECT * FROM mysql('localhost:3306', 'database', 'table', 'user', 'password')",
   });
 
-  expect(response).toMatchInlineSnapshot();
+  expect(response).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 400,
+      "body": {
+        "code": "ANALYTICS_QUERY_ERROR",
+        "details": { "error": "Query not permitted." },
+        "error": "The query failed to execute: Query not permitted.",
+      },
+      "headers": Headers {
+        "x-stack-known-error": "ANALYTICS_QUERY_ERROR",
+        <some fields may have been hidden>,
+      },
+    }
+  `);
 });
 
 it("does not allow postgresql table function", async ({ expect }) => {
@@ -1211,5 +1298,18 @@ it("does not allow postgresql table function", async ({ expect }) => {
     query: "SELECT * FROM postgresql('localhost:5432', 'database', 'table', 'user', 'password')",
   });
 
-  expect(response).toMatchInlineSnapshot();
+  expect(response).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 400,
+      "body": {
+        "code": "ANALYTICS_QUERY_ERROR",
+        "details": { "error": "Query not permitted." },
+        "error": "The query failed to execute: Query not permitted.",
+      },
+      "headers": Headers {
+        "x-stack-known-error": "ANALYTICS_QUERY_ERROR",
+        <some fields may have been hidden>,
+      },
+    }
+  `);
 });
