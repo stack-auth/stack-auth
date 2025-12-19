@@ -1,6 +1,6 @@
 import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { it } from "../../../../helpers";
-import { Auth, Project, Team, backendContext, bumpEmailAddress, niceBackendFetch } from "../../../backend-helpers";
+import { Auth, Project, backendContext, bumpEmailAddress, niceBackendFetch } from "../../../backend-helpers";
 
 const queryEvents = async (params: {
   userId?: string,
@@ -12,7 +12,7 @@ const queryEvents = async (params: {
   body: {
     query: `
       SELECT event_type, project_id, branch_id, user_id, team_id
-      FROM events
+      FROM analytics.events
       WHERE 1
         ${params.userId ? "AND user_id = {user_id:String}" : ""}
         ${params.teamId ? "AND team_id = {team_id:String}" : ""}

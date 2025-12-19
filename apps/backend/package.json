@@ -22,6 +22,7 @@
     "codegen:watch": "concurrently -n \"prisma,docs,route-info,migration-imports\" -k \"pnpm run codegen-prisma:watch\" \"pnpm run watch-docs\" \"pnpm run codegen-route-info:watch\" \"pnpm run generate-migration-imports:watch\"",
     "psql-inner": "psql $(echo $STACK_DATABASE_CONNECTION_STRING | sed 's/\\?.*$//')",
     "psql": "pnpm run with-env pnpm run psql-inner",
+    "clickhouse": "pnpm run with-env clickhouse-client --host localhost --port ${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}33 --user stackframe --password PASSWORD-PLACEHOLDER--9gKyMxJeMx",
     "prisma-studio": "pnpm run with-env prisma studio --port ${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}06 --browser none",
     "prisma": "pnpm run with-env prisma",
     "db:migration-gen": "pnpm run with-env tsx scripts/db-migrations.ts generate-migration-file",
