@@ -10,8 +10,8 @@ export async function runClickhouseMigrations() {
     query_params: { clickhouseExternalPassword },
   });
   // todo: create migration files
-  await client.exec({ query: EVENTS_TABLE_BASE_SQL });
   await client.exec({ query: EXTERNAL_ANALYTICS_DB_SQL });
+  await client.exec({ query: EVENTS_TABLE_BASE_SQL });
   await client.exec({ query: EVENTS_VIEW_SQL });
   const queries = [
     "REVOKE ALL PRIVILEGES ON *.* FROM limited_user;",
