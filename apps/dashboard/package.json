@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "clean": "rimraf .next && rimraf node_modules",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit -p tsconfig.typecheck.json",
     "with-env": "dotenv -c development --",
     "with-env:prod": "dotenv -c --",
     "dev": "next dev --turbopack --port ${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}01",
