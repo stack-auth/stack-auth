@@ -94,7 +94,7 @@ const UNSAFE_CLICKHOUSE_ERROR_CODES = [
   497, // ACCESS_DENIED
 ];
 
-const DEFAULT_CLICKHOUSE_ERROR_MESSAGE = "Query not permitted.";
+const DEFAULT_CLICKHOUSE_ERROR_MESSAGE = "Error during execution of this query.";
 const MAX_RESULT_ROWS = 10_000;
 const MAX_RESULT_BYTES = 10 * 1024 * 1024;
 

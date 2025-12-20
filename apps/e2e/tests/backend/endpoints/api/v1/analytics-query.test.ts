@@ -233,8 +233,8 @@ it("does not allow CREATE TABLE", async ({ expect }) => {
       "status": 400,
       "body": {
         "code": "ANALYTICS_QUERY_ERROR",
-        "details": { "error": "Query not permitted." },
-        "error": "The query failed to execute: Query not permitted.",
+        "details": { "error": "Error during execution of this query." },
+        "error": "The query failed to execute: Error during execution of this query.",
       },
       "headers": Headers {
         "x-stack-known-error": "ANALYTICS_QUERY_ERROR",
@@ -253,8 +253,8 @@ it("does not allow querying system tables", async ({ expect }) => {
       "status": 400,
       "body": {
         "code": "ANALYTICS_QUERY_ERROR",
-        "details": { "error": "Query not permitted." },
-        "error": "The query failed to execute: Query not permitted.",
+        "details": { "error": "Error during execution of this query." },
+        "error": "The query failed to execute: Error during execution of this query.",
       },
       "headers": Headers {
         "x-stack-known-error": "ANALYTICS_QUERY_ERROR",
@@ -275,8 +275,8 @@ it("does not allow killing queries", async ({ expect }) => {
       "status": 400,
       "body": {
         "code": "ANALYTICS_QUERY_ERROR",
-        "details": { "error": "Query not permitted." },
-        "error": "The query failed to execute: Query not permitted.",
+        "details": { "error": "Error during execution of this query." },
+        "error": "The query failed to execute: Error during execution of this query.",
       },
       "headers": Headers {
         "x-stack-known-error": "ANALYTICS_QUERY_ERROR",
@@ -295,8 +295,8 @@ it("does not allow INSERT statements", async ({ expect }) => {
       "status": 400,
       "body": {
         "code": "ANALYTICS_QUERY_ERROR",
-        "details": { "error": "Query not permitted." },
-        "error": "The query failed to execute: Query not permitted.",
+        "details": { "error": "Error during execution of this query." },
+        "error": "The query failed to execute: Error during execution of this query.",
       },
       "headers": Headers {
         "x-stack-known-error": "ANALYTICS_QUERY_ERROR",
@@ -389,8 +389,8 @@ it("has limited grants", async ({ expect }) => {
           { "GRANTS WITH IMPLICIT FINAL FORMAT JSONEachRow": "REVOKE TABLE ENGINE ON S3 FROM limited_user" },
           { "GRANTS WITH IMPLICIT FINAL FORMAT JSONEachRow": "REVOKE TABLE ENGINE ON SQLite FROM limited_user" },
           { "GRANTS WITH IMPLICIT FINAL FORMAT JSONEachRow": "REVOKE TABLE ENGINE ON URL FROM limited_user" },
-          { "GRANTS WITH IMPLICIT FINAL FORMAT JSONEachRow": "GRANT SHOW DATABASES ON analytics.* TO limited_user" },
-          { "GRANTS WITH IMPLICIT FINAL FORMAT JSONEachRow": "GRANT SHOW TABLES, SHOW COLUMNS, SELECT ON analytics.events TO limited_user" },
+          { "GRANTS WITH IMPLICIT FINAL FORMAT JSONEachRow": "GRANT SHOW DATABASES ON default.* TO limited_user" },
+          { "GRANTS WITH IMPLICIT FINAL FORMAT JSONEachRow": "GRANT SHOW TABLES, SHOW COLUMNS, SELECT ON default.events TO limited_user" },
           { "GRANTS WITH IMPLICIT FINAL FORMAT JSONEachRow": "GRANT SELECT ON system.aggregate_function_combinators TO limited_user" },
           { "GRANTS WITH IMPLICIT FINAL FORMAT JSONEachRow": "GRANT SELECT ON system.collations TO limited_user" },
           { "GRANTS WITH IMPLICIT FINAL FORMAT JSONEachRow": "GRANT SELECT ON system.columns TO limited_user" },
@@ -433,7 +433,7 @@ it("can see only some tables", async ({ expect }) => {
       "body": {
         "result": [
           {
-            "database": "analytics",
+            "database": "default",
             "name": "events",
           },
         ],
@@ -456,7 +456,7 @@ it("SHOW TABLES should be empty because current database is empty", async ({ exp
     NiceResponse {
       "status": 200,
       "body": {
-        "result": [],
+        "result": [{ "name": "events" }],
         "stats": {
           "cpu_time": <stripped field 'cpu_time'>,
           "wall_clock_time": <stripped field 'wall_clock_time'>,
@@ -560,8 +560,8 @@ it("does not allow accessing system tables via subquery", async ({ expect }) => 
       "status": 400,
       "body": {
         "code": "ANALYTICS_QUERY_ERROR",
-        "details": { "error": "Query not permitted." },
-        "error": "The query failed to execute: Query not permitted.",
+        "details": { "error": "Error during execution of this query." },
+        "error": "The query failed to execute: Error during execution of this query.",
       },
       "headers": Headers {
         "x-stack-known-error": "ANALYTICS_QUERY_ERROR",
@@ -581,8 +581,8 @@ it("does not allow UNION to access restricted data", async ({ expect }) => {
       "status": 400,
       "body": {
         "code": "ANALYTICS_QUERY_ERROR",
-        "details": { "error": "Query not permitted." },
-        "error": "The query failed to execute: Query not permitted.",
+        "details": { "error": "Error during execution of this query." },
+        "error": "The query failed to execute: Error during execution of this query.",
       },
       "headers": Headers {
         "x-stack-known-error": "ANALYTICS_QUERY_ERROR",
@@ -602,8 +602,8 @@ it("does not allow file system access via file() function", async ({ expect }) =
       "status": 400,
       "body": {
         "code": "ANALYTICS_QUERY_ERROR",
-        "details": { "error": "Query not permitted." },
-        "error": "The query failed to execute: Query not permitted.",
+        "details": { "error": "Error during execution of this query." },
+        "error": "The query failed to execute: Error during execution of this query.",
       },
       "headers": Headers {
         "x-stack-known-error": "ANALYTICS_QUERY_ERROR",
@@ -623,8 +623,8 @@ it("does not allow network access via url() function", async ({ expect }) => {
       "status": 400,
       "body": {
         "code": "ANALYTICS_QUERY_ERROR",
-        "details": { "error": "Query not permitted." },
-        "error": "The query failed to execute: Query not permitted.",
+        "details": { "error": "Error during execution of this query." },
+        "error": "The query failed to execute: Error during execution of this query.",
       },
       "headers": Headers {
         "x-stack-known-error": "ANALYTICS_QUERY_ERROR",
@@ -644,8 +644,8 @@ it("does not allow remote table access", async ({ expect }) => {
       "status": 400,
       "body": {
         "code": "ANALYTICS_QUERY_ERROR",
-        "details": { "error": "Query not permitted." },
-        "error": "The query failed to execute: Query not permitted.",
+        "details": { "error": "Error during execution of this query." },
+        "error": "The query failed to execute: Error during execution of this query.",
       },
       "headers": Headers {
         "x-stack-known-error": "ANALYTICS_QUERY_ERROR",
@@ -665,8 +665,8 @@ it("does not allow cluster table access", async ({ expect }) => {
       "status": 400,
       "body": {
         "code": "ANALYTICS_QUERY_ERROR",
-        "details": { "error": "Query not permitted." },
-        "error": "The query failed to execute: Query not permitted.",
+        "details": { "error": "Error during execution of this query." },
+        "error": "The query failed to execute: Error during execution of this query.",
       },
       "headers": Headers {
         "x-stack-known-error": "ANALYTICS_QUERY_ERROR",
@@ -715,8 +715,8 @@ it("does not allow CTE to bypass restrictions", async ({ expect }) => {
       "status": 400,
       "body": {
         "code": "ANALYTICS_QUERY_ERROR",
-        "details": { "error": "Query not permitted." },
-        "error": "The query failed to execute: Query not permitted.",
+        "details": { "error": "Error during execution of this query." },
+        "error": "The query failed to execute: Error during execution of this query.",
       },
       "headers": Headers {
         "x-stack-known-error": "ANALYTICS_QUERY_ERROR",
@@ -736,8 +736,8 @@ it("does not allow accessing tables of other databases", async ({ expect }) => {
       "status": 400,
       "body": {
         "code": "ANALYTICS_QUERY_ERROR",
-        "details": { "error": "Query not permitted." },
-        "error": "The query failed to execute: Query not permitted.",
+        "details": { "error": "Error during execution of this query." },
+        "error": "The query failed to execute: Error during execution of this query.",
       },
       "headers": Headers {
         "x-stack-known-error": "ANALYTICS_QUERY_ERROR",
@@ -757,8 +757,8 @@ it("does not allow accessing information_schema", async ({ expect }) => {
       "status": 400,
       "body": {
         "code": "ANALYTICS_QUERY_ERROR",
-        "details": { "error": "Query not permitted." },
-        "error": "The query failed to execute: Query not permitted.",
+        "details": { "error": "Error during execution of this query." },
+        "error": "The query failed to execute: Error during execution of this query.",
       },
       "headers": Headers {
         "x-stack-known-error": "ANALYTICS_QUERY_ERROR",
@@ -778,8 +778,8 @@ it("does not allow dictionary access", async ({ expect }) => {
       "status": 400,
       "body": {
         "code": "ANALYTICS_QUERY_ERROR",
-        "details": { "error": "Query not permitted." },
-        "error": "The query failed to execute: Query not permitted.",
+        "details": { "error": "Error during execution of this query." },
+        "error": "The query failed to execute: Error during execution of this query.",
       },
       "headers": Headers {
         "x-stack-known-error": "ANALYTICS_QUERY_ERROR",
@@ -799,8 +799,8 @@ it("does not allow query log snooping", async ({ expect }) => {
       "status": 400,
       "body": {
         "code": "ANALYTICS_QUERY_ERROR",
-        "details": { "error": "Query not permitted." },
-        "error": "The query failed to execute: Query not permitted.",
+        "details": { "error": "Error during execution of this query." },
+        "error": "The query failed to execute: Error during execution of this query.",
       },
       "headers": Headers {
         "x-stack-known-error": "ANALYTICS_QUERY_ERROR",
@@ -862,8 +862,8 @@ it("does not allow S3 access", async ({ expect }) => {
       "status": 400,
       "body": {
         "code": "ANALYTICS_QUERY_ERROR",
-        "details": { "error": "Query not permitted." },
-        "error": "The query failed to execute: Query not permitted.",
+        "details": { "error": "Error during execution of this query." },
+        "error": "The query failed to execute: Error during execution of this query.",
       },
       "headers": Headers {
         "x-stack-known-error": "ANALYTICS_QUERY_ERROR",
@@ -883,8 +883,8 @@ it("does not allow executable table function", async ({ expect }) => {
       "status": 400,
       "body": {
         "code": "ANALYTICS_QUERY_ERROR",
-        "details": { "error": "Query not permitted." },
-        "error": "The query failed to execute: Query not permitted.",
+        "details": { "error": "Error during execution of this query." },
+        "error": "The query failed to execute: Error during execution of this query.",
       },
       "headers": Headers {
         "x-stack-known-error": "ANALYTICS_QUERY_ERROR",
@@ -904,8 +904,8 @@ it("does not allow comment obfuscation to bypass restrictions", async ({ expect 
       "status": 400,
       "body": {
         "code": "ANALYTICS_QUERY_ERROR",
-        "details": { "error": "Query not permitted." },
-        "error": "The query failed to execute: Query not permitted.",
+        "details": { "error": "Error during execution of this query." },
+        "error": "The query failed to execute: Error during execution of this query.",
       },
       "headers": Headers {
         "x-stack-known-error": "ANALYTICS_QUERY_ERROR",
@@ -925,8 +925,8 @@ it("does not allow comment obfuscation in table names", async ({ expect }) => {
       "status": 400,
       "body": {
         "code": "ANALYTICS_QUERY_ERROR",
-        "details": { "error": "Query not permitted." },
-        "error": "The query failed to execute: Query not permitted.",
+        "details": { "error": "Error during execution of this query." },
+        "error": "The query failed to execute: Error during execution of this query.",
       },
       "headers": Headers {
         "x-stack-known-error": "ANALYTICS_QUERY_ERROR",
@@ -946,8 +946,8 @@ it("does not allow creating materialized views", async ({ expect }) => {
       "status": 400,
       "body": {
         "code": "ANALYTICS_QUERY_ERROR",
-        "details": { "error": "Query not permitted." },
-        "error": "The query failed to execute: Query not permitted.",
+        "details": { "error": "Error during execution of this query." },
+        "error": "The query failed to execute: Error during execution of this query.",
       },
       "headers": Headers {
         "x-stack-known-error": "ANALYTICS_QUERY_ERROR",
@@ -988,8 +988,8 @@ it("does not allow DROP TABLE", async ({ expect }) => {
       "status": 400,
       "body": {
         "code": "ANALYTICS_QUERY_ERROR",
-        "details": { "error": "Query not permitted." },
-        "error": "The query failed to execute: Query not permitted.",
+        "details": { "error": "Error during execution of this query." },
+        "error": "The query failed to execute: Error during execution of this query.",
       },
       "headers": Headers {
         "x-stack-known-error": "ANALYTICS_QUERY_ERROR",
@@ -1009,8 +1009,8 @@ it("does not allow ALTER TABLE", async ({ expect }) => {
       "status": 400,
       "body": {
         "code": "ANALYTICS_QUERY_ERROR",
-        "details": { "error": "Query not permitted." },
-        "error": "The query failed to execute: Query not permitted.",
+        "details": { "error": "Error during execution of this query." },
+        "error": "The query failed to execute: Error during execution of this query.",
       },
       "headers": Headers {
         "x-stack-known-error": "ANALYTICS_QUERY_ERROR",
@@ -1030,8 +1030,8 @@ it("does not allow TRUNCATE TABLE", async ({ expect }) => {
       "status": 400,
       "body": {
         "code": "ANALYTICS_QUERY_ERROR",
-        "details": { "error": "Query not permitted." },
-        "error": "The query failed to execute: Query not permitted.",
+        "details": { "error": "Error during execution of this query." },
+        "error": "The query failed to execute: Error during execution of this query.",
       },
       "headers": Headers {
         "x-stack-known-error": "ANALYTICS_QUERY_ERROR",
@@ -1093,8 +1093,8 @@ it("does not allow accessing system.users", async ({ expect }) => {
       "status": 400,
       "body": {
         "code": "ANALYTICS_QUERY_ERROR",
-        "details": { "error": "Query not permitted." },
-        "error": "The query failed to execute: Query not permitted.",
+        "details": { "error": "Error during execution of this query." },
+        "error": "The query failed to execute: Error during execution of this query.",
       },
       "headers": Headers {
         "x-stack-known-error": "ANALYTICS_QUERY_ERROR",
@@ -1115,8 +1115,8 @@ it("does not allow accessing system.processes", async ({ expect }) => {
       "status": 400,
       "body": {
         "code": "ANALYTICS_QUERY_ERROR",
-        "details": { "error": "Query not permitted." },
-        "error": "The query failed to execute: Query not permitted.",
+        "details": { "error": "Error during execution of this query." },
+        "error": "The query failed to execute: Error during execution of this query.",
       },
       "headers": Headers {
         "x-stack-known-error": "ANALYTICS_QUERY_ERROR",
@@ -1136,8 +1136,8 @@ it("does not allow input() function", async ({ expect }) => {
       "status": 400,
       "body": {
         "code": "ANALYTICS_QUERY_ERROR",
-        "details": { "error": "Query not permitted." },
-        "error": "The query failed to execute: Query not permitted.",
+        "details": { "error": "Error during execution of this query." },
+        "error": "The query failed to execute: Error during execution of this query.",
       },
       "headers": Headers {
         "x-stack-known-error": "ANALYTICS_QUERY_ERROR",
@@ -1199,8 +1199,8 @@ it("does not allow jdbc table function", async ({ expect }) => {
       "status": 400,
       "body": {
         "code": "ANALYTICS_QUERY_ERROR",
-        "details": { "error": "Query not permitted." },
-        "error": "The query failed to execute: Query not permitted.",
+        "details": { "error": "Error during execution of this query." },
+        "error": "The query failed to execute: Error during execution of this query.",
       },
       "headers": Headers {
         "x-stack-known-error": "ANALYTICS_QUERY_ERROR",
@@ -1220,8 +1220,8 @@ it("does not allow mysql table function", async ({ expect }) => {
       "status": 400,
       "body": {
         "code": "ANALYTICS_QUERY_ERROR",
-        "details": { "error": "Query not permitted." },
-        "error": "The query failed to execute: Query not permitted.",
+        "details": { "error": "Error during execution of this query." },
+        "error": "The query failed to execute: Error during execution of this query.",
       },
       "headers": Headers {
         "x-stack-known-error": "ANALYTICS_QUERY_ERROR",
@@ -1241,8 +1241,8 @@ it("does not allow postgresql table function", async ({ expect }) => {
       "status": 400,
       "body": {
         "code": "ANALYTICS_QUERY_ERROR",
-        "details": { "error": "Query not permitted." },
-        "error": "The query failed to execute: Query not permitted.",
+        "details": { "error": "Error during execution of this query." },
+        "error": "The query failed to execute: Error during execution of this query.",
       },
       "headers": Headers {
         "x-stack-known-error": "ANALYTICS_QUERY_ERROR",

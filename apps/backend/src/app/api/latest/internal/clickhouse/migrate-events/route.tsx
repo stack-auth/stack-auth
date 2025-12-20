@@ -151,7 +151,7 @@ export const POST = createSmartRouteHandler({
 
       if (rowsToInsert.length) {
         await clickhouseClient.insert({
-          table: "events",
+          table: "analytics_internal.events",
           values: rowsToInsert,
           format: "JSONEachRow",
           clickhouse_settings: {

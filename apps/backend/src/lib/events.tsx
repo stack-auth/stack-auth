@@ -197,7 +197,7 @@ export async function logEvent<T extends EventType[]>(
 
     const clickhouseClient = clickhouseAdminClient;
     await clickhouseClient.insert({
-      table: "analytics.events",
+      table: "analytics_internal.events",
       values: eventTypesArray.map(eventType => ({
         event_type: eventType.id,
         event_at: timeRange.end,

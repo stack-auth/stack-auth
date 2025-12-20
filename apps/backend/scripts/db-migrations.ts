@@ -18,8 +18,8 @@ const dropSchema = async () => {
   await globalPrismaClient.$executeRaw(Prisma.sql`CREATE SCHEMA ${sqlQuoteIdent(globalPrismaSchema)}`);
   await globalPrismaClient.$executeRaw(Prisma.sql`GRANT ALL ON SCHEMA ${sqlQuoteIdent(globalPrismaSchema)} TO postgres`);
   await globalPrismaClient.$executeRaw(Prisma.sql`GRANT ALL ON SCHEMA ${sqlQuoteIdent(globalPrismaSchema)} TO public`);
-  await clickhouseClient.command({ query: "DROP DATABASE analytics" });
-  await clickhouseClient.command({ query: "CREATE DATABASE IF NOT EXISTS analytics" });
+  await clickhouseClient.command({ query: "DROP DATABASE IF EXISTS analytics_internal" });
+  await clickhouseClient.command({ query: "CREATE DATABASE IF NOT EXISTS analytics_internal" });
 };
 
 

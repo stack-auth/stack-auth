@@ -11,7 +11,7 @@ const queryEvents = async (params: {
   body: {
     query: `
       SELECT event_type, project_id, branch_id, user_id, team_id
-      FROM analytics.events
+      FROM events
       WHERE 1
         ${params.userId ? "AND user_id = {user_id:String}" : ""}
         ${params.eventType ? "AND event_type = {event_type:String}" : ""}

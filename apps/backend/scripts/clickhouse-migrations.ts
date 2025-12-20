@@ -11,13 +11,15 @@ export async function runClickhouseMigrations() {
   });
   // todo: create migration files
   await client.exec({ query: EVENTS_TABLE_BASE_SQL });
+  await client.exec({ query: EXTERNAL_ANALYTICS_DB_SQL });
+  await client.exec({ query: EVENTS_VIEW_SQL });
   const queries = [
     "REVOKE ALL PRIVILEGES ON *.* FROM limited_user;",
     "REVOKE ALL FROM limited_user;",
-    "GRANT SELECT ON analytics.events TO limited_user;",
+    "GRANT SELECT ON default.events TO limited_user;",
   ];
   await client.exec({
-    query: "CREATE ROW POLICY IF NOT EXISTS events_project_isolation ON analytics.events FOR SELECT USING project_id = getSetting('SQL_project_id') AND branch_id = getSetting('SQL_branch_id') TO limited_user",
+    query: "CREATE ROW POLICY IF NOT EXISTS events_project_isolation ON default.events FOR SELECT USING project_id = getSetting('SQL_project_id') AND branch_id = getSetting('SQL_branch_id') TO limited_user",
   });
   for (const query of queries) {
     await client.exec({ query });
@@ -27,7 +29,7 @@ export async function runClickhouseMigrations() {
 }
 
 const EVENTS_TABLE_BASE_SQL = `
-CREATE TABLE IF NOT EXISTS analytics.events (
+CREATE TABLE IF NOT EXISTS analytics_internal.events (
     event_type       LowCardinality(String),
     event_at         DateTime64(3, 'UTC'),
     data             JSON,
@@ -44,4 +46,16 @@ CREATE TABLE IF NOT EXISTS analytics.events (
 ENGINE MergeTree
 PARTITION BY toYYYYMM(event_at)
 ORDER BY (project_id, branch_id, event_at);
+`;
+
+const EVENTS_VIEW_SQL = `
+CREATE OR REPLACE VIEW default.events 
+SQL SECURITY DEFINER
+AS
+SELECT *
+FROM analytics_internal.events;
+`;
+
+const EXTERNAL_ANALYTICS_DB_SQL = `
+CREATE DATABASE IF NOT EXISTS analytics_internal;
 `;
