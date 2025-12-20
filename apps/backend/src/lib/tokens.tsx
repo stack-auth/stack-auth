@@ -23,6 +23,10 @@ const accessTokenSchema = yupObject({
   refreshTokenId: yupString().optional(),
   exp: yupNumber().defined(),
   isAnonymous: yupBoolean().defined(),
+  isRestricted: yupBoolean().defined(),
+  restrictedReason: yupObject({
+    type: yupString().oneOf(["anonymous", "email_not_verified"] as const).defined(),
+  }).nullable().defined(),
 }).defined();
 
 export const oauthCookieSchema = yupObject({
@@ -43,25 +47,40 @@ export const oauthCookieSchema = yupObject({
   afterCallbackRedirectUrl: yupString().optional(),
 });
 
-const getIssuer = (projectId: string, isAnonymous: boolean) => {
-  const url = new URL(`/api/v1/projects${isAnonymous ? "-anonymous-users" : ""}/${projectId}`, getEnvVariable("NEXT_PUBLIC_STACK_API_URL"));
+type UserType = 'normal' | 'restricted' | 'anonymous';
+
+const getIssuer = (projectId: string, userType: UserType) => {
+  const suffix = userType === 'anonymous' ? '-anonymous-users' : userType === 'restricted' ? '-restricted-users' : '';
+  const url = new URL(`/api/v1/projects${suffix}/${projectId}`, getEnvVariable("NEXT_PUBLIC_STACK_API_URL"));
   return url.toString();
 };
-const getAudience = (projectId: string, isAnonymous: boolean) => {
-  // TODO: make the audience a URL, and encode the anonymity in a better way
-  return isAnonymous ? `${projectId}:anon` : projectId;
+const getAudience = (projectId: string, userType: UserType) => {
+  // TODO: make the audience a URL, and encode the user type in a better way
+  return userType === 'anonymous' ? `${projectId}:anon` : userType === 'restricted' ? `${projectId}:restricted` : projectId;
 };
 
-export async function getPublicProjectJwkSet(projectId: string, allowAnonymous: boolean) {
+const getUserType = (isAnonymous: boolean, isRestricted: boolean): UserType => {
+  if (isAnonymous) return 'anonymous';
+  if (isRestricted) return 'restricted';
+  return 'normal';
+};
+
+export async function getPublicProjectJwkSet(projectId: string, options: { allowRestricted: boolean, allowAnonymous: boolean }) {
   const privateJwks = [
-    ...await getPrivateJwks({ audience: getAudience(projectId, false) }),
-    ...allowAnonymous ? await getPrivateJwks({ audience: getAudience(projectId, true) }) : [],
+    ...await getPrivateJwks({ audience: getAudience(projectId, 'normal') }),
+    ...options.allowRestricted ? await getPrivateJwks({ audience: getAudience(projectId, 'restricted') }) : [],
+    ...options.allowAnonymous ? await getPrivateJwks({ audience: getAudience(projectId, 'anonymous') }) : [],
   ];
   return await getPublicJwkSet(privateJwks);
 }
 
-export async function decodeAccessToken(accessToken: string, { allowAnonymous }: { allowAnonymous: boolean }) {
+export async function decodeAccessToken(accessToken: string, { allowAnonymous, allowRestricted }: { allowAnonymous: boolean, allowRestricted: boolean }) {
   return await traceSpan("decoding access token", async (span) => {
+
+    if (allowAnonymous && !allowRestricted) {
+      throw new StackAssertionError("If allowAnonymous is true, allowRestricted must also be true");
+    }
+
     let payload: jose.JWTPayload;
     let decoded: jose.JWTPayload | undefined;
     let aud;
@@ -70,11 +89,16 @@ export async function decodeAccessToken(accessToken: string, { allowAnonymous }:
       decoded = jose.decodeJwt(accessToken);
       aud = decoded.aud?.toString() ?? "";
 
+      // Determine allowed issuers based on what types of tokens we accept
+      const projectId = aud.split(":")[0];
+      const allowedIssuers = [
+        getIssuer(projectId, 'normal'),
+        ...(allowRestricted ? [getIssuer(projectId, 'restricted')] : []),
+        ...(allowAnonymous ? [getIssuer(projectId, 'anonymous')] : []),
+      ];
+
       payload = await verifyJWT({
-        allowedIssuers: [
-          getIssuer(aud.split(":")[0], false),
-          ...(allowAnonymous ? [getIssuer(aud.split(":")[0], true)] : []),
-        ],
+        allowedIssuers,
         jwt: accessToken,
       });
     } catch (error) {
@@ -87,12 +111,22 @@ export async function decodeAccessToken(accessToken: string, { allowAnonymous }:
       throw error;
     }
 
-    const isAnonymous = payload.is_anonymous as boolean | undefined ?? /* legacy, now we always set role to authenticated, TODO next-release remove */ payload.role === 'anon';
+    const isAnonymous = payload.is_anonymous as boolean;
+    const isRestricted = payload.is_restricted as boolean;
+
+    // Validate audience matches the user type
     if (aud.endsWith(":anon") && !isAnonymous) {
       console.warn("Unparsable access token. Role is set to anon, but audience is not an anonymous audience.", { accessToken, payload });
       return Result.error(new KnownErrors.UnparsableAccessToken());
     } else if (!aud.endsWith(":anon") && isAnonymous) {
       console.warn("Unparsable access token. Audience is not an anonymous audience, but role is set to anon.", { accessToken, payload });
+      return Result.error(new KnownErrors.UnparsableAccessToken());
+    }
+    if (aud.endsWith(":restricted") && !isRestricted) {
+      console.warn("Unparsable access token. User is restricted, but audience is not a restricted audience.", { accessToken, payload });
+      return Result.error(new KnownErrors.UnparsableAccessToken());
+    } else if (!aud.endsWith(":restricted") && isRestricted && !isAnonymous) {
+      console.warn("Unparsable access token. Audience is not a restricted audience, but user is restricted.", { accessToken, payload });
       return Result.error(new KnownErrors.UnparsableAccessToken());
     }
 
@@ -102,6 +136,8 @@ export async function decodeAccessToken(accessToken: string, { allowAnonymous }:
       throw new StackAssertionError("Branch ID !== main not currently supported.");
     }
 
+    const restrictedReason = payload.restricted_reason as { type: "anonymous" | "email_not_verified" } | null | undefined ?? null;
+
     const result = await accessTokenSchema.validate({
       projectId: aud.split(":")[0],
       userId: payload.sub,
@@ -109,6 +145,8 @@ export async function decodeAccessToken(accessToken: string, { allowAnonymous }:
       refreshTokenId: payload.refresh_token_id ?? payload.refreshTokenId,
       exp: payload.exp,
       isAnonymous: payload.is_anonymous ?? /* legacy, now we always set role to authenticated, TODO next-release remove */ payload.role === 'anon',
+      isRestricted,
+      restrictedReason,
     });
 
     return Result.ok(result);
@@ -180,11 +218,14 @@ export async function generateAccessTokenFromRefreshTokenIfValid(options: {
     email_verified: user.primary_email_verified,
     selected_team_id: user.selected_team_id,
     is_anonymous: user.is_anonymous,
+    is_restricted: user.is_restricted,
+    restricted_reason: user.restricted_reason,
   };
 
+  const userType = getUserType(user.is_anonymous, user.is_restricted);
   return await signJWT({
-    issuer: getIssuer(options.tenancy.project.id, user.is_anonymous),
-    audience: getAudience(options.tenancy.project.id, user.is_anonymous),
+    issuer: getIssuer(options.tenancy.project.id, userType),
+    audience: getAudience(options.tenancy.project.id, userType),
     expirationTime: getEnvVariable("STACK_ACCESS_TOKEN_EXPIRATION_TIME", "10min"),
     payload,
   });

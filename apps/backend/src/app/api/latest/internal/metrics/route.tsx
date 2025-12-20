@@ -236,7 +236,7 @@ async function loadRecentlyActiveUsers(tenancy: Tenancy, includeAnonymous: boole
 
   const userObjects = events.map((event) => {
     const user = dbUsers.find((user) => user.projectUserId === event.userId);
-    return user ? userPrismaToCrud(user, event.lastActiveAt.getTime()) : null;
+    return user ? userPrismaToCrud(user, event.lastActiveAt.getTime(), tenancy.config) : null;
   });
   return userObjects.filter((user): user is UsersCrud["Admin"]["Read"] => user !== null);
 }

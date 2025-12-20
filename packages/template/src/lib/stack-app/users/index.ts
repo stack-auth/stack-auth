@@ -127,6 +127,16 @@ export type BaseUser = {
 
   readonly isMultiFactorRequired: boolean,
   readonly isAnonymous: boolean,
+  /**
+   * Whether the user is in restricted state (signed up but hasn't completed onboarding requirements).
+   * For example, if email verification is required but the user hasn't verified their email yet.
+   */
+  readonly isRestricted: boolean,
+  /**
+   * The reason why the user is restricted, e.g., { type: "email_not_verified" } or { type: "anonymous" }.
+   * Null if the user is not restricted.
+   */
+  readonly restrictedReason: { type: "anonymous" | "email_not_verified" } | null,
   toClientJson(): CurrentUserCrud["Client"]["Read"],
 
   /**
@@ -234,6 +244,8 @@ export type TokenPartialUser = Pick<
   | "primaryEmail"
   | "primaryEmailVerified"
   | "isAnonymous"
+  | "isRestricted"
+  | "restrictedReason"
 >
 
 export type SyncedPartialUser = TokenPartialUser & Pick<
@@ -248,6 +260,8 @@ export type SyncedPartialUser = TokenPartialUser & Pick<
   | "clientReadOnlyMetadata"
   | "isAnonymous"
   | "hasPassword"
+  | "isRestricted"
+  | "restrictedReason"
 >;
 
 
@@ -268,7 +282,8 @@ export type UserUpdateOptions = {
   totpMultiFactorSecret?: Uint8Array | null,
   profileImageUrl?: string | null,
   otpAuthEnabled?: boolean,
-  passkeyAuthEnabled?:boolean,
+  passkeyAuthEnabled?: boolean,
+  primaryEmail?: string | null,
 }
 export function userUpdateOptionsToCrud(options: UserUpdateOptions): CurrentUserCrud["Client"]["Update"] {
   return {
@@ -279,6 +294,7 @@ export function userUpdateOptionsToCrud(options: UserUpdateOptions): CurrentUser
     profile_image_url: options.profileImageUrl,
     otp_auth_enabled: options.otpAuthEnabled,
     passkey_auth_enabled: options.passkeyAuthEnabled,
+    primary_email: options.primaryEmail,
   };
 }
 

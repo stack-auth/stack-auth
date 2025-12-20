@@ -99,6 +99,15 @@ export type ServerListUsersOptions = {
   orderBy?: 'signedUpAt',
   desc?: boolean,
   query?: string,
+  /**
+   * Whether to include restricted users (users who haven't completed onboarding requirements).
+   * Defaults to false.
+   */
+  includeRestricted?: boolean,
+  /**
+   * Whether to include anonymous users (and restricted users).
+   * Defaults to false.
+   */
   includeAnonymous?: boolean,
 };
 

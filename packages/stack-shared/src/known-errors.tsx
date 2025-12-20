@@ -650,6 +650,18 @@ const UserNotFound = createKnownErrorConstructor(
   () => [] as const,
 );
 
+const RestrictedUserNotAllowed = createKnownErrorConstructor(
+  KnownError,
+  "RESTRICTED_USER_NOT_ALLOWED",
+  (restrictedReason: { type: "anonymous" | "email_not_verified" }) => [
+    403,
+    `The user in the access token is in restricted state. Reason: ${restrictedReason.type}. Please pass the X-Stack-Allow-Restricted-User header if this is intended.`,
+    {
+      restricted_reason: restrictedReason,
+    },
+  ] as const,
+  (json: any) => [json.restricted_reason ?? { type: "anonymous" }] as const,
+);
 
 const ProjectNotFound = createKnownErrorConstructor(
   KnownError,
@@ -1684,6 +1696,7 @@ export const KnownErrors = {
   EmailNotVerified,
   UserIdDoesNotExist,
   UserNotFound,
+  RestrictedUserNotAllowed,
   ApiKeyNotFound,
   PublicApiKeyCannotBeRevoked,
   ProjectNotFound,

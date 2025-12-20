@@ -36,8 +36,9 @@ export default function PageClient() {
   const firstUser = (stackAdminApp as any).useUsers({ limit: 1 });
   const [exportOptions, setExportOptions] = useState<{
     search?: string,
+    includeRestricted: boolean,
     includeAnonymous: boolean,
-  }>({ includeAnonymous: false });
+  }>({ includeRestricted: false, includeAnonymous: false });
 
   return (
     <AppEnabledGuard appId="authentication">

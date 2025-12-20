@@ -171,6 +171,10 @@ const branchDomain = yupObject({
   allowLocalhost: yupBoolean(),
 });
 
+const branchOnboardingSchema = yupObject({
+  requireEmailVerification: yupBoolean(),
+});
+
 
 export const branchConfigSchema = canNoLongerBeOverridden(projectConfigSchema, ["sourceOfTruth"]).concat(yupObject({
   rbac: branchRbacSchema,
@@ -183,6 +187,8 @@ export const branchConfigSchema = canNoLongerBeOverridden(projectConfigSchema, [
   users: yupObject({
     allowClientUserDeletion: yupBoolean(),
   }),
+
+  onboarding: branchOnboardingSchema,
 
   apiKeys: branchApiKeysSchema,
 
@@ -475,6 +481,10 @@ const organizationConfigDefaults = {
 
   users: {
     allowClientUserDeletion: false,
+  },
+
+  onboarding: {
+    requireEmailVerification: false,
   },
 
   domains: {
