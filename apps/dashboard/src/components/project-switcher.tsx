@@ -1,7 +1,7 @@
 "use client";
 import { useRouter } from "@/components/router";
 import { useUser } from "@stackframe/stack";
-import { Button, Select, SelectContent, SelectItem, SelectTrigger } from "@stackframe/stack-ui";
+import { Button, Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui";
 import { PlusIcon } from "lucide-react";
 import { useMemo } from "react";
 

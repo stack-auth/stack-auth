@@ -7,7 +7,7 @@ import { StyledLink } from '@/components/link';
 import { useThemeWatcher } from '@/lib/theme';
 import { use } from "@stackframe/stack-shared/dist/utils/react";
 import { deindent } from '@stackframe/stack-shared/dist/utils/strings';
-import { Button, Tabs, TabsContent, TabsList, TabsTrigger, Typography, cn } from "@stackframe/stack-ui";
+import { Button, Tabs, TabsContent, TabsList, TabsTrigger, Typography, cn } from "@/components/ui";
 import { Book, X } from "lucide-react";
 import dynamic from "next/dynamic";
 import Image from 'next/image';

@@ -2,7 +2,7 @@
 
 import { cn } from '@/lib/utils';
 import { checkVersion, VersionCheckResult } from '@/lib/version-check';
-import { Button, Tooltip, TooltipContent, TooltipTrigger } from '@stackframe/stack-ui';
+import { Button, Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui';
 import { BookOpen, HelpCircle, Lightbulb, TimerReset, X } from 'lucide-react';
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import packageJson from '../../package.json';

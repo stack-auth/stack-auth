@@ -1,7 +1,7 @@
 'use client';
 
 import { UserButton } from "@stackframe/stack";
-import { Typography } from "@stackframe/stack-ui";
+import { Typography } from "@/components/ui";
 import { useTheme } from "next-themes";
 
 import { Link } from "./link";

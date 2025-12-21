@@ -3,7 +3,7 @@
 import { FormDialog } from "@/components/form-dialog";
 import { InputField } from "@/components/form-fields";
 import { useRouter } from "@/components/router";
-import { ActionDialog, Alert, AlertDescription, AlertTitle, Button, Card, Typography } from "@stackframe/stack-ui";
+import { ActionDialog, Alert, AlertDescription, AlertTitle, Button, Card, Typography } from "@/components/ui";
 import { AlertCircle } from "lucide-react";
 import { useState } from "react";
 import * as yup from "yup";

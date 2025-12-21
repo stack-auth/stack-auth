@@ -1,7 +1,7 @@
 "use client";
 
 import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
-import { Button, Card, CardHeader, CardTitle, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@stackframe/stack-ui";
+import { Button, Card, CardHeader, CardTitle, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui";
 import { Edit2, Plus, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Control, FieldValues, Path, UseFormReturn, useWatch } from "react-hook-form";

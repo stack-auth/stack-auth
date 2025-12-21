@@ -1,7 +1,7 @@
 import { useUser } from "@stackframe/stack";
 import { emailSchema } from "@stackframe/stack-shared/dist/schema-fields";
 import { captureError } from "@stackframe/stack-shared/dist/utils/errors";
-import { Button } from "@stackframe/stack-ui";
+import { Button } from "@/components/ui";
 import { AlertCircle, CheckCircle2, Github, Mail } from "lucide-react";
 import { useState } from "react";
 import { FaDiscord } from "react-icons/fa";

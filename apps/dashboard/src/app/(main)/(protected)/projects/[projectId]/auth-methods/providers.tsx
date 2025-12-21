@@ -6,7 +6,7 @@ import { getPublicEnvVar } from '@/lib/env';
 import { AdminProject } from "@stackframe/stack";
 import { yupBoolean, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { sharedProviders } from "@stackframe/stack-shared/dist/utils/oauth";
-import { ActionDialog, Badge, BrandIcons, InlineCode, Label, SimpleTooltip, Typography, buttonVariants, cn } from "@stackframe/stack-ui";
+import { ActionDialog, Badge, BrandIcons, InlineCode, Label, SimpleTooltip, Typography, buttonVariants, cn } from "@/components/ui";
 import clsx from "clsx";
 import { ArrowRight } from "lucide-react";
 import { useState } from "react";
