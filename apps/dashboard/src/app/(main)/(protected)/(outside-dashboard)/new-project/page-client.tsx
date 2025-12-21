@@ -5,7 +5,7 @@ import { yupResolver } from "@hookform/resolvers/yup";
 import { AuthPage, TeamSwitcher, useUser } from "@stackframe/stack";
 import { allProviders } from "@stackframe/stack-shared/dist/utils/oauth";
 import { runAsynchronouslyWithAlert, wait } from "@stackframe/stack-shared/dist/utils/promises";
-import { BrowserFrame, Button, Form, FormControl, FormField, FormItem, FormMessage, Separator, Typography } from "@stackframe/stack-ui";
+import { BrowserFrame, Button, Form, FormControl, FormField, FormItem, FormMessage, Separator, Typography } from "@/components/ui";
 import { useSearchParams } from "next/navigation";
 import { useState } from "react";
 import { useForm } from "react-hook-form";

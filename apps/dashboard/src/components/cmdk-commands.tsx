@@ -1,13 +1,13 @@
 "use client";
 
 import { AppIcon } from "@/components/app-square";
+import { Badge, Button, ScrollArea } from "@/components/ui";
 import { ALL_APPS_FRONTEND, getAppPath, getItemPath } from "@/lib/apps-frontend";
 import { getUninstalledAppIds } from "@/lib/apps-utils";
 import { cn } from "@/lib/utils";
 import { CheckIcon, CubeIcon, DownloadSimpleIcon, GearIcon, GlobeIcon, InfoIcon, KeyIcon, LayoutIcon, LightningIcon, PlayIcon, ShieldCheckIcon, SparkleIcon } from "@phosphor-icons/react";
 import { ALL_APPS, ALL_APP_TAGS, type AppId } from "@stackframe/stack-shared/dist/apps/apps-config";
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
-import { Badge, Button, ScrollArea } from "@stackframe/stack-ui";
 import Image from "next/image";
 import React, { memo, useEffect, useMemo } from "react";
 import { AIChatPreview } from "./commands/ask-ai";

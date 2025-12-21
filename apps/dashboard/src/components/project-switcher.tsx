@@ -1,8 +1,8 @@
 "use client";
 import { useRouter } from "@/components/router";
+import { Button, Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui";
 import { PlusIcon } from "@phosphor-icons/react";
 import { useUser } from "@stackframe/stack";
-import { Button, Select, SelectContent, SelectItem, SelectTrigger } from "@stackframe/stack-ui";
 import { useMemo } from "react";
 
 export function ProjectAvatar(props: { displayName: string }) {

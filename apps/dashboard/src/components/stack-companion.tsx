@@ -1,9 +1,9 @@
 'use client';
 
+import { Button, Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui';
 import { cn } from '@/lib/utils';
 import { checkVersion, VersionCheckResult } from '@/lib/version-check';
 import { BookOpenIcon, CircleNotchIcon, ClockClockwiseIcon, LightbulbIcon, XIcon } from '@phosphor-icons/react';
-import { Button, Tooltip, TooltipContent, TooltipTrigger } from '@stackframe/stack-ui';
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import packageJson from '../../package.json';
 import { FeedbackForm } from './feedback-form';

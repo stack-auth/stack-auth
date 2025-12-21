@@ -3,13 +3,13 @@
 import { AppIcon } from "@/components/app-square";
 import { Link } from "@/components/link";
 import { useRouter } from "@/components/router";
+import { cn, Typography } from '@/components/ui';
 import { ALL_APPS_FRONTEND, getAppPath } from "@/lib/apps-frontend";
 import { CaretUpIcon, CompassIcon, DotsThreeIcon, GlobeIcon, SquaresFourIcon } from "@phosphor-icons/react";
 import useResizeObserver from '@react-hook/resize-observer';
 import { useUser } from '@stackframe/stack';
 import { ALL_APPS, type AppId } from "@stackframe/stack-shared/dist/apps/apps-config";
 import { typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
-import { cn, Typography } from '@stackframe/stack-ui';
 import { Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { PageLayout } from "../page-layout";
 import { useAdminApp, useProjectId } from '../use-admin-app';

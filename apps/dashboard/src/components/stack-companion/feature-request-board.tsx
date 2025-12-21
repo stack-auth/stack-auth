@@ -1,5 +1,6 @@
 'use client';
 
+import { Button } from '@/components/ui';
 import { getPublicEnvVar } from '@/lib/env';
 import { cn } from '@/lib/utils';
 import { CaretUpIcon, CircleNotchIcon, LightbulbIcon, PaperPlaneTiltIcon, PlusIcon, XIcon } from '@phosphor-icons/react';
@@ -7,7 +8,6 @@ import { useUser } from '@stackframe/stack';
 import { StackAssertionError } from '@stackframe/stack-shared/dist/utils/errors';
 import { htmlToText } from '@stackframe/stack-shared/dist/utils/html';
 import { runAsynchronously } from '@stackframe/stack-shared/dist/utils/promises';
-import { Button } from '@stackframe/stack-ui';
 import { useCallback, useEffect, useState } from 'react';
 
 type FeatureRequestBoardProps = {

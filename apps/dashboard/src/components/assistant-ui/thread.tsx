@@ -12,7 +12,7 @@ import type { FC } from "react";
 
 import { MarkdownText } from "@/components/assistant-ui/markdown-text";
 import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button";
-import { Button } from "@stackframe/stack-ui";
+import { Button } from "@/components/ui";
 
 export const Thread: FC = () => {
   return (

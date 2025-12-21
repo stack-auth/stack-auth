@@ -1,7 +1,7 @@
 "use client";
 
+import { Button, cn } from "@/components/ui";
 import { CheckIcon, CopyIcon } from "@phosphor-icons/react";
-import { Button, cn } from "@stackframe/stack-ui";
 import React, { useCallback, useEffect, useState } from "react";
 import { InlineCode } from "./inline-code";
 

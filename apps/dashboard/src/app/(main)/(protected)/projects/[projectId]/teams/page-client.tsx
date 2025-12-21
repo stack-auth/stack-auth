@@ -2,7 +2,7 @@
 import { TeamTable } from "@/components/data-table/team-table";
 import { SmartFormDialog } from "@/components/form-dialog";
 import { StyledLink } from "@/components/link";
-import { Alert, Button } from "@stackframe/stack-ui";
+import { Alert, Button } from "@/components/ui";
 import React from "react";
 import * as yup from "yup";
 import { AppEnabledGuard } from "../app-enabled-guard";

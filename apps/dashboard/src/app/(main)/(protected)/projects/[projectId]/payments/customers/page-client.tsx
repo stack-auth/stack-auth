@@ -5,11 +5,7 @@ import { TeamSearchTable } from "@/components/data-table/team-search-table";
 import { SmartFormDialog } from "@/components/form-dialog";
 import { NumberField, SelectField } from "@/components/form-fields";
 import { ItemDialog } from "@/components/payments/item-dialog";
-import { CaretUpDownIcon } from "@phosphor-icons/react";
-import { KnownErrors } from "@stackframe/stack-shared";
-import { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
-import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
-import { Result } from "@stackframe/stack-shared/dist/utils/results";
+
 import {
   ActionDialog,
   Button,
@@ -29,7 +25,12 @@ import {
   TableRow,
   Typography,
   toast,
-} from "@stackframe/stack-ui";
+} from "@/components/ui";
+import { CaretUpDownIcon } from "@phosphor-icons/react";
+import { KnownErrors } from "@stackframe/stack-shared";
+import { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
+import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
+import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { useWatch } from "react-hook-form";
 import * as yup from "yup";

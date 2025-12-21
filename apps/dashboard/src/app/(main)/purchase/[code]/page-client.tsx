@@ -2,12 +2,12 @@
 
 import { CheckoutForm } from "@/components/payments/checkout";
 import { StripeElementsProvider } from "@/components/payments/stripe-elements-provider";
+import { Alert, AlertDescription, AlertTitle, Button, Card, CardContent, Input, Skeleton, Typography } from "@/components/ui";
 import { getPublicEnvVar } from "@/lib/env";
 import { MinusIcon, PlusIcon } from "@phosphor-icons/react";
 import { inlineProductSchema } from "@stackframe/stack-shared/dist/schema-fields";
 import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
-import { Alert, AlertDescription, AlertTitle, Button, Card, CardContent, Input, Skeleton, Typography } from "@stackframe/stack-ui";
 import Image from 'next/image';
 import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";

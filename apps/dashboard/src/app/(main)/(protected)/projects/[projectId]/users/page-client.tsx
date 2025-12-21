@@ -4,9 +4,9 @@ import { stackAppInternalsSymbol } from "@/app/(main)/integrations/transfer-conf
 import { UserTable } from "@/components/data-table/user-table";
 import { ExportUsersDialog } from "@/components/export-users-dialog";
 import { StyledLink } from "@/components/link";
+import { Alert, Button, Skeleton } from "@/components/ui";
 import { UserDialog } from "@/components/user-dialog";
 import { DownloadSimpleIcon } from "@phosphor-icons/react";
-import { Alert, Button, Skeleton } from "@stackframe/stack-ui";
 import { Suspense, useState } from "react";
 import { AppEnabledGuard } from "../app-enabled-guard";
 import { PageLayout } from "../page-layout";

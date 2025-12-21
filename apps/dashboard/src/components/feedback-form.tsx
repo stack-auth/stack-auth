@@ -1,8 +1,8 @@
+import { Button } from "@/components/ui";
 import { CheckCircleIcon, EnvelopeIcon, GithubLogoIcon, WarningCircleIcon } from "@phosphor-icons/react";
 import { useUser } from "@stackframe/stack";
 import { emailSchema } from "@stackframe/stack-shared/dist/schema-fields";
 import { captureError } from "@stackframe/stack-shared/dist/utils/errors";
-import { Button } from "@stackframe/stack-ui";
 import { useState } from "react";
 import { FaDiscord } from "react-icons/fa";
 import * as yup from "yup";

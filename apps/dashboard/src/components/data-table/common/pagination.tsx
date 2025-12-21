@@ -1,7 +1,7 @@
 "use client";
 
+import { Button, Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui";
 import { CaretLeftIcon, CaretRightIcon } from "@phosphor-icons/react";
-import { Button, Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@stackframe/stack-ui";
 import type { ReactNode } from "react";
 import { combineClassNames } from "./table";
 

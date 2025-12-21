@@ -4,10 +4,10 @@ import { SmartFormDialog } from "@/components/form-dialog";
 import { SelectField } from "@/components/form-fields";
 import { Link } from "@/components/link";
 import { StripeConnectProvider } from "@/components/payments/stripe-connect-provider";
+import { ActionDialog, Button, Card, CardContent, Typography } from "@/components/ui";
 import { cn } from "@/lib/utils";
 import { ArrowRightIcon, ArrowsClockwiseIcon, ChartBarIcon, FlaskIcon, ShieldIcon, WalletIcon, WarningIcon, WebhooksLogoIcon } from "@phosphor-icons/react";
 import { wait } from "@stackframe/stack-shared/dist/utils/promises";
-import { ActionDialog, Button, Card, CardContent, Typography } from "@stackframe/stack-ui";
 import { ConnectNotificationBanner } from "@stripe/react-connect-js";
 import { useState } from "react";
 import * as yup from "yup";
@@ -23,11 +23,15 @@ export default function PaymentsLayout({ children }: { children: React.ReactNode
 }
 
 function PaymentsLayoutInner({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname();
   const [bannerHasItems, setBannerHasItems] = useState(false);
   const stackAdminApp = useAdminApp();
   const stripeAccountInfo = stackAdminApp.useStripeAccountInfo();
   const project = stackAdminApp.useProject();
   const paymentsConfig = project.useConfig().payments;
+
+  // Hide banners on the new product page for a cleaner creation experience
+  const isNewProductPage = pathname.endsWith('/products/new');
 
   const setupPayments = async () => {
     const { url } = await stackAdminApp.setupPayments();
@@ -37,6 +41,10 @@ function PaymentsLayoutInner({ children }: { children: React.ReactNode }) {
 
   const handleDisableTestMode = async () => {
     await project.updateConfig({ "payments.testMode": false });
+  };
+
+  const handleEnableTestMode = async () => {
+    await project.updateConfig({ "payments.testMode": true });
   };
 
   if (!stripeAccountInfo) {
@@ -78,70 +86,136 @@ function PaymentsLayoutInner({ children }: { children: React.ReactNode }) {
     );
   }
 
+  // On the new product page, skip all banners for a cleaner experience
+  if (isNewProductPage) {
+    return (
+      <StripeConnectProvider>
+        {children}
+      </StripeConnectProvider>
+    );
+  }
+
   return (
     <StripeConnectProvider>
       {paymentsConfig.testMode ? (
-        <div className="flex justify-center px-4 py-6">
-          <div className="w-full max-w-[1250px] rounded-xl border border-blue-200 dark:border-blue-500 bg-blue-50 dark:bg-blue-900/20 p-6 shadow-sm">
-            <div className="flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
-              <div className="space-y-3">
-                <div className="flex items-center gap-2 text-blue-900 dark:text-blue-300">
-                  <FlaskIcon className="h-5 w-5" />
-                  <Typography type="h4" className="font-semibold">
-                    You are currently in test mode
-                  </Typography>
+        <div className="flex justify-center px-4 pt-4 sm:px-6 sm:pt-6">
+          <div className={cn(
+            "w-full max-w-[1250px] rounded-2xl p-4 sm:p-5",
+            "bg-blue-500/[0.08] dark:bg-blue-500/[0.12]",
+            "ring-1 ring-blue-500/20 dark:ring-blue-400/20",
+            "backdrop-blur-sm"
+          )}>
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+              <div className="flex items-start gap-3">
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-500/15 dark:bg-blue-400/15">
+                  <FlaskIcon className="h-4 w-4 text-blue-600 dark:text-blue-400" />
                 </div>
-                <Typography type="p" variant="secondary" className="text-blue-900/80 dark:text-blue-300/80">
-                  All purchases are currently free and no money will be deducted.
-                </Typography>
+                <div className="space-y-2">
+                  <div className="space-y-0.5">
+                    <Typography type="label" className="text-sm font-medium text-blue-900 dark:text-blue-200">
+                      Test mode active
+                    </Typography>
+                    <Typography type="p" className="text-xs text-blue-800/70 dark:text-blue-300/70">
+                      All checkouts are bypassed and no real payments are processed.
+                    </Typography>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {[
+                      "No credit card required",
+                      "Products granted instantly",
+                      "No Stripe transactions",
+                      "Product changes apply to production",
+                    ].map((item) => (
+                      <span
+                        key={item}
+                        className={cn(
+                          "inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-medium",
+                          "bg-blue-500/10 dark:bg-blue-400/15",
+                          "text-blue-700 dark:text-blue-300",
+                          "ring-1 ring-blue-500/20 dark:ring-blue-400/20"
+                        )}
+                      >
+                        {item}
+                      </span>
+                    ))}
+                  </div>
+                </div>
               </div>
-              <div className="flex flex-col items-start self-stretch">
-                <Button
-                  size="lg"
-                  variant="outline"
-                  onClick={() => handleDisableTestMode()}
-                  className="inline-flex items-center gap-2 mb-auto border-blue-300 dark:border-blue-600 text-blue-900 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900/40"
-                >
-                  Disable test mode
-                </Button>
-              </div>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => handleDisableTestMode()}
+                className={cn(
+                  "shrink-0 text-xs font-medium",
+                  "border-blue-500/30 dark:border-blue-400/30",
+                  "text-blue-700 dark:text-blue-300",
+                  "hover:bg-blue-500/10 dark:hover:bg-blue-400/10",
+                  "transition-colors duration-150 hover:transition-none"
+                )}
+              >
+                Disable test mode
+              </Button>
             </div>
           </div>
         </div>
       ) : !stripeAccountInfo.details_submitted && (
-        <div className="flex justify-center px-4 py-6">
-          <div className="w-full max-w-[1250px] rounded-xl border border-amber-200 dark:border-amber-500 bg-amber-50 dark:bg-amber-900/20 p-6 shadow-sm">
-            <div className="flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
-              <div className="space-y-3">
-                <div className="flex items-center gap-2 text-amber-900 dark:text-amber-300">
-                  <WarningIcon className="h-5 w-5" />
-                  <Typography type="h4" className="font-semibold">
-                    Finish setting up payments
-                  </Typography>
+        <div className="flex justify-center px-4 pt-4 sm:px-6 sm:pt-6">
+          <div className={cn(
+            "w-full max-w-[1250px] rounded-2xl p-4 sm:p-5",
+            "bg-amber-500/[0.08] dark:bg-amber-500/[0.12]",
+            "ring-1 ring-amber-500/20 dark:ring-amber-400/20",
+            "backdrop-blur-sm"
+          )}>
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+              <div className="flex items-start gap-3">
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-amber-500/15 dark:bg-amber-400/15">
+                  <WarningIcon className="h-4 w-4 text-amber-600 dark:text-amber-400" />
                 </div>
-                <Typography type="p" variant="secondary" className="text-amber-900/80 dark:text-amber-300/80">
-                  Complete the onboarding to unlock full payment capabilities.
-                </Typography>
-                <ul className="space-y-1 text-sm text-amber-900/80 dark:text-amber-300/80">
-                  {[
-                    ...(!stripeAccountInfo.charges_enabled ? ["Start charging customers in production"] : []),
-                    ...(!stripeAccountInfo.payouts_enabled ? ["Send payouts to your connected bank account"] : []),
-                  ].map((item) => (
-                    <li key={item} className="flex items-center gap-2">
-                      <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
-                      <span>{item}</span>
-                    </li>
-                  ))}
-                </ul>
+                <div className="space-y-2">
+                  <div className="space-y-0.5">
+                    <Typography type="label" className="text-sm font-medium text-amber-900 dark:text-amber-200">
+                      Finish setting up payments
+                    </Typography>
+                    <Typography type="p" className="text-xs text-amber-800/70 dark:text-amber-300/70">
+                      Complete onboarding to unlock full capabilities.
+                    </Typography>
+                  </div>
+                  <ul className="flex flex-wrap gap-x-4 gap-y-1">
+                    {[
+                      ...(!stripeAccountInfo.charges_enabled ? ["Charge customers"] : []),
+                      ...(!stripeAccountInfo.payouts_enabled ? ["Receive payouts"] : []),
+                    ].map((item) => (
+                      <li key={item} className="flex items-center gap-1.5 text-xs text-amber-800/70 dark:text-amber-300/70">
+                        <span className="h-1 w-1 rounded-full bg-amber-500/60 dark:bg-amber-400/60" />
+                        <span>{item}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
               </div>
-              <div className="flex flex-col items-start self-stretch">
+              <div className="flex items-center gap-2 shrink-0">
                 <Button
-                  size="lg"
-                  onClick={() => setupPayments()}
-                  className="inline-flex items-center gap-2 mb-auto"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => handleEnableTestMode()}
+                  className={cn(
+                    "text-xs font-medium gap-1.5",
+                    "border-amber-500/30 dark:border-amber-400/30",
+                    "text-amber-700 dark:text-amber-300",
+                    "hover:bg-amber-500/10 dark:hover:bg-amber-400/10",
+                    "transition-colors duration-150 hover:transition-none"
+                  )}
                 >
-                  Continue setup
-                  <ArrowRightIcon className="h-4 w-4" />
+                  <FlaskIcon className="h-3.5 w-3.5" />
+                  <span>Enable test mode</span>
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={() => setupPayments()}
+                  className="gap-1.5"
+                >
+                  <span>Continue setup</span>
+                  <ArrowRightIcon className="h-3.5 w-3.5" />
                 </Button>
               </div>
             </div>

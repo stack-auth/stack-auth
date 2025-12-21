@@ -1,0 +1,48 @@
+import { TooltipPortal } from "@radix-ui/react-tooltip";
+import { CircleAlert, Info } from "lucide-react";
+import { Tooltip, TooltipContent, TooltipTrigger } from "./tooltip";
+import { cn } from "@/lib/utils";
+
+export function SimpleTooltip(props: {
+  tooltip: React.ReactNode,
+  children?: React.ReactNode,
+  type?: 'info' | 'warning',
+  inline?: boolean,
+  className?: string,
+  disabled?: boolean,
+}) {
+  const iconClassName = cn("w-4 h-4 text-muted-foreground", props.inline && "inline");
+  const icon = props.type === 'warning' ?
+    <CircleAlert className={iconClassName} /> :
+    props.type === 'info' ?
+      <Info className={iconClassName} /> :
+      null;
+
+  const trigger = (
+    <>{icon}{props.children}</>
+  );
+
+  return (
+    <Tooltip open={props.disabled ? false : undefined}>
+      <TooltipTrigger asChild>
+        {props.inline ? (
+          <span className={cn(props.className)}>
+            {trigger}
+          </span>
+        ) : (
+          <div className={cn("flex items-center gap-1", props.className)}>
+            {trigger}
+          </div>
+        )}
+      </TooltipTrigger>
+      {props.tooltip && <TooltipPortal>
+        <TooltipContent>
+          <div className="max-w-60 text-center text-wrap whitespace-pre-wrap">
+            {props.tooltip}
+          </div>
+        </TooltipContent>
+      </TooltipPortal>}
+    </Tooltip>
+  );
+}
+

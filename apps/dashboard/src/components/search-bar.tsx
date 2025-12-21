@@ -1,8 +1,8 @@
 import React from "react";
 
+import { Input } from "@/components/ui";
 import { MagnifyingGlassIcon } from "@phosphor-icons/react";
 import { forwardRefIfNeeded } from "@stackframe/stack-shared/dist/utils/react";
-import { Input } from "@stackframe/stack-ui";
 
 export const SearchBar = forwardRefIfNeeded<
   HTMLInputElement,

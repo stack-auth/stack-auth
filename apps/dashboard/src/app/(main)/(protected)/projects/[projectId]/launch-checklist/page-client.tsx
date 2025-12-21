@@ -21,7 +21,7 @@ import {
   TabsTrigger,
   Typography,
   cn
-} from "@stackframe/stack-ui";
+} from "@/components/ui";
 import * as confetti from "canvas-confetti";
 import { useEffect, useRef, useState } from "react";
 import { AppEnabledGuard } from "../app-enabled-guard";

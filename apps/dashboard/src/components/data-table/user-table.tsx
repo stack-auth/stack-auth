@@ -27,7 +27,7 @@ import {
   SimpleTooltip,
   Skeleton,
   toast,
-} from "@stackframe/stack-ui";
+} from "@/components/ui";
 import {
   ColumnDef,
   createColumnHelper,

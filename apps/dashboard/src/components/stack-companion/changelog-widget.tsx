@@ -1,8 +1,8 @@
 'use client';
 
+import { Button } from '@/components/ui';
 import { CalendarIcon, CaretDownIcon, CaretUpIcon } from '@phosphor-icons/react';
 import { runAsynchronously } from '@stackframe/stack-shared/dist/utils/promises';
-import { Button } from '@stackframe/stack-ui';
 import Image from 'next/image';
 import Script from 'next/script';
 import { useEffect, useState } from 'react';

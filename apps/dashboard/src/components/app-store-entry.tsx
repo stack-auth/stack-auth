@@ -1,10 +1,10 @@
 'use client';
 
 import { AppIcon } from "@/components/app-square";
+import { Badge, Button, Dialog, DialogContent, DialogTitle, ScrollArea, cn } from "@/components/ui";
 import { ALL_APPS_FRONTEND, type AppId } from "@/lib/apps-frontend";
 import { ArrowSquareOutIcon, CaretLeftIcon, CaretRightIcon, CheckIcon, LightningIcon, ShieldCheckIcon, XIcon } from "@phosphor-icons/react";
 import { ALL_APPS, ALL_APP_TAGS } from "@stackframe/stack-shared/dist/apps/apps-config";
-import { Badge, Button, Dialog, DialogContent, DialogTitle, ScrollArea, cn } from "@stackframe/stack-ui";
 import Image from "next/image";
 import { FunctionComponent, useCallback, useEffect, useRef, useState } from "react";
 

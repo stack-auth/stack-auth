@@ -1,8 +1,8 @@
+import { Button, Input } from "@/components/ui";
 import { cn } from "@/lib/utils";
 import { CheckIcon, XIcon } from "@phosphor-icons/react";
 import { useAsyncCallback } from "@stackframe/stack-shared/dist/hooks/use-async-callback";
 import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
-import { Button, Input } from "@stackframe/stack-ui";
 import { useRef, useState } from "react";
 
 
@@ -41,7 +41,7 @@ export function EditableInput({
   }, [onUpdate]);
 
   return <div
-    className="flex items-center relative"
+    className="flex items-center relative w-full"
     onFocus={() => {
       if (!readOnly) {
         setEditValue(editValue ?? initialEditValue ?? value);
@@ -79,7 +79,7 @@ export function EditableInput({
         "w-full px-1 py-0 h-[unset] border-transparent",
         /* Hover */ !readOnly && "hover:ring-1 hover:ring-slate-300 dark:hover:ring-gray-500 hover:bg-slate-50 dark:hover:bg-gray-800 hover:cursor-pointer",
         /* Focus */ !readOnly && "focus:cursor-[unset] focus-visible:ring-slate-500 dark:focus-visible:ring-gray-50 focus-visible:bg-slate-100 dark:focus-visible:bg-gray-800",
-        readOnly && "focus-visible:ring-0 cursor-default",
+        readOnly && "focus-visible:ring-0 cursor-default text-muted-foreground",
         shiftTextToLeft && "ml-[-7px]",
         inputClassName,
       )}

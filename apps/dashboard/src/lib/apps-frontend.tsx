@@ -136,7 +136,8 @@ export const ALL_APPS_FRONTEND = {
     icon: CreditCardIcon,
     href: "payments",
     navigationItems: [
-      { displayName: "Products", href: "./products" },
+      { displayName: "Catalogs", href: "./catalogs" },
+      { displayName: "Products & Items", href: "./products" },
       { displayName: "Customers", href: "./customers" },
       { displayName: "Transactions", href: "./transactions" },
     ],

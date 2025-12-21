@@ -1,6 +1,6 @@
 import { ArrowSquareOutIcon, CheckIcon, CopyIcon, PaperPlaneTiltIcon, SparkleIcon, SpinnerGapIcon, UserIcon } from "@phosphor-icons/react";
 import { runAsynchronously, wait } from "@stackframe/stack-shared/dist/utils/promises";
-import { cn } from "@stackframe/stack-ui";
+import { cn } from "@/components/ui";
 import { useChat } from "ai/react";
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";

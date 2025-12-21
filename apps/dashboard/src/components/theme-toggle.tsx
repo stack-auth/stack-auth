@@ -1,5 +1,5 @@
+import { Button } from "@/components/ui";
 import { MoonIcon, SunIcon } from "@phosphor-icons/react";
-import { Button } from "@stackframe/stack-ui";
 import { useTheme } from "next-themes";
 
 export default function ThemeToggle() {

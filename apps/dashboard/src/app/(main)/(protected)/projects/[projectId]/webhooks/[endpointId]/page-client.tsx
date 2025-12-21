@@ -1,9 +1,9 @@
 "use client";
 
 import { SettingCard } from "@/components/settings";
+import { Alert, Badge, Button, CopyButton, Label, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, Typography } from "@/components/ui";
 import { getPublicEnvVar } from '@/lib/env';
 import { CaretLeftIcon, CaretRightIcon } from "@phosphor-icons/react";
-import { Alert, Badge, Button, CopyButton, Label, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, Typography } from "@stackframe/stack-ui";
 import { useMemo, useState } from "react";
 import { SvixProvider, useEndpoint, useEndpointMessageAttempts, useEndpointSecret } from "svix-react";
 import { AppEnabledGuard } from "../../app-enabled-guard";

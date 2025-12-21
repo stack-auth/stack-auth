@@ -1,7 +1,7 @@
 'use client';
 
+import { Card, CardContent, cn } from '@/components/ui';
 import { CircleNotchIcon } from '@phosphor-icons/react';
-import { Card, CardContent, cn } from '@stackframe/stack-ui';
 
 export function MetricsLoadingFallback({ className }: { className?: string }) {
   return (

@@ -1,14 +1,14 @@
 'use client';
 
 import { useAdminApp } from '@/app/(main)/(protected)/projects/[projectId]/use-admin-app';
+import { ActionCell, ActionDialog, AvatarCell, Badge, DataTableColumnHeader, DataTableManualPagination, DateCell, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, TextCell, Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui';
 import type { Icon as PhosphorIcon } from '@phosphor-icons/react';
 import { ArrowClockwiseIcon, ArrowCounterClockwiseIcon, GearIcon, ProhibitIcon, QuestionIcon, ShoppingCartIcon, ShuffleIcon } from '@phosphor-icons/react';
 import type { Transaction, TransactionEntry, TransactionType } from '@stackframe/stack-shared/dist/interface/crud/transactions';
 import { TRANSACTION_TYPES } from '@stackframe/stack-shared/dist/interface/crud/transactions';
 import { deepPlainEquals } from '@stackframe/stack-shared/dist/utils/objects';
-import { ActionCell, ActionDialog, AvatarCell, Badge, DataTableColumnHeader, DataTableManualPagination, DateCell, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, TextCell, Tooltip, TooltipContent, TooltipTrigger } from '@stackframe/stack-ui';
 import type { ColumnDef, ColumnFiltersState, SortingState } from '@tanstack/react-table';
-import React from 'react';
+import React, { useCallback } from 'react';
 import { Link } from '../link';
 
 type SourceType = 'subscription' | 'one_time' | 'item_quantity_change' | 'other';
@@ -352,7 +352,7 @@ export function TransactionTable() {
     },
   ], [summaryById]);
 
-  const onUpdate = async (options: {
+  const onUpdate = useCallback(async (options: {
     cursor: string,
     limit: number,
     sorting: SortingState,
@@ -372,7 +372,7 @@ export function TransactionTable() {
     setFilters(newFilters);
     const res = await app.listTransactions(newFilters);
     return { nextCursor: res.nextCursor };
-  };
+  }, [app, filters, nextCursor]);
 
 
   return (

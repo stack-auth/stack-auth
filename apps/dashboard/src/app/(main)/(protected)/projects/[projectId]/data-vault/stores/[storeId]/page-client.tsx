@@ -1,9 +1,9 @@
 "use client";
 
 import { CodeBlock } from "@/components/code-block";
+import { Button, Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Input, Label, toast } from "@/components/ui";
 import { ArrowLeftIcon, CheckIcon, CopyIcon, PencilSimpleIcon, TrashIcon, XIcon } from "@phosphor-icons/react";
 import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
-import { Button, Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Input, Label, toast } from "@stackframe/stack-ui";
 import { useState } from "react";
 import { useRouter } from "../../../../../../../../components/router";
 import { AppEnabledGuard } from "../../../app-enabled-guard";

@@ -5,16 +5,6 @@ import { FormDialog, SmartFormDialog } from "@/components/form-dialog";
 import { InputField, SelectField } from "@/components/form-fields";
 import { StyledLink } from "@/components/link";
 import { SettingCard } from "@/components/settings";
-import { DeleteUserDialog, ImpersonateUserDialog } from "@/components/user-dialogs";
-import { useThemeWatcher } from '@/lib/theme';
-import MonacoEditor from '@monaco-editor/react';
-import { AtIcon, CalendarIcon, CheckIcon, DotsThreeIcon, EnvelopeIcon, HashIcon, ShieldIcon, SquareIcon, XIcon } from "@phosphor-icons/react";
-import { ServerContactChannel, ServerOAuthProvider, ServerUser } from "@stackframe/stack";
-import { KnownErrors } from "@stackframe/stack-shared";
-import { fromNow } from "@stackframe/stack-shared/dist/utils/dates";
-import { StackAssertionError } from '@stackframe/stack-shared/dist/utils/errors';
-import { isJsonSerializable } from "@stackframe/stack-shared/dist/utils/json";
-import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
 import {
   Accordion,
   AccordionContent,
@@ -41,7 +31,17 @@ import {
   Typography,
   cn,
   useToast
-} from "@stackframe/stack-ui";
+} from "@/components/ui";
+import { DeleteUserDialog, ImpersonateUserDialog } from "@/components/user-dialogs";
+import { useThemeWatcher } from '@/lib/theme';
+import MonacoEditor from '@monaco-editor/react';
+import { AtIcon, CalendarIcon, CheckIcon, DotsThreeIcon, EnvelopeIcon, HashIcon, ShieldIcon, SquareIcon, XIcon } from "@phosphor-icons/react";
+import { ServerContactChannel, ServerOAuthProvider, ServerUser } from "@stackframe/stack";
+import { KnownErrors } from "@stackframe/stack-shared";
+import { fromNow } from "@stackframe/stack-shared/dist/utils/dates";
+import { StackAssertionError } from '@stackframe/stack-shared/dist/utils/errors';
+import { isJsonSerializable } from "@stackframe/stack-shared/dist/utils/json";
+import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
 import { useEffect, useMemo, useState } from "react";
 import * as yup from "yup";
 import { AppEnabledGuard } from "../../app-enabled-guard";

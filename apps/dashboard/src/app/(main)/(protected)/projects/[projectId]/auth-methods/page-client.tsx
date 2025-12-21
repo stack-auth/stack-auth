@@ -1,10 +1,10 @@
 "use client";
 
 import { SettingCard, SettingSelect, SettingSwitch } from "@/components/settings";
+import { ActionDialog, Badge, BrandIcons, BrowserFrame, Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, Input, SelectItem, SimpleTooltip, Typography } from "@/components/ui";
 import { AsteriskIcon, DotsThreeIcon, KeyIcon, LinkIcon, PlusCircleIcon } from "@phosphor-icons/react";
 import { AdminOAuthProviderConfig, AuthPage, OAuthProviderConfig } from "@stackframe/stack";
 import { allProviders } from "@stackframe/stack-shared/dist/utils/oauth";
-import { ActionDialog, Badge, BrandIcons, BrowserFrame, Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, Input, SelectItem, SimpleTooltip, Typography } from "@stackframe/stack-ui";
 import { useState } from "react";
 import { CardSubtitle } from "../../../../../../../../../packages/stack-ui/dist/components/ui/card";
 import { AppEnabledGuard } from "../app-enabled-guard";

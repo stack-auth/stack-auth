@@ -3,8 +3,8 @@
 import { FormDialog } from "@/components/form-dialog";
 import { InputField } from "@/components/form-fields";
 import { useRouter } from "@/components/router";
+import { ActionDialog, Alert, AlertDescription, AlertTitle, Button, Card, Typography } from "@/components/ui";
 import { WarningCircleIcon } from "@phosphor-icons/react";
-import { ActionDialog, Alert, AlertDescription, AlertTitle, Button, Card, Typography } from "@stackframe/stack-ui";
 import { useState } from "react";
 import * as yup from "yup";
 import { AppEnabledGuard } from "../app-enabled-guard";

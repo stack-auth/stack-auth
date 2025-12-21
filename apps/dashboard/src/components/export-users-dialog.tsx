@@ -21,7 +21,7 @@ import {
   SelectTrigger,
   SelectValue,
   toast,
-} from "@stackframe/stack-ui";
+} from "@/components/ui";
 import { download, generateCsv, mkConfig } from "export-to-csv";
 import { useState } from "react";
 

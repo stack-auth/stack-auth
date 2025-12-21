@@ -2,11 +2,11 @@
 
 import { useAdminApp } from "@/app/(main)/(protected)/projects/[projectId]/use-admin-app";
 import { AppSquare } from "@/components/app-square";
+import { cn } from "@/components/ui";
 import { type AppId } from "@/lib/apps-frontend";
 import { CheckCircleIcon, MagnifyingGlassIcon, SquaresFourIcon } from "@phosphor-icons/react";
 import { ALL_APPS } from "@stackframe/stack-shared/dist/apps/apps-config";
 import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
-import { cn } from "@stackframe/stack-ui";
 import { useMemo, useState } from "react";
 import { PageLayout } from "../page-layout";
 

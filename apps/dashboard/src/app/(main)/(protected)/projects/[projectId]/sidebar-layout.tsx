@@ -6,6 +6,18 @@ import { Logo } from "@/components/logo";
 import { ProjectSwitcher } from "@/components/project-switcher";
 import { StackCompanion } from "@/components/stack-companion";
 import ThemeToggle from "@/components/theme-toggle";
+import {
+  Button,
+  Sheet,
+  SheetContent,
+  SheetTitle,
+  SheetTrigger,
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+  Typography,
+} from "@/components/ui";
 import { ALL_APPS_FRONTEND, DUMMY_ORIGIN, getAppPath, getItemPath, testAppPath, testItemPath } from "@/lib/apps-frontend";
 import { getPublicEnvVar } from '@/lib/env';
 import { cn } from "@/lib/utils";
@@ -23,18 +35,6 @@ import {
 import { UserButton } from "@stackframe/stack";
 import { ALL_APPS, type AppId } from "@stackframe/stack-shared/dist/apps/apps-config";
 import { typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
-import {
-  Button,
-  Sheet,
-  SheetContent,
-  SheetTitle,
-  SheetTrigger,
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-  Typography,
-} from "@stackframe/stack-ui";
 import { usePathname } from "next/navigation";
 import { useCallback, useMemo, useRef, useState } from "react";
 import { useAdminApp, useProjectId } from "./use-admin-app";

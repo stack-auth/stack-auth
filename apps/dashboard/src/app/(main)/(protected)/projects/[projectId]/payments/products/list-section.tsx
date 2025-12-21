@@ -1,8 +1,8 @@
 "use client";
 
+import { Button, SimpleTooltip } from "@/components/ui";
 import { cn } from "@/lib/utils";
 import { MagnifyingGlassIcon, PlusIcon } from "@phosphor-icons/react";
-import { Button, Input, SimpleTooltip } from "@stackframe/stack-ui";
 import React, { ReactNode, useState } from "react";
 
 export type ListSectionProps = {
@@ -30,31 +30,33 @@ export function ListSection({
 
   return (
     <div className="flex flex-col h-full">
-      <div className={cn("sticky top-0 z-10")}>
-        <div className="flex items-center justify-between pl-3 pr-1 py-1">
-          <div className="flex items-center">
-            <h2 className="font-medium">{title}</h2>
+      <div className={cn("sticky top-0 z-10 bg-gray-50/95 dark:bg-background/95 backdrop-blur-sm")}>
+        <div className="flex items-center gap-3 px-4 py-3">
+          {/* Left: Title */}
+          <div className="flex items-center gap-2 shrink-0">
+            <h2 className="text-sm font-semibold text-foreground">{title}</h2>
             {titleTooltip && (
               <SimpleTooltip
                 tooltip={titleTooltip}
                 type="info"
                 inline
-                className="ml-2 mb-[2px] translate-y-[-1px]"
+                className="mb-[2px]"
                 disabled={!titleTooltip}
               />
             )}
           </div>
-          {onSearchChange && (
-            <div>
+
+          {/* Center: Search bar or spacer */}
+          {onSearchChange ? (
+            <div className="flex-1 flex justify-center">
               <div className={cn(
-              "relative transition-all",
-              isSearchFocused ? "max-w-[200px]" : "max-w-[140px]"
-            )}>
-                <MagnifyingGlassIcon className={cn(
-                "absolute left-2.5 text-muted-foreground transition-all duration-200",
-                isSearchFocused ? "top-[6px] h-4 w-4" : "top-[6px] h-3 w-3.5"
-              )} />
-                <Input
+                "relative flex items-center transition-all duration-150 hover:transition-none",
+                isSearchFocused ? "w-[160px]" : "w-[140px]"
+              )}>
+                <div className="absolute left-2.5 flex items-center justify-center pointer-events-none z-10">
+                  <MagnifyingGlassIcon className="h-3 w-3 text-foreground/50" />
+                </div>
+                <input
                   type="text"
                   placeholder={searchPlaceholder}
                   value={searchValue || ''}
@@ -62,25 +64,37 @@ export function ListSection({
                   onFocus={() => setIsSearchFocused(true)}
                   onBlur={() => setIsSearchFocused(false)}
                   className={cn(
-                  "pl-8 bg-secondary/30 border-transparent focus:bg-secondary/50 transition-all duration-200",
-                  isSearchFocused ? "h-7 text-sm" : "h-6 text-xs"
-                )}
+                    "w-full h-7 pl-7 pr-2 text-xs rounded-lg",
+                    "bg-background dark:bg-foreground/[0.04] border border-border/50 dark:border-foreground/[0.08]",
+                    "focus:bg-background dark:focus:bg-foreground/[0.06] focus:outline-none focus:ring-1 focus:ring-foreground/[0.1] focus:border-border dark:focus:border-foreground/[0.12]",
+                    "placeholder:text-muted-foreground/50",
+                    "transition-all duration-150 hover:transition-none"
+                  )}
                 />
               </div>
             </div>
-          )}
+          ) : onAddClick ? (
+            <div className="flex-1" />
+          ) : null}
+
+          {/* Right: Add button */}
           {onAddClick && (
             <Button
               variant="ghost"
               size="sm"
-              className="h-8 w-8 p-0"
+              className={cn(
+                "h-7 w-7 p-0 rounded-lg shrink-0",
+                "text-muted-foreground hover:text-foreground",
+                "hover:bg-foreground/[0.06] border border-transparent hover:border-border/40 dark:hover:border-foreground/[0.08]",
+                "transition-all duration-150 hover:transition-none"
+              )}
               onClick={onAddClick}
             >
               <PlusIcon className="h-4 w-4" />
             </Button>
           )}
         </div>
-        {hasTitleBorder && <div className="border-b" />}
+        {hasTitleBorder && <div className="h-px bg-border/50 dark:bg-foreground/[0.08]" />}
       </div>
       <div className="flex-1 overflow-auto">
         {children}

@@ -6,7 +6,7 @@ import { ArchiveIcon, PlusIcon } from "@phosphor-icons/react";
 import type { FC } from "react";
 
 import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button";
-import { Button } from "@stackframe/stack-ui";
+import { Button } from "@/components/ui";
 
 export const ThreadList: FC = () => {
   return (

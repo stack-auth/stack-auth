@@ -1,6 +1,6 @@
+import { Button, Card } from "@/components/ui";
 import { makeAssistantToolUI } from "@assistant-ui/react";
 import { ArrowCounterClockwiseIcon } from "@phosphor-icons/react";
-import { Button, Card } from "@stackframe/stack-ui";
 
 type EmailThemeUIProps = {
   setCurrentCode: (code: string) => void,

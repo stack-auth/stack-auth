@@ -1,7 +1,7 @@
 'use client';
 
+import { cn } from "@/components/ui";
 import { FlaskIcon, WarningIcon, XIcon } from "@phosphor-icons/react";
-import { cn } from "@stackframe/stack-ui";
 import { useEffect, useState } from "react";
 
 type AppWarningModalProps = {
