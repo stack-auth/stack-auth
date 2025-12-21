@@ -1,9 +1,11 @@
 'use client';
 
+import { Button, Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui';
+import { ChangelogEntry } from '@/lib/changelog';
 import { cn } from '@/lib/utils';
 import { checkVersion, VersionCheckResult } from '@/lib/version-check';
-import { Button, Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui';
-import { BookOpen, HelpCircle, Lightbulb, TimerReset, X } from 'lucide-react';
+import { runAsynchronously } from '@stackframe/stack-shared/dist/utils/promises';
+import { Bell, BookOpen, HelpCircle, Lightbulb, TimerReset, X } from 'lucide-react';
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import packageJson from '../../package.json';
 import { FeedbackForm } from './feedback-form';
@@ -73,6 +75,7 @@ export function useStackCompanion() {
   return useContext(StackCompanionContext);
 }
 
+
 export function StackCompanion({ className }: { className?: string }) {
   const [activeItem, setActiveItem] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
@@ -82,6 +85,9 @@ export function StackCompanion({ className }: { className?: string }) {
   const [isAnimating, setIsAnimating] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [isSplitScreenMode, setIsSplitScreenMode] = useState(false);
+  const [changelogData, setChangelogData] = useState<ChangelogEntry[]>([]);
+  const [hasNewVersions, setHasNewVersions] = useState(false);
+  const [lastSeenVersion, setLastSeenVersion] = useState('');
 
   const startXRef = useRef(0);
   const startWidthRef = useRef(0);
@@ -124,6 +130,62 @@ export function StackCompanion({ className }: { className?: string }) {
     });
     return cleanup;
   }, []);
+
+  // Fetch changelog data on mount and check for new versions
+  useEffect(() => {
+    const fetchChangelogData = async () => {
+      try {
+        const response = await fetch('/api/changelog');
+        if (response.ok) {
+          const payload = await response.json();
+          const entries = payload.entries || [];
+          setChangelogData(entries);
+
+          // Check for new versions
+          const lastSeen = document.cookie
+            .split('; ')
+            .find(row => row.startsWith('stack-last-seen-changelog-version='))
+            ?.split('=')[1] || '';
+
+          setLastSeenVersion(lastSeen);
+
+          if (entries.length > 0 && lastSeen) {
+            const hasNewer = entries.some((entry: ChangelogEntry) => {
+              if (entry.isUnreleased) return false;
+              return entry.version > lastSeen;
+            });
+            setHasNewVersions(hasNewer);
+          }
+        }
+      } catch (error) {
+        console.error('Failed to fetch changelog data:', error);
+      }
+    };
+
+    runAsynchronously(fetchChangelogData());
+  }, []);
+
+  // Re-check for new versions when changelog is opened/closed
+  useEffect(() => {
+    if (activeItem === 'changelog' || activeItem === null) {
+      // Re-check versions when opening or closing changelog
+      const lastSeen = document.cookie
+        .split('; ')
+        .find(row => row.startsWith('stack-last-seen-changelog-version='))
+        ?.split('=')[1] || '';
+
+      if (changelogData.length > 0 && lastSeen) {
+        const hasNewer = changelogData.some((entry: ChangelogEntry) => {
+          if (entry.isUnreleased) return false;
+          return entry.version > lastSeen;
+        });
+        setHasNewVersions(hasNewer);
+      } else {
+        setHasNewVersions(false);
+      }
+    }
+  }, [activeItem, changelogData]);
+
 
   const openDrawer = useCallback((itemId: string) => {
     setActiveItem(itemId);
@@ -304,7 +366,7 @@ export function StackCompanion({ className }: { className?: string }) {
       <div className="flex-1 overflow-y-auto p-5 overflow-x-hidden no-drag cursor-auto">
         {activeItem === 'docs' && <UnifiedDocsWidget isActive={true} />}
         {activeItem === 'feedback' && <FeatureRequestBoard isActive={true} />}
-        {activeItem === 'changelog' && <ChangelogWidget isActive={true} />}
+        {activeItem === 'changelog' && <ChangelogWidget isActive={true} initialData={changelogData} />}
         {activeItem === 'support' && <FeedbackForm />}
       </div>
     </div>
@@ -346,10 +408,15 @@ export function StackCompanion({ className }: { className?: string }) {
                 }}
               >
                 <item.icon className={cn("h-5 w-5 transition-transform duration-[50ms] group-hover:scale-110", item.color)} />
+                {item.id === 'changelog' && hasNewVersions && (
+                  <div className="absolute -top-0.5 -right-0.5 bg-orange-500 rounded-full p-0.5">
+                    <Bell className="h-3 w-3 text-white" />
+                  </div>
+                )}
               </Button>
             </TooltipTrigger>
             <TooltipContent side="left" className="z-[60] mr-2">
-              {item.label}
+              {item.id === 'changelog' && hasNewVersions ? `${item.label} (New updates available!)` : item.label}
             </TooltipContent>
           </Tooltip>
         ))}

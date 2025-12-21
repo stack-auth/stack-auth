@@ -1,285 +1,314 @@
 'use client';
 
-import { runAsynchronously } from '@stackframe/stack-shared/dist/utils/promises';
 import { Button } from '@/components/ui';
-import { Calendar, ChevronDown, ChevronUp } from 'lucide-react';
+import { runAsynchronously } from '@stackframe/stack-shared/dist/utils/promises';
+import { Calendar, ChevronDown, ChevronUp, Info } from 'lucide-react';
 import Image from 'next/image';
-import Script from 'next/script';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+
+type ChangeType = 'major' | 'minor' | 'patch';
+
+type ApiChangelogEntry = {
+  version: string,
+  type: ChangeType,
+  markdown: string,
+  bulletCount: number,
+  releasedAt?: string,
+  isUnreleased?: boolean,
+};
+
+type ChangelogItem = ApiChangelogEntry & {
+  id: string,
+  expanded: boolean,
+};
 
 type ChangelogWidgetProps = {
   isActive: boolean,
+  initialData?: ApiChangelogEntry[],
 };
 
-type ChangelogItem = {
-  id: string,
-  title: string,
-  content: string,
-  date: string,
-  featuredImage?: string,
-  isNew?: boolean,
-  expanded?: boolean,
+const TYPE_LABEL = new Map<ChangeType, string>([
+  ['major', 'Major release'],
+  ['minor', 'Minor update'],
+  ['patch', 'Patch'],
+]);
+
+const TYPE_BADGE_CLASS = new Map<ChangeType, string>([
+  ['major', 'bg-rose-100 text-rose-800 dark:bg-rose-500/20 dark:text-rose-200'],
+  ['minor', 'bg-blue-100 text-blue-800 dark:bg-blue-500/20 dark:text-blue-200'],
+  ['patch', 'bg-emerald-100 text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-100'],
+]);
+
+const COLLAPSE_THRESHOLD = 220;
+
+const shouldCollapseContent = (markdown: string) => {
+  const textContent = markdown
+    .replace(/`([^`]+)`/g, '$1')
+    .replace(/\[(.*?)\]\((.*?)\)/g, '$1')
+    .replace(/[#>*_\-]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return textContent.length > COLLAPSE_THRESHOLD;
 };
 
-export function ChangelogWidget({ isActive }: ChangelogWidgetProps) {
-  const [changelogs, setChangelogs] = useState<ChangelogItem[]>([]);
-  const [loading, setLoading] = useState(true);
+const formatVersion = (version: string) => {
+  // Convert YYYY.MM.DD to YY.MM.DD format for display
+  const calVerMatch = version.match(/^(\d{4})\.(\d{2})\.(\d{2})$/);
+  if (calVerMatch) {
+    const [, year, month, day] = calVerMatch;
+    const shortYear = year.slice(-2); // Get last 2 digits
+    return `${shortYear}.${month}.${day}`;
+  }
+  return version;
+};
+
+const NoteBlockquote = ({ children, ...props }: any) => {
+  return (
+    <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 p-3 my-3 rounded-md">
+      <div className="flex items-start gap-2">
+        <Info className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400 mt-0.5 flex-shrink-0" />
+        <div className="text-sm text-blue-800 dark:text-blue-200 leading-relaxed">
+          {children}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const ChangelogListItem = ({ children, ...props }: any) => {
+  return (
+    <li className="text-muted-foreground leading-relaxed">
+      {children}
+    </li>
+  );
+};
+
+const ChangelogImage = ({ src, alt, ...props }: any) => {
+  return (
+    <Image
+      src={src}
+      alt={alt}
+      width={800}
+      height={600}
+      className="rounded-lg border border-border max-w-full h-auto my-4"
+      {...props}
+    />
+  );
+};
+
+export function ChangelogWidget({ isActive, initialData }: ChangelogWidgetProps) {
+  const [changelog, setChangelog] = useState<ChangelogItem[]>([]);
+  const [loading, setLoading] = useState(!initialData);
+  const [error, setError] = useState<string | null>(null);
+  const hasFetchedRef = useRef(false);
+
+  const fetchChangelog = useCallback(async (signal?: AbortSignal) => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      // Fake entries for UI testing - replace with real fetch later
+      const fakeEntries: ApiChangelogEntry[] = [
+        {
+          version: "2025.12.19",
+          type: "patch", // Default type since we don't use major/minor/patch anymore
+          markdown: `- Introduces new changelog and deprecates all older changelogs
+- Moved away from semantic versioning in favor of CalVer
+
+> **Note:** All older changelogs are deprecated and have been removed. The source of truth is this single changelog file.
+>
+> Going forward, all changes should be documented in this file only.`,
+          bulletCount: 2,
+          releasedAt: "2025-12-19",
+        },
+        {
+          version: "2025.12.18",
+          type: "patch",
+          markdown: `- Added new authentication methods for better security
+- Improved error handling in API responses
+- Updated documentation with new examples
+
+![New authentication flow](storeDesc-auth-1.png)
+
+> **Security**: Enhanced encryption for sensitive data storage.`,
+          bulletCount: 3,
+          releasedAt: "2025-12-18",
+        },
+        {
+          version: "2025.12.17",
+          type: "patch",
+          markdown: `- Fixed memory leak in session management
+- Resolved issue with OAuth callback redirects
+- Corrected timezone handling in audit logs`,
+          bulletCount: 3,
+          releasedAt: "2025-12-17",
+        },
+        {
+          version: "2025.12.16",
+          type: "patch",
+          markdown: `- Added webhook support for user events
+- Implemented bulk user import functionality
+- New API endpoints for team management`,
+          bulletCount: 3,
+          releasedAt: "2025-12-16",
+        },
+        {
+          version: "2025.12.15",
+          type: "patch",
+          markdown: `- Fixed issue with password reset emails not sending
+- Corrected validation for phone number fields
+- Resolved database connection timeout issues`,
+          bulletCount: 3,
+          releasedAt: "2025-12-15",
+        },
+      ];
+
+      setChangelog(fakeEntries.map((entry, index) => ({
+        ...entry,
+        id: `${entry.version}-${entry.releasedAt ?? 'unreleased'}`,
+        expanded: index === 0, // Only expand the first (latest) entry
+      })));
+    } catch (cause) {
+      if (signal?.aborted) {
+        return;
+      }
+      console.error('Failed to fetch changelog', cause);
+      setError('Unable to load the changelog right now.');
+      setChangelog([]);
+    } finally {
+      if (!signal?.aborted) {
+        setLoading(false);
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!isActive || hasFetchedRef.current) {
+      return;
+    }
+
+    hasFetchedRef.current = true;
+
+    if (initialData) {
+      // Use provided initial data
+      setChangelog(initialData.map((entry, index) => ({
+        ...entry,
+        id: `${entry.version}-${entry.releasedAt ?? 'unreleased'}`,
+        expanded: index === 0, // Only expand the first (latest) entry
+      })));
+      setLoading(false);
+
+      // Update last seen version when changelog is opened
+      if (initialData.length > 0) {
+        const latestVersion = initialData[0].version;
+        document.cookie = `stack-last-seen-changelog-version=${latestVersion}; path=/; max-age=31536000`; // 1 year
+      }
+    } else {
+      // Fallback to fetching if no initial data provided
+      runAsynchronously(fetchChangelog());
+    }
+  }, [fetchChangelog, isActive, initialData]);
 
   const toggleExpanded = (id: string) => {
-    setChangelogs(prev => prev.map(changelog =>
-      changelog.id === id
-        ? { ...changelog, expanded: !changelog.expanded }
-        : changelog
+    setChangelog((prev) => prev.map((entry) =>
+      entry.id === id ? { ...entry, expanded: !entry.expanded } : entry,
     ));
   };
 
-  // Helper function to determine if content should be collapsible
-  const shouldCollapseContent = (content: string) => {
-    const textContent = content.replace(/<[^>]*>/g, '');
-    return textContent.length > 200; // Collapse if text is longer than 200 characters
-  };
-
-  useEffect(() => {
-    if (!isActive) return;
-
-    const win = window as any;
-    if (typeof win.Featurebase !== "function") {
-      win.Featurebase = function () {
-        // eslint-disable-next-line prefer-rest-params
-        (win.Featurebase.q = win.Featurebase.q || []).push(arguments);
-      };
-    }
-
-    // Initialize the widget but disable popup since we're showing inline
-    win.Featurebase("init_changelog_widget", {
-      organization: "stackauth",
-      dropdown: {
-        enabled: false, // Disable since we're showing inline
-      },
-      popup: {
-        enabled: false, // Disable popup since we're showing inline
-        autoOpenForNewUpdates: false,
-      },
-      theme: "light",
-      locale: "en",
-    });
-
-    // Fetch changelog data directly from Featurebase API
-    const fetchChangelogs = async () => {
-      try {
-        setLoading(true);
-        const response = await fetch('https://stackauth.featurebase.app/api/v1/changelog', {
-          headers: {
-            'Accept': 'application/json',
-          },
-        });
-
-        if (response.ok) {
-          const data = await response.json();
-          // Transform the data to our format - API returns { results: [...] }
-          const transformedData = data.results?.slice(0, 10).map((item: any) => ({
-            id: item.id,
-            title: item.title,
-            content: item.content || 'No content available',
-            date: new Date(item.date).toLocaleDateString(),
-            featuredImage: item.featuredImage,
-            isNew: new Date(item.date) > new Date(Date.now() - 7 * 24 * 60 * 60 * 1000), // Consider new if within last 7 days
-            expanded: false, // Start collapsed
-          })) || [];
-          setChangelogs(transformedData);
-        } else {
-          console.error('Failed to fetch changelogs:', response.status, response.statusText);
-          setChangelogs([]);
-        }
-      } catch (error) {
-        console.error('Failed to fetch changelogs:', error);
-        setChangelogs([]);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    runAsynchronously(fetchChangelogs());
-  }, [isActive]);
-
   if (loading) {
     return (
-      <>
-        <Script src="https://do.featurebase.app/js/sdk.js" id="featurebase-sdk" />
-        <div className="space-y-4">
-          <div className="bg-muted/30 rounded-lg p-4">
-            <div className="animate-pulse space-y-3">
-              <div className="h-4 bg-muted rounded w-3/4"></div>
-              <div className="h-3 bg-muted rounded w-1/2"></div>
-            </div>
+      <div className="space-y-4">
+        <div className="bg-muted/30 rounded-lg p-4">
+          <div className="animate-pulse space-y-3">
+            <div className="h-4 bg-muted rounded w-3/4" />
+            <div className="h-3 bg-muted rounded w-1/2" />
           </div>
         </div>
-      </>
+        <div className="space-y-3">
+          {[0, 1, 2].map((item) => (
+            <div key={item} className="bg-card rounded-lg border border-border p-4">
+              <div className="animate-pulse space-y-3">
+                <div className="h-3 bg-muted rounded w-1/3" />
+                <div className="h-4 bg-muted rounded w-2/3" />
+                <div className="h-24 bg-muted rounded" />
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
     );
   }
 
   return (
-    <>
-      <Script src="https://do.featurebase.app/js/sdk.js" id="featurebase-sdk" />
-      <div className="space-y-4">
-        {/* Header section */}
-        <div className="bg-muted/30 rounded-lg p-4">
-          <h3 className="text-sm font-semibold mb-2">Latest Updates</h3>
-          <p className="text-xs text-muted-foreground">
-            Recent features and improvements
-          </p>
+    <div className="space-y-4">
+      <div className="bg-muted/30 rounded-lg p-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="text-sm font-semibold">Stack Auth releases</h3>
+          </div>
         </div>
+        {error && (
+          <p className="text-xs text-destructive mt-2">
+            {error}
+          </p>
+        )}
+      </div>
 
-        {/* Changelog Items */}
-        <div className="space-y-4">
-          {changelogs.length > 0 ? (
-            changelogs.map((changelog) => {
-              const shouldCollapse = shouldCollapseContent(changelog.content);
+      <div className="space-y-4">
+        {changelog.length === 0 && !error && (
+          <div className="bg-muted/30 rounded-lg p-4 text-center">
+            <Calendar className="h-8 w-8 mx-auto mb-2 text-muted-foreground" />
+            <p className="text-xs text-muted-foreground font-medium">
+              No changelog entries found
+            </p>
+          </div>
+        )}
 
-              return (
-                <div
-                  key={changelog.id}
-                  className="bg-card rounded-lg border border-border overflow-hidden"
+        {changelog.map((entry) => {
+          const collapse = shouldCollapseContent(entry.markdown);
+
+          return (
+            <div key={entry.id} className="bg-card rounded-lg border border-border">
+              <div className="px-4 py-4 flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                  <h4 className="text-base font-semibold">v{formatVersion(entry.version)}</h4>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 w-7 p-0"
+                  onClick={() => toggleExpanded(entry.id)}
                 >
-                  {/* Featured Image with Title Overlay - Always Visible */}
-                  {changelog.featuredImage ? (
-                    <div className="relative">
-                      <Image
-                        src={changelog.featuredImage}
-                        alt={changelog.title}
-                        width={320}
-                        height={128}
-                        className="w-full h-32 object-cover"
-                        onError={(e) => {
-                          (e.target as HTMLImageElement).style.display = 'none';
-                        }}
-                      />
-                      {/* Dark overlay for better text readability */}
-                      <div className="absolute inset-0 bg-black/40"></div>
-
-                      {/* Title and metadata overlay */}
-                      <div className="absolute inset-0 p-3 flex flex-col justify-end">
-                        <div className="flex items-start justify-between mb-1">
-                          <h4 className="text-sm font-semibold text-white line-clamp-2 flex-1">
-                            {changelog.title}
-                          </h4>
-                          {changelog.isNew && (
-                            <span className="bg-primary text-primary-foreground text-xs px-2 py-0.5 rounded-full flex-shrink-0 ml-2">
-                              New
-                            </span>
-                          )}
-                        </div>
-
-                        <div className="flex items-center gap-2 text-xs text-white/80">
-                          <Calendar className="h-3 w-3" />
-                          <span>{changelog.date}</span>
-                        </div>
-                      </div>
-                    </div>
+                  {entry.expanded ? (
+                    <ChevronUp className="h-3 w-3" />
                   ) : (
-                    /* Fallback header when no image */
-                    <div className="p-3 border-b border-border bg-muted/20">
-                      <div className="flex items-start justify-between mb-2">
-                        <div className="flex items-center gap-2 flex-1">
-                          <h4 className="text-sm font-medium line-clamp-2">
-                            {changelog.title}
-                          </h4>
-                          {changelog.isNew && (
-                            <span className="bg-primary text-primary-foreground text-xs px-2 py-0.5 rounded-full flex-shrink-0">
-                              New
-                            </span>
-                          )}
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                        <Calendar className="h-3 w-3" />
-                        <span>{changelog.date}</span>
-                      </div>
-                    </div>
+                    <ChevronDown className="h-3 w-3" />
                   )}
+                </Button>
+              </div>
 
-                  {/* Content Section */}
-                  <div className="p-3">
-                    {shouldCollapse ? (
-                      /* Collapsible content for long text */
-                      <>
-                        {!changelog.expanded && (
-                          <div>
-                            <p className="text-xs text-muted-foreground line-clamp-3 mb-2">
-                              {changelog.content.replace(/<[^>]*>/g, '')}
-                            </p>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-6 text-xs p-0 text-primary hover:text-primary/80"
-                              onClick={() => toggleExpanded(changelog.id)}
-                            >
-                              <ChevronDown className="h-3 w-3 mr-1" />
-                              Read more
-                            </Button>
-                          </div>
-                        )}
-
-                        {changelog.expanded && (
-                          <div>
-                            <div
-                              className="prose prose-sm max-w-none text-xs mb-3 whitespace-pre-wrap"
-                              style={{
-                                fontSize: '12px',
-                                lineHeight: '1.4',
-                              }}
-                            >
-                              {changelog.content.replace(/<[^>]*>/g, '')}
-                            </div>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-6 text-xs p-0 text-primary hover:text-primary/80"
-                              onClick={() => toggleExpanded(changelog.id)}
-                            >
-                              <ChevronUp className="h-3 w-3 mr-1" />
-                              Show less
-                            </Button>
-                          </div>
-                        )}
-                      </>
-                    ) : (
-                      /* Always visible content for short text */
-                      <div
-                        className="prose prose-sm max-w-none text-xs whitespace-pre-wrap"
-                        style={{
-                          fontSize: '12px',
-                          lineHeight: '1.4',
-                        }}
-                      >
-                        {changelog.content.replace(/<[^>]*>/g, '')}
-                      </div>
-                    )}
+              {entry.expanded && (
+                <div className="px-4 pb-4">
+                  <div className="text-sm text-muted-foreground leading-relaxed space-y-3">
+                    <ReactMarkdown
+                      remarkPlugins={[remarkGfm]}
+                      components={{
+                        blockquote: NoteBlockquote,
+                        li: ChangelogListItem,
+                        img: ChangelogImage,
+                      }}
+                    >
+                      {entry.markdown}
+                    </ReactMarkdown>
                   </div>
                 </div>
-              );
-            })
-          ) : (
-            <div className="bg-muted/30 rounded-lg p-4 text-center">
-              <Calendar className="h-8 w-8 mx-auto mb-2 text-muted-foreground" />
-              <p className="text-xs text-muted-foreground font-medium">
-                No changelog updates available
-              </p>
-              <p className="text-xs text-muted-foreground/80 mt-1">
-                Check back later for new updates
-              </p>
+              )}
             </div>
-          )}
-        </div>
-
-        {/* Hidden Featurebase trigger for advanced features */}
-        <div className="hidden">
-          <button data-featurebase-changelog>
-            <span id="fb-update-badge"></span>
-          </button>
-        </div>
+          );
+        })}
       </div>
-    </>
+    </div>
   );
 }
