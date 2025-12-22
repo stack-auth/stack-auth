@@ -20,7 +20,7 @@ import {
   SelectTrigger,
   SelectValue,
   toast,
-} from "@stackframe/stack-ui";
+} from "@/components/ui";
 import { download, generateCsv, mkConfig } from "export-to-csv";
 import { Download } from "lucide-react";
 import { useState } from "react";

@@ -2,7 +2,7 @@
 
 import { useRouter } from "@/components/router";
 import { AppId } from "@stackframe/stack-shared/dist/apps/apps-config";
-import { Typography } from "@stackframe/stack-ui";
+import { Typography } from "@/components/ui";
 import type { ReactNode } from "react";
 import { useEffect } from "react";
 import { PageLayout } from "./page-layout";

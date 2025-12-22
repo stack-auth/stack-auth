@@ -2,7 +2,7 @@
 
 import { fileToBase64 } from '@stackframe/stack-shared/dist/utils/base64';
 import { runAsynchronouslyWithAlert } from '@stackframe/stack-shared/dist/utils/promises';
-import { Button, cn, Typography } from '@stackframe/stack-ui';
+import { Button, cn, Typography } from '@/components/ui';
 import imageCompression from 'browser-image-compression';
 import { Upload, X } from 'lucide-react';
 import { useState } from 'react';

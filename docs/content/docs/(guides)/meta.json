@@ -10,7 +10,7 @@
     "getting-started/components",
     "getting-started/users",
     "getting-started/production",
-    "getting-started/example-pages",
+    "getting-started/vite-example",
     "---Apps---",
     "apps/api-keys",
     "apps/emails",

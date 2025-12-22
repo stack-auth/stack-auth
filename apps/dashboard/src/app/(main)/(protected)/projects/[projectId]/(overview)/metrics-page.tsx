@@ -8,7 +8,7 @@ import useResizeObserver from '@react-hook/resize-observer';
 import { useUser } from '@stackframe/stack';
 import { ALL_APPS, type AppId } from "@stackframe/stack-shared/dist/apps/apps-config";
 import { typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
-import { cn, Typography } from '@stackframe/stack-ui';
+import { cn, Typography } from '@/components/ui';
 import { ChevronUp, Compass, Globe2, LayoutGrid, MoreHorizontal } from "lucide-react";
 import { Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { PageLayout } from "../page-layout";
