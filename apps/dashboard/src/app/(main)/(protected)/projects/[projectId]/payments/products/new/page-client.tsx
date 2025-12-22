@@ -2,11 +2,6 @@
 
 import { ItemDialog } from "@/components/payments/item-dialog";
 import { useRouter } from "@/components/router";
-import { cn } from "@/lib/utils";
-import { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
-import { getUserSpecifiedIdErrorMessage, isValidUserSpecifiedId, sanitizeUserSpecifiedId } from "@stackframe/stack-shared/dist/schema-fields";
-import { typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
-import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import {
   Button,
   Card,
@@ -29,7 +24,12 @@ import {
   toast,
   Typography,
 } from "@/components/ui";
-import { ArrowLeft, Building2, ChevronDown, Clock, Code, Copy, Layers, MessageSquare, Plus, Puzzle, Server, Settings2, Trash2, User, Zap } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { ArrowLeftIcon, BuildingOfficeIcon, CaretDownIcon, ChatIcon, ClockIcon, CodeIcon, CopyIcon, GearIcon, HardDriveIcon, LightningIcon, PlusIcon, PuzzlePieceIcon, StackIcon, TrashIcon, UserIcon } from "@phosphor-icons/react";
+import { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
+import { getUserSpecifiedIdErrorMessage, isValidUserSpecifiedId, sanitizeUserSpecifiedId } from "@stackframe/stack-shared/dist/schema-fields";
+import { typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
+import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { useLayoutEffect, useRef, useState } from "react";
 import { useAdminApp, useProjectId } from "../../../use-admin-app";
 import { CreateCatalogDialog } from "../create-catalog-dialog";
@@ -49,21 +49,21 @@ const CUSTOMER_TYPE_OPTIONS = [
     value: 'user' as const,
     label: 'User',
     description: 'The customer of this product is an individual user',
-    icon: User,
+    icon: UserIcon,
     color: 'blue',
   },
   {
     value: 'team' as const,
     label: 'Team',
     description: 'The customer of this product is an entire team',
-    icon: Building2,
+    icon: BuildingOfficeIcon,
     color: 'emerald',
   },
   {
     value: 'custom' as const,
     label: 'Custom',
     description: 'Products for entities you define. You can specify a custom ID to identify the customer.',
-    icon: Settings2,
+    icon: GearIcon,
     color: 'amber',
   },
 ] as const;
@@ -84,7 +84,7 @@ function CustomerTypeSelection({
           onClick={onCancel}
           className="gap-2"
         >
-          <ArrowLeft className="h-4 w-4" />
+          <ArrowLeftIcon className="h-4 w-4" />
           Back
         </Button>
         <Typography type="h3" className="font-semibold">Create Product</Typography>
@@ -473,7 +473,7 @@ ${Object.entries(prices).map(([id, price]) => {
             onClick={handleBackToCustomerTypeSelection}
             className="gap-2"
           >
-            <ArrowLeft className="h-4 w-4" />
+            <ArrowLeftIcon className="h-4 w-4" />
             Back
           </Button>
           <Typography type="h3" className="font-semibold">Create Product</Typography>
@@ -492,7 +492,7 @@ ${Object.entries(prices).map(([id, price]) => {
                 });
               }}
             >
-              <Copy className="h-4 w-4 mr-2" />
+              <CopyIcon className="h-4 w-4 mr-2" />
               Copy Checkout Prompt
             </Button>
           ) : (
@@ -517,7 +517,7 @@ ${Object.entries(prices).map(([id, price]) => {
                     disabled={!canSave || isSaving}
                     className="!rounded-l-none px-2"
                   >
-                    <ChevronDown className="h-4 w-4" />
+                    <CaretDownIcon className="h-4 w-4" />
                   </Button>
                 </DropdownMenuTrigger>
               </div>
@@ -532,7 +532,7 @@ ${Object.entries(prices).map(([id, price]) => {
                   }}
                   className="flex items-center gap-2"
                 >
-                  <Code className="h-4 w-4" />
+                  <CodeIcon className="h-4 w-4" />
                   <span>Copy inline product code</span>
                 </DropdownMenuItem>
                 <DropdownMenuItem
@@ -545,7 +545,7 @@ ${Object.entries(prices).map(([id, price]) => {
                   }}
                   className="flex items-center gap-2"
                 >
-                  <MessageSquare className="h-4 w-4" />
+                  <ChatIcon className="h-4 w-4" />
                   <span>Copy prompt for inline product</span>
                 </DropdownMenuItem>
               </DropdownMenuContent>
@@ -694,7 +694,7 @@ ${Object.entries(prices).map(([id, price]) => {
                       setShowItemDialog(true);
                     }}
                   >
-                    <Plus className="h-4 w-4 mr-2" />
+                    <PlusIcon className="h-4 w-4 mr-2" />
                     Add Item
                   </Button>
                 </div>
@@ -729,7 +729,7 @@ ${Object.entries(prices).map(([id, price]) => {
                           size="sm"
                           onClick={() => removeIncludedItem(itemId)}
                         >
-                          <Trash2 className="h-4 w-4 text-destructive" />
+                          <TrashIcon className="h-4 w-4 text-destructive" />
                         </Button>
                       </div>
                     </div>
@@ -742,7 +742,7 @@ ${Object.entries(prices).map(([id, price]) => {
                       setShowItemDialog(true);
                     }}
                   >
-                    <Plus className="h-4 w-4 mr-2" />
+                    <PlusIcon className="h-4 w-4 mr-2" />
                     Add Another Item
                   </Button>
                 </div>
@@ -762,7 +762,7 @@ ${Object.entries(prices).map(([id, price]) => {
                     checked={stackable}
                     onCheckedChange={(checked) => setStackable(checked as boolean)}
                   />
-                  <Layers className="h-4 w-4 text-foreground/50" />
+                  <StackIcon className="h-4 w-4 text-foreground/50" />
                   <span className="text-sm font-medium">Stackable</span>
                 </label>
 
@@ -774,7 +774,7 @@ ${Object.entries(prices).map(([id, price]) => {
                     checked={serverOnly}
                     onCheckedChange={(checked) => setServerOnly(checked as boolean)}
                   />
-                  <Server className="h-4 w-4 text-foreground/50" />
+                  <HardDriveIcon className="h-4 w-4 text-foreground/50" />
                   <span className="text-sm font-medium">Server only</span>
                 </label>
 
@@ -801,7 +801,7 @@ ${Object.entries(prices).map(([id, price]) => {
                             }
                           }}
                         />
-                        <Puzzle className="h-4 w-4 text-foreground/50" />
+                        <PuzzlePieceIcon className="h-4 w-4 text-foreground/50" />
                         <span className="text-sm font-medium">Add-on</span>
                       </label>
 
@@ -859,7 +859,7 @@ ${Object.entries(prices).map(([id, price]) => {
                         }
                       }}
                     />
-                    <Clock className="h-4 w-4 text-foreground/50" />
+                    <ClockIcon className="h-4 w-4 text-foreground/50" />
                     <span className="text-sm font-medium">Free trial</span>
                   </label>
                   {freeTrial && (
@@ -932,7 +932,7 @@ ${Object.entries(prices).map(([id, price]) => {
                     checked={isInlineProduct}
                     onCheckedChange={(checked) => setIsInlineProduct(checked as boolean)}
                   />
-                  <Zap className="h-4 w-4 text-foreground/50" />
+                  <LightningIcon className="h-4 w-4 text-foreground/50" />
                   <span className="text-sm font-medium">Inline</span>
                 </label>
               </div>
@@ -968,7 +968,7 @@ ${Object.entries(prices).map(([id, price]) => {
                   });
                   }}
                 >
-                  <Copy className="h-4 w-4 mr-2" />
+                  <CopyIcon className="h-4 w-4 mr-2" />
                   Copy Code
                 </Button>
               </div>

@@ -1,13 +1,13 @@
+import { cn } from "@/lib/utils";
+import { FunnelSimpleIcon } from "@phosphor-icons/react/dist/ssr";
 import { CheckIcon } from "@radix-ui/react-icons";
+import { Column } from "@tanstack/react-table";
+import React from "react";
 import { Badge } from "../badge";
 import { Button } from "../button";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList, CommandSeparator } from "../command";
 import { Popover, PopoverContent, PopoverTrigger } from "../popover";
 import { Separator } from "../separator";
-import { Column } from "@tanstack/react-table";
-import { ListFilter } from "lucide-react";
-import React from "react";
-import { cn } from "@/lib/utils";
 
 type DataTableFacetedFilterProps<TData, TValue> = {
   column?: Column<TData, TValue>,
@@ -31,7 +31,7 @@ export function DataTableFacetedFilter<TData, TValue>({
     <Popover>
       <PopoverTrigger asChild>
         <Button variant="outline" size="sm" className="h-8 border">
-          <ListFilter className="mr-2 h-4 w-4 text-gray-500" />
+          <FunnelSimpleIcon className="mr-2 h-4 w-4 text-gray-500" />
           {title}
           {selectedValues.size > 0 && (
             <>

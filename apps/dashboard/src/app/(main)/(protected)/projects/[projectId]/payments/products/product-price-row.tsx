@@ -10,9 +10,8 @@ import {
   SimpleTooltip
 } from "@/components/ui";
 import { cn } from "@/lib/utils";
-import { XIcon } from "@phosphor-icons/react";
+import { InfoIcon, XIcon } from "@phosphor-icons/react";
 import type { DayInterval } from "@stackframe/stack-shared/dist/utils/dates";
-import { Info } from "lucide-react";
 import { useEffect, useState } from "react";
 import { IntervalPopover } from "./components";
 import { buildPriceUpdate, DEFAULT_INTERVAL_UNITS, freeTrialLabel, intervalLabel, PRICE_INTERVAL_UNITS, Product } from "./utils";
@@ -28,7 +27,7 @@ function LabelWithInfo({ children, tooltip }: { children: React.ReactNode, toolt
       </Label>
       {tooltip && (
         <SimpleTooltip tooltip={tooltip}>
-          <Info className="h-3 w-3 text-muted-foreground/60 cursor-help" />
+          <InfoIcon className="h-3 w-3 text-muted-foreground/60 cursor-help" />
         </SimpleTooltip>
       )}
     </div>

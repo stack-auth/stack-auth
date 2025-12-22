@@ -1,15 +1,19 @@
+"use client";
+
+import { ArrowDownIcon, ArrowUpIcon } from "@phosphor-icons/react/dist/ssr";
+import { Column } from "@tanstack/react-table";
+import type { ComponentType, HTMLAttributes, ReactNode } from "react";
 import { Button } from "../button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../dropdown-menu";
-import { Column } from "@tanstack/react-table";
-import { ArrowDown, ArrowUp, LucideIcon } from "lucide-react";
+
 import { cn } from "@/lib/utils";
 
 type DataTableColumnHeaderProps<TData, TValue> = {
   column: Column<TData, TValue>,
-  columnTitle: React.ReactNode,
-} & React.HTMLAttributes<HTMLDivElement>
+  columnTitle: ReactNode,
+} & HTMLAttributes<HTMLDivElement>
 
-function Item(props: { icon: LucideIcon, onClick: () => void, children: React.ReactNode }) {
+function Item(props: { icon: ComponentType<{ className?: string }>, onClick: () => void, children: ReactNode }) {
   return (
     <DropdownMenuItem onClick={props.onClick}>
       <div className="flex items-center">
@@ -36,18 +40,17 @@ export function DataTableColumnHeader<TData, TValue>({
           >
             <span>{columnTitle}</span>
             {column.getIsSorted() === "desc" ? (
-              <ArrowDown className="ml-2 h-4 w-4" />
+              <ArrowDownIcon className="ml-2 h-4 w-4" />
             ) : column.getIsSorted() === "asc" ? (
-              <ArrowUp className="ml-2 h-4 w-4" />
+              <ArrowUpIcon className="ml-2 h-4 w-4" />
             ) : null}
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start" className="stack-scope">
-          <Item icon={ArrowUp} onClick={() => column.toggleSorting(false)}>Asc</Item>
-          <Item icon={ArrowDown} onClick={() => column.toggleSorting(true)}>Desc</Item>
+          <Item icon={ArrowUpIcon} onClick={() => column.toggleSorting(false)}>Asc</Item>
+          <Item icon={ArrowDownIcon} onClick={() => column.toggleSorting(true)}>Desc</Item>
         </DropdownMenuContent>
       </DropdownMenu>
     </div>
   );
 }
-

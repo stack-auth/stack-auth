@@ -1,10 +1,10 @@
 "use client";
 
+import { cn } from "@/lib/utils";
+import { CopyIcon } from "@phosphor-icons/react";
 import { forwardRefIfNeeded } from "@stackframe/stack-shared/dist/utils/react";
-import { Copy } from "lucide-react";
 import React from "react";
 import { Button } from "./button";
-import { cn } from "@/lib/utils";
 import { useToast } from "./use-toast";
 
 const CopyButton = forwardRefIfNeeded<
@@ -29,7 +29,7 @@ const CopyButton = forwardRefIfNeeded<
         }
       }}
     >
-      <Copy />
+      <CopyIcon />
     </Button>
   );
 });
