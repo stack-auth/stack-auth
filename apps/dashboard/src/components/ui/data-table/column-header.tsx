@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowDownIcon, ArrowUpIcon } from "@phosphor-icons/react/dist/ssr";
+import { ArrowDownIcon, ArrowUpIcon } from "@phosphor-icons/react";
 import { Column } from "@tanstack/react-table";
 import type { ComponentType, HTMLAttributes, ReactNode } from "react";
 import { Button } from "../button";
