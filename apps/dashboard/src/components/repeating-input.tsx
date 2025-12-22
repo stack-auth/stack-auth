@@ -1,7 +1,5 @@
 "use client";
 
-import { cn } from "@/lib/utils";
-import type { DayInterval } from "@stackframe/stack-shared/dist/utils/dates";
 import {
   Input,
   Popover,
@@ -13,7 +11,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui";
-import { ChevronsUpDown } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { CaretUpDownIcon } from "@phosphor-icons/react";
+import type { DayInterval } from "@stackframe/stack-shared/dist/utils/dates";
 import { useState } from "react";
 
 const DEFAULT_INTERVAL_UNITS: DayInterval[1][] = ['day', 'week', 'month', 'year'];
@@ -188,7 +188,7 @@ export function RepeatingInput({
             )}
           >
             <span className="whitespace-nowrap">{triggerLabel}</span>
-            <ChevronsUpDown className="h-4 w-4 shrink-0 opacity-50" />
+            <CaretUpDownIcon className="h-4 w-4 shrink-0 opacity-50" />
           </button>
         </PopoverTrigger>
         <PopoverContent align="end" className="w-60 p-0 overflow-hidden">

@@ -1,6 +1,7 @@
 'use client';
 
-import { CircleAlert, Info, LucideIcon } from "lucide-react";
+import type { Icon as PhosphorIcon } from "@phosphor-icons/react";
+import { InfoIcon, WarningCircleIcon } from "@phosphor-icons/react";
 import React, { Suspense, useId } from "react";
 import { Alert } from "./alert";
 import { Button } from "./button";
@@ -14,7 +15,7 @@ export type ActionDialogProps = {
   open?: boolean,
   onClose?: () => void,
   onOpenChange?: (open: boolean) => void,
-  titleIcon?: LucideIcon,
+  titleIcon?: PhosphorIcon,
   title: boolean | React.ReactNode,
   description?: React.ReactNode,
   danger?: boolean,
@@ -38,7 +39,7 @@ export function ActionDialog(props: ActionDialogProps) {
   const cancelButton = props.cancelButton === true ? {} : props.cancelButton;
   const anyButton = !!(okButton || cancelButton);
   const title = props.title === true ? (props.cancelButton ? "Confirmation" : "Alert") : props.title;
-  const TitleIcon = props.titleIcon || (props.danger ? CircleAlert : Info);
+  const TitleIcon = props.titleIcon || (props.danger ? WarningCircleIcon : InfoIcon);
   const [openState, setOpenState] = React.useState(!!props.open);
   const open = props.open ?? openState;
   const [confirmed, setConfirmed] = React.useState(false);

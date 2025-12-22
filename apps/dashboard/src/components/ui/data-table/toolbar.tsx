@@ -1,11 +1,11 @@
 "use client";
 
+import { DownloadSimpleIcon } from "@phosphor-icons/react";
 import { Cross2Icon } from "@radix-ui/react-icons";
 import { deepPlainEquals } from "@stackframe/stack-shared/dist/utils/objects";
-import { Button } from "../button";
 import { Cell, ColumnFiltersState, SortingState, Table } from "@tanstack/react-table";
 import { download, generateCsv, mkConfig } from 'export-to-csv';
-import { DownloadIcon } from "lucide-react";
+import { Button } from "../button";
 import { DataTableViewOptions } from "./view-options";
 
 type DataTableToolbarProps<TData> = {
@@ -89,7 +89,7 @@ export function DataTableToolbar<TData>({
                 download(csvConfig)(csv);
               }}
             >
-              <DownloadIcon className="mr-2 h-4 w-4" />
+              <DownloadSimpleIcon className="mr-2 h-4 w-4" />
               Export CSV
             </Button>
           </div>

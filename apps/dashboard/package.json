@@ -78,7 +78,6 @@
     "input-otp": "^1.4.1",
     "jose": "^5.2.2",
     "lodash": "^4.17.21",
-    "lucide-react": "^0.508.0",
     "next": "16.0.9",
     "next-themes": "^0.2.1",
     "posthog-js": "^1.235.0",
