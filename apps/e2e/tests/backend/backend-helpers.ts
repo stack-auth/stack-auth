@@ -2,7 +2,7 @@ import { AdminUserProjectsCrud } from "@stackframe/stack-shared/dist/interface/c
 import { encodeBase64 } from "@stackframe/stack-shared/dist/utils/bytes";
 import { generateSecureRandomString } from "@stackframe/stack-shared/dist/utils/crypto";
 import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
-import { filterUndefined } from "@stackframe/stack-shared/dist/utils/objects";
+import { filterUndefined, omit } from "@stackframe/stack-shared/dist/utils/objects";
 import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { nicify } from "@stackframe/stack-shared/dist/utils/strings";
 import * as jose from "jose";
@@ -403,7 +403,7 @@ export namespace Auth {
         }
         await wait(100 + i * 20);
         if (i >= 30) {
-          throw new StackAssertionError(`Sign-in code message not found after ${i} attempts`, { messages });
+          throw new StackAssertionError(`Sign-in code message not found after ${i} attempts`, { response, messages: messages.map(m => ({ ...m, body: m.body && omit(m.body, ["html"]) })) });
         }
       }
       return {

@@ -5,7 +5,7 @@ import { AppSquare } from "@/components/app-square";
 import { type AppId } from "@/lib/apps-frontend";
 import { ALL_APPS } from "@stackframe/stack-shared/dist/apps/apps-config";
 import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
-import { cn } from "@stackframe/stack-ui";
+import { cn } from "@/components/ui";
 import { CheckCircle2, LayoutGrid, Search } from "lucide-react";
 import { useMemo, useState } from "react";
 import { PageLayout } from "../page-layout";

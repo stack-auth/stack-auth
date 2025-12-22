@@ -7,7 +7,7 @@ import { PriceEditorField } from "@/components/payments/price-editor";
 import { AdminProject } from "@stackframe/stack";
 import { priceOrIncludeByDefaultSchema, productSchema, userSpecifiedIdSchema, yupRecord } from "@stackframe/stack-shared/dist/schema-fields";
 import { has } from "@stackframe/stack-shared/dist/utils/objects";
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger, Checkbox, FormControl, FormField, FormItem, FormLabel, FormMessage, SimpleTooltip, toast } from "@stackframe/stack-ui";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger, Checkbox, FormControl, FormField, FormItem, FormLabel, FormMessage, SimpleTooltip, toast } from "@/components/ui";
 import * as yup from "yup";
 
 type Props = {

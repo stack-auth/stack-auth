@@ -1,7 +1,8 @@
 "use client";
 
+import { getUserSpecifiedIdErrorMessage, isValidUserSpecifiedId, sanitizeUserSpecifiedId } from "@stackframe/stack-shared/dist/schema-fields";
 import { typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
-import { Button, Card, CardContent, CardHeader, Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Input, Label, toast } from "@stackframe/stack-ui";
+import { Button, Card, CardContent, CardHeader, Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Input, Label, toast } from "@/components/ui";
 import { Database, Plus } from "lucide-react";
 import { useState } from "react";
 import { useRouter } from "../../../../../../../components/router";
@@ -28,8 +29,8 @@ export default function PageClient() {
       return;
     }
 
-    if (!newStoreId.match(/^[a-z0-9-]+$/)) {
-      alert("Store ID can only contain lowercase letters, numbers, and hyphens");
+    if (!isValidUserSpecifiedId(newStoreId)) {
+      alert(getUserSpecifiedIdErrorMessage("storeId"));
       return;
     }
 
@@ -132,11 +133,10 @@ export default function PageClient() {
                     id="storeId"
                     placeholder="e.g., user-secrets, api-keys"
                     value={newStoreId}
-                    onChange={(e) => setNewStoreId(e.target.value)}
-                    pattern="[a-z0-9-]+"
+                    onChange={(e) => setNewStoreId(sanitizeUserSpecifiedId(e.target.value))}
                   />
                   <p className="text-xs text-muted-foreground">
-                    Lowercase letters, numbers, and hyphens only
+                    Letters, numbers, underscores, and hyphens only (cannot start with a hyphen)
                   </p>
                 </div>
                 <div className="space-y-2">

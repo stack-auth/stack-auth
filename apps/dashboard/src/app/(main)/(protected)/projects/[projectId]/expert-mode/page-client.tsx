@@ -1,6 +1,6 @@
 "use client";
 
-import { Alert, Button, Card, CardContent, CardHeader, CardTitle, Input, Textarea, Typography } from "@stackframe/stack-ui";
+import { Alert, Button, Card, CardContent, CardHeader, CardTitle, Input, Textarea, Typography } from "@/components/ui";
 import React from "react";
 import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";
