@@ -21,7 +21,7 @@ import {
   toast
 } from "@/components/ui";
 import { cn } from "@/lib/utils";
-import { CaretUpDownIcon, CodeIcon, CopyIcon, DotsThreeVerticalIcon, EyeIcon, FileTextIcon, GiftIcon, HardDriveIcon, PencilSimpleIcon, PlusIcon, PuzzlePieceIcon, StackIcon, TrashIcon, XIcon } from "@phosphor-icons/react";
+import { CaretUpDownIcon, CodeIcon, CopyIcon, DotsThreeVerticalIcon, EyeIcon, FileTextIcon, GiftIcon, HardDriveIcon, InfoIcon, PencilSimpleIcon, PlusIcon, PuzzlePieceIcon, StackIcon, TrashIcon, XIcon } from "@phosphor-icons/react";
 import { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
 import { getUserSpecifiedIdErrorMessage, isValidUserSpecifiedId } from "@stackframe/stack-shared/dist/schema-fields";
 import type { DayInterval } from "@stackframe/stack-shared/dist/utils/dates";
@@ -136,7 +136,7 @@ function LabelWithInfo({ children, tooltip }: { children: React.ReactNode, toolt
       </Label>
       {tooltip && (
         <SimpleTooltip tooltip={tooltip}>
-          <Info className="h-3 w-3 text-muted-foreground/60 cursor-help" />
+          <InfoIcon className="h-3 w-3 text-muted-foreground/60 cursor-help" />
         </SimpleTooltip>
       )}
     </div>
