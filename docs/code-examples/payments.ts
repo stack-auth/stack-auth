@@ -637,7 +637,7 @@ export async function consumeCredits(userId: string, amount: number) {
     throw new Error("Insufficient credits");
   }
   
-  return { remaining: credits.quantity - amount };
+  return { remaining: credits.quantity };
 }`,
         highlightLanguage: 'typescript',
         filename: 'lib/credits.ts'
@@ -665,7 +665,7 @@ app.post('/api/consume-credits', async (req, res) => {
       return res.status(400).json({ error: 'Insufficient credits' });
     }
     
-    res.json({ remaining: credits.quantity - amount });
+    res.json({ remaining: credits.quantity });
   } catch (error) {
     res.status(500).json({ error: 'Server error' });
   }
@@ -693,7 +693,7 @@ async function consumeCredits(userId, amount) {
     throw new Error('Insufficient credits');
   }
   
-  return { remaining: credits.quantity - amount };
+  return { remaining: credits.quantity };
 }`,
         highlightLanguage: 'javascript',
         filename: 'credits.js'
