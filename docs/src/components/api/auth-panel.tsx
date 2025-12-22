@@ -95,11 +95,12 @@ export function AuthPanel() {
     runAsynchronously(async () => {
       // Get fresh access token from user's session
       const authJson = await user.getAuthJson();
-      if (authJson.accessToken) {
+      const adminAccessToken = authJson.accessToken ?? '';
+      if (adminAccessToken) {
         // Update only the admin access token in headers
         updateSharedHeaders(prevHeaders => ({
           ...prevHeaders,
-          'X-Stack-Admin-Access-Token': authJson.accessToken,
+          'X-Stack-Admin-Access-Token': adminAccessToken,
         }));
       }
     });
@@ -148,11 +149,11 @@ export function AuthPanel() {
 
   // Handle project selection
   const handleProjectSelect = (projectId: string) => {
-    setSelectedProjectId(projectId);
-
     if (!projects.some((projectItem) => projectItem.id === projectId)) {
       return;
     }
+
+    setSelectedProjectId(projectId);
 
     // Initial headers setup - token will be populated by the useEffect
     const newHeaders = {
