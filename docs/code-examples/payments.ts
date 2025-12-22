@@ -80,6 +80,8 @@ from django.shortcuts import redirect
 
 def create_checkout(request, product_id):
     access_token = request.COOKIES.get('stack-access-token')
+    if not access_token:
+        return JsonResponse({'error': 'Not authenticated'}, status=401)
     
     # Get the current user
     user_response = requests.get(
@@ -418,6 +420,8 @@ from django.http import JsonResponse
 
 def get_user_item(request, item_id):
     access_token = request.COOKIES.get('stack-access-token')
+    if not access_token:
+        return JsonResponse({'error': 'Not authenticated'}, status=401)
     
     # Get the current user
     user_response = requests.get(
