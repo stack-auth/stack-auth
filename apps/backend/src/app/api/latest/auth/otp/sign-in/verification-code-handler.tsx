@@ -1,5 +1,5 @@
 import { getAuthContactChannelWithEmailNormalization } from "@/lib/contact-channel";
-import { sendEmailFromTemplate } from "@/lib/emails";
+import { sendEmailFromDefaultTemplate } from "@/lib/emails";
 import { getSoleTenancyFromProjectBranch, Tenancy } from "@/lib/tenancies";
 import { createAuthTokens } from "@/lib/tokens";
 import { createOrUpgradeAnonymousUser } from "@/lib/users";
@@ -76,7 +76,6 @@ export const signInVerificationCodeHandler = createVerificationCodeHandler({
   data: yupObject({}),
   method: yupObject({
     email: emailSchema.defined(),
-    type: yupString().oneOf(["legacy", "standard"]).defined(),
   }),
   response: yupObject({
     statusCode: yupNumber().oneOf([200]).defined(),
@@ -85,7 +84,7 @@ export const signInVerificationCodeHandler = createVerificationCodeHandler({
   }),
   async send(codeObj, createOptions, sendOptions: { email: string }) {
     const tenancy = await getSoleTenancyFromProjectBranch(createOptions.project.id, createOptions.branchId);
-    await sendEmailFromTemplate({
+    await sendEmailFromDefaultTemplate({
       tenancy,
       email: createOptions.method.email,
       user: null,
@@ -94,7 +93,7 @@ export const signInVerificationCodeHandler = createVerificationCodeHandler({
         magicLink: codeObj.link.toString(),
         otp: codeObj.code.slice(0, 6).toUpperCase(),
       },
-      version: createOptions.method.type === "legacy" ? 1 : undefined,
+      shouldSkipDeliverabilityCheck: true,
     });
 
     return {

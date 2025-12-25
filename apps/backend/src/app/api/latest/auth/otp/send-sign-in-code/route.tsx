@@ -1,7 +1,6 @@
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { adaptSchema, clientOrHigherAuthTypeSchema, emailOtpSignInCallbackUrlSchema, signInEmailSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
-import semver from "semver";
 import { ensureUserForEmailAllowsOtp, signInVerificationCodeHandler } from "../sign-in/verification-code-handler";
 
 export const POST = createSmartRouteHandler({
@@ -36,20 +35,13 @@ export const POST = createSmartRouteHandler({
       throw new StatusError(StatusError.Forbidden, "OTP sign-in is not enabled for this project");
     }
 
-    const user = await ensureUserForEmailAllowsOtp(tenancy, email);
-
-    let type: "legacy" | "standard";
-    if (clientVersion?.sdk === "@stackframe/stack" && semver.valid(clientVersion.version) && semver.lte(clientVersion.version, "2.5.37")) {
-      type = "legacy";
-    } else {
-      type = "standard";
-    }
+    await ensureUserForEmailAllowsOtp(tenancy, email);
 
     const { nonce } = await signInVerificationCodeHandler.sendCode(
       {
         tenancy,
         callbackUrl,
-        method: { email, type },
+        method: { email },
         data: {},
       },
       { email }

@@ -131,7 +131,7 @@ function createKnownErrorConstructor<ErrorCode extends string, Super extends Abs
     public readonly constructorArgs: Args;
 
     constructor(...args: Args) {
-      // @ts-expect-error DEVIN, STOP REMOVING THIS LINE YOU DUMBASS, YES TYPESCRIPT DOES THROW AN ERROR IF YOU DON'T HAVE IT, NO THIS IS NOT "UNUSED", AND YES YOU ARE BREAKING OUR CI PIPELINE EVERY TIME YOU DO IT
+      // @ts-expect-error
       super(...createFn(...args));
       this.constructorArgs = args;
     }
@@ -530,7 +530,11 @@ const AccessTokenExpired = createKnownErrorConstructor(
   "ACCESS_TOKEN_EXPIRED",
   (expiredAt: Date | undefined) => [
     401,
-    `Access token has expired. Please refresh it and try again.${expiredAt ? ` (The access token expired at ${expiredAt.toISOString()}.)` : ""}`,
+    deindent`
+      Access token has expired. Please refresh it and try again.${expiredAt ? ` (The access token expired at ${expiredAt.toISOString()}.)` : ""}
+
+      Debug info: Most likely, you fetched the access token before it expired (for example, in a server component, pre-rendered page, or on page load), but then didn't refresh it before it expired. If this is the case, and you're using the SDK, make sure you call getAccessToken() every time you need to use the access token. If you're not using the SDK, make sure you refresh the access token with the refresh endpoint.
+    `,
     { expired_at_millis: expiredAt?.getTime() ?? null },
   ] as const,
   (json: any) => [json.expired_at_millis ? new Date(json.expired_at_millis) : undefined] as const,

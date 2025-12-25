@@ -2,7 +2,7 @@
 import { PermissionTable } from "@/components/data-table/permission-table";
 import { SmartFormDialog } from "@/components/form-dialog";
 import { PermissionListField } from "@/components/permission-field";
-import { Button } from "@stackframe/stack-ui";
+import { Button } from "@/components/ui";
 import React from "react";
 import * as yup from "yup";
 import { AppEnabledGuard } from "../app-enabled-guard";

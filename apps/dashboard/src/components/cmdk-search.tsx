@@ -2,15 +2,15 @@
 
 import { useRouter } from "@/components/router";
 import { cn } from "@/lib/utils";
+import {
+  LayoutIcon,
+  MagnifyingGlassIcon,
+  PlayIcon,
+  SparkleIcon,
+  UserIcon,
+} from "@phosphor-icons/react";
 import { type AppId } from "@stackframe/stack-shared/dist/apps/apps-config";
 import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
-import {
-  Layout,
-  Play,
-  Search,
-  Sparkles,
-  User,
-} from "lucide-react";
 import { usePathname } from "next/navigation";
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useCmdKCommands, type CmdKCommand } from "./cmdk-commands";
@@ -19,25 +19,25 @@ import { useCmdKCommands, type CmdKCommand } from "./cmdk-commands";
 const EXAMPLE_QUERIES = [
   {
     query: "query all users from the last ten days",
-    icon: User,
+    icon: UserIcon,
     iconColor: "text-blue-500",
     iconBg: "bg-blue-500/10",
   },
   {
     query: "how do i set up password authentication?",
-    icon: Sparkles,
+    icon: SparkleIcon,
     iconColor: "text-purple-500",
     iconBg: "bg-purple-500/10",
   },
   {
     query: "create a game where my users are the enemies",
-    icon: Play,
+    icon: PlayIcon,
     iconColor: "text-amber-500",
     iconBg: "bg-amber-500/10",
   },
   {
     query: "create a dashboard for my users",
-    icon: Layout,
+    icon: LayoutIcon,
     iconColor: "text-cyan-500",
     iconBg: "bg-cyan-500/10",
   },
@@ -46,7 +46,7 @@ const EXAMPLE_QUERIES = [
 // Feature highlights for empty state (similar to Apple Spotlight)
 const FEATURE_HIGHLIGHTS = [
   {
-    icon: Search,
+    icon: MagnifyingGlassIcon,
     iconBg: "bg-blue-500/10",
     iconColor: "text-blue-500",
     title: "Search & Navigate",
@@ -54,7 +54,7 @@ const FEATURE_HIGHLIGHTS = [
     exampleQuery: "authentication",
   },
   {
-    icon: Sparkles,
+    icon: SparkleIcon,
     iconBg: "bg-purple-500/10",
     iconColor: "text-purple-500",
     title: "Ask AI",
@@ -62,7 +62,7 @@ const FEATURE_HIGHLIGHTS = [
     exampleQuery: "how do i set up password authentication?",
   },
   {
-    icon: Play,
+    icon: PlayIcon,
     iconBg: "bg-amber-500/10",
     iconColor: "text-amber-500",
     title: "Vibecode Queries",
@@ -142,22 +142,22 @@ const CyclingPlaceholder = memo(function CyclingPlaceholder({
       <div className="relative w-fit">
         {/* Floating decorative icons - left and right sides only */}
         <div className="absolute -left-6 top-0 w-9 h-9 rounded-xl bg-blue-500/10 flex items-center justify-center rotate-[-12deg] opacity-70">
-          <Search className="h-4.5 w-4.5 text-blue-500" />
+          <MagnifyingGlassIcon className="h-4.5 w-4.5 text-blue-500" />
         </div>
         <div className="absolute -right-6 top-2 w-8 h-8 rounded-xl bg-purple-500/10 flex items-center justify-center rotate-[15deg] opacity-60">
-          <Sparkles className="h-4 w-4 text-purple-500" />
+          <SparkleIcon className="h-4 w-4 text-purple-500" />
         </div>
         <div className="absolute -left-16 top-1/2 -translate-y-1/2 w-7 h-7 rounded-lg bg-green-500/10 flex items-center justify-center rotate-[20deg] opacity-50">
-          <User className="h-3.5 w-3.5 text-green-500" />
+          <UserIcon className="h-3.5 w-3.5 text-green-500" />
         </div>
         <div className="absolute -right-20 top-1/2 -translate-y-1/2 w-9 h-9 rounded-xl bg-cyan-500/10 flex items-center justify-center rotate-[-8deg] opacity-60">
-          <Layout className="h-4.5 w-4.5 text-cyan-500" />
+          <LayoutIcon className="h-4.5 w-4.5 text-cyan-500" />
         </div>
         <div className="absolute -left-7 bottom-0 w-7 h-7 rounded-lg bg-amber-500/10 flex items-center justify-center rotate-[8deg] opacity-50">
-          <Play className="h-3.5 w-3.5 text-amber-500" />
+          <PlayIcon className="h-3.5 w-3.5 text-amber-500" />
         </div>
         <div className="absolute -right-5 bottom-2 w-8 h-8 rounded-xl bg-rose-500/10 flex items-center justify-center rotate-[-18deg] opacity-50">
-          <Sparkles className="h-4 w-4 text-rose-500" />
+          <SparkleIcon className="h-4 w-4 text-rose-500" />
         </div>
 
         {/* Feature text content */}
@@ -743,7 +743,7 @@ export function CmdKSearch({
           >
             {/* Search Input */}
             <div className="flex items-center px-5 py-4">
-              <Search className="mr-4 h-5 w-5 shrink-0 text-muted-foreground/70" />
+              <MagnifyingGlassIcon className="mr-4 h-5 w-5 shrink-0 text-muted-foreground/70" />
               <input
                 ref={inputRef}
                 type="text"
@@ -1004,7 +1004,7 @@ export function CmdKTrigger() {
         <div className="absolute inset-0 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity duration-300 group-hover:transition-none overflow-hidden">
           <div className="absolute inset-0 bg-gradient-to-r from-transparent via-blue-500/[0.03] to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700" />
         </div>
-        <Sparkles className="h-3.5 w-3.5 text-blue-400/40 group-hover:text-blue-400/70 transition-colors duration-300 group-hover:transition-none" />
+        <SparkleIcon className="h-3.5 w-3.5 text-blue-400/40 group-hover:text-blue-400/70 transition-colors duration-300 group-hover:transition-none" />
         <span className="flex-1 text-left text-[13px] text-muted-foreground/60 group-hover:text-muted-foreground transition-colors duration-300 group-hover:transition-none">
           Control Center
         </span>

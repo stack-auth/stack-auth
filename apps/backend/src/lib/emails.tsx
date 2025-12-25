@@ -1,17 +1,27 @@
-import { getPrismaClientForTenancy } from '@/prisma-client';
+import { globalPrismaClient } from '@/prisma-client';
+import { runAsynchronouslyAndWaitUntil } from '@/utils/vercel';
+import { EmailOutboxCreatedWith } from '@prisma/client';
 import { DEFAULT_TEMPLATE_IDS } from '@stackframe/stack-shared/dist/helpers/emails';
 import { UsersCrud } from '@stackframe/stack-shared/dist/interface/crud/users';
-import { getEnvVariable } from '@stackframe/stack-shared/dist/utils/env';
-import { StackAssertionError, StatusError, captureError } from '@stackframe/stack-shared/dist/utils/errors';
-import { filterUndefined, omit, pick } from '@stackframe/stack-shared/dist/utils/objects';
-import { runAsynchronously, wait } from '@stackframe/stack-shared/dist/utils/promises';
-import { Result } from '@stackframe/stack-shared/dist/utils/results';
-import { traceSpan } from '@stackframe/stack-shared/dist/utils/telemetry';
-import nodemailer from 'nodemailer';
-import { getEmailThemeForTemplate, renderEmailWithTemplate } from './email-rendering';
-import { Tenancy, getTenancy } from './tenancies';
-import { Resend } from 'resend';
+import { getEnvBoolean, getEnvVariable } from '@stackframe/stack-shared/dist/utils/env';
+import { StackAssertionError } from '@stackframe/stack-shared/dist/utils/errors';
+import { Json } from '@stackframe/stack-shared/dist/utils/json';
+import { runEmailQueueStep, serializeRecipient } from './email-queue-step';
+import { LowLevelEmailConfig, isSecureEmailPort } from './emails-low-level';
+import { Tenancy } from './tenancies';
 
+
+/**
+ * Describes where an email should be delivered. Each outbox entry targets exactly one recipient entity.
+ *
+ * user-primary-email: the email is being sent to the primary email address of a user (determined at the time of sending, NOT the time of creation/rendering). if the user unsubscribes, they will not receive the email.
+ * user-custom-emails: the email is being sent to a list of custom emails, but if the user unsubscribes, they will no longer receive the email.
+ * custom-emails: the email is being sent to a list of custom emails. there is no associated user object and the recipient cannot unsubscribe. cannot be used to send non-transactional emails.
+ */
+export type EmailOutboxRecipient =
+  | { type: "user-primary-email", userId: string }
+  | { type: "user-custom-emails", userId: string, emails: string[] }
+  | { type: "custom-emails", emails: string[] };
 
 function getDefaultEmailTemplate(tenancy: Tenancy, type: keyof typeof DEFAULT_TEMPLATE_IDS) {
   const templateList = new Map(Object.entries(tenancy.config.emails.templates));
@@ -27,407 +37,68 @@ function getDefaultEmailTemplate(tenancy: Tenancy, type: keyof typeof DEFAULT_TE
   throw new StackAssertionError(`Unknown email template type: ${type}`);
 }
 
-export function isSecureEmailPort(port: number | string) {
-  let parsedPort = parseInt(port.toString());
-  return parsedPort === 465;
-}
-
-export type EmailConfig = {
-  host: string,
-  port: number,
-  username: string,
-  password: string,
-  senderEmail: string,
-  senderName: string,
-  secure: boolean,
-  type: 'shared' | 'standard',
-}
-
-type SendEmailOptions = {
-  tenancyId: string,
-  emailConfig: EmailConfig,
-  to: string | string[],
-  subject: string,
-  html?: string,
-  text?: string,
-}
-
-async function _sendEmailWithoutRetries(options: SendEmailOptions): Promise<Result<undefined, {
-  rawError: any,
-  errorType: string,
-  canRetry: boolean,
-  message?: string,
-}>> {
-  let finished = false;
-  runAsynchronously(async () => {
-    await wait(10000);
-    if (!finished) {
-      captureError("email-send-timeout", new StackAssertionError("Email send took longer than 10s; maybe the email service is too slow?", {
-        config: options.emailConfig.type === 'shared' ? "shared" : pick(options.emailConfig, ['host', 'port', 'username', 'senderEmail', 'senderName']),
-        to: options.to,
-        subject: options.subject,
-        html: options.html,
-        text: options.text,
-      }));
-    }
-  });
-  try {
-    let toArray = typeof options.to === 'string' ? [options.to] : options.to;
-
-    // If using the shared email config, use Emailable to check if the email is valid. skip the ones that are not (it's as if they had bounced)
-    const emailableApiKey = getEnvVariable('STACK_EMAILABLE_API_KEY', "");
-    if (options.emailConfig.type === 'shared' && emailableApiKey) {
-      await traceSpan('verifying email addresses with Emailable', async () => {
-        toArray = (await Promise.all(toArray.map(async (to) => {
-          try {
-            const emailableResponseResult = await Result.retry(async (attempt) => {
-              const res = await fetch(`https://api.emailable.com/v1/verify?email=${encodeURIComponent(options.to as string)}&api_key=${emailableApiKey}`);
-              if (res.status === 249) {
-                const text = await res.text();
-                console.log('Emailable is taking longer than expected, retrying...', text, { to: options.to });
-                return Result.error(new Error("Emailable API returned a 249 error for " + options.to + ". This means it takes some more time to verify the email address. Response body: " + text));
-              }
-              return Result.ok(res);
-            }, 4, { exponentialDelayBase: 4000 });
-            if (emailableResponseResult.status === 'error') {
-              throw new StackAssertionError("Timed out while verifying email address with Emailable", {
-                to: options.to,
-                emailableResponseResult,
-              });
-            }
-            const emailableResponse = emailableResponseResult.data;
-            if (!emailableResponse.ok) {
-              throw new StackAssertionError("Failed to verify email address with Emailable", {
-                to: options.to,
-                emailableResponse,
-                emailableResponseText: await emailableResponse.text(),
-              });
-            }
-            const json = await emailableResponse.json();
-            console.log('emailableResponse', json);
-            if (json.state === 'undeliverable' || json.disposable) {
-              console.log('email not deliverable', to, json);
-              return null;
-            }
-            return to;
-          } catch (error) {
-            // if something goes wrong with the Emailable API (eg. 500, ran out of credits, etc.), we just send the email anyway
-            captureError("emailable-api-error", error);
-            return to;
-          }
-        }))).filter((to): to is string => to !== null);
-      });
-    }
-
-    if (toArray.length === 0) {
-      // no valid emails, so we can just return ok
-      // (we skip silently because this is not an error)
-      return Result.ok(undefined);
-    }
-
-    return await traceSpan('sending email to ' + JSON.stringify(toArray), async () => {
-      try {
-        const transporter = nodemailer.createTransport({
-          host: options.emailConfig.host,
-          port: options.emailConfig.port,
-          secure: options.emailConfig.secure,
-          auth: {
-            user: options.emailConfig.username,
-            pass: options.emailConfig.password,
-          },
-        });
-
-        await transporter.sendMail({
-          from: `"${options.emailConfig.senderName}" <${options.emailConfig.senderEmail}>`,
-          ...options,
-          to: toArray,
-        });
-
-        return Result.ok(undefined);
-      } catch (error) {
-        if (error instanceof Error) {
-          const code = (error as any).code as string | undefined;
-          const responseCode = (error as any).responseCode as number | undefined;
-          const errorNumber = (error as any).errno as number | undefined;
-
-          const getServerResponse = (error: any) => {
-            if (error?.response) {
-              return `\nResponse from the email server:\n${error.response}`;
-            }
-            return '';
-          };
-
-          if (errorNumber === -3008 || code === 'EDNS') {
-            return Result.error({
-              rawError: error,
-              errorType: 'HOST_NOT_FOUND',
-              canRetry: false,
-              message: 'Failed to connect to the email host. Please make sure the email host configuration is correct.'
-            } as const);
-          }
-
-          if (responseCode === 535 || code === 'EAUTH') {
-            return Result.error({
-              rawError: error,
-              errorType: 'AUTH_FAILED',
-              canRetry: false,
-              message: 'Failed to authenticate with the email server. Please check your email credentials configuration.',
-            } as const);
-          }
-
-          if (responseCode === 450) {
-            return Result.error({
-              rawError: error,
-              errorType: 'TEMPORARY',
-              canRetry: true,
-              message: 'The email server returned a temporary error. This could be due to a temporary network issue or a temporary block on the email server. Please try again later.\n\nError: ' + getServerResponse(error),
-            } as const);
-          }
-
-          if (responseCode === 553) {
-            return Result.error({
-              rawError: error,
-              errorType: 'INVALID_EMAIL_ADDRESS',
-              canRetry: false,
-              message: 'The email address provided is invalid. Please verify both the recipient and sender email addresses configuration are correct.\n\nError:' + getServerResponse(error),
-            } as const);
-          }
-
-          if (responseCode === 554 || code === 'EENVELOPE') {
-            return Result.error({
-              rawError: error,
-              errorType: 'REJECTED',
-              canRetry: false,
-              message: 'The email server rejected the email. Please check your email configuration and try again later.\n\nError:' + getServerResponse(error),
-            } as const);
-          }
-
-          if (code === 'ETIMEDOUT') {
-            return Result.error({
-              rawError: error,
-              errorType: 'TIMEOUT',
-              canRetry: true,
-              message: 'The email server timed out while sending the email. This could be due to a temporary network issue or a temporary block on the email server. Please try again later.',
-            } as const);
-          }
-
-          if (error.message.includes('Unexpected socket close')) {
-            return Result.error({
-              rawError: error,
-              errorType: 'SOCKET_CLOSED',
-              canRetry: false,
-              message: 'Connection to email server was lost unexpectedly. This could be due to incorrect email server port configuration or a temporary network issue. Please verify your configuration and try again.',
-            } as const);
-          }
-        }
-
-        // ============ temporary error ============
-        const temporaryErrorIndicators = [
-          "450 ",
-          "Client network socket disconnected before secure TLS connection was established",
-          "Too many requests",
-          ...options.emailConfig.host.includes("resend") ? [
-            // Resend is a bit unreliable, so we'll retry even in some cases where it may send duplicate emails
-            "ECONNRESET",
-          ] : [],
-        ];
-        if (temporaryErrorIndicators.some(indicator => error instanceof Error && error.message.includes(indicator))) {
-          // this can happen occasionally (especially with certain unreliable email providers)
-          // so let's retry
-          return Result.error({
-            rawError: error,
-            errorType: 'UNKNOWN',
-            canRetry: true,
-            message: 'Failed to send email, but error is possibly transient due to the internet connection. Please check your email configuration and try again later.',
-          } as const);
-        }
-
-        // ============ unknown error ============
-        return Result.error({
-          rawError: error,
-          errorType: 'UNKNOWN',
-          canRetry: false,
-          message: 'An unknown error occurred while sending the email.',
-        } as const);
-      }
-    });
-  } finally {
-    finished = true;
-  }
-}
-
-export async function sendEmailWithoutRetries(options: SendEmailOptions): Promise<Result<undefined, {
-  rawError: any,
-  errorType: string,
-  canRetry: boolean,
-  message?: string,
-}>> {
-  const res = await _sendEmailWithoutRetries(options);
-  const tenancy = await getTenancy(options.tenancyId);
-  if (!tenancy) {
-    throw new StackAssertionError("Tenancy not found");
-  }
-
-  const prisma = await getPrismaClientForTenancy(tenancy);
-
-  await prisma.sentEmail.create({
-    data: {
-      tenancyId: options.tenancyId,
-      to: typeof options.to === 'string' ? [options.to] : options.to,
-      subject: options.subject,
-      html: options.html,
-      text: options.text,
-      senderConfig: omit(options.emailConfig, ['password']),
-      error: res.status === 'error' ? res.error : undefined,
-    },
-  });
-  return res;
-}
-
-export async function sendEmailResendBatched(resendApiKey: string, emailOptions: SendEmailOptions[]) {
-  if (emailOptions.length === 0) {
-    return Result.ok([]);
-  }
-  if (emailOptions.length > 100) {
-    throw new StackAssertionError("sendEmailResendBatched expects at most 100 emails to be sent at once", { emailOptions });
-  }
-  if (emailOptions.some(option => option.tenancyId !== emailOptions[0].tenancyId)) {
-    throw new StackAssertionError("sendEmailResendBatched expects all emails to be sent from the same tenancy", { emailOptions });
-  }
-  const tenancy = await getTenancy(emailOptions[0].tenancyId);
-  if (!tenancy) {
-    throw new StackAssertionError("Tenancy not found");
-  }
-  const prisma = await getPrismaClientForTenancy(tenancy);
-  const resend = new Resend(resendApiKey);
-  const result = await Result.retry(async (_) => {
-    const { data, error } = await resend.batch.send(emailOptions.map((option) => ({
-      from: option.emailConfig.senderEmail,
-      to: option.to,
-      subject: option.subject,
-      html: option.html ?? "",
-      text: option.text,
-    })));
-
-    if (data) {
-      return Result.ok(data.data);
-    }
-    if (error.name === "rate_limit_exceeded" || error.name === "internal_server_error") {
-      return Result.error(error);
-    }
-    return Result.ok(null);
-  }, 3, { exponentialDelayBase: 2000 });
-
-  await prisma.sentEmail.createMany({
-    data: emailOptions.map((options) => ({
-      tenancyId: options.tenancyId,
-      to: typeof options.to === 'string' ? [options.to] : options.to,
-      subject: options.subject,
-      html: options.html,
-      text: options.text,
-      senderConfig: omit(options.emailConfig, ['password']),
-      error: result.status === 'error' ? result.error.message : undefined,
+export async function sendEmailToMany(options: {
+  tenancy: Tenancy,
+  recipients: EmailOutboxRecipient[],
+  tsxSource: string,
+  extraVariables: Record<string, Json>,
+  themeId: string | null,
+  isHighPriority: boolean,
+  shouldSkipDeliverabilityCheck: boolean,
+  scheduledAt: Date,
+  createdWith: { type: "draft", draftId: string } | { type: "programmatic-call", templateId: string | null },
+  overrideSubject?: string,
+  overrideNotificationCategoryId?: string,
+}) {
+  await globalPrismaClient.emailOutbox.createMany({
+    data: options.recipients.map(recipient => ({
+      tenancyId: options.tenancy.id,
+      tsxSource: options.tsxSource,
+      themeId: options.themeId,
+      isHighPriority: options.isHighPriority,
+      createdWith: options.createdWith.type === "draft" ? EmailOutboxCreatedWith.DRAFT : EmailOutboxCreatedWith.PROGRAMMATIC_CALL,
+      emailDraftId: options.createdWith.type === "draft" ? options.createdWith.draftId : undefined,
+      emailProgrammaticCallTemplateId: options.createdWith.type === "programmatic-call" ? options.createdWith.templateId : undefined,
+      to: serializeRecipient(recipient)!,
+      extraRenderVariables: options.extraVariables,
+      scheduledAt: options.scheduledAt,
+      shouldSkipDeliverabilityCheck: options.shouldSkipDeliverabilityCheck,
+      overrideSubject: options.overrideSubject,
+      overrideNotificationCategoryId: options.overrideNotificationCategoryId,
     })),
   });
-  return result;
-}
 
-export async function sendEmail(options: SendEmailOptions) {
-  if (!options.to) {
-    throw new StackAssertionError("No recipient email address provided to sendEmail", omit(options, ['emailConfig']));
-  }
-
-  const errorMessage = "Failed to send email. If you are the admin of this project, please check the email configuration and try again.";
-
-  const handleError = (error: any) => {
-    console.warn("Failed to send email", error);
-    if (options.emailConfig.type === 'shared') {
-      captureError("failed-to-send-email-to-shared-email-config", error);
-    }
-    throw new StatusError(400, errorMessage);
-  };
-
-  const result = await Result.retry(async (attempt) => {
-    const result = await sendEmailWithoutRetries(options);
-
-    if (result.status === 'error') {
-      const extraData = {
-        host: options.emailConfig.host,
-        from: options.emailConfig.senderEmail,
-        to: options.to,
-        subject: options.subject,
-        error: result.error,
-      };
-
-      if (result.error.canRetry) {
-        console.warn("Failed to send email, but error is possibly transient so retrying.", extraData, result.error.rawError);
-        return Result.error(result.error);
-      }
-
-      handleError(extraData);
-    }
-
-    return result;
-  }, 3, { exponentialDelayBase: 2000 });
-
-  if (result.status === 'error') {
-    handleError(result.error);
+  if (!getEnvBoolean("STACK_EMAIL_BRANCHING_DISABLE_QUEUE_AUTO_TRIGGER")) {
+    // The cron job should run runEmailQueueStep() to process the emails, but we call it here again for those self-hosters
+    // who didn't set up the cron job correctly, and also just in case something happens to the cron job.
+    runAsynchronouslyAndWaitUntil(runEmailQueueStep());
   }
 }
 
-export async function sendEmailFromTemplate(options: {
+export async function sendEmailFromDefaultTemplate(options: {
   tenancy: Tenancy,
   user: UsersCrud["Admin"]["Read"] | null,
   email: string,
   templateType: keyof typeof DEFAULT_TEMPLATE_IDS,
-  extraVariables: Record<string, string | null>,
-  version?: 1 | 2,
+  extraVariables: Record<string, Json>,
+  shouldSkipDeliverabilityCheck: boolean,
 }) {
   const template = getDefaultEmailTemplate(options.tenancy, options.templateType);
-  const themeSource = getEmailThemeForTemplate(options.tenancy, template.themeId);
-  const variables = filterUndefined({
-    projectDisplayName: options.tenancy.project.display_name,
-    userDisplayName: options.user?.display_name ?? "",
-    ...filterUndefined(options.extraVariables),
-  });
 
-  const result = await renderEmailWithTemplate(
-    template.tsxSource,
-    themeSource,
-    {
-      user: { displayName: options.user?.display_name ?? null },
-      project: { displayName: options.tenancy.project.display_name },
-      variables,
-      themeProps: {
-        projectLogos: {
-          logoUrl: options.tenancy.project.logo_url ?? undefined,
-          logoFullUrl: options.tenancy.project.logo_full_url ?? undefined,
-          logoDarkModeUrl: options.tenancy.project.logo_dark_mode_url ?? undefined,
-          logoFullDarkModeUrl: options.tenancy.project.logo_full_dark_mode_url ?? undefined,
-        }
-      }
-    }
-  );
-  if (result.status === 'error') {
-    throw new StackAssertionError("Failed to render email template", {
-      template: template,
-      theme: themeSource,
-      variables,
-      result
-    });
-  }
-
-  await sendEmail({
-    tenancyId: options.tenancy.id,
-    emailConfig: await getEmailConfig(options.tenancy),
-    to: options.email,
-    subject: result.data.subject ?? "",
-    html: result.data.html,
-    text: result.data.text,
+  await sendEmailToMany({
+    tenancy: options.tenancy,
+    recipients: [options.user ? { type: "user-custom-emails", userId: options.user.id, emails: [options.email] } : { type: "custom-emails", emails: [options.email] }],
+    tsxSource: template.tsxSource,
+    extraVariables: options.extraVariables,
+    themeId: template.themeId === false ? null : (template.themeId ?? options.tenancy.config.emails.selectedThemeId),
+    createdWith: { type: "programmatic-call", templateId: DEFAULT_TEMPLATE_IDS[options.templateType] },
+    isHighPriority: true,  // always make emails sent via default template high priority
+    shouldSkipDeliverabilityCheck: options.shouldSkipDeliverabilityCheck,
+    scheduledAt: new Date(),
   });
 }
 
-export async function getEmailConfig(tenancy: Tenancy): Promise<EmailConfig> {
+export async function getEmailConfig(tenancy: Tenancy): Promise<LowLevelEmailConfig> {
   const projectEmailConfig = tenancy.config.emails.server;
 
   if (projectEmailConfig.isShared) {
@@ -450,7 +121,7 @@ export async function getEmailConfig(tenancy: Tenancy): Promise<EmailConfig> {
 }
 
 
-export async function getSharedEmailConfig(displayName: string): Promise<EmailConfig> {
+export async function getSharedEmailConfig(displayName: string): Promise<LowLevelEmailConfig> {
   return {
     host: getEnvVariable('STACK_EMAIL_HOST'),
     port: parseInt(getEnvVariable('STACK_EMAIL_PORT')),
