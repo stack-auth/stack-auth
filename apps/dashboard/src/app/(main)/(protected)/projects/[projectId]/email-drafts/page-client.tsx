@@ -3,10 +3,12 @@
 import { FormDialog } from "@/components/form-dialog";
 import { InputField } from "@/components/form-fields";
 import { useRouter } from "@/components/router";
-import { ActionDialog, Alert, AlertDescription, AlertTitle, Button, Card, Typography } from "@/components/ui";
-import { WarningCircleIcon } from "@phosphor-icons/react";
+import { ActionDialog, Alert, AlertDescription, AlertTitle, Button, Card, Typography, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui";
+import { WarningCircleIcon, Plus, FileText, Pencil, DotsThreeVertical, PaperPlaneTilt, WarningCircle } from "@phosphor-icons/react";
+import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { useState } from "react";
 import * as yup from "yup";
+import { cn } from "@/lib/utils";
 import { AppEnabledGuard } from "../app-enabled-guard";
 import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";
@@ -129,7 +131,7 @@ function DraftCard({
                 )}
                 onClick={(e) => e.stopPropagation()}
               >
-                <MoreVertical className="h-4 w-4" />
+                <DotsThreeVertical className="h-4 w-4" weight="bold" />
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
@@ -180,7 +182,7 @@ function EmptyState({ onCreateNew }: { onCreateNew: () => void }) {
   return (
     <div className="flex flex-col items-center justify-center py-12 text-center">
       <div className="p-4 rounded-2xl bg-foreground/[0.04] mb-4">
-        <Send className="h-8 w-8 text-muted-foreground/50" />
+        <PaperPlaneTilt className="h-8 w-8 text-muted-foreground/50" />
       </div>
       <Typography className="text-sm font-medium text-foreground mb-1">
         No drafts yet
@@ -250,7 +252,7 @@ export default function PageClient() {
           {emailConfig?.type === 'shared' && (
             <div className="border-t border-foreground/[0.05] px-5 py-4">
               <Alert variant="default" className="bg-amber-500/5 border-amber-500/20">
-                <AlertCircle className="h-4 w-4 text-amber-500" />
+                <WarningCircle className="h-4 w-4 text-amber-500" weight="regular" />
                 <AlertTitle className="text-amber-600 dark:text-amber-400">Using shared email server</AlertTitle>
                 <AlertDescription className="text-muted-foreground">
                   Configure a custom SMTP server to send manual emails. You can still create and edit drafts.
@@ -312,7 +314,7 @@ export default function PageClient() {
           cancelButton={{ label: "Cancel" }}
         >
           <Alert variant="default" className="bg-amber-500/5 border-amber-500/20">
-            <AlertCircle className="h-4 w-4 text-amber-500" />
+            <WarningCircle className="h-4 w-4 text-amber-500" weight="regular" />
             <AlertTitle className="text-amber-600 dark:text-amber-400">Warning</AlertTitle>
             <AlertDescription>
               You are using a shared email server. You can open the draft anyway, but you will not be able to send emails.

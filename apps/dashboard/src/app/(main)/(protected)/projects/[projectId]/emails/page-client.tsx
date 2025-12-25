@@ -4,17 +4,18 @@ import { TeamMemberSearchTable } from "@/components/data-table/team-member-searc
 import { FormDialog } from "@/components/form-dialog";
 import { InputField, SelectField, TextAreaField } from "@/components/form-fields";
 import { getPublicEnvVar } from "@/lib/env";
-import { WarningCircleIcon, XIcon } from "@phosphor-icons/react";
+import { WarningCircleIcon, XIcon, CheckCircle, XCircle, Envelope, HardDrive, ArrowSquareOut, Sliders } from "@phosphor-icons/react";
 import { AdminEmailConfig, AdminProject, AdminSentEmail, ServerUser, UserAvatar } from "@stackframe/stack";
 import { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
 import { strictEmailSchema } from "@stackframe/stack-shared/dist/schema-fields";
 import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { deepPlainEquals } from "@stackframe/stack-shared/dist/utils/objects";
 import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
-import { ActionDialog, Alert, AlertDescription, AlertTitle, Button, DataTable, SimpleTooltip, Tooltip, TooltipContent, TooltipProvider, TooltipTrigger, Typography, useToast } from "@/components/ui";
-import { ColumnDef } from "@tanstack/react-table";
+import { ActionDialog, Alert, AlertDescription, AlertTitle, Button, DataTable, SimpleTooltip, Tooltip, TooltipContent, TooltipProvider, TooltipTrigger, Typography, useToast, DataTableViewOptions } from "@/components/ui";
+import { ColumnDef, Table as TableType } from "@tanstack/react-table";
 import { useEffect, useMemo, useState } from "react";
 import * as yup from "yup";
+import { cn } from "@/lib/utils";
 import { AppEnabledGuard } from "../app-enabled-guard";
 import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";
@@ -78,7 +79,7 @@ function StatusBadge({ status, error }: { status: 'sent' | 'failed', error?: str
   if (status === 'sent') {
     return (
       <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 ring-1 ring-emerald-500/20">
-        <CheckCircle2 className="h-3 w-3" />
+        <CheckCircle className="h-3 w-3" />
         Sent
       </div>
     );
@@ -107,7 +108,7 @@ export default function PageClient() {
           <SendEmailDialog
             trigger={
               <Button className="gap-2">
-                <Mail className="h-4 w-4" />
+                <Envelope className="h-4 w-4" />
                 Send Email
               </Button>
             }
@@ -137,7 +138,7 @@ function EmulatorModeCard() {
       <div className="p-5">
         <div className="flex items-start justify-between gap-5">
           <div className="flex-1 min-w-0">
-            <SectionHeader icon={Server} title="Mock Emails" />
+            <SectionHeader icon={HardDrive} title="Mock Emails" />
             <Typography variant="secondary" className="text-sm mt-1">
               View all emails sent through the emulator in Inbucket
             </Typography>
@@ -150,7 +151,7 @@ function EmulatorModeCard() {
               window.open(getPublicEnvVar('NEXT_PUBLIC_STACK_INBUCKET_WEB_URL') + '/monitor', '_blank');
             }}
           >
-            <ExternalLink className="h-3.5 w-3.5" />
+            <ArrowSquareOut className="h-3.5 w-3.5" />
             Open Inbox
           </Button>
         </div>
@@ -173,7 +174,7 @@ function EmailServerCard({ emailConfig }: { emailConfig: CompleteConfig['emails'
       <div className="p-5">
         <div className="flex items-start justify-between gap-5">
           <div className="flex-1 min-w-0">
-            <SectionHeader icon={Server} title="Email Server" />
+            <SectionHeader icon={HardDrive} title="Email Server" />
             <Typography variant="secondary" className="text-sm mt-1">
               Configure the email server and sender address for outgoing emails
             </Typography>
@@ -183,7 +184,7 @@ function EmailServerCard({ emailConfig }: { emailConfig: CompleteConfig['emails'
               <TestSendingDialog
                 trigger={
                   <Button variant='ghost' size="sm" className="h-8 px-3 text-xs gap-1.5">
-                    <Mail className="h-3.5 w-3.5" />
+                    <Envelope className="h-3.5 w-3.5" />
                     Test
                   </Button>
                 }
@@ -192,7 +193,7 @@ function EmailServerCard({ emailConfig }: { emailConfig: CompleteConfig['emails'
             <EditEmailServerDialog
               trigger={
                 <Button variant='secondary' size="sm" className="h-8 px-3 text-xs gap-1.5">
-                  <Settings2 className="h-3.5 w-3.5" />
+                  <Sliders className="h-3.5 w-3.5" />
                   Configure
                 </Button>
               }
@@ -251,7 +252,7 @@ function EmailLogCard() {
     return (
       <GlassCard gradientColor="slate" className="overflow-hidden">
         <div className="p-5">
-          <SectionHeader icon={Mail} title="Email Log" />
+          <SectionHeader icon={Envelope} title="Email Log" />
           <Typography variant="secondary" className="text-sm mt-1">
             View and manage email sending history
           </Typography>
@@ -259,7 +260,7 @@ function EmailLogCard() {
         <div className="border-t border-foreground/[0.05] flex items-center justify-center py-12">
           <div className="flex flex-col items-center gap-3">
             <div className="p-3 rounded-xl bg-foreground/[0.04]">
-              <Mail className="h-5 w-5 text-muted-foreground/50 animate-pulse" />
+              <Envelope className="h-5 w-5 text-muted-foreground/50 animate-pulse" />
             </div>
             <Typography variant="secondary" className="text-sm">
               Loading email logs...
@@ -274,7 +275,7 @@ function EmailLogCard() {
     return (
       <GlassCard gradientColor="slate" className="overflow-hidden">
         <div className="p-5">
-          <SectionHeader icon={Mail} title="Email Log" />
+          <SectionHeader icon={Envelope} title="Email Log" />
           <Typography variant="secondary" className="text-sm mt-1">
             View and manage email sending history
           </Typography>
@@ -282,7 +283,7 @@ function EmailLogCard() {
         <div className="border-t border-foreground/[0.05] flex items-center justify-center py-12">
           <div className="flex flex-col items-center gap-3 text-center max-w-sm">
             <div className="p-3 rounded-xl bg-foreground/[0.04]">
-              <MailWarning className="h-5 w-5 text-muted-foreground/50" />
+              <Envelope className="h-5 w-5 text-muted-foreground/50" />
             </div>
             <div className="space-y-1">
               <Typography className="text-sm font-medium text-foreground">No emails sent yet</Typography>
@@ -301,7 +302,7 @@ function EmailLogCard() {
       <div className="p-5">
         <div className="flex w-full items-start justify-between gap-4">
           <div className="flex-1 min-w-0">
-            <SectionHeader icon={Mail} title="Email Log" />
+            <SectionHeader icon={Envelope} title="Email Log" />
             <Typography variant="secondary" className="text-sm mt-1">
               View and manage email sending history
             </Typography>

@@ -78,3 +78,30 @@ export const PATCH = createSmartRouteHandler({
   },
 });
 
+export const DELETE = createSmartRouteHandler({
+  metadata: { hidden: true },
+  request: yupObject({
+    auth: yupObject({
+      type: yupString().oneOf(["admin"]).defined(),
+      tenancy: yupObject({}).defined(),
+    }).defined(),
+    params: yupObject({ id: yupString().uuid().defined() }).defined(),
+  }),
+  response: yupObject({
+    statusCode: yupNumber().oneOf([200]).defined(),
+    bodyType: yupString().oneOf(["json"]).defined(),
+    body: yupObject({ ok: yupString().oneOf(["ok"]).defined() }).defined(),
+  }),
+  async handler({ auth: { tenancy }, params }) {
+    const prisma = await getPrismaClientForTenancy(tenancy);
+    await prisma.emailDraft.delete({
+      where: { tenancyId_id: { tenancyId: tenancy.id, id: params.id } },
+    });
+    return {
+      statusCode: 200,
+      bodyType: "json",
+      body: { ok: "ok" },
+    };
+  },
+});
+

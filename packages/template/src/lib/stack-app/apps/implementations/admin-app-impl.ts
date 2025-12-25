@@ -527,6 +527,15 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
     await this._adminEmailDraftsCache.refresh([]);
   }
 
+  async deleteEmailDraft(id: string): Promise<void> {
+    await this._interface.deleteEmailDraft(id);
+    const current = this._adminEmailDraftsCache.getIfCached([]);
+    if (current.status === "ok" && current.data.status === "ok") {
+      this._adminEmailDraftsCache.forceSetCachedValue([], Result.ok(current.data.data.filter((d) => d.id !== id)));
+    }
+    await this._adminEmailDraftsCache.refresh([]);
+  }
+
   async sendChatMessage(
     threadId: string,
     contextType: "email-theme" | "email-template" | "email-draft",
