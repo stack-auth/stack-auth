@@ -3,16 +3,15 @@
 import EmailPreview, { DEVICE_VIEWPORTS, DeviceViewport } from "@/components/email-preview";
 import { FormDialog } from "@/components/form-dialog";
 import { InputField } from "@/components/form-fields";
-import { Link } from "@/components/link";
 import { useRouter } from "@/components/router";
-import { SettingCard } from "@/components/settings";
 import { ActionDialog, Button, Typography } from "@/components/ui";
-import { CheckIcon, PencilSimpleIcon, DeviceMobile, DeviceTablet, Monitor, Palette, Pencil, Check, Plus } from "@phosphor-icons/react";
-import { previewTemplateSource } from "@stackframe/stack-shared/dist/helpers/emails";
-import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
-import { useState } from "react";
-import * as yup from "yup";
 import { cn } from "@/lib/utils";
+import { CheckIcon, DeviceMobile, DeviceTablet, Monitor, Palette, Plus, Trash } from "@phosphor-icons/react";
+import { DEFAULT_EMAIL_THEMES, previewTemplateSource } from "@stackframe/stack-shared/dist/helpers/emails";
+import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
+import { useEffect, useRef, useState } from "react";
+import * as yup from "yup";
 import { AppEnabledGuard } from "../app-enabled-guard";
 import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";
@@ -70,13 +69,15 @@ function DeviceIcon({ type, className }: { type: DeviceViewport['type'], classNa
 // Viewport selector component following design guide's Time Range Toggle pattern
 function ViewportSelector({ 
   selectedViewport, 
-  onSelect 
+  onSelect,
+  className
 }: { 
   selectedViewport: DeviceViewport;
   onSelect: (viewport: DeviceViewport) => void;
+  className?: string;
 }) {
   return (
-    <div className="inline-flex items-center gap-1 rounded-xl bg-foreground/[0.04] p-1 backdrop-blur-sm">
+    <div className={cn("inline-flex items-center gap-1 rounded-xl bg-foreground/[0.04] p-1 backdrop-blur-sm", className)}>
       {DEVICE_VIEWPORTS.map((viewport) => {
         const isActive = selectedViewport.id === viewport.id;
         return (
@@ -99,71 +100,44 @@ function ViewportSelector({
   );
 }
 
-// More detailed preview template for realistic email preview
-const detailedPreviewTemplate = `
-  import { Heading, Section, Button, Link, Hr, Text, Img } from "@react-email/components";
+// Realistic preview template using the actual email verification template structure
+const detailedPreviewTemplate = deindent`
+  import { Button, Section, Hr, Text, Heading } from "@react-email/components";
+  import { Subject, NotificationCategory } from "@stackframe/emails";
+
   export const variablesSchema = v => v;
-  export function EmailTemplate() {
-    return <>
-      <Section className="text-center mb-8">
-        <div className="w-16 h-16 mx-auto mb-4 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-2xl flex items-center justify-center shadow-lg">
-          <span className="text-3xl">✉️</span>
+
+  export function EmailTemplate({ user, project }) {
+    return (
+      <>
+        <Subject value={\`Verify your email at \${project.displayName}\`} />
+        <NotificationCategory value="Transactional" />
+        <div className="font-sans text-base font-normal tracking-[0.15008px] leading-[1.5] m-0 py-8 w-full min-h-full">
+          <Section>
+            <Heading as="h3" className="font-sans font-bold text-[20px] text-center py-4 px-6 m-0">
+              Verify your email at {project.displayName}
+            </Heading>
+            <Text className="font-sans font-normal text-[14px] text-center pt-2 px-6 pb-4 m-0 opacity-80">
+              Hi{user.displayName ? (", " + user.displayName) : ''}! Please click on the following button to verify your email.
+            </Text>
+            <div className="text-center py-3 px-6">
+              <Button
+                href="#"
+                className="text-black font-sans font-bold text-[14px] inline-block bg-[#f0f0f0] rounded-[4px] py-3 px-5 no-underline border-0"
+              >
+                Verify my email
+              </Button>
+            </div>
+            <div className="py-4 px-6">
+              <Hr className="opacity-20" />
+            </div>
+            <Text className="font-sans font-normal text-[12px] text-center pt-1 px-6 pb-6 m-0 opacity-60">
+              If you were not expecting this email, you can safely ignore it. 
+            </Text>
+          </Section>
         </div>
-        <Heading as="h1" className="text-2xl font-bold text-gray-900 mb-2 tracking-tight">
-          Verify your email
-        </Heading>
-        <Text className="text-gray-500 text-base m-0">
-          Just one more step to get started
-        </Text>
-      </Section>
-
-      <Section className="bg-gray-50 rounded-xl p-6 mb-6 border border-gray-100">
-        <Text className="text-gray-700 text-sm leading-relaxed m-0 mb-4">
-          Hi <span className="font-semibold">John</span>,
-        </Text>
-        <Text className="text-gray-600 text-sm leading-relaxed m-0">
-          Thanks for signing up! Please confirm your email address by clicking the button below. This helps us keep your account secure.
-        </Text>
-      </Section>
-
-      <Section className="text-center mb-6">
-        <Button 
-          href="https://example.com/verify" 
-          className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-8 py-4 rounded-xl font-semibold text-sm shadow-md inline-block"
-        >
-          Verify Email Address →
-        </Button>
-      </Section>
-
-      <Section className="text-center mb-6">
-        <Text className="text-gray-400 text-xs m-0 mb-2">
-          This link expires in 24 hours
-        </Text>
-        <div className="inline-flex items-center gap-2 bg-amber-50 text-amber-700 px-3 py-1.5 rounded-full text-xs font-medium border border-amber-200">
-          <span>⏱️</span>
-          <span>23:59:42 remaining</span>
-        </div>
-      </Section>
-
-      <Hr className="border-gray-200 my-6" />
-
-      <Section className="text-center">
-        <Text className="text-gray-400 text-xs m-0 mb-2">
-          Or copy this link:
-        </Text>
-        <div className="bg-gray-100 rounded-lg px-4 py-3 font-mono text-xs text-gray-600 break-all border border-gray-200">
-          https://app.example.com/verify?token=eyJhbGc...
-        </div>
-      </Section>
-
-      <Hr className="border-gray-200 my-6" />
-
-      <Section className="text-center">
-        <Text className="text-gray-400 text-xs m-0">
-          Didn't request this? You can safely ignore this email.
-        </Text>
-      </Section>
-    </>;
+      </>
+    )
   }
 `;
 
@@ -175,6 +149,27 @@ export default function PageClient() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [dialogSelectedThemeId, setDialogSelectedThemeId] = useState<string>(activeTheme);
   const [selectedViewport, setSelectedViewport] = useState<DeviceViewport>(DEVICE_VIEWPORTS[0]); // Phone
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [showViewportSelector, setShowViewportSelector] = useState(true);
+
+  // Default to phone view on small containers and hide selector
+  useEffect(() => {
+    if (!containerRef.current) return;
+
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const width = entry.contentRect.width;
+        const isSmall = width < 700; // Threshold for hiding desktop/tablet views
+        setShowViewportSelector(!isSmall);
+        if (isSmall) {
+          setSelectedViewport(DEVICE_VIEWPORTS[0]);
+        }
+      }
+    });
+
+    observer.observe(containerRef.current);
+    return () => observer.disconnect();
+  }, []);
 
   const handleThemeSelect = (themeId: string) => {
     setDialogSelectedThemeId(themeId);
@@ -257,14 +252,17 @@ export default function PageClient() {
                   {selectedViewport.width} × {selectedViewport.height}
                 </span>
               </div>
-              <ViewportSelector
-                selectedViewport={selectedViewport}
-                onSelect={setSelectedViewport}
-              />
+              {showViewportSelector && (
+                <ViewportSelector
+                  selectedViewport={selectedViewport}
+                  onSelect={setSelectedViewport}
+                />
+              )}
             </div>
 
             {/* Device Preview Area */}
             <div 
+              ref={containerRef}
               className={cn(
                 "p-8 min-h-[650px] flex items-start justify-center overflow-auto",
                 "bg-gradient-to-b from-foreground/[0.02] to-foreground/[0.04]"
@@ -296,7 +294,11 @@ function ThemeOption({
   onSelect: (themeId: string) => void,
 }) {
   const stackAdminApp = useAdminApp();
-  const project = stackAdminApp.useProject();
+  const isDefault = Object.keys(DEFAULT_EMAIL_THEMES).includes(theme.id);
+
+  const handleDelete = async () => {
+    await stackAdminApp.deleteEmailTheme(theme.id);
+  };
 
   return (
     <div 
@@ -313,35 +315,35 @@ function ThemeOption({
           <EmailPreview themeId={theme.id} templateTsxSource={previewTemplateSource} disableResizing />
         </div>
         
-        <Link href={`/projects/${project.id}/email-themes/${theme.id}`} onClick={(e) => e.stopPropagation()}>
-          <Button
-            variant="secondary"
-            size="icon"
-            className="absolute top-2 right-2 h-8 w-8 shadow-sm opacity-0 group-hover:opacity-100 transition-all duration-150 hover:scale-105"
-          >
-            <Pencil className="w-3.5 h-3.5" />
-          </Button>
-        </Link>
-
-        {isSelected && (
-          <div className="absolute top-2 left-2 bg-primary text-primary-foreground rounded-full p-1 shadow-sm">
-            <Check className="w-3 h-3" />
+        {!isDefault && (
+          <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
+            <ActionDialog
+              title="Delete Theme"
+              description={`Are you sure you want to delete the theme "${theme.displayName}"? This action cannot be undone.`}
+              okButton={{
+                label: "Delete",
+                variant: "destructive",
+                onClick: handleDelete,
+              }}
+              cancelButton
+              trigger={
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  className="h-8 w-8 p-0 bg-background/80 backdrop-blur-sm hover:bg-destructive hover:text-destructive-foreground"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <Trash className="h-4 w-4" />
+                </Button>
+              }
+            />
           </div>
         )}
       </div>
       <div className="flex items-center gap-2">
-        {isSelected && <CheckIcon />}
-        <Typography variant="secondary" >{theme.displayName}</Typography>
+        {isSelected && <CheckIcon className="h-4 w-4 text-primary" />}
+        <Typography variant="secondary" className="truncate">{theme.displayName}</Typography>
       </div>
-      <Link href={`/projects/${project.id}/email-themes/${theme.id}`}>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="absolute top-2 right-2 bg-secondary opacity-0 group-hover:opacity-100 transition-opacity"
-        >
-          <PencilSimpleIcon className="w-4 h-4" />
-        </Button>
-      </Link>
     </div>
   );
 }

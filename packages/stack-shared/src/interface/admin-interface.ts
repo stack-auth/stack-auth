@@ -507,6 +507,16 @@ export class StackAdminInterface extends StackServerInterface {
     );
   }
 
+  async deleteEmailTheme(id: string): Promise<void> {
+    await this.sendAdminRequest(
+      `/internal/email-themes/${id}`,
+      {
+        method: "DELETE",
+      },
+      null,
+    );
+  }
+
   async updateEmailTemplate(id: string, tsxSource: string, themeId: string | null | false): Promise<{ rendered_html: string }> {
     const response = await this.sendAdminRequest(
       `/internal/email-templates/${id}`,

@@ -579,7 +579,14 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
   // END_PLATFORM
   async updateEmailTheme(id: string, tsxSource: string): Promise<void> {
     await this._interface.updateEmailTheme(id, tsxSource);
+    await this._adminEmailThemesCache.refresh([]);
   }
+
+  async deleteEmailTheme(id: string): Promise<void> {
+    await this._interface.deleteEmailTheme(id);
+    await this._adminEmailThemesCache.refresh([]);
+  }
+
   async updateEmailTemplate(id: string, tsxSource: string, themeId: string | null | false): Promise<{ renderedHtml: string }> {
     const result = await this._interface.updateEmailTemplate(id, tsxSource, themeId);
     await this._adminEmailTemplatesCache.refresh([]);

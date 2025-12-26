@@ -1,8 +1,7 @@
 import { overrideEnvironmentConfigOverride } from "@/lib/config";
 import { renderEmailWithTemplate } from "@/lib/email-rendering";
-import { globalPrismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { previewTemplateSource } from "@stackframe/stack-shared/dist/helpers/emails";
+import { DEFAULT_EMAIL_THEMES, previewTemplateSource } from "@stackframe/stack-shared/dist/helpers/emails";
 import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
 import { adaptSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
@@ -95,6 +94,59 @@ export const PATCH = createSmartRouteHandler({
       body: {
         display_name: theme.displayName,
       },
+    };
+  },
+});
+
+export const DELETE = createSmartRouteHandler({
+  metadata: {
+    hidden: true,
+  },
+  request: yupObject({
+    auth: yupObject({
+      type: yupString().oneOf(["admin"]).defined(),
+      tenancy: adaptSchema.defined(),
+    }).defined(),
+    params: yupObject({
+      id: yupString().defined(),
+    }).defined(),
+  }),
+  response: yupObject({
+    statusCode: yupNumber().oneOf([200]).defined(),
+    bodyType: yupString().oneOf(["json"]).defined(),
+    body: yupObject({}).defined(),
+  }),
+  async handler({ auth: { tenancy }, params: { id } }) {
+    // Check if theme exists
+    const themeList = tenancy.config.emails.themes;
+    if (!Object.keys(themeList).includes(id)) {
+      throw new StatusError(404, "No theme found with given id");
+    }
+
+    // Prevent deletion of default themes
+    if (Object.keys(DEFAULT_EMAIL_THEMES).includes(id)) {
+      throw new StatusError(400, "Cannot delete default email themes");
+    }
+
+    // Check if theme is in use
+    const activeTheme = tenancy.config.emails.selectedThemeId;
+    if (activeTheme === id) {
+      throw new StatusError(400, "Cannot delete the active email theme. Please switch to a different theme first.");
+    }
+
+    // Delete the theme by removing it from config
+    await overrideEnvironmentConfigOverride({
+      projectId: tenancy.project.id,
+      branchId: tenancy.branchId,
+      environmentConfigOverrideOverride: {
+        [`emails.themes.${id}`]: null,
+      },
+    });
+
+    return {
+      statusCode: 200,
+      bodyType: "json",
+      body: {},
     };
   },
 });
