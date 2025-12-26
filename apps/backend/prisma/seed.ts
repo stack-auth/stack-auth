@@ -16,7 +16,6 @@ import { throwErr } from '@stackframe/stack-shared/dist/utils/errors';
 import { typedEntries, typedFromEntries } from '@stackframe/stack-shared/dist/utils/objects';
 import { generateUuid } from '@stackframe/stack-shared/dist/utils/uuids';
 
-const globalPrisma = globalPrismaClient;
 const DUMMY_PROJECT_ID = '6fbbf22e-f4b2-4c6e-95a1-beab6fa41063';
 const EXPLORATORY_TEAM_DISPLAY_NAME = 'Exploratory Research and Insight Partnership With Very Long Collaborative Name For Testing';
 
@@ -212,7 +211,7 @@ export async function seed() {
   });
 
   await ensurePermissionDefinition(
-    globalPrismaClient,
+    globalPrismaClientClient,
     internalPrisma,
     {
       id: "team_member",
@@ -226,7 +225,7 @@ export async function seed() {
   );
   const updatedInternalTenancy = await getSoleTenancyFromProjectBranch("internal", DEFAULT_BRANCH_ID);
   await ensurePermissionDefinition(
-    globalPrismaClient,
+    globalPrismaClientClient,
     internalPrisma,
     {
       id: "team_admin",
@@ -264,7 +263,7 @@ export async function seed() {
   const shouldSeedDummyProject = process.env.STACK_SEED_ENABLE_DUMMY_PROJECT === 'true';
   if (shouldSeedDummyProject) {
     await seedDummyProject({
-      globalPrismaClient,
+      globalPrismaClientClient,
       ownerTeamId: internalTeamId,
       oauthProviderIds,
     });
@@ -276,7 +275,7 @@ export async function seed() {
     superSecretAdminKey: process.env.STACK_SEED_INTERNAL_PROJECT_SUPER_SECRET_ADMIN_KEY || throwErr('STACK_SEED_INTERNAL_PROJECT_SUPER_SECRET_ADMIN_KEY is not set'),
   };
 
-  await globalPrisma.apiKeySet.upsert({
+  await globalPrismaClient.apiKeySet.upsert({
     where: { projectId_id: { projectId: 'internal', id: apiKeyId } },
     update: {
       ...keySet,
@@ -493,7 +492,7 @@ export async function seed() {
 }
 
 type DummyProjectSeedOptions = {
-  globalPrismaClient: PrismaClient,
+  globalPrismaClientClient: PrismaClient,
   ownerTeamId: string,
   oauthProviderIds: string[],
 };
@@ -998,7 +997,7 @@ async function seedDummyProject(options: DummyProjectSeedOptions) {
     },
   });
 
-  await options.globalPrismaClient.project.update({
+  await options.globalPrismaClientClient.project.update({
     where: {
       id: DUMMY_PROJECT_ID,
     },
@@ -1500,7 +1499,7 @@ async function seedDummyEmails(options: EmailSeedOptions) {
       ? { type: 'user-primary-email', userId }
       : { type: 'custom-emails', emails: ['unknown@dummy.dev'] };
 
-    await globalPrismaClient.emailOutbox.upsert({
+    await globalPrismaClientClient.emailOutbox.upsert({
       where: {
         tenancyId_id: {
           tenancyId,
@@ -1604,7 +1603,7 @@ async function seedDummySessionActivityEvents(options: SessionActivityEventSeedO
 
       // Create EventIpInfo entry with a proper UUID
       const ipInfoId = generateUuid();  // TODO: This should be a deterministic UUID so we don't keep recreating the session info
-      await globalPrismaClient.eventIpInfo.upsert({
+      await globalPrismaClientClient.eventIpInfo.upsert({
         where: { id: ipInfoId },
         update: {
           ip: ipAddress,
@@ -1632,7 +1631,7 @@ async function seedDummySessionActivityEvents(options: SessionActivityEventSeedO
 
       // Create the Event entry with a proper UUID
       const eventId = generateUuid();
-      await globalPrismaClient.event.upsert({
+      await globalPrismaClientClient.event.upsert({
         where: { id: eventId },
         update: {
           systemEventTypeIds: ['$session-activity', '$user-activity', '$project-activity', '$project'],

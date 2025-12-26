@@ -1,5 +1,4 @@
-import { PrismaClient } from "@/generated/prisma/client";
-import { PrismaPg } from '@prisma/adapter-pg';
+import { globalPrismaClient } from "@/prisma-client";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { deepPlainEquals, filterUndefined, omit } from "@stackframe/stack-shared/dist/utils/objects";
@@ -7,9 +6,7 @@ import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
 import fs from "fs";
 
-const connectionString = getEnvVariable("STACK_DATABASE_CONNECTION_STRING", "");
-const adapter = new PrismaPg({ connectionString });
-const prismaClient = new PrismaClient({ adapter });
+const prismaClient = globalPrismaClient;
 const OUTPUT_FILE_PATH = "./verify-data-integrity-output.untracked.json";
 
 type EndpointOutput = {
