@@ -10,7 +10,7 @@
     "dev": "next dev --turbopack --port ${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}01",
     "build": "next build",
     "docker-build": "next build --experimental-build-mode compile",
-    "analyze-bundle": "next experimental-analyze --serve",
+    "analyze-bundle": "next experimental-analyze",
     "start": "next start --port ${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}01",
     "psql": "pnpm run with-env bash -c 'psql $STACK_DATABASE_CONNECTION_STRING'",
     "lint": "eslint ."
@@ -78,11 +78,11 @@
     "input-otp": "^1.4.1",
     "jose": "^5.2.2",
     "lodash": "^4.17.21",
-    "next": "16.0.9",
+    "next": "16.1.1",
     "next-themes": "^0.2.1",
     "posthog-js": "^1.235.0",
-    "react": "19.2.1",
-    "react-dom": "19.2.1",
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
     "react-globe.gl": "^2.28.2",
     "react-day-picker": "^9.6.7",
     "react-hook-form": "^7.53.1",
@@ -104,8 +104,8 @@
     "@types/canvas-confetti": "^1.6.4",
     "@types/lodash": "^4.17.5",
     "@types/node": "20.17.6",
-    "@types/react": "19.2.2",
-    "@types/react-dom": "19.2.2",
+    "@types/react": "19.2.7",
+    "@types/react-dom": "19.2.3",
     "@types/react-syntax-highlighter": "^15.5.13",
     "@types/three": "^0.169.0",
     "autoprefixer": "^10.4.17",
@@ -119,8 +119,8 @@
   },
   "pnpm": {
     "overrides": {
-      "@types/react": "19.2.2",
-      "@types/react-dom": "19.2.2"
+      "@types/react": "19.2.7",
+      "@types/react-dom": "19.2.3"
     }
   },
   "packageManager": "pnpm@10.23.0"
