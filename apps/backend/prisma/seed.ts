@@ -211,7 +211,7 @@ export async function seed() {
   });
 
   await ensurePermissionDefinition(
-    globalPrismaClientClient,
+    globalPrismaClient,
     internalPrisma,
     {
       id: "team_member",
@@ -225,7 +225,7 @@ export async function seed() {
   );
   const updatedInternalTenancy = await getSoleTenancyFromProjectBranch("internal", DEFAULT_BRANCH_ID);
   await ensurePermissionDefinition(
-    globalPrismaClientClient,
+    globalPrismaClient,
     internalPrisma,
     {
       id: "team_admin",
@@ -263,7 +263,7 @@ export async function seed() {
   const shouldSeedDummyProject = process.env.STACK_SEED_ENABLE_DUMMY_PROJECT === 'true';
   if (shouldSeedDummyProject) {
     await seedDummyProject({
-      globalPrismaClientClient,
+      globalPrismaClient,
       ownerTeamId: internalTeamId,
       oauthProviderIds,
     });
@@ -492,7 +492,7 @@ export async function seed() {
 }
 
 type DummyProjectSeedOptions = {
-  globalPrismaClientClient: PrismaClient,
+  globalPrismaClient: PrismaClient,
   ownerTeamId: string,
   oauthProviderIds: string[],
 };
@@ -997,7 +997,7 @@ async function seedDummyProject(options: DummyProjectSeedOptions) {
     },
   });
 
-  await options.globalPrismaClientClient.project.update({
+  await options.globalPrismaClient.project.update({
     where: {
       id: DUMMY_PROJECT_ID,
     },
@@ -1499,7 +1499,7 @@ async function seedDummyEmails(options: EmailSeedOptions) {
       ? { type: 'user-primary-email', userId }
       : { type: 'custom-emails', emails: ['unknown@dummy.dev'] };
 
-    await globalPrismaClientClient.emailOutbox.upsert({
+    await globalPrismaClient.emailOutbox.upsert({
       where: {
         tenancyId_id: {
           tenancyId,
@@ -1603,7 +1603,7 @@ async function seedDummySessionActivityEvents(options: SessionActivityEventSeedO
 
       // Create EventIpInfo entry with a proper UUID
       const ipInfoId = generateUuid();  // TODO: This should be a deterministic UUID so we don't keep recreating the session info
-      await globalPrismaClientClient.eventIpInfo.upsert({
+      await globalPrismaClient.eventIpInfo.upsert({
         where: { id: ipInfoId },
         update: {
           ip: ipAddress,
@@ -1631,7 +1631,7 @@ async function seedDummySessionActivityEvents(options: SessionActivityEventSeedO
 
       // Create the Event entry with a proper UUID
       const eventId = generateUuid();
-      await globalPrismaClientClient.event.upsert({
+      await globalPrismaClient.event.upsert({
         where: { id: eventId },
         update: {
           systemEventTypeIds: ['$session-activity', '$user-activity', '$project-activity', '$project'],
