@@ -1,5 +1,7 @@
 # @stackframe/stack-sc
 
+## 2.8.58
+
 ## 2.8.57
 
 ### Patch Changes

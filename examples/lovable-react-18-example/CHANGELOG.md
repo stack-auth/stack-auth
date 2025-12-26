@@ -1,5 +1,11 @@
 # @stackframe/lovable-react-18-example
 
+## 2.8.58
+
+### Patch Changes
+
+- @stackframe/react@2.8.58
+
 ## 2.8.57
 
 ### Patch Changes
