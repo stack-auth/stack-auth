@@ -22,7 +22,9 @@ import { ensurePolyfilled } from "./polyfills";
 // just ensure we're polyfilled because this file relies on envvars being expanded
 ensurePolyfilled();
 
-export type PrismaClientTransaction = PrismaClient | Parameters<Parameters<PrismaClient['$transaction']>[0]>[0];
+export type PrismaClientTransaction =
+  | Omit<PrismaClient, "$on">  // $on is not available on extended Prisma clients, so we don't require it here. see: https://www.prisma.io/docs/orm/reference/prisma-client-reference#on
+  | Parameters<Parameters<PrismaClient['$transaction']>[0]>[0];
 
 // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
 const prismaClientsStore = (globalVar.__stack_prisma_clients as undefined) || {
@@ -79,7 +81,7 @@ function getPostgresPrismaClient(connectionString: string) {
   let postgresPrismaClient = postgresPrismaClientsStore.get(connectionString);
   if (!postgresPrismaClient) {
     const schema = getSchemaFromConnectionString(connectionString);
-    const adapter = new PrismaPg({ connectionString }, schema ? { schema } : undefined);
+    const adapter = new PrismaPg({ connectionString, max: 25 }, schema ? { schema } : undefined);
     postgresPrismaClient = {
       client: new PrismaClient({ adapter }),
       schema,
@@ -134,12 +136,12 @@ async function resolveConnectionStringWithOrbStack(connectionString: string): Pr
 let actualGlobalConnectionString: string = globalVar.__stack_actual_global_connection_string ??= await resolveConnectionStringWithOrbStack(originalGlobalConnectionString);
 let actualReplicaConnectionString: string = globalVar.__stack_actual_replica_connection_string ??= await resolveConnectionStringWithOrbStack(originalReplicaConnectionString);
 
-function extendWithReadReplicas<T extends PrismaClient>(client: T, replicaConnectionString: string) {
+function extendWithReadReplicas<T extends PrismaClient>(client: T, replicaConnectionString: string): Omit<T, "$on"> {
   // Create a separate PrismaClient for the read replica
   const replicaClient = getPostgresPrismaClient(replicaConnectionString).client;
   return client.$extends(readReplicas({
     replicas: [replicaClient],
-  }));
+  })) as Omit<T, "$on">;
 }
 
 export const { client: globalPrismaClient, schema: globalPrismaSchema } = actualGlobalConnectionString
@@ -215,7 +217,7 @@ class TransactionErrorThatShouldNotBeRetried extends Error {
   }
 }
 
-export async function retryTransaction<T>(client: PrismaClient, fn: (tx: PrismaClientTransaction) => Promise<T>, options: { level?: "default" | "serializable" } = {}): Promise<T> {
+export async function retryTransaction<T>(client: Omit<PrismaClient, "$on">, fn: (tx: PrismaClientTransaction) => Promise<T>, options: { level?: "default" | "serializable" } = {}): Promise<T> {
   // serializable transactions are currently off by default, later we may turn them on
   const enableSerializable = options.level === "serializable";
 

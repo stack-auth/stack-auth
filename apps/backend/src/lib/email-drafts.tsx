@@ -1,6 +1,7 @@
-import { DraftThemeMode, PrismaClient } from "@/generated/prisma/client";
+import { DraftThemeMode } from "@/generated/prisma/client";
+import { PrismaClientTransaction } from "@/prisma-client";
 
-export async function getEmailDraft(prisma: PrismaClient, tenancyId: string, draftId: string) {
+export async function getEmailDraft(prisma: PrismaClientTransaction, tenancyId: string, draftId: string) {
   const draft = await prisma.emailDraft.findUnique({
     where: {
       tenancyId_id: {

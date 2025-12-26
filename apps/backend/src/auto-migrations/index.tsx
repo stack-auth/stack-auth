@@ -1,5 +1,5 @@
-import { sqlQuoteIdent, sqlQuoteIdentToString } from '@/prisma-client';
 import { Prisma, PrismaClient } from '@/generated/prisma/client';
+import { sqlQuoteIdent, sqlQuoteIdentToString } from '@/prisma-client';
 import { StackAssertionError } from '@stackframe/stack-shared/dist/utils/errors';
 import { wait } from '@stackframe/stack-shared/dist/utils/promises';
 import { MIGRATION_FILES } from './../generated/migration-files';
@@ -38,7 +38,7 @@ function isMigrationNeededError(error: unknown): boolean {
 }
 
 async function getAppliedMigrations(options: {
-  prismaClient: PrismaClient,
+  prismaClient: Omit<PrismaClient, "$on">,
   schema: string,
 }) {
   // eslint-disable-next-line no-restricted-syntax
@@ -80,7 +80,7 @@ async function getAppliedMigrations(options: {
 }
 
 export async function applyMigrations(options: {
-  prismaClient: PrismaClient,
+  prismaClient: Omit<PrismaClient, "$on">,
   migrationFiles?: { migrationName: string, sql: string }[],
   artificialDelayInSeconds?: number,
   logging?: boolean,
