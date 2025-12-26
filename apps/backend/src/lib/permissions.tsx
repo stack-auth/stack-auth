@@ -1,3 +1,4 @@
+import { PrismaClient } from "@/generated/prisma/client";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
 import { ProjectPermissionsCrud } from "@stackframe/stack-shared/dist/interface/crud/project-permissions";
@@ -335,8 +336,8 @@ export async function updatePermissionDefinition(
 }
 
 export async function ensurePermissionDefinition(
-  globalTx: PrismaTransaction,
-  sourceOfTruthTx: PrismaTransaction,
+  globalTx: PrismaTransaction | PrismaClient,
+  sourceOfTruthTx: PrismaTransaction | PrismaClient,
   options: {
     scope: "team" | "project",
     tenancy: Tenancy,
