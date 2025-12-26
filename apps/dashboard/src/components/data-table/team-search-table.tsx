@@ -7,7 +7,7 @@ import {
   DataTableColumnHeader,
   SearchToolbarItem,
   TextCell,
-} from "@stackframe/stack-ui";
+} from "@/components/ui";
 import { ColumnDef, Table } from "@tanstack/react-table";
 import { useMemo } from "react";
 

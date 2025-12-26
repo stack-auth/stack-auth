@@ -1,13 +1,13 @@
 "use client";
 
 import { AppIcon } from "@/components/app-square";
+import { Badge, Button, ScrollArea } from "@/components/ui";
 import { ALL_APPS_FRONTEND, getAppPath, getItemPath } from "@/lib/apps-frontend";
 import { getUninstalledAppIds } from "@/lib/apps-utils";
 import { cn } from "@/lib/utils";
+import { CheckIcon, CubeIcon, DownloadSimpleIcon, GearIcon, GlobeIcon, InfoIcon, KeyIcon, LayoutIcon, LightningIcon, PlayIcon, ShieldCheckIcon, SparkleIcon } from "@phosphor-icons/react";
 import { ALL_APPS, ALL_APP_TAGS, type AppId } from "@stackframe/stack-shared/dist/apps/apps-config";
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
-import { Badge, Button, ScrollArea } from "@stackframe/stack-ui";
-import { Blocks, Check, Download, Globe, Info, KeyRound, Layout, Play, Settings, Shield, Sparkles, Zap } from "lucide-react";
 import Image from "next/image";
 import React, { memo, useEffect, useMemo } from "react";
 import { AIChatPreview } from "./commands/ask-ai";
@@ -37,7 +37,7 @@ const RunQueryPreview = memo(function RunQueryPreview({
     <div className="flex flex-col h-full w-full items-center justify-center p-6">
       <div className="flex flex-col items-center gap-4 max-w-md text-center">
         <div className="w-16 h-16 rounded-2xl bg-amber-500/10 flex items-center justify-center">
-          <Play className="h-8 w-8 text-amber-500" />
+          <PlayIcon className="h-8 w-8 text-amber-500" />
         </div>
         <div>
           <h3 className="text-lg font-semibold text-foreground mb-2">Run Query</h3>
@@ -69,7 +69,7 @@ const CreateDashboardPreview = memo(function CreateDashboardPreview({
     <div className="flex flex-col h-full w-full items-center justify-center p-6">
       <div className="flex flex-col items-center gap-4 max-w-md text-center">
         <div className="w-16 h-16 rounded-2xl bg-cyan-500/10 flex items-center justify-center">
-          <Layout className="h-8 w-8 text-cyan-500" />
+          <LayoutIcon className="h-8 w-8 text-cyan-500" />
         </div>
         <div>
           <h3 className="text-lg font-semibold text-foreground mb-2">Create Dashboard</h3>
@@ -107,9 +107,9 @@ const AvailableAppPreview = memo(function AvailableAppPreview({
   const appFrontend = ALL_APPS_FRONTEND[appId];
 
   const features = [
-    { icon: Shield, label: "Secure" },
-    { icon: Zap, label: "Quick Setup" },
-    { icon: Check, label: "Production Ready" },
+    { icon: ShieldCheckIcon, label: "Secure" },
+    { icon: LightningIcon, label: "Quick Setup" },
+    { icon: CheckIcon, label: "Production Ready" },
   ];
 
   return (
@@ -186,7 +186,7 @@ const AvailableAppPreview = memo(function AvailableAppPreview({
               Enable App
             </Button>
             <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
-              <Info className="w-3 h-3" />
+              <InfoIcon className="w-3 h-3" />
               <span>Free</span>
             </div>
           </div>
@@ -355,7 +355,7 @@ export function useCmdKCommands({
     // Overview
     commands.push({
       id: "navigation/overview",
-      icon: <Globe className="h-3.5 w-3.5 text-muted-foreground" />,
+      icon: <GlobeIcon className="h-3.5 w-3.5 text-muted-foreground" />,
       label: "Overview",
       description: "Navigation",
       keywords: ["home", "dashboard", "main"],
@@ -404,7 +404,7 @@ export function useCmdKCommands({
         icon: (
           <div className="relative">
             <IconComponent className="h-3.5 w-3.5 text-muted-foreground/50" />
-            <Download className="h-2 w-2 text-muted-foreground absolute -bottom-0.5 -right-0.5" />
+            <DownloadSimpleIcon className="h-2 w-2 text-muted-foreground absolute -bottom-0.5 -right-0.5" />
           </div>
         ),
         label: app.displayName,
@@ -423,7 +423,7 @@ export function useCmdKCommands({
     // Settings items
     commands.push({
       id: "settings/explore-apps",
-      icon: <Blocks className="h-3.5 w-3.5 text-muted-foreground" />,
+      icon: <CubeIcon className="h-3.5 w-3.5 text-muted-foreground" />,
       label: "Explore Apps",
       description: "Settings",
       keywords: ["apps", "marketplace", "store", "install"],
@@ -433,7 +433,7 @@ export function useCmdKCommands({
 
     commands.push({
       id: "settings/project-keys",
-      icon: <KeyRound className="h-3.5 w-3.5 text-muted-foreground" />,
+      icon: <KeyIcon className="h-3.5 w-3.5 text-muted-foreground" />,
       label: "Project Keys",
       description: "Settings",
       keywords: ["api", "keys", "credentials", "secret"],
@@ -443,7 +443,7 @@ export function useCmdKCommands({
 
     commands.push({
       id: "settings/project-settings",
-      icon: <Settings className="h-3.5 w-3.5 text-muted-foreground" />,
+      icon: <GearIcon className="h-3.5 w-3.5 text-muted-foreground" />,
       label: "Project Settings",
       description: "Settings",
       keywords: ["config", "configuration", "options"],
@@ -455,7 +455,7 @@ export function useCmdKCommands({
     if (query.trim()) {
       commands.push({
         id: "ai/ask",
-        icon: <Sparkles className="h-3.5 w-3.5 text-purple-400" />,
+        icon: <SparkleIcon className="h-3.5 w-3.5 text-purple-400" />,
         label: `Ask AI`,
         description: "Get an AI-powered answer from Stack Auth docs",
         keywords: ["ai", "assistant", "help", "question"],
@@ -467,7 +467,7 @@ export function useCmdKCommands({
 
       commands.push({
         id: "query/run",
-        icon: <Play className="h-3.5 w-3.5 text-amber-500" />,
+        icon: <PlayIcon className="h-3.5 w-3.5 text-amber-500" />,
         label: `Run Query`,
         description: "Execute actions using natural language",
         keywords: ["run", "execute", "query", "action", "command", "vibecode"],
@@ -479,7 +479,7 @@ export function useCmdKCommands({
 
       commands.push({
         id: "create/dashboard",
-        icon: <Layout className="h-3.5 w-3.5 text-cyan-500" />,
+        icon: <LayoutIcon className="h-3.5 w-3.5 text-cyan-500" />,
         label: `Create Dashboard`,
         description: "Generate custom dashboards for your users",
         keywords: ["create", "dashboard", "generate", "ui", "interface", "panel"],

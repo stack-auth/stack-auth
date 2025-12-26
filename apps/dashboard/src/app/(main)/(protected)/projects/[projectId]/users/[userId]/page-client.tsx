@@ -5,15 +5,6 @@ import { FormDialog, SmartFormDialog } from "@/components/form-dialog";
 import { InputField, SelectField } from "@/components/form-fields";
 import { StyledLink } from "@/components/link";
 import { SettingCard } from "@/components/settings";
-import { DeleteUserDialog, ImpersonateUserDialog } from "@/components/user-dialogs";
-import { useThemeWatcher } from '@/lib/theme';
-import MonacoEditor from '@monaco-editor/react';
-import { ServerContactChannel, ServerOAuthProvider, ServerUser } from "@stackframe/stack";
-import { KnownErrors } from "@stackframe/stack-shared";
-import { fromNow } from "@stackframe/stack-shared/dist/utils/dates";
-import { StackAssertionError } from '@stackframe/stack-shared/dist/utils/errors';
-import { isJsonSerializable } from "@stackframe/stack-shared/dist/utils/json";
-import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
 import {
   Accordion,
   AccordionContent,
@@ -40,8 +31,17 @@ import {
   Typography,
   cn,
   useToast
-} from "@stackframe/stack-ui";
-import { AtSign, Calendar, Check, Hash, Mail, MoreHorizontal, Shield, SquareAsterisk, X } from "lucide-react";
+} from "@/components/ui";
+import { DeleteUserDialog, ImpersonateUserDialog } from "@/components/user-dialogs";
+import { useThemeWatcher } from '@/lib/theme';
+import MonacoEditor from '@monaco-editor/react';
+import { AtIcon, CalendarIcon, CheckIcon, DotsThreeIcon, EnvelopeIcon, HashIcon, ShieldIcon, SquareIcon, XIcon } from "@phosphor-icons/react";
+import { ServerContactChannel, ServerOAuthProvider, ServerUser } from "@stackframe/stack";
+import { KnownErrors } from "@stackframe/stack-shared";
+import { fromNow } from "@stackframe/stack-shared/dist/utils/dates";
+import { StackAssertionError } from '@stackframe/stack-shared/dist/utils/errors';
+import { isJsonSerializable } from "@stackframe/stack-shared/dist/utils/json";
+import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
 import { useEffect, useMemo, useState } from "react";
 import * as yup from "yup";
 import { AppEnabledGuard } from "../../app-enabled-guard";
@@ -211,7 +211,7 @@ function UserHeader({ user }: UserHeaderProps) {
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" size="icon">
-              <MoreHorizontal className="h-5 w-5" />
+              <DotsThreeIcon className="h-5 w-5" />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
@@ -255,18 +255,18 @@ function UserDetails({ user }: UserDetailsProps) {
   const [newPassword, setNewPassword] = useState<string | null>(null);
   return (
     <div className="grid grid-cols-[min-content_1fr] lg:grid-cols-[min-content_1fr_min-content_1fr] gap-2 text-sm px-4">
-      <UserInfo icon={<Hash size={16}/>} name="User ID">
+      <UserInfo icon={<HashIcon size={16}/>} name="User ID">
         <EditableInput value={user.id} readOnly />
       </UserInfo>
-      <UserInfo icon={<Mail size={16}/>} name="Primary email">
+      <UserInfo icon={<EnvelopeIcon size={16}/>} name="Primary email">
         <EditableInput value={user.primaryEmail ?? ""} placeholder={"-"} readOnly/>
       </UserInfo>
-      <UserInfo icon={<AtSign size={16}/>} name="Display name">
+      <UserInfo icon={<AtIcon size={16}/>} name="Display name">
         <EditableInput value={user.displayName ?? ""} placeholder={"-"} onUpdate={async (newName) => {
           await user.setDisplayName(newName);
         }}/>
       </UserInfo>
-      <UserInfo icon={<SquareAsterisk size={16}/>} name="Password">
+      <UserInfo icon={<SquareIcon size={16}/>} name="Password">
         <EditableInput
           value={""}
           placeholder={user.hasPassword ? "************" : "-"}
@@ -276,10 +276,10 @@ function UserDetails({ user }: UserDetailsProps) {
           }}
         />
       </UserInfo>
-      <UserInfo icon={<Shield size={16}/>} name="2-factor auth">
+      <UserInfo icon={<ShieldIcon size={16}/>} name="2-factor auth">
         <EditableInput value={user.isMultiFactorRequired ? 'Enabled' : ''} placeholder='Disabled' readOnly />
       </UserInfo>
-      <UserInfo icon={<Calendar size={16}/>} name="Signed up at">
+      <UserInfo icon={<CalendarIcon size={16}/>} name="Signed up at">
         <EditableInput value={user.signedUpAt.toDateString()} readOnly />
       </UserInfo>
     </div>
@@ -643,18 +643,18 @@ function ContactChannelsSection({ user }: ContactChannelsSectionProps) {
                     </div>
                   </TableCell>
                   <TableCell className="text-center">
-                    {channel.isPrimary ? <Check className="mx-auto h-4 w-4 text-green-500" /> : null}
+                    {channel.isPrimary ? <CheckIcon className="mx-auto h-4 w-4 text-green-500" /> : null}
                   </TableCell>
                   <TableCell className="text-center">
                     {channel.isVerified ?
-                      <Check className="mx-auto h-4 w-4 text-green-500" /> :
-                      <X className="mx-auto h-4 w-4 text-muted-foreground" />
+                      <CheckIcon className="mx-auto h-4 w-4 text-green-500" /> :
+                      <XIcon className="mx-auto h-4 w-4 text-muted-foreground" />
                     }
                   </TableCell>
                   <TableCell className="text-center">
                     {channel.usedForAuth ?
-                      <Check className="mx-auto h-4 w-4 text-green-500" /> :
-                      <X className="mx-auto h-4 w-4 text-muted-foreground" />
+                      <CheckIcon className="mx-auto h-4 w-4 text-green-500" /> :
+                      <XIcon className="mx-auto h-4 w-4 text-muted-foreground" />
                     }
                   </TableCell>
                   <TableCell align="right">
@@ -1077,14 +1077,14 @@ function OAuthProvidersSection({ user }: OAuthProvidersSectionProps) {
                   </TableCell>
                   <TableCell className="text-center">
                     {provider.allowSignIn ?
-                      <Check className="mx-auto h-4 w-4 text-green-500" /> :
-                      <X className="mx-auto h-4 w-4 text-muted-foreground" />
+                      <CheckIcon className="mx-auto h-4 w-4 text-green-500" /> :
+                      <XIcon className="mx-auto h-4 w-4 text-muted-foreground" />
                     }
                   </TableCell>
                   <TableCell className="text-center">
                     {provider.allowConnectedAccounts ?
-                      <Check className="mx-auto h-4 w-4 text-green-500" /> :
-                      <X className="mx-auto h-4 w-4 text-muted-foreground" />
+                      <CheckIcon className="mx-auto h-4 w-4 text-green-500" /> :
+                      <XIcon className="mx-auto h-4 w-4 text-muted-foreground" />
                     }
                   </TableCell>
                   <TableCell align="right">
