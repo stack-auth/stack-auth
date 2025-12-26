@@ -107,7 +107,7 @@ export function handleApiRequest(handler: (req: NextRequest, options: any, reque
             runAsynchronously(async () => {
               await wait(warnAfterSeconds * 1000);
               if (!hasRequestFinished) {
-                captureError("request-timeout-watcher", new Error(`Request with ID ${requestId} to endpoint ${req.nextUrl.pathname} has been running for ${warnAfterSeconds} seconds. Try to keep requests short. The request may be cancelled by the serverless provider if it takes too long.`));
+                captureError("request-timeout-watcher", new Error(`Request with ID ${requestId} to ${req.method} ${req.nextUrl.pathname} has been running for ${warnAfterSeconds} seconds. Try to keep requests short. The request may be cancelled by the serverless provider if it takes too long.`));
               }
             });
           }
