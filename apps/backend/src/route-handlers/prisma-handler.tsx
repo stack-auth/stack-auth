@@ -1,11 +1,13 @@
+import { Prisma } from "@/generated/prisma/client";
 import { globalPrismaClient } from "@/prisma-client";
-import { Prisma } from "@prisma/client";
-import { GetResult } from "@prisma/client/runtime/library";
+import type * as PrismaRuntime from "@prisma/client/runtime/client";
 import { CrudSchema, CrudTypeOf } from "@stackframe/stack-shared/dist/crud";
 import { typedAssign } from "@stackframe/stack-shared/dist/utils/objects";
 import * as yup from "yup";
 import { CrudHandlers, ParamsSchema, QuerySchema, createCrudHandlers } from "./crud-handler";
 import { SmartRequestAuth } from "./smart-request";
+
+type GetResult<Payload extends PrismaRuntime.OperationPayload, Args, OperationName extends PrismaRuntime.Operation = 'findUniqueOrThrow', GlobalOmitOptions = {}> = PrismaRuntime.Types.Result.GetResult<Payload, Args, OperationName, GlobalOmitOptions>;
 
 type ReplaceNever<T, R> = [T] extends [never] ? R : T;
 

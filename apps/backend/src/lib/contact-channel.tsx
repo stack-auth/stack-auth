@@ -1,4 +1,4 @@
-import { ContactChannelType } from "@prisma/client";
+import { ContactChannelType } from "@/generated/prisma/client";
 import { normalizeEmail } from "./emails";
 import { PrismaTransaction } from "./types";
 

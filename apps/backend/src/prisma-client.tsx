@@ -1,7 +1,8 @@
+import { Prisma, PrismaClient } from "@/generated/prisma/client";
 import { getStackServerApp } from "@/stack";
 import { PrismaNeon } from "@prisma/adapter-neon";
 import { PrismaPg } from '@prisma/adapter-pg';
-import { Prisma, PrismaClient } from "@prisma/client";
+import { readReplicas } from '@prisma/extension-read-replicas';
 import { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
 import { getEnvVariable, getNodeEnvironment } from '@stackframe/stack-shared/dist/utils/env';
 import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
@@ -25,7 +26,6 @@ export type PrismaClientTransaction = PrismaClient | Parameters<Parameters<Prism
 
 // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
 const prismaClientsStore = (globalVar.__stack_prisma_clients as undefined) || {
-  global: new PrismaClient(),
   neon: new Map<string, PrismaClient>(),
   postgres: new Map<string, {
     client: PrismaClient,
@@ -105,9 +105,11 @@ async function tcpPing(host: string, port: number, timeout = 2000) {
 }
 
 const originalGlobalConnectionString = getEnvVariable("STACK_DATABASE_CONNECTION_STRING", "");
-let actualGlobalConnectionString: string = globalVar.__stack_actual_global_connection_string ??= await (async () => {
-  if (!originalGlobalConnectionString) {
-    return originalGlobalConnectionString;
+const originalReplicaConnectionString = getEnvVariable("STACK_DATABASE_REPLICA_CONNECTION_STRING", "");
+
+async function resolveConnectionStringWithOrbStack(connectionString: string): Promise<string> {
+  if (!connectionString) {
+    return connectionString;
   }
 
   // If we are on a Mac with OrbStack installed, it's much much faster to use the OrbStack-provided domain instead of
@@ -116,22 +118,38 @@ let actualGlobalConnectionString: string = globalVar.__stack_actual_global_conne
   // For this reason, we check whether we can connect to the database using the OrbStack-provided domain, and if so,
   // we use it instead of the original connection string.
   if (getNodeEnvironment() === 'development' && process.platform === 'darwin') {
-    const match = originalGlobalConnectionString.match(/^postgres:\/\/postgres:(.*)@localhost:(\d\d)28\/(.*)$/);
+    const match = connectionString.match(/^postgres:\/\/([^:]+):(.*)@localhost:(\d\d)28\/(.*)$/);
     if (match) {
-      const [, password, portPrefix, schema] = match;
+      const [, user, password, portPrefix, schema] = match;
       const orbStackDomain = `db.stack-dependencies-${portPrefix}.orb.local`;
       const ok = await tcpPing(orbStackDomain, 5432, 50);  // extremely short timeout; OrbStack should be fast to respond, otherwise why are we doing this?
       if (ok) {
-        return `postgres://postgres:${password}@${orbStackDomain}:5432/${schema}`;
+        return `postgres://${user}:${password}@${orbStackDomain}:5432/${schema}`;
       }
     }
   }
-  return originalGlobalConnectionString;
-})();
+  return connectionString;
+}
 
+let actualGlobalConnectionString: string = globalVar.__stack_actual_global_connection_string ??= await resolveConnectionStringWithOrbStack(originalGlobalConnectionString);
+let actualReplicaConnectionString: string = globalVar.__stack_actual_replica_connection_string ??= await resolveConnectionStringWithOrbStack(originalReplicaConnectionString);
+
+function extendWithReadReplicas<T extends PrismaClient>(client: T, replicaConnectionString: string) {
+  // Create a separate PrismaClient for the read replica
+  const replicaClient = getPostgresPrismaClient(replicaConnectionString).client;
+  return client.$extends(readReplicas({
+    replicas: [replicaClient],
+  }));
+}
 
 export const { client: globalPrismaClient, schema: globalPrismaSchema } = actualGlobalConnectionString
-  ? getPostgresPrismaClient(actualGlobalConnectionString)
+  ? (() => {
+    const { client, schema } = getPostgresPrismaClient(actualGlobalConnectionString);
+    return {
+      client: actualReplicaConnectionString ? extendWithReadReplicas(client, actualReplicaConnectionString) : client,
+      schema,
+    };
+  })()
   : {
     client: throwingProxy<PrismaClient>("STACK_DATABASE_CONNECTION_STRING environment variable is not set. Please set it to a valid PostgreSQL connection string, or use a mock Prisma client for testing."),
     schema: throwingProxy<string>("STACK_DATABASE_CONNECTION_STRING environment variable is not set. Please set it to a valid PostgreSQL connection string, or use a mock Prisma client for testing."),
