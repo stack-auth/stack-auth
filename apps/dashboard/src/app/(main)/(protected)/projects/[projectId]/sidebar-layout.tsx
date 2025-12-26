@@ -169,7 +169,7 @@ function NavItem({
   );
 
   const caretClasses = cn(
-    "h-4 w-4 flex-shrink-0 transition-all duration-150 group-hover:transition-none",
+    "h-[13px] w-[13px] flex-shrink-0 transition-all duration-150 group-hover:transition-none",
     isHighlighted
       ? "text-blue-600 dark:text-blue-400"
       : "text-muted-foreground group-hover:text-foreground",
@@ -485,12 +485,14 @@ function SidebarContent({
 
         {/* User button and collapse toggle */}
         <div className={cn(
-          "mt-4 pt-3 border-t border-border/30 flex items-center gap-2",
+          "mt-4 pt-3 border-t border-border/30 flex items-center gap-2 min-w-0",
           isCollapsed ? "justify-center" : "justify-between"
         )}>
           {!isCollapsed && (
-            <div>
-              <UserButton showUserInfo />
+            <div className="min-w-0 flex-1 overflow-hidden max-w-[calc(100%-3rem)]">
+              <div className="w-full min-w-0 [&_button]:min-w-0 [&_button]:w-full [&_button]:max-w-full">
+                <UserButton showUserInfo />
+              </div>
             </div>
           )}
           {onToggleCollapse && (
@@ -500,7 +502,7 @@ function SidebarContent({
                   variant="ghost"
                   size="icon"
                   onClick={onToggleCollapse}
-                  className="h-8 w-8 p-1 text-muted-foreground hover:text-foreground hover:bg-background/60 rounded-lg transition-all duration-150 hover:transition-none"
+                  className="h-8 w-8 p-1 flex-shrink-0 text-muted-foreground hover:text-foreground hover:bg-background/60 rounded-lg transition-all duration-150 hover:transition-none"
                 >
                   <SidebarIcon className={cn("h-4 w-4 transition-transform duration-200", isCollapsed && "rotate-180")} />
                 </Button>
