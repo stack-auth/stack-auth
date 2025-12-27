@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "clean": "rimraf src/generated && rimraf .next && rimraf node_modules",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit -p tsconfig.typecheck.json",
     "with-env": "dotenv -c development --",
     "with-env:prod": "dotenv -c --",
     "dev": "concurrently -n \"dev,codegen,prisma-studio,email-queue\" -k \"next dev --port ${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}02\" \"pnpm run codegen:watch\" \"pnpm run prisma-studio\" \"pnpm run run-email-queue\"",
