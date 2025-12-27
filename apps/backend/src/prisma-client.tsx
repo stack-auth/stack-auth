@@ -282,8 +282,8 @@ export async function retryTransaction<T>(client: Omit<PrismaClient, "$on">, fn:
         }
         return attemptRes;
       });
-    }, 5, {
-      exponentialDelayBase: getNodeEnvironment() === 'development' || getNodeEnvironment() === 'test' ? 3 : 250,
+    }, 3, {
+      exponentialDelayBase: getNodeEnvironment() === 'development' || getNodeEnvironment() === 'test' ? 3 : 1000,
     });
 
     span.setAttribute("stack.prisma.transaction.success", res.status === "ok");
