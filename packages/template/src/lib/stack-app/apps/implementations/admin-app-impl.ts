@@ -527,6 +527,15 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
     await this._adminEmailDraftsCache.refresh([]);
   }
 
+  async deleteEmailDraft(id: string): Promise<void> {
+    await this._interface.deleteEmailDraft(id);
+    const current = this._adminEmailDraftsCache.getIfCached([]);
+    if (current.status === "ok" && current.data.status === "ok") {
+      this._adminEmailDraftsCache.forceSetCachedValue([], Result.ok(current.data.data.filter((d) => d.id !== id)));
+    }
+    await this._adminEmailDraftsCache.refresh([]);
+  }
+
   async sendChatMessage(
     threadId: string,
     contextType: "email-theme" | "email-template" | "email-draft",
@@ -570,7 +579,14 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
   // END_PLATFORM
   async updateEmailTheme(id: string, tsxSource: string): Promise<void> {
     await this._interface.updateEmailTheme(id, tsxSource);
+    await this._adminEmailThemesCache.refresh([]);
   }
+
+  async deleteEmailTheme(id: string): Promise<void> {
+    await this._interface.deleteEmailTheme(id);
+    await this._adminEmailThemesCache.refresh([]);
+  }
+
   async updateEmailTemplate(id: string, tsxSource: string, themeId: string | null | false): Promise<{ renderedHtml: string }> {
     const result = await this._interface.updateEmailTemplate(id, tsxSource, themeId);
     await this._adminEmailTemplatesCache.refresh([]);

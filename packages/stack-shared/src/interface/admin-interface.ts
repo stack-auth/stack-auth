@@ -196,6 +196,16 @@ export class StackAdminInterface extends StackServerInterface {
     );
   }
 
+  async deleteEmailDraft(id: string): Promise<void> {
+    await this.sendAdminRequest(
+      `/internal/email-drafts/${id}`,
+      {
+        method: "DELETE",
+      },
+      null,
+    );
+  }
+
   async listEmailThemes(): Promise<{ id: string, display_name: string }[]> {
     const response = await this.sendAdminRequest(`/internal/email-themes`, {}, null);
     const result = await response.json() as { themes: { id: string, display_name: string }[] };
@@ -492,6 +502,16 @@ export class StackAdminInterface extends StackServerInterface {
         body: JSON.stringify({
           tsx_source: tsxSource,
         }),
+      },
+      null,
+    );
+  }
+
+  async deleteEmailTheme(id: string): Promise<void> {
+    await this.sendAdminRequest(
+      `/internal/email-themes/${id}`,
+      {
+        method: "DELETE",
       },
       null,
     );

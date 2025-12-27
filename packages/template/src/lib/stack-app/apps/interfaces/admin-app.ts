@@ -68,6 +68,7 @@ export type StackAdminApp<HasTokenStore extends boolean = boolean, ProjectId ext
     useEmailTheme(id: string): { displayName: string, tsxSource: string }, // THIS_LINE_PLATFORM react-like
     createEmailTheme(displayName: string): Promise<{ id: string }>,
     updateEmailTheme(id: string, tsxSource: string): Promise<void>,
+    deleteEmailTheme(id: string): Promise<void>,
 
     sendChatMessage(
       threadId: string,
@@ -84,6 +85,7 @@ export type StackAdminApp<HasTokenStore extends boolean = boolean, ProjectId ext
     createStripeWidgetAccountSession(): Promise<{ client_secret: string }>,
     createEmailDraft(options: { displayName: string, themeId?: string | undefined | false, tsxSource?: string }): Promise<{ id: string }>,
     updateEmailDraft(id: string, data: { displayName?: string, themeId?: string | undefined | false, tsxSource?: string }): Promise<void>,
+    deleteEmailDraft(id: string): Promise<void>,
     createItemQuantityChange(options: (
       { userId: string, itemId: string, quantity: number, expiresAt?: string, description?: string } |
       { teamId: string, itemId: string, quantity: number, expiresAt?: string, description?: string } |
