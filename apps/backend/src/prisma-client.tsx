@@ -254,7 +254,7 @@ export async function retryTransaction<T>(client: Omit<PrismaClient, "$on">, fn:
               if (getNodeEnvironment() === 'development' || getNodeEnvironment() === 'test') {
                 // In dev/test, let's just fail the transaction with a certain probability, if we haven't already failed multiple times
                 // this is to test the logic that every transaction is retryable
-                if (attemptIndex < 3 && Math.random() < 0.5) {
+                if (attemptIndex < 2 && Math.random() < 0.5) {
                   throw new TransactionErrorThatShouldBeRetried(new Error("Test error for dev/test. This should automatically be retried."));
                 }
               }
