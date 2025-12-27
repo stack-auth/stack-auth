@@ -151,14 +151,14 @@ async function authorize(projectId: string) {
 }
 
 it(`should redirect to the correct callback URL`, async ({}) => {
-  await Auth.Otp.signIn();
+  await Auth.fastSignUp();
   const createdProject = await Project.create();
 
   await authorize(createdProject.projectId);
 });
 
 it(`should not redirect to the incorrect callback URL`, async ({}) => {
-  await Auth.Otp.signIn();
+  await Auth.fastSignUp();
   await Project.create();
 
   const result = await authorizePart1("http://localhost:30000/api/v2/wrong-url/authorize");
@@ -190,7 +190,7 @@ it(`should not redirect to the incorrect callback URL`, async ({}) => {
 });
 
 it(`should exchange the authorization code for an admin API key that works`, async ({}) => {
-  await Auth.Otp.signIn();
+  await Auth.fastSignUp();
   const createdProject = await Project.create();
 
   const { authorizationCode } = await authorize(createdProject.projectId);
@@ -244,7 +244,7 @@ it(`should exchange the authorization code for an admin API key that works`, asy
 });
 
 it(`should not exchange the authorization code when the client secret is incorrect`, async ({}) => {
-  await Auth.Otp.signIn();
+  await Auth.fastSignUp();
   const createdProject = await Project.create();
 
   const { authorizationCode } = await authorize(createdProject.projectId);

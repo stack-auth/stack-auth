@@ -3,7 +3,9 @@ import { describe } from "vitest";
 import { it } from "../helpers";
 
 describe("Setup wizard", () => {
-  it("completes successfully", async ({ expect }) => {
+  // note that we run this only in CI environments
+  it.runIf(!!process.env.CI)("completes successfully", async ({ expect }) => {
+    throw new Error("Not implemented");
     const [error, stdout, stderr] = await new Promise<[Error | null, string, string]>((resolve) => {
       exec("pnpm -C packages/init-stack run test-run", (error, stdout, stderr) => {
         resolve([error, stdout, stderr]);

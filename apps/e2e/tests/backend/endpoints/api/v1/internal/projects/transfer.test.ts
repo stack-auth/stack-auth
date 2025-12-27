@@ -8,7 +8,7 @@ describe("internal project transfer", () => {
     backendContext.set({ projectKeys: InternalProjectKeys });
 
     // Create and sign in user in internal project
-    const { userId } = await Auth.Otp.signIn();
+    const { userId } = await Auth.fastSignUp();
 
     // Create two teams where user is admin
     const team1Response = await niceBackendFetch("/api/v1/teams", {
@@ -109,16 +109,13 @@ describe("internal project transfer", () => {
     backendContext.set({ projectKeys: InternalProjectKeys });
 
     // Create admin user
-    const adminMailbox = await bumpEmailAddress();
-    const { userId: adminUserId } = await Auth.Otp.signIn();
+    const { userId: adminUserId, accessToken: adminAccessToken, refreshToken: adminRefreshToken } = await Auth.fastSignUp();
 
     // Create member user
-    const memberMailbox = await bumpEmailAddress();
-    const { userId: memberUserId } = await Auth.Otp.signIn();
+    const { userId: memberUserId, accessToken: memberAccessToken, refreshToken: memberRefreshToken } = await Auth.fastSignUp();
 
     // Switch back to admin user
-    backendContext.set({ mailbox: adminMailbox });
-    await Auth.Otp.signIn();
+    backendContext.set({ userAuth: { accessToken: adminAccessToken, refreshToken: adminRefreshToken } });
 
     const team1Response = await niceBackendFetch("/api/v1/teams", {
       method: "POST",
@@ -183,8 +180,7 @@ describe("internal project transfer", () => {
     const project = projectResponse.body;
 
     // Switch to member user
-    backendContext.set({ mailbox: memberMailbox });
-    await Auth.Otp.signIn();
+    backendContext.set({ userAuth: { accessToken: memberAccessToken, refreshToken: memberRefreshToken } });
 
     const transferResponse = await niceBackendFetch("/api/v1/internal/projects/transfer", {
       method: "POST",
@@ -220,7 +216,7 @@ describe("internal project transfer", () => {
     backendContext.set({ projectKeys: InternalProjectKeys });
 
     // Create user and sign in
-    const { userId } = await Auth.Otp.signIn();
+    const { userId } = await Auth.fastSignUp();
 
     // Create two teams
     const team1Response = await niceBackendFetch("/api/v1/teams", {
@@ -304,8 +300,7 @@ describe("internal project transfer", () => {
     backendContext.set({ projectKeys: InternalProjectKeys });
 
     // Create first user and sign in
-    const user1Mailbox = await bumpEmailAddress();
-    const { userId: user1Id } = await Auth.Otp.signIn();
+    const { userId: user1Id, accessToken: user1AccessToken, refreshToken: user1RefreshToken } = await Auth.fastSignUp();
 
     // Create team1 with user1
     const team1Response = await niceBackendFetch("/api/v1/teams", {
@@ -318,8 +313,7 @@ describe("internal project transfer", () => {
     const team1 = team1Response.body;
 
     // Create second user
-    const user2Mailbox = await bumpEmailAddress();
-    const { userId: user2Id } = await Auth.Otp.signIn();
+    const { userId: user2Id } = await Auth.fastSignUp();
 
     // Create team2 with user2
     const team2Response = await niceBackendFetch("/api/v1/teams", {
@@ -331,9 +325,8 @@ describe("internal project transfer", () => {
     });
     const team2 = team2Response.body;
 
-    // Sign back in as user1 (call signIn again)
-    backendContext.set({ mailbox: user1Mailbox });
-    await Auth.Otp.signIn();
+    // Switch back to user1
+    backendContext.set({ userAuth: { accessToken: user1AccessToken, refreshToken: user1RefreshToken } });
 
     // Add user1 to team1 first
     await niceBackendFetch(`/api/v1/team-memberships/${team1.id}/${user1Id}`, {

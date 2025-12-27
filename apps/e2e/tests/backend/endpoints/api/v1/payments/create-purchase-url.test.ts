@@ -97,7 +97,7 @@ it("should error for invalid customer_id", async ({ expect }) => {
     },
   });
 
-  await Auth.Otp.signIn();
+  await Auth.fastSignUp();
   const response = await niceBackendFetch("/api/latest/payments/purchases/create-purchase-url", {
     method: "POST",
     accessType: "client",
@@ -174,7 +174,7 @@ it("should not allow product_inline when calling from client", async ({ expect }
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
   await Payments.setup();
 
-  const { userId } = await Auth.Otp.signIn();
+  const { userId } = await Auth.fastSignUp();
   const response = await niceBackendFetch("/api/latest/payments/purchases/create-purchase-url", {
     method: "POST",
     accessType: "client",
@@ -254,7 +254,7 @@ it("should allow product_inline when calling from server", async ({ expect }) =>
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
   await Payments.setup();
 
-  const { userId } = await Auth.Otp.signIn();
+  const { userId } = await Auth.fastSignUp();
   const response = await niceBackendFetch("/api/latest/payments/purchases/create-purchase-url", {
     method: "POST",
     accessType: "server",
@@ -283,7 +283,7 @@ it("should return inline product metadata when validating purchase code", async 
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
   await Payments.setup();
 
-  const { userId } = await Auth.Otp.signIn();
+  const { userId } = await Auth.fastSignUp();
   const createResponse = await niceBackendFetch("/api/latest/payments/purchases/create-purchase-url", {
     method: "POST",
     accessType: "server",

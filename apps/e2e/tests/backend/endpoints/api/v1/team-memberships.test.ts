@@ -4,7 +4,7 @@ import { Auth, InternalApiKey, InternalProjectKeys, Project, Team, Webhook, back
 
 
 it("is not allowed to add user to team on client", async ({ expect }) => {
-  const { userId: userId1 } = await Auth.Otp.signIn();
+  const { userId: userId1 } = await Auth.fastSignUp();
   const { teamId } = await Team.createWithCurrentAsCreator();
 
   const response = await niceBackendFetch(`/api/v1/team-memberships/${teamId}/${userId1}`, {
@@ -35,9 +35,8 @@ it("is not allowed to add user to team on client", async ({ expect }) => {
 });
 
 it("creates a team and allows managing users on the server", async ({ expect }) => {
-  const { userId: userId1 } = await Auth.Otp.signIn();
-  await bumpEmailAddress();
-  const { userId: userId2 } = await Auth.Otp.signIn();
+  const { userId: userId1 } = await Auth.fastSignUp();
+  const { userId: userId2 } = await Auth.fastSignUp();
   const { teamId } = await Team.createWithCurrentAsCreator();
 
   const response = await niceBackendFetch(`/api/v1/team-memberships/${teamId}/${userId1}`, {
@@ -67,7 +66,7 @@ it("creates a team and allows managing users on the server", async ({ expect }) 
         "is_paginated": true,
         "items": [
           {
-            "auth_with_email": true,
+            "auth_with_email": false,
             "client_metadata": null,
             "client_read_only_metadata": null,
             "display_name": null,
@@ -76,18 +75,18 @@ it("creates a team and allows managing users on the server", async ({ expect }) 
             "is_anonymous": false,
             "last_active_at_millis": <stripped field 'last_active_at_millis'>,
             "oauth_providers": [],
-            "otp_auth_enabled": true,
+            "otp_auth_enabled": false,
             "passkey_auth_enabled": false,
-            "primary_email": "default-mailbox--<stripped UUID>@stack-generated.example.com",
-            "primary_email_auth_enabled": true,
-            "primary_email_verified": true,
+            "primary_email": null,
+            "primary_email_auth_enabled": false,
+            "primary_email_verified": false,
             "profile_image_url": null,
             "requires_totp_mfa": false,
             "selected_team": {
               "client_metadata": null,
               "client_read_only_metadata": null,
               "created_at_millis": <stripped field 'created_at_millis'>,
-              "display_name": "default-mailbox--<stripped UUID>@stack-generated.example.com's Team",
+              "display_name": "Personal Team",
               "id": "<stripped UUID>",
               "profile_image_url": null,
               "server_metadata": null,
@@ -97,7 +96,7 @@ it("creates a team and allows managing users on the server", async ({ expect }) 
             "signed_up_at_millis": <stripped field 'signed_up_at_millis'>,
           },
           {
-            "auth_with_email": true,
+            "auth_with_email": false,
             "client_metadata": null,
             "client_read_only_metadata": null,
             "display_name": null,
@@ -106,18 +105,18 @@ it("creates a team and allows managing users on the server", async ({ expect }) 
             "is_anonymous": false,
             "last_active_at_millis": <stripped field 'last_active_at_millis'>,
             "oauth_providers": [],
-            "otp_auth_enabled": true,
+            "otp_auth_enabled": false,
             "passkey_auth_enabled": false,
-            "primary_email": "mailbox-1--<stripped UUID>@stack-generated.example.com",
-            "primary_email_auth_enabled": true,
-            "primary_email_verified": true,
+            "primary_email": null,
+            "primary_email_auth_enabled": false,
+            "primary_email_verified": false,
             "profile_image_url": null,
             "requires_totp_mfa": false,
             "selected_team": {
               "client_metadata": null,
               "client_read_only_metadata": null,
               "created_at_millis": <stripped field 'created_at_millis'>,
-              "display_name": "mailbox-1--<stripped UUID>@stack-generated.example.com's Team",
+              "display_name": "Personal Team",
               "id": "<stripped UUID>",
               "profile_image_url": null,
               "server_metadata": null,
@@ -158,7 +157,7 @@ it("creates a team and allows managing users on the server", async ({ expect }) 
         "is_paginated": true,
         "items": [
           {
-            "auth_with_email": true,
+            "auth_with_email": false,
             "client_metadata": null,
             "client_read_only_metadata": null,
             "display_name": null,
@@ -167,18 +166,18 @@ it("creates a team and allows managing users on the server", async ({ expect }) 
             "is_anonymous": false,
             "last_active_at_millis": <stripped field 'last_active_at_millis'>,
             "oauth_providers": [],
-            "otp_auth_enabled": true,
+            "otp_auth_enabled": false,
             "passkey_auth_enabled": false,
-            "primary_email": "default-mailbox--<stripped UUID>@stack-generated.example.com",
-            "primary_email_auth_enabled": true,
-            "primary_email_verified": true,
+            "primary_email": null,
+            "primary_email_auth_enabled": false,
+            "primary_email_verified": false,
             "profile_image_url": null,
             "requires_totp_mfa": false,
             "selected_team": {
               "client_metadata": null,
               "client_read_only_metadata": null,
               "created_at_millis": <stripped field 'created_at_millis'>,
-              "display_name": "default-mailbox--<stripped UUID>@stack-generated.example.com's Team",
+              "display_name": "Personal Team",
               "id": "<stripped UUID>",
               "profile_image_url": null,
               "server_metadata": null,
@@ -196,12 +195,11 @@ it("creates a team and allows managing users on the server", async ({ expect }) 
 });
 
 it("lets users be on multiple teams", async ({ expect }) => {
-  const { userId: creatorUserId } = await Auth.Otp.signIn();
+  const { userId: creatorUserId } = await Auth.fastSignUp();
   const { teamId: teamId1 } = await Team.createWithCurrentAsCreator();
   const { teamId: teamId2 } = await Team.createWithCurrentAsCreator();
 
-  await bumpEmailAddress();
-  const { userId } = await Auth.Otp.signIn();
+  const { userId } = await Auth.fastSignUp();
   await niceBackendFetch(`/api/v1/team-memberships/${teamId1}/${userId}`, {
     accessType: "server",
     method: "POST",
@@ -224,7 +222,7 @@ it("lets users be on multiple teams", async ({ expect }) => {
         "is_paginated": true,
         "items": [
           {
-            "auth_with_email": true,
+            "auth_with_email": false,
             "client_metadata": null,
             "client_read_only_metadata": null,
             "display_name": null,
@@ -233,18 +231,18 @@ it("lets users be on multiple teams", async ({ expect }) => {
             "is_anonymous": false,
             "last_active_at_millis": <stripped field 'last_active_at_millis'>,
             "oauth_providers": [],
-            "otp_auth_enabled": true,
+            "otp_auth_enabled": false,
             "passkey_auth_enabled": false,
-            "primary_email": "default-mailbox--<stripped UUID>@stack-generated.example.com",
-            "primary_email_auth_enabled": true,
-            "primary_email_verified": true,
+            "primary_email": null,
+            "primary_email_auth_enabled": false,
+            "primary_email_verified": false,
             "profile_image_url": null,
             "requires_totp_mfa": false,
             "selected_team": {
               "client_metadata": null,
               "client_read_only_metadata": null,
               "created_at_millis": <stripped field 'created_at_millis'>,
-              "display_name": "default-mailbox--<stripped UUID>@stack-generated.example.com's Team",
+              "display_name": "Personal Team",
               "id": "<stripped UUID>",
               "profile_image_url": null,
               "server_metadata": null,
@@ -254,7 +252,7 @@ it("lets users be on multiple teams", async ({ expect }) => {
             "signed_up_at_millis": <stripped field 'signed_up_at_millis'>,
           },
           {
-            "auth_with_email": true,
+            "auth_with_email": false,
             "client_metadata": null,
             "client_read_only_metadata": null,
             "display_name": null,
@@ -263,18 +261,18 @@ it("lets users be on multiple teams", async ({ expect }) => {
             "is_anonymous": false,
             "last_active_at_millis": <stripped field 'last_active_at_millis'>,
             "oauth_providers": [],
-            "otp_auth_enabled": true,
+            "otp_auth_enabled": false,
             "passkey_auth_enabled": false,
-            "primary_email": "mailbox-1--<stripped UUID>@stack-generated.example.com",
-            "primary_email_auth_enabled": true,
-            "primary_email_verified": true,
+            "primary_email": null,
+            "primary_email_auth_enabled": false,
+            "primary_email_verified": false,
             "profile_image_url": null,
             "requires_totp_mfa": false,
             "selected_team": {
               "client_metadata": null,
               "client_read_only_metadata": null,
               "created_at_millis": <stripped field 'created_at_millis'>,
-              "display_name": "mailbox-1--<stripped UUID>@stack-generated.example.com's Team",
+              "display_name": "Personal Team",
               "id": "<stripped UUID>",
               "profile_image_url": null,
               "server_metadata": null,
@@ -301,7 +299,7 @@ it("lets users be on multiple teams", async ({ expect }) => {
         "is_paginated": true,
         "items": [
           {
-            "auth_with_email": true,
+            "auth_with_email": false,
             "client_metadata": null,
             "client_read_only_metadata": null,
             "display_name": null,
@@ -310,18 +308,18 @@ it("lets users be on multiple teams", async ({ expect }) => {
             "is_anonymous": false,
             "last_active_at_millis": <stripped field 'last_active_at_millis'>,
             "oauth_providers": [],
-            "otp_auth_enabled": true,
+            "otp_auth_enabled": false,
             "passkey_auth_enabled": false,
-            "primary_email": "default-mailbox--<stripped UUID>@stack-generated.example.com",
-            "primary_email_auth_enabled": true,
-            "primary_email_verified": true,
+            "primary_email": null,
+            "primary_email_auth_enabled": false,
+            "primary_email_verified": false,
             "profile_image_url": null,
             "requires_totp_mfa": false,
             "selected_team": {
               "client_metadata": null,
               "client_read_only_metadata": null,
               "created_at_millis": <stripped field 'created_at_millis'>,
-              "display_name": "default-mailbox--<stripped UUID>@stack-generated.example.com's Team",
+              "display_name": "Personal Team",
               "id": "<stripped UUID>",
               "profile_image_url": null,
               "server_metadata": null,
@@ -331,7 +329,7 @@ it("lets users be on multiple teams", async ({ expect }) => {
             "signed_up_at_millis": <stripped field 'signed_up_at_millis'>,
           },
           {
-            "auth_with_email": true,
+            "auth_with_email": false,
             "client_metadata": null,
             "client_read_only_metadata": null,
             "display_name": null,
@@ -340,18 +338,18 @@ it("lets users be on multiple teams", async ({ expect }) => {
             "is_anonymous": false,
             "last_active_at_millis": <stripped field 'last_active_at_millis'>,
             "oauth_providers": [],
-            "otp_auth_enabled": true,
+            "otp_auth_enabled": false,
             "passkey_auth_enabled": false,
-            "primary_email": "mailbox-1--<stripped UUID>@stack-generated.example.com",
-            "primary_email_auth_enabled": true,
-            "primary_email_verified": true,
+            "primary_email": null,
+            "primary_email_auth_enabled": false,
+            "primary_email_verified": false,
             "profile_image_url": null,
             "requires_totp_mfa": false,
             "selected_team": {
               "client_metadata": null,
               "client_read_only_metadata": null,
               "created_at_millis": <stripped field 'created_at_millis'>,
-              "display_name": "mailbox-1--<stripped UUID>@stack-generated.example.com's Team",
+              "display_name": "Personal Team",
               "id": "<stripped UUID>",
               "profile_image_url": null,
               "server_metadata": null,
@@ -369,7 +367,7 @@ it("lets users be on multiple teams", async ({ expect }) => {
 });
 
 it("does not allow adding a user to a team if the user is already a member of the team", async ({ expect }) => {
-  const { userId: userId1 } = await Auth.Otp.signIn();
+  const { userId: userId1 } = await Auth.fastSignUp();
   const { teamId } = await Team.createWithCurrentAsCreator();
 
   const response1 = await niceBackendFetch(`/api/v1/team-memberships/${teamId}/${userId1}`, {
@@ -455,7 +453,7 @@ it("should give team creator default permissions", async ({ expect }) => {
 });
 
 it("allows leaving team", async ({ expect }) => {
-  await Auth.Otp.signIn();
+  await Auth.fastSignUp();
   const { teamId } = await Team.createWithCurrentAsCreator();
 
   // Does not have permission to remove user from team
@@ -474,9 +472,8 @@ it("allows leaving team", async ({ expect }) => {
 });
 
 it("removes user from team on the client", async ({ expect }) => {
-  const { userId: userId1 } = await Auth.Otp.signIn();
-  await bumpEmailAddress();
-  const { userId: userId2 } = await Auth.Otp.signIn();
+  const { userId: userId1 } = await Auth.fastSignUp();
+  const { userId: userId2 } = await Auth.fastSignUp();
   const { teamId } = await Team.create();
   await Team.addMember(teamId, userId1);
   await Team.addMember(teamId, userId2);
@@ -528,11 +525,9 @@ it("removes user from team on the client", async ({ expect }) => {
 });
 
 it("creates a team on the server and adds a different user as the creator", async ({ expect }) => {
-  await Project.createAndSwitch({ config: {  magic_link_enabled: true } });
-  const user1Mailbox = await bumpEmailAddress();
-  const { userId: userId1 } = await Auth.Otp.signIn();
-  await bumpEmailAddress();
-  await Auth.Otp.signIn();
+  await Project.createAndSwitch();
+  const { userId: userId1, accessToken: user1AccessToken, refreshToken: user1RefreshToken } = await Auth.fastSignUp();
+  await Auth.fastSignUp();
 
   const response = await niceBackendFetch("/api/v1/teams", {
     accessType: "server",
@@ -558,8 +553,7 @@ it("creates a team on the server and adds a different user as the creator", asyn
     }
   `);
 
-  backendContext.set({ mailbox: user1Mailbox });
-  await Auth.Otp.signIn();
+  backendContext.set({ userAuth: { accessToken: user1AccessToken, refreshToken: user1RefreshToken } });
 
   const response2 = await niceBackendFetch(`/api/v1/teams?user_id=me`, {
     accessType: "client",
@@ -589,11 +583,10 @@ it("creates a team on the server and adds a different user as the creator", asyn
 it("should trigger team membership webhook when a user is added to a team", async ({ expect }) => {
   const { projectId, svixToken, endpointId } = await Webhook.createProjectWithEndpoint();
 
-  await Auth.Otp.signIn();
+  await Auth.fastSignUp();
   const { teamId } = await Team.createWithCurrentAsCreator();
 
-  await bumpEmailAddress();
-  const { userId } = await Auth.Otp.signIn();
+  const { userId } = await Auth.fastSignUp();
 
   const addUserResponse = await niceBackendFetch(`/api/v1/team-memberships/${teamId}/${userId}`, {
     accessType: "server",
@@ -628,11 +621,10 @@ it("should trigger team membership webhook when a user is added to a team", asyn
 it("should trigger team membership webhook when a user is removed from a team", async ({ expect }) => {
   const { projectId, svixToken, endpointId } = await Webhook.createProjectWithEndpoint();
 
-  await Auth.Otp.signIn();
+  await Auth.fastSignUp();
   const { teamId } = await Team.createWithCurrentAsCreator();
 
-  await bumpEmailAddress();
-  const { userId } = await Auth.Otp.signIn();
+  const { userId } = await Auth.fastSignUp();
 
   const addUserResponse = await niceBackendFetch(`/api/v1/team-memberships/${teamId}/${userId}`, {
     accessType: "server",
@@ -672,11 +664,10 @@ it("should trigger team membership webhook when a user is removed from a team", 
 it("should trigger team permission webhook when a user is added to a team", async ({ expect }) => {
   const { projectId, svixToken, endpointId } = await Webhook.createProjectWithEndpoint();
 
-  await Auth.Otp.signIn();
+  await Auth.fastSignUp();
   const { teamId } = await Team.createWithCurrentAsCreator();
 
-  await bumpEmailAddress();
-  const { userId } = await Auth.Otp.signIn();
+  const { userId } = await Auth.fastSignUp();
 
   const addUserResponse = await niceBackendFetch(`/api/v1/team-memberships/${teamId}/${userId}`, {
     accessType: "server",
@@ -765,11 +756,10 @@ it("should trigger multiple permission webhooks when a custom permission is incl
   await InternalApiKey.createAndSetProjectKeys(adminAccessToken);
 
   // Create a user and team
-  await Auth.Otp.signIn();
+  await Auth.fastSignUp();
   const { teamId } = await Team.createWithCurrentAsCreator();
 
-  await bumpEmailAddress();
-  const { userId } = await Auth.Otp.signIn();
+  const { userId } = await Auth.fastSignUp();
 
   // Add the user to the team
   const addUserResponse = await niceBackendFetch(`/api/v1/team-memberships/${teamId}/${userId}`, {

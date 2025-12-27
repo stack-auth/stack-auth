@@ -304,7 +304,7 @@ it("should create purchase URL with inline offer, validate code, and create purc
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
   await Payments.setup();
 
-  const { userId } = await Auth.Otp.signIn();
+  const { userId } = await Auth.fastSignUp();
   const response = await niceBackendFetch("/api/v1/payments/purchases/create-purchase-url", {
     method: "POST",
     accessType: "server",

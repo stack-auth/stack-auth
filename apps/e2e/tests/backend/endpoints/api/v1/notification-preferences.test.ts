@@ -31,7 +31,7 @@ describe("invalid requests", () => {
   });
 
   it("should return 404 when invalid notification category id is provided", async ({ expect }) => {
-    await Auth.Otp.signIn();
+    await Auth.fastSignUp();
     const response = await niceBackendFetch(
       `/api/v1/emails/notification-preference/me/${randomUUID()}`,
       {
@@ -53,7 +53,7 @@ describe("invalid requests", () => {
 });
 
 it("lists default notification preferences", async ({ expect }) => {
-  await Auth.Otp.signIn();
+  await Auth.fastSignUp();
   const response = await niceBackendFetch(
     "/api/v1/emails/notification-preference/me",
     {
@@ -87,7 +87,7 @@ it("lists default notification preferences", async ({ expect }) => {
 });
 
 it("updates notification preferences", async ({ expect }) => {
-  await Auth.Otp.signIn();
+  await Auth.fastSignUp();
   const response = await niceBackendFetch(
     "/api/v1/emails/notification-preference/me/4f6f8873-3d04-46bd-8bef-18338b1a1b4c",
     {

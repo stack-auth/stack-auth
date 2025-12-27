@@ -1355,7 +1355,12 @@ export namespace User {
       accessType: "server",
       body: body ?? {},
     });
-    expect(createUserResponse.status).toBe(201);
+    expect(createUserResponse).toMatchObject({
+      status: 201,
+      body: {
+        id: expect.any(String),
+      },
+    });
     return {
       userId: createUserResponse.body.id,
     };

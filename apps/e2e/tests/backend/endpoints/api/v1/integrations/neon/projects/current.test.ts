@@ -3,7 +3,7 @@ import { Auth, Project, niceBackendFetch } from "../../../../../../backend-helpe
 
 
 it("get project details", async ({ expect }) => {
-  await Auth.Otp.signIn();
+  await Auth.fastSignUp();
   const { adminAccessToken } = await Project.createAndGetAdminToken();
   const response = await niceBackendFetch("/api/v1/integrations/neon/projects/current", {
     accessType: "admin",
@@ -53,7 +53,7 @@ it("get project details", async ({ expect }) => {
 });
 
 it("creates and updates the basic project information of a project", async ({ expect }) => {
-  await Auth.Otp.signIn();
+  await Auth.fastSignUp();
   const { adminAccessToken } = await Project.createAndGetAdminToken();
   const response = await niceBackendFetch("/api/v1/integrations/neon/projects/current", {
     accessType: "admin",
@@ -110,7 +110,7 @@ it("creates and updates the basic project information of a project", async ({ ex
 });
 
 it("creates and updates the email config of a project", async ({ expect }) => {
-  await Auth.Otp.signIn();
+  await Auth.fastSignUp();
   const { adminAccessToken } = await Project.createAndGetAdminToken();
   const response = await niceBackendFetch("/api/v1/integrations/neon/projects/current", {
     accessType: "admin",

@@ -2,7 +2,7 @@ import { it } from "../../../../../../helpers";
 import { Auth, Project, niceBackendFetch } from "../../../../../backend-helpers";
 
 it("list domains", async ({ expect }) => {
-  await Auth.Otp.signIn();
+  await Auth.fastSignUp();
   const { adminAccessToken } = await Project.createAndGetAdminToken();
   const response = await niceBackendFetch("/api/v1/integrations/neon/domains", {
     accessType: "admin",
@@ -23,7 +23,7 @@ it("list domains", async ({ expect }) => {
 });
 
 it("creates domains for internal project", async ({ expect }) => {
-  await Auth.Otp.signIn();
+  await Auth.fastSignUp();
   const { adminAccessToken } = await Project.createAndGetAdminToken();
   const response = await niceBackendFetch("/api/v1/integrations/neon/domains", {
     accessType: "admin",
@@ -45,7 +45,7 @@ it("creates domains for internal project", async ({ expect }) => {
 });
 
 it("adds two different domains", async ({ expect }) => {
-  await Auth.Otp.signIn();
+  await Auth.fastSignUp();
   const { adminAccessToken } = await Project.createAndGetAdminToken();
 
   // Add first domain
@@ -96,7 +96,7 @@ it("adds two different domains", async ({ expect }) => {
 });
 
 it("does not add if the domain has a path, query parameters, or hash", async ({ expect }) => {
-  await Auth.Otp.signIn();
+  await Auth.fastSignUp();
   const { adminAccessToken } = await Project.createAndGetAdminToken();
   const response = await niceBackendFetch("/api/v1/integrations/neon/domains", {
     accessType: "admin",
@@ -127,7 +127,7 @@ it("does not add if the domain has a path, query parameters, or hash", async ({ 
 });
 
 it("adds two domains and deletes one", async ({ expect }) => {
-  await Auth.Otp.signIn();
+  await Auth.fastSignUp();
   const { adminAccessToken } = await Project.createAndGetAdminToken();
 
   // Add first domain
@@ -192,7 +192,7 @@ it("adds two domains and deletes one", async ({ expect }) => {
 });
 
 it("fails when not specifying a domain", async ({ expect }) => {
-  await Auth.Otp.signIn();
+  await Auth.fastSignUp();
   const { adminAccessToken } = await Project.createAndGetAdminToken();
 
   const response = await niceBackendFetch("/api/v1/integrations/neon/domains", {

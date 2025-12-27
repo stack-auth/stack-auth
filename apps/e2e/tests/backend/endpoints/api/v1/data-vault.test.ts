@@ -39,7 +39,7 @@ function hashKey(key: string): string {
 
 it("can store and retrieve values from data vault", async ({ expect }: { expect: any }) => {
   await createDataVaultEnabledProject();
-  await Auth.Otp.signIn();
+  await Auth.fastSignUp();
 
   const storeId = "test-store-1";
   const key = "my-secret-key";
@@ -78,7 +78,7 @@ it("can store and retrieve values from data vault", async ({ expect }: { expect:
 
 it("can update existing values in data vault", async ({ expect }: { expect: any }) => {
   await createDataVaultEnabledProject();
-  await Auth.Otp.signIn();
+  await Auth.fastSignUp();
 
   const storeId = "test-store-update";
   const key = "update-key";
@@ -133,7 +133,7 @@ it("can update existing values in data vault", async ({ expect }: { expect: any 
 
 it("returns 400 when trying to get non-existent value", async ({ expect }: { expect: any }) => {
   await createDataVaultEnabledProject();
-  await Auth.Otp.signIn();
+  await Auth.fastSignUp();
 
   const storeId = "test-store-404";
   const hashedKey = hashKey("non-existent-key");
@@ -167,7 +167,7 @@ it("returns 400 when trying to get non-existent value", async ({ expect }: { exp
 
 it("validates required fields", async ({ expect }: { expect: any }) => {
   await createDataVaultEnabledProject();
-  await Auth.Otp.signIn();
+  await Auth.fastSignUp();
 
   // Test empty store ID (by using spaces which get trimmed)
   const emptyStoreResponse = await niceBackendFetch(`/api/latest/data-vault/stores/${encodeURIComponent("  ")}/set`, {
@@ -280,7 +280,7 @@ it("validates required fields", async ({ expect }: { expect: any }) => {
 
 it("isolates data between different stores", async ({ expect }: { expect: any }) => {
   await createDataVaultEnabledProject();
-  await Auth.Otp.signIn();
+  await Auth.fastSignUp();
 
   const key = "shared-key";
   const hashedKey = hashKey(key);
@@ -336,7 +336,7 @@ it("isolates data between different stores", async ({ expect }: { expect: any })
 
 it("handles multiple keys in the same store", async ({ expect }: { expect: any }) => {
   await createDataVaultEnabledProject();
-  await Auth.Otp.signIn();
+  await Auth.fastSignUp();
 
   const storeId = "multi-key-store";
   const key1 = "key-1";
