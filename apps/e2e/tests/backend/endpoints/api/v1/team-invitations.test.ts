@@ -1,6 +1,6 @@
 import { expect } from "vitest";
 import { it } from "../../../../helpers";
-import { Auth, InternalProjectKeys, Project, Team, User, backendContext, bumpEmailAddress, createMailbox, niceBackendFetch } from "../../../backend-helpers";
+import { Auth, InternalProjectKeys, Project, Team, User, backendContext, createMailbox, niceBackendFetch } from "../../../backend-helpers";
 
 async function createAndAddCurrentUserWithoutMemberPermission() {
   const { teamId } = await Team.create();
@@ -466,7 +466,7 @@ it("requires $remove_members permission to revoke invitations", async ({ expect 
 
 it("errors with item_quantity_insufficient_amount when accepting invite without remaining dashboard_admins", async ({ expect }) => {
   backendContext.set({ projectKeys: InternalProjectKeys });
-  await Auth.fastSignUp();
+  await Auth.fastSignUp({});
   const { createProjectResponse } = await Project.create({ display_name: "Test Project (Insufficient Admins)" });
   const ownerTeamId: string = createProjectResponse.body.owner_team_id;
   const mailboxB = createMailbox();
