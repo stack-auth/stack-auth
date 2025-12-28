@@ -19,7 +19,7 @@ async function createAndSwitchToOAuthEnabledProject() {
 
 it("should create an OAuth provider connection", async ({ expect }: { expect: any }) => {
   const { createProjectResponse } = await createAndSwitchToOAuthEnabledProject();
-  await Auth.Otp.signIn();
+  await Auth.fastSignUp();
 
   const providerConfig = createProjectResponse.body.config.oauth_providers.find((p: any) => p.provider_config_id === "spotify");
   expect(providerConfig).toBeDefined();
@@ -57,7 +57,7 @@ it("should create an OAuth provider connection", async ({ expect }: { expect: an
 
 it("should read an OAuth provider connection", async ({ expect }: { expect: any }) => {
   const { createProjectResponse } = await createAndSwitchToOAuthEnabledProject();
-  await Auth.Otp.signIn();
+  await Auth.fastSignUp();
 
   const providerConfig = createProjectResponse.body.config.oauth_providers.find((p: any) => p.provider_config_id === "spotify");
   expect(providerConfig).toBeDefined();
@@ -101,7 +101,7 @@ it("should read an OAuth provider connection", async ({ expect }: { expect: any 
 
 it("should list all OAuth provider connections for a user", async ({ expect }: { expect: any }) => {
   const { createProjectResponse } = await createAndSwitchToOAuthEnabledProject();
-  await Auth.Otp.signIn();
+  await Auth.fastSignUp();
 
   const providerConfig = createProjectResponse.body.config.oauth_providers.find((p: any) => p.provider_config_id === "spotify");
   expect(providerConfig).toBeDefined();
@@ -151,7 +151,7 @@ it("should list all OAuth provider connections for a user", async ({ expect }: {
 
 it("should update an OAuth provider connection on the client", async ({ expect }: { expect: any }) => {
   const { createProjectResponse } = await createAndSwitchToOAuthEnabledProject();
-  await Auth.Otp.signIn();
+  await Auth.fastSignUp();
 
   const providerConfig = createProjectResponse.body.config.oauth_providers.find((p: any) => p.provider_config_id === "spotify");
   expect(providerConfig).toBeDefined();
@@ -196,7 +196,7 @@ it("should update an OAuth provider connection on the client", async ({ expect }
 
 it("should update an OAuth provider connection on the server", async ({ expect }: { expect: any }) => {
   const { createProjectResponse } = await createAndSwitchToOAuthEnabledProject();
-  await Auth.Otp.signIn();
+  await Auth.fastSignUp();
 
   const providerConfig = createProjectResponse.body.config.oauth_providers.find((p: any) => p.provider_config_id === "spotify");
   expect(providerConfig).toBeDefined();
@@ -244,7 +244,7 @@ it("should update an OAuth provider connection on the server", async ({ expect }
 
 it("should delete an OAuth provider connection", async ({ expect }: { expect: any }) => {
   const { createProjectResponse } = await createAndSwitchToOAuthEnabledProject();
-  await Auth.Otp.signIn();
+  await Auth.fastSignUp();
 
   const providerConfig = createProjectResponse.body.config.oauth_providers.find((p: any) => p.provider_config_id === "spotify");
   expect(providerConfig).toBeDefined();
@@ -295,7 +295,7 @@ it("should delete an OAuth provider connection", async ({ expect }: { expect: an
 
 it("should return 404 when reading non-existent OAuth provider", async ({ expect }: { expect: any }) => {
   await createAndSwitchToOAuthEnabledProject();
-  await Auth.Otp.signIn();
+  await Auth.fastSignUp();
 
   const readResponse = await niceBackendFetch("/api/v1/oauth-providers/me/e889e6de-8da5-47fd-87fd-a8db34b14ec4", {
     method: "GET",
@@ -313,7 +313,7 @@ it("should return 404 when reading non-existent OAuth provider", async ({ expect
 
 it("should return 404 when updating non-existent OAuth provider", async ({ expect }: { expect: any }) => {
   await createAndSwitchToOAuthEnabledProject();
-  await Auth.Otp.signIn();
+  await Auth.fastSignUp();
 
   const updateResponse = await niceBackendFetch("/api/v1/oauth-providers/me/e889e6de-8da5-47fd-87fd-a8db34b14ec4", {
     method: "PATCH",
@@ -334,7 +334,7 @@ it("should return 404 when updating non-existent OAuth provider", async ({ expec
 
 it("should return 404 when deleting non-existent OAuth provider", async ({ expect }: { expect: any }) => {
   await createAndSwitchToOAuthEnabledProject();
-  await Auth.Otp.signIn();
+  await Auth.fastSignUp();
 
   const deleteResponse = await niceBackendFetch("/api/v1/oauth-providers/me/e889e6de-8da5-47fd-87fd-a8db34b14ec4", {
     method: "DELETE",
@@ -352,7 +352,7 @@ it("should return 404 when deleting non-existent OAuth provider", async ({ expec
 
 it("should forbid client access to other users' OAuth providers", async ({ expect }: { expect: any }) => {
   const { createProjectResponse } = await createAndSwitchToOAuthEnabledProject();
-  const user1 = await Auth.Otp.signIn();
+  const user1 = await Auth.fastSignUp();
 
   const providerConfig = createProjectResponse.body.config.oauth_providers.find((p: any) => p.provider_config_id === "spotify");
   expect(providerConfig).toBeDefined();
@@ -371,7 +371,7 @@ it("should forbid client access to other users' OAuth providers", async ({ expec
   });
 
   backendContext.set({ mailbox: createMailbox() });
-  const user2 = await Auth.Otp.signIn();
+  const user2 = await Auth.fastSignUp();
 
   const createResponse2 = await niceBackendFetch("/api/v1/oauth-providers", {
     method: "POST",
@@ -472,7 +472,7 @@ it("should forbid client access to other users' OAuth providers", async ({ expec
 
 it("should allow server access to any user's OAuth providers", async ({ expect }: { expect: any }) => {
   const { createProjectResponse } = await createAndSwitchToOAuthEnabledProject();
-  const user1 = await Auth.Otp.signIn();
+  const user1 = await Auth.fastSignUp();
 
   const providerConfig = createProjectResponse.body.config.oauth_providers.find((p: any) => p.provider_config_id === "spotify");
   expect(providerConfig).toBeDefined();
@@ -493,7 +493,7 @@ it("should allow server access to any user's OAuth providers", async ({ expect }
   expect(createResponse1.status).toBe(201);
 
   backendContext.set({ mailbox: createMailbox() });
-  const user2 = await Auth.Otp.signIn();
+  const user2 = await Auth.fastSignUp();
 
   const createResponse2 = await niceBackendFetch("/api/v1/oauth-providers", {
     method: "POST",
@@ -619,7 +619,7 @@ it("should allow server access to any user's OAuth providers", async ({ expect }
 
 it("should handle account_id updates correctly", async ({ expect }: { expect: any }) => {
   const { createProjectResponse } = await createAndSwitchToOAuthEnabledProject();
-  await Auth.Otp.signIn();
+  await Auth.fastSignUp();
 
   const providerConfig = createProjectResponse.body.config.oauth_providers.find((p: any) => p.provider_config_id === "spotify");
   expect(providerConfig).toBeDefined();
@@ -691,7 +691,7 @@ it("should handle account_id updates correctly", async ({ expect }: { expect: an
 
 it("should return empty list when user has no OAuth providers", async ({ expect }: { expect: any }) => {
   await createAndSwitchToOAuthEnabledProject();
-  await Auth.Otp.signIn();
+  await Auth.fastSignUp();
 
   // List providers for a user who has none
   const listResponse = await niceBackendFetch("/api/v1/oauth-providers?user_id=me", {
@@ -719,7 +719,7 @@ it("should handle provider not configured error", async ({ expect }: { expect: a
       oauth_providers: [] // No OAuth providers configured
     }
   });
-  await Auth.Otp.signIn();
+  await Auth.fastSignUp();
 
   // Try to create an OAuth provider connection with an unconfigured provider
   const createResponse = await niceBackendFetch("/api/v1/oauth-providers", {
@@ -746,7 +746,7 @@ it("should handle provider not configured error", async ({ expect }: { expect: a
 
 it("should toggle sign-in and connected accounts capabilities", async ({ expect }: { expect: any }) => {
   const { createProjectResponse } = await createAndSwitchToOAuthEnabledProject();
-  await Auth.Otp.signIn();
+  await Auth.fastSignUp();
 
   const providerConfig = createProjectResponse.body.config.oauth_providers.find((p: any) => p.provider_config_id === "spotify");
   expect(providerConfig).toBeDefined();
@@ -812,7 +812,7 @@ it("should toggle sign-in and connected accounts capabilities", async ({ expect 
 it("should prevent multiple providers of the same type from being enabled for signing in", async ({ expect }: { expect: any }) => {
   // Test with multiple spotify accounts (same provider type, different account IDs)
   const { createProjectResponse } = await createAndSwitchToOAuthEnabledProject();
-  await Auth.Otp.signIn();
+  await Auth.fastSignUp();
 
   const providerConfig = createProjectResponse.body.config.oauth_providers.find((p: any) => p.provider_config_id === "spotify");
   expect(providerConfig).toBeDefined();
@@ -932,7 +932,7 @@ it("should not allow get, update, delete oauth providers with wrong user id and 
   const { createProjectResponse } = await createAndSwitchToOAuthEnabledProject();
 
   // Create user1 and their OAuth provider
-  const user1 = await Auth.Otp.signIn();
+  const user1 = await Auth.fastSignUp();
   const providerConfig = createProjectResponse.body.config.oauth_providers.find((p: any) => p.provider_config_id === "spotify");
   expect(providerConfig).toBeDefined();
 
@@ -953,7 +953,7 @@ it("should not allow get, update, delete oauth providers with wrong user id and 
   const provider1Id = createResponse1.body.id;
 
   backendContext.set({ mailbox: createMailbox() });
-  const user2 = await Auth.Otp.signIn();
+  const user2 = await Auth.fastSignUp();
 
   const createResponse2 = await niceBackendFetch("/api/v1/oauth-providers", {
     method: "POST",

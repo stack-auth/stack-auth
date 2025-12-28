@@ -8,12 +8,14 @@ async function main() {
 
   const baseUrl = `http://localhost:${getEnvVariable('NEXT_PUBLIC_STACK_PORT_PREFIX', '81')}02`;
 
+  // Wait a few seconds to make sure the server is fully started
+  await wait(5_000);
+
   const run = () => runAsynchronously(async () => {
     // If a the server is restarted, then the existing email queue step may be cancelled prematurely. That's why we
     // have an extra loop here to detect and restart the email queue step if it completes too quickly.
     const startTime = performance.now();
     while (true) {
-
       console.log("Running email queue step...");
       const res = await fetch(`${baseUrl}/api/latest/internal/email-queue-step`, {
         method: "GET",
