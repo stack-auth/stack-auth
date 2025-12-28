@@ -1,5 +1,4 @@
-import { getRenderedEnvironmentConfigQuery, overrideEnvironmentConfigOverride } from "@/lib/config";
-import { globalPrismaClient, rawQuery } from "@/prisma-client";
+import { overrideEnvironmentConfigOverride } from "@/lib/config";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { environmentConfigSchema, getConfigOverrideErrors, migrateConfigOverride } from "@stackframe/stack-shared/dist/config/schema";
 import { adaptSchema, adminAuthTypeSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
@@ -22,10 +21,7 @@ export const PATCH = createSmartRouteHandler({
   }),
   response: yupObject({
     statusCode: yupNumber().oneOf([200]).defined(),
-    bodyType: yupString().oneOf(["json"]).defined(),
-    body: yupObject({
-      config_override_string: yupString().defined(),
-    }).defined(),
+    bodyType: yupString().oneOf(["success"]).defined(),
   }),
   handler: async (req) => {
     if (req.body.config_override_string) {
@@ -52,17 +48,9 @@ export const PATCH = createSmartRouteHandler({
       });
     }
 
-    const updatedConfig = await rawQuery(globalPrismaClient, getRenderedEnvironmentConfigQuery({
-      projectId: req.auth.tenancy.project.id,
-      branchId: req.auth.tenancy.branchId,
-    }));
-
     return {
       statusCode: 200,
-      bodyType: "json",
-      body: {
-        config_override_string: JSON.stringify(updatedConfig),
-      },
+      bodyType: "success",
     };
   },
 });
