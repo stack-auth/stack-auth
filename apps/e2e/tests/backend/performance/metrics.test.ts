@@ -17,8 +17,6 @@ describe("/api/v1/users performance", () => {
     const durationMs = performance.now() - start;
 
     expect(response.status).toBe(200);
-    console.log("items length", response.body.items.length);
-    console.log("durationMs", durationMs);
   });
 });
 
@@ -42,7 +40,5 @@ describe("/api/v1/internal/metrics performance", () => {
     for (let i = 0; i < 3; i++) {
       results.push(await measure());
     }
-    console.log("results", results);
-    console.log("average", results.reduce((a, b) => a + b, 0) / results.length);
   });
 });

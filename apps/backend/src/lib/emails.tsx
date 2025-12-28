@@ -1,9 +1,9 @@
 import { globalPrismaClient } from '@/prisma-client';
 import { runAsynchronouslyAndWaitUntil } from '@/utils/vercel';
-import { EmailOutboxCreatedWith } from '@prisma/client';
+import { EmailOutboxCreatedWith } from '@/generated/prisma/client';
 import { DEFAULT_TEMPLATE_IDS } from '@stackframe/stack-shared/dist/helpers/emails';
 import { UsersCrud } from '@stackframe/stack-shared/dist/interface/crud/users';
-import { getEnvVariable } from '@stackframe/stack-shared/dist/utils/env';
+import { getEnvBoolean, getEnvVariable } from '@stackframe/stack-shared/dist/utils/env';
 import { StackAssertionError } from '@stackframe/stack-shared/dist/utils/errors';
 import { Json } from '@stackframe/stack-shared/dist/utils/json';
 import { runEmailQueueStep, serializeRecipient } from './email-queue-step';
@@ -67,9 +67,12 @@ export async function sendEmailToMany(options: {
       overrideNotificationCategoryId: options.overrideNotificationCategoryId,
     })),
   });
-  // The cron job should run runEmailQueueStep() to process the emails, but we call it here again for those self-hosters
-  // who didn't set up the cron job correctly, and also just in case something happens to the cron job.
-  runAsynchronouslyAndWaitUntil(runEmailQueueStep());
+
+  if (!getEnvBoolean("STACK_EMAIL_BRANCHING_DISABLE_QUEUE_AUTO_TRIGGER")) {
+    // The cron job should run runEmailQueueStep() to process the emails, but we call it here again for those self-hosters
+    // who didn't set up the cron job correctly, and also just in case something happens to the cron job.
+    runAsynchronouslyAndWaitUntil(runEmailQueueStep());
+  }
 }
 
 export async function sendEmailFromDefaultTemplate(options: {

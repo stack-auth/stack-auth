@@ -5,10 +5,9 @@ import { Tenancy, getTenancy } from "@/lib/tenancies";
 import { oauthCookieSchema } from "@/lib/tokens";
 import { createOrUpgradeAnonymousUser } from "@/lib/users";
 import { getProvider, oauthServer } from "@/oauth";
-import { getPrismaClientForTenancy, globalPrismaClient } from "@/prisma-client";
+import { PrismaClientTransaction, getPrismaClientForTenancy, globalPrismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { InvalidClientError, InvalidScopeError, Request as OAuthRequest, Response as OAuthResponse } from "@node-oauth/oauth2-server";
-import { PrismaClient } from "@prisma/client";
 import { KnownError, KnownErrors } from "@stackframe/stack-shared";
 import { yupMixed, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { StackAssertionError, StatusError, captureError } from "@stackframe/stack-shared/dist/utils/errors";
@@ -20,7 +19,7 @@ import { oauthResponseToSmartResponse } from "../../oauth-helpers";
 /**
  * Create a project user OAuth account with the provided data
  */
-async function createProjectUserOAuthAccount(prisma: PrismaClient, params: {
+async function createProjectUserOAuthAccount(prisma: PrismaClientTransaction, params: {
   tenancyId: string,
   providerId: string,
   providerAccountId: string,

@@ -3,13 +3,13 @@
 import { FormDialog } from "@/components/form-dialog";
 import { InputField } from "@/components/form-fields";
 import { useRouter } from "@/components/router";
-import { ActionDialog, Alert, AlertDescription, AlertTitle, Button, Card, Typography } from "@stackframe/stack-ui";
-import { AlertCircle } from "lucide-react";
+import { ActionDialog, Alert, AlertDescription, AlertTitle, Button, Card, Typography } from "@/components/ui";
+import { WarningCircleIcon } from "@phosphor-icons/react";
 import { useState } from "react";
 import * as yup from "yup";
+import { AppEnabledGuard } from "../app-enabled-guard";
 import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";
-import { AppEnabledGuard } from "../app-enabled-guard";
 
 export default function PageClient() {
   const stackAdminApp = useAdminApp();
@@ -27,7 +27,7 @@ export default function PageClient() {
         actions={<NewDraftButton />}
       >
         {emailConfig?.type === 'shared' && <Alert variant="default">
-          <AlertCircle className="h-4 w-4" />
+          <WarningCircleIcon className="h-4 w-4" />
           <AlertTitle>Warning</AlertTitle>
           <AlertDescription>
             You are using a shared email server. If you want to send manual emails, you need to configure a custom SMTP server.
@@ -70,7 +70,7 @@ export default function PageClient() {
           cancelButton={{ label: "Cancel" }}
         >
           <Alert variant="default">
-            <AlertCircle className="h-4 w-4" />
+            <WarningCircleIcon className="h-4 w-4" />
             <AlertTitle>Warning</AlertTitle>
             <AlertDescription>
               You are using a shared email server. You can open the draft anyway, but you will not be able to send emails.

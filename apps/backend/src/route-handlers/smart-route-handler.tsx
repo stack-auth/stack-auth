@@ -107,7 +107,7 @@ export function handleApiRequest(handler: (req: NextRequest, options: any, reque
             runAsynchronously(async () => {
               await wait(warnAfterSeconds * 1000);
               if (!hasRequestFinished) {
-                captureError("request-timeout-watcher", new Error(`Request with ID ${requestId} to endpoint ${req.nextUrl.pathname} has been running for ${warnAfterSeconds} seconds. Try to keep requests short. The request may be cancelled by the serverless provider if it takes too long.`));
+                captureError("request-timeout-watcher", new Error(`Request with ID ${requestId} to ${req.method} ${req.nextUrl.pathname} has been running for ${warnAfterSeconds} seconds. Try to keep requests short. The request may be cancelled by the serverless provider if it takes too long.`));
               }
             });
           }
@@ -141,7 +141,7 @@ export function handleApiRequest(handler: (req: NextRequest, options: any, reque
           const res = await createResponse(req, requestId, {
             statusCode: statusError.statusCode,
             bodyType: "binary",
-            body: statusError.getBody(),  // if you get a type error on this line, it's likely you'll have to run `pnpm clean && pnpm i && pnpm run build:packages && pnpm run codegen` again. If you're a coding agent, just ignore the error.
+            body: statusError.getBody(),
             headers: {
               ...statusError.getHeaders(),
             },

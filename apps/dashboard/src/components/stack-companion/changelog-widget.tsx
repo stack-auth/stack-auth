@@ -1,8 +1,8 @@
 'use client';
 
+import { Button } from '@/components/ui';
+import { CalendarIcon, CaretDownIcon, CaretUpIcon } from '@phosphor-icons/react';
 import { runAsynchronously } from '@stackframe/stack-shared/dist/utils/promises';
-import { Button } from '@stackframe/stack-ui';
-import { Calendar, ChevronDown, ChevronUp } from 'lucide-react';
 import Image from 'next/image';
 import Script from 'next/script';
 import { useEffect, useState } from 'react';
@@ -171,7 +171,7 @@ export function ChangelogWidget({ isActive }: ChangelogWidgetProps) {
                         </div>
 
                         <div className="flex items-center gap-2 text-xs text-white/80">
-                          <Calendar className="h-3 w-3" />
+                          <CalendarIcon className="h-3 w-3" />
                           <span>{changelog.date}</span>
                         </div>
                       </div>
@@ -193,7 +193,7 @@ export function ChangelogWidget({ isActive }: ChangelogWidgetProps) {
                       </div>
 
                       <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                        <Calendar className="h-3 w-3" />
+                        <CalendarIcon className="h-3 w-3" />
                         <span>{changelog.date}</span>
                       </div>
                     </div>
@@ -215,7 +215,7 @@ export function ChangelogWidget({ isActive }: ChangelogWidgetProps) {
                               className="h-6 text-xs p-0 text-primary hover:text-primary/80"
                               onClick={() => toggleExpanded(changelog.id)}
                             >
-                              <ChevronDown className="h-3 w-3 mr-1" />
+                              <CaretDownIcon className="h-3 w-3 mr-1" />
                               Read more
                             </Button>
                           </div>
@@ -238,7 +238,7 @@ export function ChangelogWidget({ isActive }: ChangelogWidgetProps) {
                               className="h-6 text-xs p-0 text-primary hover:text-primary/80"
                               onClick={() => toggleExpanded(changelog.id)}
                             >
-                              <ChevronUp className="h-3 w-3 mr-1" />
+                              <CaretUpIcon className="h-3 w-3 mr-1" />
                               Show less
                             </Button>
                           </div>
@@ -262,7 +262,7 @@ export function ChangelogWidget({ isActive }: ChangelogWidgetProps) {
             })
           ) : (
             <div className="bg-muted/30 rounded-lg p-4 text-center">
-              <Calendar className="h-8 w-8 mx-auto mb-2 text-muted-foreground" />
+              <CalendarIcon className="h-8 w-8 mx-auto mb-2 text-muted-foreground" />
               <p className="text-xs text-muted-foreground font-medium">
                 No changelog updates available
               </p>

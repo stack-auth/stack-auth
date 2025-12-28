@@ -1,12 +1,12 @@
 "use client";
 
+import { Button, Card, CardHeader, CardTitle, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui";
+import { PencilSimpleIcon, PlusIcon, TrashIcon } from "@phosphor-icons/react";
 import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
-import { Button, Card, CardHeader, CardTitle, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@stackframe/stack-ui";
-import { Edit2, Plus, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Control, FieldValues, Path, UseFormReturn, useWatch } from "react-hook-form";
-import { FormDialog } from "../form-dialog";
 import * as yup from "yup";
+import { FormDialog } from "../form-dialog";
 
 type KeyedRow<TValue> = {
   uid: string,
@@ -117,10 +117,10 @@ export function KeyedRecordEditorField<F extends FieldValues, SubF extends Field
                         </CardTitle>
                         <div className="flex items-center">
                           <Button type="button" variant="ghost" size="icon" onClick={() => startEdit(row.uid)} aria-label="Edit">
-                            <Edit2 className="h-4 w-4" />
+                            <PencilSimpleIcon className="h-4 w-4" />
                           </Button>
                           <Button type="button" variant="ghost" size="icon" onClick={() => removeRow(row.uid)} aria-label="Delete">
-                            <Trash2 className="h-4 w-4" />
+                            <TrashIcon className="h-4 w-4" />
                           </Button>
                         </div>
                       </CardHeader>
@@ -130,7 +130,7 @@ export function KeyedRecordEditorField<F extends FieldValues, SubF extends Field
 
                 <div className="flex justify-center">
                   <Button type="button" variant="outline" onClick={startCreate} disabled={props.disabled}>
-                    <Plus className="mr-2 h-4 w-4" /> {props.addButtonLabel}
+                    <PlusIcon className="mr-2 h-4 w-4" /> {props.addButtonLabel}
                   </Button>
                 </div>
               </div>

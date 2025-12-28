@@ -19,7 +19,7 @@ jobs:
       STACK_ENABLE_HARDCODED_PASSKEY_CHALLENGE_FOR_TESTING: yes
       STACK_OVERRIDE_SOURCE_OF_TRUTH: '{"type": "postgres", "connectionString": "postgres://postgres:PASSWORD-PLACEHOLDER--uqfEC1hmmv@localhost:8128/source-of-truth-db?schema=sot-schema"}'
       STACK_TEST_SOURCE_OF_TRUTH: true
-      STACK_DIRECT_DATABASE_CONNECTION_STRING: "postgres://postgres:PASSWORD-PLACEHOLDER--uqfEC1hmmv@localhost:8128/stackframe"
+      STACK_DATABASE_CONNECTION_STRING: "postgres://postgres:PASSWORD-PLACEHOLDER--uqfEC1hmmv@localhost:8128/stackframe"
 
     strategy:
       matrix:
@@ -118,7 +118,7 @@ jobs:
         with:
           run: pnpm run start:dashboard --log-order=stream &
           wait-on: |
-            http://localhost:8102
+            http://localhost:8101
           tail: true
           wait-for: 30s
           log-output-if: true
@@ -126,6 +126,15 @@ jobs:
         uses: JarvusInnovations/background-action@v1.0.7
         with:
           run: pnpm run start:mock-oauth-server --log-order=stream &
+          wait-on: |
+            http://localhost:8102
+          tail: true
+          wait-for: 30s
+          log-output-if: true
+      - name: Start run-email-queue in background
+        uses: JarvusInnovations/background-action@v1.0.7
+        with:
+          run: pnpm -C apps/backend run run-email-queue --log-order=stream &
           wait-on: |
             http://localhost:8102
           tail: true

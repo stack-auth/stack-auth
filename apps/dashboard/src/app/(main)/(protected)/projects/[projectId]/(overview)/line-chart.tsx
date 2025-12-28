@@ -5,7 +5,7 @@ import { fromNow, isWeekend } from '@stackframe/stack-shared/dist/utils/dates';
 import {
   cn,
   Typography
-} from "@stackframe/stack-ui";
+} from "@/components/ui";
 import { useState } from "react";
 import { Bar, BarChart, CartesianGrid, Cell, Pie, PieChart, TooltipProps, XAxis, YAxis } from "recharts";
 

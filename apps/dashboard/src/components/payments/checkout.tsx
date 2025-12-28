@@ -1,4 +1,4 @@
-import { Button, Typography } from "@stackframe/stack-ui";
+import { Button, Typography } from "@/components/ui";
 import {
   PaymentElement,
   useElements,

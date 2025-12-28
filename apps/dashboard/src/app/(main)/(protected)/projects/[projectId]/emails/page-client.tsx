@@ -5,15 +5,15 @@ import { FormDialog } from "@/components/form-dialog";
 import { InputField, SelectField, TextAreaField } from "@/components/form-fields";
 import { SettingCard, SettingText } from "@/components/settings";
 import { getPublicEnvVar } from "@/lib/env";
+import { WarningCircleIcon, XIcon } from "@phosphor-icons/react";
 import { AdminEmailConfig, AdminProject, AdminSentEmail, ServerUser, UserAvatar } from "@stackframe/stack";
 import { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
 import { strictEmailSchema } from "@stackframe/stack-shared/dist/schema-fields";
 import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { deepPlainEquals } from "@stackframe/stack-shared/dist/utils/objects";
 import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
-import { ActionDialog, Alert, AlertDescription, AlertTitle, Button, DataTable, SimpleTooltip, Tooltip, TooltipContent, TooltipProvider, TooltipTrigger, Typography, useToast } from "@stackframe/stack-ui";
+import { ActionDialog, Alert, AlertDescription, AlertTitle, Button, DataTable, SimpleTooltip, Tooltip, TooltipContent, TooltipProvider, TooltipTrigger, Typography, useToast } from "@/components/ui";
 import { ColumnDef } from "@tanstack/react-table";
-import { AlertCircle, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import * as yup from "yup";
 import { AppEnabledGuard } from "../app-enabled-guard";
@@ -452,7 +452,7 @@ function SendEmailDialog(props: {
                   className="absolute -top-2 -right-2 h-4 w-4 rounded-full p-0 hover:bg-red-100 opacity-0 group-hover:opacity-100"
                   onClick={() => setSelectedUsers(users => users.filter(u => u.id !== user.id))}
                 >
-                  <X className="h-3 w-3" />
+                  <XIcon className="h-3 w-3" />
                 </Button>
               )}
             </div>
@@ -482,7 +482,7 @@ function SendEmailDialog(props: {
         okButton
       >
         <Alert variant="default">
-          <AlertCircle className="h-4 w-4" />
+          <WarningCircleIcon className="h-4 w-4" />
           <AlertTitle>Warning</AlertTitle>
           <AlertDescription>
             You are using a shared email server. If you want to send manual emails, you need to configure a custom SMTP server.
