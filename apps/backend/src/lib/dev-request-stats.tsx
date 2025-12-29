@@ -11,52 +11,23 @@ export type RequestStat = {
 };
 
 // In-memory storage for request stats (only used in development)
-const requestStatsMap = (globalThis as any).requestStatsMap ??= new Map<string, RequestStat>();
-
-// Ongoing requests that haven't finished yet
-const ongoingRequests = (globalThis as any).ongoingRequests ??= new Map<string, { startTime: number, method: string, path: string }>();
-
-let requestIdCounter = 0;
+// Use globalThis to persist across hot reloads
+const requestStatsMap: Map<string, RequestStat> = (globalThis as any).__devRequestStatsMap ??= new Map<string, RequestStat>();
 
 function getKey(method: string, path: string): string {
   return `${method}:${path}`;
 }
 
 /**
- * Call this at the start of a request. Returns a unique ID that should be passed to `endRequest`.
+ * Record stats for a completed request.
+ * Only records in development mode.
  */
-export function startRequest(method: string, path: string): string | null {
+export function recordRequestStats(method: string, path: string, durationMs: number): void {
   if (getNodeEnvironment() !== "development") {
-    return null;
-  }
-
-  const requestId = `req-${++requestIdCounter}`;
-  ongoingRequests.set(requestId, {
-    startTime: performance.now(),
-    method,
-    path,
-  });
-
-  return requestId;
-}
-
-/**
- * Call this at the end of a request with the ID from `startRequest`.
- */
-export function endRequest(requestId: string | null): void {
-  if (requestId === null || getNodeEnvironment() !== "development") {
     return;
   }
 
-  const ongoing = ongoingRequests.get(requestId);
-  if (!ongoing) {
-    return;
-  }
-
-  ongoingRequests.delete(requestId);
-
-  const durationMs = performance.now() - ongoing.startTime;
-  const key = getKey(ongoing.method, ongoing.path);
+  const key = getKey(method, path);
 
   const existing = requestStatsMap.get(key);
   if (existing) {
@@ -67,8 +38,8 @@ export function endRequest(requestId: string | null): void {
     existing.lastCalledAt = Date.now();
   } else {
     requestStatsMap.set(key, {
-      method: ongoing.method,
-      path: ongoing.path,
+      method,
+      path,
       count: 1,
       totalTimeMs: durationMs,
       minTimeMs: durationMs,
