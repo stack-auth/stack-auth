@@ -8,6 +8,7 @@ import './polyfills';
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 import { SmartRouter } from './smart-router';
+import { endRequest, startRequest } from './lib/dev-request-stats';
 
 const DEV_RATE_LIMIT_MAX_REQUESTS = 100;
 const DEV_RATE_LIMIT_WINDOW_MS = 10_000;
@@ -55,6 +56,19 @@ const corsAllowedResponseHeaders = [
 
 // This function can be marked `async` if using `await` inside
 export async function proxy(request: NextRequest) {
+  const url = new URL(request.url);
+
+  // Start tracking the request in development mode
+  const requestId = startRequest(request.method, url.pathname);
+
+  try {
+    return await proxyInner(request, url);
+  } finally {
+    endRequest(requestId);
+  }
+}
+
+async function proxyInner(request: NextRequest, url: URL) {
   const delay = +getEnvVariable('STACK_ARTIFICIAL_DEVELOPMENT_DELAY_MS', '0');
   if (delay) {
     if (getNodeEnvironment().includes('production')) {
@@ -64,8 +78,6 @@ export async function proxy(request: NextRequest) {
       await wait(delay);
     }
   }
-
-  const url = new URL(request.url);
   const isApiRequest = url.pathname.startsWith('/api/');
 
   const corsHeadersInit = isApiRequest ? {
