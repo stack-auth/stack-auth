@@ -1218,7 +1218,7 @@ export namespace Project {
       method: "PATCH",
       body: { config_override_string: JSON.stringify(config) },
     });
-    expect(response.body).toMatchInlineSnapshot(`{}`);
+    expect(response.body).toMatchInlineSnapshot(`{ "success": true }`);
     expect(response.status).toBe(200);
   }
 }
