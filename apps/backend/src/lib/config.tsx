@@ -12,7 +12,6 @@ import { deindent, stringCompare } from "@stackframe/stack-shared/dist/utils/str
 import * as yup from "yup";
 import { RawQuery, globalPrismaClient, rawQuery } from "../prisma-client";
 import { listPermissionDefinitionsFromConfig } from "./permissions";
-import { DEFAULT_BRANCH_ID } from "./tenancies";
 
 type ProjectOptions = { projectId: string };
 type BranchOptions = ProjectOptions & { branchId: string };
@@ -137,16 +136,20 @@ export function getProjectConfigOverrideQuery(options: ProjectOptions): RawQuery
 }
 
 export function getBranchConfigOverrideQuery(options: BranchOptions): RawQuery<Promise<BranchConfigOverride>> {
-  // fetch branch config from GitHub
-  // (currently it's just empty)
+  // fetch branch config from DB
   return {
     supportedPrismaClients: ["global"],
-    sql: Prisma.sql`SELECT 1`,
-    postProcess: async () => {
-      if (options.branchId !== DEFAULT_BRANCH_ID) {
-        throw new StackAssertionError('getBranchConfigOverrideQuery is not implemented for branches other than the default one');
+    sql: Prisma.sql`
+      SELECT "BranchConfigOverride".*
+      FROM "BranchConfigOverride"
+      WHERE "BranchConfigOverride"."branchId" = ${options.branchId}
+      AND "BranchConfigOverride"."projectId" = ${options.projectId}
+    `,
+    postProcess: async (queryResult) => {
+      if (queryResult.length > 1) {
+        throw new StackAssertionError(`Expected 0 or 1 branch config overrides for project ${options.projectId} and branch ${options.branchId}, got ${queryResult.length}`, { queryResult });
       }
-      return migrateConfigOverride("branch", {});
+      return migrateConfigOverride("branch", queryResult[0]?.config ?? {});
     },
   };
 }
@@ -190,29 +193,23 @@ export function getOrganizationConfigOverrideQuery(options: OrganizationOptions)
 // override<$$$>ConfigOverride
 // ---------------------------------------------------------------------------------------------------------------------
 
-// Note that the arguments passed in here override the override; they are therefore OverrideOverrides.
-// Also, note that the CALLER of these functions is responsible for validating the override, and making sure that
+// ---------------------------------------------------------------------------------------------------------------------
+// set functions (replace the entire config override)
+// ---------------------------------------------------------------------------------------------------------------------
+// Note that the CALLER of these functions is responsible for validating the override, and making sure that
 // there are no errors (warnings are allowed, but most UIs should probably ensure there are no warnings before allowing
 // a user to save the override).
 
-export async function overrideProjectConfigOverride(options: {
+export async function setProjectConfigOverride(options: {
   projectId: string,
-  projectConfigOverrideOverride: ProjectConfigOverrideOverride,
+  projectConfigOverride: ProjectConfigOverride,
 }): Promise<void> {
-  // set project config override on our own DB
-
-  // TODO put this in a serializable transaction (or a single SQL query) to prevent race conditions
-  const oldConfig = await rawQuery(globalPrismaClient, getProjectConfigOverrideQuery(options));
-  const newConfigUnmigrated = override(
-    oldConfig,
-    options.projectConfigOverrideOverride,
-  );
-  const newConfig = migrateConfigOverride("project", newConfigUnmigrated);
+  const newConfig = migrateConfigOverride("project", options.projectConfigOverride);
 
   // large configs make our DB slow; let's prevent them early
   const newConfigString = JSON.stringify(newConfig);
   if (newConfigString.length > 1_000_000) {
-    captureError("override-project-config-too-large", new StackAssertionError(`Project config override for ${options.projectId} is ${(newConfigString.length/1_000_000).toFixed(1)}MB long!`));
+    captureError("set-project-config-too-large", new StackAssertionError(`Project config override for ${options.projectId} is ${(newConfigString.length/1_000_000).toFixed(1)}MB long!`));
   }
   if (newConfigString.length > 5_000_000) {
     throw new StackAssertionError(`Project config override for ${options.projectId} is too large.`);
@@ -229,35 +226,52 @@ export async function overrideProjectConfigOverride(options: {
   });
 }
 
-export function overrideBranchConfigOverride(options: {
+export async function setBranchConfigOverride(options: {
   projectId: string,
   branchId: string,
-  branchConfigOverrideOverride: BranchConfigOverrideOverride,
+  branchConfigOverride: BranchConfigOverride,
 }): Promise<void> {
-  // update config.json if on local emulator
-  // throw error otherwise
-  throw new StackAssertionError('Not implemented');
-}
-
-export async function overrideEnvironmentConfigOverride(options: {
-  projectId: string,
-  branchId: string,
-  environmentConfigOverrideOverride: EnvironmentConfigOverrideOverride,
-}): Promise<void> {
-  // save environment config override on DB
-
-  // TODO put this in a serializable transaction (or a single SQL query) to prevent race conditions
-  const oldConfig = await rawQuery(globalPrismaClient, getEnvironmentConfigOverrideQuery(options));
-  const newConfigUnmigrated = override(
-    oldConfig,
-    options.environmentConfigOverrideOverride,
-  );
-  const newConfig = migrateConfigOverride("environment", newConfigUnmigrated);
+  const newConfig = migrateConfigOverride("branch", options.branchConfigOverride);
 
   // large configs make our DB slow; let's prevent them early
   const newConfigString = JSON.stringify(newConfig);
   if (newConfigString.length > 1_000_000) {
-    captureError("override-environment-config-too-large", new StackAssertionError(`Environment config override for ${options.projectId}/${options.branchId} is ${(newConfigString.length/1_000_000).toFixed(1)}MB long!`));
+    captureError("set-branch-config-too-large", new StackAssertionError(`Branch config override for ${options.projectId}/${options.branchId} is ${(newConfigString.length/1_000_000).toFixed(1)}MB long!`));
+  }
+  if (newConfigString.length > 5_000_000) {
+    throw new StackAssertionError(`Branch config override for ${options.projectId}/${options.branchId} is too large.`);
+  }
+
+  await assertNoConfigOverrideErrors(branchConfigSchema, newConfig);
+  await globalPrismaClient.branchConfigOverride.upsert({
+    where: {
+      projectId_branchId: {
+        projectId: options.projectId,
+        branchId: options.branchId,
+      }
+    },
+    update: {
+      config: newConfig,
+    },
+    create: {
+      projectId: options.projectId,
+      branchId: options.branchId,
+      config: newConfig,
+    },
+  });
+}
+
+export async function setEnvironmentConfigOverride(options: {
+  projectId: string,
+  branchId: string,
+  environmentConfigOverride: EnvironmentConfigOverride,
+}): Promise<void> {
+  const newConfig = migrateConfigOverride("environment", options.environmentConfigOverride);
+
+  // large configs make our DB slow; let's prevent them early
+  const newConfigString = JSON.stringify(newConfig);
+  if (newConfigString.length > 1_000_000) {
+    captureError("set-environment-config-too-large", new StackAssertionError(`Environment config override for ${options.projectId}/${options.branchId} is ${(newConfigString.length/1_000_000).toFixed(1)}MB long!`));
   }
   if (newConfigString.length > 5_000_000) {
     throw new StackAssertionError(`Environment config override for ${options.projectId}/${options.branchId} is too large.`);
@@ -279,6 +293,80 @@ export async function overrideEnvironmentConfigOverride(options: {
       branchId: options.branchId,
       config: newConfig,
     },
+  });
+}
+
+export function setOrganizationConfigOverride(options: {
+  projectId: string,
+  branchId: string,
+  organizationId: string | null,
+  organizationConfigOverride: OrganizationConfigOverride,
+}): Promise<void> {
+  // save organization config override on DB (either our own, or the source of truth one)
+  throw new StackAssertionError('Not implemented');
+}
+
+
+// ---------------------------------------------------------------------------------------------------------------------
+// override functions (merge with existing config override)
+// ---------------------------------------------------------------------------------------------------------------------
+// Note that the arguments passed in here override the override; they are therefore OverrideOverrides.
+// Also, note that the CALLER of these functions is responsible for validating the override, and making sure that
+// there are no errors (warnings are allowed, but most UIs should probably ensure there are no warnings before allowing
+// a user to save the override).
+
+export async function overrideProjectConfigOverride(options: {
+  projectId: string,
+  projectConfigOverrideOverride: ProjectConfigOverrideOverride,
+}): Promise<void> {
+  // TODO put this in a serializable transaction (or a single SQL query) to prevent race conditions
+  const oldConfig = await rawQuery(globalPrismaClient, getProjectConfigOverrideQuery(options));
+  const newConfigUnmigrated = override(
+    oldConfig,
+    options.projectConfigOverrideOverride,
+  );
+
+  await setProjectConfigOverride({
+    projectId: options.projectId,
+    projectConfigOverride: newConfigUnmigrated as ProjectConfigOverride,
+  });
+}
+
+export async function overrideBranchConfigOverride(options: {
+  projectId: string,
+  branchId: string,
+  branchConfigOverrideOverride: BranchConfigOverrideOverride,
+}): Promise<void> {
+  // TODO put this in a serializable transaction (or a single SQL query) to prevent race conditions
+  const oldConfig = await rawQuery(globalPrismaClient, getBranchConfigOverrideQuery(options));
+  const newConfigUnmigrated = override(
+    oldConfig,
+    options.branchConfigOverrideOverride,
+  );
+
+  await setBranchConfigOverride({
+    projectId: options.projectId,
+    branchId: options.branchId,
+    branchConfigOverride: newConfigUnmigrated as BranchConfigOverride,
+  });
+}
+
+export async function overrideEnvironmentConfigOverride(options: {
+  projectId: string,
+  branchId: string,
+  environmentConfigOverrideOverride: EnvironmentConfigOverrideOverride,
+}): Promise<void> {
+  // TODO put this in a serializable transaction (or a single SQL query) to prevent race conditions
+  const oldConfig = await rawQuery(globalPrismaClient, getEnvironmentConfigOverrideQuery(options));
+  const newConfigUnmigrated = override(
+    oldConfig,
+    options.environmentConfigOverrideOverride,
+  );
+
+  await setEnvironmentConfigOverride({
+    projectId: options.projectId,
+    branchId: options.branchId,
+    environmentConfigOverride: newConfigUnmigrated as EnvironmentConfigOverride,
   });
 }
 

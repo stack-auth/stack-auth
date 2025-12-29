@@ -1213,12 +1213,22 @@ export namespace Project {
   }
 
   export async function updateConfig(config: any) {
-    const response = await niceBackendFetch(`/api/latest/internal/config/override`, {
+    const response = await niceBackendFetch(`/api/latest/internal/config/override/environment`, {
       accessType: "admin",
       method: "PATCH",
       body: { config_override_string: JSON.stringify(config) },
     });
-    expect(response.body).toMatchInlineSnapshot(`{}`);
+    expect(response.body).toMatchInlineSnapshot(`{ "success": true }`);
+    expect(response.status).toBe(200);
+  }
+
+  export async function pushConfig(config: any) {
+    const response = await niceBackendFetch(`/api/latest/internal/config/override/branch`, {
+      accessType: "admin",
+      method: "PUT",
+      body: { config_string: JSON.stringify(config) },
+    });
+    expect(response.body).toMatchInlineSnapshot(`{ "success": true }`);
     expect(response.status).toBe(200);
   }
 }

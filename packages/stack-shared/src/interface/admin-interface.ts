@@ -520,15 +520,38 @@ export class StackAdminInterface extends StackServerInterface {
     return await response.json();
   }
 
-  async updateConfig(data: { configOverride: any }): Promise<void> {
+  async getConfigOverride(level: "branch" | "environment"): Promise<{ config_string: string }> {
     const response = await this.sendAdminRequest(
-      `/internal/config/override`,
+      `/internal/config/override/${level}`,
+      { method: "GET" },
+      null,
+    );
+    return await response.json();
+  }
+
+  async setConfigOverride(level: "branch" | "environment", configOverride: any): Promise<void> {
+    await this.sendAdminRequest(
+      `/internal/config/override/${level}`,
+      {
+        method: "PUT",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ config_string: JSON.stringify(configOverride) }),
+      },
+      null,
+    );
+  }
+
+  async updateConfigOverride(level: "branch" | "environment", configOverrideOverride: any): Promise<void> {
+    await this.sendAdminRequest(
+      `/internal/config/override/${level}`,
       {
         method: "PATCH",
         headers: {
           "content-type": "application/json",
         },
-        body: JSON.stringify({ config_override_string: JSON.stringify(data.configOverride) }),
+        body: JSON.stringify({ config_override_string: JSON.stringify(configOverrideOverride) }),
       },
       null,
     );

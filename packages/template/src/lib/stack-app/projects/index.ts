@@ -33,8 +33,32 @@ export type AdminProject = {
   // NEXT_LINE_PLATFORM react-like
   useConfig(this: AdminProject): CompleteConfig,
 
+  /**
+   * Updates the environment's config by merging the provided config into the existing config.
+   *
+   * Changes made with `updateConfig` always take precedence over those made with `pushConfig`, even if the `pushConfig`
+   * config was pushed after the changes were made with `updateConfig`. This is best for environment-specific
+   * configuration like secrets, API keys, and other values that you wouldn't push into a source repository.
+   */
   // We have some strict types here in order to prevent accidental overwriting of a top-level property of a config object
   updateConfig(
+    this: AdminProject,
+    config: EnvironmentConfigOverrideOverride & {
+      [K in keyof EnvironmentConfigNormalizedOverride]: "............................ERROR MESSAGE AFTER THIS LINE............................ You have attempted to update a config object with a top-level property in it (for example `emails`). This is very likely a mistake, and you probably meant to update a nested property instead (for example `emails.server`). If you really meant to update a top-level property (resetting all nested properties to their defaults), cast as any (the code will work at runtime) ............................ERROR MESSAGE BEFORE THIS LINE............................";
+    }
+  ): Promise<void>,
+
+  /**
+   * Pushes a config, replacing any previous config pushed with `pushConfig`.
+   *
+   * **Note:** This function does **not** replace any changes made with `updateConfig`. Changes made with
+   * `updateConfig` always take precedence over those made with `pushConfig`, even if the `pushConfig`
+   * config was pushed after the changes were made with `updateConfig`.
+   *
+   * This is useful for programmatically deploying configuration. More often than not, you'll want to use
+   * `updateConfig` instead.
+   */
+  pushConfig(
     this: AdminProject,
     config: EnvironmentConfigOverrideOverride & {
       [K in keyof EnvironmentConfigNormalizedOverride]: "............................ERROR MESSAGE AFTER THIS LINE............................ You have attempted to update a config object with a top-level property in it (for example `emails`). This is very likely a mistake, and you probably meant to update a nested property instead (for example `emails.server`). If you really meant to update a top-level property (resetting all nested properties to their defaults), cast as any (the code will work at runtime) ............................ERROR MESSAGE BEFORE THIS LINE............................";

@@ -182,7 +182,11 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
       },
       // END_PLATFORM
       async updateConfig(configOverride: EnvironmentConfigOverrideOverride) {
-        await app._interface.updateConfig({ configOverride });
+        await app._interface.updateConfigOverride("environment", configOverride);
+        await app._configOverridesCache.refresh([]);
+      },
+      async pushConfig(config: EnvironmentConfigOverrideOverride) {
+        await app._interface.setConfigOverride("branch", config);
         await app._configOverridesCache.refresh([]);
       },
       async update(update: AdminProjectUpdateOptions) {
