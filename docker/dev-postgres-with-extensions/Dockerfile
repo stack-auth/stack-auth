@@ -21,6 +21,13 @@ RUN echo "CREATE EXTENSION index_advisor;" >> /docker-entrypoint-initdb.d/init.s
 RUN echo "CREATE ROLE anon;" >> /docker-entrypoint-initdb.d/init.sql
 RUN echo "CREATE ROLE authenticated;" >> /docker-entrypoint-initdb.d/init.sql
 
+# Create a read-only user for read replica emulation in development
+RUN echo "CREATE USER readonly WITH PASSWORD 'PASSWORD-PLACEHOLDER--readonlyuqfEC1hmmv';" >> /docker-entrypoint-initdb.d/init.sql
+RUN echo "GRANT CONNECT ON DATABASE stackframe TO readonly;" >> /docker-entrypoint-initdb.d/init.sql
+RUN echo "GRANT USAGE ON SCHEMA public TO readonly;" >> /docker-entrypoint-initdb.d/init.sql
+RUN echo "GRANT SELECT ON ALL TABLES IN SCHEMA public TO readonly;" >> /docker-entrypoint-initdb.d/init.sql
+RUN echo "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO readonly;" >> /docker-entrypoint-initdb.d/init.sql
+
 # Add args to Postgres entrypoint
 ENTRYPOINT ["sh", "-c", "\
   # Add delay if POSTGRES_DELAY_MS is set \

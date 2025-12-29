@@ -1,5 +1,5 @@
 import { globalPrismaClient, retryTransaction } from '@/prisma-client';
-import { Prisma } from '@prisma/client';
+import { Prisma } from '@/generated/prisma/client';
 import { decodeBase64OrBase64Url, toHexString } from '@stackframe/stack-shared/dist/utils/bytes';
 import { getEnvVariable } from '@stackframe/stack-shared/dist/utils/env';
 import { StackAssertionError, captureError, throwErr } from '@stackframe/stack-shared/dist/utils/errors';
