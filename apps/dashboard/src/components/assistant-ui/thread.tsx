@@ -64,12 +64,17 @@ const ThreadWelcome: FC = () => {
   return (
     <ThreadPrimitive.Empty>
       <div className="flex w-full max-w-[var(--thread-max-width)] flex-grow flex-col">
-        <div className="flex w-full flex-grow flex-col items-center justify-center">
-          <p className="mt-4 font-medium">
-            How can I help you today?
+        <div className="flex w-full flex-grow flex-col items-center justify-center py-20">
+          <div className="w-12 h-12 rounded-2xl bg-blue-500/10 flex items-center justify-center mb-6 ring-1 ring-blue-500/20">
+            <PaperPlaneRightIcon className="w-6 h-6 text-blue-500" weight="duotone" />
+          </div>
+          <h2 className="text-xl font-semibold tracking-tight text-foreground mb-2">
+            AI Email Designer
+          </h2>
+          <p className="text-sm text-muted-foreground text-center max-w-[280px] leading-relaxed">
+            Describe the design you have in mind, or ask me to improve your current template.
           </p>
         </div>
-        {/* <ThreadWelcomeSuggestions /> */}
       </div>
     </ThreadPrimitive.Empty>
   );
@@ -104,57 +109,65 @@ const ThreadWelcomeSuggestions: FC = () => {
 
 const Composer: FC = () => {
   return (
-    <ComposerPrimitive.Root className="focus-within:border-ring/20 flex w-full flex-wrap items-end rounded-lg border bg-inherit px-2.5 shadow-sm transition-colors ease-in">
+    <ComposerPrimitive.Root className="focus-within:ring-2 focus-within:ring-blue-500/20 focus-within:border-blue-500/30 flex w-full flex-col gap-2 rounded-2xl border bg-background/80 backdrop-blur-xl px-4 py-3 shadow-2xl transition-all duration-200">
       <ComposerPrimitive.Input
         rows={1}
         autoFocus
-        placeholder="Write a message..."
-        className="placeholder:text-muted-foreground max-h-40 flex-grow resize-none border-none bg-transparent px-2 py-4 text-sm outline-none focus:ring-0 disabled:cursor-not-allowed"
+        placeholder="Describe the email design you want..."
+        className="placeholder:text-muted-foreground max-h-40 w-full resize-none border-none bg-transparent py-2 text-sm outline-none focus:ring-0 disabled:cursor-not-allowed leading-relaxed"
       />
-      <ComposerAction />
+      <div className="flex items-center justify-between mt-1">
+        <div className="flex items-center gap-2">
+          <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">
+            AI Email Designer
+          </p>
+        </div>
+        <ComposerAction />
+      </div>
     </ComposerPrimitive.Root>
   );
 };
 
 const ComposerAction: FC = () => {
   return (
-    <>
+    <div className="flex items-center gap-2">
       <ThreadPrimitive.If running={false}>
         <ComposerPrimitive.Send asChild>
-          <TooltipIconButton
-            tooltip="Send"
-            variant="default"
-            className="my-2.5 size-8 p-2 transition-opacity ease-in"
+          <Button
+            size="sm"
+            className="rounded-xl h-8 px-4 bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-500/20 transition-all active:scale-95"
           >
-            <PaperPlaneRightIcon />
-          </TooltipIconButton>
+            <PaperPlaneRightIcon className="mr-2 h-3.5 w-3.5" weight="bold" />
+            <span className="text-xs font-semibold">Generate</span>
+          </Button>
         </ComposerPrimitive.Send>
       </ThreadPrimitive.If>
       <ThreadPrimitive.If running>
         <ComposerPrimitive.Cancel asChild>
-          <TooltipIconButton
-            tooltip="Cancel"
-            variant="default"
-            className="!my-2.5 size-8 p-2 transition-opacity ease-in"
+          <Button
+            size="sm"
+            variant="outline"
+            className="rounded-xl h-8 px-4 border-blue-500/20 hover:bg-blue-500/10 hover:text-blue-500"
           >
-            <CircleStopIcon />
-          </TooltipIconButton>
+            <CircleStopIcon className="mr-2 h-3 w-3" />
+            <span className="text-xs font-semibold">Stop</span>
+          </Button>
         </ComposerPrimitive.Cancel>
       </ThreadPrimitive.If>
-    </>
+    </div>
   );
 };
 
 const UserMessage: FC = () => {
   return (
-    <MessagePrimitive.Root className="grid auto-rows-auto grid-cols-[minmax(72px,1fr)_auto] gap-y-2 [&:where(>*)]:col-start-2 w-full max-w-[var(--thread-max-width)] py-4">
-      <UserActionBar />
-
-      <div className="bg-muted text-foreground max-w-[calc(var(--thread-max-width)*0.8)] break-words rounded-3xl px-5 py-2.5 col-start-2 row-start-2">
-        <MessagePrimitive.Content />
+    <MessagePrimitive.Root className="flex flex-col items-end w-full max-w-[var(--thread-max-width)] py-4 gap-2">
+      <div className="flex items-start gap-3 justify-end w-full">
+        <UserActionBar />
+        <div className="bg-foreground/[0.04] text-foreground max-w-[85%] break-words rounded-2xl px-4 py-2.5 text-sm ring-1 ring-foreground/[0.06]">
+          <MessagePrimitive.Content />
+        </div>
       </div>
-
-      <BranchPicker className="col-span-full col-start-1 row-start-3 -mr-1 justify-end" />
+      <BranchPicker className="justify-end mr-2" />
     </MessagePrimitive.Root>
   );
 };
@@ -164,11 +177,11 @@ const UserActionBar: FC = () => {
     <ActionBarPrimitive.Root
       hideWhenRunning
       autohide="not-last"
-      className="flex flex-col items-end col-start-1 row-start-2 mr-3 mt-2.5"
+      className="flex items-center gap-1 self-center opacity-0 group-hover:opacity-100 transition-opacity"
     >
       <ActionBarPrimitive.Edit asChild>
-        <TooltipIconButton tooltip="Edit">
-          <PencilSimpleIcon />
+        <TooltipIconButton tooltip="Edit" className="hover:bg-foreground/[0.05]">
+          <PencilSimpleIcon size={14} />
         </TooltipIconButton>
       </ActionBarPrimitive.Edit>
     </ActionBarPrimitive.Root>
@@ -194,15 +207,20 @@ const EditComposer: FC = () => {
 
 const AssistantMessage: FC = () => {
   return (
-    <MessagePrimitive.Root className="grid grid-cols-[auto_auto_1fr] grid-rows-[auto_1fr] relative w-full max-w-[var(--thread-max-width)] py-4">
-      <div className="text-foreground max-w-[calc(var(--thread-max-width)*0.8)] break-words leading-7 col-span-2 col-start-2 row-start-1 my-1.5">
-        <MessagePrimitive.Content components={{ Text: MarkdownText }} />
-        <MessageError />
+    <MessagePrimitive.Root className="flex flex-col relative w-full max-w-[var(--thread-max-width)] py-6 group">
+      <div className="flex items-start gap-4">
+        <div className="w-8 h-8 rounded-full bg-blue-500/10 flex items-center justify-center shrink-0 border border-blue-500/20">
+          <div className="w-4 h-4 rounded-full bg-blue-500 animate-pulse" />
+        </div>
+        <div className="flex-1 space-y-2">
+          <div className="text-foreground break-words leading-relaxed text-sm">
+            <MessagePrimitive.Content components={{ Text: MarkdownText }} />
+          </div>
+          <MessageError />
+          <AssistantActionBar />
+        </div>
       </div>
-
-      <AssistantActionBar />
-
-      <BranchPicker className="col-start-2 row-start-2 -ml-2 mr-2" />
+      <BranchPicker className="mt-2 ml-12" />
     </MessagePrimitive.Root>
   );
 };
@@ -210,9 +228,28 @@ const AssistantMessage: FC = () => {
 const MessageError: FC = () => {
   return (
     <MessagePrimitive.Error>
-      <ErrorPrimitive.Root className="border-destructive bg-destructive/10 dark:text-red-200 dark:bg-destructive/5 text-destructive mt-2 rounded-md border p-3 text-sm">
-        <ErrorPrimitive.Message className="line-clamp-2" />
-      </ErrorPrimitive.Root>
+      <div className="mt-4 rounded-2xl bg-destructive/5 border border-destructive/20 p-5 flex flex-col gap-3 items-center text-center">
+        <div className="p-2 rounded-full bg-destructive/10">
+          <ErrorPrimitive.Root className="text-destructive">
+            <ErrorPrimitive.Message className="hidden" />
+          </ErrorPrimitive.Root>
+          <ArrowClockwiseIcon className="w-5 h-5 text-destructive animate-spin-slow" />
+        </div>
+        <div className="space-y-1">
+          <p className="text-sm font-semibold text-foreground">Generation Failed</p>
+          <p className="text-xs text-muted-foreground max-w-[200px]">
+            Something went wrong while generating your design. Please try again.
+          </p>
+        </div>
+        <ActionBarPrimitive.Root className="w-full">
+          <ActionBarPrimitive.Reload asChild>
+            <Button variant="outline" size="sm" className="w-full gap-2 border-destructive/20 hover:bg-destructive/10 hover:text-destructive">
+              <ArrowClockwiseIcon className="w-4 h-4" />
+              Retry Generation
+            </Button>
+          </ActionBarPrimitive.Reload>
+        </ActionBarPrimitive.Root>
+      </div>
     </MessagePrimitive.Error>
   );
 };

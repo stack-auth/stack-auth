@@ -4,6 +4,7 @@ import { deindent } from '@stackframe/stack-shared/dist/utils/strings';
 import { Typography } from "@/components/ui";
 import { useTheme } from 'next-themes';
 import { dtsBundles } from './dts';
+import { Code } from "@phosphor-icons/react";
 
 type CodeEditorProps = {
   code: string,
@@ -139,28 +140,45 @@ export default function CodeEditor({
   };
 
   return (
-    <>
-      <div className="p-3 flex justify-between items-center">
-        <Typography type="h4">{title}</Typography>
+    <div className="flex flex-col h-full bg-[#000000]">
+      <div className="px-6 py-3 border-b border-foreground/10 flex justify-between items-center bg-background/50 backdrop-blur-sm">
+        <div className="flex items-center gap-3">
+          <div className="p-1.5 rounded-lg bg-blue-500/10 ring-1 ring-blue-500/20">
+            <Code size={14} className="text-blue-500" />
+          </div>
+          <Typography type="h4" className="text-xs font-semibold uppercase tracking-wider">{title}</Typography>
+        </div>
         {action}
       </div>
-      <Editor
-        height="100%"
-        theme={theme === "dark" ? "stack-dark" : "vs-light"}
-        defaultLanguage="typescript"
-        defaultPath="file:///main.tsx"
-        value={code}
-        onChange={value => onCodeChange(value ?? "")}
-        beforeMount={handleBeforeMount}
-        options={{
-          quickSuggestions: { strings: "on" },
-          minimap: { enabled: false },
-          tabSize: 2,
-          overviewRulerLanes: 0,
-          overviewRulerBorder: false,
-          fixedOverflowWidgets: true // fixes issue with tooltips getting clipped
-        }}
-      />
-    </>
+      <div className="flex-1 min-h-0">
+        <Editor
+          height="100%"
+          theme={theme === "dark" ? "stack-dark" : "vs-light"}
+          defaultLanguage="typescript"
+          defaultPath="file:///main.tsx"
+          value={code}
+          onChange={value => onCodeChange(value ?? "")}
+          beforeMount={handleBeforeMount}
+          options={{
+            quickSuggestions: { strings: "on" },
+            minimap: { enabled: false },
+            tabSize: 2,
+            overviewRulerLanes: 0,
+            overviewRulerBorder: false,
+            fixedOverflowWidgets: true,
+            lineNumbers: 'on',
+            fontSize: 13,
+            fontFamily: 'var(--font-geist-mono)',
+            padding: { top: 16, bottom: 16 },
+            scrollBeyondLastLine: false,
+            smoothScrolling: true,
+            cursorBlinking: 'smooth',
+            cursorSmoothCaretAnimation: 'on',
+            renderLineHighlight: 'all',
+            bracketPairColorization: { enabled: true },
+          }}
+        />
+      </div>
+    </div>
   );
 }

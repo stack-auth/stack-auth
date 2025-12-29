@@ -22,7 +22,14 @@ const toolCallContentSchema = yupObject({
 });
 
 const contentSchema = yupArray(yupUnion(textContentSchema, toolCallContentSchema)).defined();
-const openai = createOpenAI({ apiKey: getEnvVariable("STACK_OPENAI_API_KEY", "MISSING_OPENAI_API_KEY") });
+
+const aiProvider = getEnvVariable("STACK_AI_PROVIDER", "openai");
+const openai = createOpenAI({
+  apiKey: aiProvider === "openrouter" 
+    ? getEnvVariable("STACK_OPENROUTER_API_KEY", "MISSING_OPENROUTER_API_KEY")
+    : getEnvVariable("STACK_OPENAI_API_KEY", "MISSING_OPENAI_API_KEY"),
+  baseURL: aiProvider === "openrouter" ? "https://openrouter.ai/api/v1" : undefined,
+});
 
 export const POST = createSmartRouteHandler({
   metadata: {
@@ -53,8 +60,9 @@ export const POST = createSmartRouteHandler({
   }),
   async handler({ body, params, auth: { tenancy } }) {
     const adapter = getChatAdapter(body.context_type, tenancy, params.threadId);
+    const modelName = getEnvVariable("STACK_AI_MODEL", getEnvVariable("STACK_OPENAI_MODEL", "gpt-4o"));
     const result = await generateText({
-      model: openai("gpt-4o"),
+      model: openai(modelName),
       system: adapter.systemPrompt,
       messages: body.messages as any,
       tools: adapter.tools,

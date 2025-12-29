@@ -21,6 +21,7 @@ export default function PageClient({ themeId }: { themeId: string }) {
   const theme = stackAdminApp.useEmailTheme(themeId);
   const { setNeedConfirm } = useRouterConfirm();
   const [currentCode, setCurrentCode] = useState(theme.tsxSource);
+  const [viewport, setViewport] = useState<'desktop' | 'tablet' | 'phone'>('desktop');
 
   useEffect(() => {
     if (theme.tsxSource === currentCode) return;
@@ -48,24 +49,21 @@ export default function PageClient({ themeId }: { themeId: string }) {
   return (
     <AppEnabledGuard appId="emails">
       <VibeCodeLayout
+        viewport={viewport}
+        onViewportChange={setViewport}
+        onSave={handleSaveTheme}
+        isDirty={currentCode !== theme.tsxSource}
         previewComponent={
           <EmailPreview
             themeTsxSource={currentCode}
             templateTsxSource={previewTemplateSource}
+            viewport={viewport === 'desktop' ? undefined : (viewport === 'tablet' ? { id: 'tablet', name: 'Tablet', width: 820, height: 1180, type: 'tablet' } : { id: 'phone', name: 'Phone', width: 390, height: 844, type: 'phone' })}
           />
         }
         editorComponent={
           <CodeEditor
             code={currentCode}
             onCodeChange={setCurrentCode}
-            action={
-              <Button
-                disabled={currentCode === theme.tsxSource}
-                onClick={handleSaveTheme}
-              >
-                Save
-              </Button>
-            }
           />
         }
         chatComponent={

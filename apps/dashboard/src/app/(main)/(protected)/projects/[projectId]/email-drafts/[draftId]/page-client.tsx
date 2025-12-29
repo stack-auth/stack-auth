@@ -25,6 +25,8 @@ export default function PageClient({ draftId }: { draftId: string }) {
   const [stage, setStage] = useState<"edit" | "send">("edit");
   const [selectedThemeId, setSelectedThemeId] = useState<string | undefined | false>(draft?.themeId);
 
+  const [viewport, setViewport] = useState<'desktop' | 'tablet' | 'phone'>('desktop');
+
   useEffect(() => {
     if (!draft) return;
     if (draft.tsxSource === currentCode && draft.themeId === selectedThemeId) return;
@@ -55,8 +57,16 @@ export default function PageClient({ draftId }: { draftId: string }) {
     <AppEnabledGuard appId="emails">
       {stage === "edit" ? (
         <VibeCodeLayout
+          viewport={viewport}
+          onViewportChange={setViewport}
+          onSave={handleNext}
+          isDirty={currentCode !== draft?.tsxSource || selectedThemeId !== draft?.themeId}
           previewComponent={
-            <EmailPreview themeId={selectedThemeId} templateTsxSource={currentCode} />
+            <EmailPreview 
+              themeId={selectedThemeId} 
+              templateTsxSource={currentCode} 
+              viewport={viewport === 'desktop' ? undefined : (viewport === 'tablet' ? { id: 'tablet', name: 'Tablet', width: 820, height: 1180, type: 'tablet' } : { id: 'phone', name: 'Phone', width: 390, height: 844, type: 'phone' })}
+            />
           }
           editorComponent={
             <CodeEditor
@@ -69,7 +79,6 @@ export default function PageClient({ draftId }: { draftId: string }) {
                     onThemeChange={setSelectedThemeId}
                     className="w-48"
                   />
-                  <Button onClick={handleNext}>Next</Button>
                 </div>
               }
             />

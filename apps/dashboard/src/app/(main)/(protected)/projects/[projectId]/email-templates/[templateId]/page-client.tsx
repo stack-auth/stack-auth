@@ -53,6 +53,8 @@ export default function PageClient(props: { templateId: string }) {
   };
 
 
+  const [viewport, setViewport] = useState<'desktop' | 'tablet' | 'phone'>('desktop');
+
   if (!template) {
     return (
       <AppEnabledGuard appId="emails">
@@ -66,8 +68,16 @@ export default function PageClient(props: { templateId: string }) {
   return (
     <AppEnabledGuard appId="emails">
       <VibeCodeLayout
+        viewport={viewport}
+        onViewportChange={setViewport}
+        onSave={handleSaveTemplate}
+        isDirty={currentCode !== template.tsxSource || selectedThemeId !== template.themeId}
         previewComponent={
-          <EmailPreview themeId={selectedThemeId} templateTsxSource={currentCode} />
+          <EmailPreview 
+            themeId={selectedThemeId} 
+            templateTsxSource={currentCode} 
+            viewport={viewport === 'desktop' ? undefined : (viewport === 'tablet' ? { id: 'tablet', name: 'Tablet', width: 820, height: 1180, type: 'tablet' } : { id: 'phone', name: 'Phone', width: 390, height: 844, type: 'phone' })}
+          />
         }
         editorComponent={
           <CodeEditor
@@ -80,12 +90,6 @@ export default function PageClient(props: { templateId: string }) {
                   onThemeChange={setSelectedThemeId}
                   className="w-48"
                 />
-                <Button
-                  disabled={currentCode === template.tsxSource && selectedThemeId === template.themeId}
-                  onClick={handleSaveTemplate}
-                >
-                  Save
-                </Button>
               </div>
             }
           />

@@ -25,10 +25,12 @@ export default function AssistantChat({
 
   return (
     <AssistantRuntimeProvider runtime={runtime}>
-      {toolComponents}
-      <TooltipProvider>
-        <Thread />
-      </TooltipProvider>
+      <div className="flex flex-col h-full w-full overflow-hidden">
+        <TooltipProvider>
+          <Thread />
+        </TooltipProvider>
+        {toolComponents}
+      </div>
     </AssistantRuntimeProvider>
   );
 }
