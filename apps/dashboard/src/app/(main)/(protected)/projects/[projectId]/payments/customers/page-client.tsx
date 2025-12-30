@@ -26,6 +26,7 @@ import {
   Typography,
   toast,
 } from "@/components/ui";
+import { useUpdateConfig } from "@/lib/config-update";
 import { CaretUpDownIcon } from "@phosphor-icons/react";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
@@ -53,6 +54,7 @@ export default function PageClient() {
   const adminApp = useAdminApp();
   const project = adminApp.useProject();
   const config = project.useConfig();
+  const updateConfig = useUpdateConfig();
 
   const [customerType, setCustomerType] = useState<CustomerType>("user");
   const [selectedCustomer, setSelectedCustomer] = useState<SelectedCustomer | null>(null);
@@ -92,7 +94,11 @@ export default function PageClient() {
   }, [customerType]);
 
   const handleSaveItem = async (item: { id: string, displayName: string, customerType: "user" | "team" | "custom" }) => {
-    await project.updateConfig({ [`payments.items.${item.id}`]: { displayName: item.displayName, customerType: item.customerType } });
+    await updateConfig({
+      adminApp,
+      configUpdate: { [`payments.items.${item.id}`]: { displayName: item.displayName, customerType: item.customerType } },
+      pushable: true,
+    });
     setShowItemDialog(false);
   };
 

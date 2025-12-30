@@ -189,6 +189,10 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
         await app._interface.setConfigOverride("branch", config);
         await app._configOverridesCache.refresh([]);
       },
+      async updatePushedConfig(config: EnvironmentConfigOverrideOverride) {
+        await app._interface.updateConfigOverride("branch", config);
+        await app._configOverridesCache.refresh([]);
+      },
       async update(update: AdminProjectUpdateOptions) {
         const updateOptions = adminProjectUpdateOptionsToCrud(update);
         await app._interface.updateProject(updateOptions);

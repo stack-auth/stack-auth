@@ -5,6 +5,7 @@ import { SelectField } from "@/components/form-fields";
 import { Link } from "@/components/link";
 import { StripeConnectProvider } from "@/components/payments/stripe-connect-provider";
 import { ActionDialog, Button, Card, CardContent, Typography } from "@/components/ui";
+import { useUpdateConfig } from "@/lib/config-update";
 import { cn } from "@/lib/utils";
 import { ArrowRightIcon, ChartBarIcon, FlaskIcon, RepeatIcon, ShieldIcon, WalletIcon, WarningIcon, WebhooksLogoIcon } from "@phosphor-icons/react";
 import { wait } from "@stackframe/stack-shared/dist/utils/promises";
@@ -28,6 +29,7 @@ function CatalogsLayoutInner({ children }: { children: React.ReactNode }) {
   const stripeAccountInfo = stackAdminApp.useStripeAccountInfo();
   const project = stackAdminApp.useProject();
   const paymentsConfig = project.useConfig().payments;
+  const updateConfig = useUpdateConfig();
 
   const setupPayments = async () => {
     const { url } = await stackAdminApp.setupPayments();
@@ -36,11 +38,19 @@ function CatalogsLayoutInner({ children }: { children: React.ReactNode }) {
   };
 
   const handleDisableTestMode = async () => {
-    await project.updateConfig({ "payments.testMode": false });
+    await updateConfig({
+      adminApp: stackAdminApp,
+      configUpdate: { "payments.testMode": false },
+      pushable: true,
+    });
   };
 
   const handleEnableTestMode = async () => {
-    await project.updateConfig({ "payments.testMode": true });
+    await updateConfig({
+      adminApp: stackAdminApp,
+      configUpdate: { "payments.testMode": true },
+      pushable: true,
+    });
   };
 
   if (!stripeAccountInfo) {

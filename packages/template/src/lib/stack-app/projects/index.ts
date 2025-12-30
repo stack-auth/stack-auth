@@ -65,6 +65,23 @@ export type AdminProject = {
     }
   ): Promise<void>,
 
+  /**
+   * Updates the pushed config by merging the provided config into the existing pushed config.
+   *
+   * **Warning:** This is almost always **not** the function you want to call. Changes made with
+   * `updatePushedConfig` will be replaced entirely the next time `pushConfig` is called. Consider using
+   * `pushConfig` to set the full pushed config, or `updateConfig` for environment-specific values that
+   * should persist across pushes.
+   *
+   * This function is useful for making temporary modifications to the pushed config before the next push.
+   */
+  updatePushedConfig(
+    this: AdminProject,
+    config: EnvironmentConfigOverrideOverride & {
+      [K in keyof EnvironmentConfigNormalizedOverride]: "............................ERROR MESSAGE AFTER THIS LINE............................ You have attempted to update a config object with a top-level property in it (for example `emails`). This is very likely a mistake, and you probably meant to update a nested property instead (for example `emails.server`). If you really meant to update a top-level property (resetting all nested properties to their defaults), cast as any (the code will work at runtime) ............................ERROR MESSAGE BEFORE THIS LINE............................";
+    }
+  ): Promise<void>,
+
   getProductionModeErrors(this: AdminProject): Promise<ProductionModeError[]>,
   // NEXT_LINE_PLATFORM react-like
   useProductionModeErrors(this: AdminProject): ProductionModeError[],

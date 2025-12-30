@@ -24,6 +24,7 @@ import {
   toast,
   Typography,
 } from "@/components/ui";
+import { useUpdateConfig } from "@/lib/config-update";
 import { cn } from "@/lib/utils";
 import { ArrowLeftIcon, BuildingOfficeIcon, CaretDownIcon, ChatIcon, ClockIcon, CodeIcon, CopyIcon, GearIcon, HardDriveIcon, LightningIcon, PlusIcon, PuzzlePieceIcon, StackIcon, TrashIcon, UserIcon } from "@phosphor-icons/react";
 import { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
@@ -180,6 +181,7 @@ export default function PageClient() {
   const stackAdminApp = useAdminApp();
   const project = stackAdminApp.useProject();
   const config = project.useConfig();
+  const updateConfig = useUpdateConfig();
   const paymentsConfig: CompleteConfig['payments'] = config.payments;
 
   // Step state: null = customer type selection, otherwise = form
@@ -286,7 +288,11 @@ export default function PageClient() {
 
   const handleCreateCatalog = (catalog: { id: string, displayName: string }) => {
     runAsynchronouslyWithAlert(async () => {
-      await project.updateConfig({ [`payments.catalogs.${catalog.id}`]: { displayName: catalog.displayName || null } });
+      await updateConfig({
+        adminApp: stackAdminApp,
+        configUpdate: { [`payments.catalogs.${catalog.id}`]: { displayName: catalog.displayName || null } },
+        pushable: true,
+      });
       setCatalogId(catalog.id);
     });
   };
@@ -347,7 +353,11 @@ export default function PageClient() {
         freeTrial,
       };
 
-      await project.updateConfig({ [`payments.products.${productId}`]: product });
+      await updateConfig({
+        adminApp: stackAdminApp,
+        configUpdate: { [`payments.products.${productId}`]: product },
+        pushable: true,
+      });
       toast({ title: "Product created" });
       router.push(`/projects/${projectId}/payments/products`);
     } catch (error) {
@@ -1013,7 +1023,11 @@ ${Object.entries(prices).map(([id, price]) => {
         open={showNewItemDialog}
         onOpenChange={setShowNewItemDialog}
         onSave={async (item) => {
-          await project.updateConfig({ [`payments.items.${item.id}`]: { displayName: item.displayName, customerType: item.customerType } });
+          await updateConfig({
+            adminApp: stackAdminApp,
+            configUpdate: { [`payments.items.${item.id}`]: { displayName: item.displayName, customerType: item.customerType } },
+            pushable: true,
+          });
           toast({ title: "Item created" });
         }}
         existingItemIds={Object.keys(paymentsConfig.items)}

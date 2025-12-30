@@ -2,6 +2,7 @@
 import { useAdminApp } from "@/app/(main)/(protected)/projects/[projectId]/use-admin-app";
 import { ProductDialog } from "@/components/payments/product-dialog";
 import { ActionCell, ActionDialog, DataTable, DataTableColumnHeader, TextCell, toast } from "@/components/ui";
+import { useUpdateConfig } from "@/lib/config-update";
 import { branchPaymentsSchema } from "@stackframe/stack-shared/dist/config/schema";
 import { typedEntries, typedFromEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import { ColumnDef } from "@tanstack/react-table";
@@ -70,6 +71,7 @@ function ActionsCell({ product }: { product: PaymentProduct }) {
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
   const stackAdminApp = useAdminApp();
   const project = stackAdminApp.useProject();
+  const updateConfig = useUpdateConfig();
 
   return (
     <>
@@ -109,7 +111,11 @@ function ActionsCell({ product }: { product: PaymentProduct }) {
               typedEntries(config.payments.products)
                 .filter(([productId]) => productId !== product.id)
             );
-            await project.updateConfig({ "payments.products": updatedProducts });
+            await updateConfig({
+              adminApp: stackAdminApp,
+              configUpdate: { "payments.products": updatedProducts },
+              pushable: true,
+            });
             toast({ title: "Product deleted" });
           },
         }}

@@ -5,25 +5,27 @@ import { createApp } from "./js-helpers";
 
 
 describe("access control", () => {
-  it("serverApp project does not have updateConfig or pushConfig methods", async ({ expect }) => {
+  it("serverApp project does not have config methods", async ({ expect }) => {
     const { serverApp } = await createApp();
     const project = await serverApp.getProject();
 
     // Server apps only get basic Project type, not AdminProject
-    // So updateConfig and pushConfig should not exist
+    // So config methods should not exist
     expect((project as any).updateConfig).toBeUndefined();
     expect((project as any).pushConfig).toBeUndefined();
+    expect((project as any).updatePushedConfig).toBeUndefined();
     expect((project as any).getConfig).toBeUndefined();
   });
 
-  it("clientApp project does not have updateConfig or pushConfig methods", async ({ expect }) => {
+  it("clientApp project does not have config methods", async ({ expect }) => {
     const { clientApp } = await createApp();
     const project = await clientApp.getProject();
 
     // Client apps only get basic Project type, not AdminProject
-    // So updateConfig and pushConfig should not exist
+    // So config methods should not exist
     expect((project as any).updateConfig).toBeUndefined();
     expect((project as any).pushConfig).toBeUndefined();
+    expect((project as any).updatePushedConfig).toBeUndefined();
     expect((project as any).getConfig).toBeUndefined();
   });
 
@@ -34,6 +36,7 @@ describe("access control", () => {
     // AdminApp gets AdminProject which has config methods
     expect(typeof project.updateConfig).toBe('function');
     expect(typeof project.pushConfig).toBe('function');
+    expect(typeof project.updatePushedConfig).toBe('function');
     expect(typeof project.getConfig).toBe('function');
   });
 });
@@ -294,5 +297,99 @@ describe("pushConfig", () => {
     expect(config.users.allowClientUserDeletion).toBe(true); // still from updateConfig
     expect(config.teams.allowClientTeamCreation).toBe(false); // back to default (old push gone)
     expect(config.auth.passkey.allowSignIn).toBe(true); // from new push
+  });
+});
+
+
+describe("updatePushedConfig", () => {
+  it("updatePushedConfig merges into pushed config", async ({ expect }) => {
+    const { adminApp } = await createApp();
+    const project = await adminApp.getProject();
+
+    // Push initial config
+    await project.pushConfig({
+      'teams.allowClientTeamCreation': true,
+    });
+
+    // updatePushedConfig merges into the pushed config
+    await project.updatePushedConfig({
+      'teams.createPersonalTeamOnSignUp': true,
+    });
+
+    // Both values should be set
+    const config = await project.getConfig();
+    expect(config.teams.allowClientTeamCreation).toBe(true);
+    expect(config.teams.createPersonalTeamOnSignUp).toBe(true);
+  });
+
+  it("pushConfig replaces updatePushedConfig changes", async ({ expect }) => {
+    const { adminApp } = await createApp();
+    const project = await adminApp.getProject();
+
+    // Push initial config
+    await project.pushConfig({
+      'teams.allowClientTeamCreation': true,
+    });
+
+    // updatePushedConfig adds a value
+    await project.updatePushedConfig({
+      'teams.createPersonalTeamOnSignUp': true,
+    });
+
+    // Verify both values are present
+    let config = await project.getConfig();
+    expect(config.teams.allowClientTeamCreation).toBe(true);
+    expect(config.teams.createPersonalTeamOnSignUp).toBe(true);
+
+    // pushConfig replaces everything including updatePushedConfig changes
+    await project.pushConfig({
+      'auth.passkey.allowSignIn': true,
+    });
+
+    // Old values should be gone
+    config = await project.getConfig();
+    expect(config.teams.allowClientTeamCreation).toBe(false); // back to default
+    expect(config.teams.createPersonalTeamOnSignUp).toBe(false); // back to default
+    expect(config.auth.passkey.allowSignIn).toBe(true); // new push value
+  });
+
+  it("updateConfig takes precedence over updatePushedConfig", async ({ expect }) => {
+    const { adminApp } = await createApp();
+    const project = await adminApp.getProject();
+
+    // updatePushedConfig sets a value at branch level
+    await project.updatePushedConfig({
+      'teams.allowClientTeamCreation': true,
+    });
+
+    // Verify value is applied
+    let config = await project.getConfig();
+    expect(config.teams.allowClientTeamCreation).toBe(true);
+
+    // updateConfig overrides at environment level
+    await project.updateConfig({
+      'teams.allowClientTeamCreation': false,
+    });
+
+    // Environment-level takes precedence
+    config = await project.getConfig();
+    expect(config.teams.allowClientTeamCreation).toBe(false);
+  });
+
+  it("updatePushedConfig rejects environment-only fields", async ({ expect }) => {
+    const { adminApp } = await createApp();
+    const project = await adminApp.getProject();
+
+    // updatePushedConfig uses branch level, so environment-only fields should be rejected
+    await expect(project.updatePushedConfig({
+      'auth.oauth.providers.google': {
+        type: 'google',
+        isShared: false,
+        clientId: 'test-client-id',
+        clientSecret: 'test-secret',
+        allowSignIn: true,
+        allowConnectedAccounts: true,
+      },
+    } as any)).rejects.toThrow(/auth\.oauth\.providers/);
   });
 });

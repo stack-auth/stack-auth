@@ -43,6 +43,7 @@ import {
   toast,
   Typography,
 } from "@/components/ui";
+import { useUpdateConfig } from "@/lib/config-update";
 import { ArrowLeftIcon, ClockIcon, CopyIcon, CurrencyDollarIcon, DotsThreeIcon, FolderOpenIcon, GiftIcon, HardDriveIcon, PackageIcon, PencilSimpleIcon, PlusIcon, PuzzlePieceIcon, StackIcon, TagIcon, TrashIcon, UsersIcon, XIcon } from "@phosphor-icons/react";
 import type { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
 import type { Transaction, TransactionEntry } from "@stackframe/stack-shared/dist/interface/crud/transactions";
@@ -73,6 +74,7 @@ export default function PageClient({ productId }: { productId: string }) {
   const adminApp = useAdminApp();
   const project = adminApp.useProject();
   const config = project.useConfig();
+  const updateConfig = useUpdateConfig();
   const product = config.payments.products[productId] as Product | undefined;
 
   if (product == null) {
@@ -143,6 +145,7 @@ function ProductHeader({ productId, product, catalogName }: ProductHeaderProps) 
   const adminApp = useAdminApp();
   const project = adminApp.useProject();
   const config = project.useConfig();
+  const updateConfig = useUpdateConfig();
   const router = useRouter();
   const displayName = product.displayName || productId;
   const isAddOn = product.isAddOnTo !== false && typeof product.isAddOnTo === 'object';
@@ -179,9 +182,9 @@ function ProductHeader({ productId, product, catalogName }: ProductHeaderProps) 
               shiftTextToLeft
               inputClassName="text-2xl font-semibold tracking-tight w-full"
               onUpdate={async (newName) => {
-                await project.updateConfig({
+                await updateConfig({ adminApp, configUpdate: {
                   [`payments.products.${productId}.displayName`]: newName || null,
-                });
+                }, pushable: true });
                 toast({ title: "Product name updated" });
               }}
             />
@@ -250,6 +253,7 @@ type ProductDetailsSectionProps = {
 function ProductDetailsSection({ productId, product, config }: ProductDetailsSectionProps) {
   const adminApp = useAdminApp();
   const project = adminApp.useProject();
+  const updateConfig = useUpdateConfig();
 
   // Dialog states
   const [addOnDialogOpen, setAddOnDialogOpen] = useState(false);
@@ -329,44 +333,44 @@ function ProductDetailsSection({ productId, product, config }: ProductDetailsSec
 
   // Handlers
   const handleDisplayNameUpdate = async (value: string) => {
-    await project.updateConfig({
+    await updateConfig({ adminApp, configUpdate: {
       [`payments.products.${productId}.displayName`]: value || null,
-    });
+    }, pushable: true });
     toast({ title: "Display name updated" });
   };
 
   const handleCatalogUpdate = async (catalogId: string) => {
     const actualCatalogId = catalogId === '__none__' ? null : catalogId;
-    await project.updateConfig({
+    await updateConfig({ adminApp, configUpdate: {
       [`payments.products.${productId}.catalogId`]: actualCatalogId,
-    });
+    }, pushable: true });
     toast({ title: actualCatalogId ? "Product moved to catalog" : "Product removed from catalog" });
   };
 
   const handleCreateCatalog = async (catalog: { id: string, displayName: string }) => {
     // Create the catalog first
-    await project.updateConfig({
+    await updateConfig({ adminApp, configUpdate: {
       [`payments.catalogs.${catalog.id}`]: { displayName: catalog.displayName || null },
-    });
+    }, pushable: true });
     // Then update the product to use this catalog
-    await project.updateConfig({
+    await updateConfig({ adminApp, configUpdate: {
       [`payments.products.${productId}.catalogId`]: catalog.id,
-    });
+    }, pushable: true });
     setCreateCatalogDialogOpen(false);
     toast({ title: "Catalog created and product moved" });
   };
 
   const handleStackableUpdate = async (value: boolean) => {
-    await project.updateConfig({
+    await updateConfig({ adminApp, configUpdate: {
       [`payments.products.${productId}.stackable`]: value || null,
-    });
+    }, pushable: true });
     toast({ title: value ? "Product is now stackable" : "Product is no longer stackable" });
   };
 
   const handleServerOnlyUpdate = async (value: boolean) => {
-    await project.updateConfig({
+    await updateConfig({ adminApp, configUpdate: {
       [`payments.products.${productId}.serverOnly`]: value || null,
-    });
+    }, pushable: true });
     toast({ title: value ? "Product is now server only" : "Product is no longer server only" });
   };
 
@@ -380,25 +384,25 @@ function ProductDetailsSection({ productId, product, config }: ProductDetailsSec
       ? Object.fromEntries([...selectedAddOnProducts].map(id => [id, true]))
       : null;
 
-    await project.updateConfig({
+    await updateConfig({ adminApp, configUpdate: {
       [`payments.products.${productId}.isAddOnTo`]: addOnValue,
-    });
+    }, pushable: true });
     setAddOnDialogOpen(false);
     toast({ title: isAddOn ? "Add-on configuration updated" : "Product is no longer an add-on" });
   };
 
   const handleFreeTrialSave = async (count: number, unit: DayInterval[1]) => {
-    await project.updateConfig({
+    await updateConfig({ adminApp, configUpdate: {
       [`payments.products.${productId}.freeTrial`]: [count, unit] as DayInterval,
-    });
+    }, pushable: true });
     setFreeTrialPopoverOpen(false);
     toast({ title: "Free trial updated" });
   };
 
   const handleRemoveFreeTrial = async () => {
-    await project.updateConfig({
+    await updateConfig({ adminApp, configUpdate: {
       [`payments.products.${productId}.freeTrial`]: null,
-    });
+    }, pushable: true });
     setFreeTrialPopoverOpen(false);
     toast({ title: "Free trial removed" });
   };
@@ -643,6 +647,7 @@ type ProductPricesSectionProps = {
 function ProductPricesSection({ productId, product, inline = false }: ProductPricesSectionProps) {
   const adminApp = useAdminApp();
   const project = adminApp.useProject();
+  const updateConfig = useUpdateConfig();
   const prices = product.prices;
   const [editingPrice, setEditingPrice] = useState<EditingPrice | null>(null);
   const [isAddingPrice, setIsAddingPrice] = useState(false);
@@ -657,9 +662,9 @@ function ProductPricesSection({ productId, product, inline = false }: ProductPri
       [editing.priceId]: newPrice,
     };
 
-    await project.updateConfig({
+    await updateConfig({ adminApp, configUpdate: {
       [`payments.products.${productId}.prices`]: updatedPrices,
-    });
+    }, pushable: true });
 
     toast({ title: isNew ? "Price added" : "Price updated" });
     setEditingPrice(null);
@@ -672,9 +677,9 @@ function ProductPricesSection({ productId, product, inline = false }: ProductPri
       const currentPrices = prices === 'include-by-default' ? {} : prices;
       const { [priceId]: _, ...remainingPrices } = currentPrices as Record<string, Price>;
 
-      await project.updateConfig({
+      await updateConfig({ adminApp, configUpdate: {
         [`payments.products.${productId}.prices`]: Object.keys(remainingPrices).length > 0 ? remainingPrices : {},
-      });
+      }, pushable: true });
 
       toast({ title: "Price deleted" });
     } finally {
@@ -706,27 +711,27 @@ function ProductPricesSection({ productId, product, inline = false }: ProductPri
 
   const handleAddPrices = async () => {
     // Convert from include-by-default to empty prices object, then open add dialog
-    await project.updateConfig({
+    await updateConfig({ adminApp, configUpdate: {
       [`payments.products.${productId}.prices`]: {},
-    });
+    }, pushable: true });
     openAddDialog();
   };
 
   const handleSetIncludeByDefault = async () => {
-    await project.updateConfig({
+    await updateConfig({ adminApp, configUpdate: {
       [`payments.products.${productId}.prices`]: 'include-by-default',
-    });
+    }, pushable: true });
     toast({ title: "Product is now included by default" });
   };
 
   const handleSetFreeNotIncluded = async () => {
     // Set a $0 price to make it free but not included by default
     const newPriceId = generateUniqueId('price');
-    await project.updateConfig({
+    await updateConfig({ adminApp, configUpdate: {
       [`payments.products.${productId}.prices`]: {
         [newPriceId]: { USD: '0', serverOnly: false },
       },
-    });
+    }, pushable: true });
     toast({ title: "Product is no longer included by default" });
   };
 
@@ -752,9 +757,9 @@ function ProductPricesSection({ productId, product, inline = false }: ProductPri
               size="sm"
               className="w-fit h-6 px-1 text-xs text-muted-foreground hover:text-foreground"
               onClick={async () => {
-                await project.updateConfig({
+                await updateConfig({ adminApp, configUpdate: {
                   [`payments.products.${productId}.prices`]: {},
-                });
+                }, pushable: true });
                 toast({ title: "Product is no longer free" });
               }}
             >
@@ -933,6 +938,7 @@ type EditingItem = {
 function ProductItemsSection({ productId, product, config, inline = false }: ProductItemsSectionProps) {
   const adminApp = useAdminApp();
   const project = adminApp.useProject();
+  const updateConfig = useUpdateConfig();
   const items = product.includedItems;
   const [editingItem, setEditingItem] = useState<EditingItem | null>(null);
   const [isAddingItem, setIsAddingItem] = useState(false);
@@ -961,9 +967,9 @@ function ProductItemsSection({ productId, product, config, inline = false }: Pro
       [editing.itemId]: newItem,
     };
 
-    await project.updateConfig({
+    await updateConfig({ adminApp, configUpdate: {
       [`payments.products.${productId}.includedItems`]: updatedItems,
-    });
+    }, pushable: true });
 
     toast({ title: isNew ? "Item added" : "Item updated" });
   setEditingItem(null);
@@ -976,9 +982,9 @@ function ProductItemsSection({ productId, product, config, inline = false }: Pro
     try {
       const { [itemId]: _, ...remainingItems } = items;
 
-      await project.updateConfig({
+      await updateConfig({ adminApp, configUpdate: {
         [`payments.products.${productId}.includedItems`]: Object.keys(remainingItems).length > 0 ? remainingItems : null,
-      });
+      }, pushable: true });
 
       toast({ title: "Item removed" });
     } finally {

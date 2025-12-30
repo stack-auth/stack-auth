@@ -21,6 +21,7 @@ import {
   toast
 } from "@/components/ui";
 import { cn } from "@/lib/utils";
+import { useUpdateConfig } from "@/lib/config-update";
 import { CaretUpDownIcon, CodeIcon, CopyIcon, DotsThreeVerticalIcon, EyeIcon, FileTextIcon, GiftIcon, HardDriveIcon, InfoIcon, PencilSimpleIcon, PlusIcon, PuzzlePieceIcon, StackIcon, TrashIcon, XIcon } from "@phosphor-icons/react";
 import { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
 import { getUserSpecifiedIdErrorMessage, isValidUserSpecifiedId } from "@stackframe/stack-shared/dist/schema-fields";
@@ -2042,6 +2043,7 @@ export default function PageClient({ createDraftRequestId, draftCustomerType = '
   const stackAdminApp = useAdminApp();
   const project = stackAdminApp.useProject();
   const config = project.useConfig();
+  const updateConfig = useUpdateConfig();
   const paymentsConfig: CompleteConfig['payments'] = config.payments;
 
   // Use product IDs as a key to ensure re-render when products change
@@ -2143,14 +2145,14 @@ export default function PageClient({ createDraftRequestId, draftCustomerType = '
 
   // Handler for saving product
   const handleSaveProduct = async (productId: string, product: Product) => {
-    await project.updateConfig({ [`payments.products.${productId}`]: product });
+    await updateConfig({ adminApp: stackAdminApp, configUpdate: { [`payments.products.${productId}`]: product }, pushable: true });
     setShowProductDialog(false);
     toast({ title: editingProduct ? "Product updated" : "Product created" });
   };
 
   // Handler for saving item
   const handleSaveItem = async (item: { id: string, displayName: string, customerType: 'user' | 'team' | 'custom' }) => {
-    await project.updateConfig({ [`payments.items.${item.id}`]: { displayName: item.displayName, customerType: item.customerType } });
+    await updateConfig({ adminApp: stackAdminApp, configUpdate: { [`payments.items.${item.id}`]: { displayName: item.displayName, customerType: item.customerType } }, pushable: true });
     setShowItemDialog(false);
     setEditingItem(null);
     toast({ title: editingItem ? "Item updated" : "Item created" });
@@ -2177,7 +2179,7 @@ export default function PageClient({ createDraftRequestId, draftCustomerType = '
   }));
 
   const handleInlineSaveProduct = async (productId: string, product: Product) => {
-    await project.updateConfig({ [`payments.products.${productId}`]: product });
+    await updateConfig({ adminApp: stackAdminApp, configUpdate: { [`payments.products.${productId}`]: product }, pushable: true });
     toast({ title: "Product updated" });
   };
 
@@ -2206,13 +2208,13 @@ export default function PageClient({ createDraftRequestId, draftCustomerType = '
         typedEntries(paymentsConfig.catalogs)
           .filter(([id]) => id !== catalogId)
       );
-      await project.updateConfig({
+      await updateConfig({ adminApp: stackAdminApp, configUpdate: {
         "payments.products": updatedProducts,
         "payments.catalogs": updatedCatalogs,
-      });
+      }, pushable: true });
       toast({ title: "Product and empty catalog deleted" });
     } else {
-      await project.updateConfig({ "payments.products": updatedProducts });
+      await updateConfig({ adminApp: stackAdminApp, configUpdate: { "payments.products": updatedProducts }, pushable: true });
       toast({ title: "Product deleted" });
     }
 
@@ -2234,16 +2236,16 @@ export default function PageClient({ createDraftRequestId, draftCustomerType = '
           setShowProductDialog(true);
         }}
         onSaveProductWithGroup={async (catalogId, productId, product) => {
-          await project.updateConfig({
+          await updateConfig({ adminApp: stackAdminApp, configUpdate: {
             [`payments.catalogs.${catalogId}`]: {},
             [`payments.products.${productId}`]: product,
-          });
+          }, pushable: true });
           toast({ title: "Product created" });
         }}
         onCreateCatalog={async (catalogId) => {
-          await project.updateConfig({
+          await updateConfig({ adminApp: stackAdminApp, configUpdate: {
             [`payments.catalogs.${catalogId}`]: {},
-          });
+          }, pushable: true });
         }}
         createDraftRequestId={createDraftRequestId}
         draftCustomerType={draftCustomerType}

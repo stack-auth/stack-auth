@@ -4,6 +4,7 @@ import { ItemDialog } from "@/components/payments/item-dialog";
 import { useRouter } from "@/components/router";
 import { ActionDialog, Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, toast } from "@/components/ui";
 import { cn } from "@/lib/utils";
+import { useUpdateConfig } from "@/lib/config-update";
 import { DotsThreeVerticalIcon } from "@phosphor-icons/react";
 import { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
 import { useHover } from "@stackframe/stack-shared/dist/hooks/use-hover";
@@ -341,6 +342,7 @@ function ProductsList({
 }: ProductsListProps) {
   const stackAdminApp = useAdminApp();
   const project = stackAdminApp.useProject();
+  const updateConfig = useUpdateConfig();
   const projectId = useProjectId();
   const router = useRouter();
   const [searchQuery, setSearchQuery] = useState("");
@@ -451,7 +453,7 @@ function ProductsList({
               typedEntries(config.payments.products)
                 .filter(([productId]) => productId !== productToDelete.id)
             );
-            await project.updateConfig({ "payments.products": updatedProducts });
+            await updateConfig({ adminApp: stackAdminApp, configUpdate: { "payments.products": updatedProducts }, pushable: true });
             toast({ title: "Product deleted" });
             setProductToDelete(null);
           }
@@ -489,6 +491,7 @@ function ItemsList({
 }: ItemsListProps) {
   const stackAdminApp = useAdminApp();
   const project = stackAdminApp.useProject();
+  const updateConfig = useUpdateConfig();
   const [searchQuery, setSearchQuery] = useState("");
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [itemToDelete, setItemToDelete] = useState<{ id: string, displayName: string } | null>(null);
@@ -583,7 +586,7 @@ function ItemsList({
           label: "Delete",
           onClick: async () => {
             if (!itemToDelete) return;
-            await project.updateConfig({ [`payments.items.${itemToDelete.id}`]: null });
+            await updateConfig({ adminApp: stackAdminApp, configUpdate: { [`payments.items.${itemToDelete.id}`]: null }, pushable: true });
             toast({ title: "Item deleted" });
             setItemToDelete(null);
           }
@@ -608,6 +611,7 @@ export default function PageClient() {
   const stackAdminApp = useAdminApp();
   const project = stackAdminApp.useProject();
   const config = project.useConfig();
+  const updateConfig = useUpdateConfig();
   const paymentsConfig = config.payments;
 
   // Refs for products and items
@@ -745,14 +749,14 @@ export default function PageClient() {
 
   // Handler for saving product
   const handleSaveProduct = async (productId: string, product: Product) => {
-    await project.updateConfig({ [`payments.products.${productId}`]: product });
+    await updateConfig({ adminApp: stackAdminApp, configUpdate: { [`payments.products.${productId}`]: product }, pushable: true });
     setShowProductDialog(false);
     toast({ title: editingProduct ? "Product updated" : "Product created" });
   };
 
   // Handler for saving item
   const handleSaveItem = async (item: { id: string, displayName: string, customerType: 'user' | 'team' | 'custom' }) => {
-    await project.updateConfig({ [`payments.items.${item.id}`]: { displayName: item.displayName, customerType: item.customerType } });
+    await updateConfig({ adminApp: stackAdminApp, configUpdate: { [`payments.items.${item.id}`]: { displayName: item.displayName, customerType: item.customerType } }, pushable: true });
     setShowItemDialog(false);
     setEditingItem(null);
     toast({ title: editingItem ? "Item updated" : "Item created" });

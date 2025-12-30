@@ -4,6 +4,7 @@ import { TeamMemberSearchTable } from "@/components/data-table/team-member-searc
 import { FormDialog } from "@/components/form-dialog";
 import { InputField, SelectField, TextAreaField } from "@/components/form-fields";
 import { SettingCard, SettingText } from "@/components/settings";
+import { useUpdateConfig } from "@/lib/config-update";
 import { getPublicEnvVar } from "@/lib/env";
 import { WarningCircleIcon, XIcon } from "@phosphor-icons/react";
 import { AdminEmailConfig, AdminProject, AdminSentEmail, ServerUser, UserAvatar } from "@stackframe/stack";
@@ -129,6 +130,7 @@ function EditEmailServerDialog(props: {
   const stackAdminApp = useAdminApp();
   const project = stackAdminApp.useProject();
   const config = project.useConfig();
+  const updateConfig = useUpdateConfig();
   const [error, setError] = useState<string | null>(null);
   const [formValues, setFormValues] = useState<any>(null);
   const defaultValues = useMemo(() => getDefaultValues(config.emails.server, project), [config, project]);
@@ -145,17 +147,22 @@ function EditEmailServerDialog(props: {
       return 'prevent-close-and-prevent-reset';
     }
     setError(null);
-    await project.updateConfig({
-      "emails.server": {
-        isShared: false,
-        host: emailConfig.host,
-        port: emailConfig.port,
-        username: emailConfig.username,
-        password: emailConfig.password,
-        senderEmail: emailConfig.senderEmail,
-        senderName: emailConfig.senderName,
-        provider: emailConfig.type === 'resend' ? 'resend' : 'smtp',
-      } satisfies CompleteConfig['emails']['server']
+    // Email server config contains secrets, so it's environment-level only (pushable: false)
+    await updateConfig({
+      adminApp: stackAdminApp,
+      configUpdate: {
+        "emails.server": {
+          isShared: false,
+          host: emailConfig.host,
+          port: emailConfig.port,
+          username: emailConfig.username,
+          password: emailConfig.password,
+          senderEmail: emailConfig.senderEmail,
+          senderName: emailConfig.senderName,
+          provider: emailConfig.type === 'resend' ? 'resend' : 'smtp',
+        } satisfies CompleteConfig['emails']['server']
+      },
+      pushable: false,
     });
 
     toast({
