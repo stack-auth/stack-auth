@@ -1588,7 +1588,7 @@ it("should preserve API Keys app enabled state when updating allowUserApiKeys co
   expect(enableAppResponse).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 200,
-      "body": {},
+      "body": { "success": true },
       "headers": Headers { <some fields may have been hidden> },
     }
   `);
