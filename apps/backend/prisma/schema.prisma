@@ -41,6 +41,8 @@ model Project {
   tenancies                  Tenancy[]
   branchConfigOverrides      BranchConfigOverride[]
   environmentConfigOverrides EnvironmentConfigOverride[]
+
+  @@index([ownerTeamId], map: "Project_ownerTeamId_idx")
 }
 
 model Tenancy {
@@ -142,6 +144,7 @@ model TeamMember {
 
   @@id([tenancyId, projectUserId, teamId])
   @@unique([tenancyId, projectUserId, isSelected])
+  @@index([tenancyId, projectUserId, isSelected], map: "TeamMember_projectUserId_isSelected_idx")
 }
 
 model ProjectUserDirectPermission {
