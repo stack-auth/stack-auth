@@ -55,6 +55,7 @@ const corsAllowedResponseHeaders = [
 
 // This function can be marked `async` if using `await` inside
 export async function proxy(request: NextRequest) {
+  const url = new URL(request.url);
   const delay = +getEnvVariable('STACK_ARTIFICIAL_DEVELOPMENT_DELAY_MS', '0');
   if (delay) {
     if (getNodeEnvironment().includes('production')) {
@@ -64,8 +65,6 @@ export async function proxy(request: NextRequest) {
       await wait(delay);
     }
   }
-
-  const url = new URL(request.url);
   const isApiRequest = url.pathname.startsWith('/api/');
 
   const corsHeadersInit = isApiRequest ? {
