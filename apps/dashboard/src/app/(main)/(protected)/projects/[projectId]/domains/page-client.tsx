@@ -3,13 +3,13 @@ import { FormDialog } from "@/components/form-dialog";
 import { InputField, SwitchField } from "@/components/form-fields";
 import { InlineSaveDiscard } from "@/components/inline-save-discard";
 import { SettingCard, SettingSwitch } from "@/components/settings";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger, ActionCell, ActionDialog, Alert, Button, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, Typography } from "@/components/ui";
 import { useUpdateConfig } from "@/lib/config-update";
 import { yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import { isValidHostnameWithWildcards, isValidUrl } from "@stackframe/stack-shared/dist/utils/urls";
 import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger, ActionCell, ActionDialog, Alert, Button, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, Typography } from "@/components/ui";
 import React, { useState } from "react";
 import * as yup from "yup";
 import { AppEnabledGuard } from "../app-enabled-guard";
@@ -343,11 +343,13 @@ export default function PageClient() {
   };
 
   // Convert config domains to array format for display
-  const domains: DomainEntry[] = typedEntries(config.domains.trustedDomains).map(([id, domain]) => ({
-    id,
-    baseUrl: domain.baseUrl,
-    handlerPath: domain.handlerPath,
-  }));
+  const domains: DomainEntry[] = typedEntries(config.domains.trustedDomains)
+    .filter(([, domain]) => domain.baseUrl !== undefined)
+    .map(([id, domain]) => ({
+      id,
+      baseUrl: domain.baseUrl!,
+      handlerPath: domain.handlerPath,
+    }));
 
   return (
     <AppEnabledGuard appId="authentication">
