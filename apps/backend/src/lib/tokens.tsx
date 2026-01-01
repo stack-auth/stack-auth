@@ -1,5 +1,5 @@
 import { usersCrudHandlers } from '@/app/api/latest/users/crud';
-import { globalPrismaClient } from '@/prisma-client';
+import { getPrismaClientForTenancy, globalPrismaClient } from '@/prisma-client';
 import { KnownErrors } from '@stackframe/stack-shared';
 import { yupBoolean, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { AccessTokenPayload } from '@stackframe/stack-shared/dist/sessions';
@@ -158,6 +158,35 @@ export async function generateAccessTokenFromRefreshTokenIfValid(options: {
     throw error;
   }
 
+  // Update last active at on user and session
+  const now = new Date();
+  const prisma = await getPrismaClientForTenancy(options.tenancy);
+  await Promise.all([
+    prisma.projectUser.update({
+      where: {
+        tenancyId_projectUserId: {
+          tenancyId: options.tenancy.id,
+          projectUserId: options.refreshTokenObj.projectUserId,
+        },
+      },
+      data: {
+        lastActiveAt: now,
+      },
+    }),
+    globalPrismaClient.projectUserRefreshToken.update({
+      where: {
+        tenancyId_id: {
+          tenancyId: options.tenancy.id,
+          id: options.refreshTokenObj.id,
+        },
+      },
+      data: {
+        lastActiveAt: now,
+      },
+    }),
+  ]);
+
+  // Log session activity event (used for metrics, geo info, etc.)
   await logEvent(
     [SystemEventTypes.SessionActivity],
     {

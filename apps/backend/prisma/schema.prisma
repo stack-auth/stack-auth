@@ -170,8 +170,9 @@ model ProjectUser {
   mirroredProjectId String
   mirroredBranchId  String
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  lastActiveAt DateTime @default(now())
 
   displayName            String?
   serverMetadata         Json?
@@ -430,8 +431,9 @@ model ProjectUserRefreshToken {
   tenancyId     String @db.Uuid
   projectUserId String @db.Uuid
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  lastActiveAt DateTime @default(now())
 
   refreshToken    String    @unique
   expiresAt       DateTime?
