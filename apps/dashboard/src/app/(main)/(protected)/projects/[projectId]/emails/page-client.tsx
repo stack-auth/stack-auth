@@ -180,10 +180,15 @@ function EditEmailServerDialog(props: {
     okButton={{ label: "Save" }}
     onSubmit={async (values) => {
       if (values.type === 'shared') {
-        await project.update({
-          config: {
-            emailConfig: { type: 'shared' }
-          }
+        // Email server config contains secrets, so it's environment-level only (pushable: false)
+        await updateConfig({
+          adminApp: stackAdminApp,
+          configUpdate: {
+            "emails.server": {
+              isShared: true,
+            } satisfies Partial<CompleteConfig['emails']['server']>
+          },
+          pushable: false,
         });
       } else if (values.type === 'resend') {
         if (!values.password || !values.senderEmail || !values.senderName) {

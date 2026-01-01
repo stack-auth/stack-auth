@@ -250,9 +250,22 @@ type ProductDetailsSectionProps = {
   config: CompleteConfig,
 };
 
+// Type for pending changes to be applied on save
+type PendingProductChanges = {
+  displayName?: string | null,
+  catalogId?: string | null,
+  stackable?: boolean | null,
+  serverOnly?: boolean | null,
+  freeTrial?: DayInterval | null,
+  isAddOnTo?: Record<string, true> | null,
+  prices?: Product['prices'],
+  includedItems?: Product['includedItems'],
+  // For creating new catalogs
+  newCatalogs?: Record<string, { displayName: string | undefined }>,
+};
+
 function ProductDetailsSection({ productId, product, config }: ProductDetailsSectionProps) {
   const adminApp = useAdminApp();
-  const project = adminApp.useProject();
   const updateConfig = useUpdateConfig();
 
   // Dialog states
@@ -260,9 +273,105 @@ function ProductDetailsSection({ productId, product, config }: ProductDetailsSec
   const [freeTrialPopoverOpen, setFreeTrialPopoverOpen] = useState(false);
   const [createCatalogDialogOpen, setCreateCatalogDialogOpen] = useState(false);
 
-  // Get all catalogs with their customer types
+  // ===== LOCAL STATE FOR DEFERRED SAVE =====
+  // Track all pending changes. undefined means "use original value"
+  const [pendingChanges, setPendingChanges] = useState<PendingProductChanges>({});
+
+  // Computed local values (pending change or original)
+  const localDisplayName = pendingChanges.displayName !== undefined ? pendingChanges.displayName : (product.displayName || '');
+  const localCatalogId = pendingChanges.catalogId !== undefined ? pendingChanges.catalogId : (product.catalogId || null);
+  const localStackable = pendingChanges.stackable !== undefined ? !!pendingChanges.stackable : !!product.stackable;
+  const localServerOnly = pendingChanges.serverOnly !== undefined ? !!pendingChanges.serverOnly : !!product.serverOnly;
+  const localFreeTrial = pendingChanges.freeTrial !== undefined ? pendingChanges.freeTrial : (product.freeTrial || null);
+  const localIsAddOnTo = pendingChanges.isAddOnTo !== undefined
+    ? pendingChanges.isAddOnTo
+    : (product.isAddOnTo !== false && typeof product.isAddOnTo === 'object' ? product.isAddOnTo : null);
+  const localPrices = pendingChanges.prices !== undefined ? pendingChanges.prices : product.prices;
+  const localIncludedItems = pendingChanges.includedItems !== undefined ? pendingChanges.includedItems : product.includedItems;
+
+  // Check if there are any pending changes
+  const hasChanges = Object.keys(pendingChanges).length > 0;
+
+  // Compute which item keys are modified (for visual indicator)
+  const externalModifiedKeys = useMemo(() => {
+    const keys = new Set<string>();
+    if (pendingChanges.displayName !== undefined) keys.add('displayName');
+    if (pendingChanges.catalogId !== undefined || pendingChanges.newCatalogs) keys.add('catalogId');
+    if (pendingChanges.stackable !== undefined) keys.add('stackable');
+    if (pendingChanges.serverOnly !== undefined) keys.add('serverOnly');
+    if (pendingChanges.freeTrial !== undefined) keys.add('freeTrial');
+    if (pendingChanges.isAddOnTo !== undefined) keys.add('isAddOnTo');
+    if (pendingChanges.prices !== undefined) keys.add('prices');
+    if (pendingChanges.includedItems !== undefined) keys.add('includedItems');
+    return keys;
+  }, [pendingChanges]);
+
+  // Discard all pending changes
+  const handleDiscard = () => {
+    setPendingChanges({});
+    // Reset add-on dialog state
+    setIsAddOn(product.isAddOnTo !== false && typeof product.isAddOnTo === 'object');
+    setSelectedAddOnProducts(
+      product.isAddOnTo !== false && typeof product.isAddOnTo === 'object'
+        ? new Set(Object.keys(product.isAddOnTo))
+        : new Set()
+    );
+  };
+
+  // Save all pending changes
+  const handleSave = async () => {
+    const configUpdate: Record<string, any> = {};
+
+    // First, create any new catalogs
+    if (pendingChanges.newCatalogs) {
+      for (const [catalogId, catalog] of Object.entries(pendingChanges.newCatalogs)) {
+        configUpdate[`payments.catalogs.${catalogId}`] = catalog;
+      }
+    }
+
+    // Then apply product changes
+    if (pendingChanges.displayName !== undefined) {
+      configUpdate[`payments.products.${productId}.displayName`] = pendingChanges.displayName || null;
+    }
+    if (pendingChanges.catalogId !== undefined) {
+      configUpdate[`payments.products.${productId}.catalogId`] = pendingChanges.catalogId || null;
+    }
+    if (pendingChanges.stackable !== undefined) {
+      configUpdate[`payments.products.${productId}.stackable`] = pendingChanges.stackable || null;
+    }
+    if (pendingChanges.serverOnly !== undefined) {
+      configUpdate[`payments.products.${productId}.serverOnly`] = pendingChanges.serverOnly || null;
+    }
+    if (pendingChanges.freeTrial !== undefined) {
+      configUpdate[`payments.products.${productId}.freeTrial`] = pendingChanges.freeTrial;
+    }
+    if (pendingChanges.isAddOnTo !== undefined) {
+      configUpdate[`payments.products.${productId}.isAddOnTo`] = pendingChanges.isAddOnTo;
+    }
+    if (pendingChanges.prices !== undefined) {
+      configUpdate[`payments.products.${productId}.prices`] = pendingChanges.prices;
+    }
+    if (pendingChanges.includedItems !== undefined) {
+      configUpdate[`payments.products.${productId}.includedItems`] = Object.keys(pendingChanges.includedItems).length > 0 ? pendingChanges.includedItems : null;
+    }
+
+    await updateConfig({ adminApp, configUpdate, pushable: true });
+    setPendingChanges({});
+    toast({ title: "Changes saved" });
+  };
+
+  // Get all catalogs with their customer types (including pending new catalogs)
   const catalogOptions = useMemo(() => {
-    const catalogs = Object.entries(config.payments.catalogs).map(([id, catalog]) => {
+    const allCatalogs = { ...config.payments.catalogs };
+
+    // Add pending new catalogs
+    if (pendingChanges.newCatalogs) {
+      for (const [id, catalog] of Object.entries(pendingChanges.newCatalogs)) {
+        allCatalogs[id] = catalog;
+      }
+    }
+
+    const catalogs = Object.entries(allCatalogs).map(([id, catalog]) => {
       // Determine customer type from existing products in this catalog
       const productsInCatalog = Object.values(config.payments.products).filter(p => (p as Product | undefined)?.catalogId === id);
       const catalogCustomerType = productsInCatalog[0]?.customerType as 'user' | 'team' | 'custom' | undefined;
@@ -283,149 +392,200 @@ function ProductDetailsSection({ productId, product, config }: ProductDetailsSec
       { value: '__none__', label: 'No catalog', disabled: false, disabledReason: undefined, customerType: undefined },
       ...catalogs,
     ];
-  }, [config.payments.catalogs, config.payments.products, product.customerType]);
+  }, [config.payments.catalogs, config.payments.products, product.customerType, pendingChanges.newCatalogs]);
 
-  // Add-on dialog state
+  // Add-on dialog state (temporary state for the dialog, applied on dialog save)
   const [isAddOn, setIsAddOn] = useState(() => product.isAddOnTo !== false && typeof product.isAddOnTo === 'object');
   const [selectedAddOnProducts, setSelectedAddOnProducts] = useState<Set<string>>(() => {
     if (product.isAddOnTo === false || typeof product.isAddOnTo !== 'object') return new Set();
     return new Set(Object.keys(product.isAddOnTo));
   });
 
-  // Free trial state
-  const [freeTrialCount, setFreeTrialCount] = useState(7);
-  const [freeTrialUnit, setFreeTrialUnit] = useState<DayInterval[1]>('day');
+  // Free trial popover state
+  const [freeTrialCount, setFreeTrialCount] = useState(() => localFreeTrial ? localFreeTrial[0] : 7);
+  const [freeTrialUnit, setFreeTrialUnit] = useState<DayInterval[1]>(() => localFreeTrial ? localFreeTrial[1] : 'day');
 
-  // Get add-on parent products
-  const addOnParents = useMemo(() => {
-    if (product.isAddOnTo === false || typeof product.isAddOnTo !== 'object') return [];
-    return Object.keys(product.isAddOnTo).map((parentId: string) => ({
+  // Computed: add-on parent products from local state
+  const localAddOnParents = useMemo(() => {
+    if (!localIsAddOnTo) return [];
+    return Object.keys(localIsAddOnTo).map((parentId: string) => ({
       id: parentId,
       displayName: config.payments.products[parentId].displayName || parentId,
     }));
-  }, [product.isAddOnTo, config.payments.products]);
+  }, [localIsAddOnTo, config.payments.products]);
 
   // Get all available products for add-on selection (same customer type and catalog, excluding this product)
   const availableProducts = useMemo(() => {
+    const currentCatalogId = localCatalogId;
     return Object.entries(config.payments.products)
       .filter(([id, p]) =>
         id !== productId &&
         p.customerType === product.customerType &&
-        p.catalogId === product.catalogId
+        p.catalogId === currentCatalogId
       )
       .map(([id, p]) => ({
         id,
         displayName: p.displayName || id,
       }));
-  }, [config.payments.products, productId, product.customerType, product.catalogId]);
+  }, [config.payments.products, productId, product.customerType, localCatalogId]);
 
-  // Get product-level free trial
-  const freeTrialInfo = product.freeTrial || null;
-
-  const freeTrialDisplayText = useMemo(() => {
-    if (!freeTrialInfo) return 'None';
-    const [count, unit] = freeTrialInfo;
+  const localFreeTrialDisplayText = useMemo(() => {
+    if (!localFreeTrial) return 'None';
+    const [count, unit] = localFreeTrial;
     return `${count} ${count === 1 ? unit : unit + 's'}`;
-  }, [freeTrialInfo]);
+  }, [localFreeTrial]);
 
-  // Get product-level server-only status
-  const isServerOnly = !!product.serverOnly;
-
-  // Handlers
-  const handleDisplayNameUpdate = async (value: string) => {
-    await updateConfig({ adminApp, configUpdate: {
-      [`payments.products.${productId}.displayName`]: value || null,
-    }, pushable: true });
-    toast({ title: "Display name updated" });
+  // ===== CHANGE HANDLERS (update local state) =====
+  const handleDisplayNameChange = (value: string) => {
+    const originalValue = product.displayName || '';
+    if (value === originalValue) {
+      // Remove from pending if back to original
+      const { displayName: _, ...rest } = pendingChanges;
+      setPendingChanges(rest);
+    } else {
+      setPendingChanges({ ...pendingChanges, displayName: value || null });
+    }
   };
 
-  const handleCatalogUpdate = async (catalogId: string) => {
+  const handleCatalogChange = (catalogId: string) => {
     const actualCatalogId = catalogId === '__none__' ? null : catalogId;
-    await updateConfig({ adminApp, configUpdate: {
-      [`payments.products.${productId}.catalogId`]: actualCatalogId,
-    }, pushable: true });
-    toast({ title: actualCatalogId ? "Product moved to catalog" : "Product removed from catalog" });
+    const originalValue = product.catalogId || null;
+    if (actualCatalogId === originalValue) {
+      const { catalogId: _, ...rest } = pendingChanges;
+      setPendingChanges(rest);
+    } else {
+      setPendingChanges({ ...pendingChanges, catalogId: actualCatalogId });
+    }
   };
 
-  const handleCreateCatalog = async (catalog: { id: string, displayName: string }) => {
-    // Create the catalog first
-    await updateConfig({ adminApp, configUpdate: {
-      [`payments.catalogs.${catalog.id}`]: { displayName: catalog.displayName || null },
-    }, pushable: true });
-    // Then update the product to use this catalog
-    await updateConfig({ adminApp, configUpdate: {
-      [`payments.products.${productId}.catalogId`]: catalog.id,
-    }, pushable: true });
+  const handleCreateCatalog = (catalog: { id: string, displayName: string }) => {
+    // Add to pending new catalogs and set as current catalog
+    setPendingChanges({
+      ...pendingChanges,
+      newCatalogs: {
+        ...pendingChanges.newCatalogs,
+        [catalog.id]: { displayName: catalog.displayName || undefined },
+      },
+      catalogId: catalog.id,
+    });
     setCreateCatalogDialogOpen(false);
-    toast({ title: "Catalog created and product moved" });
   };
 
-  const handleStackableUpdate = async (value: boolean) => {
-    await updateConfig({ adminApp, configUpdate: {
-      [`payments.products.${productId}.stackable`]: value || null,
-    }, pushable: true });
-    toast({ title: value ? "Product is now stackable" : "Product is no longer stackable" });
+  const handleStackableChange = (value: boolean) => {
+    const originalValue = !!product.stackable;
+    if (value === originalValue) {
+      const { stackable: _, ...rest } = pendingChanges;
+      setPendingChanges(rest);
+    } else {
+      setPendingChanges({ ...pendingChanges, stackable: value || null });
+    }
   };
 
-  const handleServerOnlyUpdate = async (value: boolean) => {
-    await updateConfig({ adminApp, configUpdate: {
-      [`payments.products.${productId}.serverOnly`]: value || null,
-    }, pushable: true });
-    toast({ title: value ? "Product is now server only" : "Product is no longer server only" });
+  const handleServerOnlyChange = (value: boolean) => {
+    const originalValue = !!product.serverOnly;
+    if (value === originalValue) {
+      const { serverOnly: _, ...rest } = pendingChanges;
+      setPendingChanges(rest);
+    } else {
+      setPendingChanges({ ...pendingChanges, serverOnly: value || null });
+    }
   };
 
-  const handleAddOnSave = async () => {
+  const handleAddOnDialogSave = () => {
     if (isAddOn && selectedAddOnProducts.size === 0) {
       toast({ title: "Please select at least one product", variant: "destructive" });
       return;
     }
 
     const addOnValue = isAddOn
-      ? Object.fromEntries([...selectedAddOnProducts].map(id => [id, true]))
+      ? Object.fromEntries([...selectedAddOnProducts].map(id => [id, true])) as Record<string, true>
       : null;
 
-    await updateConfig({ adminApp, configUpdate: {
-      [`payments.products.${productId}.isAddOnTo`]: addOnValue,
-    }, pushable: true });
+    // Check if this matches original
+    const originalValue = product.isAddOnTo !== false && typeof product.isAddOnTo === 'object'
+      ? product.isAddOnTo
+      : null;
+    const originalKeys = originalValue ? Object.keys(originalValue).sort().join(',') : '';
+    const newKeys = addOnValue ? Object.keys(addOnValue).sort().join(',') : '';
+
+    if (originalKeys === newKeys) {
+      const { isAddOnTo: _, ...rest } = pendingChanges;
+      setPendingChanges(rest);
+    } else {
+      setPendingChanges({ ...pendingChanges, isAddOnTo: addOnValue });
+    }
+
     setAddOnDialogOpen(false);
-    toast({ title: isAddOn ? "Add-on configuration updated" : "Product is no longer an add-on" });
   };
 
-  const handleFreeTrialSave = async (count: number, unit: DayInterval[1]) => {
-    await updateConfig({ adminApp, configUpdate: {
-      [`payments.products.${productId}.freeTrial`]: [count, unit] as DayInterval,
-    }, pushable: true });
+  const handleFreeTrialSave = (count: number, unit: DayInterval[1]) => {
+    const newValue: DayInterval = [count, unit];
+    const originalValue = product.freeTrial || null;
+
+    if (originalValue && originalValue[0] === count && originalValue[1] === unit) {
+      const { freeTrial: _, ...rest } = pendingChanges;
+      setPendingChanges(rest);
+    } else {
+      setPendingChanges({ ...pendingChanges, freeTrial: newValue });
+    }
     setFreeTrialPopoverOpen(false);
-    toast({ title: "Free trial updated" });
   };
 
-  const handleRemoveFreeTrial = async () => {
-    await updateConfig({ adminApp, configUpdate: {
-      [`payments.products.${productId}.freeTrial`]: null,
-    }, pushable: true });
+  const handleRemoveFreeTrial = () => {
+    const originalValue = product.freeTrial || null;
+    if (originalValue === null) {
+      const { freeTrial: _, ...rest } = pendingChanges;
+      setPendingChanges(rest);
+    } else {
+      setPendingChanges({ ...pendingChanges, freeTrial: null });
+    }
     setFreeTrialPopoverOpen(false);
-    toast({ title: "Free trial removed" });
+  };
+
+  // ===== PRICES HANDLERS (for deferred save) =====
+  const handlePricesChange = (newPrices: Product['prices']) => {
+    // Deep compare to see if we're back to original
+    const originalPrices = product.prices;
+    if (JSON.stringify(newPrices) === JSON.stringify(originalPrices)) {
+      const { prices: _, ...rest } = pendingChanges;
+      setPendingChanges(rest);
+    } else {
+      setPendingChanges({ ...pendingChanges, prices: newPrices });
+    }
+  };
+
+  // ===== INCLUDED ITEMS HANDLERS (for deferred save) =====
+  const handleIncludedItemsChange = (newItems: Product['includedItems']) => {
+    const originalItems = product.includedItems;
+    if (JSON.stringify(newItems) === JSON.stringify(originalItems)) {
+      const { includedItems: _, ...rest } = pendingChanges;
+      setPendingChanges(rest);
+    } else {
+      setPendingChanges({ ...pendingChanges, includedItems: newItems });
+    }
   };
 
   // Build grid items for EditableGrid
   const gridItems: EditableGridItem[] = [
     {
       type: 'text',
+      itemKey: 'displayName',
       icon: <TagIcon size={16} />,
       name: "Display Name",
       tooltip: "The name shown to customers. Leave empty to use the product ID.",
-      value: product.displayName || '',
+      value: localDisplayName || '',
       placeholder: productId,
-      onUpdate: handleDisplayNameUpdate,
+      onChange: handleDisplayNameChange,
     },
     {
       type: 'dropdown',
+      itemKey: 'catalogId',
       icon: <FolderOpenIcon size={16} />,
       name: "Catalog",
       tooltip: "Catalogs group products together. Customers can only have one active product per catalog.",
-      value: product.catalogId || '__none__',
+      value: localCatalogId || '__none__',
       options: catalogOptions,
-      onUpdate: handleCatalogUpdate,
+      onChange: handleCatalogChange,
       extraAction: {
         label: "+ Create new catalog",
         onClick: () => setCreateCatalogDialogOpen(true),
@@ -433,31 +593,31 @@ function ProductDetailsSection({ productId, product, config }: ProductDetailsSec
     },
     {
       type: 'boolean',
+      itemKey: 'stackable',
       icon: <StackIcon size={16} />,
       name: "Stackable",
       tooltip: "Stackable products can be purchased multiple times by the same customer.",
-      value: !!product.stackable,
-      onUpdate: handleStackableUpdate,
+      value: localStackable,
+      onChange: handleStackableChange,
     },
     {
       type: 'custom-button',
+      itemKey: 'isAddOnTo',
       icon: <PuzzlePieceIcon size={16} />,
       name: "Add-on",
       tooltip: "Add-ons are optional extras that can only be purchased alongside a parent product.",
       onClick: () => {
-        // Reset dialog state when opening
-        setIsAddOn(product.isAddOnTo !== false && typeof product.isAddOnTo === 'object');
+        // Initialize dialog state from local state
+        setIsAddOn(localIsAddOnTo !== null);
         setSelectedAddOnProducts(
-          product.isAddOnTo !== false && typeof product.isAddOnTo === 'object'
-            ? new Set(Object.keys(product.isAddOnTo))
-            : new Set()
+          localIsAddOnTo ? new Set(Object.keys(localIsAddOnTo)) : new Set()
         );
         setAddOnDialogOpen(true);
       },
-      children: addOnParents.length > 0 ? (
+      children: localAddOnParents.length > 0 ? (
         <span>
           To{' '}
-          {addOnParents.map((p, i) => (
+          {localAddOnParents.map((p, i) => (
             <span key={p.id}>
               {i > 0 && ', '}
               {p.displayName}
@@ -468,6 +628,7 @@ function ProductDetailsSection({ productId, product, config }: ProductDetailsSec
     },
     {
       type: 'custom',
+      itemKey: 'freeTrial',
       icon: <ClockIcon size={16} />,
       name: "Free Trial",
       tooltip: "Free trial period before billing starts. Customers won't be charged during this period.",
@@ -482,7 +643,7 @@ function ProductDetailsSection({ productId, product, config }: ProductDetailsSec
                 "transition-colors duration-150 hover:transition-none"
               )}
             >
-              {freeTrialDisplayText}
+              {localFreeTrialDisplayText}
             </button>
           </PopoverTrigger>
           <PopoverContent className="w-64 p-3">
@@ -514,9 +675,9 @@ function ProductDetailsSection({ productId, product, config }: ProductDetailsSec
                   className="flex-1"
                   onClick={() => handleFreeTrialSave(freeTrialCount, freeTrialUnit)}
                 >
-                  Save
+                  Apply
                 </Button>
-                {freeTrialInfo && (
+                {localFreeTrial && (
                   <Button
                     size="sm"
                     variant="outline"
@@ -533,31 +694,58 @@ function ProductDetailsSection({ productId, product, config }: ProductDetailsSec
     },
     {
       type: 'boolean',
+      itemKey: 'serverOnly',
       icon: <HardDriveIcon size={16} />,
       name: "Server Only",
       tooltip: "Server-only products are only available through checkout sessions created by server-side APIs.",
-      value: isServerOnly,
-      onUpdate: handleServerOnlyUpdate,
+      value: localServerOnly,
+      onChange: handleServerOnlyChange,
     },
     {
       type: 'custom',
+      itemKey: 'prices',
       icon: <CurrencyDollarIcon size={16} />,
       name: "Prices",
       tooltip: "Pricing options for this product. Multiple prices allow different billing intervals or pricing tiers.",
-      children: <ProductPricesSection productId={productId} product={product} inline />,
+      children: (
+        <ProductPricesSection
+          productId={productId}
+          prices={localPrices}
+          onPricesChange={handlePricesChange}
+          inline
+        />
+      ),
     },
     {
       type: 'custom',
+      itemKey: 'includedItems',
       icon: <PackageIcon size={16} />,
       name: "Included Items",
       tooltip: "Items that customers receive when they purchase this product.",
-      children: <ProductItemsSection productId={productId} product={product} config={config} inline />,
+      children: (
+        <ProductItemsSection
+          productId={productId}
+          product={product}
+          items={localIncludedItems}
+          onItemsChange={handleIncludedItemsChange}
+          config={config}
+          inline
+        />
+      ),
     },
   ];
 
   return (
     <>
-      <EditableGrid items={gridItems} columns={2} />
+      <EditableGrid
+        items={gridItems}
+        columns={2}
+        deferredSave
+        hasChanges={hasChanges}
+        onSave={handleSave}
+        onDiscard={handleDiscard}
+        externalModifiedKeys={externalModifiedKeys}
+      />
 
       {/* Add-on Configuration Dialog */}
       <Dialog open={addOnDialogOpen} onOpenChange={setAddOnDialogOpen}>
@@ -621,8 +809,8 @@ function ProductDetailsSection({ productId, product, config }: ProductDetailsSec
             <Button variant="outline" onClick={() => setAddOnDialogOpen(false)}>
               Cancel
             </Button>
-            <Button onClick={handleAddOnSave}>
-              Save
+            <Button onClick={handleAddOnDialogSave}>
+              Apply
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -640,20 +828,16 @@ function ProductDetailsSection({ productId, product, config }: ProductDetailsSec
 
 type ProductPricesSectionProps = {
   productId: string,
-  product: Product,
+  prices: Product['prices'],
+  onPricesChange: (newPrices: Product['prices']) => void,
   inline?: boolean,
 };
 
-function ProductPricesSection({ productId, product, inline = false }: ProductPricesSectionProps) {
-  const adminApp = useAdminApp();
-  const project = adminApp.useProject();
-  const updateConfig = useUpdateConfig();
-  const prices = product.prices;
+function ProductPricesSection({ productId, prices, onPricesChange, inline = false }: ProductPricesSectionProps) {
   const [editingPrice, setEditingPrice] = useState<EditingPrice | null>(null);
   const [isAddingPrice, setIsAddingPrice] = useState(false);
-  const [deletingPriceIds, setDeletingPriceIds] = useState<Set<string>>(new Set());
 
-  const handleSavePrice = async (editing: EditingPrice, isNew: boolean) => {
+  const handleSavePrice = (editing: EditingPrice) => {
     const newPrice = editingPriceToPrice(editing);
 
     const currentPrices = prices === 'include-by-default' ? {} : prices;
@@ -662,33 +846,15 @@ function ProductPricesSection({ productId, product, inline = false }: ProductPri
       [editing.priceId]: newPrice,
     };
 
-    await updateConfig({ adminApp, configUpdate: {
-      [`payments.products.${productId}.prices`]: updatedPrices,
-    }, pushable: true });
-
-    toast({ title: isNew ? "Price added" : "Price updated" });
+    onPricesChange(updatedPrices);
     setEditingPrice(null);
     setIsAddingPrice(false);
   };
 
-  const handleDeletePrice = async (priceId: string) => {
-    setDeletingPriceIds(prev => new Set(prev).add(priceId));
-    try {
-      const currentPrices = prices === 'include-by-default' ? {} : prices;
-      const { [priceId]: _, ...remainingPrices } = currentPrices as Record<string, Price>;
-
-      await updateConfig({ adminApp, configUpdate: {
-        [`payments.products.${productId}.prices`]: Object.keys(remainingPrices).length > 0 ? remainingPrices : {},
-      }, pushable: true });
-
-      toast({ title: "Price deleted" });
-    } finally {
-      setDeletingPriceIds(prev => {
-        const next = new Set(prev);
-        next.delete(priceId);
-        return next;
-      });
-    }
+  const handleDeletePrice = (priceId: string) => {
+    const currentPrices = prices === 'include-by-default' ? {} : prices;
+    const { [priceId]: _, ...remainingPrices } = currentPrices as Record<string, Price>;
+    onPricesChange(Object.keys(remainingPrices).length > 0 ? remainingPrices : {});
   };
 
 
@@ -709,30 +875,22 @@ function ProductPricesSection({ productId, product, inline = false }: ProductPri
   const isFree = isIncludeByDefault || isFreeNotIncluded;
   const hasNoPrices = !isIncludeByDefault && priceEntries.length === 0;
 
-  const handleAddPrices = async () => {
+  const handleMakePaid = () => {
     // Convert from include-by-default to empty prices object, then open add dialog
-    await updateConfig({ adminApp, configUpdate: {
-      [`payments.products.${productId}.prices`]: {},
-    }, pushable: true });
+    onPricesChange({});
     openAddDialog();
   };
 
-  const handleSetIncludeByDefault = async () => {
-    await updateConfig({ adminApp, configUpdate: {
-      [`payments.products.${productId}.prices`]: 'include-by-default',
-    }, pushable: true });
-    toast({ title: "Product is now included by default" });
+  const handleSetIncludeByDefault = () => {
+    onPricesChange('include-by-default');
   };
 
-  const handleSetFreeNotIncluded = async () => {
+  const handleSetFreeNotIncluded = () => {
     // Set a $0 price to make it free but not included by default
     const newPriceId = generateUniqueId('price');
-    await updateConfig({ adminApp, configUpdate: {
-      [`payments.products.${productId}.prices`]: {
-        [newPriceId]: { USD: '0', serverOnly: false },
-      },
-    }, pushable: true });
-    toast({ title: "Product is no longer included by default" });
+    onPricesChange({
+      [newPriceId]: { USD: '0', serverOnly: false },
+    });
   };
 
   const listContent = (
@@ -756,12 +914,7 @@ function ProductPricesSection({ productId, product, inline = false }: ProductPri
               variant="ghost"
               size="sm"
               className="w-fit h-6 px-1 text-xs text-muted-foreground hover:text-foreground"
-              onClick={async () => {
-                await updateConfig({ adminApp, configUpdate: {
-                  [`payments.products.${productId}.prices`]: {},
-                }, pushable: true });
-                toast({ title: "Product is no longer free" });
-              }}
+              onClick={handleMakePaid}
             >
               <CurrencyDollarIcon className="h-3 w-3 mr-1" />
               Make paid
@@ -820,9 +973,8 @@ function ProductPricesSection({ productId, product, inline = false }: ProductPri
         <div className="flex flex-col">
           {priceEntries.map(([priceId, price]) => {
             const intervalText = price.interval ? intervalLabel(price.interval) : 'One-time';
-            const isDeleting = deletingPriceIds.has(priceId);
             return (
-              <div key={priceId} className={cn("group flex items-center text-sm leading-6", isDeleting && "opacity-50")}>
+              <div key={priceId} className="group flex items-center text-sm leading-6">
                 <span className="font-semibold text-foreground">${price.USD}</span>
                 <span className="text-muted-foreground ml-1.5">{intervalText}</span>
                 {price.freeTrial && (
@@ -833,14 +985,13 @@ function ProductPricesSection({ productId, product, inline = false }: ProductPri
                 {price.serverOnly && (
                   <Badge variant="outline" className="text-[10px] ml-1.5 h-4 py-0 leading-none">Server only</Badge>
                 )}
-                <div className={cn("flex items-center ml-1", isDeleting ? "opacity-100" : "opacity-0 group-hover:opacity-100")}>
+                <div className="flex items-center ml-1 opacity-0 group-hover:opacity-100">
                   <SimpleTooltip tooltip="Edit">
                     <Button
                       variant="ghost"
                       size="sm"
                       className="h-5 w-5 p-0"
                       onClick={() => openEditDialog(priceId, price)}
-                      disabled={isDeleting}
                     >
                       <PencilSimpleIcon className="h-3 w-3" />
                     </Button>
@@ -851,9 +1002,8 @@ function ProductPricesSection({ productId, product, inline = false }: ProductPri
                       size="sm"
                       className="h-5 w-5 p-0 text-destructive hover:text-destructive"
                       onClick={() => handleDeletePrice(priceId)}
-                      disabled={isDeleting}
                     >
-                      <TrashIcon className={cn("h-3 w-3", isDeleting && "animate-pulse")} />
+                      <TrashIcon className="h-3 w-3" />
                     </Button>
                   </SimpleTooltip>
                 </div>
@@ -923,6 +1073,8 @@ function ProductPricesSection({ productId, product, inline = false }: ProductPri
 type ProductItemsSectionProps = {
   productId: string,
   product: Product,
+  items: Product['includedItems'],
+  onItemsChange: (newItems: Product['includedItems']) => void,
   config: CompleteConfig,
   inline?: boolean,
 };
@@ -935,15 +1087,10 @@ type EditingItem = {
   repeatUnit: DayInterval[1] | undefined,
 };
 
-function ProductItemsSection({ productId, product, config, inline = false }: ProductItemsSectionProps) {
-  const adminApp = useAdminApp();
-  const project = adminApp.useProject();
-  const updateConfig = useUpdateConfig();
-  const items = product.includedItems;
+function ProductItemsSection({ productId, product, items, onItemsChange, config, inline = false }: ProductItemsSectionProps) {
   const [editingItem, setEditingItem] = useState<EditingItem | null>(null);
   const [isAddingItem, setIsAddingItem] = useState(false);
   const [selectedItemId, setSelectedItemId] = useState<string>('');
-  const [deletingItemIds, setDeletingItemIds] = useState<Set<string>>(new Set());
 
   // Get all available items for this customer type
   const availableItems = useMemo(() => {
@@ -952,14 +1099,15 @@ function ProductItemsSection({ productId, product, config, inline = false }: Pro
       .map(([id, item]) => ({ id, displayName: item.displayName || id }));
   }, [config.payments.items, product.customerType]);
 
-  const handleSaveItem = async (editing: EditingItem, isNew: boolean) => {
-    const repeat: DayInterval | 'once' = editing.repeatSelection === 'once'
-      ? 'once'
+  const handleSaveItem = (editing: EditingItem) => {
+    const repeat: DayInterval | 'never' = editing.repeatSelection === 'once'
+      ? 'never'
       : [editing.repeatCount, editing.repeatUnit || 'month'];
 
     const newItem = {
       quantity: editing.quantity,
       repeat,
+      expires: 'never' as const,
     };
 
     const updatedItems = {
@@ -967,33 +1115,15 @@ function ProductItemsSection({ productId, product, config, inline = false }: Pro
       [editing.itemId]: newItem,
     };
 
-    await updateConfig({ adminApp, configUpdate: {
-      [`payments.products.${productId}.includedItems`]: updatedItems,
-    }, pushable: true });
-
-    toast({ title: isNew ? "Item added" : "Item updated" });
-  setEditingItem(null);
-  setIsAddingItem(false);
-  setSelectedItemId('');
+    onItemsChange(updatedItems);
+    setEditingItem(null);
+    setIsAddingItem(false);
+    setSelectedItemId('');
   };
 
-  const handleDeleteItem = async (itemId: string) => {
-    setDeletingItemIds(prev => new Set(prev).add(itemId));
-    try {
-      const { [itemId]: _, ...remainingItems } = items;
-
-      await updateConfig({ adminApp, configUpdate: {
-        [`payments.products.${productId}.includedItems`]: Object.keys(remainingItems).length > 0 ? remainingItems : null,
-      }, pushable: true });
-
-      toast({ title: "Item removed" });
-    } finally {
-      setDeletingItemIds(prev => {
-        const next = new Set(prev);
-        next.delete(itemId);
-        return next;
-      });
-    }
+  const handleDeleteItem = (itemId: string) => {
+    const { [itemId]: _, ...remainingItems } = items;
+    onItemsChange(remainingItems);
   };
 
   const openEditDialog = (itemId: string, item: { quantity: number, repeat: DayInterval | 'once' | 'never' }) => {
@@ -1063,22 +1193,20 @@ function ProductItemsSection({ productId, product, config, inline = false }: Pro
           {itemEntries.map(([itemId, item]) => {
             const itemConfig = config.payments.items[itemId];
             const displayName = itemConfig.displayName || itemId;
-            const isDeleting = deletingItemIds.has(itemId);
             return (
-              <div key={itemId} className={cn("group flex items-center text-sm leading-6", isDeleting && "opacity-50")}>
+              <div key={itemId} className="group flex items-center text-sm leading-6">
                 <span className="font-semibold tabular-nums text-foreground">{prettyPrintWithMagnitudes(item.quantity)}×</span>
                 <SimpleTooltip tooltip={`ID: ${itemId}`}>
                   <span className="ml-1.5 text-foreground cursor-help">{displayName}</span>
                 </SimpleTooltip>
                 <span className="text-muted-foreground ml-1.5">{shortIntervalLabel(item.repeat)}</span>
-                <div className={cn("flex items-center ml-1", isDeleting ? "opacity-100" : "opacity-0 group-hover:opacity-100")}>
+                <div className="flex items-center ml-1 opacity-0 group-hover:opacity-100">
                   <SimpleTooltip tooltip="Copy prompt">
                     <Button
                       variant="ghost"
                       size="sm"
                       className="h-5 w-5 p-0"
                       onClick={() => handleCopyPrompt(itemId, displayName)}
-                      disabled={isDeleting}
                     >
                       <CopyIcon className="h-3 w-3" />
                     </Button>
@@ -1089,7 +1217,6 @@ function ProductItemsSection({ productId, product, config, inline = false }: Pro
                       size="sm"
                       className="h-5 w-5 p-0"
                       onClick={() => openEditDialog(itemId, item)}
-                      disabled={isDeleting}
                     >
                       <PencilSimpleIcon className="h-3 w-3" />
                     </Button>
@@ -1100,9 +1227,8 @@ function ProductItemsSection({ productId, product, config, inline = false }: Pro
                       size="sm"
                       className="h-5 w-5 p-0 text-destructive hover:text-destructive"
                       onClick={() => handleDeleteItem(itemId)}
-                      disabled={isDeleting}
                     >
-                      <TrashIcon className={cn("h-3 w-3", isDeleting && "animate-pulse")} />
+                      <TrashIcon className="h-3 w-3" />
                     </Button>
                   </SimpleTooltip>
                 </div>
@@ -1261,8 +1387,8 @@ function ProductItemsSection({ productId, product, config, inline = false }: Pro
           }}>
             Cancel
           </Button>
-          <Button onClick={editingItem ? () => handleSaveItem(editingItem, isAddingItem) : undefined}>
-            {isAddingItem ? "Add Item" : "Save Changes"}
+          <Button onClick={editingItem ? () => handleSaveItem(editingItem) : undefined}>
+            {isAddingItem ? "Add Item" : "Apply"}
           </Button>
         </DialogFooter>
       </DialogContent>

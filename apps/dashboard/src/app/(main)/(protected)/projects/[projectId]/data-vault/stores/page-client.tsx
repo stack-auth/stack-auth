@@ -46,8 +46,8 @@ export default function PageClient() {
       await updateConfig({
         adminApp: stackAdminApp,
         configUpdate: {
-          [`dataVault.stores.${newStoreId}`]: {
-            displayName: newStoreDisplayName.trim() || `Store ${newStoreId}`,
+        [`dataVault.stores.${newStoreId}`]: {
+          displayName: newStoreDisplayName.trim() || `Store ${newStoreId}`,
           },
         },
         pushable: true,

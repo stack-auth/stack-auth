@@ -1,11 +1,14 @@
 "use client";
 
+import { InlineSaveDiscard } from "@/components/inline-save-discard";
 import { SettingCard, SettingSelect, SettingSwitch } from "@/components/settings";
 import { ActionDialog, Badge, BrandIcons, BrowserFrame, Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, Input, SelectItem, SimpleTooltip, Typography } from "@/components/ui";
+import { useUpdateConfig } from "@/lib/config-update";
 import { AsteriskIcon, DotsThreeIcon, KeyIcon, LinkIcon, PlusCircleIcon } from "@phosphor-icons/react";
 import { AdminOAuthProviderConfig, AuthPage, OAuthProviderConfig } from "@stackframe/stack";
+import type { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
 import { allProviders } from "@stackframe/stack-shared/dist/utils/oauth";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { CardSubtitle } from "../../../../../../../../../packages/stack-ui/dist/components/ui/card";
 import { AppEnabledGuard } from "../app-enabled-guard";
 import { PageLayout } from "../page-layout";
@@ -17,10 +20,8 @@ type OAuthAccountMergeStrategy = 'link_method' | 'raise_error' | 'allow_duplicat
 function ConfirmSignUpEnabledDialog(props: {
   open?: boolean,
   onOpenChange?: (open: boolean) => void,
+  onConfirm: () => Promise<void>,
 }) {
-  const stackAdminApp = useAdminApp();
-  const project = stackAdminApp.useProject();
-
   return (
     <ActionDialog
       open={props.open}
@@ -29,13 +30,7 @@ function ConfirmSignUpEnabledDialog(props: {
       danger
       okButton={{
         label: "Enable Sign-up",
-        onClick: async () => {
-          await project.update({
-            config: {
-              signUpEnabled: true,
-            },
-          });
-        }
+        onClick: props.onConfirm,
       }}
       cancelButton
     >
@@ -49,10 +44,8 @@ function ConfirmSignUpEnabledDialog(props: {
 function ConfirmSignUpDisabledDialog(props: {
   open?: boolean,
   onOpenChange?: (open: boolean) => void,
+  onConfirm: () => Promise<void>,
 }) {
-  const stackAdminApp = useAdminApp();
-  const project = stackAdminApp.useProject();
-
   return (
     <ActionDialog
       open={props.open}
@@ -61,13 +54,7 @@ function ConfirmSignUpDisabledDialog(props: {
       danger
       okButton={{
         label: "Disable Sign-up",
-        onClick: async () => {
-          await project.update({
-            config: {
-              signUpEnabled: false,
-            },
-          });
-        }
+        onClick: props.onConfirm,
       }}
       cancelButton
     >
@@ -78,10 +65,24 @@ function ConfirmSignUpDisabledDialog(props: {
   );
 }
 
+function adminProviderToConfigProvider(provider: AdminOAuthProviderConfig): CompleteConfig['auth']['oauth']['providers'][string] {
+  return {
+    type: provider.id,
+    isShared: provider.type === "shared",
+    clientId: provider.clientId ?? "",
+    clientSecret: provider.clientSecret ?? "",
+    facebookConfigId: provider.facebookConfigId,
+    microsoftTenantId: provider.microsoftTenantId,
+    allowSignIn: true,
+    allowConnectedAccounts: true,
+  };
+}
+
 function DisabledProvidersDialog({ open, onOpenChange }: { open?: boolean, onOpenChange?: (open: boolean) => void }) {
   const stackAdminApp = useAdminApp();
   const project = stackAdminApp.useProject();
   const oauthProviders = project.config.oauthProviders;
+  const updateConfig = useUpdateConfig();
   const [providerSearch, setProviderSearch] = useState("");
   const filteredProviders = allProviders
     .filter((id) => id.toLowerCase().includes(providerSearch.toLowerCase()))
@@ -110,19 +111,22 @@ function DisabledProvidersDialog({ open, onOpenChange }: { open?: boolean, onOpe
             id={id}
             provider={provider}
             updateProvider={async (provider) => {
-              const alreadyExist = oauthProviders.some((p) => p.id === id);
-              const newOAuthProviders = oauthProviders.map((p) => p.id === id ? provider : p);
-              if (!alreadyExist) {
-                newOAuthProviders.push(provider);
-              }
-              await project.update({
-                config: { oauthProviders: newOAuthProviders },
+              await updateConfig({
+                adminApp: stackAdminApp,
+                configUpdate: {
+                  [`auth.oauth.providers.${provider.id}`]: adminProviderToConfigProvider(provider),
+                },
+                // OAuth client ID/secret are environment-level (not pushable)
+                pushable: false,
               });
             }}
             deleteProvider={async (id) => {
-              const newOAuthProviders = oauthProviders.filter((p) => p.id !== id);
-              await project.update({
-                config: { oauthProviders: newOAuthProviders },
+              await updateConfig({
+                adminApp: stackAdminApp,
+                configUpdate: {
+                  [`auth.oauth.providers.${id}`]: null,
+                },
+                pushable: false,
               });
             }}
           />;
@@ -136,26 +140,28 @@ function DisabledProvidersDialog({ open, onOpenChange }: { open?: boolean, onOpe
 
 function OAuthActionCell({ config }: { config: AdminOAuthProviderConfig }) {
   const stackAdminApp = useAdminApp();
-  const project = stackAdminApp.useProject();
-  const oauthProviders = project.config.oauthProviders;
+  const updateConfig = useUpdateConfig();
   const [turnOffProviderDialogOpen, setTurnOffProviderDialogOpen] = useState(false);
   const [providerSettingDialogOpen, setProviderSettingDialogOpen] = useState(false);
 
-
   const updateProvider = async (provider: AdminOAuthProviderConfig & OAuthProviderConfig) => {
-    const alreadyExist = oauthProviders.some((p) => p.id === config.id);
-    const newOAuthProviders = oauthProviders.map((p) => p.id === config.id ? provider : p);
-    if (!alreadyExist) {
-      newOAuthProviders.push(provider);
-    }
-    await project.update({
-      config: { oauthProviders: newOAuthProviders },
+    await updateConfig({
+      adminApp: stackAdminApp,
+      configUpdate: {
+        [`auth.oauth.providers.${provider.id}`]: adminProviderToConfigProvider(provider),
+      },
+      // OAuth client ID/secret are environment-level (not pushable)
+      pushable: false,
     });
   };
+
   const deleteProvider = async (id: string) => {
-    const newOAuthProviders = oauthProviders.filter((p) => p.id !== id);
-    await project.update({
-      config: { oauthProviders: newOAuthProviders },
+    await updateConfig({
+      adminApp: stackAdminApp,
+      configUpdate: {
+        [`auth.oauth.providers.${id}`]: null,
+      },
+      pushable: false,
     });
   };
 
@@ -204,10 +210,137 @@ const SHARED_TOOLTIP = "Shared keys are automatically created by Stack, but show
 export default function PageClient() {
   const stackAdminApp = useAdminApp();
   const project = stackAdminApp.useProject();
+  const config = project.useConfig();
   const oauthProviders = project.config.oauthProviders;
+  const updateConfig = useUpdateConfig();
   const [confirmSignUpEnabled, setConfirmSignUpEnabled] = useState(false);
   const [confirmSignUpDisabled, setConfirmSignUpDisabled] = useState(false);
   const [disabledProvidersDialogOpen, setDisabledProvidersDialogOpen] = useState(false);
+
+  // ===== LOCAL STATE FOR AUTH METHODS =====
+  const [localPasswordEnabled, setLocalPasswordEnabled] = useState<boolean | undefined>(undefined);
+  const [localOtpEnabled, setLocalOtpEnabled] = useState<boolean | undefined>(undefined);
+  const [localPasskeyEnabled, setLocalPasskeyEnabled] = useState<boolean | undefined>(undefined);
+
+  // Computed values (local or config)
+  const passwordEnabled = localPasswordEnabled ?? config.auth.password.allowSignIn;
+  const otpEnabled = localOtpEnabled ?? config.auth.otp.allowSignIn;
+  const passkeyEnabled = localPasskeyEnabled ?? config.auth.passkey.allowSignIn;
+
+  // Check if auth methods have unsaved changes
+  const authMethodsHasChanges = useMemo(() =>
+    localPasswordEnabled !== undefined ||
+    localOtpEnabled !== undefined ||
+    localPasskeyEnabled !== undefined,
+  [localPasswordEnabled, localOtpEnabled, localPasskeyEnabled]);
+
+  const handleAuthMethodsSave = async () => {
+    const configUpdate: Record<string, boolean> = {};
+    if (localPasswordEnabled !== undefined) {
+      configUpdate['auth.password.allowSignIn'] = localPasswordEnabled;
+    }
+    if (localOtpEnabled !== undefined) {
+      configUpdate['auth.otp.allowSignIn'] = localOtpEnabled;
+    }
+    if (localPasskeyEnabled !== undefined) {
+      configUpdate['auth.passkey.allowSignIn'] = localPasskeyEnabled;
+    }
+    await updateConfig({
+      adminApp: stackAdminApp,
+      configUpdate,
+      pushable: true,
+    });
+    // Clear local state
+    setLocalPasswordEnabled(undefined);
+    setLocalOtpEnabled(undefined);
+    setLocalPasskeyEnabled(undefined);
+  };
+
+  const handleAuthMethodsDiscard = () => {
+    setLocalPasswordEnabled(undefined);
+    setLocalOtpEnabled(undefined);
+    setLocalPasskeyEnabled(undefined);
+  };
+
+  // ===== LOCAL STATE FOR SIGN-UP SETTINGS =====
+  const [localAllowSignUp, setLocalAllowSignUp] = useState<boolean | undefined>(undefined);
+  const [localMergeStrategy, setLocalMergeStrategy] = useState<OAuthAccountMergeStrategy | undefined>(undefined);
+
+  const allowSignUp = localAllowSignUp ?? config.auth.allowSignUp;
+  const mergeStrategy = localMergeStrategy ?? config.auth.oauth.accountMergeStrategy;
+
+  const signUpHasChanges = useMemo(() =>
+    localAllowSignUp !== undefined || localMergeStrategy !== undefined,
+  [localAllowSignUp, localMergeStrategy]);
+
+  const handleSignUpSave = async () => {
+    // If allowSignUp is being changed, show confirmation dialog
+    if (localAllowSignUp !== undefined && localAllowSignUp !== config.auth.allowSignUp) {
+      if (localAllowSignUp) {
+        setConfirmSignUpEnabled(true);
+      } else {
+        setConfirmSignUpDisabled(true);
+      }
+      return; // Dialog will handle the actual save
+    }
+
+    // Otherwise just save merge strategy
+    if (localMergeStrategy !== undefined) {
+      await updateConfig({
+        adminApp: stackAdminApp,
+        configUpdate: {
+          'auth.oauth.accountMergeStrategy': localMergeStrategy,
+        },
+        pushable: true,
+      });
+    }
+    setLocalAllowSignUp(undefined);
+    setLocalMergeStrategy(undefined);
+  };
+
+  const handleSignUpDiscard = () => {
+    setLocalAllowSignUp(undefined);
+    setLocalMergeStrategy(undefined);
+  };
+
+  // Called after confirmation dialog confirms the change
+  const handleSignUpConfirmed = async (newAllowSignUp: boolean) => {
+    const configUpdate: Record<string, any> = {
+      'auth.allowSignUp': newAllowSignUp,
+    };
+    if (localMergeStrategy !== undefined) {
+      configUpdate['auth.oauth.accountMergeStrategy'] = localMergeStrategy;
+    }
+    await updateConfig({
+      adminApp: stackAdminApp,
+      configUpdate,
+      pushable: true,
+    });
+    setLocalAllowSignUp(undefined);
+    setLocalMergeStrategy(undefined);
+  };
+
+  // ===== LOCAL STATE FOR USER DELETION =====
+  const [localAllowClientDeletion, setLocalAllowClientDeletion] = useState<boolean | undefined>(undefined);
+  const allowClientDeletion = localAllowClientDeletion ?? config.users.allowClientUserDeletion;
+  const userDeletionHasChanges = localAllowClientDeletion !== undefined;
+
+  const handleUserDeletionSave = async () => {
+    if (localAllowClientDeletion !== undefined) {
+      await updateConfig({
+        adminApp: stackAdminApp,
+        configUpdate: {
+          'users.allowClientUserDeletion': localAllowClientDeletion,
+        },
+        pushable: true,
+      });
+    }
+    setLocalAllowClientDeletion(undefined);
+  };
+
+  const handleUserDeletionDiscard = () => {
+    setLocalAllowClientDeletion(undefined);
+  };
 
   const enabledProviders = allProviders
     .map((id) => [id, oauthProviders.find((provider) => provider.id === id)] as const)
@@ -225,13 +358,13 @@ export default function PageClient() {
                   <span>Email/password authentication</span>
                 </div>
               }
-              checked={project.config.credentialEnabled}
-              onCheckedChange={async (checked) => {
-                await project.update({
-                  config: {
-                    credentialEnabled: checked,
-                  },
-                });
+              checked={passwordEnabled}
+              onCheckedChange={(checked) => {
+                if (checked === config.auth.password.allowSignIn) {
+                  setLocalPasswordEnabled(undefined);
+                } else {
+                  setLocalPasswordEnabled(checked);
+                }
               }}
             />
             <SettingSwitch
@@ -241,13 +374,13 @@ export default function PageClient() {
                   <span>Magic link (Email OTP)</span>
                 </div>
               }
-              checked={project.config.magicLinkEnabled}
-              onCheckedChange={async (checked) => {
-                await project.update({
-                  config: {
-                    magicLinkEnabled: checked,
-                  },
-                });
+              checked={otpEnabled}
+              onCheckedChange={(checked) => {
+                if (checked === config.auth.otp.allowSignIn) {
+                  setLocalOtpEnabled(undefined);
+                } else {
+                  setLocalOtpEnabled(checked);
+                }
               }}
             />
             <SettingSwitch
@@ -257,14 +390,19 @@ export default function PageClient() {
                   <span>Passkey</span>
                 </div>
               }
-              checked={project.config.passkeyEnabled}
-              onCheckedChange={async (checked) => {
-                await project.update({
-                  config: {
-                    passkeyEnabled: checked,
-                  },
-                });
+              checked={passkeyEnabled}
+              onCheckedChange={(checked) => {
+                if (checked === config.auth.passkey.allowSignIn) {
+                  setLocalPasskeyEnabled(undefined);
+                } else {
+                  setLocalPasskeyEnabled(checked);
+                }
               }}
+            />
+            <InlineSaveDiscard
+              hasChanges={authMethodsHasChanges}
+              onSave={handleAuthMethodsSave}
+              onDiscard={handleAuthMethodsDiscard}
             />
             <CardSubtitle className="mt-2">
               SSO Providers
@@ -331,25 +469,26 @@ export default function PageClient() {
         <SettingCard title="Sign-up">
           <SettingSwitch
             label="Allow new user sign-ups"
-            checked={project.config.signUpEnabled}
-            onCheckedChange={async (checked) => {
-              if (checked) {
-              setConfirmSignUpEnabled(true);
+            checked={allowSignUp}
+            onCheckedChange={(checked) => {
+              if (checked === config.auth.allowSignUp) {
+                setLocalAllowSignUp(undefined);
               } else {
-              setConfirmSignUpDisabled(true);
+                setLocalAllowSignUp(checked);
               }
             }}
             hint="Existing users can still sign in when sign-up is disabled. You can always create new accounts manually via the dashboard."
           />
           <SettingSelect
             label="Sign-up mode when logging in with same email on multiple providers"
-            value={project.config.oauthAccountMergeStrategy}
-            onValueChange={async (value) => {
-              await project.update({
-                config: {
-                  oauthAccountMergeStrategy: value as OAuthAccountMergeStrategy,
-                },
-              });
+            value={mergeStrategy}
+            onValueChange={(value) => {
+              const newValue = value as OAuthAccountMergeStrategy;
+              if (newValue === config.auth.oauth.accountMergeStrategy) {
+                setLocalMergeStrategy(undefined);
+              } else {
+                setLocalMergeStrategy(newValue);
+              }
             }}
             hint="Determines what happens when a user tries to sign in with a different OAuth provider using the same email address"
           >
@@ -357,32 +496,48 @@ export default function PageClient() {
             <SelectItem value="allow_duplicates">Allow - Create separate accounts for each provider</SelectItem>
             <SelectItem value="raise_error">Block - Show an error and prevent sign-in with multiple providers</SelectItem>
           </SettingSelect>
+          <InlineSaveDiscard
+            hasChanges={signUpHasChanges}
+            onSave={handleSignUpSave}
+            onDiscard={handleSignUpDiscard}
+          />
         </SettingCard>
 
         <SettingCard title="User deletion">
           <SettingSwitch
             label="Allow users to delete their own accounts on the client-side"
-            checked={project.config.clientUserDeletionEnabled}
-            onCheckedChange={async (checked) => {
-              await project.update({
-                config: {
-                  clientUserDeletionEnabled: checked,
-                },
-              });
+            checked={allowClientDeletion}
+            onCheckedChange={(checked) => {
+              if (checked === config.users.allowClientUserDeletion) {
+                setLocalAllowClientDeletion(undefined);
+              } else {
+                setLocalAllowClientDeletion(checked);
+              }
             }}
           />
           <Typography variant="secondary" type="footnote">
             A delete button will also be added to the account settings page.
           </Typography>
+          <InlineSaveDiscard
+            hasChanges={userDeletionHasChanges}
+            onSave={handleUserDeletionSave}
+            onDiscard={handleUserDeletionDiscard}
+          />
         </SettingCard>
 
         <ConfirmSignUpEnabledDialog
           open={confirmSignUpEnabled}
           onOpenChange={setConfirmSignUpEnabled}
+          onConfirm={async () => {
+            await handleSignUpConfirmed(true);
+          }}
         />
         <ConfirmSignUpDisabledDialog
           open={confirmSignUpDisabled}
           onOpenChange={setConfirmSignUpDisabled}
+          onConfirm={async () => {
+            await handleSignUpConfirmed(false);
+          }}
         />
       </PageLayout>
     </AppEnabledGuard>
