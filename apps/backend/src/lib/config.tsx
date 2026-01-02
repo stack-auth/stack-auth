@@ -122,6 +122,7 @@ export function getProjectConfigOverrideQuery(options: ProjectOptions): RawQuery
   // (currently it's just empty)
   return {
     supportedPrismaClients: ["global"],
+    readOnlyQuery: true,
     sql: Prisma.sql`
       SELECT "Project"."projectConfigOverride"
       FROM "Project"
@@ -141,6 +142,7 @@ export function getBranchConfigOverrideQuery(options: BranchOptions): RawQuery<P
   // (currently it's just empty)
   return {
     supportedPrismaClients: ["global"],
+    readOnlyQuery: true,
     sql: Prisma.sql`SELECT 1`,
     postProcess: async () => {
       if (options.branchId !== DEFAULT_BRANCH_ID) {
@@ -155,6 +157,7 @@ export function getEnvironmentConfigOverrideQuery(options: EnvironmentOptions): 
   // fetch environment config from DB (either our own, or the source of truth one)
   return {
     supportedPrismaClients: ["global"],
+    readOnlyQuery: true,
     sql: Prisma.sql`
       SELECT "EnvironmentConfigOverride".*
       FROM "EnvironmentConfigOverride"
@@ -178,6 +181,7 @@ export function getOrganizationConfigOverrideQuery(options: OrganizationOptions)
 
   return {
     supportedPrismaClients: ["global"],
+    readOnlyQuery: true,
     sql: Prisma.sql`SELECT 1`,
     postProcess: async () => {
       return migrateConfigOverride("organization", {});

@@ -41,6 +41,7 @@ export async function listManagedProjectIds(projectUser: UsersCrud["Admin"]["Rea
 export function getProjectQuery(projectId: string): RawQuery<Promise<Omit<ProjectsCrud["Admin"]["Read"], "config"> | null>> {
   return {
     supportedPrismaClients: ["global"],
+    readOnlyQuery: true,
     sql: Prisma.sql`
           SELECT "Project".*
           FROM "Project"

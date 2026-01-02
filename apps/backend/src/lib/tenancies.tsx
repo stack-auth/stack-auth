@@ -95,6 +95,7 @@ function getTenancyFromProjectQuery(projectId: string, branchId: string, organiz
     RawQuery.all([
       {
         supportedPrismaClients: ["global"],
+        readOnlyQuery: true,
         sql: organizationId === null
           ? Prisma.sql`
               SELECT "Tenancy".*

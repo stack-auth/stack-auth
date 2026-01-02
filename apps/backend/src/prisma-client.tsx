@@ -303,6 +303,7 @@ export type RawQuery<T> = {
   supportedPrismaClients: readonly (typeof allSupportedPrismaClients)[number][],
   sql: Prisma.Sql,
   postProcess: (rows: any[]) => T,  // Tip: If your postProcess is async, just set T = Promise<any> (compared to doing Promise.all in rawQuery, this ensures that there are no accidental timing attacks)
+  readOnlyQuery: boolean,  // If true, use the read replica if available
 };
 
 export const RawQuery = {
@@ -314,6 +315,7 @@ export const RawQuery = {
         const result = query.postProcess(rows);
         return fn(result);
       },
+      readOnlyQuery: query.readOnlyQuery,
     };
   },
   all: <T extends readonly any[]>(queries: { [K in keyof T]: RawQuery<T[K]> }): RawQuery<T> => {
@@ -324,8 +326,12 @@ export const RawQuery = {
       throw new StackAssertionError("The queries must have at least one overlapping supported Prisma client");
     }
 
+    // Only mark combined query as read-only if all individual queries are read-only
+    const readOnlyQuery = queries.every(q => q.readOnlyQuery);
+
     return {
       supportedPrismaClients,
+      readOnlyQuery,
       sql: Prisma.sql`
         WITH ${Prisma.join(queries.map((q, index) => {
         return Prisma.sql`${Prisma.raw("q" + index)} AS (
@@ -369,6 +375,7 @@ export const RawQuery = {
       postProcess: (rows) => {
         return obj;
       },
+      readOnlyQuery: true,  // resolve is just a static value, doesn't actually write
     };
   },
 };
@@ -385,10 +392,12 @@ export async function rawQueryAll<Q extends Record<string, undefined | RawQuery<
 }
 
 async function rawQueryArray<Q extends RawQuery<any>[]>(tx: PrismaClientTransaction, queries: Q): Promise<[] & { [K in keyof Q]: Awaited<ReturnType<Q[K]["postProcess"]>> }> {
+  const allReadOnly = queries.length > 0 && queries.every(q => q.readOnlyQuery);
   return await traceSpan({
     description: `raw SQL quer${queries.length === 1 ? "y" : `ies (${queries.length} total)`}`,
     attributes: {
       "stack.raw-queries.length": queries.length,
+      "stack.raw-queries.read-only": allReadOnly,
       ...Object.fromEntries(queries.flatMap((q, index) => [
         [`stack.raw-queries.${index}.text`, q.sql.text],
         [`stack.raw-queries.${index}.params`, JSON.stringify(q.sql.values)],
@@ -407,7 +416,11 @@ async function rawQueryArray<Q extends RawQuery<any>[]>(tx: PrismaClientTransact
     // Since ours starts with "WITH", we prepend a SELECT to it
     const sqlQuery = Prisma.sql`SELECT * FROM (${combinedQuery.sql}) AS _`;
 
-    const rawResult = await tx.$queryRaw(sqlQuery);
+    // Use the read replica if all queries are read-only and a replica is available
+    const queryClient = allReadOnly && '$replica' in tx
+      ? (tx as any).$replica()
+      : tx;
+    const rawResult = await queryClient.$queryRaw(sqlQuery);
 
     const postProcessed = combinedQuery.postProcess(rawResult as any);
     // If the postProcess is async, postProcessed is a Promise. If that Promise is rejected, it will cause an unhandled promise rejection.
