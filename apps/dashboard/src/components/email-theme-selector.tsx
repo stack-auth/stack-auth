@@ -1,5 +1,5 @@
 import { useAdminApp } from "@/app/(main)/(protected)/projects/[projectId]/use-admin-app";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@stackframe/stack-ui";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui";
 
 type EmailThemeSelectorProps = {
   selectedThemeId: string | undefined | false,

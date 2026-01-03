@@ -2,7 +2,7 @@ import { AdminUserProjectsCrud } from "@stackframe/stack-shared/dist/interface/c
 import { encodeBase64 } from "@stackframe/stack-shared/dist/utils/bytes";
 import { generateSecureRandomString } from "@stackframe/stack-shared/dist/utils/crypto";
 import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
-import { filterUndefined } from "@stackframe/stack-shared/dist/utils/objects";
+import { filterUndefined, omit } from "@stackframe/stack-shared/dist/utils/objects";
 import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { nicify } from "@stackframe/stack-shared/dist/utils/strings";
 import * as jose from "jose";
@@ -401,9 +401,9 @@ export namespace Auth {
         if (containsSubstring) {
           break;
         }
-        await wait(100 + i * 10);
+        await wait(100 + i * 20);
         if (i >= 30) {
-          throw new StackAssertionError(`Sign-in code message not found after ${i} attempts`, { messages });
+          throw new StackAssertionError(`Sign-in code message not found after ${i} attempts`, { response, messages: messages.map(m => ({ ...m, body: m.body && omit(m.body, ["html"]) })) });
         }
       }
       return {
@@ -1218,7 +1218,7 @@ export namespace Project {
       method: "PATCH",
       body: { config_override_string: JSON.stringify(config) },
     });
-    expect(response.body).toMatchInlineSnapshot(`{}`);
+    expect(response.body).toMatchInlineSnapshot(`{ "success": true }`);
     expect(response.status).toBe(200);
   }
 }
@@ -1315,7 +1315,7 @@ export namespace Team {
 
   export async function acceptInvitation() {
     const mailbox = backendContext.value.mailbox;
-    const messages = await mailbox.fetchMessages();
+    const messages = await mailbox.waitForMessagesWithSubject("join");
     const message = messages.findLast((message) => message.subject.includes("join")) ?? throwErr("Team invitation message not found");
     const code = message.body?.text.match(/http:\/\/localhost:12345\/some-callback-url\?code=([a-zA-Z0-9]+)/)?.[1] ?? throwErr("Team invitation code not found");
     const response = await niceBackendFetch("/api/v1/team-invitations/accept", {
@@ -1355,7 +1355,12 @@ export namespace User {
       accessType: "server",
       body: body ?? {},
     });
-    expect(createUserResponse.status).toBe(201);
+    expect(createUserResponse).toMatchObject({
+      status: 201,
+      body: {
+        id: expect.any(String),
+      },
+    });
     return {
       userId: createUserResponse.body.id,
     };

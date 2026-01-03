@@ -21,7 +21,6 @@ import { _StackServerAppImplIncomplete } from "./server-app-impl";
 
 import { CompleteConfig, EnvironmentConfigOverrideOverride } from "@stackframe/stack-shared/dist/config/schema";
 import { ChatContent } from "@stackframe/stack-shared/dist/interface/admin-interface";
-import { ConfigCrud } from "@stackframe/stack-shared/dist/interface/crud/config";
 import { useAsyncCache } from "./common"; // THIS_LINE_PLATFORM react-like
 
 export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, ProjectId extends string> extends _StackServerAppImplIncomplete<HasTokenStore, ProjectId> implements StackAdminApp<HasTokenStore, ProjectId> {
@@ -99,7 +98,7 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
     });
   }
 
-  _adminConfigFromCrud(data: ConfigCrud['Admin']['Read']): CompleteConfig {
+  _adminConfigFromCrud(data: { config_string: string }): CompleteConfig {
     return JSON.parse(data.config_string);
   }
 

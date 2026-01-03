@@ -1,3 +1,4 @@
+import { EmailOutbox, EmailOutboxSkippedReason, Prisma } from "@/generated/prisma/client";
 import { calculateCapacityRate, getEmailDeliveryStatsForTenancy } from "@/lib/email-delivery-stats";
 import { getEmailThemeForThemeId, renderEmailsForTenancyBatched } from "@/lib/email-rendering";
 import { EmailOutboxRecipient, getEmailConfig, } from "@/lib/emails";
@@ -6,9 +7,8 @@ import { getTenancy, Tenancy } from "@/lib/tenancies";
 import { getPrismaClientForTenancy, globalPrismaClient, PrismaClientTransaction } from "@/prisma-client";
 import { withTraceSpan } from "@/utils/telemetry";
 import { allPromisesAndWaitUntilEach } from "@/utils/vercel";
-import { EmailOutbox, EmailOutboxSkippedReason, Prisma } from "@prisma/client";
 import { groupBy } from "@stackframe/stack-shared/dist/utils/arrays";
-import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
+import { getEnvBoolean, getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { captureError, errorToNiceString, StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { Json } from "@stackframe/stack-shared/dist/utils/json";
 import { filterUndefined } from "@stackframe/stack-shared/dist/utils/objects";
@@ -235,7 +235,7 @@ async function updateLastExecutionTime(): Promise<number> {
         -- Concurrent insert race: another worker just inserted, skip this run
         WHEN NOT EXISTS (SELECT 1 FROM result) THEN 0.0
         -- First run (inserted new row), use reasonable default delta
-        WHEN (SELECT previous_timestamp FROM result) IS NULL THEN 60.0
+        WHEN (SELECT previous_timestamp FROM result) IS NULL THEN 20.0
         -- Normal update case: compute actual delta
         ELSE EXTRACT(EPOCH FROM 
           (SELECT new_timestamp FROM result) - 
@@ -246,7 +246,12 @@ async function updateLastExecutionTime(): Promise<number> {
 
   if (delta < 0) {
     // TODO: why does this happen, actually? investigate.
+    console.warn("Email queue step delta is negative. Not sure why it happened. Ignoring the delta. TODO investigate", { delta });
     return 0;
+  }
+
+  if (delta > 30) {
+    captureError("email-queue-step-delta-too-large", new StackAssertionError(`Email queue step delta is too large: ${delta}. Either the previous step took too long, or something is wrong.`));
   }
 
   return delta;
@@ -314,7 +319,7 @@ async function renderTenancyEmails(workerId: string, tenancyId: string, group: E
         project: { displayName: tenancy.project.display_name },
         variables: filterUndefined({
           projectDisplayName: tenancy.project.display_name,
-          userDisplayName,
+          userDisplayName: userDisplayName ?? "",
           ...filterUndefined((row.extraRenderVariables ?? {}) as Record<string, Json>),
         }),
         themeProps: {
@@ -604,14 +609,16 @@ async function processSingleEmail(context: TenancyProcessingContext, row: EmailO
       }
     }
 
-    const result = await lowLevelSendEmailDirectViaProvider({
-      tenancyId: context.tenancy.id,
-      emailConfig: context.emailConfig,
-      to: resolution.emails,
-      subject: row.renderedSubject ?? "",
-      html: row.renderedHtml ?? undefined,
-      text: row.renderedText ?? undefined,
-    });
+    const result = getEnvBoolean("STACK_EMAIL_BRANCHING_DISABLE_QUEUE_SENDING")
+      ? Result.error({ errorType: "email-sending-disabled", canRetry: false, message: "Email sending is disabled", rawError: new Error("Email sending is disabled") })
+      : await lowLevelSendEmailDirectViaProvider({
+        tenancyId: context.tenancy.id,
+        emailConfig: context.emailConfig,
+        to: resolution.emails,
+        subject: row.renderedSubject ?? "",
+        html: row.renderedHtml ?? undefined,
+        text: row.renderedText ?? undefined,
+      });
 
     if (result.status === "error") {
       await globalPrismaClient.emailOutbox.update({
