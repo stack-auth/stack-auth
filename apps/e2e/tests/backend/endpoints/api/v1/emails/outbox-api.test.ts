@@ -140,13 +140,13 @@ describe("email outbox API", () => {
       // Wait for email to be processed
       await wait(3000);
 
-      // Filter by SENT status
-      const sentResponse = await niceBackendFetch("/api/v1/emails/outbox?status=SENT", {
+      // Filter by sent status
+      const sentResponse = await niceBackendFetch("/api/v1/emails/outbox?status=sent", {
         method: "GET",
         accessType: "server",
       });
       expect(sentResponse.status).toBe(200);
-      expect(sentResponse.body.items.every((e: any) => e.status === "SENT")).toBe(true);
+      expect(sentResponse.body.items.every((e: any) => e.status === "sent")).toBe(true);
     });
 
     it("should filter by simple_status", async ({ expect }) => {
@@ -184,13 +184,13 @@ describe("email outbox API", () => {
       // Wait for email to be processed
       await wait(3000);
 
-      // Filter by OK simple_status
-      const okResponse = await niceBackendFetch("/api/v1/emails/outbox?simple_status=OK", {
+      // Filter by ok simple_status
+      const okResponse = await niceBackendFetch("/api/v1/emails/outbox?simple_status=ok", {
         method: "GET",
         accessType: "server",
       });
       expect(okResponse.status).toBe(200);
-      expect(okResponse.body.items.every((e: any) => e.simple_status === "OK")).toBe(true);
+      expect(okResponse.body.items.every((e: any) => e.simple_status === "ok")).toBe(true);
     });
 
     it("should return empty list for project with no emails", async ({ expect }) => {
@@ -258,8 +258,8 @@ describe("email outbox API", () => {
       });
       expect(getResponse.status).toBe(200);
       expect(getResponse.body.id).toBe(emailId);
-      expect(getResponse.body.status).toBe("SENT");
-      expect(getResponse.body.simple_status).toBe("OK");
+      expect(getResponse.body.status).toBe("sent");
+      expect(getResponse.body.simple_status).toBe("ok");
     });
 
     it("should return 404 for non-existent email", async ({ expect }) => {
@@ -335,7 +335,7 @@ describe("email outbox API", () => {
   });
 
   describe("edit endpoint - state restrictions", () => {
-    it("should return EMAIL_NOT_EDITABLE for SENT email", async ({ expect }) => {
+    it("should return EMAIL_NOT_EDITABLE for sent email", async ({ expect }) => {
       await Project.createAndSwitch({
         display_name: "Test Not Editable SENT Project",
         config: {
@@ -387,7 +387,7 @@ describe("email outbox API", () => {
       expect(editResponse.body.code).toBe("EMAIL_NOT_EDITABLE");
     });
 
-    it("should return EMAIL_NOT_EDITABLE for already SKIPPED email", async ({ expect }) => {
+    it("should return EMAIL_NOT_EDITABLE for already skipped email", async ({ expect }) => {
       await Project.createAndSwitch({
         display_name: "Test Not Editable SKIPPED Project",
         config: {
@@ -425,7 +425,7 @@ describe("email outbox API", () => {
       const email = emails[0];
 
       // Verify it's skipped
-      expect(email.status).toBe("SKIPPED");
+      expect(email.status).toBe("skipped");
 
       // Try to edit
       const editResponse = await niceBackendFetch(`/api/v1/emails/outbox/${email.id}`, {
@@ -441,7 +441,7 @@ describe("email outbox API", () => {
   });
 
   describe("status discriminated union validation", () => {
-    it("should return correct fields for SENT status with no delivery info", async ({ expect }) => {
+    it("should return correct fields for sent status with no delivery info", async ({ expect }) => {
       await Project.createAndSwitch({
         display_name: "Test SENT Status Project",
         config: {
@@ -479,8 +479,8 @@ describe("email outbox API", () => {
       const email = emails[0];
 
       // Check discriminated union fields
-      expect(email.status).toBe("SENT");
-      expect(email.simple_status).toBe("OK");
+      expect(email.status).toBe("sent");
+      expect(email.simple_status).toBe("ok");
       expect(email.is_paused).toBe(false);
       expect(email.can_have_delivery_info).toBe(false);
       expect(typeof email.started_rendering_at_millis).toBe("number");
@@ -491,7 +491,7 @@ describe("email outbox API", () => {
       expect(email.is_transactional).toBe(true);
     });
 
-    it("should return correct fields for SKIPPED status", async ({ expect }) => {
+    it("should return correct fields for skipped status", async ({ expect }) => {
       await Project.createAndSwitch({
         display_name: "Test SKIPPED Status Project",
         config: {
@@ -525,8 +525,8 @@ describe("email outbox API", () => {
       expect(emails.length).toBeGreaterThanOrEqual(1);
       const email = emails[0];
 
-      expect(email.status).toBe("SKIPPED");
-      expect(email.simple_status).toBe("OK");
+      expect(email.status).toBe("skipped");
+      expect(email.simple_status).toBe("ok");
       expect(email.is_paused).toBe(false);
       expect(email.skipped_reason).toBe("USER_HAS_NO_PRIMARY_EMAIL");
       expect(email.skipped_details).toEqual({});
@@ -627,7 +627,7 @@ describe("email outbox API", () => {
       });
       const emails = listResponse.body.items.filter((e: any) => e.subject === "Schedule Edit Test" || e.to?.user_id === userId);
 
-      if (emails.length > 0 && emails[0].status !== "SENT") {
+      if (emails.length > 0 && emails[0].status !== "sent") {
         // Pause it before it sends
         const pauseResponse = await niceBackendFetch(`/api/v1/emails/outbox/${emails[0].id}`, {
           method: "PATCH",
@@ -693,7 +693,7 @@ describe("email outbox API", () => {
       });
       const emails = listResponse.body.items.filter((e: any) => e.to?.user_id === userId);
 
-      if (emails.length > 0 && ["PREPARING", "SCHEDULED", "QUEUED"].includes(emails[0].status)) {
+      if (emails.length > 0 && ["preparing", "scheduled", "queued"].includes(emails[0].status)) {
         const pauseResponse = await niceBackendFetch(`/api/v1/emails/outbox/${emails[0].id}`, {
           method: "PATCH",
           accessType: "server",
@@ -702,7 +702,7 @@ describe("email outbox API", () => {
           },
         });
         expect(pauseResponse.status).toBe(200);
-        expect(pauseResponse.body.status).toBe("PAUSED");
+        expect(pauseResponse.body.status).toBe("paused");
         expect(pauseResponse.body.is_paused).toBe(true);
 
         // Unpause it
@@ -811,13 +811,13 @@ describe("email outbox API", () => {
         method: "GET",
         accessType: "server",
       });
-      const preparingEmails = listResponse.body.items.filter((e: any) => e.status === "PREPARING");
+      const preparingEmails = listResponse.body.items.filter((e: any) => e.status === "preparing");
 
-      // If we caught one in PREPARING state, verify its fields
+      // If we caught one in preparing state, verify its fields
       if (preparingEmails.length > 0) {
         const email = preparingEmails[0];
         expect(email.is_paused).toBe(false);
-        expect(email.simple_status).toBe("IN_PROGRESS");
+        expect(email.simple_status).toBe("in-progress");
         // Should NOT have rendered fields
         expect(email.started_rendering_at_millis).toBeUndefined();
         expect(email.rendered_at_millis).toBeUndefined();
@@ -928,19 +928,19 @@ describe("email outbox API", () => {
 
       await wait(3000);
 
-      // Verify we have both SENT and SKIPPED emails
+      // Verify we have both sent and skipped emails
       const sentEmails = await getOutboxEmails({ subject: "Multi Status Test Sent" });
       expect(sentEmails.length).toBeGreaterThanOrEqual(1);
-      expect(sentEmails[0].status).toBe("SENT");
+      expect(sentEmails[0].status).toBe("sent");
 
       const skippedEmails = await getOutboxEmails({ subject: "Multi Status Test Skipped" });
       expect(skippedEmails.length).toBeGreaterThanOrEqual(1);
-      expect(skippedEmails[0].status).toBe("SKIPPED");
+      expect(skippedEmails[0].status).toBe("skipped");
     });
   });
 
   describe("status inline snapshots", () => {
-    it("should return correct snapshot for SENT status with can_have_delivery_info=false", async ({ expect }) => {
+    it("should return correct snapshot for sent status with can_have_delivery_info=false", async ({ expect }) => {
       await Project.createAndSwitch({
         display_name: "Test SENT Snapshot Project",
         config: {
@@ -977,8 +977,8 @@ describe("email outbox API", () => {
       const email = emails[0];
 
       // Verify the structure matches the expected discriminated union
-      expect(email.status).toBe("SENT");
-      expect(email.simple_status).toBe("OK");
+      expect(email.status).toBe("sent");
+      expect(email.simple_status).toBe("ok");
       expect(email.is_paused).toBe(false);
       expect(email.can_have_delivery_info).toBe(false);
       expect(typeof email.started_rendering_at_millis).toBe("number");
@@ -991,7 +991,7 @@ describe("email outbox API", () => {
       expect(email.clicked_at_millis).toBeUndefined();
     });
 
-    it("should return correct snapshot for SKIPPED status with USER_HAS_NO_PRIMARY_EMAIL", async ({ expect }) => {
+    it("should return correct snapshot for skipped status with USER_HAS_NO_PRIMARY_EMAIL", async ({ expect }) => {
       await Project.createAndSwitch({
         display_name: "Test SKIPPED Snapshot Project",
         config: {
@@ -1025,13 +1025,13 @@ describe("email outbox API", () => {
       expect(emails.length).toBeGreaterThanOrEqual(1);
       const email = emails[0];
 
-      // Verify the structure matches the expected discriminated union for SKIPPED
-      expect(email.status).toBe("SKIPPED");
-      expect(email.simple_status).toBe("OK");
+      // Verify the structure matches the expected discriminated union for skipped
+      expect(email.status).toBe("skipped");
+      expect(email.simple_status).toBe("ok");
       expect(email.is_paused).toBe(false);
       expect(email.skipped_reason).toBe("USER_HAS_NO_PRIMARY_EMAIL");
       expect(email.skipped_details).toEqual({});
-      // SKIPPED with USER_HAS_NO_PRIMARY_EMAIL happens during the sending phase
+      // skipped with USER_HAS_NO_PRIMARY_EMAIL happens during the sending phase
       // (after the email is picked up for processing), so started_sending_at_millis should be present
       expect(typeof email.started_sending_at_millis).toBe("number");
     });

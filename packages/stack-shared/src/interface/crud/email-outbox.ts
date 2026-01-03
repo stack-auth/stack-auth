@@ -75,50 +75,50 @@ const finishedDeliveringFieldsSchema = startedSendingFieldsSchema.concat(fieldSc
 // =============================== STATUS-SPECIFIC SCHEMAS ===============================
 
 const pausedStatusSchema = emailOutboxBaseSchema.concat(fieldSchema.yupObject({
-  status: fieldSchema.yupString().oneOf(["PAUSED"]).defined(),
-  simple_status: fieldSchema.yupString().oneOf(["IN_PROGRESS"]).defined(),
+  status: fieldSchema.yupString().oneOf(["paused"]).defined(),
+  simple_status: fieldSchema.yupString().oneOf(["in-progress"]).defined(),
   is_paused: fieldSchema.yupBoolean().oneOf([true]).defined(),
 }).defined());
 
 const preparingStatusSchema = emailOutboxBaseSchema.concat(fieldSchema.yupObject({
-  status: fieldSchema.yupString().oneOf(["PREPARING"]).defined(),
-  simple_status: fieldSchema.yupString().oneOf(["IN_PROGRESS"]).defined(),
+  status: fieldSchema.yupString().oneOf(["preparing"]).defined(),
+  simple_status: fieldSchema.yupString().oneOf(["in-progress"]).defined(),
 }).defined());
 
 const renderingStatusSchema = emailOutboxBaseSchema.concat(fieldSchema.yupObject({
-  status: fieldSchema.yupString().oneOf(["RENDERING"]).defined(),
-  simple_status: fieldSchema.yupString().oneOf(["IN_PROGRESS"]).defined(),
+  status: fieldSchema.yupString().oneOf(["rendering"]).defined(),
+  simple_status: fieldSchema.yupString().oneOf(["in-progress"]).defined(),
   started_rendering_at_millis: fieldSchema.yupNumber().defined(),
 }).defined());
 
 const renderErrorStatusSchema = emailOutboxBaseSchema.concat(fieldSchema.yupObject({
-  status: fieldSchema.yupString().oneOf(["RENDER_ERROR"]).defined(),
-  simple_status: fieldSchema.yupString().oneOf(["ERROR"]).defined(),
+  status: fieldSchema.yupString().oneOf(["render-error"]).defined(),
+  simple_status: fieldSchema.yupString().oneOf(["error"]).defined(),
   started_rendering_at_millis: fieldSchema.yupNumber().defined(),
   rendered_at_millis: fieldSchema.yupNumber().defined(),
   render_error: fieldSchema.yupString().defined(),
 }).defined());
 
 const scheduledStatusSchema = renderedFieldsSchema.concat(fieldSchema.yupObject({
-  status: fieldSchema.yupString().oneOf(["SCHEDULED"]).defined(),
-  simple_status: fieldSchema.yupString().oneOf(["IN_PROGRESS"]).defined(),
+  status: fieldSchema.yupString().oneOf(["scheduled"]).defined(),
+  simple_status: fieldSchema.yupString().oneOf(["in-progress"]).defined(),
   has_rendered: fieldSchema.yupBoolean().oneOf([true]).defined(),
 }).defined());
 
 const queuedStatusSchema = renderedFieldsSchema.concat(fieldSchema.yupObject({
-  status: fieldSchema.yupString().oneOf(["QUEUED"]).defined(),
-  simple_status: fieldSchema.yupString().oneOf(["IN_PROGRESS"]).defined(),
+  status: fieldSchema.yupString().oneOf(["queued"]).defined(),
+  simple_status: fieldSchema.yupString().oneOf(["in-progress"]).defined(),
   has_rendered: fieldSchema.yupBoolean().oneOf([true]).defined(),
 }).defined());
 
 const sendingStatusSchema = startedSendingFieldsSchema.concat(fieldSchema.yupObject({
-  status: fieldSchema.yupString().oneOf(["SENDING"]).defined(),
-  simple_status: fieldSchema.yupString().oneOf(["IN_PROGRESS"]).defined(),
+  status: fieldSchema.yupString().oneOf(["sending"]).defined(),
+  simple_status: fieldSchema.yupString().oneOf(["in-progress"]).defined(),
 }).defined());
 
 const serverErrorStatusSchema = startedSendingFieldsSchema.concat(fieldSchema.yupObject({
-  status: fieldSchema.yupString().oneOf(["SERVER_ERROR"]).defined(),
-  simple_status: fieldSchema.yupString().oneOf(["ERROR"]).defined(),
+  status: fieldSchema.yupString().oneOf(["server-error"]).defined(),
+  simple_status: fieldSchema.yupString().oneOf(["error"]).defined(),
   error_at_millis: fieldSchema.yupNumber().defined(),
   server_error: fieldSchema.yupString().defined(),
 }).defined());
@@ -127,8 +127,8 @@ const serverErrorStatusSchema = startedSendingFieldsSchema.concat(fieldSchema.yu
 // An email can be skipped before rendering (has_rendered: false) or after rendering (has_rendered: true)
 // e.g., user deleted after the email was rendered but before it was sent
 const skippedStatusSchema = emailOutboxBaseSchema.concat(fieldSchema.yupObject({
-  status: fieldSchema.yupString().oneOf(["SKIPPED"]).defined(),
-  simple_status: fieldSchema.yupString().oneOf(["OK"]).defined(),
+  status: fieldSchema.yupString().oneOf(["skipped"]).defined(),
+  simple_status: fieldSchema.yupString().oneOf(["ok"]).defined(),
   skipped_at_millis: fieldSchema.yupNumber().defined(),
   skipped_reason: fieldSchema.yupString().defined(),
   skipped_details: fieldSchema.yupRecord(fieldSchema.yupString(), fieldSchema.jsonSchema).defined(),
@@ -147,40 +147,40 @@ const skippedStatusSchema = emailOutboxBaseSchema.concat(fieldSchema.yupObject({
 }).defined());
 
 const bouncedStatusSchema = startedSendingFieldsSchema.concat(fieldSchema.yupObject({
-  status: fieldSchema.yupString().oneOf(["BOUNCED"]).defined(),
-  simple_status: fieldSchema.yupString().oneOf(["ERROR"]).defined(),
+  status: fieldSchema.yupString().oneOf(["bounced"]).defined(),
+  simple_status: fieldSchema.yupString().oneOf(["error"]).defined(),
   bounced_at_millis: fieldSchema.yupNumber().defined(),
 }).defined());
 
 const deliveryDelayedStatusSchema = startedSendingFieldsSchema.concat(fieldSchema.yupObject({
-  status: fieldSchema.yupString().oneOf(["DELIVERY_DELAYED"]).defined(),
-  simple_status: fieldSchema.yupString().oneOf(["OK"]).defined(),
+  status: fieldSchema.yupString().oneOf(["delivery-delayed"]).defined(),
+  simple_status: fieldSchema.yupString().oneOf(["ok"]).defined(),
   delivery_delayed_at_millis: fieldSchema.yupNumber().defined(),
 }).defined());
 
 const sentStatusSchema = finishedDeliveringFieldsSchema.concat(fieldSchema.yupObject({
-  status: fieldSchema.yupString().oneOf(["SENT"]).defined(),
-  simple_status: fieldSchema.yupString().oneOf(["OK"]).defined(),
+  status: fieldSchema.yupString().oneOf(["sent"]).defined(),
+  simple_status: fieldSchema.yupString().oneOf(["ok"]).defined(),
   has_delivered: fieldSchema.yupBoolean().oneOf([true]).defined(),
   // Whether this email's provider supports delivery tracking (opens, clicks, etc.)
   can_have_delivery_info: fieldSchema.yupBoolean().defined(),
 }).defined());
 
 const openedStatusSchema = finishedDeliveringFieldsSchema.concat(fieldSchema.yupObject({
-  status: fieldSchema.yupString().oneOf(["OPENED"]).defined(),
-  simple_status: fieldSchema.yupString().oneOf(["OK"]).defined(),
+  status: fieldSchema.yupString().oneOf(["opened"]).defined(),
+  simple_status: fieldSchema.yupString().oneOf(["ok"]).defined(),
   opened_at_millis: fieldSchema.yupNumber().defined(),
 }).defined());
 
 const clickedStatusSchema = finishedDeliveringFieldsSchema.concat(fieldSchema.yupObject({
-  status: fieldSchema.yupString().oneOf(["CLICKED"]).defined(),
-  simple_status: fieldSchema.yupString().oneOf(["OK"]).defined(),
+  status: fieldSchema.yupString().oneOf(["clicked"]).defined(),
+  simple_status: fieldSchema.yupString().oneOf(["ok"]).defined(),
   clicked_at_millis: fieldSchema.yupNumber().defined(),
 }).defined());
 
 const markedAsSpamStatusSchema = finishedDeliveringFieldsSchema.concat(fieldSchema.yupObject({
-  status: fieldSchema.yupString().oneOf(["MARKED_AS_SPAM"]).defined(),
-  simple_status: fieldSchema.yupString().oneOf(["OK"]).defined(),
+  status: fieldSchema.yupString().oneOf(["marked-as-spam"]).defined(),
+  simple_status: fieldSchema.yupString().oneOf(["ok"]).defined(),
   marked_as_spam_at_millis: fieldSchema.yupNumber().defined(),
 }).defined());
 

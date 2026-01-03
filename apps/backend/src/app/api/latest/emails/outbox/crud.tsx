@@ -72,31 +72,31 @@ function prismaModelToCrud(prismaModel: EmailOutbox): EmailOutboxCrud["Server"][
     case "PAUSED": {
       return {
         ...base,
-        status: "PAUSED",
-        simple_status: "IN_PROGRESS",
+        status: "paused",
+        simple_status: "in-progress",
         is_paused: true,
       } as any;
     }
     case "PREPARING": {
       return {
         ...base,
-        status: "PREPARING",
-        simple_status: "IN_PROGRESS",
+        status: "preparing",
+        simple_status: "in-progress",
       } as any;
     }
     case "RENDERING": {
       return {
         ...base,
-        status: "RENDERING",
-        simple_status: "IN_PROGRESS",
+        status: "rendering",
+        simple_status: "in-progress",
         started_rendering_at_millis: prismaModel.startedRenderingAt!.getTime(),
       } as any;
     }
     case "RENDER_ERROR": {
       return {
         ...base,
-        status: "RENDER_ERROR",
-        simple_status: "ERROR",
+        status: "render-error",
+        simple_status: "error",
         started_rendering_at_millis: prismaModel.startedRenderingAt!.getTime(),
         rendered_at_millis: prismaModel.finishedRenderingAt!.getTime(),
         render_error: prismaModel.renderErrorExternalMessage ?? "Unknown render error",
@@ -106,24 +106,24 @@ function prismaModelToCrud(prismaModel: EmailOutbox): EmailOutboxCrud["Server"][
       return {
         ...base,
         ...rendered,
-        status: "SCHEDULED",
-        simple_status: "IN_PROGRESS",
+        status: "scheduled",
+        simple_status: "in-progress",
       } as any;
     }
     case "QUEUED": {
       return {
         ...base,
         ...rendered,
-        status: "QUEUED",
-        simple_status: "IN_PROGRESS",
+        status: "queued",
+        simple_status: "in-progress",
       } as any;
     }
     case "SENDING": {
       return {
         ...base,
         ...rendered,
-        status: "SENDING",
-        simple_status: "IN_PROGRESS",
+        status: "sending",
+        simple_status: "in-progress",
         started_sending_at_millis: prismaModel.startedSendingAt!.getTime(),
       } as any;
     }
@@ -131,8 +131,8 @@ function prismaModelToCrud(prismaModel: EmailOutbox): EmailOutboxCrud["Server"][
       return {
         ...base,
         ...rendered,
-        status: "SERVER_ERROR",
-        simple_status: "ERROR",
+        status: "server-error",
+        simple_status: "error",
         started_sending_at_millis: prismaModel.startedSendingAt!.getTime(),
         error_at_millis: prismaModel.finishedSendingAt!.getTime(),
         server_error: prismaModel.sendServerErrorExternalMessage ?? "Unknown send error",
@@ -146,8 +146,8 @@ function prismaModelToCrud(prismaModel: EmailOutbox): EmailOutboxCrud["Server"][
         ...(rendered ? rendered : {}),
         // Override has_rendered based on whether we actually have rendered content
         has_rendered: !!rendered,
-        status: "SKIPPED",
-        simple_status: "OK",
+        status: "skipped",
+        simple_status: "ok",
         skipped_at_millis: prismaModel.updatedAt.getTime(),
         skipped_reason: prismaModel.skippedReason ?? "UNKNOWN",
         skipped_details: (prismaModel.skippedDetails ?? {}) as Record<string, any>,
@@ -162,8 +162,8 @@ function prismaModelToCrud(prismaModel: EmailOutbox): EmailOutboxCrud["Server"][
       return {
         ...base,
         ...rendered,
-        status: "BOUNCED",
-        simple_status: "ERROR",
+        status: "bounced",
+        simple_status: "error",
         started_sending_at_millis: prismaModel.startedSendingAt!.getTime(),
         bounced_at_millis: prismaModel.bouncedAt!.getTime(),
       } as any;
@@ -172,8 +172,8 @@ function prismaModelToCrud(prismaModel: EmailOutbox): EmailOutboxCrud["Server"][
       return {
         ...base,
         ...rendered,
-        status: "DELIVERY_DELAYED",
-        simple_status: "OK",
+        status: "delivery-delayed",
+        simple_status: "ok",
         started_sending_at_millis: prismaModel.startedSendingAt!.getTime(),
         delivery_delayed_at_millis: prismaModel.deliveryDelayedAt!.getTime(),
       } as any;
@@ -182,8 +182,8 @@ function prismaModelToCrud(prismaModel: EmailOutbox): EmailOutboxCrud["Server"][
       return {
         ...base,
         ...rendered,
-        status: "SENT",
-        simple_status: "OK",
+        status: "sent",
+        simple_status: "ok",
         started_sending_at_millis: prismaModel.startedSendingAt!.getTime(),
         delivered_at_millis: prismaModel.canHaveDeliveryInfo ? prismaModel.deliveredAt!.getTime() : prismaModel.finishedSendingAt!.getTime(),
         has_delivered: true,
@@ -194,8 +194,8 @@ function prismaModelToCrud(prismaModel: EmailOutbox): EmailOutboxCrud["Server"][
       return {
         ...base,
         ...rendered,
-        status: "OPENED",
-        simple_status: "OK",
+        status: "opened",
+        simple_status: "ok",
         started_sending_at_millis: prismaModel.startedSendingAt!.getTime(),
         delivered_at_millis: prismaModel.deliveredAt!.getTime(),
         opened_at_millis: prismaModel.openedAt!.getTime(),
@@ -206,8 +206,8 @@ function prismaModelToCrud(prismaModel: EmailOutbox): EmailOutboxCrud["Server"][
       return {
         ...base,
         ...rendered,
-        status: "CLICKED",
-        simple_status: "OK",
+        status: "clicked",
+        simple_status: "ok",
         started_sending_at_millis: prismaModel.startedSendingAt!.getTime(),
         delivered_at_millis: prismaModel.deliveredAt!.getTime(),
         clicked_at_millis: prismaModel.clickedAt!.getTime(),
@@ -218,8 +218,8 @@ function prismaModelToCrud(prismaModel: EmailOutbox): EmailOutboxCrud["Server"][
       return {
         ...base,
         ...rendered,
-        status: "MARKED_AS_SPAM",
-        simple_status: "OK",
+        status: "marked-as-spam",
+        simple_status: "ok",
         started_sending_at_millis: prismaModel.startedSendingAt!.getTime(),
         delivered_at_millis: prismaModel.deliveredAt!.getTime(),
         marked_as_spam_at_millis: prismaModel.markedAsSpamAt!.getTime(),
@@ -263,11 +263,12 @@ export const emailOutboxCrudHandlers = createLazyProxy(() => createCrudHandlers(
       tenancyId: auth.tenancy.id,
     };
 
+    // Convert API format (lowercase-with-dashes) to database format (UPPERCASE_WITH_UNDERSCORES)
     if (query.status) {
-      where.status = query.status as any;
+      where.status = query.status.toUpperCase().replace(/-/g, "_") as any;
     }
     if (query.simple_status) {
-      where.simpleStatus = query.simple_status as any;
+      where.simpleStatus = query.simple_status.toUpperCase().replace(/-/g, "_") as any;
     }
 
     const emails = await globalPrismaClient.emailOutbox.findMany({

@@ -120,7 +120,7 @@ describe("email queue edge cases", () => {
     // Verify outbox shows SKIPPED with USER_ACCOUNT_DELETED
     const outboxEmails = await getOutboxEmails({ subject: "Slow Render Test Email" });
     expect(outboxEmails.length).toBe(1);
-    expect(outboxEmails[0].status).toBe("SKIPPED");
+    expect(outboxEmails[0].status).toBe("skipped");
     expect(outboxEmails[0].skipped_reason).toBe("USER_ACCOUNT_DELETED");
   });
 
@@ -191,7 +191,7 @@ describe("email queue edge cases", () => {
     // Verify outbox shows SKIPPED with USER_HAS_NO_PRIMARY_EMAIL
     const outboxEmails = await getOutboxEmails({ subject: "Slow Render Test Email" });
     expect(outboxEmails.length).toBe(1);
-    expect(outboxEmails[0].status).toBe("SKIPPED");
+    expect(outboxEmails[0].status).toBe("skipped");
     expect(outboxEmails[0].skipped_reason).toBe("USER_HAS_NO_PRIMARY_EMAIL");
   });
 
@@ -259,7 +259,7 @@ describe("email queue edge cases", () => {
     // Verify outbox shows SKIPPED with USER_UNSUBSCRIBED
     const outboxEmails = await getOutboxEmails({ subject: "Slow Render Test Email" });
     expect(outboxEmails.length).toBe(1);
-    expect(outboxEmails[0].status).toBe("SKIPPED");
+    expect(outboxEmails[0].status).toBe("skipped");
     expect(outboxEmails[0].skipped_reason).toBe("USER_UNSUBSCRIBED");
   });
 
@@ -302,10 +302,10 @@ describe("email queue edge cases", () => {
     const messages = await backendContext.value.mailbox.waitForMessagesWithSubject("Transactional Not Skipped Test");
     expect(messages.length).toBeGreaterThanOrEqual(1);
 
-    // Verify outbox shows SENT (not skipped despite user being unsubscribed from marketing)
+    // Verify outbox shows sent (not skipped despite user being unsubscribed from marketing)
     const outboxEmails = await getOutboxEmails({ subject: "Transactional Not Skipped Test" });
     expect(outboxEmails.length).toBe(1);
-    expect(outboxEmails[0].status).toBe("SENT");
+    expect(outboxEmails[0].status).toBe("sent");
     expect(outboxEmails[0].is_transactional).toBe(true);
   });
 
@@ -344,10 +344,10 @@ describe("email queue edge cases", () => {
     const testEmails = messages.filter(m => m.subject === "No Email Provided Test");
     expect(testEmails).toHaveLength(0);
 
-    // Verify outbox shows SKIPPED with USER_HAS_NO_PRIMARY_EMAIL
+    // Verify outbox shows skipped with USER_HAS_NO_PRIMARY_EMAIL
     const outboxEmails = await getOutboxEmails({ subject: "No Email Provided Test" });
     expect(outboxEmails.length).toBe(1);
-    expect(outboxEmails[0].status).toBe("SKIPPED");
+    expect(outboxEmails[0].status).toBe("skipped");
     expect(outboxEmails[0].skipped_reason).toBe("USER_HAS_NO_PRIMARY_EMAIL");
   });
 
@@ -428,8 +428,8 @@ describe("send email to all users", () => {
     const messages2 = await mailbox2.waitForMessagesWithSubject("All Users Test");
     expect(messages2.length).toBeGreaterThanOrEqual(1);
 
-    // Verify outbox shows both emails as SENT
-    const outboxResponse = await niceBackendFetch("/api/v1/emails/outbox?status=SENT", {
+    // Verify outbox shows both emails as sent
+    const outboxResponse = await niceBackendFetch("/api/v1/emails/outbox?status=sent", {
       method: "GET",
       accessType: "server",
     });
@@ -451,11 +451,11 @@ describe("send email to all users", () => {
           "notification_category_id": "<stripped UUID>",
           "rendered_at_millis": <stripped field 'rendered_at_millis'>,
           "scheduled_at_millis": <stripped field 'scheduled_at_millis'>,
-          "simple_status": "OK",
+          "simple_status": "ok",
           "skip_deliverability_check": false,
           "started_rendering_at_millis": <stripped field 'started_rendering_at_millis'>,
           "started_sending_at_millis": <stripped field 'started_sending_at_millis'>,
-          "status": "SENT",
+          "status": "sent",
           "subject": "All Users Test",
           "text": "All users test",
           "theme_id": "<stripped UUID>",
@@ -488,11 +488,11 @@ describe("send email to all users", () => {
           "notification_category_id": "<stripped UUID>",
           "rendered_at_millis": <stripped field 'rendered_at_millis'>,
           "scheduled_at_millis": <stripped field 'scheduled_at_millis'>,
-          "simple_status": "OK",
+          "simple_status": "ok",
           "skip_deliverability_check": false,
           "started_rendering_at_millis": <stripped field 'started_rendering_at_millis'>,
           "started_sending_at_millis": <stripped field 'started_sending_at_millis'>,
-          "status": "SENT",
+          "status": "sent",
           "subject": "All Users Test",
           "text": "All users test",
           "theme_id": "<stripped UUID>",
@@ -1375,10 +1375,10 @@ describe("theme and template deletion after scheduling", () => {
     const messages = await mailbox.waitForMessagesWithSubject("Theme Fallback Test Email");
     expect(messages.length).toBeGreaterThanOrEqual(1);
 
-    // Verify outbox shows SENT
+    // Verify outbox shows sent
     outboxEmails = await getOutboxEmails({ subject: "Theme Fallback Test Email" });
     expect(outboxEmails.length).toBe(1);
-    expect(outboxEmails[0].status).toBe("SENT");
+    expect(outboxEmails[0].status).toBe("sent");
 
     // The email should have been rendered with the default theme
     // This documents the expected behavior - even if theme_id points to a deleted theme,
@@ -1431,7 +1431,7 @@ describe("theme and template deletion after scheduling", () => {
     // Get the outbox entry before it's processed
     // We'll try to update the theme_id to a non-existent UUID
     const outboxEmailsBefore = await getOutboxEmails({ subject: "Theme Fallback Test Email" });
-    if (outboxEmailsBefore.length > 0 && outboxEmailsBefore[0].status !== "SENT") {
+    if (outboxEmailsBefore.length > 0 && outboxEmailsBefore[0].status !== "sent") {
       const outboxId = outboxEmailsBefore[0].id;
 
       // Try to update the theme_id to a non-existent UUID
@@ -1460,10 +1460,10 @@ describe("theme and template deletion after scheduling", () => {
     const messages = await mailbox.waitForMessagesWithSubject("Theme Fallback Test Email");
     expect(messages.length).toBeGreaterThanOrEqual(1);
 
-    // Verify outbox shows SENT
+    // Verify outbox shows sent
     const outboxEmails = await getOutboxEmails({ subject: "Theme Fallback Test Email" });
     expect(outboxEmails.length).toBe(1);
-    expect(outboxEmails[0].status).toBe("SENT");
+    expect(outboxEmails[0].status).toBe("sent");
 
     // The email should have been sent even though the theme_id was set to a non-existent value.
     // The getEmailThemeForThemeId function falls back to the project's active theme
@@ -1551,10 +1551,10 @@ describe("theme and template deletion after scheduling", () => {
     expect(messages.length).toBeGreaterThanOrEqual(1);
     expect(messages[0].body?.html).toContain("Content from template that will be deleted");
 
-    // Verify outbox shows SENT and contains the template source
+    // Verify outbox shows sent and contains the template source
     const outboxEmails = await getOutboxEmails({ subject: "Template Deletion Test Email" });
     expect(outboxEmails.length).toBe(1);
-    expect(outboxEmails[0].status).toBe("SENT");
+    expect(outboxEmails[0].status).toBe("sent");
     // The outbox stores the template source directly, not a reference to the template
     expect(outboxEmails[0].tsx_source).toContain("Content from template that will be deleted");
   });
@@ -1643,10 +1643,10 @@ describe("theme and template deletion after scheduling", () => {
     // The email should contain the custom theme wrapper
     expect(messages[0].body?.html).toContain("custom-theme-wrapper");
 
-    // Verify outbox shows SENT
+    // Verify outbox shows sent
     const outboxEmails = await getOutboxEmails({ subject: "Custom Theme Baseline Test Email" });
     expect(outboxEmails.length).toBe(1);
-    expect(outboxEmails[0].status).toBe("SENT");
+    expect(outboxEmails[0].status).toBe("sent");
   });
 });
 
