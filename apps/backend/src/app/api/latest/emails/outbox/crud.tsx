@@ -1,6 +1,6 @@
+import { EmailOutbox, EmailOutboxSkippedReason, Prisma } from "@/generated/prisma/client";
 import { globalPrismaClient } from "@/prisma-client";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
-import { EmailOutbox, EmailOutboxSkippedReason, Prisma } from "@prisma/client";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { emailOutboxCrud, EmailOutboxCrud } from "@stackframe/stack-shared/dist/interface/crud/email-outbox";
 import { yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
