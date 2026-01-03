@@ -332,7 +332,7 @@ export default function PageClient() {
         configUpdate: {
           'domains.allowLocalhost': localAllowLocalhost,
         },
-        pushable: true,
+        pushable: false,
       });
     }
     setLocalAllowLocalhost(undefined);

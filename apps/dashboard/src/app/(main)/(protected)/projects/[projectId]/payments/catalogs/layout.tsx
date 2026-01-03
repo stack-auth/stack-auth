@@ -41,7 +41,7 @@ function CatalogsLayoutInner({ children }: { children: React.ReactNode }) {
     await updateConfig({
       adminApp: stackAdminApp,
       configUpdate: { "payments.testMode": false },
-      pushable: true,
+      pushable: false,
     });
   };
 
@@ -49,7 +49,7 @@ function CatalogsLayoutInner({ children }: { children: React.ReactNode }) {
     await updateConfig({
       adminApp: stackAdminApp,
       configUpdate: { "payments.testMode": true },
-      pushable: true,
+      pushable: false,
     });
   };
 

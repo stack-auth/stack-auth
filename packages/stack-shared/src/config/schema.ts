@@ -147,7 +147,6 @@ export const branchPaymentsSchema = yupObject({
   autoPay: yupObject({
     interval: schemaFields.dayIntervalSchema,
   }).optional(),
-  testMode: yupBoolean(),
   catalogs: yupRecord(
     userSpecifiedIdSchema("catalogId"),
     yupObject({
@@ -167,9 +166,7 @@ export const branchPaymentsSchema = yupObject({
   ),
 });
 
-const branchDomain = yupObject({
-  allowLocalhost: yupBoolean(),
-});
+const branchDomain = yupObject({});
 
 
 export const branchConfigSchema = canNoLongerBeOverridden(projectConfigSchema, ["sourceOfTruth"]).concat(yupObject({
@@ -244,6 +241,7 @@ export const environmentConfigSchema = branchConfigSchema.concat(yupObject({
   })),
 
   domains: branchConfigSchema.getNested("domains").concat(yupObject({
+    allowLocalhost: yupBoolean(),
     trustedDomains: yupRecord(
       userSpecifiedIdSchema("trustedDomainId"),
       yupObject({
@@ -251,6 +249,10 @@ export const environmentConfigSchema = branchConfigSchema.concat(yupObject({
         handlerPath: schemaFields.handlerPathSchema.max(300),
       }),
     ),
+  })),
+
+  payments: branchConfigSchema.getNested("payments").concat(yupObject({
+    testMode: yupBoolean(),
   })),
 }));
 
@@ -535,7 +537,7 @@ const organizationConfigDefaults = {
   },
 
   payments: {
-    testMode: true,
+    testMode: false,
     autoPay: undefined,
     catalogs: (key: string) => ({
       displayName: undefined,
