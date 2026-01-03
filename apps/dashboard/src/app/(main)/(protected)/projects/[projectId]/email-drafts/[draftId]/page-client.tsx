@@ -4,13 +4,12 @@ import { TeamMemberSearchTable } from "@/components/data-table/team-member-searc
 import EmailPreview from "@/components/email-preview";
 import { EmailThemeSelector } from "@/components/email-theme-selector";
 import { useRouterConfirm } from "@/components/router";
-import { ActionDialog, Alert, AlertDescription, AlertTitle, Badge, Button, Card, CardContent, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Skeleton, Typography, toast, useToast } from "@/components/ui";
+import { Badge, Button, Card, CardContent, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Skeleton, Typography, toast, useToast } from "@/components/ui";
 import { AssistantChat, CodeEditor, VibeCodeLayout } from "@/components/vibe-coding";
 import { ToolCallContent, createChatAdapter, createHistoryAdapter } from "@/components/vibe-coding/chat-adapters";
 import { EmailDraftUI } from "@/components/vibe-coding/draft-tool-components";
 import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
-import { WarningCircle } from "@phosphor-icons/react";
-import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { AppEnabledGuard } from "../../app-enabled-guard";
 import { useAdminApp } from "../../use-admin-app";
 
@@ -25,9 +24,6 @@ export default function PageClient({ draftId }: { draftId: string }) {
   const [currentCode, setCurrentCode] = useState<string>(draft?.tsxSource ?? "");
   const [stage, setStage] = useState<"edit" | "send">("edit");
   const [selectedThemeId, setSelectedThemeId] = useState<string | undefined | false>(draft?.themeId);
-  const [isCopying, setIsCopying] = useState(false);
-  const [showResetDialog, setShowResetDialog] = useState(false);
-
   const [viewport, setViewport] = useState<'desktop' | 'tablet' | 'phone'>('desktop');
 
   useEffect(() => {
@@ -55,52 +51,6 @@ export default function PageClient({ draftId }: { draftId: string }) {
       toast({ title: "Failed to save draft", variant: "destructive", description: "Unknown error" });
     }
   };
-
-  const handleCopyHtml = useCallback(async () => {
-    try {
-      setIsCopying(true);
-      const html = await stackAdminApp.getEmailPreview({
-        templateTsxSource: currentCode,
-        themeId: selectedThemeId === false ? undefined : selectedThemeId,
-      });
-      await navigator.clipboard.writeText(html);
-      toast({ title: "HTML copied to clipboard", variant: "success" });
-      setTimeout(() => setIsCopying(false), 2000);
-    } catch (error) {
-      setIsCopying(false);
-      toast({ title: "Failed to copy HTML", variant: "destructive" });
-    }
-  }, [stackAdminApp, currentCode, selectedThemeId, toast]);
-
-  const handleDownloadHtml = useCallback(async () => {
-    try {
-      const html = await stackAdminApp.getEmailPreview({
-        templateTsxSource: currentCode,
-        themeId: selectedThemeId === false ? undefined : selectedThemeId,
-      });
-      const blob = new Blob([html], { type: 'text/html' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `${draft?.displayName || 'email-draft'}.html`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-    } catch (error) {
-      toast({ title: "Failed to download HTML", variant: "destructive" });
-    }
-  }, [stackAdminApp, currentCode, selectedThemeId, draft, toast]);
-
-  const handleReset = useCallback(() => {
-    setShowResetDialog(true);
-  }, []);
-
-  const confirmReset = useCallback(async () => {
-    setCurrentCode(draft?.tsxSource ?? "");
-    setSelectedThemeId(draft?.themeId);
-    setShowResetDialog(false);
-  }, [draft]);
 
   const previewActions = null;
 
@@ -144,31 +94,6 @@ export default function PageClient({ draftId }: { draftId: string }) {
               />
             }
           />
-
-          {/* Reset Confirmation Dialog */}
-          <ActionDialog
-            open={showResetDialog}
-            onClose={() => setShowResetDialog(false)}
-            title="Reset Draft?"
-            okButton={{
-              label: "Reset",
-              onClick: confirmReset,
-              props: {
-                variant: "destructive"
-              }
-            }}
-            cancelButton={{ label: "Cancel" }}
-          >
-            <Alert className="bg-orange-500/5 border-orange-500/20">
-              <WarningCircle className="h-4 w-4 text-orange-600 dark:text-orange-400" />
-              <AlertTitle className="text-orange-600 dark:text-orange-400 font-semibold">
-                Unsaved Changes Will Be Lost
-              </AlertTitle>
-              <AlertDescription className="text-muted-foreground">
-                Are you sure you want to reset the draft to its original state? All unsaved changes will be permanently lost.
-              </AlertDescription>
-            </Alert>
-          </ActionDialog>
         </>
       ) : (
         <SendStage draftId={draftId} />

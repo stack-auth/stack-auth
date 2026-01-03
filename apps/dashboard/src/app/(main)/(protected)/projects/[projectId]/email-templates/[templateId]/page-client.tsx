@@ -36,8 +36,6 @@ export default function PageClient(props: { templateId: string }) {
 
   const [currentCode, setCurrentCode] = useState(template?.tsxSource ?? "");
   const [selectedThemeId, setSelectedThemeId] = useState<string | undefined | false>(template?.themeId);
-  const [isCopying, setIsCopying] = useState(false);
-  const [showResetDialog, setShowResetDialog] = useState(false);
 
   // If template not found in hook data, try to fetch it directly
   useEffect(() => {
@@ -118,51 +116,6 @@ export default function PageClient(props: { templateId: string }) {
     }
   };
 
-  const handleCopyHtml = useCallback(async () => {
-    try {
-      setIsCopying(true);
-      const html = await stackAdminApp.getEmailPreview({
-        templateTsxSource: currentCode,
-        themeId: selectedThemeId === false ? undefined : selectedThemeId,
-      });
-      await navigator.clipboard.writeText(html);
-      toast({ title: "HTML copied to clipboard", variant: "success" });
-      setTimeout(() => setIsCopying(false), 2000);
-    } catch (error) {
-      setIsCopying(false);
-      toast({ title: "Failed to copy HTML", variant: "destructive" });
-    }
-  }, [stackAdminApp, currentCode, selectedThemeId]);
-
-  const handleDownloadHtml = useCallback(async () => {
-    try {
-      const html = await stackAdminApp.getEmailPreview({
-        templateTsxSource: currentCode,
-        themeId: selectedThemeId === false ? undefined : selectedThemeId,
-      });
-      const blob = new Blob([html], { type: 'text/html' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `${template?.displayName || 'email-template'}.html`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-    } catch (error) {
-      toast({ title: "Failed to download HTML", variant: "destructive" });
-    }
-  }, [stackAdminApp, currentCode, selectedThemeId, template]);
-
-  const handleReset = useCallback(() => {
-    setShowResetDialog(true);
-  }, []);
-
-  const confirmReset = useCallback(async () => {
-    setCurrentCode(template?.tsxSource ?? "");
-    setSelectedThemeId(template?.themeId);
-    setShowResetDialog(false);
-  }, [template]);
 
   const [viewport, setViewport] = useState<'desktop' | 'tablet' | 'phone'>('desktop');
 
@@ -228,31 +181,6 @@ export default function PageClient(props: { templateId: string }) {
           />
         }
       />
-
-      {/* Reset Confirmation Dialog */}
-      <ActionDialog
-        open={showResetDialog}
-        onClose={() => setShowResetDialog(false)}
-        title="Reset Template?"
-        okButton={{
-          label: "Reset",
-          onClick: confirmReset,
-          props: {
-            variant: "destructive"
-          }
-        }}
-        cancelButton={{ label: "Cancel" }}
-      >
-        <Alert className="bg-orange-500/5 border-orange-500/20">
-          <WarningCircle className="h-4 w-4 text-orange-600 dark:text-orange-400" />
-          <AlertTitle className="text-orange-600 dark:text-orange-400 font-semibold">
-            Unsaved Changes Will Be Lost
-          </AlertTitle>
-          <AlertDescription className="text-muted-foreground">
-            Are you sure you want to reset the template to its original state? All unsaved changes will be permanently lost.
-          </AlertDescription>
-        </Alert>
-      </ActionDialog>
     </AppEnabledGuard>
   );
 }

@@ -3,12 +3,12 @@
 import { FormDialog } from "@/components/form-dialog";
 import { InputField } from "@/components/form-fields";
 import { useRouter } from "@/components/router";
-import { ActionDialog, Alert, AlertDescription, AlertTitle, Button, Card, Typography, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui";
-import { WarningCircleIcon, Plus, FileText, Pencil, DotsThreeVertical, PaperPlaneTilt, WarningCircle } from "@phosphor-icons/react";
+import { ActionDialog, Alert, AlertDescription, AlertTitle, Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, Typography } from "@/components/ui";
+import { cn } from "@/lib/utils";
+import { DotsThreeVertical, FileText, PaperPlaneTilt, Pencil, Plus, WarningCircle } from "@phosphor-icons/react";
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { useState } from "react";
 import * as yup from "yup";
-import { cn } from "@/lib/utils";
 import { AppEnabledGuard } from "../app-enabled-guard";
 import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";
@@ -136,14 +136,6 @@ function DraftCard({
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               <DropdownMenuItem
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onOpen();
-                }}
-              >
-                Edit
-              </DropdownMenuItem>
-              <DropdownMenuItem
                 className="text-destructive focus:text-destructive"
                 onClick={(e) => {
                   e.stopPropagation();
@@ -201,14 +193,15 @@ function EmptyState({ onCreateNew }: { onCreateNew: () => void }) {
 export default function PageClient() {
   const stackAdminApp = useAdminApp();
   const project = stackAdminApp.useProject();
-  const emailConfig = project.config.emailConfig;
+  const config = project.useConfig();
+  const emailConfig = config.emails.server;
   const router = useRouter();
   const drafts = stackAdminApp.useEmailDrafts();
   const [sharedSmtpWarningDialogOpen, setSharedSmtpWarningDialogOpen] = useState<string | null>(null);
   const [newDraftDialogOpen, setNewDraftDialogOpen] = useState(false);
 
   const handleOpenDraft = (draftId: string) => {
-    if (emailConfig?.type === 'shared') {
+    if (emailConfig.isShared) {
       setSharedSmtpWarningDialogOpen(draftId);
     } else {
       router.push(`email-drafts/${draftId}`);
@@ -249,7 +242,7 @@ export default function PageClient() {
           </div>
 
           {/* Shared SMTP Warning */}
-          {emailConfig?.type === 'shared' && (
+          {emailConfig.isShared && (
             <div className="border-t border-foreground/[0.05] px-5 py-4">
               <Alert variant="default" className="bg-amber-500/5 border-amber-500/20">
                 <WarningCircle className="h-4 w-4 text-amber-500" weight="regular" />
