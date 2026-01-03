@@ -20,11 +20,19 @@ export default function PageClient() {
   const router = useRouter();
   const [sharedSmtpWarningDialogOpen, setSharedSmtpWarningDialogOpen] = useState<string | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const handleDelete = async (templateId: string) => {
-    await stackAdminApp.deleteEmailTemplate(templateId);
-    toast({ title: "Template deleted successfully", variant: "success" });
-    setDeleteDialogOpen(null);
+    try {
+      setDeleteError(null);
+      await stackAdminApp.deleteEmailTemplate(templateId);
+      toast({ title: "Template deleted successfully", variant: "success" });
+      setDeleteDialogOpen(null);
+    } catch (error) {
+      console.error("Failed to delete email template:", error);
+      const errorMessage = error instanceof Error ? error.message : "An unexpected error occurred while deleting the template";
+      setDeleteError(errorMessage);
+    }
   };
 
   return (
@@ -132,7 +140,10 @@ export default function PageClient() {
 
         <ActionDialog
           open={deleteDialogOpen !== null}
-          onClose={() => setDeleteDialogOpen(null)}
+          onClose={() => {
+            setDeleteDialogOpen(null);
+            setDeleteError(null);
+          }}
           title="Delete Email Template"
           okButton={{
             label: "Delete",
@@ -147,13 +158,23 @@ export default function PageClient() {
           }}
           cancelButton={{ label: "Cancel" }}
         >
-          <Alert className="bg-red-500/5 border-red-500/20 text-red-600 dark:text-red-400">
-            <WarningCircleIcon className="h-4 w-4" />
-            <AlertTitle className="font-semibold">Confirm Deletion</AlertTitle>
-            <AlertDescription className="text-muted-foreground">
-              Are you sure you want to delete this email template? This action cannot be undone.
-            </AlertDescription>
-          </Alert>
+          {deleteError ? (
+            <Alert className="bg-red-500/5 border-red-500/20 text-red-600 dark:text-red-400">
+              <WarningCircleIcon className="h-4 w-4" />
+              <AlertTitle className="font-semibold">Error</AlertTitle>
+              <AlertDescription className="text-muted-foreground">
+                {deleteError}
+              </AlertDescription>
+            </Alert>
+          ) : (
+            <Alert className="bg-red-500/5 border-red-500/20 text-red-600 dark:text-red-400">
+              <WarningCircleIcon className="h-4 w-4" />
+              <AlertTitle className="font-semibold">Confirm Deletion</AlertTitle>
+              <AlertDescription className="text-muted-foreground">
+                Are you sure you want to delete this email template? This action cannot be undone.
+              </AlertDescription>
+            </Alert>
+          )}
         </ActionDialog>
       </PageLayout>
     </AppEnabledGuard>
