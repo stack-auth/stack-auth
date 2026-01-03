@@ -2046,6 +2046,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
   protected async _updateClientUser(update: UserUpdateOptions, session: InternalSession) {
     const res = await this._interface.updateClientUser(userUpdateOptionsToCrud(update), session);
     await this._refreshUser(session);
+    await session.fetchNewTokens();
     return res;
   }
 
