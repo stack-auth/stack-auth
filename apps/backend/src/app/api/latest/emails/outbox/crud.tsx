@@ -1,0 +1,414 @@
+import { globalPrismaClient } from "@/prisma-client";
+import { createCrudHandlers } from "@/route-handlers/crud-handler";
+import { EmailOutbox, EmailOutboxSkippedReason, Prisma } from "@prisma/client";
+import { KnownErrors } from "@stackframe/stack-shared";
+import { emailOutboxCrud, EmailOutboxCrud } from "@stackframe/stack-shared/dist/interface/crud/email-outbox";
+import { yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+import { StackAssertionError, StatusError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { createLazyProxy } from "@stackframe/stack-shared/dist/utils/proxies";
+
+// States that can be edited
+const EDITABLE_STATUSES = new Set([
+  "PAUSED",
+  "PREPARING",
+  "RENDERING",
+  "RENDER_ERROR",
+  "SCHEDULED",
+  "QUEUED",
+  "SERVER_ERROR",
+]);
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- complex discriminated union types require type assertions
+function prismaModelToCrud(prismaModel: EmailOutbox): EmailOutboxCrud["Server"]["Read"] {
+  const recipient = prismaModel.to as any;
+  let to: EmailOutboxCrud["Server"]["Read"]["to"];
+  if (recipient?.type === "user-primary-email") {
+    to = { type: "user-primary-email", user_id: recipient.userId };
+  } else if (recipient?.type === "user-custom-emails") {
+    to = { type: "user-custom-emails", user_id: recipient.userId, emails: recipient.emails ?? [] };
+  } else {
+    to = { type: "custom-emails", emails: recipient?.emails ?? [] };
+  }
+
+  // Base fields present on all emails
+  const base = {
+    id: prismaModel.id,
+    created_at_millis: prismaModel.createdAt.getTime(),
+    updated_at_millis: prismaModel.updatedAt.getTime(),
+    tsx_source: prismaModel.tsxSource,
+    theme_id: prismaModel.themeId,
+    to,
+    variables: (prismaModel.extraRenderVariables ?? {}) as Record<string, any>,
+    skip_deliverability_check: prismaModel.shouldSkipDeliverabilityCheck,
+    scheduled_at_millis: prismaModel.scheduledAt.getTime(),
+    // Default flags (overridden in specific statuses)
+    is_paused: false,
+    has_rendered: false,
+    has_delivered: false,
+  };
+
+  const status = prismaModel.status;
+
+  // Rendered fields (available after rendering completes successfully)
+  const hasRendered = prismaModel.finishedRenderingAt && !prismaModel.renderErrorExternalMessage;
+  const rendered = hasRendered ? {
+    started_rendering_at_millis: prismaModel.startedRenderingAt!.getTime(),
+    rendered_at_millis: prismaModel.finishedRenderingAt!.getTime(),
+    subject: prismaModel.renderedSubject ?? "",
+    html: prismaModel.renderedHtml,
+    text: prismaModel.renderedText,
+    is_transactional: prismaModel.renderedIsTransactional ?? false,
+    is_high_priority: prismaModel.isHighPriority,
+    notification_category_id: prismaModel.renderedNotificationCategoryId,
+    has_rendered: true,
+  } : null;
+
+  // Build the response based on status
+  // Note: We use 'as any' casts because the EmailOutboxCrud["Server"]["Read"] type
+  // is a complex discriminated union that TypeScript has difficulty inferring from
+  // the object spread patterns used here.
+
+  switch (status) {
+    case "PAUSED": {
+      return {
+        ...base,
+        status: "PAUSED",
+        simple_status: "IN_PROGRESS",
+        is_paused: true,
+      } as any;
+    }
+    case "PREPARING": {
+      return {
+        ...base,
+        status: "PREPARING",
+        simple_status: "IN_PROGRESS",
+      } as any;
+    }
+    case "RENDERING": {
+      return {
+        ...base,
+        status: "RENDERING",
+        simple_status: "IN_PROGRESS",
+        started_rendering_at_millis: prismaModel.startedRenderingAt!.getTime(),
+      } as any;
+    }
+    case "RENDER_ERROR": {
+      return {
+        ...base,
+        status: "RENDER_ERROR",
+        simple_status: "ERROR",
+        started_rendering_at_millis: prismaModel.startedRenderingAt!.getTime(),
+        rendered_at_millis: prismaModel.finishedRenderingAt!.getTime(),
+        render_error: prismaModel.renderErrorExternalMessage ?? "Unknown render error",
+      } as any;
+    }
+    case "SCHEDULED": {
+      return {
+        ...base,
+        ...rendered,
+        status: "SCHEDULED",
+        simple_status: "IN_PROGRESS",
+      } as any;
+    }
+    case "QUEUED": {
+      return {
+        ...base,
+        ...rendered,
+        status: "QUEUED",
+        simple_status: "IN_PROGRESS",
+      } as any;
+    }
+    case "SENDING": {
+      return {
+        ...base,
+        ...rendered,
+        status: "SENDING",
+        simple_status: "IN_PROGRESS",
+        started_sending_at_millis: prismaModel.startedSendingAt!.getTime(),
+      } as any;
+    }
+    case "SERVER_ERROR": {
+      return {
+        ...base,
+        ...rendered,
+        status: "SERVER_ERROR",
+        simple_status: "ERROR",
+        started_sending_at_millis: prismaModel.startedSendingAt!.getTime(),
+        error_at_millis: prismaModel.finishedSendingAt!.getTime(),
+        server_error: prismaModel.sendServerErrorExternalMessage ?? "Unknown send error",
+      } as any;
+    }
+    case "SKIPPED": {
+      // SKIPPED can happen at any time (like PAUSED), so rendering/sending fields are optional
+      return {
+        ...base,
+        // Include rendered fields if available
+        ...(rendered ? rendered : {}),
+        // Override has_rendered based on whether we actually have rendered content
+        has_rendered: !!rendered,
+        status: "SKIPPED",
+        simple_status: "OK",
+        skipped_at_millis: prismaModel.updatedAt.getTime(),
+        skipped_reason: prismaModel.skippedReason ?? "UNKNOWN",
+        skipped_details: (prismaModel.skippedDetails ?? {}) as Record<string, any>,
+        // Optional rendering fields
+        started_rendering_at_millis: prismaModel.startedRenderingAt?.getTime(),
+        // Note: rendered_at_millis is included in the spread above if rendered
+        // Optional sending fields
+        started_sending_at_millis: prismaModel.startedSendingAt?.getTime(),
+      } as any;
+    }
+    case "BOUNCED": {
+      return {
+        ...base,
+        ...rendered,
+        status: "BOUNCED",
+        simple_status: "ERROR",
+        started_sending_at_millis: prismaModel.startedSendingAt!.getTime(),
+        bounced_at_millis: prismaModel.bouncedAt!.getTime(),
+      } as any;
+    }
+    case "DELIVERY_DELAYED": {
+      return {
+        ...base,
+        ...rendered,
+        status: "DELIVERY_DELAYED",
+        simple_status: "OK",
+        started_sending_at_millis: prismaModel.startedSendingAt!.getTime(),
+        delivery_delayed_at_millis: prismaModel.deliveryDelayedAt!.getTime(),
+      } as any;
+    }
+    case "SENT": {
+      return {
+        ...base,
+        ...rendered,
+        status: "SENT",
+        simple_status: "OK",
+        started_sending_at_millis: prismaModel.startedSendingAt!.getTime(),
+        delivered_at_millis: prismaModel.canHaveDeliveryInfo ? prismaModel.deliveredAt!.getTime() : prismaModel.finishedSendingAt!.getTime(),
+        has_delivered: true,
+        can_have_delivery_info: prismaModel.canHaveDeliveryInfo ?? throwErr("Email outbox is in SENT status but canHaveDeliveryInfo is not set", { emailOutboxId: prismaModel.id }),
+      } as any;
+    }
+    case "OPENED": {
+      return {
+        ...base,
+        ...rendered,
+        status: "OPENED",
+        simple_status: "OK",
+        started_sending_at_millis: prismaModel.startedSendingAt!.getTime(),
+        delivered_at_millis: prismaModel.deliveredAt!.getTime(),
+        opened_at_millis: prismaModel.openedAt!.getTime(),
+        has_delivered: true,
+      } as any;
+    }
+    case "CLICKED": {
+      return {
+        ...base,
+        ...rendered,
+        status: "CLICKED",
+        simple_status: "OK",
+        started_sending_at_millis: prismaModel.startedSendingAt!.getTime(),
+        delivered_at_millis: prismaModel.deliveredAt!.getTime(),
+        clicked_at_millis: prismaModel.clickedAt!.getTime(),
+        has_delivered: true,
+      } as any;
+    }
+    case "MARKED_AS_SPAM": {
+      return {
+        ...base,
+        ...rendered,
+        status: "MARKED_AS_SPAM",
+        simple_status: "OK",
+        started_sending_at_millis: prismaModel.startedSendingAt!.getTime(),
+        delivered_at_millis: prismaModel.deliveredAt!.getTime(),
+        marked_as_spam_at_millis: prismaModel.markedAsSpamAt!.getTime(),
+        has_delivered: true,
+      } as any;
+    }
+  }
+  throw new StackAssertionError(`Unknown email outbox status: ${status}`, { status });
+}
+
+export const emailOutboxCrudHandlers = createLazyProxy(() => createCrudHandlers(emailOutboxCrud, {
+  paramsSchema: yupObject({
+    id: yupString().uuid().optional(),
+  }),
+  querySchema: yupObject({
+    status: yupString().optional(),
+    simple_status: yupString().optional(),
+  }),
+  onRead: async ({ auth, params }) => {
+    if (!params.id) {
+      throw new StatusError(400, "Email ID is required");
+    }
+
+    const email = await globalPrismaClient.emailOutbox.findUnique({
+      where: {
+        tenancyId_id: {
+          tenancyId: auth.tenancy.id,
+          id: params.id,
+        },
+      },
+    });
+
+    if (!email) {
+      throw new StatusError(404, "Email not found");
+    }
+
+    return prismaModelToCrud(email);
+  },
+  onList: async ({ auth, query }) => {
+    const where: Prisma.EmailOutboxWhereInput = {
+      tenancyId: auth.tenancy.id,
+    };
+
+    if (query.status) {
+      where.status = query.status as any;
+    }
+    if (query.simple_status) {
+      where.simpleStatus = query.simple_status as any;
+    }
+
+    const emails = await globalPrismaClient.emailOutbox.findMany({
+      where,
+      orderBy: [
+        { finishedSendingAt: "desc" },
+        { scheduledAtIfNotYetQueued: "desc" },
+        { priority: "asc" },
+        { id: "asc" },
+      ],
+      take: 100,
+    });
+
+    return {
+      items: emails.map(prismaModelToCrud),
+      is_paginated: false,
+    };
+  },
+  onUpdate: async ({ auth, params, data }) => {
+    if (!params.id) {
+      throw new StatusError(400, "Email ID is required");
+    }
+
+    const email = await globalPrismaClient.emailOutbox.findUnique({
+      where: {
+        tenancyId_id: {
+          tenancyId: auth.tenancy.id,
+          id: params.id,
+        },
+      },
+    });
+
+    if (!email) {
+      throw new StatusError(404, "Email not found");
+    }
+
+    // Check if email is in an editable state
+    if (!EDITABLE_STATUSES.has(email.status)) {
+      throw new KnownErrors.EmailNotEditable(email.id, email.status);
+    }
+
+    // Handle cancel action
+    // SKIPPED can now happen at any time, so we just set the skipped reason
+    if (data.cancel) {
+      const updateData: Prisma.EmailOutboxUpdateInput = {
+        // Ensure email is not paused (so status can become SKIPPED, not PAUSED)
+        isPaused: false,
+        // Set skip reason - this alone will make the status become SKIPPED
+        skippedReason: EmailOutboxSkippedReason.MANUALLY_CANCELLED,
+        skippedDetails: {},
+      };
+
+      const updated = await globalPrismaClient.emailOutbox.update({
+        where: {
+          tenancyId_id: {
+            tenancyId: auth.tenancy.id,
+            id: params.id,
+          },
+        },
+        data: updateData,
+      });
+      return prismaModelToCrud(updated);
+    }
+
+    // Build update data
+    const updateData: Prisma.EmailOutboxUpdateInput = {};
+    let needsRerenderReset = false;
+
+    if (data.tsx_source !== undefined) {
+      updateData.tsxSource = data.tsx_source;
+      needsRerenderReset = true;
+    }
+    if (data.theme_id !== undefined) {
+      updateData.themeId = data.theme_id;
+      needsRerenderReset = true;
+    }
+    if (data.to !== undefined) {
+      const to = data.to as any;
+      updateData.to = to;
+      needsRerenderReset = true;
+    }
+    if (data.variables !== undefined) {
+      updateData.extraRenderVariables = data.variables as any;
+      needsRerenderReset = true;
+    }
+    if (data.skip_deliverability_check !== undefined) {
+      updateData.shouldSkipDeliverabilityCheck = data.skip_deliverability_check;
+    }
+    if (data.scheduled_at_millis !== undefined) {
+      updateData.scheduledAt = new Date(data.scheduled_at_millis);
+      updateData.isQueued = false;
+    }
+    if (data.is_paused !== undefined) {
+      updateData.isPaused = data.is_paused;
+    }
+
+    // If content changed, reset rendering state
+    if (needsRerenderReset) {
+      updateData.renderedByWorkerId = null;
+      updateData.startedRenderingAt = null;
+      updateData.finishedRenderingAt = null;
+      updateData.renderErrorExternalMessage = null;
+      updateData.renderErrorExternalDetails = Prisma.DbNull;
+      updateData.renderErrorInternalMessage = null;
+      updateData.renderErrorInternalDetails = Prisma.DbNull;
+      updateData.renderedHtml = null;
+      updateData.renderedText = null;
+      updateData.renderedSubject = null;
+      updateData.renderedIsTransactional = null;
+      updateData.renderedNotificationCategoryId = null;
+      updateData.isQueued = false;
+      // Also reset sending state if applicable
+      updateData.startedSendingAt = null;
+      updateData.finishedSendingAt = null;
+      updateData.sendServerErrorExternalMessage = null;
+      updateData.sendServerErrorExternalDetails = Prisma.DbNull;
+      updateData.sendServerErrorInternalMessage = null;
+      updateData.sendServerErrorInternalDetails = Prisma.DbNull;
+      updateData.skippedReason = null;
+      updateData.skippedDetails = Prisma.DbNull;
+      updateData.canHaveDeliveryInfo = null;
+      updateData.deliveredAt = null;
+      updateData.deliveryDelayedAt = null;
+      updateData.bouncedAt = null;
+      updateData.openedAt = null;
+      updateData.clickedAt = null;
+      updateData.unsubscribedAt = null;
+      updateData.markedAsSpamAt = null;
+    }
+
+    const updated = await globalPrismaClient.emailOutbox.update({
+      where: {
+        tenancyId_id: {
+          tenancyId: auth.tenancy.id,
+          id: params.id,
+        },
+      },
+      data: updateData,
+    });
+
+    return prismaModelToCrud(updated);
+  },
+}));
+

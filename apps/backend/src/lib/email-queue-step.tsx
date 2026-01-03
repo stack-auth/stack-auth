@@ -747,13 +747,11 @@ async function markSkipped(row: EmailOutbox, reason: EmailOutboxSkippedReason, d
         tenancyId: row.tenancyId,
         id: row.id,
       },
-      finishedSendingAt: null,
+      skippedReason: null,
     },
     data: {
       skippedReason: reason,
-      skippedDetails: details,
-      finishedSendingAt: new Date(),
-      canHaveDeliveryInfo: false,
+      skippedDetails: details as Prisma.InputJsonValue,
     },
   });
 }
