@@ -25,13 +25,18 @@ class EmailPreviewErrorBoundary extends Component<
   render() {
     if (this.state.error) {
       return (
-        <div className="flex flex-col items-center p-4 h-full justify-center">
-          <Typography type="h3" className="mb-2" variant="destructive">
-            Email Rendering Error
-          </Typography>
-          <Typography variant="secondary" className="whitespace-pre-wrap">
-            {this.state.error.message}
-          </Typography>
+        <div className="flex flex-col items-center p-6 h-full justify-center bg-white">
+          <div className="flex flex-col items-center max-w-md text-center">
+            <div className="w-12 h-12 rounded-full bg-destructive/10 flex items-center justify-center mb-4 ring-1 ring-destructive/20">
+              <span className="text-2xl">⚠️</span>
+            </div>
+            <Typography type="h4" className="mb-2 text-destructive font-semibold">
+              Rendering Error
+            </Typography>
+            <Typography variant="secondary" className="whitespace-pre-wrap text-sm leading-relaxed text-gray-600">
+              {this.state.error.message}
+            </Typography>
+          </div>
         </div>
       );
     }
@@ -84,11 +89,11 @@ function EmailPreviewContent({
 }
 
 export type DeviceViewport = {
-  id: string;
-  name: string;
-  width: number;
-  height: number;
-  type: 'phone' | 'tablet' | 'desktop';
+  id: string,
+  name: string,
+  width: number,
+  height: number,
+  type: 'phone' | 'tablet' | 'desktop',
 };
 
 export const DEVICE_VIEWPORTS: DeviceViewport[] = [
@@ -139,8 +144,11 @@ export default function EmailPreview({
 
   const emailContent = (
     <Suspense fallback={
-      <div className="flex items-center justify-center h-full bg-white">
-        <Spinner />
+      <div className="flex items-center justify-center h-full bg-white rounded-xl">
+        <div className="flex flex-col items-center gap-3">
+          <Spinner />
+          <span className="text-xs text-gray-400 font-medium">Loading preview...</span>
+        </div>
       </div>
     }>
       <EmailPreviewErrorBoundary key={`${debouncedTemplateTsxSource ?? ""}${debouncedThemeTsxSource ?? ""}`}>
@@ -157,8 +165,8 @@ export default function EmailPreview({
   // If viewport is provided, render in an email client frame
   if (viewport) {
     return (
-      <div className="w-full h-full flex flex-col items-center justify-start">
-        <EmailClientFrame 
+      <div className="w-full h-full flex flex-col items-center justify-start pt-4">
+        <EmailClientFrame
           viewport={viewport}
           emailSubject={emailSubject}
           senderName={senderName}
@@ -224,18 +232,18 @@ function IOSStatusBar() {
 }
 
 // Email Client Frame Component - Mimics Gmail UI
-function EmailClientFrame({ 
-  viewport, 
+function EmailClientFrame({
+  viewport,
   children,
   emailSubject,
   senderName,
   senderEmail,
-}: { 
-  viewport: DeviceViewport;
-  children: ReactNode;
-  emailSubject: string;
-  senderName: string;
-  senderEmail: string;
+}: {
+  viewport: DeviceViewport,
+  children: ReactNode,
+  emailSubject: string,
+  senderName: string,
+  senderEmail: string,
 }) {
   const isPhone = viewport.type === 'phone';
   const isTablet = viewport.type === 'tablet';
@@ -258,11 +266,10 @@ function EmailClientFrame({
     return () => observer.disconnect();
   }, []);
 
-  // Calculate scale based on actual container size, but keep mockups at a reasonable size
-  const maxMockupHeight = 580; // Standardize mockup height
+  // Calculate scale based on actual container size
   const scale = Math.min(
-    maxMockupHeight / viewport.height,
-    (containerSize.width * 0.95) / viewport.width,
+    (containerSize.height * 0.9) / viewport.height,
+    (containerSize.width * 0.9) / viewport.width,
     1
   );
 
@@ -275,9 +282,9 @@ function EmailClientFrame({
   const avatarColor = avatarColors[senderName.charCodeAt(0) % avatarColors.length];
 
   return (
-    <div ref={containerRef} className="w-full h-full flex flex-col items-center justify-start overflow-hidden">
+    <div ref={containerRef} className="w-full h-full flex flex-col items-center justify-start">
       {isPhone ? (
-        <div 
+        <div
           className="relative flex flex-col items-center"
           style={{ transform: `scale(${scale})`, transformOrigin: 'top center' }}
         >
@@ -287,15 +294,15 @@ function EmailClientFrame({
             <div className="absolute top-[22px] left-1/2 -translate-x-1/2 w-[126px] h-[37px] bg-black rounded-[20px] z-20 flex items-center justify-center">
               <div className="w-3 h-3 rounded-full bg-[#1c1c1e] mr-8" /> {/* Camera */}
             </div>
-            
+
             {/* Side buttons */}
             <div className="absolute -left-[2px] top-[120px] w-[3px] h-[30px] bg-[#3a3a3c] rounded-l-sm" />
             <div className="absolute -left-[2px] top-[170px] w-[3px] h-[60px] bg-[#3a3a3c] rounded-l-sm" />
             <div className="absolute -left-[2px] top-[240px] w-[3px] h-[60px] bg-[#3a3a3c] rounded-l-sm" />
             <div className="absolute -right-[2px] top-[180px] w-[3px] h-[80px] bg-[#3a3a3c] rounded-r-sm" />
-            
+
             {/* Screen */}
-            <div 
+            <div
               className="relative bg-white rounded-[43px] overflow-hidden flex flex-col"
               style={{ width: viewport.width, height: viewport.height }}
             >
@@ -303,7 +310,7 @@ function EmailClientFrame({
               <div className="bg-white shrink-0">
                 <IOSStatusBar />
               </div>
-              
+
               {/* Gmail Mobile App Header */}
               <div className="bg-white px-2 pb-2 flex items-center shrink-0">
                 <button className="p-2 hover:bg-gray-100 rounded-full">
@@ -323,7 +330,7 @@ function EmailClientFrame({
                   <DotsThreeVertical className="w-6 h-6 text-[#5f6368]" weight="bold" />
                 </button>
               </div>
-              
+
               {/* Email Subject & Sender */}
               <div className="bg-white px-4 pb-4 shrink-0">
                 <h1 className="text-[22px] font-normal text-[#202124] leading-7 mb-4">{emailSubject}</h1>
@@ -348,12 +355,12 @@ function EmailClientFrame({
                   </div>
                 </div>
               </div>
-              
+
               {/* Email Body */}
               <div className="flex-1 overflow-auto bg-white">
                 {children}
               </div>
-              
+
               {/* Reply/Forward Bar */}
               <div className="bg-white border-t border-[#e8eaed] px-4 py-3 flex items-center gap-3 shrink-0">
                 <button className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-full border border-[#dadce0] text-[14px] font-medium text-[#5f6368] hover:bg-[#f1f3f4]">
@@ -365,7 +372,7 @@ function EmailClientFrame({
                   Forward
                 </button>
               </div>
-              
+
               {/* Home Indicator */}
               <div className="bg-white pb-2 pt-2 flex justify-center shrink-0">
                 <div className="w-[134px] h-[5px] bg-black rounded-full" />
@@ -374,15 +381,15 @@ function EmailClientFrame({
           </div>
         </div>
       ) : isTablet ? (
-        <div 
+        <div
           className="relative flex flex-col items-center"
           style={{ transform: `scale(${scale})`, transformOrigin: 'top center' }}
         >
           {/* iPad Pro frame */}
           <div className="relative bg-[#1c1c1e] rounded-[28px] p-[14px] shadow-[0_50px_100px_-20px_rgba(0,0,0,0.4)] ring-1 ring-[#3a3a3c]">
-            
+
             {/* Screen */}
-            <div 
+            <div
               className="relative bg-[#f6f8fc] rounded-[14px] overflow-hidden flex flex-col"
               style={{ width: viewport.width, height: viewport.height }}
             >
@@ -399,7 +406,7 @@ function EmailClientFrame({
                   U
                 </button>
               </div>
-              
+
               {/* Content area */}
               <div className="flex-1 flex overflow-hidden">
                 {/* Sidebar Rail */}
@@ -417,7 +424,7 @@ function EmailClientFrame({
                     <Archive className="w-6 h-6 text-[#5f6368]" weight="regular" />
                   </button>
                 </div>
-                
+
                 {/* Email Content */}
                 <div className="flex-1 flex flex-col overflow-hidden bg-white m-2 rounded-xl shadow-sm">
                   {/* Email toolbar */}
@@ -436,7 +443,7 @@ function EmailClientFrame({
                       <DotsThreeVertical className="w-5 h-5 text-[#5f6368]" weight="bold" />
                     </button>
                   </div>
-                  
+
                   {/* Email header */}
                   <div className="px-6 py-5 border-b border-[#e8eaed] shrink-0">
                     <h1 className="text-[22px] font-normal text-[#202124] mb-5">{emailSubject}</h1>
@@ -463,7 +470,7 @@ function EmailClientFrame({
                       </button>
                     </div>
                   </div>
-                  
+
                   {/* Email body */}
                   <div className="flex-1 overflow-auto">
                     {children}
@@ -474,7 +481,7 @@ function EmailClientFrame({
           </div>
         </div>
       ) : (
-        <div 
+        <div
           className="relative flex flex-col items-center"
           style={{ transform: `scale(${scale})`, transformOrigin: 'top center' }}
         >
@@ -535,9 +542,9 @@ function EmailClientFrame({
                 </button>
               </div>
             </div>
-            
+
             {/* Gmail UI */}
-            <div 
+            <div
               className="bg-[#f6f8fc] flex flex-col overflow-hidden"
               style={{ width: viewport.width, height: viewport.height }}
             >
@@ -573,7 +580,7 @@ function EmailClientFrame({
                   </button>
                 </div>
               </div>
-              
+
               {/* Main content */}
               <div className="flex-1 flex overflow-hidden">
                 {/* Sidebar */}
@@ -606,7 +613,7 @@ function EmailClientFrame({
                     </button>
                   </div>
                 </div>
-                
+
                 {/* Email view */}
                 <div className="flex-1 flex flex-col bg-white rounded-2xl m-2 mr-4 overflow-hidden shadow-sm">
                   {/* Email toolbar */}
@@ -637,7 +644,7 @@ function EmailClientFrame({
                       </svg>
                     </button>
                   </div>
-                  
+
                   {/* Email header */}
                   <div className="px-6 py-5 shrink-0">
                     <h1 className="text-[22px] font-normal text-[#202124] mb-6">{emailSubject}</h1>
@@ -669,7 +676,7 @@ function EmailClientFrame({
                       </div>
                     </div>
                   </div>
-                  
+
                   {/* Email body */}
                   <div className="flex-1 overflow-auto border-t border-[#e8eaed]">
                     {children}

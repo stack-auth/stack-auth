@@ -1,25 +1,20 @@
 import Editor, { Monaco } from '@monaco-editor/react';
 import { runAsynchronously } from '@stackframe/stack-shared/dist/utils/promises';
 import { deindent } from '@stackframe/stack-shared/dist/utils/strings';
-import { Typography } from "@/components/ui";
 import { useTheme } from 'next-themes';
 import { dtsBundles } from './dts';
-import { Code } from "@phosphor-icons/react";
+import { useState, useCallback } from 'react';
 
 type CodeEditorProps = {
   code: string,
   onCodeChange: (code: string) => void,
-  action?: React.ReactNode,
-  title?: string,
 }
 
 export default function CodeEditor({
   code,
   onCodeChange,
-  action,
-  title = "Code"
 }: CodeEditorProps) {
-  const { theme } = useTheme();
+  const { resolvedTheme } = useTheme();
 
   const handleBeforeMount = (monaco: Monaco) => {
     monaco.editor.defineTheme('stack-dark', {
@@ -27,7 +22,22 @@ export default function CodeEditor({
       inherit: true,
       rules: [],
       colors: {
-        "editor.background": "#000000",
+        "editor.background": "#0a0a0a",
+        "editor.lineHighlightBackground": "#1a1a1a",
+        "editorLineNumber.foreground": "#4a4a4a",
+        "editorLineNumber.activeForeground": "#888888",
+      },
+    });
+
+    monaco.editor.defineTheme('stack-light', {
+      base: 'vs',
+      inherit: true,
+      rules: [],
+      colors: {
+        "editor.background": "#ffffff",
+        "editor.lineHighlightBackground": "#f5f5f5",
+        "editorLineNumber.foreground": "#999999",
+        "editorLineNumber.activeForeground": "#666666",
       },
     });
 
@@ -140,20 +150,11 @@ export default function CodeEditor({
   };
 
   return (
-    <div className="flex flex-col h-full bg-[#000000]">
-      <div className="px-6 py-3 border-b border-foreground/10 flex justify-between items-center bg-background/50 backdrop-blur-sm">
-        <div className="flex items-center gap-3">
-          <div className="p-1.5 rounded-lg bg-blue-500/10 ring-1 ring-blue-500/20">
-            <Code size={14} className="text-blue-500" />
-          </div>
-          <Typography type="h4" className="text-xs font-semibold uppercase tracking-wider">{title}</Typography>
-        </div>
-        {action}
-      </div>
+    <div className="flex flex-col h-full">
       <div className="flex-1 min-h-0">
         <Editor
           height="100%"
-          theme={theme === "dark" ? "stack-dark" : "vs-light"}
+          theme={resolvedTheme === "dark" ? "stack-dark" : "stack-light"}
           defaultLanguage="typescript"
           defaultPath="file:///main.tsx"
           value={code}
@@ -174,8 +175,20 @@ export default function CodeEditor({
             smoothScrolling: true,
             cursorBlinking: 'smooth',
             cursorSmoothCaretAnimation: 'on',
-            renderLineHighlight: 'all',
+            renderLineHighlight: 'line',
             bracketPairColorization: { enabled: true },
+            glyphMargin: false,
+            folding: true,
+            lineDecorationsWidth: 8,
+            lineNumbersMinChars: 4,
+            wordWrap: 'on',
+            wrappingStrategy: 'advanced',
+            wrappingIndent: 'indent',
+            scrollbar: {
+              verticalScrollbarSize: 8,
+              horizontalScrollbarSize: 8,
+              useShadows: false,
+            },
           }}
         />
       </div>

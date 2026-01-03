@@ -3,6 +3,7 @@ import { globalPrismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { createOpenAI } from "@ai-sdk/openai";
 import { adaptSchema, yupArray, yupMixed, yupNumber, yupObject, yupString, yupUnion } from "@stackframe/stack-shared/dist/schema-fields";
+import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { generateText } from "ai";
 import { InferType } from "yup";
@@ -23,9 +24,14 @@ const toolCallContentSchema = yupObject({
 
 const contentSchema = yupArray(yupUnion(textContentSchema, toolCallContentSchema)).defined();
 
+const messageSchema = yupObject({
+  role: yupString().oneOf(["user", "assistant", "tool"]).defined(),
+  content: yupMixed().defined(),
+});
+
 const aiProvider = getEnvVariable("STACK_AI_PROVIDER", "openai");
 const openai = createOpenAI({
-  apiKey: aiProvider === "openrouter" 
+  apiKey: aiProvider === "openrouter"
     ? getEnvVariable("STACK_OPENROUTER_API_KEY", "MISSING_OPENROUTER_API_KEY")
     : getEnvVariable("STACK_OPENAI_API_KEY", "MISSING_OPENAI_API_KEY"),
   baseURL: aiProvider === "openrouter" ? "https://openrouter.ai/api/v1" : undefined,
@@ -45,10 +51,7 @@ export const POST = createSmartRouteHandler({
     }),
     body: yupObject({
       context_type: yupString().oneOf(["email-theme", "email-template", "email-draft"]).defined(),
-      messages: yupArray(yupObject({
-        role: yupString().oneOf(["user", "assistant", "tool"]).defined(),
-        content: yupMixed().defined(),
-      })).defined().min(1),
+      messages: yupArray(messageSchema).defined().min(1),
     }),
   }),
   response: yupObject({
@@ -61,14 +64,22 @@ export const POST = createSmartRouteHandler({
   async handler({ body, params, auth: { tenancy } }) {
     const adapter = getChatAdapter(body.context_type, tenancy, params.threadId);
     const modelName = getEnvVariable("STACK_AI_MODEL", getEnvVariable("STACK_OPENAI_MODEL", "gpt-4o"));
-    const result = await generateText({
-      model: openai(modelName),
-      system: adapter.systemPrompt,
-      messages: body.messages as any,
-      tools: adapter.tools,
-    });
 
-    const contentBlocks: InferType<typeof contentSchema> = [];
+    try {
+      // Validate messages structure before passing to AI
+      const validatedMessages = body.messages.map(msg => ({
+        role: msg.role,
+        content: msg.content,
+      })) as any; // Cast to bypass strict typing since content is mixed
+
+      const result = await generateText({
+        model: openai(modelName),
+        system: adapter.systemPrompt,
+        messages: validatedMessages,
+        tools: adapter.tools,
+      });
+
+      const contentBlocks: InferType<typeof contentSchema> = [];
     result.steps.forEach((step) => {
       if (step.text) {
         contentBlocks.push({
@@ -93,6 +104,16 @@ export const POST = createSmartRouteHandler({
       bodyType: "json",
       body: { content: contentBlocks },
     };
+    } catch (error) {
+      // Log the error for debugging
+      console.error("AI chat generation error:", error);
+
+      // Re-throw as a user-friendly error
+      throw new StatusError(
+        StatusError.InternalServerError,
+        `Failed to generate AI response: ${error instanceof Error ? error.message : 'Unknown error'}`
+      );
+    }
   },
 });
 

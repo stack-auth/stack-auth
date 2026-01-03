@@ -57,24 +57,27 @@ function SectionHeader({ icon: Icon, title }: { icon: React.ElementType, title: 
 // Device icon component
 function DeviceIcon({ type, className }: { type: DeviceViewport['type'], className?: string }) {
   switch (type) {
-    case 'phone':
+    case 'phone': {
       return <DeviceMobile className={className} />;
-    case 'tablet':
+    }
+    case 'tablet': {
       return <DeviceTablet className={className} />;
-    case 'desktop':
+    }
+    case 'desktop': {
       return <Monitor className={className} />;
+    }
   }
 }
 
 // Viewport selector component following design guide's Time Range Toggle pattern
-function ViewportSelector({ 
-  selectedViewport, 
+function ViewportSelector({
+  selectedViewport,
   onSelect,
   className
-}: { 
-  selectedViewport: DeviceViewport;
-  onSelect: (viewport: DeviceViewport) => void;
-  className?: string;
+}: {
+  selectedViewport: DeviceViewport,
+  onSelect: (viewport: DeviceViewport) => void,
+  className?: string,
 }) {
   return (
     <div className={cn("inline-flex items-center gap-1 rounded-xl bg-foreground/[0.04] p-1 backdrop-blur-sm", className)}>
@@ -209,9 +212,9 @@ export default function PageClient() {
                 </div>
                 <ActionDialog
                   trigger={
-                    <Button 
-                      variant="secondary" 
-                      size="sm" 
+                    <Button
+                      variant="secondary"
+                      size="sm"
                       className="h-8 px-3 text-xs gap-1.5"
                       onClick={handleOpenDialog}
                     >
@@ -261,15 +264,15 @@ export default function PageClient() {
             </div>
 
             {/* Device Preview Area */}
-            <div 
+            <div
               ref={containerRef}
               className={cn(
                 "p-8 min-h-[650px] flex items-start justify-center overflow-auto",
                 "bg-gradient-to-b from-foreground/[0.02] to-foreground/[0.04]"
               )}
             >
-              <EmailPreview 
-                themeId={selectedThemeData.id} 
+              <EmailPreview
+                themeId={selectedThemeData.id}
                 templateTsxSource={detailedPreviewTemplate}
                 viewport={selectedViewport}
                 emailSubject="Verify your email address"
@@ -301,11 +304,11 @@ function ThemeOption({
   };
 
   return (
-    <div 
+    <div
       className={cn(
         "group relative flex flex-col gap-3 p-3 rounded-xl cursor-pointer transition-all duration-150 hover:transition-none border",
-        isSelected 
-          ? "bg-primary/5 border-primary/50 ring-1 ring-primary/20" 
+        isSelected
+          ? "bg-primary/5 border-primary/50 ring-1 ring-primary/20"
           : "bg-background border-border/50 hover:border-foreground/20 hover:bg-foreground/[0.02]"
       )}
       onClick={() => onSelect(theme.id)}
@@ -314,7 +317,7 @@ function ThemeOption({
         <div style={{ transform: 'scale(0.5)', transformOrigin: 'top left', width: '200%', height: '200%' }}>
           <EmailPreview themeId={theme.id} templateTsxSource={previewTemplateSource} disableResizing />
         </div>
-        
+
         {!isDefault && (
           <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
             <ActionDialog
@@ -322,8 +325,10 @@ function ThemeOption({
               description={`Are you sure you want to delete the theme "${theme.displayName}"? This action cannot be undone.`}
               okButton={{
                 label: "Delete",
-                variant: "destructive",
                 onClick: handleDelete,
+                props: {
+                  variant: "destructive",
+                },
               }}
               cancelButton
               trigger={

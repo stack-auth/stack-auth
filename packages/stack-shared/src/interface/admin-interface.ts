@@ -570,6 +570,16 @@ export class StackAdminInterface extends StackServerInterface {
     return await response.json();
   }
 
+  async deleteEmailTemplate(id: string): Promise<void> {
+    await this.sendAdminRequest(
+      `/internal/email-templates/${id}`,
+      {
+        method: "DELETE",
+      },
+      null,
+    );
+  }
+
   async setupPayments(): Promise<{ url: string }> {
     const response = await this.sendAdminRequest(
       "/internal/payments/setup",

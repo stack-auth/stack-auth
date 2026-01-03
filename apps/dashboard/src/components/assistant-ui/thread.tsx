@@ -3,11 +3,10 @@ import {
   ActionBarPrimitive,
   BranchPickerPrimitive,
   ComposerPrimitive,
-  ErrorPrimitive,
   MessagePrimitive,
   ThreadPrimitive,
 } from "@assistant-ui/react";
-import { ArrowClockwiseIcon, ArrowDownIcon, CaretLeftIcon, CaretRightIcon, CheckIcon, CopyIcon, PaperPlaneRightIcon, PencilSimpleIcon } from "@phosphor-icons/react";
+import { ArrowClockwiseIcon, ArrowDownIcon, CaretLeftIcon, CaretRightIcon, CheckIcon, CopyIcon, PaperPlaneRightIcon, PencilSimpleIcon, WarningCircle } from "@phosphor-icons/react";
 import type { FC } from "react";
 
 import { MarkdownText } from "@/components/assistant-ui/markdown-text";
@@ -19,10 +18,10 @@ export const Thread: FC = () => {
     <ThreadPrimitive.Root
       className="bg-background box-border flex h-0 flex-grow flex-col overflow-hidden"
       style={{
-        ["--thread-max-width" as string]: "42rem",
+        ["--thread-max-width" as string]: "100%",
       }}
     >
-      <ThreadPrimitive.Viewport className="flex h-full flex-col items-center overflow-y-scroll scroll-smooth bg-inherit px-4">
+      <ThreadPrimitive.Viewport className="flex h-full flex-col items-center overflow-y-auto scroll-smooth bg-inherit px-3">
         <ThreadWelcome />
 
         <ThreadPrimitive.Messages
@@ -34,10 +33,10 @@ export const Thread: FC = () => {
         />
 
         <ThreadPrimitive.If empty={false}>
-          <div className="min-h-8 flex-grow" />
+          <div className="min-h-6 flex-grow" />
         </ThreadPrimitive.If>
 
-        <div className="sticky bottom-0 mt-3 flex w-full max-w-[var(--thread-max-width)] flex-col items-center justify-end rounded-t-lg bg-inherit pb-4">
+        <div className="sticky bottom-0 mt-2 flex w-full max-w-[var(--thread-max-width)] flex-col items-center justify-end bg-gradient-to-t from-background via-background to-transparent pt-6 pb-3">
           <ThreadScrollToBottom />
           <Composer />
         </div>
@@ -52,9 +51,9 @@ const ThreadScrollToBottom: FC = () => {
       <TooltipIconButton
         tooltip="Scroll to bottom"
         variant="outline"
-        className="absolute -top-8 rounded-full disabled:invisible"
+        className="absolute -top-10 rounded-full disabled:invisible shadow-lg bg-background/80 backdrop-blur-sm ring-1 ring-foreground/[0.06]"
       >
-        <ArrowDownIcon />
+        <ArrowDownIcon size={14} />
       </TooltipIconButton>
     </ThreadPrimitive.ScrollToBottom>
   );
@@ -64,15 +63,15 @@ const ThreadWelcome: FC = () => {
   return (
     <ThreadPrimitive.Empty>
       <div className="flex w-full max-w-[var(--thread-max-width)] flex-grow flex-col">
-        <div className="flex w-full flex-grow flex-col items-center justify-center py-20">
-          <div className="w-12 h-12 rounded-2xl bg-blue-500/10 flex items-center justify-center mb-6 ring-1 ring-blue-500/20">
-            <PaperPlaneRightIcon className="w-6 h-6 text-blue-500" weight="duotone" />
+        <div className="flex w-full flex-grow flex-col items-center justify-center py-16">
+          <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-blue-500/20 to-blue-600/10 flex items-center justify-center mb-5 ring-1 ring-blue-500/20 shadow-lg shadow-blue-500/10">
+            <PaperPlaneRightIcon className="w-7 h-7 text-blue-500" weight="duotone" />
           </div>
-          <h2 className="text-xl font-semibold tracking-tight text-foreground mb-2">
-            AI Email Designer
+          <h2 className="text-lg font-semibold tracking-tight text-foreground mb-2">
+            Hello! 👋
           </h2>
-          <p className="text-sm text-muted-foreground text-center max-w-[280px] leading-relaxed">
-            Describe the design you have in mind, or ask me to improve your current template.
+          <p className="text-sm text-muted-foreground text-center max-w-[260px] leading-relaxed">
+            I&apos;m here to help you create beautiful, modern email templates. Describe what you&apos;d like to build.
           </p>
         </div>
       </div>
@@ -109,19 +108,14 @@ const ThreadWelcomeSuggestions: FC = () => {
 
 const Composer: FC = () => {
   return (
-    <ComposerPrimitive.Root className="focus-within:ring-2 focus-within:ring-blue-500/20 focus-within:border-blue-500/30 flex w-full flex-col gap-2 rounded-2xl border bg-background/80 backdrop-blur-xl px-4 py-3 shadow-2xl transition-all duration-200">
+    <ComposerPrimitive.Root className="group/composer relative flex w-full flex-col rounded-2xl border border-border/20 dark:border-foreground/[0.08] bg-background/90 backdrop-blur-xl shadow-lg ring-1 ring-foreground/[0.04] transition-all duration-150 hover:transition-none focus-within:ring-2 focus-within:ring-blue-500/20 focus-within:border-blue-500/30">
       <ComposerPrimitive.Input
         rows={1}
         autoFocus
         placeholder="Describe the email design you want..."
-        className="placeholder:text-muted-foreground max-h-40 w-full resize-none border-none bg-transparent py-2 text-sm outline-none focus:ring-0 disabled:cursor-not-allowed leading-relaxed"
+        className="placeholder:text-muted-foreground/60 max-h-32 w-full resize-none border-none bg-transparent px-4 py-3 text-sm outline-none focus:ring-0 disabled:cursor-not-allowed leading-relaxed"
       />
-      <div className="flex items-center justify-between mt-1">
-        <div className="flex items-center gap-2">
-          <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">
-            AI Email Designer
-          </p>
-        </div>
+      <div className="flex items-center justify-end px-3 pb-2.5">
         <ComposerAction />
       </div>
     </ComposerPrimitive.Root>
@@ -135,10 +129,10 @@ const ComposerAction: FC = () => {
         <ComposerPrimitive.Send asChild>
           <Button
             size="sm"
-            className="rounded-xl h-8 px-4 bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-500/20 transition-all active:scale-95"
+            className="rounded-xl h-7 px-3 bg-blue-600 hover:bg-blue-500 text-white shadow-md shadow-blue-500/20 transition-all duration-150 hover:transition-none active:scale-[0.98]"
           >
-            <PaperPlaneRightIcon className="mr-2 h-3.5 w-3.5" weight="bold" />
-            <span className="text-xs font-semibold">Generate</span>
+            <PaperPlaneRightIcon className="mr-1.5 h-3 w-3" weight="bold" />
+            <span className="text-[11px] font-semibold">Generate</span>
           </Button>
         </ComposerPrimitive.Send>
       </ThreadPrimitive.If>
@@ -147,10 +141,10 @@ const ComposerAction: FC = () => {
           <Button
             size="sm"
             variant="outline"
-            className="rounded-xl h-8 px-4 border-blue-500/20 hover:bg-blue-500/10 hover:text-blue-500"
+            className="rounded-xl h-7 px-3 border-orange-500/30 bg-orange-500/10 text-orange-600 dark:text-orange-400 hover:bg-orange-500/20"
           >
-            <CircleStopIcon className="mr-2 h-3 w-3" />
-            <span className="text-xs font-semibold">Stop</span>
+            <CircleStopIcon className="mr-1.5 h-3 w-3" />
+            <span className="text-[11px] font-semibold">Stop</span>
           </Button>
         </ComposerPrimitive.Cancel>
       </ThreadPrimitive.If>
@@ -160,14 +154,14 @@ const ComposerAction: FC = () => {
 
 const UserMessage: FC = () => {
   return (
-    <MessagePrimitive.Root className="flex flex-col items-end w-full max-w-[var(--thread-max-width)] py-4 gap-2">
-      <div className="flex items-start gap-3 justify-end w-full">
+    <MessagePrimitive.Root className="group flex flex-col items-end w-full max-w-[var(--thread-max-width)] py-3 gap-1.5">
+      <div className="flex items-start gap-2 justify-end w-full">
         <UserActionBar />
-        <div className="bg-foreground/[0.04] text-foreground max-w-[85%] break-words rounded-2xl px-4 py-2.5 text-sm ring-1 ring-foreground/[0.06]">
+        <div className="bg-foreground/[0.05] text-foreground max-w-[90%] break-words rounded-2xl px-3.5 py-2.5 text-sm ring-1 ring-foreground/[0.06]">
           <MessagePrimitive.Content />
         </div>
       </div>
-      <BranchPicker className="justify-end mr-2" />
+      <BranchPicker className="justify-end mr-1" />
     </MessagePrimitive.Root>
   );
 };
@@ -177,11 +171,11 @@ const UserActionBar: FC = () => {
     <ActionBarPrimitive.Root
       hideWhenRunning
       autohide="not-last"
-      className="flex items-center gap-1 self-center opacity-0 group-hover:opacity-100 transition-opacity"
+      className="flex items-center gap-0.5 self-center opacity-0 group-hover:opacity-100 transition-opacity duration-150"
     >
       <ActionBarPrimitive.Edit asChild>
-        <TooltipIconButton tooltip="Edit" className="hover:bg-foreground/[0.05]">
-          <PencilSimpleIcon size={14} />
+        <TooltipIconButton tooltip="Edit" className="h-7 w-7 rounded-md hover:bg-foreground/[0.05]">
+          <PencilSimpleIcon size={13} />
         </TooltipIconButton>
       </ActionBarPrimitive.Edit>
     </ActionBarPrimitive.Root>
@@ -190,15 +184,15 @@ const UserActionBar: FC = () => {
 
 const EditComposer: FC = () => {
   return (
-    <ComposerPrimitive.Root className="bg-muted my-4 flex w-full max-w-[var(--thread-max-width)] flex-col gap-2 rounded-xl">
-      <ComposerPrimitive.Input className="text-foreground flex h-8 w-full resize-none bg-transparent p-4 pb-0 outline-none" />
+    <ComposerPrimitive.Root className="bg-foreground/[0.03] my-3 flex w-full max-w-[var(--thread-max-width)] flex-col gap-2 rounded-xl ring-1 ring-foreground/[0.08]">
+      <ComposerPrimitive.Input className="text-foreground flex min-h-[2.5rem] w-full resize-none bg-transparent p-3 pb-0 text-sm outline-none" />
 
-      <div className="mx-3 mb-3 flex items-center justify-center gap-2 self-end">
+      <div className="px-3 pb-2.5 flex items-center justify-end gap-2">
         <ComposerPrimitive.Cancel asChild>
-          <Button variant="ghost">Cancel</Button>
+          <Button variant="ghost" size="sm" className="h-7 px-2.5 text-xs">Cancel</Button>
         </ComposerPrimitive.Cancel>
         <ComposerPrimitive.Send asChild>
-          <Button>Send</Button>
+          <Button size="sm" className="h-7 px-3 text-xs bg-blue-600 hover:bg-blue-500">Send</Button>
         </ComposerPrimitive.Send>
       </div>
     </ComposerPrimitive.Root>
@@ -207,12 +201,17 @@ const EditComposer: FC = () => {
 
 const AssistantMessage: FC = () => {
   return (
-    <MessagePrimitive.Root className="flex flex-col relative w-full max-w-[var(--thread-max-width)] py-6 group">
-      <div className="flex items-start gap-4">
-        <div className="w-8 h-8 rounded-full bg-blue-500/10 flex items-center justify-center shrink-0 border border-blue-500/20">
-          <div className="w-4 h-4 rounded-full bg-blue-500 animate-pulse" />
+    <MessagePrimitive.Root className="flex flex-col relative w-full max-w-[var(--thread-max-width)] py-4 group">
+      <div className="flex items-start gap-3">
+        <div className="w-7 h-7 rounded-full bg-gradient-to-br from-blue-500/20 to-blue-600/10 flex items-center justify-center shrink-0 ring-1 ring-blue-500/20 shadow-sm">
+          <ThreadPrimitive.If running>
+            <div className="w-2.5 h-2.5 rounded-full bg-blue-500 animate-pulse" />
+          </ThreadPrimitive.If>
+          <ThreadPrimitive.If running={false}>
+            <div className="w-2.5 h-2.5 rounded-full bg-blue-500" />
+          </ThreadPrimitive.If>
         </div>
-        <div className="flex-1 space-y-2">
+        <div className="flex-1 min-w-0 space-y-2">
           <div className="text-foreground break-words leading-relaxed text-sm">
             <MessagePrimitive.Content components={{ Text: MarkdownText }} />
           </div>
@@ -220,7 +219,7 @@ const AssistantMessage: FC = () => {
           <AssistantActionBar />
         </div>
       </div>
-      <BranchPicker className="mt-2 ml-12" />
+      <BranchPicker className="mt-1.5 ml-10" />
     </MessagePrimitive.Root>
   );
 };
@@ -228,24 +227,25 @@ const AssistantMessage: FC = () => {
 const MessageError: FC = () => {
   return (
     <MessagePrimitive.Error>
-      <div className="mt-4 rounded-2xl bg-destructive/5 border border-destructive/20 p-5 flex flex-col gap-3 items-center text-center">
-        <div className="p-2 rounded-full bg-destructive/10">
-          <ErrorPrimitive.Root className="text-destructive">
-            <ErrorPrimitive.Message className="hidden" />
-          </ErrorPrimitive.Root>
-          <ArrowClockwiseIcon className="w-5 h-5 text-destructive animate-spin-slow" />
+      <div className="mt-3 rounded-xl bg-destructive/5 border border-destructive/15 p-4 flex flex-col gap-3 items-center text-center">
+        <div className="w-10 h-10 rounded-full bg-destructive/10 flex items-center justify-center ring-1 ring-destructive/20">
+          <WarningCircle className="w-5 h-5 text-destructive" weight="fill" />
         </div>
         <div className="space-y-1">
           <p className="text-sm font-semibold text-foreground">Generation Failed</p>
-          <p className="text-xs text-muted-foreground max-w-[200px]">
+          <p className="text-xs text-muted-foreground max-w-[220px] leading-relaxed">
             Something went wrong while generating your design. Please try again.
           </p>
         </div>
-        <ActionBarPrimitive.Root className="w-full">
+        <ActionBarPrimitive.Root className="w-full mt-1">
           <ActionBarPrimitive.Reload asChild>
-            <Button variant="outline" size="sm" className="w-full gap-2 border-destructive/20 hover:bg-destructive/10 hover:text-destructive">
-              <ArrowClockwiseIcon className="w-4 h-4" />
-              Retry Generation
+            <Button
+              variant="outline"
+              size="sm"
+              className="w-full h-8 gap-2 rounded-lg border-destructive/20 bg-destructive/5 text-destructive hover:bg-destructive/10 hover:text-destructive transition-all duration-150 hover:transition-none"
+            >
+              <ArrowClockwiseIcon className="w-3.5 h-3.5" />
+              <span className="text-xs font-medium">Retry Generation</span>
             </Button>
           </ActionBarPrimitive.Reload>
         </ActionBarPrimitive.Root>
@@ -260,21 +260,21 @@ const AssistantActionBar: FC = () => {
       hideWhenRunning
       autohide="not-last"
       autohideFloat="single-branch"
-      className="text-muted-foreground flex gap-1 col-start-3 row-start-2 -ml-1 data-[floating]:bg-background data-[floating]:absolute data-[floating]:rounded-md data-[floating]:border data-[floating]:p-1 data-[floating]:shadow-sm"
+      className="text-muted-foreground flex gap-0.5 -ml-1 opacity-0 group-hover:opacity-100 transition-opacity duration-150 data-[floating]:bg-background/95 data-[floating]:backdrop-blur-sm data-[floating]:absolute data-[floating]:rounded-lg data-[floating]:ring-1 data-[floating]:ring-foreground/[0.06] data-[floating]:p-1 data-[floating]:shadow-md"
     >
       <ActionBarPrimitive.Copy asChild>
-        <TooltipIconButton tooltip="Copy">
+        <TooltipIconButton tooltip="Copy" className="h-7 w-7 rounded-md hover:bg-foreground/[0.05]">
           <MessagePrimitive.If copied>
-            <CheckIcon />
+            <CheckIcon size={14} className="text-green-500" />
           </MessagePrimitive.If>
           <MessagePrimitive.If copied={false}>
-            <CopyIcon />
+            <CopyIcon size={14} />
           </MessagePrimitive.If>
         </TooltipIconButton>
       </ActionBarPrimitive.Copy>
       <ActionBarPrimitive.Reload asChild>
-        <TooltipIconButton tooltip="Refresh">
-          <ArrowClockwiseIcon />
+        <TooltipIconButton tooltip="Regenerate" className="h-7 w-7 rounded-md hover:bg-foreground/[0.05]">
+          <ArrowClockwiseIcon size={14} />
         </TooltipIconButton>
       </ActionBarPrimitive.Reload>
     </ActionBarPrimitive.Root>
@@ -288,27 +288,27 @@ const BranchPicker: FC<BranchPickerPrimitive.Root.Props> = ({
   return (
     <BranchPickerPrimitive.Root
       hideWhenSingleBranch
-      className={cn("text-muted-foreground inline-flex items-center text-xs", className)}
+      className={cn("text-muted-foreground inline-flex items-center gap-0.5 text-[11px]", className)}
       {...rest}
     >
       <BranchPickerPrimitive.Previous asChild>
-        <TooltipIconButton tooltip="Previous">
-          <CaretLeftIcon />
+        <TooltipIconButton tooltip="Previous" className="h-6 w-6 rounded-md hover:bg-foreground/[0.05]">
+          <CaretLeftIcon size={12} />
         </TooltipIconButton>
       </BranchPickerPrimitive.Previous>
-      <span className="font-medium">
+      <span className="font-medium tabular-nums px-1">
         <BranchPickerPrimitive.Number /> / <BranchPickerPrimitive.Count />
       </span>
       <BranchPickerPrimitive.Next asChild>
-        <TooltipIconButton tooltip="Next">
-          <CaretRightIcon />
+        <TooltipIconButton tooltip="Next" className="h-6 w-6 rounded-md hover:bg-foreground/[0.05]">
+          <CaretRightIcon size={12} />
         </TooltipIconButton>
       </BranchPickerPrimitive.Next>
     </BranchPickerPrimitive.Root>
   );
 };
 
-const CircleStopIcon = () => {
+const CircleStopIcon = ({ className }: { className?: string }) => {
   return (
     <svg
       xmlns="http://www.w3.org/2000/svg"
@@ -316,6 +316,7 @@ const CircleStopIcon = () => {
       fill="currentColor"
       width="16"
       height="16"
+      className={className}
     >
       <rect width="10" height="10" x="3" y="3" rx="2" />
     </svg>

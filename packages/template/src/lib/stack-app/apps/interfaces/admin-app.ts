@@ -80,6 +80,7 @@ export type StackAdminApp<HasTokenStore extends boolean = boolean, ProjectId ext
     listChatMessages(threadId: string): Promise<{ messages: Array<any> }>,
     updateEmailTemplate(id: string, tsxSource: string, themeId: string | null | false): Promise<{ renderedHtml: string }>,
     createEmailTemplate(displayName: string): Promise<{ id: string }>,
+    deleteEmailTemplate(id: string): Promise<void>,
 
     setupPayments(): Promise<{ url: string }>,
     createStripeWidgetAccountSession(): Promise<{ client_secret: string }>,

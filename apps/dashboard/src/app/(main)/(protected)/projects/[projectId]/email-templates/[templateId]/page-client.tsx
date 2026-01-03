@@ -13,20 +13,86 @@ import {
 } from "@/components/vibe-coding";
 import { ToolCallContent } from "@/components/vibe-coding/chat-adapters";
 import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
-import { Button, toast } from "@/components/ui";
-import { useEffect, useState } from "react";
+import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
+import { ActionDialog, Alert, AlertDescription, AlertTitle, Button, Skeleton, toast, Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui";
+import { useEffect, useState, useCallback } from "react";
 import { AppEnabledGuard } from "../../app-enabled-guard";
 import { PageLayout } from "../../page-layout";
 import { useAdminApp } from "../../use-admin-app";
+import { Copy, DownloadSimple, ArrowCounterClockwise, Check, WarningCircle } from "@phosphor-icons/react";
 
 export default function PageClient(props: { templateId: string }) {
   const stackAdminApp = useAdminApp();
   const templates = stackAdminApp.useEmailTemplates();
   const { setNeedConfirm } = useRouterConfirm();
-  const template = templates.find((t) => t.id === props.templateId);
+  const templateFromHook = templates.find((t) => t.id === props.templateId);
+
+  // State for loading and template data
+  const [isLoading, setIsLoading] = useState(!templateFromHook);
+  const [fetchedTemplate, setFetchedTemplate] = useState<{ id: string, displayName: string, themeId?: string, tsxSource: string } | null>(null);
+
+  // Use either the template from the hook or the manually fetched one
+  const template = templateFromHook ?? fetchedTemplate;
+
   const [currentCode, setCurrentCode] = useState(template?.tsxSource ?? "");
   const [selectedThemeId, setSelectedThemeId] = useState<string | undefined | false>(template?.themeId);
+  const [isCopying, setIsCopying] = useState(false);
+  const [showResetDialog, setShowResetDialog] = useState(false);
 
+  // If template not found in hook data, try to fetch it directly
+  useEffect(() => {
+    // Skip if we already have the template
+    if (templateFromHook) {
+      setIsLoading(false);
+      return;
+    }
+    // Skip if we already fetched it
+    if (fetchedTemplate) {
+      setIsLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    setIsLoading(true);
+
+    const fetchTemplate = async () => {
+      try {
+        const allTemplates = await stackAdminApp.listEmailTemplates();
+
+        if (cancelled) return;
+
+        const found = allTemplates.find((t) => t.id === props.templateId);
+
+        if (found) {
+          setFetchedTemplate(found);
+          setCurrentCode(found.tsxSource);
+          setSelectedThemeId(found.themeId);
+        }
+      } catch (error) {
+        if (cancelled) return;
+        console.error("Error fetching templates:", error);
+      } finally {
+        if (!cancelled) {
+          setIsLoading(false);
+        }
+      }
+    };
+
+    // Execute async function directly without wrapper to respect cancellation
+    runAsynchronously(fetchTemplate);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [templateFromHook, fetchedTemplate, stackAdminApp, props.templateId]);
+
+  // When the template appears in the hook (e.g., after cache updates), sync state
+  useEffect(() => {
+    if (templateFromHook && !currentCode) {
+      setCurrentCode(templateFromHook.tsxSource);
+      setSelectedThemeId(templateFromHook.themeId);
+    }
+  }, [templateFromHook, currentCode]);
 
   useEffect(() => {
     if (!template) return;
@@ -52,10 +118,68 @@ export default function PageClient(props: { templateId: string }) {
     }
   };
 
+  const handleCopyHtml = useCallback(async () => {
+    try {
+      setIsCopying(true);
+      const html = await stackAdminApp.getEmailPreview({
+        templateTsxSource: currentCode,
+        themeId: selectedThemeId === false ? undefined : selectedThemeId,
+      });
+      await navigator.clipboard.writeText(html);
+      toast({ title: "HTML copied to clipboard", variant: "success" });
+      setTimeout(() => setIsCopying(false), 2000);
+    } catch (error) {
+      setIsCopying(false);
+      toast({ title: "Failed to copy HTML", variant: "destructive" });
+    }
+  }, [stackAdminApp, currentCode, selectedThemeId]);
+
+  const handleDownloadHtml = useCallback(async () => {
+    try {
+      const html = await stackAdminApp.getEmailPreview({
+        templateTsxSource: currentCode,
+        themeId: selectedThemeId === false ? undefined : selectedThemeId,
+      });
+      const blob = new Blob([html], { type: 'text/html' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${template?.displayName || 'email-template'}.html`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      toast({ title: "Failed to download HTML", variant: "destructive" });
+    }
+  }, [stackAdminApp, currentCode, selectedThemeId, template]);
+
+  const handleReset = useCallback(() => {
+    setShowResetDialog(true);
+  }, []);
+
+  const confirmReset = useCallback(async () => {
+    setCurrentCode(template?.tsxSource ?? "");
+    setSelectedThemeId(template?.themeId);
+    setShowResetDialog(false);
+  }, [template]);
 
   const [viewport, setViewport] = useState<'desktop' | 'tablet' | 'phone'>('desktop');
 
   if (!template) {
+    // Show loading state while waiting for the template (either from hook or direct fetch)
+    if (isLoading) {
+      return (
+        <AppEnabledGuard appId="emails">
+          <PageLayout title="Loading Template...">
+            <div className="flex flex-col gap-4">
+              <Skeleton className="h-8 w-64" />
+              <Skeleton className="h-[400px] w-full" />
+            </div>
+          </PageLayout>
+        </AppEnabledGuard>
+      );
+    }
     return (
       <AppEnabledGuard appId="emails">
         <PageLayout title="Email Template Not Found">
@@ -65,6 +189,8 @@ export default function PageClient(props: { templateId: string }) {
     );
   }
 
+  const previewActions = null;
+
   return (
     <AppEnabledGuard appId="emails">
       <VibeCodeLayout
@@ -72,10 +198,19 @@ export default function PageClient(props: { templateId: string }) {
         onViewportChange={setViewport}
         onSave={handleSaveTemplate}
         isDirty={currentCode !== template.tsxSource || selectedThemeId !== template.themeId}
+        previewActions={previewActions}
+        editorTitle="Template Source Code"
+        headerAction={
+          <EmailThemeSelector
+            selectedThemeId={selectedThemeId}
+            onThemeChange={setSelectedThemeId}
+            className="w-48"
+          />
+        }
         previewComponent={
-          <EmailPreview 
-            themeId={selectedThemeId} 
-            templateTsxSource={currentCode} 
+          <EmailPreview
+            themeId={selectedThemeId}
+            templateTsxSource={currentCode}
             viewport={viewport === 'desktop' ? undefined : (viewport === 'tablet' ? { id: 'tablet', name: 'Tablet', width: 820, height: 1180, type: 'tablet' } : { id: 'phone', name: 'Phone', width: 390, height: 844, type: 'phone' })}
           />
         }
@@ -83,15 +218,6 @@ export default function PageClient(props: { templateId: string }) {
           <CodeEditor
             code={currentCode}
             onCodeChange={setCurrentCode}
-            action={
-              <div className="flex gap-2">
-                <EmailThemeSelector
-                  selectedThemeId={selectedThemeId}
-                  onThemeChange={setSelectedThemeId}
-                  className="w-48"
-                />
-              </div>
-            }
           />
         }
         chatComponent={
@@ -102,6 +228,31 @@ export default function PageClient(props: { templateId: string }) {
           />
         }
       />
+
+      {/* Reset Confirmation Dialog */}
+      <ActionDialog
+        open={showResetDialog}
+        onClose={() => setShowResetDialog(false)}
+        title="Reset Template?"
+        okButton={{
+          label: "Reset",
+          onClick: confirmReset,
+          props: {
+            variant: "destructive"
+          }
+        }}
+        cancelButton={{ label: "Cancel" }}
+      >
+        <Alert className="bg-orange-500/5 border-orange-500/20">
+          <WarningCircle className="h-4 w-4 text-orange-600 dark:text-orange-400" />
+          <AlertTitle className="text-orange-600 dark:text-orange-400 font-semibold">
+            Unsaved Changes Will Be Lost
+          </AlertTitle>
+          <AlertDescription className="text-muted-foreground">
+            Are you sure you want to reset the template to its original state? All unsaved changes will be permanently lost.
+          </AlertDescription>
+        </Alert>
+      </ActionDialog>
     </AppEnabledGuard>
   );
 }

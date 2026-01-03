@@ -504,7 +504,29 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
   async createEmailTemplate(displayName: string): Promise<{ id: string }> {
     const result = await this._interface.createEmailTemplate(displayName);
     await this._adminEmailTemplatesCache.refresh([]);
+
+    // Retry fetching if the new template is not yet in the list (handle potential race condition/lag)
+    for (let i = 0; i < 5; i++) {
+      const current = this._adminEmailTemplatesCache.getIfCached([]);
+      if (current.status === "ok" && current.data.status === "ok") {
+        if (current.data.data.some(t => t.id === result.id)) {
+          break;
+        }
+      }
+      await new Promise(resolve => setTimeout(resolve, 200));
+      await this._adminEmailTemplatesCache.refresh([]);
+    }
+
     return result;
+  }
+
+  async deleteEmailTemplate(id: string): Promise<void> {
+    await this._interface.deleteEmailTemplate(id);
+    const current = this._adminEmailTemplatesCache.getIfCached([]);
+    if (current.status === "ok" && current.data.status === "ok") {
+      this._adminEmailTemplatesCache.forceSetCachedValue([], Result.ok(current.data.data.filter((t) => t.id !== id)));
+    }
+    await this._adminEmailTemplatesCache.refresh([]);
   }
 
   async createEmailDraft(options: { displayName: string, themeId?: string | false, tsxSource?: string }): Promise<{ id: string }> {

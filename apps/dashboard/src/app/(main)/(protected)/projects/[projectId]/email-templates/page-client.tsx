@@ -3,8 +3,8 @@
 import { FormDialog } from "@/components/form-dialog";
 import { InputField } from "@/components/form-fields";
 import { useRouter } from "@/components/router";
-import { ActionDialog, Alert, AlertDescription, AlertTitle, Button, Typography, cn } from "@/components/ui";
-import { WarningCircleIcon, EnvelopeSimpleIcon, PlusIcon } from "@phosphor-icons/react";
+import { ActionDialog, Alert, AlertDescription, AlertTitle, Button, cn, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, toast, Typography } from "@/components/ui";
+import { DotsThree, EnvelopeSimpleIcon, PlusIcon, WarningCircleIcon } from "@phosphor-icons/react";
 import { useState } from "react";
 import * as yup from "yup";
 import { AppEnabledGuard } from "../app-enabled-guard";
@@ -14,10 +14,22 @@ import { useAdminApp } from "../use-admin-app";
 export default function PageClient() {
   const stackAdminApp = useAdminApp();
   const project = stackAdminApp.useProject();
-  const emailConfig = project.config.emailConfig;
+  const config = project.useConfig();
+  const emailConfig = config.emails.server;
   const emailTemplates = stackAdminApp.useEmailTemplates();
   const router = useRouter();
   const [sharedSmtpWarningDialogOpen, setSharedSmtpWarningDialogOpen] = useState<string | null>(null);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState<string | null>(null);
+
+  const handleDelete = async (templateId: string) => {
+    try {
+      await stackAdminApp.deleteEmailTemplate(templateId);
+      toast({ title: "Template deleted successfully", variant: "success" });
+      setDeleteDialogOpen(null);
+    } catch (error) {
+      toast({ title: "Failed to delete template", variant: "destructive" });
+    }
+  };
 
   return (
     <AppEnabledGuard appId="emails">
@@ -26,7 +38,7 @@ export default function PageClient() {
         description="Customize the emails sent to your users"
         actions={<NewTemplateButton />}
       >
-        {emailConfig?.type === 'shared' && (
+        {emailConfig.isShared && (
           <Alert className="bg-orange-500/5 border-orange-500/20 text-orange-600 dark:text-orange-400">
             <WarningCircleIcon className="h-4 w-4" />
             <AlertTitle className="font-semibold">Warning</AlertTitle>
@@ -59,13 +71,13 @@ export default function PageClient() {
                 </div>
               </div>
 
-              <div className="relative">
+              <div className="relative flex items-center gap-2">
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="h-8 px-3 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-foreground/[0.05] transition-all duration-150 hover:transition-none"
+                  className="h-8 px-3 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-foreground/[0.05] transition-all duration-150 hover:transition-none rounded-lg"
                   onClick={() => {
-                    if (emailConfig?.type === 'shared') {
+                    if (emailConfig.isShared) {
                       setSharedSmtpWarningDialogOpen(template.id);
                     } else {
                       router.push(`email-templates/${template.id}`);
@@ -74,6 +86,28 @@ export default function PageClient() {
                 >
                   Edit Template
                 </Button>
+
+                {!emailConfig.isShared && (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground hover:bg-foreground/[0.05] transition-all duration-150 hover:transition-none rounded-lg"
+                      >
+                        <DotsThree size={20} weight="bold" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="min-w-[180px]">
+                      <DropdownMenuItem
+                        onClick={() => setDeleteDialogOpen(template.id)}
+                        className="py-2.5 text-red-600 dark:text-red-400 focus:text-red-600 dark:focus:text-red-400 focus:bg-red-500/10 cursor-pointer justify-center"
+                      >
+                        <span className="font-medium">Delete Template</span>
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                )}
               </div>
             </div>
           ))}
@@ -99,6 +133,32 @@ export default function PageClient() {
             </AlertDescription>
           </Alert>
         </ActionDialog>
+
+        <ActionDialog
+          open={deleteDialogOpen !== null}
+          onClose={() => setDeleteDialogOpen(null)}
+          title="Delete Email Template"
+          okButton={{
+            label: "Delete",
+            onClick: async () => {
+              if (deleteDialogOpen) {
+                await handleDelete(deleteDialogOpen);
+              }
+            },
+            props: {
+              variant: "destructive"
+            }
+          }}
+          cancelButton={{ label: "Cancel" }}
+        >
+          <Alert className="bg-red-500/5 border-red-500/20 text-red-600 dark:text-red-400">
+            <WarningCircleIcon className="h-4 w-4" />
+            <AlertTitle className="font-semibold">Confirm Deletion</AlertTitle>
+            <AlertDescription className="text-muted-foreground">
+              Are you sure you want to delete this email template? This action cannot be undone.
+            </AlertDescription>
+          </Alert>
+        </ActionDialog>
       </PageLayout>
     </AppEnabledGuard>
   );
@@ -106,12 +166,47 @@ export default function PageClient() {
 
 function NewTemplateButton() {
   const stackAdminApp = useAdminApp();
+  const project = stackAdminApp.useProject();
+  const config = project.useConfig();
+  const emailConfig = config.emails.server;
   const router = useRouter();
+  const [showSharedWarning, setShowSharedWarning] = useState(false);
 
   const handleCreateNewTemplate = async (values: { name: string }) => {
     const { id } = await stackAdminApp.createEmailTemplate(values.name);
     router.push(`email-templates/${id}`);
   };
+
+  if (emailConfig.isShared) {
+    return (
+      <>
+        <Button className="gap-2" onClick={() => setShowSharedWarning(true)}>
+          <PlusIcon className="h-4 w-4" />
+          New Template
+        </Button>
+        <ActionDialog
+          open={showSharedWarning}
+          onClose={() => setShowSharedWarning(false)}
+          title="Custom Email Server Required"
+          okButton={{
+            label: "Configure Email Server",
+            onClick: async () => {
+              router.push("emails");
+            }
+          }}
+          cancelButton={{ label: "Cancel" }}
+        >
+          <Alert className="bg-orange-500/5 border-orange-500/20 text-orange-600 dark:text-orange-400">
+            <WarningCircleIcon className="h-4 w-4" />
+            <AlertTitle className="font-semibold">Custom SMTP Required</AlertTitle>
+            <AlertDescription className="text-muted-foreground">
+              To create custom email templates, you need to configure a custom SMTP server first.
+            </AlertDescription>
+          </Alert>
+        </ActionDialog>
+      </>
+    );
+  }
 
   return (
     <FormDialog

@@ -2,13 +2,13 @@
 
 import { MixerHorizontalIcon } from "@radix-ui/react-icons";
 import {
-    Button,
-    DropdownMenu,
-    DropdownMenuCheckboxItem,
-    DropdownMenuContent,
-    DropdownMenuLabel,
-    DropdownMenuSeparator,
-    DropdownMenuTrigger
+  Button,
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger
 } from "@stackframe/stack-ui";
 import { Table } from "@tanstack/react-table";
 

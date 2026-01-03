@@ -3,19 +3,19 @@
 import { TeamMemberSearchTable } from "@/components/data-table/team-member-search-table";
 import { FormDialog } from "@/components/form-dialog";
 import { InputField, SelectField, TextAreaField } from "@/components/form-fields";
+import { ActionDialog, Alert, AlertDescription, AlertTitle, Button, DataTable, DataTableViewOptions, SimpleTooltip, Tooltip, TooltipContent, TooltipProvider, TooltipTrigger, Typography, useToast } from "@/components/ui";
 import { getPublicEnvVar } from "@/lib/env";
-import { WarningCircleIcon, XIcon, CheckCircle, XCircle, Envelope, HardDrive, ArrowSquareOut, Sliders } from "@phosphor-icons/react";
+import { cn } from "@/lib/utils";
+import { ArrowSquareOut, CheckCircle, Envelope, HardDrive, Sliders, WarningCircleIcon, XCircle, XIcon } from "@phosphor-icons/react";
 import { AdminEmailConfig, AdminProject, AdminSentEmail, ServerUser, UserAvatar } from "@stackframe/stack";
 import { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
 import { strictEmailSchema } from "@stackframe/stack-shared/dist/schema-fields";
 import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { deepPlainEquals } from "@stackframe/stack-shared/dist/utils/objects";
 import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
-import { ActionDialog, Alert, AlertDescription, AlertTitle, Button, DataTable, SimpleTooltip, Tooltip, TooltipContent, TooltipProvider, TooltipTrigger, Typography, useToast, DataTableViewOptions } from "@/components/ui";
 import { ColumnDef, Table as TableType } from "@tanstack/react-table";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import * as yup from "yup";
-import { cn } from "@/lib/utils";
 import { AppEnabledGuard } from "../app-enabled-guard";
 import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";
@@ -233,7 +233,8 @@ function EmailLogCard() {
   const stackAdminApp = useAdminApp();
   const [emailLogs, setEmailLogs] = useState<AdminSentEmail[]>([]);
   const [loading, setLoading] = useState(true);
-  const [table, setTable] = useState<TableType<AdminSentEmail> | null>(null);
+  const tableRef = useRef<TableType<AdminSentEmail> | null>(null);
+  const [, forceUpdate] = useState({});
 
   // Fetch email logs when component mounts
   useEffect(() => {
@@ -307,13 +308,10 @@ function EmailLogCard() {
               View and manage email sending history
             </Typography>
           </div>
-          {table && (
+          {tableRef.current && (
             <div className="flex items-center gap-2 flex-shrink-0">
-              <DataTableViewOptions 
-                table={table} 
-                variant="secondary"
-                className="h-8 px-3 text-xs gap-1.5"
-                iconClassName="h-3.5 w-3.5"
+              <DataTableViewOptions
+                table={tableRef.current}
               />
             </div>
           )}
@@ -327,8 +325,10 @@ function EmailLogCard() {
           defaultSorting={[{ id: 'sentAt', desc: true }]}
           showDefaultToolbar={false}
           toolbarRender={(tableInstance) => {
-            if (table !== tableInstance) {
-              setTable(tableInstance);
+            if (tableRef.current !== tableInstance) {
+              tableRef.current = tableInstance;
+              // Force a re-render to show the table options
+              forceUpdate({});
             }
             return null;
           }}
@@ -380,6 +380,64 @@ const emailServerSchema = yup.object({
   senderEmail: definedWhenTypeIsOneOf(strictEmailSchema("Sender email must be a valid email"), ["standard", "resend"], "Sender email is required"),
   senderName: definedWhenTypeIsOneOf(yup.string(), ["standard", "resend"], "Email sender name is required"),
 });
+
+// Helper component for input with info tooltip
+function InputFieldWithInfo({
+  label,
+  name,
+  control,
+  type,
+  required,
+  infoText,
+  infoLinks,
+}: {
+  label: string,
+  name: string,
+  control: any,
+  type: string,
+  required?: boolean,
+  infoText: string,
+  infoLinks?: Array<{ label: string, url: string }>,
+}) {
+  const tooltipContent = (
+    <div className="space-y-2.5 max-w-xs">
+      <p className="text-xs leading-relaxed text-center">{infoText}</p>
+      {infoLinks && infoLinks.length > 0 && (
+        <div className="pt-2 border-t border-foreground/10 space-y-1.5 flex flex-col items-center">
+          {infoLinks.map((link, idx) => (
+            <a
+              key={idx}
+              href={link.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 text-xs text-blue-400 hover:text-blue-300 hover:underline transition-colors duration-150 hover:transition-none cursor-pointer"
+            >
+              <span>{link.label}</span>
+              <svg className="w-3 h-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+              </svg>
+            </a>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+
+  return (
+    <InputField
+      label={
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-medium">{label}</span>
+          <SimpleTooltip tooltip={tooltipContent} type="info" />
+        </div>
+      }
+      name={name}
+      control={control}
+      type={type}
+      // Don't pass required prop - it adds asterisk which we don't want
+    />
+  );
+}
 
 function EditEmailServerDialog(props: {
   trigger: React.ReactNode,
@@ -485,39 +543,93 @@ function EditEmailServerDialog(props: {
           ]}
         />
         {form.watch('type') === 'resend' && <>
-          {([
-            { label: "Resend API Key", name: "password", type: 'password' },
-            { label: "Sender Email", name: "senderEmail", type: 'email' },
-            { label: "Sender Name", name: "senderName", type: 'text' },
-          ] as const).map((field) => (
-            <InputField
-              key={field.name}
-              label={field.label}
-              name={field.name}
-              control={form.control}
-              type={field.type}
-              required
-            />
-          ))}
+          <InputFieldWithInfo
+            label="Resend API Key"
+            name="password"
+            control={form.control}
+            type="password"
+            required
+            infoText="Get your API key from resend.com/api-keys. Create a new key with 'Sending access' permissions."
+          />
+          <InputFieldWithInfo
+            label="Sender Email"
+            name="senderEmail"
+            control={form.control}
+            type="email"
+            required
+            infoText="The email address emails will be sent from. Must be a verified domain in your Resend account."
+          />
+          <InputField
+            label="Sender Name"
+            name="senderName"
+            control={form.control}
+            type="text"
+            required
+          />
+          <Alert className="bg-blue-500/5 border-blue-500/20">
+            <Typography variant="secondary" className="text-sm">
+              <strong>Note:</strong> Your API key will be encrypted and securely stored in the database.
+            </Typography>
+          </Alert>
         </>}
         {form.watch('type') === 'standard' && <>
-          {([
-            { label: "Host", name: "host", type: 'text' },
-            { label: "Port", name: "port", type: 'number' },
-            { label: "Username", name: "username", type: 'text' },
-            { label: "Password", name: "password", type: 'password' },
-            { label: "Sender Email", name: "senderEmail", type: 'email' },
-            { label: "Sender Name", name: "senderName", type: 'text' },
-          ] as const).map((field) => (
-            <InputField
-              key={field.name}
-              label={field.label}
-              name={field.name}
-              control={form.control}
-              type={field.type}
-              required
-            />
-          ))}
+          <InputFieldWithInfo
+            label="Host"
+            name="host"
+            control={form.control}
+            type="text"
+            required
+            infoText="Your SMTP server hostname (e.g., smtp.gmail.com, smtp-mail.outlook.com, or smtp.your-domain.com)"
+          />
+          <InputFieldWithInfo
+            label="Port"
+            name="port"
+            control={form.control}
+            type="number"
+            required
+            infoText="Common ports: 587 (TLS/STARTTLS recommended), 465 (SSL), or 25 (unencrypted, not recommended)"
+          />
+          <InputFieldWithInfo
+            label="Username"
+            name="username"
+            control={form.control}
+            type="text"
+            required
+            infoText="Your SMTP username, usually your full email address (e.g., user@example.com)"
+          />
+          <InputFieldWithInfo
+            label="Password"
+            name="password"
+            control={form.control}
+            type="password"
+            required
+            infoText="Your SMTP password or app-specific password. Most email providers require app passwords for security."
+            infoLinks={[
+              { label: "Gmail: Create App Password", url: "https://myaccount.google.com/apppasswords" },
+              { label: "Outlook: App Password Guide", url: "https://support.microsoft.com/account-billing/using-app-passwords-with-apps-that-don-t-support-two-step-verification-5896ed9b-4263-e681-128a-a6f2979a7944" },
+              { label: "Yahoo: Generate App Password", url: "https://help.yahoo.com/kb/generate-app-password-sln15241.html" },
+            ]}
+          />
+          <InputFieldWithInfo
+            label="Sender Email"
+            name="senderEmail"
+            control={form.control}
+            type="email"
+            required
+            infoText="The email address that will appear as the sender. Must be authorized by your SMTP server."
+          />
+          <InputField
+            label="Sender Name"
+            name="senderName"
+            control={form.control}
+            type="text"
+            required
+          />
+          <Alert className="bg-blue-500/5 border-blue-500/20">
+            <Typography variant="secondary" className="text-sm">
+              <strong>Note:</strong> Your SMTP credentials will be encrypted and securely stored in the database.
+            </Typography>
+          </Alert>
         </>}
         {error && <Alert variant="destructive">{error}</Alert>}
       </>
@@ -530,6 +642,7 @@ function TestSendingDialog(props: {
 }) {
   const stackAdminApp = useAdminApp();
   const project = stackAdminApp.useProject();
+  const config = project.useConfig();
   const { toast } = useToast();
   const [error, setError] = useState<string | null>(null);
 
@@ -541,8 +654,27 @@ function TestSendingDialog(props: {
     })}
     okButton={{ label: "Send" }}
     onSubmit={async (values) => {
-      const emailConfig = project.config.emailConfig || throwErr("Email config is not set");
-      if (emailConfig.type === 'shared') throwErr("Shared email server cannot be used for testing");
+      const emailServerConfig = config.emails.server;
+      if (emailServerConfig.isShared) throwErr("Shared email server cannot be used for testing");
+
+      // Convert CompleteConfig email server to AdminEmailConfig format
+      const emailConfig: AdminEmailConfig = emailServerConfig.provider === 'resend' ? {
+        type: 'resend',
+        host: emailServerConfig.host || throwErr("Email host is missing"),
+        port: emailServerConfig.port || throwErr("Email port is missing"),
+        username: emailServerConfig.username || throwErr("Email username is missing"),
+        password: emailServerConfig.password || throwErr("Email password is missing"),
+        senderName: emailServerConfig.senderName || throwErr("Email sender name is missing"),
+        senderEmail: emailServerConfig.senderEmail || throwErr("Email sender email is missing"),
+      } : {
+        type: 'standard',
+        host: emailServerConfig.host || throwErr("Email host is missing"),
+        port: emailServerConfig.port || throwErr("Email port is missing"),
+        username: emailServerConfig.username || throwErr("Email username is missing"),
+        password: emailServerConfig.password || throwErr("Email password is missing"),
+        senderName: emailServerConfig.senderName || throwErr("Email sender name is missing"),
+        senderEmail: emailServerConfig.senderEmail || throwErr("Email sender email is missing"),
+      };
 
       const result = await stackAdminApp.sendTestEmail({
         recipientEmail: values.email,
