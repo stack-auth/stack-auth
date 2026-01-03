@@ -277,7 +277,7 @@ export default function PageClient() {
                 viewport={selectedViewport}
                 emailSubject="Verify your email address"
                 senderName={project.displayName}
-                senderEmail={`noreply@${project.displayName.toLowerCase().replace(/\s+/g, '')}.com`}
+                senderEmail={`noreply@${project.displayName.toLowerCase().replace(/[^a-z0-9]/g, '')}.com`}
               />
             </div>
           </GlassCard>

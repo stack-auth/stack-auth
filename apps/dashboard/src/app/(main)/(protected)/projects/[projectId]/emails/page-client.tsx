@@ -233,6 +233,7 @@ function EmailLogCard() {
   const stackAdminApp = useAdminApp();
   const [emailLogs, setEmailLogs] = useState<AdminSentEmail[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const tableRef = useRef<TableType<AdminSentEmail> | null>(null);
   const [, forceUpdate] = useState({});
 
@@ -240,9 +241,12 @@ function EmailLogCard() {
   useEffect(() => {
     runAsynchronously(async () => {
       setLoading(true);
+      setError(null);
       try {
         const emails = await stackAdminApp.listSentEmails();
         setEmailLogs(emails);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to load email logs");
       } finally {
         setLoading(false);
       }
@@ -266,6 +270,32 @@ function EmailLogCard() {
             <Typography variant="secondary" className="text-sm">
               Loading email logs...
             </Typography>
+          </div>
+        </div>
+      </GlassCard>
+    );
+  }
+
+  if (error) {
+    return (
+      <GlassCard gradientColor="slate" className="overflow-hidden">
+        <div className="p-5">
+          <SectionHeader icon={Envelope} title="Email Log" />
+          <Typography variant="secondary" className="text-sm mt-1">
+            View and manage email sending history
+          </Typography>
+        </div>
+        <div className="border-t border-foreground/[0.05] flex items-center justify-center py-12">
+          <div className="flex flex-col items-center gap-3 text-center max-w-sm">
+            <div className="p-3 rounded-xl bg-destructive/10">
+              <Envelope className="h-5 w-5 text-destructive" />
+            </div>
+            <div className="space-y-1">
+              <Typography className="text-sm font-medium text-foreground">Failed to load emails</Typography>
+              <Typography variant="secondary" className="text-sm">
+                {error}
+              </Typography>
+            </div>
           </div>
         </div>
       </GlassCard>

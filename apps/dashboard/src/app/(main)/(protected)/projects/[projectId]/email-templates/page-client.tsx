@@ -22,13 +22,9 @@ export default function PageClient() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState<string | null>(null);
 
   const handleDelete = async (templateId: string) => {
-    try {
-      await stackAdminApp.deleteEmailTemplate(templateId);
-      toast({ title: "Template deleted successfully", variant: "success" });
-      setDeleteDialogOpen(null);
-    } catch (error) {
-      toast({ title: "Failed to delete template", variant: "destructive" });
-    }
+    await stackAdminApp.deleteEmailTemplate(templateId);
+    toast({ title: "Template deleted successfully", variant: "success" });
+    setDeleteDialogOpen(null);
   };
 
   return (
