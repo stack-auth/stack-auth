@@ -3,7 +3,7 @@ import { teamMembershipsCrudHandlers } from '@/app/api/latest/team-memberships/c
 import { teamsCrudHandlers } from '@/app/api/latest/teams/crud';
 import { usersCrudHandlers } from '@/app/api/latest/users/crud';
 import { CustomerType, EmailOutboxCreatedWith, Prisma, PurchaseCreationSource, SubscriptionStatus } from '@/generated/prisma/client';
-import { overrideEnvironmentConfigOverride } from '@/lib/config';
+import { overrideEnvironmentConfigOverride, setBranchConfigOverrideSource } from '@/lib/config';
 import { ensurePermissionDefinition, grantTeamPermission } from '@/lib/permissions';
 import { createOrUpdateProjectWithLegacyConfig, getProject } from '@/lib/projects';
 import { DEFAULT_BRANCH_ID, getSoleTenancyFromProjectBranch, type Tenancy } from '@/lib/tenancies';
@@ -208,6 +208,13 @@ export async function seed() {
         installed: typedFromEntries(typedEntries(ALL_APPS).map(([key, value]) => [key, { enabled: true }])),
       },
     }
+  });
+
+  // Set the internal project's branch config source to pushed-from-unknown
+  await setBranchConfigOverrideSource({
+    projectId: 'internal',
+    branchId: DEFAULT_BRANCH_ID,
+    source: { type: "pushed-from-unknown" },
   });
 
   await ensurePermissionDefinition(
@@ -992,6 +999,20 @@ async function seedDummyProject(options: DummyProjectSeedOptions) {
       apps: {
         installed: typedFromEntries(typedEntries(ALL_APPS).map(([key]) => [key, { enabled: true }])),
       },
+    },
+  });
+
+  // Set the dummy project's branch config source to pushed-from-github with dummy values
+  await setBranchConfigOverrideSource({
+    projectId: DUMMY_PROJECT_ID,
+    branchId: DEFAULT_BRANCH_ID,
+    source: {
+      type: "pushed-from-github",
+      owner: "stack-auth",
+      repo: "dummy-config-repo",
+      branch: "main",
+      commit_hash: "abc123def456789",
+      config_file_path: "stack.config.json",
     },
   });
 
