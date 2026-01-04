@@ -2,7 +2,7 @@ import { Prisma } from "@/generated/prisma/client";
 import { Config, getInvalidConfigReason, normalize, override } from "@stackframe/stack-shared/dist/config/format";
 import { BranchConfigOverride, BranchConfigOverrideOverride, BranchIncompleteConfig, BranchRenderedConfig, CompleteConfig, EnvironmentConfigOverride, EnvironmentConfigOverrideOverride, EnvironmentIncompleteConfig, EnvironmentRenderedConfig, OrganizationConfigOverride, OrganizationConfigOverrideOverride, OrganizationIncompleteConfig, ProjectConfigOverride, ProjectConfigOverrideOverride, ProjectIncompleteConfig, ProjectRenderedConfig, applyBranchDefaults, applyEnvironmentDefaults, applyOrganizationDefaults, applyProjectDefaults, assertNoConfigOverrideErrors, branchConfigSchema, environmentConfigSchema, getConfigOverrideErrors, getIncompleteConfigWarnings, migrateConfigOverride, organizationConfigSchema, projectConfigSchema, sanitizeBranchConfig, sanitizeEnvironmentConfig, sanitizeOrganizationConfig, sanitizeProjectConfig } from "@stackframe/stack-shared/dist/config/schema";
 import { ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
-import { yupBoolean, yupMixed, yupObject, yupRecord, yupString, yupUnion } from "@stackframe/stack-shared/dist/schema-fields";
+import { branchConfigSourceSchema, yupBoolean, yupMixed, yupObject, yupRecord, yupString, yupUnion } from "@stackframe/stack-shared/dist/schema-fields";
 import { isTruthy } from "@stackframe/stack-shared/dist/utils/booleans";
 import { getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
 import { StackAssertionError, captureError } from "@stackframe/stack-shared/dist/utils/errors";
@@ -12,6 +12,8 @@ import { deindent, stringCompare } from "@stackframe/stack-shared/dist/utils/str
 import * as yup from "yup";
 import { RawQuery, globalPrismaClient, rawQuery } from "../prisma-client";
 import { listPermissionDefinitionsFromConfig } from "./permissions";
+
+type BranchConfigSourceApi = yup.InferType<typeof branchConfigSourceSchema>;
 
 type ProjectOptions = { projectId: string };
 type BranchOptions = ProjectOptions & { branchId: string };
@@ -261,6 +263,75 @@ export async function setBranchConfigOverride(options: {
   });
 }
 
+/**
+ * Gets the source metadata for the branch config override.
+ */
+export async function getBranchConfigOverrideSource(options: {
+  projectId: string,
+  branchId: string,
+}): Promise<BranchConfigSourceApi> {
+  const result = await globalPrismaClient.branchConfigOverride.findUnique({
+    where: {
+      projectId_branchId: {
+        projectId: options.projectId,
+        branchId: options.branchId,
+      }
+    },
+    select: {
+      source: true,
+    },
+  });
+
+  // If no source is set or record doesn't exist, default to unlinked
+  if (!result?.source) {
+    return { type: "unlinked" };
+  }
+
+  return result.source as BranchConfigSourceApi;
+}
+
+/**
+ * Sets the source metadata for the branch config override.
+ */
+export async function setBranchConfigOverrideSource(options: {
+  projectId: string,
+  branchId: string,
+  source: BranchConfigSourceApi,
+}): Promise<void> {
+  await globalPrismaClient.branchConfigOverride.upsert({
+    where: {
+      projectId_branchId: {
+        projectId: options.projectId,
+        branchId: options.branchId,
+      }
+    },
+    update: {
+      source: options.source as any,
+    },
+    create: {
+      projectId: options.projectId,
+      branchId: options.branchId,
+      config: {}, // Empty config for new records
+      source: options.source as any,
+    },
+  });
+}
+
+/**
+ * Unlinks the branch config source, setting it to "unlinked".
+ * This is a convenience function that calls setBranchConfigOverrideSource with { type: "unlinked" }.
+ */
+export async function unlinkBranchConfigOverrideSource(options: {
+  projectId: string,
+  branchId: string,
+}): Promise<void> {
+  await setBranchConfigOverrideSource({
+    projectId: options.projectId,
+    branchId: options.branchId,
+    source: { type: "unlinked" },
+  });
+}
+
 export async function setEnvironmentConfigOverride(options: {
   projectId: string,
   branchId: string,
@@ -344,6 +415,7 @@ export async function overrideBranchConfigOverride(options: {
     options.branchConfigOverrideOverride,
   );
 
+  // setBranchConfigOverride uses upsert and preserves existing source automatically
   await setBranchConfigOverride({
     projectId: options.projectId,
     branchId: options.branchId,

@@ -858,3 +858,20 @@ export function yupDefinedAndNonEmptyWhen<S extends yup.StringSchema>(
     otherwise: (schema: S) => schema.optional()
   });
 }
+
+export const branchConfigSourceSchema = yupUnion(
+  yupObject({
+    type: yupString().oneOf(["pushed-from-github"]).defined(),
+    owner: yupString().defined(),
+    repo: yupString().defined(),
+    branch: yupString().defined(),
+    commit_hash: yupString().defined(),
+    config_file_path: yupString().defined(),
+  }),
+  yupObject({
+    type: yupString().oneOf(["pushed-from-unknown"]).defined(),
+  }),
+  yupObject({
+    type: yupString().oneOf(["unlinked"]).defined(),
+  }),
+);

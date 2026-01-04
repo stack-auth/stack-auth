@@ -127,18 +127,19 @@ export default function PageClient() {
             {'When enabled, a "Create Team" button will be added to the account settings page and the team switcher.'}
           </Typography>
 
-          <SettingSwitch
-            label="Create a personal team for each user on sign-up"
-            checked={personalTeamOnSignUp}
-            onCheckedChange={(checked) => {
-              if (checked === config.teams.createPersonalTeamOnSignUp) {
-                setLocalPersonalTeamOnSignUp(undefined);
-              } else {
-                setLocalPersonalTeamOnSignUp(checked);
-              }
-            }}
-            className="mt-4"
-          />
+          <div className="mt-4">
+            <SettingSwitch
+              label="Create a personal team for each user on sign-up"
+              checked={personalTeamOnSignUp}
+              onCheckedChange={(checked) => {
+                if (checked === config.teams.createPersonalTeamOnSignUp) {
+                  setLocalPersonalTeamOnSignUp(undefined);
+                } else {
+                  setLocalPersonalTeamOnSignUp(checked);
+                }
+              }}
+            />
+          </div>
           <Typography variant="secondary" type="footnote">
             When enabled, a personal team will be created for each user when they sign up. This will not automatically create teams for existing users.
           </Typography>

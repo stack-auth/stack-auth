@@ -7,6 +7,7 @@ import { useUpdateConfig } from "@/lib/config-update";
 import { AsteriskIcon, DotsThreeIcon, KeyIcon, LinkIcon, PlusCircleIcon } from "@phosphor-icons/react";
 import { AdminOAuthProviderConfig, AuthPage, OAuthProviderConfig } from "@stackframe/stack";
 import type { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
+import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { allProviders } from "@stackframe/stack-shared/dist/utils/oauth";
 import { useMemo, useState } from "react";
 import { CardSubtitle } from "../../../../../../../../../packages/stack-ui/dist/components/ui/card";
@@ -66,16 +67,35 @@ function ConfirmSignUpDisabledDialog(props: {
 }
 
 function adminProviderToConfigProvider(provider: AdminOAuthProviderConfig): CompleteConfig['auth']['oauth']['providers'][string] {
-  return {
-    type: provider.id,
-    isShared: provider.type === "shared",
-    clientId: provider.clientId ?? "",
-    clientSecret: provider.clientSecret ?? "",
-    facebookConfigId: provider.facebookConfigId,
-    microsoftTenantId: provider.microsoftTenantId,
-    allowSignIn: true,
-    allowConnectedAccounts: true,
-  };
+  switch (provider.type) {
+    case 'shared': {
+      return {
+        type: provider.id as any,
+        isShared: true,
+        clientId: undefined,
+        clientSecret: undefined,
+        facebookConfigId: undefined,
+        microsoftTenantId: undefined,
+        allowSignIn: true,
+        allowConnectedAccounts: true,
+      };
+    }
+    case 'standard': {
+      return {
+        type: provider.id as any,
+        isShared: false,
+        clientId: provider.clientId,
+        clientSecret: provider.clientSecret,
+        facebookConfigId: provider.facebookConfigId,
+        microsoftTenantId: provider.microsoftTenantId,
+        allowSignIn: true,
+        allowConnectedAccounts: true,
+      };
+    }
+    default: {
+      throw new StackAssertionError(`Unknown provider type: ${(provider as { type: unknown }).type}`);
+    }
+  }
 }
 
 function DisabledProvidersDialog({ open, onOpenChange }: { open?: boolean, onOpenChange?: (open: boolean) => void }) {

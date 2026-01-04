@@ -3,11 +3,13 @@ import { InputField } from "@/components/form-fields";
 import { Link, StyledLink } from "@/components/link";
 import { LogoUpload } from "@/components/logo-upload";
 import { FormSettingCard, SettingCard, SettingCopyableText, SettingSwitch } from "@/components/settings";
+import { ActionDialog, Alert, Avatar, AvatarFallback, AvatarImage, Button, SimpleTooltip, Typography, useToast } from "@/components/ui";
 import { getPublicEnvVar } from "@/lib/env";
+import type { PushedConfigSource } from "@stackframe/stack";
 import { TeamSwitcher, useUser } from "@stackframe/stack";
 import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
-import { ActionDialog, Alert, Avatar, AvatarFallback, AvatarImage, Button, SimpleTooltip, Typography, useToast } from "@/components/ui";
-import { useCallback, useMemo, useState } from "react";
+import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import * as yup from "yup";
 import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";
@@ -51,7 +53,27 @@ export default function PageClient() {
   const teams = user.useTeams();
   const [selectedTeamId, setSelectedTeamId] = useState<string | null>(null);
   const [isTransferring, setIsTransferring] = useState(false);
+  const [configSource, setConfigSource] = useState<PushedConfigSource | null>(null);
+  const [isLoadingSource, setIsLoadingSource] = useState(true);
   const { toast } = useToast();
+
+  // Fetch config source on mount
+  useEffect(() => {
+    runAsynchronouslyWithAlert(async () => {
+      try {
+        const source = await project.getPushedConfigSource();
+        setConfigSource(source);
+      } finally {
+        setIsLoadingSource(false);
+      }
+    });
+  }, [project]);
+
+  const handleUnlinkSource = useCallback(async () => {
+    await project.unlinkPushedConfigSource();
+    setConfigSource({ type: "unlinked" });
+    toast({ title: "Configuration source unlinked", description: "You can now edit the configuration directly on this dashboard." });
+  }, [project, toast]);
 
   const baseApiUrl = getPublicEnvVar('NEXT_PUBLIC_STACK_API_URL');
 
@@ -369,6 +391,98 @@ export default function PageClient() {
               ))}
             </ul>
           </Alert>
+        )}
+      </SettingCard>
+
+      <SettingCard
+        title="Configuration Source"
+        description="Manage where your project configuration is managed from."
+      >
+        {isLoadingSource ? (
+          <Typography variant="secondary">Loading...</Typography>
+        ) : configSource?.type === "unlinked" ? (
+          <div className="flex flex-col gap-2">
+            <Typography>
+              <strong>Dashboard</strong>
+            </Typography>
+            <Typography variant="secondary" type="footnote">
+              Your configuration is managed directly on this dashboard. Changes take effect immediately when saved.
+            </Typography>
+          </div>
+        ) : configSource?.type === "pushed-from-github" ? (
+          <div className="flex flex-col gap-4">
+            <div className="flex flex-col gap-2">
+              <Typography>
+                <strong>GitHub</strong>
+              </Typography>
+              <Typography variant="secondary" type="footnote">
+                Your configuration is managed via GitHub. Changes made on this dashboard will be overwritten when you push from GitHub again.
+              </Typography>
+              <div className="mt-2 p-3 bg-muted rounded-md text-sm space-y-1">
+                <div><strong>Repository:</strong> {configSource.owner}/{configSource.repo}</div>
+                <div><strong>Branch:</strong> {configSource.branch}</div>
+                <div><strong>Config file:</strong> {configSource.configFilePath}</div>
+                <div><strong>Last commit:</strong> <code className="text-xs">{configSource.commitHash.substring(0, 7)}</code></div>
+              </div>
+            </div>
+            <div>
+              <ActionDialog
+                trigger={
+                  <Button variant="secondary" size="sm">
+                    Unlink from GitHub
+                  </Button>
+                }
+                title="Unlink Configuration Source"
+                okButton={{
+                  label: "Unlink",
+                  onClick: handleUnlinkSource,
+                }}
+                cancelButton
+              >
+                <Typography>
+                  Are you sure you want to unlink your configuration from GitHub?
+                </Typography>
+                <Typography className="mt-2" variant="secondary">
+                  After unlinking, you can edit the configuration directly on this dashboard. However, pushing from GitHub will no longer update your configuration until you reconnect.
+                </Typography>
+              </ActionDialog>
+            </div>
+          </div>
+        ) : configSource?.type === "pushed-from-unknown" ? (
+          <div className="flex flex-col gap-4">
+            <div className="flex flex-col gap-2">
+              <Typography>
+                <strong>CLI</strong>
+              </Typography>
+              <Typography variant="secondary" type="footnote">
+                Your configuration was pushed via the Stack Auth CLI. Changes made on this dashboard will be overwritten when you push from the CLI again.
+              </Typography>
+            </div>
+            <div>
+              <ActionDialog
+                trigger={
+                  <Button variant="secondary" size="sm">
+                    Unlink from CLI
+                  </Button>
+                }
+                title="Unlink Configuration Source"
+                okButton={{
+                  label: "Unlink",
+                  onClick: handleUnlinkSource,
+                }}
+                cancelButton
+              >
+                <Typography>
+                  Are you sure you want to unlink your configuration from the CLI?
+                </Typography>
+                <Typography className="mt-2" variant="secondary">
+                  After unlinking, you can edit the configuration directly on this dashboard. However, pushing from the CLI will no longer update your configuration until you reconnect.
+                </Typography>
+              </ActionDialog>
+            </div>
+          </div>
+        ) : (
+          <Typography variant="secondary">Unknown configuration source</Typography>
         )}
       </SettingCard>
 

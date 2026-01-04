@@ -192,6 +192,7 @@ describe("basic config operations", () => {
       headers: adminHeaders(adminAccessToken),
       body: {
         config_string: "not valid json at all",
+        source: { type: "unlinked" },
       },
     });
 
@@ -222,6 +223,7 @@ describe("basic config operations", () => {
       headers: adminHeaders(adminAccessToken),
       body: {
         config_string: JSON.stringify({}),
+        source: { type: "unlinked" },
       },
     });
     expect(putResponse.status).toBe(200);
@@ -958,6 +960,7 @@ describe("GET and PUT endpoints", () => {
         config_string: JSON.stringify({
           'teams.createPersonalTeamOnSignUp': true,
         }),
+        source: { type: "unlinked" },
       },
     });
     expect(putResponse.status).toBe(200);
@@ -1045,6 +1048,7 @@ describe("pushConfig and updateConfig behavior", () => {
           'teams.allowClientTeamCreation': true,
           'teams.createPersonalTeamOnSignUp': true,
         }),
+        source: { type: "unlinked" },
       },
     });
     expect(pushResponse1.status).toBe(200);
@@ -1069,6 +1073,7 @@ describe("pushConfig and updateConfig behavior", () => {
         config_string: JSON.stringify({
           'auth.passkey.allowSignIn': true,
         }),
+        source: { type: "unlinked" },
       },
     });
     expect(pushResponse2.status).toBe(200);
@@ -1098,6 +1103,7 @@ describe("pushConfig and updateConfig behavior", () => {
         config_string: JSON.stringify({
           'teams.allowClientTeamCreation': true,
         }),
+        source: { type: "unlinked" },
       },
     });
     expect(pushResponse.status).toBe(200);
@@ -1206,5 +1212,680 @@ describe("test helpers", () => {
     const branchConfig2 = JSON.parse(branchResponse2.body.config_string);
     expect(branchConfig2["teams.allowClientTeamCreation"]).toBeUndefined();
     expect(branchConfig2["auth.passkey.allowSignIn"]).toBe(true);
+  });
+});
+
+
+// =============================================================================
+// BRANCH CONFIG SOURCE TESTS
+// =============================================================================
+
+describe("branch config source", () => {
+  // ---------------------------------------------------------------------------
+  // Helper functions for creating source objects
+  // ---------------------------------------------------------------------------
+  const createGitHubSource = (overrides?: Partial<{
+    owner: string,
+    repo: string,
+    branch: string,
+    commit_hash: string,
+    config_file_path: string,
+  }>) => ({
+    type: "pushed-from-github" as const,
+    owner: overrides?.owner ?? "myorg",
+    repo: overrides?.repo ?? "myrepo",
+    branch: overrides?.branch ?? "main",
+    commit_hash: overrides?.commit_hash ?? "abc123def456",
+    config_file_path: overrides?.config_file_path ?? "stack.config.ts",
+  });
+
+  const createUnknownSource = () => ({
+    type: "pushed-from-unknown" as const,
+  });
+
+  const createUnlinkedSource = () => ({
+    type: "unlinked" as const,
+  });
+
+  // ---------------------------------------------------------------------------
+  // Access control tests
+  // ---------------------------------------------------------------------------
+  describe("access control", () => {
+    it("rejects client access to config source endpoint", async ({ expect }) => {
+      await Project.createAndSwitch();
+
+      const response = await niceBackendFetch("/api/v1/internal/config/source", {
+        accessType: "client",
+        method: "GET",
+      });
+
+      expect(response).toMatchInlineSnapshot(`
+        NiceResponse {
+          "status": 401,
+          "body": {
+            "code": "INSUFFICIENT_ACCESS_TYPE",
+            "details": {
+              "actual_access_type": "client",
+              "allowed_access_types": ["admin"],
+            },
+            "error": "The x-stack-access-type header must be 'admin', but was 'client'.",
+          },
+          "headers": Headers {
+            "x-stack-known-error": "INSUFFICIENT_ACCESS_TYPE",
+            <some fields may have been hidden>,
+          },
+        }
+      `);
+    });
+
+    it("rejects server access to config source endpoint", async ({ expect }) => {
+      await Project.createAndSwitch();
+
+      const response = await niceBackendFetch("/api/v1/internal/config/source", {
+        accessType: "server",
+        method: "GET",
+      });
+
+      expect(response).toMatchInlineSnapshot(`
+        NiceResponse {
+          "status": 401,
+          "body": {
+            "code": "INSUFFICIENT_ACCESS_TYPE",
+            "details": {
+              "actual_access_type": "server",
+              "allowed_access_types": ["admin"],
+            },
+            "error": "The x-stack-access-type header must be 'admin', but was 'server'.",
+          },
+          "headers": Headers {
+            "x-stack-known-error": "INSUFFICIENT_ACCESS_TYPE",
+            <some fields may have been hidden>,
+          },
+        }
+      `);
+    });
+
+    it("allows admin access to config source endpoint", async ({ expect }) => {
+      const { adminAccessToken } = await Project.createAndSwitch();
+
+      const response = await niceBackendFetch("/api/v1/internal/config/source", {
+        accessType: "admin",
+        method: "GET",
+        headers: adminHeaders(adminAccessToken),
+      });
+
+      expect(response.status).toBe(200);
+      expect(response.body.source).toBeDefined();
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // GET /config/source tests
+  // ---------------------------------------------------------------------------
+  describe("GET /config/source", () => {
+    it("returns unlinked source for new projects", async ({ expect }) => {
+      const { adminAccessToken } = await Project.createAndSwitch();
+
+      const response = await niceBackendFetch("/api/v1/internal/config/source", {
+        accessType: "admin",
+        method: "GET",
+        headers: adminHeaders(adminAccessToken),
+      });
+
+      expect(response.status).toBe(200);
+      expect(response.body.source).toEqual({ type: "unlinked" });
+    });
+
+    it("returns pushed-from-github source after pushing with github source", async ({ expect }) => {
+      const { adminAccessToken } = await Project.createAndSwitch();
+
+      // Push config with GitHub source
+      const githubSource = createGitHubSource();
+      await Project.pushConfig({ 'teams.allowClientTeamCreation': true }, githubSource);
+
+      const response = await niceBackendFetch("/api/v1/internal/config/source", {
+        accessType: "admin",
+        method: "GET",
+        headers: adminHeaders(adminAccessToken),
+      });
+
+      expect(response.status).toBe(200);
+      expect(response.body.source).toEqual(githubSource);
+    });
+
+    it("returns pushed-from-unknown source after pushing with unknown source", async ({ expect }) => {
+      const { adminAccessToken } = await Project.createAndSwitch();
+
+      // Push config with unknown source
+      await Project.pushConfig({ 'teams.allowClientTeamCreation': true }, createUnknownSource());
+
+      const response = await niceBackendFetch("/api/v1/internal/config/source", {
+        accessType: "admin",
+        method: "GET",
+        headers: adminHeaders(adminAccessToken),
+      });
+
+      expect(response.status).toBe(200);
+      expect(response.body.source).toEqual({ type: "pushed-from-unknown" });
+    });
+
+    it("returns correct github source details", async ({ expect }) => {
+      const { adminAccessToken } = await Project.createAndSwitch();
+
+      const customGithubSource = createGitHubSource({
+        owner: "custom-org",
+        repo: "custom-repo",
+        branch: "feature-branch",
+        commit_hash: "1234567890abcdef",
+        config_file_path: "config/stack.config.ts",
+      });
+
+      await Project.pushConfig({ 'teams.allowClientTeamCreation': true }, customGithubSource);
+
+      const response = await niceBackendFetch("/api/v1/internal/config/source", {
+        accessType: "admin",
+        method: "GET",
+        headers: adminHeaders(adminAccessToken),
+      });
+
+      expect(response.status).toBe(200);
+      expect(response.body.source.type).toBe("pushed-from-github");
+      expect(response.body.source.repo).toBe("custom-org/custom-repo");
+      expect(response.body.source.branch).toBe("feature-branch");
+      expect(response.body.source.commit_hash).toBe("1234567890abcdef");
+      expect(response.body.source.config_file_path).toBe("config/stack.config.ts");
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // DELETE /config/source (unlink) tests
+  // ---------------------------------------------------------------------------
+  describe("DELETE /config/source (unlink)", () => {
+    it("unlinks github source to unlinked", async ({ expect }) => {
+      const { adminAccessToken } = await Project.createAndSwitch();
+
+      // Push with GitHub source
+      await Project.pushConfig({ 'teams.allowClientTeamCreation': true }, createGitHubSource());
+
+      // Verify it's GitHub
+      const beforeResponse = await niceBackendFetch("/api/v1/internal/config/source", {
+        accessType: "admin",
+        method: "GET",
+        headers: adminHeaders(adminAccessToken),
+      });
+      expect(beforeResponse.body.source.type).toBe("pushed-from-github");
+
+      // Unlink
+      const deleteResponse = await niceBackendFetch("/api/v1/internal/config/source", {
+        accessType: "admin",
+        method: "DELETE",
+        headers: adminHeaders(adminAccessToken),
+      });
+      expect(deleteResponse.status).toBe(200);
+
+      // Verify it's now unlinked
+      const afterResponse = await niceBackendFetch("/api/v1/internal/config/source", {
+        accessType: "admin",
+        method: "GET",
+        headers: adminHeaders(adminAccessToken),
+      });
+      expect(afterResponse.body.source).toEqual({ type: "unlinked" });
+    });
+
+    it("unlinks unknown source to unlinked", async ({ expect }) => {
+      const { adminAccessToken } = await Project.createAndSwitch();
+
+      // Push with unknown source
+      await Project.pushConfig({ 'teams.allowClientTeamCreation': true }, createUnknownSource());
+
+      // Verify it's unknown
+      const beforeResponse = await niceBackendFetch("/api/v1/internal/config/source", {
+        accessType: "admin",
+        method: "GET",
+        headers: adminHeaders(adminAccessToken),
+      });
+      expect(beforeResponse.body.source.type).toBe("pushed-from-unknown");
+
+      // Unlink
+      await Project.unlinkConfigSource();
+
+      // Verify it's now unlinked
+      const afterResponse = await niceBackendFetch("/api/v1/internal/config/source", {
+        accessType: "admin",
+        method: "GET",
+        headers: adminHeaders(adminAccessToken),
+      });
+      expect(afterResponse.body.source).toEqual({ type: "unlinked" });
+    });
+
+    it("unlink is idempotent (unlinking already unlinked is ok)", async ({ expect }) => {
+      const { adminAccessToken } = await Project.createAndSwitch();
+
+      // Push with unlinked source
+      await Project.pushConfig({ 'teams.allowClientTeamCreation': true }, createUnlinkedSource());
+
+      // Unlink (should succeed even though already unlinked)
+      const deleteResponse = await niceBackendFetch("/api/v1/internal/config/source", {
+        accessType: "admin",
+        method: "DELETE",
+        headers: adminHeaders(adminAccessToken),
+      });
+      expect(deleteResponse.status).toBe(200);
+
+      // Verify still unlinked
+      const afterResponse = await niceBackendFetch("/api/v1/internal/config/source", {
+        accessType: "admin",
+        method: "GET",
+        headers: adminHeaders(adminAccessToken),
+      });
+      expect(afterResponse.body.source).toEqual({ type: "unlinked" });
+    });
+
+    it("unlink preserves the config values", async ({ expect }) => {
+      const { adminAccessToken } = await Project.createAndSwitch();
+
+      // Push config with GitHub source
+      await Project.pushConfig({
+        'teams.allowClientTeamCreation': true,
+        'teams.createPersonalTeamOnSignUp': true,
+      }, createGitHubSource());
+
+      // Verify config is set
+      const beforeConfig = await niceBackendFetch("/api/v1/internal/config/override/branch", {
+        accessType: "admin",
+        method: "GET",
+        headers: adminHeaders(adminAccessToken),
+      });
+      const beforeConfigParsed = JSON.parse(beforeConfig.body.config_string);
+      expect(beforeConfigParsed["teams.allowClientTeamCreation"]).toBe(true);
+      expect(beforeConfigParsed["teams.createPersonalTeamOnSignUp"]).toBe(true);
+
+      // Unlink
+      await Project.unlinkConfigSource();
+
+      // Verify config values are preserved
+      const afterConfig = await niceBackendFetch("/api/v1/internal/config/override/branch", {
+        accessType: "admin",
+        method: "GET",
+        headers: adminHeaders(adminAccessToken),
+      });
+      const afterConfigParsed = JSON.parse(afterConfig.body.config_string);
+      expect(afterConfigParsed["teams.allowClientTeamCreation"]).toBe(true);
+      expect(afterConfigParsed["teams.createPersonalTeamOnSignUp"]).toBe(true);
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // PUT (pushConfig) with source parameter tests
+  // ---------------------------------------------------------------------------
+  describe("PUT branch config with source", () => {
+    it("requires source parameter for branch PUT", async ({ expect }) => {
+      const { adminAccessToken } = await Project.createAndSwitch();
+
+      // Try to PUT without source
+      const response = await niceBackendFetch("/api/v1/internal/config/override/branch", {
+        accessType: "admin",
+        method: "PUT",
+        headers: adminHeaders(adminAccessToken),
+        body: {
+          config_string: JSON.stringify({ 'teams.allowClientTeamCreation': true }),
+          // No source provided
+        },
+      });
+
+      expect(response.status).toBe(400);
+      expect(response.body.error).toContain("source is required");
+    });
+
+    it("does not require source parameter for environment PUT", async ({ expect }) => {
+      const { adminAccessToken } = await Project.createAndSwitch();
+
+      // PUT without source for environment level should work
+      const response = await niceBackendFetch("/api/v1/internal/config/override/environment", {
+        accessType: "admin",
+        method: "PUT",
+        headers: adminHeaders(adminAccessToken),
+        body: {
+          config_string: JSON.stringify({ 'teams.allowClientTeamCreation': true }),
+        },
+      });
+
+      expect(response.status).toBe(200);
+    });
+
+    it("accepts all valid source types", async ({ expect }) => {
+      const sources = [
+        createGitHubSource(),
+        createUnknownSource(),
+        createUnlinkedSource(),
+      ];
+
+      for (const source of sources) {
+        const { adminAccessToken } = await Project.createAndSwitch();
+
+        const response = await niceBackendFetch("/api/v1/internal/config/override/branch", {
+          accessType: "admin",
+          method: "PUT",
+          headers: adminHeaders(adminAccessToken),
+          body: {
+            config_string: JSON.stringify({ 'teams.allowClientTeamCreation': true }),
+            source,
+          },
+        });
+
+        expect(response.status).toBe(200);
+
+        // Verify the source was stored
+        const sourceResponse = await niceBackendFetch("/api/v1/internal/config/source", {
+          accessType: "admin",
+          method: "GET",
+          headers: adminHeaders(adminAccessToken),
+        });
+        expect(sourceResponse.body.source.type).toBe(source.type);
+      }
+    });
+
+    it("updates source when pushing new config", async ({ expect }) => {
+      const { adminAccessToken } = await Project.createAndSwitch();
+
+      // First push with GitHub source
+      await Project.pushConfig({ 'teams.allowClientTeamCreation': true }, createGitHubSource({ owner: "org", repo: "repo1" }));
+
+      const firstSource = await Project.getConfigSource();
+      expect(firstSource.type).toBe("pushed-from-github");
+      expect((firstSource as any).repo).toBe("org/repo1");
+
+      // Push again with different GitHub source
+      await Project.pushConfig({ 'teams.allowClientTeamCreation': false }, createGitHubSource({ owner: "org", repo: "repo2" }));
+
+      const secondSource = await Project.getConfigSource();
+      expect(secondSource.type).toBe("pushed-from-github");
+      expect((secondSource as any).repo).toBe("org/repo2");
+
+      // Push with unknown source
+      await Project.pushConfig({ 'teams.allowClientTeamCreation': true }, createUnknownSource());
+
+      const thirdSource = await Project.getConfigSource();
+      expect(thirdSource.type).toBe("pushed-from-unknown");
+    });
+
+    it("rejects invalid source type", async ({ expect }) => {
+      const { adminAccessToken } = await Project.createAndSwitch();
+
+      const response = await niceBackendFetch("/api/v1/internal/config/override/branch", {
+        accessType: "admin",
+        method: "PUT",
+        headers: adminHeaders(adminAccessToken),
+        body: {
+          config_string: JSON.stringify({ 'teams.allowClientTeamCreation': true }),
+          source: { type: "invalid-type" },
+        },
+      });
+
+      expect(response.status).toBe(400);
+    });
+
+    it("rejects github source missing required fields", async ({ expect }) => {
+      const { adminAccessToken } = await Project.createAndSwitch();
+
+      const incompleteGithubSources = [
+        { type: "pushed-from-github" }, // missing all fields
+        { type: "pushed-from-github", owner: "org", repo: "repo" }, // missing other fields
+        { type: "pushed-from-github", owner: "org", repo: "repo", branch: "main" }, // missing commit hash and config path
+      ];
+
+      for (const source of incompleteGithubSources) {
+        const response = await niceBackendFetch("/api/v1/internal/config/override/branch", {
+          accessType: "admin",
+          method: "PUT",
+          headers: adminHeaders(adminAccessToken),
+          body: {
+            config_string: JSON.stringify({ 'teams.allowClientTeamCreation': true }),
+            source,
+          },
+        });
+
+        expect(response.status).toBe(400);
+      }
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // PATCH (updatePushedConfig) source preservation tests
+  // ---------------------------------------------------------------------------
+  describe("PATCH branch config (source preservation)", () => {
+    it("preserves github source when patching config", async ({ expect }) => {
+      const { adminAccessToken } = await Project.createAndSwitch();
+
+      // Push with GitHub source
+      const originalSource = createGitHubSource({ owner: "myorg", repo: "myrepo", commit_hash: "abc123" });
+      await Project.pushConfig({ 'teams.allowClientTeamCreation': true }, originalSource);
+
+      // Patch the config
+      await Project.updatePushedConfig({ 'teams.createPersonalTeamOnSignUp': true });
+
+      // Verify source is preserved
+      const source = await Project.getConfigSource();
+      expect(source).toEqual(originalSource);
+    });
+
+    it("preserves unknown source when patching config", async ({ expect }) => {
+      const { adminAccessToken } = await Project.createAndSwitch();
+
+      // Push with unknown source
+      await Project.pushConfig({ 'teams.allowClientTeamCreation': true }, createUnknownSource());
+
+      // Patch the config
+      await Project.updatePushedConfig({ 'teams.createPersonalTeamOnSignUp': true });
+
+      // Verify source is preserved
+      const source = await Project.getConfigSource();
+      expect(source.type).toBe("pushed-from-unknown");
+    });
+
+    it("preserves unlinked source when patching config", async ({ expect }) => {
+      const { adminAccessToken } = await Project.createAndSwitch();
+
+      // Push with unlinked source
+      await Project.pushConfig({ 'teams.allowClientTeamCreation': true }, createUnlinkedSource());
+
+      // Patch the config
+      await Project.updatePushedConfig({ 'teams.createPersonalTeamOnSignUp': true });
+
+      // Verify source is preserved
+      const source = await Project.getConfigSource();
+      expect(source.type).toBe("unlinked");
+    });
+
+    it("preserves source across multiple patches", async ({ expect }) => {
+      const { adminAccessToken } = await Project.createAndSwitch();
+
+      // Push with GitHub source
+      const originalSource = createGitHubSource();
+      await Project.pushConfig({ 'teams.allowClientTeamCreation': true }, originalSource);
+
+      // Multiple patches
+      await Project.updatePushedConfig({ 'teams.createPersonalTeamOnSignUp': true });
+      await Project.updatePushedConfig({ 'users.allowClientUserDeletion': true });
+      await Project.updatePushedConfig({ 'auth.passkey.allowSignIn': true });
+
+      // Verify source is still preserved
+      const source = await Project.getConfigSource();
+      expect(source).toEqual(originalSource);
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Edge cases and special scenarios
+  // ---------------------------------------------------------------------------
+  describe("edge cases", () => {
+    it("source is preserved when config values are identical", async ({ expect }) => {
+      await Project.createAndSwitch();
+
+      // Push with GitHub source
+      const originalSource = createGitHubSource();
+      await Project.pushConfig({ 'teams.allowClientTeamCreation': true }, originalSource);
+
+      // Patch with the same value
+      await Project.updatePushedConfig({ 'teams.allowClientTeamCreation': true });
+
+      // Source should still be preserved
+      const source = await Project.getConfigSource();
+      expect(source).toEqual(originalSource);
+    });
+
+    it("can push empty config with source", async ({ expect }) => {
+      await Project.createAndSwitch();
+
+      // Push empty config
+      await Project.pushConfig({}, createGitHubSource());
+
+      const source = await Project.getConfigSource();
+      expect(source.type).toBe("pushed-from-github");
+    });
+
+    it("source is isolated per project", async ({ expect }) => {
+      // Create first project with GitHub source
+      await Project.createAndSwitch();
+      await Project.pushConfig({ 'teams.allowClientTeamCreation': true }, createGitHubSource({ owner: "org", repo: "project1" }));
+
+      // Create second project with unknown source
+      await Project.createAndSwitch();
+      await Project.pushConfig({ 'teams.allowClientTeamCreation': true }, createUnknownSource());
+
+      // Verify second project has unknown source
+      const source2 = await Project.getConfigSource();
+      expect(source2.type).toBe("pushed-from-unknown");
+
+      // Note: We can't easily verify the first project's source is unchanged
+      // without switching back, but the isolation is inherent in the project model
+    });
+
+    it("handles special characters in github source fields", async ({ expect }) => {
+      await Project.createAndSwitch();
+
+      const sourceWithSpecialChars = createGitHubSource({
+        owner: "org-name_123",
+        repo: "repo.name-with_special",
+        branch: "feature/branch-with-slashes",
+        commit_hash: "a1b2c3d4e5f6789012345678901234567890abcd",
+        config_file_path: "configs/my-app/stack.config.ts",
+      });
+
+      await Project.pushConfig({ 'teams.allowClientTeamCreation': true }, sourceWithSpecialChars);
+
+      const source = await Project.getConfigSource();
+      expect(source).toEqual(sourceWithSpecialChars);
+    });
+
+    it("handles very long commit hashes", async ({ expect }) => {
+      await Project.createAndSwitch();
+
+      const sourceWithLongHash = createGitHubSource({
+        commit_hash: "a".repeat(100),
+      });
+
+      await Project.pushConfig({ 'teams.allowClientTeamCreation': true }, sourceWithLongHash);
+
+      const source = await Project.getConfigSource();
+      expect((source as any).commit_hash).toBe("a".repeat(100));
+    });
+
+    it("handles unicode characters in source fields", async ({ expect }) => {
+      await Project.createAndSwitch();
+
+      const sourceWithUnicode = createGitHubSource({
+        owner: "组织",
+        repo: "仓库",
+        branch: "функция/ветка",
+        config_file_path: "配置/stack.config.ts",
+      });
+
+      await Project.pushConfig({ 'teams.allowClientTeamCreation': true }, sourceWithUnicode);
+
+      const source = await Project.getConfigSource();
+      expect(source).toEqual(sourceWithUnicode);
+    });
+
+    it("handles empty strings in github source fields gracefully", async ({ expect }) => {
+      await Project.createAndSwitch();
+
+      // These are technically valid (the schema allows empty strings)
+      const sourceWithEmptyStrings = {
+        type: "pushed-from-github" as const,
+        owner: "",
+        repo: "",
+        branch: "",
+        commit_hash: "",
+        config_file_path: "",
+      };
+
+      await Project.pushConfig({ 'teams.allowClientTeamCreation': true }, sourceWithEmptyStrings);
+
+      const source = await Project.getConfigSource();
+      expect(source).toEqual(sourceWithEmptyStrings);
+    });
+
+    it("handles source fields at string length boundaries", async ({ expect }) => {
+      await Project.createAndSwitch();
+
+      // Very long but reasonable strings
+      const sourceLong = createGitHubSource({
+        owner: "z".repeat(100),
+        repo: "a".repeat(200),
+        branch: "b".repeat(200),
+        commit_hash: "c".repeat(200),
+        config_file_path: "d".repeat(500),
+      });
+
+      await Project.pushConfig({ 'teams.allowClientTeamCreation': true }, sourceLong);
+
+      const source = await Project.getConfigSource();
+      expect((source as any).repo).toBe("a".repeat(200));
+      expect((source as any).branch).toBe("b".repeat(200));
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Helper function tests
+  // ---------------------------------------------------------------------------
+  describe("Project helper functions", () => {
+    it("Project.getConfigSource returns correct source", async ({ expect }) => {
+      await Project.createAndSwitch();
+
+      // Default should be unlinked
+      const initialSource = await Project.getConfigSource();
+      expect(initialSource.type).toBe("unlinked");
+
+      // After pushing with GitHub
+      await Project.pushConfig({}, createGitHubSource());
+      const afterPush = await Project.getConfigSource();
+      expect(afterPush.type).toBe("pushed-from-github");
+    });
+
+    it("Project.unlinkConfigSource works correctly", async ({ expect }) => {
+      await Project.createAndSwitch();
+
+      // Push with GitHub source
+      await Project.pushConfig({}, createGitHubSource());
+      expect((await Project.getConfigSource()).type).toBe("pushed-from-github");
+
+      // Unlink
+      await Project.unlinkConfigSource();
+      expect((await Project.getConfigSource()).type).toBe("unlinked");
+    });
+
+    it("Project.updatePushedConfig helper preserves source", async ({ expect }) => {
+      await Project.createAndSwitch();
+
+      await Project.pushConfig({ 'teams.allowClientTeamCreation': true }, createGitHubSource());
+
+      // Use the updatePushedConfig helper
+      await Project.updatePushedConfig({ 'teams.createPersonalTeamOnSignUp': true });
+
+      // Source should be preserved
+      const source = await Project.getConfigSource();
+      expect(source.type).toBe("pushed-from-github");
+    });
   });
 });

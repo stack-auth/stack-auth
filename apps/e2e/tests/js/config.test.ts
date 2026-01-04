@@ -58,7 +58,7 @@ describe("error handling", () => {
 
     await expect(project.pushConfig({
       'nonExistentField.value': true,
-    } as any)).rejects.toThrow(/nonExistentField/);
+    } as any, { source: { type: "unlinked" } })).rejects.toThrow(/nonExistentField/);
   });
 
   it("updateConfig rejects invalid oauth provider type", async ({ expect }) => {
@@ -92,7 +92,7 @@ describe("error handling", () => {
         allowSignIn: true,
         allowConnectedAccounts: true,
       },
-    } as any)).rejects.toThrow(/auth\.oauth\.providers/);
+    } as any, { source: { type: "unlinked" } })).rejects.toThrow(/auth\.oauth\.providers/);
   });
 
   it("pushConfig allows branch-level oauth fields", async ({ expect }) => {
@@ -106,7 +106,7 @@ describe("error handling", () => {
         allowSignIn: true,
         allowConnectedAccounts: true,
       },
-    } as any);
+    } as any, { source: { type: "unlinked" } });
 
     const config = await project.getConfig();
     expect(config.auth.oauth.providers['my_provider']).toBeDefined();
@@ -210,7 +210,7 @@ describe("pushConfig", () => {
     await project.pushConfig({
       'teams.allowClientTeamCreation': true,
       'teams.createPersonalTeamOnSignUp': true,
-    });
+    }, { source: { type: "unlinked" } });
 
     // Verify config is applied
     const config = await project.getConfig();
@@ -226,7 +226,7 @@ describe("pushConfig", () => {
     await project.pushConfig({
       'teams.allowClientTeamCreation': true,
       'teams.createPersonalTeamOnSignUp': true,
-    });
+    }, { source: { type: "unlinked" } });
 
     // Verify first config is applied
     let config = await project.getConfig();
@@ -236,7 +236,7 @@ describe("pushConfig", () => {
     // Push second config (completely replaces first)
     await project.pushConfig({
       'auth.passkey.allowSignIn': true,
-    });
+    }, { source: { type: "unlinked" } });
 
     // Verify old values are gone (back to defaults) and new value is set
     config = await project.getConfig();
@@ -252,7 +252,7 @@ describe("pushConfig", () => {
     // Push config first
     await project.pushConfig({
       'teams.allowClientTeamCreation': true,
-    });
+    }, { source: { type: "unlinked" } });
 
     // Verify push is applied
     let config = await project.getConfig();
@@ -280,7 +280,7 @@ describe("pushConfig", () => {
     // pushConfig sets branch-level values
     await project.pushConfig({
       'teams.allowClientTeamCreation': true,
-    });
+    }, { source: { type: "unlinked" } });
 
     // Both should be present
     let config = await project.getConfig();
@@ -290,7 +290,7 @@ describe("pushConfig", () => {
     // Push new config (replaces branch but not environment)
     await project.pushConfig({
       'auth.passkey.allowSignIn': true,
-    });
+    }, { source: { type: "unlinked" } });
 
     // updateConfig value should still be there
     config = await project.getConfig();
@@ -309,7 +309,7 @@ describe("updatePushedConfig", () => {
     // Push initial config
     await project.pushConfig({
       'teams.allowClientTeamCreation': true,
-    });
+    }, { source: { type: "unlinked" } });
 
     // updatePushedConfig merges into the pushed config
     await project.updatePushedConfig({
@@ -329,7 +329,7 @@ describe("updatePushedConfig", () => {
     // Push initial config
     await project.pushConfig({
       'teams.allowClientTeamCreation': true,
-    });
+    }, { source: { type: "unlinked" } });
 
     // updatePushedConfig adds a value
     await project.updatePushedConfig({
@@ -344,7 +344,7 @@ describe("updatePushedConfig", () => {
     // pushConfig replaces everything including updatePushedConfig changes
     await project.pushConfig({
       'auth.passkey.allowSignIn': true,
-    });
+    }, { source: { type: "unlinked" } });
 
     // Old values should be gone
     config = await project.getConfig();
@@ -391,5 +391,168 @@ describe("updatePushedConfig", () => {
         allowConnectedAccounts: true,
       },
     } as any)).rejects.toThrow(/auth\.oauth\.providers/);
+  });
+});
+
+
+describe("pushedConfigSource", () => {
+  it("getPushedConfigSource returns unlinked by default", async ({ expect }) => {
+    const { adminApp } = await createApp();
+    const project = await adminApp.getProject();
+
+    const source = await project.getPushedConfigSource();
+    expect(source.type).toBe("unlinked");
+  });
+
+  it("pushConfig with source sets the source", async ({ expect }) => {
+    const { adminApp } = await createApp();
+    const project = await adminApp.getProject();
+
+    await project.pushConfig({
+      'teams.allowClientTeamCreation': true,
+    }, {
+      source: {
+        type: "pushed-from-github",
+        owner: "myorg",
+        repo: "myrepo",
+        branch: "main",
+        commitHash: "abc123",
+        configFilePath: "stack.config.ts",
+      },
+    });
+
+    const source = await project.getPushedConfigSource();
+    expect(source.type).toBe("pushed-from-github");
+    if (source.type === "pushed-from-github") {
+      expect(source.owner).toBe("myorg");
+      expect(source.repo).toBe("myrepo");
+      expect(source.branch).toBe("main");
+      expect(source.commitHash).toBe("abc123");
+      expect(source.configFilePath).toBe("stack.config.ts");
+    }
+  });
+
+  it("pushConfig without source defaults to unlinked", async ({ expect }) => {
+    const { adminApp } = await createApp();
+    const project = await adminApp.getProject();
+
+    // First push with source
+    await project.pushConfig({
+      'teams.allowClientTeamCreation': true,
+    }, {
+      source: {
+        type: "pushed-from-github",
+        owner: "myorg",
+        repo: "myrepo",
+        branch: "main",
+        commitHash: "abc123",
+        configFilePath: "stack.config.ts",
+      },
+    });
+
+    // Then push without source (should default to unlinked)
+    await project.pushConfig({
+      'teams.createPersonalTeamOnSignUp': true,
+    }, { source: { type: "unlinked" } });
+
+    const source = await project.getPushedConfigSource();
+    expect(source.type).toBe("unlinked");
+  });
+
+  it("updatePushedConfig preserves the source", async ({ expect }) => {
+    const { adminApp } = await createApp();
+    const project = await adminApp.getProject();
+
+    // Push with GitHub source
+    await project.pushConfig({
+      'teams.allowClientTeamCreation': true,
+    }, {
+      source: {
+        type: "pushed-from-github",
+        owner: "myorg",
+        repo: "myrepo",
+        branch: "main",
+        commitHash: "abc123",
+        configFilePath: "stack.config.ts",
+      },
+    });
+
+    // Update pushed config
+    await project.updatePushedConfig({
+      'teams.createPersonalTeamOnSignUp': true,
+    });
+
+    // Source should still be GitHub
+    const source = await project.getPushedConfigSource();
+    expect(source.type).toBe("pushed-from-github");
+  });
+
+  it("unlinkPushedConfigSource sets source to unlinked", async ({ expect }) => {
+    const { adminApp } = await createApp();
+    const project = await adminApp.getProject();
+
+    // Push with GitHub source
+    await project.pushConfig({
+      'teams.allowClientTeamCreation': true,
+    }, {
+      source: {
+        type: "pushed-from-github",
+        owner: "myorg",
+        repo: "myrepo",
+        branch: "main",
+        commitHash: "abc123",
+        configFilePath: "stack.config.ts",
+      },
+    });
+
+    // Verify source is GitHub
+    expect((await project.getPushedConfigSource()).type).toBe("pushed-from-github");
+
+    // Unlink
+    await project.unlinkPushedConfigSource();
+
+    // Verify source is now unlinked
+    const source = await project.getPushedConfigSource();
+    expect(source.type).toBe("unlinked");
+  });
+
+  it("unlinkPushedConfigSource preserves the config", async ({ expect }) => {
+    const { adminApp } = await createApp();
+    const project = await adminApp.getProject();
+
+    // Push config with source
+    await project.pushConfig({
+      'teams.allowClientTeamCreation': true,
+    }, {
+      source: {
+        type: "pushed-from-github",
+        owner: "myorg",
+        repo: "myrepo",
+        branch: "main",
+        commitHash: "abc123",
+        configFilePath: "stack.config.ts",
+      },
+    });
+
+    // Unlink
+    await project.unlinkPushedConfigSource();
+
+    // Config should still be there
+    const config = await project.getConfig();
+    expect(config.teams.allowClientTeamCreation).toBe(true);
+  });
+
+  it("can set pushed-from-unknown source", async ({ expect }) => {
+    const { adminApp } = await createApp();
+    const project = await adminApp.getProject();
+
+    await project.pushConfig({
+      'teams.allowClientTeamCreation': true,
+    }, {
+      source: { type: "pushed-from-unknown" },
+    });
+
+    const source = await project.getPushedConfigSource();
+    expect(source.type).toBe("pushed-from-unknown");
   });
 });

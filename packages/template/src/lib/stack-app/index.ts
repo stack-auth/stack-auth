@@ -73,7 +73,8 @@ export type {
   AdminProject,
   AdminProjectCreateOptions,
   AdminProjectUpdateOptions,
-  Project
+  Project,
+  PushedConfigSource
 } from "./projects";
 
 export type {

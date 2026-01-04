@@ -5,6 +5,22 @@ import { CompleteConfig, EnvironmentConfigNormalizedOverride, EnvironmentConfigO
 import { StackAdminApp } from "../apps/interfaces/admin-app";
 import { AdminProjectConfig, AdminProjectConfigUpdateOptions, ProjectConfig } from "../project-configs";
 
+/**
+ * SDK type for pushed config source (camelCase for SDK).
+ * Represents where the branch config was pushed from.
+ */
+export type PushedConfigSource =
+  | { type: "pushed-from-github", owner: string, repo: string, branch: string, commitHash: string, configFilePath: string }
+  | { type: "pushed-from-unknown" }
+  | { type: "unlinked" };
+
+export type PushConfigOptions = {
+  /**
+   * The source of this config push.
+   */
+  source: PushedConfigSource,
+};
+
 
 export type Project = {
   readonly id: string,
@@ -62,7 +78,8 @@ export type AdminProject = {
     this: AdminProject,
     config: EnvironmentConfigOverrideOverride & {
       [K in keyof EnvironmentConfigNormalizedOverride]: "............................ERROR MESSAGE AFTER THIS LINE............................ You have attempted to update a config object with a top-level property in it (for example `emails`). This is very likely a mistake, and you probably meant to update a nested property instead (for example `emails.server`). If you really meant to update a top-level property (resetting all nested properties to their defaults), cast as any (the code will work at runtime) ............................ERROR MESSAGE BEFORE THIS LINE............................";
-    }
+    },
+    options: PushConfigOptions,
   ): Promise<void>,
 
   /**
@@ -81,6 +98,22 @@ export type AdminProject = {
       [K in keyof EnvironmentConfigNormalizedOverride]: "............................ERROR MESSAGE AFTER THIS LINE............................ You have attempted to update a config object with a top-level property in it (for example `emails`). This is very likely a mistake, and you probably meant to update a nested property instead (for example `emails.server`). If you really meant to update a top-level property (resetting all nested properties to their defaults), cast as any (the code will work at runtime) ............................ERROR MESSAGE BEFORE THIS LINE............................";
     }
   ): Promise<void>,
+
+  /**
+   * Gets the source metadata for the pushed config, indicating where it was pushed from.
+   *
+   * The source can be:
+   * - `pushed-from-github`: Config was pushed from a GitHub repository
+   * - `pushed-from-unknown`: Config was pushed via CLI but source details unknown
+   * - `unlinked`: Config can be edited directly on the dashboard
+   */
+  getPushedConfigSource(this: AdminProject): Promise<PushedConfigSource>,
+
+  /**
+   * Unlinks the pushed config source, setting it to "unlinked".
+   * This allows the config to be edited directly on the dashboard without external push restrictions.
+   */
+  unlinkPushedConfigSource(this: AdminProject): Promise<void>,
 
   getProductionModeErrors(this: AdminProject): Promise<ProductionModeError[]>,
   // NEXT_LINE_PLATFORM react-like

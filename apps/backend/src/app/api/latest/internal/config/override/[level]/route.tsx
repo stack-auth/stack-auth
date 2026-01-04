@@ -1,10 +1,12 @@
-import { getBranchConfigOverrideQuery, getEnvironmentConfigOverrideQuery, overrideBranchConfigOverride, overrideEnvironmentConfigOverride, setBranchConfigOverride, setEnvironmentConfigOverride } from "@/lib/config";
+import { getBranchConfigOverrideQuery, getEnvironmentConfigOverrideQuery, overrideBranchConfigOverride, overrideEnvironmentConfigOverride, setBranchConfigOverride, setBranchConfigOverrideSource, setEnvironmentConfigOverride } from "@/lib/config";
 import { globalPrismaClient, rawQuery } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { branchConfigSchema, environmentConfigSchema, getConfigOverrideErrors, migrateConfigOverride } from "@stackframe/stack-shared/dist/config/schema";
-import { adaptSchema, adminAuthTypeSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+import { adaptSchema, adminAuthTypeSchema, branchConfigSourceSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 import * as yup from "yup";
+
+type BranchConfigSourceApi = yup.InferType<typeof branchConfigSourceSchema>;
 
 const levelSchema = yupString().oneOf(["branch", "environment"]).defined();
 
@@ -14,25 +16,34 @@ const levelConfigs = {
     migrate: (config: any) => migrateConfigOverride("branch", config),
     get: (options: { projectId: string, branchId: string }) =>
       rawQuery(globalPrismaClient, getBranchConfigOverrideQuery(options)),
-    set: (options: { projectId: string, branchId: string, config: any }) =>
-      setBranchConfigOverride({
+    set: async (options: { projectId: string, branchId: string, config: any, source?: BranchConfigSourceApi }) => {
+      await setBranchConfigOverride({
         projectId: options.projectId,
         branchId: options.branchId,
         branchConfigOverride: options.config,
-      }),
+      });
+      if (options.source) {
+        await setBranchConfigOverrideSource({
+          projectId: options.projectId,
+          branchId: options.branchId,
+          source: options.source,
+        });
+      }
+    },
     override: (options: { projectId: string, branchId: string, config: any }) =>
       overrideBranchConfigOverride({
         projectId: options.projectId,
         branchId: options.branchId,
         branchConfigOverrideOverride: options.config,
       }),
+    requiresSource: true,
   },
   environment: {
     schema: environmentConfigSchema,
     migrate: (config: any) => migrateConfigOverride("environment", config),
     get: (options: { projectId: string, branchId: string }) =>
       rawQuery(globalPrismaClient, getEnvironmentConfigOverrideQuery(options)),
-    set: (options: { projectId: string, branchId: string, config: any }) =>
+    set: (options: { projectId: string, branchId: string, config: any, source?: BranchConfigSourceApi }) =>
       setEnvironmentConfigOverride({
         projectId: options.projectId,
         branchId: options.branchId,
@@ -44,17 +55,13 @@ const levelConfigs = {
         branchId: options.branchId,
         environmentConfigOverrideOverride: options.config,
       }),
+    requiresSource: false,
   },
-} as const satisfies Record<string, {
-  schema: yup.AnySchema,
-  migrate: (config: any) => any,
-  get: (options: { projectId: string, branchId: string }) => Promise<any>,
-  set: (options: { projectId: string, branchId: string, config: any }) => Promise<void>,
-  override: (options: { projectId: string, branchId: string, config: any }) => Promise<void>,
-}>;
+};
 
 export const GET = createSmartRouteHandler({
   metadata: {
+    hidden: true,
     summary: 'Get config override',
     description: 'Get the config override for a project, branch, and level',
     tags: ['Config'],
@@ -122,8 +129,9 @@ async function parseAndValidateConfig(
 
 export const PUT = createSmartRouteHandler({
   metadata: {
+    hidden: true,
     summary: 'Set config override',
-    description: 'Replace the config override for a project, branch, and level',
+    description: 'Replace the config override for a project, branch, and level. For branch level, source is required.',
     tags: ['Config'],
   },
   request: yupObject({
@@ -136,6 +144,8 @@ export const PUT = createSmartRouteHandler({
     }).defined(),
     body: yupObject({
       config_string: yupString().defined(),
+      // Source is required for branch level, optional for environment level
+      source: branchConfigSourceSchema.optional(),
     }).defined(),
   }),
   response: writeResponseSchema,
@@ -143,10 +153,16 @@ export const PUT = createSmartRouteHandler({
     const levelConfig = levelConfigs[req.params.level];
     const parsedConfig = await parseAndValidateConfig(req.body.config_string, levelConfig);
 
+    // Validate that source is provided for branch level
+    if (levelConfig.requiresSource && !req.body.source) {
+      throw new StatusError(StatusError.BadRequest, 'source is required for branch level config');
+    }
+
     await levelConfig.set({
       projectId: req.auth.tenancy.project.id,
       branchId: req.auth.tenancy.branchId,
       config: parsedConfig,
+      source: req.body.source as BranchConfigSourceApi,
     });
 
     return {
@@ -158,6 +174,7 @@ export const PUT = createSmartRouteHandler({
 
 export const PATCH = createSmartRouteHandler({
   metadata: {
+    hidden: true,
     summary: 'Update config override',
     description: 'Update the config override for a project, branch, and level with a partial override',
     tags: ['Config'],

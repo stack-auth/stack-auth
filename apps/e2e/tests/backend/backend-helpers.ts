@@ -1222,11 +1222,59 @@ export namespace Project {
     expect(response.status).toBe(200);
   }
 
-  export async function pushConfig(config: any) {
+  export type BranchConfigSource =
+    | { type: "pushed-from-github", owner: string, repo: string, branch: string, commit_hash: string, config_file_path: string }
+    | { type: "pushed-from-unknown" }
+    | { type: "unlinked" };
+
+  /**
+   * Push config to branch level. Source defaults to 'unlinked' if not specified.
+   */
+  export async function pushConfig(config: any, source: BranchConfigSource = { type: "unlinked" }) {
     const response = await niceBackendFetch(`/api/latest/internal/config/override/branch`, {
       accessType: "admin",
       method: "PUT",
-      body: { config_string: JSON.stringify(config) },
+      body: {
+        config_string: JSON.stringify(config),
+        source,
+      },
+    });
+    expect(response.body).toMatchInlineSnapshot(`{ "success": true }`);
+    expect(response.status).toBe(200);
+  }
+
+  /**
+   * Update the pushed config (PATCH - preserves source)
+   */
+  export async function updatePushedConfig(config: any) {
+    const response = await niceBackendFetch(`/api/latest/internal/config/override/branch`, {
+      accessType: "admin",
+      method: "PATCH",
+      body: { config_override_string: JSON.stringify(config) },
+    });
+    expect(response.body).toMatchInlineSnapshot(`{ "success": true }`);
+    expect(response.status).toBe(200);
+  }
+
+  /**
+   * Get the current branch config source
+   */
+  export async function getConfigSource(): Promise<BranchConfigSource> {
+    const response = await niceBackendFetch(`/api/latest/internal/config/source`, {
+      accessType: "admin",
+      method: "GET",
+    });
+    expect(response.status).toBe(200);
+    return response.body.source;
+  }
+
+  /**
+   * Unlink the branch config source (set to 'unlinked')
+   */
+  export async function unlinkConfigSource() {
+    const response = await niceBackendFetch(`/api/latest/internal/config/source`, {
+      accessType: "admin",
+      method: "DELETE",
     });
     expect(response.body).toMatchInlineSnapshot(`{ "success": true }`);
     expect(response.status).toBe(200);
