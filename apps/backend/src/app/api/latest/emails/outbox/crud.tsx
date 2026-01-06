@@ -357,6 +357,7 @@ export const emailOutboxCrudHandlers = createLazyProxy(() => createCrudHandlers(
             tenancyId: auth.tenancy.id,
             id: params.id,
           },
+          skippedReason: null,
         },
         data: updateData,
       });

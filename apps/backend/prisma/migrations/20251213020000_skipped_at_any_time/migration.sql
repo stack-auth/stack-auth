@@ -50,9 +50,9 @@ ALTER TABLE "EmailOutbox" DROP COLUMN "simpleStatus";
 -- Step 4: Recreate "simpleStatus" accounting for SKIPPED at any time
 ALTER TABLE "EmailOutbox" ADD COLUMN "simpleStatus" "EmailOutboxSimpleStatus" NOT NULL GENERATED ALWAYS AS (
     CASE
-        WHEN "renderErrorExternalMessage" IS NOT NULL OR "sendServerErrorExternalMessage" IS NOT NULL OR "bouncedAt" IS NOT NULL THEN 'ERROR'::"EmailOutboxSimpleStatus"
         -- SKIPPED is OK regardless of when it happens
         WHEN "skippedReason" IS NOT NULL THEN 'OK'::"EmailOutboxSimpleStatus"
+        WHEN "renderErrorExternalMessage" IS NOT NULL OR "sendServerErrorExternalMessage" IS NOT NULL OR "bouncedAt" IS NOT NULL THEN 'ERROR'::"EmailOutboxSimpleStatus"
         WHEN "finishedSendingAt" IS NOT NULL AND ("canHaveDeliveryInfo" IS FALSE OR "deliveredAt" IS NOT NULL) THEN 'OK'::"EmailOutboxSimpleStatus"
         WHEN "finishedSendingAt" IS NULL OR ("canHaveDeliveryInfo" IS TRUE AND "deliveredAt" IS NULL) THEN 'IN_PROGRESS'::"EmailOutboxSimpleStatus"
         ELSE 'OK'::"EmailOutboxSimpleStatus"
