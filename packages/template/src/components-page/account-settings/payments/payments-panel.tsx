@@ -43,6 +43,7 @@ type CustomerLike = {
     id: string | null,
     quantity: number,
     displayName: string,
+    customerType: "user" | "team" | "custom",
     type: "one_time" | "subscription",
     subscription: null | {
       currentPeriodEnd: Date | null,
@@ -178,6 +179,7 @@ function RealPaymentsPanel(props: { title?: string, customer: CustomerLike, cust
   const billing = props.customer.useBilling();
   const defaultPaymentMethod = billing.defaultPaymentMethod;
   const products = props.customer.useProducts();
+  const productsForCustomerType = products.filter(product => product.customerType === props.customerType);
 
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
   const [setupIntentClientSecret, setSetupIntentClientSecret] = useState<string | null>(null);
@@ -260,11 +262,11 @@ function RealPaymentsPanel(props: { title?: string, customer: CustomerLike, cust
         title={t("Active plans")}
         description={t("View your active plans and purchases.")}
       >
-        {products.length === 0 ? (
+        {productsForCustomerType.length === 0 ? (
           <Typography variant="secondary" type="footnote">{t("No active plans.")}</Typography>
         ) : (
           <div className="space-y-3">
-            {products.map((product, index) => {
+            {productsForCustomerType.map((product, index) => {
               const quantitySuffix = product.quantity !== 1 ? ` ×${product.quantity}` : "";
               const isSubscription = product.type === "subscription";
               const isCancelable = isSubscription && !!product.id && !!product.subscription?.isCancelable;
