@@ -1362,6 +1362,7 @@ describe("theme and template deletion after scheduling", () => {
 
     // Get the outbox entry
     let outboxEmails = await getOutboxEmails({ subject: "Theme Fallback Test Email" });
+    expect(outboxEmails.length).toBe(0);
 
     // Note: The email might have already been processed by the time we check.
     // If it's already sent, that's also fine - we just document the expected behavior.

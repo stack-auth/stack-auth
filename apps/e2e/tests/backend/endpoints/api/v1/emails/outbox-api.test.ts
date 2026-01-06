@@ -3,7 +3,7 @@ import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
 import { describe } from "vitest";
 import { it } from "../../../../../helpers";
 import { withPortPrefix } from "../../../../../helpers/ports";
-import { Project, backendContext, niceBackendFetch } from "../../../../backend-helpers";
+import { Project, backendContext, bumpEmailAddress, niceBackendFetch } from "../../../../backend-helpers";
 
 const testEmailConfig = {
   type: "standard",
@@ -30,16 +30,23 @@ const simpleTemplate = deindent`
   }
 `;
 
-const transactionalTemplate = deindent`
+// A template that is slow to render, giving us time to pause/cancel it
+const slowTemplate = deindent`
   import { Container } from "@react-email/components";
   import { Subject, NotificationCategory, Props } from "@stackframe/emails";
+
+  // Artificial delay to make the email slow to render
+  const startTime = performance.now();
+  while (performance.now() - startTime < 500) {
+    // Busy wait - 500ms delay
+  }
 
   export function EmailTemplate({ user, project }) {
     return (
       <Container>
-        <Subject value="Transactional Test Email" />
+        <Subject value="Slow Render Cancel Test" />
         <NotificationCategory value="Transactional" />
-        <div>Transactional email content</div>
+        <div>Slow email content</div>
       </Container>
     );
   }
@@ -588,6 +595,8 @@ describe("email outbox API", () => {
     });
 
     it("should edit scheduled_at_millis to reschedule email", async ({ expect }) => {
+      // This test uses a slow-rendering template to reliably pause the email,
+      // then edits the scheduled_at_millis to verify rescheduling works.
       await Project.createAndSwitch({
         display_name: "Test Edit Schedule Project",
         config: {
@@ -606,54 +615,224 @@ describe("email outbox API", () => {
       expect(createUserResponse.status).toBe(201);
       const userId = createUserResponse.body.id;
 
-      // Send email and immediately pause it before it sends
+      // Create a draft with a slow-rendering template to give us time to pause
+      const createDraftResponse = await niceBackendFetch("/api/v1/internal/email-drafts", {
+        method: "POST",
+        accessType: "admin",
+        body: {
+          display_name: "Schedule Edit Draft",
+          tsx_source: slowTemplate,
+          theme_id: false,
+        },
+      });
+      expect(createDraftResponse.status).toBe(200);
+      const draftId = createDraftResponse.body.id;
+
+      // Send the email using the slow-rendering template
       const sendResponse = await niceBackendFetch("/api/v1/emails/send-email", {
         method: "POST",
         accessType: "server",
         body: {
           user_ids: [userId],
-          html: "<p>Schedule test</p>",
-          subject: "Schedule Edit Test",
-          notification_category_name: "Transactional",
+          draft_id: draftId,
         },
       });
       expect(sendResponse.status).toBe(200);
 
-      // Try to get email before it's fully processed - if we're fast enough, it might be in PREPARING
-      await wait(100);
-      const listResponse = await niceBackendFetch("/api/v1/emails/outbox", {
-        method: "GET",
-        accessType: "server",
-      });
-      const emails = listResponse.body.items.filter((e: any) => e.subject === "Schedule Edit Test" || e.to?.user_id === userId);
+      // Poll until we find the email and can pause it (with timeout)
+      let emailId: string | null = null;
+      let pauseSucceeded = false;
 
-      if (emails.length > 0 && emails[0].status !== "sent") {
-        // Pause it before it sends
-        const pauseResponse = await niceBackendFetch(`/api/v1/emails/outbox/${emails[0].id}`, {
-          method: "PATCH",
+      for (let i = 0; i < 20; i++) {
+        const listResponse = await niceBackendFetch("/api/v1/emails/outbox", {
+          method: "GET",
           accessType: "server",
-          body: {
-            is_paused: true,
-          },
         });
+        const emails = listResponse.body.items.filter((e: any) => e.to?.user_id === userId);
 
-        if (pauseResponse.status === 200) {
-          // Now edit the scheduled_at_millis
-          const newScheduleTime = Date.now() + 3600000; // 1 hour from now
-          const editResponse = await niceBackendFetch(`/api/v1/emails/outbox/${emails[0].id}`, {
+        if (emails.length > 0) {
+          emailId = emails[0].id;
+          // Try to pause it
+          const pauseResponse = await niceBackendFetch(`/api/v1/emails/outbox/${emailId}`, {
             method: "PATCH",
             accessType: "server",
             body: {
-              scheduled_at_millis: newScheduleTime,
+              is_paused: true,
             },
           });
-          expect(editResponse.status).toBe(200);
-          expect(editResponse.body.scheduled_at_millis).toBe(newScheduleTime);
+
+          if (pauseResponse.status === 200 && pauseResponse.body.status === "paused") {
+            pauseSucceeded = true;
+            break;
+          }
         }
+
+        await wait(25);
       }
+
+      // These assertions must always run - test fails if we couldn't pause
+      expect(emailId).not.toBeNull();
+      expect(pauseSucceeded).toBe(true);
+
+      // Now edit the scheduled_at_millis
+      const newScheduleTime = Date.now() + 3600000; // 1 hour from now
+      const editResponse = await niceBackendFetch(`/api/v1/emails/outbox/${emailId}`, {
+        method: "PATCH",
+        accessType: "server",
+        body: {
+          scheduled_at_millis: newScheduleTime,
+        },
+      });
+      expect(editResponse.status).toBe(200);
+      expect(editResponse.body.scheduled_at_millis).toBe(newScheduleTime);
+
+      // Verify the scheduled time was updated by fetching the email
+      const getResponse = await niceBackendFetch(`/api/v1/emails/outbox/${emailId}`, {
+        method: "GET",
+        accessType: "server",
+      });
+      expect(getResponse.body.scheduled_at_millis).toBe(newScheduleTime);
     });
 
-    it("should pause email in PREPARING or SCHEDULED state", async ({ expect }) => {
+    it("should update recipient via PATCH and process email correctly", async ({ expect }) => {
+      // This test verifies that updating the 'to' field via PATCH correctly converts
+      // from API format (snake_case: user_id) to DB format (camelCase: userId),
+      // ensuring the email worker can process the updated recipient.
+      await Project.createAndSwitch({
+        display_name: "Test Update Recipient Project",
+        config: {
+          email_config: testEmailConfig,
+        },
+      });
+
+      // Create the original user
+      const originalMailbox = backendContext.value.mailbox;
+      const createOriginalUserResponse = await niceBackendFetch("/api/v1/users", {
+        method: "POST",
+        accessType: "server",
+        body: {
+          primary_email: originalMailbox.emailAddress,
+          primary_email_verified: true,
+        },
+      });
+      expect(createOriginalUserResponse.status).toBe(201);
+      const originalUserId = createOriginalUserResponse.body.id;
+
+      // Create a second user to redirect the email to
+      const newMailbox = await bumpEmailAddress();
+      const createNewUserResponse = await niceBackendFetch("/api/v1/users", {
+        method: "POST",
+        accessType: "server",
+        body: {
+          primary_email: newMailbox.emailAddress,
+          primary_email_verified: true,
+        },
+      });
+      expect(createNewUserResponse.status).toBe(201);
+      const newUserId = createNewUserResponse.body.id;
+
+      // Create a draft with a slow-rendering template to give us time to pause
+      const createDraftResponse = await niceBackendFetch("/api/v1/internal/email-drafts", {
+        method: "POST",
+        accessType: "admin",
+        body: {
+          display_name: "Update Recipient Draft",
+          tsx_source: slowTemplate,
+          theme_id: false,
+        },
+      });
+      expect(createDraftResponse.status).toBe(200);
+      const draftId = createDraftResponse.body.id;
+
+      // Send the email to the original user
+      const sendResponse = await niceBackendFetch("/api/v1/emails/send-email", {
+        method: "POST",
+        accessType: "server",
+        body: {
+          user_ids: [originalUserId],
+          draft_id: draftId,
+        },
+      });
+      expect(sendResponse.status).toBe(200);
+
+      // Poll until we find the email and can pause it
+      let emailId: string | null = null;
+      let pauseSucceeded = false;
+
+      for (let i = 0; i < 50; i++) {
+        const listResponse = await niceBackendFetch("/api/v1/emails/outbox", {
+          method: "GET",
+          accessType: "server",
+        });
+        const emails = listResponse.body.items.filter((e: any) => e.to?.user_id === originalUserId);
+
+        if (emails.length > 0 && ["preparing", "scheduled", "queued", "rendering"].includes(emails[0].status)) {
+          emailId = emails[0].id;
+          const pauseResponse = await niceBackendFetch(`/api/v1/emails/outbox/${emailId}`, {
+            method: "PATCH",
+            accessType: "server",
+            body: {
+              is_paused: true,
+            },
+          });
+
+          if (pauseResponse.status === 200 && pauseResponse.body.status === "paused") {
+            pauseSucceeded = true;
+            break;
+          }
+        }
+
+        await wait(100);
+      }
+
+      expect(emailId).not.toBeNull();
+      expect(pauseSucceeded).toBe(true);
+
+      // Update the recipient to the new user using the API format (snake_case: user_id)
+      const updateResponse = await niceBackendFetch(`/api/v1/emails/outbox/${emailId}`, {
+        method: "PATCH",
+        accessType: "server",
+        body: {
+          to: {
+            type: "user-primary-email",
+            user_id: newUserId,  // API format uses snake_case
+          },
+        },
+      });
+      expect(updateResponse.status).toBe(200);
+      expect(updateResponse.body.to.type).toBe("user-primary-email");
+      expect(updateResponse.body.to.user_id).toBe(newUserId);
+
+      // Unpause the email so it gets processed
+      const unpauseResponse = await niceBackendFetch(`/api/v1/emails/outbox/${emailId}`, {
+        method: "PATCH",
+        accessType: "server",
+        body: {
+          is_paused: false,
+        },
+      });
+      expect(unpauseResponse.status).toBe(200);
+
+      // Wait for the email to be sent to the new user
+      await newMailbox.waitForMessagesWithSubject("Slow Render Cancel Test");
+
+      // Verify the original user did NOT receive the email
+      const originalUserMessages = await originalMailbox.fetchMessages();
+      const originalUserEmails = originalUserMessages.filter(m => m.subject === "Slow Render Cancel Test");
+      expect(originalUserEmails).toHaveLength(0);
+
+      // Verify outbox shows sent status and correct recipient
+      const finalGetResponse = await niceBackendFetch(`/api/v1/emails/outbox/${emailId}`, {
+        method: "GET",
+        accessType: "server",
+      });
+      expect(finalGetResponse.body.status).toBe("sent");
+      expect(finalGetResponse.body.to.user_id).toBe(newUserId);
+    });
+
+    it("should pause and unpause email deterministically", async ({ expect }) => {
+      // This test uses a slow-rendering template to reliably place the email
+      // into a pausable state before asserting pause/unpause behavior.
       await Project.createAndSwitch({
         display_name: "Test Pause Email Project",
         config: {
@@ -672,63 +851,275 @@ describe("email outbox API", () => {
       expect(createUserResponse.status).toBe(201);
       const userId = createUserResponse.body.id;
 
-      // Send an email
+      // Create a draft with a slow-rendering template to give us time to pause
+      const createDraftResponse = await niceBackendFetch("/api/v1/internal/email-drafts", {
+        method: "POST",
+        accessType: "admin",
+        body: {
+          display_name: "Pause Test Draft",
+          tsx_source: slowTemplate,
+          theme_id: false,
+        },
+      });
+      expect(createDraftResponse.status).toBe(200);
+      const draftId = createDraftResponse.body.id;
+
+      // Send the email using the slow-rendering template
       const sendResponse = await niceBackendFetch("/api/v1/emails/send-email", {
         method: "POST",
         accessType: "server",
         body: {
           user_ids: [userId],
-          html: "<p>Pause test</p>",
-          subject: "Pause Test Email",
-          notification_category_name: "Transactional",
+          draft_id: draftId,
         },
       });
       expect(sendResponse.status).toBe(200);
 
-      // Try to pause quickly before it sends
-      await wait(50);
-      const listResponse = await niceBackendFetch("/api/v1/emails/outbox", {
+      // Poll until we find the email and can pause it (with timeout)
+      let emailId: string | null = null;
+      let pauseSucceeded = false;
+
+      for (let i = 0; i < 20; i++) {
+        const listResponse = await niceBackendFetch("/api/v1/emails/outbox", {
+          method: "GET",
+          accessType: "server",
+        });
+        const emails = listResponse.body.items.filter((e: any) => e.to?.user_id === userId);
+
+        if (emails.length > 0) {
+          emailId = emails[0].id;
+          // Try to pause it
+          const pauseResponse = await niceBackendFetch(`/api/v1/emails/outbox/${emailId}`, {
+            method: "PATCH",
+            accessType: "server",
+            body: {
+              is_paused: true,
+            },
+          });
+
+          if (pauseResponse.status === 200 && pauseResponse.body.status === "paused") {
+            pauseSucceeded = true;
+            break;
+          }
+        }
+
+        await wait(25);
+      }
+
+      // These assertions must always run - test fails if we couldn't pause
+      expect(emailId).not.toBeNull();
+      expect(pauseSucceeded).toBe(true);
+
+      // Verify the email is in paused state
+      const getResponse = await niceBackendFetch(`/api/v1/emails/outbox/${emailId}`, {
         method: "GET",
         accessType: "server",
       });
-      const emails = listResponse.body.items.filter((e: any) => e.to?.user_id === userId);
+      expect(getResponse.status).toBe(200);
+      expect(getResponse.body.status).toBe("paused");
+      expect(getResponse.body.is_paused).toBe(true);
 
-      if (emails.length > 0 && ["preparing", "scheduled", "queued"].includes(emails[0].status)) {
-        const pauseResponse = await niceBackendFetch(`/api/v1/emails/outbox/${emails[0].id}`, {
-          method: "PATCH",
-          accessType: "server",
-          body: {
-            is_paused: true,
-          },
-        });
-        expect(pauseResponse.status).toBe(200);
-        expect(pauseResponse.body.status).toBe("paused");
-        expect(pauseResponse.body.is_paused).toBe(true);
+      // Unpause the email
+      const unpauseResponse = await niceBackendFetch(`/api/v1/emails/outbox/${emailId}`, {
+        method: "PATCH",
+        accessType: "server",
+        body: {
+          is_paused: false,
+        },
+      });
+      expect(unpauseResponse.status).toBe(200);
+      expect(unpauseResponse.body.is_paused).toBe(false);
+      // After unpausing, the email should go back to processing (preparing/rendering/scheduled/etc)
+      expect(unpauseResponse.body.status).not.toBe("paused");
 
-        // Unpause it
-        const unpauseResponse = await niceBackendFetch(`/api/v1/emails/outbox/${emails[0].id}`, {
-          method: "PATCH",
+      // Wait for the email to be sent (since we unpaused it)
+      await wait(3000);
+
+      // Verify the email was eventually sent
+      const finalGetResponse = await niceBackendFetch(`/api/v1/emails/outbox/${emailId}`, {
+        method: "GET",
+        accessType: "server",
+      });
+      expect(finalGetResponse.body.status).toBe("sent");
+    });
+
+    it("should cancel email with MANUALLY_CANCELLED reason", async ({ expect }) => {
+      // This test uses a slow-rendering template to give us time to pause the email,
+      // then reschedules it to the far future to prevent any race conditions,
+      // and finally cancels it to verify the cancel functionality works correctly.
+      await Project.createAndSwitch({
+        display_name: "Test Cancel Email Project",
+        config: {
+          email_config: testEmailConfig,
+        },
+      });
+
+      // Create a user with verified email
+      const createUserResponse = await niceBackendFetch("/api/v1/users", {
+        method: "POST",
+        accessType: "server",
+        body: {
+          primary_email: backendContext.value.mailbox.emailAddress,
+          primary_email_verified: true,
+        },
+      });
+      expect(createUserResponse.status).toBe(201);
+      const userId = createUserResponse.body.id;
+
+      // Create a draft with a slow-rendering template
+      const createDraftResponse = await niceBackendFetch("/api/v1/internal/email-drafts", {
+        method: "POST",
+        accessType: "admin",
+        body: {
+          display_name: "Slow Cancel Test Draft",
+          tsx_source: slowTemplate,
+          theme_id: false,
+        },
+      });
+      expect(createDraftResponse.status).toBe(200);
+      const draftId = createDraftResponse.body.id;
+
+      // Send the email using the slow-rendering template
+      const sendResponse = await niceBackendFetch("/api/v1/emails/send-email", {
+        method: "POST",
+        accessType: "server",
+        body: {
+          user_ids: [userId],
+          draft_id: draftId,
+        },
+      });
+      expect(sendResponse.status).toBe(200);
+
+      // Immediately try to get and pause the email (before it finishes rendering)
+      // We poll until we find the email and can pause it
+      let emailId: string | null = null;
+      let pauseSucceeded = false;
+
+      for (let i = 0; i < 20; i++) {
+        const listResponse = await niceBackendFetch("/api/v1/emails/outbox", {
+          method: "GET",
           accessType: "server",
-          body: {
-            is_paused: false,
-          },
         });
-        expect(unpauseResponse.status).toBe(200);
-        expect(unpauseResponse.body.is_paused).toBe(false);
+        const emails = listResponse.body.items.filter((e: any) => e.to?.user_id === userId);
+
+        if (emails.length > 0) {
+          emailId = emails[0].id;
+          // Try to pause it
+          const pauseResponse = await niceBackendFetch(`/api/v1/emails/outbox/${emailId}`, {
+            method: "PATCH",
+            accessType: "server",
+            body: {
+              is_paused: true,
+            },
+          });
+
+          if (pauseResponse.status === 200 && pauseResponse.body.status === "paused") {
+            pauseSucceeded = true;
+            break;
+          }
+        }
+
+        await wait(25);
       }
+
+      // We need to have successfully paused the email to test cancel
+      expect(pauseSucceeded).toBe(true);
+      expect(emailId).not.toBeNull();
+
+      // Reschedule the email to far in the future to prevent any race conditions
+      // where the worker might pick it up while we're testing
+      const futureTime = Date.now() + 3600000; // 1 hour from now
+      const rescheduleResponse = await niceBackendFetch(`/api/v1/emails/outbox/${emailId}`, {
+        method: "PATCH",
+        accessType: "server",
+        body: {
+          scheduled_at_millis: futureTime,
+        },
+      });
+      expect(rescheduleResponse.status).toBe(200);
+      expect(rescheduleResponse.body.scheduled_at_millis).toBe(futureTime);
+
+      // Verify it's still paused
+      const getResponse = await niceBackendFetch(`/api/v1/emails/outbox/${emailId}`, {
+        method: "GET",
+        accessType: "server",
+      });
+      expect(getResponse.body.status).toBe("paused");
+
+      // Now cancel the paused email
+      const cancelResponse = await niceBackendFetch(`/api/v1/emails/outbox/${emailId}`, {
+        method: "PATCH",
+        accessType: "server",
+        body: {
+          cancel: true,
+        },
+      });
+      expect(cancelResponse.status).toBe(200);
+      expect(cancelResponse.body.status).toBe("skipped");
+      expect(cancelResponse.body.skipped_reason).toBe("MANUALLY_CANCELLED");
+      expect(cancelResponse.body.is_paused).toBe(false);
+
+      // Wait to ensure no email is sent
+      await wait(2000);
+
+      // Verify no email was received (it was cancelled and scheduled far in the future)
+      const messages = await backendContext.value.mailbox.fetchMessages();
+      const testEmails = messages.filter(m => m.subject === "Slow Render Cancel Test");
+      expect(testEmails).toHaveLength(0);
     });
 
-    // Note: Cancel tests are timing-sensitive and may be skipped if the email
-    // is processed too quickly. The core cancel functionality is tested when
-    // the test manages to catch an email in an editable state.
-    it.skip("should cancel email with MANUALLY_CANCELLED reason (timing sensitive)", async ({ expect }) => {
-      // This test is skipped because it's inherently racy - the email may be
-      // sent before we can pause it. The cancel functionality is tested manually
-      // or through slower-processing emails.
-    });
+    it("should return EMAIL_NOT_EDITABLE when trying to cancel an already-skipped email", async ({ expect }) => {
+      // This test verifies that attempting to cancel an already-skipped email
+      // returns EMAIL_NOT_EDITABLE. We use a user without a primary email to
+      // reliably get an email into SKIPPED state (no timing issues).
+      await Project.createAndSwitch({
+        display_name: "Test Cancel Already Skipped Project",
+        config: {
+          email_config: testEmailConfig,
+        },
+      });
 
-    it.skip("should not be able to cancel already-cancelled email (timing sensitive)", async ({ expect }) => {
-      // This test is skipped for the same reason as above.
+      // Create user without primary email - emails to this user will be skipped
+      const createUserResponse = await niceBackendFetch("/api/v1/users", {
+        method: "POST",
+        accessType: "server",
+        body: {},
+      });
+      expect(createUserResponse.status).toBe(201);
+      const userId = createUserResponse.body.id;
+
+      // Send email to user without primary email (will be skipped with USER_HAS_NO_PRIMARY_EMAIL)
+      await niceBackendFetch("/api/v1/emails/send-email", {
+        method: "POST",
+        accessType: "server",
+        body: {
+          user_ids: [userId],
+          html: "<p>Cancel skipped test</p>",
+          subject: "Cancel Already Skipped Test",
+          notification_category_name: "Transactional",
+        },
+      });
+
+      // Wait for email to be processed and skipped
+      await wait(3000);
+
+      // Get the email and verify it's skipped
+      const emails = await getOutboxEmails({ subject: "Cancel Already Skipped Test" });
+      expect(emails.length).toBeGreaterThanOrEqual(1);
+      const email = emails[0];
+      expect(email.status).toBe("skipped");
+      expect(email.skipped_reason).toBe("USER_HAS_NO_PRIMARY_EMAIL");
+
+      // Try to cancel an already-skipped email - should fail with EMAIL_NOT_EDITABLE
+      const cancelResponse = await niceBackendFetch(`/api/v1/emails/outbox/${email.id}`, {
+        method: "PATCH",
+        accessType: "server",
+        body: {
+          cancel: true,
+        },
+      });
+      expect(cancelResponse.status).toBe(400);
+      expect(cancelResponse.body.code).toBe("EMAIL_NOT_EDITABLE");
     });
   });
 

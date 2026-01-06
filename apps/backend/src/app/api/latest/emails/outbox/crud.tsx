@@ -1,4 +1,6 @@
 import { EmailOutbox, EmailOutboxSkippedReason, Prisma } from "@/generated/prisma/client";
+import { serializeRecipient } from "@/lib/email-queue-step";
+import { EmailOutboxRecipient } from "@/lib/emails";
 import { globalPrismaClient } from "@/prisma-client";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
 import { KnownErrors } from "@stackframe/stack-shared";
@@ -6,6 +8,31 @@ import { emailOutboxCrud, EmailOutboxCrud } from "@stackframe/stack-shared/dist/
 import { yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { StackAssertionError, StatusError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { createLazyProxy } from "@stackframe/stack-shared/dist/utils/proxies";
+
+/**
+ * Converts an API recipient (snake_case: user_id) to the DB format (camelCase: userId).
+ * This is necessary because the API uses snake_case for consistency with other endpoints,
+ * but the database and worker code use camelCase.
+ */
+function apiRecipientToDb(apiRecipient: EmailOutboxCrud["Server"]["Update"]["to"]): EmailOutboxRecipient {
+  if (!apiRecipient) {
+    throw new StackAssertionError("Recipient is required");
+  }
+  switch (apiRecipient.type) {
+    case "user-primary-email": {
+      return { type: "user-primary-email", userId: apiRecipient.user_id };
+    }
+    case "user-custom-emails": {
+      return { type: "user-custom-emails", userId: apiRecipient.user_id, emails: apiRecipient.emails };
+    }
+    case "custom-emails": {
+      return { type: "custom-emails", emails: apiRecipient.emails };
+    }
+    default: {
+      throw new StackAssertionError("Unknown recipient type", { apiRecipient });
+    }
+  }
+}
 
 // States that can be edited
 const EDITABLE_STATUSES = new Set([
@@ -75,14 +102,14 @@ function prismaModelToCrud(prismaModel: EmailOutbox): EmailOutboxCrud["Server"][
         status: "paused",
         simple_status: "in-progress",
         is_paused: true,
-      } as any;
+      };
     }
     case "PREPARING": {
       return {
         ...base,
         status: "preparing",
         simple_status: "in-progress",
-      } as any;
+      };
     }
     case "RENDERING": {
       return {
@@ -90,7 +117,7 @@ function prismaModelToCrud(prismaModel: EmailOutbox): EmailOutboxCrud["Server"][
         status: "rendering",
         simple_status: "in-progress",
         started_rendering_at_millis: prismaModel.startedRenderingAt!.getTime(),
-      } as any;
+      };
     }
     case "RENDER_ERROR": {
       return {
@@ -100,43 +127,43 @@ function prismaModelToCrud(prismaModel: EmailOutbox): EmailOutboxCrud["Server"][
         started_rendering_at_millis: prismaModel.startedRenderingAt!.getTime(),
         rendered_at_millis: prismaModel.finishedRenderingAt!.getTime(),
         render_error: prismaModel.renderErrorExternalMessage ?? "Unknown render error",
-      } as any;
+      };
     }
     case "SCHEDULED": {
       return {
         ...base,
-        ...rendered,
+        ...rendered!,
         status: "scheduled",
         simple_status: "in-progress",
-      } as any;
+      };
     }
     case "QUEUED": {
       return {
         ...base,
-        ...rendered,
+        ...rendered!,
         status: "queued",
         simple_status: "in-progress",
-      } as any;
+      };
     }
     case "SENDING": {
       return {
         ...base,
-        ...rendered,
+        ...rendered!,
         status: "sending",
         simple_status: "in-progress",
         started_sending_at_millis: prismaModel.startedSendingAt!.getTime(),
-      } as any;
+      };
     }
     case "SERVER_ERROR": {
       return {
         ...base,
-        ...rendered,
+        ...rendered!,
         status: "server-error",
         simple_status: "error",
         started_sending_at_millis: prismaModel.startedSendingAt!.getTime(),
         error_at_millis: prismaModel.finishedSendingAt!.getTime(),
         server_error: prismaModel.sendServerErrorExternalMessage ?? "Unknown send error",
-      } as any;
+      };
     }
     case "SKIPPED": {
       // SKIPPED can happen at any time (like PAUSED), so rendering/sending fields are optional
@@ -156,75 +183,78 @@ function prismaModelToCrud(prismaModel: EmailOutbox): EmailOutboxCrud["Server"][
         // Note: rendered_at_millis is included in the spread above if rendered
         // Optional sending fields
         started_sending_at_millis: prismaModel.startedSendingAt?.getTime(),
-      } as any;
+      };
     }
     case "BOUNCED": {
       return {
         ...base,
-        ...rendered,
+        ...rendered!,
         status: "bounced",
         simple_status: "error",
         started_sending_at_millis: prismaModel.startedSendingAt!.getTime(),
         bounced_at_millis: prismaModel.bouncedAt!.getTime(),
-      } as any;
+      };
     }
     case "DELIVERY_DELAYED": {
       return {
         ...base,
-        ...rendered,
+        ...rendered!,
         status: "delivery-delayed",
         simple_status: "ok",
         started_sending_at_millis: prismaModel.startedSendingAt!.getTime(),
         delivery_delayed_at_millis: prismaModel.deliveryDelayedAt!.getTime(),
-      } as any;
+      };
     }
     case "SENT": {
       return {
         ...base,
-        ...rendered,
+        ...rendered!,
         status: "sent",
         simple_status: "ok",
         started_sending_at_millis: prismaModel.startedSendingAt!.getTime(),
         delivered_at_millis: prismaModel.canHaveDeliveryInfo ? prismaModel.deliveredAt!.getTime() : prismaModel.finishedSendingAt!.getTime(),
         has_delivered: true,
         can_have_delivery_info: prismaModel.canHaveDeliveryInfo ?? throwErr("Email outbox is in SENT status but canHaveDeliveryInfo is not set", { emailOutboxId: prismaModel.id }),
-      } as any;
+      };
     }
     case "OPENED": {
       return {
         ...base,
-        ...rendered,
+        ...rendered!,
         status: "opened",
         simple_status: "ok",
         started_sending_at_millis: prismaModel.startedSendingAt!.getTime(),
         delivered_at_millis: prismaModel.deliveredAt!.getTime(),
         opened_at_millis: prismaModel.openedAt!.getTime(),
         has_delivered: true,
-      } as any;
+        can_have_delivery_info: true,
+      };
     }
     case "CLICKED": {
       return {
         ...base,
-        ...rendered,
+        ...rendered!,
         status: "clicked",
         simple_status: "ok",
         started_sending_at_millis: prismaModel.startedSendingAt!.getTime(),
         delivered_at_millis: prismaModel.deliveredAt!.getTime(),
         clicked_at_millis: prismaModel.clickedAt!.getTime(),
         has_delivered: true,
-      } as any;
+        can_have_delivery_info: true,
+      };
     }
     case "MARKED_AS_SPAM": {
       return {
         ...base,
-        ...rendered,
+        ...rendered!,
         status: "marked-as-spam",
         simple_status: "ok",
         started_sending_at_millis: prismaModel.startedSendingAt!.getTime(),
         delivered_at_millis: prismaModel.deliveredAt!.getTime(),
         marked_as_spam_at_millis: prismaModel.markedAsSpamAt!.getTime(),
         has_delivered: true,
-      } as any;
+        can_have_delivery_info: true,
+      };
     }
   }
   throw new StackAssertionError(`Unknown email outbox status: ${status}`, { status });
@@ -346,8 +376,10 @@ export const emailOutboxCrudHandlers = createLazyProxy(() => createCrudHandlers(
       needsRerenderReset = true;
     }
     if (data.to !== undefined) {
-      const to = data.to as any;
-      updateData.to = to;
+      // Convert API format (snake_case: user_id) to DB format (camelCase: userId)
+      const internalRecipient = apiRecipientToDb(data.to);
+      // serializeRecipient always returns a valid JSON object for valid recipients
+      updateData.to = serializeRecipient(internalRecipient) as Prisma.InputJsonValue;
       needsRerenderReset = true;
     }
     if (data.variables !== undefined) {

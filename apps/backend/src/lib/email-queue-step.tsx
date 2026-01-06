@@ -19,9 +19,6 @@ import { lowLevelSendEmailDirectViaProvider } from "./emails-low-level";
 
 const MAX_RENDER_BATCH = 50;
 
-// Domain that is always rejected when emailable API key is not set (for testing purposes)
-const EMAILABLE_NOT_DELIVERABLE_TEST_DOMAIN = "emailable-not-deliverable.example.com";
-
 type EmailableVerificationResult =
   | { status: "ok" }
   | { status: "not-deliverable", emailableResponse: Record<string, unknown> };
@@ -97,7 +94,8 @@ async function verifyEmailDeliverability(
       }
     });
   } else {
-    // Fallback behavior when no API key is set: reject test domain for testing purposes
+    // Fallback behavior when no API key is set: reject test domain for testing purposes, and accept everything else
+    const EMAILABLE_NOT_DELIVERABLE_TEST_DOMAIN = "emailable-not-deliverable.example.com";
     const emailDomain = email.split("@")[1]?.toLowerCase();
     if (emailDomain === EMAILABLE_NOT_DELIVERABLE_TEST_DOMAIN) {
       return {
@@ -594,6 +592,7 @@ async function processSingleEmail(context: TenancyProcessingContext, row: EmailO
 
     // Verify email deliverability for each email address
     // If any email fails verification, skip the entire email with LIKELY_NOT_DELIVERABLE reason
+    // TODO: In the future, if only one email fails verification, we may still want to send if the other emails are deliverable
     for (const email of resolution.emails) {
       const verifyResult = await verifyEmailDeliverability(
         email,

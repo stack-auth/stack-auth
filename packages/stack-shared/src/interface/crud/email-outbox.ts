@@ -69,6 +69,7 @@ const startedSendingFieldsSchema = renderedFieldsSchema.concat(fieldSchema.yupOb
 // Finished delivering tracking fields
 const finishedDeliveringFieldsSchema = startedSendingFieldsSchema.concat(fieldSchema.yupObject({
   delivered_at_millis: fieldSchema.yupNumber().defined(),
+  has_delivered: fieldSchema.yupBoolean().oneOf([true]).defined(),
 }).defined());
 
 
@@ -161,7 +162,6 @@ const deliveryDelayedStatusSchema = startedSendingFieldsSchema.concat(fieldSchem
 const sentStatusSchema = finishedDeliveringFieldsSchema.concat(fieldSchema.yupObject({
   status: fieldSchema.yupString().oneOf(["sent"]).defined(),
   simple_status: fieldSchema.yupString().oneOf(["ok"]).defined(),
-  has_delivered: fieldSchema.yupBoolean().oneOf([true]).defined(),
   // Whether this email's provider supports delivery tracking (opens, clicks, etc.)
   can_have_delivery_info: fieldSchema.yupBoolean().defined(),
 }).defined());
@@ -170,18 +170,21 @@ const openedStatusSchema = finishedDeliveringFieldsSchema.concat(fieldSchema.yup
   status: fieldSchema.yupString().oneOf(["opened"]).defined(),
   simple_status: fieldSchema.yupString().oneOf(["ok"]).defined(),
   opened_at_millis: fieldSchema.yupNumber().defined(),
+  can_have_delivery_info: fieldSchema.yupBoolean().oneOf([true]).defined(),
 }).defined());
 
 const clickedStatusSchema = finishedDeliveringFieldsSchema.concat(fieldSchema.yupObject({
   status: fieldSchema.yupString().oneOf(["clicked"]).defined(),
   simple_status: fieldSchema.yupString().oneOf(["ok"]).defined(),
   clicked_at_millis: fieldSchema.yupNumber().defined(),
+  can_have_delivery_info: fieldSchema.yupBoolean().oneOf([true]).defined(),
 }).defined());
 
 const markedAsSpamStatusSchema = finishedDeliveringFieldsSchema.concat(fieldSchema.yupObject({
   status: fieldSchema.yupString().oneOf(["marked-as-spam"]).defined(),
   simple_status: fieldSchema.yupString().oneOf(["ok"]).defined(),
   marked_as_spam_at_millis: fieldSchema.yupNumber().defined(),
+  can_have_delivery_info: fieldSchema.yupBoolean().oneOf([true]).defined(),
 }).defined());
 
 // Combined read schema using union
@@ -227,7 +230,7 @@ export const emailOutboxCrud = createCrud({
     serverUpdate: {
       tags: ["Emails"],
       summary: "Update email outbox entry",
-      description: "Updates an email in the outbox. Can be used to edit email content, pause/resume, or cancel emails. Only emails in editable states (PAUSED, PREPARING, RENDERING, RENDER_ERROR, SCHEDULED, QUEUED, SERVER_ERROR) can be modified.",
+      description: "Updates an email in the outbox. Can be used to edit email content, pause/resume, or cancel emails. Only emails in editable states (`paused`, `preparing`, `rendering`, `render-error`, `scheduled`, `queued`, `server-error`) can be modified.",
     },
     serverList: {
       tags: ["Emails"],
