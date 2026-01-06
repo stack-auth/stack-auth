@@ -2,12 +2,12 @@
 import { teamMembershipsCrudHandlers } from '@/app/api/latest/team-memberships/crud';
 import { teamsCrudHandlers } from '@/app/api/latest/teams/crud';
 import { usersCrudHandlers } from '@/app/api/latest/users/crud';
+import { CustomerType, EmailOutboxCreatedWith, Prisma, PurchaseCreationSource, SubscriptionStatus } from '@/generated/prisma/client';
 import { overrideEnvironmentConfigOverride } from '@/lib/config';
 import { ensurePermissionDefinition, grantTeamPermission } from '@/lib/permissions';
 import { createOrUpdateProjectWithLegacyConfig, getProject } from '@/lib/projects';
 import { DEFAULT_BRANCH_ID, getSoleTenancyFromProjectBranch, type Tenancy } from '@/lib/tenancies';
-import { getPrismaClientForTenancy, globalPrismaClient } from '@/prisma-client';
-import { CustomerType, EmailOutboxCreatedWith, Prisma, PrismaClient, PurchaseCreationSource, SubscriptionStatus } from '@prisma/client';
+import { getPrismaClientForTenancy, globalPrismaClient, PrismaClientTransaction } from '@/prisma-client';
 import { ALL_APPS } from '@stackframe/stack-shared/dist/apps/apps-config';
 import { DEFAULT_EMAIL_THEME_ID } from '@stackframe/stack-shared/dist/helpers/emails';
 import { AdminUserProjectsCrud, ProjectsCrud } from '@stackframe/stack-shared/dist/interface/crud/projects';
@@ -16,7 +16,6 @@ import { throwErr } from '@stackframe/stack-shared/dist/utils/errors';
 import { typedEntries, typedFromEntries } from '@stackframe/stack-shared/dist/utils/objects';
 import { generateUuid } from '@stackframe/stack-shared/dist/utils/uuids';
 
-const globalPrisma = new PrismaClient();
 const DUMMY_PROJECT_ID = '6fbbf22e-f4b2-4c6e-95a1-beab6fa41063';
 const EXPLORATORY_TEAM_DISPLAY_NAME = 'Exploratory Research and Insight Partnership With Very Long Collaborative Name For Testing';
 
@@ -264,7 +263,6 @@ export async function seed() {
   const shouldSeedDummyProject = process.env.STACK_SEED_ENABLE_DUMMY_PROJECT === 'true';
   if (shouldSeedDummyProject) {
     await seedDummyProject({
-      globalPrismaClient,
       ownerTeamId: internalTeamId,
       oauthProviderIds,
     });
@@ -276,7 +274,7 @@ export async function seed() {
     superSecretAdminKey: process.env.STACK_SEED_INTERNAL_PROJECT_SUPER_SECRET_ADMIN_KEY || throwErr('STACK_SEED_INTERNAL_PROJECT_SUPER_SECRET_ADMIN_KEY is not set'),
   };
 
-  await globalPrisma.apiKeySet.upsert({
+  await globalPrismaClient.apiKeySet.upsert({
     where: { projectId_id: { projectId: 'internal', id: apiKeyId } },
     update: {
       ...keySet,
@@ -493,7 +491,6 @@ export async function seed() {
 }
 
 type DummyProjectSeedOptions = {
-  globalPrismaClient: PrismaClient,
   ownerTeamId: string,
   oauthProviderIds: string[],
 };
@@ -519,12 +516,12 @@ type UserSeed = {
 };
 
 type SeedDummyTeamsOptions = {
-  prisma: PrismaClient,
+  prisma: PrismaClientTransaction,
   tenancy: Tenancy,
 };
 
 type SeedDummyUsersOptions = {
-  prisma: PrismaClient,
+  prisma: PrismaClientTransaction,
   tenancy: Tenancy,
   teamNameToId: Map<string, string>,
 };
@@ -998,7 +995,7 @@ async function seedDummyProject(options: DummyProjectSeedOptions) {
     },
   });
 
-  await options.globalPrismaClient.project.update({
+  await globalPrismaClient.project.update({
     where: {
       id: DUMMY_PROJECT_ID,
     },
@@ -1031,7 +1028,7 @@ async function seedDummyProject(options: DummyProjectSeedOptions) {
 }
 
 type TransactionsSeedOptions = {
-  prisma: PrismaClient,
+  prisma: PrismaClientTransaction,
   tenancyId: string,
   teamNameToId: Map<string, string>,
   userEmailToId: Map<string, string>,
@@ -1080,7 +1077,7 @@ type OneTimePurchaseSeed = {
 };
 
 type EmailSeedOptions = {
-  prisma: PrismaClient,
+  prisma: PrismaClientTransaction,
   tenancyId: string,
   userEmailToId: Map<string, string>,
 };

@@ -1,12 +1,10 @@
 generator client {
-  provider        = "prisma-client-js"
-  previewFeatures = ["driverAdapters", "relationJoins"]
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
 }
 
 datasource db {
-  provider  = "postgresql"
-  url       = env("STACK_DATABASE_CONNECTION_STRING")
-  directUrl = env("STACK_DIRECT_DATABASE_CONNECTION_STRING")
+  provider = "postgresql"
 }
 
 model SchemaMigration {
@@ -42,6 +40,8 @@ model Project {
   provisionedProject         ProvisionedProject?
   tenancies                  Tenancy[]
   environmentConfigOverrides EnvironmentConfigOverride[]
+
+  @@index([ownerTeamId], map: "Project_ownerTeamId_idx")
 }
 
 model Tenancy {
@@ -129,6 +129,7 @@ model TeamMember {
 
   @@id([tenancyId, projectUserId, teamId])
   @@unique([tenancyId, projectUserId, isSelected])
+  @@index([tenancyId, projectUserId, isSelected], map: "TeamMember_projectUserId_isSelected_idx")
 }
 
 model ProjectUserDirectPermission {

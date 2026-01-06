@@ -1,4 +1,4 @@
-import { cn, Typography } from "@stackframe/stack-ui";
+import { cn, Typography } from "@/components/ui";
 import React from "react";
 
 export function PageLayout(props: {

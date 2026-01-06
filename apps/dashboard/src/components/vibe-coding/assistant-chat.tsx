@@ -5,7 +5,7 @@ import {
   type ChatModelAdapter,
   type ThreadHistoryAdapter,
 } from "@assistant-ui/react";
-import { TooltipProvider } from "@stackframe/stack-ui";
+import { TooltipProvider } from "@/components/ui";
 
 type AssistantChatProps = {
   chatAdapter: ChatModelAdapter,

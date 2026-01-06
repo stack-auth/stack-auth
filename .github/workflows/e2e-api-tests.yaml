@@ -13,15 +13,17 @@ concurrency:
 
 jobs:
   build:
+    name: E2E Tests (Node ${{ matrix.node-version }}, Freestyle ${{ matrix.freestyle-mode }})
     runs-on: ubicloud-standard-8
     env:
       NODE_ENV: test
       STACK_ENABLE_HARDCODED_PASSKEY_CHALLENGE_FOR_TESTING: yes
-      STACK_DIRECT_DATABASE_CONNECTION_STRING: "postgres://postgres:PASSWORD-PLACEHOLDER--uqfEC1hmmv@localhost:8128/stackframe"
+      STACK_DATABASE_CONNECTION_STRING: "postgres://postgres:PASSWORD-PLACEHOLDER--uqfEC1hmmv@localhost:8128/stackframe"
 
     strategy:
       matrix:
         node-version: [22.x]
+        freestyle-mode: [mock, prod]
 
     steps:
       - uses: actions/checkout@v6
@@ -51,6 +53,11 @@ jobs:
 
       - name: Create .env.test.local file for apps/backend
         run: cp apps/backend/.env.development apps/backend/.env.test.local
+
+      - name: Override Freestyle API key for prod mode
+        if: matrix.freestyle-mode == 'prod'
+        run: |
+          echo "STACK_FREESTYLE_API_KEY=${{ secrets.STACK_FREESTYLE_REAL_API_KEY }}" >> apps/backend/.env.test.local
 
       - name: Create .env.test.local file for apps/dashboard
         run: cp apps/dashboard/.env.development apps/dashboard/.env.test.local
@@ -111,7 +118,7 @@ jobs:
         with:
           run: pnpm run start:dashboard --log-order=stream &
           wait-on: |
-            http://localhost:8102
+            http://localhost:8101
           tail: true
           wait-for: 30s
           log-output-if: true
@@ -119,6 +126,15 @@ jobs:
         uses: JarvusInnovations/background-action@v1.0.7
         with:
           run: pnpm run start:mock-oauth-server --log-order=stream &
+          wait-on: |
+            http://localhost:8102
+          tail: true
+          wait-for: 30s
+          log-output-if: true
+      - name: Start run-email-queue in background
+        uses: JarvusInnovations/background-action@v1.0.7
+        with:
+          run: pnpm -C apps/backend run run-email-queue --log-order=stream &
           wait-on: |
             http://localhost:8102
           tail: true

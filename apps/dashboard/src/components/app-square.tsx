@@ -1,9 +1,9 @@
 import { useAdminApp, useProjectId } from "@/app/(main)/(protected)/projects/[projectId]/use-admin-app";
+import { Button, cn, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui";
 import { ALL_APPS_FRONTEND, AppFrontend, getAppPath } from "@/lib/apps-frontend";
+import { CheckIcon, DotsThreeVerticalIcon } from "@phosphor-icons/react";
 import { ALL_APPS, AppId } from "@stackframe/stack-shared/dist/apps/apps-config";
 import { appSquarePaddingExpression, appSquareWidthExpression, AppIcon as SharedAppIcon } from "@stackframe/stack-shared/dist/apps/apps-ui";
-import { Button, cn, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@stackframe/stack-ui";
-import { Check, MoreVertical } from "lucide-react";
 import { useState } from "react";
 import { AppWarningModal } from "./app-warning-modal";
 import { Link } from "./link";
@@ -130,7 +130,7 @@ export function AppSquare({
                 )}
                 onClick={(e) => e.preventDefault()}
               >
-                <MoreVertical className="w-4 h-4 text-gray-500 dark:text-gray-400" />
+                <DotsThreeVerticalIcon className="w-4 h-4 text-gray-500 dark:text-gray-400" />
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="min-w-[120px]">
@@ -144,7 +144,7 @@ export function AppSquare({
         {/* Status badge - enabled checkmark */}
         {isEnabled && (
           <div className="absolute top-2 right-8 sm:top-3 sm:right-9 w-5 h-5 sm:w-6 sm:h-6 bg-green-500 rounded-full flex items-center justify-center shadow-md z-10">
-            <Check className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-white" strokeWidth={3} />
+            <CheckIcon className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-white" weight="bold" />
           </div>
         )}
 
@@ -253,7 +253,7 @@ export function AppListItem({
       {showActions && (
         <div className="flex items-center gap-2">
           {isEnabled ? (
-            <Check className="w-4 h-4 text-green-500" />
+            <CheckIcon className="w-4 h-4 text-green-500" />
           ) : (
             <Button
               onClick={handleEnable}
