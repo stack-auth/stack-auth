@@ -1,7 +1,7 @@
 import { getDefaultCardPaymentMethodSummary, getStripeCustomerForCustomerOrNull } from "@/lib/payments";
 import { ensureUserTeamPermissionExists } from "@/lib/request-checks";
 import { getStripeForAccount } from "@/lib/stripe";
-import { getPrismaClientForTenancy } from "@/prisma-client";
+import { getPrismaClientForTenancy, globalPrismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { adaptSchema, clientOrHigherAuthTypeSchema, yupBoolean, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
@@ -70,8 +70,24 @@ export const GET = createSmartRouteHandler({
       );
     }
 
+    const project = await globalPrismaClient.project.findUnique({
+      where: { id: auth.tenancy.project.id },
+      select: { stripeAccountId: true },
+    });
+    const stripeAccountId = project?.stripeAccountId;
+    if (!stripeAccountId) {
+      return {
+        statusCode: 200,
+        bodyType: "json",
+        body: {
+          has_customer: false,
+          default_payment_method: null,
+        },
+      };
+    }
+
     const prisma = await getPrismaClientForTenancy(auth.tenancy);
-    const stripe = await getStripeForAccount({ tenancy: auth.tenancy });
+    const stripe = await getStripeForAccount({ accountId: stripeAccountId });
     const stripeCustomer = await getStripeCustomerForCustomerOrNull({
       stripe,
       prisma,
