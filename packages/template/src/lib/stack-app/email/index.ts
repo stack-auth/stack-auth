@@ -51,7 +51,9 @@ type AdminEmailOutboxBase = {
 };
 
 // Fields available after rendering completes successfully
-type AdminEmailOutboxRenderedFields = AdminEmailOutboxBase & {
+// Use Omit to properly override hasRendered from base
+type AdminEmailOutboxRenderedFields = Omit<AdminEmailOutboxBase, "hasRendered"> & {
+  hasRendered: true,
   startedRenderingAt: Date,
   renderedAt: Date,
   subject: string,
@@ -60,7 +62,6 @@ type AdminEmailOutboxRenderedFields = AdminEmailOutboxBase & {
   isTransactional: boolean,
   isHighPriority: boolean,
   notificationCategoryId: string | null,
-  hasRendered: true,
 };
 
 // Fields available after sending starts
@@ -69,14 +70,16 @@ type AdminEmailOutboxStartedSendingFields = AdminEmailOutboxRenderedFields & {
 };
 
 // Fields available after delivery completes
-type AdminEmailOutboxFinishedDeliveringFields = AdminEmailOutboxStartedSendingFields & {
-  deliveredAt: Date,
+// Use Omit to properly override hasDelivered from base (inherited through chain)
+type AdminEmailOutboxFinishedDeliveringFields = Omit<AdminEmailOutboxStartedSendingFields, "hasDelivered"> & {
   hasDelivered: true,
+  deliveredAt: Date,
 };
 
 // =============================== STATUS-SPECIFIC TYPES ===============================
 
-export type AdminEmailOutboxPaused = AdminEmailOutboxBase & {
+// Use Omit to properly override isPaused from base
+export type AdminEmailOutboxPaused = Omit<AdminEmailOutboxBase, "isPaused"> & {
   status: "paused",
   simpleStatus: "in-progress",
   isPaused: true,
@@ -124,13 +127,14 @@ export type AdminEmailOutboxServerError = AdminEmailOutboxStartedSendingFields &
 };
 
 // SKIPPED can happen at any time, so rendering/sending fields are optional
-export type AdminEmailOutboxSkipped = AdminEmailOutboxBase & {
+// Use Omit to properly override hasRendered from base (can be true or false when skipped)
+export type AdminEmailOutboxSkipped = Omit<AdminEmailOutboxBase, "hasRendered"> & {
   status: "skipped",
   simpleStatus: "ok",
+  hasRendered: boolean,
   skippedAt: Date,
   skippedReason: string,
   skippedDetails: Record<string, unknown>,
-  hasRendered: boolean,
   // Optional fields depending on when skipped
   startedRenderingAt?: Date,
   renderedAt?: Date,
