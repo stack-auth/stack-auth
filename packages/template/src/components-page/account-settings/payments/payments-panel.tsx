@@ -1,7 +1,8 @@
 'use client';
 
-import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
-import { ActionDialog, Button, Skeleton, Typography } from "@stackframe/stack-ui";
+import { KnownErrors } from "@stackframe/stack-shared";
+import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
+import { ActionDialog, Button, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Skeleton, toast, Typography } from "@stackframe/stack-ui";
 import { loadStripe } from "@stripe/stripe-js";
 import { CardElement, Elements, useElements, useStripe } from "@stripe/react-stripe-js";
 import React, { useMemo, useState } from "react";
@@ -45,6 +46,11 @@ type CustomerLike = {
     displayName: string,
     customerType: "user" | "team" | "custom",
     type: "one_time" | "subscription",
+    switchOptions?: Array<{
+      productId: string,
+      displayName: string,
+      prices: Record<string, { interval?: [number, "day" | "week" | "month" | "year"] }>,
+    }>,
     subscription: null | {
       currentPeriodEnd: Date | null,
       cancelAtPeriodEnd: boolean,
@@ -53,6 +59,7 @@ type CustomerLike = {
   }>,
   createPaymentMethodSetupIntent: () => Promise<CustomerPaymentMethodSetupIntent>,
   setDefaultPaymentMethodFromSetupIntent: (setupIntentId: string) => Promise<PaymentMethodSummary>,
+  switchSubscription: (options: { fromProductId: string, toProductId: string, priceId?: string, quantity?: number }) => Promise<void>,
 };
 
 function SetDefaultPaymentMethodForm(props: {
@@ -176,6 +183,7 @@ function MockPaymentsPanel(props: { title?: string }) {
 function RealPaymentsPanel(props: { title?: string, customer: CustomerLike, customerType: "user" | "team" }) {
   const { t } = useTranslation();
   const stackApp = useStackApp();
+
   const billing = props.customer.useBilling();
   const defaultPaymentMethod = billing.defaultPaymentMethod;
   const products = props.customer.useProducts();
@@ -185,6 +193,8 @@ function RealPaymentsPanel(props: { title?: string, customer: CustomerLike, cust
   const [setupIntentClientSecret, setSetupIntentClientSecret] = useState<string | null>(null);
   const [setupIntentStripeAccountId, setSetupIntentStripeAccountId] = useState<string | null>(null);
   const [cancelProductId, setCancelProductId] = useState<string | null>(null);
+  const [switchFromProductId, setSwitchFromProductId] = useState<string | null>(null);
+  const [switchToProductId, setSwitchToProductId] = useState<string | null>(null);
 
   const stripePromise = useMemo(() => {
     if (!setupIntentStripeAccountId) return null;
@@ -193,13 +203,25 @@ function RealPaymentsPanel(props: { title?: string, customer: CustomerLike, cust
     return loadStripe(publishableKey, { stripeAccount: setupIntentStripeAccountId });
   }, [setupIntentStripeAccountId]);
 
+  const handleAsyncError = (error: unknown) => {
+    if (error instanceof KnownErrors.DefaultPaymentMethodRequired) {
+      toast({
+        title: t("No default payment method"),
+        description: t("Add a payment method before switching plans."),
+        variant: "destructive",
+      });
+      return;
+    }
+    alert(`An unhandled error occurred. Please ${process.env.NODE_ENV === "development" ? "check the browser console for the full error." : "report this to the developer."}\n\n${error}`);
+  };
+
   const openPaymentDialog = () => {
-    runAsynchronouslyWithAlert(async () => {
+    runAsynchronously(async () => {
       setPaymentDialogOpen(true);
       const res = await props.customer.createPaymentMethodSetupIntent();
       setSetupIntentClientSecret(res.clientSecret);
       setSetupIntentStripeAccountId(res.stripeAccountId);
-    });
+    }, { onError: handleAsyncError });
   };
 
   const closePaymentDialog = () => {
@@ -207,6 +229,23 @@ function RealPaymentsPanel(props: { title?: string, customer: CustomerLike, cust
     setSetupIntentClientSecret(null);
     setSetupIntentStripeAccountId(null);
   };
+
+  const openSwitchDialog = (productId: string, firstOptionId: string | null) => {
+    setSwitchFromProductId(productId);
+    setSwitchToProductId(firstOptionId);
+  };
+
+  const closeSwitchDialog = () => {
+    setSwitchFromProductId(null);
+    setSwitchToProductId(null);
+  };
+
+  const switchSourceProduct = switchFromProductId
+    ? productsForCustomerType.find((product) => product.id === switchFromProductId) ?? null
+    : null;
+  const switchOptions = switchSourceProduct?.switchOptions ?? [];
+  const selectedSwitchOption = switchOptions.find((option) => option.productId === switchToProductId) ?? null;
+  const selectedPriceId = selectedSwitchOption ? (Object.keys(selectedSwitchOption.prices)[0] ?? null) : null;
 
   return (
     <div className="space-y-4">
@@ -270,6 +309,7 @@ function RealPaymentsPanel(props: { title?: string, customer: CustomerLike, cust
               const quantitySuffix = product.quantity !== 1 ? ` ×${product.quantity}` : "";
               const isSubscription = product.type === "subscription";
               const isCancelable = isSubscription && !!product.id && !!product.subscription?.isCancelable;
+              const canSwitchPlans = isSubscription && !!product.id && (product.switchOptions?.length ?? 0) > 0;
               const renewsAt = isSubscription ? (product.subscription?.currentPeriodEnd ?? null) : null;
 
               const subtitle =
@@ -286,15 +326,26 @@ function RealPaymentsPanel(props: { title?: string, customer: CustomerLike, cust
                     <Typography variant="secondary" type="footnote">{subtitle}</Typography>
                   </div>
 
-                  {isCancelable && (
-                    <Button
-                      variant="secondary"
-                      color="neutral"
-                      onClick={() => setCancelProductId(product.id!)}
-                    >
-                      {t("Cancel subscription")}
-                    </Button>
-                  )}
+                  <div className="flex flex-col items-end gap-2">
+                    {canSwitchPlans && (
+                      <Button
+                        variant="secondary"
+                        color="neutral"
+                        onClick={() => openSwitchDialog(product.id!, product.switchOptions?.[0]?.productId ?? null)}
+                      >
+                        {t("Change plan")}
+                      </Button>
+                    )}
+                    {isCancelable && (
+                      <Button
+                        variant="secondary"
+                        color="neutral"
+                        onClick={() => setCancelProductId(product.id!)}
+                      >
+                        {t("Cancel subscription")}
+                      </Button>
+                    )}
+                  </div>
                 </div>
               );
             })}
@@ -324,6 +375,65 @@ function RealPaymentsPanel(props: { title?: string, customer: CustomerLike, cust
             },
           }}
         />
+
+        <ActionDialog
+          open={switchFromProductId !== null}
+          onOpenChange={(open) => {
+            if (!open) closeSwitchDialog();
+          }}
+          title={t("Change plan")}
+          description={t("Select a new plan from the same catalog.")}
+          cancelButton
+          okButton={{
+            label: t("Switch plan"),
+            onClick: async () => {
+              const fromProductId = switchFromProductId;
+              const toProductId = switchToProductId;
+              if (!fromProductId || !toProductId) return;
+              if (!selectedPriceId) return;
+              try {
+                await props.customer.switchSubscription({
+                  fromProductId,
+                  toProductId,
+                  priceId: selectedPriceId,
+                });
+                closeSwitchDialog();
+              } catch (error) {
+                handleAsyncError(error);
+              }
+            },
+            props: {
+              disabled: !switchFromProductId || !switchToProductId || !selectedPriceId,
+            },
+          }}
+        >
+          <div className="space-y-2">
+            {switchOptions.length === 0 ? (
+              <Typography variant="secondary" type="footnote">
+                {t("No other plans available for this subscription.")}
+              </Typography>
+            ) : (
+              <>
+                <Typography type="footnote">{t("Choose a plan")}</Typography>
+                <Select
+                  value={switchToProductId ?? undefined}
+                  onValueChange={(value) => setSwitchToProductId(value || null)}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder={t("Choose a plan")} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {switchOptions.map((option: NonNullable<typeof switchOptions>[number]) => (
+                      <SelectItem key={option.productId} value={option.productId}>
+                        {option.displayName}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </>
+            )}
+          </div>
+        </ActionDialog>
       </Section>
     </div>
   );

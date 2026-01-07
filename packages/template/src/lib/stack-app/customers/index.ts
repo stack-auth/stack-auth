@@ -45,6 +45,11 @@ export type CustomerProduct = {
     cancelAtPeriodEnd: boolean,
     isCancelable: boolean,
   },
+  switchOptions?: Array<{
+    productId: string,
+    displayName: string,
+    prices: InlineProduct["prices"],
+  }>,
 };
 
 export type CustomerProductsList = CustomerProduct[] & {
@@ -91,6 +96,8 @@ export type Customer<IsServer extends boolean = false> =
     createPaymentMethodSetupIntent(): Promise<CustomerPaymentMethodSetupIntent>,
 
     setDefaultPaymentMethodFromSetupIntent(setupIntentId: string): Promise<CustomerDefaultPaymentMethod>,
+
+    switchSubscription(options: { fromProductId: string, toProductId: string, priceId?: string, quantity?: number }): Promise<void>,
   }
   & AsyncStoreProperty<
     "billing",

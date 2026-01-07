@@ -933,6 +933,85 @@ it("listing products should list both subscription and one-time products", async
   `);
 });
 
+it("should allow switching from include-by-default to a paid plan in the same catalog", async ({ expect }) => {
+  await Project.createAndSwitch();
+  await Payments.setup();
+  await Project.updateConfig({
+    payments: {
+      catalogs: {
+        plans: {
+          displayName: "Plans",
+        },
+      },
+      products: {
+        "team-free": {
+          displayName: "Team Free",
+          customerType: "team",
+          serverOnly: false,
+          stackable: false,
+          catalogId: "plans",
+          prices: "include-by-default",
+          includedItems: {},
+        },
+        "team-pro": {
+          displayName: "Team Pro",
+          customerType: "team",
+          serverOnly: false,
+          stackable: false,
+          catalogId: "plans",
+          prices: {
+            monthly: {
+              USD: "1200",
+              interval: [1, "month"],
+            },
+          },
+          includedItems: {},
+        },
+      },
+    },
+  });
+
+  const { userId } = await Auth.fastSignUp();
+  const { teamId } = await Team.create({ accessType: "server", creatorUserId: userId });
+  await Team.addPermission(teamId, userId, "team_admin");
+
+  const switchResponse = await niceBackendFetch(`/api/v1/payments/products/team/${teamId}/switch`, {
+    method: "POST",
+    accessType: "client",
+    body: {
+      from_product_id: "team-free",
+      to_product_id: "team-pro",
+    },
+  });
+  expect(switchResponse).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": { "success": true },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+
+  const listResponse = await niceBackendFetch(`/api/v1/payments/products/team/${teamId}`, {
+    accessType: "client",
+  });
+  expect(listResponse.body.items).toEqual([
+    {
+      id: "team-pro",
+      product: expect.objectContaining({
+        display_name: "Team Pro",
+      }),
+      quantity: 1,
+      subscription: expect.objectContaining({
+        cancel_at_period_end: expect.any(Boolean),
+        current_period_end: expect.any(String),
+        is_cancelable: true,
+      }),
+      type: "subscription",
+      switch_options: expect.any(Array),
+    },
+  ]);
+});
+
 it("listing products should support cursor pagination", async ({ expect }) => {
   await Project.createAndSwitch();
   await Payments.setup();

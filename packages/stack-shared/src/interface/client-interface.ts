@@ -1829,6 +1829,35 @@ export class StackClientInterface {
     );
   }
 
+  async switchSubscription(
+    options: {
+      customer_type: "user" | "team",
+      customer_id: string,
+      from_product_id: string,
+      to_product_id: string,
+      price_id?: string,
+      quantity?: number,
+    },
+    session: InternalSession | null,
+  ): Promise<void> {
+    await this.sendClientRequest(
+      urlString`/payments/products/${options.customer_type}/${options.customer_id}/switch`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          from_product_id: options.from_product_id,
+          to_product_id: options.to_product_id,
+          price_id: options.price_id,
+          quantity: options.quantity,
+        }),
+      },
+      session,
+    );
+  }
+
   async createCheckoutUrl(
     customer_type: "user" | "team" | "custom",
     customer_id: string,

@@ -4,6 +4,7 @@ import { KnownErrors } from "@stackframe/stack-shared";
 import type { inlineProductSchema, productSchema, productSchemaWithMetadata } from "@stackframe/stack-shared/dist/schema-fields";
 import { SUPPORTED_CURRENCIES } from "@stackframe/stack-shared/dist/utils/currency-constants";
 import { FAR_FUTURE_DATE, addInterval, getIntervalsElapsed } from "@stackframe/stack-shared/dist/utils/dates";
+import { getEnvVariable, getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
 import { StackAssertionError, StatusError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { filterUndefined, getOrUndefined, has, typedEntries, typedFromEntries, typedKeys, typedValues } from "@stackframe/stack-shared/dist/utils/objects";
 import { typedToUppercase } from "@stackframe/stack-shared/dist/utils/strings";
@@ -14,6 +15,8 @@ import { Tenancy } from "./tenancies";
 import { getStripeForAccount } from "./stripe";
 
 const DEFAULT_PRODUCT_START_DATE = new Date("1973-01-01T12:00:00.000Z"); // monday
+const stripeSecretKey = getEnvVariable("STACK_STRIPE_SECRET_KEY", "");
+const useStripeMock = stripeSecretKey === "sk_test_mockstripekey" && ["development", "test"].includes(getNodeEnvironment());
 
 type Product = yup.InferType<typeof productSchema>;
 type ProductWithMetadata = yup.InferType<typeof productSchemaWithMetadata>;
@@ -471,6 +474,10 @@ export async function getStripeCustomerForCustomerOrNull(options: {
       ));
       if (exactMatches.length > 0) {
         matches = exactMatches;
+        break;
+      }
+      if (useStripeMock && page.data.length > 0) {
+        matches = [page.data[0]];
         break;
       }
       if (!page.has_more || page.data.length === 0) {
