@@ -346,6 +346,8 @@ export const emailOutboxCrudHandlers = createLazyProxy(() => createCrudHandlers(
       const updateData: Prisma.EmailOutboxUpdateInput = {
         // Ensure email is not paused (so status can become SKIPPED, not PAUSED)
         isPaused: false,
+        // Reset isQueued so the email won't be picked up by the queue worker
+        isQueued: false,
         // Set skip reason - this alone will make the status become SKIPPED
         skippedReason: EmailOutboxSkippedReason.MANUALLY_CANCELLED,
         skippedDetails: {},
