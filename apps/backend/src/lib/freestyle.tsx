@@ -3,10 +3,15 @@ import { getEnvVariable, getNodeEnvironment } from '@stackframe/stack-shared/dis
 import { StackAssertionError } from '@stackframe/stack-shared/dist/utils/errors';
 import { parseJson } from '@stackframe/stack-shared/dist/utils/json';
 import { Result } from '@stackframe/stack-shared/dist/utils/results';
-import { FreestyleSandboxes } from 'freestyle-sandboxes';
+import { Freestyle as FreestyleClient } from 'freestyle-sandboxes';
+
+// Extract options type from the SDK's serverless.runs.create method, excluding 'code'
+// Make 'config' optional since we provide a default empty config
+type ServerlessRunsCreateParams = Parameters<FreestyleClient['serverless']['runs']['create']>[0];
+export type ExecuteScriptOptions = Partial<Omit<ServerlessRunsCreateParams, 'code'>>;
 
 export class Freestyle {
-  private freestyle: FreestyleSandboxes;
+  private freestyle: FreestyleClient;
 
   constructor(options: { apiKey?: string } = {}) {
     const apiKey = options.apiKey || getEnvVariable("STACK_FREESTYLE_API_KEY");
@@ -18,25 +23,32 @@ export class Freestyle {
       const prefix = getEnvVariable("NEXT_PUBLIC_STACK_PORT_PREFIX", "81");
       baseUrl = `http://localhost:${prefix}22`;
     }
-    this.freestyle = new FreestyleSandboxes({
+    this.freestyle = new FreestyleClient({
       apiKey,
       baseUrl,
     });
   }
 
-  async executeScript(script: string, options?: Parameters<FreestyleSandboxes['executeScript']>[1]) {
+  async executeScript(script: string, options?: ExecuteScriptOptions) {
     return await traceSpan({
       description: 'freestyle.executeScript',
       attributes: {
         'freestyle.operation': 'executeScript',
         'freestyle.script.length': script.length.toString(),
-        'freestyle.nodeModules.count': options?.nodeModules ? Object.keys(options.nodeModules).length.toString() : '0',
+        'freestyle.nodeModules.count': options?.config?.nodeModules ? Object.keys(options.config.nodeModules).length.toString() : '0',
       }
     }, async () => {
       try {
         return Result.ok(Result.orThrow(await Result.retry(async () => {
           try {
-            return Result.ok(await this.freestyle.executeScript(script, options));
+            // New API: freestyle.serverless.runs.create({ code, config, ... })
+            // Returns { result, logs } on success
+            const response = await this.freestyle.serverless.runs.create({
+              ...options,
+              code: script,
+              config: options?.config ?? {},
+            });
+            return Result.ok(response);
           } catch (e: unknown) {
             if (e instanceof Error && (e as any).code === "ETIMEDOUT") {
               return Result.error(new StackAssertionError("Freestyle timeout", { cause: e }));

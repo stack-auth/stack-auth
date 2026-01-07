@@ -136,7 +136,7 @@ export async function renderEmailWithTemplate(
     "@react-email/components": "0.1.1",
     "arktype": "2.1.20",
   };
-  const executeResult = await freestyle.executeScript(result.data, { nodeModules });
+  const executeResult = await freestyle.executeScript(result.data, { config: { nodeModules } });
   if (executeResult.status === "error") {
     return Result.error(`${executeResult.error}`);
   }
@@ -240,7 +240,7 @@ export async function renderEmailsWithTemplateBatched(
     "@react-email/components": "0.1.1",
     "arktype": "2.1.20",
   };
-  const executeResult = await freestyle.executeScript(result.data, { nodeModules });
+  const executeResult = await freestyle.executeScript(result.data, { config: { nodeModules } });
   if (executeResult.status === "error") {
     return Result.error(executeResult.error);
   }
@@ -362,7 +362,7 @@ export async function renderEmailsForTenancyBatched(requests: RenderEmailRequest
     "arktype": "2.1.20",
   };
 
-  const execution = await freestyle.executeScript(bundle.data, { nodeModules });
+  const execution = await freestyle.executeScript(bundle.data, { config: { nodeModules } });
   if (execution.status === "error") {
     return Result.error(execution.error);
   }

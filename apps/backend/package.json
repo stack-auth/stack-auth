@@ -82,7 +82,7 @@
     "chokidar-cli": "^3.0.0",
     "dotenv": "^16.4.5",
     "dotenv-cli": "^7.3.0",
-    "freestyle-sandboxes": "^0.0.92",
+    "freestyle-sandboxes": "^0.1.5",
     "jose": "^5.2.2",
     "json-diff": "^1.0.6",
     "next": "16.1.1",
