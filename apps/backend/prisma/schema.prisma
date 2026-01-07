@@ -692,6 +692,8 @@ enum EmailOutboxSkippedReason {
   USER_ACCOUNT_DELETED
   USER_HAS_NO_PRIMARY_EMAIL
   NO_EMAIL_PROVIDED
+  LIKELY_NOT_DELIVERABLE
+  MANUALLY_CANCELLED
 }
 
 enum EmailOutboxCreatedWith {
@@ -731,30 +733,33 @@ model EmailOutbox {
 
   // Computed from EmailOutbox can be the `status` of the email:
   //
-  // - ⚪ `paused`           : isPaused
-  // - ⚪ `preparing`        : !isPaused && !startedRenderingAt
-  // - ⚪ `rendering`        : !isPaused && !finishedRenderingAt
-  // - 🔴 `render-error`     : !isPaused && finishedRenderingAt && renderError
-  // - ⚪ `scheduled`        : !isPaused && finishedRenderingAt && !renderError && !isQueued
-  // - ⚪ `queued`           : !isPaused && finishedRenderingAt && !renderError && isQueued && !startedSendingAt
-  // - ⚪ `sending`          : !isPaused && startedSendingAt && !deliveredAt
-  // - 🔴 `server-error`     : !isPaused && finishedSendingAt && sendServerErrorMessage
-  // - ⚫ `skipped`          : !isPaused && finishedSendingAt && !sendServerErrorMessage && skippedReason
-  // - 🟢 `sent`             : !isPaused && finishedSendingAt && !openedAt && !markedAsSpamAt && !sendServerErrorMessage && !skippedReason && (canHaveDeliveryInfo ? deliveredAt : finishedSendingAt)
-  // - ⚪ `delivery-delayed` : !isPaused && canHaveDeliveryInfo && deliveryDelayedAt
-  // - 🔴 `bounced`          : !isPaused && canHaveDeliveryInfo && bouncedAt
-  // - 🔵 `opened`           : !isPaused && openedAt && !clickedAt && !markedAsSpamAt
-  // - 🟣 `clicked`          : !isPaused && clickedAt && !markedAsSpamAt
-  // - 🟡 `marked-as-spam`   : !isPaused && markedAsSpamAt
+  // - ⚪ `paused`           : isPaused (can happen at any time)
+  // - ⚫ `skipped`          : !isPaused && skippedReason (can happen at any time, like paused)
+  // - ⚪ `preparing`        : !isPaused && !skippedReason && !startedRenderingAt
+  // - ⚪ `rendering`        : !isPaused && !skippedReason && !finishedRenderingAt
+  // - 🔴 `render-error`     : !isPaused && !skippedReason && finishedRenderingAt && renderError
+  // - ⚪ `scheduled`        : !isPaused && !skippedReason && finishedRenderingAt && !renderError && !isQueued
+  // - ⚪ `queued`           : !isPaused && !skippedReason && finishedRenderingAt && !renderError && isQueued && !startedSendingAt
+  // - ⚪ `sending`          : !isPaused && !skippedReason && startedSendingAt && (canHaveDeliveryInfo ? !deliveredAt : !finishedSendingAt)
+  // - 🔴 `server-error`     : !isPaused && !skippedReason && finishedSendingAt && sendServerErrorMessage
+  // - 🟢 `sent`             : !isPaused && !skippedReason && finishedSendingAt && !openedAt && !markedAsSpamAt && !sendServerErrorMessage && (canHaveDeliveryInfo ? deliveredAt : finishedSendingAt)
+  // - ⚪ `delivery-delayed` : !isPaused && !skippedReason && canHaveDeliveryInfo && deliveryDelayedAt
+  // - 🔴 `bounced`          : !isPaused && !skippedReason && canHaveDeliveryInfo && bouncedAt
+  // - 🔵 `opened`           : !isPaused && !skippedReason && openedAt && !clickedAt && !markedAsSpamAt
+  // - 🟣 `clicked`          : !isPaused && !skippedReason && clickedAt && !markedAsSpamAt
+  // - 🟡 `marked-as-spam`   : !isPaused && !skippedReason && markedAsSpamAt
+  //
+  // NOTE: The `sending` status is NOT the same as `finishedSendingAt`! If the outbox can have delivery info, then
+  // `sending` is about deliveredAt. A better name would be `delivering`, but that name is less catchy than `sending`.
   //
   // This column is auto-generated as defined in the SQL migration. It can not be set manually. Note: Setting the dbgenerated value is NOT sufficient to create a generated column in Postgres! (Prisma dbgenerated only generates a value for the *default*, and won't reflect any updates.) You must create one manually in the migration file instead, and then update the value here to match.
-  status EmailOutboxStatus @default(dbgenerated("\nCASE\n    WHEN \"isPaused\" THEN 'PAUSED'::\"EmailOutboxStatus\"\n    WHEN (\"startedRenderingAt\" IS NULL) THEN 'PREPARING'::\"EmailOutboxStatus\"\n    WHEN (\"finishedRenderingAt\" IS NULL) THEN 'RENDERING'::\"EmailOutboxStatus\"\n    WHEN (\"renderErrorExternalMessage\" IS NOT NULL) THEN 'RENDER_ERROR'::\"EmailOutboxStatus\"\n    WHEN ((\"startedSendingAt\" IS NULL) AND (\"isQueued\" IS FALSE)) THEN 'SCHEDULED'::\"EmailOutboxStatus\"\n    WHEN (\"startedSendingAt\" IS NULL) THEN 'QUEUED'::\"EmailOutboxStatus\"\n    WHEN (\"finishedSendingAt\" IS NULL) THEN 'SENDING'::\"EmailOutboxStatus\"\n    WHEN ((\"canHaveDeliveryInfo\" IS TRUE) AND (\"deliveredAt\" IS NULL)) THEN 'SENDING'::\"EmailOutboxStatus\"\n    WHEN (\"sendServerErrorExternalMessage\" IS NOT NULL) THEN 'SERVER_ERROR'::\"EmailOutboxStatus\"\n    WHEN (\"skippedReason\" IS NOT NULL) THEN 'SKIPPED'::\"EmailOutboxStatus\"\n    WHEN (\"canHaveDeliveryInfo\" IS FALSE) THEN 'SENT'::\"EmailOutboxStatus\"\n    WHEN (\"markedAsSpamAt\" IS NOT NULL) THEN 'MARKED_AS_SPAM'::\"EmailOutboxStatus\"\n    WHEN (\"clickedAt\" IS NOT NULL) THEN 'CLICKED'::\"EmailOutboxStatus\"\n    WHEN (\"openedAt\" IS NOT NULL) THEN 'OPENED'::\"EmailOutboxStatus\"\n    WHEN (\"bouncedAt\" IS NOT NULL) THEN 'BOUNCED'::\"EmailOutboxStatus\"\n    WHEN (\"deliveryDelayedAt\" IS NOT NULL) THEN 'DELIVERY_DELAYED'::\"EmailOutboxStatus\"\n    ELSE 'SENT'::\"EmailOutboxStatus\"\nEND"))
+  status EmailOutboxStatus @default(dbgenerated("\nCASE\n    WHEN \"isPaused\" THEN 'PAUSED'::\"EmailOutboxStatus\"\n    WHEN (\"skippedReason\" IS NOT NULL) THEN 'SKIPPED'::\"EmailOutboxStatus\"\n    WHEN (\"startedRenderingAt\" IS NULL) THEN 'PREPARING'::\"EmailOutboxStatus\"\n    WHEN (\"finishedRenderingAt\" IS NULL) THEN 'RENDERING'::\"EmailOutboxStatus\"\n    WHEN (\"renderErrorExternalMessage\" IS NOT NULL) THEN 'RENDER_ERROR'::\"EmailOutboxStatus\"\n    WHEN ((\"startedSendingAt\" IS NULL) AND (\"isQueued\" IS FALSE)) THEN 'SCHEDULED'::\"EmailOutboxStatus\"\n    WHEN (\"startedSendingAt\" IS NULL) THEN 'QUEUED'::\"EmailOutboxStatus\"\n    WHEN (\"finishedSendingAt\" IS NULL) THEN 'SENDING'::\"EmailOutboxStatus\"\n    WHEN ((\"canHaveDeliveryInfo\" IS TRUE) AND (\"deliveredAt\" IS NULL)) THEN 'SENDING'::\"EmailOutboxStatus\"\n    WHEN (\"sendServerErrorExternalMessage\" IS NOT NULL) THEN 'SERVER_ERROR'::\"EmailOutboxStatus\"\n    WHEN (\"canHaveDeliveryInfo\" IS FALSE) THEN 'SENT'::\"EmailOutboxStatus\"\n    WHEN (\"markedAsSpamAt\" IS NOT NULL) THEN 'MARKED_AS_SPAM'::\"EmailOutboxStatus\"\n    WHEN (\"clickedAt\" IS NOT NULL) THEN 'CLICKED'::\"EmailOutboxStatus\"\n    WHEN (\"openedAt\" IS NOT NULL) THEN 'OPENED'::\"EmailOutboxStatus\"\n    WHEN (\"bouncedAt\" IS NOT NULL) THEN 'BOUNCED'::\"EmailOutboxStatus\"\n    WHEN (\"deliveryDelayedAt\" IS NOT NULL) THEN 'DELIVERY_DELAYED'::\"EmailOutboxStatus\"\n    ELSE 'SENT'::\"EmailOutboxStatus\"\nEND"))
 
   // A simplified version of the status property.
   // In terms of the color mapping of `status`, white statuses have a `simpleStatus` of `in-progress`, red statuses have a `simpleStatus` of `error`, and everything else has a `simpleStatus` of `ok`.
   // 
   // This column is auto-generated as defined in the SQL migration. It can not be set manually. See the note above on EmailOutboxStatus.status for more details on dbgenerated values.
-  simpleStatus EmailOutboxSimpleStatus @default(dbgenerated("\nCASE\n    WHEN ((\"renderErrorExternalMessage\" IS NOT NULL) OR (\"sendServerErrorExternalMessage\" IS NOT NULL) OR (\"bouncedAt\" IS NOT NULL)) THEN 'ERROR'::\"EmailOutboxSimpleStatus\"\n    WHEN ((\"finishedSendingAt\" IS NOT NULL) AND ((\"skippedReason\" IS NOT NULL) OR (\"canHaveDeliveryInfo\" IS FALSE) OR (\"deliveredAt\" IS NOT NULL))) THEN 'OK'::\"EmailOutboxSimpleStatus\"\n    WHEN ((\"finishedSendingAt\" IS NULL) OR ((\"canHaveDeliveryInfo\" IS TRUE) AND (\"deliveredAt\" IS NULL))) THEN 'IN_PROGRESS'::\"EmailOutboxSimpleStatus\"\n    ELSE 'OK'::\"EmailOutboxSimpleStatus\"\nEND"))
+  simpleStatus EmailOutboxSimpleStatus @default(dbgenerated("\nCASE\n    WHEN (\"skippedReason\" IS NOT NULL) THEN 'OK'::\"EmailOutboxSimpleStatus\"\n    WHEN ((\"renderErrorExternalMessage\" IS NOT NULL) OR (\"sendServerErrorExternalMessage\" IS NOT NULL) OR (\"bouncedAt\" IS NOT NULL)) THEN 'ERROR'::\"EmailOutboxSimpleStatus\"\n    WHEN ((\"finishedSendingAt\" IS NOT NULL) AND ((\"canHaveDeliveryInfo\" IS FALSE) OR (\"deliveredAt\" IS NOT NULL))) THEN 'OK'::\"EmailOutboxSimpleStatus\"\n    WHEN ((\"finishedSendingAt\" IS NULL) OR ((\"canHaveDeliveryInfo\" IS TRUE) AND (\"deliveredAt\" IS NULL))) THEN 'IN_PROGRESS'::\"EmailOutboxSimpleStatus\"\n    ELSE 'OK'::\"EmailOutboxSimpleStatus\"\nEND"))
 
   // priority is the sending priority of the email among all emails that are not yet sent but already past their scheduled time. Higher priority means it should be sent sooner.
   //
@@ -805,8 +810,9 @@ model EmailOutbox {
   sendServerErrorInternalMessage String?
   sendServerErrorInternalDetails Json?
 
-  // The reason why the email was skipped. If finishedSendingAt is not set, then this is also not set. Usually one of: 
-  skippedReason EmailOutboxSkippedReason?
+  // The reason why the email was skipped. Unlike most status-related fields, this can be set at any point in the email lifecycle (like isPaused). skippedDetails must be set if and only if skippedReason is set. (Enforced by EmailOutbox_skipped_details_consistency_check constraint.)
+  skippedReason  EmailOutboxSkippedReason?
+  skippedDetails Json?
 
   // Whether this email was sent through a server that provides delivery info. This is set if and only if finishedSendingAt is set (it is only determined once the email has been sent). If canHaveDeliveryInfo is false, then [deliveredAt, deliveryDelayedAt, bouncedAt] are all not set. This flag is usually set to true if the email provider is Resend.
   canHaveDeliveryInfo Boolean?

@@ -46,6 +46,10 @@ export type {
 } from "./contact-channels";
 
 export type {
+  AdminEmailOutbox,
+  AdminEmailOutboxRecipient,
+  AdminEmailOutboxSimpleStatus,
+  AdminEmailOutboxStatus,
   AdminSentEmail
 } from "./email";
 
