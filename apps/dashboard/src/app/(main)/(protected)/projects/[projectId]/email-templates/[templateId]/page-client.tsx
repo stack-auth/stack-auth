@@ -157,7 +157,6 @@ export default function PageClient(props: { templateId: string }) {
           <EmailThemeSelector
             selectedThemeId={selectedThemeId}
             onThemeChange={setSelectedThemeId}
-            className="w-48"
           />
         }
         previewComponent={

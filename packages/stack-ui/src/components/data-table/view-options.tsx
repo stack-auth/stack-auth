@@ -21,9 +21,9 @@ type DataTableViewOptionsProps<TData> = {
 
 export function DataTableViewOptions<TData>({
   table,
-  variant = "outline",
-  className = "ml-auto hidden h-8 lg:flex",
-  iconClassName = "mr-2 h-4 w-4",
+  variant = "secondary",
+  className = "ml-auto hidden h-8 px-3 text-xs gap-1.5 lg:flex",
+  iconClassName = "h-3.5 w-3.5",
 }: DataTableViewOptionsProps<TData>) {
   return (
     <DropdownMenu>
@@ -44,7 +44,7 @@ export function DataTableViewOptions<TData>({
           .getAllColumns()
           .filter(
             (column) =>
-              typeof column.accessorFn !== "undefined" && column.getCanHide()
+              (typeof column.accessorFn !== "undefined" || "accessorKey" in column.columnDef) && column.getCanHide()
           )
           .map((column) => {
             return (

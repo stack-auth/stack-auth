@@ -1,5 +1,6 @@
 import { useAdminApp } from "@/app/(main)/(protected)/projects/[projectId]/use-admin-app";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui";
+import { cn } from "@/lib/utils";
 
 type EmailThemeSelectorProps = {
   selectedThemeId: string | undefined | false,
@@ -22,7 +23,7 @@ export function EmailThemeSelector({ selectedThemeId, onThemeChange, className }
       value={themeIdToSelectString(selectedThemeId)}
       onValueChange={(value) => onThemeChange(selectStringToThemeId(value))}
     >
-      <SelectTrigger className={className}>
+      <SelectTrigger className={cn("w-full md:w-48", className)}>
         <SelectValue placeholder="No theme" />
       </SelectTrigger>
       <SelectContent>

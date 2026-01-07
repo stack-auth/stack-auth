@@ -3,7 +3,7 @@
 import { TeamMemberSearchTable } from "@/components/data-table/team-member-search-table";
 import { FormDialog } from "@/components/form-dialog";
 import { InputField, SelectField, TextAreaField } from "@/components/form-fields";
-import { ActionDialog, Alert, AlertDescription, AlertTitle, Button, DataTable, DataTableViewOptions, SimpleTooltip, Tooltip, TooltipContent, TooltipProvider, TooltipTrigger, Typography, useToast } from "@/components/ui";
+import { ActionDialog, Alert, AlertDescription, AlertTitle, Button, DataTable, DataTableColumnHeader, DataTableViewOptions, SimpleTooltip, Tooltip, TooltipContent, TooltipProvider, TooltipTrigger, Typography, useToast } from "@/components/ui";
 import { getPublicEnvVar } from "@/lib/env";
 import { cn } from "@/lib/utils";
 import { ArrowSquareOut, CheckCircle, Envelope, HardDrive, Sliders, WarningCircleIcon, XCircle, XIcon } from "@phosphor-icons/react";
@@ -14,7 +14,7 @@ import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { deepPlainEquals } from "@stackframe/stack-shared/dist/utils/objects";
 import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
 import { ColumnDef, Table as TableType } from "@tanstack/react-table";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import * as yup from "yup";
 import { AppEnabledGuard } from "../app-enabled-guard";
 import { PageLayout } from "../page-layout";
@@ -234,8 +234,8 @@ function EmailLogCard() {
   const [emailLogs, setEmailLogs] = useState<AdminSentEmail[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const tableRef = useRef<TableType<AdminSentEmail> | null>(null);
-  const [, forceUpdate] = useState({});
+  const [table, setTable] = useState<TableType<AdminSentEmail> | null>(null);
+  const [columnVisibilityState, setColumnVisibilityState] = useState({});
 
   // Fetch email logs when component mounts
   useEffect(() => {
@@ -252,6 +252,13 @@ function EmailLogCard() {
       }
     });
   }, [stackAdminApp]);
+
+  // Watch for table visibility changes
+  useEffect(() => {
+    if (table) {
+      setColumnVisibilityState(table.getState().columnVisibility);
+    }
+  }, [table]);
 
   if (loading) {
     return (
@@ -338,10 +345,11 @@ function EmailLogCard() {
               View and manage email sending history
             </Typography>
           </div>
-          {tableRef.current && (
+          {table && (
             <div className="flex items-center gap-2 flex-shrink-0">
               <DataTableViewOptions
-                table={tableRef.current}
+                key={JSON.stringify(columnVisibilityState)}
+                table={table}
               />
             </div>
           )}
@@ -354,11 +362,15 @@ function EmailLogCard() {
           columns={emailTableColumns}
           defaultSorting={[{ id: 'sentAt', desc: true }]}
           showDefaultToolbar={false}
+          showResetFilters={false}
           toolbarRender={(tableInstance) => {
-            if (tableRef.current !== tableInstance) {
-              tableRef.current = tableInstance;
-              // Force a re-render to show the table options
-              forceUpdate({});
+            if (table !== tableInstance) {
+              setTable(tableInstance);
+            }
+            // Update visibility state on every render
+            const currentVisibility = tableInstance.getState().columnVisibility;
+            if (JSON.stringify(currentVisibility) !== JSON.stringify(columnVisibilityState)) {
+              setColumnVisibilityState(currentVisibility);
             }
             return null;
           }}
@@ -740,23 +752,23 @@ function TestSendingDialog(props: {
 const emailTableColumns: ColumnDef<AdminSentEmail>[] = [
   {
     accessorKey: 'recipient',
-    header: 'Recipient',
+    header: ({ column }) => <DataTableColumnHeader column={column} columnTitle="Recipient" />,
     cell: ({ row }) => (
       <span className="text-sm font-medium text-foreground">{row.original.recipient}</span>
-    )
+    ),
   },
   {
     accessorKey: 'subject',
-    header: 'Subject',
+    header: ({ column }) => <DataTableColumnHeader column={column} columnTitle="Subject" />,
     cell: ({ row }) => (
       <span className="text-sm text-muted-foreground truncate max-w-[300px] block">
         {row.original.subject}
       </span>
-    )
+    ),
   },
   {
     accessorKey: 'sentAt',
-    header: 'Sent At',
+    header: ({ column }) => <DataTableColumnHeader column={column} columnTitle="Sent At" />,
     cell: ({ row }) => {
       const date = row.original.sentAt;
       return (
@@ -772,17 +784,18 @@ const emailTableColumns: ColumnDef<AdminSentEmail>[] = [
           })}
         </span>
       );
-    }
+    },
   },
   {
-    accessorKey: 'status',
-    header: 'Status',
+    id: 'status',
+    accessorFn: (row) => (row.error ? 'failed' : 'sent'),
+    header: ({ column }) => <DataTableColumnHeader column={column} columnTitle="Status" />,
     cell: ({ row }) => (
       <StatusBadge
         status={row.original.error ? 'failed' : 'sent'}
         error={row.original.error ? String(row.original.error) : null}
       />
-    )
+    ),
   },
 ];
 

@@ -69,7 +69,6 @@ export default function PageClient({ draftId }: { draftId: string }) {
               <EmailThemeSelector
                 selectedThemeId={selectedThemeId}
                 onThemeChange={setSelectedThemeId}
-                className="w-48"
               />
             }
             previewComponent={

@@ -9,8 +9,8 @@ import {
 } from "@/components/ui";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { Code, DeviceMobile, DeviceTablet, FloppyDisk, Laptop } from "@phosphor-icons/react";
-import { useState } from "react";
+import { Code, DeviceMobile, DeviceTablet, FloppyDisk, Laptop, ChatsCircle } from "@phosphor-icons/react";
+import { useState, useEffect } from "react";
 
 type VibeCodeEditorLayoutProps = {
   previewComponent: React.ReactNode,
@@ -40,7 +40,20 @@ export default function VibeCodeLayout({
   defaultViewport = 'desktop',
 }: VibeCodeEditorLayoutProps) {
   const [isEditorOpen, setIsEditorOpen] = useState(false);
+  const [isChatOpen, setIsChatOpen] = useState(false);
   const [internalViewport, setInternalViewport] = useState<'desktop' | 'tablet' | 'phone'>(defaultViewport);
+  const [isMobile, setIsMobile] = useState(false);
+
+  // Detect mobile screen size
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 768); // md breakpoint
+    };
+
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
 
   const currentViewport = viewport ?? internalViewport;
   const handleViewportChange = (newViewport: 'desktop' | 'tablet' | 'phone') => {
@@ -51,6 +64,157 @@ export default function VibeCodeLayout({
     }
   };
 
+  // Mobile Layout
+  if (isMobile) {
+    return (
+      <TooltipProvider delayDuration={300}>
+        <div className="flex flex-col h-full w-full overflow-hidden">
+          {/* Mobile Header - Compact */}
+          <div className="px-3 pt-3 pb-2 shrink-0">
+            <div className="flex flex-col gap-2">
+              {/* Primary Actions Row */}
+              <div className="flex items-center gap-2 px-2 py-2 rounded-lg bg-background/60 dark:bg-background/40 backdrop-blur-xl shadow-sm ring-1 ring-foreground/[0.06]">
+                {/* Viewport Switcher - Compact */}
+                <div className="flex items-center gap-0.5 rounded-md bg-foreground/[0.04] p-0.5">
+                  <button
+                    onClick={() => handleViewportChange('desktop')}
+                    className={cn(
+                      "p-1 rounded transition-all duration-150 hover:transition-none",
+                      currentViewport === 'desktop'
+                        ? "bg-background text-foreground shadow-sm"
+                        : "text-muted-foreground"
+                    )}
+                    aria-label="Desktop view"
+                  >
+                    <Laptop size={14} weight={currentViewport === 'desktop' ? 'fill' : 'regular'} />
+                  </button>
+                  <button
+                    onClick={() => handleViewportChange('tablet')}
+                    className={cn(
+                      "p-1 rounded transition-all duration-150 hover:transition-none",
+                      currentViewport === 'tablet'
+                        ? "bg-background text-foreground shadow-sm"
+                        : "text-muted-foreground"
+                    )}
+                    aria-label="Tablet view"
+                  >
+                    <DeviceTablet size={14} weight={currentViewport === 'tablet' ? 'fill' : 'regular'} />
+                  </button>
+                  <button
+                    onClick={() => handleViewportChange('phone')}
+                    className={cn(
+                      "p-1 rounded transition-all duration-150 hover:transition-none",
+                      currentViewport === 'phone'
+                        ? "bg-background text-foreground shadow-sm"
+                        : "text-muted-foreground"
+                    )}
+                    aria-label="Phone view"
+                  >
+                    <DeviceMobile size={14} weight={currentViewport === 'phone' ? 'fill' : 'regular'} />
+                  </button>
+                </div>
+
+                {/* Spacer */}
+                <div className="flex-1" />
+
+                {/* Right Actions - Compact */}
+                <div className="flex items-center gap-1.5">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setIsEditorOpen(!isEditorOpen);
+                      if (!isEditorOpen) setIsChatOpen(false);
+                    }}
+                    className={cn(
+                      "h-7 gap-1 px-2 rounded-md transition-all duration-150 hover:transition-none",
+                      isEditorOpen
+                        ? "bg-foreground/[0.06] text-foreground"
+                        : "text-muted-foreground"
+                    )}
+                  >
+                    <Code size={14} weight={isEditorOpen ? 'fill' : 'regular'} />
+                    <span className="text-[10px] font-medium">Code</span>
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setIsChatOpen(!isChatOpen);
+                      if (!isChatOpen) setIsEditorOpen(false);
+                    }}
+                    className={cn(
+                      "h-7 gap-1 px-2 rounded-md transition-all duration-150 hover:transition-none",
+                      isChatOpen
+                        ? "bg-foreground/[0.06] text-foreground"
+                        : "text-muted-foreground"
+                    )}
+                  >
+                    <ChatsCircle size={14} weight={isChatOpen ? 'fill' : 'regular'} />
+                    <span className="text-[10px] font-medium">Chat</span>
+                  </Button>
+                  {onSave && (
+                    <Button
+                      size="sm"
+                      onClick={onSave}
+                      disabled={!isDirty}
+                      className="h-7 gap-1 px-2 rounded-md"
+                    >
+                      <FloppyDisk size={14} />
+                      <span className="text-[10px] font-medium">Save</span>
+                    </Button>
+                  )}
+                </div>
+              </div>
+
+              {/* Header Action Row (Theme selector, etc) */}
+              {headerAction && (
+                <div className="px-2 py-1.5 rounded-lg bg-background/60 dark:bg-background/40 backdrop-blur-xl shadow-sm ring-1 ring-foreground/[0.06]">
+                  <div className="scale-90 origin-left">
+                    {headerAction}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Mobile Content Area - Stacked */}
+          <div className="flex-1 overflow-hidden flex flex-col px-3 pb-3 gap-2">
+            {/* Preview Panel - Always visible when neither editor nor chat is open */}
+            {!isEditorOpen && !isChatOpen && (
+              <div className="flex-1 overflow-hidden rounded-xl shadow-lg ring-1 ring-foreground/[0.06] bg-background/60 dark:bg-background/40 backdrop-blur-xl">
+                <div className="h-full bg-gradient-to-br from-muted/30 via-muted/20 to-muted/30 dark:from-foreground/[0.02] dark:via-foreground/[0.01] dark:to-foreground/[0.02]">
+                  <div className="h-full overflow-auto flex justify-center items-start p-2">
+                    <div className="w-full h-full">
+                      {previewComponent}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Code Editor - Shown when toggled */}
+            {isEditorOpen && (
+              <div className="flex-1 overflow-hidden rounded-xl shadow-lg ring-1 ring-foreground/[0.06] bg-background/60 dark:bg-background/40 backdrop-blur-xl">
+                <div className="h-full overflow-hidden">
+                  {editorComponent}
+                </div>
+              </div>
+            )}
+
+            {/* Chat Panel - Shown when toggled */}
+            {isChatOpen && (
+              <div className="flex-1 overflow-hidden rounded-xl shadow-lg ring-1 ring-foreground/[0.06] bg-background/60 dark:bg-background/40 backdrop-blur-xl">
+                {chatComponent}
+              </div>
+            )}
+          </div>
+        </div>
+      </TooltipProvider>
+    );
+  }
+
+  // Desktop/Tablet Layout (original)
   return (
     <TooltipProvider delayDuration={300}>
       <div className="flex flex-col h-full w-full overflow-hidden">
