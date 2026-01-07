@@ -762,10 +762,6 @@ async function markSkipped(row: EmailOutbox, reason: EmailOutboxSkippedReason, d
     data: {
       skippedReason: reason,
       skippedDetails: details as Prisma.InputJsonValue,
-      // If the email has already started sending, mark it as finished
-      // to prevent it from being flagged as "stuck in sending"
-      // Also set canHaveDeliveryInfo to false (required by DB constraint)
-      ...(row.startedSendingAt ? { finishedSendingAt: new Date(), canHaveDeliveryInfo: false } : {}),
     },
   });
 }
