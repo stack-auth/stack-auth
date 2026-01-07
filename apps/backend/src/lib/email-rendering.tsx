@@ -1,7 +1,7 @@
 import { Freestyle } from '@/lib/freestyle';
 import { emptyEmailTheme } from '@stackframe/stack-shared/dist/helpers/emails';
 import { getEnvVariable } from '@stackframe/stack-shared/dist/utils/env';
-import { captureError, StackAssertionError } from '@stackframe/stack-shared/dist/utils/errors';
+import { StackAssertionError } from '@stackframe/stack-shared/dist/utils/errors';
 import { bundleJavaScript } from '@stackframe/stack-shared/dist/utils/esbuild';
 import { get, has } from '@stackframe/stack-shared/dist/utils/objects';
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
@@ -117,7 +117,14 @@ export async function renderEmailWithTemplate(
     `,
     "/entry.js": deindent`
       import { renderAll } from "./render.tsx";
-      export default renderAll;
+      export default async () => {
+        try {
+          const result = await renderAll();
+          return { _status: "ok", _data: result };
+        } catch (e) {
+          return { _status: "error", _error: String(e) };
+        }
+      };
     `,
   }, {
     keepAsImports: ['arktype', 'react', 'react/jsx-runtime', '@react-email/components'],
@@ -140,17 +147,7 @@ export async function renderEmailWithTemplate(
   if (executeResult.status === "error") {
     return Result.error(`${executeResult.error}`);
   }
-  if (!executeResult.data.result) {
-    const noResultError = new StackAssertionError("No result from Freestyle", {
-      executeResult,
-      templateOrDraftComponent,
-      themeComponent,
-      options,
-    });
-    captureError("freestyle-no-result", noResultError);
-    throw noResultError;
-  }
-  return Result.ok(executeResult.data.result as { html: string, text: string, subject: string, notificationCategory: string });
+  return Result.ok(executeResult.data as { html: string, text: string, subject: string, notificationCategory: string });
 }
 
 // unused, but kept for reference & in case we need it again
@@ -221,7 +218,14 @@ export async function renderEmailsWithTemplateBatched(
     `,
     "/entry.js": deindent`
       import { renderAll } from "./render.tsx";
-      export default renderAll;
+      export default async () => {
+        try {
+          const result = await renderAll();
+          return { _status: "ok", _data: result };
+        } catch (e) {
+          return { _status: "error", _error: String(e) };
+        }
+      };
     `,
   }, {
     keepAsImports: ['arktype', 'react', 'react/jsx-runtime', '@react-email/components'],
@@ -244,17 +248,7 @@ export async function renderEmailsWithTemplateBatched(
   if (executeResult.status === "error") {
     return Result.error(executeResult.error);
   }
-  if (!executeResult.data.result) {
-    const noResultError = new StackAssertionError("No result from Freestyle", {
-      executeResult,
-      templateOrDraftComponent,
-      themeComponent,
-      inputs,
-    });
-    captureError("freestyle-no-result", noResultError);
-    throw noResultError;
-  }
-  return Result.ok(executeResult.data.result as Array<{ html: string, text: string, subject?: string, notificationCategory?: string }>);
+  return Result.ok(executeResult.data as Array<{ html: string, text: string, subject?: string, notificationCategory?: string }>);
 }
 
 export type RenderEmailRequestForTenancy = {
@@ -340,7 +334,14 @@ export async function renderEmailsForTenancyBatched(requests: RenderEmailRequest
 
   files["/entry.js"] = deindent`
     import { renderAll } from "./render.tsx";
-    export default renderAll;
+    export default async function() {
+      try {
+        const result = await renderAll();
+        return { _status: "ok", _data: result };
+      } catch (e) {
+        return { _status: "error", _error: String(e) };
+      }
+    };
   `;
 
   const bundle = await bundleJavaScript(files as Record<string, string> & { '/entry.js': string }, {
@@ -366,16 +367,8 @@ export async function renderEmailsForTenancyBatched(requests: RenderEmailRequest
   if (execution.status === "error") {
     return Result.error(execution.error);
   }
-  if (!execution.data.result) {
-    const noResultError = new StackAssertionError("No result from Freestyle", {
-      execution,
-      requests,
-    });
-    captureError("freestyle-no-result", noResultError);
-    throw noResultError;
-  }
 
-  return Result.ok(execution.data.result as Array<{ html: string, text: string, subject?: string, notificationCategory?: string }>);
+  return Result.ok(execution.data as Array<{ html: string, text: string, subject?: string, notificationCategory?: string }>);
 }
 
 const findComponentValueUtil = `import React from 'react';

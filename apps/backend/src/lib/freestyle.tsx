@@ -1,7 +1,6 @@
 import { traceSpan } from '@/utils/telemetry';
 import { getEnvVariable, getNodeEnvironment } from '@stackframe/stack-shared/dist/utils/env';
 import { StackAssertionError } from '@stackframe/stack-shared/dist/utils/errors';
-import { parseJson } from '@stackframe/stack-shared/dist/utils/json';
 import { Result } from '@stackframe/stack-shared/dist/utils/results';
 import { Freestyle as FreestyleClient } from 'freestyle-sandboxes';
 
@@ -44,9 +43,13 @@ export class Freestyle {
           code: script,
           config: options?.config ?? {},
         });
-        return Result.ok(response);
+
+        const result = response.result as { _status: string, _data: unknown, _error: string };
+        if (result._status === 'error') {
+          return Result.error(result._error);
+        }
+        return Result.ok(result._data);
       } catch (e: unknown) {
-        // Freestyle's errors are sometimes nested in JSON.parse(e.error.error).error
         const message = e instanceof Error ? e.message : String(e);
         return Result.error(message);
       }
