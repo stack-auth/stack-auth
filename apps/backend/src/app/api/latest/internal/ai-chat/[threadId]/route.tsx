@@ -3,7 +3,6 @@ import { globalPrismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { createOpenAI } from "@ai-sdk/openai";
 import { adaptSchema, yupArray, yupMixed, yupNumber, yupObject, yupString, yupUnion } from "@stackframe/stack-shared/dist/schema-fields";
-import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { generateText } from "ai";
 import { InferType } from "yup";
@@ -65,21 +64,20 @@ export const POST = createSmartRouteHandler({
     const adapter = getChatAdapter(body.context_type, tenancy, params.threadId);
     const modelName = getEnvVariable("STACK_AI_MODEL", getEnvVariable("STACK_OPENAI_MODEL", "gpt-4o"));
 
-    try {
-      // Validate messages structure before passing to AI
-      const validatedMessages = body.messages.map(msg => ({
-        role: msg.role,
-        content: msg.content,
-      })) as any; // Cast to bypass strict typing since content is mixed
+    // Validate messages structure before passing to AI
+    const validatedMessages = body.messages.map(msg => ({
+      role: msg.role,
+      content: msg.content,
+    })) as any; // Cast to bypass strict typing since content is mixed
 
-      const result = await generateText({
-        model: openai(modelName),
-        system: adapter.systemPrompt,
-        messages: validatedMessages,
-        tools: adapter.tools,
-      });
+    const result = await generateText({
+      model: openai(modelName),
+      system: adapter.systemPrompt,
+      messages: validatedMessages,
+      tools: adapter.tools,
+    });
 
-      const contentBlocks: InferType<typeof contentSchema> = [];
+    const contentBlocks: InferType<typeof contentSchema> = [];
     result.steps.forEach((step) => {
       if (step.text) {
         contentBlocks.push({
@@ -104,16 +102,6 @@ export const POST = createSmartRouteHandler({
       bodyType: "json",
       body: { content: contentBlocks },
     };
-    } catch (error) {
-      // Log the error for debugging
-      console.error("AI chat generation error:", error);
-
-      // Re-throw as a user-friendly error
-      throw new StatusError(
-        StatusError.InternalServerError,
-        `Failed to generate AI response: ${error instanceof Error ? error.message : 'Unknown error'}`
-      );
-    }
   },
 });
 
