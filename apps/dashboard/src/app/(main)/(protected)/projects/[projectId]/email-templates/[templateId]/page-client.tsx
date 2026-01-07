@@ -3,6 +3,7 @@
 import EmailPreview from "@/components/email-preview";
 import { EmailThemeSelector } from "@/components/email-theme-selector";
 import { useRouterConfirm } from "@/components/router";
+import { Skeleton, toast } from "@/components/ui";
 import {
   AssistantChat,
   CodeEditor,
@@ -14,12 +15,10 @@ import {
 import { ToolCallContent } from "@/components/vibe-coding/chat-adapters";
 import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
 import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
-import { ActionDialog, Alert, AlertDescription, AlertTitle, Button, Skeleton, toast, Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui";
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState } from "react";
 import { AppEnabledGuard } from "../../app-enabled-guard";
 import { PageLayout } from "../../page-layout";
 import { useAdminApp } from "../../use-admin-app";
-import { Copy, DownloadSimple, ArrowCounterClockwise, Check, WarningCircle } from "@phosphor-icons/react";
 
 export default function PageClient(props: { templateId: string }) {
   const stackAdminApp = useAdminApp();
@@ -54,29 +53,21 @@ export default function PageClient(props: { templateId: string }) {
     setIsLoading(true);
 
     const fetchTemplate = async () => {
-      try {
-        const allTemplates = await stackAdminApp.listEmailTemplates();
+      const allTemplates = await stackAdminApp.listEmailTemplates();
 
-        if (cancelled) return;
+      if (cancelled) return;
 
-        const found = allTemplates.find((t) => t.id === props.templateId);
+      const found = allTemplates.find((t) => t.id === props.templateId);
 
-        if (found) {
-          setFetchedTemplate(found);
-          setCurrentCode(found.tsxSource);
-          setSelectedThemeId(found.themeId);
-        }
-      } catch (error) {
-        if (cancelled) return;
-        console.error("Error fetching templates:", error);
-      } finally {
-        if (!cancelled) {
-          setIsLoading(false);
-        }
+      if (found) {
+        setFetchedTemplate(found);
+        setCurrentCode(found.tsxSource);
+        setSelectedThemeId(found.themeId);
       }
+
+      setIsLoading(false);
     };
 
-    // Execute async function directly without wrapper to respect cancellation
     runAsynchronously(fetchTemplate);
 
     return () => {

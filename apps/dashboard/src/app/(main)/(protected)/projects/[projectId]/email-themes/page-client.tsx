@@ -7,9 +7,8 @@ import { useRouter } from "@/components/router";
 import { ActionDialog, Button, Typography } from "@/components/ui";
 import { cn } from "@/lib/utils";
 import { CheckIcon, DeviceMobile, DeviceTablet, Monitor, Palette, Plus, Trash } from "@phosphor-icons/react";
-import { DEFAULT_EMAIL_THEMES, previewTemplateSource } from "@stackframe/stack-shared/dist/helpers/emails";
+import { DEFAULT_EMAIL_THEMES, DEFAULT_EMAIL_THEME_ID, previewTemplateSource } from "@stackframe/stack-shared/dist/helpers/emails";
 import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
-import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
 import { useEffect, useRef, useState } from "react";
 import * as yup from "yup";
 import { AppEnabledGuard } from "../app-enabled-guard";
@@ -105,47 +104,6 @@ function ViewportSelector({
   );
 }
 
-// Realistic preview template using the actual email verification template structure
-const detailedPreviewTemplate = deindent`
-  import { Button, Section, Hr, Text, Heading } from "@react-email/components";
-  import { Subject, NotificationCategory } from "@stackframe/emails";
-
-  export const variablesSchema = v => v;
-
-  export function EmailTemplate({ user, project }) {
-    return (
-      <>
-        <Subject value={\`Verify your email at \${project.displayName}\`} />
-        <NotificationCategory value="Transactional" />
-        <div className="font-sans text-base font-normal tracking-[0.15008px] leading-[1.5] m-0 py-8 w-full min-h-full">
-          <Section>
-            <Heading as="h3" className="font-sans font-bold text-[20px] text-center py-4 px-6 m-0">
-              Verify your email at {project.displayName}
-            </Heading>
-            <Text className="font-sans font-normal text-[14px] text-center pt-2 px-6 pb-4 m-0 opacity-80">
-              Hi{user.displayName ? (", " + user.displayName) : ''}! Please click on the following button to verify your email.
-            </Text>
-            <div className="text-center py-3 px-6">
-              <Button
-                href="#"
-                className="text-black font-sans font-bold text-[14px] inline-block bg-[#f0f0f0] rounded-[4px] py-3 px-5 no-underline border-0"
-              >
-                Verify my email
-              </Button>
-            </div>
-            <div className="py-4 px-6">
-              <Hr className="opacity-20" />
-            </div>
-            <Text className="font-sans font-normal text-[12px] text-center pt-1 px-6 pb-6 m-0 opacity-60">
-              If you were not expecting this email, you can safely ignore it. 
-            </Text>
-          </Section>
-        </div>
-      </>
-    )
-  }
-`;
-
 export default function PageClient() {
   const stackAdminApp = useAdminApp();
   const project = stackAdminApp.useProject();
@@ -239,6 +197,12 @@ export default function PageClient() {
                         theme={theme}
                         isSelected={dialogSelectedThemeId === theme.id}
                         onSelect={handleThemeSelect}
+                        dialogSelectedThemeId={dialogSelectedThemeId}
+                        onDialogThemeDeleted={(deletedThemeId) => {
+                          if (deletedThemeId === dialogSelectedThemeId) {
+                            setDialogSelectedThemeId(DEFAULT_EMAIL_THEME_ID);
+                          }
+                        }}
                       />
                     ))}
                   </div>
@@ -275,7 +239,7 @@ export default function PageClient() {
             >
               <EmailPreview
                 themeId={selectedThemeData.id}
-                templateTsxSource={detailedPreviewTemplate}
+                templateTsxSource={previewTemplateSource}
                 viewport={selectedViewport}
                 emailSubject="Verify your email address"
                 senderName={project.displayName}
@@ -292,17 +256,34 @@ export default function PageClient() {
 function ThemeOption({
   theme,
   isSelected,
-  onSelect
+  onSelect,
+  dialogSelectedThemeId,
+  onDialogThemeDeleted,
 }: {
   theme: { id: string, displayName: string },
   isSelected: boolean,
   onSelect: (themeId: string) => void,
+  dialogSelectedThemeId: string,
+  onDialogThemeDeleted: (deletedThemeId: string) => void,
 }) {
   const stackAdminApp = useAdminApp();
+  const project = stackAdminApp.useProject();
   const isDefault = Object.keys(DEFAULT_EMAIL_THEMES).includes(theme.id);
 
   const handleDelete = async () => {
+    // If the deleted theme is the active project theme, update project to default FIRST
+    // (backend prevents deleting the active theme)
+    if (project.config.emailTheme === theme.id) {
+      await project.update({
+        config: { emailTheme: DEFAULT_EMAIL_THEME_ID }
+      });
+    }
+
+    // Now delete the theme
     await stackAdminApp.deleteEmailTheme(theme.id);
+
+    // If the deleted theme was selected in the dialog, switch to default
+    onDialogThemeDeleted(theme.id);
   };
 
   return (

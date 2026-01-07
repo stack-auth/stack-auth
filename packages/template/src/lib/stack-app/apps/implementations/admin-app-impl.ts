@@ -585,11 +585,13 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
   async updateEmailTheme(id: string, tsxSource: string): Promise<void> {
     await this._interface.updateEmailTheme(id, tsxSource);
     await this._adminEmailThemesCache.refresh([]);
+    await this._adminEmailThemeCache.invalidate([id]);
   }
 
   async deleteEmailTheme(id: string): Promise<void> {
     await this._interface.deleteEmailTheme(id);
     await this._adminEmailThemesCache.refresh([]);
+    await this._adminEmailThemeCache.invalidate([id]);
   }
 
   async updateEmailTemplate(id: string, tsxSource: string, themeId: string | null | false): Promise<{ renderedHtml: string }> {
