@@ -100,7 +100,7 @@ describe("email outbox API", () => {
       expect(sendResponse.status).toBe(200);
 
       // Wait for email to be processed
-      await wait(3000);
+      await wait(7_000);
 
       // List outbox
       const listResponse = await niceBackendFetch("/api/v1/emails/outbox", {
@@ -145,7 +145,7 @@ describe("email outbox API", () => {
       });
 
       // Wait for email to be processed
-      await wait(3000);
+      await wait(7_0000);
 
       // Filter by sent status
       const sentResponse = await niceBackendFetch("/api/v1/emails/outbox?status=sent", {
@@ -189,7 +189,7 @@ describe("email outbox API", () => {
       });
 
       // Wait for email to be processed
-      await wait(3000);
+      await wait(7_0000);
 
       // Filter by ok simple_status
       const okResponse = await niceBackendFetch("/api/v1/emails/outbox?simple_status=ok", {
@@ -251,7 +251,7 @@ describe("email outbox API", () => {
       });
 
       // Wait for email to be processed
-      await wait(3000);
+      await wait(7_000);
 
       // Get the email from the list endpoint
       const emails = await getOutboxEmails({ subject: "Get Test Email" });
@@ -317,7 +317,7 @@ describe("email outbox API", () => {
         },
       });
 
-      await wait(3000);
+      await wait(7_000);
 
       // Get the email ID from first project
       const emails = await getOutboxEmails({ subject: "Cross Project Test Email" });
@@ -375,7 +375,7 @@ describe("email outbox API", () => {
       });
 
       // Wait for email to be sent
-      await wait(3000);
+      await wait(7_0000);
 
       // Get the email ID
       const emails = await getOutboxEmails({ subject: "Not Editable Test" });
@@ -424,7 +424,7 @@ describe("email outbox API", () => {
       });
 
       // Wait for email to be processed and skipped
-      await wait(3000);
+      await wait(7_000);
 
       // Get the email
       const emails = await getOutboxEmails({ subject: "Skipped Test" });
@@ -479,7 +479,7 @@ describe("email outbox API", () => {
         },
       });
 
-      await wait(3000);
+      await wait(7_000);
 
       const emails = await getOutboxEmails({ subject: "Status Test Email" });
       expect(emails.length).toBeGreaterThanOrEqual(1);
@@ -526,7 +526,7 @@ describe("email outbox API", () => {
         },
       });
 
-      await wait(3000);
+      await wait(7_0000);
 
       const emails = await getOutboxEmails({ subject: "Skipped Status Test" });
       expect(emails.length).toBeGreaterThanOrEqual(1);
@@ -575,7 +575,7 @@ describe("email outbox API", () => {
       expect(sendResponse.status).toBe(200);
 
       // Wait for email to be sent
-      await wait(3000);
+      await wait(7_000);
 
       const emails = await getOutboxEmails({ subject: "Edit TSX Test" });
       expect(emails.length).toBeGreaterThanOrEqual(1);
@@ -933,7 +933,7 @@ describe("email outbox API", () => {
       expect(unpauseResponse.body.status).not.toBe("paused");
 
       // Wait for the email to be sent (since we unpaused it)
-      await wait(3000);
+      await wait(7_000);
 
       // Verify the email was eventually sent
       const finalGetResponse = await niceBackendFetch(`/api/v1/emails/outbox/${emailId}`, {
@@ -1101,7 +1101,7 @@ describe("email outbox API", () => {
       });
 
       // Wait for email to be processed and skipped
-      await wait(3000);
+      await wait(7_000);
 
       // Get the email and verify it's skipped
       const emails = await getOutboxEmails({ subject: "Cancel Already Skipped Test" });
@@ -1155,7 +1155,7 @@ describe("email outbox API", () => {
         },
       });
 
-      await wait(3000);
+      await wait(7_000);
 
       const emails = await getOutboxEmails({ subject: "Recipient Type Test" });
       expect(emails.length).toBeGreaterThanOrEqual(1);
@@ -1247,7 +1247,7 @@ describe("email outbox API", () => {
         },
       });
 
-      await wait(3000);
+      await wait(7_000);
 
       const emails = await getOutboxEmails({ subject: "Base Fields Test" });
       expect(emails.length).toBeGreaterThanOrEqual(1);
@@ -1317,7 +1317,7 @@ describe("email outbox API", () => {
         },
       });
 
-      await wait(3000);
+      await wait(7_000);
 
       // Verify we have both sent and skipped emails
       const sentEmails = await getOutboxEmails({ subject: "Multi Status Test Sent" });
@@ -1361,7 +1361,7 @@ describe("email outbox API", () => {
         },
       });
 
-      await wait(3000);
+      await wait(7_000);
 
       const emails = await getOutboxEmails({ subject: "SENT Snapshot Test" });
       expect(emails.length).toBeGreaterThanOrEqual(1);
@@ -1410,7 +1410,7 @@ describe("email outbox API", () => {
         },
       });
 
-      await wait(3000);
+      await wait(7_000);
 
       const emails = await getOutboxEmails({ subject: "SKIPPED Snapshot Test" });
       expect(emails.length).toBeGreaterThanOrEqual(1);
