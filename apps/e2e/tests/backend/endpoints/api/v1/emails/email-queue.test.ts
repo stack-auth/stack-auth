@@ -334,7 +334,7 @@ describe("email queue edge cases", () => {
     expect(sendResponse.status).toBe(200);
 
     // Wait for email processing
-    await wait(3000);
+    await wait(5000);
 
     // The email should have been skipped (user has no primary email)
     // We can verify this by checking that no email was sent to any mailbox
