@@ -26,13 +26,15 @@ function GlassCard({
 }) {
   return (
     <div className={cn(
-      "relative rounded-2xl bg-background/60 backdrop-blur-xl",
-      "ring-1 ring-foreground/[0.06]",
-      "shadow-sm",
+      "group relative rounded-2xl bg-background/60 backdrop-blur-xl transition-all duration-150 hover:transition-none",
+      "ring-1 ring-foreground/[0.06] hover:ring-foreground/[0.1]",
+      "shadow-sm hover:shadow-md",
       className
     )}>
       {/* Subtle glassmorphic background */}
       <div className="absolute inset-0 bg-gradient-to-br from-foreground/[0.02] to-transparent pointer-events-none rounded-2xl overflow-hidden" />
+      {/* Accent hover tint */}
+      <div className="absolute inset-0 transition-colors duration-150 group-hover:transition-none pointer-events-none rounded-2xl overflow-hidden group-hover:bg-slate-500/[0.02]" />
       <div className="relative">
         {children}
       </div>
