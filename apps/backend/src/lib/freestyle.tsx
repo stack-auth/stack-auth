@@ -39,30 +39,16 @@ export class Freestyle {
       }
     }, async () => {
       try {
-        return Result.ok(Result.orThrow(await Result.retry(async () => {
-          try {
-            // New API: freestyle.serverless.runs.create({ code, config, ... })
-            // Returns { result, logs } on success
-            const response = await this.freestyle.serverless.runs.create({
-              ...options,
-              code: script,
-              config: options?.config ?? {},
-            });
-            return Result.ok(response);
-          } catch (e: unknown) {
-            if (e instanceof Error && (e as any).code === "ETIMEDOUT") {
-              return Result.error(new StackAssertionError("Freestyle timeout", { cause: e }));
-            }
-            throw e;
-          }
-        }, 3)));
+        const response = await this.freestyle.serverless.runs.create({
+          ...options,
+          code: script,
+          config: options?.config ?? {},
+        });
+        return Result.ok(response);
       } catch (e: unknown) {
-        // for whatever reason, Freestyle's errors are sometimes returned in JSON.parse(e.error.error).error (lol)
-        const wrap1 = e && typeof e === "object" && "error" in e ? e.error : e;
-        const wrap2 = wrap1 && typeof wrap1 === "object" && "error" in wrap1 ? wrap1.error : wrap1;
-        const wrap3 = wrap2 && typeof wrap2 === "string" ? Result.or(parseJson(wrap2), wrap2) : wrap2;
-        const wrap4 = wrap3 && typeof wrap3 === "object" && "error" in wrap3 ? wrap3.error : wrap3;
-        return Result.error(`${wrap4}`);
+        // Freestyle's errors are sometimes nested in JSON.parse(e.error.error).error
+        const message = e instanceof Error ? e.message : String(e);
+        return Result.error(message);
       }
     });
   }
