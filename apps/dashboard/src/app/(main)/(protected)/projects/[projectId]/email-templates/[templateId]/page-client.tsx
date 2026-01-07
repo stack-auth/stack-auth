@@ -3,7 +3,7 @@
 import EmailPreview from "@/components/email-preview";
 import { EmailThemeSelector } from "@/components/email-theme-selector";
 import { useRouterConfirm } from "@/components/router";
-import { Skeleton, toast } from "@/components/ui";
+import { Button, Skeleton, toast } from "@/components/ui";
 import {
   AssistantChat,
   CodeEditor,
@@ -28,6 +28,7 @@ export default function PageClient(props: { templateId: string }) {
 
   // State for loading and template data
   const [isLoading, setIsLoading] = useState(!templateFromHook);
+  const [fetchError, setFetchError] = useState<Error | null>(null);
   const [fetchedTemplate, setFetchedTemplate] = useState<{ id: string, displayName: string, themeId?: string, tsxSource: string } | null>(null);
 
   // Use either the template from the hook or the manually fetched one
@@ -119,6 +120,42 @@ export default function PageClient(props: { templateId: string }) {
             <div className="flex flex-col gap-4">
               <Skeleton className="h-8 w-64" />
               <Skeleton className="h-[400px] w-full" />
+            </div>
+          </PageLayout>
+        </AppEnabledGuard>
+      );
+    }
+    // Show error state with retry option
+    if (fetchError) {
+      return (
+        <AppEnabledGuard appId="emails">
+          <PageLayout title="Failed to Load Template">
+            <div className="flex flex-col gap-4">
+              <p className="text-destructive">Failed to load template: {fetchError.message}</p>
+              <Button
+                onClick={() => {
+                  setFetchError(null);
+                  setIsLoading(true);
+                  const fetchTemplate = async () => {
+                    try {
+                      const allTemplates = await stackAdminApp.listEmailTemplates();
+                      const found = allTemplates.find((t) => t.id === props.templateId);
+                      if (found) {
+                        setFetchedTemplate(found);
+                        setCurrentCode(found.tsxSource);
+                        setSelectedThemeId(found.themeId);
+                      }
+                    } catch (error) {
+                      setFetchError(error instanceof Error ? error : new Error(String(error)));
+                    } finally {
+                      setIsLoading(false);
+                    }
+                  };
+                  runAsynchronously(fetchTemplate);
+                }}
+              >
+                Retry
+              </Button>
             </div>
           </PageLayout>
         </AppEnabledGuard>
