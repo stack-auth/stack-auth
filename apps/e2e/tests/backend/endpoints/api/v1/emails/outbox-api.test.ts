@@ -145,7 +145,7 @@ describe("email outbox API", () => {
       });
 
       // Wait for email to be processed
-      await wait(7_0000);
+      await wait(7_000);
 
       // Filter by sent status
       const sentResponse = await niceBackendFetch("/api/v1/emails/outbox?status=sent", {
@@ -189,7 +189,7 @@ describe("email outbox API", () => {
       });
 
       // Wait for email to be processed
-      await wait(7_0000);
+      await wait(7_000);
 
       // Filter by ok simple_status
       const okResponse = await niceBackendFetch("/api/v1/emails/outbox?simple_status=ok", {
@@ -375,7 +375,7 @@ describe("email outbox API", () => {
       });
 
       // Wait for email to be sent
-      await wait(7_0000);
+      await wait(7_000);
 
       // Get the email ID
       const emails = await getOutboxEmails({ subject: "Not Editable Test" });
@@ -526,7 +526,7 @@ describe("email outbox API", () => {
         },
       });
 
-      await wait(7_0000);
+      await wait(7_000);
 
       const emails = await getOutboxEmails({ subject: "Skipped Status Test" });
       expect(emails.length).toBeGreaterThanOrEqual(1);
