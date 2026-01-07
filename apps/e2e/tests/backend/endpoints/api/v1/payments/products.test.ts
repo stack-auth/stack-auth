@@ -933,7 +933,7 @@ it("listing products should list both subscription and one-time products", async
   `);
 });
 
-it("should allow switching from include-by-default to a paid plan in the same catalog", async ({ expect }) => {
+it("should error when switching from include-by-default to a paid plan in the same catalog", async ({ expect }) => {
   await Project.createAndSwitch();
   await Payments.setup();
   await Project.updateConfig({
@@ -985,31 +985,82 @@ it("should allow switching from include-by-default to a paid plan in the same ca
   });
   expect(switchResponse).toMatchInlineSnapshot(`
     NiceResponse {
-      "status": 200,
-      "body": { "success": true },
-      "headers": Headers { <some fields may have been hidden> },
+      "status": 400,
+      "body": {
+        "code": "DEFAULT_PAYMENT_METHOD_REQUIRED",
+        "details": {
+          "customer_id": "<stripped UUID>",
+          "customer_type": "team",
+        },
+        "error": "No default payment method is set for this customer.",
+      },
+      "headers": Headers {
+        "x-stack-known-error": "DEFAULT_PAYMENT_METHOD_REQUIRED",
+        <some fields may have been hidden>,
+      },
     }
   `);
 
   const listResponse = await niceBackendFetch(`/api/v1/payments/products/team/${teamId}`, {
     accessType: "client",
   });
-  expect(listResponse.body.items).toEqual([
-    {
-      id: "team-pro",
-      product: expect.objectContaining({
-        display_name: "Team Pro",
-      }),
-      quantity: 1,
-      subscription: expect.objectContaining({
-        cancel_at_period_end: expect.any(Boolean),
-        current_period_end: expect.any(String),
-        is_cancelable: true,
-      }),
-      type: "subscription",
-      switch_options: expect.any(Array),
-    },
-  ]);
+  expect(listResponse).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": {
+        "is_paginated": true,
+        "items": [
+          {
+            "id": "team-free",
+            "product": {
+              "client_metadata": null,
+              "client_read_only_metadata": null,
+              "customer_type": "team",
+              "display_name": "Team Free",
+              "included_items": {},
+              "prices": {},
+              "server_metadata": null,
+              "server_only": false,
+              "stackable": false,
+            },
+            "quantity": 1,
+            "subscription": {
+              "cancel_at_period_end": false,
+              "current_period_end": <stripped field 'current_period_end'>,
+              "is_cancelable": false,
+            },
+            "switch_options": [
+              {
+                "product": {
+                  "client_metadata": null,
+                  "client_read_only_metadata": null,
+                  "customer_type": "team",
+                  "display_name": "Team Pro",
+                  "included_items": {},
+                  "prices": {
+                    "monthly": {
+                      "USD": "1200",
+                      "interval": [
+                        1,
+                        "month",
+                      ],
+                    },
+                  },
+                  "server_metadata": null,
+                  "server_only": false,
+                  "stackable": false,
+                },
+                "product_id": "team-pro",
+              },
+            ],
+            "type": "subscription",
+          },
+        ],
+        "pagination": { "next_cursor": null },
+      },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
 });
 
 it("listing products should support cursor pagination", async ({ expect }) => {
