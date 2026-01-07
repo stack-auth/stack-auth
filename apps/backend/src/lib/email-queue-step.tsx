@@ -662,27 +662,23 @@ async function processSingleEmail(context: TenancyProcessingContext, row: EmailO
     }
   } catch (error) {
     captureError("email-queue-step-sending-single-error", error);
-    try {
-      await globalPrismaClient.emailOutbox.update({
-        where: {
-          tenancyId_id: {
-            tenancyId: row.tenancyId,
-            id: row.id,
-          },
-          finishedSendingAt: null,
+    await globalPrismaClient.emailOutbox.update({
+      where: {
+        tenancyId_id: {
+          tenancyId: row.tenancyId,
+          id: row.id,
         },
-        data: {
-          finishedSendingAt: new Date(),
-          canHaveDeliveryInfo: false,
-          sendServerErrorExternalMessage: "An error occurred while sending the email. If you are the admin of this project, please check the email configuration and try again.",
-          sendServerErrorExternalDetails: {},
-          sendServerErrorInternalMessage: errorToNiceString(error),
-          sendServerErrorInternalDetails: {},
-        },
-      });
-    } catch (updateError) {
-      captureError("email-queue-step-sending-single-error-update-failed", updateError);
-    }
+        finishedSendingAt: null,
+      },
+      data: {
+        finishedSendingAt: new Date(),
+        canHaveDeliveryInfo: false,
+        sendServerErrorExternalMessage: "An error occurred while sending the email. If you are the admin of this project, please check the email configuration and try again.",
+        sendServerErrorExternalDetails: {},
+        sendServerErrorInternalMessage: errorToNiceString(error),
+        sendServerErrorInternalDetails: {},
+      },
+    });
   }
 }
 
