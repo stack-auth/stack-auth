@@ -157,6 +157,8 @@ async function retryEmailsStuckInRendering(): Promise<void> {
         lte: new Date(Date.now() - 1000 * 60 * 20),
       },
       finishedRenderingAt: null,
+      skippedReason: null,
+      isPaused: false,
     },
     data: {
       renderedByWorkerId: null,
@@ -177,6 +179,8 @@ async function logEmailsStuckInSending(): Promise<void> {
         lte: new Date(Date.now() - 1000 * 60 * 20),
       },
       finishedSendingAt: null,
+      skippedReason: null,
+      isPaused: false,
     },
     select: { id: true, tenancyId: true, startedSendingAt: true },
   });
@@ -658,23 +662,27 @@ async function processSingleEmail(context: TenancyProcessingContext, row: EmailO
     }
   } catch (error) {
     captureError("email-queue-step-sending-single-error", error);
-    await globalPrismaClient.emailOutbox.update({
-      where: {
-        tenancyId_id: {
-          tenancyId: row.tenancyId,
-          id: row.id,
+    try {
+      await globalPrismaClient.emailOutbox.update({
+        where: {
+          tenancyId_id: {
+            tenancyId: row.tenancyId,
+            id: row.id,
+          },
+          finishedSendingAt: null,
         },
-        finishedSendingAt: null,
-      },
-      data: {
-        finishedSendingAt: new Date(),
-        canHaveDeliveryInfo: false,
-        sendServerErrorExternalMessage: "An error occurred while sending the email. If you are the admin of this project, please check the email configuration and try again.",
-        sendServerErrorExternalDetails: {},
-        sendServerErrorInternalMessage: errorToNiceString(error),
-        sendServerErrorInternalDetails: {},
-      },
-    });
+        data: {
+          finishedSendingAt: new Date(),
+          canHaveDeliveryInfo: false,
+          sendServerErrorExternalMessage: "An error occurred while sending the email. If you are the admin of this project, please check the email configuration and try again.",
+          sendServerErrorExternalDetails: {},
+          sendServerErrorInternalMessage: errorToNiceString(error),
+          sendServerErrorInternalDetails: {},
+        },
+      });
+    } catch (updateError) {
+      captureError("email-queue-step-sending-single-error-update-failed", updateError);
+    }
   }
 }
 
@@ -758,6 +766,10 @@ async function markSkipped(row: EmailOutbox, reason: EmailOutboxSkippedReason, d
     data: {
       skippedReason: reason,
       skippedDetails: details as Prisma.InputJsonValue,
+      // If the email has already started sending, mark it as finished
+      // to prevent it from being flagged as "stuck in sending"
+      // Also set canHaveDeliveryInfo to false (required by DB constraint)
+      ...(row.startedSendingAt ? { finishedSendingAt: new Date(), canHaveDeliveryInfo: false } : {}),
     },
   });
 }
