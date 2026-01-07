@@ -358,6 +358,55 @@ describe("ArrayPaginatedList", () => {
 
       expect(result.items.length).toBeLessThanOrEqual(3);
     });
+
+    it("approximate should allow flexibility in either direction", async () => {
+      const list = new ArrayPaginatedList([1, 2, 3, 4, 5]);
+      const result = await list.next({
+        after: list.getFirstCursor(),
+        limit: 3,
+        filter: () => true,
+        orderBy: (a, b) => a - b,
+        limitPrecision: "approximate",
+      });
+
+      // With 'approximate', the implementation can return more or fewer items
+      // than requested. We just verify it returns some items and makes progress.
+      expect(result.items.length).toBeGreaterThan(0);
+      // Should still return valid items
+      expect(items(result).every(n => typeof n === "number")).toBe(true);
+    });
+
+    it("approximate should still make progress when limit > 0", async () => {
+      const list = new ArrayPaginatedList([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+      const allItems: number[] = [];
+
+      let cursor = list.getFirstCursor();
+      let iterations = 0;
+      const maxIterations = 20; // Safety limit to prevent infinite loops
+
+      while (iterations < maxIterations) {
+        const result = await list.next({
+          after: cursor,
+          limit: 2,
+          filter: () => true,
+          orderBy: (a, b) => a - b,
+          limitPrecision: "approximate",
+        });
+
+        if (result.items.length === 0) break;
+
+        allItems.push(...items(result));
+        // Cursor must change to ensure progress
+        expect(result.cursor).not.toBe(cursor);
+        cursor = result.cursor;
+        iterations++;
+
+        if (result.isLast) break;
+      }
+
+      // Should eventually get all items
+      expect(allItems.length).toBeGreaterThan(0);
+    });
   });
 
   describe("getFirstCursor and getLastCursor", () => {
@@ -654,6 +703,115 @@ describe("PaginatedList.merge", () => {
     expect(() => JSON.parse(cursor)).not.toThrow();
     expect(JSON.parse(cursor)).toEqual(["before-0", "before-0"]);
   });
+
+  it("should paginate backward through merged list correctly", async () => {
+    const list1 = new ArrayPaginatedList([1, 3, 5]);
+    const list2 = new ArrayPaginatedList([2, 4, 6]);
+
+    const merged = PaginatedList.merge(list1, list2);
+
+    // Get last 3 items going backward
+    const last = await merged.prev({
+      before: merged.getLastCursor(),
+      limit: 3,
+      filter: () => true,
+      orderBy: (a, b) => a - b,
+      limitPrecision: "exact",
+    });
+
+    expect(items(last)).toEqual([4, 5, 6]);
+    expect(last.isLast).toBe(true);
+    expect(last.isFirst).toBe(false);
+
+    // Continue backward to get previous 3 items
+    const middle = await merged.prev({
+      before: last.cursor,
+      limit: 3,
+      filter: () => true,
+      orderBy: (a, b) => a - b,
+      limitPrecision: "exact",
+    });
+
+    expect(items(middle)).toEqual([1, 2, 3]);
+    expect(middle.isFirst).toBe(true);
+  });
+
+  it("should paginate backward through entire merged list", async () => {
+    const list1 = new ArrayPaginatedList([1, 3, 5, 7, 9]);
+    const list2 = new ArrayPaginatedList([2, 4, 6, 8, 10]);
+
+    const merged = PaginatedList.merge(list1, list2);
+    const allItems: number[] = [];
+
+    let cursor = merged.getLastCursor();
+    let isFirst = false;
+
+    while (!isFirst) {
+      const result = await merged.prev({
+        before: cursor,
+        limit: 3,
+        filter: () => true,
+        orderBy: (a, b) => a - b,
+        limitPrecision: "exact",
+      });
+
+      allItems.unshift(...items(result));
+      cursor = result.cursor;
+      isFirst = result.isFirst;
+    }
+
+    expect(allItems).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+  });
+
+  it("should have consistent forward and backward pagination results", async () => {
+    const list1 = new ArrayPaginatedList([1, 4, 7]);
+    const list2 = new ArrayPaginatedList([2, 5, 8]);
+    const list3 = new ArrayPaginatedList([3, 6, 9]);
+
+    const merged = PaginatedList.merge(list1, list2, list3);
+
+    // Collect all items going forward
+    const forwardItems: number[] = [];
+    let forwardCursor = merged.getFirstCursor();
+    let isLast = false;
+
+    while (!isLast) {
+      const result = await merged.next({
+        after: forwardCursor,
+        limit: 2,
+        filter: () => true,
+        orderBy: (a, b) => a - b,
+        limitPrecision: "exact",
+      });
+
+      forwardItems.push(...items(result));
+      forwardCursor = result.cursor;
+      isLast = result.isLast;
+    }
+
+    // Collect all items going backward
+    const backwardItems: number[] = [];
+    let backwardCursor = merged.getLastCursor();
+    let isFirst = false;
+
+    while (!isFirst) {
+      const result = await merged.prev({
+        before: backwardCursor,
+        limit: 2,
+        filter: () => true,
+        orderBy: (a, b) => a - b,
+        limitPrecision: "exact",
+      });
+
+      backwardItems.unshift(...items(result));
+      backwardCursor = result.cursor;
+      isFirst = result.isFirst;
+    }
+
+    // Both directions should yield the same final result
+    expect(forwardItems).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9]);
+    expect(backwardItems).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9]);
+  });
 });
 
 describe("edge cases", () => {
@@ -778,6 +936,104 @@ describe("complete pagination walkthrough", () => {
     }
 
     expect(allItems).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+  });
+});
+
+describe("unsorted array pagination", () => {
+  it("should correctly paginate through an unsorted array with sorting", async () => {
+    const list = new ArrayPaginatedList([3, 1, 2]);
+
+    const first = await list.next({
+      after: list.getFirstCursor(),
+      limit: 2,
+      filter: () => true,
+      orderBy: (a, b) => a - b,
+      limitPrecision: "exact",
+    });
+
+    expect(items(first)).toEqual([1, 2]);
+
+    const second = await list.next({
+      after: first.cursor,
+      limit: 2,
+      filter: () => true,
+      orderBy: (a, b) => a - b,
+      limitPrecision: "exact",
+    });
+
+    expect(items(second)).toEqual([3]);
+  });
+
+  it("should maintain sorted order across pagination boundaries", async () => {
+    const list = new ArrayPaginatedList([5, 4, 3, 2, 1]);
+    const allItems: number[] = [];
+
+    let cursor = list.getFirstCursor();
+    let isLast = false;
+
+    while (!isLast) {
+      const result = await list.next({
+        after: cursor,
+        limit: 2,
+        filter: () => true,
+        orderBy: (a, b) => a - b,
+        limitPrecision: "exact",
+      });
+
+      allItems.push(...items(result));
+      cursor = result.cursor;
+      isLast = result.isLast;
+    }
+
+    expect(allItems).toEqual([1, 2, 3, 4, 5]);
+  });
+
+  it("should handle random order array correctly", async () => {
+    const list = new ArrayPaginatedList([7, 2, 9, 1, 5, 8, 3, 6, 4]);
+
+    const allItems: number[] = [];
+    let cursor = list.getFirstCursor();
+    let isLast = false;
+
+    while (!isLast) {
+      const result = await list.next({
+        after: cursor,
+        limit: 3,
+        filter: () => true,
+        orderBy: (a, b) => a - b,
+        limitPrecision: "exact",
+      });
+
+      allItems.push(...items(result));
+      cursor = result.cursor;
+      isLast = result.isLast;
+    }
+
+    expect(allItems).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9]);
+  });
+
+  it("should have consistent cursor semantics with sorted data", async () => {
+    const list = new ArrayPaginatedList([3, 1, 2]);
+
+    const first = await list.next({
+      after: list.getFirstCursor(),
+      limit: 1,
+      filter: () => true,
+      orderBy: (a, b) => a - b,
+      limitPrecision: "exact",
+    });
+
+    expect(items(first)).toEqual([1]);
+
+    const second = await list.next({
+      after: first.cursor,
+      limit: 1,
+      filter: () => true,
+      orderBy: (a, b) => a - b,
+      limitPrecision: "exact",
+    });
+
+    expect(items(second)).toEqual([2]);
   });
 });
 

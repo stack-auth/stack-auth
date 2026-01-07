@@ -36,7 +36,7 @@ type ImplQueryResult<Item, Cursor> = { items: { item: Item, prevCursor: Cursor, 
  * limit enforcement, sorting validation, and provides `map`, `filter`, `flatMap`, and `merge` utilities.
  *
  * @template Item - The type of items in the list
- * @template Cursor - A string-based cursor type for position tracking. Cursors are always between two items in the list. Cursors are always stable even if the filter changes.
+ * @template Cursor - A string-based cursor type for position tracking. Cursors are always between two items in the list. Note that cursors may not be stable if the filter or orderBy changes.
  * @template Filter - Query filter type
  * @template OrderBy - Sort order specification type
  *
@@ -300,7 +300,7 @@ export abstract class PaginatedList<
    *   filter: (user, f) => user.emailVerified,
    *   estimateItemsToFetch: ({ limit }) => limit * 2, // ~50% are verified
    * });
-   * // verifiedUsers filter type is Filter & { /* nothing added here *\/ }
+   * // verifiedUsers filter type is Filter
    * ```
    */
   addFilter<AddedFilter extends unknown>(options: {
@@ -359,17 +359,24 @@ export abstract class PaginatedList<
         }));
         const combinedItems = fetchedLists.flatMap((list, i) => list.items.map((itemEntry) => ({ itemEntry, listIndex: i })));
         const sortedItems = [...combinedItems].sort((a, b) => this._compare(orderBy, a.itemEntry.item, b.itemEntry.item));
-        const sortedItemsWithMergedCursors = [];
 
-        const curCursors = cursors;
+        const sortedItemsWithMergedCursors: { item: Item, prevCursor: string, nextCursor: string }[] = [];
+        const curCursors = [...cursors];
+        // When going backward, we iterate in reverse order to correctly build cursors,
+        // but we need to return items in ascending order
         for (const item of (type === 'next' ? sortedItems : sortedItems.reverse())) {
           const lastCursors = [...curCursors];
-          curCursors[item.listIndex] = item.itemEntry.nextCursor;
+          curCursors[item.listIndex] = type === 'next' ? item.itemEntry.nextCursor : item.itemEntry.prevCursor;
           sortedItemsWithMergedCursors.push({
             item: item.itemEntry.item,
             prevCursor: type === 'next' ? JSON.stringify(lastCursors) : JSON.stringify(curCursors),
             nextCursor: type === 'next' ? JSON.stringify(curCursors) : JSON.stringify(lastCursors),
           });
+        }
+
+        // When going backward, reverse the result to maintain ascending order
+        if (type === 'prev') {
+          sortedItemsWithMergedCursors.reverse();
         }
 
         return {
@@ -442,16 +449,29 @@ export class ArrayPaginatedList<Item> extends PaginatedList<Item, `before-${numb
   }
 
   override async _nextOrPrev(type: 'next' | 'prev', options: ImplQueryOptions<'next' | 'prev', `before-${number}`, (item: Item) => boolean, (a: Item, b: Item) => number>) {
+    // First filter and sort the entire array, THEN slice and assign cursors
+    // This ensures pagination happens in the sorted/filtered result space
+    const filteredArray = this.array.filter(options.filter);
+    const sortedArray = [...filteredArray].sort((a, b) => this._compare(options.orderBy, a, b));
+
+    // Assign cursors based on position in sorted/filtered result
+    const itemEntriesArray = sortedArray.map((item, index) => ({
+      item,
+      prevCursor: `before-${index}` as `before-${number}`,
+      nextCursor: `before-${index + 1}` as `before-${number}`,
+    }));
+
+    // Calculate slice boundaries based on cursor position in the sorted result
     const oldCursor = Number(options.cursor.replace("before-", ""));
-    const newCursor = Math.max(0, Math.min(this.array.length, oldCursor + (type === "next" ? 1 : -1) * options.limit));
-    const itemEntriesArray = this.array.map((item, index) => ({ item, prevCursor: `before-${index}` as `before-${number}`, nextCursor: `before-${index + 1}` as `before-${number}` }));
-    const slicedItemEntriesArray = itemEntriesArray.slice(Math.min(oldCursor, newCursor), Math.max(oldCursor, newCursor));
-    const filteredItemEntriesArray = slicedItemEntriesArray.filter((itemEntry) => options.filter(itemEntry.item));
-    const sortedItemEntriesArray = [...filteredItemEntriesArray].sort((a, b) => this._compare(options.orderBy, a.item, b.item));
+    const clampedOldCursor = Math.max(0, Math.min(sortedArray.length, oldCursor));
+    const newCursor = Math.max(0, Math.min(sortedArray.length, clampedOldCursor + (type === "next" ? 1 : -1) * options.limit));
+
+    const slicedItemEntriesArray = itemEntriesArray.slice(Math.min(clampedOldCursor, newCursor), Math.max(clampedOldCursor, newCursor));
+
     return {
-      items: sortedItemEntriesArray,
-      isFirst: oldCursor === 0 || newCursor === 0,
-      isLast: oldCursor === this.array.length || newCursor === this.array.length,
+      items: slicedItemEntriesArray,
+      isFirst: clampedOldCursor === 0 || newCursor === 0,
+      isLast: clampedOldCursor === sortedArray.length || newCursor === sortedArray.length,
       cursor: `before-${newCursor}` as const,
     };
   }
