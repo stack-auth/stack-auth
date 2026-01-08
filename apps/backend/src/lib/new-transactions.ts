@@ -1677,7 +1677,13 @@ export async function listTransactions(options: ListTransactionsOptions): Promis
 
   const hasMore = result.items.length > limit;
   const transactions = result.items.slice(0, limit).map((item) => item.item);
-  const nextCursor = hasMore ? result.items[limit - 1]?.itemCursor ?? null : null;
+  type ItemWithCursor = { itemCursor: string } | { nextCursor: string };
+  const lastItem = result.items[limit - 1] as ItemWithCursor | undefined;
+  const nextCursor = hasMore
+    ? (lastItem
+      ? ("itemCursor" in lastItem ? lastItem.itemCursor : lastItem.nextCursor)
+      : null)
+    : null;
 
   return {
     transactions,
