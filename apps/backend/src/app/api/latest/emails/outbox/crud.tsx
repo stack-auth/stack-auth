@@ -260,6 +260,8 @@ function prismaModelToCrud(prismaModel: EmailOutbox): EmailOutboxCrud["Server"][
   throw new StackAssertionError(`Unknown email outbox status: ${status}`, { status });
 }
 
+const MAX_LIMIT = 100;
+
 export const emailOutboxCrudHandlers = createLazyProxy(() => createCrudHandlers(emailOutboxCrud, {
   paramsSchema: yupObject({
     id: yupString().uuid().optional(),
@@ -267,6 +269,8 @@ export const emailOutboxCrudHandlers = createLazyProxy(() => createCrudHandlers(
   querySchema: yupObject({
     status: yupString().optional(),
     simple_status: yupString().optional(),
+    limit: yupString().optional().meta({ openapiField: { onlyShowInOperations: ['List'], description: `The maximum number of items to return. Maximum allowed is ${MAX_LIMIT}` } }),
+    cursor: yupString().uuid().optional().meta({ openapiField: { onlyShowInOperations: ['List'], description: "The cursor to start the result set from (email ID)" } }),
   }),
   onRead: async ({ auth, params }) => {
     if (!params.id) {
@@ -289,6 +293,15 @@ export const emailOutboxCrudHandlers = createLazyProxy(() => createCrudHandlers(
     return prismaModelToCrud(email);
   },
   onList: async ({ auth, query }) => {
+    // Parse and validate limit
+    const parsedLimit = query.limit ? parseInt(query.limit, 10) : MAX_LIMIT;
+    if (isNaN(parsedLimit) || parsedLimit < 1) {
+      throw new StatusError(400, "Invalid limit parameter");
+    }
+    if (parsedLimit > MAX_LIMIT) {
+      throw new StatusError(400, `Limit cannot exceed ${MAX_LIMIT}`);
+    }
+
     const where: Prisma.EmailOutboxWhereInput = {
       tenancyId: auth.tenancy.id,
     };
@@ -304,17 +317,35 @@ export const emailOutboxCrudHandlers = createLazyProxy(() => createCrudHandlers(
     const emails = await globalPrismaClient.emailOutbox.findMany({
       where,
       orderBy: [
-        { finishedSendingAt: "desc" },
-        { scheduledAtIfNotYetQueued: "desc" },
+        // Emails with finishedSendingAt come first (most recent first), then nulls
+        { finishedSendingAt: { sort: "desc", nulls: "last" } },
+        // For not-yet-sent emails: scheduled ones come first (most recent first), then nulls
+        { scheduledAtIfNotYetQueued: { sort: "desc", nulls: "last" } },
         { priority: "asc" },
         { id: "asc" },
       ],
-      take: 100,
+      // +1 to check if there's a next page
+      take: parsedLimit + 1,
+      ...query.cursor ? {
+        cursor: {
+          tenancyId_id: {
+            tenancyId: auth.tenancy.id,
+            id: query.cursor,
+          },
+        },
+      } : {},
     });
 
+    const hasMore = emails.length > parsedLimit;
+    const resultEmails = hasMore ? emails.slice(0, parsedLimit) : emails;
+    const nextCursor = hasMore ? emails[parsedLimit].id : null;
+
     return {
-      items: emails.map(prismaModelToCrud),
-      is_paginated: false,
+      items: resultEmails.map(prismaModelToCrud),
+      is_paginated: true,
+      pagination: {
+        next_cursor: nextCursor,
+      },
     };
   },
   onUpdate: async ({ auth, params, data }) => {

@@ -812,12 +812,17 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
     return result as AdminEmailOutbox;
   }
 
-  async listOutboxEmails(options?: { status?: string, simpleStatus?: string }): Promise<AdminEmailOutbox[]> {
+  async listOutboxEmails(options?: { status?: string, simpleStatus?: string, limit?: number, cursor?: string }): Promise<{ items: AdminEmailOutbox[], nextCursor: string | null }> {
     const response = await this._interface.listOutboxEmails({
       status: options?.status,
       simple_status: options?.simpleStatus,
+      limit: options?.limit,
+      cursor: options?.cursor,
     });
-    return response.items.map((item) => this._emailOutboxCrudToAdmin(item));
+    return {
+      items: response.items.map((item) => this._emailOutboxCrudToAdmin(item)),
+      nextCursor: response.pagination?.next_cursor ?? null,
+    };
   }
 
   async getOutboxEmail(id: string): Promise<AdminEmailOutbox> {
