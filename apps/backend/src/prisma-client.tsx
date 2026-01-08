@@ -1,7 +1,8 @@
+import { Prisma, PrismaClient } from "@/generated/prisma/client";
 import { getStackServerApp } from "@/stack";
 import { PrismaNeon } from "@prisma/adapter-neon";
 import { PrismaPg } from '@prisma/adapter-pg';
-import { Prisma, PrismaClient } from "@prisma/client";
+import { readReplicas } from '@prisma/extension-read-replicas';
 import { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
 import { getEnvVariable, getNodeEnvironment } from '@stackframe/stack-shared/dist/utils/env';
 import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
@@ -21,11 +22,12 @@ import { ensurePolyfilled } from "./polyfills";
 // just ensure we're polyfilled because this file relies on envvars being expanded
 ensurePolyfilled();
 
-export type PrismaClientTransaction = PrismaClient | Parameters<Parameters<PrismaClient['$transaction']>[0]>[0];
+export type PrismaClientTransaction =
+  | Omit<PrismaClient, "$on">  // $on is not available on extended Prisma clients, so we don't require it here. see: https://www.prisma.io/docs/orm/reference/prisma-client-reference#on
+  | Parameters<Parameters<PrismaClient['$transaction']>[0]>[0];
 
 // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
 const prismaClientsStore = (globalVar.__stack_prisma_clients as undefined) || {
-  global: new PrismaClient(),
   neon: new Map<string, PrismaClient>(),
   postgres: new Map<string, {
     client: PrismaClient,
@@ -79,7 +81,7 @@ function getPostgresPrismaClient(connectionString: string) {
   let postgresPrismaClient = postgresPrismaClientsStore.get(connectionString);
   if (!postgresPrismaClient) {
     const schema = getSchemaFromConnectionString(connectionString);
-    const adapter = new PrismaPg({ connectionString }, schema ? { schema } : undefined);
+    const adapter = new PrismaPg({ connectionString, max: 25 }, schema ? { schema } : undefined);
     postgresPrismaClient = {
       client: new PrismaClient({ adapter }),
       schema,
@@ -105,9 +107,11 @@ async function tcpPing(host: string, port: number, timeout = 2000) {
 }
 
 const originalGlobalConnectionString = getEnvVariable("STACK_DATABASE_CONNECTION_STRING", "");
-let actualGlobalConnectionString: string = globalVar.__stack_actual_global_connection_string ??= await (async () => {
-  if (!originalGlobalConnectionString) {
-    return originalGlobalConnectionString;
+const originalReplicaConnectionString = getEnvVariable("STACK_DATABASE_REPLICA_CONNECTION_STRING", "");
+
+async function resolveConnectionStringWithOrbStack(connectionString: string): Promise<string> {
+  if (!connectionString) {
+    return connectionString;
   }
 
   // If we are on a Mac with OrbStack installed, it's much much faster to use the OrbStack-provided domain instead of
@@ -116,22 +120,38 @@ let actualGlobalConnectionString: string = globalVar.__stack_actual_global_conne
   // For this reason, we check whether we can connect to the database using the OrbStack-provided domain, and if so,
   // we use it instead of the original connection string.
   if (getNodeEnvironment() === 'development' && process.platform === 'darwin') {
-    const match = originalGlobalConnectionString.match(/^postgres:\/\/postgres:(.*)@localhost:(\d\d)28\/(.*)$/);
+    const match = connectionString.match(/^postgres:\/\/([^:]+):(.*)@localhost:(\d\d)28\/(.*)$/);
     if (match) {
-      const [, password, portPrefix, schema] = match;
+      const [, user, password, portPrefix, schema] = match;
       const orbStackDomain = `db.stack-dependencies-${portPrefix}.orb.local`;
       const ok = await tcpPing(orbStackDomain, 5432, 50);  // extremely short timeout; OrbStack should be fast to respond, otherwise why are we doing this?
       if (ok) {
-        return `postgres://postgres:${password}@${orbStackDomain}:5432/${schema}`;
+        return `postgres://${user}:${password}@${orbStackDomain}:5432/${schema}`;
       }
     }
   }
-  return originalGlobalConnectionString;
-})();
+  return connectionString;
+}
 
+let actualGlobalConnectionString: string = globalVar.__stack_actual_global_connection_string ??= await resolveConnectionStringWithOrbStack(originalGlobalConnectionString);
+let actualReplicaConnectionString: string = globalVar.__stack_actual_replica_connection_string ??= await resolveConnectionStringWithOrbStack(originalReplicaConnectionString);
+
+function extendWithReadReplicas<T extends PrismaClient>(client: T, replicaConnectionString: string): Omit<T, "$on"> {
+  // Create a separate PrismaClient for the read replica
+  const replicaClient = getPostgresPrismaClient(replicaConnectionString).client;
+  return client.$extends(readReplicas({
+    replicas: [replicaClient],
+  })) as Omit<T, "$on">;
+}
 
 export const { client: globalPrismaClient, schema: globalPrismaSchema } = actualGlobalConnectionString
-  ? getPostgresPrismaClient(actualGlobalConnectionString)
+  ? (() => {
+    const { client, schema } = getPostgresPrismaClient(actualGlobalConnectionString);
+    return {
+      client: actualReplicaConnectionString ? extendWithReadReplicas(client, actualReplicaConnectionString) : client,
+      schema,
+    };
+  })()
   : {
     client: throwingProxy<PrismaClient>("STACK_DATABASE_CONNECTION_STRING environment variable is not set. Please set it to a valid PostgreSQL connection string, or use a mock Prisma client for testing."),
     schema: throwingProxy<string>("STACK_DATABASE_CONNECTION_STRING environment variable is not set. Please set it to a valid PostgreSQL connection string, or use a mock Prisma client for testing."),
@@ -197,7 +217,10 @@ class TransactionErrorThatShouldNotBeRetried extends Error {
   }
 }
 
-export async function retryTransaction<T>(client: PrismaClient, fn: (tx: PrismaClientTransaction) => Promise<T>, options: { level?: "default" | "serializable" } = {}): Promise<T> {
+/**
+ * @deprecated Prisma transactions are slow and lock the database. Use rawQuery with CTEs instead. Ask Konsti if you're confused or think you need transactions.
+ */
+export async function retryTransaction<T>(client: Omit<PrismaClient, "$on">, fn: (tx: PrismaClientTransaction) => Promise<T>, options: { level?: "default" | "serializable" } = {}): Promise<T> {
   // serializable transactions are currently off by default, later we may turn them on
   const enableSerializable = options.level === "serializable";
 
@@ -234,7 +257,7 @@ export async function retryTransaction<T>(client: PrismaClient, fn: (tx: PrismaC
               if (getNodeEnvironment() === 'development' || getNodeEnvironment() === 'test') {
                 // In dev/test, let's just fail the transaction with a certain probability, if we haven't already failed multiple times
                 // this is to test the logic that every transaction is retryable
-                if (attemptIndex < 3 && Math.random() < 0.5) {
+                if (attemptIndex < 2 && Math.random() < 0.5) {
                   throw new TransactionErrorThatShouldBeRetried(new Error("Test error for dev/test. This should automatically be retried."));
                 }
               }
@@ -262,8 +285,8 @@ export async function retryTransaction<T>(client: PrismaClient, fn: (tx: PrismaC
         }
         return attemptRes;
       });
-    }, 5, {
-      exponentialDelayBase: getNodeEnvironment() === 'development' || getNodeEnvironment() === 'test' ? 3 : 250,
+    }, 3, {
+      exponentialDelayBase: getNodeEnvironment() === 'development' || getNodeEnvironment() === 'test' ? 3 : 1000,
     });
 
     span.setAttribute("stack.prisma.transaction.success", res.status === "ok");
@@ -280,6 +303,7 @@ export type RawQuery<T> = {
   supportedPrismaClients: readonly (typeof allSupportedPrismaClients)[number][],
   sql: Prisma.Sql,
   postProcess: (rows: any[]) => T,  // Tip: If your postProcess is async, just set T = Promise<any> (compared to doing Promise.all in rawQuery, this ensures that there are no accidental timing attacks)
+  readOnlyQuery: boolean,  // If true, use the read replica if available
 };
 
 export const RawQuery = {
@@ -291,6 +315,7 @@ export const RawQuery = {
         const result = query.postProcess(rows);
         return fn(result);
       },
+      readOnlyQuery: query.readOnlyQuery,
     };
   },
   all: <T extends readonly any[]>(queries: { [K in keyof T]: RawQuery<T[K]> }): RawQuery<T> => {
@@ -301,8 +326,12 @@ export const RawQuery = {
       throw new StackAssertionError("The queries must have at least one overlapping supported Prisma client");
     }
 
+    // Only mark combined query as read-only if all individual queries are read-only
+    const readOnlyQuery = queries.every(q => q.readOnlyQuery);
+
     return {
       supportedPrismaClients,
+      readOnlyQuery,
       sql: Prisma.sql`
         WITH ${Prisma.join(queries.map((q, index) => {
         return Prisma.sql`${Prisma.raw("q" + index)} AS (
@@ -346,6 +375,7 @@ export const RawQuery = {
       postProcess: (rows) => {
         return obj;
       },
+      readOnlyQuery: true,  // resolve is just a static value, doesn't actually write
     };
   },
 };
@@ -362,10 +392,12 @@ export async function rawQueryAll<Q extends Record<string, undefined | RawQuery<
 }
 
 async function rawQueryArray<Q extends RawQuery<any>[]>(tx: PrismaClientTransaction, queries: Q): Promise<[] & { [K in keyof Q]: Awaited<ReturnType<Q[K]["postProcess"]>> }> {
+  const allReadOnly = queries.length > 0 && queries.every(q => q.readOnlyQuery);
   return await traceSpan({
     description: `raw SQL quer${queries.length === 1 ? "y" : `ies (${queries.length} total)`}`,
     attributes: {
       "stack.raw-queries.length": queries.length,
+      "stack.raw-queries.read-only": allReadOnly,
       ...Object.fromEntries(queries.flatMap((q, index) => [
         [`stack.raw-queries.${index}.text`, q.sql.text],
         [`stack.raw-queries.${index}.params`, JSON.stringify(q.sql.values)],
@@ -384,7 +416,11 @@ async function rawQueryArray<Q extends RawQuery<any>[]>(tx: PrismaClientTransact
     // Since ours starts with "WITH", we prepend a SELECT to it
     const sqlQuery = Prisma.sql`SELECT * FROM (${combinedQuery.sql}) AS _`;
 
-    const rawResult = await tx.$queryRaw(sqlQuery);
+    // Use the read replica if all queries are read-only and a replica is available
+    const queryClient = allReadOnly && '$replica' in tx
+      ? (tx as any).$replica()
+      : tx;
+    const rawResult = await queryClient.$queryRaw(sqlQuery);
 
     const postProcessed = combinedQuery.postProcess(rawResult as any);
     // If the postProcess is async, postProcessed is a Promise. If that Promise is rejected, it will cause an unhandled promise rejection.

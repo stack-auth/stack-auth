@@ -4,11 +4,11 @@ import { SmartFormDialog } from "@/components/form-dialog";
 import { SelectField } from "@/components/form-fields";
 import { Link } from "@/components/link";
 import { StripeConnectProvider } from "@/components/payments/stripe-connect-provider";
-import { cn } from "@/lib/utils";
-import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { ActionDialog, Button, Card, CardContent, Typography } from "@/components/ui";
+import { cn } from "@/lib/utils";
+import { ArrowRightIcon, ChartBarIcon, FlaskIcon, RepeatIcon, ShieldIcon, WalletIcon, WarningIcon, WebhooksLogoIcon } from "@phosphor-icons/react";
+import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { ConnectNotificationBanner } from "@stripe/react-connect-js";
-import { AlertTriangle, ArrowRight, BarChart3, FlaskConical, Repeat, Shield, Wallet, Webhook } from "lucide-react";
 import { useState } from "react";
 import * as yup from "yup";
 import { AppEnabledGuard } from "../../app-enabled-guard";
@@ -49,7 +49,7 @@ function CatalogsLayoutInner({ children }: { children: React.ReactNode }) {
         <Card className="w-full">
           <CardContent className="p-8 text-center">
             <div className="mx-auto mb-4 grid h-12 w-12 place-items-center rounded-full bg-primary/10 text-primary">
-              <Wallet className="h-6 w-6" />
+              <WalletIcon className="h-6 w-6" />
             </div>
             <Typography type="h3" className="mb-4">Setup Payments</Typography>
             <Typography type="p" variant="secondary" className="mt-2">
@@ -57,15 +57,15 @@ function CatalogsLayoutInner({ children }: { children: React.ReactNode }) {
             </Typography>
             <ul className="mt-6 grid gap-3 text-left text-sm text-muted-foreground">
               <li className="flex items-center gap-2">
-                <Webhook className="h-4 w-4 text-primary" />
+                <WebhooksLogoIcon className="h-4 w-4 text-primary" />
                 <span>No webhooks or syncing</span>
               </li>
               <li className="flex items-center gap-2">
-                <Repeat className="h-4 w-4 text-primary" />
+                <RepeatIcon className="h-4 w-4 text-primary" />
                 <span>One-time and recurring</span>
               </li>
               <li className="flex items-center gap-2">
-                <BarChart3 className="h-4 w-4 text-primary" />
+                <ChartBarIcon className="h-4 w-4 text-primary" />
                 <span>Usage-based billing</span>
               </li>
             </ul>
@@ -73,7 +73,7 @@ function CatalogsLayoutInner({ children }: { children: React.ReactNode }) {
               <SetupPaymentsButton setupPayments={setupPayments} />
             </div>
             <div className="mt-4 flex items-center justify-center gap-2 text-xs text-muted-foreground">
-              <Shield className="h-3.5 w-3.5" />
+              <ShieldIcon className="h-3.5 w-3.5" />
               <span>Powered by Stripe</span>
             </div>
           </CardContent>
@@ -95,7 +95,7 @@ function CatalogsLayoutInner({ children }: { children: React.ReactNode }) {
             <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
               <div className="flex items-start gap-3">
                 <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-500/15 dark:bg-blue-400/15">
-                  <FlaskConical className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                  <FlaskIcon className="h-4 w-4 text-blue-600 dark:text-blue-400" />
                 </div>
                 <div className="space-y-2">
                   <div className="space-y-0.5">
@@ -156,7 +156,7 @@ function CatalogsLayoutInner({ children }: { children: React.ReactNode }) {
             <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
               <div className="flex items-start gap-3">
                 <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-amber-500/15 dark:bg-amber-400/15">
-                  <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+                  <WarningIcon className="h-4 w-4 text-amber-600 dark:text-amber-400" />
                 </div>
                 <div className="space-y-2">
                   <div className="space-y-0.5">
@@ -193,7 +193,7 @@ function CatalogsLayoutInner({ children }: { children: React.ReactNode }) {
                     "transition-colors duration-150 hover:transition-none"
                   )}
                 >
-                  <FlaskConical className="h-3.5 w-3.5" />
+                  <FlaskIcon className="h-3.5 w-3.5" />
                   <span>Enable test mode</span>
                 </Button>
                 <Button
@@ -202,7 +202,7 @@ function CatalogsLayoutInner({ children }: { children: React.ReactNode }) {
                   className="gap-1.5"
                 >
                   <span>Continue setup</span>
-                  <ArrowRight className="h-3.5 w-3.5" />
+                  <ArrowRightIcon className="h-3.5 w-3.5" />
                 </Button>
               </div>
             </div>
@@ -289,7 +289,7 @@ function SetupPaymentsButton({ setupPayments }: { setupPayments: () => Promise<v
           <Button className="group" onClick={() => setIsOpen(true)}>
             <span className="inline-flex items-center gap-2">
               Start Setup
-              <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
+              <ArrowRightIcon className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
             </span>
           </Button>
         }
@@ -307,7 +307,7 @@ function SetupPaymentsButton({ setupPayments }: { setupPayments: () => Promise<v
         <Button className="group" onClick={() => setIsOpen(true)}>
           <span className="inline-flex items-center gap-2">
             Start Setup
-            <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
+            <ArrowRightIcon className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
           </span>
         </Button>
         <ActionDialog
@@ -345,7 +345,7 @@ function SetupPaymentsButton({ setupPayments }: { setupPayments: () => Promise<v
       <Button className="group" onClick={() => setIsOpen(true)}>
         <span className="inline-flex items-center gap-2">
           Start Setup
-          <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
+          <ArrowRightIcon className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
         </span>
       </Button>
       <ActionDialog

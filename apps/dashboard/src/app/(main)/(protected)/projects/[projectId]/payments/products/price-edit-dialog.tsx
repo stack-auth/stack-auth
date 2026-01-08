@@ -2,7 +2,6 @@
 
 import { EditableGrid } from "@/components/editable-grid";
 import { RepeatingInput } from "@/components/repeating-input";
-import type { DayInterval } from "@stackframe/stack-shared/dist/utils/dates";
 import {
   Button,
   cn,
@@ -23,7 +22,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui";
-import { Clock, Server } from "lucide-react";
+import { ClockIcon, HardDriveIcon } from "@phosphor-icons/react";
+import type { DayInterval } from "@stackframe/stack-shared/dist/utils/dates";
 import { useState } from "react";
 import { DEFAULT_INTERVAL_UNITS, PRICE_INTERVAL_UNITS, type Price } from "./utils";
 
@@ -129,7 +129,7 @@ export function PriceEditDialog({
                 // Free Trial
                 {
                   type: 'custom' as const,
-                  icon: <Clock size={16} />,
+                  icon: <ClockIcon size={16} />,
                   name: "Free Trial",
                   tooltip: "Free trial period before billing starts.",
                   children: (
@@ -218,7 +218,7 @@ export function PriceEditDialog({
                 // Server Only
                 {
                   type: 'boolean' as const,
-                  icon: <Server size={16} />,
+                  icon: <HardDriveIcon size={16} />,
                   name: "Server Only",
                   tooltip: "Server-only prices can only be assigned through server-side API calls.",
                   value: editingPrice.serverOnly,

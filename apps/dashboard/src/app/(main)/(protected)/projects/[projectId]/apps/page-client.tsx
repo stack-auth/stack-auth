@@ -2,11 +2,11 @@
 
 import { useAdminApp } from "@/app/(main)/(protected)/projects/[projectId]/use-admin-app";
 import { AppSquare } from "@/components/app-square";
+import { cn } from "@/components/ui";
 import { type AppId } from "@/lib/apps-frontend";
+import { CheckCircleIcon, MagnifyingGlassIcon, SquaresFourIcon } from "@phosphor-icons/react";
 import { ALL_APPS } from "@stackframe/stack-shared/dist/apps/apps-config";
 import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
-import { cn } from "@/components/ui";
-import { CheckCircle2, LayoutGrid, Search } from "lucide-react";
 import { useMemo, useState } from "react";
 import { PageLayout } from "../page-layout";
 
@@ -107,7 +107,7 @@ export default function PageClient() {
         {/* Header Section */}
         <div className="mb-8">
           <div className="flex items-center gap-3 mb-2">
-            <LayoutGrid className="h-8 w-8 text-blue-600 dark:text-blue-400" />
+            <SquaresFourIcon className="h-8 w-8 text-blue-600 dark:text-blue-400" />
             <h1 className="text-3xl font-semibold text-gray-900 dark:text-gray-100">
               Apps
             </h1>
@@ -120,7 +120,7 @@ export default function PageClient() {
         {/* Search and Stats Bar */}
         <div className="flex flex-col sm:flex-row gap-4 mb-6">
           <div className="relative flex-1 max-w-md">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+            <MagnifyingGlassIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
             <input
               type="text"
               placeholder="Search apps..."
@@ -141,7 +141,7 @@ export default function PageClient() {
 
           {installedApps.length > 0 && (
             <div className="flex items-center gap-2 px-4 py-2.5 bg-green-50 dark:bg-green-950/30 rounded-xl border border-green-200 dark:border-green-900">
-              <CheckCircle2 className="h-4 w-4 text-green-600 dark:text-green-400" />
+              <CheckCircleIcon className="h-4 w-4 text-green-600 dark:text-green-400" />
               <span className="text-sm font-medium text-green-800 dark:text-green-300">
                 {installedApps.length} app{installedApps.length !== 1 ? 's' : ''} installed
               </span>
@@ -201,7 +201,7 @@ export default function PageClient() {
         ) : (
           <div className="flex flex-col items-center justify-center py-16 text-center">
             <div className="w-16 h-16 mb-4 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center">
-              <Search className="h-8 w-8 text-gray-400" />
+              <MagnifyingGlassIcon className="h-8 w-8 text-gray-400" />
             </div>
             <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100 mb-1">
               No apps found

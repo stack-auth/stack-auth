@@ -1,8 +1,8 @@
 'use client';
 
 import { Button } from '@/components/ui';
+import { CalendarIcon, CaretDownIcon, CaretUpIcon, InfoIcon } from '@phosphor-icons/react';
 import { runAsynchronously } from '@stackframe/stack-shared/dist/utils/promises';
-import { Calendar, ChevronDown, ChevronUp, Info } from 'lucide-react';
 import Image from 'next/image';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
@@ -68,7 +68,7 @@ const NoteBlockquote = ({ children, ...props }: any) => {
   return (
     <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 p-3 my-3 rounded-md">
       <div className="flex items-start gap-2">
-        <Info className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400 mt-0.5 flex-shrink-0" />
+        <InfoIcon className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400 mt-0.5 flex-shrink-0" />
         <div className="text-sm text-blue-800 dark:text-blue-200 leading-relaxed">
           {children}
         </div>
@@ -259,7 +259,7 @@ export function ChangelogWidget({ isActive, initialData }: ChangelogWidgetProps)
       <div className="space-y-4">
         {changelog.length === 0 && !error && (
           <div className="bg-muted/30 rounded-lg p-4 text-center">
-            <Calendar className="h-8 w-8 mx-auto mb-2 text-muted-foreground" />
+            <CalendarIcon className="h-8 w-8 mx-auto mb-2 text-muted-foreground" />
             <p className="text-xs text-muted-foreground font-medium">
               No changelog entries found
             </p>
@@ -282,9 +282,9 @@ export function ChangelogWidget({ isActive, initialData }: ChangelogWidgetProps)
                   onClick={() => toggleExpanded(entry.id)}
                 >
                   {entry.expanded ? (
-                    <ChevronUp className="h-3 w-3" />
+                    <CaretUpIcon className="h-3 w-3" />
                   ) : (
-                    <ChevronDown className="h-3 w-3" />
+                    <CaretDownIcon className="h-3 w-3" />
                   )}
                 </Button>
               </div>

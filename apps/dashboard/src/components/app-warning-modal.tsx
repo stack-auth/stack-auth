@@ -1,7 +1,7 @@
 'use client';
 
 import { cn } from "@/components/ui";
-import { AlertTriangle, Beaker, X } from "lucide-react";
+import { FlaskIcon, WarningIcon, XIcon } from "@phosphor-icons/react";
 import { useEffect, useState } from "react";
 
 type AppWarningModalProps = {
@@ -64,9 +64,9 @@ export function AppWarningModal({
                     : "bg-blue-100 dark:bg-blue-950/50"
                 )}>
                   {isAlpha ? (
-                    <AlertTriangle className="w-6 h-6 text-orange-600 dark:text-orange-400" />
+                    <WarningIcon className="w-6 h-6 text-orange-600 dark:text-orange-400" />
                   ) : (
-                    <Beaker className="w-6 h-6 text-blue-600 dark:text-blue-400" />
+                    <FlaskIcon className="w-6 h-6 text-blue-600 dark:text-blue-400" />
                   )}
                 </div>
                 <div>
@@ -88,7 +88,7 @@ export function AppWarningModal({
                 onClick={onClose}
                 className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
               >
-                <X className="w-4 h-4 text-gray-500" />
+                <XIcon className="w-4 h-4 text-gray-500" />
               </button>
             </div>
           </div>

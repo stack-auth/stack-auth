@@ -30,7 +30,7 @@ async function provisionAndTransferProject() {
   const provisioned = await provisionProject();
   const projectId = provisioned.body.project_id;
   const { code } = await initiateTransfer(projectId);
-  await Auth.Otp.signIn();
+  await Auth.fastSignUp();
   const response = await niceBackendFetch(`/api/v1/integrations/custom/projects/transfer/confirm`, {
     method: "POST",
     accessType: "client",
@@ -68,7 +68,7 @@ it("should return that the project is transferrable if it is provisioned", async
 });
 
 it("should return that the project is not transferrable if it is not provisioned", async ({ expect }) => {
-  await Auth.Otp.signIn();
+  await Auth.fastSignUp();
   const createdProject = await Project.create();
   const response = await niceBackendFetch(urlString`/api/v1/integrations/custom/projects/transfer?project_id=${createdProject.createProjectResponse.body.id}`, {
     method: "GET",
@@ -128,7 +128,7 @@ it("should initiate multiple transfers for the same project, but only one can be
   const projectId = provisioned.body.project_id;
   const { code: code1 } = await initiateTransfer(projectId);
   const { code: code2 } = await initiateTransfer(projectId);
-  await Auth.Otp.signIn();
+  await Auth.fastSignUp();
   const response1 = await niceBackendFetch(`/api/v1/integrations/custom/projects/transfer/confirm`, {
     method: "POST",
     accessType: "client",
@@ -163,7 +163,7 @@ it("should initiate multiple transfers for the same project, but only one can be
 });
 
 it("should fail if the project to transfer was not provisioned by Neon", async ({ expect }) => {
-  await Auth.Otp.signIn();
+  await Auth.fastSignUp();
   const createdProject = await Project.create();
   const response = await niceBackendFetch("/api/v1/integrations/custom/projects/transfer/initiate", {
     method: "POST",
@@ -248,7 +248,7 @@ it("should check if the project exists before initiating transfer", async ({ exp
   const provisioned = await provisionProject();
   const projectId = provisioned.body.project_id;
   const { code } = await initiateTransfer(projectId);
-  await Auth.Otp.signIn();
+  await Auth.fastSignUp();
   const response = await niceBackendFetch(`/api/v1/integrations/custom/projects/transfer/confirm/check`, {
     method: "POST",
     accessType: "client",
@@ -269,7 +269,7 @@ it("should fail the check if project was already transferred", async ({ expect }
   const provisioned = await provisionProject();
   const projectId = provisioned.body.project_id;
   const { code } = await initiateTransfer(projectId);
-  await Auth.Otp.signIn();
+  await Auth.fastSignUp();
   const response = await niceBackendFetch(`/api/v1/integrations/custom/projects/transfer/confirm`, {
     method: "POST",
     accessType: "client",

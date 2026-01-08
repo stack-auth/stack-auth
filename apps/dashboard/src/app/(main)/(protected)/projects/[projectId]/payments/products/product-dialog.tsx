@@ -1,17 +1,16 @@
 "use client";
 
 import { Stepper, StepperPage } from "@/components/stepper";
-import { cn } from "@/lib/utils";
-import { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
-import { getUserSpecifiedIdErrorMessage, isValidUserSpecifiedId, sanitizeUserSpecifiedId } from "@stackframe/stack-shared/dist/schema-fields";
 import { Button, Card, CardDescription, CardHeader, CardTitle, Checkbox, Dialog, DialogContent, DialogFooter, DialogTitle, Input, Label, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Typography } from "@/components/ui";
-import { ArrowLeft, ArrowRight, CreditCard, Package, Plus, Repeat, Trash2 } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { ArrowLeftIcon, ArrowRightIcon, CreditCardIcon, PackageIcon, PlusIcon, RepeatIcon, TrashIcon } from "@phosphor-icons/react";
+import { getUserSpecifiedIdErrorMessage, isValidUserSpecifiedId, sanitizeUserSpecifiedId } from "@stackframe/stack-shared/dist/schema-fields";
 import { useState } from "react";
 import { CreateCatalogDialog } from "./create-catalog-dialog";
 import { IncludedItemDialog } from "./included-item-dialog";
 import { ListSection } from "./list-section";
 import { PricingSection } from "./pricing-section";
-import { type Product, type Price } from "./utils";
+import { type Price, type Product } from "./utils";
 
 type Template = 'one-time' | 'subscription' | 'addon' | 'scratch';
 
@@ -266,7 +265,7 @@ export function ProductDialog({
                       <CardHeader className="pb-3">
                         <div className="flex items-center gap-3">
                           <div className="p-2.5 rounded-xl bg-cyan-500/10 dark:bg-cyan-500/[0.15] group-hover:bg-cyan-500/20 transition-colors duration-150 group-hover:transition-none">
-                            <CreditCard className="h-5 w-5 text-cyan-600 dark:text-cyan-400" />
+                            <CreditCardIcon className="h-5 w-5 text-cyan-600 dark:text-cyan-400" />
                           </div>
                           <div>
                             <CardTitle className="text-base font-semibold">One-time Purchase</CardTitle>
@@ -291,7 +290,7 @@ export function ProductDialog({
                       <CardHeader className="pb-3">
                         <div className="flex items-center gap-3">
                           <div className="p-2.5 rounded-xl bg-purple-500/10 dark:bg-purple-500/[0.15] group-hover:bg-purple-500/20 transition-colors duration-150 group-hover:transition-none">
-                            <Repeat className="h-5 w-5 text-purple-600 dark:text-purple-400" />
+                            <RepeatIcon className="h-5 w-5 text-purple-600 dark:text-purple-400" />
                           </div>
                           <div>
                             <CardTitle className="text-base font-semibold">Subscription</CardTitle>
@@ -316,7 +315,7 @@ export function ProductDialog({
                       <CardHeader className="pb-3">
                         <div className="flex items-center gap-3">
                           <div className="p-2.5 rounded-xl bg-emerald-500/10 dark:bg-emerald-500/[0.15] group-hover:bg-emerald-500/20 transition-colors duration-150 group-hover:transition-none">
-                            <Package className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+                            <PackageIcon className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
                           </div>
                           <div>
                             <CardTitle className="text-base font-semibold">Add-on</CardTitle>
@@ -341,7 +340,7 @@ export function ProductDialog({
                       <CardHeader className="pb-3">
                         <div className="flex items-center gap-3">
                           <div className="p-2.5 rounded-xl bg-foreground/[0.05] group-hover:bg-foreground/[0.08] transition-colors duration-150 group-hover:transition-none">
-                            <Plus className="h-5 w-5 text-muted-foreground" />
+                            <PlusIcon className="h-5 w-5 text-muted-foreground" />
                           </div>
                           <div>
                             <CardTitle className="text-base font-semibold">Create from Scratch</CardTitle>
@@ -692,7 +691,7 @@ export function ProductDialog({
                                 size="sm"
                                 onClick={() => removeIncludedItem(itemId)}
                               >
-                                <Trash2 className="h-4 w-4 text-destructive" />
+                                <TrashIcon className="h-4 w-4 text-destructive" />
                               </Button>
                             </div>
                           </div>
@@ -718,7 +717,7 @@ export function ProductDialog({
                     "transition-all duration-150 hover:transition-none"
                   )}
                 >
-                  <ArrowLeft className="h-4 w-4 mr-2" />
+                  <ArrowLeftIcon className="h-4 w-4 mr-2" />
                   Back
                 </Button>
               )}
@@ -747,7 +746,7 @@ export function ProductDialog({
                   )}
                 >
                   Next
-                  <ArrowRight className="h-4 w-4 ml-2" />
+                  <ArrowRightIcon className="h-4 w-4 ml-2" />
                 </Button>
               ) : (
                 <Button

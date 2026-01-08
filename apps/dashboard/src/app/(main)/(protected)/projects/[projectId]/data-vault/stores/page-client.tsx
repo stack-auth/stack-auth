@@ -1,9 +1,9 @@
 "use client";
 
+import { Button, Card, CardContent, CardHeader, Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Input, Label, toast } from "@/components/ui";
+import { DatabaseIcon, PlusIcon } from "@phosphor-icons/react";
 import { getUserSpecifiedIdErrorMessage, isValidUserSpecifiedId, sanitizeUserSpecifiedId } from "@stackframe/stack-shared/dist/schema-fields";
 import { typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
-import { Button, Card, CardContent, CardHeader, Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Input, Label, toast } from "@/components/ui";
-import { Database, Plus } from "lucide-react";
 import { useState } from "react";
 import { useRouter } from "../../../../../../../components/router";
 import { AppEnabledGuard } from "../../app-enabled-guard";
@@ -66,7 +66,7 @@ export default function PageClient() {
         title="Data Vault Stores"
         actions={
           <Button onClick={() => setIsCreateDialogOpen(true)}>
-            <Plus className="h-4 w-4 mr-2" />
+            <PlusIcon className="h-4 w-4 mr-2" />
             Create Store
           </Button>
         }
@@ -82,13 +82,13 @@ export default function PageClient() {
 
           {storeEntries.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12">
-              <Database className="h-12 w-12 text-muted-foreground mb-4" />
+              <DatabaseIcon className="h-12 w-12 text-muted-foreground mb-4" />
               <h3 className="text-lg font-semibold mb-2">No data vault stores yet</h3>
               <p className="text-muted-foreground text-center mb-4">
                 Create your first data vault store to start securely storing encrypted data
               </p>
               <Button onClick={() => setIsCreateDialogOpen(true)}>
-                <Plus className="h-4 w-4 mr-2" />
+                <PlusIcon className="h-4 w-4 mr-2" />
                 Create Your First Store
               </Button>
             </div>
@@ -102,7 +102,7 @@ export default function PageClient() {
                 >
                   <CardHeader className="pb-3">
                     <div className="flex items-start justify-between">
-                      <Database className="h-5 w-5 text-muted-foreground" />
+                      <DatabaseIcon className="h-5 w-5 text-muted-foreground" />
                     </div>
                   </CardHeader>
                   <CardContent>

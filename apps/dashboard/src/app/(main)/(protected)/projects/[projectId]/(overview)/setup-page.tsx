@@ -4,11 +4,11 @@ import { CodeBlock } from '@/components/code-block';
 import { APIEnvKeys, NextJsEnvKeys } from '@/components/env-keys';
 import { InlineCode } from '@/components/inline-code';
 import { StyledLink } from '@/components/link';
+import { Button, Tabs, TabsContent, TabsList, TabsTrigger, Typography, cn } from "@/components/ui";
 import { useThemeWatcher } from '@/lib/theme';
+import { BookIcon, XIcon } from "@phosphor-icons/react";
 import { use } from "@stackframe/stack-shared/dist/utils/react";
 import { deindent } from '@stackframe/stack-shared/dist/utils/strings';
-import { Button, Tabs, TabsContent, TabsList, TabsTrigger, Typography, cn } from "@/components/ui";
-import { Book, X } from "lucide-react";
 import dynamic from "next/dynamic";
 import Image from 'next/image';
 import { Suspense, useRef, useState } from "react";
@@ -425,7 +425,7 @@ export default function SetupPage(props: { toMetrics: () => void }) {
       <div className="flex justify-end">
         <Button variant='plain' onClick={props.toMetrics}>
           Close Setup
-          <X className="w-4 h-4 ml-1 mt-0.5" />
+          <XIcon className="w-4 h-4 ml-1 mt-0.5" />
         </Button>
       </div>
       <div className="flex gap-4 justify-center items-center border rounded-2xl py-4 px-8 backdrop-blur-md bg-slate-200/20 dark:bg-black/20">
@@ -450,7 +450,7 @@ export default function SetupPage(props: { toMetrics: () => void }) {
                 window.open('https://docs.stack-auth.com/', '_blank');
               }}
             >
-              <Book className="w-4 h-4 mr-2" />
+              <BookIcon className="w-4 h-4 mr-2" />
               Full Documentation
             </Button>
           </Typography>

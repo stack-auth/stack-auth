@@ -75,9 +75,6 @@
         "^build"
       ]
     },
-    "@stackframe/stack-backend#generate-openapi-fumadocs": {
-      "cache": false
-    },
     "clean": {
       "cache": false
     },

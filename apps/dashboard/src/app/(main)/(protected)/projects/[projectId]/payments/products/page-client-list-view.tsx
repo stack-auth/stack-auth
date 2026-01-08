@@ -2,15 +2,15 @@
 
 import { ItemDialog } from "@/components/payments/item-dialog";
 import { useRouter } from "@/components/router";
+import { ActionDialog, Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, toast } from "@/components/ui";
 import { cn } from "@/lib/utils";
+import { DotsThreeVerticalIcon } from "@phosphor-icons/react";
 import { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
 import { useHover } from "@stackframe/stack-shared/dist/hooks/use-hover";
 import { DayInterval } from "@stackframe/stack-shared/dist/utils/dates";
 import { prettyPrintWithMagnitudes } from "@stackframe/stack-shared/dist/utils/numbers";
 import { typedEntries, typedFromEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
-import { ActionDialog, Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, toast } from "@/components/ui";
-import { MoreVertical } from "lucide-react";
 import React, { ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { useAdminApp, useProjectId } from "../../use-admin-app";
 import { ListSection } from "./list-section";
@@ -39,7 +39,7 @@ function ActionMenu({ items }: { items: ActionMenuItem[] }) {
             isOpen && "opacity-100 bg-foreground/[0.05]"
           )}
         >
-          <MoreVertical className="h-4 w-4" />
+          <DotsThreeVerticalIcon className="h-4 w-4" />
           <span className="sr-only">Open menu</span>
         </Button>
       </DropdownMenuTrigger>

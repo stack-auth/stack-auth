@@ -1,7 +1,7 @@
 "use client";
 
 import { Button, Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { CaretLeftIcon, CaretRightIcon } from "@phosphor-icons/react";
 import type { ReactNode } from "react";
 import { combineClassNames } from "./table";
 
@@ -60,7 +60,7 @@ export function PaginationControls(props: PaginationControlsProps) {
       </div>
       <div className="flex items-center gap-2">
         <Button variant="ghost" size="sm" onClick={onPreviousPage} disabled={!hasPreviousPage}>
-          <ChevronLeft className="mr-1 h-4 w-4" />
+          <CaretLeftIcon className="mr-1 h-4 w-4" />
           Previous
         </Button>
         <span className="rounded-md border border-border px-3 py-1 text-xs font-medium text-foreground">
@@ -68,7 +68,7 @@ export function PaginationControls(props: PaginationControlsProps) {
         </span>
         <Button variant="ghost" size="sm" onClick={onNextPage} disabled={!hasNextPage}>
           Next
-          <ChevronRight className="ml-1 h-4 w-4" />
+          <CaretRightIcon className="ml-1 h-4 w-4" />
         </Button>
       </div>
     </div>
