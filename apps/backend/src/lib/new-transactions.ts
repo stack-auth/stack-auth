@@ -8,6 +8,7 @@ import { stringCompare, typedToLowercase, typedToUppercase } from "@stackframe/s
 import { InferType } from "yup";
 import { getSubscriptions, productToInlineProduct } from "./payments";
 import { Tenancy } from "./tenancies";
+import { SubscriptionWhereInput } from "@/generated/prisma/models";
 
 // ============================================================================
 // Transaction Entry Types
@@ -160,8 +161,15 @@ function encodeCursor(createdAt: Date, id: string): TransactionCursor {
 
 function decodeCursor(cursor: TransactionCursor): { createdAt: Date, id: string } | null {
   if (cursor === "first" || cursor === "last") return null;
-  const [, dateStr, id] = cursor.split(":");
-  return { createdAt: new Date(dateStr), id };
+  if (!cursor.startsWith("cursor:")) return null;
+  const payload = cursor.slice("cursor:".length);
+  const lastColon = payload.lastIndexOf(":");
+  if (lastColon <= 0 || lastColon >= payload.length - 1) return null;
+  const dateStr = payload.slice(0, lastColon);
+  const id = payload.slice(lastColon + 1);
+  const createdAt = new Date(dateStr);
+  if (!id || Number.isNaN(createdAt.getTime())) return null;
+  return { createdAt, id };
 }
 
 // ============================================================================
@@ -285,6 +293,7 @@ function buildStripeResubTransaction(
   const product = subscription.product as InferType<typeof productSchema>;
   const customerType = customerTypeToCrud(subscription.customerType);
   const chargedAmount = buildChargedAmount(product, subscription.priceId ?? null, subscription.quantity);
+  const originalEntries = buildNewStripeSubTransaction(subscription).entries;
 
   const entries: NewTransactionEntry[] = [];
 
@@ -307,12 +316,27 @@ function buildStripeResubTransaction(
   for (const [itemId, itemConfig] of Object.entries(includedItems)) {
     const config = itemConfig as { quantity?: number, expires?: string };
     if (config.expires === "when-purchase-expires" && (config.quantity ?? 0) > 0) {
+      const adjustedQuantity = (config.quantity ?? 0) * subscription.quantity;
+      const adjustedEntryIndex = (() => {
+        const strictIndex = originalEntries.findIndex((entry) =>
+          entry.type === "item_quantity_change"
+          && entry.item_id === itemId
+          && entry.quantity === adjustedQuantity
+        );
+        if (strictIndex !== -1) return strictIndex;
+        const looseIndex = originalEntries.findIndex((entry) =>
+          entry.type === "item_quantity_change"
+          && entry.item_id === itemId
+        );
+        return looseIndex !== -1 ? looseIndex : null;
+      })();
+      const resolvedEntryIndex = adjustedEntryIndex ?? 0;
       entries.push({
         type: "item_quantity_expire",
         adjusted_transaction_id: subscription.id, // Reference to original subscription
-        adjusted_entry_index: 0, // Would need to be calculated properly
+        adjusted_entry_index: resolvedEntryIndex,
         item_id: itemId,
-        quantity: (config.quantity ?? 0) * subscription.quantity,
+        quantity: adjustedQuantity,
       });
     }
   }
@@ -1085,13 +1109,13 @@ class StripeSubCancelPaginatedList extends DatabasePaginatedList<Subscription> {
     const isNext = options.direction === "next";
     const orderDir = (isDesc === isNext) ? "desc" : "asc";
 
-    const where: Record<string, unknown> = {
+    const where: SubscriptionWhereInput = {
       tenancyId: options.filter.tenancyId,
       cancelAtPeriodEnd: true,
     };
 
     if (options.filter.customerType) {
-      where.customerType = options.filter.customerType.toUpperCase();
+      where.customerType = typedToUppercase(options.filter.customerType);
     }
     if (options.filter.customerId) {
       where.customerId = options.filter.customerId;
@@ -1111,7 +1135,7 @@ class StripeSubCancelPaginatedList extends DatabasePaginatedList<Subscription> {
     }
 
     return await prisma.subscription.findMany({
-      where: where as any, // eslint-disable-line @typescript-eslint/no-explicit-any -- Prisma types are complex
+      where,
       orderBy: [
         { updatedAt: orderDir },
         { id: orderDir },

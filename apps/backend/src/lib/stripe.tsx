@@ -167,7 +167,6 @@ export async function handleStripeInvoicePaid(stripe: Stripe, stripeAccountId: s
 }
 
 export async function handleStripeRefund(stripe: Stripe, stripeAccountId: string, charge: Stripe.Charge) {
-  // Only process if there are refunds on this charge
   if (!charge.refunds?.data || charge.refunds.data.length === 0) {
     return;
   }
@@ -175,7 +174,6 @@ export async function handleStripeRefund(stripe: Stripe, stripeAccountId: string
   const tenancy = await getTenancyFromStripeAccountIdOrThrow(stripe, stripeAccountId);
   const prisma = await getPrismaClientForTenancy(tenancy);
 
-  // Get customer info from the charge
   const stripeCustomerId = typeof charge.customer === 'string' ? charge.customer : charge.customer?.id;
   if (!stripeCustomerId) {
     throw new StackAssertionError("Stripe charge missing customer", { chargeId: charge.id });
@@ -195,17 +193,12 @@ export async function handleStripeRefund(stripe: Stripe, stripeAccountId: string
     throw new StackAssertionError("Stripe customer metadata has invalid customerType", { stripeCustomerId, customerType });
   }
 
-  // Get the payment intent ID from the charge
   const stripePaymentIntentId = typeof charge.payment_intent === 'string'
     ? charge.payment_intent
     : charge.payment_intent?.id ?? null;
 
-  // Try to find the related subscription or one-time purchase
-  let subscriptionId: string | null = null;
   let oneTimePurchaseId: string | null = null;
-
   if (stripePaymentIntentId) {
-    // Check for one-time purchase first
     const oneTimePurchase = await prisma.oneTimePurchase.findFirst({
       where: {
         tenancyId: tenancy.id,
@@ -217,7 +210,6 @@ export async function handleStripeRefund(stripe: Stripe, stripeAccountId: string
     }
   }
 
-  // Process each refund on the charge
   for (const refund of charge.refunds.data) {
     await prisma.stripeRefund.upsert({
       where: {
@@ -235,7 +227,6 @@ export async function handleStripeRefund(stripe: Stripe, stripeAccountId: string
         tenancyId: tenancy.id,
         stripeRefundId: refund.id,
         stripePaymentIntentId,
-        subscriptionId,
         oneTimePurchaseId,
         customerId,
         customerType,
