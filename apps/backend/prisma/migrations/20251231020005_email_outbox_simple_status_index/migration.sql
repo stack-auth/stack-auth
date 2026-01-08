@@ -1,4 +1,4 @@
--- Recreate simpleStatus index after column was recreated in previous migration
+-- Step 6: Recreate simpleStatus index after column was recreated
 -- SPLIT_STATEMENT_SENTINEL
 -- SINGLE_STATEMENT_SENTINEL
 -- RUN_OUTSIDE_TRANSACTION_SENTINEL

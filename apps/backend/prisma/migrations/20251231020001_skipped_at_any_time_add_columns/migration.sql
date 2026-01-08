@@ -1,16 +1,6 @@
--- This migration allows SKIPPED status to occur at any point in the email lifecycle,
--- not just after sending has finished. This is similar to PAUSED.
+-- Step 2: Recreate generated columns with updated logic
+-- This is the slow part - requires full table rewrite to compute stored values
 
--- Step 1: Drop old indexes first (before dropping columns they reference)
-DROP INDEX IF EXISTS "EmailOutbox_status_tenancy_idx";
-DROP INDEX IF EXISTS "EmailOutbox_simple_status_tenancy_idx";
-
--- Step 2: Drop both generated columns in a single ALTER TABLE
-ALTER TABLE "EmailOutbox" 
-  DROP COLUMN "status",
-  DROP COLUMN "simpleStatus";
-
--- Step 3: Recreate both generated columns in a single ALTER TABLE (single table rewrite)
 ALTER TABLE "EmailOutbox" 
   ADD COLUMN "status" "EmailOutboxStatus" NOT NULL GENERATED ALWAYS AS (
     CASE
@@ -61,29 +51,3 @@ ALTER TABLE "EmailOutbox"
     END
   ) STORED;
 
--- Step 4: Drop the old constraint that required finishedSendingAt for skipped fields
-ALTER TABLE "EmailOutbox" DROP CONSTRAINT "EmailOutbox_send_payload_when_not_finished_check";
-
--- Step 5: Recreate the constraint WITHOUT skippedReason and skippedDetails
--- (since skipping can now happen before sending finishes)
--- Using NOT VALID for instant add, then validate separately
-ALTER TABLE "EmailOutbox" ADD CONSTRAINT "EmailOutbox_send_payload_when_not_finished_check"
-    CHECK (
-        "finishedSendingAt" IS NOT NULL OR (
-            "sendServerErrorExternalMessage" IS NULL
-            AND "sendServerErrorExternalDetails" IS NULL
-            AND "sendServerErrorInternalMessage" IS NULL
-            AND "sendServerErrorInternalDetails" IS NULL
-            AND "canHaveDeliveryInfo" IS NULL
-            AND "deliveredAt" IS NULL
-            AND "deliveryDelayedAt" IS NULL
-            AND "bouncedAt" IS NULL
-            AND "openedAt" IS NULL
-            AND "clickedAt" IS NULL
-            AND "unsubscribedAt" IS NULL
-            AND "markedAsSpamAt" IS NULL
-        )
-    ) NOT VALID;
-
--- Step 6: Validate the constraint (scans table but doesn't lock)
-ALTER TABLE "EmailOutbox" VALIDATE CONSTRAINT "EmailOutbox_send_payload_when_not_finished_check";
