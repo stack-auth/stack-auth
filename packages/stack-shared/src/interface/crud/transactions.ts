@@ -2,7 +2,7 @@ import type { InferType } from "yup";
 import {
   customerTypeSchema,
   inlineProductSchema,
-  moneyAmountSchema,
+  yupRecord,
   yupArray,
   yupBoolean,
   yupNumber,
@@ -10,22 +10,16 @@ import {
   yupString,
   yupUnion,
 } from "../../schema-fields";
-import { SUPPORTED_CURRENCIES } from "../../utils/currency-constants";
-import { typedFromEntries } from "../../utils/objects";
-import { throwErr } from "../../utils/errors";
 
-
-const USD_CURRENCY = SUPPORTED_CURRENCIES.find((currency) => currency.code === "USD") ?? throwErr("USD currency configuration missing in SUPPORTED_CURRENCIES");
-
-const chargedAmountSchema = yupObject({
-  ...typedFromEntries(SUPPORTED_CURRENCIES.map((currency) => [currency.code, moneyAmountSchema(currency).optional()])),
-}).noUnknown(true).test("at-least-one-currency", "charged_amount must include at least one currency amount", (value) => {
-  return Object.values(value).some((amount) => typeof amount === "string");
-}).defined();
+const chargedAmountSchema = yupRecord(yupString(), yupString().defined()).test(
+  "at-least-one-currency",
+  "charged_amount must include at least one currency amount",
+  (value) => Object.values(value).some((amount) => typeof amount === "string"),
+).defined();
 
 const netAmountSchema = yupObject({
-  USD: moneyAmountSchema(USD_CURRENCY).defined(),
-}).noUnknown(true).defined();
+  USD: yupString().defined(),
+}).defined();
 
 const transactionEntryMoneyTransferSchema = yupObject({
   type: yupString().oneOf(["money_transfer"]).defined(),
@@ -72,6 +66,39 @@ const transactionEntryProductGrantSchema = yupObject({
   },
 ).defined();
 
+const transactionEntryActiveSubStartSchema = yupObject({
+  type: yupString().oneOf(["active_sub_start"]).defined(),
+  adjusted_transaction_id: yupString().nullable().defined(),
+  adjusted_entry_index: yupNumber().integer().min(0).nullable().defined(),
+  customer_type: customerTypeSchema.defined(),
+  customer_id: yupString().defined(),
+  subscription_id: yupString().defined(),
+  product_id: yupString().nullable().defined(),
+  price_id: yupString().nullable().defined(),
+}).defined();
+
+const transactionEntryActiveSubChangeSchema = yupObject({
+  type: yupString().oneOf(["active_sub_change"]).defined(),
+  adjusted_transaction_id: yupString().defined(),
+  adjusted_entry_index: yupNumber().integer().min(0).defined(),
+  customer_type: customerTypeSchema.defined(),
+  customer_id: yupString().defined(),
+  subscription_id: yupString().defined(),
+  old_product_id: yupString().nullable().defined(),
+  new_product_id: yupString().nullable().defined(),
+  old_price_id: yupString().nullable().defined(),
+  new_price_id: yupString().nullable().defined(),
+}).defined();
+
+const transactionEntryActiveSubStopSchema = yupObject({
+  type: yupString().oneOf(["active_sub_stop"]).defined(),
+  adjusted_transaction_id: yupString().defined(),
+  adjusted_entry_index: yupNumber().integer().min(0).defined(),
+  customer_type: customerTypeSchema.defined(),
+  customer_id: yupString().defined(),
+  subscription_id: yupString().defined(),
+}).defined();
+
 const transactionEntryProductRevocationSchema = yupObject({
   type: yupString().oneOf(["product_revocation"]).defined(),
   adjusted_transaction_id: yupString().defined(),
@@ -79,24 +106,36 @@ const transactionEntryProductRevocationSchema = yupObject({
   quantity: yupNumber().defined(),
 }).defined();
 
-const transactionEntryProductRevocationReversalSchema = yupObject({
-  type: yupString().oneOf(["product_revocation_reversal"]).defined(),
+const transactionEntryItemQuantityExpireSchema = yupObject({
+  type: yupString().oneOf(["item_quantity_expire"]).defined(),
   adjusted_transaction_id: yupString().defined(),
   adjusted_entry_index: yupNumber().integer().min(0).defined(),
+  item_id: yupString().defined(),
   quantity: yupNumber().defined(),
 }).defined();
 
 export const transactionEntrySchema = yupUnion(
+  transactionEntryActiveSubStartSchema,
+  transactionEntryActiveSubChangeSchema,
+  transactionEntryActiveSubStopSchema,
   transactionEntryMoneyTransferSchema,
   transactionEntryItemQuantityChangeSchema,
+  transactionEntryItemQuantityExpireSchema,
   transactionEntryProductGrantSchema,
   transactionEntryProductRevocationSchema,
-  transactionEntryProductRevocationReversalSchema,
 ).defined();
 
 export type TransactionEntry = InferType<typeof transactionEntrySchema>;
 
 export const TRANSACTION_TYPES = [
+  "new-stripe-sub",
+  "stripe-resub",
+  "stripe-one-time",
+  "stripe-expire",
+  "stripe-refund",
+  "sub-change",
+  "stripe-sub-cancel",
+  "item-quantity-renewal",
   "purchase",
   "subscription-cancellation",
   "subscription-renewal",

@@ -54,7 +54,7 @@ export abstract class PaginatedList<
     let includesLast = false;
     let cursor = options.cursor;
     let limitRemaining = options.limit;
-    while (limitRemaining > 0 || (type === "next" && includesLast) || (type === "prev" && includesFirst)) {
+    while (limitRemaining > 0 && !(type === "next" && includesLast) && !(type === "prev" && includesFirst)) {
       const iterationRes = await this._nextOrPrev(type, {
         cursor,
         limit: options.limit,
@@ -62,6 +62,19 @@ export abstract class PaginatedList<
         filter: options.filter,
         orderBy: options.orderBy,
       });
+      if (
+        iterationRes.items.length === 0
+        && iterationRes.cursor === cursor
+        && !iterationRes.isFirst
+        && !iterationRes.isLast
+      ) {
+        throw new StackAssertionError("Paginated list made no progress; check _nextOrPrev implementation", {
+          type,
+          options,
+          cursor,
+          iterationRes,
+        });
+      }
       result[type === "next" ? "push" : "unshift"](...iterationRes.items);
       limitRemaining -= iterationRes.items.length;
       includesFirst ||= iterationRes.isFirst;
@@ -227,14 +240,22 @@ export abstract class PaginatedList<
             limitPrecision: "at-least",
           });
         }));
-        const combinedItems = fetchedLists.flatMap((list, i) => list.items.map((itemEntry) => ({ itemEntry, listIndex: i })));
-        const sortedItems = [...combinedItems].sort((a, b) => this._compare(orderBy, a.itemEntry.item, b.itemEntry.item));
-        const lastCursorForEachList = sortedItems.reduce((acc, item) => {
-          acc[item.listIndex] = item.itemEntry.itemCursor;
-          return acc;
-        }, range(lists.length).map((i) => cursors[i]));
+        const combinedItems = fetchedLists.flatMap((list, i) =>
+          list.items.map((itemEntry) => ({ itemEntry, listIndex: i })),
+        );
+        const sortedItems = [...combinedItems].sort((a, b) =>
+          this._compare(orderBy, a.itemEntry.item, b.itemEntry.item),
+        );
+        const lastCursorForEachList = range(lists.length).map((i) => cursors[i]);
+        const itemsWithCompositeCursor = sortedItems.map((item) => {
+          lastCursorForEachList[item.listIndex] = item.itemEntry.itemCursor;
+          return {
+            item: item.itemEntry.item,
+            itemCursor: JSON.stringify(lastCursorForEachList),
+          };
+        });
         return {
-          items: sortedItems.map((item) => item.itemEntry),
+          items: itemsWithCompositeCursor,
           isFirst: sortedItems.every((item) => item.listIndex === 0),
           isLast: sortedItems.every((item) => item.listIndex === lists.length - 1),
           cursor: JSON.stringify(lastCursorForEachList),

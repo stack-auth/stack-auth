@@ -107,6 +107,7 @@ it("returns empty list for fresh project", async () => {
       NiceResponse {
         "status": 200,
         "body": {
+          "has_more": false,
           "next_cursor": null,
           "transactions": [],
         },
@@ -144,6 +145,16 @@ it("includes TEST_MODE subscription", async () => {
             "customer_id": "<stripped UUID>",
             "customer_type": "user",
             "price_id": "monthly",
+            "product_id": "sub-product",
+            "subscription_id": "<stripped UUID>",
+            "type": "active_sub_start",
+          },
+          {
+            "adjusted_entry_index": null,
+            "adjusted_transaction_id": null,
+            "customer_id": "<stripped UUID>",
+            "customer_type": "user",
+            "price_id": "monthly",
             "product": {
               "client_metadata": null,
               "client_read_only_metadata": null,
@@ -171,7 +182,7 @@ it("includes TEST_MODE subscription", async () => {
         ],
         "id": "<stripped UUID>",
         "test_mode": true,
-        "type": "purchase",
+        "type": "new-stripe-sub",
       },
     ]
   `);
@@ -225,7 +236,7 @@ it("includes TEST_MODE one-time purchase", async () => {
         ],
         "id": "<stripped UUID>",
         "test_mode": true,
-        "type": "purchase",
+        "type": "stripe-one-time",
       },
     ]
   `);
@@ -272,7 +283,7 @@ it("includes item quantity change entries", async () => {
   `);
 });
 
-it("supports concatenated cursor pagination", async () => {
+it("supports cursor pagination", async () => {
   await setupProjectWithPaymentsConfig();
   const { userId } = await User.create();
 
@@ -306,6 +317,7 @@ it("supports concatenated cursor pagination", async () => {
   });
   expect(page1.status).toBe(200);
   expect(page1.body).toMatchObject({ next_cursor: expect.any(String) });
+  expect(page1.body.has_more).toBe(true);
 
   const page2 = await niceBackendFetch("/api/latest/internal/payments/transactions", {
     accessType: "admin",
@@ -411,12 +423,12 @@ it("omits subscription-renewal entries for subscription creation invoices", asyn
   });
   expect(response.status).toBe(200);
 
-  const renewalTransactions = response.body.transactions.filter((tx: any) => tx.type === "subscription-renewal");
+  const renewalTransactions = response.body.transactions.filter((tx: any) => tx.type === "stripe-resub");
   expect(renewalTransactions.length).toBe(1);
   expect(renewalTransactions[0]?.entries?.[0]?.type).toBe("money_transfer");
 
-  const purchaseTransaction = response.body.transactions.find((tx: any) => tx.type === "purchase");
-  expect(purchaseTransaction).toBeDefined();
+  const subscriptionTransaction = response.body.transactions.find((tx: any) => tx.type === "new-stripe-sub");
+  expect(subscriptionTransaction).toBeDefined();
 });
 
 it("filters results by transaction type", async () => {
@@ -445,13 +457,13 @@ it("filters results by transaction type", async () => {
   expect(manualOnly.body.transactions).toHaveLength(1);
   expect(manualOnly.body.transactions[0].type).toBe("manual-item-quantity-change");
 
-  const purchaseOnly = await niceBackendFetch("/api/latest/internal/payments/transactions", {
+  const subscriptionOnly = await niceBackendFetch("/api/latest/internal/payments/transactions", {
     accessType: "admin",
-    query: { type: "purchase" },
+    query: { type: "new-stripe-sub" },
   });
-  expect(purchaseOnly.status).toBe(200);
-  expect(purchaseOnly.body.transactions).toHaveLength(1);
-  expect(purchaseOnly.body.transactions[0].type).toBe("purchase");
+  expect(subscriptionOnly.status).toBe(200);
+  expect(subscriptionOnly.body.transactions).toHaveLength(1);
+  expect(subscriptionOnly.body.transactions[0].type).toBe("new-stripe-sub");
 });
 
 it("filters results by customer_type across sources", async () => {
@@ -507,7 +519,7 @@ it("filters results by customer_type across sources", async () => {
   expect(teamResponse.status).toBe(200);
   expect(teamResponse.body.transactions).toHaveLength(2);
   expect(teamResponse.body.transactions.every((tx: any) =>
-    tx.entries.every((entry: any) => entry.customer_type === "team")
+    tx.entries.filter((entry: any) => "customer_type" in entry).every((entry: any) => entry.customer_type === "team")
   )).toBe(true);
 
   const userResponse = await niceBackendFetch("/api/latest/internal/payments/transactions", {
@@ -516,7 +528,9 @@ it("filters results by customer_type across sources", async () => {
   });
   expect(userResponse.status).toBe(200);
   expect(userResponse.body.transactions).toHaveLength(1);
-  expect(userResponse.body.transactions[0].entries.every((entry: any) => entry.customer_type === "user")).toBe(true);
+  expect(userResponse.body.transactions[0].entries.filter((entry: any) => "customer_type" in entry).every(
+    (entry: any) => entry.customer_type === "user"
+  )).toBe(true);
 });
 
 it("returns server-granted subscriptions in transactions", async () => {
@@ -549,6 +563,7 @@ it("returns server-granted subscriptions in transactions", async () => {
   expect(response.status).toBe(200);
   expect(response.body).toMatchInlineSnapshot(`
     {
+      "has_more": false,
       "next_cursor": null,
       "transactions": [
         {
@@ -556,6 +571,16 @@ it("returns server-granted subscriptions in transactions", async () => {
           "created_at_millis": <stripped field 'created_at_millis'>,
           "effective_at_millis": <stripped field 'effective_at_millis'>,
           "entries": [
+            {
+              "adjusted_entry_index": null,
+              "adjusted_transaction_id": null,
+              "customer_id": "<stripped UUID>",
+              "customer_type": "user",
+              "price_id": null,
+              "product_id": "subscription-a",
+              "subscription_id": "<stripped UUID>",
+              "type": "active_sub_start",
+            },
             {
               "adjusted_entry_index": null,
               "adjusted_transaction_id": null,
@@ -589,7 +614,7 @@ it("returns server-granted subscriptions in transactions", async () => {
           ],
           "id": "<stripped UUID>",
           "test_mode": false,
-          "type": "purchase",
+          "type": "new-stripe-sub",
         },
       ],
     }

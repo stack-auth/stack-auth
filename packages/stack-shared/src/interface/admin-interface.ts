@@ -594,19 +594,20 @@ export class StackAdminInterface extends StackServerInterface {
     return await response.json();
   }
 
-  async listTransactions(params?: { cursor?: string, limit?: number, type?: TransactionType, customerType?: 'user' | 'team' | 'custom' }): Promise<{ transactions: Transaction[], nextCursor: string | null }> {
+  async listTransactions(params?: { cursor?: string, limit?: number, type?: TransactionType, customerType?: 'user' | 'team' | 'custom', customerId?: string }): Promise<{ transactions: Transaction[], nextCursor: string | null, hasMore: boolean }> {
     const qs = new URLSearchParams();
     if (params?.cursor) qs.set('cursor', params.cursor);
     if (typeof params?.limit === 'number') qs.set('limit', String(params.limit));
     if (params?.type) qs.set('type', params.type);
     if (params?.customerType) qs.set('customer_type', params.customerType);
+    if (params?.customerId) qs.set('customer_id', params.customerId);
     const response = await this.sendAdminRequest(
       `/internal/payments/transactions${qs.size ? `?${qs.toString()}` : ''}`,
       { method: 'GET' },
       null,
     );
-    const json = await response.json() as { transactions: Transaction[], next_cursor: string | null };
-    return { transactions: json.transactions, nextCursor: json.next_cursor };
+    const json = await response.json() as { transactions: Transaction[], next_cursor: string | null, has_more: boolean };
+    return { transactions: json.transactions, nextCursor: json.next_cursor, hasMore: json.has_more };
   }
 
   async refundTransaction(options: { type: "subscription" | "one-time-purchase", id: string }): Promise<{ success: boolean }> {

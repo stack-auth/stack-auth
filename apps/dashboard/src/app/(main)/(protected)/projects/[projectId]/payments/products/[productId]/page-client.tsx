@@ -1341,9 +1341,6 @@ function ProductCustomersSection({ productId, product }: ProductCustomersSection
     }>();
 
     for (const transaction of transactions) {
-      // Only consider purchase transactions
-      if (transaction.type !== 'purchase') continue;
-
       const productGrant = transaction.entries.find(isProductGrantEntry);
       if (!productGrant || productGrant.product_id !== productId) continue;
 
