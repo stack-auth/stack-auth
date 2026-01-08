@@ -1,6 +1,6 @@
+import { CustomerType } from "@/generated/prisma/client";
 import { getTenancy, Tenancy } from "@/lib/tenancies";
 import { getPrismaClientForTenancy, globalPrismaClient } from "@/prisma-client";
-import { CustomerType } from "@/generated/prisma/client";
 import { typedIncludes } from "@stackframe/stack-shared/dist/utils/arrays";
 import { getEnvVariable, getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
 import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
@@ -164,4 +164,85 @@ export async function handleStripeInvoicePaid(stripe: Stripe, stripeAccountId: s
       isSubscriptionCreationInvoice,
     },
   });
+}
+
+export async function handleStripeRefund(stripe: Stripe, stripeAccountId: string, charge: Stripe.Charge) {
+  // Only process if there are refunds on this charge
+  if (!charge.refunds?.data || charge.refunds.data.length === 0) {
+    return;
+  }
+
+  const tenancy = await getTenancyFromStripeAccountIdOrThrow(stripe, stripeAccountId);
+  const prisma = await getPrismaClientForTenancy(tenancy);
+
+  // Get customer info from the charge
+  const stripeCustomerId = typeof charge.customer === 'string' ? charge.customer : charge.customer?.id;
+  if (!stripeCustomerId) {
+    throw new StackAssertionError("Stripe charge missing customer", { chargeId: charge.id });
+  }
+
+  const stripeCustomer = await stripe.customers.retrieve(stripeCustomerId);
+  if (stripeCustomer.deleted) {
+    throw new StackAssertionError("Stripe customer was deleted", { stripeCustomerId });
+  }
+
+  const customerId = stripeCustomer.metadata.customerId;
+  const customerType = stripeCustomer.metadata.customerType;
+  if (!customerId || !customerType) {
+    throw new StackAssertionError("Stripe customer metadata missing customerId or customerType", { stripeCustomerId });
+  }
+  if (!typedIncludes(Object.values(CustomerType), customerType)) {
+    throw new StackAssertionError("Stripe customer metadata has invalid customerType", { stripeCustomerId, customerType });
+  }
+
+  // Get the payment intent ID from the charge
+  const stripePaymentIntentId = typeof charge.payment_intent === 'string'
+    ? charge.payment_intent
+    : charge.payment_intent?.id ?? null;
+
+  // Try to find the related subscription or one-time purchase
+  let subscriptionId: string | null = null;
+  let oneTimePurchaseId: string | null = null;
+
+  if (stripePaymentIntentId) {
+    // Check for one-time purchase first
+    const oneTimePurchase = await prisma.oneTimePurchase.findFirst({
+      where: {
+        tenancyId: tenancy.id,
+        stripePaymentIntentId,
+      },
+    });
+    if (oneTimePurchase) {
+      oneTimePurchaseId = oneTimePurchase.id;
+    }
+  }
+
+  // Process each refund on the charge
+  for (const refund of charge.refunds.data) {
+    await prisma.stripeRefund.upsert({
+      where: {
+        tenancyId_stripeRefundId: {
+          tenancyId: tenancy.id,
+          stripeRefundId: refund.id,
+        },
+      },
+      update: {
+        amountCents: refund.amount,
+        currency: refund.currency.toUpperCase(),
+        reason: refund.reason ?? null,
+      },
+      create: {
+        tenancyId: tenancy.id,
+        stripeRefundId: refund.id,
+        stripePaymentIntentId,
+        subscriptionId,
+        oneTimePurchaseId,
+        customerId,
+        customerType,
+        amountCents: refund.amount,
+        currency: refund.currency.toUpperCase(),
+        reason: refund.reason ?? null,
+      },
+    });
+  }
 }

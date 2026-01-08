@@ -1034,3 +1034,101 @@ model SubscriptionInvoice {
   @@id([tenancyId, id])
   @@unique([tenancyId, stripeInvoiceId])
 }
+
+// Stores Stripe refunds synced from webhooks
+model StripeRefund {
+  id        String @default(uuid()) @db.Uuid
+  tenancyId String @db.Uuid
+
+  stripeRefundId        String
+  stripePaymentIntentId String?
+
+  // The source of the refund - exactly one of subscriptionId or oneTimePurchaseId must be set
+  subscriptionId    String? @db.Uuid
+  oneTimePurchaseId String? @db.Uuid
+
+  // Customer info (denormalized for easier querying)
+  customerId   String
+  customerType CustomerType
+
+  // Refund details
+  amountCents Int
+  currency    String // ISO 4217 currency code (e.g., "USD")
+  reason      String? // Optional reason from Stripe
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@id([tenancyId, id])
+  @@unique([tenancyId, stripeRefundId])
+  @@index([tenancyId, subscriptionId])
+  @@index([tenancyId, oneTimePurchaseId])
+}
+
+// Stores product changes (upgrades, downgrades, switches between products)
+model ProductChange {
+  id        String @default(uuid()) @db.Uuid
+  tenancyId String @db.Uuid
+
+  customerId   String
+  customerType CustomerType
+
+  // The subscription that was changed (if applicable)
+  subscriptionId String? @db.Uuid
+
+  // Old product details
+  oldProductId String?
+  oldPriceId   String?
+  oldProduct   Json? // Snapshot of old product config
+
+  // New product details
+  newProductId String?
+  newPriceId   String?
+  newProduct   Json? // Snapshot of new product config
+
+  // Quantity change (if any)
+  oldQuantity Int @default(1)
+  newQuantity Int @default(1)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@id([tenancyId, id])
+  @@index([tenancyId, subscriptionId])
+  @@index([tenancyId, customerId])
+}
+
+enum SubscriptionChangeType {
+  PRICE_CHANGE
+  QUANTITY_CHANGE
+  PERIOD_CHANGE
+  STATUS_CHANGE
+  METADATA_CHANGE
+  OTHER
+}
+
+// Stores subscription changes that we track ourselves (Stripe may not store all changes)
+model SubscriptionChange {
+  id        String @default(uuid()) @db.Uuid
+  tenancyId String @db.Uuid
+
+  subscriptionId String       @db.Uuid
+  customerId     String
+  customerType   CustomerType
+
+  changeType SubscriptionChangeType
+
+  // Store old and new values as JSON for flexibility
+  oldValue Json?
+  newValue Json?
+
+  // Optional description of the change
+  description String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@id([tenancyId, id])
+  @@index([tenancyId, subscriptionId])
+  @@index([tenancyId, customerId])
+}

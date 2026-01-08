@@ -1,4 +1,4 @@
-import { getStackStripe, getStripeForAccount, handleStripeInvoicePaid, syncStripeSubscriptions } from "@/lib/stripe";
+import { getStackStripe, getStripeForAccount, handleStripeInvoicePaid, handleStripeRefund, syncStripeSubscriptions } from "@/lib/stripe";
 import { getTenancy } from "@/lib/tenancies";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
@@ -30,8 +30,17 @@ const subscriptionChangedEvents = [
   "payment_intent.canceled",
 ] as const satisfies Stripe.Event.Type[];
 
+const refundEvents = [
+  "charge.refunded",
+  "charge.refund.updated",
+] as const satisfies Stripe.Event.Type[];
+
 const isSubscriptionChangedEvent = (event: Stripe.Event): event is Stripe.Event & { type: (typeof subscriptionChangedEvents)[number] } => {
   return subscriptionChangedEvents.includes(event.type as any);
+};
+
+const isRefundEvent = (event: Stripe.Event): event is Stripe.Event & { type: (typeof refundEvents)[number], data: { object: Stripe.Charge } } => {
+  return refundEvents.includes(event.type as any);
 };
 
 async function processStripeWebhookEvent(event: Stripe.Event): Promise<void> {
@@ -103,6 +112,16 @@ async function processStripeWebhookEvent(event: Stripe.Event): Promise<void> {
     if (event.type === "invoice.payment_succeeded") {
       await handleStripeInvoicePaid(stripe, accountId, event.data.object);
     }
+  }
+
+  // Handle refund events
+  if (isRefundEvent(event)) {
+    const accountId = event.account;
+    if (!accountId) {
+      throw new StackAssertionError("Stripe webhook account id missing for refund event", { event });
+    }
+    const stripe = await getStripeForAccount({ accountId }, mockData);
+    await handleStripeRefund(stripe, accountId, event.data.object);
   }
 }
 
