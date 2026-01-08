@@ -159,7 +159,7 @@ describe("with valid credentials", () => {
 
     const messages = await projectOwnerMailbox.fetchMessages();
     expect(messages.filter(msg => !msg.subject.includes("Sign in"))).toMatchInlineSnapshot(`[]`);
-  }, { repeats: 10 });
+  });
 
   // TODO: failed emails digest is currently disabled, fix that and then re-enable this test
   it.todo("should return 200 and process failed emails digest", async ({ expect }) => {

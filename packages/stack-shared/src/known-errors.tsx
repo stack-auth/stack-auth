@@ -131,7 +131,7 @@ function createKnownErrorConstructor<ErrorCode extends string, Super extends Abs
     public readonly constructorArgs: Args;
 
     constructor(...args: Args) {
-      // @ts-expect-error
+      // @ts-expect-error legendary ts-expect-error, may never be removed https://x.com/konstiwohlwend/status/1998543556567617780
       super(...createFn(...args));
       this.constructorArgs = args;
     }
@@ -1454,6 +1454,20 @@ const RequiresCustomEmailServer = createKnownErrorConstructor(
   () => [] as const,
 );
 
+const EmailNotEditable = createKnownErrorConstructor(
+  KnownError,
+  "EMAIL_NOT_EDITABLE",
+  (emailId: string, status: string) => [
+    400,
+    `Email with ID "${emailId}" cannot be edited because it is in status "${status}". Only emails in PAUSED, PREPARING, RENDERING, RENDER_ERROR, SCHEDULED, QUEUED, or SERVER_ERROR status can be edited.`,
+    {
+      email_id: emailId,
+      status,
+    },
+  ] as const,
+  (json: any) => [json.email_id, json.status] as const,
+);
+
 const ItemNotFound = createKnownErrorConstructor(
   KnownError,
   "ITEM_NOT_FOUND",
@@ -1748,6 +1762,7 @@ export const KnownErrors = {
   WrongApiKeyType,
   EmailRenderingError,
   RequiresCustomEmailServer,
+  EmailNotEditable,
   ItemNotFound,
   ItemCustomerTypeDoesNotMatch,
   CustomerDoesNotExist,
