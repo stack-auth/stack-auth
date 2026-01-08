@@ -1,8 +1,8 @@
 "use client";
 
-import { cn } from "@/lib/utils";
 import { Button, Checkbox, Typography } from "@/components/ui";
-import { Gift, Plus, Trash2 } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { GiftIcon, PlusIcon, TrashIcon } from "@phosphor-icons/react";
 import { useState } from "react";
 import {
   createNewEditingPrice,
@@ -85,7 +85,7 @@ export function PricingSection({
               className="mt-3"
               onClick={handleAddClick}
             >
-              <Plus className="h-4 w-4 mr-2" />
+              <PlusIcon className="h-4 w-4 mr-2" />
               Add Price
             </Button>
           </div>
@@ -116,7 +116,7 @@ export function PricingSection({
                     size="sm"
                     onClick={() => handleRemovePrice(id)}
                   >
-                    <Trash2 className="h-4 w-4 text-destructive" />
+                    <TrashIcon className="h-4 w-4 text-destructive" />
                   </Button>
                 </div>
               </div>
@@ -128,7 +128,7 @@ export function PricingSection({
                 onClick={handleAddClick}
                 className="w-full justify-start"
               >
-                <Plus className="h-4 w-4 mr-2" />
+                <PlusIcon className="h-4 w-4 mr-2" />
                 Add Price
               </Button>
             </div>
@@ -187,7 +187,7 @@ export function PricingSection({
             size="sm"
             onClick={onMakePaid}
           >
-            <Trash2 className="h-4 w-4 text-destructive" />
+            <TrashIcon className="h-4 w-4 text-destructive" />
           </Button>
         </div>
       </div>
@@ -209,7 +209,7 @@ export function PricingSection({
               variant="outline"
               onClick={handleAddClick}
             >
-              <Plus className="h-4 w-4 mr-2" />
+              <PlusIcon className="h-4 w-4 mr-2" />
               Add Price
             </Button>
             {onMakeFree && (
@@ -217,7 +217,7 @@ export function PricingSection({
                 variant="outline"
                 onClick={onMakeFree}
               >
-                <Gift className="h-4 w-4 mr-2" />
+                <GiftIcon className="h-4 w-4 mr-2" />
                 Make Free
               </Button>
             )}
@@ -256,7 +256,7 @@ export function PricingSection({
                   size="sm"
                   onClick={() => handleRemovePrice(priceId)}
                 >
-                  <Trash2 className="h-4 w-4 text-destructive" />
+                  <TrashIcon className="h-4 w-4 text-destructive" />
                 </Button>
               </div>
             </div>
@@ -267,7 +267,7 @@ export function PricingSection({
               onClick={handleAddClick}
               className="flex-1"
             >
-              <Plus className="h-4 w-4 mr-2" />
+              <PlusIcon className="h-4 w-4 mr-2" />
               Add Price
             </Button>
             {onMakeFree && (
@@ -275,7 +275,7 @@ export function PricingSection({
                 variant="outline"
                 onClick={onMakeFree}
               >
-                <Gift className="h-4 w-4 mr-2" />
+                <GiftIcon className="h-4 w-4 mr-2" />
                 Make Free
               </Button>
             )}

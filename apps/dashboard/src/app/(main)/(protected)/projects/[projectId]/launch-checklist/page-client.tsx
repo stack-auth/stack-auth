@@ -4,6 +4,7 @@ import { InlineCode } from "@/components/inline-code";
 import { StyledLink } from "@/components/link";
 import { useRouter } from "@/components/router";
 import { SettingSwitch } from "@/components/settings";
+import { CaretDownIcon, CaretUpIcon, CheckCircleIcon, CircleIcon, ClockIcon } from "@phosphor-icons/react";
 import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
 import {
   Badge,
@@ -22,7 +23,6 @@ import {
   cn
 } from "@/components/ui";
 import * as confetti from "canvas-confetti";
-import { CheckCircle2, ChevronDown, ChevronUp, Circle, Clock } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { AppEnabledGuard } from "../app-enabled-guard";
 import { PageLayout } from "../page-layout";
@@ -171,7 +171,7 @@ function ChecklistRow(props: {
   done: boolean,
   detail?: React.ReactNode,
 }) {
-  const Icon = props.done ? CheckCircle2 : Circle;
+  const Icon = props.done ? CheckCircleIcon : CircleIcon;
   const iconClass = props.done
     ? "text-emerald-500 dark:text-emerald-400"
     : STATUS_META[props.status].inactiveIcon;
@@ -228,7 +228,7 @@ function TaskCard(props: {
                   variant="outline"
                   className="border-emerald-500/50 bg-emerald-500/10 text-emerald-600 dark:border-emerald-500/50 dark:bg-emerald-500/20 dark:text-emerald-400"
                 >
-                  <CheckCircle2 className="mr-1 h-3 w-3" />
+                  <CheckCircleIcon className="mr-1 h-3 w-3" />
                   Complete
                 </Badge>
               )}
@@ -252,9 +252,9 @@ function TaskCard(props: {
             aria-label={props.isExpanded ? "Collapse section" : "Expand section"}
           >
             {props.isExpanded ? (
-              <ChevronUp className="h-5 w-5 text-muted-foreground" />
+              <CaretUpIcon className="h-5 w-5 text-muted-foreground" />
             ) : (
-              <ChevronDown className="h-5 w-5 text-muted-foreground" />
+              <CaretDownIcon className="h-5 w-5 text-muted-foreground" />
             )}
           </button>
         </div>
@@ -602,12 +602,12 @@ export default function PageClient() {
             {showOauthGuides ? (
               <>
                 Hide guides
-                <ChevronUp className="h-3 w-3" />
+                <CaretUpIcon className="h-3 w-3" />
               </>
             ) : (
               <>
                 View guides
-                <ChevronDown className="h-3 w-3" />
+                <CaretDownIcon className="h-3 w-3" />
               </>
             )}
           </button>
@@ -662,12 +662,12 @@ export default function PageClient() {
           {showEmailHelp ? (
             <>
               Hide steps
-              <ChevronUp className="h-3 w-3" />
+              <CaretUpIcon className="h-3 w-3" />
             </>
           ) : (
             <>
               View steps
-              <ChevronDown className="h-3 w-3" />
+              <CaretDownIcon className="h-3 w-3" />
             </>
           )}
         </button>
@@ -776,7 +776,7 @@ export default function PageClient() {
             {checklistProgress.next ? (
               <div className="flex flex-wrap items-center justify-between gap-4 pt-1">
                 <div className="flex items-center gap-2">
-                  <Clock className="h-4 w-4 text-muted-foreground" />
+                  <ClockIcon className="h-4 w-4 text-muted-foreground" />
                   <span className="text-sm text-muted-foreground">
                     Up next: <span className="font-medium text-foreground">{checklistProgress.next.item.title}</span>
                   </span>
@@ -812,7 +812,7 @@ export default function PageClient() {
               </div>
             ) : (
               <div className="flex items-center gap-2 pt-1">
-                <CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                <CheckCircleIcon className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
                 <span className="text-sm text-muted-foreground">
                   All checks complete. Enable production mode when ready.
                 </span>

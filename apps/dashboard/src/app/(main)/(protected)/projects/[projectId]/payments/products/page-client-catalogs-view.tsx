@@ -3,13 +3,6 @@
 import { Link } from '@/components/link';
 import { ItemDialog } from "@/components/payments/item-dialog";
 import { useRouter } from "@/components/router";
-import { cn } from "@/lib/utils";
-import { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
-import { getUserSpecifiedIdErrorMessage, isValidUserSpecifiedId } from "@stackframe/stack-shared/dist/schema-fields";
-import type { DayInterval } from "@stackframe/stack-shared/dist/utils/dates";
-import { prettyPrintWithMagnitudes } from "@stackframe/stack-shared/dist/utils/numbers";
-import { typedEntries, typedFromEntries } from "@stackframe/stack-shared/dist/utils/objects";
-import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
 import {
   ActionDialog,
   Button,
@@ -27,7 +20,14 @@ import {
   SimpleTooltip,
   toast
 } from "@/components/ui";
-import { ChevronsUpDown, Code, Copy, Eye, FileText, Gift, Info, Layers, MoreVertical, Pencil, Plus, Puzzle, Server, Trash2, X } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { CaretUpDownIcon, CodeIcon, CopyIcon, DotsThreeVerticalIcon, EyeIcon, FileTextIcon, GiftIcon, HardDriveIcon, InfoIcon, PencilSimpleIcon, PlusIcon, PuzzlePieceIcon, StackIcon, TrashIcon, XIcon } from "@phosphor-icons/react";
+import { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
+import { getUserSpecifiedIdErrorMessage, isValidUserSpecifiedId } from "@stackframe/stack-shared/dist/schema-fields";
+import type { DayInterval } from "@stackframe/stack-shared/dist/utils/dates";
+import { prettyPrintWithMagnitudes } from "@stackframe/stack-shared/dist/utils/numbers";
+import { typedEntries, typedFromEntries } from "@stackframe/stack-shared/dist/utils/objects";
+import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
 import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useAdminApp, useProjectId } from "../../use-admin-app";
 import { IntervalPopover, OrSeparator, SectionHeading } from "./components";
@@ -136,7 +136,7 @@ function LabelWithInfo({ children, tooltip }: { children: React.ReactNode, toolt
       </Label>
       {tooltip && (
         <SimpleTooltip tooltip={tooltip}>
-          <Info className="h-3 w-3 text-muted-foreground/60 cursor-help" />
+          <InfoIcon className="h-3 w-3 text-muted-foreground/60 cursor-help" />
         </SimpleTooltip>
       )}
     </div>
@@ -247,7 +247,7 @@ function ProductItemRow({
               <PopoverTrigger asChild>
                 <button className={dropdownButtonClass}>
                   <span className="truncate">{itemDisplayName}</span>
-                  <ChevronsUpDown className="h-4 w-4 text-muted-foreground" />
+                  <CaretUpDownIcon className="h-4 w-4 text-muted-foreground" />
                 </button>
               </PopoverTrigger>
               <PopoverContent align="start" className="w-72 p-0 overflow-hidden">
@@ -297,7 +297,7 @@ function ProductItemRow({
                       });
                     }}
                   >
-                    <Plus className="mr-2 h-4 w-4" /> New Item
+                    <PlusIcon className="mr-2 h-4 w-4" /> New Item
                   </button>
                 </div>
               </PopoverContent>
@@ -335,7 +335,7 @@ function ProductItemRow({
                   <span className="truncate">
                     {EXPIRES_OPTIONS.find(o => o.value === item.expires)?.label ?? 'Never'}
                   </span>
-                  <ChevronsUpDown className="h-4 w-4 text-muted-foreground" />
+                  <CaretUpDownIcon className="h-4 w-4 text-muted-foreground" />
                 </button>
               </PopoverTrigger>
               <PopoverContent align="start" className="w-80 p-0 overflow-hidden">
@@ -398,7 +398,7 @@ function ProductItemRow({
             onClick={onRemove}
             aria-label="Remove item"
           >
-            <X className="h-4 w-4" />
+            <XIcon className="h-4 w-4" />
           </button>
         )}
       </div>
@@ -843,7 +843,7 @@ function ProductCard({ id, product, allProducts, existingItems, onSave, onDelete
     description: "Restricts this product to only be purchased from server-side calls. Use this for backend-initiated purchases.",
     active: !!draft.serverOnly,
     visible: true,
-    icon: <Server size={14} />,
+    icon: <HardDriveIcon size={14} />,
     onToggle: () => setDraft(prev => ({ ...prev, serverOnly: !prev.serverOnly })),
     wrapButton: (button: ReactNode) => button,
   }, {
@@ -853,7 +853,7 @@ function ProductCard({ id, product, allProducts, existingItems, onSave, onDelete
     description: "Allows customers to purchase this product multiple times. Each purchase adds to their existing quantity.",
     active: !!draft.stackable,
     visible: true,
-    icon: <Layers size={14} />,
+    icon: <StackIcon size={14} />,
     onToggle: () => setDraft(prev => ({ ...prev, stackable: !prev.stackable })),
     wrapButton: (button: ReactNode) => button,
   }, {
@@ -863,7 +863,7 @@ function ProductCard({ id, product, allProducts, existingItems, onSave, onDelete
     description: "Makes this an optional extra that customers can purchase alongside a main product.",
     visible: draft.isAddOnTo !== false || couldBeAddOnTo.length > 0,
     active: draft.isAddOnTo !== false,
-    icon: <Puzzle size={14} />,
+    icon: <PuzzlePieceIcon size={14} />,
     onToggle: isAddOnTo.length === 0 && draft.isAddOnTo !== false ? () => setDraft(prev => ({ ...prev, isAddOnTo: false })) : undefined,
     wrapButton: (button: ReactNode) => isAddOnTo.length === 0 && draft.isAddOnTo !== false ? button : (
       <DropdownMenu>
@@ -1054,7 +1054,7 @@ function ProductCard({ id, product, allProducts, existingItems, onSave, onDelete
                     )}>
                       {draft.customerType}
                     </span>
-                    <ChevronsUpDown className="h-4 w-4 text-muted-foreground" />
+                    <CaretUpDownIcon className="h-4 w-4 text-muted-foreground" />
                   </button>
                 </PopoverTrigger>
                 <PopoverContent align="start" className="w-64 p-0 overflow-hidden">
@@ -1129,7 +1129,7 @@ function ProductCard({ id, product, allProducts, existingItems, onSave, onDelete
                     setEditingPriceId(tempId);
                   }}
                 >
-                  <Plus className="h-4 w-4" />
+                  <PlusIcon className="h-4 w-4" />
                   {hasExistingPrices ? "Add alternative price" : "Add price"}
                 </Button>
                 {!hasExistingPrices && (
@@ -1149,7 +1149,7 @@ function ProductCard({ id, product, allProducts, existingItems, onSave, onDelete
                         setEditingPricesIsFreeMode(true);
                       }}
                     >
-                      <Gift className="h-4 w-4" />
+                      <GiftIcon className="h-4 w-4" />
                       Make free
                     </Button>
                   </>
@@ -1227,7 +1227,7 @@ function ProductCard({ id, product, allProducts, existingItems, onSave, onDelete
               }));
             }}
           >
-            <Plus className="h-4 w-4" />
+            <PlusIcon className="h-4 w-4" />
             Add Item
           </Button>
         </div>
@@ -1246,7 +1246,7 @@ function ProductCard({ id, product, allProducts, existingItems, onSave, onDelete
           }}
           aria-label="Delete offer"
         >
-          <Trash2 className="h-4 w-4" />
+          <TrashIcon className="h-4 w-4" />
         </button>
         <div className="ml-auto flex items-center gap-2">
           <Button
@@ -1319,7 +1319,7 @@ function ProductCard({ id, product, allProducts, existingItems, onSave, onDelete
           </div>
           {/* Product name */}
           <h3 className="text-lg font-semibold text-center tracking-tight flex items-center justify-center gap-1.5">
-            {draft.isAddOnTo !== false && <Puzzle className="h-4 w-4 text-muted-foreground shrink-0" />}
+            {draft.isAddOnTo !== false && <PuzzlePieceIcon className="h-4 w-4 text-muted-foreground shrink-0" />}
             {draft.displayName || "Untitled Product"}
           </h3>
 
@@ -1328,29 +1328,29 @@ function ProductCard({ id, product, allProducts, existingItems, onSave, onDelete
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <button className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-foreground/[0.05] transition-colors duration-150 hover:transition-none" aria-label="Options">
-                  <MoreVertical className="h-4 w-4" />
+                  <DotsThreeVerticalIcon className="h-4 w-4" />
                 </button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
                 <DropdownMenuItem
-                  icon={<Eye className="h-4 w-4" />}
+                  icon={<EyeIcon className="h-4 w-4" />}
                   onClick={() => router.push(`/projects/${projectId}/payments/products/${id}`)}
                 >
                   View Details
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem icon={<Pencil className="h-4 w-4" />} onClick={() => {
+                <DropdownMenuItem icon={<PencilSimpleIcon className="h-4 w-4" />} onClick={() => {
                   setIsEditing(true);
                   setDraft(product);
                 }}>
                   Edit
                 </DropdownMenuItem>
-                <DropdownMenuItem icon={<Copy className="h-4 w-4" />} onClick={() => { onDuplicate(product); }}>
+                <DropdownMenuItem icon={<CopyIcon className="h-4 w-4" />} onClick={() => { onDuplicate(product); }}>
                   Duplicate
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
-                  icon={<Trash2 className="h-4 w-4" />}
+                  icon={<TrashIcon className="h-4 w-4" />}
                   className="text-destructive focus:text-destructive"
                   onClick={() => { setShowDeleteDialog(true); }}
                 >
@@ -1417,7 +1417,7 @@ function ProductCard({ id, product, allProducts, existingItems, onSave, onDelete
               toast({ title: "Copied to clipboard" });
             }}
           >
-            <Code className="h-3.5 w-3.5" />
+            <CodeIcon className="h-3.5 w-3.5" />
             Copy code
           </Button>
           <Button
@@ -1437,7 +1437,7 @@ function ProductCard({ id, product, allProducts, existingItems, onSave, onDelete
               toast({ title: "Prompt copied to clipboard" });
             }}
           >
-            <FileText className="h-3.5 w-3.5" />
+            <FileTextIcon className="h-3.5 w-3.5" />
             Copy prompt
           </Button>
         </div>
@@ -1824,7 +1824,7 @@ function CatalogView({ groupedProducts, groups, existingItems, onSaveProduct, on
                       )}
                     >
                       <div className="flex flex-col items-center gap-2">
-                        <Plus className="h-6 w-6" />
+                        <PlusIcon className="h-6 w-6" />
                         <span className="text-sm font-medium">Add product</span>
                       </div>
                     </Button>
@@ -1910,7 +1910,7 @@ function CatalogView({ groupedProducts, groups, existingItems, onSaveProduct, on
                   )}
                 >
                   <div className="flex flex-col items-center gap-2">
-                    <Plus className="h-6 w-6" />
+                    <PlusIcon className="h-6 w-6" />
                     <span className="text-sm font-medium">Add product</span>
                   </div>
                 </Button>
@@ -1935,7 +1935,7 @@ function CatalogView({ groupedProducts, groups, existingItems, onSaveProduct, on
             )}
           >
             <div className="flex flex-col items-center gap-2">
-              <Plus className="h-6 w-6" />
+              <PlusIcon className="h-6 w-6" />
               <span className="text-sm font-medium">New catalog</span>
             </div>
           </Button>

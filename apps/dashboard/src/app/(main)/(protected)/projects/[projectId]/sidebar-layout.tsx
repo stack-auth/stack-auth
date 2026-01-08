@@ -6,12 +6,6 @@ import { Logo } from "@/components/logo";
 import { ProjectSwitcher } from "@/components/project-switcher";
 import { StackCompanion } from "@/components/stack-companion";
 import ThemeToggle from "@/components/theme-toggle";
-import { ALL_APPS_FRONTEND, DUMMY_ORIGIN, getAppPath, getItemPath, testAppPath, testItemPath } from "@/lib/apps-frontend";
-import { getPublicEnvVar } from '@/lib/env';
-import { cn } from "@/lib/utils";
-import { UserButton } from "@stackframe/stack";
-import { ALL_APPS, type AppId } from "@stackframe/stack-shared/dist/apps/apps-config";
-import { typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import {
   Button,
   Sheet,
@@ -24,17 +18,23 @@ import {
   TooltipTrigger,
   Typography,
 } from "@/components/ui";
+import { ALL_APPS_FRONTEND, DUMMY_ORIGIN, getAppPath, getItemPath, testAppPath, testItemPath } from "@/lib/apps-frontend";
+import { getPublicEnvVar } from '@/lib/env';
+import { cn } from "@/lib/utils";
 import {
-  Blocks,
-  ChevronDown,
-  ChevronRight,
-  Globe,
-  KeyRound,
-  LucideIcon,
-  Menu,
-  PanelLeft,
-  Settings,
-} from "lucide-react";
+  CaretDownIcon,
+  CaretRightIcon,
+  CubeIcon,
+  GearIcon,
+  GlobeIcon,
+  KeyIcon,
+  ListIcon,
+  SidebarIcon,
+  type Icon as PhosphorIcon,
+} from "@phosphor-icons/react";
+import { UserButton } from "@stackframe/stack";
+import { ALL_APPS, type AppId } from "@stackframe/stack-shared/dist/apps/apps-config";
+import { typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import { usePathname } from "next/navigation";
 import { useCallback, useMemo, useRef, useState } from "react";
 import { useAdminApp, useProjectId } from "./use-admin-app";
@@ -42,7 +42,7 @@ import { useAdminApp, useProjectId } from "./use-admin-app";
 type Item = {
   name: React.ReactNode,
   href: string,
-  icon: LucideIcon,
+  icon: PhosphorIcon,
   regex?: RegExp,
   type: 'item',
 };
@@ -62,7 +62,7 @@ type AppSection = {
 type BottomItem = {
   name: string,
   href: string,
-  icon: LucideIcon,
+  icon: PhosphorIcon,
   external?: boolean,
   regex?: RegExp,
 };
@@ -72,19 +72,19 @@ const bottomItems: BottomItem[] = [
   {
     name: 'Explore Apps',
     href: '/apps',
-    icon: Blocks,
+    icon: CubeIcon,
     regex: /^\/projects\/[^\/]+\/apps(\/.*)?$/,
   },
   {
     name: 'Project Keys',
     href: '/project-keys',
-    icon: KeyRound,
+    icon: KeyIcon,
     regex: /^\/projects\/[^\/]+\/project-keys(\/.*)?$/,
   },
   {
     name: 'Project Settings',
     href: '/project-settings',
-    icon: Settings,
+    icon: GearIcon,
     regex: /^\/projects\/[^\/]+\/project-settings$/,
   },
 ];
@@ -94,7 +94,7 @@ const overviewItem: Item = {
   name: "Overview",
   href: "/",
   regex: /^\/projects\/[^\/]+\/?$/,
-  icon: Globe,
+  icon: GlobeIcon,
   type: 'item'
 };
 
@@ -241,7 +241,7 @@ function NavItem({
             <IconComponent className={iconClasses} />
             <span className="truncate text-sm font-semibold">{item.name}</span>
           </span>
-          <ChevronDown strokeWidth={2} className={caretClasses} />
+          <CaretDownIcon weight="bold" className={caretClasses} />
         </Button>
       ) : (
         <Button
@@ -502,7 +502,7 @@ function SidebarContent({
                   onClick={onToggleCollapse}
                   className="h-8 w-8 p-1 text-muted-foreground hover:text-foreground hover:bg-background/60 rounded-lg transition-all duration-150 hover:transition-none"
                 >
-                  <PanelLeft className={cn("h-4 w-4 transition-transform duration-200", isCollapsed && "rotate-180")} />
+                  <SidebarIcon className={cn("h-4 w-4 transition-transform duration-200", isCollapsed && "rotate-180")} />
                 </Button>
               </TooltipTrigger>
               <TooltipContent side="right">
@@ -565,7 +565,7 @@ export default function SidebarLayout(props: { children?: React.ReactNode }) {
                   size="sm"
                   className="lg:hidden h-9 w-9 p-0 text-muted-foreground hover:text-foreground"
                 >
-                  <Menu className="h-4 w-4" />
+                  <ListIcon className="h-4 w-4" />
                 </Button>
               </SheetTrigger>
               <SheetContent
@@ -581,7 +581,7 @@ export default function SidebarLayout(props: { children?: React.ReactNode }) {
             {/* Desktop: Logo + Breadcrumb + Project Switcher */}
             <div className="hidden lg:flex items-center gap-2">
               <Logo height={24} href="/" />
-              <ChevronRight className="h-4 w-4 text-muted-foreground/50" />
+              <CaretRightIcon className="h-4 w-4 text-muted-foreground/50" />
               {getPublicEnvVar("NEXT_PUBLIC_STACK_EMULATOR_ENABLED") === "true" ? (
                 <Logo full width={96} href="/projects" />
               ) : (

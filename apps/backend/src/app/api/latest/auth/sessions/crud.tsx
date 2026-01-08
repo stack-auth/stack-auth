@@ -1,7 +1,7 @@
 import { getPrismaClientForTenancy, getPrismaSchemaForTenancy, globalPrismaClient, sqlQuoteIdent } from "@/prisma-client";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
 import { SmartRequestAuth } from "@/route-handlers/smart-request";
-import { Prisma } from "@prisma/client";
+import { Prisma } from "@/generated/prisma/client";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { sessionsCrud } from "@stackframe/stack-shared/dist/interface/crud/sessions";
 import { userIdOrMeSchema, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";

@@ -1,5 +1,3 @@
-import { cn } from "@/lib/utils";
-import type { DayInterval } from "@stackframe/stack-shared/dist/utils/dates";
 import {
   Checkbox,
   Input,
@@ -11,7 +9,9 @@ import {
   SelectValue,
   SimpleTooltip
 } from "@/components/ui";
-import { Info, X } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { InfoIcon, XIcon } from "@phosphor-icons/react";
+import type { DayInterval } from "@stackframe/stack-shared/dist/utils/dates";
 import { useEffect, useState } from "react";
 import { IntervalPopover } from "./components";
 import { buildPriceUpdate, DEFAULT_INTERVAL_UNITS, freeTrialLabel, intervalLabel, PRICE_INTERVAL_UNITS, Product } from "./utils";
@@ -27,7 +27,7 @@ function LabelWithInfo({ children, tooltip }: { children: React.ReactNode, toolt
       </Label>
       {tooltip && (
         <SimpleTooltip tooltip={tooltip}>
-          <Info className="h-3 w-3 text-muted-foreground/60 cursor-help" />
+          <InfoIcon className="h-3 w-3 text-muted-foreground/60 cursor-help" />
         </SimpleTooltip>
       )}
     </div>
@@ -338,7 +338,7 @@ export function ProductPriceRow({
               onClick={onRemove}
               aria-label="Remove price"
             >
-              <X className="h-4 w-4" />
+              <XIcon className="h-4 w-4" />
             </button>
           )}
         </>

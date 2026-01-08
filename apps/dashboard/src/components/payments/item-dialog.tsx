@@ -1,9 +1,9 @@
 "use client";
 
-import { cn } from "@/lib/utils";
-import { getUserSpecifiedIdErrorMessage, isValidUserSpecifiedId, sanitizeUserSpecifiedId } from "@stackframe/stack-shared/dist/schema-fields";
 import { Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, Input, Label, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Typography } from "@/components/ui";
-import { Package } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { PackageIcon } from "@phosphor-icons/react";
+import { getUserSpecifiedIdErrorMessage, isValidUserSpecifiedId, sanitizeUserSpecifiedId } from "@stackframe/stack-shared/dist/schema-fields";
 import { useEffect, useState } from "react";
 
 type ItemDialogProps = {
@@ -90,7 +90,7 @@ export function ItemDialog({
         <DialogHeader className="pb-4 border-b border-border/30 dark:border-foreground/[0.06]">
           <div className="flex items-center gap-3">
             <div className="p-2.5 rounded-xl bg-cyan-500/10 dark:bg-cyan-500/[0.15]">
-              <Package className="h-5 w-5 text-cyan-600 dark:text-cyan-400" />
+              <PackageIcon className="h-5 w-5 text-cyan-600 dark:text-cyan-400" />
             </div>
             <div>
               <DialogTitle className="text-lg font-semibold">

@@ -1,7 +1,7 @@
 "use client";
 
 import { Button, cn } from "@/components/ui";
-import { Check, Copy } from "lucide-react";
+import { CheckIcon, CopyIcon } from "@phosphor-icons/react";
 import React, { useCallback, useEffect, useState } from "react";
 import { InlineCode } from "./inline-code";
 
@@ -39,9 +39,9 @@ export const CopyableText = React.memo(function CopyableText(props: {
         title={copied ? "Copied!" : "Copy to clipboard"}
       >
         {copied ? (
-          <Check className="h-4 w-4 text-emerald-500" />
+          <CheckIcon className="h-4 w-4 text-emerald-500" />
         ) : (
-          <Copy className="h-4 w-4 text-muted-foreground" />
+          <CopyIcon className="h-4 w-4 text-muted-foreground" />
         )}
       </Button>
     </div>

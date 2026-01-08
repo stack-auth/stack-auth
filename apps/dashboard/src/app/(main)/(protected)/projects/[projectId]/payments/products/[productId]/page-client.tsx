@@ -43,13 +43,13 @@ import {
   toast,
   Typography,
 } from "@/components/ui";
+import { ArrowLeftIcon, ClockIcon, CopyIcon, CurrencyDollarIcon, DotsThreeIcon, FolderOpenIcon, GiftIcon, HardDriveIcon, PackageIcon, PencilSimpleIcon, PlusIcon, PuzzlePieceIcon, StackIcon, TagIcon, TrashIcon, UsersIcon, XIcon } from "@phosphor-icons/react";
 import type { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
 import type { Transaction, TransactionEntry } from "@stackframe/stack-shared/dist/interface/crud/transactions";
 import type { DayInterval } from "@stackframe/stack-shared/dist/utils/dates";
 import { fromNow } from "@stackframe/stack-shared/dist/utils/dates";
 import { prettyPrintWithMagnitudes } from "@stackframe/stack-shared/dist/utils/numbers";
 import { typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
-import { ArrowLeft, Clock, Copy, DollarSign, FolderOpen, Gift, Layers, MoreHorizontal, Package, Pencil, Plus, Puzzle, Server, Tag, Trash2, Users, X } from "lucide-react";
 import { Suspense, useMemo, useState } from "react";
 import { PageLayout } from "../../../page-layout";
 import { useAdminApp, useProjectId } from "../../../use-admin-app";
@@ -79,7 +79,7 @@ export default function PageClient({ productId }: { productId: string }) {
     return (
       <PageLayout title="Product Not Found">
         <div className="flex flex-col items-center justify-center py-12 gap-4">
-          <Package className="h-12 w-12 text-muted-foreground/50" />
+          <PackageIcon className="h-12 w-12 text-muted-foreground/50" />
           <Typography className="text-muted-foreground">Product not found</Typography>
           <Button variant="outline" asChild>
             <Link href={`/projects/${adminApp.projectId}/payments/products`}>
@@ -116,7 +116,7 @@ function ProductPage({ productId, product, config }: ProductPageProps) {
             className="w-fit -ml-2 text-muted-foreground hover:text-foreground"
             onClick={() => router.back()}
           >
-            <ArrowLeft className="h-4 w-4 mr-1" />
+            <ArrowLeftIcon className="h-4 w-4 mr-1" />
             Back
           </Button>
         )}
@@ -164,9 +164,9 @@ function ProductHeader({ productId, product, catalogName }: ProductHeaderProps) 
         "border border-primary/20"
       )}>
         {isAddOn ? (
-          <Puzzle className="h-8 w-8 text-primary" />
+          <PuzzlePieceIcon className="h-8 w-8 text-primary" />
         ) : (
-          <Package className="h-8 w-8 text-primary" />
+          <PackageIcon className="h-8 w-8 text-primary" />
         )}
       </div>
       <div className="flex-grow min-w-0 flex flex-col">
@@ -195,7 +195,7 @@ function ProductHeader({ productId, product, catalogName }: ProductHeaderProps) 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" size="icon" className="shrink-0">
-                <MoreHorizontal className="h-5 w-5" />
+                <DotsThreeIcon className="h-5 w-5" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
@@ -407,7 +407,7 @@ function ProductDetailsSection({ productId, product, config }: ProductDetailsSec
   const gridItems: EditableGridItem[] = [
     {
       type: 'text',
-      icon: <Tag size={16} />,
+      icon: <TagIcon size={16} />,
       name: "Display Name",
       tooltip: "The name shown to customers. Leave empty to use the product ID.",
       value: product.displayName || '',
@@ -416,7 +416,7 @@ function ProductDetailsSection({ productId, product, config }: ProductDetailsSec
     },
     {
       type: 'dropdown',
-      icon: <FolderOpen size={16} />,
+      icon: <FolderOpenIcon size={16} />,
       name: "Catalog",
       tooltip: "Catalogs group products together. Customers can only have one active product per catalog.",
       value: product.catalogId || '__none__',
@@ -429,7 +429,7 @@ function ProductDetailsSection({ productId, product, config }: ProductDetailsSec
     },
     {
       type: 'boolean',
-      icon: <Layers size={16} />,
+      icon: <StackIcon size={16} />,
       name: "Stackable",
       tooltip: "Stackable products can be purchased multiple times by the same customer.",
       value: !!product.stackable,
@@ -437,7 +437,7 @@ function ProductDetailsSection({ productId, product, config }: ProductDetailsSec
     },
     {
       type: 'custom-button',
-      icon: <Puzzle size={16} />,
+      icon: <PuzzlePieceIcon size={16} />,
       name: "Add-on",
       tooltip: "Add-ons are optional extras that can only be purchased alongside a parent product.",
       onClick: () => {
@@ -464,7 +464,7 @@ function ProductDetailsSection({ productId, product, config }: ProductDetailsSec
     },
     {
       type: 'custom',
-      icon: <Clock size={16} />,
+      icon: <ClockIcon size={16} />,
       name: "Free Trial",
       tooltip: "Free trial period before billing starts. Customers won't be charged during this period.",
       children: (
@@ -529,7 +529,7 @@ function ProductDetailsSection({ productId, product, config }: ProductDetailsSec
     },
     {
       type: 'boolean',
-      icon: <Server size={16} />,
+      icon: <HardDriveIcon size={16} />,
       name: "Server Only",
       tooltip: "Server-only products are only available through checkout sessions created by server-side APIs.",
       value: isServerOnly,
@@ -537,14 +537,14 @@ function ProductDetailsSection({ productId, product, config }: ProductDetailsSec
     },
     {
       type: 'custom',
-      icon: <DollarSign size={16} />,
+      icon: <CurrencyDollarIcon size={16} />,
       name: "Prices",
       tooltip: "Pricing options for this product. Multiple prices allow different billing intervals or pricing tiers.",
       children: <ProductPricesSection productId={productId} product={product} inline />,
     },
     {
       type: 'custom',
-      icon: <Package size={16} />,
+      icon: <PackageIcon size={16} />,
       name: "Included Items",
       tooltip: "Items that customers receive when they purchase this product.",
       children: <ProductItemsSection productId={productId} product={product} config={config} inline />,
@@ -758,7 +758,7 @@ function ProductPricesSection({ productId, product, inline = false }: ProductPri
                 toast({ title: "Product is no longer free" });
               }}
             >
-              <DollarSign className="h-3 w-3 mr-1" />
+              <CurrencyDollarIcon className="h-3 w-3 mr-1" />
               Make paid
             </Button>
             {isIncludeByDefault ? (
@@ -768,7 +768,7 @@ function ProductPricesSection({ productId, product, inline = false }: ProductPri
                 className="w-fit h-6 px-1 text-xs text-muted-foreground hover:text-foreground"
                 onClick={handleSetFreeNotIncluded}
               >
-                <X className="h-3 w-3 mr-1" />
+                <XIcon className="h-3 w-3 mr-1" />
                 {"Don't include by default"}
               </Button>
             ) : (
@@ -778,7 +778,7 @@ function ProductPricesSection({ productId, product, inline = false }: ProductPri
                 className="w-fit h-6 px-1 text-xs text-muted-foreground hover:text-foreground"
                 onClick={handleSetIncludeByDefault}
               >
-                <Gift className="h-3 w-3 mr-1" />
+                <GiftIcon className="h-3 w-3 mr-1" />
                 Include by default
               </Button>
             )}
@@ -795,7 +795,7 @@ function ProductPricesSection({ productId, product, inline = false }: ProductPri
               className="w-fit h-6 px-1 text-xs text-muted-foreground hover:text-foreground"
               onClick={openAddDialog}
             >
-              <Plus className="h-3 w-3 mr-1" />
+              <PlusIcon className="h-3 w-3 mr-1" />
               Add price option
             </Button>
             <span className="text-[10px] font-medium text-muted-foreground/60 uppercase tracking-wider">or</span>
@@ -805,7 +805,7 @@ function ProductPricesSection({ productId, product, inline = false }: ProductPri
               className="w-fit h-6 px-1 text-xs text-muted-foreground hover:text-foreground"
               onClick={handleSetIncludeByDefault}
             >
-              <Gift className="h-3 w-3 mr-1" />
+              <GiftIcon className="h-3 w-3 mr-1" />
               Make free
             </Button>
           </div>
@@ -837,7 +837,7 @@ function ProductPricesSection({ productId, product, inline = false }: ProductPri
                       onClick={() => openEditDialog(priceId, price)}
                       disabled={isDeleting}
                     >
-                      <Pencil className="h-3 w-3" />
+                      <PencilSimpleIcon className="h-3 w-3" />
                     </Button>
                   </SimpleTooltip>
                   <SimpleTooltip tooltip="Delete">
@@ -848,7 +848,7 @@ function ProductPricesSection({ productId, product, inline = false }: ProductPri
                       onClick={() => handleDeletePrice(priceId)}
                       disabled={isDeleting}
                     >
-                      <Trash2 className={cn("h-3 w-3", isDeleting && "animate-pulse")} />
+                      <TrashIcon className={cn("h-3 w-3", isDeleting && "animate-pulse")} />
                     </Button>
                   </SimpleTooltip>
                 </div>
@@ -862,7 +862,7 @@ function ProductPricesSection({ productId, product, inline = false }: ProductPri
               className="w-fit h-6 px-1 text-xs text-muted-foreground hover:text-foreground"
               onClick={openAddDialog}
             >
-              <Plus className="h-3 w-3 mr-1" />
+              <PlusIcon className="h-3 w-3 mr-1" />
               Add price option
             </Button>
             <span className="text-[10px] font-medium text-muted-foreground/60 uppercase tracking-wider">or</span>
@@ -872,7 +872,7 @@ function ProductPricesSection({ productId, product, inline = false }: ProductPri
               className="w-fit h-6 px-1 text-xs text-muted-foreground hover:text-foreground"
               onClick={handleSetIncludeByDefault}
             >
-              <Gift className="h-3 w-3 mr-1" />
+              <GiftIcon className="h-3 w-3 mr-1" />
               Make free
             </Button>
           </div>
@@ -1074,7 +1074,7 @@ function ProductItemsSection({ productId, product, config, inline = false }: Pro
                       onClick={() => handleCopyPrompt(itemId, displayName)}
                       disabled={isDeleting}
                     >
-                      <Copy className="h-3 w-3" />
+                      <CopyIcon className="h-3 w-3" />
                     </Button>
                   </SimpleTooltip>
                   <SimpleTooltip tooltip="Edit">
@@ -1085,7 +1085,7 @@ function ProductItemsSection({ productId, product, config, inline = false }: Pro
                       onClick={() => openEditDialog(itemId, item)}
                       disabled={isDeleting}
                     >
-                      <Pencil className="h-3 w-3" />
+                      <PencilSimpleIcon className="h-3 w-3" />
                     </Button>
                   </SimpleTooltip>
                   <SimpleTooltip tooltip="Delete">
@@ -1096,7 +1096,7 @@ function ProductItemsSection({ productId, product, config, inline = false }: Pro
                       onClick={() => handleDeleteItem(itemId)}
                       disabled={isDeleting}
                     >
-                      <Trash2 className={cn("h-3 w-3", isDeleting && "animate-pulse")} />
+                      <TrashIcon className={cn("h-3 w-3", isDeleting && "animate-pulse")} />
                     </Button>
                   </SimpleTooltip>
                 </div>
@@ -1112,7 +1112,7 @@ function ProductItemsSection({ productId, product, config, inline = false }: Pro
           className="w-fit h-6 px-1 text-xs text-muted-foreground hover:text-foreground"
           onClick={openAddDialog}
         >
-          <Plus className="h-3 w-3 mr-1" />
+          <PlusIcon className="h-3 w-3 mr-1" />
           Add included item
         </Button>
       </div>
@@ -1137,7 +1137,7 @@ function ProductItemsSection({ productId, product, config, inline = false }: Pro
         </DialogHeader>
         {editingItem && availableItems.length === 0 && isAddingItem ? (
           <div className="flex flex-col items-center gap-3 py-8">
-            <Package className="h-10 w-10 text-muted-foreground/50" />
+            <PackageIcon className="h-10 w-10 text-muted-foreground/50" />
             <p className="text-sm text-muted-foreground text-center">
               No items available for this customer type.
             </p>
@@ -1379,7 +1379,7 @@ function ProductCustomersSection({ productId, product }: ProductCustomersSection
       <div className="px-5 pb-5">
         {customersWithTransactions.length === 0 ? (
           <div className="flex flex-col items-center gap-2 p-8 rounded-xl bg-foreground/[0.02]">
-            <Users className="h-8 w-8 text-muted-foreground/50" />
+            <UsersIcon className="h-8 w-8 text-muted-foreground/50" />
             <p className="text-sm text-muted-foreground text-center">
               No customers have purchased this product yet
             </p>

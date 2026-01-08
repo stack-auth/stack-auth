@@ -1,7 +1,7 @@
 "use client";
 
 import { Button } from "@/components/ui";
-import { Plus } from "lucide-react";
+import { PlusIcon } from "@phosphor-icons/react";
 import { useMemo, useState } from "react";
 import { IllustratedInfo } from "../../../../../../../components/illustrated-info";
 import { PageLayout } from "../../page-layout";
@@ -57,7 +57,7 @@ function WelcomeScreen({ onCreateProduct }: { onCreateProduct: () => void }) {
           ]}
         />
         <Button className="mt-8" onClick={onCreateProduct}>
-          <Plus className="h-4 w-4 mr-2" />
+          <PlusIcon className="h-4 w-4 mr-2" />
           Create Your First Product
         </Button>
       </div>

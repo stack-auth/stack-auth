@@ -1,9 +1,9 @@
 'use client';
 
+import { CopyButton, SimpleTooltip } from "@/components/ui";
 import { useThemeWatcher } from '@/lib/theme';
 import { cn } from '@/lib/utils';
-import { CopyButton, SimpleTooltip } from "@/components/ui";
-import { Code, Terminal } from "lucide-react";
+import { CodeIcon, TerminalWindowIcon } from "@phosphor-icons/react";
 import type { ReactNode } from 'react';
 import { PrismLight as SyntaxHighlighter } from 'react-syntax-highlighter';
 import bash from 'react-syntax-highlighter/dist/esm/languages/prism/bash';
@@ -36,11 +36,11 @@ export function CodeBlock(props: CodeBlockProps) {
   let icon = null;
   switch (props.icon) {
     case 'terminal': {
-      icon = <Terminal className={cn("w-4 h-4", props.compact && "w-3 h-3")} />;
+      icon = <TerminalWindowIcon className={cn("w-4 h-4", props.compact && "w-3 h-3")} />;
       break;
     }
     case 'code': {
-      icon = <Code className={cn("w-4 h-4", props.compact && "w-3 h-3")} />;
+      icon = <CodeIcon className={cn("w-4 h-4", props.compact && "w-3 h-3")} />;
       break;
     }
   }

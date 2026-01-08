@@ -19,7 +19,7 @@ jobs:
       STACK_ENABLE_HARDCODED_PASSKEY_CHALLENGE_FOR_TESTING: yes
       STACK_OVERRIDE_SOURCE_OF_TRUTH: '{"type": "postgres", "connectionString": "postgres://postgres:PASSWORD-PLACEHOLDER--uqfEC1hmmv@localhost:8128/source-of-truth-db?schema=sot-schema"}'
       STACK_TEST_SOURCE_OF_TRUTH: true
-      STACK_DIRECT_DATABASE_CONNECTION_STRING: "postgres://postgres:PASSWORD-PLACEHOLDER--uqfEC1hmmv@localhost:8128/stackframe"
+      STACK_DATABASE_CONNECTION_STRING: "postgres://postgres:PASSWORD-PLACEHOLDER--uqfEC1hmmv@localhost:8128/stackframe"
 
     strategy:
       matrix:

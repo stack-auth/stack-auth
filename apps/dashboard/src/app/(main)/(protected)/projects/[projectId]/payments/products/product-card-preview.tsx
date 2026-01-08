@@ -1,9 +1,9 @@
 "use client";
 
 import { cn } from "@/lib/utils";
+import { GiftIcon, HardDriveIcon, PuzzlePieceIcon, StackIcon } from "@phosphor-icons/react";
 import { prettyPrintWithMagnitudes } from "@stackframe/stack-shared/dist/utils/numbers";
 import { typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
-import { Gift, Layers, Puzzle, Server } from "lucide-react";
 import { Fragment } from "react";
 import {
   freeTrialLabel,
@@ -48,7 +48,7 @@ function PriceDisplay({ price }: { price: PricesObject[string] }) {
       </div>
       {freeTrialText && (
         <div className="mt-1 text-xs text-muted-foreground">
-          <Gift className="inline h-3 w-3 mr-1" />
+          <GiftIcon className="inline h-3 w-3 mr-1" />
           {freeTrialText} free trial
         </div>
       )}
@@ -68,8 +68,8 @@ export function ProductCardPreview({
   const itemsList = typedEntries(product.includedItems);
 
   const toggleBadges = [
-    { key: 'serverOnly', label: 'Server only', active: !!product.serverOnly, icon: <Server className="h-3 w-3" /> },
-    { key: 'stackable', label: 'Stackable', active: !!product.stackable, icon: <Layers className="h-3 w-3" /> },
+    { key: 'serverOnly', label: 'Server only', active: !!product.serverOnly, icon: <HardDriveIcon className="h-3 w-3" /> },
+    { key: 'stackable', label: 'Stackable', active: !!product.stackable, icon: <StackIcon className="h-3 w-3" /> },
   ].filter(b => b.active);
 
   return (
@@ -101,7 +101,7 @@ export function ProductCardPreview({
           </div>
           {/* Product name */}
           <h3 className="text-lg font-semibold text-center tracking-tight flex items-center justify-center gap-1.5">
-            {product.isAddOnTo !== false && <Puzzle className="h-4 w-4 text-muted-foreground shrink-0" />}
+            {product.isAddOnTo !== false && <PuzzlePieceIcon className="h-4 w-4 text-muted-foreground shrink-0" />}
             {product.displayName || "Untitled Product"}
           </h3>
         </div>

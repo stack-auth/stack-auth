@@ -1,5 +1,3 @@
-import { cn } from "@/lib/utils";
-import type { DayInterval } from "@stackframe/stack-shared/dist/utils/dates";
 import {
   Input,
   Popover,
@@ -9,9 +7,11 @@ import {
   SelectContent,
   SelectItem,
   SelectTrigger,
-  SelectValue,
+  SelectValue
 } from "@/components/ui";
-import { ChevronsUpDown } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { CaretUpDownIcon } from "@phosphor-icons/react";
+import type { DayInterval } from "@stackframe/stack-shared/dist/utils/dates";
 import { useState } from "react";
 import { DEFAULT_INTERVAL_UNITS } from "./utils";
 
@@ -140,7 +140,7 @@ export function IntervalPopover({
       <PopoverTrigger asChild disabled={readOnly}>
         <button type="button" className={cn(triggerClasses, readOnly && "cursor-default pointer-events-none")}>
           {triggerLabel}
-          <ChevronsUpDown className="h-4 w-4 text-muted-foreground" />
+          <CaretUpDownIcon className="h-4 w-4 text-muted-foreground" />
         </button>
       </PopoverTrigger>
       <PopoverContent align="start" className="w-60 p-0 overflow-hidden">

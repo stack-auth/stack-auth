@@ -1,7 +1,7 @@
 import { KnownErrors } from "../known-errors";
 import { AccessToken, InternalSession, RefreshToken } from "../sessions";
 import { Result } from "../utils/results";
-import { ConfigCrud, ConfigOverrideCrud } from "./crud/config";
+import { EmailOutboxCrud } from "./crud/email-outbox";
 import { InternalEmailsCrud } from "./crud/emails";
 import { InternalApiKeysCrud } from "./crud/internal-api-keys";
 import { ProjectPermissionDefinitionsCrud } from "./crud/project-permissions";
@@ -512,7 +512,7 @@ export class StackAdminInterface extends StackServerInterface {
     return await response.json();
   }
 
-  async getConfig(): Promise<ConfigCrud["Admin"]["Read"]> {
+  async getConfig(): Promise<{ config_string: string }> {
     const response = await this.sendAdminRequest(
       `/internal/config`,
       { method: "GET" },
@@ -521,7 +521,7 @@ export class StackAdminInterface extends StackServerInterface {
     return await response.json();
   }
 
-  async updateConfig(data: { configOverride: any }): Promise<ConfigOverrideCrud["Admin"]["Read"]> {
+  async updateConfig(data: { configOverride: any }): Promise<void> {
     const response = await this.sendAdminRequest(
       `/internal/config/override`,
       {
@@ -533,7 +533,6 @@ export class StackAdminInterface extends StackServerInterface {
       },
       null,
     );
-    return await response.json();
   }
   async createEmailTemplate(displayName: string): Promise<{ id: string }> {
     const response = await this.sendAdminRequest(
@@ -619,6 +618,44 @@ export class StackAdminInterface extends StackServerInterface {
           "content-type": "application/json",
         },
         body: JSON.stringify(options),
+      },
+      null,
+    );
+    return await response.json();
+  }
+
+  // Email Outbox methods
+
+  async listOutboxEmails(options?: { status?: string, simple_status?: string }): Promise<EmailOutboxCrud["Server"]["List"]> {
+    const qs = new URLSearchParams();
+    if (options?.status) qs.set('status', options.status);
+    if (options?.simple_status) qs.set('simple_status', options.simple_status);
+    const response = await this.sendServerRequest(
+      `/emails/outbox${qs.size ? `?${qs.toString()}` : ''}`,
+      { method: 'GET' },
+      null,
+    );
+    return await response.json();
+  }
+
+  async getOutboxEmail(id: string): Promise<EmailOutboxCrud["Server"]["Read"]> {
+    const response = await this.sendServerRequest(
+      `/emails/outbox/${id}`,
+      { method: 'GET' },
+      null,
+    );
+    return await response.json();
+  }
+
+  async updateOutboxEmail(id: string, data: EmailOutboxCrud["Server"]["Update"]): Promise<EmailOutboxCrud["Server"]["Read"]> {
+    const response = await this.sendServerRequest(
+      `/emails/outbox/${id}`,
+      {
+        method: 'PATCH',
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify(data),
       },
       null,
     );
