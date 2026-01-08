@@ -1,12 +1,17 @@
 import { parseRootChangelog } from "@/lib/changelog";
 import { NextResponse } from "next/server";
 
-const ROOT_CHANGELOG_URL = "https://raw.githubusercontent.com/stack-auth/stack-auth/965c0d315609e7b1fe184e8ead40e154b5364b8c/CHANGELOG.md";
 const REVALIDATE_SECONDS = 60 * 60;
 
 export async function GET() {
+  const changelogUrl = process.env.STACK_CHANGELOG_URL;
+
+  if (!changelogUrl) {
+    return NextResponse.json({ entries: [] });
+  }
+
   try {
-    const response = await fetch(ROOT_CHANGELOG_URL, {
+    const response = await fetch(changelogUrl, {
       headers: {
         "Accept": "text/plain",
         "User-Agent": "stack-auth-dashboard-changelog-widget",

@@ -109,67 +109,26 @@ export function ChangelogWidget({ isActive, initialData }: ChangelogWidgetProps)
       setLoading(true);
       setError(null);
 
-      // Fake entries for UI testing - replace with real fetch later
-      const fakeEntries: ApiChangelogEntry[] = [
-        {
-          version: "2025.12.19",
-          type: "patch", // Default type since we don't use major/minor/patch anymore
-          markdown: `- Introduces new changelog and deprecates all older changelogs
-- Moved away from semantic versioning in favor of CalVer
+      const response = await fetch('/api/changelog', { signal });
 
-> **Note:** All older changelogs are deprecated and have been removed. The source of truth is this single changelog file.
->
-> Going forward, all changes should be documented in this file only.`,
-          bulletCount: 2,
-          releasedAt: "2025-12-19",
-        },
-        {
-          version: "2025.12.18",
-          type: "patch",
-          markdown: `- Added new authentication methods for better security
-- Improved error handling in API responses
-- Updated documentation with new examples
+      if (!response.ok) {
+        throw new Error(`Failed to fetch changelog: ${response.status}`);
+      }
 
-![New authentication flow](storeDesc-auth-1.png)
+      const payload = await response.json();
+      const entries: ApiChangelogEntry[] = payload.entries || [];
 
-> **Security**: Enhanced encryption for sensitive data storage.`,
-          bulletCount: 3,
-          releasedAt: "2025-12-18",
-        },
-        {
-          version: "2025.12.17",
-          type: "patch",
-          markdown: `- Fixed memory leak in session management
-- Resolved issue with OAuth callback redirects
-- Corrected timezone handling in audit logs`,
-          bulletCount: 3,
-          releasedAt: "2025-12-17",
-        },
-        {
-          version: "2025.12.16",
-          type: "patch",
-          markdown: `- Added webhook support for user events
-- Implemented bulk user import functionality
-- New API endpoints for team management`,
-          bulletCount: 3,
-          releasedAt: "2025-12-16",
-        },
-        {
-          version: "2025.12.15",
-          type: "patch",
-          markdown: `- Fixed issue with password reset emails not sending
-- Corrected validation for phone number fields
-- Resolved database connection timeout issues`,
-          bulletCount: 3,
-          releasedAt: "2025-12-15",
-        },
-      ];
-
-      setChangelog(fakeEntries.map((entry, index) => ({
+      setChangelog(entries.map((entry, index) => ({
         ...entry,
         id: `${entry.version}-${entry.releasedAt ?? 'unreleased'}`,
         expanded: index === 0, // Only expand the first (latest) entry
       })));
+
+      // Update last seen version when changelog is fetched
+      if (entries.length > 0) {
+        const latestVersion = entries[0].version;
+        document.cookie = `stack-last-seen-changelog-version=${latestVersion}; path=/; max-age=31536000`; // 1 year
+      }
     } catch (cause) {
       if (signal?.aborted) {
         return;

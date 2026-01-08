@@ -4,7 +4,7 @@ import { Button, Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui
 import { ChangelogEntry } from '@/lib/changelog';
 import { cn } from '@/lib/utils';
 import { checkVersion, VersionCheckResult } from '@/lib/version-check';
-import { BellIcon, BookOpenIcon, CircleNotchIcon, ClockClockwiseIcon, LightbulbIcon, XIcon } from '@phosphor-icons/react';
+import { BookOpenIcon, CircleNotchIcon, ClockClockwiseIcon, LightbulbIcon, XIcon } from '@phosphor-icons/react';
 import { runAsynchronously } from '@stackframe/stack-shared/dist/utils/promises';
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import packageJson from '../../package.json';
@@ -149,12 +149,17 @@ export function StackCompanion({ className }: { className?: string }) {
 
           setLastSeenVersion(lastSeen);
 
-          if (entries.length > 0 && lastSeen) {
-            const hasNewer = entries.some((entry: ChangelogEntry) => {
-              if (entry.isUnreleased) return false;
-              return entry.version > lastSeen;
-            });
-            setHasNewVersions(hasNewer);
+          if (entries.length > 0) {
+            // If no lastSeen cookie, user hasn't seen any changelog yet - show bell
+            if (!lastSeen) {
+              setHasNewVersions(true);
+            } else {
+              const hasNewer = entries.some((entry: ChangelogEntry) => {
+                if (entry.isUnreleased) return false;
+                return entry.version > lastSeen;
+              });
+              setHasNewVersions(hasNewer);
+            }
           }
         }
       } catch (error) {
@@ -174,12 +179,17 @@ export function StackCompanion({ className }: { className?: string }) {
         .find(row => row.startsWith('stack-last-seen-changelog-version='))
         ?.split('=')[1] || '';
 
-      if (changelogData.length > 0 && lastSeen) {
-        const hasNewer = changelogData.some((entry: ChangelogEntry) => {
-          if (entry.isUnreleased) return false;
-          return entry.version > lastSeen;
-        });
-        setHasNewVersions(hasNewer);
+      if (changelogData.length > 0) {
+        // If no lastSeen cookie, user hasn't seen any changelog yet - show bell
+        if (!lastSeen) {
+          setHasNewVersions(true);
+        } else {
+          const hasNewer = changelogData.some((entry: ChangelogEntry) => {
+            if (entry.isUnreleased) return false;
+            return entry.version > lastSeen;
+          });
+          setHasNewVersions(hasNewer);
+        }
       } else {
         setHasNewVersions(false);
       }
@@ -400,7 +410,9 @@ export function StackCompanion({ className }: { className?: string }) {
                 className={cn(
                   "h-10 w-10 p-0 text-muted-foreground transition-all duration-[50ms] rounded-xl relative group",
                   item.hoverBg,
-                  activeItem === item.id && "bg-foreground/10 text-foreground shadow-sm ring-1 ring-foreground/5"
+                  activeItem === item.id && "bg-foreground/10 text-foreground shadow-sm ring-1 ring-foreground/5",
+                  // Glow effect for changelog with new updates
+                  item.id === 'changelog' && hasNewVersions && "ring-2 ring-green-500/30 bg-green-500/10"
                 )}
                 onClick={(e) => {
                   e.stopPropagation();
@@ -409,9 +421,10 @@ export function StackCompanion({ className }: { className?: string }) {
               >
                 <item.icon className={cn("h-5 w-5 transition-transform duration-[50ms] group-hover:scale-110", item.color)} />
                 {item.id === 'changelog' && hasNewVersions && (
-                  <div className="absolute -top-0.5 -right-0.5 bg-orange-500 rounded-full p-0.5">
-                    <BellIcon className="h-3 w-3 text-white" />
-                  </div>
+                  <span className="absolute -top-1 -right-1 flex h-3 w-3">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
+                    <span className="relative inline-flex rounded-full h-3 w-3 bg-green-500" />
+                  </span>
                 )}
               </Button>
             </TooltipTrigger>
