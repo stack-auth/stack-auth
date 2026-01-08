@@ -3,7 +3,7 @@ CREATE TYPE "SubscriptionChangeType" AS ENUM ('PRICE_CHANGE', 'QUANTITY_CHANGE',
 
 -- CreateTable
 CREATE TABLE "StripeRefund" (
-    "id" UUID NOT NULL DEFAULT gen_random_uuid(),
+    "id" UUID NOT NULL,
     "tenancyId" UUID NOT NULL,
     "stripeRefundId" TEXT NOT NULL,
     "stripePaymentIntentId" TEXT,
@@ -22,7 +22,7 @@ CREATE TABLE "StripeRefund" (
 
 -- CreateTable
 CREATE TABLE "ProductChange" (
-    "id" UUID NOT NULL DEFAULT gen_random_uuid(),
+    "id" UUID NOT NULL,
     "tenancyId" UUID NOT NULL,
     "customerId" TEXT NOT NULL,
     "customerType" "CustomerType" NOT NULL,
@@ -43,7 +43,7 @@ CREATE TABLE "ProductChange" (
 
 -- CreateTable
 CREATE TABLE "SubscriptionChange" (
-    "id" UUID NOT NULL DEFAULT gen_random_uuid(),
+    "id" UUID NOT NULL,
     "tenancyId" UUID NOT NULL,
     "subscriptionId" UUID NOT NULL,
     "customerId" TEXT NOT NULL,
@@ -78,4 +78,3 @@ CREATE INDEX "SubscriptionChange_tenancyId_subscriptionId_idx" ON "SubscriptionC
 
 -- CreateIndex
 CREATE INDEX "SubscriptionChange_tenancyId_customerId_idx" ON "SubscriptionChange"("tenancyId", "customerId");
-
