@@ -8,7 +8,7 @@ import { getFlagEmoji } from '@stackframe/stack-shared/dist/utils/unicode';
 import dynamic from 'next/dynamic';
 import { RefObject, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { GlobeMethods } from 'react-globe.gl';
-import { MeshLambertMaterial, Vector3 } from 'three';
+import { FrontSide, MeshLambertMaterial, Vector3 } from 'three';
 
 export const globeImages = {
   light: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAAXNSR0IArs4c6QAAAERlWElmTU0AKgAAAAgAAYdpAAQAAAABAAAAGgAAAAAAA6ABAAMAAAABAAEAAKACAAQAAAABAAAAAaADAAQAAAABAAAAAQAAAAD5Ip3+AAAADUlEQVQIHWO48vjffwAI+QO1AqIWWgAAAABJRU5ErkJggg==',
@@ -196,7 +196,8 @@ function GlobeSectionInner({ countryData, totalUsers, children }: {countryData: 
 
   const [hexSelectedCountry, setHexSelectedCountry] = useState<{ code: string, name: string } | null>(null);
   const [polygonSelectedCountry, setPolygonSelectedCountry] = useState<{ code: string, name: string } | null>(null);
-  const selectedCountry = hexSelectedCountry ?? polygonSelectedCountry ?? null;
+  // Use polygon for tooltip (no gaps), hex just for visual highlighting
+  const selectedCountry = polygonSelectedCountry;
   const [previousSelectedCountry, setPreviousSelectedCountry] = useState<{ code: string, name: string } | null>(null);
   const lastSelectedCountry = selectedCountry ?? previousSelectedCountry;
   const [borderSizeFromGlobe, setBorderSizeFromGlobe] = useState<number>(0);
@@ -205,6 +206,15 @@ function GlobeSectionInner({ countryData, totalUsers, children }: {countryData: 
   // (react-globe.gl may cache accessor functions and not pick up closure changes)
   const selectedCountryRef = useRef(selectedCountry);
   selectedCountryRef.current = selectedCountry;
+
+  // Sync hex highlighting with polygon hover (for visual consistency)
+  useEffect(() => {
+    if (polygonSelectedCountry) {
+      setHexSelectedCountry(polygonSelectedCountry);
+    } else {
+      setHexSelectedCountry(null);
+    }
+  }, [polygonSelectedCountry]);
 
   useEffect(() => {
     if (selectedCountry) {
@@ -246,11 +256,15 @@ function GlobeSectionInner({ countryData, totalUsers, children }: {countryData: 
   const globeMaterial = useMemo(() => {
     return new MeshLambertMaterial({
       emissive: theme === 'dark' ? 0x000000 : 0x000000,
-      color: theme === 'dark' ? 0x00000000 : 0xe2e8f0, // Dark: transparent, Light: slate-200
-      transparent: theme === 'dark',
+      // Dark mode: near-black opaque to properly occlude far-side objects
+      // Light mode: slate-200
+      color: theme === 'dark' ? 0x0a0a0f : 0xe2e8f0,
+      transparent: false, // Keep opaque to properly write to depth buffer and occlude far-side hexagons
       opacity: 1,
       depthWrite: true,
+      depthTest: true,
       polygonOffset: true,
+      side: FrontSide,
     });
   }, [theme]);
 
@@ -390,7 +404,7 @@ function GlobeSectionInner({ countryData, totalUsers, children }: {countryData: 
               </div>
             </div>
             <div
-              className='relative w-full h-full'
+              className='relative w-full h-full cursor-grab active:cursor-grabbing [&_canvas]:!cursor-grab [&_canvas]:active:!cursor-grabbing'
               style={{ aspectRatio: '1' }}
               onMouseEnter={() => {
                 if (globeRef.current) {
@@ -404,6 +418,7 @@ function GlobeSectionInner({ countryData, totalUsers, children }: {countryData: 
                 }
               }}
               onMouseLeave={() => {
+                // Only clear when leaving the entire globe area
                 setHexSelectedCountry(null);
                 setPolygonSelectedCountry(null);
                 if (globeRef.current) {
@@ -413,7 +428,8 @@ function GlobeSectionInner({ countryData, totalUsers, children }: {countryData: 
               onTouchMove={resumeRender}
             >
               {/* Subtle glow effect */}
-              <div className='absolute inset-0 bg-gradient-radial from-primary/10 via-transparent to-transparent blur-3xl opacity-30' />
+              <div className='absolute inset-0 bg-gradient-radial from-primary/10 via-transparent to-transparent blur-3xl opacity-30 pointer-events-none' />
+
 
               {mounted && isFastEngine !== null && (
                 <div className='w-full h-full flex justify-center'>
@@ -443,6 +459,27 @@ function GlobeSectionInner({ countryData, totalUsers, children }: {countryData: 
                         controls.enableRotate = true;
                         current.camera().position.z = cameraDistance;
 
+                        // Fix z-fighting: Enable proper depth testing
+                        const renderer = current.renderer();
+                        renderer.sortObjects = true;
+                        // @ts-ignore - accessing internal context
+                        const gl = renderer.getContext();
+                        gl.enable(gl.DEPTH_TEST);
+                        gl.depthFunc(gl.LEQUAL);
+
+                        // Ensure all objects have proper depth settings and back-face culling
+                        const scene = current.scene();
+                        scene.traverse((object: any) => {
+                          if (object.material) {
+                            object.material.depthTest = true;
+                            object.material.depthWrite = true;
+                            // Only apply back-face culling to meshes (hexagons, globe), not lines (graticules)
+                            if (object.isMesh) {
+                              object.material.side = FrontSide;
+                            }
+                          }
+                        });
+
                         // Calculate border size from actual globe visual size
                         const visualDiameter = calculateGlobeVisualDiameter(globeRef);
                         setBorderSizeFromGlobe(visualDiameter);
@@ -462,12 +499,14 @@ function GlobeSectionInner({ countryData, totalUsers, children }: {countryData: 
                     polygonsData={countries.features}
                     polygonCapColor={() => "transparent"}
                     polygonSideColor={() => "transparent"}
-                    polygonAltitude={0.001}
+                    polygonAltitude={0.03}
                     onPolygonHover={(d: any) => {
                     resumeRender();
+                    // Polygons have no gaps, so use them for tooltip control
                     if (d) {
                       setPolygonSelectedCountry({ code: d.properties.ISO_A2_EH, name: d.properties.NAME });
                     } else {
+                      // Clear immediately when hovering over ocean/non-land
                       setPolygonSelectedCountry(null);
                     }
                     }}
@@ -477,7 +516,7 @@ function GlobeSectionInner({ countryData, totalUsers, children }: {countryData: 
                     hexPolygonMargin={0.6}
                     hexPolygonAltitude={(d: any) => {
                       const highlight = isFastEngine && d.properties.ISO_A2_EH === selectedCountryRef.current?.code;
-                      return highlight ? 0.02 : 0.005;
+                      return highlight ? 0.01 : 0.002;
                     }}
                     hexPolygonColor={(country: any) => {
                       const highlight = isFastEngine && country.properties.ISO_A2_EH === selectedCountryRef.current?.code;
@@ -502,13 +541,10 @@ function GlobeSectionInner({ countryData, totalUsers, children }: {countryData: 
                         return `hsl(${168 - 8 * scaled}, ${70 + 20 * scaled}%, ${35 + 10 * scaled}%)`;
                       }
                     }}
-                    onHexPolygonHover={(d: any) => {
-                    resumeRender();
-                    if (d) {
-                      setHexSelectedCountry({ code: d.properties.ISO_A2_EH, name: d.properties.NAME });
-                    } else {
-                      setHexSelectedCountry(null);
-                    }
+                    onHexPolygonHover={() => {
+                      resumeRender();
+                      // Keep empty handler to prevent react-globe.gl internal errors
+                      // Actual hover logic handled by onPolygonHover to avoid gaps
                     }}
                     onHexPolygonClick={(polygon: any, event: MouseEvent, coords: { lat: number, lng: number, altitude: number }) => {
                     resumeRender();

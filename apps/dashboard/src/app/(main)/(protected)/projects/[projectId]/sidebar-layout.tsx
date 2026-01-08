@@ -431,7 +431,13 @@ function SidebarContent({
 
   return (
     <div className="flex h-full flex-col">
-      <div className={cn("flex flex-grow flex-col overflow-y-auto py-4 transition-all duration-200", isCollapsed ? "px-2" : "px-3")}>
+      <div
+        className={cn("flex flex-grow flex-col overflow-y-auto py-4 transition-all duration-200", isCollapsed ? "px-2" : "px-3")}
+        style={{
+          maskImage: 'linear-gradient(to bottom, transparent 0%, black 24px, black calc(100% - 24px), transparent 100%)',
+          WebkitMaskImage: 'linear-gradient(to bottom, transparent 0%, black 24px, black calc(100% - 24px), transparent 100%)',
+        }}
+      >
         <div className="space-y-3">
           <NavItem
             item={overviewItem}
