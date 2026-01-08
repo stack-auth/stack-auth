@@ -8,7 +8,15 @@ import { stringCompare, typedToLowercase, typedToUppercase } from "@stackframe/s
 import { InferType } from "yup";
 import { getSubscriptions, productToInlineProduct } from "./payments";
 import { Tenancy } from "./tenancies";
-import { SubscriptionWhereInput } from "@/generated/prisma/models";
+import {
+  ItemQuantityChangeWhereInput,
+  OneTimePurchaseWhereInput,
+  ProductChangeWhereInput,
+  StripeRefundWhereInput,
+  SubscriptionChangeWhereInput,
+  SubscriptionInvoiceWhereInput,
+  SubscriptionWhereInput,
+} from "@/generated/prisma/models";
 
 // ============================================================================
 // Transaction Entry Types
@@ -837,7 +845,7 @@ class NewStripeSubPaginatedList extends DatabasePaginatedList<Subscription> {
     const isNext = options.direction === "next";
     const orderDir = (isDesc === isNext) ? "desc" : "asc";
 
-    const where: Record<string, unknown> = {
+    const where: SubscriptionWhereInput = {
       tenancyId: options.filter.tenancyId,
       // Only active subscriptions that are not cancelled
       cancelAtPeriodEnd: false,
@@ -845,7 +853,7 @@ class NewStripeSubPaginatedList extends DatabasePaginatedList<Subscription> {
     };
 
     if (options.filter.customerType) {
-      where.customerType = options.filter.customerType.toUpperCase();
+      where.customerType = typedToUppercase(options.filter.customerType);
     }
     if (options.filter.customerId) {
       where.customerId = options.filter.customerId;
@@ -865,7 +873,7 @@ class NewStripeSubPaginatedList extends DatabasePaginatedList<Subscription> {
     }
 
     return await prisma.subscription.findMany({
-      where: where as any, // eslint-disable-line @typescript-eslint/no-explicit-any -- Prisma types are complex
+      where,
       orderBy: [
         { createdAt: orderDir },
         { id: orderDir },
@@ -905,17 +913,20 @@ class StripeResubPaginatedList extends DatabasePaginatedList<SubscriptionInvoice
     const isNext = options.direction === "next";
     const orderDir = (isDesc === isNext) ? "desc" : "asc";
 
-    const where: Record<string, unknown> = {
+    const where: SubscriptionInvoiceWhereInput = {
       tenancyId: options.filter.tenancyId,
       isSubscriptionCreationInvoice: false,
     };
 
+    const subscriptionWhere: SubscriptionWhereInput = {};
     if (options.filter.customerType) {
-      where.subscription = { customerType: options.filter.customerType.toUpperCase() };
+      subscriptionWhere.customerType = typedToUppercase(options.filter.customerType);
     }
     if (options.filter.customerId) {
-      const existingSub = (where.subscription ?? {}) as object;
-      where.subscription = { ...existingSub, customerId: options.filter.customerId };
+      subscriptionWhere.customerId = options.filter.customerId;
+    }
+    if (Object.keys(subscriptionWhere).length > 0) {
+      where.subscription = subscriptionWhere;
     }
 
     if (options.cursor) {
@@ -932,7 +943,7 @@ class StripeResubPaginatedList extends DatabasePaginatedList<SubscriptionInvoice
     }
 
     return await prisma.subscriptionInvoice.findMany({
-      where: where as any, // eslint-disable-line @typescript-eslint/no-explicit-any -- Prisma types are complex
+      where,
       include: { subscription: true },
       orderBy: [
         { createdAt: orderDir },
@@ -973,12 +984,12 @@ class StripeOneTimePaginatedList extends DatabasePaginatedList<OneTimePurchase> 
     const isNext = options.direction === "next";
     const orderDir = (isDesc === isNext) ? "desc" : "asc";
 
-    const where: Record<string, unknown> = {
+    const where: OneTimePurchaseWhereInput = {
       tenancyId: options.filter.tenancyId,
     };
 
     if (options.filter.customerType) {
-      where.customerType = options.filter.customerType.toUpperCase();
+      where.customerType = typedToUppercase(options.filter.customerType);
     }
     if (options.filter.customerId) {
       where.customerId = options.filter.customerId;
@@ -998,7 +1009,7 @@ class StripeOneTimePaginatedList extends DatabasePaginatedList<OneTimePurchase> 
     }
 
     return await prisma.oneTimePurchase.findMany({
-      where: where as any, // eslint-disable-line @typescript-eslint/no-explicit-any -- Prisma types are complex
+      where,
       orderBy: [
         { createdAt: orderDir },
         { id: orderDir },
@@ -1039,14 +1050,14 @@ class StripeExpirePaginatedList extends DatabasePaginatedList<Subscription> {
     const isNext = options.direction === "next";
     const orderDir = (isDesc === isNext) ? "desc" : "asc";
 
-    const where: Record<string, unknown> = {
+    const where: SubscriptionWhereInput = {
       tenancyId: options.filter.tenancyId,
       cancelAtPeriodEnd: true,
       status: { in: ["active", "trialing", "canceled"] },
     };
 
     if (options.filter.customerType) {
-      where.customerType = options.filter.customerType.toUpperCase();
+      where.customerType = typedToUppercase(options.filter.customerType);
     }
     if (options.filter.customerId) {
       where.customerId = options.filter.customerId;
@@ -1068,7 +1079,7 @@ class StripeExpirePaginatedList extends DatabasePaginatedList<Subscription> {
     }
 
     return await prisma.subscription.findMany({
-      where: where as any, // eslint-disable-line @typescript-eslint/no-explicit-any -- Prisma types are complex
+      where,
       orderBy: [
         { currentPeriodEnd: orderDir },
         { id: orderDir },
@@ -1175,12 +1186,12 @@ class ManualItemQuantityChangePaginatedList extends DatabasePaginatedList<ItemQu
     const isNext = options.direction === "next";
     const orderDir = (isDesc === isNext) ? "desc" : "asc";
 
-    const where: Record<string, unknown> = {
+    const where: ItemQuantityChangeWhereInput = {
       tenancyId: options.filter.tenancyId,
     };
 
     if (options.filter.customerType) {
-      where.customerType = options.filter.customerType.toUpperCase();
+      where.customerType = typedToUppercase(options.filter.customerType);
     }
     if (options.filter.customerId) {
       where.customerId = options.filter.customerId;
@@ -1200,7 +1211,7 @@ class ManualItemQuantityChangePaginatedList extends DatabasePaginatedList<ItemQu
     }
 
     return await prisma.itemQuantityChange.findMany({
-      where: where as any, // eslint-disable-line @typescript-eslint/no-explicit-any -- Prisma types are complex
+      where,
       orderBy: [
         { createdAt: orderDir },
         { id: orderDir },
@@ -1240,12 +1251,12 @@ class StripeRefundPaginatedList extends DatabasePaginatedList<StripeRefund> {
     const isNext = options.direction === "next";
     const orderDir = (isDesc === isNext) ? "desc" : "asc";
 
-    const where: Record<string, unknown> = {
+    const where: StripeRefundWhereInput = {
       tenancyId: options.filter.tenancyId,
     };
 
     if (options.filter.customerType) {
-      where.customerType = options.filter.customerType.toUpperCase();
+      where.customerType = typedToUppercase(options.filter.customerType);
     }
     if (options.filter.customerId) {
       where.customerId = options.filter.customerId;
@@ -1265,7 +1276,7 @@ class StripeRefundPaginatedList extends DatabasePaginatedList<StripeRefund> {
     }
 
     return await prisma.stripeRefund.findMany({
-      where: where as any, // eslint-disable-line @typescript-eslint/no-explicit-any -- Prisma types are complex
+      where,
       orderBy: [
         { createdAt: orderDir },
         { id: orderDir },
@@ -1305,12 +1316,12 @@ class ProductChangePaginatedList extends DatabasePaginatedList<ProductChange> {
     const isNext = options.direction === "next";
     const orderDir = (isDesc === isNext) ? "desc" : "asc";
 
-    const where: Record<string, unknown> = {
+    const where: ProductChangeWhereInput = {
       tenancyId: options.filter.tenancyId,
     };
 
     if (options.filter.customerType) {
-      where.customerType = options.filter.customerType.toUpperCase();
+      where.customerType = typedToUppercase(options.filter.customerType);
     }
     if (options.filter.customerId) {
       where.customerId = options.filter.customerId;
@@ -1330,7 +1341,7 @@ class ProductChangePaginatedList extends DatabasePaginatedList<ProductChange> {
     }
 
     return await prisma.productChange.findMany({
-      where: where as any, // eslint-disable-line @typescript-eslint/no-explicit-any -- Prisma types are complex
+      where,
       orderBy: [
         { createdAt: orderDir },
         { id: orderDir },
@@ -1370,12 +1381,12 @@ class SubscriptionChangePaginatedList extends DatabasePaginatedList<Subscription
     const isNext = options.direction === "next";
     const orderDir = (isDesc === isNext) ? "desc" : "asc";
 
-    const where: Record<string, unknown> = {
+    const where: SubscriptionChangeWhereInput = {
       tenancyId: options.filter.tenancyId,
     };
 
     if (options.filter.customerType) {
-      where.customerType = options.filter.customerType.toUpperCase();
+      where.customerType = typedToUppercase(options.filter.customerType);
     }
     if (options.filter.customerId) {
       where.customerId = options.filter.customerId;
@@ -1395,7 +1406,7 @@ class SubscriptionChangePaginatedList extends DatabasePaginatedList<Subscription
     }
 
     return await prisma.subscriptionChange.findMany({
-      where: where as any, // eslint-disable-line @typescript-eslint/no-explicit-any -- Prisma types are complex
+      where,
       orderBy: [
         { createdAt: orderDir },
         { id: orderDir },
