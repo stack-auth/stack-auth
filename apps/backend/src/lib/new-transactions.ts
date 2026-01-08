@@ -778,7 +778,12 @@ abstract class DatabasePaginatedList<DbRow> extends PaginatedList<
     const items = rows.map((row) => {
       const transaction = this.rowToTransaction(row);
       const itemCursor = encodeCursor(this.getRowCreatedAt(row), this.getRowId(row));
-      return { item: transaction, itemCursor };
+      return {
+        item: transaction,
+        itemCursor,
+        prevCursor: itemCursor,
+        nextCursor: itemCursor,
+      };
     });
 
     const isFirst = options.cursor === "first" || (type === "prev" && rows.length < options.limit);
@@ -1545,7 +1550,12 @@ class ItemQuantityRenewalPaginatedList extends PaginatedList<
     const items = pageRenewals.map((renewal) => {
       const transaction = buildItemQuantityRenewalTransaction(renewal);
       const itemCursor = encodeCursor(renewal.windowStart, renewal.id);
-      return { item: transaction, itemCursor };
+      return {
+        item: transaction,
+        itemCursor,
+        prevCursor: itemCursor,
+        nextCursor: itemCursor,
+      };
     });
 
     const isFirst = options.cursor === "first" || (type === "prev" && pageRenewals.length < options.limit);
@@ -1723,4 +1733,3 @@ export function createTransactionPaginatedList(
     }
   }
 }
-
