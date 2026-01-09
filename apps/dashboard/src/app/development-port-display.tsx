@@ -1,6 +1,5 @@
 "use client";
 
-import { getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
 import { useState } from "react";
 import { getPublicEnvVar } from "../lib/env";
 
@@ -8,7 +7,7 @@ import { getPublicEnvVar } from "../lib/env";
 export function DevelopmentPortDisplay() {
   const [isVisible, setIsVisible] = useState(true);
   const prefix = getPublicEnvVar("NEXT_PUBLIC_STACK_PORT_PREFIX");
-  if (!prefix || !isVisible || !getNodeEnvironment().includes("development")) return null;
+  if (!prefix || !isVisible || !process.env.NODE_ENV.includes("development")) return null;
   const color = ({
     "91": "#eee",
     "92": "#fff8e0",
