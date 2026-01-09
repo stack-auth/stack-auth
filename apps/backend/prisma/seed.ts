@@ -379,6 +379,29 @@ export async function seed() {
       }
     }
 
+    /* Ensure TeamMember exists before granting permissions.
+      This handles the case where the user was created in a previous run
+      with adminInternalAccess=false, but now adminInternalAccess=true.
+      Without this, grantTeamPermission would fail with a foreign key constraint error.
+    */
+    if (adminInternalAccess) {
+      await internalPrisma.teamMember.upsert({
+        where: {
+          tenancyId_projectUserId_teamId: {
+            tenancyId: internalTenancy.id,
+            projectUserId: defaultUserId,
+            teamId: internalTeamId,
+          },
+        },
+        create: {
+          tenancyId: internalTenancy.id,
+          teamId: internalTeamId,
+          projectUserId: defaultUserId,
+        },
+        update: {},
+      });
+    }
+
     await grantTeamPermission(internalPrisma, {
       tenancy: internalTenancy,
       teamId: internalTeamId,
