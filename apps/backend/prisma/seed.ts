@@ -391,14 +391,14 @@ export async function seed() {
         },
         update: {},
       });
-    }
 
-    await grantTeamPermission(internalPrisma, {
-      tenancy: internalTenancy,
-      teamId: internalTeamId,
-      userId: defaultUserId,
-      permissionId: "team_admin",
-    });
+      await grantTeamPermission(internalPrisma, {
+        tenancy: internalTenancy,
+        teamId: internalTeamId,
+        userId: defaultUserId,
+        permissionId: "team_admin",
+      });
+    }
   }
 
   if (emulatorEnabled) {
