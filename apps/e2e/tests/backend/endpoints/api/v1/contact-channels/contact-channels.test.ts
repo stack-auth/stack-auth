@@ -194,6 +194,7 @@ it("delete contact channel on the client", async ({ expect }) => {
       "has_password": false,
       "id": "<stripped UUID>",
       "is_anonymous": false,
+      "is_restricted": false,
       "oauth_providers": [],
       "otp_auth_enabled": true,
       "passkey_auth_enabled": false,
@@ -201,6 +202,7 @@ it("delete contact channel on the client", async ({ expect }) => {
       "primary_email_verified": false,
       "profile_image_url": null,
       "requires_totp_mfa": false,
+      "restricted_reason": null,
       "selected_team": {
         "client_metadata": null,
         "client_read_only_metadata": null,
@@ -557,6 +559,7 @@ it("updates contact channel primary status", async ({ expect }) => {
       "has_password": false,
       "id": "<stripped UUID>",
       "is_anonymous": false,
+      "is_restricted": false,
       "oauth_providers": [],
       "otp_auth_enabled": true,
       "passkey_auth_enabled": false,
@@ -564,6 +567,7 @@ it("updates contact channel primary status", async ({ expect }) => {
       "primary_email_verified": false,
       "profile_image_url": null,
       "requires_totp_mfa": false,
+      "restricted_reason": null,
       "selected_team": {
         "client_metadata": null,
         "client_read_only_metadata": null,
@@ -621,6 +625,7 @@ it("sets a primary contact channel to non-primary", async ({ expect }) => {
       "has_password": false,
       "id": "<stripped UUID>",
       "is_anonymous": false,
+      "is_restricted": false,
       "oauth_providers": [],
       "otp_auth_enabled": true,
       "passkey_auth_enabled": false,
@@ -628,6 +633,7 @@ it("sets a primary contact channel to non-primary", async ({ expect }) => {
       "primary_email_verified": false,
       "profile_image_url": null,
       "requires_totp_mfa": false,
+      "restricted_reason": null,
       "selected_team": {
         "client_metadata": null,
         "client_read_only_metadata": null,
