@@ -76,6 +76,8 @@ export type StackClientApp<HasTokenStore extends boolean = boolean, ProjectId ex
     getUser(options: GetCurrentUserOptions<HasTokenStore> & { or: 'anonymous' }): Promise<ProjectCurrentUser<ProjectId>>,
     getUser(options?: GetCurrentUserOptions<HasTokenStore>): Promise<ProjectCurrentUser<ProjectId> | null>,
 
+    cancelSubscription(options: { productId: string } | { productId: string, teamId: string }): Promise<void>,
+
     // note: we don't special-case 'anonymous' here to return non-null, see GetPartialUserOptions for more details
     getPartialUser(options: GetCurrentPartialUserOptions<HasTokenStore> & { from: 'token' }): Promise<TokenPartialUser | null>,
     getPartialUser(options: GetCurrentPartialUserOptions<HasTokenStore> & { from: 'convex' }): Promise<TokenPartialUser | null>,

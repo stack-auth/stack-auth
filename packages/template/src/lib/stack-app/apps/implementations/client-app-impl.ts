@@ -1650,6 +1650,26 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     return this._customerProductsFromResponse(response);
   }
 
+  async cancelSubscription(options: { productId: string } | { productId: string, teamId: string }): Promise<void> {
+    const session = await this._getSession();
+    const user = await this.getUser();
+    if (!user) {
+      throw new KnownErrors.UserAuthenticationRequired();
+    }
+    const customerType = "teamId" in options ? "team" : "user";
+    const customerId = "teamId" in options ? options.teamId : user.id;
+    await this._interface.cancelSubscription({
+      customer_type: customerType,
+      customer_id: customerId,
+      product_id: options.productId,
+    }, session);
+    if (customerType === "user") {
+      await this._userProductsCache.invalidateWhere(([cachedSession, userId]) => cachedSession === session && userId === customerId);
+    } else {
+      await this._teamProductsCache.invalidateWhere(([cachedSession, teamId]) => cachedSession === session && teamId === customerId);
+    }
+  }
+
   // IF_PLATFORM react-like
   useProducts(options: CustomerProductsRequestOptions): CustomerProductsList {
     const session = this._useSession();
