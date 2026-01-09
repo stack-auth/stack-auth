@@ -1,5 +1,6 @@
 "use client";
 
+import { getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
 import { useState } from "react";
 import { getPublicEnvVar } from "../lib/env";
 
@@ -7,12 +8,13 @@ import { getPublicEnvVar } from "../lib/env";
 export function DevelopmentPortDisplay() {
   const [isVisible, setIsVisible] = useState(true);
   const prefix = getPublicEnvVar("NEXT_PUBLIC_STACK_PORT_PREFIX");
-  if (!prefix || !isVisible) return null;
+  if (!prefix || !isVisible || !getNodeEnvironment().includes("development")) return null;
   const color = ({
     "91": "#eee",
     "92": "#fff8e0",
     "93": "#e0e0ff",
   } as any)[prefix as any] || undefined;
+  if (!color) return null;
   return (
     <div onClick={() => setIsVisible(false)} className="fixed top-0 left-0 p-2 text-red-700 animate-[dev-port-slide_120s_linear_infinite] flex gap-2" style={{
       backgroundColor: color,
