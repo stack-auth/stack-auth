@@ -5,6 +5,7 @@ import { KnownErrors } from "@stackframe/stack-shared";
 import { sessionsCrud } from "@stackframe/stack-shared/dist/interface/crud/sessions";
 import { userIdOrMeSchema, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { StatusError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { geoInfoSchema } from "@stackframe/stack-shared/dist/utils/geo";
 import { createLazyProxy } from "@stackframe/stack-shared/dist/utils/proxies";
 
 export const sessionsCrudHandlers = createLazyProxy(() => createCrudHandlers(sessionsCrud, {
@@ -36,14 +37,18 @@ export const sessionsCrudHandlers = createLazyProxy(() => createCrudHandlers(ses
     });
 
     const result = {
-      items: refreshTokenObjs.map(s => ({
-        id: s.id,
-        user_id: s.projectUserId,
-        created_at: s.createdAt.getTime(),
-        last_used_at: s.lastActiveAt.getTime(),
-        is_impersonation: s.isImpersonation,
-        is_current_session: s.id === auth.refreshTokenId,
-      })),
+      items: refreshTokenObjs.map(s => {
+        const ipInfo = s.lastActiveAtIpInfo ? geoInfoSchema.validateSync(s.lastActiveAtIpInfo) : undefined;
+        return {
+          id: s.id,
+          user_id: s.projectUserId,
+          created_at: s.createdAt.getTime(),
+          last_used_at: s.lastActiveAt.getTime(),
+          is_impersonation: s.isImpersonation,
+          is_current_session: s.id === auth.refreshTokenId,
+          last_used_at_end_user_ip_info: ipInfo,
+        };
+      }),
       is_paginated: false,
     };
 

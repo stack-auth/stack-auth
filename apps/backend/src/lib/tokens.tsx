@@ -11,6 +11,7 @@ import { Result } from '@stackframe/stack-shared/dist/utils/results';
 import { traceSpan } from '@stackframe/stack-shared/dist/utils/telemetry';
 import * as jose from 'jose';
 import { JOSEError, JWTExpired } from 'jose/errors';
+import { getEndUserInfo } from './end-users';
 import { SystemEventTypes, logEvent } from './events';
 import { Tenancy } from './tenancies';
 
@@ -161,6 +162,11 @@ export async function generateAccessTokenFromRefreshTokenIfValid(options: {
   // Update last active at on user and session
   const now = new Date();
   const prisma = await getPrismaClientForTenancy(options.tenancy);
+
+  // Get end user IP info for session tracking
+  const endUserInfo = await getEndUserInfo();
+  const ipInfo = endUserInfo ? (endUserInfo.maybeSpoofed ? endUserInfo.spoofedInfo : endUserInfo.exactInfo) : undefined;
+
   await Promise.all([
     prisma.projectUser.update({
       where: {
@@ -182,6 +188,7 @@ export async function generateAccessTokenFromRefreshTokenIfValid(options: {
       },
       data: {
         lastActiveAt: now,
+        lastActiveAtIpInfo: ipInfo,
       },
     }),
   ]);

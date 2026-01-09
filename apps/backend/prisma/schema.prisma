@@ -431,9 +431,10 @@ model ProjectUserRefreshToken {
   tenancyId     String @db.Uuid
   projectUserId String @db.Uuid
 
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-  lastActiveAt DateTime @default(now())
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  lastActiveAt       DateTime @default(now())
+  lastActiveAtIpInfo Json?
 
   refreshToken    String    @unique
   expiresAt       DateTime?
