@@ -56,13 +56,13 @@ describe("with server access", () => {
 
 describe("with admin access to the internal project", () => {
   it("list api keys", async ({ expect }) => {
-    await Auth.Otp.signIn();
+    await Auth.fastSignUp();
     const response = await niceBackendFetch("/api/v1/internal/api-keys", { accessType: "admin" });
     expect(response.status).toBe(200); // not doing snapshot as it contains all the test api keys
   });
 
   it("creates api keys for internal project", async ({ expect }) => {
-    await Auth.Otp.signIn();
+    await Auth.fastSignUp();
     const response1 = await niceBackendFetch("/api/v1/internal/api-keys", {
       accessType: "admin",
       method: "POST",

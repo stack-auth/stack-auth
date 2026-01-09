@@ -1,7 +1,7 @@
 import PageClient from "./page-client";
 
 export const metadata = {
-  title: "Payments",
+  title: "Products & Items",
 };
 
 type Params = {

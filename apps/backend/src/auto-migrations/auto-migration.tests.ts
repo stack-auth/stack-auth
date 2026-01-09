@@ -1,4 +1,5 @@
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient } from "@/generated/prisma/client";
+import { PrismaPg } from '@prisma/adapter-pg';
 import postgres from 'postgres';
 import { ExpectStatic } from "vitest";
 import { applyMigrations, runMigrationNeeded } from "./index";
@@ -7,9 +8,9 @@ const TEST_DB_PREFIX = 'stack_auth_test_db';
 
 const getTestDbURL = (testDbName: string) => {
   // @ts-ignore - ImportMeta.env is provided by Vite
-  const base = import.meta.env.STACK_DIRECT_DATABASE_CONNECTION_STRING.replace(/\/[^/]*$/, '');
+  const base = import.meta.env.STACK_DATABASE_CONNECTION_STRING.replace(/\/[^/]*$/, '');
   // @ts-ignore - ImportMeta.env is provided by Vite
-  const query = import.meta.env.STACK_DIRECT_DATABASE_CONNECTION_STRING.split('?')[1] ?? '';
+  const query = import.meta.env.STACK_DATABASE_CONNECTION_STRING.split('?')[1] ?? '';
   return {
     full: `${base}/${testDbName}`,
     base,
@@ -36,13 +37,9 @@ const setupTestDatabase = async () => {
   const dbURL = getTestDbURL(testDbName);
   await applySql({ sql: `CREATE DATABASE ${testDbName}`, dbUrl: dbURL.base });
 
-  const prismaClient = new PrismaClient({
-    datasources: {
-      db: {
-        url: `${dbURL.full}?${dbURL.query}`,
-      },
-    },
-  });
+  const connectionString = `${dbURL.full}?${dbURL.query}`;
+  const adapter = new PrismaPg({ connectionString });
+  const prismaClient = new PrismaClient({ adapter });
 
   await prismaClient.$connect();
 

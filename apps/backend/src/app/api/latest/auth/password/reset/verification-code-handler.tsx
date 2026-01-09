@@ -1,7 +1,7 @@
 import { sendEmailFromDefaultTemplate } from "@/lib/emails";
 import { getSoleTenancyFromProjectBranch } from "@/lib/tenancies";
 import { createVerificationCodeHandler } from "@/route-handlers/verification-code-handler";
-import { VerificationCodeType } from "@prisma/client";
+import { VerificationCodeType } from "@/generated/prisma/client";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { getPasswordError } from "@stackframe/stack-shared/dist/helpers/password";
 import { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";

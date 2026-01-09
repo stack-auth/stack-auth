@@ -13,6 +13,12 @@ export type {
 } from "./apps";
 
 export type {
+  EmailOutboxListOptions,
+  EmailOutboxListResult,
+  EmailOutboxUpdateOptions
+} from "./apps/interfaces/admin-app";
+
+export type {
   ProjectConfig
 } from "./project-configs";
 
@@ -46,6 +52,10 @@ export type {
 } from "./contact-channels";
 
 export type {
+  AdminEmailOutbox,
+  AdminEmailOutboxRecipient,
+  AdminEmailOutboxSimpleStatus,
+  AdminEmailOutboxStatus,
   AdminSentEmail
 } from "./email";
 

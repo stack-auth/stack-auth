@@ -1815,15 +1815,9 @@ export class StackClientInterface {
     session: InternalSession | null,
   ): Promise<void> {
     await this.sendClientRequest(
-      urlString`/payments/products/${options.customer_type}/${options.customer_id}`,
+      urlString`/payments/products/${options.customer_type}/${options.customer_id}/${options.product_id}`,
       {
         method: "DELETE",
-        headers: {
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({
-          product_id: options.product_id,
-        }),
       },
       session,
     );

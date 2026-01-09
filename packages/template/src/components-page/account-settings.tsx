@@ -88,7 +88,6 @@ export function AccountSettings(props: {
   const project = props.mockProject || projectFromHook;
   const teams = user?.useTeams() || [];
   const billing = user?.useBilling() || null;
-  const hasPaymentsHistory = billing?.hasCustomer || false;
 
   // If we're not in mock mode and don't have a user, the useUser hook will handle redirect
   if (!props.mockUser && !userFromHook) {
@@ -143,7 +142,7 @@ export function AccountSettings(props: {
                 <ApiKeysPage mockApiKeys={props.mockApiKeys} mockMode={!!props.mockUser} />
               </Suspense>,
             }] as const : []),
-            ...(hasPaymentsHistory ? [{
+            {
               title: t('Payments'),
               type: 'item',
               id: 'payments',
@@ -151,7 +150,7 @@ export function AccountSettings(props: {
               content: <Suspense fallback={<PaymentsPageSkeleton/>}>
                 <PaymentsPage mockMode={!!props.mockUser} />
               </Suspense>,
-            }] as const : []),
+            },
             {
               title: t('Settings'),
               type: 'item',

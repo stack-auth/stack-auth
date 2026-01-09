@@ -3,10 +3,12 @@ services:
   # ================= PostgreSQL =================
 
   db:
-    build: ../postgres-with-extensions
+    build: ../dev-postgres-with-extensions
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: PASSWORD-PLACEHOLDER--uqfEC1hmmv
+      # Note: A readonly user is also created with password PASSWORD-PLACEHOLDER--readonlyuqfEC1hmmv
+      # for read replica emulation. See the Dockerfile for details.
       POSTGRES_DB: stackframe
       POSTGRES_DELAY_MS: ${POSTGRES_DELAY_MS:-0}
       POSTGRES_INITDB_ARGS: --nosync

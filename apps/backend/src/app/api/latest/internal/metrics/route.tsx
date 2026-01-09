@@ -1,8 +1,8 @@
+import { Prisma } from "@/generated/prisma/client";
 import { getOrSetCacheValue } from "@/lib/cache";
 import { Tenancy } from "@/lib/tenancies";
 import { getPrismaClientForTenancy, getPrismaSchemaForTenancy, globalPrismaClient, PrismaClientTransaction, sqlQuoteIdent } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { Prisma } from "@prisma/client";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
 import { adaptSchema, adminAuthTypeSchema, yupArray, yupMixed, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
@@ -193,52 +193,20 @@ async function loadLoginMethods(tenancy: Tenancy): Promise<{ method: string, cou
 }
 
 async function loadRecentlyActiveUsers(tenancy: Tenancy, includeAnonymous: boolean = false): Promise<UsersCrud["Admin"]["Read"][]> {
-  const events = await globalPrismaClient.$queryRaw<{ userId: string, lastActiveAt: Date }[]>`
-    WITH ordered_events AS (
-      SELECT
-        "data"->>'userId' AS "userId",
-        "eventStartedAt" AS "lastActiveAt"
-      FROM "Event"
-      WHERE "data"->>'projectId' = ${tenancy.project.id}
-        AND COALESCE("data"->>'branchId', 'main') = ${tenancy.branchId}
-        AND (${includeAnonymous} OR COALESCE("data"->>'isAnonymous', 'false') != 'true')
-        AND '$user-activity' = ANY("systemEventTypeIds"::text[])
-        AND "data"->>'userId' IS NOT NULL
-      ORDER BY "eventStartedAt" DESC
-      LIMIT 4000
-    ),
-    latest_events AS (
-      SELECT DISTINCT ON ("userId")
-        "userId",
-        "lastActiveAt"
-      FROM ordered_events
-      ORDER BY "userId", "lastActiveAt" DESC
-    )
-    SELECT "userId", "lastActiveAt"
-    FROM latest_events
-    ORDER BY "lastActiveAt" DESC
-    LIMIT 5
-  `;
-  if (events.length === 0) {
-    return [];
-  }
-
   const prisma = await getPrismaClientForTenancy(tenancy);
   const dbUsers = await prisma.projectUser.findMany({
     where: {
       tenancyId: tenancy.id,
-      projectUserId: {
-        in: events.map((event) => event.userId),
-      },
+      ...(!includeAnonymous ? { isAnonymous: false } : {}),
     },
+    orderBy: {
+      lastActiveAt: 'desc',
+    },
+    take: 5,
     include: userFullInclude,
   });
 
-  const userObjects = events.map((event) => {
-    const user = dbUsers.find((user) => user.projectUserId === event.userId);
-    return user ? userPrismaToCrud(user, event.lastActiveAt.getTime()) : null;
-  });
-  return userObjects.filter((user): user is UsersCrud["Admin"]["Read"] => user !== null);
+  return dbUsers.map((user) => userPrismaToCrud(user));
 }
 
 export const GET = createSmartRouteHandler({

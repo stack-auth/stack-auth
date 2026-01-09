@@ -1,5 +1,5 @@
+import { Prisma } from "@/generated/prisma/client";
 import { globalPrismaClient, PrismaClientTransaction, RawQuery, rawQuery } from "@/prisma-client";
-import { Prisma } from "@prisma/client";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 
@@ -44,6 +44,7 @@ export function calculateCapacityRate(stats: EmailDeliveryStats) {
 
 const deliveryStatsQuery = (tenancyId: string): RawQuery<EmailDeliveryStats> => ({
   supportedPrismaClients: ["global"],
+  readOnlyQuery: true,
   sql: Prisma.sql`
     SELECT
       SUM(CASE WHEN "finishedSendingAt" >= NOW() - INTERVAL '1 hour' AND "sendServerErrorInternalMessage" IS NULL AND "skippedReason" IS NULL THEN 1 ELSE 0 END)::bigint AS sent_last_hour,

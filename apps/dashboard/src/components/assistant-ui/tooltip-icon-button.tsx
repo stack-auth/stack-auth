@@ -8,7 +8,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
   Button,
-} from "@stackframe/stack-ui";
+} from "@/components/ui";
 import { cn } from "@/lib/utils";
 
 export type TooltipIconButtonProps = ComponentPropsWithoutRef<typeof Button> & {
