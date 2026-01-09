@@ -413,13 +413,18 @@ async function rawQueryArray<Q extends RawQuery<any>[]>(tx: PrismaClientTransact
     // TODO: check that combinedQuery supports the prisma client that created tx
 
     // Supabase's index advisor only analyzes rows that start with "SELECT" (for some reason)
-    // Since ours starts with "WITH", we prepend a SELECT to it
-    const sqlQuery = Prisma.sql`SELECT * FROM (${combinedQuery.sql}) AS _`;
+    // Since ours starts with "WITH", we prepend a SELECT to it.
+    // However, we can't do this for data-modifying queries because PostgreSQL requires
+    // CTEs with UPDATE/INSERT/DELETE to be at the top level, not inside a subquery.
+    const sqlQuery = allReadOnly
+      ? Prisma.sql`SELECT * FROM (${combinedQuery.sql}) AS _`
+      : combinedQuery.sql;
 
     // Use the read replica if all queries are read-only and a replica is available
     const queryClient = allReadOnly && '$replica' in tx
       ? (tx as any).$replica()
       : tx;
+    // eslint-disable-next-line no-restricted-syntax -- $queryRaw is allowed here
     const rawResult = await queryClient.$queryRaw(sqlQuery);
 
     const postProcessed = combinedQuery.postProcess(rawResult as any);
