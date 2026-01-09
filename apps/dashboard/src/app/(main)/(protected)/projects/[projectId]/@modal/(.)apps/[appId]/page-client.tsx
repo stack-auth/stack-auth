@@ -6,7 +6,7 @@ import { useRouter } from "@/components/router";
 import { ALL_APPS_FRONTEND, getAppPath } from "@/lib/apps-frontend";
 import { AppId } from "@stackframe/stack-shared/dist/apps/apps-config";
 import { wait } from "@stackframe/stack-shared/dist/utils/promises";
-import { Dialog, DialogContent, DialogTitle } from "@stackframe/stack-ui";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui";
 
 export default function AppDetailsModalPageClient({ appId }: { appId: AppId }) {
   const router = useRouter();

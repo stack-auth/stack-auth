@@ -1,17 +1,18 @@
 "use client";
 
 import { ItemDialog } from "@/components/payments/item-dialog";
+import { useRouter } from "@/components/router";
+import { ActionDialog, Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, toast } from "@/components/ui";
 import { cn } from "@/lib/utils";
+import { DotsThreeVerticalIcon } from "@phosphor-icons/react";
 import { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
 import { useHover } from "@stackframe/stack-shared/dist/hooks/use-hover";
 import { DayInterval } from "@stackframe/stack-shared/dist/utils/dates";
 import { prettyPrintWithMagnitudes } from "@stackframe/stack-shared/dist/utils/numbers";
+import { typedEntries, typedFromEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
-import { Button, Card, CardContent, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, toast } from "@stackframe/stack-ui";
-import { MoreVertical, Plus } from "lucide-react";
 import React, { ReactNode, useEffect, useMemo, useRef, useState } from "react";
-import { IllustratedInfo } from "../../../../../../../components/illustrated-info";
-import { useAdminApp } from "../../use-admin-app";
+import { useAdminApp, useProjectId } from "../../use-admin-app";
 import { ListSection } from "./list-section";
 import { ProductDialog } from "./product-dialog";
 
@@ -30,12 +31,15 @@ function ActionMenu({ items }: { items: ActionMenuItem[] }) {
         <Button
           variant="ghost"
           className={cn(
-            "h-8 w-8 p-0 relative",
-            "hover:bg-secondary/80",
-            isOpen && "bg-secondary/80"
+            "h-7 w-7 p-0 rounded-lg",
+            "text-muted-foreground hover:text-foreground",
+            "hover:bg-foreground/[0.05]",
+            "transition-all duration-150 hover:transition-none",
+            "opacity-0 group-hover:opacity-100",
+            isOpen && "opacity-100 bg-foreground/[0.05]"
           )}
         >
-          <MoreVertical className="h-4 w-4" />
+          <DotsThreeVerticalIcon className="h-4 w-4" />
           <span className="sr-only">Open menu</span>
         </Button>
       </DropdownMenuTrigger>
@@ -97,34 +101,38 @@ function ListItem({
     <div
       ref={itemRef}
       className={cn(
-        "px-3 py-3 cursor-pointer relative duration-200 hover:duration-0 hover:bg-primary/10 transition-colors flex items-center justify-between group",
-        isHovered && "duration-0",
-        isHighlighted && "bg-primary/10",
-        !isMenuHovered && isHovered && "bg-primary/10",
-        isMenuHovered && isHovered && "bg-primary/5",
-        isHighlighted && !isMenuHovered && isHovered && "hover:bg-primary/20"
+        "px-4 py-3.5 cursor-pointer relative rounded-xl mx-3 my-1",
+        "flex items-center justify-between gap-3 group",
+        "transition-all duration-150 hover:transition-none",
+        "bg-background/50 dark:bg-foreground/[0.02]",
+        "border border-transparent",
+        isHighlighted
+          ? "bg-cyan-500/[0.1] dark:bg-cyan-500/[0.08] border-cyan-500/30 shadow-sm"
+          : "hover:bg-background dark:hover:bg-foreground/[0.04] hover:border-border/40 dark:hover:border-foreground/[0.08] hover:shadow-sm",
+        isHighlighted && isHovered && "bg-cyan-500/[0.15] dark:bg-cyan-500/[0.12]"
       )}
       onClick={onClick}
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}
     >
-      <div className="flex-1">
-        <div className="text-xs text-muted-foreground">
-          <span className="uppercase font-medium">{customerType}</span>
-          <span className="mx-1">—</span>
-          <span className="font-mono">{id}</span>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+          <span className="uppercase font-semibold tracking-wide">{customerType}</span>
+          <span className="text-muted-foreground/50">—</span>
+          <span className="font-mono truncate">{id}</span>
         </div>
-        <div className="font-medium text-sm mt-1">
+        <div className="font-semibold text-sm mt-1 text-foreground truncate">
           {displayName || id}
         </div>
         {subtitle && (
-          <div className="text-xs text-muted-foreground mt-1">
+          <div className="text-xs text-muted-foreground mt-0.5 tabular-nums">
             {subtitle}
           </div>
         )}
       </div>
       {actionItems && (
         <div
+          className="shrink-0"
           onClick={(e) => e.stopPropagation()}
           onMouseEnter={() => setIsMenuHovered(true)}
           onMouseLeave={() => setIsMenuHovered(false)}
@@ -151,18 +159,15 @@ type ListGroupProps = {
 
 function ListGroup({ title, children }: ListGroupProps) {
   return (
-    <div className="mb-6 relative">
+    <div className="mb-2">
       {title && (
-        <div className="sticky top-0 bg-muted backdrop-blur-lg px-3 py-2 border-t z-[1]">
-          <h3 className="text-sm font-medium text-muted-foreground">
+        <div className="sticky top-0 z-[1] px-4 py-2.5 bg-gray-100/90 dark:bg-foreground/[0.04] backdrop-blur-sm border-b border-border/30 dark:border-foreground/[0.06]">
+          <h3 className="text-xs font-bold uppercase tracking-wider text-foreground/70">
             {title}
           </h3>
         </div>
       )}
-      <div className="absolute top-2 left-2 w-3 h-full border-l border-b rounded-bl-md">
-
-      </div>
-      <div className="pl-4">
+      <div className="py-2">
         {children}
       </div>
     </div>
@@ -227,30 +232,39 @@ function ConnectionLine({ fromRef, toRef, containerRef, quantity }: ConnectionLi
       className="absolute inset-0 pointer-events-none z-20"
       style={{ width: '100%', height: '100%' }}
     >
+      <defs>
+        <linearGradient id="lineGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+          <stop offset="0%" stopColor="hsl(200, 91%, 70%)" stopOpacity="0.4" />
+          <stop offset="100%" stopColor="hsl(200, 91%, 70%)" stopOpacity="0.4" />
+        </linearGradient>
+      </defs>
       <g>
         <path
           d={path}
           fill="none"
-          stroke="currentColor"
+          stroke="url(#lineGradient)"
           strokeWidth="2"
-          className="text-primary/30"
-          strokeDasharray="5 5"
+          strokeDasharray="6 4"
+          strokeLinecap="round"
         />
         {quantity && quantity > 0 && midpoint && (
           <>
             <circle
               cx={midpoint.x}
               cy={midpoint.y}
-              r="12"
+              r="14"
               className="fill-background"
-              strokeWidth="0"
+              stroke="hsl(200, 91%, 70%)"
+              strokeWidth="1"
+              strokeOpacity="0.3"
             />
             <text
               x={midpoint.x}
               y={midpoint.y}
               textAnchor="middle"
               dominantBaseline="middle"
-              className="text-xs font-medium fill-primary/50"
+              className="text-[11px] font-semibold"
+              fill="hsl(200, 91%, 70%)"
             >
               ×{prettyPrintWithMagnitudes(quantity)}
             </text>
@@ -327,7 +341,11 @@ function ProductsList({
 }: ProductsListProps) {
   const stackAdminApp = useAdminApp();
   const project = stackAdminApp.useProject();
+  const projectId = useProjectId();
+  const router = useRouter();
   const [searchQuery, setSearchQuery] = useState("");
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [productToDelete, setProductToDelete] = useState<{ id: string, displayName: string } | null>(null);
   let globalIndex = 0;
 
   // Filter products based on search query
@@ -389,6 +407,7 @@ function ProductsList({
                     isEven={isEven}
                     isHighlighted={isHighlighted}
                     itemRef={productRefs?.[id]}
+                    onClick={() => router.push(`/projects/${projectId}/payments/products/${id}`)}
                     onMouseEnter={() => onProductMouseEnter(id)}
                     onMouseLeave={onProductMouseLeave}
                     actionItems={[
@@ -402,11 +421,9 @@ function ProductsList({
                       '-',
                       {
                         item: "Delete",
-                        onClick: async () => {
-                          if (confirm(`Are you sure you want to delete the product "${product.displayName}"?`)) {
-                            await project.updateConfig({ [`payments.products.${id}`]: null });
-                            toast({ title: "Product deleted" });
-                          }
+                        onClick: () => {
+                          setProductToDelete({ id, displayName: product.displayName });
+                          setDeleteDialogOpen(true);
                         },
                         danger: true,
                       },
@@ -418,6 +435,30 @@ function ProductsList({
           );
         })}
       </GroupedList>
+
+      <ActionDialog
+        open={deleteDialogOpen}
+        onOpenChange={setDeleteDialogOpen}
+        title="Delete Product"
+        danger
+        cancelButton
+        okButton={{
+          label: "Delete",
+          onClick: async () => {
+            if (!productToDelete) return;
+            const config = project.useConfig();
+            const updatedProducts = typedFromEntries(
+              typedEntries(config.payments.products)
+                .filter(([productId]) => productId !== productToDelete.id)
+            );
+            await project.updateConfig({ "payments.products": updatedProducts });
+            toast({ title: "Product deleted" });
+            setProductToDelete(null);
+          }
+        }}
+      >
+        Are you sure you want to delete the product &quot;{productToDelete?.displayName}&quot;?
+      </ActionDialog>
     </ListSection>
   );
 }
@@ -449,6 +490,8 @@ function ItemsList({
   const stackAdminApp = useAdminApp();
   const project = stackAdminApp.useProject();
   const [searchQuery, setSearchQuery] = useState("");
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [itemToDelete, setItemToDelete] = useState<{ id: string, displayName: string } | null>(null);
 
   // Sort items by customer type, then by ID
   const sortedItems = useMemo(() => {
@@ -518,11 +561,9 @@ function ItemsList({
                 '-',
                 {
                   item: "Delete",
-                  onClick: async () => {
-                    if (confirm(`Are you sure you want to delete the item "${item.displayName}"?`)) {
-                      await project.updateConfig({ [`payments.items.${id}`]: null });
-                      toast({ title: "Item deleted" });
-                    }
+                  onClick: () => {
+                    setItemToDelete({ id, displayName: item.displayName });
+                    setDeleteDialogOpen(true);
                   },
                   danger: true,
                 },
@@ -531,63 +572,32 @@ function ItemsList({
           );
         })}
       </GroupedList>
+
+      <ActionDialog
+        open={deleteDialogOpen}
+        onOpenChange={setDeleteDialogOpen}
+        title="Delete Item"
+        danger
+        cancelButton
+        okButton={{
+          label: "Delete",
+          onClick: async () => {
+            if (!itemToDelete) return;
+            await project.updateConfig({ [`payments.items.${itemToDelete.id}`]: null });
+            toast({ title: "Item deleted" });
+            setItemToDelete(null);
+          }
+        }}
+      >
+        Are you sure you want to delete the item &quot;{itemToDelete?.displayName}&quot;?
+      </ActionDialog>
     </ListSection>
   );
 }
 
-function WelcomeScreen({ onCreateProduct }: { onCreateProduct: () => void }) {
-  return (
-    <div className="flex flex-col items-center justify-center h-full px-4 py-12 max-w-3xl mx-auto">
-      <IllustratedInfo
-        illustration={(
-          <div className="grid grid-cols-3 gap-2">
-            {/* Simple pricing table representation */}
-            <div className="bg-background rounded p-3 shadow-sm">
-              <div className="h-2 bg-muted rounded mb-2"></div>
-              <div className="h-8 bg-primary/20 rounded mb-2"></div>
-              <div className="space-y-1">
-                <div className="h-1.5 bg-muted rounded"></div>
-                <div className="h-1.5 bg-muted rounded"></div>
-                <div className="h-1.5 bg-muted rounded"></div>
-              </div>
-            </div>
-            <div className="bg-background rounded p-3 shadow-sm border-2 border-primary">
-              <div className="h-2 bg-muted rounded mb-2"></div>
-              <div className="h-8 bg-primary/40 rounded mb-2"></div>
-              <div className="space-y-1">
-                <div className="h-1.5 bg-muted rounded"></div>
-                <div className="h-1.5 bg-muted rounded"></div>
-                <div className="h-1.5 bg-muted rounded"></div>
-              </div>
-            </div>
-            <div className="bg-background rounded p-3 shadow-sm">
-              <div className="h-2 bg-muted rounded mb-2"></div>
-              <div className="h-8 bg-primary/20 rounded mb-2"></div>
-              <div className="space-y-1">
-                <div className="h-1.5 bg-muted rounded"></div>
-                <div className="h-1.5 bg-muted rounded"></div>
-                <div className="h-1.5 bg-muted rounded"></div>
-              </div>
-            </div>
-          </div>
-        )}
-        title="Welcome to Payments!"
-        description={[
-          <>Stack Auth Payments is built on two primitives: products and items.</>,
-          <>Products are what customers buy — the columns of your pricing table. Each product has one or more prices and may or may not include items.</>,
-          <>Items are what customers receive — the rows of your pricing table. A user can hold multiple of the same item. Items are powerful; they can unlock feature access, raise limits, or meter consumption for usage-based billing.</>,
-          <>Create your first product to get started!</>,
-        ]}
-      />
-      <Button onClick={onCreateProduct}>
-        <Plus className="h-4 w-4 mr-2" />
-        Create Your First Product
-      </Button>
-    </div>
-  );
-}
-
 export default function PageClient() {
+  const projectId = useProjectId();
+  const router = useRouter();
   const [activeTab, setActiveTab] = useState<"products" | "items">("products");
   const [hoveredProductId, setHoveredProductId] = useState<string | null>(null);
   const [hoveredItemId, setHoveredItemId] = useState<string | null>(null);
@@ -606,8 +616,8 @@ export default function PageClient() {
   // Create refs for all products and items
   const productRefs = useMemo(() => {
     const refs = Object.fromEntries(
-      Object.keys(paymentsConfig.products)
-        .map(id => [id, React.createRef<HTMLDivElement>()])
+      Object.entries(paymentsConfig.products)
+        .map(([id]) => [id, React.createRef<HTMLDivElement>()])
     );
     return refs;
   }, [paymentsConfig.products]);
@@ -624,8 +634,9 @@ export default function PageClient() {
   const groupedProducts = useMemo(() => {
     const groups = new Map<string | undefined, Array<{ id: string, product: typeof paymentsConfig.products[keyof typeof paymentsConfig.products] }>>();
 
-    // Group products
+    // Group products (filter out null/undefined products that may occur during deletion)
     Object.entries(paymentsConfig.products).forEach(([id, product]: [string, any]) => {
+      if (!product) return; // Skip deleted/null products
       const catalogId = product.catalogId;
       if (!groups.has(catalogId)) {
         groups.set(catalogId, []);
@@ -724,7 +735,7 @@ export default function PageClient() {
   // Check if there are no products and no items
   // Handler for create product button
   const handleCreateProduct = () => {
-    setShowProductDialog(true);
+    router.push(`/projects/${projectId}/payments/products/new`);
   };
 
   // Handler for create item button
@@ -764,15 +775,15 @@ export default function PageClient() {
   const innerContent = (
     <>
       {/* Mobile tabs */}
-      < div className="lg:hidden mb-4" >
-        <div className="flex space-x-1 bg-muted p-1 rounded-md">
+      <div className="lg:hidden mb-4">
+        <div className="inline-flex items-center gap-1 rounded-xl bg-foreground/[0.04] p-1 backdrop-blur-sm">
           <button
             onClick={() => setActiveTab("products")}
             className={cn(
-              "flex-1 px-3 py-2 rounded-sm text-sm font-medium transition-all",
+              "px-4 py-2 text-sm font-medium rounded-lg transition-all duration-150 hover:transition-none",
               activeTab === "products"
-                ? "bg-background text-foreground shadow-sm"
-                : "text-muted-foreground hover:text-foreground"
+                ? "bg-background text-foreground shadow-sm ring-1 ring-foreground/[0.06]"
+                : "text-muted-foreground hover:text-foreground hover:bg-background/50"
             )}
           >
             Products
@@ -780,57 +791,57 @@ export default function PageClient() {
           <button
             onClick={() => setActiveTab("items")}
             className={cn(
-              "flex-1 px-3 py-2 rounded-sm text-sm font-medium transition-all",
+              "px-4 py-2 text-sm font-medium rounded-lg transition-all duration-150 hover:transition-none",
               activeTab === "items"
-                ? "bg-background text-foreground shadow-sm"
-                : "text-muted-foreground hover:text-foreground"
+                ? "bg-background text-foreground shadow-sm ring-1 ring-foreground/[0.06]"
+                : "text-muted-foreground hover:text-foreground hover:bg-background/50"
             )}
           >
             Items
           </button>
         </div>
-      </div >
+      </div>
 
       {/* Content */}
-      <div className="flex gap-6 flex-1" style={{
-        flexBasis: "0px",
-        overflow: "scroll",
-      }
-      }>
+      <div className="flex gap-6 flex-1 min-h-0 overflow-auto">
         {/* Desktop two-column layout */}
-        <Card className="hidden lg:flex w-full relative" ref={containerRef} >
-          <CardContent className="flex w-full">
-            <div className="flex-1">
-              <ProductsList
-                groupedProducts={groupedProducts}
-                paymentsGroups={paymentsConfig.catalogs}
-                hoveredItemId={hoveredItemId}
-                getConnectedProducts={getConnectedProducts}
-                productRefs={productRefs}
-                onProductMouseEnter={setHoveredProductId}
-                onProductMouseLeave={() => setHoveredProductId(null)}
-                onProductAdd={handleCreateProduct}
-                setEditingProduct={setEditingProduct}
-                setShowProductDialog={setShowProductDialog}
-              />
-            </div>
-          </CardContent>
-          <div className="border-l" />
-          <CardContent className="flex gap-6 w-full">
-            <div className="flex-1">
-              <ItemsList
-                items={paymentsConfig.items}
-                hoveredProductId={hoveredProductId}
-                getConnectedItems={getConnectedItems}
-                itemRefs={itemRefs}
-                onItemMouseEnter={setHoveredItemId}
-                onItemMouseLeave={() => setHoveredItemId(null)}
-                onItemAdd={handleCreateItem}
-                setEditingItem={setEditingItem}
-                setShowItemDialog={setShowItemDialog}
-              />
-            </div>
-          </CardContent>
+        <div
+          ref={containerRef}
+          className={cn(
+            "hidden lg:flex w-full relative rounded-2xl overflow-hidden",
+            "bg-gray-100/80 dark:bg-foreground/[0.03]",
+            "border border-border/40 dark:border-foreground/[0.08]",
+            "shadow-sm backdrop-blur-xl"
+          )}
+        >
+          <div className="flex-1 min-w-0">
+            <ProductsList
+              groupedProducts={groupedProducts}
+              paymentsGroups={paymentsConfig.catalogs}
+              hoveredItemId={hoveredItemId}
+              getConnectedProducts={getConnectedProducts}
+              productRefs={productRefs}
+              onProductMouseEnter={setHoveredProductId}
+              onProductMouseLeave={() => setHoveredProductId(null)}
+              onProductAdd={handleCreateProduct}
+              setEditingProduct={setEditingProduct}
+              setShowProductDialog={setShowProductDialog}
+            />
+          </div>
+          <div className="w-px bg-border/60 dark:bg-foreground/[0.1]" />
+          <div className="flex-1 min-w-0">
+            <ItemsList
+              items={paymentsConfig.items}
+              hoveredProductId={hoveredProductId}
+              getConnectedItems={getConnectedItems}
+              itemRefs={itemRefs}
+              onItemMouseEnter={setHoveredItemId}
+              onItemMouseLeave={() => setHoveredItemId(null)}
+              onItemAdd={handleCreateItem}
+              setEditingItem={setEditingItem}
+              setShowItemDialog={setShowItemDialog}
+            />
+          </div>
 
           {/* Connection lines */}
           {
@@ -856,10 +867,15 @@ export default function PageClient() {
               />
             ))
           }
-        </Card >
+        </div>
 
         {/* Mobile single column with tabs */}
-        < div className="lg:hidden w-full" >
+        <div className={cn(
+          "lg:hidden w-full rounded-2xl overflow-hidden",
+          "bg-gray-100/80 dark:bg-foreground/[0.03]",
+          "border border-border/40 dark:border-foreground/[0.08]",
+          "shadow-sm backdrop-blur-xl"
+        )}>
           {activeTab === "products" ? (
             <ProductsList
               groupedProducts={groupedProducts}
@@ -884,8 +900,8 @@ export default function PageClient() {
               setShowItemDialog={setShowItemDialog}
             />
           )}
-        </div >
-      </div >
+        </div>
+      </div>
     </>
   );
 

@@ -518,7 +518,7 @@ it("should allow granting stackable product with custom quantity", async ({ expe
 it("should grant inline product without needing configuration", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
   await Payments.setup();
-  const { userId } = await Auth.Otp.signIn();
+  const { userId } = await Auth.fastSignUp();
 
   const grantResponse = await niceBackendFetch(`/api/v1/payments/products/user/${userId}`, {
     method: "POST",

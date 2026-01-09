@@ -2,7 +2,7 @@ import { it } from "../../../../helpers";
 import { Auth, InternalApiKey, InternalProjectKeys, Project, Team, Webhook, backendContext, niceBackendFetch } from "../../../backend-helpers";
 
 it("is not allowed to list permissions from the other users on the client", async ({ expect }) => {
-  await Auth.Otp.signIn();
+  await Auth.fastSignUp();
   const { teamId } = await Team.createWithCurrentAsCreator();
 
   const response = await niceBackendFetch(`/api/v1/team-permissions?team_id=${teamId}`, {
@@ -19,7 +19,7 @@ it("is not allowed to list permissions from the other users on the client", asyn
 });
 
 it("is not allowed to grant non-existing permission to a user on the server", async ({ expect }) => {
-  const { userId } = await Auth.Otp.signIn();
+  const { userId } = await Auth.fastSignUp();
   const { teamId } = await Team.createWithCurrentAsCreator();
 
   const response = await niceBackendFetch(`/api/v1/team-permissions/${teamId}/${userId}/does_not_exist`, {
@@ -44,8 +44,8 @@ it("is not allowed to grant non-existing permission to a user on the server", as
 });
 
 it("does not grant a project permission to a user", async ({ expect }) => {
-  await Project.createAndSwitch({ config: { magic_link_enabled: true } });
-  const { userId } = await Auth.Otp.signIn();
+  await Project.createAndSwitch();
+  const { userId } = await Auth.fastSignUp();
   const { teamId } = await Team.createWithCurrentAsCreator();
 
   const projectPermissionDefinitionResponse = await niceBackendFetch(`/api/v1/project-permission-definitions`, {
@@ -195,7 +195,7 @@ it("can create a new permission and grant it to a user on the server", async ({ 
 });
 
 it("can customize default team permissions", async ({ expect }) => {
-  await Auth.Otp.signIn();
+  await Auth.fastSignUp();
   const { adminAccessToken } = await Project.createAndGetAdminToken();
 
   const response1 = await niceBackendFetch(`/api/v1/team-permission-definitions`, {
@@ -271,7 +271,7 @@ it("can customize default team permissions", async ({ expect }) => {
 it("should trigger team permission webhook when a permission is granted to a user", async ({ expect }) => {
   const { projectId, svixToken, endpointId } = await Webhook.createProjectWithEndpoint();
 
-  const { userId } = await Auth.Otp.signIn();
+  const { userId } = await Auth.fastSignUp();
   const { teamId } = await Team.createWithCurrentAsCreator();
 
   const grantPermissionResponse = await niceBackendFetch(`/api/v1/team-permissions/${teamId}/${userId}/$update_team`, {
@@ -316,7 +316,7 @@ it("should trigger team permission webhook when a permission is granted to a use
 it("should trigger team permission webhook when a permission is revoked from a user", async ({ expect }) => {
   const { projectId, svixToken, endpointId } = await Webhook.createProjectWithEndpoint();
 
-  const { userId } = await Auth.Otp.signIn();
+  const { userId } = await Auth.fastSignUp();
   const { teamId } = await Team.createWithCurrentAsCreator();
 
   // First grant the permission
@@ -358,7 +358,7 @@ it("should trigger team permission webhook when a permission is revoked from a u
 });
 
 it("should not be able to create a permission with the same name as an existing team permission", async ({ expect }) => {
-  await Auth.Otp.signIn();
+  await Auth.fastSignUp();
   const { adminAccessToken } = await Project.createAndGetAdminToken();
 
   // First, create a team permission definition

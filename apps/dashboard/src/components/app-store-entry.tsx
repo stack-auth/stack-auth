@@ -1,10 +1,10 @@
 'use client';
 
 import { AppIcon } from "@/components/app-square";
+import { Badge, Button, Dialog, DialogContent, DialogTitle, ScrollArea, cn } from "@/components/ui";
 import { ALL_APPS_FRONTEND, type AppId } from "@/lib/apps-frontend";
+import { ArrowSquareOutIcon, CaretLeftIcon, CaretRightIcon, CheckIcon, LightningIcon, ShieldCheckIcon, XIcon } from "@phosphor-icons/react";
 import { ALL_APPS, ALL_APP_TAGS } from "@stackframe/stack-shared/dist/apps/apps-config";
-import { Badge, Button, Dialog, DialogContent, DialogTitle, ScrollArea, cn } from "@stackframe/stack-ui";
-import { Check, ChevronLeft, ChevronRight, ExternalLink, Shield, X, Zap } from "lucide-react";
 import Image from "next/image";
 import { FunctionComponent, useCallback, useEffect, useRef, useState } from "react";
 
@@ -69,9 +69,9 @@ export function AppStoreEntry({
 
   // Feature highlights (can be customized per app in the future)
   const features = [
-    { icon: Shield, label: "Secure & Compliant" },
-    { icon: Zap, label: "Quick Setup" },
-    { icon: Check, label: "Production Ready" },
+    { icon: ShieldCheckIcon, label: "Secure & Compliant" },
+    { icon: LightningIcon, label: "Quick Setup" },
+    { icon: CheckIcon, label: "Production Ready" },
   ];
 
   return (
@@ -150,7 +150,7 @@ export function AppStoreEntry({
                         size="lg"
                         className="px-8 bg-blue-600 hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600 text-white font-medium shadow-lg shadow-blue-500/20"
                       >
-                        <ExternalLink className="w-4 h-4 mr-2" />
+                        <ArrowSquareOutIcon className="w-4 h-4 mr-2" />
                         Open App
                       </Button>
                       {onDisable && (
@@ -226,7 +226,7 @@ export function AppStoreEntry({
                   className="absolute left-0 top-1/2 -translate-y-1/2 z-10 bg-white/90 dark:bg-gray-900/90 hover:bg-white dark:hover:bg-gray-800 p-2 rounded-full shadow-lg border border-gray-200 dark:border-gray-700 opacity-0 group-hover/screenshots:opacity-100 transition-opacity focus:opacity-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   aria-label="Scroll left"
                 >
-                  <ChevronLeft className="w-5 h-5 text-gray-700 dark:text-gray-300" />
+                  <CaretLeftIcon className="w-5 h-5 text-gray-700 dark:text-gray-300" />
                 </button>
 
                 {/* Right scroll button */}
@@ -235,7 +235,7 @@ export function AppStoreEntry({
                   className="absolute right-0 top-1/2 -translate-y-1/2 z-10 bg-white/90 dark:bg-gray-900/90 hover:bg-white dark:hover:bg-gray-800 p-2 rounded-full shadow-lg border border-gray-200 dark:border-gray-700 opacity-0 group-hover/screenshots:opacity-100 transition-opacity focus:opacity-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   aria-label="Scroll right"
                 >
-                  <ChevronRight className="w-5 h-5 text-gray-700 dark:text-gray-300" />
+                  <CaretRightIcon className="w-5 h-5 text-gray-700 dark:text-gray-300" />
                 </button>
 
                 <div
@@ -291,7 +291,7 @@ export function AppStoreEntry({
                     className="absolute top-4 right-4 z-50 bg-white/10 hover:bg-white/20 p-2 rounded-full transition-colors"
                     aria-label="Close preview"
                   >
-                    <X className="w-6 h-6 text-white" />
+                    <XIcon className="w-6 h-6 text-white" />
                   </button>
 
                   {/* Image counter */}
@@ -306,7 +306,7 @@ export function AppStoreEntry({
                       className="absolute left-4 top-1/2 -translate-y-1/2 z-50 bg-white/10 hover:bg-white/20 p-3 rounded-full transition-colors"
                       aria-label="Previous screenshot"
                     >
-                      <ChevronLeft className="w-8 h-8 text-white" />
+                      <CaretLeftIcon className="w-8 h-8 text-white" />
                     </button>
                   )}
 
@@ -317,7 +317,7 @@ export function AppStoreEntry({
                       className="absolute right-4 top-1/2 -translate-y-1/2 z-50 bg-white/10 hover:bg-white/20 p-3 rounded-full transition-colors"
                       aria-label="Next screenshot"
                     >
-                      <ChevronRight className="w-8 h-8 text-white" />
+                      <CaretRightIcon className="w-8 h-8 text-white" />
                     </button>
                   )}
 
