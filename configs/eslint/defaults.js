@@ -111,10 +111,6 @@ module.exports = {
         selector: "ImportDeclaration[source.value='react'] ImportSpecifier[imported.name='use']",
         message: "Use `use` from @stack-shared/dist/utils/react instead (as it also supports React 18).",
       },
-    {
-      selector: "CallExpression > MemberExpression[property.name='$queryRaw']",
-      message: "use rawQuery from prisma-client.tsx instead",
-    },
     ],
     "@typescript-eslint/no-misused-promises": [
       "error",
