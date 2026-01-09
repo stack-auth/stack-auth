@@ -2,7 +2,7 @@ import { AdminUserProjectsCrud } from "@stackframe/stack-shared/dist/interface/c
 import { encodeBase64 } from "@stackframe/stack-shared/dist/utils/bytes";
 import { generateSecureRandomString } from "@stackframe/stack-shared/dist/utils/crypto";
 import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
-import { filterUndefined } from "@stackframe/stack-shared/dist/utils/objects";
+import { filterUndefined, omit } from "@stackframe/stack-shared/dist/utils/objects";
 import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { nicify } from "@stackframe/stack-shared/dist/utils/strings";
 import * as jose from "jose";
@@ -97,7 +97,7 @@ function expectSnakeCase(obj: unknown, path: string): void {
       if (key.match(/[a-z0-9][A-Z][a-z0-9]+/) && !key.includes("_") && !["newUser", "afterCallbackRedirectUrl"].includes(key)) {
         throw new StackAssertionError(`Object has camelCase key (expected snake_case): ${path}.${key}`);
       }
-      if (["client_metadata", "server_metadata", "options_json", "credential", "authentication_response", "metadata"].includes(key)) continue;
+      if (["client_metadata", "server_metadata", "options_json", "credential", "authentication_response", "metadata", "variables", "skipped_details"].includes(key)) continue;
       // because email templates
       if (path === "req.body.content.root") continue;
       if (path === "res.body.content.root") continue;
@@ -401,9 +401,9 @@ export namespace Auth {
         if (containsSubstring) {
           break;
         }
-        await wait(100 + i * 10);
+        await wait(100 + i * 20);
         if (i >= 30) {
-          throw new StackAssertionError(`Sign-in code message not found after ${i} attempts`, { messages });
+          throw new StackAssertionError(`Sign-in code message not found after ${i} attempts`, { response, messages: messages.map(m => ({ ...m, body: m.body && omit(m.body, ["html"]) })) });
         }
       }
       return {
@@ -1218,7 +1218,7 @@ export namespace Project {
       method: "PATCH",
       body: { config_override_string: JSON.stringify(config) },
     });
-    expect(response.body).toMatchInlineSnapshot(`{}`);
+    expect(response.body).toMatchInlineSnapshot(`{ "success": true }`);
     expect(response.status).toBe(200);
   }
 }
@@ -1355,7 +1355,12 @@ export namespace User {
       accessType: "server",
       body: body ?? {},
     });
-    expect(createUserResponse.status).toBe(201);
+    expect(createUserResponse).toMatchObject({
+      status: 201,
+      body: {
+        id: expect.any(String),
+      },
+    });
     return {
       userId: createUserResponse.body.id,
     };

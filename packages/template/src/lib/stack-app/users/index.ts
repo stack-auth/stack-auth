@@ -197,7 +197,7 @@ export type UserExtra = {
   // END_PLATFORM
 
   readonly selectedTeam: Team | null,
-  setSelectedTeam(team: Team | null): Promise<void>,
+  setSelectedTeam(teamOrId: string | Team | null): Promise<void>,
   createTeam(data: TeamCreateOptions): Promise<Team>,
   leaveTeam(team: Team): Promise<void>,
 

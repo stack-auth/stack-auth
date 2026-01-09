@@ -515,8 +515,8 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
       async setServerMetadata(metadata: Record<string, any>) {
         return await this.update({ serverMetadata: metadata });
       },
-      async setSelectedTeam(team: Team | null) {
-        return await this.update({ selectedTeamId: team?.id ?? null });
+      async setSelectedTeam(team: Team | string | null) {
+        return await this.update({ selectedTeamId: typeof team === 'string' ? team : team?.id ?? null });
       },
       getConnectedAccount,
       useConnectedAccount, // THIS_LINE_PLATFORM react-like

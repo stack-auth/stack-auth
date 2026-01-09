@@ -59,8 +59,9 @@ export const usersCrudServerReadSchema = fieldSchema.yupObject({
    * @deprecated
    */
   requires_totp_mfa: fieldSchema.yupBoolean().defined().meta({ openapiField: { hidden: true, description: 'Whether the user is required to use TOTP MFA to sign in', exampleValue: false } }),
-}).defined().test("restricted_reason_iff_restricted", "restricted_reason must be present if and only if is_restricted is true", function(this: yup.TestContext<any>) {
-  return this.parent.is_restricted === !!this.parent.restricted_reason;
+}).defined().test("restricted_reason_iff_restricted", "restricted_reason must be present if and only if is_restricted is true", function(this: yup.TestContext<any>, value: any) {
+  if (value == null) return true;
+  return value.is_restricted === !!value.restricted_reason;
 });
 
 export const usersCrudServerCreateSchema = usersCrudServerUpdateSchema.omit(['selected_team_id']).concat(fieldSchema.yupObject({

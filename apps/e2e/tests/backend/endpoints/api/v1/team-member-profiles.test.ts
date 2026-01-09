@@ -1,16 +1,16 @@
 import { expect } from "vitest";
 import { it } from "../../../../helpers";
-import { Auth, Team, backendContext, bumpEmailAddress, niceBackendFetch } from "../../../backend-helpers";
+import { Auth, Team, User, backendContext, bumpEmailAddress, niceBackendFetch } from "../../../backend-helpers";
 
 async function signInAndCreateTeam() {
-  const { userId: userId1 } = await Auth.Otp.signIn();
-  const mailbox1 = backendContext.value.mailbox;
+  const { userId: userId1 } = await Auth.fastSignUp();
+  const userAuth = backendContext.value.userAuth;
 
   await bumpEmailAddress();
-  const { userId: userId2 } = await Auth.Otp.signIn();
+  const { userId: userId2 } = await Auth.fastSignUp();
 
   await bumpEmailAddress();
-  const { userId: userId3 } = await Auth.Otp.signIn();
+  const { userId: userId3 } = await Auth.fastSignUp();
 
   // update names of users
   await niceBackendFetch(`/api/v1/users/${userId1}`, {
@@ -53,10 +53,10 @@ async function signInAndCreateTeam() {
 
   // Sign back in as user 1
   backendContext.set({
-    mailbox: mailbox1,
+    userAuth: userAuth,
   });
-  const { userId: signedInUserId } = await Auth.Otp.signIn();
-  expect(signedInUserId).toBe(userId1);
+  const currentUser = await User.getCurrent();
+  expect(currentUser.id).toBe(userId1);
 
   // Remove any permissions from user 1
   const permissionsResponse = await niceBackendFetch(`/api/v1/team-permissions?team_id=${teamId}&user_id=${userId1}`, {

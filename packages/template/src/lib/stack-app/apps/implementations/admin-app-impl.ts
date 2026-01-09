@@ -9,7 +9,7 @@ import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/uti
 import { pick } from "@stackframe/stack-shared/dist/utils/objects";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { useMemo } from "react"; // THIS_LINE_PLATFORM react-like
-import { AdminSentEmail } from "../..";
+import { AdminEmailOutbox, AdminSentEmail } from "../..";
 import { EmailConfig, stackAppInternalsSymbol } from "../../common";
 import { AdminEmailTemplate } from "../../email-templates";
 import { InternalApiKey, InternalApiKeyBase, InternalApiKeyBaseCrudRead, InternalApiKeyCreateOptions, InternalApiKeyFirstView, internalApiKeyCreateOptionsToCrud } from "../../internal-api-keys";
@@ -21,7 +21,6 @@ import { _StackServerAppImplIncomplete } from "./server-app-impl";
 
 import { CompleteConfig, EnvironmentConfigOverrideOverride } from "@stackframe/stack-shared/dist/config/schema";
 import { ChatContent } from "@stackframe/stack-shared/dist/interface/admin-interface";
-import { ConfigCrud } from "@stackframe/stack-shared/dist/interface/crud/config";
 import { useAsyncCache } from "./common"; // THIS_LINE_PLATFORM react-like
 
 export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, ProjectId extends string> extends _StackServerAppImplIncomplete<HasTokenStore, ProjectId> implements StackAdminApp<HasTokenStore, ProjectId> {
@@ -99,7 +98,7 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
     });
   }
 
-  _adminConfigFromCrud(data: ConfigCrud['Admin']['Read']): CompleteConfig {
+  _adminConfigFromCrud(data: { config_string: string }): CompleteConfig {
     return JSON.parse(data.config_string);
   }
 
@@ -609,6 +608,247 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
   async listTransactions(params: { cursor?: string, limit?: number, type?: TransactionType, customerType?: 'user' | 'team' | 'custom' }): Promise<{ transactions: Transaction[], nextCursor: string | null }> {
     const crud = Result.orThrow(await this._transactionsCache.getOrWait([params.cursor, params.limit, params.type, params.customerType] as const, "write-only"));
     return crud;
+  }
+
+  // Email Outbox methods
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Complex discriminated union conversion from API response
+  private _emailOutboxCrudToAdmin(crud: any): AdminEmailOutbox {
+    const recipient = crud.to;
+    let to: AdminEmailOutbox["to"];
+    if (recipient.type === "user-primary-email") {
+      to = { type: "user-primary-email", userId: recipient.user_id };
+    } else if (recipient.type === "user-custom-emails") {
+      to = { type: "user-custom-emails", userId: recipient.user_id, emails: recipient.emails };
+    } else {
+      to = { type: "custom-emails", emails: recipient.emails };
+    }
+
+    // Base fields present on all emails
+    const base = {
+      id: crud.id as string,
+      createdAt: new Date(crud.created_at_millis),
+      updatedAt: new Date(crud.updated_at_millis),
+      to,
+      scheduledAt: new Date(crud.scheduled_at_millis),
+      isPaused: false as const,
+      hasRendered: false as const,
+      hasDelivered: false as const,
+    };
+
+    // Rendered fields (available after rendering completes successfully)
+    const rendered = crud.has_rendered ? {
+      ...base,
+      startedRenderingAt: new Date(crud.started_rendering_at_millis),
+      renderedAt: new Date(crud.rendered_at_millis),
+      subject: crud.subject as string,
+      html: crud.html as string | null,
+      text: crud.text as string | null,
+      isTransactional: crud.is_transactional as boolean,
+      isHighPriority: crud.is_high_priority as boolean,
+      notificationCategoryId: crud.notification_category_id as string | null,
+      hasRendered: true as const,
+    } : null;
+
+    // Started sending fields
+    const startedSending = rendered && crud.started_sending_at_millis ? {
+      ...rendered,
+      startedSendingAt: new Date(crud.started_sending_at_millis),
+    } : null;
+
+    // Finished delivering fields
+    const finishedDelivering = startedSending && crud.has_delivered ? {
+      ...startedSending,
+      deliveredAt: new Date(crud.delivered_at_millis),
+      hasDelivered: true as const,
+    } : null;
+
+    // Use type assertion at the end because TypeScript has trouble with
+    // spread + override patterns on discriminated unions with const literal types
+    const result = (() => {
+      switch (crud.status) {
+        case "paused": {
+          return {
+            ...base,
+            status: "paused" as const,
+            simpleStatus: "in-progress" as const,
+            isPaused: true as const,
+          };
+        }
+        case "preparing": {
+          return {
+            ...base,
+            status: "preparing" as const,
+            simpleStatus: "in-progress" as const,
+          };
+        }
+        case "rendering": {
+          return {
+            ...base,
+            status: "rendering" as const,
+            simpleStatus: "in-progress" as const,
+            startedRenderingAt: new Date(crud.started_rendering_at_millis),
+          };
+        }
+        case "render-error": {
+          return {
+            ...base,
+            status: "render-error" as const,
+            simpleStatus: "error" as const,
+            startedRenderingAt: new Date(crud.started_rendering_at_millis),
+            renderedAt: new Date(crud.rendered_at_millis),
+            renderError: crud.render_error,
+          };
+        }
+        case "scheduled": {
+          return {
+            ...rendered!,
+            status: "scheduled" as const,
+            simpleStatus: "in-progress" as const,
+          };
+        }
+        case "queued": {
+          return {
+            ...rendered!,
+            status: "queued" as const,
+            simpleStatus: "in-progress" as const,
+          };
+        }
+        case "sending": {
+          return {
+            ...startedSending!,
+            status: "sending" as const,
+            simpleStatus: "in-progress" as const,
+          };
+        }
+        case "server-error": {
+          return {
+            ...startedSending!,
+            status: "server-error" as const,
+            simpleStatus: "error" as const,
+            errorAt: new Date(crud.error_at_millis),
+            serverError: crud.server_error,
+          };
+        }
+        case "skipped": {
+          return {
+            ...base,
+            status: "skipped" as const,
+            simpleStatus: "ok" as const,
+            skippedAt: new Date(crud.skipped_at_millis),
+            skippedReason: crud.skipped_reason,
+            skippedDetails: crud.skipped_details ?? {},
+            hasRendered: crud.has_rendered as boolean,
+            // Optional fields
+            startedRenderingAt: crud.started_rendering_at_millis ? new Date(crud.started_rendering_at_millis) : undefined,
+            renderedAt: crud.rendered_at_millis ? new Date(crud.rendered_at_millis) : undefined,
+            subject: crud.subject,
+            html: crud.html,
+            text: crud.text,
+            isTransactional: crud.is_transactional,
+            isHighPriority: crud.is_high_priority,
+            notificationCategoryId: crud.notification_category_id,
+            startedSendingAt: crud.started_sending_at_millis ? new Date(crud.started_sending_at_millis) : undefined,
+          };
+        }
+        case "bounced": {
+          return {
+            ...startedSending!,
+            status: "bounced" as const,
+            simpleStatus: "error" as const,
+            bouncedAt: new Date(crud.bounced_at_millis),
+          };
+        }
+        case "delivery-delayed": {
+          return {
+            ...startedSending!,
+            status: "delivery-delayed" as const,
+            simpleStatus: "ok" as const,
+            deliveryDelayedAt: new Date(crud.delivery_delayed_at_millis),
+          };
+        }
+        case "sent": {
+          return {
+            ...finishedDelivering!,
+            status: "sent" as const,
+            simpleStatus: "ok" as const,
+            canHaveDeliveryInfo: crud.can_have_delivery_info,
+          };
+        }
+        case "opened": {
+          return {
+            ...finishedDelivering!,
+            status: "opened" as const,
+            simpleStatus: "ok" as const,
+            openedAt: new Date(crud.opened_at_millis),
+            canHaveDeliveryInfo: true as const,
+          };
+        }
+        case "clicked": {
+          return {
+            ...finishedDelivering!,
+            status: "clicked" as const,
+            simpleStatus: "ok" as const,
+            clickedAt: new Date(crud.clicked_at_millis),
+            canHaveDeliveryInfo: true as const,
+          };
+        }
+        case "marked-as-spam": {
+          return {
+            ...finishedDelivering!,
+            status: "marked-as-spam" as const,
+            simpleStatus: "ok" as const,
+            markedAsSpamAt: new Date(crud.marked_as_spam_at_millis),
+            canHaveDeliveryInfo: true as const,
+          };
+        }
+        default: {
+          throw new StackAssertionError(`Unknown email outbox status: ${crud.status}`, { status: crud.status });
+        }
+      }
+    })();
+    // The type system has difficulty with spread + override patterns on discriminated unions,
+    // so we use a type assertion here. The switch statement above ensures we return the correct shape.
+    return result as AdminEmailOutbox;
+  }
+
+  async listOutboxEmails(options?: { status?: string, simpleStatus?: string, limit?: number, cursor?: string }): Promise<{ items: AdminEmailOutbox[], nextCursor: string | null }> {
+    const response = await this._interface.listOutboxEmails({
+      status: options?.status,
+      simple_status: options?.simpleStatus,
+      limit: options?.limit,
+      cursor: options?.cursor,
+    });
+    return {
+      items: response.items.map((item) => this._emailOutboxCrudToAdmin(item)),
+      nextCursor: response.pagination?.next_cursor ?? null,
+    };
+  }
+
+  async getOutboxEmail(id: string): Promise<AdminEmailOutbox> {
+    const response = await this._interface.getOutboxEmail(id);
+    return this._emailOutboxCrudToAdmin(response);
+  }
+
+  async updateOutboxEmail(id: string, options: { isPaused?: boolean, scheduledAtMillis?: number, cancel?: boolean }): Promise<AdminEmailOutbox> {
+    const response = await this._interface.updateOutboxEmail(id, {
+      is_paused: options.isPaused,
+      scheduled_at_millis: options.scheduledAtMillis,
+      cancel: options.cancel,
+    });
+    return this._emailOutboxCrudToAdmin(response);
+  }
+
+  async pauseOutboxEmail(id: string): Promise<AdminEmailOutbox> {
+    return await this.updateOutboxEmail(id, { isPaused: true });
+  }
+
+  async unpauseOutboxEmail(id: string): Promise<AdminEmailOutbox> {
+    return await this.updateOutboxEmail(id, { isPaused: false });
+  }
+
+  async cancelOutboxEmail(id: string): Promise<AdminEmailOutbox> {
+    return await this.updateOutboxEmail(id, { cancel: true });
   }
 
   // IF_PLATFORM react-like

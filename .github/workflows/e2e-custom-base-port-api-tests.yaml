@@ -17,7 +17,7 @@ jobs:
     env:
       NODE_ENV: test
       STACK_ENABLE_HARDCODED_PASSKEY_CHALLENGE_FOR_TESTING: yes
-      STACK_DIRECT_DATABASE_CONNECTION_STRING: "postgres://postgres:PASSWORD-PLACEHOLDER--uqfEC1hmmv@localhost:6728/stackframe"
+      STACK_DATABASE_CONNECTION_STRING: "postgres://postgres:PASSWORD-PLACEHOLDER--uqfEC1hmmv@localhost:6728/stackframe"
       NEXT_PUBLIC_STACK_PORT_PREFIX: "67"
 
     strategy:
@@ -97,7 +97,7 @@ jobs:
 
       - name: Initialize database
         run: pnpm run db:init
-  
+
       - name: Start stack-backend in background
         uses: JarvusInnovations/background-action@v1.0.7
         with:
@@ -112,7 +112,7 @@ jobs:
         with:
           run: pnpm run start:dashboard --log-order=stream &
           wait-on: |
-            http://localhost:6702
+            http://localhost:6701
           tail: true
           wait-for: 30s
           log-output-if: true
@@ -130,7 +130,7 @@ jobs:
         with:
           run: pnpm -C apps/backend run run-email-queue --log-order=stream &
           wait-on: |
-            http://localhost:8102
+            http://localhost:6702
           tail: true
           wait-for: 30s
           log-output-if: true

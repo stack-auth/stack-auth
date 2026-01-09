@@ -1,17 +1,17 @@
+import { BooleanTrue, Prisma } from "@/generated/prisma/client";
 import { getRenderedEnvironmentConfigQuery, getRenderedProjectConfigQuery } from "@/lib/config";
 import { demoteAllContactChannelsToNonPrimary, setContactChannelAsPrimaryByValue } from "@/lib/contact-channel";
 import { normalizeEmail } from "@/lib/emails";
 import { grantDefaultProjectPermissions } from "@/lib/permissions";
 import { ensureTeamMembershipExists, ensureUserExists } from "@/lib/request-checks";
-import { Tenancy, getSoleTenancyFromProjectBranch } from "@/lib/tenancies";
+import { Tenancy } from "@/lib/tenancies";
 import { PrismaTransaction } from "@/lib/types";
 import { sendTeamMembershipDeletedWebhook, sendUserCreatedWebhook, sendUserDeletedWebhook, sendUserUpdatedWebhook } from "@/lib/webhooks";
-import { RawQuery, getPrismaClientForSourceOfTruth, getPrismaClientForTenancy, getPrismaSchemaForSourceOfTruth, getPrismaSchemaForTenancy, globalPrismaClient, rawQuery, retryTransaction, sqlQuoteIdent } from "@/prisma-client";
+import { PrismaClientTransaction, RawQuery, getPrismaClientForSourceOfTruth, getPrismaClientForTenancy, getPrismaSchemaForSourceOfTruth, globalPrismaClient, rawQuery, retryTransaction, sqlQuoteIdent } from "@/prisma-client";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
 import { uploadAndGetUrl } from "@/s3";
 import { log } from "@/utils/telemetry";
 import { runAsynchronouslyAndWaitUntil } from "@/utils/vercel";
-import { BooleanTrue, Prisma, PrismaClient } from "@prisma/client";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { currentUserCrud } from "@stackframe/stack-shared/dist/interface/crud/current-user";
 import { UsersCrud, usersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
@@ -58,7 +58,7 @@ const getPersonalTeamDisplayName = (userDisplayName: string | null, userPrimaryE
 
 const personalTeamDefaultDisplayName = "Personal Team";
 
-async function createPersonalTeamIfEnabled(prisma: PrismaClient, tenancy: Tenancy, user: UsersCrud["Admin"]["Read"]) {
+async function createPersonalTeamIfEnabled(prisma: PrismaClientTransaction, tenancy: Tenancy, user: UsersCrud["Admin"]["Read"]) {
   if (tenancy.config.teams.createPersonalTeamOnSignUp) {
     const team = await teamsCrudHandlers.adminCreate({
       data: {
@@ -118,9 +118,9 @@ export function computeRestrictedStatus<T extends OnboardingConfig>(
 
 export const userPrismaToCrud = (
   prisma: Prisma.ProjectUserGetPayload<{ include: typeof userFullInclude }>,
-  lastActiveAtMillis: number,
   config: OnboardingConfig,
 ): UsersCrud["Admin"]["Read"] => {
+  const lastActiveAtMillis = prisma.lastActiveAt.getTime();
   const selectedTeamMembers = prisma.teamMembers;
   if (selectedTeamMembers.length > 1) {
     throw new StackAssertionError("User cannot have more than one selected team; this should never happen");
@@ -228,83 +228,16 @@ async function checkAuthData(
   }
 }
 
-export const getUserLastActiveAtMillis = async (projectId: string, branchId: string, userId: string): Promise<number | null> => {
-  const res = (await getUsersLastActiveAtMillis(projectId, branchId, [userId], [0]))[0];
-  if (res === 0) {
-    return null;
-  }
-  return res;
-};
-
-const mapUserLastActiveAtMillis = (
-  events: Array<{ userId: string, lastActiveAt: Date }>,
-  userIds: string[],
-  userSignedUpAtMillis: (number | Date)[],
-): number[] => {
-  const eventsByUserId = new Map<string, number>();
-  for (const event of events) {
-    eventsByUserId.set(event.userId, event.lastActiveAt.getTime());
-  }
-
-  return userIds.map((userId, index) => {
-    const lastActiveAt = eventsByUserId.get(userId);
-    if (lastActiveAt !== undefined) {
-      return lastActiveAt;
-    }
-
-    const signedUpAt = userSignedUpAtMillis[index];
-    return typeof signedUpAt === "number" ? signedUpAt : signedUpAt.getTime();
-  });
-};
-
-/**
- * Same as userIds.map(userId => getUserLastActiveAtMillis(tenancyId, userId)), but uses a single query
- */
-export const getUsersLastActiveAtMillis = async (projectId: string, branchId: string, userIds: string[], userSignedUpAtMillis: (number | Date)[]): Promise<number[]> => {
-  if (userIds.length === 0) {
-    // Prisma.join throws an error if the array is empty, so we need to handle that case
-    return [];
-  }
-
-  // Get the tenancy first to determine the source of truth
-  const tenancy = await getSoleTenancyFromProjectBranch(projectId, branchId);
-
-  const prisma = await getPrismaClientForTenancy(tenancy);
-  const schema = await getPrismaSchemaForTenancy(tenancy);
-  const events = await prisma.$queryRaw<Array<{ userId: string, lastActiveAt: Date }>>`
-    SELECT data->>'userId' as "userId", MAX("eventStartedAt") as "lastActiveAt"
-    FROM ${sqlQuoteIdent(schema)}."Event"
-    WHERE data->>'userId' = ANY(${Prisma.sql`ARRAY[${Prisma.join(userIds)}]`})
-      AND data->>'projectId' = ${projectId}
-      AND COALESCE("data"->>'branchId', 'main') = ${branchId}
-      AND "systemEventTypeIds" @> '{"$user-activity"}'
-    GROUP BY data->>'userId'
-  `;
-
-  return mapUserLastActiveAtMillis(events, userIds, userSignedUpAtMillis);
-
-};
-
-export function getUserQuery(
-  projectId: string,
-  branchId: string,
-  userId: string,
-  schema: string,
-  config: OnboardingConfig,
-): RawQuery<UsersCrud["Admin"]["Read"] | null> {
+export function getUserQuery(projectId: string, branchId: string, userId: string, schema: string, config: OnboardingConfig): RawQuery<UsersCrud["Admin"]["Read"] | null> {
   return {
     supportedPrismaClients: ["source-of-truth"],
+    readOnlyQuery: true,
     sql: Prisma.sql`
       SELECT to_json(
         (
           SELECT (
             to_jsonb("ProjectUser".*) ||
             jsonb_build_object(
-              'lastActiveAt', (
-                SELECT MAX("eventStartedAt") as "lastActiveAt"
-                FROM ${sqlQuoteIdent(schema)}."Event"
-                WHERE data->>'projectId' = ("ProjectUser"."mirroredProjectId") AND COALESCE("data"->>'branchId', 'main') = ("ProjectUser"."mirroredBranchId") AND "data"->>'userId' = ("ProjectUser"."projectUserId")::text AND "systemEventTypeIds" @> '{"$user-activity"}'
-              ),
               'ContactChannels', (
                 SELECT COALESCE(ARRAY_AGG(
                   to_jsonb("ContactChannel") ||
@@ -443,7 +376,7 @@ export function getUserQuery(
           client_read_only_metadata: row.SelectedTeamMember.Team.clientReadOnlyMetadata,
           server_metadata: row.SelectedTeamMember.Team.serverMetadata,
         } : null,
-        last_active_at_millis: row.lastActiveAt ? new Date(row.lastActiveAt + "Z").getTime() : new Date(row.createdAt + "Z").getTime(),
+        last_active_at_millis: new Date(row.lastActiveAt + "Z").getTime(),
         is_anonymous: row.isAnonymous,
         is_restricted: restrictedStatus.isRestricted,
         restricted_reason: restrictedStatus.restrictedReason,
@@ -620,10 +553,9 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
       } : {},
     });
 
-    const lastActiveAtMillis = await getUsersLastActiveAtMillis(auth.project.id, auth.branchId, db.map(user => user.projectUserId), db.map(user => user.createdAt));
     return {
       // remove the last item because it's the next cursor
-      items: db.map((user, index) => userPrismaToCrud(user, lastActiveAtMillis[index], auth.tenancy.config)).slice(0, query.limit),
+      items: db.map((user) => userPrismaToCrud(user, auth.tenancy.config)).slice(0, query.limit),
       is_paginated: true,
       pagination: {
         // if result is not full length, there is no next cursor
@@ -772,7 +704,7 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
         throw new StackAssertionError("User was created but not found", newUser);
       }
 
-      return userPrismaToCrud(user, await getUserLastActiveAtMillis(auth.project.id, auth.branchId, user.projectUserId) ?? user.createdAt.getTime(), auth.tenancy.config);
+      return userPrismaToCrud(user, auth.tenancy.config);
     });
 
     await createPersonalTeamIfEnabled(prisma, auth.tenancy, result);
@@ -1132,7 +1064,7 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
         include: userFullInclude,
       });
 
-      const user = userPrismaToCrud(db, await getUserLastActiveAtMillis(auth.project.id, auth.branchId, params.user_id) ?? db.createdAt.getTime(), auth.tenancy.config);
+      const user = userPrismaToCrud(db, auth.tenancy.config);
       return {
         user,
       };

@@ -1,4 +1,4 @@
-import { BooleanTrue, ContactChannelType } from "@prisma/client";
+import { BooleanTrue, ContactChannelType } from "@/generated/prisma/client";
 import { normalizeEmail } from "./emails";
 import { PrismaTransaction } from "./types";
 

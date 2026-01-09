@@ -1,4 +1,4 @@
-import type { ItemQuantityChange, OneTimePurchase, Subscription, SubscriptionInvoice } from "@prisma/client";
+import type { ItemQuantityChange, OneTimePurchase, Subscription, SubscriptionInvoice } from "@/generated/prisma/client";
 import type { Transaction, TransactionEntry } from "@stackframe/stack-shared/dist/interface/crud/transactions";
 import { SUPPORTED_CURRENCIES, type Currency } from "@stackframe/stack-shared/dist/utils/currency-constants";
 import { typedToLowercase } from "@stackframe/stack-shared/dist/utils/strings";

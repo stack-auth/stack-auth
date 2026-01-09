@@ -1,5 +1,5 @@
 import { uploadAndGetUrl } from "@/s3";
-import { Prisma } from "@prisma/client";
+import { Prisma } from "@/generated/prisma/client";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { CompleteConfig, EnvironmentConfigOverrideOverride, ProjectConfigOverrideOverride } from "@stackframe/stack-shared/dist/config/schema";
 import { AdminUserProjectsCrud, ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
@@ -41,6 +41,7 @@ export async function listManagedProjectIds(projectUser: UsersCrud["Admin"]["Rea
 export function getProjectQuery(projectId: string): RawQuery<Promise<Omit<ProjectsCrud["Admin"]["Read"], "config"> | null>> {
   return {
     supportedPrismaClients: ["global"],
+    readOnlyQuery: true,
     sql: Prisma.sql`
           SELECT "Project".*
           FROM "Project"

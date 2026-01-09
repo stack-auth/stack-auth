@@ -1315,8 +1315,8 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       setClientMetadata(metadata: Record<string, any>) {
         return this.update({ clientMetadata: metadata });
       },
-      async setSelectedTeam(team: Team | null) {
-        await this.update({ selectedTeamId: team?.id ?? null });
+      async setSelectedTeam(team: Team | string | null) {
+        await this.update({ selectedTeamId: typeof team === 'string' ? team : team?.id ?? null });
       },
       getConnectedAccount,
       useConnectedAccount, // THIS_LINE_PLATFORM react-like

@@ -63,7 +63,7 @@ export default function TokenStalenessPage() {
     if (isDifferent(jwtPayload.is_restricted, user.isRestricted)) {
       result.push({ field: 'isRestricted / is_restricted', token: jwtPayload.is_restricted, actual: user.isRestricted });
     }
-    if (isDifferent(jwtPayload.restricted_reason?.type, user.restrictedReason?.type)) {
+    if (isDifferent((jwtPayload.restricted_reason as any)?.type, (user.restrictedReason as any)?.type)) {
       result.push({ field: 'restrictedReason / restricted_reason', token: JSON.stringify(jwtPayload.restricted_reason), actual: JSON.stringify(user.restrictedReason) });
     }
     if (isDifferent(jwtPayload.selected_team_id, user.selectedTeam?.id)) {
@@ -81,7 +81,7 @@ export default function TokenStalenessPage() {
 
   const selectTeam = async (teamId: string | null) => {
     if (!user) return;
-    await user.setSelectedTeam(teamId ? { id: teamId } : null);
+    await user.setSelectedTeam(teamId);
   };
 
   const createTeam = async () => {
