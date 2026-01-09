@@ -1818,9 +1818,6 @@ export class StackClientInterface {
       urlString`/payments/products/${options.customer_type}/${options.customer_id}/${options.product_id}`,
       {
         method: "DELETE",
-        headers: {
-          "content-type": "application/json",
-        },
       },
       session,
     );
