@@ -315,15 +315,8 @@ export async function seed() {
         }
       });
 
-      if (adminInternalAccess) {
-        await internalPrisma.teamMember.create({
-          data: {
-            tenancyId: internalTenancy.id,
-            teamId: internalTeamId,
-            projectUserId: defaultUserId,
-          },
-        });
-      }
+      // Note: TeamMember creation is handled by the upsert below (after this if/else block)
+      // to ensure idempotency when adminInternalAccess changes between runs
 
       if (adminEmail && adminPassword) {
         await usersCrudHandlers.adminUpdate({
@@ -379,11 +372,9 @@ export async function seed() {
       }
     }
 
-    /* Ensure TeamMember exists before granting permissions.
-      This handles the case where the user was created in a previous run
-      with adminInternalAccess=false, but now adminInternalAccess=true.
-      Without this, grantTeamPermission would fail with a foreign key constraint error.
-    */
+    // Create or ensure TeamMember exists before granting permissions.
+    // Using upsert here (instead of create inside the else block above) ensures
+    // idempotency when adminInternalAccess changes between seed runs.
     if (adminInternalAccess) {
       await internalPrisma.teamMember.upsert({
         where: {
