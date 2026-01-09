@@ -109,7 +109,7 @@ describe("email outbox API", () => {
       });
       expect(listResponse.status).toBe(200);
       expect(listResponse.body.items.length).toBeGreaterThanOrEqual(1);
-      expect(listResponse.body.is_paginated).toBe(false);
+      expect(listResponse.body.is_paginated).toBe(true);
     });
 
     it("should filter by status", async ({ expect }) => {

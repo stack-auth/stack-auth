@@ -36,6 +36,7 @@ const stripHeaders = [] as const;
 const stripFields = [
   "access_token",
   "refresh_token",
+  "expires_in",
   "refreshTokenId",
   "refresh_token_id",
   "exp",

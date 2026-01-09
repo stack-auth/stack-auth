@@ -656,10 +656,12 @@ export class StackAdminInterface extends StackServerInterface {
 
   // Email Outbox methods
 
-  async listOutboxEmails(options?: { status?: string, simple_status?: string }): Promise<EmailOutboxCrud["Server"]["List"]> {
+  async listOutboxEmails(options?: { status?: string, simple_status?: string, limit?: number, cursor?: string }): Promise<EmailOutboxCrud["Server"]["List"]> {
     const qs = new URLSearchParams();
     if (options?.status) qs.set('status', options.status);
     if (options?.simple_status) qs.set('simple_status', options.simple_status);
+    if (options?.limit !== undefined) qs.set('limit', options.limit.toString());
+    if (options?.cursor) qs.set('cursor', options.cursor);
     const response = await this.sendServerRequest(
       `/emails/outbox${qs.size ? `?${qs.toString()}` : ''}`,
       { method: 'GET' },
