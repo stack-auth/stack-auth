@@ -38,7 +38,6 @@ export const POST = createSmartRouteHandler({
   }),
   handler: async ({ body, auth }) => {
     const resultOuter = await timeout(lowLevelSendEmailDirectWithoutRetries({
-      shouldSkipDeliverabilityCheck: true,
       tenancyId: auth.tenancy.id,
       emailConfig: {
         type: 'standard',
