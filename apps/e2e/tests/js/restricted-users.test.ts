@@ -2,8 +2,6 @@ import { describe } from "vitest";
 import { it } from "../helpers";
 import { createApp } from "./js-helpers";
 
-throw new StackAssertionError("TODO: REVIEW");
-
 
 describe("restricted user SDK filtering", () => {
   describe("getUser with includeRestricted option", () => {
@@ -35,7 +33,7 @@ describe("restricted user SDK filtering", () => {
     it("should return restricted user when includeRestricted is true", async ({ expect }) => {
       const { clientApp, adminApp } = await createApp({
         config: {
-          credential_enabled: true,
+          credentialEnabled: true,
         },
       });
 
@@ -60,9 +58,9 @@ describe("restricted user SDK filtering", () => {
     });
 
     it("should return non-restricted user without includeRestricted option", async ({ expect }) => {
-      const { clientApp, adminApp } = await createApp({
+      const { clientApp, adminApp, serverApp } = await createApp({
         config: {
-          magic_link_enabled: true,
+          credentialEnabled: true,
         },
       });
 
@@ -72,22 +70,30 @@ describe("restricted user SDK filtering", () => {
         "onboarding.requireEmailVerification": true,
       });
 
-      // Sign in with magic link (which verifies the email)
-      const testEmail = `test-${Date.now()}@stack-js-test.example.com`;
-      const { nonce } = await clientApp.sendMagicLinkEmail(testEmail);
-
-      // Get the magic link code
-      const magicLinkCode = await clientApp.internal.getMagicLinkCode({
-        email: testEmail,
-        nonce,
+      // Sign up a user (email won't be verified automatically)
+      await clientApp.signUpWithCredential({
+        email: "test-verified@example.com",
+        password: "password123",
+        verificationCallbackUrl: "http://localhost:3000",
       });
 
-      // Sign in with the magic link code
-      await clientApp.signInWithMagicLink({
-        code: magicLinkCode,
-      });
+      // User should be restricted at first
+      const restrictedUser = await clientApp.getUser({ includeRestricted: true });
+      expect(restrictedUser).not.toBeNull();
+      expect(restrictedUser!.isRestricted).toBe(true);
 
-      // User should be returned since they're verified (not restricted)
+      // Verify the email using server SDK
+      const serverUsers = await serverApp.listUsers({ query: "test-verified@example.com", includeRestricted: true });
+      expect(serverUsers.length).toBeGreaterThan(0);
+
+      const serverUser = serverUsers[0];
+      const serverContactChannels = await serverUser.listContactChannels();
+      const serverEmailChannel = serverContactChannels.find(c => c.value === "test-verified@example.com");
+      if (serverEmailChannel) {
+        await serverEmailChannel.update({ isVerified: true });
+      }
+
+      // Now user should be returned without includeRestricted since they're verified
       const user = await clientApp.getUser();
       expect(user).not.toBeNull();
       expect(user!.isRestricted).toBe(false);
@@ -102,11 +108,10 @@ describe("restricted user SDK filtering", () => {
       ).rejects.toThrow("Cannot use { or: 'anonymous' } with { includeRestricted: false }");
     });
 
-    it("should include restricted users when or: anonymous is used (without explicit includeRestricted)", async ({ expect }) => {
-      const { clientApp, adminApp, serverApp } = await createApp({
+    it("should return the same restricted user when or: anonymous is used (without explicit includeRestricted)", async ({ expect }) => {
+      const { clientApp, adminApp } = await createApp({
         config: {
-          credential_enabled: true,
-          anonymous_authentication_enabled: true,
+          credentialEnabled: true,
         },
       });
 
@@ -123,11 +128,18 @@ describe("restricted user SDK filtering", () => {
         verificationCallbackUrl: "http://localhost:3000",
       });
 
-      // With or: "anonymous", restricted users should be implicitly included
-      // (This won't create an anonymous user since we already have a restricted user)
-      const user = await clientApp.getUser({ or: "anonymous" });
-      expect(user).not.toBeNull();
-      expect(user!.isRestricted).toBe(true);
+      // Get the restricted user with includeRestricted to capture its ID
+      const restrictedUser = await clientApp.getUser({ includeRestricted: true });
+      expect(restrictedUser).not.toBeNull();
+      expect(restrictedUser!.isRestricted).toBe(true);
+      const restrictedUserId = restrictedUser!.id;
+
+      // With or: "anonymous", should return the SAME restricted user (not create a new anonymous user)
+      const userWithAnonymousFallback = await clientApp.getUser({ or: "anonymous" });
+      expect(userWithAnonymousFallback).not.toBeNull();
+      expect(userWithAnonymousFallback!.id).toBe(restrictedUserId);
+      expect(userWithAnonymousFallback!.isRestricted).toBe(true);
+      expect(userWithAnonymousFallback!.isAnonymous).toBe(false);
     });
   });
 
@@ -135,7 +147,7 @@ describe("restricted user SDK filtering", () => {
     it("should return null for restricted user by default on server app", async ({ expect }) => {
       const { serverApp, clientApp, adminApp } = await createApp({
         config: {
-          credential_enabled: true,
+          credentialEnabled: true,
         },
       });
 
@@ -152,8 +164,10 @@ describe("restricted user SDK filtering", () => {
         verificationCallbackUrl: "http://localhost:3000",
       });
 
-      // Get the tokens
-      const authJson = await clientApp.getAuthJson();
+      // Get the tokens from the restricted user (must use includeRestricted to get the user first)
+      const restrictedUser = await clientApp.getUser({ includeRestricted: true });
+      expect(restrictedUser).not.toBeNull();
+      const authJson = await restrictedUser!.getAuthJson();
 
       // By default, getUser should return null for restricted users
       const user = await serverApp.getUser({ tokenStore: authJson as any });
@@ -163,7 +177,7 @@ describe("restricted user SDK filtering", () => {
     it("should return restricted user when includeRestricted is true on server app", async ({ expect }) => {
       const { serverApp, clientApp, adminApp } = await createApp({
         config: {
-          credential_enabled: true,
+          credentialEnabled: true,
         },
       });
 
@@ -180,13 +194,49 @@ describe("restricted user SDK filtering", () => {
         verificationCallbackUrl: "http://localhost:3000",
       });
 
-      // Get the tokens
-      const authJson = await clientApp.getAuthJson();
+      // Get the tokens from the restricted user (must use includeRestricted to get the user first)
+      const restrictedUser = await clientApp.getUser({ includeRestricted: true });
+      expect(restrictedUser).not.toBeNull();
+      const authJson = await restrictedUser!.getAuthJson();
 
       // With includeRestricted: true, should return the restricted user
       const user = await serverApp.getUser({ tokenStore: authJson as any, includeRestricted: true });
       expect(user).not.toBeNull();
       expect(user!.isRestricted).toBe(true);
+    });
+
+    it("should return the same restricted user when or: anonymous is used on server app", async ({ expect }) => {
+      const { serverApp, clientApp, adminApp } = await createApp({
+        config: {
+          credentialEnabled: true,
+        },
+      });
+
+      // Enable email verification requirement
+      const project = await adminApp.getProject();
+      await project.updateConfig({
+        "onboarding.requireEmailVerification": true,
+      });
+
+      // Sign up a user (email won't be verified automatically)
+      await clientApp.signUpWithCredential({
+        email: "test-restricted@example.com",
+        password: "password123",
+        verificationCallbackUrl: "http://localhost:3000",
+      });
+
+      // Get the tokens from the restricted user
+      const restrictedUser = await clientApp.getUser({ includeRestricted: true });
+      expect(restrictedUser).not.toBeNull();
+      const authJson = await restrictedUser!.getAuthJson();
+      const restrictedUserId = restrictedUser!.id;
+
+      // With or: "anonymous", should return the SAME restricted user (not create a new anonymous user)
+      const userWithAnonymousFallback = await serverApp.getUser({ tokenStore: authJson as any, or: "anonymous" });
+      expect(userWithAnonymousFallback).not.toBeNull();
+      expect(userWithAnonymousFallback!.id).toBe(restrictedUserId);
+      expect(userWithAnonymousFallback!.isRestricted).toBe(true);
+      expect(userWithAnonymousFallback!.isAnonymous).toBe(false);
     });
 
     it("should throw error when or: anonymous is combined with includeRestricted: false on server app", async ({ expect }) => {
@@ -200,9 +250,9 @@ describe("restricted user SDK filtering", () => {
 
   describe("transition from restricted to non-restricted", () => {
     it("should return user after email verification even without includeRestricted", async ({ expect }) => {
-      const { clientApp, adminApp } = await createApp({
+      const { clientApp, adminApp, serverApp } = await createApp({
         config: {
-          credential_enabled: true,
+          credentialEnabled: true,
         },
       });
 
@@ -230,18 +280,17 @@ describe("restricted user SDK filtering", () => {
 
       // Verify the email (using internal API)
       const contactChannels = await restrictedUser!.listContactChannels();
-      const emailChannel = contactChannels.find(c => c.type === "email" && c.value === "test-restricted@example.com");
+      const emailChannel = contactChannels.find(c => c.value === "test-restricted@example.com");
       expect(emailChannel).toBeDefined();
 
       // Use server API to verify the email
-      const adminAppProject = await adminApp.getProject();
-      const serverUsers = await adminAppProject.listUsers({ query: "test-restricted@example.com" });
+      const serverUsers = await serverApp.listUsers({ query: "test-restricted@example.com", includeRestricted: true });
       expect(serverUsers.length).toBeGreaterThan(0);
 
       // Update primary email to be verified (simulating verification)
       const serverUser = serverUsers[0];
       const serverContactChannels = await serverUser.listContactChannels();
-      const serverEmailChannel = serverContactChannels.find(c => c.type === "email" && c.value === "test-restricted@example.com");
+      const serverEmailChannel = serverContactChannels.find(c => c.value === "test-restricted@example.com");
       if (serverEmailChannel) {
         await serverEmailChannel.update({ isVerified: true });
       }

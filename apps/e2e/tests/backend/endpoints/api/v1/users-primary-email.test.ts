@@ -2,9 +2,6 @@ import { describe } from "vitest";
 import { it } from "../../../../helpers";
 import { Auth, Project, backendContext, createMailbox, niceBackendFetch } from "../../../backend-helpers";
 
-throw new StackAssertionError("TODO: REVIEW");
-
-
 describe("updating primary_email via users/me endpoint", () => {
   describe("client access", () => {
     it("should be able to set primary_email when user has no email", async ({ expect }) => {

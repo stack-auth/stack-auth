@@ -19,16 +19,15 @@ import { EditableTeamMemberProfile, ServerTeam, ServerTeamCreateOptions, Team, T
 
 const userGetterErrorMessage = "Stack Auth: useUser() already returns the user object. Use `const user = useUser()` (or `const user = await app.getUser()`) instead of destructuring it like `const { user } = ...`.";
 
-export function attachUserDestructureGuard(target: object): void {
-  const descriptor = Object.getOwnPropertyDescriptor(target, "user");
-  if (descriptor?.get === guardGetter) {
-    return;
-  }
-
-  Object.defineProperty(target, "user", {
-    get: guardGetter,
-    configurable: false,
-    enumerable: false,
+export function withUserDestructureGuard<T extends object>(target: T): T {
+  Object.freeze(target);
+  return new Proxy(target, {
+    get(target, prop, receiver) {
+      if (prop === "user") {
+        return guardGetter();
+      }
+      return target[prop as keyof T];
+    },
   });
 }
 

@@ -2,8 +2,6 @@ import { describe } from "vitest";
 import { it } from "../../../../helpers";
 import { Auth, Project, niceBackendFetch } from "../../../backend-helpers";
 
-throw new StackAssertionError("TODO: REVIEW");
-
 describe("restricted user status", () => {
   describe("with requireEmailVerification enabled", () => {
     it("should mark a user with unverified email as restricted", async ({ expect }) => {

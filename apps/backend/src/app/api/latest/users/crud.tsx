@@ -1,5 +1,5 @@
 import { BooleanTrue, Prisma } from "@/generated/prisma/client";
-import { getRenderedEnvironmentConfigQuery, getRenderedProjectConfigQuery } from "@/lib/config";
+import { getRenderedOrganizationConfigQuery, getRenderedProjectConfigQuery } from "@/lib/config";
 import { demoteAllContactChannelsToNonPrimary, setContactChannelAsPrimaryByValue } from "@/lib/contact-channel";
 import { normalizeEmail } from "@/lib/emails";
 import { grantDefaultProjectPermissions } from "@/lib/permissions";
@@ -84,7 +84,11 @@ async function createPersonalTeamIfEnabled(prisma: PrismaClientTransaction, tena
   }
 }
 
-type OnboardingConfig = { onboarding?: { requireEmailVerification?: boolean } };
+type OnboardingConfig = {
+  onboarding: {
+    requireEmailVerification?: boolean,
+  },
+};
 
 /**
  * Computes the restricted status and reason for a user based on their data and config.
@@ -106,7 +110,7 @@ export function computeRestrictedStatus<T extends OnboardingConfig>(
   }
 
   // Check email verification requirement (default to false if not configured)
-  if (config.onboarding?.requireEmailVerification && !primaryEmailVerified) {
+  if (config.onboarding.requireEmailVerification && !primaryEmailVerified) {
     return { isRestricted: true, restrictedReason: { type: "email_not_verified" } };
   }
 
@@ -400,7 +404,7 @@ export function getUserIfOnGlobalPrismaClientQuery(
     ...getUserQuery(projectId, branchId, userId, "public", { onboarding: { requireEmailVerification: false } }),
     supportedPrismaClients: ["global"],
   };
-  const configQuery = getRenderedEnvironmentConfigQuery({ projectId, branchId });
+  const configQuery = getRenderedOrganizationConfigQuery({ projectId, branchId, forUserId: userId });
 
   return RawQuery.then(
     RawQuery.all([userQueryWithPlaceholderConfig, configQuery] as const),
@@ -409,11 +413,10 @@ export function getUserIfOnGlobalPrismaClientQuery(
         return null;
       }
       const config = await configPromise;
-      // Cast to OnboardingConfig since EnvironmentRenderedConfig includes onboarding but TypeScript doesn't infer it correctly
       const { isRestricted, restrictedReason } = computeRestrictedStatus(
         user.is_anonymous,
         user.primary_email_verified,
-        config as OnboardingConfig,
+        config,
       );
       return {
         ...user,
@@ -436,7 +439,7 @@ export async function getUser(options: { userId: string } & ({ projectId: string
     branchId = options.branchId;
     const projectConfig = await rawQuery(globalPrismaClient, getRenderedProjectConfigQuery({ projectId }));
     sourceOfTruth = projectConfig.sourceOfTruth;
-    config = projectConfig;
+    config = await rawQuery(globalPrismaClient, getRenderedOrganizationConfigQuery({ projectId, branchId, forUserId: options.userId }));
   }
 
   const prisma = await getPrismaClientForSourceOfTruth(sourceOfTruth, branchId);

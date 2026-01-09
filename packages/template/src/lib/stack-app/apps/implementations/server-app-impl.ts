@@ -32,7 +32,7 @@ import { EmailDeliveryInfo, SendEmailOptions } from "../../email";
 import { NotificationCategory } from "../../notification-categories";
 import { AdminProjectPermissionDefinition, AdminTeamPermission, AdminTeamPermissionDefinition } from "../../permissions";
 import { EditableTeamMemberProfile, ServerListUsersOptions, ServerTeam, ServerTeamCreateOptions, ServerTeamUpdateOptions, ServerTeamUser, Team, TeamInvitation, serverTeamCreateOptionsToCrud, serverTeamUpdateOptionsToCrud } from "../../teams";
-import { ProjectCurrentServerUser, ServerOAuthProvider, ServerUser, ServerUserCreateOptions, ServerUserUpdateOptions, attachUserDestructureGuard, serverUserCreateOptionsToCrud, serverUserUpdateOptionsToCrud } from "../../users";
+import { ProjectCurrentServerUser, ServerOAuthProvider, ServerUser, ServerUserCreateOptions, ServerUserUpdateOptions, serverUserCreateOptionsToCrud, serverUserUpdateOptionsToCrud, withUserDestructureGuard } from "../../users";
 import { StackServerAppConstructorOptions } from "../interfaces/server-app";
 import { _StackClientAppImplIncomplete } from "./client-app-impl";
 import { clientVersion, createCache, createCacheBySession, getBaseUrl, getDefaultExtraRequestHeaders, getDefaultProjectId, getDefaultPublishableClientKey, getDefaultSecretServerKey, resolveConstructorOptions } from "./common";
@@ -439,7 +439,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
     }
     // END_PLATFORM
 
-    const serverUser = {
+    const serverUser = withUserDestructureGuard({
       ...super._createBaseUser(crud),
       lastActiveAt: new Date(crud.last_active_at_millis),
       serverMetadata: crud.server_metadata,
@@ -764,23 +764,20 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
         return registrationResult;
       },
       ...app._createServerCustomer(crud.id, "user"),
-    } satisfies ServerUser;
-
-    attachUserDestructureGuard(serverUser);
+    } satisfies ServerUser);
 
     return serverUser;
   }
 
   protected _serverTeamUserFromCrud(crud: TeamMemberProfilesCrud["Server"]["Read"]): ServerTeamUser {
-    const teamUser = {
+    const teamUser = withUserDestructureGuard({
       ...this._serverUserFromCrud(crud.user),
       teamProfile: {
         displayName: crud.display_name,
         profileImageUrl: crud.profile_image_url,
       },
-    } satisfies ServerTeamUser;
+    } satisfies ServerTeamUser);
 
-    attachUserDestructureGuard(teamUser);
     return teamUser;
   }
 
@@ -797,14 +794,12 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
   }
 
   protected override _currentUserFromCrud(crud: UsersCrud['Server']['Read'], session: InternalSession): ProjectCurrentServerUser<ProjectId> {
-    const currentUser = {
+    const currentUser = withUserDestructureGuard({
       ...this._serverUserFromCrud(crud),
       ...this._createAuth(session),
       ...this._isInternalProject() ? this._createInternalUserExtra(session) : {},
-    } satisfies ServerUser;
+    } satisfies ServerUser);
 
-    attachUserDestructureGuard(currentUser);
-    Object.freeze(currentUser);
     return currentUser as ProjectCurrentServerUser<ProjectId>;
   }
 
