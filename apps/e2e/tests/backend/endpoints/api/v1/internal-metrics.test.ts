@@ -65,7 +65,7 @@ it("should return metrics data with users", async ({ expect }) => {
   await wait(3000);  // the event log is async, so let's give it some time to be written to the DB
 
   const response = await niceBackendFetch("/api/v1/internal/metrics", { accessType: 'admin' });
-  expect(response).toMatchSnapshot();
+  expect(response).toMatchSnapshot(`metrics_result_with_users`);
 
   await ensureAnonymousUsersAreStillExcluded(response);
 }, {
