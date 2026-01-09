@@ -1,34 +1,9 @@
-import { ensureStripeCustomerForCustomer, getDefaultCardPaymentMethodSummary } from "@/lib/payments";
-import { ensureUserTeamPermissionExists } from "@/lib/request-checks";
+import { ensureClientCanAccessCustomer, ensureStripeCustomerForCustomer, getDefaultCardPaymentMethodSummary } from "@/lib/payments";
 import { getStripeForAccount } from "@/lib/stripe";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { KnownErrors } from "@stackframe/stack-shared";
 import { adaptSchema, clientOrHigherAuthTypeSchema, yupBoolean, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
-
-async function ensureClientCanAccessCustomer(params: { customer_type: "user" | "team", customer_id: string }, fullReq: any, tenancy: any) {
-  const currentUser = fullReq.auth?.user;
-  if (!currentUser) {
-    throw new KnownErrors.UserAuthenticationRequired();
-  }
-  if (params.customer_type === "user") {
-    if (params.customer_id !== currentUser.id) {
-      throw new StatusError(StatusError.Forbidden, "Clients can only manage their own payment method.");
-    }
-    return;
-  }
-
-  const prisma = await getPrismaClientForTenancy(tenancy);
-  await ensureUserTeamPermissionExists(prisma, {
-    tenancy,
-    teamId: params.customer_id,
-    userId: currentUser.id,
-    permissionId: "team_admin",
-    errorType: "required",
-    recursive: true,
-  });
-}
 
 export const POST = createSmartRouteHandler({
   metadata: {
@@ -66,11 +41,13 @@ export const POST = createSmartRouteHandler({
   }),
   handler: async ({ auth, params, body }, fullReq) => {
     if (auth.type === "client") {
-      await ensureClientCanAccessCustomer(
-        { customer_type: params.customer_type, customer_id: params.customer_id },
-        fullReq,
-        auth.tenancy,
-      );
+      await ensureClientCanAccessCustomer({
+        customerType: params.customer_type,
+        customerId: params.customer_id,
+        user: fullReq.auth?.user,
+        tenancy: auth.tenancy,
+        forbiddenMessage: "Clients can only manage their own payment method.",
+      });
     }
 
     const prisma = await getPrismaClientForTenancy(auth.tenancy);
@@ -120,4 +97,3 @@ export const POST = createSmartRouteHandler({
     };
   },
 });
-

@@ -1,7 +1,9 @@
-import { PrismaClientTransaction } from "@/prisma-client";
+import { getPrismaClientForTenancy, PrismaClientTransaction } from "@/prisma-client";
+import { ensureUserTeamPermissionExists } from "@/lib/request-checks";
 import { PurchaseCreationSource, SubscriptionStatus } from "@/generated/prisma/client";
 import { CustomerType } from "@/generated/prisma/client";
 import { KnownErrors } from "@stackframe/stack-shared";
+import type { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
 import type { inlineProductSchema, productSchema, productSchemaWithMetadata } from "@stackframe/stack-shared/dist/schema-fields";
 import { SUPPORTED_CURRENCIES } from "@stackframe/stack-shared/dist/utils/currency-constants";
 import { FAR_FUTURE_DATE, addInterval, getIntervalsElapsed } from "@stackframe/stack-shared/dist/utils/dates";
@@ -19,6 +21,35 @@ const DEFAULT_PRODUCT_START_DATE = new Date("1973-01-01T12:00:00.000Z"); // mond
 type Product = yup.InferType<typeof productSchema>;
 type ProductWithMetadata = yup.InferType<typeof productSchemaWithMetadata>;
 type SelectedPrice = Exclude<Product["prices"], "include-by-default">[string];
+
+export async function ensureClientCanAccessCustomer(options: {
+  customerType: "user" | "team",
+  customerId: string,
+  user: UsersCrud["Admin"]["Read"] | undefined,
+  tenancy: Tenancy,
+  forbiddenMessage: string,
+}): Promise<void> {
+  const currentUser = options.user;
+  if (!currentUser) {
+    throw new KnownErrors.UserAuthenticationRequired();
+  }
+  if (options.customerType === "user") {
+    if (options.customerId !== currentUser.id) {
+      throw new StatusError(StatusError.Forbidden, options.forbiddenMessage);
+    }
+    return;
+  }
+
+  const prisma = await getPrismaClientForTenancy(options.tenancy);
+  await ensureUserTeamPermissionExists(prisma, {
+    tenancy: options.tenancy,
+    teamId: options.customerId,
+    userId: currentUser.id,
+    permissionId: "team_admin",
+    errorType: "required",
+    recursive: true,
+  });
+}
 
 export async function ensureProductIdOrInlineProduct(
   tenancy: Tenancy,

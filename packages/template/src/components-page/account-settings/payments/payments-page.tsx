@@ -10,6 +10,11 @@ import { PaymentsPanel } from "./payments-panel";
 export function PaymentsPage(props: { mockMode?: boolean }) {
   const { t } = useTranslation();
   const user = useUser({ or: props.mockMode ? "return-null" : "redirect" });
+  const teams = user?.useTeams() ?? [];
+  const hasTeams = teams.length > 0;
+  const [selectedTeam, setSelectedTeam] = useState<Team | null>(null);
+  const customer = selectedTeam ?? user;
+  const customerType = selectedTeam ? "team" : "user";
 
   if (props.mockMode) {
     return (
@@ -21,15 +26,10 @@ export function PaymentsPage(props: { mockMode?: boolean }) {
     );
   }
 
-  if (!user) {
+  if (!customer) {
     return null;
   }
 
-  const teams = user.useTeams();
-  const hasTeams = teams.length > 0;
-  const [selectedTeam, setSelectedTeam] = useState<Team | null>(null);
-  const customer = selectedTeam ?? user;
-  const customerType = selectedTeam ? "team" : "user";
 
   return (
     <PageLayout>
@@ -37,7 +37,7 @@ export function PaymentsPage(props: { mockMode?: boolean }) {
         <TeamSwitcher
           team={selectedTeam ?? undefined}
           allowNull
-          nullLabel={t("Select team")}
+          nullLabel={t("Personal")}
           onChange={async (team) => {
             setSelectedTeam(team);
           }}
