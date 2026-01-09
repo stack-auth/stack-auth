@@ -188,6 +188,7 @@ async function checkAuthData(
 export function getUserQuery(projectId: string, branchId: string, userId: string, schema: string): RawQuery<UsersCrud["Admin"]["Read"] | null> {
   return {
     supportedPrismaClients: ["source-of-truth"],
+    readOnlyQuery: true,
     sql: Prisma.sql`
       SELECT to_json(
         (

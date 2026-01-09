@@ -44,6 +44,7 @@ export function calculateCapacityRate(stats: EmailDeliveryStats) {
 
 const deliveryStatsQuery = (tenancyId: string): RawQuery<EmailDeliveryStats> => ({
   supportedPrismaClients: ["global"],
+  readOnlyQuery: true,
   sql: Prisma.sql`
     SELECT
       SUM(CASE WHEN "finishedSendingAt" >= NOW() - INTERVAL '1 hour' AND "sendServerErrorInternalMessage" IS NULL AND "skippedReason" IS NULL THEN 1 ELSE 0 END)::bigint AS sent_last_hour,
