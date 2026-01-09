@@ -1,5 +1,7 @@
 'use client';
 
+import { useState } from "react";
+import { Team, TeamSwitcher } from "../../..";
 import { useUser } from "../../../lib/hooks";
 import { useTranslation } from "../../../lib/translations";
 import { PageLayout } from "../page-layout";
@@ -13,7 +15,6 @@ export function PaymentsPage(props: { mockMode?: boolean }) {
     return (
       <PageLayout>
         <PaymentsPanel
-          title={t("Personal payments")}
           mockMode
         />
       </PageLayout>
@@ -24,12 +25,27 @@ export function PaymentsPage(props: { mockMode?: boolean }) {
     return null;
   }
 
+  const teams = user.useTeams();
+  const hasTeams = teams.length > 0;
+  const [selectedTeam, setSelectedTeam] = useState<Team | null>(null);
+  const customer = selectedTeam ?? user;
+  const customerType = selectedTeam ? "team" : "user";
+
   return (
     <PageLayout>
+      {hasTeams ? (
+        <TeamSwitcher
+          team={selectedTeam ?? undefined}
+          allowNull
+          nullLabel={t("Select team")}
+          onChange={async (team) => {
+            setSelectedTeam(team);
+          }}
+        />
+      ) : null}
       <PaymentsPanel
-        title={t("Personal payments")}
-        customer={user}
-        customerType="user"
+        customer={customer}
+        customerType={customerType}
       />
     </PageLayout>
   );

@@ -1,5 +1,6 @@
 import { PrismaClientTransaction } from "@/prisma-client";
 import { PurchaseCreationSource, SubscriptionStatus } from "@/generated/prisma/client";
+import { CustomerType } from "@/generated/prisma/client";
 import { KnownErrors } from "@stackframe/stack-shared";
 import type { inlineProductSchema, productSchema, productSchemaWithMetadata } from "@stackframe/stack-shared/dist/schema-fields";
 import { SUPPORTED_CURRENCIES } from "@stackframe/stack-shared/dist/utils/currency-constants";
@@ -428,7 +429,7 @@ export async function ensureCustomerExists(options: {
   }
 }
 
-function customerTypeToStripeCustomerType(customerType: "user" | "team"): CustomerType {
+function customerTypeToStripeCustomerType(customerType: "user" | "team") {
   return customerType === "user" ? CustomerType.USER : CustomerType.TEAM;
 }
 

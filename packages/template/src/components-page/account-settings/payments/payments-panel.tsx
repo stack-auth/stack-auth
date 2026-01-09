@@ -212,51 +212,49 @@ function RealPaymentsPanel(props: { title?: string, customer: CustomerLike, cust
     <div className="space-y-4">
       {props.title && <Typography className="font-medium">{props.title}</Typography>}
 
-      <Section
-        title={t("Payment method")}
-        description={t("Manage the default payment method used for subscriptions and invoices.")}
-      >
-        {defaultPaymentMethod ? (
-          <Typography>{formatPaymentMethod(defaultPaymentMethod)}</Typography>
-        ) : (
-          <Typography variant="secondary" type="footnote">{t("No payment method on file.")}</Typography>
-        )}
-
-        <Button onClick={openPaymentDialog}>
-          {defaultPaymentMethod ? t("Update payment method") : t("Add payment method")}
-        </Button>
-
-        <ActionDialog
-          open={paymentDialogOpen}
-          onOpenChange={(open) => {
-            if (!open) {
-              closePaymentDialog();
-            } else {
-              setPaymentDialogOpen(true);
-            }
-          }}
-          title={t("Update payment method")}
+      {defaultPaymentMethod && (
+        <Section
+          title={t("Payment method")}
+          description={t("Manage the default payment method used for subscriptions and invoices.")}
         >
-          {!setupIntentClientSecret || !setupIntentStripeAccountId || !stripePromise ? (
-            <Skeleton className="h-10 w-full" />
-          ) : (
-            <Elements
-              stripe={stripePromise}
-              options={{
-                clientSecret: setupIntentClientSecret,
-              }}
-            >
-              <SetDefaultPaymentMethodForm
-                clientSecret={setupIntentClientSecret}
-                onSetupIntentSucceeded={async (setupIntentId) => {
-                  await props.customer.setDefaultPaymentMethodFromSetupIntent(setupIntentId);
-                  closePaymentDialog();
+          <Typography>{formatPaymentMethod(defaultPaymentMethod)}</Typography>
+
+          <Button onClick={openPaymentDialog}>
+            {t("Update payment method")}
+          </Button>
+
+          <ActionDialog
+            open={paymentDialogOpen}
+            onOpenChange={(open) => {
+              if (!open) {
+                closePaymentDialog();
+              } else {
+                setPaymentDialogOpen(true);
+              }
+            }}
+            title={t("Update payment method")}
+          >
+            {!setupIntentClientSecret || !setupIntentStripeAccountId || !stripePromise ? (
+              <Skeleton className="h-10 w-full" />
+            ) : (
+              <Elements
+                stripe={stripePromise}
+                options={{
+                  clientSecret: setupIntentClientSecret,
                 }}
-              />
-            </Elements>
-          )}
-        </ActionDialog>
-      </Section>
+              >
+                <SetDefaultPaymentMethodForm
+                  clientSecret={setupIntentClientSecret}
+                  onSetupIntentSucceeded={async (setupIntentId) => {
+                    await props.customer.setDefaultPaymentMethodFromSetupIntent(setupIntentId);
+                    closePaymentDialog();
+                  }}
+                />
+              </Elements>
+            )}
+          </ActionDialog>
+        </Section>
+      )}
 
       <Section
         title={t("Active plans")}
