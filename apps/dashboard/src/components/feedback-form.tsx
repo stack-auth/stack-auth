@@ -1,8 +1,8 @@
+import { Button } from "@/components/ui";
+import { CheckCircleIcon, EnvelopeIcon, GithubLogoIcon, WarningCircleIcon } from "@phosphor-icons/react";
 import { useUser } from "@stackframe/stack";
 import { emailSchema } from "@stackframe/stack-shared/dist/schema-fields";
 import { captureError } from "@stackframe/stack-shared/dist/utils/errors";
-import { Button } from "@stackframe/stack-ui";
-import { AlertCircle, CheckCircle2, Github, Mail } from "lucide-react";
 import { useState } from "react";
 import { FaDiscord } from "react-icons/fa";
 import * as yup from "yup";
@@ -79,7 +79,7 @@ export function FeedbackForm() {
       {/* Success State */}
       {submitStatus === 'success' && (
         <div className="bg-green-50 dark:bg-green-900/20 rounded-lg p-4 text-center border border-green-200 dark:border-green-800">
-          <CheckCircle2 className="h-5 w-5 mx-auto mb-2 text-green-600" />
+          <CheckCircleIcon className="h-5 w-5 mx-auto mb-2 text-green-600" />
           <p className="text-sm text-green-800 dark:text-green-200 font-medium">
             Feedback sent successfully!
           </p>
@@ -100,7 +100,7 @@ export function FeedbackForm() {
       {/* Error State */}
       {submitStatus === 'error' && (
         <div className="bg-red-50 dark:bg-red-900/20 rounded-lg p-4 text-center border border-red-200 dark:border-red-800">
-          <AlertCircle className="h-5 w-5 mx-auto mb-2 text-red-600" />
+          <WarningCircleIcon className="h-5 w-5 mx-auto mb-2 text-red-600" />
           <p className="text-sm text-red-800 dark:text-red-200 font-medium">
             Failed to send feedback
           </p>
@@ -159,7 +159,7 @@ export function FeedbackForm() {
             className="flex items-center justify-center w-8 h-8 rounded-md hover:bg-muted transition-colors group"
             title="Email us"
           >
-            <Mail className="h-4 w-4 text-muted-foreground group-hover:text-foreground" />
+            <EnvelopeIcon className="h-4 w-4 text-muted-foreground group-hover:text-foreground" />
           </a>
           <a
             href="https://github.com/stack-auth/stack-auth"
@@ -168,7 +168,7 @@ export function FeedbackForm() {
             className="flex items-center justify-center w-8 h-8 rounded-md hover:bg-muted transition-colors group"
             title="View on GitHub"
           >
-            <Github className="h-4 w-4 text-muted-foreground group-hover:text-foreground" />
+            <GithubLogoIcon className="h-4 w-4 text-muted-foreground group-hover:text-foreground" />
           </a>
         </div>
       </div>

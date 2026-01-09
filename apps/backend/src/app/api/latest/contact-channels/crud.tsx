@@ -2,7 +2,7 @@ import { normalizeEmail } from "@/lib/emails";
 import { ensureContactChannelDoesNotExists, ensureContactChannelExists } from "@/lib/request-checks";
 import { getPrismaClientForTenancy, retryTransaction } from "@/prisma-client";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
-import { Prisma } from "@prisma/client";
+import { Prisma } from "@/generated/prisma/client";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { contactChannelsCrud } from "@stackframe/stack-shared/dist/interface/crud/contact-channels";
 import { userIdOrMeSchema, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";

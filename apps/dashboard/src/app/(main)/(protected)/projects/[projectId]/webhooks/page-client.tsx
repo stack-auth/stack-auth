@@ -7,7 +7,7 @@ import { SettingCard } from "@/components/settings";
 import { getPublicEnvVar } from '@/lib/env';
 import { urlSchema } from "@stackframe/stack-shared/dist/schema-fields";
 import { yupResolver } from "@hookform/resolvers/yup";
-import { ActionCell, ActionDialog, Alert, AlertDescription, AlertTitle, Button, Form, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, Typography } from "@stackframe/stack-ui";
+import { ActionCell, ActionDialog, Alert, AlertDescription, AlertTitle, Button, Form, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, Typography } from "@/components/ui";
 import { useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { SvixProvider, useEndpoints, useSvix } from "svix-react";

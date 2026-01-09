@@ -30,7 +30,7 @@ export type SmartResponse = {
   }
   | {
     bodyType: "binary",
-    body: ArrayBuffer,
+    body: ArrayBuffer | Uint8Array,
   }
   | {
     bodyType: "success",
@@ -91,7 +91,7 @@ export async function createResponse<T extends SmartResponse>(req: NextRequest |
         break;
       }
       case "binary": {
-        if (!isBinaryBody(obj.body)) throw new Error(`Invalid body, expected ArrayBuffer, got ${obj.body}`);
+        if (!isBinaryBody(obj.body)) throw new Error(`Invalid body, expected ArrayBuffer or Uint8Array, got ${obj.body}`);
         arrayBufferBody = obj.body;
         break;
       }

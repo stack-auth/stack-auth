@@ -5,6 +5,9 @@ import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 
+export const dynamic = "force-dynamic";
+export const fetchCache = "force-no-store";
+
 export const GET = createSmartRouteHandler({
   metadata: {
     summary: "Process email queue step",

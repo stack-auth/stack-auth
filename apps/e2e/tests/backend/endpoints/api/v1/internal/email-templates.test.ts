@@ -4,7 +4,7 @@ import { Auth, Project, niceBackendFetch } from "../../../../backend-helpers";
 
 it("should not allow updating email templates when using shared email config", async ({ expect }) => {
   // Create a project with shared email config (default)
-  await Auth.Otp.signIn();
+  await Auth.fastSignUp();
   const { adminAccessToken } = await Project.createAndGetAdminToken();
 
   // Try to update an email template
@@ -47,7 +47,7 @@ it("should not allow updating email templates when using shared email config", a
 
 it("should allow adding and updating email templates with custom email config", async ({ expect }) => {
   // Create a project with custom email config
-  await Auth.Otp.signIn();
+  await Auth.fastSignUp();
   await Project.createAndSwitch({
     config: {
       email_config: {

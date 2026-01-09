@@ -9,6 +9,7 @@ async function main() {
   fs.writeFileSync("src/generated/api-versions.json", JSON.stringify(apiVersions, null, 2));
   console.log("Successfully updated route info");
 }
+// eslint-disable-next-line no-restricted-syntax
 main().catch((...args) => {
   console.error(`ERROR! Could not update route info`, ...args);
   process.exit(1);

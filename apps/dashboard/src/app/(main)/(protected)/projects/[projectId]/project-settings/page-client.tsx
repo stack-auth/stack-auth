@@ -6,7 +6,7 @@ import { FormSettingCard, SettingCard, SettingCopyableText, SettingSwitch } from
 import { getPublicEnvVar } from "@/lib/env";
 import { TeamSwitcher, useUser } from "@stackframe/stack";
 import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
-import { ActionDialog, Alert, Avatar, AvatarFallback, AvatarImage, Button, SimpleTooltip, Typography, useToast } from "@stackframe/stack-ui";
+import { ActionDialog, Alert, Avatar, AvatarFallback, AvatarImage, Button, SimpleTooltip, Typography, useToast } from "@/components/ui";
 import { useCallback, useMemo, useState } from "react";
 import * as yup from "yup";
 import { PageLayout } from "../page-layout";

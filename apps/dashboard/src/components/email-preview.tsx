@@ -1,6 +1,6 @@
 import { useAdminApp } from "@/app/(main)/(protected)/projects/[projectId]/use-admin-app";
 import { KnownErrors } from "@stackframe/stack-shared";
-import { Spinner, Typography } from "@stackframe/stack-ui";
+import { Spinner, Typography } from "@/components/ui";
 import { Component, Fragment, ReactNode, Suspense } from "react";
 import { useDebounce } from 'use-debounce';
 import ResizableContainer from './resizable-container';

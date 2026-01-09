@@ -1,9 +1,9 @@
 'use client';
 
+import { Button, Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui';
 import { cn } from '@/lib/utils';
 import { checkVersion, VersionCheckResult } from '@/lib/version-check';
-import { Button, Tooltip, TooltipContent, TooltipTrigger } from '@stackframe/stack-ui';
-import { BookOpen, HelpCircle, Lightbulb, TimerReset, X } from 'lucide-react';
+import { BookOpenIcon, CircleNotchIcon, ClockClockwiseIcon, LightbulbIcon, XIcon } from '@phosphor-icons/react';
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import packageJson from '../../package.json';
 import { FeedbackForm } from './feedback-form';
@@ -23,28 +23,28 @@ const sidebarItems: SidebarItem[] = [
   {
     id: 'docs',
     label: 'Docs',
-    icon: BookOpen,
+    icon: BookOpenIcon,
     color: 'text-blue-600 dark:text-blue-400',
     hoverBg: 'hover:bg-blue-500/10',
   },
   {
     id: 'feedback',
     label: 'Feature Requests',
-    icon: Lightbulb,
+    icon: LightbulbIcon,
     color: 'text-purple-600 dark:text-purple-400',
     hoverBg: 'hover:bg-purple-500/10',
   },
   {
     id: 'changelog',
     label: 'Changelog',
-    icon: TimerReset,
+    icon: ClockClockwiseIcon,
     color: 'text-green-600 dark:text-green-400',
     hoverBg: 'hover:bg-green-500/10',
   },
   {
     id: 'support',
     label: "Support",
-    icon: HelpCircle,
+    icon: CircleNotchIcon,
     color: 'text-orange-600 dark:text-orange-400',
     hoverBg: 'hover:bg-orange-500/10',
   }
@@ -296,7 +296,7 @@ export function StackCompanion({ className }: { className?: string }) {
           className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06] rounded-lg no-drag"
           onClick={closeDrawer}
         >
-          <X className="h-4 w-4" />
+          <XIcon className="h-4 w-4" />
         </Button>
       </div>
 
