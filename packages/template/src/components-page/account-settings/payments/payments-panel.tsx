@@ -8,6 +8,7 @@ import React, { useMemo, useState } from "react";
 import { useStackApp } from "../../..";
 import { useTranslation } from "../../../lib/translations";
 import { Section } from "../section";
+import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 
 type PaymentMethodSummary = {
   id: string,
@@ -288,7 +289,7 @@ function RealPaymentsPanel(props: { title?: string, customer: CustomerLike, cust
                     <Button
                       variant="secondary"
                       color="neutral"
-                      onClick={() => setCancelProductId(product.id!)}
+                      onClick={() => setCancelProductId(product.id)}
                     >
                       {t("Cancel subscription")}
                     </Button>
