@@ -140,6 +140,7 @@ export const ALL_APPS_FRONTEND = {
       { displayName: "Products & Items", href: "./products" },
       { displayName: "Customers", href: "./customers" },
       { displayName: "Transactions", href: "./transactions" },
+      { displayName: "Payouts", href: "./payouts" },
     ],
     screenshots: getScreenshots('payments', 7),
     storeDescription: (
