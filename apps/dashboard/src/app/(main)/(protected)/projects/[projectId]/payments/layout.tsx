@@ -12,8 +12,8 @@ import { ConnectNotificationBanner } from "@stripe/react-connect-js";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
 import * as yup from "yup";
-import { AppEnabledGuard } from "../../app-enabled-guard";
-import { useAdminApp } from "../../use-admin-app";
+import { AppEnabledGuard } from "../app-enabled-guard";
+import { useAdminApp } from "../use-admin-app";
 
 export default function PaymentsLayout({ children }: { children: React.ReactNode }) {
   return (
