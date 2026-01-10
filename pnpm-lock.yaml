@@ -1874,8 +1874,8 @@ importers:
         specifier: ^5.2.2
         version: 5.4.0
       oauth4webapi:
-        specifier: ^2.10.3
-        version: 2.10.4
+        specifier: ^3.8.3
+        version: 3.8.3
       semver:
         specifier: ^7.6.3
         version: 7.6.3
@@ -13445,9 +13445,6 @@ packages:
     resolution: {integrity: sha512-7eM+hpOtrKrBDCh7Ypu2lJ9Z7PNZBdi/8AT3AX8xoCj43BBVHD0hPSTEvMtkMpfs8FCqBGhxB+uToIQimA111g==}
     engines: {node: ^14.16.0 || >=16.10.0}
     hasBin: true
-
-  oauth4webapi@2.10.4:
-    resolution: {integrity: sha512-DSoj8QoChzOCQlJkRmYxAJCIpnXFW32R0Uq7avyghIeB6iJq0XAblOD7pcq3mx4WEBDwMuKr0Y1qveCBleG2Xw==}
 
   oauth4webapi@3.8.3:
     resolution: {integrity: sha512-pQ5BsX3QRTgnt5HxgHwgunIRaDXBdkT23tf8dfzmtTIL2LTpdmxgbpbBm0VgFWAIDlezQvQCTgnVIUmHupXHxw==}
@@ -31051,8 +31048,6 @@ snapshots:
       pathe: 2.0.3
       pkg-types: 2.3.0
       tinyexec: 1.0.1
-
-  oauth4webapi@2.10.4: {}
 
   oauth4webapi@3.8.3: {}
 
