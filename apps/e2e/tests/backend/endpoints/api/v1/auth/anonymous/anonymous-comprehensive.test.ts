@@ -48,7 +48,7 @@ it("anonymous JWT has different kid and role", async ({ expect }) => {
   expect(header.kid).not.toBe(regularHeader.kid);
 });
 
-it("JWKS endpoint includes anonymous key when requested", async ({ expect }) => {
+it("JWKS endpoint includes anonymous/restricted keys when requested", async ({ expect }) => {
   const project = await Project.createAndSwitch();
 
   // Regular JWKS request - should not include anonymous key
@@ -60,6 +60,19 @@ it("JWKS endpoint includes anonymous key when requested", async ({ expect }) => 
   const regularKeys = regularJwks.body.keys;
   expect(regularKeys).toHaveLength(2);
 
+  // JWKS request with include_restricted - should include restricted, but not anonymous keys
+  const restrictedJwks = await niceBackendFetch(`/api/v1/projects/${project.projectId}/.well-known/jwks.json?include_restricted=true`, {
+    method: "GET",
+    accessType: null,
+  });
+  expect(restrictedJwks.status).toBe(200);
+  const restrictedKeys = restrictedJwks.body.keys;
+  expect(restrictedKeys).toHaveLength(4);
+
+  // Check that the kids are different
+  const restrictedKids = restrictedKeys.map((key: any) => key.kid);
+  expect(new Set(restrictedKids).size).toBe(4);
+
   // JWKS request with include_anonymous - should include all keys
   const anonymousJwks = await niceBackendFetch(`/api/v1/projects/${project.projectId}/.well-known/jwks.json?include_anonymous=true`, {
     method: "GET",
@@ -67,11 +80,11 @@ it("JWKS endpoint includes anonymous key when requested", async ({ expect }) => 
   });
   expect(anonymousJwks.status).toBe(200);
   const allKeys = anonymousJwks.body.keys;
-  expect(allKeys).toHaveLength(4);
+  expect(allKeys).toHaveLength(6);
 
   // Check that the kids are different
   const kids = allKeys.map((key: any) => key.kid);
-  expect(new Set(kids).size).toBe(4);
+  expect(new Set(kids).size).toBe(6);
 });
 
 it("anonymous users are rejected without X-Stack-Allow-Anonymous-User header", async ({ expect }) => {
@@ -272,6 +285,7 @@ it("search users excludes anonymous users by default", async ({ expect }) => {
             "has_password": false,
             "id": "<stripped UUID>",
             "is_anonymous": true,
+            "is_restricted": true,
             "last_active_at_millis": <stripped field 'last_active_at_millis'>,
             "oauth_providers": [],
             "otp_auth_enabled": false,
@@ -281,7 +295,7 @@ it("search users excludes anonymous users by default", async ({ expect }) => {
             "primary_email_verified": false,
             "profile_image_url": null,
             "requires_totp_mfa": false,
-            "restricted_reason": null,
+            "restricted_reason": { "type": "anonymous" },
             "selected_team": null,
             "selected_team_id": null,
             "server_metadata": null,
