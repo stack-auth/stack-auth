@@ -315,15 +315,8 @@ export async function seed() {
         }
       });
 
-      if (adminInternalAccess) {
-        await internalPrisma.teamMember.create({
-          data: {
-            tenancyId: internalTenancy.id,
-            teamId: internalTeamId,
-            projectUserId: defaultUserId,
-          },
-        });
-      }
+      // Note: TeamMember creation is handled by the upsert below (after this if/else block)
+      // to ensure idempotency when adminInternalAccess changes between runs
 
       if (adminEmail && adminPassword) {
         await usersCrudHandlers.adminUpdate({
@@ -379,12 +372,33 @@ export async function seed() {
       }
     }
 
-    await grantTeamPermission(internalPrisma, {
-      tenancy: internalTenancy,
-      teamId: internalTeamId,
-      userId: defaultUserId,
-      permissionId: "team_admin",
-    });
+    // Create or ensure TeamMember exists before granting permissions.
+    // Using upsert here (instead of create inside the else block above) ensures
+    // idempotency when adminInternalAccess changes between seed runs.
+    if (adminInternalAccess) {
+      await internalPrisma.teamMember.upsert({
+        where: {
+          tenancyId_projectUserId_teamId: {
+            tenancyId: internalTenancy.id,
+            projectUserId: defaultUserId,
+            teamId: internalTeamId,
+          },
+        },
+        create: {
+          tenancyId: internalTenancy.id,
+          teamId: internalTeamId,
+          projectUserId: defaultUserId,
+        },
+        update: {},
+      });
+
+      await grantTeamPermission(internalPrisma, {
+        tenancy: internalTenancy,
+        teamId: internalTeamId,
+        userId: defaultUserId,
+        permissionId: "team_admin",
+      });
+    }
   }
 
   if (emulatorEnabled) {
