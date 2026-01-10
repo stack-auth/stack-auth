@@ -561,20 +561,19 @@ export async function getDefaultCardPaymentMethodSummary(options: {
   stripe: Stripe,
   stripeCustomer: Stripe.Customer,
 }): Promise<StripeCardPaymentMethodSummary | null> {
-  const defaultPaymentMethodId = options.stripeCustomer.invoice_settings.default_payment_method;
-  if (!defaultPaymentMethodId || typeof defaultPaymentMethodId !== "string") {
-    return null;
-  }
-  const pm = await options.stripe.paymentMethods.retrieve(defaultPaymentMethodId);
-  if (pm.type !== "card" || !pm.card) {
+  const paymentMethods = await options.stripe.customers.listPaymentMethods(
+    options.stripeCustomer.id,
+    { type: "card", limit: 1 }
+  );
+  if (paymentMethods.data.length === 0) {
     return null;
   }
   return {
-    id: pm.id,
-    brand: pm.card.brand,
-    last4: pm.card.last4,
-    exp_month: pm.card.exp_month,
-    exp_year: pm.card.exp_year,
+    id: paymentMethods.data[0].id,
+    brand: paymentMethods.data[0].card?.brand ?? null,
+    last4: paymentMethods.data[0].card?.last4 ?? null,
+    exp_month: paymentMethods.data[0].card?.exp_month ?? null,
+    exp_year: paymentMethods.data[0].card?.exp_year ?? null,
   };
 }
 

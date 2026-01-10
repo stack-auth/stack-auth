@@ -1,4 +1,4 @@
-import { getCustomerPurchaseContext, getStripeCustomerForCustomerOrNull } from "@/lib/payments";
+import { ensureClientCanAccessCustomer, getCustomerPurchaseContext, getDefaultCardPaymentMethodSummary, getStripeCustomerForCustomerOrNull } from "@/lib/payments";
 import { ensureUserTeamPermissionExists } from "@/lib/request-checks";
 import { getStripeForAccount } from "@/lib/stripe";
 import { getPrismaClientForTenancy } from "@/prisma-client";
@@ -11,28 +11,6 @@ import { typedToUppercase } from "@stackframe/stack-shared/dist/utils/strings";
 import { SubscriptionStatus } from "@/generated/prisma/client";
 import Stripe from "stripe";
 
-async function ensureClientCanAccessCustomer(params: { customer_type: "user" | "team", customer_id: string }, fullReq: any, tenancy: any) {
-  const currentUser = fullReq.auth?.user;
-  if (!currentUser) {
-    throw new KnownErrors.UserAuthenticationRequired();
-  }
-  if (params.customer_type === "user") {
-    if (params.customer_id !== currentUser.id) {
-      throw new StatusError(StatusError.Forbidden, "Clients can only manage their own subscriptions.");
-    }
-    return;
-  }
-
-  const prisma = await getPrismaClientForTenancy(tenancy);
-  await ensureUserTeamPermissionExists(prisma, {
-    tenancy,
-    teamId: params.customer_id,
-    userId: currentUser.id,
-    permissionId: "team_admin",
-    errorType: "required",
-    recursive: true,
-  });
-}
 
 export const POST = createSmartRouteHandler({
   metadata: {
@@ -65,11 +43,13 @@ export const POST = createSmartRouteHandler({
   }),
   handler: async ({ auth, params, body }, fullReq) => {
     if (auth.type === "client") {
-      await ensureClientCanAccessCustomer(
-        { customer_type: params.customer_type, customer_id: params.customer_id },
-        fullReq,
-        auth.tenancy,
-      );
+      await ensureClientCanAccessCustomer({
+        customerType: params.customer_type,
+        customerId: params.customer_id,
+        user: fullReq.auth?.user,
+        tenancy: auth.tenancy,
+        forbiddenMessage: "Clients can only manage their own subscriptions.",
+      });
     }
 
     const products = auth.tenancy.config.payments.products;
@@ -176,23 +156,14 @@ export const POST = createSmartRouteHandler({
     if (hydratedStripeCustomer.deleted) {
       throw new StatusError(400, "Stripe customer was deleted unexpectedly.");
     }
-    const defaultPaymentMethod = hydratedStripeCustomer.invoice_settings.default_payment_method;
-    const metadataPaymentMethod =
-      hydratedStripeCustomer.metadata.defaultPaymentMethodId
-      || hydratedStripeCustomer.metadata.default_payment_method_id
-      || hydratedStripeCustomer.metadata.default_payment_method
-      || hydratedStripeCustomer.metadata.defaultPaymentMethod;
-    const defaultPaymentMethodId = typeof defaultPaymentMethod === "string"
-      ? defaultPaymentMethod
-      : defaultPaymentMethod?.id ?? metadataPaymentMethod;
-    let resolvedPaymentMethodId = defaultPaymentMethodId;
-    if (!resolvedPaymentMethodId && hydratedStripeCustomer.metadata.hasPaymentMethod === "true") {
-      const paymentMethods = await stripe.paymentMethods.list({ customer: hydratedStripeCustomer.id, type: "card" });
-      resolvedPaymentMethodId = paymentMethods.data[0]?.id ?? "pm_mock";
-    }
-    if (!resolvedPaymentMethodId) {
+    const defaultPaymentMethod = await getDefaultCardPaymentMethodSummary({
+      stripe,
+      stripeCustomer: hydratedStripeCustomer,
+    });
+    if (!defaultPaymentMethod) {
       throw new KnownErrors.DefaultPaymentMethodRequired(params.customer_type, params.customer_id);
     }
+    const resolvedPaymentMethodId = defaultPaymentMethod.id;
 
     const stripeProduct = await stripe.products.create({ name: toProduct.displayName || "Subscription" });
 
@@ -205,7 +176,7 @@ export const POST = createSmartRouteHandler({
       const updated = await stripe.subscriptions.update(subscription.stripeSubscriptionId, {
         payment_behavior: "error_if_incomplete",
         payment_settings: { save_default_payment_method: "on_subscription" },
-        ...resolvedPaymentMethodId ? { default_payment_method: resolvedPaymentMethodId } : {},
+        default_payment_method: resolvedPaymentMethodId,
         items: [{
           id: existingItem.id,
           price_data: {
