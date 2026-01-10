@@ -241,6 +241,7 @@ export namespace Auth {
         "selected_team_id": expect.toSatisfy(() => true),
         "is_anonymous": expect.any(Boolean),
         "is_restricted": expect.any(Boolean),
+        "restricted_reason": expect.toSatisfy(() => true),
         "project_id": payload.aud
       });
     }
@@ -1143,6 +1144,7 @@ export namespace Project {
         config: {
           credential_enabled: true,
           allow_localhost: true,
+          require_email_verification: false,
           ...body?.config,
         },
       },

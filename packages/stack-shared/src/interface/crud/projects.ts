@@ -123,6 +123,7 @@ export const projectsCrudAdminUpdateSchema = yupObject({
   logo_dark_mode_url: schemaFields.projectLogoDarkModeUrlSchema.nullable().optional(),
   logo_full_dark_mode_url: schemaFields.projectLogoFullDarkModeUrlSchema.nullable().optional(),
   is_production_mode: schemaFields.projectIsProductionModeSchema.optional(),
+  /** @deprecated */
   config: yupObject({
     sign_up_enabled: schemaFields.projectSignUpEnabledSchema.optional(),
     credential_enabled: schemaFields.projectCredentialEnabledSchema.optional(),
@@ -142,6 +143,7 @@ export const projectsCrudAdminUpdateSchema = yupObject({
     team_member_default_permissions: yupArray(teamPermissionSchema.defined()).optional(),
     user_default_permissions: yupArray(teamPermissionSchema.defined()).optional(),
     oauth_account_merge_strategy: schemaFields.oauthAccountMergeStrategySchema.optional(),
+    require_email_verification: schemaFields.yupBoolean().optional(),
   }).optional().default(undefined),
 }).defined();
 
