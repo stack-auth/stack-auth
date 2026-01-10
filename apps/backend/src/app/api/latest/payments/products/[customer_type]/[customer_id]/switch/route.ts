@@ -8,7 +8,7 @@ import { adaptSchema, clientOrHigherAuthTypeSchema, yupBoolean, yupNumber, yupOb
 import { StackAssertionError, StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 import { getOrUndefined, typedEntries, typedKeys } from "@stackframe/stack-shared/dist/utils/objects";
 import { typedToUppercase } from "@stackframe/stack-shared/dist/utils/strings";
-import { SubscriptionStatus } from "@prisma/client";
+import { SubscriptionStatus } from "@/generated/prisma/client";
 import Stripe from "stripe";
 
 async function ensureClientCanAccessCustomer(params: { customer_type: "user" | "team", customer_id: string }, fullReq: any, tenancy: any) {
