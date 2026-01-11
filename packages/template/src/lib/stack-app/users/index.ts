@@ -149,7 +149,7 @@ export type BaseUser = {
 }
 
 export type UserExtra = {
-  setDisplayName(displayName: string): Promise<void>,
+  setDisplayName(displayName: string | null): Promise<void>,
   /** @deprecated Use contact channel's sendVerificationEmail instead */
   sendVerificationEmail(): Promise<KnownErrors["EmailAlreadyVerified"] | void>,
   setClientMetadata(metadata: any): Promise<void>,
@@ -275,7 +275,7 @@ export type ActiveSession = {
 };
 
 export type UserUpdateOptions = {
-  displayName?: string,
+  displayName?: string | null,
   clientMetadata?: ReadonlyJson,
   selectedTeamId?: string | null,
   totpMultiFactorSecret?: Uint8Array | null,

@@ -646,3 +646,42 @@ it("sets a primary contact channel to non-primary", async ({ expect }) => {
     }
   `);
 });
+
+it("should create a contact channel as primary and demote existing primary", async ({ expect }) => {
+  await Auth.Otp.signIn();
+
+  // List current channels - the OTP sign-in creates a primary email
+  const beforeResponse = await niceBackendFetch("/api/v1/contact-channels?user_id=me", {
+    accessType: "client",
+  });
+  const originalPrimaryChannel = beforeResponse.body.items.find((c: any) => c.is_primary);
+  expect(originalPrimaryChannel).toBeDefined();
+  expect(originalPrimaryChannel.is_primary).toBe(true);
+
+  // Create a new contact channel and set it as primary
+  const mailbox = createMailbox();
+  const createResponse = await niceBackendFetch("/api/v1/contact-channels", {
+    accessType: "client",
+    method: "POST",
+    body: {
+      value: mailbox.emailAddress,
+      type: "email",
+      used_for_auth: false,
+      user_id: "me",
+      is_primary: true,
+    }
+  });
+  expect(createResponse.status).toBe(201);
+  expect(createResponse.body.is_primary).toBe(true);
+
+  // List channels again - the new channel should be primary, old one demoted
+  const afterResponse = await niceBackendFetch("/api/v1/contact-channels?user_id=me", {
+    accessType: "client",
+  });
+
+  const newPrimaryChannel = afterResponse.body.items.find((c: any) => c.value === mailbox.emailAddress);
+  const oldChannel = afterResponse.body.items.find((c: any) => c.id === originalPrimaryChannel.id);
+
+  expect(newPrimaryChannel.is_primary).toBe(true);
+  expect(oldChannel.is_primary).toBe(false);
+});

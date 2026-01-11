@@ -112,23 +112,37 @@ export async function decodeAccessToken(accessToken: string, { allowAnonymous, a
       throw error;
     }
 
+    // TODO next-release: Delete the legacy behavior from here
     const isAnonymous = payload.is_anonymous as boolean;
-    const isRestricted = payload.is_restricted as boolean;
+    // Legacy tokens default to non-restricted; also, anonymous users are always restricted
+    const isRestricted = (payload.is_restricted as boolean | undefined) ?? isAnonymous;
+    // For legacy anonymous tokens, infer restrictedReason as { type: "anonymous" }
+    const restrictedReason = (payload.restricted_reason as { type: "anonymous" | "email_not_verified" } | null | undefined)
+      ?? (isAnonymous ? { type: "anonymous" as const } : null);
+
+    // Anonymous users must be restricted
+    if (isAnonymous && !isRestricted) {
+      throw new StackAssertionError("Unparsable access token. User is anonymous but not restricted.", { accessToken, payload });
+    }
+
+    // Enforce consistency between isRestricted and restrictedReason
+    if (isRestricted && !restrictedReason) {
+      throw new StackAssertionError("Unparsable access token. User is restricted but restrictedReason is missing.", { accessToken, payload });
+    }
+    if (!isRestricted && restrictedReason) {
+      throw new StackAssertionError("Unparsable access token. User is not restricted but restrictedReason is present.", { accessToken, payload });
+    }
 
     // Validate audience matches the user type
     if (aud.endsWith(":anon") && !isAnonymous) {
-      console.warn("Unparsable access token. Role is set to anon, but audience is not an anonymous audience.", { accessToken, payload });
-      return Result.error(new KnownErrors.UnparsableAccessToken());
+      throw new StackAssertionError("Unparsable access token. Audience is an anonymous audience, but user is not anonymous.", { accessToken, payload });
     } else if (!aud.endsWith(":anon") && isAnonymous) {
-      console.warn("Unparsable access token. Audience is not an anonymous audience, but role is set to anon.", { accessToken, payload });
-      return Result.error(new KnownErrors.UnparsableAccessToken());
+      throw new StackAssertionError("Unparsable access token. Audience is not an anonymous audience, but user is anonymous.", { accessToken, payload });
     }
     if (aud.endsWith(":restricted") && !isRestricted) {
-      console.warn("Unparsable access token. User is restricted, but audience is not a restricted audience.", { accessToken, payload });
-      return Result.error(new KnownErrors.UnparsableAccessToken());
+      throw new StackAssertionError("Unparsable access token. User is not restricted, but audience is a restricted audience.", { accessToken, payload });
     } else if (!aud.endsWith(":restricted") && isRestricted && !isAnonymous) {
-      console.warn("Unparsable access token. Audience is not a restricted audience, but user is restricted.", { accessToken, payload });
-      return Result.error(new KnownErrors.UnparsableAccessToken());
+      throw new StackAssertionError("Unparsable access token. Audience is not a restricted audience, but user is restricted.", { accessToken, payload });
     }
 
     const branchId = payload.branch_id ?? payload.branchId;
@@ -137,15 +151,13 @@ export async function decodeAccessToken(accessToken: string, { allowAnonymous, a
       throw new StackAssertionError("Branch ID !== main not currently supported.");
     }
 
-    const restrictedReason = payload.restricted_reason as { type: "anonymous" | "email_not_verified" } | null | undefined ?? null;
-
     const result = await accessTokenSchema.validate({
       projectId: aud.split(":")[0],
       userId: payload.sub,
       branchId: branchId,
       refreshTokenId: payload.refresh_token_id ?? payload.refreshTokenId,
       exp: payload.exp,
-      isAnonymous: payload.is_anonymous ?? /* legacy, now we always set role to authenticated, TODO next-release remove */ payload.role === 'anon',
+      isAnonymous,
       isRestricted,
       restrictedReason,
     });

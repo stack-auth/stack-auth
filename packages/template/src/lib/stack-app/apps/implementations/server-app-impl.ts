@@ -503,7 +503,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
       async revokeSession(sessionId: string) {
         await app._interface.deleteServerSession(sessionId);
       },
-      async setDisplayName(displayName: string) {
+      async setDisplayName(displayName: string | null) {
         return await this.update({ displayName });
       },
       async setClientMetadata(metadata: Record<string, any>) {

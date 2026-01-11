@@ -800,12 +800,20 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
       const passwordAuth = oldUser.authMethods.find((m) => m.passwordAuthMethod)?.passwordAuthMethod;
       const passkeyAuth = oldUser.authMethods.find((m) => m.passkeyAuthMethod)?.passkeyAuthMethod;
 
-      const primaryEmailAuthEnabled = data.primary_email_auth_enabled ?? !!primaryEmailContactChannel?.usedForAuth;
-      const primaryEmailVerified = data.primary_email_verified || !!primaryEmailContactChannel?.isVerified;
+      // Use the explicitly provided primaryEmail if set (even if null), otherwise fall back to existing
+      const effectivePrimaryEmail = primaryEmail !== undefined ? primaryEmail : (primaryEmailContactChannel?.value ?? null);
+      // If email is being explicitly removed (set to null), force verified and auth enabled to false
+      const isRemovingEmail = primaryEmail === null;
+      const primaryEmailAuthEnabled = isRemovingEmail
+        ? false
+        : (data.primary_email_auth_enabled ?? !!primaryEmailContactChannel?.usedForAuth);
+      const primaryEmailVerified = isRemovingEmail
+        ? false
+        : (data.primary_email_verified ?? !!primaryEmailContactChannel?.isVerified);
       await checkAuthData(tx, {
         tenancyId: auth.tenancy.id,
         oldPrimaryEmail: primaryEmailContactChannel?.value,
-        primaryEmail: primaryEmail || primaryEmailContactChannel?.value,
+        primaryEmail: effectivePrimaryEmail,
         primaryEmailVerified,
         primaryEmailAuthEnabled,
       });
@@ -872,7 +880,7 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
 
       // if there is a new primary email verified
       // - update the primary email contact channel if it exists
-      if (data.primary_email_verified !== undefined) {
+      if (data.primary_email_verified !== undefined && primaryEmailContactChannel) {
         await tx.contactChannel.update({
           where: {
             tenancyId_projectUserId_type_isPrimary: {
@@ -890,7 +898,7 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
 
       // if primary_email_auth_enabled is being updated without changing the email
       // - update the primary email contact channel's usedForAuth field
-      if (data.primary_email_auth_enabled !== undefined && primaryEmail === undefined) {
+      if (data.primary_email_auth_enabled !== undefined && primaryEmail === undefined && primaryEmailContactChannel) {
         await tx.contactChannel.update({
           where: {
             tenancyId_projectUserId_type_isPrimary: {

@@ -217,7 +217,7 @@ export class InternalSession {
    * to hint that the access token should be refreshed as its data may have changed, if possible.
    */
   markAccessTokenExpired(accessToken?: AccessToken) {
-    if (!accessToken || this._accessToken.get() === accessToken) {
+    if (!accessToken || this._accessToken.get()?.token === accessToken.token) {
       this._accessToken.set(null);
     }
   }

@@ -2,11 +2,6 @@
 
 import { useAdminApp } from "@/app/(main)/(protected)/projects/[projectId]/use-admin-app";
 import { useRouter } from "@/components/router";
-import { ArrowDownIcon, ArrowUpIcon, CaretLeftIcon, CaretRightIcon, CheckCircleIcon, CopyIcon, DotsThreeIcon, MagnifyingGlassIcon, XCircleIcon, XIcon } from "@phosphor-icons/react";
-import type { ServerUser } from "@stackframe/stack";
-import { fromNow } from "@stackframe/stack-shared/dist/utils/dates";
-import { runAsynchronously, runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
-import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
 import {
   Avatar,
   AvatarFallback,
@@ -28,6 +23,11 @@ import {
   Skeleton,
   toast,
 } from "@/components/ui";
+import { ArrowDownIcon, ArrowUpIcon, CaretLeftIcon, CaretRightIcon, CheckCircleIcon, CopyIcon, DotsThreeIcon, MagnifyingGlassIcon, XCircleIcon, XIcon } from "@phosphor-icons/react";
+import type { ServerUser } from "@stackframe/stack";
+import { fromNow } from "@stackframe/stack-shared/dist/utils/dates";
+import { runAsynchronously, runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
+import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
 import {
   ColumnDef,
   createColumnHelper,
@@ -716,9 +716,9 @@ function normalizeDateValue(value: Date | string | null | undefined) {
 
 function sanitizeQueryState(state: Partial<QueryState>): QueryState {
   const search = state.search?.trim() ? state.search.trim() : undefined;
-  // Default to including restricted users (state.includeRestricted is undefined when not in URL)
-  const includeRestricted = state.includeRestricted ?? true;
   const includeAnonymous = Boolean(state.includeAnonymous);
+  // Default to including restricted users; also enforce that anonymous implies restricted
+  const includeRestricted = includeAnonymous || (state.includeRestricted ?? true);
   const candidatePageSize = state.pageSize ?? DEFAULT_PAGE_SIZE;
   const pageSize = PAGE_SIZE_OPTIONS.includes(candidatePageSize) ? candidatePageSize : DEFAULT_PAGE_SIZE;
   const candidatePage = state.page ?? 1;

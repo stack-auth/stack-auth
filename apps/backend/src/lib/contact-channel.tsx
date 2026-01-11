@@ -1,4 +1,5 @@
 import { BooleanTrue, ContactChannelType } from "@/generated/prisma/client";
+import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { normalizeEmail } from "./emails";
 import { PrismaTransaction } from "./types";
 
@@ -57,6 +58,32 @@ export async function setContactChannelAsPrimaryById(
     },
   }
 ) {
+  // First, validate that the target contact channel exists and has the correct type
+  const targetChannel = await tx.contactChannel.findUnique({
+    where: {
+      tenancyId_projectUserId_id: {
+        tenancyId: options.tenancyId,
+        projectUserId: options.projectUserId,
+        id: options.contactChannelId,
+      },
+    },
+  });
+
+  if (!targetChannel) {
+    throw new StackAssertionError(
+      `Contact channel not found with id ${options.contactChannelId} for user ${options.projectUserId} in tenancy ${options.tenancyId}`,
+      { options }
+    );
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+  if (targetChannel.type !== options.type) {
+    throw new StackAssertionError(
+      `Contact channel type mismatch: expected ${options.type}, got ${targetChannel.type}`,
+      { options, actualType: targetChannel.type }
+    );
+  }
+
   // Demote all other contact channels of this type
   await demoteAllContactChannelsToNonPrimary(tx, {
     tenancyId: options.tenancyId,

@@ -71,7 +71,7 @@ describe("access token refresh on user property changes", () => {
       expect(decodeAccessToken(tokenWithName!).name).toBe("Initial Name");
 
       // Set display name to null
-      await user.setDisplayName(null as any);
+      await user.setDisplayName(null);
 
       const tokenWithNullName = await user.getAccessToken();
       expect(decodeAccessToken(tokenWithNullName!).name).toBeNull();

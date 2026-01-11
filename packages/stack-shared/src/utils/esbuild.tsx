@@ -2,10 +2,10 @@ import * as esbuild from 'esbuild-wasm/lib/browser.js';
 import { join } from 'path';
 import { isBrowserLike } from './env';
 import { captureError, StackAssertionError, throwErr } from "./errors";
-import { getOrComputeGlobal } from './globals';
 import { ignoreUnhandledRejection, runAsynchronously } from './promises';
 import { Result } from "./results";
 import { traceSpan, withTraceSpan } from './telemetry';
+import { createGlobalAsync } from './globals';
 
 
 // esbuild requires self property to be set, and it is not set by default in nodejs
@@ -37,7 +37,7 @@ export function initializeEsbuild(): Promise<void> {
             wasmURL: esbuildWasmUrl,
           };
         } else {
-          const esbuildWasmModule = await getOrComputeGlobal('esbuildWasmModule', async () => {
+          const esbuildWasmModule = await createGlobalAsync('esbuildWasmModule', async () => {
             const esbuildWasmResponse = await fetch(esbuildWasmUrl);
             if (!esbuildWasmResponse.ok) {
               throw new StackAssertionError(`Failed to fetch esbuild.wasm: ${esbuildWasmResponse.status} ${esbuildWasmResponse.statusText}: ${await esbuildWasmResponse.text()}`);

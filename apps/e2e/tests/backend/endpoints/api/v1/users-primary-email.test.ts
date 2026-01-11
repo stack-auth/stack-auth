@@ -544,5 +544,192 @@ describe("updating primary_email via users/me endpoint", () => {
       expect(newEmailChannel.is_primary).toBe(true);
     });
   });
+
+  describe("updating primary_email_verified for user without primary email", () => {
+    it("should return error when updating primary_email_verified for user without primary email", async ({ expect }) => {
+      await Project.createAndSwitch({
+        config: {
+          credential_enabled: true,
+        },
+      });
+
+      // Create a user without email via server
+      const createResponse = await niceBackendFetch("/api/v1/users", {
+        accessType: "server",
+        method: "POST",
+        body: {
+          display_name: "User Without Email",
+        },
+      });
+      expect(createResponse.status).toBe(201);
+      expect(createResponse.body.primary_email).toBe(null);
+
+      // Try to update primary_email_verified to true - should fail
+      const updateTrueResponse = await niceBackendFetch(`/api/v1/users/${createResponse.body.id}`, {
+        accessType: "server",
+        method: "PATCH",
+        body: {
+          primary_email_verified: true,
+        },
+      });
+      expect(updateTrueResponse).toMatchInlineSnapshot(`
+        NiceResponse {
+          "status": 400,
+          "body": "primary_email_verified cannot be true without primary_email",
+          "headers": Headers { <some fields may have been hidden> },
+        }
+      `);
+
+      // Try to update primary_email_verified to false - should be a no-op since there's no email anyway
+      const updateFalseResponse = await niceBackendFetch(`/api/v1/users/${createResponse.body.id}`, {
+        accessType: "server",
+        method: "PATCH",
+        body: {
+          primary_email_verified: false,
+        },
+      });
+      expect(updateFalseResponse.status).toBe(200);
+      expect(updateFalseResponse.body.primary_email).toBe(null);
+      expect(updateFalseResponse.body.primary_email_verified).toBe(false);
+    });
+
+    it("should return error when updating primary_email_auth_enabled for user without primary email", async ({ expect }) => {
+      await Project.createAndSwitch({
+        config: {
+          credential_enabled: true,
+        },
+      });
+
+      // Create a user without email via server
+      const createResponse = await niceBackendFetch("/api/v1/users", {
+        accessType: "server",
+        method: "POST",
+        body: {
+          display_name: "User Without Email",
+        },
+      });
+      expect(createResponse.status).toBe(201);
+      expect(createResponse.body.primary_email).toBe(null);
+
+      // Try to update primary_email_auth_enabled to true - should fail
+      const updateTrueResponse = await niceBackendFetch(`/api/v1/users/${createResponse.body.id}`, {
+        accessType: "server",
+        method: "PATCH",
+        body: {
+          primary_email_auth_enabled: true,
+        },
+      });
+      expect(updateTrueResponse).toMatchInlineSnapshot(`
+        NiceResponse {
+          "status": 400,
+          "body": "primary_email_auth_enabled cannot be true without primary_email",
+          "headers": Headers { <some fields may have been hidden> },
+        }
+      `);
+
+      // Try to update primary_email_auth_enabled to false - should be a no-op since there's no email anyway
+      const updateFalseResponse = await niceBackendFetch(`/api/v1/users/${createResponse.body.id}`, {
+        accessType: "server",
+        method: "PATCH",
+        body: {
+          primary_email_auth_enabled: false,
+        },
+      });
+      expect(updateFalseResponse.status).toBe(200);
+      expect(updateFalseResponse.body.primary_email).toBe(null);
+      expect(updateFalseResponse.body.primary_email_auth_enabled).toBe(false);
+    });
+  });
+
+  describe("explicit false values for primary_email_verified", () => {
+    it("should allow explicitly setting primary_email_verified to false on a verified email", async ({ expect }) => {
+      // Sign in with OTP which verifies the email
+      const { userId } = await Auth.Otp.signIn();
+
+      // Verify the email is verified
+      const beforeResponse = await niceBackendFetch(`/api/v1/users/${userId}`, {
+        accessType: "server",
+      });
+      expect(beforeResponse.body.primary_email_verified).toBe(true);
+
+      // Explicitly set primary_email_verified to false
+      const updateResponse = await niceBackendFetch(`/api/v1/users/${userId}`, {
+        accessType: "server",
+        method: "PATCH",
+        body: {
+          primary_email_verified: false,
+        },
+      });
+      expect(updateResponse.status).toBe(200);
+      expect(updateResponse.body.primary_email_verified).toBe(false);
+
+      // Verify the change persists
+      const afterResponse = await niceBackendFetch(`/api/v1/users/${userId}`, {
+        accessType: "server",
+      });
+      expect(afterResponse.body.primary_email_verified).toBe(false);
+    });
+  });
+
+  describe("explicit null for primary_email removal", () => {
+    it("should allow removing primary_email by setting it to null", async ({ expect }) => {
+      const { userId } = await Auth.Otp.signIn();
+
+      // Verify user has an email
+      const beforeResponse = await niceBackendFetch(`/api/v1/users/${userId}`, {
+        accessType: "server",
+      });
+      expect(beforeResponse.body.primary_email).not.toBe(null);
+
+      // Set primary_email to null to remove it
+      const updateResponse = await niceBackendFetch(`/api/v1/users/${userId}`, {
+        accessType: "server",
+        method: "PATCH",
+        body: {
+          primary_email: null,
+        },
+      });
+      expect(updateResponse.status).toBe(200);
+      expect(updateResponse.body.primary_email).toBe(null);
+
+      // Verify the change persists
+      const afterResponse = await niceBackendFetch(`/api/v1/users/${userId}`, {
+        accessType: "server",
+      });
+      expect(afterResponse.body.primary_email).toBe(null);
+    });
+
+    it("should allow removing primary_email even when auth is enabled (automatically disables auth)", async ({ expect }) => {
+      await Project.createAndSwitch({
+        config: {
+          credential_enabled: true,
+          magic_link_enabled: true,
+        },
+      });
+
+      // Sign in with OTP
+      const { userId } = await Auth.Otp.signIn();
+
+      // Verify user has email with auth enabled
+      const beforeResponse = await niceBackendFetch(`/api/v1/users/${userId}`, {
+        accessType: "server",
+      });
+      expect(beforeResponse.body.primary_email).not.toBe(null);
+      expect(beforeResponse.body.primary_email_auth_enabled).toBe(true);
+
+      // Remove email while auth is still enabled - should succeed and automatically disable auth
+      const updateResponse = await niceBackendFetch(`/api/v1/users/${userId}`, {
+        accessType: "server",
+        method: "PATCH",
+        body: {
+          primary_email: null,
+        },
+      });
+      expect(updateResponse.status).toBe(200);
+      expect(updateResponse.body.primary_email).toBe(null);
+      expect(updateResponse.body.primary_email_auth_enabled).toBe(false);
+      expect(updateResponse.body.primary_email_verified).toBe(false);
+    });
+  });
 });
 

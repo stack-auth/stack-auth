@@ -1309,7 +1309,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       async revokeSession(sessionId: string) {
         await app._interface.deleteSession(sessionId, session);
       },
-      setDisplayName(displayName: string) {
+      setDisplayName(displayName: string | null) {
         return this.update({ displayName });
       },
       setClientMetadata(metadata: Record<string, any>) {

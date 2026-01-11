@@ -17,11 +17,11 @@ export function Onboarding(props: {
 }) {
   const { t } = useTranslation();
   const stackApp = useStackApp();
-  const user = useUser({ or: "anonymous" });
+  const user = useUser({ or: "return-null", includeRestricted: true });
 
   // If user is not restricted anymore, redirect to the intended destination
   // redirectToAfterSignIn automatically checks for after_auth_return_to in the URL
-  if (user && !user.isAnonymous && !user.isRestricted) {
+  if (user && !user.isRestricted) {
     runAsynchronously(stackApp.redirectToAfterSignIn());
     // TODO: This should return a loading indicator, not just null
     return null;

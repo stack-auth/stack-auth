@@ -169,7 +169,7 @@ export default function PageClient() {
               <span className="sr-only">More info about JWKS URLs</span>
             </SimpleTooltip>
           </div>
-          <div className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 items-center text-sm">
+          <div className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-2 items-center text-sm">
             <span className="text-muted-foreground whitespace-nowrap">Standard</span>
             <CopyableText value={jwksUrl} />
 
