@@ -34,18 +34,31 @@ export type TeamInvitation = {
 }
 
 export type Team = {
+  /** The unique identifier for this team. */
   id: string,
+  /** The display name of the team. */
   displayName: string,
+  /** URL of the team's profile image, or null if not set. */
   profileImageUrl: string | null,
+  /** Custom metadata that can be read and written by the client. */
   clientMetadata: any,
+  /** Custom metadata that can only be read by the client (set via server). */
   clientReadOnlyMetadata: any,
+  /** Invites a user to join the team by email. */
   inviteUser(options: { email: string, callbackUrl?: string }): Promise<void>,
+  /** Lists all users who are members of this team. */
   listUsers(): Promise<TeamUser[]>,
+  /** React hook to get all users who are members of this team. */
   useUsers(): TeamUser[], // THIS_LINE_PLATFORM react-like
+  /** Lists all pending invitations for this team. */
   listInvitations(): Promise<TeamInvitation[]>,
+  /** React hook to get all pending invitations for this team. */
   useInvitations(): TeamInvitation[], // THIS_LINE_PLATFORM react-like
+  /** Updates the team's properties. */
   update(update: TeamUpdateOptions): Promise<void>,
+  /** Deletes the team. */
   delete(): Promise<void>,
+  /** Creates a new API key for this team. */
   createApiKey(options: ApiKeyCreationOptions<"team">): Promise<TeamApiKeyFirstView>,
 } & AsyncStoreProperty<"apiKeys", [], TeamApiKey[], true> & Customer;
 
