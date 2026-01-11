@@ -104,14 +104,14 @@ function getParameterDescription(hookName: string, paramName: string, paramType:
 // Clean return type - remove internal types from display
 function cleanReturnType(hookName: string, returnType: string): string {
   const cleaned = cleanTypeString(returnType);
-  
+
   // For useUser, simplify to just CurrentUser | null
   if (hookName === 'useUser') {
     if (cleaned.includes('Internal')) {
       return 'CurrentUser | null';
     }
   }
-  
+
   return cleaned;
 }
 
@@ -130,17 +130,17 @@ function cleanTypeString(type: string): string {
 // Simplify a complex options type to something more readable
 function simplifyOptionsType(optionsType: string): string {
   const cleaned = cleanTypeString(optionsType);
-  
+
   // If it's a GetUserOptions reference, use that
   if (cleaned.includes('GetUserOptions')) {
     return 'GetUserOptions';
   }
-  
+
   // For complex intersection types, extract the key differentiating parts
   // Like { or: "redirect" | "throw"; projectIdMustMatch: "internal"; }
   const orMatch = cleaned.match(/or:\s*("[^"]+"\s*\|\s*"[^"]+"|\\"[^"]+\\")/);
   const projectMatch = cleaned.match(/projectIdMustMatch:\s*("[^"]+"|string)/);
-  
+
   if (orMatch || projectMatch) {
     const parts: string[] = [];
     if (orMatch) {
@@ -151,24 +151,24 @@ function simplifyOptionsType(optionsType: string): string {
     }
     return `{ ${parts.join('; ')}; ... }`;
   }
-  
+
   // If still too long, truncate
   if (cleaned.length > 60) {
     return 'GetUserOptions';
   }
-  
+
   return cleaned;
 }
 
 // Parse a signature handling nested braces/parens
 function parseSignatureComponents(signature: string): { params: string, returnType: string } | null {
   const cleaned = cleanTypeString(signature);
-  
+
   let parenDepth = 0;
   let braceDepth = 0;
   let paramStart = -1;
   let paramEnd = -1;
-  
+
   for (let i = 0; i < cleaned.length; i++) {
     const char = cleaned[i];
     if (char === '(') {
@@ -186,14 +186,14 @@ function parseSignatureComponents(signature: string): { params: string, returnTy
       braceDepth--;
     }
   }
-  
+
   if (paramStart === -1 || paramEnd === -1) return null;
-  
+
   const params = cleaned.slice(paramStart + 1, paramEnd);
   const rest = cleaned.slice(paramEnd + 1);
   const returnMatch = rest.match(/\s*=>\s*(.+)$/);
   if (!returnMatch) return null;
-  
+
   return { params, returnType: returnMatch[1].trim() };
 }
 
@@ -203,7 +203,7 @@ function formatHookSignatures(hookName: string, signatures: string[]): string {
   if (signatures.length === 1) {
     return formatSingleSignature(hookName, signatures[0]);
   }
-  
+
   // For overloaded hooks, find the most general/public signature
   // Skip internal types - we don't document those
   for (const sig of signatures) {
@@ -211,14 +211,14 @@ function formatHookSignatures(hookName: string, signatures: string[]): string {
     if (parsed) {
       // Skip signatures with Internal types
       if (parsed.returnType.includes('Internal')) continue;
-      
+
       // Prefer the most general signature (with union return type or null)
       if (parsed.returnType.includes('null') || parsed.returnType.includes('|')) {
         return `declare function ${hookName}(options?: GetUserOptions): ${parsed.returnType};`;
       }
     }
   }
-  
+
   // Fallback: find any non-internal signature
   for (const sig of signatures) {
     const parsed = parseSignatureComponents(sig);
@@ -226,7 +226,7 @@ function formatHookSignatures(hookName: string, signatures: string[]): string {
       return `declare function ${hookName}(options?: GetUserOptions): ${parsed.returnType};`;
     }
   }
-  
+
   // Last resort: use first signature
   return formatSingleSignature(hookName, signatures[0]);
 }
@@ -234,14 +234,14 @@ function formatHookSignatures(hookName: string, signatures: string[]): string {
 // Format a single hook signature nicely for display
 function formatSingleSignature(hookName: string, signature: string): string {
   const cleaned = cleanTypeString(signature);
-  
+
   // Try to parse function signature: <Generics>(params) => ReturnType
   const genericMatch = cleaned.match(/^(<[^>]+>)/);
   const generics = genericMatch ? genericMatch[1] : '';
-  
+
   const restOfSig = genericMatch ? cleaned.slice(generics.length) : cleaned;
   const match = restOfSig.match(/\((.*?)\)\s*=>\s*(.+)$/s);
-  
+
   if (!match) {
     return `declare function ${hookName}${cleaned}`;
   }
@@ -270,14 +270,14 @@ function parseSignature(signature: string): {
   returnType: string,
 } | null {
   const cleaned = cleanTypeString(signature);
-  
+
   // Try to parse function signature: (params) => ReturnType
   // Need to handle nested braces in the params
   let parenDepth = 0;
   let braceDepth = 0;
   let paramStart = -1;
   let paramEnd = -1;
-  
+
   for (let i = 0; i < cleaned.length; i++) {
     const char = cleaned[i];
     if (char === '(') {
@@ -295,17 +295,17 @@ function parseSignature(signature: string): {
       braceDepth--;
     }
   }
-  
+
   if (paramStart === -1 || paramEnd === -1) return null;
-  
+
   const paramsStr = cleaned.slice(paramStart + 1, paramEnd);
   const rest = cleaned.slice(paramEnd + 1);
   const returnMatch = rest.match(/\s*=>\s*(.+)$/);
   if (!returnMatch) return null;
-  
+
   const returnType = returnMatch[1].trim();
   const parameters: Array<{ name: string, type: string, optional: boolean, description?: string }> = [];
-  
+
   if (paramsStr.trim()) {
     // Parse param: name?: type
     const paramMatch = paramsStr.match(/^(\w+)(\?)?:\s*(.+)$/);
