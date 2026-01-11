@@ -1,5 +1,14 @@
 ---
-title: ConnectedAccount
+title: Connected Account
+full: true
 ---
 
-## Placeholder
+Connected accounts represent OAuth connections to external providers (like Google, GitHub, etc.) that are linked to a user. You can use them to access the user's data on those platforms.
+
+For a guide on how to use connected accounts, see [OAuth](/docs/concepts/oauth).
+
+# `OAuthConnection`
+
+Represents a connected OAuth account. Get it with `user.getConnectedAccount(providerId)` or `user.useConnectedAccount(providerId)`.
+
+<TypeFromJson typeName="OAuthConnection" />
