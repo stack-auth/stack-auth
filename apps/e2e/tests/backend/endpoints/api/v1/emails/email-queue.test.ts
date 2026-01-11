@@ -1715,6 +1715,14 @@ describe("email outbox pagination", () => {
     });
     expect(sendResponse.status).toBe(200);
 
+    // Ensure there are 5 emails in the outbox
+    const allResponse = await niceBackendFetch("/api/v1/emails/outbox", {
+      method: "GET",
+      accessType: "server",
+    });
+    expect(allResponse.status).toBe(200);
+    expect(allResponse.body.items.length).toBe(5);
+
     // Test pagination with limit=2
     const page1Response = await niceBackendFetch("/api/v1/emails/outbox?limit=2", {
       method: "GET",
