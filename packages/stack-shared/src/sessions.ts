@@ -217,7 +217,7 @@ export class InternalSession {
    * to hint that the access token should be refreshed as its data may have changed, if possible.
    */
   markAccessTokenExpired(accessToken?: AccessToken) {
-    if (accessToken && this._accessToken.get() === accessToken) {
+    if (!accessToken || this._accessToken.get() === accessToken) {
       this._accessToken.set(null);
     }
   }
@@ -230,7 +230,9 @@ export class InternalSession {
    * update to the user's profile.
    *
    * The current implementation marks the access token as expired if and only if a refresh token is available (regardless of
-   * whether the refresh token is actually valid or not).
+   * whether the refresh token is actually valid or not), although this is not a guarantee and subject to change.
+   *
+   * If you need a stronger guarantee of revoking an access token, use markAccessTokenExpired instead.
    */
   suggestAccessTokenExpired(): void {
     if (this._refreshToken) {

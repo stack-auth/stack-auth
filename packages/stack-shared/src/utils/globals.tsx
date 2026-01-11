@@ -29,3 +29,10 @@ export function getGlobal(key: string): any {
 export function setGlobal(key: string, value: any) {
   globalVar[stackGlobalsSymbol][key] = value;
 }
+
+export function getOrComputeGlobal<T>(key: string, init: () => T): T {
+  if (!globalVar[stackGlobalsSymbol][key]) {
+    globalVar[stackGlobalsSymbol][key] = init();
+  }
+  return globalVar[stackGlobalsSymbol][key] as T;
+}

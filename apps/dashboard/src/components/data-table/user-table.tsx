@@ -112,7 +112,7 @@ const COLUMN_LAYOUT: ColumnLayoutMap = {
 };
 
 const DEFAULT_QUERY_STATE: QueryState = {
-  includeRestricted: false,
+  includeRestricted: true,
   includeAnonymous: false,
   page: 1,
   pageSize: DEFAULT_PAGE_SIZE,
@@ -149,7 +149,7 @@ const querySchema = yup.object({
     .optional(),
   includeRestricted: yup
     .boolean()
-    .transform((_, originalValue) => (originalValue === "true" ? true : undefined))
+    .transform((_, originalValue) => (originalValue === "true" ? true : originalValue === "false" ? false : undefined))
     .optional(),
   includeAnonymous: yup
     .boolean()
@@ -311,13 +311,13 @@ function UserTableHeader(props: {
             value={filterValue}
             onValueChange={handleFilterChange}
           >
-            <SelectTrigger className="w-[180px]" aria-label="User list filter">
-              <SelectValue placeholder="Only onboarded" />
+            <SelectTrigger className="w-[210px]" aria-label="User list filter">
+              <SelectValue placeholder="Signups" />
             </SelectTrigger>
             <SelectContent align="start">
-              <SelectItem value="standard">Only onboarded</SelectItem>
-              <SelectItem value="restricted">Include restricted</SelectItem>
-              <SelectItem value="anonymous">Include anonymous</SelectItem>
+              <SelectItem value="standard">Exclude restricted users</SelectItem>
+              <SelectItem value="restricted">Signups</SelectItem>
+              <SelectItem value="anonymous">Signups & anonymous users</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -428,7 +428,7 @@ function UserTableBody(props: {
               variant="outline"
               onClick={() => {
                 resetCache();
-                setQuery({ search: undefined, includeRestricted: false, includeAnonymous: false, page: 1, cursor: undefined });
+                setQuery({ search: undefined, includeRestricted: true, includeAnonymous: false, page: 1, cursor: undefined });
               }}
             >
               Reset filters
@@ -716,7 +716,8 @@ function normalizeDateValue(value: Date | string | null | undefined) {
 
 function sanitizeQueryState(state: Partial<QueryState>): QueryState {
   const search = state.search?.trim() ? state.search.trim() : undefined;
-  const includeRestricted = Boolean(state.includeRestricted);
+  // Default to including restricted users (state.includeRestricted is undefined when not in URL)
+  const includeRestricted = state.includeRestricted ?? true;
   const includeAnonymous = Boolean(state.includeAnonymous);
   const candidatePageSize = state.pageSize ?? DEFAULT_PAGE_SIZE;
   const pageSize = PAGE_SIZE_OPTIONS.includes(candidatePageSize) ? candidatePageSize : DEFAULT_PAGE_SIZE;
@@ -732,8 +733,9 @@ function serializeQueryState(state: QueryState) {
   if (state.search) {
     params.set("search", state.search);
   }
-  if (state.includeRestricted) {
-    params.set("includeRestricted", "true");
+  // Only write to URL if NOT including restricted (since true is the default)
+  if (!state.includeRestricted) {
+    params.set("includeRestricted", "false");
   }
   if (state.includeAnonymous) {
     params.set("includeAnonymous", "true");
