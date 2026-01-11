@@ -8,7 +8,7 @@ type GetUserOptions = AppGetUserOptions<true> & {
 
 /**
  * Returns the current user object. Equivalent to `useStackApp().useUser()`.
- *
+ * @stackdoc
  * @returns the current user
  */
 export function useUser(options: GetUserOptions & { or: 'redirect' | 'throw', projectIdMustMatch: "internal" }): CurrentInternalUser;
@@ -29,7 +29,7 @@ export function useUser(options: GetUserOptions = {}): CurrentUser | CurrentInte
 
 /**
  * Returns the current Stack app associated with the StackProvider.
- *
+ * @stackdoc
  * @returns the current Stack app
  */
 export function useStackApp<ProjectId extends string>(options: { projectIdMustMatch?: ProjectId } = {}): StackClientApp<true, ProjectId> {

@@ -100,37 +100,80 @@ export type Auth = AuthLike<{}> & {
  **/
 
 export type BaseUser = {
+  /**
+   * The unique identifier of the user.
+   */
   readonly id: string,
 
+  /**
+   * The display name of the user. The user can modify this value.
+   */
   readonly displayName: string | null,
 
   /**
-   * The user's email address.
+   * The user's primary email address.
    *
    * Note: This might NOT be unique across multiple users, so always use `id` for unique identification.
    */
   readonly primaryEmail: string | null,
+
+  /**
+   * Whether the primary email of the user is verified.
+   */
   readonly primaryEmailVerified: boolean,
+
+  /**
+   * The profile image URL of the user.
+   */
   readonly profileImageUrl: string | null,
 
+  /**
+   * The date and time when the user signed up.
+   */
   readonly signedUpAt: Date,
 
+  /**
+   * Custom metadata that can be read and written by the client.
+   */
   readonly clientMetadata: any,
+
+  /**
+   * Read-only metadata that can only be set from the server.
+   */
   readonly clientReadOnlyMetadata: any,
 
   /**
    * Whether the user has a password set.
    */
   readonly hasPassword: boolean,
+
+  /**
+   * Whether OTP/magic link authentication is enabled for the user.
+   */
   readonly otpAuthEnabled: boolean,
+
+  /**
+   * Whether passkey authentication is enabled for the user.
+   */
   readonly passkeyAuthEnabled: boolean,
 
+  /**
+   * Whether multi-factor authentication is required for the user.
+   */
   readonly isMultiFactorRequired: boolean,
+
+  /**
+   * Whether the user is an anonymous user.
+   */
   readonly isAnonymous: boolean,
+
+  /**
+   * Converts the user object to the format expected by the Stack Auth API.
+   */
   toClientJson(): CurrentUserCrud["Client"]["Read"],
 
   /**
-   * @deprecated, use contact channel's usedForAuth instead
+   * @deprecated Use contact channel's usedForAuth instead
    */
   readonly emailAuthEnabled: boolean,
   /**
@@ -140,27 +183,64 @@ export type BaseUser = {
 }
 
 export type UserExtra = {
+  /**
+   * Sets the display name of the user.
+   */
   setDisplayName(displayName: string): Promise<void>,
+
   /** @deprecated Use contact channel's sendVerificationEmail instead */
   sendVerificationEmail(): Promise<KnownErrors["EmailAlreadyVerified"] | void>,
+
+  /**
+   * Sets the client metadata for the user.
+   */
   setClientMetadata(metadata: any): Promise<void>,
+
+  /**
+   * Updates the user's password.
+   */
   updatePassword(options: { oldPassword: string, newPassword: string}): Promise<KnownErrors["PasswordConfirmationMismatch"] | KnownErrors["PasswordRequirementsNotMet"] | void>,
+
+  /**
+   * Sets a password for the user.
+   */
   setPassword(options: { password: string }): Promise<KnownErrors["PasswordRequirementsNotMet"] | void>,
 
   /**
-   * A shorthand method to update multiple fields of the user at once.
+   * Updates multiple fields of the user at once.
    */
   update(update: UserUpdateOptions): Promise<void>,
 
+  /**
+   * React hook to get all contact channels for the user.
+   */
   useContactChannels(): ContactChannel[], // THIS_LINE_PLATFORM react-like
+  /**
+   * Lists all contact channels for the user.
+   */
   listContactChannels(): Promise<ContactChannel[]>,
+  /**
+   * Creates a new contact channel for the user.
+   */
   createContactChannel(data: ContactChannelCreateOptions): Promise<ContactChannel>,
 
+  /**
+   * React hook to get all notification categories.
+   */
   useNotificationCategories(): NotificationCategory[], // THIS_LINE_PLATFORM react-like
+  /**
+   * Lists all notification categories.
+   */
   listNotificationCategories(): Promise<NotificationCategory[]>,
 
+  /**
+   * Deletes the user account.
+   */
   delete(): Promise<void>,
 
+  /**
+   * Gets an OAuth connected account for the user.
+   */
   getConnectedAccount(id: ProviderType, options: { or: 'redirect', scopes?: string[] }): Promise<OAuthConnection>,
   getConnectedAccount(id: ProviderType, options?: { or?: 'redirect' | 'throw' | 'return-null', scopes?: string[] }): Promise<OAuthConnection | null>,
 
@@ -169,41 +249,98 @@ export type UserExtra = {
   useConnectedAccount(id: ProviderType, options?: { or?: 'redirect' | 'throw' | 'return-null', scopes?: string[] }): OAuthConnection | null,
   // END_PLATFORM
 
+  /**
+   * Checks if the user has a specific permission.
+   */
   hasPermission(scope: Team, permissionId: string): Promise<boolean>,
   hasPermission(permissionId: string): Promise<boolean>,
 
+  /**
+   * Gets a specific permission for the user.
+   */
   getPermission(scope: Team, permissionId: string): Promise<TeamPermission | null>,
   getPermission(permissionId: string): Promise<TeamPermission | null>,
 
+  /**
+   * Lists all permissions for the user in a given scope.
+   */
   listPermissions(scope: Team, options?: { recursive?: boolean }): Promise<TeamPermission[]>,
   listPermissions(options?: { recursive?: boolean }): Promise<TeamPermission[]>,
 
   // IF_PLATFORM react-like
+  /**
+   * React hook to get all permissions for the user in a given scope.
+   */
   usePermissions(scope: Team, options?: { recursive?: boolean }): TeamPermission[],
   usePermissions(options?: { recursive?: boolean }): TeamPermission[],
 
+  /**
+   * React hook to get a specific permission for the user.
+   */
   usePermission(scope: Team, permissionId: string): TeamPermission | null,
   usePermission(permissionId: string): TeamPermission | null,
   // END_PLATFORM
 
+  /**
+   * The currently selected team for the user.
+   */
   readonly selectedTeam: Team | null,
+  /**
+   * Sets the selected team for the user.
+   */
   setSelectedTeam(team: Team | null): Promise<void>,
+  /**
+   * Creates a new team with the user as a member.
+   */
   createTeam(data: TeamCreateOptions): Promise<Team>,
+  /**
+   * Removes the user from the specified team.
+   */
   leaveTeam(team: Team): Promise<void>,
 
+  /**
+   * Gets all active sessions for the user.
+   */
   getActiveSessions(): Promise<ActiveSession[]>,
+  /**
+   * Revokes a specific session for the user.
+   */
   revokeSession(sessionId: string): Promise<void>,
+  /**
+   * Gets the user's profile within a specific team.
+   */
   getTeamProfile(team: Team): Promise<EditableTeamMemberProfile>,
+  /**
+   * React hook to get the user's profile within a specific team.
+   */
   useTeamProfile(team: Team): EditableTeamMemberProfile, // THIS_LINE_PLATFORM react-like
 
+  /**
+   * Creates a new API key for the user.
+   */
   createApiKey(options: ApiKeyCreationOptions<"user">): Promise<UserApiKeyFirstView>,
 
+  /**
+   * React hook to get all OAuth providers connected to the user.
+   */
   useOAuthProviders(): OAuthProvider[], // THIS_LINE_PLATFORM react-like
+  /**
+   * Lists all OAuth providers connected to the user.
+   */
   listOAuthProviders(): Promise<OAuthProvider[]>,
 
+  /**
+   * React hook to get a specific OAuth provider by ID.
+   */
   useOAuthProvider(id: string): OAuthProvider | null, // THIS_LINE_PLATFORM react-like
+  /**
+   * Gets a specific OAuth provider by ID.
+   */
   getOAuthProvider(id: string): Promise<OAuthProvider | null>,
 
+  /**
+   * Registers a passkey for the user for passwordless authentication.
+   */
   registerPasskey(options?: { hostname?: string }): Promise<Result<undefined, KnownErrors["PasskeyRegistrationFailed"] | KnownErrors["PasskeyWebAuthnError"]>>,
 }
 & AsyncStoreProperty<"apiKeys", [], UserApiKey[], true>
@@ -284,28 +421,67 @@ export function userUpdateOptionsToCrud(options: UserUpdateOptions): CurrentUser
 
 
 export type ServerBaseUser = {
+  /**
+   * Sets the primary email for the user (server-side only).
+   */
   setPrimaryEmail(email: string | null, options?: { verified?: boolean | undefined }): Promise<void>,
 
+  /**
+   * The date and time when the user was last active.
+   */
   readonly lastActiveAt: Date,
 
+  /**
+   * Server-only metadata that can only be read and written from the server.
+   */
   readonly serverMetadata: any,
+  /**
+   * Sets the server metadata for the user.
+   */
   setServerMetadata(metadata: any): Promise<void>,
+  /**
+   * Sets the client read-only metadata that clients can read but not write.
+   */
   setClientReadOnlyMetadata(metadata: any): Promise<void>,
 
+  /**
+   * Creates a new team (server-side only).
+   */
   createTeam(data: Omit<ServerTeamCreateOptions, "creatorUserId">): Promise<ServerTeam>,
 
+  /**
+   * React hook to get all contact channels for the user (server version).
+   */
   useContactChannels(): ServerContactChannel[], // THIS_LINE_PLATFORM react-like
+  /**
+   * Lists all contact channels for the user (server version).
+   */
   listContactChannels(): Promise<ServerContactChannel[]>,
+  /**
+   * Creates a new contact channel for the user (server-side only).
+   */
   createContactChannel(data: ServerContactChannelCreateOptions): Promise<ServerContactChannel>,
 
+  /**
+   * Updates the user's information (server-side only).
+   */
   update(user: ServerUserUpdateOptions): Promise<void>,
 
+  /**
+   * Grants a permission to the user (server-side only).
+   */
   grantPermission(scope: Team, permissionId: string): Promise<void>,
   grantPermission(permissionId: string): Promise<void>,
 
+  /**
+   * Revokes a permission from the user (server-side only).
+   */
   revokePermission(scope: Team, permissionId: string): Promise<void>,
   revokePermission(permissionId: string): Promise<void>,
 
+  /**
+   * Gets a specific permission for the user (server version).
+   */
   getPermission(scope: Team, permissionId: string): Promise<TeamPermission | null>,
   getPermission(permissionId: string): Promise<TeamPermission | null>,
 
@@ -316,21 +492,39 @@ export type ServerBaseUser = {
   listPermissions(options?: { recursive?: boolean }): Promise<TeamPermission[]>,
 
   // IF_PLATFORM react-like
+  /**
+   * React hook to get all permissions for the user in a given scope (server version).
+   */
   usePermissions(scope: Team, options?: { recursive?: boolean }): TeamPermission[],
   usePermissions(options?: { recursive?: boolean }): TeamPermission[],
 
+  /**
+   * React hook to get a specific permission for the user (server version).
+   */
   usePermission(scope: Team, permissionId: string): TeamPermission | null,
   usePermission(permissionId: string): TeamPermission | null,
   // END_PLATFORM
 
+  /**
+   * React hook to get all OAuth providers connected to the user (server version).
+   */
   useOAuthProviders(): ServerOAuthProvider[], // THIS_LINE_PLATFORM react-like
+  /**
+   * Lists all OAuth providers connected to the user (server version).
+   */
   listOAuthProviders(): Promise<ServerOAuthProvider[]>,
 
+  /**
+   * React hook to get a specific OAuth provider by ID (server version).
+   */
   useOAuthProvider(id: string): ServerOAuthProvider | null, // THIS_LINE_PLATFORM react-like
+  /**
+   * Gets a specific OAuth provider by ID (server version).
+   */
   getOAuthProvider(id: string): Promise<ServerOAuthProvider | null>,
 
   /**
-   * Creates a new session object with a refresh token for this user. Can be used to impersonate them.
+   * Creates a new session for the user. Can be used for impersonation.
    */
   createSession(options?: { expiresInMillis?: number, isImpersonation?: boolean }): Promise<{
     getTokens(): Promise<{ accessToken: string | null, refreshToken: string | null }>,
