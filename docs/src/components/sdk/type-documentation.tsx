@@ -46,6 +46,7 @@ type TypeInfo = {
   description?: string,
   members: TypeMember[],
   mixins?: string[],
+  ownMemberNames?: string[],
 };
 
 type TypeDocumentationProps = {
@@ -60,7 +61,7 @@ function formatTypeSignature(type: string): string {
     .replace(/import\([^)]+\)\./g, '') // Remove import() paths
     .replace(/\s+/g, ' ') // Normalize whitespace
     .trim();
-  
+
   // Simplify long union types of string literals (e.g., "a" | "b" | "c" | ... -> string)
   const stringLiteralUnionMatch = cleaned.match(/^"[\w-]+"(\s*\|\s*"[\w-]+")+$/);
   if (stringLiteralUnionMatch) {
@@ -70,26 +71,26 @@ function formatTypeSignature(type: string): string {
       return `string (one of: ${options.slice(0, 3).join(', ')}, ... +${options.length - 3} more)`;
     }
   }
-  
+
   // Simplify complex conditional/union types (too complex to display inline)
   if (cleaned.includes(' extends ') && cleaned.length > 100) {
     return 'object (see signature for details)';
   }
-  
+
   return cleaned;
 }
 
 // Format return type, keeping it concise for display
 function formatReturnType(returnType: string): string {
   let cleaned = formatTypeSignature(returnType);
-  
+
   // Simplify very long object types in Promise<...>
   // Match Promise<{ ... many properties ... }[]> or Promise<{ ... }>
   const promiseMatch = cleaned.match(/^Promise<(\{.+\})(\[\])?>/);
   if (promiseMatch) {
     const objectType = promiseMatch[1];
     const isArray = promiseMatch[2];
-    
+
     // If the object type is very long (>150 chars), it's likely an expanded entity type
     if (objectType.length > 150) {
       // Try to detect what type it might be based on distinctive properties
@@ -119,7 +120,7 @@ function formatReturnType(returnType: string): string {
       return isArray ? 'Promise<T[]>' : 'Promise<T>';
     }
   }
-  
+
   return cleaned;
 }
 
@@ -127,26 +128,26 @@ function formatReturnType(returnType: string): string {
 // Also handles intersection types like "{ a: string } & { b: number }"
 function parseObjectProperties(typeString: string): Array<{ name: string, type: string, optional: boolean }> | null {
   const allProperties: Array<{ name: string, type: string, optional: boolean }> = [];
-  
+
   // Strip trailing "| undefined" for optional parameters
   let cleanedType = typeString.replace(/\s*\|\s*undefined\s*$/g, '').trim();
-  
+
   // Don't try to parse if it doesn't contain curly braces (not an object type)
   if (!cleanedType.includes('{') || !cleanedType.includes('}')) {
     return null;
   }
-  
+
   // Don't try to parse complex conditional types or unions with conditionals
   if (cleanedType.includes(' extends ') || cleanedType.includes('? {')) {
     return null;
   }
-  
+
   // Handle intersection types - split by & at the top level
   const intersectionParts = splitIntersectionType(cleanedType);
-  
+
   for (const part of intersectionParts) {
     const trimmedPart = part.trim();
-    
+
     // Match object type pattern
     const objectMatch = trimmedPart.match(/^\{\s*(.+?)\s*;?\s*\}$/s);
     if (!objectMatch) continue;
@@ -160,12 +161,12 @@ function parseObjectProperties(typeString: string): Array<{ name: string, type: 
 
     for (let i = 0; i < propsString.length; i++) {
       const char = propsString[i];
-      
+
       if (char === '<') inGeneric++;
       if (char === '>') inGeneric--;
       if (char === '{') depth++;
       if (char === '}') depth--;
-      
+
       if (char === ';' && depth === 0 && inGeneric === 0) {
         if (currentProp.trim()) {
           const prop = parseSingleProperty(currentProp.trim());
@@ -176,7 +177,7 @@ function parseObjectProperties(typeString: string): Array<{ name: string, type: 
         currentProp += char;
       }
     }
-    
+
     // Handle last property (may not have trailing semicolon)
     if (currentProp.trim()) {
       const prop = parseSingleProperty(currentProp.trim());
@@ -196,13 +197,12 @@ function splitIntersectionType(typeString: string): string[] {
 
   for (let i = 0; i < typeString.length; i++) {
     const char = typeString[i];
-    const nextChar = typeString[i + 1];
-    
+
     if (char === '<') inGeneric++;
     if (char === '>') inGeneric--;
     if (char === '{') depth++;
     if (char === '}') depth--;
-    
+
     if (char === '&' && depth === 0 && inGeneric === 0) {
       if (current.trim()) parts.push(current.trim());
       current = '';
@@ -210,9 +210,9 @@ function splitIntersectionType(typeString: string): string[] {
       current += char;
     }
   }
-  
+
   if (current.trim()) parts.push(current.trim());
-  
+
   return parts.length > 0 ? parts : [typeString];
 }
 
@@ -221,7 +221,7 @@ function parseSingleProperty(propString: string): { name: string, type: string, 
   const match = propString.match(/^(\w+)(\??):\s*(.+)$/);
   if (!match) return null;
 
-  // Clean up the type by removing "| undefined" 
+  // Clean up the type by removing "| undefined"
   let type = match[3].trim().replace(/\s*\|\s*undefined\s*$/g, '').trim();
 
   return {
@@ -231,28 +231,28 @@ function parseSingleProperty(propString: string): { name: string, type: string, 
   };
 }
 
-// Format a method signature nicely for display  
+// Format a method signature nicely for display
 function formatMethodSignature(
-  signature: { 
-    parameters: Array<{ 
-      name: string, 
-      type: string, 
-      optional: boolean, 
-      propertyDescriptions?: Record<string, { type: string, optional: boolean, description?: string }> 
-    }>, 
-    returnType: string 
-  }, 
+  signature: {
+    parameters: Array<{
+      name: string,
+      type: string,
+      optional: boolean,
+      propertyDescriptions?: Record<string, { type: string, optional: boolean, description?: string }>,
+    }>,
+    returnType: string,
+  },
   methodName: string
 ): string {
   const formattedReturnType = formatReturnType(signature.returnType);
-  
+
   if (signature.parameters.length === 0) {
     if (formattedReturnType.length > 80) {
       return `declare function ${methodName}():\n  ${formattedReturnType};`;
     }
     return `declare function ${methodName}(): ${formattedReturnType};`;
   }
-  
+
   const params = signature.parameters.map(param => {
     // If we have propertyDescriptions, use them to format inline object
     if (param.propertyDescriptions && Object.keys(param.propertyDescriptions).length > 0) {
@@ -261,15 +261,15 @@ function formatMethodSignature(
       }).join('\n');
       return `${param.name}${param.optional ? '?' : ''}: {\n${props}\n}`;
     }
-    
+
     // Try to parse inline expanded type
     const properties = parseObjectProperties(param.type);
-    
+
     if (properties && properties.length > 0) {
-      const propsFormatted = properties.map(prop => 
+      const propsFormatted = properties.map(prop =>
         `  ${prop.name}${prop.optional ? '?' : ''}: ${prop.type};`
       ).join('\n');
-      
+
       return `${param.name}${param.optional ? '?' : ''}: {\n${propsFormatted}\n}`;
     } else {
       return `${param.name}${param.optional ? '?' : ''}: ${param.type}`;
@@ -280,7 +280,7 @@ function formatMethodSignature(
   if (oneLine.length > 100) {
     return `declare function ${methodName}(${params}):\n  ${formattedReturnType};`;
   }
-  
+
   return oneLine;
 }
 
@@ -353,15 +353,40 @@ function buildAnchorId(typeName: string, memberName: string): string {
   return `#${cleanType}${cleanMember}`;
 }
 
+// Categorize a member into a logical group for visual separation
+function getMemberGroup(member: TypeMember): string {
+  const name = member.name;
+
+  if (member.kind === 'property') {
+    // Group session-related properties
+    if (name.includes('Session') || name.includes('session')) return 'session';
+    return 'properties';
+  }
+
+  // Method groupings based on name patterns
+  if (name.includes('Team') || name.includes('team')) return 'team';
+  if (name.includes('Auth') || name.includes('Password') || name.includes('password') ||
+      name === 'signOut' || name === 'signIn' || name === 'signUp') return 'auth';
+  if (name.includes('ApiKey') || name.includes('apiKey')) return 'apiKeys';
+  if (name.includes('ContactChannel') || name.includes('contactChannel')) return 'contactChannels';
+  if (name.includes('Invitation') || name.includes('invitation')) return 'invitations';
+  if (name.includes('Permission') || name.includes('permission')) return 'permissions';
+  if (name.includes('OAuth') || name.includes('oauth') || name.includes('Connected')) return 'oauth';
+  if (name.includes('Product') || name.includes('product') || name.includes('Checkout') || name.includes('Item') || name.includes('item')) return 'billing';
+  if (name === 'update' || name === 'delete' || name.startsWith('set')) return 'mutations';
+
+  return 'other';
+}
+
 function generateTableOfContents(typeInfo: TypeInfo, platform = 'react-like', membersToShow?: TypeMember[], parentTypes?: string[]): string {
   const lines: string[] = [];
   const members = membersToShow || typeInfo.members;
-  
+
   // Filter platform-specific members upfront
-  const filteredMembers = members.filter(member => 
+  const filteredMembers = members.filter(member =>
     !member.platforms || member.platforms.includes(platform)
   );
-  
+
   // Track which members have been processed (for grouping hooks with their async counterparts)
   const processed = new Set<string>();
 
@@ -386,8 +411,23 @@ function generateTableOfContents(typeInfo: TypeInfo, platform = 'react-like', me
 
   // Determine indentation based on whether we have parent types
   const indent = parentTypes && parentTypes.length > 0 ? '        ' : '    ';
-  
-  filteredMembers.forEach(member => {
+
+  // Group members by category for visual separation
+  const groupOrder = ['session', 'properties', 'mutations', 'auth', 'team', 'invitations', 'permissions', 'oauth', 'contactChannels', 'apiKeys', 'billing', 'other'];
+  const membersByGroup = new Map<string, TypeMember[]>();
+
+  for (const group of groupOrder) {
+    membersByGroup.set(group, []);
+  }
+
+  for (const member of filteredMembers) {
+    const group = getMemberGroup(member);
+    const groupMembers = membersByGroup.get(group) || membersByGroup.get('other')!;
+    groupMembers.push(member);
+  }
+
+  // Helper to render a single member
+  const renderMember = (member: TypeMember) => {
     if (processed.has(member.name)) return;
 
     const memberName = member.name;
@@ -398,15 +438,12 @@ function generateTableOfContents(typeInfo: TypeInfo, platform = 'react-like', me
       const cleanType = formatTypeSignature(member.type || 'unknown');
       lines.push(`${indent}${memberName}${isOptional}: ${cleanType}; //$stack-link-to:${anchorId}`);
       processed.add(memberName);
-    } else if (member.kind === 'method') {
-      // Check if this is a hook (useX) or an async method (getX/listX)
+    } else {
+      // member.kind === 'method'
+      // Check if this is a hook (useX) - skip it, will be paired with async counterpart
       const isHook = memberName.startsWith('use') && memberName.length > 3;
-      
-      if (isHook) {
-        // This is a hook - skip it for now, it will be paired with its async counterpart
-        return;
-      }
-      
+      if (isHook) return;
+
       // This is an async method - render it and look for its corresponding hook
       const signature = member.signatures?.[member.signatures.length - 1];
       if (signature) {
@@ -414,7 +451,7 @@ function generateTableOfContents(typeInfo: TypeInfo, platform = 'react-like', me
         const returnType = formatTypeSignature(signature.returnType);
         lines.push(`${indent}${memberName}(${params}): ${returnType}; //$stack-link-to:${anchorId}`);
         processed.add(memberName);
-        
+
         // Look for corresponding hook: getX -> useX, listX -> useX (plural)
         let hookName = '';
         if (memberName.startsWith('get')) {
@@ -422,12 +459,10 @@ function generateTableOfContents(typeInfo: TypeInfo, platform = 'react-like', me
         } else if (memberName.startsWith('list')) {
           hookName = 'use' + memberName.slice(4);
         }
-        
+
         const hookMember = filteredMembers.find(m => m.name === hookName);
-        // Check if hook exists and is react-like (or has no platform restriction)
         const isReactHook = hookMember && (!hookMember.platforms || hookMember.platforms.includes('react-like'));
         if (hookMember && isReactHook) {
-          // Found the corresponding hook - render it indented
           const hookAnchorId = buildAnchorId(typeInfo.name, hookName);
           const hookSig = hookMember.signatures?.[hookMember.signatures.length - 1];
           if (hookSig) {
@@ -440,24 +475,45 @@ function generateTableOfContents(typeInfo: TypeInfo, platform = 'react-like', me
         }
       }
     }
-  });
+  };
+
+  // Render members by group with blank lines between groups
+  let isFirstGroup = true;
+  for (const group of groupOrder) {
+    const groupMembers = membersByGroup.get(group) || [];
+    if (groupMembers.length === 0) continue;
+
+    // Add blank line between groups (but not before first group)
+    if (!isFirstGroup) {
+      lines.push('');
+    }
+    isFirstGroup = false;
+
+    for (const member of groupMembers) {
+      renderMember(member);
+    }
+  }
 
   // Add any remaining hooks that weren't paired
-  filteredMembers.forEach(member => {
-    if (processed.has(member.name)) return;
-    if (member.kind !== 'method') return;
-    
-    const memberName = member.name;
-    const anchorId = buildAnchorId(typeInfo.name, memberName);
-    const signature = member.signatures?.[member.signatures.length - 1];
-    
-    if (signature) {
-      const params = signature.parameters.map(p => p.optional ? `${p.name}?` : p.name).join(', ');
-      const returnType = formatTypeSignature(signature.returnType);
-      lines.push(`${indent}${memberName}(${params}): ${returnType}; //$stack-link-to:${anchorId}`);
-      processed.add(memberName);
+  const unpairedHooks = filteredMembers.filter(m =>
+    !processed.has(m.name) && m.kind === 'method'
+  );
+
+  if (unpairedHooks.length > 0) {
+    lines.push('');
+    for (const member of unpairedHooks) {
+      const memberName = member.name;
+      const anchorId = buildAnchorId(typeInfo.name, memberName);
+      const signature = member.signatures?.[member.signatures.length - 1];
+
+      if (signature) {
+        const params = signature.parameters.map(p => p.optional ? `${p.name}?` : p.name).join(', ');
+        const returnType = formatTypeSignature(signature.returnType);
+        lines.push(`${indent}${memberName}(${params}): ${returnType}; //$stack-link-to:${anchorId}`);
+        processed.add(memberName);
+      }
     }
-  });
+  }
 
   // Close the nested object if we have parent types with new members
   if (parentTypes && parentTypes.length > 0 && filteredMembers.length > 0) {
@@ -465,7 +521,7 @@ function generateTableOfContents(typeInfo: TypeInfo, platform = 'react-like', me
     lines.push('};');
   } else if (!parentTypes || parentTypes.length === 0) {
     // No parent types, just close normally
-  lines.push('};');
+    lines.push('};');
   }
   // If we had parentTypes but no new members, we already closed above
 
@@ -474,27 +530,27 @@ function generateTableOfContents(typeInfo: TypeInfo, platform = 'react-like', me
 
 function renderMemberDocumentation(typeInfo: TypeInfo, member: TypeMember, platform = 'react-like') {
   const memberName = member.name;
-  
+
   // Check if this is a React hook (methods only, not properties like userId)
   const isReactHook = member.kind === 'method' &&
-    memberName.startsWith('use') && 
-    memberName.length > 3 && 
+    memberName.startsWith('use') &&
+    memberName.length > 3 &&
     (!member.platforms || member.platforms.includes('react-like'));
-  
+
   // For methods with multiple overloads, prefer the first non-tuple signature
   // Tuple signatures (args: [...]) are internal representations and less user-friendly
   let primarySignature = member.signatures?.[0];
-  
+
   // If we have multiple signatures, try to find the most complete non-tuple one
   if (member.signatures && member.signatures.length > 1) {
     // Filter out tuple signatures
-    const nonTupleSignatures = member.signatures.filter(sig => 
+    const nonTupleSignatures = member.signatures.filter(sig =>
       !sig.parameters.some(p => p.type.match(/^\[.+\]$/))
     );
-    
+
     if (nonTupleSignatures.length > 0) {
       // Use the one with the most parameters (most complete)
-      primarySignature = nonTupleSignatures.reduce((prev, current) => 
+      primarySignature = nonTupleSignatures.reduce((prev, current) =>
         current.parameters.length > prev.parameters.length ? current : prev
       );
     } else {
@@ -522,6 +578,17 @@ function renderMemberDocumentation(typeInfo: TypeInfo, member: TypeMember, platf
     >
       <MethodLayout>
         <MethodContent>
+          {member.tags?.some(tag => tag.name === 'deprecated') && (
+            <div className="mb-4 p-3 bg-yellow-50 dark:bg-yellow-950/20 border border-yellow-200 dark:border-yellow-800/50 rounded-lg">
+              <div className="text-yellow-800 dark:text-yellow-200 text-sm font-medium mb-1">
+                ⚠️ Deprecated
+              </div>
+              <div className="text-yellow-700 dark:text-yellow-300 text-sm">
+                {member.tags.find(tag => tag.name === 'deprecated')?.text || 'This item is deprecated.'}
+              </div>
+            </div>
+          )}
+
           {isReactHook && (
             <div className="mb-3 flex items-center gap-2">
               <div className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800/50">
@@ -535,44 +602,70 @@ function renderMemberDocumentation(typeInfo: TypeInfo, member: TypeMember, platf
               </span>
             </div>
           )}
-          
+
           <div className="prose-sm max-w-none">
             {member.description ? (
               // Parse and render description with proper formatting
-              member.description.split('\n\n').map((paragraph, idx) => {
-                // Check if this paragraph is a code block
-                if (paragraph.trim().startsWith('```')) {
-                  const lines = paragraph.split('\n');
-                  const langMatch = lines[0].match(/^```(\w+)/);
-                  const language = langMatch ? langMatch[1] : 'typescript';
-                  const code = lines.slice(1, -1).join('\n'); // Remove ``` markers
-                  return (
-                    <div key={idx} className="my-3">
-                      <SyntaxHighlightedCode code={code} language={language} />
-                    </div>
-                  );
-                } else {
-                  return <p key={idx} className="mb-2 last:mb-0 whitespace-pre-wrap">{paragraph}</p>;
+              // First, extract code blocks (which may contain \n\n), then split the rest
+              (() => {
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                const parts: any[] = [];
+                const description = member.description;
+
+                // Extract code blocks first (they can span multiple paragraphs)
+                const codeBlockRegex = /```(\w+)?\n([\s\S]*?)```/g;
+                let lastIndex = 0;
+                let match;
+
+                while ((match = codeBlockRegex.exec(description)) !== null) {
+                  // Add text before this code block
+                  if (match.index > lastIndex) {
+                    const textBefore = description.slice(lastIndex, match.index);
+                    if (textBefore.trim()) {
+                      parts.push({ type: 'text', content: textBefore.trim() });
+                    }
+                  }
+                  // Add the code block
+                  parts.push({
+                    type: 'code',
+                    content: match[2].trim(),
+                    language: match[1] || 'typescript'
+                  });
+                  lastIndex = match.index + match[0].length;
                 }
-              })
+
+                // Add any remaining text after the last code block
+                if (lastIndex < description.length) {
+                  const textAfter = description.slice(lastIndex);
+                  if (textAfter.trim()) {
+                    parts.push({ type: 'text', content: textAfter.trim() });
+                  }
+                }
+
+                // If no code blocks found, just split by paragraphs
+                if (parts.length === 0) {
+                  parts.push({ type: 'text', content: description });
+                }
+
+                return parts.map((part, idx) => {
+                  if (part.type === 'code') {
+                    return (
+                      <div key={idx} className="my-3">
+                        <SyntaxHighlightedCode code={part.content} language={part.language || 'typescript'} />
+                      </div>
+                    );
+                  } else {
+                    // Split text parts by double newlines for paragraphs
+                    return part.content.split('\n\n').map((paragraph: string, pIdx: number) => (
+                      <p key={`${idx}-${pIdx}`} className="mb-2 last:mb-0 whitespace-pre-wrap">{paragraph}</p>
+                    ));
+                  }
+                });
+              })()
             ) : (
               `⚠️ Documentation not available for ${memberName}.`
             )}
           </div>
-
-          {member.tags?.some(tag => tag.name === 'deprecated') && (
-            <>
-              <br /><br />
-              <div className="p-3 bg-yellow-50 dark:bg-yellow-950/20 border border-yellow-200 dark:border-yellow-800/50 rounded-lg">
-              <div className="text-yellow-800 dark:text-yellow-200 text-sm font-medium mb-1">
-                ⚠️ Deprecated
-              </div>
-              <div className="text-yellow-700 dark:text-yellow-300 text-sm">
-                  {member.tags.find(tag => tag.name === 'deprecated')?.text || 'This item is deprecated.'}
-                </div>
-              </div>
-            </>
-          )}
 
           {member.kind === 'method' && (
             <>
@@ -584,20 +677,20 @@ function renderMemberDocumentation(typeInfo: TypeInfo, member: TypeMember, platf
                 <>
                   {(primarySignature?.parameters ?? []).map((param, index) => {
                     const formattedType = formatTypeSignature(param.type);
-                    
+
                     // Check if we have propertyDescriptions (new format)
                     const hasPropertyInfo = param.propertyDescriptions && Object.keys(param.propertyDescriptions).length > 0;
-                    
+
                     // Try to parse inline type as fallback
                     const properties = hasPropertyInfo ? null : parseObjectProperties(param.type);
 
                     return (
-                    <ParamField
-                      key={index}
-                      path={param.name}
+                      <ParamField
+                        key={index}
+                        path={param.name}
                         type={hasPropertyInfo || properties ? 'object' : formattedType}
-                      required={!param.optional}
-                    >
+                        required={!param.optional}
+                      >
                         {hasPropertyInfo ? (
                           <>
                             An object containing properties.
@@ -626,8 +719,8 @@ function renderMemberDocumentation(typeInfo: TypeInfo, member: TypeMember, platf
                                   required={!prop.optional}
                                 >
                                   Property of type {formatTypeSignature(prop.type)}.
-                    </ParamField>
-                  ))}
+                                </ParamField>
+                              ))}
                             </Accordion>
                           </>
                         ) : (
@@ -636,8 +729,8 @@ function renderMemberDocumentation(typeInfo: TypeInfo, member: TypeMember, platf
                       </ParamField>
                     );
                   })}
-            </>
-          )}
+                </>
+              )}
 
               <h3>Returns</h3>
               <p>
@@ -696,60 +789,60 @@ function renderMemberDocumentation(typeInfo: TypeInfo, member: TypeMember, platf
 
 // Check if a member is new or enhanced compared to parent types
 function isNewOrEnhancedMember(
-  member: TypeMember, 
+  member: TypeMember,
   typeInfo: TypeInfo,
   parentMembers: Map<string, TypeMember>
 ): boolean {
   const parentMember = parentMembers.get(member.name);
-  
+
   if (!parentMember) {
     // Member doesn't exist in parent - it's new
     return true;
   }
-  
+
   // Check if this member has signatures not in the parent
   const memberSigCount = member.signatures?.length ?? 0;
   const parentSigCount = parentMember.signatures?.length ?? 0;
-  
+
   if (memberSigCount > 0 && parentSigCount > 0) {
     // Compare signatures - normalize Server* types
     const memberSigs = new Set(member.signatures?.map(s => s.signature) || []);
     const parentSigs = new Set(parentMember.signatures?.map(s => s.signature) || []);
-    
+
     const normalizeServerTypes = (sig: string) => {
       return sig
         .replace(/Server(ContactChannel|User|Team|Permission|ApiKey|Item|Project|Email)/g, '$1')
         .trim();
     };
-    
+
     const normalizedMemberSigs = new Set(Array.from(memberSigs).map(normalizeServerTypes));
     const normalizedParentSigs = new Set(Array.from(parentSigs).map(normalizeServerTypes));
-    
+
     // Check if there are any new signatures not in parent
     const hasNewSignatures = Array.from(normalizedMemberSigs).some(sig => !normalizedParentSigs.has(sig));
-    
+
     if (!hasNewSignatures) {
       // All member signatures exist in parent - not new
       return false;
     }
   }
-  
+
   // For methods, compare the most specific signatures
   if (member.kind === 'method' && parentMember.kind === 'method') {
     const memberSig = member.signatures?.[member.signatures.length - 1];
     const parentSig = parentMember.signatures?.[parentMember.signatures.length - 1];
-    
+
     if (memberSig && parentSig) {
       // Compare parameters - if they're different, it's enhanced
       if (memberSig.signature !== parentSig.signature) {
         const memberParams = memberSig.parameters.map(p => `${p.name}:${p.type}`).join(',');
         const parentParams = parentSig.parameters.map(p => `${p.name}:${p.type}`).join(',');
-        
+
         if (memberParams !== parentParams) {
           return true; // Different parameters = enhanced
         }
       }
-      
+
       // If parameters are identical, check if return type is meaningfully different
       // Ignore Server* vs non-Server* variations (e.g., ServerContactChannel vs ContactChannel)
       const normalizeServerTypes = (type: string) => {
@@ -758,54 +851,97 @@ function isNewOrEnhancedMember(
           .replace(/\s+/g, ' ')
           .trim();
       };
-      
+
       const memberReturn = normalizeServerTypes(memberSig.returnType);
       const parentReturn = normalizeServerTypes(parentSig.returnType);
-      
+
       if (memberReturn !== parentReturn) {
         return true; // Meaningfully different return type
       }
     }
   }
-  
+
   // For properties, check if the type is different
   if (member.kind === 'property' && parentMember.kind === 'property') {
     if (member.type !== parentMember.type) {
       return true;
     }
   }
-  
+
   // Otherwise, it's the same as parent
+  return false;
+}
+
+// Extract clean type names from mixin strings (e.g., "Customer<true>" -> "Customer")
+function extractTypeNameFromMixin(mixin: string): string | null {
+  // Skip inline type literals like "{ ... }"
+  if (mixin.trim().startsWith('{') || mixin.trim().startsWith('|')) {
+    return null;
+  }
+  // Extract base type name (before any generic parameters)
+  const match = mixin.match(/^([A-Z][a-zA-Z0-9_]*)/);
+  return match ? match[1] : null;
+}
+
+// Check if a parent type should be shown in inheritance display
+// Only show inheritance when there's a clear naming relationship
+// e.g., ServerTeam → Team, CurrentServerUser → ServerUser
+function shouldShowAsParent(childTypeName: string, parentTypeName: string): boolean {
+  // Show if the child name contains the parent name (ServerTeam contains Team)
+  if (childTypeName.includes(parentTypeName)) {
+    return true;
+  }
+  // Show if the parent name contains the child name (rare but possible)
+  if (parentTypeName.includes(childTypeName)) {
+    return true;
+  }
+  // Don't show "building block" types like Auth, Customer, etc.
+  // These are implementation details, not types users would look up
   return false;
 }
 
 export function TypeDocumentation({ typeInfo, platform = 'react-like', parentTypes = [] }: TypeDocumentationProps) {
   const [parentMembers, setParentMembers] = React.useState<Map<string, TypeMember>>(new Map());
-  const [loading, setLoading] = React.useState(parentTypes.length > 0);
+  // Track which parent types are actually documented (exist in types.json)
+  const [documentedParentTypes, setDocumentedParentTypes] = React.useState<string[]>([]);
+  const [loading, setLoading] = React.useState(true);
 
-  // Load parent type members for comparison
+  // Load parent type members and determine which are actually documented
   React.useEffect(() => {
-    if (parentTypes.length === 0) {
-      setLoading(false);
-      return;
-    }
-
     async function loadParentTypes() {
       try {
         const response = await fetch('/sdk-docs/types.json');
-        if (!response.ok) return;
+        if (!response.ok) {
+          setLoading(false);
+          return;
+        }
 
         const typesData = await response.json();
-        const allParentMembers = new Map<string, TypeMember>();
 
-        for (const parentTypeName of parentTypes) {
+        // Determine candidate parent types from manual prop or mixins
+        const candidateParents: string[] = parentTypes.length > 0
+          ? parentTypes
+          : (typeInfo.mixins || [])
+            .map(extractTypeNameFromMixin)
+            .filter((name): name is string => name !== null);
+
+        // Only consider parent types that are:
+        // 1. Actually documented in types.json
+        // 2. Have a clear naming relationship (ServerTeam → Team)
+        const documented = candidateParents.filter(name =>
+          typesData[name] !== undefined &&
+          (parentTypes.length > 0 || shouldShowAsParent(typeInfo.name, name))
+        );
+        setDocumentedParentTypes(documented);
+
+        // Load members from documented parent types
+        const allParentMembers = new Map<string, TypeMember>();
+        for (const parentTypeName of documented) {
           const parentType = typesData[parentTypeName];
           if (parentType && parentType.members) {
             for (const member of parentType.members) {
-              // Merge signatures from all parents for the same member
               if (allParentMembers.has(member.name)) {
                 const existing = allParentMembers.get(member.name)!;
-                // Merge signatures from both parents
                 if (existing.signatures && member.signatures) {
                   existing.signatures = [...existing.signatures, ...member.signatures];
                 }
@@ -824,30 +960,46 @@ export function TypeDocumentation({ typeInfo, platform = 'react-like', parentTyp
       }
     }
     runAsynchronously(loadParentTypes());
-  }, [parentTypes]);
+  }, [parentTypes, typeInfo.mixins, typeInfo.name]);
 
   if (loading) {
     return <div className="text-fd-muted-foreground">Loading...</div>;
   }
 
   // Filter members to only show new or enhanced ones
-  const filteredMembers = parentTypes.length > 0
-    ? typeInfo.members.filter(member => isNewOrEnhancedMember(member, typeInfo, parentMembers))
-    : typeInfo.members;
+  // Priority: 1. Use ownMemberNames if available AND we have documented parent types
+  //           2. Fall back to signature comparison with documented parent types
+  //           3. Show all members if no documented parents (nothing to hide)
+  const filteredMembers = (() => {
+    // Only filter if we have documented parent types that users can actually reference
+    if (documentedParentTypes.length === 0) {
+      // No documented parents - show ALL members (nothing to hide)
+      return typeInfo.members;
+    }
+
+    // If we have ownMemberNames, use that directly (most reliable)
+    if (typeInfo.ownMemberNames && typeInfo.ownMemberNames.length > 0) {
+      const ownSet = new Set(typeInfo.ownMemberNames);
+      return typeInfo.members.filter(member => ownSet.has(member.name));
+    }
+
+    // Fall back to signature comparison with documented parent types
+    return typeInfo.members.filter(member => isNewOrEnhancedMember(member, typeInfo, parentMembers));
+  })();
 
   const inheritedCount = typeInfo.members.length - filteredMembers.length;
 
   return (
     <>
-      {/* Inheritance note */}
-      {parentTypes.length > 0 && (
+      {/* Inheritance note - only show if there are documented parent types */}
+      {documentedParentTypes.length > 0 && (
         <div className="mb-6 p-4 rounded-lg border border-fd-border bg-fd-muted/30">
           <p className="text-sm text-fd-muted-foreground">
             This type extends{' '}
-            {parentTypes.map((parent, idx) => (
+            {documentedParentTypes.map((parent, idx) => (
               <React.Fragment key={parent}>
                 <code className="text-fd-accent-foreground">{parent}</code>
-                {idx < parentTypes.length - 1 && (idx === parentTypes.length - 2 ? ' and ' : ', ')}
+                {idx < documentedParentTypes.length - 1 && (idx === documentedParentTypes.length - 2 ? ' and ' : ', ')}
               </React.Fragment>
             ))}
             {inheritedCount > 0 && ` (${inheritedCount} inherited ${inheritedCount === 1 ? 'member' : 'members'} not shown)`}.
@@ -857,11 +1009,11 @@ export function TypeDocumentation({ typeInfo, platform = 'react-like', parentTyp
       )}
 
       {/* Table of Contents */}
-      {(filteredMembers.length > 0 || parentTypes.length > 0) && (
+      {(filteredMembers.length > 0 || documentedParentTypes.length > 0) && (
         <div className="mb-6">
           <ClickableTableOfContents
-            title={`${typeInfo.name} Table of Contents${parentTypes.length > 0 && filteredMembers.length > 0 ? ' (New Members Only)' : ''}`}
-            code={generateTableOfContents(typeInfo, platform, filteredMembers, parentTypes)}
+            title={`${typeInfo.name} Table of Contents${documentedParentTypes.length > 0 && filteredMembers.length > 0 ? ' (New Members Only)' : ''}`}
+            code={generateTableOfContents(typeInfo, platform, filteredMembers, documentedParentTypes)}
             platform={platform}
           />
         </div>
@@ -875,15 +1027,15 @@ export function TypeDocumentation({ typeInfo, platform = 'react-like', parentTyp
   );
 }
 
-// Component to load and display a specific type from types.json
-export function TypeFromJson({ 
-  typeName, 
+// Component to load and display a specific type from types.json or mixins.json
+export function TypeFromJson({
+  typeName,
   platform = 'react-like',
   parentTypes = []
-}: { 
-  typeName: string, 
+}: {
+  typeName: string,
   platform?: string,
-  parentTypes?: string[]
+  parentTypes?: string[],
 }) {
   const [typeInfo, setTypeInfo] = React.useState<TypeInfo | null>(null);
   const [loading, setLoading] = React.useState(true);
@@ -895,20 +1047,27 @@ export function TypeFromJson({
         setLoading(true);
         setError(null);
 
-        // Load the types.json file
-        const response = await fetch('/sdk-docs/types.json');
-        if (!response.ok) {
-          throw new Error(`Failed to load types.json: ${response.statusText}`);
+        // Try types.json first, then mixins.json
+        const typesResponse = await fetch('/sdk-docs/types.json');
+        if (typesResponse.ok) {
+          const typesData = await typesResponse.json();
+          if (typesData[typeName]) {
+            setTypeInfo(typesData[typeName]);
+            return;
+          }
         }
 
-        const typesData = await response.json();
-        const foundType = typesData[typeName];
-
-        if (!foundType) {
-          throw new Error(`Type "${typeName}" not found in types.json`);
+        // Try mixins.json
+        const mixinsResponse = await fetch('/sdk-docs/mixins.json');
+        if (mixinsResponse.ok) {
+          const mixinsData = await mixinsResponse.json();
+          if (mixinsData[typeName]) {
+            setTypeInfo(mixinsData[typeName]);
+            return;
+          }
         }
 
-        setTypeInfo(foundType);
+        throw new Error(`Type "${typeName}" not found in types.json or mixins.json`);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Unknown error');
       } finally {
