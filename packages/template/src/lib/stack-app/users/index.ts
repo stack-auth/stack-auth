@@ -70,6 +70,10 @@ export type ServerOAuthProvider = {
  */
 export type Auth = AuthLike<{}> & {
   readonly _internalSession: InternalSession,
+
+  /**
+   * The current user's session.
+   */
   readonly currentSession: {
     getTokens(): Promise<{ accessToken: string | null, refreshToken: string | null }>,
     useTokens(): { accessToken: string | null, refreshToken: string | null }, // THIS_LINE_PLATFORM react-like
@@ -173,11 +177,13 @@ export type BaseUser = {
   toClientJson(): CurrentUserCrud["Client"]["Read"],
 
   /**
+   * Whether email/password authentication is enabled for this user.
    * @deprecated Use contact channel's usedForAuth instead
    */
   readonly emailAuthEnabled: boolean,
   /**
-   * @deprecated
+   * List of OAuth providers connected to this user's account.
+   * @deprecated Use getConnectedAccount() instead
    */
   readonly oauthProviders: readonly { id: string }[],
 }
@@ -188,7 +194,10 @@ export type UserExtra = {
    */
   setDisplayName(displayName: string): Promise<void>,
 
-  /** @deprecated Use contact channel's sendVerificationEmail instead */
+  /**
+   * Sends a verification email to the user's primary email address.
+   * @deprecated Use contact channel's sendVerificationEmail instead
+   */
   sendVerificationEmail(): Promise<KnownErrors["EmailAlreadyVerified"] | void>,
 
   /**
@@ -244,6 +253,9 @@ export type UserExtra = {
   getConnectedAccount(id: ProviderType, options: { or: 'redirect', scopes?: string[] }): Promise<OAuthConnection>,
   getConnectedAccount(id: ProviderType, options?: { or?: 'redirect' | 'throw' | 'return-null', scopes?: string[] }): Promise<OAuthConnection | null>,
 
+  /**
+   * React hook to get an OAuth connected account for the user.
+   */
   // IF_PLATFORM react-like
   useConnectedAccount(id: ProviderType, options: { or: 'redirect', scopes?: string[] }): OAuthConnection,
   useConnectedAccount(id: ProviderType, options?: { or?: 'redirect' | 'throw' | 'return-null', scopes?: string[] }): OAuthConnection | null,
