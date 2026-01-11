@@ -19,7 +19,10 @@ import { PlatformCodeblock } from './components/mdx/platform-codeblock';
 
 import { AsideSection, CollapsibleMethodSection, CollapsibleTypesSection, MethodAside, MethodContent, MethodLayout, MethodSection, MethodTitle } from './components/ui/method-layout';
 
+import { HookDocumentation, HookFromJson } from './components/sdk/hook-documentation';
+import { ObjectDocumentation, ObjectFromJson } from './components/sdk/object-documentation';
 import { SDKOverview } from './components/sdk/overview';
+import { TypeDocumentation, TypeFromJson } from './components/sdk/type-documentation';
 
 import { CursorIcon, StackAuthIcon } from './components/icons';
 import { Button } from './components/mdx/button';
@@ -89,6 +92,12 @@ export function getMDXComponents(components?: MDXComponents): MDXComponents {
     CollapsibleMethodSection,
     CollapsibleTypesSection,
     SDKOverview,
+    TypeDocumentation,
+    TypeFromJson,
+    HookDocumentation,
+    HookFromJson,
+    ObjectDocumentation,
+    ObjectFromJson,
     AppleSecretGenerator,
     // Logo Icons
     StackAuthIcon,

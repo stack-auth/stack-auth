@@ -3,28 +3,49 @@ title: TeamPermission
 full: true
 ---
 
-The `TeamPermission` object represents a permission that a user has within a team. Currently, it contains only an `id` to specify the permission.
-
-You can get `TeamPermission` objects by calling functions such as `user.getPermission(...)` or `user.listPermissions()`.
-
-### Table of Contents
-
-<ClickableTableOfContents title="TeamPermission Table of Contents" code={`type TeamPermission = {
-    id: string;  //$stack-link-to:#teampermissionid
-};`} />
+The `TeamPermission` object represents a permission that a user has within a team. It contains basic information about the permission assignment.
 
 ---
 
-<CollapsibleTypesSection type="teamPermission" property="id" defaultOpen={false}>
-  <MethodLayout>
-    <MethodContent>
-      The identifier of the permission as a `string`.
-    </MethodContent>
-    <MethodAside title="Type Definition">
+## Accessing Team Permissions
 
-      ```typescript
-      declare const id: string;
-      ```
-    </MethodAside>
-  </MethodLayout>
-</CollapsibleTypesSection>
+You can get `TeamPermission` objects through the following methods on [`CurrentUser`](./user.mdx) or [`Team`](./team.mdx):
+
+### Permission Methods
+
+**Get a specific permission:**
+- [`user.getPermission(scope, permissionId)`](./user.mdx#currentusergetpermission)
+- [`user.usePermission(scope, permissionId)`](./user.mdx#currentuserusepermission) {/* THIS_LINE_PLATFORM react-like */}
+
+**List all permissions:**
+- [`user.listPermissions(scope)`](./user.mdx#currentuserlistpermissions)
+- [`user.usePermissions(scope)`](./user.mdx#currentuserusepermissions) {/* THIS_LINE_PLATFORM react-like */}
+
+**Check if user has permission:**
+- [`user.hasPermission(scope, permissionId)`](./user.mdx#currentuserhaspermission)
+
+---
+
+## Properties
+
+A `TeamPermission` object contains:
+
+- **id** (`string`) - The identifier of the permission
+
+---
+
+## Server-Side Permissions
+
+On the server side with `SECRET_SERVER_KEY`, you can also:
+
+**Grant permissions:**
+- [`serverUser.grantPermission(scope, permissionId)`](./user.mdx#serverusergrantpermission)
+
+**Revoke permissions:**
+- [`serverUser.revokePermission(scope, permissionId)`](./user.mdx#serveruserrevokePermission)
+
+---
+
+<Info>
+**Note**: `TeamPermission` is not a standalone type you can import. It's returned by permission-related methods on `CurrentUser`, `ServerUser`, and `Team` objects. For server-side permission management with additional capabilities, see `AdminTeamPermission` (internal use only).
+</Info>

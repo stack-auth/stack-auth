@@ -14,7 +14,7 @@
     "build:backend": "pnpm pre && turbo run build --filter=@stackframe/stack-backend...",
     "build:dashboard": "pnpm pre && turbo run build --filter=@stackframe/stack-dashboard...",
     "build:demo": "pnpm pre && turbo run build --filter=demo-app...",
-    "build:docs": "pnpm run build:packages && pnpm run codegen && pnpm run build:backend && pnpm run --filter=@stackframe/stack-docs generate-openapi-docs && turbo run build --filter=@stackframe/stack-docs",
+    "build:docs": "pnpm run build:packages && pnpm run codegen && pnpm run build:backend && pnpm run docs:generate-sdk && pnpm run --filter=@stackframe/stack-docs generate-openapi-docs && turbo run build --filter=@stackframe/stack-docs",
     "build:packages": "pnpm pre && turbo run build --filter=./packages/*",
     "restart-dev-in-background": "pnpm pre && pnpm run kill-dev:named && (pnpm run dev:named > dev-server.log.untracked.txt 2>&1 &) && echo 'Starting dev server in background... (Logs are in dev-server.log.untracked.txt)' && pnpx wait-on http://localhost:${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}02 -t 120000 && echo 'Dev server running.'",
     "restart-dev-environment": "pnpm pre && pnpm run build:packages && pnpm run codegen && pnpm run restart-deps && pnpm run restart-dev-in-background",
@@ -59,7 +59,10 @@
     "generate-keys": "pnpm pre && turbo run generate-keys",
     "generate-sdks": "pnpx --package=tsx tsx ./scripts/generate-sdks.ts",
     "generate-sdks:watch": "chokidar --silent -c 'pnpm run generate-sdks' './packages/template' --ignore './packages/template/package.json' --ignore '**/node_modules/**' --ignore '**/dist/**' --ignore '**/.turbo/**' --throttle 2000",
-    "generate-openapi-docs:watch": "chokidar --silent -c 'pnpm run --filter=@stackframe/stack-docs generate-openapi-docs' './docs/public/openapi/{admin,client,server,webhooks}.json' --throttle 2000"
+    "generate-docs": "pnpm run build:packages-only && turbo run generate-openapi-fumadocs && pnpm run --filter=@stackframe/stack-docs generate-docs && pnpm run --filter=@stackframe/stack-docs generate-openapi-docs",
+    "generate-docs:watch": "chokidar --silent -c 'pnpm run generate-docs' './docs/templates' --throttle 2000",
+    "generate-openapi-docs:watch": "chokidar --silent -c 'pnpm run --filter=@stackframe/stack-docs generate-openapi-docs' './docs/public/openapi/{admin,client,server,webhooks}.json' --throttle 2000",
+    "docs:generate-sdk": "cd packages/template && node scripts/generate-sdk-docs-json.cjs && mkdir -p ../../docs/public/sdk-docs && cp dist/sdk-docs/*.json ../../docs/public/sdk-docs/"
   },
   "devDependencies": {
     "@changesets/cli": "^2.27.9",

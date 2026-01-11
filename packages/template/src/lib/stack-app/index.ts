@@ -42,9 +42,21 @@ export type {
 } from "./common";
 
 export type {
+  ApiKey, TeamApiKey,
+  TeamApiKeyFirstView, UserApiKey,
+  UserApiKeyFirstView
+} from "./api-keys";
+
+export type {
   Connection,
   OAuthConnection
 } from "./connected-accounts";
+
+export type {
+  Customer,
+  Item,
+  ServerItem
+} from "./customers";
 
 export type {
   ContactChannel,

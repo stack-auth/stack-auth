@@ -105,6 +105,9 @@ export type OAuthScopesOnSignIn = {
  * Used for apps that have token storage capabilities.
  */
 export type AuthLike<ExtraOptions = {}> = {
+  /**
+   * Signs out the current user and optionally redirects to a URL.
+   */
   signOut(options?: { redirectUrl?: URL | string } & ExtraOptions): Promise<void>,
   signOut(options?: { redirectUrl?: URL | string }): Promise<void>,
 
@@ -115,6 +118,9 @@ export type AuthLike<ExtraOptions = {}> = {
    * It will be automatically refreshed when it expires.
    */
   getAccessToken(options?: {} & ExtraOptions): Promise<string | null>,
+  /**
+   * React hook that returns the current access token, or null if not signed in.
+   */
   useAccessToken(options?: {} & ExtraOptions): string | null, // THIS_LINE_PLATFORM react-like
 
   /**
@@ -124,6 +130,9 @@ export type AuthLike<ExtraOptions = {}> = {
    * It should be kept secret and never exposed to the client.
    */
   getRefreshToken(options?: {} & ExtraOptions): Promise<string | null>,
+  /**
+   * React hook that returns the current refresh token, or null if not signed in.
+   */
   useRefreshToken(options?: {} & ExtraOptions): string | null, // THIS_LINE_PLATFORM react-like
 
   /**
@@ -164,6 +173,9 @@ export type AuthLike<ExtraOptions = {}> = {
    * ```
    */
   getAuthHeaders(options?: {} & ExtraOptions): Promise<{ "x-stack-auth": string }>,
+  /**
+   * React hook that returns authentication headers for cross-origin requests.
+   */
   useAuthHeaders(options?: {} & ExtraOptions): { "x-stack-auth": string }, // THIS_LINE_PLATFORM react-like
 
   /**
