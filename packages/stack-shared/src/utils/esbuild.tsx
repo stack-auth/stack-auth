@@ -1,43 +1,62 @@
 import * as esbuild from 'esbuild-wasm/lib/browser.js';
 import { join } from 'path';
 import { isBrowserLike } from './env';
-import { StackAssertionError, throwErr } from "./errors";
+import { captureError, StackAssertionError, throwErr } from "./errors";
+import { runAsynchronously } from './promises';
 import { Result } from "./results";
 import { traceSpan, withTraceSpan } from './telemetry';
 
 const esbuildWasmUrl = `https://unpkg.com/esbuild-wasm@${esbuild.version}/esbuild.wasm`;
 
-let esbuildInitializePromise: Promise<void> | null = null;
 // esbuild requires self property to be set, and it is not set by default in nodejs
 (globalThis.self as any) ??= globalThis as any;
 
+
+if (process.env.NODE_ENV === 'development' && typeof process !== "undefined" && typeof process.exit === "function") {
+  // On development Node.js servers, initialize ESBuild as soon as the module is imported so we have to wait less on the first request
+  runAsynchronously(async () => {
+    try {
+      await initializeEsbuild();
+    } catch (e) {
+      captureError("initialize-esbuild-in-dev", e);
+      (globalThis as any).process?.exit?.(1);
+    }
+  });
+}
+
+(globalThis as any).esbuildInitializePromise ??= null;
 export function initializeEsbuild(): Promise<void> {
-  if (!esbuildInitializePromise) {
-    esbuildInitializePromise = withTraceSpan('initializeEsbuild', async () => {
-      if (isBrowserLike()) {
-        await esbuild.initialize({
-          wasmURL: esbuildWasmUrl,
-        });
-      } else {
-        const esbuildWasmResponse = await fetch(esbuildWasmUrl);
-        if (!esbuildWasmResponse.ok) {
-          throw new StackAssertionError(`Failed to fetch esbuild.wasm: ${esbuildWasmResponse.status} ${esbuildWasmResponse.statusText}: ${await esbuildWasmResponse.text()}`);
+  if (!(globalThis as any).esbuildInitializePromise) {
+    (globalThis as any).esbuildInitializePromise = withTraceSpan('initializeEsbuild', async () => {
+      try {
+        if (isBrowserLike()) {
+          await esbuild.initialize({
+            wasmURL: esbuildWasmUrl,
+          });
+        } else {
+          const esbuildWasmResponse = await fetch(esbuildWasmUrl);
+          if (!esbuildWasmResponse.ok) {
+            throw new StackAssertionError(`Failed to fetch esbuild.wasm: ${esbuildWasmResponse.status} ${esbuildWasmResponse.statusText}: ${await esbuildWasmResponse.text()}`);
+          }
+          const esbuildWasm = await esbuildWasmResponse.arrayBuffer();
+          const esbuildWasmArray = new Uint8Array(esbuildWasm);
+          if (esbuildWasmArray[0] !== 0x00 || esbuildWasmArray[1] !== 0x61 || esbuildWasmArray[2] !== 0x73 || esbuildWasmArray[3] !== 0x6d) {
+            throw new StackAssertionError(`Invalid esbuild.wasm file: ${new TextDecoder().decode(esbuildWasmArray)}`);
+          }
+          const esbuildWasmModule = new WebAssembly.Module(esbuildWasm);
+          await esbuild.initialize({
+            wasmModule: esbuildWasmModule,
+            worker: false,
+          });
         }
-        const esbuildWasm = await esbuildWasmResponse.arrayBuffer();
-        const esbuildWasmArray = new Uint8Array(esbuildWasm);
-        if (esbuildWasmArray[0] !== 0x00 || esbuildWasmArray[1] !== 0x61 || esbuildWasmArray[2] !== 0x73 || esbuildWasmArray[3] !== 0x6d) {
-          throw new StackAssertionError(`Invalid esbuild.wasm file: ${new TextDecoder().decode(esbuildWasmArray)}`);
-        }
-        const esbuildWasmModule = new WebAssembly.Module(esbuildWasm);
-        await esbuild.initialize({
-          wasmModule: esbuildWasmModule,
-          worker: false,
-        });
+      } catch (e) {
+        (globalThis as any).esbuildInitializePromise = null;
+        throw new StackAssertionError("Failed to initialize ESBuild", { cause: e });
       }
     })();
   }
 
-  return esbuildInitializePromise;
+  return (globalThis as any).esbuildInitializePromise;
 }
 
 export async function bundleJavaScript(sourceFiles: Record<string, string> & { '/entry.js': string }, options: {

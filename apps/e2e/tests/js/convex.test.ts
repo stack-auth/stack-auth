@@ -112,6 +112,8 @@ it("should map convex ctx identity to partial user", async ({ expect }) => {
     email: user.primaryEmail,
     email_verified: user.primaryEmailVerified,
     is_anonymous: user.isAnonymous,
+    is_restricted: user.isRestricted,
+    restricted_reason: user.restrictedReason,
   } as const;
 
   const ctx: any = {
@@ -127,6 +129,8 @@ it("should map convex ctx identity to partial user", async ({ expect }) => {
     primaryEmail: user.primaryEmail,
     primaryEmailVerified: user.primaryEmailVerified,
     isAnonymous: user.isAnonymous,
+    isRestricted: false,
+    restrictedReason: null,
   });
 });
 

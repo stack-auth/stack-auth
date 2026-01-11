@@ -1144,7 +1144,6 @@ export namespace Project {
         config: {
           credential_enabled: true,
           allow_localhost: true,
-          require_email_verification: false,
           ...body?.config,
         },
       },

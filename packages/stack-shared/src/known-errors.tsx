@@ -1060,6 +1060,19 @@ const TeamMembershipNotFound = createKnownErrorConstructor(
   (json: any) => [json.team_id, json.user_id] as const,
 );
 
+const TeamInvitationRestrictedUserNotAllowed = createKnownErrorConstructor(
+  KnownError,
+  "TEAM_INVITATION_RESTRICTED_USER_NOT_ALLOWED",
+  (restrictedReason: { type: "anonymous" | "email_not_verified" }) => [
+    403,
+    `Restricted users cannot accept team invitations. Reason: ${restrictedReason.type}. Please complete the onboarding process before accepting team invitations.`,
+    {
+      restricted_reason: restrictedReason,
+    },
+  ] as const,
+  (json: any) => [json.restricted_reason ?? { type: "anonymous" }] as const,
+);
+
 
 const EmailTemplateAlreadyExists = createKnownErrorConstructor(
   KnownError,
@@ -1744,6 +1757,7 @@ export const KnownErrors = {
   ContainedPermissionNotFound,
   TeamNotFound,
   TeamMembershipNotFound,
+  TeamInvitationRestrictedUserNotAllowed,
   EmailTemplateAlreadyExists,
   OAuthConnectionNotConnectedToUser,
   OAuthConnectionAlreadyConnectedToAnotherUser,

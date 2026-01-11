@@ -12,7 +12,7 @@ import { userFullInclude, userPrismaToCrud } from "../users/crud";
 
 const fullInclude = { projectUser: { include: userFullInclude } };
 
-function prismaToCrud(prisma: Prisma.TeamMemberGetPayload<{ include: typeof fullInclude }>, config: { onboarding?: { requireEmailVerification?: boolean } }) {
+function prismaToCrud(prisma: Prisma.TeamMemberGetPayload<{ include: typeof fullInclude }>, config: { onboarding: { requireEmailVerification?: boolean } }) {
   return {
     team_id: prisma.teamId,
     user_id: prisma.projectUserId,

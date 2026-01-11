@@ -566,7 +566,14 @@ it("should not allow restricted users (unverified email) to accept team invitati
 
   // Create a verified user to send the invitation
   const { userId: inviterId } = await Auth.Otp.signIn();
-  const { teamId } = await Team.create();
+  const { teamId } = await createAndAddCurrentUserWithoutMemberPermission();
+
+  // Grant invite permission to the inviter
+  await niceBackendFetch(`/api/v1/team-permissions/${teamId}/${inviterId}/$invite_members`, {
+    accessType: "server",
+    method: "POST",
+    body: {},
+  });
 
   // Send team invitation
   const receiveMailbox = createMailbox();
@@ -584,6 +591,14 @@ it("should not allow restricted users (unverified email) to accept team invitati
     },
   });
   expect(signUpResponse.status).toBe(200);
+
+  // Update context with new user's tokens
+  backendContext.set({
+    userAuth: {
+      accessToken: signUpResponse.body.access_token,
+      refreshToken: signUpResponse.body.refresh_token,
+    },
+  });
 
   // Verify the user is restricted
   const userResponse = await niceBackendFetch("/api/v1/users/me", {
@@ -612,7 +627,20 @@ it("should not allow restricted users (unverified email) to accept team invitati
     },
   });
 
-  expect(acceptResponse).toMatchInlineSnapshot(`todo`);
+  expect(acceptResponse).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 403,
+      "body": {
+        "code": "TEAM_INVITATION_RESTRICTED_USER_NOT_ALLOWED",
+        "details": { "restricted_reason": { "type": "email_not_verified" } },
+        "error": "Restricted users cannot accept team invitations. Reason: email_not_verified. Please complete the onboarding process before accepting team invitations.",
+      },
+      "headers": Headers {
+        "x-stack-known-error": "TEAM_INVITATION_RESTRICTED_USER_NOT_ALLOWED",
+        <some fields may have been hidden>,
+      },
+    }
+  `);
 });
 
 it("should not allow anonymous users to accept team invitations", async ({ expect }) => {
@@ -624,21 +652,34 @@ it("should not allow anonymous users to accept team invitations", async ({ expec
 
   // Create a verified user to send the invitation
   const { userId: inviterId } = await Auth.Otp.signIn();
-  const { teamId } = await Team.create();
+  const { teamId } = await createAndAddCurrentUserWithoutMemberPermission();
+
+  // Grant invite permission to the inviter
+  await niceBackendFetch(`/api/v1/team-permissions/${teamId}/${inviterId}/$invite_members`, {
+    accessType: "server",
+    method: "POST",
+    body: {},
+  });
 
   // Send team invitation
   const receiveMailbox = createMailbox();
   await Team.sendInvitation(receiveMailbox, teamId);
 
   // Create an anonymous user
-  const anonResponse = await niceBackendFetch("/api/v1/auth/sessions", {
+  const anonResponse = await niceBackendFetch("/api/v1/auth/anonymous/sign-up", {
     method: "POST",
     accessType: "client",
-    body: {
-      is_anonymous: true,
-    },
+    body: {},
   });
   expect(anonResponse.status).toBe(200);
+
+  // Update context with anonymous user's tokens
+  backendContext.set({
+    userAuth: {
+      accessToken: anonResponse.body.access_token,
+      refreshToken: anonResponse.body.refresh_token,
+    },
+  });
 
   // Verify the user is anonymous and restricted
   const userResponse = await niceBackendFetch("/api/v1/users/me", {
@@ -668,7 +709,20 @@ it("should not allow anonymous users to accept team invitations", async ({ expec
     },
   });
 
-  expect(acceptResponse).toMatchInlineSnapshot(`todo`);
+  expect(acceptResponse).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 403,
+      "body": {
+        "code": "TEAM_INVITATION_RESTRICTED_USER_NOT_ALLOWED",
+        "details": { "restricted_reason": { "type": "anonymous" } },
+        "error": "Restricted users cannot accept team invitations. Reason: anonymous. Please complete the onboarding process before accepting team invitations.",
+      },
+      "headers": Headers {
+        "x-stack-known-error": "TEAM_INVITATION_RESTRICTED_USER_NOT_ALLOWED",
+        <some fields may have been hidden>,
+      },
+    }
+  `);
 });
 
 it("should not allow restricted users to get team invitation details", async ({ expect }) => {
@@ -685,7 +739,14 @@ it("should not allow restricted users to get team invitation details", async ({ 
 
   // Create a verified user to send the invitation
   const { userId: inviterId } = await Auth.Otp.signIn();
-  const { teamId } = await Team.create();
+  const { teamId } = await createAndAddCurrentUserWithoutMemberPermission();
+
+  // Grant invite permission to the inviter
+  await niceBackendFetch(`/api/v1/team-permissions/${teamId}/${inviterId}/$invite_members`, {
+    accessType: "server",
+    method: "POST",
+    body: {},
+  });
 
   // Send team invitation
   const receiveMailbox = createMailbox();
@@ -704,24 +765,42 @@ it("should not allow restricted users to get team invitation details", async ({ 
   });
   expect(signUpResponse.status).toBe(200);
 
+  // Update context with new user's tokens
+  backendContext.set({
+    userAuth: {
+      accessToken: signUpResponse.body.access_token,
+      refreshToken: signUpResponse.body.refresh_token,
+    },
+  });
+
   // Get the invitation code from the email
   const invitationMessages = await receiveMailbox.waitForMessagesWithSubject("join");
   const invitationCode = invitationMessages.findLast((m) => m.subject.includes("join"))?.body?.text.match(/http:\/\/localhost:12345\/some-callback-url\?code=([a-zA-Z0-9_]+)/)?.[1];
   expect(invitationCode).toBeDefined();
 
-  // Try to get invitation details as a restricted user
+  // Try to get invitation details as a restricted user (without allowing restricted)
   const detailsResponse = await niceBackendFetch("/api/v1/team-invitations/accept/details", {
     method: "POST",
     accessType: "client",
-    headers: {
-      "x-stack-allow-restricted-user": "true",
-    },
     body: {
       code: invitationCode,
     },
   });
 
-  expect(detailsResponse).toMatchInlineSnapshot(`todo`);
+  expect(detailsResponse).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 403,
+      "body": {
+        "code": "TEAM_INVITATION_RESTRICTED_USER_NOT_ALLOWED",
+        "details": { "restricted_reason": { "type": "email_not_verified" } },
+        "error": "Restricted users cannot accept team invitations. Reason: email_not_verified. Please complete the onboarding process before accepting team invitations.",
+      },
+      "headers": Headers {
+        "x-stack-known-error": "TEAM_INVITATION_RESTRICTED_USER_NOT_ALLOWED",
+        <some fields may have been hidden>,
+      },
+    }
+  `);
 });
 
 it("should allow a restricted user to accept invitation after verifying email", async ({ expect }) => {
@@ -738,7 +817,14 @@ it("should allow a restricted user to accept invitation after verifying email", 
 
   // Create a verified user to send the invitation
   const { userId: inviterId } = await Auth.Otp.signIn();
-  const { teamId } = await Team.create();
+  const { teamId } = await createAndAddCurrentUserWithoutMemberPermission();
+
+  // Grant invite permission to the inviter
+  await niceBackendFetch(`/api/v1/team-permissions/${teamId}/${inviterId}/$invite_members`, {
+    accessType: "server",
+    method: "POST",
+    body: {},
+  });
 
   // Send team invitation
   const receiveMailbox = createMailbox();
