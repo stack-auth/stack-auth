@@ -507,15 +507,15 @@ export function PlatformCodeblock({
   const handleFrameworkSelect = (framework: string) => {
     // Use pending platform if available, otherwise current platform
     const platformToUse = pendingPlatform || selectedPlatform;
-    
+
     // Now apply the platform change
     setSelectedPlatform(platformToUse);
     setPendingPlatform(null);
-    
+
     // Broadcast both platform and framework changes
     broadcastPlatformChange(platformToUse);
     broadcastFrameworkChange(platformToUse, framework);
-    
+
     setIsDropdownOpen(false);
     setDropdownView('platform');
   };
