@@ -136,24 +136,37 @@ async function resolveConnectionStringWithOrbStack(connectionString: string): Pr
 let actualGlobalConnectionString: string = globalVar.__stack_actual_global_connection_string ??= await resolveConnectionStringWithOrbStack(originalGlobalConnectionString);
 let actualReplicaConnectionString: string = globalVar.__stack_actual_replica_connection_string ??= await resolveConnectionStringWithOrbStack(originalReplicaConnectionString);
 
-function extendWithReadReplicas<T extends PrismaClient>(client: T, replicaConnectionString: string): Omit<T, "$on"> {
+export type PrismaClientWithReplica<T extends PrismaClient = PrismaClient> = Omit<T, "$on"> & {
+  $replica: () => Omit<T, "$on">,
+};
+
+function extendWithReadReplicas<T extends PrismaClient>(client: T, replicaConnectionString: string): PrismaClientWithReplica<T> {
   // Create a separate PrismaClient for the read replica
   const replicaClient = getPostgresPrismaClient(replicaConnectionString).client;
   return client.$extends(readReplicas({
     replicas: [replicaClient],
-  })) as Omit<T, "$on">;
+  })) as PrismaClientWithReplica<T>;
 }
 
-export const { client: globalPrismaClient, schema: globalPrismaSchema } = actualGlobalConnectionString
+function extendWithFakeReadReplica<T extends PrismaClient>(client: T): PrismaClientWithReplica<T> {
+  return client.$extends(readReplicas({
+    replicas: [client],
+  })) as PrismaClientWithReplica<T>;
+}
+
+export const { client: globalPrismaClient, schema: globalPrismaSchema }: {
+  client: PrismaClientWithReplica<PrismaClient>,
+  schema: string,
+} = actualGlobalConnectionString
   ? (() => {
     const { client, schema } = getPostgresPrismaClient(actualGlobalConnectionString);
     return {
-      client: actualReplicaConnectionString ? extendWithReadReplicas(client, actualReplicaConnectionString) : client,
+      client: actualReplicaConnectionString ? extendWithReadReplicas(client, actualReplicaConnectionString) : extendWithFakeReadReplica(client),
       schema,
     };
   })()
   : {
-    client: throwingProxy<PrismaClient>("STACK_DATABASE_CONNECTION_STRING environment variable is not set. Please set it to a valid PostgreSQL connection string, or use a mock Prisma client for testing."),
+    client: throwingProxy<PrismaClientWithReplica<PrismaClient>>("STACK_DATABASE_CONNECTION_STRING environment variable is not set. Please set it to a valid PostgreSQL connection string, or use a mock Prisma client for testing."),
     schema: throwingProxy<string>("STACK_DATABASE_CONNECTION_STRING environment variable is not set. Please set it to a valid PostgreSQL connection string, or use a mock Prisma client for testing."),
   };
 
@@ -167,12 +180,12 @@ export async function getPrismaClientForSourceOfTruth(sourceOfTruth: CompleteCon
       const connectionString = await resolveNeonConnectionString(entry);
       const neonPrismaClient = getNeonPrismaClient(connectionString);
       await runMigrationNeeded({ prismaClient: neonPrismaClient, schema: getSchemaFromConnectionString(connectionString), logging: true });
-      return neonPrismaClient;
+      return extendWithFakeReadReplica(neonPrismaClient);
     }
     case 'postgres': {
       const postgresPrismaClient = getPostgresPrismaClient(sourceOfTruth.connectionString);
       await runMigrationNeeded({ prismaClient: postgresPrismaClient.client, schema: getSchemaFromConnectionString(sourceOfTruth.connectionString), logging: true });
-      return postgresPrismaClient.client;
+      return extendWithFakeReadReplica(postgresPrismaClient.client);
     }
     case 'hosted': {
       return globalPrismaClient;

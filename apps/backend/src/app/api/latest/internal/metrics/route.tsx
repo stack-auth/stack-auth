@@ -56,7 +56,7 @@ async function loadUsersByCountry(tenancy: Tenancy, prisma: PrismaClientTransact
   const userIdArray = Prisma.sql`ARRAY[${Prisma.join(userIds.map((id) => Prisma.sql`${id}`))}]::text[]`;
   const scalingFactor = totalUsers > users.length ? totalUsers / users.length : 1;
 
-  const rows = await globalPrismaClient.$queryRaw<{ countryCode: string | null, userCount: bigint }[]>(Prisma.sql`
+  const rows = await globalPrismaClient.$replica().$queryRaw<{ countryCode: string | null, userCount: bigint }[]>(Prisma.sql`
     WITH latest_ip AS (
       SELECT DISTINCT ON (e."data"->>'userId')
         e."data"->>'userId' AS "userId",
@@ -94,7 +94,7 @@ async function loadUsersByCountry(tenancy: Tenancy, prisma: PrismaClientTransact
 async function loadTotalUsers(tenancy: Tenancy, now: Date, includeAnonymous: boolean = false): Promise<DataPoints> {
   const schema = await getPrismaSchemaForTenancy(tenancy);
   const prisma = await getPrismaClientForTenancy(tenancy);
-  return (await prisma.$queryRaw<{ date: Date, dailyUsers: bigint, cumUsers: bigint }[]>`
+  return (await prisma.$replica().$queryRaw<{ date: Date, dailyUsers: bigint, cumUsers: bigint }[]>`
     WITH date_series AS (
         SELECT GENERATE_SERIES(
           ${now}::date - INTERVAL '30 days',
@@ -121,7 +121,7 @@ async function loadTotalUsers(tenancy: Tenancy, now: Date, includeAnonymous: boo
 }
 
 async function loadDailyActiveUsers(tenancy: Tenancy, now: Date, includeAnonymous: boolean = false) {
-  const res = await globalPrismaClient.$queryRaw<{ day: Date, dau: bigint }[]>`
+  const res = await globalPrismaClient.$replica().$queryRaw<{ day: Date, dau: bigint }[]>`
     WITH date_series AS (
       SELECT GENERATE_SERIES(
         ${now}::date - INTERVAL '30 days',
@@ -169,7 +169,7 @@ async function loadDailyActiveUsers(tenancy: Tenancy, now: Date, includeAnonymou
 async function loadLoginMethods(tenancy: Tenancy): Promise<{ method: string, count: number }[]> {
   const schema = await getPrismaSchemaForTenancy(tenancy);
   const prisma = await getPrismaClientForTenancy(tenancy);
-  return await prisma.$queryRaw<{ method: string, count: number }[]>`
+  return await prisma.$replica().$queryRaw<{ method: string, count: number }[]>`
     WITH tab AS (
       SELECT
         COALESCE(
