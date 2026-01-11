@@ -62,7 +62,7 @@
     "generate-docs": "pnpm run build:packages-only && turbo run generate-openapi-fumadocs && pnpm run --filter=@stackframe/stack-docs generate-docs && pnpm run --filter=@stackframe/stack-docs generate-openapi-docs",
     "generate-docs:watch": "chokidar --silent -c 'pnpm run generate-docs' './docs/templates' --throttle 2000",
     "generate-openapi-docs:watch": "chokidar --silent -c 'pnpm run --filter=@stackframe/stack-docs generate-openapi-docs' './docs/public/openapi/{admin,client,server,webhooks}.json' --throttle 2000",
-    "docs:generate-sdk": "cd packages/template && node scripts/generate-sdk-docs-json.cjs && cp dist/sdk-docs/*.json ../../docs/public/sdk-docs/"
+    "docs:generate-sdk": "cd packages/template && node scripts/generate-sdk-docs-json.cjs && mkdir -p ../../docs/public/sdk-docs && cp dist/sdk-docs/*.json ../../docs/public/sdk-docs/"
   },
   "devDependencies": {
     "@changesets/cli": "^2.27.9",
