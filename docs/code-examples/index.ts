@@ -2,7 +2,6 @@ import { CodeExample } from '../lib/code-examples';
 import { apiKeysExamples } from './api-keys';
 import { paymentsExamples } from './payments';
 import { sdkEmailsExamples } from './sdk-emails';
-import { sdkItemsExamples } from './sdk-items';
 import { setupExamples } from './setup';
 import { viteExamples } from './vite-example';
 
@@ -12,7 +11,6 @@ const allExamples: Record<string, Record<string, Record<string, CodeExample[]>>>
   'getting-started': viteExamples,
   'sdk': {
     ...sdkEmailsExamples,
-    ...sdkItemsExamples
   },
   // Add more sections here as needed:
   // 'auth': authExamples,
