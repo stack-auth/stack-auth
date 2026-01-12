@@ -17,7 +17,7 @@ type FailedEmailsByTenancyData = {
 
 export const getFailedEmailsByTenancy = async (after: Date) => {
   // Only email digest for hosted DB is supported for now.
-  const result = await globalPrismaClient.$queryRaw<Array<FailedEmailsQueryResult>>`
+  const result = await globalPrismaClient.$replica().$queryRaw<Array<FailedEmailsQueryResult>>`
   SELECT
     eo."tenancyId",
     t."projectId",

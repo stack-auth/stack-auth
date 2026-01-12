@@ -6,12 +6,18 @@ import { ignoreUnhandledRejection, wait } from "@stackframe/stack-shared/dist/ut
 import { Nicifiable } from "@stackframe/stack-shared/dist/utils/strings";
 import { AsyncLocalStorage } from "node:async_hooks";
 // eslint-disable-next-line no-restricted-imports
-import { afterEach, beforeEach, test as vitestTest } from "vitest";
+import { afterEach, beforeEach, onTestFailed, test as vitestTest } from "vitest";
 
 export const test: typeof vitestTest = vitestTest.extend({});
 export const it: typeof vitestTest = test;
 
 export const afterTestFinishesCallbacks: (() => Promise<void>)[] = [];
+
+export function logIfTestFails(...args: any[]) {
+  onTestFailed(() => {
+    console.error(...args);
+  });
+}
 
 export function runAsynchronouslyBeforeTestFinishes(callback: () => Promise<void>) {
   const promise = callback();

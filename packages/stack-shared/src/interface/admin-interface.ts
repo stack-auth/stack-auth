@@ -624,12 +624,39 @@ export class StackAdminInterface extends StackServerInterface {
     return await response.json();
   }
 
-  // Email Outbox methods
+  async previewAffectedUsersByOnboardingChange(
+    onboarding: { require_email_verification?: boolean },
+    limit?: number,
+  ): Promise<{
+    affected_users: Array<{
+      id: string,
+      display_name: string | null,
+      primary_email: string | null,
+      restricted_reason: { type: "anonymous" | "email_not_verified" },
+    }>,
+    total_affected_count: number,
+  }> {
+    const response = await this.sendAdminRequest(
+      `/internal/onboarding/preview-affected-users${limit ? `?limit=${limit}` : ''}`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ onboarding }),
+      },
+      null,
+    );
+    return await response.json();
+  }
 
-  async listOutboxEmails(options?: { status?: string, simple_status?: string }): Promise<EmailOutboxCrud["Server"]["List"]> {
+
+  async listOutboxEmails(options?: { status?: string, simple_status?: string, limit?: number, cursor?: string }): Promise<EmailOutboxCrud["Server"]["List"]> {
     const qs = new URLSearchParams();
     if (options?.status) qs.set('status', options.status);
     if (options?.simple_status) qs.set('simple_status', options.simple_status);
+    if (options?.limit !== undefined) qs.set('limit', options.limit.toString());
+    if (options?.cursor) qs.set('cursor', options.cursor);
     const response = await this.sendServerRequest(
       `/emails/outbox${qs.size ? `?${qs.toString()}` : ''}`,
       { method: 'GET' },

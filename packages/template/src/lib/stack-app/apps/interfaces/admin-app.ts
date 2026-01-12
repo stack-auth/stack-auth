@@ -13,6 +13,13 @@ import { StackServerApp, StackServerAppConstructorOptions } from "./server-app";
 export type EmailOutboxListOptions = {
   status?: string,
   simpleStatus?: string,
+  limit?: number,
+  cursor?: string,
+};
+
+export type EmailOutboxListResult = {
+  items: AdminEmailOutbox[],
+  nextCursor: string | null,
 };
 
 export type EmailOutboxUpdateOptions = {
@@ -103,7 +110,7 @@ export type StackAdminApp<HasTokenStore extends boolean = boolean, ProjectId ext
     refundTransaction(options: { type: "subscription" | "one-time-purchase", id: string }): Promise<void>,
 
     // Email Outbox methods
-    listOutboxEmails(options?: EmailOutboxListOptions): Promise<AdminEmailOutbox[]>,
+    listOutboxEmails(options?: EmailOutboxListOptions): Promise<EmailOutboxListResult>,
     getOutboxEmail(id: string): Promise<AdminEmailOutbox>,
     updateOutboxEmail(id: string, options: EmailOutboxUpdateOptions): Promise<AdminEmailOutbox>,
     pauseOutboxEmail(id: string): Promise<AdminEmailOutbox>,

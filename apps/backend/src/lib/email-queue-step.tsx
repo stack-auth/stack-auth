@@ -8,7 +8,7 @@ import { getPrismaClientForTenancy, globalPrismaClient, PrismaClientTransaction 
 import { withTraceSpan } from "@/utils/telemetry";
 import { allPromisesAndWaitUntilEach } from "@/utils/vercel";
 import { groupBy } from "@stackframe/stack-shared/dist/utils/arrays";
-import { getEnvBoolean, getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
+import { getEnvBoolean, getEnvVariable, getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
 import { captureError, errorToNiceString, StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { Json } from "@stackframe/stack-shared/dist/utils/json";
 import { filterUndefined } from "@stackframe/stack-shared/dist/utils/objects";
@@ -18,6 +18,9 @@ import { randomUUID } from "node:crypto";
 import { lowLevelSendEmailDirectViaProvider } from "./emails-low-level";
 
 const MAX_RENDER_BATCH = 50;
+
+// Track if email queue has run at least once since server start (used to suppress first-run delta warnings in dev)
+const emailQueueFirstRunKey = Symbol.for("__stack_email_queue_first_run_completed");
 
 type EmailableVerificationResult =
   | { status: "ok" }
@@ -253,8 +256,15 @@ async function updateLastExecutionTime(): Promise<number> {
   }
 
   if (delta > 30) {
-    captureError("email-queue-step-delta-too-large", new StackAssertionError(`Email queue step delta is too large: ${delta}. Either the previous step took too long, or something is wrong.`));
+    const isFirstRun = !(globalThis as any)[emailQueueFirstRunKey];
+    if (isFirstRun && getNodeEnvironment() === "development") {
+      // In development, the first run after server start often has a large delta because the server wasn't running
+      console.log(`[email-queue] Skipping delta warning on first run (delta: ${delta.toFixed(2)}s) — this is normal after server restart`);
+    } else {
+      captureError("email-queue-step-delta-too-large", new StackAssertionError(`Email queue step delta is too large: ${delta}. Either the previous step took too long, or something is wrong.`));
+    }
   }
+  (globalThis as any)[emailQueueFirstRunKey] = true;
 
   return delta;
 }

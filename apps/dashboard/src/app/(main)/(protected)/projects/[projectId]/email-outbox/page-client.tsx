@@ -1,14 +1,14 @@
 "use client";
 
+import { PaginationControls } from "@/components/data-table/common/pagination";
 import { SettingCard } from "@/components/settings";
-import { ActionDialog, Badge, Button, DataTable, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, Input, Label, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SimpleTooltip, Switch, Typography, useToast } from "@/components/ui";
+import { ActionDialog, Badge, Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, Input, Label, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SimpleTooltip, Switch, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, Typography, useToast } from "@/components/ui";
 import { cn } from "@/lib/utils";
 import { DotsThreeIcon, PauseIcon, PlayIcon, XCircleIcon } from "@phosphor-icons/react";
 import { AdminEmailOutbox, AdminEmailOutboxSimpleStatus, AdminEmailOutboxStatus } from "@stackframe/stack";
 import { fromNow } from "@stackframe/stack-shared/dist/utils/dates";
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
-import { ColumnDef } from "@tanstack/react-table";
-import { useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";
 
@@ -587,6 +587,8 @@ function EmailDetailSheet({
   );
 }
 
+const PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
+
 export default function PageClient() {
   const stackAdminApp = useAdminApp();
   const [emails, setEmails] = useState<AdminEmailOutbox[]>([]);
@@ -596,77 +598,122 @@ export default function PageClient() {
   const [selectedEmail, setSelectedEmail] = useState<AdminEmailOutbox | null>(null);
   const [detailSheetOpen, setDetailSheetOpen] = useState(false);
 
-  const loadEmails = async () => {
+  // Pagination state
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  // Store cursors for each page so we can navigate backwards
+  const cursorHistory = useRef<Map<number, string | undefined>>(new Map([[1, undefined]]));
+
+  const loadEmails = useCallback(async (cursor?: string, limit?: number) => {
     setLoading(true);
     try {
-      const options: { status?: string, simpleStatus?: string } = {};
+      const options: { status?: string, simpleStatus?: string, cursor?: string, limit?: number } = {
+        limit: limit ?? pageSize,
+      };
       if (statusFilter !== "all") {
         options.status = statusFilter;
       }
       if (simpleStatusFilter !== "all") {
         options.simpleStatus = simpleStatusFilter;
       }
+      if (cursor) {
+        options.cursor = cursor;
+      }
       const result = await stackAdminApp.listOutboxEmails(options);
-      setEmails(result);
+      setEmails(result.items);
+      setNextCursor(result.nextCursor);
     } finally {
       setLoading(false);
     }
-  };
+  }, [stackAdminApp, statusFilter, simpleStatusFilter, pageSize]);
 
   // Load emails on mount
   useState(() => {
     runAsynchronouslyWithAlert(loadEmails);
   });
 
-  // Reload when filters change
+  // Reset pagination and reload when filters change
   const handleFilterChange = (newStatusFilter: string, newSimpleStatusFilter: string) => {
     setStatusFilter(newStatusFilter);
     setSimpleStatusFilter(newSimpleStatusFilter);
-    // Trigger reload
+    setPage(1);
+    cursorHistory.current = new Map([[1, undefined]]);
+    // Trigger reload - use setTimeout to ensure state is updated
     setTimeout(() => {
-      runAsynchronouslyWithAlert(loadEmails);
+      runAsynchronouslyWithAlert(async () => {
+        const options: { status?: string, simpleStatus?: string, limit?: number } = { limit: pageSize };
+        if (newStatusFilter !== "all") {
+          options.status = newStatusFilter;
+        }
+        if (newSimpleStatusFilter !== "all") {
+          options.simpleStatus = newSimpleStatusFilter;
+        }
+        const result = await stackAdminApp.listOutboxEmails(options);
+        setEmails(result.items);
+        setNextCursor(result.nextCursor);
+      });
     }, 0);
   };
 
-  const columns: ColumnDef<AdminEmailOutbox>[] = [
-    {
-      accessorKey: "subject",
-      header: "Subject",
-      cell: ({ row }) => {
-        const email = row.original;
-        // Subject is only available after rendering - check if it's a rendered status
-        const subject = "subject" in email ? email.subject : undefined;
-        return (
-          <div className="max-w-[200px] truncate">
+  const handlePageSizeChange = (newPageSize: number) => {
+    setPageSize(newPageSize);
+    setPage(1);
+    cursorHistory.current = new Map([[1, undefined]]);
+    runAsynchronouslyWithAlert(() => loadEmails(undefined, newPageSize));
+  };
+
+  const handleNextPage = () => {
+    if (!nextCursor) return;
+    const newPage = page + 1;
+    cursorHistory.current.set(newPage, nextCursor);
+    setPage(newPage);
+    runAsynchronouslyWithAlert(() => loadEmails(nextCursor));
+  };
+
+  const handlePreviousPage = () => {
+    if (page <= 1) return;
+    const newPage = page - 1;
+    const cursor = cursorHistory.current.get(newPage);
+    setPage(newPage);
+    runAsynchronouslyWithAlert(() => loadEmails(cursor));
+  };
+
+  const handleRefresh = useCallback(async () => {
+    const cursor = cursorHistory.current.get(page);
+    await loadEmails(cursor);
+  }, [loadEmails, page]);
+
+  // Memoize to avoid re-creating on every render
+  const emailTableRows = useMemo(() => emails.map((email) => {
+    const subject = "subject" in email ? email.subject : undefined;
+    const recipientDisplay = getRecipientDisplay(email);
+    const paused = isEmailPaused(email);
+
+    return (
+      <TableRow
+        key={email.id}
+        className="cursor-pointer hover:bg-muted/50"
+        onClick={() => {
+          setSelectedEmail(email);
+          setDetailSheetOpen(true);
+        }}
+      >
+        <TableCell className="max-w-[200px]">
+          <div className="truncate">
             <SimpleTooltip tooltip={subject || "Not rendered yet"}>
               <span>{subject || <span className="text-muted-foreground italic">Pending</span>}</span>
             </SimpleTooltip>
           </div>
-        );
-      },
-    },
-    {
-      accessorKey: "to",
-      header: "Recipient",
-      cell: ({ row }) => {
-        const display = getRecipientDisplay(row.original);
-        return (
-          <div className="max-w-[150px] truncate">
-            <SimpleTooltip tooltip={display}>
-              <span className="text-sm">{display}</span>
+        </TableCell>
+        <TableCell className="max-w-[150px]">
+          <div className="truncate">
+            <SimpleTooltip tooltip={recipientDisplay}>
+              <span className="text-sm">{recipientDisplay}</span>
             </SimpleTooltip>
           </div>
-        );
-      },
-    },
-    {
-      accessorKey: "status",
-      header: "Status",
-      cell: ({ row }) => {
-        const email = row.original;
-        const paused = isEmailPaused(email);
-
-        return (
+        </TableCell>
+        <TableCell>
           <div className="flex items-center gap-2">
             <Badge variant={getStatusBadgeVariant(email.simpleStatus)}>
               {STATUS_LABELS[email.status]}
@@ -677,48 +724,30 @@ export default function PageClient() {
               </SimpleTooltip>
             )}
           </div>
-        );
-      },
-    },
-    {
-      accessorKey: "scheduledAt",
-      header: "Scheduled",
-      cell: ({ row }) => {
-        const date = row.original.scheduledAt;
-        return (
-          <SimpleTooltip tooltip={date.toLocaleString()}>
-            <span className="text-sm text-muted-foreground">{fromNow(date)}</span>
+        </TableCell>
+        <TableCell>
+          <SimpleTooltip tooltip={email.scheduledAt.toLocaleString()}>
+            <span className="text-sm text-muted-foreground">{fromNow(email.scheduledAt)}</span>
           </SimpleTooltip>
-        );
-      },
-    },
-    {
-      accessorKey: "createdAt",
-      header: "Created",
-      cell: ({ row }) => {
-        const date = row.original.createdAt;
-        return (
-          <SimpleTooltip tooltip={date.toLocaleString()}>
-            <span className="text-sm text-muted-foreground">{fromNow(date)}</span>
+        </TableCell>
+        <TableCell>
+          <SimpleTooltip tooltip={email.createdAt.toLocaleString()}>
+            <span className="text-sm text-muted-foreground">{fromNow(email.createdAt)}</span>
           </SimpleTooltip>
-        );
-      },
-    },
-    {
-      id: "actions",
-      header: "",
-      cell: ({ row }) => (
-        <EmailActions email={row.original} onRefresh={loadEmails} />
-      ),
-    },
-  ];
+        </TableCell>
+        <TableCell onClick={(e) => e.stopPropagation()}>
+          <EmailActions email={email} onRefresh={handleRefresh} />
+        </TableCell>
+      </TableRow>
+    );
+  }), [emails, handleRefresh]);
 
   return (
     <PageLayout
       title="Email Outbox"
       description="View and manage scheduled and sent emails"
       actions={
-        <Button onClick={() => runAsynchronouslyWithAlert(loadEmails)} variant="outline">
+        <Button onClick={() => runAsynchronouslyWithAlert(handleRefresh)} variant="outline">
           Refresh
         </Button>
       }
@@ -770,16 +799,35 @@ export default function PageClient() {
             <Typography className="text-muted-foreground">No emails found</Typography>
           </div>
         ) : (
-          <DataTable
-            data={emails}
-            columns={columns}
-            defaultColumnFilters={[]}
-            defaultSorting={[{ id: "createdAt", desc: true }]}
-            onRowClick={(email) => {
-              setSelectedEmail(email);
-              setDetailSheetOpen(true);
-            }}
-          />
+          <div className="flex flex-col">
+            <div className="rounded-md border">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Subject</TableHead>
+                    <TableHead>Recipient</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Scheduled</TableHead>
+                    <TableHead>Created</TableHead>
+                    <TableHead></TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {emailTableRows}
+                </TableBody>
+              </Table>
+            </div>
+            <PaginationControls
+              page={page}
+              pageSize={pageSize}
+              pageSizeOptions={PAGE_SIZE_OPTIONS}
+              hasNextPage={nextCursor !== null}
+              hasPreviousPage={page > 1}
+              onPageSizeChange={handlePageSizeChange}
+              onPreviousPage={handlePreviousPage}
+              onNextPage={handleNextPage}
+            />
+          </div>
         )}
       </SettingCard>
 
@@ -799,7 +847,7 @@ export default function PageClient() {
           }
         }}
         onRefresh={async () => {
-          await loadEmails();
+          await handleRefresh();
           // Update selected email with fresh data
           if (selectedEmail) {
             const updated = emails.find(e => e.id === selectedEmail.id);

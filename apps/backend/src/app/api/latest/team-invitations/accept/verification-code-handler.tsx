@@ -70,6 +70,9 @@ export const teamInvitationCodeHandler = createVerificationCodeHandler({
   },
   async handler(tenancy, {}, data, body, user) {
     if (!user) throw new KnownErrors.UserAuthenticationRequired;
+    if (user.restricted_reason) {
+      throw new KnownErrors.TeamInvitationRestrictedUserNotAllowed(user.restricted_reason);
+    }
     const prisma = await getPrismaClientForTenancy(tenancy);
 
     if (tenancy.project.id === "internal") {
@@ -123,6 +126,9 @@ export const teamInvitationCodeHandler = createVerificationCodeHandler({
   },
   async details(tenancy, {}, data, body, user) {
     if (!user) throw new KnownErrors.UserAuthenticationRequired;
+    if (user.restricted_reason) {
+      throw new KnownErrors.TeamInvitationRestrictedUserNotAllowed(user.restricted_reason);
+    }
 
     const team = await teamsCrudHandlers.adminRead({
       tenancy,
