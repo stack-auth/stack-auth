@@ -163,7 +163,6 @@ export class StackClientInterface {
     const client: oauth.Client = {
       client_id: this.projectId,
       client_secret: this.options.publishableClientKey,
-      token_endpoint_auth_method: 'client_secret_post',
     };
 
     const clientAuthentication = oauth.ClientSecretPost(this.options.publishableClientKey);
