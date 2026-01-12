@@ -206,7 +206,7 @@ async function loadRecentlyActiveUsers(tenancy: Tenancy, includeAnonymous: boole
     include: userFullInclude,
   });
 
-  return dbUsers.map((user) => userPrismaToCrud(user));
+  return dbUsers.map((user) => userPrismaToCrud(user, tenancy.config));
 }
 
 export const GET = createSmartRouteHandler({

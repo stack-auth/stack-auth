@@ -40,6 +40,8 @@
     "fern": "pnpm pre && pnpm run --filter=@stackframe/docs fern",
     "dev:full": "pnpm pre && concurrently -k \"pnpm run generate-sdks:watch\" \"turbo run dev --concurrency 99999\"",
     "dev": "pnpm pre && concurrently -k \"pnpm run generate-sdks:watch\" \"pnpm run generate-openapi-docs:watch\" \"turbo run dev --concurrency 99999 --filter=./apps/* --filter=@stackframe/stack-docs --filter=./packages/* --filter=./examples/demo \"",
+    "dev:inspect": "pnpm pre && STACK_BACKEND_DEV_EXTRA_ARGS=\"--inspect\" pnpm run dev",
+    "dev:profile": "pnpm pre && STACK_BACKEND_DEV_EXTRA_ARGS=\"--experimental-cpu-prof\" pnpm run dev",
     "dev:basic": "pnpm pre && concurrently -k \"pnpm run generate-sdks:watch\" \"turbo run dev --concurrency 99999 --filter=@stackframe/stack-backend --filter=@stackframe/stack-dashboard --filter=@stackframe/mock-oauth-server\"",
     "dev:docs": "pnpm pre && concurrently -k \"pnpm run generate-openapi-docs:watch\" \"turbo run dev --concurrency 99999 --filter=@stackframe/stack-docs\"",
     "dev:named": "pnpm pre && concurrently -k \"pnpm run dev\" \"node -e \\\"process.title='node (stack-named-dev-server)'; process.stdin.resume();\\\"\"",

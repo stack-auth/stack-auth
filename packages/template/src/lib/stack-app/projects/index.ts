@@ -69,6 +69,10 @@ export function adminProjectUpdateOptionsToCrud(options: AdminProjectUpdateOptio
     logo_full_url: options.logoFullUrl,
     logo_dark_mode_url: options.logoDarkModeUrl,
     logo_full_dark_mode_url: options.logoFullDarkModeUrl,
+    /**
+     * NOTE: Do not update this config anymore. It's been superseded by the new config in schema.ts.
+     * @deprecated
+     */
     config: {
       domains: options.config?.domains?.map((d) => ({
         domain: d.domain,
