@@ -1,0 +1,48 @@
+name: Publish npm packages
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  id-token: write  # Required for npm OIDC provenance
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false  # Don't cancel publishing in progress
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 'latest'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Clean
+        run: pnpm run clean
+
+      - name: Install dependencies (after clean)
+        run: pnpm install --frozen-lockfile
+
+      - name: Build packages
+        run: pnpm build:packages
+
+      - name: Publish packages
+        # pnpm publish skips versions that already exist on npm by default
+        run: pnpm publish -r --no-git-checks
+        env:
+          NPM_CONFIG_PROVENANCE: true
