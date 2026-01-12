@@ -1,5 +1,6 @@
 import { CodeExample } from '../lib/code-examples';
 import { apiKeysExamples } from './api-keys';
+import { customizationExamples } from './customization';
 import { paymentsExamples } from './payments';
 import { selfHostExamples } from './self-host';
 import { setupExamples } from './setup';
@@ -10,9 +11,7 @@ const allExamples: Record<string, Record<string, Record<string, CodeExample[]>>>
   'apps': {...apiKeysExamples, ...paymentsExamples },
   'getting-started': viteExamples,
   'others': selfHostExamples,
-  // Add more sections here as needed:
-  // 'auth': authExamples,
-  // 'customization': customizationExamples,
+  'customization': customizationExamples,
 };
 
 export function getExample(documentPath: string, exampleName: string): CodeExample[] | undefined {
