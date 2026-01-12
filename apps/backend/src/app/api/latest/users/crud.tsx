@@ -845,6 +845,7 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
 
           if (existingChannel) {
             // Email already exists as a contact channel - upgrade it to primary
+            // Include isVerified in additionalUpdates if primary_email_verified was specified
             await setContactChannelAsPrimaryByValue(tx, {
               tenancyId: auth.tenancy.id,
               projectUserId: params.user_id,
@@ -852,6 +853,7 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
               value: primaryEmail,
               additionalUpdates: {
                 usedForAuth: primaryEmailAuthEnabled ? BooleanTrue.TRUE : null,
+                ...(data.primary_email_verified !== undefined && { isVerified: data.primary_email_verified }),
               },
             });
           } else {
@@ -863,13 +865,14 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
             });
 
             // Create the new primary email contact channel
+            // Use primary_email_verified if specified, otherwise default to false
             await tx.contactChannel.create({
               data: {
                 projectUserId: params.user_id,
                 tenancyId: auth.tenancy.id,
                 type: 'EMAIL' as const,
                 value: primaryEmail,
-                isVerified: false,
+                isVerified: data.primary_email_verified ?? false,
                 isPrimary: "TRUE",
                 usedForAuth: primaryEmailAuthEnabled ? BooleanTrue.TRUE : null,
               },
@@ -878,9 +881,10 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
         }
       }
 
-      // if there is a new primary email verified
+      // if there is a new primary email verified (and we didn't just create/upgrade the primary email)
       // - update the primary email contact channel if it exists
-      if (data.primary_email_verified !== undefined && primaryEmailContactChannel) {
+      // Note: if primaryEmail was set, the verification status was already handled above
+      if (data.primary_email_verified !== undefined && primaryEmail === undefined && primaryEmailContactChannel) {
         await tx.contactChannel.update({
           where: {
             tenancyId_projectUserId_type_isPrimary: {

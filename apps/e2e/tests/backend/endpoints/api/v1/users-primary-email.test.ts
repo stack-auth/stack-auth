@@ -731,5 +731,96 @@ describe("updating primary_email via users/me endpoint", () => {
       expect(updateResponse.body.primary_email_verified).toBe(false);
     });
   });
+
+  describe("setting primary_email and primary_email_verified together", () => {
+    it("should set primary_email_verified when creating a new primary email for user without existing email", async ({ expect }) => {
+      await Project.createAndSwitch({
+        config: {
+          credential_enabled: true,
+        },
+      });
+
+      // Create a user without email via server
+      const createResponse = await niceBackendFetch("/api/v1/users", {
+        accessType: "server",
+        method: "POST",
+        body: {
+          display_name: "User Without Email",
+        },
+      });
+      expect(createResponse.status).toBe(201);
+      expect(createResponse.body.primary_email).toBe(null);
+
+      // Set primary_email and primary_email_verified together
+      const mailbox = createMailbox();
+      const updateResponse = await niceBackendFetch(`/api/v1/users/${createResponse.body.id}`, {
+        accessType: "server",
+        method: "PATCH",
+        body: {
+          primary_email: mailbox.emailAddress,
+          primary_email_verified: true,
+        },
+      });
+      expect(updateResponse.status).toBe(200);
+      expect(updateResponse.body.primary_email).toBe(mailbox.emailAddress);
+      expect(updateResponse.body.primary_email_verified).toBe(true);
+    });
+
+    it("should set primary_email_verified when upgrading a non-primary contact channel to primary", async ({ expect }) => {
+      const { userId } = await Auth.Otp.signIn();
+
+      // Create a non-primary, unverified contact channel
+      const secondMailbox = createMailbox();
+      await niceBackendFetch("/api/v1/contact-channels", {
+        accessType: "client",
+        method: "POST",
+        body: {
+          value: secondMailbox.emailAddress,
+          type: "email",
+          used_for_auth: false,
+          user_id: "me",
+        },
+      });
+
+      // Verify the second channel is not primary and not verified
+      const channelsBeforeResponse = await niceBackendFetch("/api/v1/contact-channels?user_id=me", {
+        accessType: "client",
+      });
+      const secondChannel = channelsBeforeResponse.body.items.find((c: any) => c.value === secondMailbox.emailAddress);
+      expect(secondChannel.is_primary).toBe(false);
+      expect(secondChannel.is_verified).toBe(false);
+
+      // Upgrade the second channel to primary and set it as verified in the same request
+      const updateResponse = await niceBackendFetch(`/api/v1/users/${userId}`, {
+        accessType: "server",
+        method: "PATCH",
+        body: {
+          primary_email: secondMailbox.emailAddress,
+          primary_email_verified: true,
+        },
+      });
+      expect(updateResponse.status).toBe(200);
+      expect(updateResponse.body.primary_email).toBe(secondMailbox.emailAddress);
+      expect(updateResponse.body.primary_email_verified).toBe(true);
+    });
+
+    it("should set primary_email_verified when creating a completely new primary email", async ({ expect }) => {
+      const { userId } = await Auth.Otp.signIn();
+
+      // Create a new primary email that doesn't exist as any contact channel, and mark as verified
+      const newMailbox = createMailbox();
+      const updateResponse = await niceBackendFetch(`/api/v1/users/${userId}`, {
+        accessType: "server",
+        method: "PATCH",
+        body: {
+          primary_email: newMailbox.emailAddress,
+          primary_email_verified: true,
+        },
+      });
+      expect(updateResponse.status).toBe(200);
+      expect(updateResponse.body.primary_email).toBe(newMailbox.emailAddress);
+      expect(updateResponse.body.primary_email_verified).toBe(true);
+    });
+  });
 });
 
