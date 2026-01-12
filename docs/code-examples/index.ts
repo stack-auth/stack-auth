@@ -1,6 +1,7 @@
 import { CodeExample } from '../lib/code-examples';
 import { apiKeysExamples } from './api-keys';
 import { paymentsExamples } from './payments';
+import { selfHostExamples } from './self-host';
 import { setupExamples } from './setup';
 import { viteExamples } from './vite-example';
 
@@ -8,6 +9,7 @@ const allExamples: Record<string, Record<string, Record<string, CodeExample[]>>>
   'setup': setupExamples,
   'apps': {...apiKeysExamples, ...paymentsExamples },
   'getting-started': viteExamples,
+  'others': selfHostExamples,
   // Add more sections here as needed:
   // 'auth': authExamples,
   // 'customization': customizationExamples,
