@@ -140,9 +140,9 @@ function VerifyEmailScreen(props: {
 
   return (
     <MessageCard
-      title={t("Please verify your email")}
+      title={t("Please check your email inbox")}
       fullPage={!!props.fullPage}
-      primaryButtonText={t("Send verification email")}
+      primaryButtonText={t("Resend verification email")}
       primaryAction={async () => {
         await user.sendVerificationEmail();
       }}
@@ -163,7 +163,7 @@ function VerifyEmailScreen(props: {
           {t("change")}
         </button>
         {"). "}
-        {t("Click the button above to receive a verification link.")}
+        {t("Click the button below to resend the verification link.")}
       </Typography>
     </MessageCard>
   );
