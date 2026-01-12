@@ -19,7 +19,7 @@ services:
     cap_add:
       - NET_ADMIN  # required for the fake latency during dev
 
-  # ================= PostgreSQL Replica (with 100ms lag) =================
+  # ================= PostgreSQL Replica (with replication lag) =================
 
   db-replica:
     build: ../dev-postgres-replica
@@ -29,7 +29,7 @@ services:
       PRIMARY_PORT: 5432
       REPLICATOR_USER: replicator
       REPLICATOR_PASSWORD: PASSWORD-PLACEHOLDER--replicatorpass
-      RECOVERY_MIN_APPLY_DELAY: ${REPLICA_LAG_MS:-100}ms
+      RECOVERY_MIN_APPLY_DELAY: ${STACK_DATABASE_REPLICA_LAG_MS:-15}ms
     ports:
       - "${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}34:5432"
     volumes:
@@ -45,6 +45,17 @@ services:
       DATABASE_URL: postgres://postgres:PASSWORD-PLACEHOLDER--uqfEC1hmmv@db:5432/stackframe
     ports:
       - "${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}16:8080"
+
+  # ================= PgHero (Replica) =================
+
+  pghero-replica:
+    image: ankane/pghero:latest
+    environment:
+      DATABASE_URL: postgres://postgres:PASSWORD-PLACEHOLDER--uqfEC1hmmv@db-replica:5432/stackframe
+    ports:
+      - "${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}35:8080"
+    depends_on:
+      - db-replica
 
   # ================= PgAdmin =================
 
