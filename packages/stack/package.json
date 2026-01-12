@@ -65,7 +65,7 @@
     "@stackframe/stack-sc": "workspace:*",
     "@stackframe/stack-shared": "workspace:*",
     "@stackframe/stack-ui": "workspace:*",
-    "@tanstack/react-table": "^8.20.5",
+    "@tanstack/react-table": "^8.21.3",
     "browser-image-compression": "^2.0.2",
     "color": "^5.0.3",
     "cookie": "^1.1.1",
@@ -75,12 +75,12 @@
     "oauth4webapi": "^3.8.3",
     "@oslojs/otp": "^1.1.0",
     "qrcode": "^1.5.4",
-    "react-easy-crop": "^5.4.1",
+    "react-easy-crop": "^5.5.6",
     "react-hook-form": "^7.70.0",
     "rimraf": "^6.1.2",
     "tailwindcss-animate": "^1.0.7",
-    "tsx": "^4.7.2",
-    "yup": "^1.4.0"
+    "tsx": "^4.21.0",
+    "yup": "^1.7.1"
   },
   "peerDependencies": {
     "@types/react": ">=18.3.0",

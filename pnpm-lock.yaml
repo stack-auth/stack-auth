@@ -271,8 +271,8 @@ importers:
         specifier: ^2.4.5
         version: 2.4.5
       yup:
-        specifier: ^1.4.0
-        version: 1.4.0
+        specifier: ^1.7.1
+        version: 1.7.1
       zod:
         specifier: ^3.23.8
         version: 3.25.76
@@ -578,8 +578,8 @@ importers:
         specifier: ^10.0.5
         version: 10.0.5(react@19.2.3)
       yup:
-        specifier: ^1.4.0
-        version: 1.4.0
+        specifier: ^1.7.1
+        version: 1.7.1
     devDependencies:
       '@types/canvas-confetti':
         specifier: ^1.6.4
@@ -1453,8 +1453,8 @@ importers:
   packages/js:
     dependencies:
       '@hookform/resolvers':
-        specifier: ^3.3.4
-        version: 3.6.0(react-hook-form@7.65.0(react@19.2.1))
+        specifier: ^5.2.2
+        version: 5.2.2(react-hook-form@7.70.0(react@19.2.1))
       '@oslojs/otp':
         specifier: ^1.1.0
         version: 1.1.0
@@ -1465,8 +1465,8 @@ importers:
         specifier: workspace:*
         version: link:../stack-shared
       '@tanstack/react-table':
-        specifier: ^8.20.5
-        version: 8.20.5(react-dom@19.2.3(react@19.2.1))(react@19.2.1)
+        specifier: ^8.21.3
+        version: 8.21.3(react-dom@19.2.3(react@19.2.1))(react@19.2.1)
       color:
         specifier: ^5.0.3
         version: 5.0.3
@@ -1489,11 +1489,11 @@ importers:
         specifier: ^6.1.2
         version: 6.1.2
       tsx:
-        specifier: ^4.7.2
-        version: 4.16.2
+        specifier: ^4.21.0
+        version: 4.21.0
       yup:
-        specifier: ^1.4.0
-        version: 1.4.0
+        specifier: ^1.7.1
+        version: 1.7.1
     devDependencies:
       '@quetzallabs/i18n':
         specifier: ^0.1.19
@@ -1545,13 +1545,13 @@ importers:
         version: 3.4.14
       tsup:
         specifier: ^8.0.2
-        version: 8.3.5(@swc/core@1.3.101(@swc/helpers@0.5.15))(jiti@2.4.2)(postcss@8.4.47)(tsx@4.16.2)(typescript@5.8.3)(yaml@2.8.0)
+        version: 8.3.5(@swc/core@1.3.101(@swc/helpers@0.5.15))(jiti@2.4.2)(postcss@8.4.47)(tsx@4.21.0)(typescript@5.8.3)(yaml@2.8.0)
 
   packages/react:
     dependencies:
       '@hookform/resolvers':
-        specifier: ^3.3.4
-        version: 3.6.0(react-hook-form@7.53.1(react@19.2.1))
+        specifier: ^5.2.2
+        version: 5.2.2(react-hook-form@7.70.0(react@19.2.1))
       '@oslojs/otp':
         specifier: ^1.1.0
         version: 1.1.0
@@ -1571,8 +1571,8 @@ importers:
         specifier: ^7.7.0
         version: 7.7.0
       '@tanstack/react-table':
-        specifier: ^8.20.5
-        version: 8.20.5(react-dom@19.2.1(react@19.2.1))(react@19.2.1)
+        specifier: ^8.21.3
+        version: 8.21.3(react-dom@19.2.1(react@19.2.1))(react@19.2.1)
       '@types/react':
         specifier: ^18.2.0
         version: 18.3.12
@@ -1601,11 +1601,11 @@ importers:
         specifier: ^1.5.4
         version: 1.5.4
       react-easy-crop:
-        specifier: ^5.4.1
-        version: 5.4.1(react-dom@19.2.1(react@19.2.1))(react@19.2.1)
+        specifier: ^5.5.6
+        version: 5.5.6(react-dom@19.2.1(react@19.2.1))(react@19.2.1)
       react-hook-form:
-        specifier: ^7.51.4
-        version: 7.53.1(react@19.2.1)
+        specifier: ^7.70.0
+        version: 7.70.0(react@19.2.1)
       rimraf:
         specifier: ^6.1.2
         version: 6.1.2
@@ -1613,11 +1613,11 @@ importers:
         specifier: ^1.0.7
         version: 1.0.7(tailwindcss@3.4.14)
       tsx:
-        specifier: ^4.7.2
-        version: 4.19.2
+        specifier: ^4.21.0
+        version: 4.21.0
       yup:
-        specifier: ^1.4.0
-        version: 1.4.0
+        specifier: ^1.7.1
+        version: 1.7.1
     devDependencies:
       '@quetzallabs/i18n':
         specifier: ^0.1.19
@@ -1672,13 +1672,13 @@ importers:
         version: 3.4.14
       tsup:
         specifier: ^8.0.2
-        version: 8.4.0(@swc/core@1.3.101(@swc/helpers@0.5.15))(jiti@2.4.2)(postcss@8.5.2)(tsx@4.19.2)(typescript@5.8.3)(yaml@2.8.0)
+        version: 8.4.0(@swc/core@1.3.101(@swc/helpers@0.5.15))(jiti@2.4.2)(postcss@8.5.2)(tsx@4.21.0)(typescript@5.8.3)(yaml@2.8.0)
 
   packages/stack:
     dependencies:
       '@hookform/resolvers':
-        specifier: ^3.3.4
-        version: 3.6.0(react-hook-form@7.53.1(react@19.2.1))
+        specifier: ^5.2.2
+        version: 5.2.2(react-hook-form@7.70.0(react@19.2.1))
       '@oslojs/otp':
         specifier: ^1.1.0
         version: 1.1.0
@@ -1701,8 +1701,8 @@ importers:
         specifier: ^7.7.0
         version: 7.7.0
       '@tanstack/react-table':
-        specifier: ^8.20.5
-        version: 8.20.5(react-dom@19.2.1(react@19.2.1))(react@19.2.1)
+        specifier: ^8.21.3
+        version: 8.21.3(react-dom@19.2.1(react@19.2.1))(react@19.2.1)
       '@types/react':
         specifier: ^18.2.0
         version: 18.3.12
@@ -1734,11 +1734,11 @@ importers:
         specifier: ^1.5.4
         version: 1.5.4
       react-easy-crop:
-        specifier: ^5.4.1
-        version: 5.4.1(react-dom@19.2.1(react@19.2.1))(react@19.2.1)
+        specifier: ^5.5.6
+        version: 5.5.6(react-dom@19.2.1(react@19.2.1))(react@19.2.1)
       react-hook-form:
-        specifier: ^7.51.4
-        version: 7.53.1(react@19.2.1)
+        specifier: ^7.70.0
+        version: 7.70.0(react@19.2.1)
       rimraf:
         specifier: ^6.1.2
         version: 6.1.2
@@ -1746,11 +1746,11 @@ importers:
         specifier: ^1.0.7
         version: 1.0.7(tailwindcss@3.4.14)
       tsx:
-        specifier: ^4.7.2
-        version: 4.15.5
+        specifier: ^4.21.0
+        version: 4.21.0
       yup:
-        specifier: ^1.4.0
-        version: 1.4.0
+        specifier: ^1.7.1
+        version: 1.7.1
     devDependencies:
       '@quetzallabs/i18n':
         specifier: ^0.1.19
@@ -1883,8 +1883,8 @@ importers:
         specifier: ^9.0.1
         version: 9.0.1
       yup:
-        specifier: ^1.4.0
-        version: 1.4.0
+        specifier: ^1.7.1
+        version: 1.7.1
     devDependencies:
       '@sentry/nextjs':
         specifier: ^10.11.0
@@ -2043,8 +2043,8 @@ importers:
         specifier: ^2.5.4
         version: 2.5.4
       yup:
-        specifier: ^1.4.0
-        version: 1.4.0
+        specifier: ^1.7.1
+        version: 1.7.1
     devDependencies:
       '@types/react':
         specifier: ^18.2.0
@@ -2065,8 +2065,8 @@ importers:
   packages/template:
     dependencies:
       '@hookform/resolvers':
-        specifier: ^3.3.4
-        version: 3.6.0(react-hook-form@7.53.1(react@19.2.1))
+        specifier: ^5.2.2
+        version: 5.2.2(react-hook-form@7.70.0(react@19.2.1))
       '@oslojs/otp':
         specifier: ^1.1.0
         version: 1.1.0
@@ -2089,8 +2089,8 @@ importers:
         specifier: ^7.7.0
         version: 7.7.0
       '@tanstack/react-table':
-        specifier: ^8.20.5
-        version: 8.20.5(react-dom@19.2.1(react@19.2.1))(react@19.2.1)
+        specifier: ^8.21.3
+        version: 8.21.3(react-dom@19.2.1(react@19.2.1))(react@19.2.1)
       '@types/react':
         specifier: ^18.2.0
         version: 18.3.12
@@ -2122,11 +2122,11 @@ importers:
         specifier: ^1.5.4
         version: 1.5.4
       react-easy-crop:
-        specifier: ^5.4.1
-        version: 5.4.1(react-dom@19.2.1(react@19.2.1))(react@19.2.1)
+        specifier: ^5.5.6
+        version: 5.5.6(react-dom@19.2.1(react@19.2.1))(react@19.2.1)
       react-hook-form:
-        specifier: ^7.51.4
-        version: 7.53.1(react@19.2.1)
+        specifier: ^7.70.0
+        version: 7.70.0(react@19.2.1)
       rimraf:
         specifier: ^6.1.2
         version: 6.1.2
@@ -2134,11 +2134,11 @@ importers:
         specifier: ^1.0.7
         version: 1.0.7(tailwindcss@3.4.14)
       tsx:
-        specifier: ^4.7.2
-        version: 4.16.2
+        specifier: ^4.21.0
+        version: 4.21.0
       yup:
-        specifier: ^1.4.0
-        version: 1.4.0
+        specifier: ^1.7.1
+        version: 1.7.1
     devDependencies:
       '@quetzallabs/i18n':
         specifier: ^0.1.19
@@ -2196,7 +2196,7 @@ importers:
         version: 3.4.14
       tsup:
         specifier: ^8.0.2
-        version: 8.3.5(@swc/core@1.3.101(@swc/helpers@0.5.15))(jiti@2.4.2)(postcss@8.4.47)(tsx@4.16.2)(typescript@5.8.3)(yaml@2.8.0)
+        version: 8.3.5(@swc/core@1.3.101(@swc/helpers@0.5.15))(jiti@2.4.2)(postcss@8.4.47)(tsx@4.21.0)(typescript@5.8.3)(yaml@2.8.0)
 
 packages:
 
@@ -4411,6 +4411,11 @@ packages:
     resolution: {integrity: sha512-UBcpyOX3+RR+dNnqBd0lchXpoL8p4xC21XP8H6Meb8uve5Br1GCnmg0PcBoKKqPKgGu9GHQ/oygcmPrQhetwqw==}
     peerDependencies:
       react-hook-form: ^7.0.0
+
+  '@hookform/resolvers@5.2.2':
+    resolution: {integrity: sha512-A/IxlMLShx3KjV/HeTcTfaMxdwy690+L/ZADoeaTltLx+CVuzkeVIPuybK3jrRfw7YZnmdKsVVHAlEPIAEUNlA==}
+    peerDependencies:
+      react-hook-form: ^7.55.0
 
   '@humanfs/core@0.19.1':
     resolution: {integrity: sha512-5DyQ4+1JEUzejeK1JGICcideyfUbGixgS9jNgex5nqkW+cY7WZhxBigmieN5Qnw9ZosSNVC9KQKyb+GUaGyKUA==}
@@ -8305,6 +8310,9 @@ packages:
   '@standard-schema/spec@1.0.0':
     resolution: {integrity: sha512-m2bOd0f2RT9k8QJx1JN85cZYyH1RqFBdlwtkSlf4tBDYLCiiZnv1fIIwacK6cqwXavOydf0NPToMQgpKq+dVlA==}
 
+  '@standard-schema/utils@0.3.0':
+    resolution: {integrity: sha512-e7Mew686owMaPJVNNLs55PUvgz371nKgwsc4vxE49zsODpJEnxgxRo2y/OKrqueavXgZNMDVj3DdHFlaSAeU8g==}
+
   '@stripe/connect-js@3.3.27':
     resolution: {integrity: sha512-QyPE6CRvS8LO7G3qFpM6qHq5So9UZCjn6PlYU1rKDtybv05B+g14+KLxnAZgi0ngaoNMVweP3slHSzA/eh78ow==}
 
@@ -8556,8 +8564,19 @@ packages:
       react: '>=16.8'
       react-dom: '>=16.8'
 
+  '@tanstack/react-table@8.21.3':
+    resolution: {integrity: sha512-5nNMTSETP4ykGegmVkhjcS8tTLW6Vl4axfEGQN3v0zdHYbK4UfoqfPChclTrJ4EoK9QynqAu9oUf8VEmrpZ5Ww==}
+    engines: {node: '>=12'}
+    peerDependencies:
+      react: '>=16.8'
+      react-dom: '>=16.8'
+
   '@tanstack/table-core@8.20.5':
     resolution: {integrity: sha512-P9dF7XbibHph2PFRz8gfBKEXEY/HJPOhym8CHmjF8y3q5mWpKx9xtZapXQUWCgkqvsK0R46Azuz+VaxD4Xl+Tg==}
+    engines: {node: '>=12'}
+
+  '@tanstack/table-core@8.21.3':
+    resolution: {integrity: sha512-ldZXEhOBb8Is7xLs01fR3YEc3DERiz5silj8tnGkFZytt1abEvl/GhUmCE0PMLaMPTa3Jk4HbKmRlHmu+gCftg==}
     engines: {node: '>=12'}
 
   '@testing-library/dom@10.4.0':
@@ -14231,8 +14250,8 @@ packages:
     peerDependencies:
       react: ^19.2.3
 
-  react-easy-crop@5.4.1:
-    resolution: {integrity: sha512-Djtsi7bWO75vkKYkVxNRrJWY69pXLahIAkUN0mmt9cXNnaq2tpG59ctSY6P7ipJgBc7COJDRMRuwb2lYwtACNQ==}
+  react-easy-crop@5.5.6:
+    resolution: {integrity: sha512-Jw3/ozs8uXj3NpL511Suc4AHY+mLRO23rUgipXvNYKqezcFSYHxe4QXibBymkOoY6oOtLVMPO2HNPRHYvMPyTw==}
     peerDependencies:
       react: '>=16.4.0'
       react-dom: '>=16.4.0'
@@ -14251,6 +14270,12 @@ packages:
 
   react-hook-form@7.65.0:
     resolution: {integrity: sha512-xtOzDz063WcXvGWaHgLNrNzlsdFgtUWcb32E6WFaGTd7kPZG3EeDusjdZfUsPwKCKVXy1ZlntifaHZ4l8pAsmw==}
+    engines: {node: '>=18.0.0'}
+    peerDependencies:
+      react: ^16.8.0 || ^17 || ^18 || ^19
+
+  react-hook-form@7.70.0:
+    resolution: {integrity: sha512-COOMajS4FI3Wuwrs3GPpi/Jeef/5W1DRR84Yl5/ShlT3dKVFUfoGiEZ/QE6Uw8P4T2/CLJdcTVYKvWBMQTEpvw==}
     engines: {node: '>=18.0.0'}
     peerDependencies:
       react: ^16.8.0 || ^17 || ^18 || ^19
@@ -15563,11 +15588,6 @@ packages:
     engines: {node: '>=18.0.0'}
     hasBin: true
 
-  tsx@4.19.2:
-    resolution: {integrity: sha512-pOUl6Vo2LUq/bSa8S5q7b91cgNSjctn9ugq/+Mvow99qW6x/UZYwzxy/3NmqoT66eHYfCVvFvACC58UBPFf28g==}
-    engines: {node: '>=18.0.0'}
-    hasBin: true
-
   tsx@4.19.3:
     resolution: {integrity: sha512-4H8vUNGNjQ4V2EOoGw005+c+dGuPSnhpPBPHBtsZdGZBk/iJb4kguGlPWaZTZ3q5nMtFOEsY0nRDlh9PJyd6SQ==}
     engines: {node: '>=18.0.0'}
@@ -16356,8 +16376,8 @@ packages:
     resolution: {integrity: sha512-b4JR1PFR10y1mKjhHY9LaGo6tmrgjit7hxVIeAmyMw3jegXR4dhYqLaQF5zMXZxY7tLpMyJeLjr1C4rLmkVe8g==}
     engines: {node: '>=12.20'}
 
-  yup@1.4.0:
-    resolution: {integrity: sha512-wPbgkJRCqIf+OHyiTBQoJiP5PFuAXaWiJK6AmYkzQAh5/c2K9hzSApBZG5wV9KoKSePF7sAxmNSvh/13YHkFDg==}
+  yup@1.7.1:
+    resolution: {integrity: sha512-GKHFX2nXul2/4Dtfxhozv701jLQHdf6J34YDh2cEkpqoo8le5Mg6/LrdseVLrFarmFygZTlfIhHx/QKfb/QWXw==}
 
   zeptomatch@2.0.2:
     resolution: {integrity: sha512-H33jtSKf8Ijtb5BW6wua3G5DhnFjbFML36eFu+VdOoVY4HD9e7ggjqdM6639B+L87rjnR6Y+XeRzBXZdy52B/g==}
@@ -18985,17 +19005,14 @@ snapshots:
     dependencies:
       react-hook-form: 7.65.0(react@18.3.1)
 
-  '@hookform/resolvers@3.6.0(react-hook-form@7.53.1(react@19.2.1))':
-    dependencies:
-      react-hook-form: 7.53.1(react@19.2.1)
-
   '@hookform/resolvers@3.6.0(react-hook-form@7.53.1(react@19.2.3))':
     dependencies:
       react-hook-form: 7.53.1(react@19.2.3)
 
-  '@hookform/resolvers@3.6.0(react-hook-form@7.65.0(react@19.2.1))':
+  '@hookform/resolvers@5.2.2(react-hook-form@7.70.0(react@19.2.1))':
     dependencies:
-      react-hook-form: 7.65.0(react@19.2.1)
+      '@standard-schema/utils': 0.3.0
+      react-hook-form: 7.70.0(react@19.2.1)
 
   '@humanfs/core@0.19.1': {}
 
@@ -24361,6 +24378,8 @@ snapshots:
 
   '@standard-schema/spec@1.0.0': {}
 
+  '@standard-schema/utils@0.3.0': {}
+
   '@stripe/connect-js@3.3.27': {}
 
   '@stripe/react-connect-js@3.3.24(@stripe/connect-js@3.3.27)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)':
@@ -24586,19 +24605,27 @@ snapshots:
       react: 19.2.1
       react-dom: 19.2.1(react@19.2.1)
 
-  '@tanstack/react-table@8.20.5(react-dom@19.2.3(react@19.2.1))(react@19.2.1)':
-    dependencies:
-      '@tanstack/table-core': 8.20.5
-      react: 19.2.1
-      react-dom: 19.2.3(react@19.2.1)
-
   '@tanstack/react-table@8.20.5(react-dom@19.2.3(react@19.2.3))(react@19.2.3)':
     dependencies:
       '@tanstack/table-core': 8.20.5
       react: 19.2.3
       react-dom: 19.2.3(react@19.2.3)
 
+  '@tanstack/react-table@8.21.3(react-dom@19.2.1(react@19.2.1))(react@19.2.1)':
+    dependencies:
+      '@tanstack/table-core': 8.21.3
+      react: 19.2.1
+      react-dom: 19.2.1(react@19.2.1)
+
+  '@tanstack/react-table@8.21.3(react-dom@19.2.3(react@19.2.1))(react@19.2.1)':
+    dependencies:
+      '@tanstack/table-core': 8.21.3
+      react: 19.2.1
+      react-dom: 19.2.3(react@19.2.1)
+
   '@tanstack/table-core@8.20.5': {}
+
+  '@tanstack/table-core@8.21.3': {}
 
   '@testing-library/dom@10.4.0':
     dependencies:
@@ -27603,7 +27630,6 @@ snapshots:
       '@esbuild/win32-arm64': 0.27.1
       '@esbuild/win32-ia32': 0.27.1
       '@esbuild/win32-x64': 0.27.1
-    optional: true
 
   escalade@3.1.2: {}
 
@@ -31586,22 +31612,22 @@ snapshots:
       tsx: 4.21.0
       yaml: 2.8.0
 
-  postcss-load-config@6.0.1(jiti@2.4.2)(postcss@8.4.47)(tsx@4.16.2)(yaml@2.8.0):
+  postcss-load-config@6.0.1(jiti@2.4.2)(postcss@8.4.47)(tsx@4.21.0)(yaml@2.8.0):
     dependencies:
       lilconfig: 3.1.2
     optionalDependencies:
       jiti: 2.4.2
       postcss: 8.4.47
-      tsx: 4.16.2
+      tsx: 4.21.0
       yaml: 2.8.0
 
-  postcss-load-config@6.0.1(jiti@2.4.2)(postcss@8.5.2)(tsx@4.19.2)(yaml@2.8.0):
+  postcss-load-config@6.0.1(jiti@2.4.2)(postcss@8.5.2)(tsx@4.21.0)(yaml@2.8.0):
     dependencies:
       lilconfig: 3.1.2
     optionalDependencies:
       jiti: 2.4.2
       postcss: 8.5.2
-      tsx: 4.19.2
+      tsx: 4.21.0
       yaml: 2.8.0
 
   postcss-load-config@6.0.1(jiti@2.4.2)(postcss@8.5.6)(tsx@4.15.5)(yaml@2.4.5):
@@ -31976,7 +32002,7 @@ snapshots:
       react: 19.2.3
       scheduler: 0.27.0
 
-  react-easy-crop@5.4.1(react-dom@19.2.1(react@19.2.1))(react@19.2.1):
+  react-easy-crop@5.5.6(react-dom@19.2.1(react@19.2.1))(react@19.2.1):
     dependencies:
       normalize-wheel: 1.0.1
       react: 19.2.1
@@ -32002,7 +32028,7 @@ snapshots:
     dependencies:
       react: 18.3.1
 
-  react-hook-form@7.65.0(react@19.2.1):
+  react-hook-form@7.70.0(react@19.2.1):
     dependencies:
       react: 19.2.1
 
@@ -33775,7 +33801,7 @@ snapshots:
       - supports-color
       - ts-node
 
-  tsup@8.3.5(@swc/core@1.3.101(@swc/helpers@0.5.15))(jiti@2.4.2)(postcss@8.4.47)(tsx@4.16.2)(typescript@5.8.3)(yaml@2.8.0):
+  tsup@8.3.5(@swc/core@1.3.101(@swc/helpers@0.5.15))(jiti@2.4.2)(postcss@8.4.47)(tsx@4.21.0)(typescript@5.8.3)(yaml@2.8.0):
     dependencies:
       bundle-require: 5.0.0(esbuild@0.24.2)
       cac: 6.7.14
@@ -33785,7 +33811,7 @@ snapshots:
       esbuild: 0.24.2
       joycon: 3.1.1
       picocolors: 1.1.1
-      postcss-load-config: 6.0.1(jiti@2.4.2)(postcss@8.4.47)(tsx@4.16.2)(yaml@2.8.0)
+      postcss-load-config: 6.0.1(jiti@2.4.2)(postcss@8.4.47)(tsx@4.21.0)(yaml@2.8.0)
       resolve-from: 5.0.0
       rollup: 4.24.4
       source-map: 0.8.0-beta.0
@@ -33859,7 +33885,7 @@ snapshots:
       - tsx
       - yaml
 
-  tsup@8.4.0(@swc/core@1.3.101(@swc/helpers@0.5.15))(jiti@2.4.2)(postcss@8.5.2)(tsx@4.19.2)(typescript@5.8.3)(yaml@2.8.0):
+  tsup@8.4.0(@swc/core@1.3.101(@swc/helpers@0.5.15))(jiti@2.4.2)(postcss@8.5.2)(tsx@4.21.0)(typescript@5.8.3)(yaml@2.8.0):
     dependencies:
       bundle-require: 5.1.0(esbuild@0.25.3)
       cac: 6.7.14
@@ -33869,7 +33895,7 @@ snapshots:
       esbuild: 0.25.3
       joycon: 3.1.1
       picocolors: 1.1.1
-      postcss-load-config: 6.0.1(jiti@2.4.2)(postcss@8.5.2)(tsx@4.19.2)(yaml@2.8.0)
+      postcss-load-config: 6.0.1(jiti@2.4.2)(postcss@8.5.2)(tsx@4.21.0)(yaml@2.8.0)
       resolve-from: 5.0.0
       rollup: 4.34.8
       source-map: 0.8.0-beta.0
@@ -33929,13 +33955,6 @@ snapshots:
     optionalDependencies:
       fsevents: 2.3.3
 
-  tsx@4.19.2:
-    dependencies:
-      esbuild: 0.23.1
-      get-tsconfig: 4.8.1
-    optionalDependencies:
-      fsevents: 2.3.3
-
   tsx@4.19.3:
     dependencies:
       esbuild: 0.25.3
@@ -33949,7 +33968,6 @@ snapshots:
       get-tsconfig: 4.8.1
     optionalDependencies:
       fsevents: 2.3.3
-    optional: true
 
   turbo-darwin-64@2.2.3:
     optional: true
@@ -34811,7 +34829,7 @@ snapshots:
 
   yocto-queue@1.1.1: {}
 
-  yup@1.4.0:
+  yup@1.7.1:
     dependencies:
       property-expr: 2.0.6
       tiny-case: 1.0.3

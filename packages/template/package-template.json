@@ -97,7 +97,7 @@
     "@stackframe/stack-shared": "workspace:*",
     "//": "NEXT_LINE_PLATFORM react-like",
     "@stackframe/stack-ui": "workspace:*",
-    "@tanstack/react-table": "^8.20.5",
+    "@tanstack/react-table": "^8.21.3",
     "//": "NEXT_LINE_PLATFORM react-like",
     "browser-image-compression": "^2.0.2",
     "color": "^5.0.3",
@@ -110,14 +110,14 @@
     "@oslojs/otp": "^1.1.0",
     "qrcode": "^1.5.4",
     "//": "NEXT_LINE_PLATFORM react-like",
-    "react-easy-crop": "^5.4.1",
+    "react-easy-crop": "^5.5.6",
     "//": "NEXT_LINE_PLATFORM react-like",
     "react-hook-form": "^7.70.0",
     "rimraf": "^6.1.2",
     "//": "NEXT_LINE_PLATFORM react-like",
     "tailwindcss-animate": "^1.0.7",
-    "tsx": "^4.7.2",
-    "yup": "^1.4.0"
+    "tsx": "^4.21.0",
+    "yup": "^1.7.1"
   },
   "//": "IF_PLATFORM react-like",
   "peerDependencies": {

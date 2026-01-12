@@ -99,7 +99,7 @@
     "tailwindcss-animate": "^1.0.7",
     "three": "^0.169.0",
     "use-debounce": "^10.0.5",
-    "yup": "^1.4.0"
+    "yup": "^1.7.1"
   },
   "devDependencies": {
     "@types/canvas-confetti": "^1.6.4",
