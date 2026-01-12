@@ -1,5 +1,5 @@
 import { wait } from "@stackframe/stack-shared/dist/utils/promises";
-import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
+import { deindent, nicify } from "@stackframe/stack-shared/dist/utils/strings";
 import beautify from "js-beautify";
 import { describe } from "vitest";
 import { it, logIfTestFails } from "../../../../../helpers";
@@ -1720,7 +1720,7 @@ describe("email outbox pagination", () => {
       method: "GET",
       accessType: "server",
     });
-    logIfTestFails("allResponse", allResponse);
+    logIfTestFails("allResponse", nicify(allResponse));
     expect(allResponse.status).toBe(200);
     expect(allResponse.body.items.length).toBe(5);
 
@@ -1729,7 +1729,7 @@ describe("email outbox pagination", () => {
       method: "GET",
       accessType: "server",
     });
-    logIfTestFails("page1Response", page1Response);
+    logIfTestFails("page1Response", nicify(page1Response));
     expect(page1Response.status).toBe(200);
     expect(page1Response.body.items.length).toBe(2);
     expect(page1Response.body.is_paginated).toBe(true);
@@ -1741,7 +1741,7 @@ describe("email outbox pagination", () => {
       method: "GET",
       accessType: "server",
     });
-    logIfTestFails("page2Response", page2Response);
+    logIfTestFails("page2Response", nicify(page2Response));
     expect(page2Response.status).toBe(200);
     expect(page2Response.body.items.length).toBe(2);
 
@@ -1758,7 +1758,7 @@ describe("email outbox pagination", () => {
       method: "GET",
       accessType: "server",
     });
-    logIfTestFails("page3Response", page3Response);
+    logIfTestFails("page3Response", nicify(page3Response));
     expect(page3Response.status).toBe(200);
     expect(page3Response.body.items.length).toBe(1); // Only 1 remaining
     expect(page3Response.body.pagination.next_cursor).toBeNull(); // No more pages
