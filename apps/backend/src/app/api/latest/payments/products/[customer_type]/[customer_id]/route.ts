@@ -83,6 +83,7 @@ export const GET = createSmartRouteHandler({
   },
 });
 
+
 export const POST = createSmartRouteHandler({
   metadata: {
     summary: "Grant a product to a customer",
@@ -151,3 +152,4 @@ export const POST = createSmartRouteHandler({
     };
   },
 });
+

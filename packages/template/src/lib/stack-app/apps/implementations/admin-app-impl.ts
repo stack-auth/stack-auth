@@ -812,12 +812,17 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
     return result as AdminEmailOutbox;
   }
 
-  async listOutboxEmails(options?: { status?: string, simpleStatus?: string }): Promise<AdminEmailOutbox[]> {
+  async listOutboxEmails(options?: { status?: string, simpleStatus?: string, limit?: number, cursor?: string }): Promise<{ items: AdminEmailOutbox[], nextCursor: string | null }> {
     const response = await this._interface.listOutboxEmails({
       status: options?.status,
       simple_status: options?.simpleStatus,
+      limit: options?.limit,
+      cursor: options?.cursor,
     });
-    return response.items.map((item) => this._emailOutboxCrudToAdmin(item));
+    return {
+      items: response.items.map((item) => this._emailOutboxCrudToAdmin(item)),
+      nextCursor: response.pagination?.next_cursor ?? null,
+    };
   }
 
   async getOutboxEmail(id: string): Promise<AdminEmailOutbox> {
@@ -863,4 +868,31 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
     return data;
   }
   // END_PLATFORM
+
+  async previewAffectedUsersByOnboardingChange(
+    onboarding: { requireEmailVerification?: boolean },
+    limit?: number,
+  ): Promise<{
+    affectedUsers: Array<{
+      id: string,
+      displayName: string | null,
+      primaryEmail: string | null,
+      restrictedReason: { type: "anonymous" | "email_not_verified" },
+    }>,
+    totalAffectedCount: number,
+  }> {
+    const result = await this._interface.previewAffectedUsersByOnboardingChange(
+      { require_email_verification: onboarding.requireEmailVerification },
+      limit,
+    );
+    return {
+      affectedUsers: result.affected_users.map(u => ({
+        id: u.id,
+        displayName: u.display_name,
+        primaryEmail: u.primary_email,
+        restrictedReason: u.restricted_reason as { type: "anonymous" | "email_not_verified" },
+      })),
+      totalAffectedCount: result.total_affected_count,
+    };
+  }
 }

@@ -1,4 +1,10 @@
 import {
+  clearPerfHistory,
+  getAggregatePerfStats,
+  getCurrentPerfSnapshot,
+  getPerfHistory,
+} from "@/lib/dev-perf-stats";
+import {
   clearRequestStats,
   getAggregateStats,
   getMostCommonRequests,
@@ -27,6 +33,65 @@ const aggregateStatsSchema = yupObject({
   averageTimeMs: yupNumber().defined(),
 });
 
+const pgPoolStatsSchema = yupObject({
+  total: yupNumber().defined(),
+  idle: yupNumber().defined(),
+  waiting: yupNumber().defined(),
+}).nullable();
+
+const eventLoopDelayStatsSchema = yupObject({
+  minMs: yupNumber().defined(),
+  maxMs: yupNumber().defined(),
+  meanMs: yupNumber().defined(),
+  p50Ms: yupNumber().defined(),
+  p95Ms: yupNumber().defined(),
+  p99Ms: yupNumber().defined(),
+}).nullable();
+
+const eventLoopUtilizationStatsSchema = yupObject({
+  utilization: yupNumber().defined(),
+  idle: yupNumber().defined(),
+  active: yupNumber().defined(),
+}).nullable();
+
+const memoryStatsSchema = yupObject({
+  heapUsedMB: yupNumber().defined(),
+  heapTotalMB: yupNumber().defined(),
+  rssMB: yupNumber().defined(),
+  externalMB: yupNumber().defined(),
+  arrayBuffersMB: yupNumber().defined(),
+});
+
+const perfSnapshotSchema = yupObject({
+  timestamp: yupNumber().defined(),
+  pgPool: pgPoolStatsSchema.defined(),
+  eventLoopDelay: eventLoopDelayStatsSchema.defined(),
+  eventLoopUtilization: eventLoopUtilizationStatsSchema.defined(),
+  memory: memoryStatsSchema.defined(),
+});
+
+const perfAggregateSchema = yupObject({
+  pgPool: yupObject({
+    avgTotal: yupNumber().defined(),
+    avgIdle: yupNumber().defined(),
+    maxWaiting: yupNumber().defined(),
+  }).nullable().defined(),
+  eventLoopDelay: yupObject({
+    avgP50Ms: yupNumber().defined(),
+    avgP99Ms: yupNumber().defined(),
+    maxP99Ms: yupNumber().defined(),
+  }).nullable().defined(),
+  eventLoopUtilization: yupObject({
+    avgUtilization: yupNumber().defined(),
+    maxUtilization: yupNumber().defined(),
+  }).nullable().defined(),
+  memory: yupObject({
+    avgHeapUsedMB: yupNumber().defined(),
+    avgRssMB: yupNumber().defined(),
+    maxRssMB: yupNumber().defined(),
+  }).defined(),
+});
+
 function assertDevelopmentMode() {
   if (getNodeEnvironment() !== "development") {
     throw new StatusError(403, "This endpoint is only available in development mode");
@@ -46,6 +111,10 @@ export const GET = createSmartRouteHandler({
       mostCommon: yupArray(requestStatSchema.defined()).defined(),
       mostTimeConsuming: yupArray(requestStatSchema.defined()).defined(),
       slowest: yupArray(requestStatSchema.defined()).defined(),
+      // Performance metrics
+      perfCurrent: perfSnapshotSchema.defined(),
+      perfHistory: yupArray(perfSnapshotSchema.defined()).defined(),
+      perfAggregate: perfAggregateSchema.defined(),
     }).defined(),
   }),
   handler: async () => {
@@ -59,6 +128,10 @@ export const GET = createSmartRouteHandler({
         mostCommon: getMostCommonRequests(20),
         mostTimeConsuming: getMostTimeConsumingRequests(20),
         slowest: getSlowestRequests(20),
+        // Performance metrics
+        perfCurrent: getCurrentPerfSnapshot(),
+        perfHistory: getPerfHistory(),
+        perfAggregate: getAggregatePerfStats(),
       },
     };
   },
@@ -77,6 +150,7 @@ export const DELETE = createSmartRouteHandler({
     assertDevelopmentMode();
 
     clearRequestStats();
+    clearPerfHistory();
 
     return {
       statusCode: 200,

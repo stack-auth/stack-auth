@@ -47,7 +47,7 @@ import { NotificationCategory } from "../../notification-categories";
 import { TeamPermission } from "../../permissions";
 import { AdminOwnedProject, AdminProjectUpdateOptions, Project, adminProjectCreateOptionsToCrud } from "../../projects";
 import { EditableTeamMemberProfile, Team, TeamCreateOptions, TeamInvitation, TeamUpdateOptions, TeamUser, teamCreateOptionsToCrud, teamUpdateOptionsToCrud } from "../../teams";
-import { ActiveSession, Auth, BaseUser, CurrentUser, InternalUserExtra, OAuthProvider, ProjectCurrentUser, SyncedPartialUser, TokenPartialUser, UserExtra, UserUpdateOptions, attachUserDestructureGuard, userUpdateOptionsToCrud } from "../../users";
+import { ActiveSession, Auth, BaseUser, CurrentUser, InternalUserExtra, OAuthProvider, ProjectCurrentUser, SyncedPartialUser, TokenPartialUser, UserExtra, UserUpdateOptions, userUpdateOptionsToCrud, withUserDestructureGuard } from "../../users";
 import { StackClientApp, StackClientAppConstructorOptions, StackClientAppJson } from "../interfaces/client-app";
 import { _StackAdminAppImplIncomplete } from "./admin-app-impl";
 import { TokenObject, clientVersion, createCache, createCacheBySession, createEmptyTokenStore, getBaseUrl, getDefaultExtraRequestHeaders, getDefaultProjectId, getDefaultPublishableClientKey, getUrls, resolveConstructorOptions } from "./common";
@@ -1276,6 +1276,8 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       passkeyAuthEnabled: crud.passkey_auth_enabled,
       isMultiFactorRequired: crud.requires_totp_mfa,
       isAnonymous: crud.is_anonymous,
+      isRestricted: crud.is_restricted,
+      restrictedReason: crud.restricted_reason,
       toClientJson(): CurrentUserCrud['Client']['Read'] {
         return crud;
       }
@@ -1307,14 +1309,14 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       async revokeSession(sessionId: string) {
         await app._interface.deleteSession(sessionId, session);
       },
-      setDisplayName(displayName: string) {
+      setDisplayName(displayName: string | null) {
         return this.update({ displayName });
       },
       setClientMetadata(metadata: Record<string, any>) {
         return this.update({ clientMetadata: metadata });
       },
-      async setSelectedTeam(team: Team | null) {
-        await this.update({ selectedTeamId: team?.id ?? null });
+      async setSelectedTeam(team: Team | string | null) {
+        await this.update({ selectedTeamId: typeof team === 'string' ? team : team?.id ?? null });
       },
       getConnectedAccount,
       useConnectedAccount, // THIS_LINE_PLATFORM react-like
@@ -1648,6 +1650,26 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     return this._customerProductsFromResponse(response);
   }
 
+  async cancelSubscription(options: { productId: string } | { productId: string, teamId: string }): Promise<void> {
+    const session = await this._getSession();
+    const user = await this.getUser();
+    if (!user) {
+      throw new KnownErrors.UserAuthenticationRequired();
+    }
+    const customerType = "teamId" in options ? "team" : "user";
+    const customerId = "teamId" in options ? options.teamId : user.id;
+    await this._interface.cancelSubscription({
+      customer_type: customerType,
+      customer_id: customerId,
+      product_id: options.productId,
+    }, session);
+    if (customerType === "user") {
+      await this._userProductsCache.invalidateWhere(([cachedSession, userId]) => cachedSession === session && userId === customerId);
+    } else {
+      await this._teamProductsCache.invalidateWhere(([cachedSession, teamId]) => cachedSession === session && teamId === customerId);
+    }
+  }
+
   // IF_PLATFORM react-like
   useProducts(options: CustomerProductsRequestOptions): CustomerProductsList {
     const session = this._useSession();
@@ -1660,16 +1682,13 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
   // END_PLATFORM
 
   protected _currentUserFromCrud(crud: NonNullable<CurrentUserCrud['Client']['Read']>, session: InternalSession): ProjectCurrentUser<ProjectId> {
-    const currentUser = {
+    const currentUser = withUserDestructureGuard({
       ...this._createBaseUser(crud),
       ...this._createAuth(session),
       ...this._createUserExtraFromCurrent(crud, session),
       ...this._isInternalProject() ? this._createInternalUserExtra(session) : {},
       ...this._createCustomer(crud.id, "user", session),
-    } satisfies CurrentUser;
-
-    attachUserDestructureGuard(currentUser);
-    Object.freeze(currentUser);
+    } satisfies CurrentUser);
     return currentUser as ProjectCurrentUser<ProjectId>;
   }
   protected _clientSessionFromCrud(crud: SessionsCrud['Client']['Read']): ActiveSession {
@@ -1773,7 +1792,8 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
           const queryParams = new URLSearchParams(window.location.search);
           url = queryParams.get("after_auth_return_to") || url;
         }
-      } else if (handlerName === "signIn" || handlerName === "signUp") {
+      } else if (handlerName === "signIn" || handlerName === "signUp" || handlerName === "onboarding") {
+        // For signIn, signUp, and onboarding, preserve the return URL so user can be redirected back after completing the flow
         if (isReactServer || typeof window === "undefined") {
           // TODO implement this
         } else {
@@ -1803,6 +1823,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
   async redirectToMagicLinkCallback(options?: RedirectToOptions) { return await this._redirectToHandler("magicLinkCallback", options); }
   async redirectToAfterSignIn(options?: RedirectToOptions) { return await this._redirectToHandler("afterSignIn", options); }
   async redirectToAfterSignUp(options?: RedirectToOptions) { return await this._redirectToHandler("afterSignUp", options); }
+  async redirectToOnboarding(options?: RedirectToOptions) { return await this._redirectToHandler("onboarding", options); }
   async redirectToAfterSignOut(options?: RedirectToOptions) { return await this._redirectToHandler("afterSignOut", options); }
   async redirectToAccountSettings(options?: RedirectToOptions) { return await this._redirectToHandler("accountSettings", options); }
   async redirectToError(options?: RedirectToOptions) { return await this._redirectToHandler("error", options); }
@@ -1873,17 +1894,26 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
   async getUser(options: GetCurrentUserOptions<HasTokenStore> & { or: 'anonymous' }): Promise<ProjectCurrentUser<ProjectId>>;
   async getUser(options?: GetCurrentUserOptions<HasTokenStore>): Promise<ProjectCurrentUser<ProjectId> | null>;
   async getUser(options?: GetCurrentUserOptions<HasTokenStore>): Promise<ProjectCurrentUser<ProjectId> | null> {
+    // Validate that includeRestricted: false and or: 'anonymous' are mutually exclusive
+    if (options?.or === 'anonymous' && options.includeRestricted === false) {
+      throw new Error("Cannot use { or: 'anonymous' } with { includeRestricted: false }. Anonymous users implicitly include restricted users.");
+    }
+
     this._ensurePersistentTokenStore(options?.tokenStore);
     const session = await this._getSession(options?.tokenStore);
     let crud = Result.orThrow(await this._currentUserCache.getOrWait([session], "write-only"));
-    if (crud?.is_anonymous && options?.or !== "anonymous" && options?.or !== "anonymous-if-exists[deprecated]") {
-      crud = null;
-    }
+    const includeAnonymous = options?.or === "anonymous" || options?.or === "anonymous-if-exists[deprecated]";
+    const includeRestricted = options?.includeRestricted === true || includeAnonymous;
 
-    if (crud === null) {
+    if (crud === null || (crud.is_anonymous && !includeAnonymous) || (crud.is_restricted && !includeRestricted)) {
       switch (options?.or) {
         case 'redirect': {
-          await this.redirectToSignIn({ replace: true });
+          if (!crud?.is_anonymous && crud?.is_restricted) {
+            await this.redirectToOnboarding({ replace: true });
+          } else {
+            await this.redirectToSignIn({ replace: true });
+          }
+          // TODO: We should probably `await neverResolve()` here instead of returning null. I (Konsti) wanna do it in a release with few changes though because I'm not sure if it'll break anything
           break;
         }
         case 'throw': {
@@ -1891,7 +1921,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         }
         case 'anonymous': {
           const tokens = await this._signUpAnonymously();
-          return await this.getUser({ tokenStore: tokens, or: "anonymous-if-exists[deprecated]" }) ?? throwErr("Something went wrong while signing up anonymously");
+          return await this.getUser({ tokenStore: tokens, or: "anonymous-if-exists[deprecated]", includeRestricted: true }) ?? throwErr("Something went wrong while signing up anonymously");
         }
         case undefined:
         case "anonymous-if-exists[deprecated]":
@@ -1910,18 +1940,26 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
   useUser(options: GetCurrentUserOptions<HasTokenStore> & { or: 'anonymous' }): ProjectCurrentUser<ProjectId>;
   useUser(options?: GetCurrentUserOptions<HasTokenStore>): ProjectCurrentUser<ProjectId> | null;
   useUser(options?: GetCurrentUserOptions<HasTokenStore>): ProjectCurrentUser<ProjectId> | null {
+    // Validate that includeRestricted: false and or: 'anonymous' are mutually exclusive
+    if (options?.or === 'anonymous' && options.includeRestricted === false) {
+      throw new Error("Cannot use { or: 'anonymous' } with { includeRestricted: false }. Anonymous users implicitly include restricted users.");
+    }
+
     this._ensurePersistentTokenStore(options?.tokenStore);
 
     const session = this._useSession(options?.tokenStore);
     let crud = useAsyncCache(this._currentUserCache, [session] as const, "clientApp.useUser()");
-    if (crud?.is_anonymous && options?.or !== "anonymous" && options?.or !== "anonymous-if-exists[deprecated]") {
-      crud = null;
-    }
+    const includeAnonymous = options?.or === "anonymous" || options?.or === "anonymous-if-exists[deprecated]";
+    const includeRestricted = options?.includeRestricted === true || includeAnonymous;
 
-    if (crud === null) {
+    if (crud === null || (crud.is_anonymous && !includeAnonymous) || (crud.is_restricted && !includeRestricted)) {
       switch (options?.or) {
         case 'redirect': {
-          runAsynchronously(this.redirectToSignIn({ replace: true }));
+          if (!crud?.is_anonymous && crud?.is_restricted) {
+            runAsynchronously(this.redirectToOnboarding({ replace: true }));
+          } else {
+            runAsynchronously(this.redirectToSignIn({ replace: true }));
+          }
           suspend();
           throw new StackAssertionError("suspend should never return");
         }
@@ -1969,6 +2007,8 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       displayName: accessToken.payload.name,
       primaryEmailVerified: accessToken.payload.email_verified,
       isAnonymous,
+      isRestricted: accessToken.payload.is_restricted,
+      restrictedReason: accessToken.payload.restricted_reason,
     } satisfies TokenPartialUser;
   }
 
@@ -1983,6 +2023,8 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       primaryEmail: auth.email ?? null,
       primaryEmailVerified: auth.email_verified as boolean,
       isAnonymous: auth.is_anonymous as boolean,
+      isRestricted: auth.is_restricted as boolean,
+      restrictedReason: (auth.restricted_reason as { type: "anonymous" | "email_not_verified" } | null) ?? null,
     };
   }
 
@@ -2567,6 +2609,8 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
   protected async _refreshUser(session: InternalSession) {
     // TODO this should take a user ID instead of a session, and automatically refresh all sessions with that user ID
     await this._refreshSession(session);
+    // Suggest updating the access token so it contains the updated user data
+    session.suggestAccessTokenExpired();
   }
 
   protected async _refreshSession(session: InternalSession) {

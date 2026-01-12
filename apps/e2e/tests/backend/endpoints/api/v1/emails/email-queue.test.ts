@@ -2,7 +2,7 @@ import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
 import beautify from "js-beautify";
 import { describe } from "vitest";
-import { it } from "../../../../../helpers";
+import { it, logIfTestFails } from "../../../../../helpers";
 import { withPortPrefix } from "../../../../../helpers/ports";
 import { Auth, Project, User, backendContext, bumpEmailAddress, niceBackendFetch } from "../../../../backend-helpers";
 
@@ -1648,6 +1648,234 @@ describe("theme and template deletion after scheduling", () => {
     const outboxEmails = await getOutboxEmails({ subject: "Custom Theme Baseline Test Email" });
     expect(outboxEmails.length).toBe(1);
     expect(outboxEmails[0].status).toBe("sent");
+  });
+});
+
+describe("email outbox pagination", () => {
+  it("should paginate email outbox results with cursor", async ({ expect }) => {
+    await Project.createAndSwitch({
+      display_name: "Test Pagination Project",
+      config: {
+        email_config: testEmailConfig,
+      },
+    });
+
+    // Create a draft for sending emails
+    const templateSource = deindent`
+      import { Container } from "@react-email/components";
+      import { Subject, NotificationCategory, Props } from "@stackframe/emails";
+
+      export function EmailTemplate({ user, project }) {
+        return (
+          <Container>
+            <Subject value="Pagination Test Email" />
+            <NotificationCategory value="Transactional" />
+            <div>Test</div>
+          </Container>
+        );
+      }
+    `;
+
+    const createDraftResponse = await niceBackendFetch("/api/v1/internal/email-drafts", {
+      method: "POST",
+      accessType: "admin",
+      body: {
+        display_name: "Pagination Draft",
+        tsx_source: templateSource,
+        theme_id: false,
+      },
+    });
+    expect(createDraftResponse.status).toBe(200);
+    const draftId = createDraftResponse.body.id;
+
+    // Create 5 users
+    const userIds: string[] = [];
+    for (let i = 0; i < 5; i++) {
+      const email = `pagination-test-${i}@example.com`;
+      const createUserResponse = await niceBackendFetch("/api/v1/users", {
+        method: "POST",
+        accessType: "server",
+        body: {
+          primary_email: email,
+          primary_email_verified: true,
+        },
+      });
+      expect(createUserResponse.status).toBe(201);
+      userIds.push(createUserResponse.body.id);
+    }
+
+    // Send emails to all users
+    const sendResponse = await niceBackendFetch("/api/v1/emails/send-email", {
+      method: "POST",
+      accessType: "server",
+      body: {
+        user_ids: userIds,
+        draft_id: draftId,
+      },
+    });
+    expect(sendResponse.status).toBe(200);
+
+    // Ensure there are 5 emails in the outbox
+    const allResponse = await niceBackendFetch("/api/v1/emails/outbox", {
+      method: "GET",
+      accessType: "server",
+    });
+    logIfTestFails({ allResponse });
+    expect(allResponse.status).toBe(200);
+    expect(allResponse.body.items.length).toBe(5);
+
+    // Test pagination with limit=2
+    const page1Response = await niceBackendFetch("/api/v1/emails/outbox?limit=2", {
+      method: "GET",
+      accessType: "server",
+    });
+    logIfTestFails({ page1Response });
+    expect(page1Response.status).toBe(200);
+    expect(page1Response.body.items.length).toBe(2);
+    expect(page1Response.body.is_paginated).toBe(true);
+    expect(page1Response.body.pagination.next_cursor).not.toBeNull();
+
+    // Get next page using cursor
+    const cursor = page1Response.body.pagination.next_cursor;
+    const page2Response = await niceBackendFetch(`/api/v1/emails/outbox?limit=2&cursor=${cursor}`, {
+      method: "GET",
+      accessType: "server",
+    });
+    logIfTestFails({ page2Response });
+    expect(page2Response.status).toBe(200);
+    expect(page2Response.body.items.length).toBe(2);
+
+    // Verify items on page 2 are different from page 1
+    const page1Ids = new Set(page1Response.body.items.map((e: { id: string }) => e.id));
+    const page2Ids = page2Response.body.items.map((e: { id: string }) => e.id);
+    for (const id of page2Ids) {
+      expect(page1Ids.has(id)).toBe(false);
+    }
+
+    // Get page 3
+    const cursor2 = page2Response.body.pagination.next_cursor;
+    const page3Response = await niceBackendFetch(`/api/v1/emails/outbox?limit=2&cursor=${cursor2}`, {
+      method: "GET",
+      accessType: "server",
+    });
+    logIfTestFails({ page3Response });
+    expect(page3Response.status).toBe(200);
+    expect(page3Response.body.items.length).toBe(1); // Only 1 remaining
+    expect(page3Response.body.pagination.next_cursor).toBeNull(); // No more pages
+  });
+
+  it("should reject limit greater than 100", async ({ expect }) => {
+    await Project.createAndSwitch({
+      display_name: "Test Limit Project",
+      config: {
+        email_config: testEmailConfig,
+      },
+    });
+
+    const response = await niceBackendFetch("/api/v1/emails/outbox?limit=101", {
+      method: "GET",
+      accessType: "server",
+    });
+    expect(response.status).toBe(400);
+  });
+
+  it("should order emails with finishedSendingAt first (nulls last)", async ({ expect }) => {
+    await Project.createAndSwitch({
+      display_name: "Test Ordering Project",
+      config: {
+        email_config: testEmailConfig,
+      },
+    });
+
+    // Create a slow-rendering draft (so we have time to pause it)
+    const templateSource = deindent`
+      import { Container } from "@react-email/components";
+      import { Subject, NotificationCategory, Props } from "@stackframe/emails";
+
+      // Artificial delay to make the email slow to render
+      const startTime = performance.now();
+      while (performance.now() - startTime < 200) {
+        // Busy wait
+      }
+
+      export function EmailTemplate({ user, project }) {
+        return (
+          <Container>
+            <Subject value="Ordering Test Email" />
+            <NotificationCategory value="Transactional" />
+            <div>Test</div>
+          </Container>
+        );
+      }
+    `;
+
+    const createDraftResponse = await niceBackendFetch("/api/v1/internal/email-drafts", {
+      method: "POST",
+      accessType: "admin",
+      body: {
+        display_name: "Ordering Draft",
+        tsx_source: templateSource,
+        theme_id: false,
+      },
+    });
+    expect(createDraftResponse.status).toBe(200);
+    const draftId = createDraftResponse.body.id;
+
+    // Create user
+    const mailbox = backendContext.value.mailbox;
+    const createUserResponse = await niceBackendFetch("/api/v1/users", {
+      method: "POST",
+      accessType: "server",
+      body: {
+        primary_email: mailbox.emailAddress,
+        primary_email_verified: true,
+      },
+    });
+    expect(createUserResponse.status).toBe(201);
+    const userId = createUserResponse.body.id;
+
+    // Send 2 emails to the user and wait for them to be sent
+    for (let i = 0; i < 2; i++) {
+      const sendResponse = await niceBackendFetch("/api/v1/emails/send-email", {
+        method: "POST",
+        accessType: "server",
+        body: {
+          user_ids: [userId],
+          draft_id: draftId,
+        },
+      });
+      expect(sendResponse.status).toBe(200);
+    }
+
+    // Wait for email processing - they should be sent
+    await wait(5_000);
+
+    // Verify at least one email was sent
+    const listResponse = await niceBackendFetch("/api/v1/emails/outbox", {
+      method: "GET",
+      accessType: "server",
+    });
+    expect(listResponse.status).toBe(200);
+    const emails = listResponse.body.items.filter((e: { subject?: string }) =>
+      e.subject === "Ordering Test Email"
+    );
+
+    // Check ordering: finished emails should come before non-finished ones
+    // Statuses that have finishedSendingAt set (email has completed processing)
+    const finishedStatuses = new Set(["sent", "opened", "clicked", "marked-as-spam", "server-error", "bounced", "delivery-delayed", "skipped"]);
+    let foundNonFinished = false;
+    for (const email of emails) {
+      const hasFinished = finishedStatuses.has(email.status);
+      if (!hasFinished) {
+        foundNonFinished = true;
+      } else if (foundNonFinished) {
+        // We found a finished email after a non-finished email - wrong ordering
+        expect.fail(`Wrong ordering: found '${email.status}' after non-finished emails`);
+      }
+    }
+    // We should have at least one finished email
+    const hasSentEmails = emails.some((e: { status: string }) => finishedStatuses.has(e.status));
+    expect(hasSentEmails).toBe(true);
   });
 });
 
