@@ -32,6 +32,7 @@ import {
   SidebarIcon,
   type Icon as PhosphorIcon,
 } from "@phosphor-icons/react";
+import { TooltipPortal } from "@radix-ui/react-tooltip";
 import { UserButton } from "@stackframe/stack";
 import { ALL_APPS, type AppId } from "@stackframe/stack-shared/dist/apps/apps-config";
 import { typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
@@ -218,9 +219,11 @@ function NavItem({
               </Button>
             )}
           </TooltipTrigger>
-          <TooltipContent side="right">
-            {item.name}
-          </TooltipContent>
+          <TooltipPortal>
+            <TooltipContent side="right" className="!z-[9999]">
+              {item.name}
+            </TooltipContent>
+          </TooltipPortal>
         </Tooltip>
       </div>
     );
@@ -513,9 +516,11 @@ function SidebarContent({
                   <SidebarIcon className={cn("h-4 w-4 transition-transform duration-200", isCollapsed && "rotate-180")} />
                 </Button>
               </TooltipTrigger>
-              <TooltipContent side="right">
-                {isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
-              </TooltipContent>
+              <TooltipPortal>
+                <TooltipContent side="right" className="!z-[9999]">
+                  {isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+                </TooltipContent>
+              </TooltipPortal>
             </Tooltip>
           )}
         </div>
