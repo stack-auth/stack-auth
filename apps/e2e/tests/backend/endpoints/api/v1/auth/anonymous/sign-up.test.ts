@@ -20,6 +20,7 @@ it("allows anonymous users to sign up on the internal project", async ({ expect 
         "has_password": false,
         "id": "<stripped UUID>",
         "is_anonymous": true,
+        "is_restricted": true,
         "oauth_providers": [],
         "otp_auth_enabled": false,
         "passkey_auth_enabled": false,
@@ -27,6 +28,7 @@ it("allows anonymous users to sign up on the internal project", async ({ expect 
         "primary_email_verified": false,
         "profile_image_url": null,
         "requires_totp_mfa": false,
+        "restricted_reason": { "type": "anonymous" },
         "selected_team": {
           "client_metadata": null,
           "client_read_only_metadata": null,

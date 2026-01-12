@@ -132,6 +132,10 @@ export async function applyMigrations(options: {
           const isSingleStatement = statement.includes('SINGLE_STATEMENT_SENTINEL');
           const isConditionallyRepeatMigration = statement.includes('CONDITIONALLY_REPEAT_MIGRATION_SENTINEL');
 
+          if (isConditionallyRepeatMigration && !isSingleStatement) {
+            throw new StackAssertionError("CONDITIONALLY_REPEAT_MIGRATION_SENTINEL requires SINGLE_STATEMENT_SENTINEL", { statement });
+          }
+
           log(`  |> Running statement${isSingleStatement ? "" : "s"}${runOutside ? " outside of transaction" : ""}: ${statement.replace(/(\n|\s)/gm, " ").slice(0, 20)}...`);
 
           const txOrPrismaClient = runOutside ? options.prismaClient : tx;

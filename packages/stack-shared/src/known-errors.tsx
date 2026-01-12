@@ -650,6 +650,18 @@ const UserNotFound = createKnownErrorConstructor(
   () => [] as const,
 );
 
+const RestrictedUserNotAllowed = createKnownErrorConstructor(
+  KnownError,
+  "RESTRICTED_USER_NOT_ALLOWED",
+  (restrictedReason: { type: "anonymous" | "email_not_verified" }) => [
+    403,
+    `The user in the access token is in restricted state. Reason: ${restrictedReason.type}. Please pass the X-Stack-Allow-Restricted-User header if this is intended.`,
+    {
+      restricted_reason: restrictedReason,
+    },
+  ] as const,
+  (json: any) => [json.restricted_reason ?? { type: "anonymous" }] as const,
+);
 
 const ProjectNotFound = createKnownErrorConstructor(
   KnownError,
@@ -1046,6 +1058,19 @@ const TeamMembershipNotFound = createKnownErrorConstructor(
     },
   ] as const,
   (json: any) => [json.team_id, json.user_id] as const,
+);
+
+const TeamInvitationRestrictedUserNotAllowed = createKnownErrorConstructor(
+  KnownError,
+  "TEAM_INVITATION_RESTRICTED_USER_NOT_ALLOWED",
+  (restrictedReason: { type: "anonymous" | "email_not_verified" }) => [
+    403,
+    `Restricted users cannot accept team invitations. Reason: ${restrictedReason.type}. Please complete the onboarding process before accepting team invitations.`,
+    {
+      restricted_reason: restrictedReason,
+    },
+  ] as const,
+  (json: any) => [json.restricted_reason ?? { type: "anonymous" }] as const,
 );
 
 
@@ -1698,6 +1723,7 @@ export const KnownErrors = {
   EmailNotVerified,
   UserIdDoesNotExist,
   UserNotFound,
+  RestrictedUserNotAllowed,
   ApiKeyNotFound,
   PublicApiKeyCannotBeRevoked,
   ProjectNotFound,
@@ -1731,6 +1757,7 @@ export const KnownErrors = {
   ContainedPermissionNotFound,
   TeamNotFound,
   TeamMembershipNotFound,
+  TeamInvitationRestrictedUserNotAllowed,
   EmailTemplateAlreadyExists,
   OAuthConnectionNotConnectedToUser,
   OAuthConnectionAlreadyConnectedToAnotherUser,
