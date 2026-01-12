@@ -4,11 +4,12 @@ import { PrismaNeon } from "@prisma/adapter-neon";
 import { PrismaPg } from '@prisma/adapter-pg';
 import { readReplicas } from '@prisma/extension-read-replicas';
 import { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
+import { yupObject, yupValidate } from "@stackframe/stack-shared/dist/schema-fields";
 import { getEnvVariable, getNodeEnvironment } from '@stackframe/stack-shared/dist/utils/env';
-import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { captureError, StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { globalVar } from "@stackframe/stack-shared/dist/utils/globals";
 import { deepPlainEquals, filterUndefined, typedFromEntries, typedKeys } from "@stackframe/stack-shared/dist/utils/objects";
-import { concatStacktracesIfRejected, ignoreUnhandledRejection } from "@stackframe/stack-shared/dist/utils/promises";
+import { concatStacktracesIfRejected, ignoreUnhandledRejection, wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { throwingProxy } from "@stackframe/stack-shared/dist/utils/proxies";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { traceSpan } from "@stackframe/stack-shared/dist/utils/telemetry";
@@ -144,10 +145,130 @@ export type PrismaClientWithReplica<T extends PrismaClient = PrismaClient> = Omi
   $replica: () => Omit<T, "$on">,
 };
 
+
+/**
+ * Waits until ALL replicas have caught up to the specified WAL LSN.
+ * This ensures read-after-write consistency when using read replicas.
+ *
+ * Strategy types (STACK_DATABASE_REPLICATION_WAIT_STRATEGY):
+ * - "none": Don't wait for replication (default)
+ * - "pg-stat-replication": Use pg_stat_replication (for local dev with streaming replication)
+ * - "aurora": Use aurora_replica_status() (for AWS Aurora)
+ */
+async function waitForReplication(primary: PrismaClient, lsn: string): Promise<void> {
+  const strategy = getEnvVariable("STACK_DATABASE_REPLICATION_WAIT_STRATEGY", "none");
+  return await traceSpan({
+    description: 'waiting for replication',
+    attributes: {
+      'stack.db-replication.strategy': strategy,
+      'stack.db-replication.lsn': lsn,
+    },
+  }, async () => {
+    if (strategy === "none") {
+      return;
+    }
+
+    const minLsnSubquery = {
+      "pg-stat-replication": `(SELECT MIN(replay_lsn) FROM pg_stat_replication)`,
+      "aurora": `(SELECT MIN(current_read_lsn::pg_lsn) FROM aurora_replica_status())`,
+    }[strategy] ?? throwErr(`Unknown replication wait strategy: ${strategy}`);
+
+    // Validate LSN format (format: hex/hex, e.g., "0/1234ABC"). We do this just to be extra safe as we're using $queryRawUnsafe later
+    if (!/^[0-9A-Fa-f]+\/[0-9A-Fa-f]+$/.test(lsn)) {
+      throw new StackAssertionError(`Invalid LSN format: ${lsn}`);
+    }
+
+    // Poll until all replicas have caught up to the target LSN
+    // Using $queryRawUnsafe because DO blocks don't support bind parameters
+    await (primary as any).$queryRawUnsafe(`
+      DO $$
+      DECLARE
+        min_replica_lsn pg_lsn;
+      BEGIN
+        LOOP
+          SELECT ${minLsnSubquery} INTO min_replica_lsn;
+
+          -- Exit if no replicas connected or all replicas have caught up
+          IF min_replica_lsn IS NULL OR min_replica_lsn >= '${lsn}'::pg_lsn THEN
+            EXIT;
+          END IF;
+
+          -- Wait 10ms and check again
+          PERFORM pg_sleep(0.01);
+        END LOOP;
+      END $$;
+    `);
+  });
+}
+
+/**
+ * Extends a Prisma client to wait for replication after all operations.
+ * This ensures read-after-write consistency when using a read replica.
+ */
+function extendWithReplicationWait<T extends PrismaClient>(client: T): T {
+  const strategy = getEnvVariable("STACK_DATABASE_REPLICATION_WAIT_STRATEGY", "none");
+  if (strategy === "none") {
+    return client;
+  }
+
+  const readLsnAndWaitForReplication = async (client: PrismaClient) => {
+    await traceSpan({
+      description: 'getting current LSN and waiting for replication',
+      attributes: {
+        'stack.db-replication.strategy': strategy,
+      },
+    }, async (span) => {
+      try {
+        const [{ lsn }] = await (client as any).$queryRaw<[{ lsn: string }]>`SELECT pg_current_wal_lsn()::text AS lsn`;
+        await waitForReplication(client, lsn);
+      } catch (e) {
+        span.setAttribute('stack.db-replication.error', `${e}`);
+        captureError("prisma-client-replication-error", new StackAssertionError("Error getting current LSN and waiting for replication. We'll just wait 50ms instead, but please fix this as the replication may not be working.", { cause: e }));
+        await wait(50);
+      }
+    });
+  };
+
+  return client.$extends({
+    client: {
+      async $transaction(...args: Parameters<PrismaClient['$transaction']>) {
+        // eslint-disable-next-line no-restricted-syntax
+        const result = await client.$transaction(...args);
+        await readLsnAndWaitForReplication(client);
+        return result;
+      },
+    },
+    query: {
+      async $allOperations(params: { args: any, query: (args: any) => Promise<any>, operation: string, model?: string, __internalParams?: unknown }) {
+        const { args, query, operation, model } = params;
+
+        // __internalParams is an undocumented property, so let's validate that it fits our schema with yup first
+        const internalParamsSchema = yupObject({
+          transaction: yupObject().nullable(),
+        }).defined();
+        const internalParams = await yupValidate(internalParamsSchema, params.__internalParams);
+
+        if (internalParams.transaction) {
+          // we're inside a transaction, so we don't need to wait for replication
+          return await query(args);
+        }
+
+        const result = await query(args);
+        await readLsnAndWaitForReplication(client);
+        return result;
+      },
+    },
+  }) as T;
+}
+
 function extendWithReadReplicas<T extends PrismaClient>(client: T, replicaConnectionString: string): PrismaClientWithReplica<T> {
   // Create a separate PrismaClient for the read replica
   const replicaClient = getPostgresPrismaClient(replicaConnectionString).client;
-  return client.$extends(readReplicas({
+
+  // First extend with replication wait, then with read replicas
+  const clientWithReplicationWait = extendWithReplicationWait(client);
+
+  return clientWithReplicationWait.$extends(readReplicas({
     replicas: [replicaClient],
   })) as PrismaClientWithReplica<T>;
 }
@@ -441,7 +562,6 @@ async function rawQueryArray<Q extends RawQuery<any>[]>(tx: PrismaClientTransact
     const queryClient = allReadOnly && '$replica' in tx
       ? (tx as any).$replica()
       : tx;
-    // eslint-disable-next-line no-restricted-syntax -- $queryRaw is allowed here
     const rawResult = await queryClient.$queryRaw(sqlQuery);
 
     const postProcessed = combinedQuery.postProcess(rawResult as any);
