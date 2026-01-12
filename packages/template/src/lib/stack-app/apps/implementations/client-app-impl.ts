@@ -467,7 +467,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
   private _formatAccessCookieValue(refreshToken: string | null, accessToken: string | null): string | null {
     return refreshToken && accessToken ? JSON.stringify([refreshToken, accessToken]) : null;
   }
-  private _parseStructuredRefreshCookie(value: string | null): { refreshToken: string, updatedAt: number | null } | null {
+  private _parseStructuredRefreshCookie(value: string | undefined): { refreshToken: string, updatedAt: number | null } | null {
     if (!value) {
       return null;
     }
@@ -489,7 +489,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     };
 
   }
-  private _extractRefreshTokenFromCookieMap(cookies: Record<string, string>): { refreshToken: string | null, updatedAt: number | null } {
+  private _extractRefreshTokenFromCookieMap(cookies: cookie.Cookies): { refreshToken: string | null, updatedAt: number | null } {
     const { legacyNames, structuredPrefixes } = this._getRefreshTokenCookieNamePatterns();
     for (const name of legacyNames) {
       const value = cookies[name];
@@ -519,7 +519,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       updatedAt: selected.updatedAt ?? null,
     };
   }
-  protected _getTokensFromCookies(cookies: Record<string, string>): TokenObject {
+  protected _getTokensFromCookies(cookies: cookie.Cookies): TokenObject {
     const { refreshToken } = this._extractRefreshTokenFromCookieMap(cookies);
     const accessTokenCookie = cookies[this._accessTokenCookieName] ?? null;
     let accessToken: string | null = null;
@@ -553,11 +553,11 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     // the access token on page reload.
     return `stack-access`;
   }
-  private _getAllBrowserCookies(): Record<string, string> {
+  private _getAllBrowserCookies(): cookie.Cookies {
     if (!isBrowserLike()) {
       throw new StackAssertionError("Cannot get browser cookies on the server!");
     }
-    return cookie.parse(document.cookie || "");
+    return cookie.parseCookie(document.cookie || "");
   }
   private _getRefreshTokenCookieNamePatterns(): { legacyNames: string[], structuredPrefixes: string[] } {
     return {
@@ -568,7 +568,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       ],
     };
   }
-  private _collectRefreshTokenCookieNames(cookies: Record<string, string>): Set<string> {
+  private _collectRefreshTokenCookieNames(cookies: cookie.Cookies): Set<string> {
     const { legacyNames, structuredPrefixes } = this._getRefreshTokenCookieNamePatterns();
     const names = new Set<string>();
     for (const name of legacyNames) {
@@ -584,7 +584,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     return names;
   }
   private _prepareRefreshCookieUpdate(
-    existingCookies: Record<string, string>,
+    existingCookies: cookie.Cookies,
     refreshToken: string | null,
     accessToken: string | null,
     defaultCookieName: string,
@@ -789,7 +789,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
 
           // read from cookies
           const cookieHeader = tokenStoreInit.headers.get("cookie");
-          const parsed = cookie.parse(cookieHeader || "");
+          const parsed = cookie.parseCookie(cookieHeader || "");
           const res = new Store<TokenObject>(this._getTokensFromCookies(parsed));
           this._requestTokenStores.set(tokenStoreInit, res);
           return res;
