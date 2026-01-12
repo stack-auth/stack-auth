@@ -14,8 +14,10 @@ import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { traceSpan } from "@stackframe/stack-shared/dist/utils/telemetry";
 import { isUuid } from "@stackframe/stack-shared/dist/utils/uuids";
 import net from "node:net";
+import { Pool } from "pg";
 import { isPromise } from "util/types";
 import { runMigrationNeeded } from "./auto-migrations";
+import { registerPgPool } from "./lib/dev-perf-stats";
 import { Tenancy } from "./lib/tenancies";
 import { ensurePolyfilled } from "./polyfills";
 
@@ -81,7 +83,9 @@ function getPostgresPrismaClient(connectionString: string) {
   let postgresPrismaClient = postgresPrismaClientsStore.get(connectionString);
   if (!postgresPrismaClient) {
     const schema = getSchemaFromConnectionString(connectionString);
-    const adapter = new PrismaPg({ connectionString, max: 25 }, schema ? { schema } : undefined);
+    const pool = new Pool({ connectionString, max: 25 });
+    registerPgPool(pool); // Register pool for dev performance stats
+    const adapter = new PrismaPg(pool, schema ? { schema } : undefined);
     postgresPrismaClient = {
       client: new PrismaClient({ adapter }),
       schema,

@@ -37,7 +37,7 @@ export function EmailsSection(props?: {
   const [addingEmailLoading, setAddingEmailLoading] = useState(false);
   const [addedEmail, setAddedEmail] = useState<string | null>(null);
   // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-  const isLastEmail = contactChannels.filter(x => x.usedForAuth && x.type === 'email').length === 1;
+  const isLastEmailUsedForAuth = contactChannels.filter(x => x.usedForAuth && x.type === 'email').length === 1;
 
   useEffect(() => {
     if (addedEmail) {
@@ -164,7 +164,7 @@ export function EmailsSection(props?: {
                             }
                           }
                         }] : []),
-                        ...(x.usedForAuth && !isLastEmail ? [{
+                        ...(x.usedForAuth && !isLastEmailUsedForAuth ? [{
                           item: t("Stop using for sign-in"),
                           onClick: async () => { await x.update({ usedForAuth: false }); },
                         }] : x.usedForAuth ? [{
@@ -173,7 +173,8 @@ export function EmailsSection(props?: {
                           disabled: true,
                           disabledTooltip: t("You can not remove your last sign-in email"),
                         }] : []),
-                        ...(!isLastEmail || !x.usedForAuth ? [{
+                        // Determine if this email can be removed
+                        ...(!isLastEmailUsedForAuth || !x.usedForAuth ? [{
                           item: t("Remove"),
                           onClick: async () => { await x.delete(); },
                           danger: true,

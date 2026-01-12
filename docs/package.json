@@ -9,6 +9,7 @@
     "build": "next build",
     "dev": "next dev --port ${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}04",
     "start": "next start --port ${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}04",
+    "typecheck": "tsc --noEmit",
     "lint": "next lint",
     "lint:fix": "next lint --fix",
     "postinstall": "fumadocs-mdx",

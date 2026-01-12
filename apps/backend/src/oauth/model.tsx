@@ -202,7 +202,7 @@ export class OAuthModel implements AuthorizationCodeModel {
   }
 
   async getAccessToken(accessToken: string): Promise<Token | Falsey> {
-    const result = await decodeAccessToken(accessToken, { allowAnonymous: true });
+    const result = await decodeAccessToken(accessToken, { allowAnonymous: true, allowRestricted: true });
     if (result.status === "error") {
       captureError("getAccessToken", result.error);
       return false;
