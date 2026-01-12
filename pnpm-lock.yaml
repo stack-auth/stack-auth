@@ -1459,8 +1459,8 @@ importers:
         specifier: ^1.1.0
         version: 1.1.0
       '@simplewebauthn/browser':
-        specifier: ^11.0.0
-        version: 11.0.0
+        specifier: ^13.2.2
+        version: 13.2.2
       '@stackframe/stack-shared':
         specifier: workspace:*
         version: link:../stack-shared
@@ -1468,8 +1468,8 @@ importers:
         specifier: ^8.20.5
         version: 8.20.5(react-dom@19.2.3(react@19.2.1))(react@19.2.1)
       color:
-        specifier: ^4.2.3
-        version: 4.2.3
+        specifier: ^5.0.3
+        version: 5.0.3
       cookie:
         specifier: ^0.6.0
         version: 0.6.0
@@ -1556,8 +1556,8 @@ importers:
         specifier: ^1.1.0
         version: 1.1.0
       '@simplewebauthn/browser':
-        specifier: ^11.0.0
-        version: 11.0.0
+        specifier: ^13.2.2
+        version: 13.2.2
       '@stackframe/stack-shared':
         specifier: workspace:*
         version: link:../stack-shared
@@ -1580,8 +1580,8 @@ importers:
         specifier: ^2.0.2
         version: 2.0.2
       color:
-        specifier: ^4.2.3
-        version: 4.2.3
+        specifier: ^5.0.3
+        version: 5.0.3
       cookie:
         specifier: ^0.6.0
         version: 0.6.0
@@ -1683,8 +1683,8 @@ importers:
         specifier: ^1.1.0
         version: 1.1.0
       '@simplewebauthn/browser':
-        specifier: ^11.0.0
-        version: 11.0.0
+        specifier: ^13.2.2
+        version: 13.2.2
       '@stackframe/stack-sc':
         specifier: workspace:*
         version: link:../stack-sc
@@ -1713,8 +1713,8 @@ importers:
         specifier: ^2.0.2
         version: 2.0.2
       color:
-        specifier: ^4.2.3
-        version: 4.2.3
+        specifier: ^5.0.3
+        version: 5.0.3
       cookie:
         specifier: ^0.6.0
         version: 0.6.0
@@ -2071,8 +2071,8 @@ importers:
         specifier: ^1.1.0
         version: 1.1.0
       '@simplewebauthn/browser':
-        specifier: ^11.0.0
-        version: 11.0.0
+        specifier: ^13.2.2
+        version: 13.2.2
       '@stackframe/stack-sc':
         specifier: workspace:*
         version: link:../stack-sc
@@ -2101,8 +2101,8 @@ importers:
         specifier: ^2.0.2
         version: 2.0.2
       color:
-        specifier: ^4.2.3
-        version: 4.2.3
+        specifier: ^5.0.3
+        version: 5.0.3
       cookie:
         specifier: ^0.6.0
         version: 0.6.0
@@ -8061,6 +8061,9 @@ packages:
   '@simplewebauthn/browser@11.0.0':
     resolution: {integrity: sha512-KEGCStrl08QC2I561BzxqGiwoknblP6O1YW7jApdXLPtIqZ+vgJYAv8ssLCdm1wD8HGAHd49CJLkUF8X70x/pg==}
 
+  '@simplewebauthn/browser@13.2.2':
+    resolution: {integrity: sha512-FNW1oLQpTJyqG5kkDg5ZsotvWgmBaC6jCHR7Ej0qUNep36Wl9tj2eZu7J5rP+uhXgHaLk+QQ3lqcw2vS5MX1IA==}
+
   '@simplewebauthn/server@11.0.0':
     resolution: {integrity: sha512-zu8dxKcPiRUNSN2kmrnNOzNbRI8VaR/rL4ENCHUfC6PEE7SAAdIql9g5GBOd/wOVZolIsaZz3ccFxuGoVP0iaw==}
     engines: {node: '>=20.0.0'}
@@ -9998,14 +10001,26 @@ packages:
     resolution: {integrity: sha512-RRECPsj7iu/xb5oKYcsFHSppFNnsj/52OVTRKb4zP5onXwVF3zVmmToNcOfGC+CRDpfK/U584fMg38ZHCaElKQ==}
     engines: {node: '>=7.0.0'}
 
+  color-convert@3.1.3:
+    resolution: {integrity: sha512-fasDH2ont2GqF5HpyO4w0+BcewlhHEZOFn9c1ckZdHpJ56Qb7MHhH/IcJZbBGgvdtwdwNbLvxiBEdg336iA9Sg==}
+    engines: {node: '>=14.6'}
+
   color-name@1.1.3:
     resolution: {integrity: sha512-72fSenhMw2HZMTVHeCA9KCmpEIbzWiQsjN+BHcBbS9vr1mtt+vJjPdksIBNUmKAW8TFUDPJK5SUU3QhE9NEXDw==}
 
   color-name@1.1.4:
     resolution: {integrity: sha512-dOy+3AuW3a2wNbZHIuMZpTcgjGuLU/uBL/ubcZF9OXbDo8ff4O8yVp5Bf0efS8uEoYo5q4Fx7dY9OgQGXgAsQA==}
 
+  color-name@2.1.0:
+    resolution: {integrity: sha512-1bPaDNFm0axzE4MEAzKPuqKWeRaT43U/hyxKPBdqTfmPF+d6n7FSoTFxLVULUJOmiLp01KjhIPPH+HrXZJN4Rg==}
+    engines: {node: '>=12.20'}
+
   color-string@1.9.1:
     resolution: {integrity: sha512-shrVawQFojnZv6xM40anx4CkoDP+fZsw/ZerEMsW/pyzsRbElpsL/DBVW7q3ExxwusdNXI3lXpuhEZkzs8p5Eg==}
+
+  color-string@2.1.4:
+    resolution: {integrity: sha512-Bb6Cq8oq0IjDOe8wJmi4JeNn763Xs9cfrBcaylK1tPypWzyoy2G3l90v9k64kjphl/ZJjPIShFztenRomi8WTg==}
+    engines: {node: '>=18'}
 
   color-support@1.1.3:
     resolution: {integrity: sha512-qiBjkpbMLO/HL68y+lh4q0/O1MZFj2RX6X/KmMa3+gJD3z+WwI1ZzDHysvqHGS3mP6mznPckpXmw1nI9cJjyRg==}
@@ -10014,6 +10029,10 @@ packages:
   color@4.2.3:
     resolution: {integrity: sha512-1rXeuUUiGGrykh+CeBdu5Ie7OJwinCgQY0bc7GCRxy5xVHy+moaqkpL/jqQq0MtQOeYcrqEz4abc5f0KtU7W4A==}
     engines: {node: '>=12.5.0'}
+
+  color@5.0.3:
+    resolution: {integrity: sha512-ezmVcLR3xAVp8kYOm4GS45ZLLgIE6SPAFoduLr6hTDajwb3KZ2F46gulK3XpcwRFb5KKGCSezCBAY4Dw4HsyXA==}
+    engines: {node: '>=18'}
 
   colors@1.4.0:
     resolution: {integrity: sha512-a+UqTh4kgZg/SlGvfbzDHpgRu7AAQOmmqRHJnxhRZICKFUT91brVhNNt58CMWU9PsBbv3PDCZUHbVxuDiH2mtA==}
@@ -23950,6 +23969,8 @@ snapshots:
     dependencies:
       '@simplewebauthn/types': 11.0.0
 
+  '@simplewebauthn/browser@13.2.2': {}
+
   '@simplewebauthn/server@11.0.0(encoding@0.1.13)':
     dependencies:
       '@hexagon/base64': 1.1.28
@@ -26442,14 +26463,24 @@ snapshots:
     dependencies:
       color-name: 1.1.4
 
+  color-convert@3.1.3:
+    dependencies:
+      color-name: 2.1.0
+
   color-name@1.1.3: {}
 
   color-name@1.1.4: {}
+
+  color-name@2.1.0: {}
 
   color-string@1.9.1:
     dependencies:
       color-name: 1.1.4
       simple-swizzle: 0.2.2
+
+  color-string@2.1.4:
+    dependencies:
+      color-name: 2.1.0
 
   color-support@1.1.3: {}
 
@@ -26457,6 +26488,11 @@ snapshots:
     dependencies:
       color-convert: 2.0.1
       color-string: 1.9.1
+
+  color@5.0.3:
+    dependencies:
+      color-convert: 3.1.3
+      color-string: 2.1.4
 
   colors@1.4.0: {}
 
