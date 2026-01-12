@@ -231,9 +231,9 @@ function extendWithReplicationWait<T extends PrismaClient>(client: T): T {
 
   return client.$extends({
     client: {
-      async $transaction(args: any) {
+      async $transaction(...args: Parameters<PrismaClient['$transaction']>) {
         // eslint-disable-next-line no-restricted-syntax
-        const result = await client.$transaction(args);
+        const result = await client.$transaction(...args);
         await readLsnAndWaitForReplication(client);
         return result;
       },
