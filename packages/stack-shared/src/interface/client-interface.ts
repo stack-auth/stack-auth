@@ -1047,9 +1047,7 @@ export class StackClientInterface {
 
     let params: URLSearchParams;
     try {
-      params = await this._networkRetryException(
-        async () => oauth.validateAuthResponse(as, client, options.oauthParams, options.state),
-      );
+      params = oauth.validateAuthResponse(as, client, options.oauthParams, options.state);
     } catch (e) {
       if (e instanceof oauth.AuthorizationResponseError) {
         throw new StackAssertionError("Authorization response error when validating outer OAuth response", {
