@@ -1689,9 +1689,10 @@ describe("email outbox pagination", () => {
     const draftId = createDraftResponse.body.id;
 
     // Create 5 users
+    const mailboxes = await Promise.all(Array.from({ length: 5 }, async () => await bumpEmailAddress()));
     const userIds: string[] = [];
     for (let i = 0; i < 5; i++) {
-      const email = `pagination-test-${i}@example.com`;
+      const email = mailboxes[i].emailAddress;
       const createUserResponse = await niceBackendFetch("/api/v1/users", {
         method: "POST",
         accessType: "server",
@@ -1714,6 +1715,12 @@ describe("email outbox pagination", () => {
       },
     });
     expect(sendResponse.status).toBe(200);
+
+    // Wait until all emails are sent
+    for (const mailbox of mailboxes) {
+      await mailbox.waitForMessagesWithSubject("Pagination Test Email");
+    }
+
 
     // Ensure there are 5 emails in the outbox
     const allResponse = await niceBackendFetch("/api/v1/emails/outbox", {
