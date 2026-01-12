@@ -245,7 +245,7 @@ function extendWithReplicationWait<T extends PrismaClient>(client: T): T {
         // __internalParams is an undocumented property, so let's validate that it fits our schema with yup first
         const internalParamsSchema = yupObject({
           transaction: yupObject().nullable(),
-        });
+        }).defined();
         const internalParams = await yupValidate(internalParamsSchema, params.__internalParams);
 
         if (internalParams.transaction) {
