@@ -63,7 +63,7 @@
     "LICENSE"
   ],
   "dependencies": {
-    "@hookform/resolvers": "^3.3.4",
+    "@hookform/resolvers": "^5.2.2",
     "@stripe/react-stripe-js": "^3.8.1",
     "@stripe/stripe-js": "^7.7.0",
     "@simplewebauthn/browser": "^13.2.2",
@@ -81,7 +81,7 @@
     "@oslojs/otp": "^1.1.0",
     "qrcode": "^1.5.4",
     "react-easy-crop": "^5.4.1",
-    "react-hook-form": "^7.51.4",
+    "react-hook-form": "^7.70.0",
     "rimraf": "^6.1.2",
     "tailwindcss-animate": "^1.0.7",
     "tsx": "^4.7.2",

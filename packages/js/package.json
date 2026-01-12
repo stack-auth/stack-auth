@@ -50,7 +50,7 @@
     "LICENSE"
   ],
   "dependencies": {
-    "@hookform/resolvers": "^3.3.4",
+    "@hookform/resolvers": "^5.2.2",
     "@simplewebauthn/browser": "^13.2.2",
     "@stackframe/stack-shared": "workspace:*",
     "@tanstack/react-table": "^8.20.5",
