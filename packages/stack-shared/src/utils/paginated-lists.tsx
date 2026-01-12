@@ -359,8 +359,8 @@ export abstract class PaginatedList<
         return listsResults[0];
       }
 
-      override async _nextOrPrev(type: 'next' | 'prev', { limit, filter, orderBy, cursor }: ImplQueryOptions<'next' | 'prev', "first" | "last" | `[${string}]`, Filter, OrderBy>) {
-        const cursors = JSON.parse(cursor);
+      override async _nextOrPrev(type: 'next' | 'prev', { limit, filter, orderBy, cursor }: ImplQueryOptions<'next' | 'prev', string, Filter, OrderBy>) {
+        const cursors = JSON.parse(cursor) as string[];
         const fetchedLists = await Promise.all(lists.map(async (list, i) => {
           return await list.nextOrPrev(type, {
             limit,
@@ -376,19 +376,25 @@ export abstract class PaginatedList<
         const sortedItems = [...combinedItems].sort((a, b) =>
           this._compare(orderBy, a.itemEntry.item, b.itemEntry.item),
         );
-        const lastCursorForEachList = range(lists.length).map((i) => cursors[i]);
+        const startCursors = type === "prev"
+          ? fetchedLists.map((list) => list.cursor)
+          : cursors;
+        const currentCursors = [...startCursors];
         const itemsWithCompositeCursor = sortedItems.map((item) => {
-          lastCursorForEachList[item.listIndex] = item.itemEntry.itemCursor;
+          const prevCursor = JSON.stringify(currentCursors);
+          currentCursors[item.listIndex] = item.itemEntry.nextCursor;
+          const nextCursor = JSON.stringify(currentCursors);
           return {
             item: item.itemEntry.item,
-            itemCursor: JSON.stringify(lastCursorForEachList),
+            prevCursor,
+            nextCursor,
           };
         });
         return {
           items: itemsWithCompositeCursor,
-          isFirst: sortedItems.every((item) => item.listIndex === 0),
-          isLast: sortedItems.every((item) => item.listIndex === lists.length - 1),
-          cursor: JSON.stringify(lastCursorForEachList),
+          isFirst: fetchedLists.every((list) => list.isFirst),
+          isLast: fetchedLists.every((list) => list.isLast),
+          cursor: JSON.stringify(fetchedLists.map((list) => list.cursor)),
         };
       }
     }
@@ -481,4 +487,3 @@ export class ArrayPaginatedList<Item> extends PaginatedList<Item, `before-${numb
     };
   }
 }
-
