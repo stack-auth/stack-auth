@@ -85,6 +85,7 @@ To see all development ports, refer to the index.html of `apps/dev-launchpad/pub
 - Any environment variables you create should be prefixed with `STACK_` (or NEXT_PUBLIC_STACK_ if they are public). This ensures that their changes are picked up by Turborepo (and helps readability).
 - Code defensively. Prefer `?? throwErr(...)` over non-null assertions, with good error messages explicitly stating the assumption that must've been violated for the error to be thrown.
 - Try to avoid the `any` type. Whenever you need to use `any`, leave a comment explaining why you're using it (optimally it explains why the type system fails here, and how you can be certain that any errors in that code path would still be flagged at compile-, test-, or runtime).
+- Don't use Date.now() for measuring elapsed (real) time, instead use `performance.now()`
 
 ### Code-related
 - Use ES6 maps instead of records wherever you can.

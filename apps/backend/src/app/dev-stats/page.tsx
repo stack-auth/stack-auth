@@ -21,7 +21,14 @@ type AggregateStats = {
   averageTimeMs: number,
 };
 
+type PgPoolSingleStats = {
+  total: number,
+  idle: number,
+  waiting: number,
+};
+
 type PgPoolStats = {
+  pools: Record<string, PgPoolSingleStats>,
   total: number,
   idle: number,
   waiting: number,
@@ -749,25 +756,35 @@ function PerformanceSection({ perfCurrent, perfHistory, perfAggregate }: {
               }}
             >
               <h4 style={{ margin: "0 0 16px 0", fontSize: "16px", fontWeight: 600, color: "white" }}>Pool Breakdown</h4>
-              <div style={{ display: "flex", gap: "24px" }}>
-                <div>
-                  <div style={{ fontSize: "24px", fontWeight: 700, color: "#60a5fa", fontFamily: "monospace" }}>
-                    {perfCurrent.pgPool?.total ?? "—"}
+              <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+                {perfCurrent.pgPool?.pools && Object.entries(perfCurrent.pgPool.pools).map(([label, stats]) => (
+                  <div key={label}>
+                    <div style={{ fontSize: "12px", color: "#94a3b8", marginBottom: "8px", textTransform: "capitalize" }}>{label}</div>
+                    <div style={{ display: "flex", gap: "16px" }}>
+                      <div>
+                        <div style={{ fontSize: "20px", fontWeight: 700, color: "#60a5fa", fontFamily: "monospace" }}>
+                          {stats.total}
+                        </div>
+                        <div style={{ fontSize: "11px", color: "#64748b" }}>Total</div>
+                      </div>
+                      <div>
+                        <div style={{ fontSize: "20px", fontWeight: 700, color: "#34d399", fontFamily: "monospace" }}>
+                          {stats.idle}
+                        </div>
+                        <div style={{ fontSize: "11px", color: "#64748b" }}>Idle</div>
+                      </div>
+                      <div>
+                        <div style={{ fontSize: "20px", fontWeight: 700, color: "#f87171", fontFamily: "monospace" }}>
+                          {stats.waiting}
+                        </div>
+                        <div style={{ fontSize: "11px", color: "#64748b" }}>Waiting</div>
+                      </div>
+                    </div>
                   </div>
-                  <div style={{ fontSize: "12px", color: "#94a3b8" }}>Total</div>
-                </div>
-                <div>
-                  <div style={{ fontSize: "24px", fontWeight: 700, color: "#34d399", fontFamily: "monospace" }}>
-                    {perfCurrent.pgPool?.idle ?? "—"}
-                  </div>
-                  <div style={{ fontSize: "12px", color: "#94a3b8" }}>Idle</div>
-                </div>
-                <div>
-                  <div style={{ fontSize: "24px", fontWeight: 700, color: "#f87171", fontFamily: "monospace" }}>
-                    {perfCurrent.pgPool?.waiting ?? "—"}
-                  </div>
-                  <div style={{ fontSize: "12px", color: "#94a3b8" }}>Waiting</div>
-                </div>
+                ))}
+                {(!perfCurrent.pgPool?.pools || Object.keys(perfCurrent.pgPool.pools).length === 0) && (
+                  <div style={{ color: "#64748b" }}>No pools registered</div>
+                )}
               </div>
             </div>
           </div>
