@@ -87,8 +87,7 @@ export type PerformanceHistory = {
 // Global State
 // ============================================================================
 
-// Using "dev-perf-history-v2" to invalidate old cached data that doesn't have the pools property
-const perfHistory = createGlobal<PerformanceHistory>("dev-perf-history-v2", () => ({
+const perfHistory = createGlobal<PerformanceHistory>("dev-perf-history", () => ({
   snapshots: [],
   maxSnapshots: 120, // Keep last 2 minutes at 1-second intervals
 }));
