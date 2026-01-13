@@ -579,6 +579,19 @@ export class StackAdminInterface extends StackServerInterface {
     return await response.data.json();
   }
 
+  async getPaymentMethodConfigs(): Promise<{ configId: string, methods: Array<{ id: string, name: string, enabled: boolean, available: boolean }> } | null> {
+    const response = await this.sendAdminRequestAndCatchKnownError(
+      "/internal/payments/method-configs",
+      { method: "GET" },
+      null,
+      [KnownErrors.StripeAccountInfoNotFound],
+    );
+    if (response.status === "error") {
+      return null;
+    }
+    return await response.data.json();
+  }
+
   async createStripeWidgetAccountSession(): Promise<{ client_secret: string }> {
     const response = await this.sendAdminRequest(
       "/internal/payments/stripe-widgets/account-session",

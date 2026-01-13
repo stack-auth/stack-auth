@@ -100,6 +100,7 @@ export type StackAdminApp<HasTokenStore extends boolean = boolean, ProjectId ext
 
     setupPayments(): Promise<{ url: string }>,
     createStripeWidgetAccountSession(): Promise<{ client_secret: string }>,
+    getPaymentMethodConfigs(): Promise<{ configId: string, methods: Array<{ id: string, name: string, enabled: boolean, available: boolean }> } | null>,
     createEmailDraft(options: { displayName: string, themeId?: string | undefined | false, tsxSource?: string }): Promise<{ id: string }>,
     updateEmailDraft(id: string, data: { displayName?: string, themeId?: string | undefined | false, tsxSource?: string }): Promise<void>,
     createItemQuantityChange(options: (

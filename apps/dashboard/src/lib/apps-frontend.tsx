@@ -156,6 +156,7 @@ export const ALL_APPS_FRONTEND = {
       { displayName: "Customers", href: "./customers" },
       { displayName: "Transactions", href: "./transactions" },
       { displayName: "Payouts", href: "./payouts" },
+      { displayName: "Payment Method Customization", href: "./methods" },
     ],
     screenshots: getScreenshots('payments', 7),
     storeDescription: (
