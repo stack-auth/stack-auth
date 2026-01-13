@@ -165,6 +165,10 @@ export type PrismaClientWithReplica<T extends PrismaClient = PrismaClient> = Omi
  * @returns true if all replicas caught up, false if timed out
  */
 async function waitForReplication(replicas: PrismaClient[], target: string, timeoutMs: number): Promise<boolean> {
+  // TODO: Right now, this waits for replication on all replicas right after every operation on the primary. In the future, we could
+  // instead make it per-replica and per-request, so that each replica keeps track for each request of which LSN it needs
+  // to wait for on the next read. This way, the waiting period is significantly reduced. Care needs to be taken because
+  // this means we'll also have to wait for all replicas to catch up at the end of the request.
   const strategy = getEnvVariable("STACK_DATABASE_REPLICATION_WAIT_STRATEGY", "none");
   return await traceSpan({
     description: 'waiting for replication',
@@ -303,6 +307,9 @@ function extendWithReplicationWait<T extends PrismaClient>(primary: T, replicaCl
     query: {
       async $allOperations(params: { args: any, query: (args: any) => Promise<any>, operation: string, model?: string, __internalParams?: unknown }) {
         const { args, query, operation, model } = params;
+
+        // note that we intentionally trigger this after EVERY operation, including reads, as this is on the primary — reads aren't sent here in the first place
+        // (do note that $allOperations does not trigger for the transaction commit itself, so we do that separately above)
 
         // __internalParams is an undocumented property, so let's validate that it fits our schema with yup first
         const internalParamsSchema = yupObject({
