@@ -147,57 +147,87 @@ export type PrismaClientWithReplica<T extends PrismaClient = PrismaClient> = Omi
 
 
 /**
- * Waits until ALL replicas have caught up to the specified WAL LSN.
+ * Waits until ALL replicas have caught up to the specified target.
  * This ensures read-after-write consistency when using read replicas.
  *
  * Strategy types (STACK_DATABASE_REPLICATION_WAIT_STRATEGY):
  * - "none": Don't wait for replication (default)
  * - "pg-stat-replication": Use pg_stat_replication (for local dev with streaming replication)
  * - "aurora": Use aurora_replica_status() (for AWS Aurora)
+ *
+ * @param primary - The primary Prisma client to run the wait query on
+ * @param target - The target to wait for:
+ *   - For pg-stat-replication: pg_lsn format (e.g., "0/1234ABC")
+ *   - For aurora: bigint as string (e.g., "123456789")
  */
-async function waitForReplication(primary: PrismaClient, lsn: string): Promise<void> {
+async function waitForReplication(primary: PrismaClient, target: string): Promise<void> {
   const strategy = getEnvVariable("STACK_DATABASE_REPLICATION_WAIT_STRATEGY", "none");
   return await traceSpan({
     description: 'waiting for replication',
     attributes: {
       'stack.db-replication.strategy': strategy,
-      'stack.db-replication.lsn': lsn,
+      'stack.db-replication.target': target,
     },
   }, async () => {
     if (strategy === "none") {
       return;
     }
 
-    const minLsnSubquery = {
-      "pg-stat-replication": `(SELECT MIN(replay_lsn) FROM pg_stat_replication)`,
-      "aurora": `(SELECT MIN(current_read_lsn::pg_lsn) FROM aurora_replica_status())`,
-    }[strategy] ?? throwErr(`Unknown replication wait strategy: ${strategy}`);
+    if (strategy === "pg-stat-replication") {
+      // Validate LSN format (format: hex/hex, e.g., "0/1234ABC"). We do this just to be extra safe as we're using $queryRawUnsafe later
+      if (!/^[0-9A-Fa-f]+\/[0-9A-Fa-f]+$/.test(target)) {
+        throw new StackAssertionError(`Invalid pg_lsn format: ${target}`);
+      }
 
-    // Validate LSN format (format: hex/hex, e.g., "0/1234ABC"). We do this just to be extra safe as we're using $queryRawUnsafe later
-    if (!/^[0-9A-Fa-f]+\/[0-9A-Fa-f]+$/.test(lsn)) {
-      throw new StackAssertionError(`Invalid LSN format: ${lsn}`);
+      // Poll until all replicas have caught up to the target LSN
+      // Using $queryRawUnsafe because DO blocks don't support bind parameters
+      await (primary as any).$queryRawUnsafe(`
+        DO $$
+        DECLARE
+          min_replica_lsn pg_lsn;
+        BEGIN
+          LOOP
+            SELECT MIN(replay_lsn) INTO min_replica_lsn FROM pg_stat_replication;
+
+            -- Exit if no replicas connected or all replicas have caught up
+            IF min_replica_lsn IS NULL OR min_replica_lsn >= '${target}'::pg_lsn THEN
+              EXIT;
+            END IF;
+
+            -- Wait 10ms and check again
+            PERFORM pg_sleep(0.01);
+          END LOOP;
+        END $$;
+      `);
+    } else if (strategy === "aurora") {
+      // Validate bigint format
+      if (!/^\d+$/.test(target)) {
+        throw new StackAssertionError(`Invalid bigint format for Aurora durable_lsn: ${target}`);
+      }
+
+      // Poll until all replicas have caught up to the target durable_lsn
+      // Aurora uses bigint for LSN values, not pg_lsn
+      await (primary as any).$queryRawUnsafe(`
+        DO $$
+        DECLARE
+          current_lsn bigint;
+        BEGIN
+          LOOP
+            SELECT MIN(current_read_lsn) INTO current_lsn FROM aurora_replica_status();
+
+            -- Exit if no replicas connected or all replicas have caught up
+            IF current_lsn IS NULL OR current_lsn >= ${target} THEN
+              EXIT;
+            END IF;
+
+            -- Wait 10ms and check again
+            PERFORM pg_sleep(0.01);
+          END LOOP;
+        END $$;
+      `);
+    } else {
+      throw new StackAssertionError(`Unknown replication wait strategy: ${strategy}`);
     }
-
-    // Poll until all replicas have caught up to the target LSN
-    // Using $queryRawUnsafe because DO blocks don't support bind parameters
-    await (primary as any).$queryRawUnsafe(`
-      DO $$
-      DECLARE
-        min_replica_lsn pg_lsn;
-      BEGIN
-        LOOP
-          SELECT ${minLsnSubquery} INTO min_replica_lsn;
-
-          -- Exit if no replicas connected or all replicas have caught up
-          IF min_replica_lsn IS NULL OR min_replica_lsn >= '${lsn}'::pg_lsn THEN
-            EXIT;
-          END IF;
-
-          -- Wait 10ms and check again
-          PERFORM pg_sleep(0.01);
-        END LOOP;
-      END $$;
-    `);
   });
 }
 
@@ -211,19 +241,33 @@ function extendWithReplicationWait<T extends PrismaClient>(client: T): T {
     return client;
   }
 
-  const readLsnAndWaitForReplication = async (client: PrismaClient) => {
+  const readTargetAndWaitForReplication = async (client: PrismaClient) => {
     await traceSpan({
-      description: 'getting current LSN and waiting for replication',
+      description: 'getting replication target and waiting',
       attributes: {
         'stack.db-replication.strategy': strategy,
       },
     }, async (span) => {
       try {
-        const [{ lsn }] = await (client as any).$queryRaw<[{ lsn: string }]>`SELECT pg_current_wal_lsn()::text AS lsn`;
-        await waitForReplication(client, lsn);
+        let target: string;
+        if (strategy === "pg-stat-replication") {
+          // For local PostgreSQL streaming replication, use pg_current_wal_lsn()
+          const [{ lsn }] = await (client as any).$queryRaw<[{ lsn: string }]>`SELECT pg_current_wal_lsn()::text AS lsn`;
+          target = lsn;
+        } else if (strategy === "aurora") {
+          // For Aurora, get durable_lsn from the writer instance
+          const [{ durable_lsn }] = await (client as any).$queryRaw<[{ durable_lsn: bigint }]>`
+            SELECT durable_lsn FROM aurora_replica_status() WHERE session_id = 'MASTER_SESSION_ID'
+          `;
+          target = durable_lsn.toString();
+        } else {
+          throw new StackAssertionError(`Unknown replication wait strategy: ${strategy}`);
+        }
+        span.setAttribute('stack.db-replication.target', target);
+        await waitForReplication(client, target);
       } catch (e) {
         span.setAttribute('stack.db-replication.error', `${e}`);
-        captureError("prisma-client-replication-error", new StackAssertionError("Error getting current LSN and waiting for replication. We'll just wait 50ms instead, but please fix this as the replication may not be working.", { cause: e }));
+        captureError("prisma-client-replication-error", new StackAssertionError("Error getting replication target and waiting. We'll just wait 50ms instead, but please fix this as the replication may not be working.", { cause: e }));
         await wait(50);
       }
     });
@@ -234,7 +278,7 @@ function extendWithReplicationWait<T extends PrismaClient>(client: T): T {
       async $transaction(...args: Parameters<PrismaClient['$transaction']>) {
         // eslint-disable-next-line no-restricted-syntax
         const result = await client.$transaction(...args);
-        await readLsnAndWaitForReplication(client);
+        await readTargetAndWaitForReplication(client);
         return result;
       },
     },
@@ -254,7 +298,7 @@ function extendWithReplicationWait<T extends PrismaClient>(client: T): T {
         }
 
         const result = await query(args);
-        await readLsnAndWaitForReplication(client);
+        await readTargetAndWaitForReplication(client);
         return result;
       },
     },
