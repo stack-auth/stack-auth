@@ -3,6 +3,7 @@ import { globalPrismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { adaptSchema, adminAuthTypeSchema, yupArray, yupBoolean, yupNumber, yupObject, yupRecord, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { has } from "@stackframe/stack-shared/dist/utils/objects";
 import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
 
@@ -83,7 +84,10 @@ export const GET = createSmartRouteHandler({
     const platformConfig = configs.data.find(c => c.application || c.parent);
     const defaultConfig = platformConfig || configs.data.find(c => c.is_default);
     if (!defaultConfig) {
-      throw new Error("No payment method configuration found");
+      throw new StackAssertionError("No payment method configuration found for Stripe account", {
+        stripeAccountId: project.stripeAccountId,
+        configCount: configs.data.length,
+      });
     }
 
     console.log("[method-configs] Stripe account:", project.stripeAccountId);

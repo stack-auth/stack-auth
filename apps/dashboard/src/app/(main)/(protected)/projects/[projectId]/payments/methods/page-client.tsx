@@ -1,6 +1,6 @@
 "use client";
 
-import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Switch, Typography } from "@/components/ui";
+import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Switch, toast, Typography } from "@/components/ui";
 import { Building, CreditCard, Globe, Wallet } from "@phosphor-icons/react";
 import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
 import { useCallback, useEffect, useState } from "react";
@@ -97,7 +97,7 @@ export default function PageClient() {
 
     const validationError = validatePaymentMethodDependencies();
     if (validationError) {
-      alert(validationError);
+      toast({ title: "Invalid configuration", description: validationError, variant: "destructive" });
       return;
     }
 
@@ -116,7 +116,7 @@ export default function PageClient() {
       await loadConfig();
     } catch (error) {
       console.error("Failed to save payment method configs:", error);
-      alert("Failed to save changes. Please try again.");
+      toast({ title: "Failed to save changes", variant: "destructive" });
     } finally {
       setSaving(false);
     }
