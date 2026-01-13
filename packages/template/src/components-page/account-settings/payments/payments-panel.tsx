@@ -341,16 +341,6 @@ function RealPaymentsPanel(props: { title?: string, customer: CustomerLike, cust
                       </Button>
                     )}
                   </div>
-
-                  {isCancelable && (
-                    <Button
-                      variant="secondary"
-                      color="neutral"
-                      onClick={() => setCancelProductId(product.id)}
-                    >
-                      {t("Cancel subscription")}
-                    </Button>
-                  )}
                 </div>
               );
             })}
