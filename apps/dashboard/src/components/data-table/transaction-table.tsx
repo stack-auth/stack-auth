@@ -34,6 +34,7 @@ type MoneyTransferEntry = Extract<TransactionEntry, { type: 'money_transfer' }>;
 type ProductGrantEntry = Extract<TransactionEntry, { type: 'product_grant' }>;
 type ItemQuantityChangeEntry = Extract<TransactionEntry, { type: 'item_quantity_change' }>;
 type RefundTarget = { type: 'subscription' | 'one-time-purchase', id: string };
+type RefundableTransactionType = TransactionType | null;
 
 function isEntryWithCustomer(entry: TransactionEntry): entry is EntryWithCustomer {
   return 'customer_type' in entry && 'customer_id' in entry;
@@ -51,8 +52,14 @@ function isItemQuantityChangeEntry(entry: TransactionEntry): entry is ItemQuanti
   return entry.type === 'item_quantity_change';
 }
 
+function isRefundableTransactionType(transactionType: RefundableTransactionType): transactionType is TransactionType {
+  return transactionType === 'purchase'
+    || transactionType === 'new-stripe-sub'
+    || transactionType === 'stripe-one-time';
+}
+
 function getRefundTarget(transaction: Transaction): RefundTarget | null {
-  if (transaction.type !== 'purchase') {
+  if (!isRefundableTransactionType(transaction.type)) {
     return null;
   }
   const productGrant = transaction.entries.find(isProductGrantEntry);
@@ -76,6 +83,30 @@ function deriveSourceType(transaction: Transaction): SourceType {
 
 function formatTransactionTypeLabel(transactionType: TransactionType | null): TransactionTypeDisplay {
   switch (transactionType) {
+    case 'new-stripe-sub': {
+      return { label: 'New Subscription', Icon: ShoppingCartIcon };
+    }
+    case 'stripe-resub': {
+      return { label: 'Subscription Renewal', Icon: ArrowClockwiseIcon };
+    }
+    case 'stripe-one-time': {
+      return { label: 'One-Time Purchase', Icon: ShoppingCartIcon };
+    }
+    case 'stripe-expire': {
+      return { label: 'Subscription Expired', Icon: ProhibitIcon };
+    }
+    case 'stripe-refund': {
+      return { label: 'Refund', Icon: ArrowCounterClockwiseIcon };
+    }
+    case 'sub-change': {
+      return { label: 'Subscription Change', Icon: ShuffleIcon };
+    }
+    case 'stripe-sub-cancel': {
+      return { label: 'Subscription Cancellation', Icon: ProhibitIcon };
+    }
+    case 'item-quantity-renewal': {
+      return { label: 'Item Quantity Renewal', Icon: ArrowClockwiseIcon };
+    }
     case 'purchase': {
       return { label: 'Purchase', Icon: ShoppingCartIcon };
     }
@@ -141,7 +172,7 @@ function TeamAvatarCell({ teamId }: { teamId: string }) {
 
 function pickChargedAmountDisplay(entry: MoneyTransferEntry | undefined): string {
   if (!entry) return '—';
-  const chargedAmount = entry.charged_amount as Record<string, string | undefined>;
+  const chargedAmount = entry.charged_amount as Record<string, string>;
   if ("USD" in chargedAmount) {
     return `$${chargedAmount.USD}`;
   }
@@ -191,7 +222,7 @@ function getTransactionSummary(transaction: Transaction): TransactionSummary {
 function RefundActionCell({ transaction, refundTarget }: { transaction: Transaction, refundTarget: RefundTarget | null }) {
   const app = useAdminApp();
   const [isDialogOpen, setIsDialogOpen] = React.useState(false);
-  const target = transaction.type === 'purchase' ? refundTarget : null;
+  const target = isRefundableTransactionType(transaction.type) ? refundTarget : null;
   const alreadyRefunded = transaction.adjusted_by.length > 0;
   const productEntry = transaction.entries.find(isProductGrantEntry);
   const canRefund = !!target && !transaction.test_mode && !alreadyRefunded && productEntry?.price_id;

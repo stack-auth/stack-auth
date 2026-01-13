@@ -1704,21 +1704,15 @@ export async function listTransactions(options: ListTransactionsOptions): Promis
   // Fetch transactions
   const result = await mergedList.next({
     after: startCursor,
-    limit: limit + 1, // Fetch one extra to check if there are more
+    limit,
     limitPrecision: "exact",
     filter: transactionFilter,
     orderBy,
   });
 
-  const hasMore = result.items.length > limit;
-  const transactions = result.items.slice(0, limit).map((item) => item.item);
-  type ItemWithCursor = { itemCursor: string } | { nextCursor: string };
-  const lastItem = result.items[limit - 1] as ItemWithCursor | undefined;
-  const nextCursor = hasMore
-    ? (lastItem
-      ? ("itemCursor" in lastItem ? lastItem.itemCursor : lastItem.nextCursor)
-      : null)
-    : null;
+  const hasMore = !result.isLast;
+  const transactions = result.items.map((item) => item.item);
+  const nextCursor = hasMore ? result.cursor : null;
 
   return {
     transactions,

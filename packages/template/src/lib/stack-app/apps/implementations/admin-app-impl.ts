@@ -73,8 +73,8 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
       throw error;
     }
   });
-  private readonly _transactionsCache = createCache(async ([cursor, limit, type, customerType]: [string | undefined, number | undefined, TransactionType | undefined, 'user' | 'team' | 'custom' | undefined]) => {
-    return await this._interface.listTransactions({ cursor, limit, type, customerType });
+  private readonly _transactionsCache = createCache(async ([cursor, limit, type, customerType, customerId]: [string | undefined, number | undefined, TransactionType | undefined, 'user' | 'team' | 'custom' | undefined, string | undefined]) => {
+    return await this._interface.listTransactions({ cursor, limit, type, customerType, customerId });
   });
 
   constructor(options: StackAdminAppConstructorOptions<HasTokenStore, ProjectId>, extraOptions?: { uniqueIdentifier?: string, checkString?: string, interface?: StackAdminInterface }) {
@@ -605,8 +605,8 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
     await this._transactionsCache.invalidateWhere(() => true);
   }
 
-  async listTransactions(params: { cursor?: string, limit?: number, type?: TransactionType, customerType?: 'user' | 'team' | 'custom' }): Promise<{ transactions: Transaction[], nextCursor: string | null }> {
-    const crud = Result.orThrow(await this._transactionsCache.getOrWait([params.cursor, params.limit, params.type, params.customerType] as const, "write-only"));
+  async listTransactions(params: { cursor?: string, limit?: number, type?: TransactionType, customerType?: 'user' | 'team' | 'custom', customerId?: string }): Promise<{ transactions: Transaction[], nextCursor: string | null, hasMore: boolean }> {
+    const crud = Result.orThrow(await this._transactionsCache.getOrWait([params.cursor, params.limit, params.type, params.customerType, params.customerId] as const, "write-only"));
     return crud;
   }
 
@@ -852,8 +852,8 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
   }
 
   // IF_PLATFORM react-like
-  useTransactions(params: { cursor?: string, limit?: number, type?: TransactionType, customerType?: 'user' | 'team' | 'custom' }): { transactions: Transaction[], nextCursor: string | null } {
-    const data = useAsyncCache(this._transactionsCache, [params.cursor, params.limit, params.type, params.customerType] as const, "adminApp.useTransactions()");
+  useTransactions(params: { cursor?: string, limit?: number, type?: TransactionType, customerType?: 'user' | 'team' | 'custom', customerId?: string }): { transactions: Transaction[], nextCursor: string | null, hasMore: boolean } {
+    const data = useAsyncCache(this._transactionsCache, [params.cursor, params.limit, params.type, params.customerType, params.customerId] as const, "adminApp.useTransactions()");
     return data;
   }
   // END_PLATFORM

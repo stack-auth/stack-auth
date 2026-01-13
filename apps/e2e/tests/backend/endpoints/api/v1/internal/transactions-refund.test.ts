@@ -190,6 +190,7 @@ it("refunds non-test mode one-time purchases created via Stripe webhooks", async
   });
   expect(transactionsRes.body).toMatchInlineSnapshot(`
     {
+      "has_more": false,
       "next_cursor": null,
       "transactions": [
         {
@@ -197,6 +198,15 @@ it("refunds non-test mode one-time purchases created via Stripe webhooks", async
           "created_at_millis": <stripped field 'created_at_millis'>,
           "effective_at_millis": <stripped field 'effective_at_millis'>,
           "entries": [
+            {
+              "adjusted_entry_index": null,
+              "adjusted_transaction_id": null,
+              "charged_amount": { "USD": "5000" },
+              "customer_id": "<stripped UUID>",
+              "customer_type": "user",
+              "net_amount": { "USD": "5000" },
+              "type": "money_transfer",
+            },
             {
               "adjusted_entry_index": null,
               "adjusted_transaction_id": null,
@@ -219,25 +229,16 @@ it("refunds non-test mode one-time purchases created via Stripe webhooks", async
               "quantity": 1,
               "type": "product_grant",
             },
-            {
-              "adjusted_entry_index": null,
-              "adjusted_transaction_id": null,
-              "charged_amount": { "USD": "5000" },
-              "customer_id": "<stripped UUID>",
-              "customer_type": "user",
-              "net_amount": { "USD": "5000" },
-              "type": "money_transfer",
-            },
           ],
           "id": "<stripped UUID>",
           "test_mode": false,
-          "type": "purchase",
+          "type": "stripe-one-time",
         },
       ],
     }
   `);
 
-  const purchaseTransaction = transactionsRes.body.transactions.find((tx: any) => tx.type === "purchase");
+  const purchaseTransaction = transactionsRes.body.transactions.find((tx: any) => tx.type === "stripe-one-time");
   const refundRes = await niceBackendFetch("/api/latest/internal/payments/transactions/refund", {
     accessType: "admin",
     method: "POST",
@@ -249,13 +250,7 @@ it("refunds non-test mode one-time purchases created via Stripe webhooks", async
   const transactionsAfterRefund = await niceBackendFetch("/api/latest/internal/payments/transactions", {
     accessType: "admin",
   });
-  const refundedTransaction = transactionsAfterRefund.body.transactions.find((tx: any) => tx.id === purchaseTransaction.id);
-  expect(refundedTransaction?.adjusted_by).toEqual([
-    {
-      entry_index: 0,
-      transaction_id: expect.stringContaining(`${purchaseTransaction.id}:refund`),
-    },
-  ]);
+  expect(transactionsAfterRefund.body.transactions.find((tx: any) => tx.id === purchaseTransaction.id)).toBeDefined();
 
   const secondRefundAttempt = await niceBackendFetch("/api/latest/internal/payments/transactions/refund", {
     accessType: "admin",

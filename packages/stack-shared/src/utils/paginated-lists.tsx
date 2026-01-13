@@ -99,7 +99,7 @@ export abstract class PaginatedList<
     let includesLast = false;
     let cursor = options.cursor;
     let limitRemaining = options.limit;
-    while (limitRemaining > 0 && (type !== "next" || !includesLast) && (type !== "prev" || !includesFirst)) {
+    while (limitRemaining > 0 && !(type === "next" && includesLast) && !(type === "prev" && includesFirst)) {
       const iterationRes = await this._nextOrPrev(type, {
         cursor,
         limit: options.limit,
@@ -107,6 +107,19 @@ export abstract class PaginatedList<
         filter: options.filter,
         orderBy: options.orderBy,
       });
+      if (
+        iterationRes.items.length === 0
+        && iterationRes.cursor === cursor
+        && !iterationRes.isFirst
+        && !iterationRes.isLast
+      ) {
+        throw new StackAssertionError("Paginated list made no progress; check _nextOrPrev implementation", {
+          type,
+          options,
+          cursor,
+          iterationRes,
+        });
+      }
       result[type === "next" ? "push" : "unshift"](...iterationRes.items);
       limitRemaining -= iterationRes.items.length;
       includesFirst ||= iterationRes.isFirst;
@@ -346,8 +359,8 @@ export abstract class PaginatedList<
         return listsResults[0];
       }
 
-      override async _nextOrPrev(type: 'next' | 'prev', { limit, filter, orderBy, cursor }: ImplQueryOptions<'next' | 'prev', "first" | "last" | `[${string}]`, Filter, OrderBy>) {
-        const cursors = JSON.parse(cursor);
+      override async _nextOrPrev(type: 'next' | 'prev', { limit, filter, orderBy, cursor }: ImplQueryOptions<'next' | 'prev', string, Filter, OrderBy>) {
+        const cursors = JSON.parse(cursor) as string[];
         const fetchedLists = await Promise.all(lists.map(async (list, i) => {
           return await list.nextOrPrev(type, {
             limit,
@@ -357,33 +370,31 @@ export abstract class PaginatedList<
             limitPrecision: "at-least",
           });
         }));
-        const combinedItems = fetchedLists.flatMap((list, i) => list.items.map((itemEntry) => ({ itemEntry, listIndex: i })));
-        const sortedItems = [...combinedItems].sort((a, b) => this._compare(orderBy, a.itemEntry.item, b.itemEntry.item));
-
-        const sortedItemsWithMergedCursors: { item: Item, prevCursor: string, nextCursor: string }[] = [];
-        const curCursors = [...cursors];
-        // When going backward, we iterate in reverse order to correctly build cursors,
-        // but we need to return items in ascending order
-        for (const item of (type === 'next' ? sortedItems : sortedItems.reverse())) {
-          const lastCursors = [...curCursors];
-          curCursors[item.listIndex] = type === 'next' ? item.itemEntry.nextCursor : item.itemEntry.prevCursor;
-          sortedItemsWithMergedCursors.push({
+        const combinedItems = fetchedLists.flatMap((list, i) =>
+          list.items.map((itemEntry) => ({ itemEntry, listIndex: i })),
+        );
+        const sortedItems = [...combinedItems].sort((a, b) =>
+          this._compare(orderBy, a.itemEntry.item, b.itemEntry.item),
+        );
+        const startCursors = type === "prev"
+          ? fetchedLists.map((list) => list.cursor)
+          : cursors;
+        const currentCursors = [...startCursors];
+        const itemsWithCompositeCursor = sortedItems.map((item) => {
+          const prevCursor = JSON.stringify(currentCursors);
+          currentCursors[item.listIndex] = item.itemEntry.nextCursor;
+          const nextCursor = JSON.stringify(currentCursors);
+          return {
             item: item.itemEntry.item,
-            prevCursor: type === 'next' ? JSON.stringify(lastCursors) : JSON.stringify(curCursors),
-            nextCursor: type === 'next' ? JSON.stringify(curCursors) : JSON.stringify(lastCursors),
-          });
-        }
-
-        // When going backward, reverse the result to maintain ascending order
-        if (type === 'prev') {
-          sortedItemsWithMergedCursors.reverse();
-        }
-
+            prevCursor,
+            nextCursor,
+          };
+        });
         return {
-          items: sortedItemsWithMergedCursors,
+          items: itemsWithCompositeCursor,
           isFirst: fetchedLists.every((list) => list.isFirst),
           isLast: fetchedLists.every((list) => list.isLast),
-          cursor: JSON.stringify(curCursors),
+          cursor: JSON.stringify(fetchedLists.map((list) => list.cursor)),
         };
       }
     }
@@ -476,4 +487,3 @@ export class ArrayPaginatedList<Item> extends PaginatedList<Item, `before-${numb
     };
   }
 }
-
