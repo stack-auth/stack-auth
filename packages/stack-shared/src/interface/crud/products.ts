@@ -5,6 +5,12 @@ export const customerProductReadSchema = yupObject({
   id: yupString().nullable().defined(),
   quantity: yupNumber().defined(),
   product: inlineProductSchema.defined(),
+  type: yupString().oneOf(["one_time", "subscription"]).defined(),
+  subscription: yupObject({
+    current_period_end: yupString().nullable().defined(),
+    cancel_at_period_end: yupBoolean().defined(),
+    is_cancelable: yupBoolean().defined(),
+  }).nullable().defined(),
 }).defined();
 
 export type CustomerProductRead = yup.InferType<typeof customerProductReadSchema>;

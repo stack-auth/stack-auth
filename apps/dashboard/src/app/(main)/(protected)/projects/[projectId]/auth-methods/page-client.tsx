@@ -344,7 +344,7 @@ export default function PageClient() {
           />
           <EmailVerificationSetting
             showIcon
-            hint="Users must verify their primary email before they can use your application. Unverified users will be restricted."
+            hint="Users must verify their primary email before they can use your application. Unverified users will be restricted. Requires SDK version >=2.8.57."
           />
           <SettingSelect
             label="Sign-up mode when logging in with same email on multiple providers"

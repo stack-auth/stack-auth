@@ -12,7 +12,7 @@ import {
   getSlowestRequests,
 } from "@/lib/dev-request-stats";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { yupArray, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+import { yupArray, yupNumber, yupObject, yupRecord, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
 import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 
@@ -33,7 +33,14 @@ const aggregateStatsSchema = yupObject({
   averageTimeMs: yupNumber().defined(),
 });
 
+const pgPoolSingleStatsSchema = yupObject({
+  total: yupNumber().defined(),
+  idle: yupNumber().defined(),
+  waiting: yupNumber().defined(),
+});
+
 const pgPoolStatsSchema = yupObject({
+  pools: yupRecord(yupString().defined(), pgPoolSingleStatsSchema.defined()).defined(),
   total: yupNumber().defined(),
   idle: yupNumber().defined(),
   waiting: yupNumber().defined(),

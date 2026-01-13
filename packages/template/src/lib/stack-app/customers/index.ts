@@ -39,6 +39,12 @@ export type CustomerProduct = {
   customerType: "user" | "team" | "custom",
   isServerOnly: boolean,
   stackable: boolean,
+  type: "one_time" | "subscription",
+  subscription: null | {
+    currentPeriodEnd: Date | null,
+    cancelAtPeriodEnd: boolean,
+    isCancelable: boolean,
+  },
 };
 
 export type CustomerProductsList = CustomerProduct[] & {
@@ -55,6 +61,24 @@ export type CustomerProductsRequestOptions =
   | ({ teamId: string } & CustomerProductsListOptions)
   | ({ customCustomerId: string } & CustomerProductsListOptions);
 
+export type CustomerDefaultPaymentMethod = {
+  id: string,
+  brand: string | null,
+  last4: string | null,
+  exp_month: number | null,
+  exp_year: number | null,
+} | null;
+
+export type CustomerBilling = {
+  hasCustomer: boolean,
+  defaultPaymentMethod: CustomerDefaultPaymentMethod,
+};
+
+export type CustomerPaymentMethodSetupIntent = {
+  clientSecret: string,
+  stripeAccountId: string,
+};
+
 export type Customer<IsServer extends boolean = false> =
   & {
     readonly id: string,
@@ -63,7 +87,17 @@ export type Customer<IsServer extends boolean = false> =
       | { productId: string, returnUrl?: string }
       | (IsServer extends true ? { product: InlineProduct, returnUrl?: string } : never)
     )): Promise<string>,
+
+    createPaymentMethodSetupIntent(): Promise<CustomerPaymentMethodSetupIntent>,
+
+    setDefaultPaymentMethodFromSetupIntent(setupIntentId: string): Promise<CustomerDefaultPaymentMethod>,
   }
+  & AsyncStoreProperty<
+    "billing",
+    [],
+    CustomerBilling,
+    false
+  >
   & AsyncStoreProperty<
     "item",
     [itemId: string],
