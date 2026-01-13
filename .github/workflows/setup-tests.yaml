@@ -43,4 +43,5 @@ jobs:
           tail: true
           wait-for: 120s
           log-output-if: true
+      - run: sleep 5 # wait for all routes to compile
       - run: pnpm run test --reporter=verbose
