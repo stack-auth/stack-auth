@@ -12,6 +12,7 @@ type PaymentMethod = {
   name: string,
   enabled: boolean,
   available: boolean,
+  overridable: boolean,
 };
 
 type PaymentMethodConfig = {
@@ -19,7 +20,6 @@ type PaymentMethodConfig = {
   methods: PaymentMethod[],
 };
 
-// Icons for different payment method categories
 const getMethodIcon = (id: string) => {
   if (['card', 'cartes_bancaires'].includes(id)) return CreditCard;
   if (['apple_pay', 'google_pay', 'link', 'amazon_pay', 'cashapp'].includes(id)) return Wallet;
@@ -59,11 +59,30 @@ export default function PageClient() {
   };
 
   const hasPendingChanges = Object.keys(pendingChanges).length > 0;
+  const [saving, setSaving] = useState(false);
 
   const handleSave = async () => {
-    // TODO: Implement save functionality with PATCH endpoint
-    console.log("Saving changes:", pendingChanges);
-    alert("Save functionality coming soon! Changes: " + JSON.stringify(pendingChanges));
+    if (!config) return;
+
+    setSaving(true);
+    try {
+      const updates: Record<string, 'on' | 'off'> = {};
+      for (const [methodId, enabled] of Object.entries(pendingChanges)) {
+        updates[methodId] = enabled ? 'on' : 'off';
+      }
+
+      console.log("Saving payment method updates:", updates);
+      await adminApp.updatePaymentMethodConfigs(config.configId, updates);
+      console.log("Save completed successfully");
+
+      setPendingChanges({});
+      await loadConfig();
+    } catch (error) {
+      console.error("Failed to save payment method configs:", error);
+      alert("Failed to save changes. Please try again.");
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleCancel = () => {
@@ -90,8 +109,8 @@ export default function PageClient() {
     );
   }
 
-  const availableMethods = config.methods.filter(m => m.available);
-  const unavailableMethods = config.methods.filter(m => !m.available);
+  const controllableMethods = config.methods.filter(m => m.overridable);
+  const uncontrollableMethods = config.methods.filter(m => !m.overridable);
 
   return (
     <PageLayout title="Payment Methods">
@@ -104,11 +123,11 @@ export default function PageClient() {
           </div>
           {hasPendingChanges && (
             <div className="flex gap-2">
-              <Button variant="secondary" onClick={handleCancel}>
+              <Button variant="secondary" onClick={handleCancel} disabled={saving}>
                 Cancel
               </Button>
-              <Button onClick={handleSave}>
-                Save Changes
+              <Button onClick={handleSave} disabled={saving}>
+                {saving ? "Saving..." : "Save Changes"}
               </Button>
             </div>
           )}
@@ -123,12 +142,12 @@ export default function PageClient() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-1">
-            {availableMethods.length === 0 ? (
+            {controllableMethods.length === 0 ? (
               <Typography className="text-muted-foreground text-sm py-4">
                 No payment methods are currently available. Complete Stripe onboarding to enable payment methods.
               </Typography>
             ) : (
-              availableMethods.map((method) => {
+              controllableMethods.map((method) => {
                 const Icon = getMethodIcon(method.id);
                 const isEnabled = method.id in pendingChanges ? pendingChanges[method.id] : method.enabled;
                 const hasChanged = method.id in pendingChanges;
@@ -151,7 +170,7 @@ export default function PageClient() {
                     </div>
                     <Switch
                       checked={isEnabled}
-                      onCheckedChange={() => handleToggle(method.id, method.enabled)}
+                      onCheckedChange={() => handleToggle(method.id, isEnabled)}
                     />
                   </div>
                 );
@@ -160,17 +179,17 @@ export default function PageClient() {
           </CardContent>
         </Card>
 
-        {/* Unavailable Payment Methods */}
-        {unavailableMethods.length > 0 && (
+        {/* Platform-Managed Methods */}
+        {uncontrollableMethods.length > 0 && (
           <Card className="opacity-60">
             <CardHeader>
-              <CardTitle className="text-lg">Unavailable Methods</CardTitle>
+              <CardTitle className="text-lg">Platform-Managed Methods</CardTitle>
               <CardDescription>
-                These methods require additional setup or verification in Stripe before they can be enabled.
+                These methods are controlled by the platform and cannot be customized.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-1">
-              {unavailableMethods.slice(0, 10).map((method) => {
+              {uncontrollableMethods.slice(0, 10).map((method) => {
                 const Icon = getMethodIcon(method.id);
                 return (
                   <div
@@ -183,13 +202,13 @@ export default function PageClient() {
                         <Typography className="font-medium text-muted-foreground">{method.name}</Typography>
                       </div>
                     </div>
-                    <Switch disabled checked={false} />
+                    <Switch disabled checked={method.enabled} />
                   </div>
                 );
               })}
-              {unavailableMethods.length > 10 && (
+              {uncontrollableMethods.length > 10 && (
                 <Typography className="text-muted-foreground text-sm pt-2">
-                  And {unavailableMethods.length - 10} more...
+                  And {uncontrollableMethods.length - 10} more...
                 </Typography>
               )}
             </CardContent>
