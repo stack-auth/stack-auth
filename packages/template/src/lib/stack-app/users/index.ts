@@ -19,16 +19,15 @@ import { EditableTeamMemberProfile, ServerTeam, ServerTeamCreateOptions, Team, T
 
 const userGetterErrorMessage = "Stack Auth: useUser() already returns the user object. Use `const user = useUser()` (or `const user = await app.getUser()`) instead of destructuring it like `const { user } = ...`.";
 
-export function attachUserDestructureGuard(target: object): void {
-  const descriptor = Object.getOwnPropertyDescriptor(target, "user");
-  if (descriptor?.get === guardGetter) {
-    return;
-  }
-
-  Object.defineProperty(target, "user", {
-    get: guardGetter,
-    configurable: false,
-    enumerable: false,
+export function withUserDestructureGuard<T extends object>(target: T): T {
+  Object.freeze(target);
+  return new Proxy(target, {
+    get(target, prop, receiver) {
+      if (prop === "user") {
+        return guardGetter();
+      }
+      return target[prop as keyof T];
+    },
   });
 }
 
@@ -127,6 +126,16 @@ export type BaseUser = {
 
   readonly isMultiFactorRequired: boolean,
   readonly isAnonymous: boolean,
+  /**
+   * Whether the user is in restricted state (signed up but hasn't completed onboarding requirements).
+   * For example, if email verification is required but the user hasn't verified their email yet.
+   */
+  readonly isRestricted: boolean,
+  /**
+   * The reason why the user is restricted, e.g., { type: "email_not_verified" } or { type: "anonymous" }.
+   * Null if the user is not restricted.
+   */
+  readonly restrictedReason: { type: "anonymous" | "email_not_verified" } | null,
   toClientJson(): CurrentUserCrud["Client"]["Read"],
 
   /**
@@ -140,7 +149,7 @@ export type BaseUser = {
 }
 
 export type UserExtra = {
-  setDisplayName(displayName: string): Promise<void>,
+  setDisplayName(displayName: string | null): Promise<void>,
   /** @deprecated Use contact channel's sendVerificationEmail instead */
   sendVerificationEmail(): Promise<KnownErrors["EmailAlreadyVerified"] | void>,
   setClientMetadata(metadata: any): Promise<void>,
@@ -187,7 +196,7 @@ export type UserExtra = {
   // END_PLATFORM
 
   readonly selectedTeam: Team | null,
-  setSelectedTeam(team: Team | null): Promise<void>,
+  setSelectedTeam(teamOrId: string | Team | null): Promise<void>,
   createTeam(data: TeamCreateOptions): Promise<Team>,
   leaveTeam(team: Team): Promise<void>,
 
@@ -234,6 +243,8 @@ export type TokenPartialUser = Pick<
   | "primaryEmail"
   | "primaryEmailVerified"
   | "isAnonymous"
+  | "isRestricted"
+  | "restrictedReason"
 >
 
 export type SyncedPartialUser = TokenPartialUser & Pick<
@@ -248,6 +259,8 @@ export type SyncedPartialUser = TokenPartialUser & Pick<
   | "clientReadOnlyMetadata"
   | "isAnonymous"
   | "hasPassword"
+  | "isRestricted"
+  | "restrictedReason"
 >;
 
 
@@ -262,13 +275,14 @@ export type ActiveSession = {
 };
 
 export type UserUpdateOptions = {
-  displayName?: string,
+  displayName?: string | null,
   clientMetadata?: ReadonlyJson,
   selectedTeamId?: string | null,
   totpMultiFactorSecret?: Uint8Array | null,
   profileImageUrl?: string | null,
   otpAuthEnabled?: boolean,
-  passkeyAuthEnabled?:boolean,
+  passkeyAuthEnabled?: boolean,
+  primaryEmail?: string | null,
 }
 export function userUpdateOptionsToCrud(options: UserUpdateOptions): CurrentUserCrud["Client"]["Update"] {
   return {
@@ -279,6 +293,7 @@ export function userUpdateOptionsToCrud(options: UserUpdateOptions): CurrentUser
     profile_image_url: options.profileImageUrl,
     otp_auth_enabled: options.otpAuthEnabled,
     passkey_auth_enabled: options.passkeyAuthEnabled,
+    primary_email: options.primaryEmail,
   };
 }
 

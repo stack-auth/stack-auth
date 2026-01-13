@@ -301,6 +301,7 @@ export class StackServerInterface extends StackClientInterface {
     orderBy?: 'signedUpAt',
     desc?: boolean,
     query?: string,
+    includeRestricted?: boolean,
     includeAnonymous?: boolean,
   }): Promise<UsersCrud['Server']['List']> {
     const searchParams = new URLSearchParams(filterUndefined({
@@ -314,6 +315,9 @@ export class StackServerInterface extends StackClientInterface {
       } : {},
       ...options.query ? {
         query: options.query,
+      } : {},
+      ...options.includeRestricted ? {
+        include_restricted: 'true',
       } : {},
       ...options.includeAnonymous ? {
         include_anonymous: 'true',

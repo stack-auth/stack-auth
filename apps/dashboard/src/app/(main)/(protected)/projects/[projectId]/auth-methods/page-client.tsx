@@ -1,5 +1,6 @@
 "use client";
 
+import { EmailVerificationSetting } from "@/components/email-verification-setting";
 import { SettingCard, SettingSelect, SettingSwitch } from "@/components/settings";
 import { ActionDialog, Badge, BrandIcons, BrowserFrame, Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, Input, SelectItem, SimpleTooltip, Typography } from "@/components/ui";
 import { AsteriskIcon, DotsThreeIcon, KeyIcon, LinkIcon, PlusCircleIcon } from "@phosphor-icons/react";
@@ -334,12 +335,16 @@ export default function PageClient() {
             checked={project.config.signUpEnabled}
             onCheckedChange={async (checked) => {
               if (checked) {
-              setConfirmSignUpEnabled(true);
+                setConfirmSignUpEnabled(true);
               } else {
-              setConfirmSignUpDisabled(true);
+                setConfirmSignUpDisabled(true);
               }
             }}
             hint="Existing users can still sign in when sign-up is disabled. You can always create new accounts manually via the dashboard."
+          />
+          <EmailVerificationSetting
+            showIcon
+            hint="Users must verify their primary email before they can use your application. Unverified users will be restricted. Requires SDK version >=2.8.57."
           />
           <SettingSelect
             label="Sign-up mode when logging in with same email on multiple providers"

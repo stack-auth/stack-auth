@@ -729,6 +729,9 @@ export const userPasswordHashMutationSchema = yupString()
 export const userTotpSecretMutationSchema = base64Schema.nullable().meta({ openapiField: { description: 'Enables 2FA and sets a TOTP secret for the user. Set to null to disable 2FA.', exampleValue: 'dG90cC1zZWNyZXQ=' } });
 
 // Auth
+export const restrictedReasonTypes = ["anonymous", "email_not_verified"] as const;
+export type RestrictedReasonType = typeof restrictedReasonTypes[number];
+
 export const accessTokenPayloadSchema = yupObject({
   sub: yupString().defined(),
   exp: yupNumber().optional(),
@@ -744,6 +747,10 @@ export const accessTokenPayloadSchema = yupObject({
   email_verified: yupBoolean().defined(),
   selected_team_id: yupString().defined().nullable(),
   is_anonymous: yupBoolean().defined(),
+  is_restricted: yupBoolean().defined(),
+  restricted_reason: yupObject({
+    type: yupString().oneOf(restrictedReasonTypes).defined(),
+  }).defined().nullable(),
 });
 export const signInEmailSchema = strictEmailSchema(undefined).meta({ openapiField: { description: 'The email to sign in with.', exampleValue: 'johndoe@example.com' } });
 export const emailOtpSignInCallbackUrlSchema = urlSchema.meta({ openapiField: { description: 'The base callback URL to construct the magic link from. A query parameter `code` with the verification code will be appended to it. The page should then make a request to the `/auth/otp/sign-in` endpoint.', exampleValue: 'https://example.com/handler/magic-link-callback' } });

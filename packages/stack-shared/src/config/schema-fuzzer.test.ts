@@ -165,6 +165,9 @@ const branchSchemaFuzzerConfig = [{
       enabled: [true, false],
     }]]))],
   }],
+  onboarding: [{
+    requireEmailVerification: [true, false],
+  }],
 }] satisfies FuzzerConfig<BranchConfigNormalizedOverride>;
 
 const environmentSchemaFuzzerConfig = [{

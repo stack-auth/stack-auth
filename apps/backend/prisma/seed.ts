@@ -100,6 +100,10 @@ export async function seed() {
     projectId: 'internal',
     branchId: DEFAULT_BRANCH_ID,
     environmentConfigOverrideOverride: {
+      // Disable email verification for internal project - dashboard admins shouldn't need to verify their email
+      onboarding: {
+        requireEmailVerification: false,
+      },
       dataVault: {
         stores: {
           'neon-connection-strings': {
