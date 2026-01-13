@@ -257,48 +257,44 @@ function RealPaymentsPanel(props: { title?: string, customer: CustomerLike, cust
         </Section>
       )}
 
-      <Section
+      {productsForCustomerType.length > 0 && <Section
         title={t("Active plans")}
         description={t("View your active plans and purchases.")}
       >
-        {productsForCustomerType.length === 0 ? (
-          <Typography variant="secondary" type="footnote">{t("No active plans.")}</Typography>
-        ) : (
-          <div className="space-y-3">
-            {productsForCustomerType.map((product, index) => {
-              const quantitySuffix = product.quantity !== 1 ? ` ×${product.quantity}` : "";
-              const isSubscription = product.type === "subscription";
-              const isCancelable = isSubscription && !!product.id && !!product.subscription?.isCancelable;
-              const renewsAt = isSubscription ? (product.subscription?.currentPeriodEnd ?? null) : null;
+        <div className="space-y-3">
+          {productsForCustomerType.map((product, index) => {
+            const quantitySuffix = product.quantity !== 1 ? ` ×${product.quantity}` : "";
+            const isSubscription = product.type === "subscription";
+            const isCancelable = isSubscription && !!product.id && !!product.subscription?.isCancelable;
+            const renewsAt = isSubscription ? (product.subscription?.currentPeriodEnd ?? null) : null;
 
-              const subtitle =
-                product.type === "one_time"
-                  ? t("One-time purchase")
-                  : renewsAt
-                    ? `${t("Renews on")} ${new Intl.DateTimeFormat(undefined, { year: "numeric", month: "short", day: "numeric" }).format(renewsAt)}`
-                    : t("Subscription");
+            const subtitle =
+              product.type === "one_time"
+                ? t("One-time purchase")
+                : renewsAt
+                  ? `${t("Renews on")} ${new Intl.DateTimeFormat(undefined, { year: "numeric", month: "short", day: "numeric" }).format(renewsAt)}`
+                  : t("Subscription");
 
-              return (
-                <div key={product.id ?? `${product.displayName}-${index}`} className="flex items-start justify-between gap-4">
-                  <div className="min-w-0">
-                    <Typography className="truncate">{product.displayName}{quantitySuffix}</Typography>
-                    <Typography variant="secondary" type="footnote">{subtitle}</Typography>
-                  </div>
-
-                  {isCancelable && (
-                    <Button
-                      variant="secondary"
-                      color="neutral"
-                      onClick={() => setCancelProductId(product.id)}
-                    >
-                      {t("Cancel subscription")}
-                    </Button>
-                  )}
+            return (
+              <div key={product.id ?? `${product.displayName}-${index}`} className="flex items-start justify-between gap-4">
+                <div className="min-w-0">
+                  <Typography className="truncate">{product.displayName}{quantitySuffix}</Typography>
+                  <Typography variant="secondary" type="footnote">{subtitle}</Typography>
                 </div>
-              );
-            })}
-          </div>
-        )}
+
+                {isCancelable && (
+                  <Button
+                    variant="secondary"
+                    color="neutral"
+                    onClick={() => setCancelProductId(product.id)}
+                  >
+                    {t("Cancel subscription")}
+                  </Button>
+                )}
+              </div>
+            );
+          })}
+        </div>
 
         <ActionDialog
           open={cancelProductId !== null}
@@ -323,7 +319,7 @@ function RealPaymentsPanel(props: { title?: string, customer: CustomerLike, cust
             },
           }}
         />
-      </Section>
+      </Section>}
     </div>
   );
 }
