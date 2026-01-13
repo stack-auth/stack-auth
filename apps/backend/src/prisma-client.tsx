@@ -216,15 +216,16 @@ async function waitForReplication(replicas: PrismaClient[], target: string, time
     // Wait for all replicas in parallel with timeout and exponential backoff
     const deadline = performance.now() + timeoutMs;
     const results = await Promise.all(replicas.map(async (replica): Promise<{ caughtUp: boolean, iterations: number }> => {
-      let waitMs = 15;
+      let extraWaitMs = 5;
       let iterations = 0;
-      while (performance.now() < deadline) {
+      while (true) {
         iterations++;
         if (await checkCaughtUp(replica)) {
           return { caughtUp: true, iterations };
         }
-        await wait(waitMs);
-        waitMs = Math.min(waitMs * 1.5, timeoutMs);  // Cap at timeoutMs to avoid overshooting
+        if (performance.now() > deadline) break;
+        await wait(Math.min(15 + extraWaitMs, deadline - performance.now() + 10));  // Capped to avoid overshooting
+        extraWaitMs = extraWaitMs * 3;
       }
       return { caughtUp: false, iterations };
     }));
