@@ -27,6 +27,11 @@ const getMethodIcon = (id: string) => {
   return Globe;
 };
 
+const PAYMENT_METHOD_DEPENDENCIES: Record<string, string[]> = {
+  apple_pay: ['card'],
+  google_pay: ['card'],
+};
+
 export default function PageClient() {
   const adminApp = useAdminApp();
   const [config, setConfig] = useState<PaymentMethodConfig | null>(null);
@@ -61,8 +66,40 @@ export default function PageClient() {
   const hasPendingChanges = Object.keys(pendingChanges).length > 0;
   const [saving, setSaving] = useState(false);
 
+  // Get the effective state of a method (with pending changes applied)
+  const getEffectiveState = (methodId: string): boolean => {
+    if (methodId in pendingChanges) {
+      return pendingChanges[methodId];
+    }
+    const method = config?.methods.find(m => m.id === methodId);
+    return method?.enabled ?? false;
+  };
+
+  const validatePaymentMethodDependencies = (): string | null => {
+    for (const [methodId, requiredMethods] of Object.entries(PAYMENT_METHOD_DEPENDENCIES)) {
+      const methodEnabled = getEffectiveState(methodId);
+      if (!methodEnabled) continue;
+
+      const missingDeps = requiredMethods.filter(dep => !getEffectiveState(dep));
+      if (missingDeps.length > 0) {
+        const methodName = config?.methods.find(m => m.id === methodId)?.name ?? methodId;
+        const depNames = missingDeps
+          .map(dep => config?.methods.find(m => m.id === dep)?.name ?? dep)
+          .join(', ');
+        return `${methodName} requires ${depNames} to be enabled. Please enable ${depNames} or disable ${methodName} first.`;
+      }
+    }
+    return null;
+  };
+
   const handleSave = async () => {
     if (!config) return;
+
+    const validationError = validatePaymentMethodDependencies();
+    if (validationError) {
+      alert(validationError);
+      return;
+    }
 
     setSaving(true);
     try {
