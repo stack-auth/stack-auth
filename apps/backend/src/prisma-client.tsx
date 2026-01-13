@@ -201,7 +201,7 @@ async function waitForReplication(replicas: PrismaClient[], target: string, time
         const [{ current_lsn }] = await (replica as any).$queryRaw<[{ current_lsn: bigint | null }]>`
           SELECT current_read_lsn AS current_lsn
           FROM aurora_replica_status()
-          WHERE server_id = aurora_server_id()
+          WHERE server_id = aurora_db_instance_identifier()
         `;
         return current_lsn === null || current_lsn >= targetBigInt;
       };
