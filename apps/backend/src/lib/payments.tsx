@@ -1,6 +1,9 @@
-import { PrismaClientTransaction } from "@/prisma-client";
+import { getPrismaClientForTenancy, PrismaClientTransaction } from "@/prisma-client";
+import { ensureUserTeamPermissionExists } from "@/lib/request-checks";
 import { PurchaseCreationSource, SubscriptionStatus } from "@/generated/prisma/client";
+import { CustomerType } from "@/generated/prisma/client";
 import { KnownErrors } from "@stackframe/stack-shared";
+import type { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
 import type { inlineProductSchema, productSchema, productSchemaWithMetadata } from "@stackframe/stack-shared/dist/schema-fields";
 import { SUPPORTED_CURRENCIES } from "@stackframe/stack-shared/dist/utils/currency-constants";
 import { FAR_FUTURE_DATE, addInterval, getIntervalsElapsed } from "@stackframe/stack-shared/dist/utils/dates";
@@ -18,6 +21,35 @@ const DEFAULT_PRODUCT_START_DATE = new Date("1973-01-01T12:00:00.000Z"); // mond
 type Product = yup.InferType<typeof productSchema>;
 type ProductWithMetadata = yup.InferType<typeof productSchemaWithMetadata>;
 type SelectedPrice = Exclude<Product["prices"], "include-by-default">[string];
+
+export async function ensureClientCanAccessCustomer(options: {
+  customerType: "user" | "team",
+  customerId: string,
+  user: UsersCrud["Admin"]["Read"] | undefined,
+  tenancy: Tenancy,
+  forbiddenMessage: string,
+}): Promise<void> {
+  const currentUser = options.user;
+  if (!currentUser) {
+    throw new KnownErrors.UserAuthenticationRequired();
+  }
+  if (options.customerType === "user") {
+    if (options.customerId !== currentUser.id) {
+      throw new StatusError(StatusError.Forbidden, options.forbiddenMessage);
+    }
+    return;
+  }
+
+  const prisma = await getPrismaClientForTenancy(options.tenancy);
+  await ensureUserTeamPermissionExists(prisma, {
+    tenancy: options.tenancy,
+    teamId: options.customerId,
+    userId: currentUser.id,
+    permissionId: "team_admin",
+    errorType: "required",
+    recursive: true,
+  });
+}
 
 export async function ensureProductIdOrInlineProduct(
   tenancy: Tenancy,
@@ -265,6 +297,7 @@ type Subscription = {
   quantity: number,
   currentPeriodStart: Date,
   currentPeriodEnd: Date | null,
+  cancelAtPeriodEnd: boolean,
   status: SubscriptionStatus,
   createdAt: Date,
 };
@@ -301,6 +334,7 @@ export async function getSubscriptions(options: {
       quantity: s.quantity,
       currentPeriodStart: s.currentPeriodStart,
       currentPeriodEnd: s.currentPeriodEnd,
+      cancelAtPeriodEnd: s.cancelAtPeriodEnd,
       status: s.status,
       createdAt: s.createdAt,
       stripeSubscriptionId: s.stripeSubscriptionId,
@@ -329,6 +363,7 @@ export async function getSubscriptions(options: {
         quantity: 1,
         currentPeriodStart: DEFAULT_PRODUCT_START_DATE,
         currentPeriodEnd: null,
+        cancelAtPeriodEnd: false,
         status: SubscriptionStatus.active,
         createdAt: DEFAULT_PRODUCT_START_DATE,
         stripeSubscriptionId: null,
@@ -347,6 +382,7 @@ export async function getSubscriptions(options: {
       quantity: 1,
       currentPeriodStart: DEFAULT_PRODUCT_START_DATE,
       currentPeriodEnd: null,
+      cancelAtPeriodEnd: false,
       status: SubscriptionStatus.active,
       createdAt: DEFAULT_PRODUCT_START_DATE,
       stripeSubscriptionId: null,
@@ -422,6 +458,117 @@ export async function ensureCustomerExists(options: {
       throw new KnownErrors.TeamNotFound(options.customerId);
     }
   }
+}
+
+function customerTypeToStripeCustomerType(customerType: "user" | "team") {
+  return customerType === "user" ? CustomerType.USER : CustomerType.TEAM;
+}
+
+export async function getStripeCustomerForCustomerOrNull(options: {
+  stripe: Stripe,
+  prisma: PrismaClientTransaction,
+  tenancyId: string,
+  customerType: "user" | "team",
+  customerId: string,
+}): Promise<Stripe.Customer | null> {
+  await ensureCustomerExists({
+    prisma: options.prisma,
+    tenancyId: options.tenancyId,
+    customerType: options.customerType,
+    customerId: options.customerId,
+  });
+
+  const stripeCustomerType = customerTypeToStripeCustomerType(options.customerType);
+  const matchesCustomer = (customer: Stripe.Customer) => {
+    const storedType = customer.metadata.customerType;
+    if (!storedType) return true;
+    return storedType === stripeCustomerType;
+  };
+
+  const stripeCustomerSearch = await options.stripe.customers.search({
+    query: `metadata['customerId']:'${options.customerId}'`,
+  });
+  let matches = stripeCustomerSearch.data.filter(matchesCustomer);
+
+  if (matches.length === 0) {
+    // Stripe's search is eventually consistent; fall back to listing to ensure we can find a newly created customer.
+    let startingAfter: string | undefined = undefined;
+    for (let i = 0; i < 10; i++) {
+      const page: Stripe.ApiList<Stripe.Customer> = await options.stripe.customers.list({
+        limit: 100,
+        ...startingAfter ? { starting_after: startingAfter } : {},
+      });
+      const exactMatches = page.data.filter((customer) => (
+        customer.metadata.customerId === options.customerId && matchesCustomer(customer)
+      ));
+      if (exactMatches.length > 0) {
+        matches = exactMatches;
+        break;
+      }
+      if (!page.has_more || page.data.length === 0) {
+        break;
+      }
+      startingAfter = page.data[page.data.length - 1].id;
+    }
+  }
+
+  if (matches.length > 1) {
+    throw new StackAssertionError("Multiple Stripe customers found for customerId; customerType filtering was ambiguous", {
+      customerId: options.customerId,
+      customerType: options.customerType,
+      stripeCustomerIds: matches.map((c) => c.id),
+    });
+  }
+  return matches[0] ?? null;
+}
+
+export async function ensureStripeCustomerForCustomer(options: {
+  stripe: Stripe,
+  prisma: PrismaClientTransaction,
+  tenancyId: string,
+  customerType: "user" | "team",
+  customerId: string,
+}): Promise<Stripe.Customer> {
+  const existing = await getStripeCustomerForCustomerOrNull(options);
+  if (existing) {
+    return existing;
+  }
+  const stripeCustomerType = customerTypeToStripeCustomerType(options.customerType);
+  return await options.stripe.customers.create({
+    metadata: {
+      customerId: options.customerId,
+      customerType: stripeCustomerType,
+    },
+  });
+}
+
+export type StripeCardPaymentMethodSummary = {
+  id: string,
+  brand: string | null,
+  last4: string | null,
+  exp_month: number | null,
+  exp_year: number | null,
+};
+
+export async function getDefaultCardPaymentMethodSummary(options: {
+  stripe: Stripe,
+  stripeCustomer: Stripe.Customer,
+}): Promise<StripeCardPaymentMethodSummary | null> {
+  const defaultPaymentMethodId = options.stripeCustomer.invoice_settings.default_payment_method;
+  if (!defaultPaymentMethodId || typeof defaultPaymentMethodId !== "string") {
+    return null;
+  }
+  const pm = await options.stripe.paymentMethods.retrieve(defaultPaymentMethodId);
+  if (pm.type !== "card" || !pm.card) {
+    return null;
+  }
+  return {
+    id: pm.id,
+    brand: pm.card.brand,
+    last4: pm.card.last4,
+    exp_month: pm.card.exp_month,
+    exp_year: pm.card.exp_year,
+  };
 }
 
 export function productToInlineProduct(product: ProductWithMetadata): yup.InferType<typeof inlineProductSchema> {
@@ -648,6 +795,11 @@ export type OwnedProduct = {
   product: Product,
   createdAt: Date,
   sourceId: string,
+  subscription: null | {
+    currentPeriodEnd: Date | null,
+    cancelAtPeriodEnd: boolean,
+    isCancelable: boolean,
+  },
 };
 
 export async function getOwnedProductsForCustomer(options: {
@@ -695,6 +847,11 @@ export async function getOwnedProductsForCustomer(options: {
       product: subscription.product,
       createdAt: subscription.createdAt,
       sourceId,
+      subscription: {
+        currentPeriodEnd: subscription.currentPeriodEnd,
+        cancelAtPeriodEnd: subscription.cancelAtPeriodEnd,
+        isCancelable: subscription.id !== null && subscription.productId !== null,
+      },
     });
   }
 
@@ -707,6 +864,7 @@ export async function getOwnedProductsForCustomer(options: {
       product,
       createdAt: purchase.createdAt,
       sourceId: purchase.id,
+      subscription: null,
     });
   }
 

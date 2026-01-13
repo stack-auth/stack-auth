@@ -59,6 +59,8 @@
   ],
   "dependencies": {
     "@hookform/resolvers": "^3.3.4",
+    "@stripe/react-stripe-js": "^3.8.1",
+    "@stripe/stripe-js": "^7.7.0",
     "@simplewebauthn/browser": "^11.0.0",
     "@stackframe/stack-sc": "workspace:*",
     "@stackframe/stack-shared": "workspace:*",
