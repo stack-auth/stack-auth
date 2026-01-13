@@ -296,19 +296,16 @@ function RealPaymentsPanel(props: { title?: string, customer: CustomerLike, cust
         </Section>
       )}
 
-      <Section
-        title={t("Active plans")}
-        description={t("View your active plans and purchases.")}
-      >
-        {productsForCustomerType.length === 0 ? (
-          <Typography variant="secondary" type="footnote">{t("No active plans.")}</Typography>
-        ) : (
+      {productsForCustomerType.length > 0 && (
+        <Section
+          title={t("Active plans")}
+          description={t("View your active plans and purchases.")}
+        >
           <div className="space-y-3">
             {productsForCustomerType.map((product, index) => {
               const quantitySuffix = product.quantity !== 1 ? ` ×${product.quantity}` : "";
               const isSubscription = product.type === "subscription";
               const isCancelable = isSubscription && !!product.id && !!product.subscription?.isCancelable;
-              const canSwitchPlans = isSubscription && defaultPaymentMethod && !!product.id && (product.switchOptions?.length ?? 0) > 0;
               const renewsAt = isSubscription ? (product.subscription?.currentPeriodEnd ?? null) : null;
 
               const subtitle =
@@ -345,91 +342,102 @@ function RealPaymentsPanel(props: { title?: string, customer: CustomerLike, cust
                       </Button>
                     )}
                   </div>
+
+                  {isCancelable && (
+                    <Button
+                      variant="secondary"
+                      color="neutral"
+                      onClick={() => setCancelProductId(product.id)}
+                    >
+                      {t("Cancel subscription")}
+                    </Button>
+                  )}
                 </div>
               );
             })}
           </div>
-        )}
 
-        <ActionDialog
-          open={cancelProductId !== null}
-          onOpenChange={(open) => {
-            if (!open) setCancelProductId(null);
-          }}
-          title={t("Cancel subscription")}
-          description={t("Canceling will stop future renewals for this subscription.")}
-          danger
-          cancelButton
-          okButton={{
-            label: t("Cancel subscription"),
-            onClick: async () => {
-              const productId = cancelProductId;
-              if (!productId) return;
-              if (props.customerType === "team") {
-                await stackApp.cancelSubscription({ teamId: props.customer.id, productId });
-              } else {
-                await stackApp.cancelSubscription({ productId });
-              }
-              setCancelProductId(null);
-            },
-          }}
-        />
+          <ActionDialog
+            open={cancelProductId !== null}
+            onOpenChange={(open) => {
+              if (!open) setCancelProductId(null);
+            }}
+            title={t("Cancel subscription")}
+            description={t("Canceling will stop future renewals for this subscription.")}
+            danger
+            cancelButton
+            okButton={{
+              label: t("Cancel subscription"),
+              onClick: async () => {
+                const productId = cancelProductId;
+                if (!productId) return;
+                if (props.customerType === "team") {
+                  await stackApp.cancelSubscription({ teamId: props.customer.id, productId });
+                } else {
+                  await stackApp.cancelSubscription({ productId });
+                }
+                setCancelProductId(null);
+              },
+            }}
+          />
 
-        <ActionDialog
-          open={switchFromProductId !== null}
-          onOpenChange={(open) => {
-            if (!open) closeSwitchDialog();
-          }}
-          title={t("Change plan")}
-          description={t("Select a new plan from the same catalog.")}
-          cancelButton
-          okButton={{
-            label: t("Switch plan"),
-            onClick: async () => {
-              const fromProductId = switchFromProductId;
-              const toProductId = switchToProductId;
-              if (!fromProductId || !toProductId) return;
-              if (!selectedPriceId) return;
-              await props.customer.switchSubscription({
-                fromProductId,
-                toProductId,
-                priceId: selectedPriceId,
-              });
-              closeSwitchDialog();
-            },
-            props: {
-              disabled: !switchFromProductId || !switchToProductId || !selectedPriceId,
-            },
-          }}
-        >
-          <div className="space-y-2">
-            {switchOptions.length === 0 ? (
-              <Typography variant="secondary" type="footnote">
-                {t("No other plans available for this subscription.")}
-              </Typography>
-            ) : (
-              <>
-                <Typography type="footnote">{t("Choose a plan")}</Typography>
-                <Select
-                  value={switchToProductId ?? undefined}
-                  onValueChange={(value) => setSwitchToProductId(value || null)}
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder={t("Choose a plan")} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {switchOptions.map((option: NonNullable<typeof switchOptions>[number]) => (
-                      <SelectItem key={option.productId} value={option.productId}>
-                        {option.displayName}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </>
-            )}
-          </div>
-        </ActionDialog>
-      </Section>
-    </div>
+          <ActionDialog
+            open={switchFromProductId !== null}
+            onOpenChange={(open) => {
+              if (!open) closeSwitchDialog();
+            }}
+            title={t("Change plan")}
+            description={t("Select a new plan from the same catalog.")}
+            cancelButton
+            okButton={{
+              label: t("Switch plan"),
+              onClick: async () => {
+                const fromProductId = switchFromProductId;
+                const toProductId = switchToProductId;
+                if (!fromProductId || !toProductId) return;
+                if (!selectedPriceId) return;
+                await props.customer.switchSubscription({
+                  fromProductId,
+                  toProductId,
+                  priceId: selectedPriceId,
+                });
+                closeSwitchDialog();
+              },
+              props: {
+                disabled: !switchFromProductId || !switchToProductId || !selectedPriceId,
+              },
+            }}
+          >
+            <div className="space-y-2">
+              {switchOptions.length === 0 ? (
+                <Typography variant="secondary" type="footnote">
+                  {t("No other plans available for this subscription.")}
+                </Typography>
+              ) : (
+                <>
+                  <Typography type="footnote">{t("Choose a plan")}</Typography>
+                  <Select
+                    value={switchToProductId ?? undefined}
+                    onValueChange={(value) => setSwitchToProductId(value || null)}
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder={t("Choose a plan")} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {switchOptions.map((option: NonNullable<typeof switchOptions>[number]) => (
+                        <SelectItem key={option.productId} value={option.productId}>
+                          {option.displayName}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </>
+              )}
+            </div>
+          </ActionDialog>
+        </Section>
+      )
+      }
+    </div >
   );
 }

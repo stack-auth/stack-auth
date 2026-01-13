@@ -1,8 +1,8 @@
 import { wait } from "@stackframe/stack-shared/dist/utils/promises";
-import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
+import { deindent, nicify } from "@stackframe/stack-shared/dist/utils/strings";
 import beautify from "js-beautify";
 import { describe } from "vitest";
-import { it } from "../../../../../helpers";
+import { it, logIfTestFails } from "../../../../../helpers";
 import { withPortPrefix } from "../../../../../helpers/ports";
 import { Auth, Project, User, backendContext, bumpEmailAddress, niceBackendFetch } from "../../../../backend-helpers";
 
@@ -1689,9 +1689,10 @@ describe("email outbox pagination", () => {
     const draftId = createDraftResponse.body.id;
 
     // Create 5 users
+    const mailboxes = await Promise.all(Array.from({ length: 5 }, async () => await bumpEmailAddress()));
     const userIds: string[] = [];
     for (let i = 0; i < 5; i++) {
-      const email = `pagination-test-${i}@example.com`;
+      const email = mailboxes[i].emailAddress;
       const createUserResponse = await niceBackendFetch("/api/v1/users", {
         method: "POST",
         accessType: "server",
@@ -1715,11 +1716,27 @@ describe("email outbox pagination", () => {
     });
     expect(sendResponse.status).toBe(200);
 
+    // Wait until all emails are sent
+    for (const mailbox of mailboxes) {
+      await mailbox.waitForMessagesWithSubject("Pagination Test Email");
+    }
+
+
+    // Ensure there are 5 emails in the outbox
+    const allResponse = await niceBackendFetch("/api/v1/emails/outbox", {
+      method: "GET",
+      accessType: "server",
+    });
+    logIfTestFails("allResponse", nicify(allResponse));
+    expect(allResponse.status).toBe(200);
+    expect(allResponse.body.items.length).toBe(5);
+
     // Test pagination with limit=2
     const page1Response = await niceBackendFetch("/api/v1/emails/outbox?limit=2", {
       method: "GET",
       accessType: "server",
     });
+    logIfTestFails("page1Response", nicify(page1Response));
     expect(page1Response.status).toBe(200);
     expect(page1Response.body.items.length).toBe(2);
     expect(page1Response.body.is_paginated).toBe(true);
@@ -1731,6 +1748,7 @@ describe("email outbox pagination", () => {
       method: "GET",
       accessType: "server",
     });
+    logIfTestFails("page2Response", nicify(page2Response));
     expect(page2Response.status).toBe(200);
     expect(page2Response.body.items.length).toBe(2);
 
@@ -1747,11 +1765,10 @@ describe("email outbox pagination", () => {
       method: "GET",
       accessType: "server",
     });
+    logIfTestFails("page3Response", nicify(page3Response));
     expect(page3Response.status).toBe(200);
     expect(page3Response.body.items.length).toBe(1); // Only 1 remaining
-
-    // No more pages
-    expect(page3Response.body.pagination.next_cursor).toBeNull();
+    expect(page3Response.body.pagination.next_cursor).toBeNull(); // No more pages
   });
 
   it("should reject limit greater than 100", async ({ expect }) => {

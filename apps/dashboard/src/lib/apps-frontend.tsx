@@ -1,5 +1,5 @@
 import { Link } from "@/components/link";
-import { CreditCardIcon, EnvelopeSimpleIcon, FingerprintSimpleIcon, KeyIcon, MailboxIcon, RocketIcon, SparkleIcon, TelevisionSimpleIcon, TriangleIcon, UserGearIcon, UsersIcon, VaultIcon, WebhooksLogoIcon } from "@phosphor-icons/react";
+import { ClipboardTextIcon, CreditCardIcon, EnvelopeSimpleIcon, FingerprintSimpleIcon, KeyIcon, MailboxIcon, RocketIcon, SparkleIcon, TelevisionSimpleIcon, TriangleIcon, UserGearIcon, UsersIcon, VaultIcon, WebhooksLogoIcon } from "@phosphor-icons/react";
 import { StackAdminApp } from "@stackframe/stack";
 import { ALL_APPS } from "@stackframe/stack-shared/dist/apps/apps-config";
 import { getRelativePart, isChildUrl } from "@stackframe/stack-shared/dist/utils/urls";
@@ -82,6 +82,21 @@ export const ALL_APPS_FRONTEND = {
         <p>Authentication centralizes everything you need to operate your Stack Auth user directory.</p>
         <p>Browse and create users, tune sign-up behavior, and configure auth methods without leaving the dashboard.</p>
         <p>When it is time to harden production, manage trusted domains and other guardrails in the same place.</p>
+      </>
+    ),
+  },
+  onboarding: {
+    icon: ClipboardTextIcon,
+    href: "onboarding",
+    navigationItems: [
+      { displayName: "Onboarding", href: "." },
+    ],
+    screenshots: [],
+    storeDescription: (
+      <>
+        <p>Onboarding lets you define requirements users must complete before gaining full access.</p>
+        <p>Configure email verification and other onboarding steps to ensure users are properly validated.</p>
+        <p>Users who haven&apos;t completed onboarding are filtered from normal API responses until they finish the required steps.</p>
       </>
     ),
   },

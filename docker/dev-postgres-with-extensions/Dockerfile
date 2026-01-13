@@ -28,6 +28,15 @@ RUN echo "GRANT USAGE ON SCHEMA public TO readonly;" >> /docker-entrypoint-initd
 RUN echo "GRANT SELECT ON ALL TABLES IN SCHEMA public TO readonly;" >> /docker-entrypoint-initdb.d/init.sql
 RUN echo "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO readonly;" >> /docker-entrypoint-initdb.d/init.sql
 
+# Create a replication user for streaming replication to the replica
+RUN echo "CREATE USER replicator WITH REPLICATION PASSWORD 'PASSWORD-PLACEHOLDER--replicatorpass';" >> /docker-entrypoint-initdb.d/init.sql
+
+# Create a script to add replication permissions to pg_hba.conf after init
+# This script runs after the database is initialized but before it starts accepting connections
+RUN echo '#!/bin/bash' > /docker-entrypoint-initdb.d/00-setup-replication.sh && \
+    echo 'echo "host replication replicator all scram-sha-256" >> "$PGDATA/pg_hba.conf"' >> /docker-entrypoint-initdb.d/00-setup-replication.sh && \
+    chmod +x /docker-entrypoint-initdb.d/00-setup-replication.sh
+
 # Add args to Postgres entrypoint
 ENTRYPOINT ["sh", "-c", "\
   # Add delay if POSTGRES_DELAY_MS is set \
@@ -35,6 +44,12 @@ ENTRYPOINT ["sh", "-c", "\
     apt-get update && apt-get install -y iproute2 && tc qdisc add dev eth0 root netem delay ${POSTGRES_DELAY_MS}ms; \
   fi; \
   \
-  # Start Postgres with extensions enabled \
-  exec docker-entrypoint.sh postgres -c shared_preload_libraries='pg_stat_statements' -c pg_stat_statements.track=all \
+  # Start Postgres with replication enabled and extensions \
+  exec docker-entrypoint.sh postgres \
+    -c shared_preload_libraries='pg_stat_statements' \
+    -c pg_stat_statements.track=all \
+    -c wal_level=replica \
+    -c max_wal_senders=3 \
+    -c wal_keep_size=64MB \
+    -c hot_standby=on \
 "]

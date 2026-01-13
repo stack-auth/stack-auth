@@ -1,6 +1,7 @@
 {
   "name": "@stackframe/stack-dashboard",
   "version": "2.8.58",
+  "repository": "https://github.com/stack-auth/stack-auth",
   "private": true,
   "scripts": {
     "clean": "rimraf .next && rimraf node_modules",

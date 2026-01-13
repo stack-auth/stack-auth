@@ -175,6 +175,7 @@ it("should allow OAuth login with manually created account when sign-ups are dis
         "has_password": false,
         "id": "<stripped UUID>",
         "is_anonymous": false,
+        "is_restricted": false,
         "last_active_at_millis": <stripped field 'last_active_at_millis'>,
         "oauth_providers": [],
         "otp_auth_enabled": false,
@@ -184,6 +185,7 @@ it("should allow OAuth login with manually created account when sign-ups are dis
         "primary_email_verified": true,
         "profile_image_url": null,
         "requires_totp_mfa": false,
+        "restricted_reason": null,
         "selected_team": null,
         "selected_team_id": null,
         "server_metadata": null,
@@ -226,6 +228,7 @@ it("should allow OAuth login with manually created account when sign-ups are dis
         "has_password": false,
         "id": "<stripped UUID>",
         "is_anonymous": false,
+        "is_restricted": false,
         "last_active_at_millis": <stripped field 'last_active_at_millis'>,
         "oauth_providers": [
           {
@@ -241,6 +244,7 @@ it("should allow OAuth login with manually created account when sign-ups are dis
         "primary_email_verified": true,
         "profile_image_url": null,
         "requires_totp_mfa": false,
+        "restricted_reason": null,
         "selected_team": null,
         "selected_team_id": null,
         "server_metadata": null,

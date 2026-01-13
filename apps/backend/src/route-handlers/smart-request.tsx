@@ -1,7 +1,6 @@
 import "../polyfills";
 
 import { getUser, getUserIfOnGlobalPrismaClientQuery } from "@/app/api/latest/users/crud";
-import { getRenderedEnvironmentConfigQuery } from "@/lib/config";
 import { checkApiKeySet, checkApiKeySetQuery } from "@/lib/internal-api-keys";
 import { getProjectQuery, listManagedProjectIds } from "@/lib/projects";
 import { DEFAULT_BRANCH_ID, Tenancy, getSoleTenancyFromProjectBranchQuery } from "@/lib/tenancies";
@@ -170,6 +169,7 @@ const parseAuth = withTraceSpan('smart request parseAuth', async (req: NextReque
   const accessToken = req.headers.get("x-stack-access-token");
   const developmentKeyOverride = req.headers.get("x-stack-development-override-key");  // in development, the internal project's API key can optionally be used to access any project
   const allowAnonymousUser = req.headers.get("x-stack-allow-anonymous-user") === "true";
+  const allowRestrictedUser = allowAnonymousUser || req.headers.get("x-stack-allow-restricted-user") === "true";
 
   // Ensure header combinations are valid
   const eitherKeyOrToken = !!(publishableClientKey || secretServerKey || superSecretAdminKey || adminAccessToken);
@@ -180,8 +180,8 @@ const parseAuth = withTraceSpan('smart request parseAuth', async (req: NextReque
   if (!typedIncludes(["client", "server", "admin"] as const, requestType)) throw new KnownErrors.InvalidAccessType(requestType);
   if (!projectId) throw new KnownErrors.AccessTypeWithoutProjectId(requestType);
 
-  const extractUserIdAndRefreshTokenIdFromAccessToken = async (options: { token: string, projectId: string, allowAnonymous: boolean }) => {
-    const result = await decodeAccessToken(options.token, { allowAnonymous: /* always true as we check for anonymous users later */ true });
+  const extractUserIdAndRefreshTokenIdFromAccessToken = async (options: { token: string, projectId: string, allowAnonymous: boolean, allowRestricted: boolean }) => {
+    const result = await decodeAccessToken(options.token, { allowAnonymous: /* always true as we check for anonymous users later */ true, allowRestricted: /* always true as we check for restricted users later */ true });
     if (result.status === "error") {
       throw result.error;
     }
@@ -195,6 +195,11 @@ const parseAuth = withTraceSpan('smart request parseAuth', async (req: NextReque
       throw new KnownErrors.AnonymousAuthenticationNotAllowed();
     }
 
+    // Check if restricted user is allowed
+    if (result.data.restrictedReason && !options.allowRestricted) {
+      throw new KnownErrors.RestrictedUserNotAllowed(result.data.restrictedReason);
+    }
+
     return {
       userId: result.data.userId,
       refreshTokenId: result.data.refreshTokenId,
@@ -202,7 +207,7 @@ const parseAuth = withTraceSpan('smart request parseAuth', async (req: NextReque
   };
 
   const extractUserFromAdminAccessToken = async (options: { token: string, projectId: string }) => {
-    const result = await decodeAccessToken(options.token, { allowAnonymous: false });
+    const result = await decodeAccessToken(options.token, { allowAnonymous: false, allowRestricted: false });
     if (result.status === "error") {
       if (KnownErrors.AccessTokenExpired.isInstance(result.error)) {
         throw new KnownErrors.AdminAccessTokenExpired(result.error.constructorArgs[0]);
@@ -231,7 +236,7 @@ const parseAuth = withTraceSpan('smart request parseAuth', async (req: NextReque
     return user;
   };
 
-  const { userId, refreshTokenId } = projectId && accessToken ? await extractUserIdAndRefreshTokenIdFromAccessToken({ token: accessToken, projectId, allowAnonymous: allowAnonymousUser }) : { userId: null, refreshTokenId: null };
+  const { userId, refreshTokenId } = projectId && accessToken ? await extractUserIdAndRefreshTokenIdFromAccessToken({ token: accessToken, projectId, allowAnonymous: allowAnonymousUser, allowRestricted: allowRestrictedUser }) : { userId: null, refreshTokenId: null };
 
   // Prisma does a query for every function call by default, even if we batch them with transactions
   // Because smart route handlers are always called, we instead send over a single raw query that fetches all the
@@ -249,7 +254,6 @@ const parseAuth = withTraceSpan('smart request parseAuth', async (req: NextReque
     isAdminKeyValid: superSecretAdminKey && requestType === "admin" ? checkApiKeySetQuery(projectId, { superSecretAdminKey }) : undefined,
     project: getProjectQuery(projectId),
     tenancy: getSoleTenancyFromProjectBranchQuery(projectId, branchId, true),
-    environmentRenderedConfig: getRenderedEnvironmentConfigQuery({ projectId, branchId }),
   };
   const queriesResults = await rawQueryAll(globalPrismaClient, bundledQueries);
   const project = await queriesResults.project;
@@ -297,7 +301,7 @@ const parseAuth = withTraceSpan('smart request parseAuth', async (req: NextReque
   // If it turned out that the source-of-truth is not the global database, we'll fetch the user from the source-of-truth
   // database instead.
   const user = tenancy.config.sourceOfTruth.type === "hosted"
-    ? queriesResults.userIfOnGlobalPrismaClient
+    ? await queriesResults.userIfOnGlobalPrismaClient
     : (userId ? await getUser({ userId, projectId, branchId }) : undefined);
 
   return {
