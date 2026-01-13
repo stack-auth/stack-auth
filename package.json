@@ -2,7 +2,7 @@
   "name": "@stackframe/monorepo",
   "version": "0.0.0",
   "private": true,
-  "repository": "",
+  "repository": "https://github.com/stack-auth/stack-auth",
   "scripts": {
     "pre-no-codegen": "pnpx only-allow pnpm",
     "pre-preinstall": "pnpx only-allow pnpm && node -e \"if(process.env.STACK_SKIP_TEMPLATE_GENERATION !== 'true') require('child_process').execSync('pnpx --package=tsx tsx ./scripts/generate-sdks.ts', {stdio: 'inherit'})\"",
