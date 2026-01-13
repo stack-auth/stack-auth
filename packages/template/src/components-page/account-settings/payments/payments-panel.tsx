@@ -184,7 +184,6 @@ function MockPaymentsPanel(props: { title?: string }) {
 function RealPaymentsPanel(props: { title?: string, customer: CustomerLike, customerType: "user" | "team" }) {
   const { t } = useTranslation();
   const stackApp = useStackApp();
-
   const billing = props.customer.useBilling();
   const defaultPaymentMethod = billing.defaultPaymentMethod;
   const products = props.customer.useProducts();
