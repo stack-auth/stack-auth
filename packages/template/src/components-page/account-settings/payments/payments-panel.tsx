@@ -305,6 +305,7 @@ function RealPaymentsPanel(props: { title?: string, customer: CustomerLike, cust
               const quantitySuffix = product.quantity !== 1 ? ` ×${product.quantity}` : "";
               const isSubscription = product.type === "subscription";
               const isCancelable = isSubscription && !!product.id && !!product.subscription?.isCancelable;
+              const canSwitchPlans = isSubscription && defaultPaymentMethod && !!product.id && (product.switchOptions?.length ?? 0) > 0;
               const renewsAt = isSubscription ? (product.subscription?.currentPeriodEnd ?? null) : null;
 
               const subtitle =
