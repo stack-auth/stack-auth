@@ -41,6 +41,7 @@ describe("with grant_type === 'authorization_code'", async () => {
           "has_password": false,
           "id": "<stripped UUID>",
           "is_anonymous": false,
+          "is_restricted": false,
           "oauth_providers": [
             {
               "account_id": "default-mailbox--<stripped UUID>@stack-generated.example.com",
@@ -54,6 +55,7 @@ describe("with grant_type === 'authorization_code'", async () => {
           "primary_email_verified": true,
           "profile_image_url": null,
           "requires_totp_mfa": false,
+          "restricted_reason": null,
           "selected_team": {
             "client_metadata": null,
             "client_read_only_metadata": null,

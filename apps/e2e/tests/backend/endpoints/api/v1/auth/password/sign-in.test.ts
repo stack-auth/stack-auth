@@ -29,6 +29,7 @@ it("should allow signing in to existing accounts", async ({ expect }) => {
         "has_password": true,
         "id": "<stripped UUID>",
         "is_anonymous": false,
+        "is_restricted": false,
         "oauth_providers": [],
         "otp_auth_enabled": false,
         "passkey_auth_enabled": false,
@@ -36,6 +37,7 @@ it("should allow signing in to existing accounts", async ({ expect }) => {
         "primary_email_verified": false,
         "profile_image_url": null,
         "requires_totp_mfa": false,
+        "restricted_reason": null,
         "selected_team": {
           "client_metadata": null,
           "client_read_only_metadata": null,

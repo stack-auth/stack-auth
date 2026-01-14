@@ -206,6 +206,63 @@ it("cannot decrease team item quantity below zero", async ({ expect }) => {
   expect(still.quantity).toBe(0);
 }, { timeout: 40_000 });
 
+it("client can cancel their own subscription", async ({ expect }) => {
+  const { clientApp, serverApp, adminApp } = await createApp({ config: {} });
+  const project = await adminApp.getProject();
+  await adminApp.setupPayments();
+  await project.updateConfig({
+    "payments.offers.pro-sub": {
+      displayName: "Pro Subscription",
+      customerType: "user",
+      serverOnly: false,
+      stackable: false,
+      prices: { monthly: { USD: "1000", interval: [1, "month"] } },
+      includedItems: {},
+    },
+  });
+
+  await clientApp.signUpWithCredential({ email: "cancel-sub@test.com", password: "password", verificationCallbackUrl: "http://localhost:3000" });
+  await clientApp.signInWithCredential({ email: "cancel-sub@test.com", password: "password" });
+  const user = await clientApp.getUser({ or: "throw" });
+
+  await serverApp.grantProduct({ userId: user.id, productId: "pro-sub" });
+  const before = await user.listProducts();
+  expect(before.some((p) => p.id === "pro-sub")).toBe(true);
+
+  await clientApp.cancelSubscription({ productId: "pro-sub" });
+  const after = await user.listProducts();
+  expect(after.some((p) => p.id === "pro-sub")).toBe(false);
+}, { timeout: 60_000 });
+
+it("team admin can cancel a team's subscription", async ({ expect }) => {
+  const { clientApp, serverApp, adminApp } = await createApp({ config: { clientTeamCreationEnabled: true } });
+  const project = await adminApp.getProject();
+  await adminApp.setupPayments();
+  await project.updateConfig({
+    "payments.offers.team-sub": {
+      displayName: "Team Subscription",
+      customerType: "team",
+      serverOnly: false,
+      stackable: false,
+      prices: { monthly: { USD: "1000", interval: [1, "month"] } },
+      includedItems: {},
+    },
+  });
+
+  await clientApp.signUpWithCredential({ email: "cancel-team-sub@test.com", password: "password", verificationCallbackUrl: "http://localhost:3000" });
+  await clientApp.signInWithCredential({ email: "cancel-team-sub@test.com", password: "password" });
+  const user = await clientApp.getUser({ or: "throw" });
+
+  const team = await user.createTeam({ displayName: "Cancel Team" });
+  await serverApp.grantProduct({ teamId: team.id, productId: "team-sub" });
+  const before = await team.listProducts();
+  expect(before.some((p) => p.id === "team-sub")).toBe(true);
+
+  await clientApp.cancelSubscription({ productId: "team-sub", teamId: team.id });
+  const after = await team.listProducts();
+  expect(after.some((p) => p.id === "team-sub")).toBe(false);
+}, { timeout: 60_000 });
+
 
 it("can create item quantity change from server app", { timeout: 40_000 }, async ({ expect }) => {
   const { serverApp, adminApp } = await createApp({

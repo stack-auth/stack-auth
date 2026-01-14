@@ -1,3 +1,4 @@
+import { getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
 import Link from "next/link";
 
 export default function Home() {
@@ -10,6 +11,12 @@ export default function Home() {
       You can also return to <Link href="https://stack-auth.com">https://stack-auth.com</Link>.<br />
       <br />
       <Link href="/api/v1">API v1</Link><br />
+      {getNodeEnvironment() === "development" && (
+        <>
+          <br />
+          <Link href="/dev-stats">Dev Stats</Link><br />
+        </>
+      )}
     </div>
   );
 }
