@@ -2,19 +2,18 @@
 
 import EmailPreview, { type OnWysiwygEditCommit } from "@/components/email-preview";
 import { useRouterConfirm } from "@/components/router";
+import { toast } from "@/components/ui";
 import { AssistantChat, CodeEditor, EmailThemeUI, VibeCodeLayout, type ViewportMode, type WysiwygDebugInfo } from "@/components/vibe-coding";
 import {
-  ToolCallContent,
   createChatAdapter,
-  createHistoryAdapter
+  createHistoryAdapter,
+  ToolCallContent
 } from "@/components/vibe-coding/chat-adapters";
 import { previewTemplateSource } from "@stackframe/stack-shared/dist/helpers/emails";
 import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
-import { ActionDialog, Alert, AlertDescription, AlertTitle, Button, toast, Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui";
-import { useEffect, useState, useCallback } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { AppEnabledGuard } from "../../app-enabled-guard";
 import { useAdminApp } from "../../use-admin-app";
-import { Copy, DownloadSimple, ArrowCounterClockwise, Check, WarningCircle } from "@phosphor-icons/react";
 
 
 export default function PageClient({ themeId }: { themeId: string }) {

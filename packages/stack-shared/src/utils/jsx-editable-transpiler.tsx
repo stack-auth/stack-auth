@@ -1,6 +1,6 @@
+import generate from '@babel/generator';
 import * as parser from '@babel/parser';
 import traverse, { NodePath } from '@babel/traverse';
-import generate from '@babel/generator';
 import * as t from '@babel/types';
 import { createHash } from 'crypto';
 
