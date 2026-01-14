@@ -9,6 +9,202 @@ export type AdminSentEmail = {
   error?: unknown,
 }
 
+export type AdminEmailOutboxRecipient =
+  | { type: "user-primary-email", userId: string }
+  | { type: "user-custom-emails", userId: string, emails: string[] }
+  | { type: "custom-emails", emails: string[] };
+
+export type AdminEmailOutboxStatus =
+  | "paused"
+  | "preparing"
+  | "rendering"
+  | "render-error"
+  | "scheduled"
+  | "queued"
+  | "sending"
+  | "server-error"
+  | "skipped"
+  | "bounced"
+  | "delivery-delayed"
+  | "sent"
+  | "opened"
+  | "clicked"
+  | "marked-as-spam";
+
+export type AdminEmailOutboxSimpleStatus =
+  | "in-progress"
+  | "ok"
+  | "error";
+
+// =============================== BASE TYPES ===============================
+
+// Base fields present on all emails
+type AdminEmailOutboxBase = {
+  id: string,
+  createdAt: Date,
+  updatedAt: Date,
+  to: AdminEmailOutboxRecipient,
+  scheduledAt: Date,
+  isPaused: false,
+  hasRendered: false,
+  hasDelivered: false,
+};
+
+// Fields available after rendering completes successfully
+// Use Omit to properly override hasRendered from base
+type AdminEmailOutboxRenderedFields = Omit<AdminEmailOutboxBase, "hasRendered"> & {
+  hasRendered: true,
+  startedRenderingAt: Date,
+  renderedAt: Date,
+  subject: string,
+  html: string | null,
+  text: string | null,
+  isTransactional: boolean,
+  isHighPriority: boolean,
+  notificationCategoryId: string | null,
+};
+
+// Fields available after sending starts
+type AdminEmailOutboxStartedSendingFields = AdminEmailOutboxRenderedFields & {
+  startedSendingAt: Date,
+};
+
+// Fields available after delivery completes
+// Use Omit to properly override hasDelivered from base (inherited through chain)
+type AdminEmailOutboxFinishedDeliveringFields = Omit<AdminEmailOutboxStartedSendingFields, "hasDelivered"> & {
+  hasDelivered: true,
+  deliveredAt: Date,
+};
+
+// =============================== STATUS-SPECIFIC TYPES ===============================
+
+// Use Omit to properly override isPaused from base
+export type AdminEmailOutboxPaused = Omit<AdminEmailOutboxBase, "isPaused"> & {
+  status: "paused",
+  simpleStatus: "in-progress",
+  isPaused: true,
+};
+
+export type AdminEmailOutboxPreparing = AdminEmailOutboxBase & {
+  status: "preparing",
+  simpleStatus: "in-progress",
+};
+
+export type AdminEmailOutboxRendering = AdminEmailOutboxBase & {
+  status: "rendering",
+  simpleStatus: "in-progress",
+  startedRenderingAt: Date,
+};
+
+export type AdminEmailOutboxRenderError = AdminEmailOutboxBase & {
+  status: "render-error",
+  simpleStatus: "error",
+  startedRenderingAt: Date,
+  renderedAt: Date,
+  renderError: string,
+};
+
+export type AdminEmailOutboxScheduled = AdminEmailOutboxRenderedFields & {
+  status: "scheduled",
+  simpleStatus: "in-progress",
+};
+
+export type AdminEmailOutboxQueued = AdminEmailOutboxRenderedFields & {
+  status: "queued",
+  simpleStatus: "in-progress",
+};
+
+export type AdminEmailOutboxSending = AdminEmailOutboxStartedSendingFields & {
+  status: "sending",
+  simpleStatus: "in-progress",
+};
+
+export type AdminEmailOutboxServerError = AdminEmailOutboxStartedSendingFields & {
+  status: "server-error",
+  simpleStatus: "error",
+  errorAt: Date,
+  serverError: string,
+};
+
+// SKIPPED can happen at any time, so rendering/sending fields are optional
+// Use Omit to properly override hasRendered from base (can be true or false when skipped)
+export type AdminEmailOutboxSkipped = Omit<AdminEmailOutboxBase, "hasRendered"> & {
+  status: "skipped",
+  simpleStatus: "ok",
+  hasRendered: boolean,
+  skippedAt: Date,
+  skippedReason: string,
+  skippedDetails: Record<string, unknown>,
+  // Optional fields depending on when skipped
+  startedRenderingAt?: Date,
+  renderedAt?: Date,
+  subject?: string,
+  html?: string | null,
+  text?: string | null,
+  isTransactional?: boolean,
+  isHighPriority?: boolean,
+  notificationCategoryId?: string | null,
+  startedSendingAt?: Date,
+};
+
+export type AdminEmailOutboxBounced = AdminEmailOutboxStartedSendingFields & {
+  status: "bounced",
+  simpleStatus: "error",
+  bouncedAt: Date,
+};
+
+export type AdminEmailOutboxDeliveryDelayed = AdminEmailOutboxStartedSendingFields & {
+  status: "delivery-delayed",
+  simpleStatus: "ok",
+  deliveryDelayedAt: Date,
+};
+
+export type AdminEmailOutboxSent = AdminEmailOutboxFinishedDeliveringFields & {
+  status: "sent",
+  simpleStatus: "ok",
+  canHaveDeliveryInfo: boolean,
+};
+
+export type AdminEmailOutboxOpened = AdminEmailOutboxFinishedDeliveringFields & {
+  status: "opened",
+  simpleStatus: "ok",
+  openedAt: Date,
+  canHaveDeliveryInfo: true,
+};
+
+export type AdminEmailOutboxClicked = AdminEmailOutboxFinishedDeliveringFields & {
+  status: "clicked",
+  simpleStatus: "ok",
+  clickedAt: Date,
+  canHaveDeliveryInfo: true,
+};
+
+export type AdminEmailOutboxMarkedAsSpam = AdminEmailOutboxFinishedDeliveringFields & {
+  status: "marked-as-spam",
+  simpleStatus: "ok",
+  markedAsSpamAt: Date,
+  canHaveDeliveryInfo: true,
+};
+
+// =============================== DISCRIMINATED UNION ===============================
+
+export type AdminEmailOutbox =
+  | AdminEmailOutboxPaused
+  | AdminEmailOutboxPreparing
+  | AdminEmailOutboxRendering
+  | AdminEmailOutboxRenderError
+  | AdminEmailOutboxScheduled
+  | AdminEmailOutboxQueued
+  | AdminEmailOutboxSending
+  | AdminEmailOutboxServerError
+  | AdminEmailOutboxSkipped
+  | AdminEmailOutboxBounced
+  | AdminEmailOutboxDeliveryDelayed
+  | AdminEmailOutboxSent
+  | AdminEmailOutboxOpened
+  | AdminEmailOutboxClicked
+  | AdminEmailOutboxMarkedAsSpam;
+
 type SendEmailOptionsBase = {
   themeId?: string | null | false,
   subject?: string,

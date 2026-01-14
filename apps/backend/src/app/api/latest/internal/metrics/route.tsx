@@ -1,8 +1,8 @@
+import { Prisma } from "@/generated/prisma/client";
 import { getOrSetCacheValue } from "@/lib/cache";
 import { Tenancy } from "@/lib/tenancies";
 import { getPrismaClientForTenancy, getPrismaSchemaForTenancy, globalPrismaClient, PrismaClientTransaction, sqlQuoteIdent } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { Prisma } from "@/generated/prisma/client";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
 import { adaptSchema, adminAuthTypeSchema, yupArray, yupMixed, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
@@ -56,7 +56,7 @@ async function loadUsersByCountry(tenancy: Tenancy, prisma: PrismaClientTransact
   const userIdArray = Prisma.sql`ARRAY[${Prisma.join(userIds.map((id) => Prisma.sql`${id}`))}]::text[]`;
   const scalingFactor = totalUsers > users.length ? totalUsers / users.length : 1;
 
-  const rows = await globalPrismaClient.$queryRaw<{ countryCode: string | null, userCount: bigint }[]>(Prisma.sql`
+  const rows = await globalPrismaClient.$replica().$queryRaw<{ countryCode: string | null, userCount: bigint }[]>(Prisma.sql`
     WITH latest_ip AS (
       SELECT DISTINCT ON (e."data"->>'userId')
         e."data"->>'userId' AS "userId",
@@ -94,7 +94,7 @@ async function loadUsersByCountry(tenancy: Tenancy, prisma: PrismaClientTransact
 async function loadTotalUsers(tenancy: Tenancy, now: Date, includeAnonymous: boolean = false): Promise<DataPoints> {
   const schema = await getPrismaSchemaForTenancy(tenancy);
   const prisma = await getPrismaClientForTenancy(tenancy);
-  return (await prisma.$queryRaw<{ date: Date, dailyUsers: bigint, cumUsers: bigint }[]>`
+  return (await prisma.$replica().$queryRaw<{ date: Date, dailyUsers: bigint, cumUsers: bigint }[]>`
     WITH date_series AS (
         SELECT GENERATE_SERIES(
           ${now}::date - INTERVAL '30 days',
@@ -121,7 +121,7 @@ async function loadTotalUsers(tenancy: Tenancy, now: Date, includeAnonymous: boo
 }
 
 async function loadDailyActiveUsers(tenancy: Tenancy, now: Date, includeAnonymous: boolean = false) {
-  const res = await globalPrismaClient.$queryRaw<{ day: Date, dau: bigint }[]>`
+  const res = await globalPrismaClient.$replica().$queryRaw<{ day: Date, dau: bigint }[]>`
     WITH date_series AS (
       SELECT GENERATE_SERIES(
         ${now}::date - INTERVAL '30 days',
@@ -169,7 +169,7 @@ async function loadDailyActiveUsers(tenancy: Tenancy, now: Date, includeAnonymou
 async function loadLoginMethods(tenancy: Tenancy): Promise<{ method: string, count: number }[]> {
   const schema = await getPrismaSchemaForTenancy(tenancy);
   const prisma = await getPrismaClientForTenancy(tenancy);
-  return await prisma.$queryRaw<{ method: string, count: number }[]>`
+  return await prisma.$replica().$queryRaw<{ method: string, count: number }[]>`
     WITH tab AS (
       SELECT
         COALESCE(
@@ -193,52 +193,20 @@ async function loadLoginMethods(tenancy: Tenancy): Promise<{ method: string, cou
 }
 
 async function loadRecentlyActiveUsers(tenancy: Tenancy, includeAnonymous: boolean = false): Promise<UsersCrud["Admin"]["Read"][]> {
-  const events = await globalPrismaClient.$queryRaw<{ userId: string, lastActiveAt: Date }[]>`
-    WITH ordered_events AS (
-      SELECT
-        "data"->>'userId' AS "userId",
-        "eventStartedAt" AS "lastActiveAt"
-      FROM "Event"
-      WHERE "data"->>'projectId' = ${tenancy.project.id}
-        AND COALESCE("data"->>'branchId', 'main') = ${tenancy.branchId}
-        AND (${includeAnonymous} OR COALESCE("data"->>'isAnonymous', 'false') != 'true')
-        AND '$user-activity' = ANY("systemEventTypeIds"::text[])
-        AND "data"->>'userId' IS NOT NULL
-      ORDER BY "eventStartedAt" DESC
-      LIMIT 4000
-    ),
-    latest_events AS (
-      SELECT DISTINCT ON ("userId")
-        "userId",
-        "lastActiveAt"
-      FROM ordered_events
-      ORDER BY "userId", "lastActiveAt" DESC
-    )
-    SELECT "userId", "lastActiveAt"
-    FROM latest_events
-    ORDER BY "lastActiveAt" DESC
-    LIMIT 5
-  `;
-  if (events.length === 0) {
-    return [];
-  }
-
   const prisma = await getPrismaClientForTenancy(tenancy);
   const dbUsers = await prisma.projectUser.findMany({
     where: {
       tenancyId: tenancy.id,
-      projectUserId: {
-        in: events.map((event) => event.userId),
-      },
+      ...(!includeAnonymous ? { isAnonymous: false } : {}),
     },
+    orderBy: {
+      lastActiveAt: 'desc',
+    },
+    take: 5,
     include: userFullInclude,
   });
 
-  const userObjects = events.map((event) => {
-    const user = dbUsers.find((user) => user.projectUserId === event.userId);
-    return user ? userPrismaToCrud(user, event.lastActiveAt.getTime()) : null;
-  });
-  return userObjects.filter((user): user is UsersCrud["Admin"]["Read"] => user !== null);
+  return dbUsers.map((user) => userPrismaToCrud(user, tenancy.config));
 }
 
 export const GET = createSmartRouteHandler({

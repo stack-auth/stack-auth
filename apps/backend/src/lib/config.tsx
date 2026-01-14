@@ -17,7 +17,7 @@ import { DEFAULT_BRANCH_ID } from "./tenancies";
 type ProjectOptions = { projectId: string };
 type BranchOptions = ProjectOptions & { branchId: string };
 type EnvironmentOptions = BranchOptions;
-type OrganizationOptions = EnvironmentOptions & { organizationId: string | null };
+type OrganizationOptions = EnvironmentOptions & ({ organizationId: string | null } | { forUserId: string });
 
 // ---------------------------------------------------------------------------------------------------------------------
 // getRendered<$$$>Config
@@ -122,6 +122,7 @@ export function getProjectConfigOverrideQuery(options: ProjectOptions): RawQuery
   // (currently it's just empty)
   return {
     supportedPrismaClients: ["global"],
+    readOnlyQuery: true,
     sql: Prisma.sql`
       SELECT "Project"."projectConfigOverride"
       FROM "Project"
@@ -141,6 +142,7 @@ export function getBranchConfigOverrideQuery(options: BranchOptions): RawQuery<P
   // (currently it's just empty)
   return {
     supportedPrismaClients: ["global"],
+    readOnlyQuery: true,
     sql: Prisma.sql`SELECT 1`,
     postProcess: async () => {
       if (options.branchId !== DEFAULT_BRANCH_ID) {
@@ -155,6 +157,7 @@ export function getEnvironmentConfigOverrideQuery(options: EnvironmentOptions): 
   // fetch environment config from DB (either our own, or the source of truth one)
   return {
     supportedPrismaClients: ["global"],
+    readOnlyQuery: true,
     sql: Prisma.sql`
       SELECT "EnvironmentConfigOverride".*
       FROM "EnvironmentConfigOverride"
@@ -172,12 +175,13 @@ export function getEnvironmentConfigOverrideQuery(options: EnvironmentOptions): 
 
 export function getOrganizationConfigOverrideQuery(options: OrganizationOptions): RawQuery<Promise<OrganizationConfigOverride>> {
   // fetch organization config from DB (either our own, or the source of truth one)
-  if (options.organizationId !== null) {
-    throw new StackAssertionError('Not implemented');
+  if (!("forUserId" in options) && options.organizationId !== null) {
+    throw new StackAssertionError('Non-null organization ID is not implemented');
   }
 
   return {
     supportedPrismaClients: ["global"],
+    readOnlyQuery: true,
     sql: Prisma.sql`SELECT 1`,
     postProcess: async () => {
       return migrateConfigOverride("organization", {});
