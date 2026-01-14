@@ -13,8 +13,8 @@ const config = {
   async headers() {
     return [
       {
-        // Allow CORS for dashboard routes to be accessed by the dashboard app
-        source: '/dashboard/:path*',
+        // Allow CORS for docs-embed routes to be accessed by the dashboard app
+        source: '/docs-embed/:path*',
         headers: [
           {
             key: 'Access-Control-Allow-Origin',
@@ -31,8 +31,8 @@ const config = {
         ],
       },
       {
-        // Allow CORS for embedded dashboard routes to be accessed by the dashboard app
-        source: '/dashboard-embed/:path*',
+        // Allow CORS for api-embed routes to be accessed by the dashboard app
+        source: '/api-embed/:path*',
         headers: [
           {
             key: 'Access-Control-Allow-Origin',
