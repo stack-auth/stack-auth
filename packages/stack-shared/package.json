@@ -1,6 +1,7 @@
 {
   "name": "@stackframe/stack-shared",
-  "version": "2.8.57",
+  "version": "2.8.58",
+  "repository": "https://github.com/stack-auth/stack-auth",
   "scripts": {
     "build": "rimraf dist && tsup-node",
     "typecheck": "tsc --noEmit",

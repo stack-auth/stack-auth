@@ -1,10 +1,10 @@
 "use client";
 
+import { UploadIcon, XIcon } from '@phosphor-icons/react';
 import { fileToBase64 } from '@stackframe/stack-shared/dist/utils/base64';
 import { runAsynchronouslyWithAlert } from '@stackframe/stack-shared/dist/utils/promises';
-import { Button, cn, Typography } from '@stackframe/stack-ui';
+import { Button, cn, Typography } from '@/components/ui';
 import imageCompression from 'browser-image-compression';
-import { Upload, X } from 'lucide-react';
 import { useState } from 'react';
 
 export async function checkImageUrl(url: string) {
@@ -107,14 +107,14 @@ export function LogoUpload(props: {
               onClick={remove}
               disabled={uploading}
             >
-              <X className="h-4 w-4 mr-2" />
+              <XIcon className="h-4 w-4 mr-2" />
               Remove
             </Button>
           </div>
         ) : (
           <div className="flex flex-col">
             <div className={cn(placeholderContainerClasses, "cursor-pointer", uploading && "opacity-50 pointer-events-none")} onClick={uploading ? undefined : upload}>
-              <Upload className="h-6 w-6 text-muted-foreground" />
+              <UploadIcon className="h-6 w-6 text-muted-foreground" />
             </div>
             {props.description && (
               <Typography variant="secondary" type="footnote" className="mt-2">

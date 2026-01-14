@@ -1,12 +1,13 @@
 "use client";
+import { CopyableText } from "@/components/copyable-text";
 import { InputField } from "@/components/form-fields";
 import { Link, StyledLink } from "@/components/link";
 import { LogoUpload } from "@/components/logo-upload";
 import { FormSettingCard, SettingCard, SettingCopyableText, SettingSwitch } from "@/components/settings";
+import { ActionDialog, Alert, Avatar, AvatarFallback, AvatarImage, Button, SimpleTooltip, Typography, useToast } from "@/components/ui";
 import { getPublicEnvVar } from "@/lib/env";
 import { TeamSwitcher, useUser } from "@stackframe/stack";
 import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
-import { ActionDialog, Alert, Avatar, AvatarFallback, AvatarImage, Button, SimpleTooltip, Typography, useToast } from "@stackframe/stack-ui";
 import { useCallback, useMemo, useState } from "react";
 import * as yup from "yup";
 import { PageLayout } from "../page-layout";
@@ -61,20 +62,15 @@ export default function PageClient() {
     [baseApiUrl, project.id]
   );
 
-  const anonymousJwksUrl = useMemo(
-    () => `${jwksUrl}?include_anonymous=true`,
+  const restrictedJwksUrl = useMemo(
+    () => `${jwksUrl}?include_restricted=true`,
     [jwksUrl]
   );
 
-  // Memoize renderInfoLabel callback
-  const renderInfoLabel = useCallback((label: string, tooltip: string) => (
-    <div className="flex items-center gap-2">
-      <span>{label}</span>
-      <SimpleTooltip type="info" tooltip={tooltip}>
-        <span className="sr-only">{`More info about ${label}`}</span>
-      </SimpleTooltip>
-    </div>
-  ), []);
+  const allJwksUrl = useMemo(
+    () => `${jwksUrl}?include_anonymous=true`,
+    [jwksUrl]
+  );
 
   // Memoize current owner team lookup
   const currentOwnerTeam = useMemo(
@@ -164,15 +160,36 @@ export default function PageClient() {
           NOTE: Looking for project API keys? Head over to the <StyledLink href={`/projects/${project.id}/project-keys`}>Project Keys</StyledLink> page.
         </span>
 
-        <SettingCopyableText
-          label={renderInfoLabel("JWKS URL", "Use this url to allow other services to verify Stack Auth-issued sessions for this project.")}
-          value={jwksUrl}
-        />
+        <div className="flex flex-col gap-3">
+          <div className="flex items-center gap-2">
+            <Typography type="label" className="text-sm font-medium">
+              JWKS URLs
+            </Typography>
+            <SimpleTooltip type="info" tooltip="Use these URLs to allow other services to verify Stack Auth-issued sessions for this project.">
+              <span className="sr-only">More info about JWKS URLs</span>
+            </SimpleTooltip>
+          </div>
+          <div className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-2 items-center text-sm">
+            <span className="text-muted-foreground whitespace-nowrap">Standard</span>
+            <CopyableText value={jwksUrl} />
 
-        <SettingCopyableText
-          label={renderInfoLabel("Anonymous JWKS URL", "Includes keys for anonymous sessions when you treat them as authenticated users.")}
-          value={anonymousJwksUrl}
-        />
+            <div className="flex items-center gap-1 text-muted-foreground whitespace-nowrap">
+              <span>+ Restricted</span>
+              <SimpleTooltip type="info" tooltip="Includes keys for sessions of restricted users (e.g., unverified emails).">
+                <span className="sr-only">Info about restricted JWKS</span>
+              </SimpleTooltip>
+            </div>
+            <CopyableText value={restrictedJwksUrl} />
+
+            <div className="flex items-center gap-1 text-muted-foreground whitespace-nowrap">
+              <span>+ Anonymous</span>
+              <SimpleTooltip type="info" tooltip="Includes keys for anonymous sessions.">
+                <span className="sr-only">Info about anonymous JWKS</span>
+              </SimpleTooltip>
+            </div>
+            <CopyableText value={allJwksUrl} />
+          </div>
+        </div>
       </SettingCard>
       <FormSettingCard
         title="Project Details"

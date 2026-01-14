@@ -1,7 +1,7 @@
 "use client";
 
 import { isBrowserLike } from "@stackframe/stack-shared/dist/utils/env";
-import { useToast } from "@stackframe/stack-ui";
+import { useToast } from "@/components/ui";
 import { useEffect } from "react";
 
 const neverNotify = [

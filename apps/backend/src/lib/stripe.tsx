@@ -1,11 +1,12 @@
 import { getTenancy, Tenancy } from "@/lib/tenancies";
 import { getPrismaClientForTenancy, globalPrismaClient } from "@/prisma-client";
-import { CustomerType } from "@prisma/client";
+import { CustomerType } from "@/generated/prisma/client";
 import { typedIncludes } from "@stackframe/stack-shared/dist/utils/arrays";
 import { getEnvVariable, getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
 import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import Stripe from "stripe";
 import { createStripeProxy, type StripeOverridesMap } from "./stripe-proxy";
+import { InputJsonValue } from "@prisma/client/runtime/client";
 
 const stripeSecretKey = getEnvVariable("STACK_STRIPE_SECRET_KEY", "");
 const useStripeMock = stripeSecretKey === "sk_test_mockstripekey" && ["development", "test"].includes(getNodeEnvironment());
@@ -92,6 +93,18 @@ export async function syncStripeSubscriptions(stripe: Stripe, stripeAccountId: s
     }
     const item = subscription.items.data[0];
     const priceId = subscription.metadata.priceId as string | undefined;
+    // old subscriptions were created with offer metadata instead of product metadata
+    const productString = subscription.metadata.product as string | undefined ?? subscription.metadata.offer as string | undefined;
+    if (!productString) {
+      throw new StackAssertionError("Stripe subscription metadata missing product or offer", { subscriptionId: subscription.id });
+    }
+    let productJson: InputJsonValue;
+    try {
+      productJson = JSON.parse(productString);
+    } catch (error) {
+      throw new StackAssertionError("Invalid JSON in Stripe subscription metadata", { subscriptionId: subscription.id, productString, error });
+    }
+
     await prisma.subscription.upsert({
       where: {
         tenancyId_stripeSubscriptionId: {
@@ -101,7 +114,7 @@ export async function syncStripeSubscriptions(stripe: Stripe, stripeAccountId: s
       },
       update: {
         status: subscription.status,
-        product: JSON.parse(subscription.metadata.product),
+        product: productJson,
         quantity: item.quantity ?? 1,
         currentPeriodEnd: new Date(item.current_period_end * 1000),
         currentPeriodStart: new Date(item.current_period_start * 1000),
@@ -112,9 +125,9 @@ export async function syncStripeSubscriptions(stripe: Stripe, stripeAccountId: s
         tenancyId: tenancy.id,
         customerId,
         customerType,
-        productId: subscription.metadata.productId,
+        productId: subscription.metadata.productId as string | undefined ?? subscription.metadata.offerId,
         priceId: priceId ?? null,
-        product: JSON.parse(subscription.metadata.product),
+        product: productJson,
         quantity: item.quantity ?? 1,
         stripeSubscriptionId: subscription.id,
         status: subscription.status,

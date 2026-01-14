@@ -3,7 +3,7 @@ import { AdminTeamPermissionDefinition, ServerTeam, ServerUser } from "@stackfra
 import { generateSecureRandomString } from "@stackframe/stack-shared/dist/utils/crypto";
 import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
-import { Checkbox, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@stackframe/stack-ui";
+import { Checkbox, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui";
 import { useEffect, useState } from "react";
 import { Control, FieldValues, Path } from "react-hook-form";
 

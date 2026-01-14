@@ -3,12 +3,30 @@ import type { Transaction, TransactionType } from "@stackframe/stack-shared/dist
 import { InternalSession } from "@stackframe/stack-shared/dist/sessions";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { AsyncStoreProperty, EmailConfig } from "../../common";
-import { AdminSentEmail } from "../../email";
+import { AdminEmailOutbox, AdminSentEmail } from "../../email";
 import { InternalApiKey, InternalApiKeyCreateOptions, InternalApiKeyFirstView } from "../../internal-api-keys";
 import { AdminProjectPermission, AdminProjectPermissionDefinition, AdminProjectPermissionDefinitionCreateOptions, AdminProjectPermissionDefinitionUpdateOptions, AdminTeamPermission, AdminTeamPermissionDefinition, AdminTeamPermissionDefinitionCreateOptions, AdminTeamPermissionDefinitionUpdateOptions } from "../../permissions";
 import { AdminProject } from "../../projects";
 import { _StackAdminAppImpl } from "../implementations";
 import { StackServerApp, StackServerAppConstructorOptions } from "./server-app";
+
+export type EmailOutboxListOptions = {
+  status?: string,
+  simpleStatus?: string,
+  limit?: number,
+  cursor?: string,
+};
+
+export type EmailOutboxListResult = {
+  items: AdminEmailOutbox[],
+  nextCursor: string | null,
+};
+
+export type EmailOutboxUpdateOptions = {
+  isPaused?: boolean,
+  scheduledAtMillis?: number,
+  cancel?: boolean,
+};
 
 
 export type StackAdminAppConstructorOptions<HasTokenStore extends boolean, ProjectId extends string> = (
@@ -90,6 +108,14 @@ export type StackAdminApp<HasTokenStore extends boolean = boolean, ProjectId ext
       { customCustomerId: string, itemId: string, quantity: number, expiresAt?: string, description?: string }
     )): Promise<void>,
     refundTransaction(options: { type: "subscription" | "one-time-purchase", id: string }): Promise<void>,
+
+    // Email Outbox methods
+    listOutboxEmails(options?: EmailOutboxListOptions): Promise<EmailOutboxListResult>,
+    getOutboxEmail(id: string): Promise<AdminEmailOutbox>,
+    updateOutboxEmail(id: string, options: EmailOutboxUpdateOptions): Promise<AdminEmailOutbox>,
+    pauseOutboxEmail(id: string): Promise<AdminEmailOutbox>,
+    unpauseOutboxEmail(id: string): Promise<AdminEmailOutbox>,
+    cancelOutboxEmail(id: string): Promise<AdminEmailOutbox>,
   }
   & StackServerApp<HasTokenStore, ProjectId>
 );

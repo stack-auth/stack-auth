@@ -1,10 +1,11 @@
 "use client";
 
+import { EmailVerificationSetting } from "@/components/email-verification-setting";
 import { SettingCard, SettingSelect, SettingSwitch } from "@/components/settings";
+import { ActionDialog, Badge, BrandIcons, BrowserFrame, Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, Input, SelectItem, SimpleTooltip, Typography } from "@/components/ui";
+import { AsteriskIcon, DotsThreeIcon, KeyIcon, LinkIcon, PlusCircleIcon } from "@phosphor-icons/react";
 import { AdminOAuthProviderConfig, AuthPage, OAuthProviderConfig } from "@stackframe/stack";
 import { allProviders } from "@stackframe/stack-shared/dist/utils/oauth";
-import { ActionDialog, Badge, BrandIcons, BrowserFrame, Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, Input, SelectItem, SimpleTooltip, Typography } from "@stackframe/stack-ui";
-import { AsteriskSquare, CirclePlus, Key, Link2, MoreHorizontal } from "lucide-react";
 import { useState } from "react";
 import { CardSubtitle } from "../../../../../../../../../packages/stack-ui/dist/components/ui/card";
 import { AppEnabledGuard } from "../app-enabled-guard";
@@ -181,7 +182,7 @@ function OAuthActionCell({ config }: { config: AdminOAuthProviderConfig }) {
       <DropdownMenuTrigger asChild>
         <Button variant="ghost" className="h-8 w-8 p-0">
           <span className="sr-only">Open menu</span>
-          <MoreHorizontal className="h-4 w-4" />
+          <DotsThreeIcon className="h-4 w-4" />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
@@ -221,7 +222,7 @@ export default function PageClient() {
             <SettingSwitch
               label={
                 <div className="flex items-center gap-2">
-                  <AsteriskSquare size={20} aria-hidden="true" />
+                  <AsteriskIcon size={20} aria-hidden="true" />
                   <span>Email/password authentication</span>
                 </div>
               }
@@ -237,7 +238,7 @@ export default function PageClient() {
             <SettingSwitch
               label={
                 <div className="flex items-center gap-2">
-                  <Link2 size={20} />
+                  <LinkIcon size={20} />
                   <span>Magic link (Email OTP)</span>
                 </div>
               }
@@ -253,7 +254,7 @@ export default function PageClient() {
             <SettingSwitch
               label={
                 <div className="flex items-center gap-2">
-                  <Key size={20} />
+                  <KeyIcon size={20} />
                   <span>Passkey</span>
                 </div>
               }
@@ -292,7 +293,7 @@ export default function PageClient() {
               }}
               variant="secondary"
             >
-              <CirclePlus size={16}/>
+              <PlusCircleIcon size={16}/>
               <span className="ml-2">Add SSO providers</span>
             </Button>
             <DisabledProvidersDialog
@@ -334,12 +335,16 @@ export default function PageClient() {
             checked={project.config.signUpEnabled}
             onCheckedChange={async (checked) => {
               if (checked) {
-              setConfirmSignUpEnabled(true);
+                setConfirmSignUpEnabled(true);
               } else {
-              setConfirmSignUpDisabled(true);
+                setConfirmSignUpDisabled(true);
               }
             }}
             hint="Existing users can still sign in when sign-up is disabled. You can always create new accounts manually via the dashboard."
+          />
+          <EmailVerificationSetting
+            showIcon
+            hint="Users must verify their primary email before they can use your application. Unverified users will be restricted. Requires SDK version >=2.8.57."
           />
           <SettingSelect
             label="Sign-up mode when logging in with same email on multiple providers"

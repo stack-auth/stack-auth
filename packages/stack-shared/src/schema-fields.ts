@@ -438,8 +438,45 @@ export const dayIntervalOrNeverSchema = yupUnion(dayIntervalSchema.defined(), yu
 /**
  * This schema is useful for fields where the user can specify the ID, such as price IDs. It is particularly common
  * for IDs in the config schema.
+ *
+ * Valid IDs:
+ * - Must contain only letters, numbers, underscores, and hyphens
+ * - Must not start with a hyphen
+ * - Maximum length of 63 characters
  */
-export const userSpecifiedIdSchema = (idName: `${string}Id`) => yupString().max(63).matches(/^[a-zA-Z0-9_][a-zA-Z0-9_-]*$/, `${idName} must contain only letters, numbers, underscores, and hyphens, and not start with a hyphen`);
+export const USER_SPECIFIED_ID_PATTERN = /^[a-zA-Z0-9_][a-zA-Z0-9_-]*$/;
+export const USER_SPECIFIED_ID_MAX_LENGTH = 63;
+
+/**
+ * Checks if the given string is a valid user-specified ID.
+ */
+export function isValidUserSpecifiedId(id: string): boolean {
+  return id.length > 0 && id.length <= USER_SPECIFIED_ID_MAX_LENGTH && USER_SPECIFIED_ID_PATTERN.test(id);
+}
+
+/**
+ * Gets the error message for an invalid user-specified ID.
+ */
+export function getUserSpecifiedIdErrorMessage(idName: `${string}Id`): string {
+  return `${idName} must contain only letters, numbers, underscores, and hyphens, and not start with a hyphen`;
+}
+
+/**
+ * Sanitizes user input to create a valid user-specified ID.
+ * Converts to lowercase and replaces invalid characters with hyphens.
+ * Strips leading hyphens.
+ */
+export function sanitizeUserSpecifiedId(input: string): string {
+  // Convert to lowercase, replace invalid characters with empty string (or hyphen for spaces)
+  const sanitized = input
+    .replace(/\s+/g, '-')  // Replace spaces with hyphens
+    .replace(/[^a-zA-Z0-9_-]/g, '');  // Remove other invalid characters
+
+  // Strip leading hyphens
+  return sanitized.replace(/^-+/, '');
+}
+
+export const userSpecifiedIdSchema = (idName: `${string}Id`) => yupString().max(USER_SPECIFIED_ID_MAX_LENGTH).matches(USER_SPECIFIED_ID_PATTERN, getUserSpecifiedIdErrorMessage(idName));
 export const moneyAmountSchema = (currency: Currency) => yupString<MoneyAmount>().test('money-amount', 'Invalid money amount', (value, context) => {
   if (value == null) return true;
   const regex = /^([0-9]+)(\.([0-9]+))?$/;
@@ -692,6 +729,9 @@ export const userPasswordHashMutationSchema = yupString()
 export const userTotpSecretMutationSchema = base64Schema.nullable().meta({ openapiField: { description: 'Enables 2FA and sets a TOTP secret for the user. Set to null to disable 2FA.', exampleValue: 'dG90cC1zZWNyZXQ=' } });
 
 // Auth
+export const restrictedReasonTypes = ["anonymous", "email_not_verified"] as const;
+export type RestrictedReasonType = typeof restrictedReasonTypes[number];
+
 export const accessTokenPayloadSchema = yupObject({
   sub: yupString().defined(),
   exp: yupNumber().optional(),
@@ -707,6 +747,10 @@ export const accessTokenPayloadSchema = yupObject({
   email_verified: yupBoolean().defined(),
   selected_team_id: yupString().defined().nullable(),
   is_anonymous: yupBoolean().defined(),
+  is_restricted: yupBoolean().defined(),
+  restricted_reason: yupObject({
+    type: yupString().oneOf(restrictedReasonTypes).defined(),
+  }).defined().nullable(),
 });
 export const signInEmailSchema = strictEmailSchema(undefined).meta({ openapiField: { description: 'The email to sign in with.', exampleValue: 'johndoe@example.com' } });
 export const emailOtpSignInCallbackUrlSchema = urlSchema.meta({ openapiField: { description: 'The base callback URL to construct the magic link from. A query parameter `code` with the verification code will be appended to it. The page should then make a request to the `/auth/otp/sign-in` endpoint.', exampleValue: 'https://example.com/handler/magic-link-callback' } });

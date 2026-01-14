@@ -7,7 +7,7 @@ import { getPublicEnvVar } from '@/lib/env';
 import { stackServerApp } from '@/stack';
 import { StackProvider, StackTheme } from '@stackframe/stack';
 import { getEnvVariable, getNodeEnvironment } from '@stackframe/stack-shared/dist/utils/env';
-import { Toaster, cn } from '@stackframe/stack-ui';
+import { Toaster, cn } from '@/components/ui';
 import { Analytics } from "@vercel/analytics/react";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import { GeistMono } from "geist/font/mono";

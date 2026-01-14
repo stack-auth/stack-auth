@@ -4,7 +4,6 @@
  * providers. You probably shouldn't use this and should instead use the functions in emails.tsx.
  */
 
-import { getEnvVariable } from '@stackframe/stack-shared/dist/utils/env';
 import { StackAssertionError, captureError } from '@stackframe/stack-shared/dist/utils/errors';
 import { omit, pick } from '@stackframe/stack-shared/dist/utils/objects';
 import { runAsynchronously, wait } from '@stackframe/stack-shared/dist/utils/promises';
@@ -35,7 +34,6 @@ export type LowLevelSendEmailOptions = {
   emailConfig: LowLevelEmailConfig,
   to: string | string[],
   subject: string,
-  shouldSkipDeliverabilityCheck: boolean,
   html?: string,
   text?: string,
 }
@@ -60,52 +58,7 @@ async function _lowLevelSendEmailWithoutRetries(options: LowLevelSendEmailOption
     }
   });
   try {
-    let toArray = typeof options.to === 'string' ? [options.to] : options.to;
-
-    // If using the shared email config, use Emailable to check if the email is valid. skip the ones that are not (it's as if they had bounced)
-    const emailableApiKey = getEnvVariable('STACK_EMAILABLE_API_KEY', "");
-    if (options.emailConfig.type === 'shared' && emailableApiKey && !options.shouldSkipDeliverabilityCheck) {
-      await traceSpan('verifying email addresses with Emailable', async () => {
-        toArray = (await Promise.all(toArray.map(async (to) => {
-          try {
-            const emailableResponseResult = await Result.retry(async (attempt) => {
-              const res = await fetch(`https://api.emailable.com/v1/verify?email=${encodeURIComponent(to)}&api_key=${emailableApiKey}`);
-              if (res.status === 249) {
-                const text = await res.text();
-                console.log('Emailable is taking longer than expected, retrying...', text, { to });
-                return Result.error(new Error("Emailable API returned a 249 error for " + to + ". This means it takes some more time to verify the email address. Response body: " + text));
-              }
-              return Result.ok(res);
-            }, 4, { exponentialDelayBase: 4000 });
-            if (emailableResponseResult.status === 'error') {
-              throw new StackAssertionError("Timed out while verifying email address with Emailable", {
-                to,
-                emailableResponseResult,
-              });
-            }
-            const emailableResponse = emailableResponseResult.data;
-            if (!emailableResponse.ok) {
-              throw new StackAssertionError("Failed to verify email address with Emailable", {
-                to,
-                emailableResponse,
-                emailableResponseText: await emailableResponse.text(),
-              });
-            }
-            const json = await emailableResponse.json();
-            console.log('emailableResponse', json);
-            if (json.state === 'undeliverable' || json.disposable) {
-              console.log('email not deliverable', to, json);
-              return null;
-            }
-            return to;
-          } catch (error) {
-            // if something goes wrong with the Emailable API (eg. 500, ran out of credits, etc.), we just send the email anyway
-            captureError("emailable-api-error", error);
-            return to;
-          }
-        }))).filter((to): to is string => to !== null);
-      });
-    }
+    const toArray = typeof options.to === 'string' ? [options.to] : options.to;
 
     if (toArray.length === 0) {
       // no valid emails, so we can just return ok

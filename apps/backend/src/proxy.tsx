@@ -1,0 +1,164 @@
+import { getEnvVariable, getNodeEnvironment } from '@stackframe/stack-shared/dist/utils/env';
+import { StackAssertionError } from '@stackframe/stack-shared/dist/utils/errors';
+import { wait } from '@stackframe/stack-shared/dist/utils/promises';
+import apiVersions from './generated/api-versions.json';
+import routes from './generated/routes.json';
+import './polyfills';
+
+import type { NextRequest } from 'next/server';
+import { NextResponse } from 'next/server';
+import { SmartRouter } from './smart-router';
+
+const DEV_RATE_LIMIT_MAX_REQUESTS = 100;
+const DEV_RATE_LIMIT_WINDOW_MS = 10_000;
+const devRateLimitTimestamps: number[] = [];
+
+const corsAllowedRequestHeaders = [
+  // General
+  'content-type',
+  'authorization',  // used for OAuth basic authentication
+  'x-stack-project-id',
+  'x-stack-branch-id',
+  'x-stack-override-error-status',
+  'x-stack-random-nonce',  // used to forcefully disable some caches
+  'x-stack-client-version',
+  'x-stack-disable-artificial-development-delay',
+
+  // Project auth
+  'x-stack-access-type',
+  'x-stack-publishable-client-key',
+  'x-stack-secret-server-key',
+  'x-stack-super-secret-admin-key',
+  'x-stack-admin-access-token',
+
+  // User auth
+  'x-stack-refresh-token',
+  'x-stack-access-token',
+  'x-stack-allow-anonymous-user',
+
+  // Sentry
+  'baggage',
+  'sentry-trace',
+
+  // Vercel
+  'x-vercel-protection-bypass',
+
+  // ngrok
+  'ngrok-skip-browser-warning',
+];
+
+const corsAllowedResponseHeaders = [
+  'content-type',
+  'x-stack-actual-status',
+  'x-stack-known-error',
+];
+
+// This function can be marked `async` if using `await` inside
+export async function proxy(request: NextRequest) {
+  const url = new URL(request.url);
+  const delay = +getEnvVariable('STACK_ARTIFICIAL_DEVELOPMENT_DELAY_MS', '0');
+  if (delay) {
+    if (getNodeEnvironment().includes('production')) {
+      throw new StackAssertionError('STACK_ARTIFICIAL_DEVELOPMENT_DELAY_MS environment variable is only allowed in development');
+    }
+    if (!request.headers.get('x-stack-disable-artificial-development-delay')) {
+      await wait(delay);
+    }
+  }
+  const isApiRequest = url.pathname.startsWith('/api/');
+
+  const corsHeadersInit = isApiRequest ? {
+    // CORS headers
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
+    "Access-Control-Max-Age": "86400",  // 1 day (capped to lower values, eg. 10min, by some browsers)
+    "Access-Control-Allow-Headers": corsAllowedRequestHeaders.join(', '),
+    "Access-Control-Expose-Headers": corsAllowedResponseHeaders.join(', '),
+  } : undefined;
+
+  // ensure our clients can handle 429 responses
+  if (isApiRequest && !request.headers.get('x-stack-disable-artificial-development-delay') && getNodeEnvironment() === 'development' && request.method !== 'OPTIONS' && !request.url.includes(".well-known")) {
+    const now = Date.now();
+    while (devRateLimitTimestamps.length > 0 && now - devRateLimitTimestamps[0] > DEV_RATE_LIMIT_WINDOW_MS) {
+      devRateLimitTimestamps.shift();
+    }
+    if (devRateLimitTimestamps.length >= DEV_RATE_LIMIT_MAX_REQUESTS) {
+      const waitMs = Math.max(0, DEV_RATE_LIMIT_WINDOW_MS - (now - devRateLimitTimestamps[0]));
+      const retryAfterSeconds = Math.max(1, Math.ceil(waitMs / 1000));
+
+      const response = NextResponse.json({
+        message: 'Artificial development rate limit triggered. Wait before retrying.',
+      }, {
+        status: 429,
+      });
+
+      // since not all firewalls return CORS headers with their 429 responses, 50% chance that we don't set the CORS headers
+      if (Math.random() < 0.5 && corsHeadersInit) {
+        for (const [key, value] of Object.entries(corsHeadersInit)) {
+          response.headers.set(key, value);
+        }
+      }
+
+      if (Math.random() < 0.5) {
+        // for debugging, make sure we don't always set the Retry-After header
+        response.headers.set('Retry-After', retryAfterSeconds.toString());
+      }
+
+      return response;
+    } else {
+      devRateLimitTimestamps.push(now);
+    }
+  }
+
+  const newRequestHeaders = new Headers(request.headers);
+  // here we could update the request headers (currently we don't)
+
+  const responseInit = isApiRequest ? {
+    request: {
+      headers: newRequestHeaders,
+    },
+    headers: corsHeadersInit,
+  } as const : undefined;
+
+  // we want to allow preflight requests to pass through
+  // even if the API route does not implement OPTIONS
+  if (request.method === 'OPTIONS' && isApiRequest) {
+    return new Response(null, responseInit);
+  }
+
+  // if no route is available for the requested version, rewrite to newer version
+  let pathname = url.pathname;
+  outer: for (let i = 0; i < apiVersions.length - 1; i++) {
+    const version = apiVersions[i];
+    const nextVersion = apiVersions[i + 1];
+    if (!nextVersion.migrationFolder) {
+      throw new StackAssertionError(`No migration folder found for version ${nextVersion.name}. This is a bug because every version except the first should have a migration folder.`);
+    }
+    if ((pathname + "/").startsWith(version.servedRoute + "/")) {
+      const nextPathname = pathname.replace(version.servedRoute, nextVersion.servedRoute);
+      const migrationPathname = nextPathname.replace(nextVersion.servedRoute, nextVersion.migrationFolder);
+      // okay, we're in an API version of the current version. let's check if at least one route matches this URL (doesn't matter which)
+      for (const route of routes) {
+        if (nextVersion.migrationFolder && (route.normalizedPath + "/").startsWith(nextVersion.migrationFolder + "/")) {
+          if (SmartRouter.matchNormalizedPath(migrationPathname, route.normalizedPath)) {
+            // success! we found a route that matches the request
+            // rewrite request to the migration folder
+            pathname = migrationPathname;
+            break outer;
+          }
+        }
+      }
+      // if no route matches, rewrite to the next version
+      pathname = nextPathname;
+    }
+  }
+
+  const newUrl = request.nextUrl.clone();
+  newUrl.pathname = pathname;
+  return NextResponse.rewrite(newUrl, responseInit);
+}
+
+// See "Matching Paths" below to learn more
+export const config = {
+  matcher: '/:path*',
+};

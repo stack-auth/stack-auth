@@ -1,5 +1,5 @@
 import { Link } from "@/components/link";
-import { CreditCardIcon, EnvelopeSimpleIcon, FingerprintSimpleIcon, KeyIcon, MailboxIcon, RocketIcon, SparkleIcon, TelevisionSimpleIcon, Triangle, UserGearIcon, UsersIcon, VaultIcon, WebhooksLogoIcon } from "@phosphor-icons/react/dist/ssr";
+import { ClipboardTextIcon, CreditCardIcon, EnvelopeSimpleIcon, FingerprintSimpleIcon, KeyIcon, MailboxIcon, RocketIcon, SparkleIcon, TelevisionSimpleIcon, TriangleIcon, UserGearIcon, UsersIcon, VaultIcon, WebhooksLogoIcon } from "@phosphor-icons/react";
 import { StackAdminApp } from "@stackframe/stack";
 import { ALL_APPS } from "@stackframe/stack-shared/dist/apps/apps-config";
 import { getRelativePart, isChildUrl } from "@stackframe/stack-shared/dist/utils/urls";
@@ -85,6 +85,21 @@ export const ALL_APPS_FRONTEND = {
       </>
     ),
   },
+  onboarding: {
+    icon: ClipboardTextIcon,
+    href: "onboarding",
+    navigationItems: [
+      { displayName: "Onboarding", href: "." },
+    ],
+    screenshots: [],
+    storeDescription: (
+      <>
+        <p>Onboarding lets you define requirements users must complete before gaining full access.</p>
+        <p>Configure email verification and other onboarding steps to ensure users are properly validated.</p>
+        <p>Users who haven&apos;t completed onboarding are filtered from normal API responses until they finish the required steps.</p>
+      </>
+    ),
+  },
   teams: {
     icon: UsersIcon,
     href: "teams",
@@ -136,9 +151,11 @@ export const ALL_APPS_FRONTEND = {
     icon: CreditCardIcon,
     href: "payments",
     navigationItems: [
-      { displayName: "Products", href: "./products" },
+      { displayName: "Catalogs", href: "./catalogs" },
+      { displayName: "Products & Items", href: "./products" },
       { displayName: "Customers", href: "./customers" },
       { displayName: "Transactions", href: "./transactions" },
+      { displayName: "Payouts", href: "./payouts" },
     ],
     screenshots: getScreenshots('payments', 7),
     storeDescription: (
@@ -274,7 +291,7 @@ export const ALL_APPS_FRONTEND = {
     storeDescription: <></>,
   },
   vercel: {
-    icon: Triangle,
+    icon: TriangleIcon,
     logo: () => <div className="w-full h-full flex items-center justify-center">
       <Image src={VercelLogo} alt="Vercel logo" className="bg-white invert w-full h-full object-contain p-2" />
     </div>,

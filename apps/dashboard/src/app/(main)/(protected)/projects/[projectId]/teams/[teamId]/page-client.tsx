@@ -6,7 +6,7 @@ import { yupResolver } from '@hookform/resolvers/yup';
 import { ServerTeam } from '@stackframe/stack';
 import { strictEmailSchema, yupObject } from '@stackframe/stack-shared/dist/schema-fields';
 import { runAsynchronouslyWithAlert } from '@stackframe/stack-shared/dist/utils/promises';
-import { ActionDialog, Button, Form, Separator } from '@stackframe/stack-ui';
+import { ActionDialog, Button, Form, Separator } from '@/components/ui';
 import { notFound } from 'next/navigation';
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';

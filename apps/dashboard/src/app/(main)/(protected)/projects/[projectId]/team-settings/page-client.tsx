@@ -2,7 +2,7 @@
 import { SmartFormDialog } from "@/components/form-dialog";
 import { PermissionListField } from "@/components/permission-field";
 import { SettingCard, SettingSwitch } from "@/components/settings";
-import { Badge, Button, Typography } from "@stackframe/stack-ui";
+import { Badge, Button, Typography } from "@/components/ui";
 import * as yup from "yup";
 import { AppEnabledGuard } from "../app-enabled-guard";
 import { PageLayout } from "../page-layout";

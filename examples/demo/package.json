@@ -1,6 +1,7 @@
 {
   "name": "@stackframe/example-demo-app",
-  "version": "2.8.57",
+  "version": "2.8.58",
+  "repository": "https://github.com/stack-auth/stack-auth",
   "description": "",
   "private": true,
   "scripts": {
@@ -27,7 +28,6 @@
   "devDependencies": {
     "@types/react": "19.0.12",
     "@types/react-dom": "19.0.4",
-    "@next/bundle-analyzer": "15.2.3",
     "autoprefixer": "^10.4.20",
     "postcss": "^8.4.47",
     "rimraf": "^5.0.10",
