@@ -117,7 +117,7 @@ export function StackCompanion({ className }: { className?: string }) {
   const [isAnimating, setIsAnimating] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [isSplitScreenMode, setIsSplitScreenMode] = useState(false);
-  const [changelogData, setChangelogData] = useState<ChangelogEntry[]>([]);
+  const [changelogData, setChangelogData] = useState<ChangelogEntry[] | undefined>(undefined);
   const [hasNewVersions, setHasNewVersions] = useState(false);
   const [lastSeenVersion, setLastSeenVersion] = useState('');
 
@@ -194,9 +194,13 @@ export function StackCompanion({ className }: { className?: string }) {
               setHasNewVersions(hasNewer);
             }
           }
+        } else {
+          // If fetch failed, leave changelogData as undefined so widget can try fetching itself
+          console.error('Failed to fetch changelog data: response not OK');
         }
       } catch (error) {
         console.error('Failed to fetch changelog data:', error);
+        // Leave changelogData as undefined so widget can try fetching itself
       }
     };
 
@@ -207,7 +211,7 @@ export function StackCompanion({ className }: { className?: string }) {
   useEffect(() => {
     if (activeItem === 'changelog') {
       // When changelog is opened, mark the latest version as seen
-      if (changelogData.length > 0) {
+      if (changelogData && changelogData.length > 0) {
         const latestVersion = changelogData[0].version;
         document.cookie = `stack-last-seen-changelog-version=${sanitizeCookieValue(latestVersion)}; path=/; max-age=31536000`; // 1 year
         setLastSeenVersion(latestVersion);
@@ -223,7 +227,7 @@ export function StackCompanion({ className }: { className?: string }) {
 
       const lastSeen = lastSeenRaw ? decodeURIComponent(lastSeenRaw) : '';
 
-      if (changelogData.length > 0) {
+      if (changelogData && changelogData.length > 0) {
         // If no lastSeen cookie, user hasn't seen any changelog yet - show bell
         if (!lastSeen) {
           setHasNewVersions(true);

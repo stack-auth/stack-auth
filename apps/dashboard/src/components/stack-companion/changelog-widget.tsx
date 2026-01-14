@@ -139,7 +139,9 @@ export function ChangelogWidget({ isActive, initialData }: ChangelogWidgetProps)
 
     hasFetchedRef.current = true;
 
-    if (initialData) {
+    // Check if initialData is explicitly provided (even if empty)
+    // undefined means "not provided", empty array means "provided but no entries"
+    if (initialData !== undefined) {
       // Use provided initial data
       setChangelog(initialData.map((entry, index) => ({
         ...entry,
@@ -155,7 +157,13 @@ export function ChangelogWidget({ isActive, initialData }: ChangelogWidgetProps)
       }
     } else {
       // Fallback to fetching if no initial data provided
-      runAsynchronously(fetchChangelog());
+      const abortController = new AbortController();
+      runAsynchronously(fetchChangelog(abortController.signal));
+
+      // Cleanup: abort the fetch if component unmounts
+      return () => {
+        abortController.abort();
+      };
     }
   }, [fetchChangelog, isActive, initialData]);
 
