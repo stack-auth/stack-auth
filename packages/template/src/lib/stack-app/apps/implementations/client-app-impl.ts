@@ -1174,6 +1174,11 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         cancelAtPeriodEnd: item.subscription.cancel_at_period_end,
         isCancelable: item.subscription.is_cancelable,
       } : null,
+      switchOptions: item.switch_options?.map((option) => ({
+        productId: option.product_id,
+        displayName: option.product.display_name,
+        prices: option.product.prices,
+      })),
     }));
     return Object.assign(products, { nextCursor: response.pagination.next_cursor ?? null });
   }
@@ -1669,6 +1674,22 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       // END_PLATFORM
       async createCheckoutUrl(options: { productId: string, returnUrl?: string }) {
         return await app._interface.createCheckoutUrl(type, userIdOrTeamId, options.productId, effectiveSession, options.returnUrl);
+      },
+      async switchSubscription(options: { fromProductId: string, toProductId: string, priceId?: string, quantity?: number }) {
+        await app._interface.switchSubscription({
+          customer_type: type,
+          customer_id: userIdOrTeamId,
+          from_product_id: options.fromProductId,
+          to_product_id: options.toProductId,
+          price_id: options.priceId,
+          quantity: options.quantity,
+        }, effectiveSession);
+        await app._customerBillingCache.refresh([effectiveSession, type, userIdOrTeamId]);
+        if (type === "user") {
+          await app._userProductsCache.invalidateWhere(([cachedSession, userId]) => cachedSession === effectiveSession && userId === userIdOrTeamId);
+        } else {
+          await app._teamProductsCache.invalidateWhere(([cachedSession, teamId]) => cachedSession === effectiveSession && teamId === userIdOrTeamId);
+        }
       },
     };
   }

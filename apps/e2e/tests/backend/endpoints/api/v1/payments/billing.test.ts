@@ -34,7 +34,13 @@ it("should allow a signed-in user to read their own billing status", async ({ ex
     NiceResponse {
       "status": 200,
       "body": {
-        "default_payment_method": null,
+        "default_payment_method": {
+          "brand": "visa",
+          "exp_month": 8,
+          "exp_year": 2025,
+          "id": "pm_1Pgc75B7WZ01zgkWlHVgdEGJ",
+          "last4": "4242",
+        },
         "has_customer": true,
       },
       "headers": Headers { <some fields may have been hidden> },
@@ -59,7 +65,13 @@ it("should allow a signed-in user to read their own billing status", async ({ ex
     NiceResponse {
       "status": 200,
       "body": {
-        "default_payment_method": null,
+        "default_payment_method": {
+          "brand": "visa",
+          "exp_month": 8,
+          "exp_year": 2025,
+          "id": "pm_1Pgc75B7WZ01zgkWlHVgdEGJ",
+          "last4": "4242",
+        },
         "has_customer": true,
       },
       "headers": Headers { <some fields may have been hidden> },

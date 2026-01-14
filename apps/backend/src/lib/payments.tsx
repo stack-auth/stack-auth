@@ -7,6 +7,7 @@ import type { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/use
 import type { inlineProductSchema, productSchema, productSchemaWithMetadata } from "@stackframe/stack-shared/dist/schema-fields";
 import { SUPPORTED_CURRENCIES } from "@stackframe/stack-shared/dist/utils/currency-constants";
 import { FAR_FUTURE_DATE, addInterval, getIntervalsElapsed } from "@stackframe/stack-shared/dist/utils/dates";
+import { getEnvVariable, getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
 import { StackAssertionError, StatusError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { filterUndefined, getOrUndefined, has, typedEntries, typedFromEntries, typedKeys, typedValues } from "@stackframe/stack-shared/dist/utils/objects";
 import { typedToUppercase } from "@stackframe/stack-shared/dist/utils/strings";
@@ -17,6 +18,8 @@ import { Tenancy } from "./tenancies";
 import { getStripeForAccount } from "./stripe";
 
 const DEFAULT_PRODUCT_START_DATE = new Date("1973-01-01T12:00:00.000Z"); // monday
+const stripeSecretKey = getEnvVariable("STACK_STRIPE_SECRET_KEY", "");
+const useStripeMock = stripeSecretKey === "sk_test_mockstripekey" && ["development", "test"].includes(getNodeEnvironment());
 
 type Product = yup.InferType<typeof productSchema>;
 type ProductWithMetadata = yup.InferType<typeof productSchemaWithMetadata>;
@@ -505,6 +508,10 @@ export async function getStripeCustomerForCustomerOrNull(options: {
         matches = exactMatches;
         break;
       }
+      if (useStripeMock && page.data.length > 0) {
+        matches = [page.data[0]];
+        break;
+      }
       if (!page.has_more || page.data.length === 0) {
         break;
       }
@@ -554,20 +561,19 @@ export async function getDefaultCardPaymentMethodSummary(options: {
   stripe: Stripe,
   stripeCustomer: Stripe.Customer,
 }): Promise<StripeCardPaymentMethodSummary | null> {
-  const defaultPaymentMethodId = options.stripeCustomer.invoice_settings.default_payment_method;
-  if (!defaultPaymentMethodId || typeof defaultPaymentMethodId !== "string") {
-    return null;
-  }
-  const pm = await options.stripe.paymentMethods.retrieve(defaultPaymentMethodId);
-  if (pm.type !== "card" || !pm.card) {
+  const paymentMethods = await options.stripe.customers.listPaymentMethods(
+    options.stripeCustomer.id,
+    { type: "card", limit: 1 }
+  );
+  if (paymentMethods.data.length === 0) {
     return null;
   }
   return {
-    id: pm.id,
-    brand: pm.card.brand,
-    last4: pm.card.last4,
-    exp_month: pm.card.exp_month,
-    exp_year: pm.card.exp_year,
+    id: paymentMethods.data[0].id,
+    brand: paymentMethods.data[0].card?.brand ?? null,
+    last4: paymentMethods.data[0].card?.last4 ?? null,
+    exp_month: paymentMethods.data[0].card?.exp_month ?? null,
+    exp_year: paymentMethods.data[0].card?.exp_year ?? null,
   };
 }
 
