@@ -13,6 +13,38 @@ import { ChangelogWidget } from './stack-companion/changelog-widget';
 import { FeatureRequestBoard } from './stack-companion/feature-request-board';
 import { UnifiedDocsWidget } from './stack-companion/unified-docs-widget';
 
+/**
+ * Compare two CalVer versions in YYYY.MM.DD format
+ * Returns true if version1 is newer than version2
+ */
+function isNewerCalVer(version1: string, version2: string): boolean {
+  const parseCalVer = (version: string): Date | null => {
+    const match = version.match(/^(\d{4})\.(\d{2})\.(\d{2})$/);
+    if (!match) return null;
+    const [, year, month, day] = match;
+    return new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+  };
+
+  const date1 = parseCalVer(version1);
+  const date2 = parseCalVer(version2);
+
+  if (!date1 || !date2) {
+    // Fallback to string comparison if parsing fails
+    return version1 > version2;
+  }
+
+  return date1.getTime() > date2.getTime();
+}
+
+/**
+ * Sanitize a string value for use in a cookie
+ * Removes or encodes characters that could break cookie parsing
+ */
+function sanitizeCookieValue(value: string): string {
+  // Remove or encode special characters that break cookie parsing
+  return encodeURIComponent(value);
+}
+
 type SidebarItem = {
   id: string,
   label: string,
@@ -142,11 +174,12 @@ export function StackCompanion({ className }: { className?: string }) {
           setChangelogData(entries);
 
           // Check for new versions
-          const lastSeen = document.cookie
+          const lastSeenRaw = document.cookie
             .split('; ')
             .find(row => row.startsWith('stack-last-seen-changelog-version='))
             ?.split('=')[1] || '';
 
+          const lastSeen = lastSeenRaw ? decodeURIComponent(lastSeenRaw) : '';
           setLastSeenVersion(lastSeen);
 
           if (entries.length > 0) {
@@ -156,7 +189,7 @@ export function StackCompanion({ className }: { className?: string }) {
             } else {
               const hasNewer = entries.some((entry: ChangelogEntry) => {
                 if (entry.isUnreleased) return false;
-                return entry.version > lastSeen;
+                return isNewerCalVer(entry.version, lastSeen);
               });
               setHasNewVersions(hasNewer);
             }
@@ -172,12 +205,23 @@ export function StackCompanion({ className }: { className?: string }) {
 
   // Re-check for new versions when changelog is opened/closed
   useEffect(() => {
-    if (activeItem === 'changelog' || activeItem === null) {
-      // Re-check versions when opening or closing changelog
-      const lastSeen = document.cookie
+    if (activeItem === 'changelog') {
+      // When changelog is opened, mark the latest version as seen
+      if (changelogData.length > 0) {
+        const latestVersion = changelogData[0].version;
+        document.cookie = `stack-last-seen-changelog-version=${sanitizeCookieValue(latestVersion)}; path=/; max-age=31536000`; // 1 year
+        setLastSeenVersion(latestVersion);
+      }
+      // Clear the notification badge immediately
+      setHasNewVersions(false);
+    } else if (activeItem === null) {
+      // When closed, re-check if there are new versions
+      const lastSeenRaw = document.cookie
         .split('; ')
         .find(row => row.startsWith('stack-last-seen-changelog-version='))
         ?.split('=')[1] || '';
+
+      const lastSeen = lastSeenRaw ? decodeURIComponent(lastSeenRaw) : '';
 
       if (changelogData.length > 0) {
         // If no lastSeen cookie, user hasn't seen any changelog yet - show bell
@@ -186,7 +230,7 @@ export function StackCompanion({ className }: { className?: string }) {
         } else {
           const hasNewer = changelogData.some((entry: ChangelogEntry) => {
             if (entry.isUnreleased) return false;
-            return entry.version > lastSeen;
+            return isNewerCalVer(entry.version, lastSeen);
           });
           setHasNewVersions(hasNewer);
         }

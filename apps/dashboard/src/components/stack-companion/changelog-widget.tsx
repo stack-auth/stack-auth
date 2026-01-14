@@ -8,6 +8,15 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
+/**
+ * Sanitize a string value for use in a cookie
+ * Removes or encodes characters that could break cookie parsing
+ */
+function sanitizeCookieValue(value: string): string {
+  // Remove or encode special characters that break cookie parsing
+  return encodeURIComponent(value);
+}
+
 type ChangeType = 'major' | 'minor' | 'patch';
 
 type ApiChangelogEntry = {
@@ -29,17 +38,6 @@ type ChangelogWidgetProps = {
   initialData?: ApiChangelogEntry[],
 };
 
-const TYPE_LABEL = new Map<ChangeType, string>([
-  ['major', 'Major release'],
-  ['minor', 'Minor update'],
-  ['patch', 'Patch'],
-]);
-
-const TYPE_BADGE_CLASS = new Map<ChangeType, string>([
-  ['major', 'bg-rose-100 text-rose-800 dark:bg-rose-500/20 dark:text-rose-200'],
-  ['minor', 'bg-blue-100 text-blue-800 dark:bg-blue-500/20 dark:text-blue-200'],
-  ['patch', 'bg-emerald-100 text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-100'],
-]);
 
 const COLLAPSE_THRESHOLD = 220;
 
@@ -127,7 +125,7 @@ export function ChangelogWidget({ isActive, initialData }: ChangelogWidgetProps)
       // Update last seen version when changelog is fetched
       if (entries.length > 0) {
         const latestVersion = entries[0].version;
-        document.cookie = `stack-last-seen-changelog-version=${latestVersion}; path=/; max-age=31536000`; // 1 year
+        document.cookie = `stack-last-seen-changelog-version=${sanitizeCookieValue(latestVersion)}; path=/; max-age=31536000`; // 1 year
       }
     } catch (cause) {
       if (signal?.aborted) {
@@ -162,7 +160,7 @@ export function ChangelogWidget({ isActive, initialData }: ChangelogWidgetProps)
       // Update last seen version when changelog is opened
       if (initialData.length > 0) {
         const latestVersion = initialData[0].version;
-        document.cookie = `stack-last-seen-changelog-version=${latestVersion}; path=/; max-age=31536000`; // 1 year
+        document.cookie = `stack-last-seen-changelog-version=${sanitizeCookieValue(latestVersion)}; path=/; max-age=31536000`; // 1 year
       }
     } else {
       // Fallback to fetching if no initial data provided
