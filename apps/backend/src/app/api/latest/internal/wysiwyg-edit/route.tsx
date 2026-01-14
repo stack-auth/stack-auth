@@ -5,10 +5,12 @@ import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { generateText } from "ai";
 
 const aiProvider = getEnvVariable("STACK_AI_PROVIDER", "openai");
+const apiKey = aiProvider === "openrouter"
+  ? getEnvVariable("STACK_OPENROUTER_API_KEY", "MISSING_OPENROUTER_API_KEY")
+  : getEnvVariable("STACK_OPENAI_API_KEY", "MISSING_OPENAI_API_KEY");
+const isMockMode = apiKey === "mock-openrouter-api-key";
 const openai = createOpenAI({
-  apiKey: aiProvider === "openrouter"
-    ? getEnvVariable("STACK_OPENROUTER_API_KEY", "MISSING_OPENROUTER_API_KEY")
-    : getEnvVariable("STACK_OPENAI_API_KEY", "MISSING_OPENAI_API_KEY"),
+  apiKey,
   baseURL: aiProvider === "openrouter" ? "https://openrouter.ai/api/v1" : undefined,
 });
 
@@ -112,6 +114,16 @@ export const POST = createSmartRouteHandler({
         statusCode: 200,
         bodyType: "json",
         body: { updated_source: source_code },
+      };
+    }
+
+    // Mock mode: perform simple string replacement without calling AI
+    if (isMockMode) {
+      const updatedSource = `// NOTE: You haven't specified a STACK_OPENROUTER_API_KEY, so we're using a mock mode where we just replace the old text with the new text instead of calling AI.\n\n${source_code}`.replace(old_text, new_text);
+      return {
+        statusCode: 200,
+        bodyType: "json",
+        body: { updated_source: updatedSource },
       };
     }
 
