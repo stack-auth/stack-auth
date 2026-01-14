@@ -535,7 +535,8 @@ export function PlatformCodeblock({
     }));
   };
 
-  if (platformNames.length === 0) {
+  // Check if there are ANY platforms (including Shell) - not just user-selectable ones
+  if (allPlatformNames.length === 0) {
     return <div className="text-fd-muted-foreground">No platforms configured</div>;
   }
 
@@ -549,8 +550,8 @@ export function PlatformCodeblock({
         title={title}
         filename={currentCodeConfig?.filename}
         headerContent={
-          // Hide selector when explicitly requested or when there's only one platform with one framework
-          hidePlatformSelector || (platformNames.length === 1 && currentFrameworks.length === 1) ? undefined : (
+          // Hide selector when explicitly requested, when there's only one platform with one framework, or when there are no user-selectable platforms (Shell-only)
+          hidePlatformSelector || platformNames.length === 0 || (platformNames.length === 1 && currentFrameworks.length === 1) ? undefined : (
             <div className="relative ml-auto">
               <button
                 onClick={toggleDropdown}

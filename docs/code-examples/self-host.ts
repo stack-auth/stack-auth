@@ -27,7 +27,7 @@ export const selfHostExamples = {
         language: 'Shell',
         framework: 'Git',
         code: `git clone git@github.com:stack-auth/stack-auth.git
-cd stack`,
+cd stack-auth`,
         highlightLanguage: 'bash',
         filename: 'Terminal'
       }
