@@ -26,7 +26,6 @@ type UpdateData<T extends CrudTypeOf<any>> = GetAdminKey<T, "Update">;
 type OnUpdateData<T extends CrudTypeOf<any>> = Array<UpdateData<T> | CreateForwardData<T>>;
 
 type CudRouteHandlersUnfiltered<T extends CrudTypeOf<any>, Params extends {}, Query extends {}> = {
-  onPrepare?: (options: { params: Params | Partial<Params>, auth: SmartRequestAuth, query: Query, type: CudOperation }) => Promise<void>,
   onCreate: (options: { params: Partial<Params>, data: GetAdminKey<T, "Create">, auth: SmartRequestAuth, query: Query }) => Promise<string>,
   onUpdate: (options: {
     params: Params | Partial<Params>,
@@ -174,20 +173,14 @@ export function createCudHandlers<
         throw new StackAssertionError(`No access types available for operation ${operation} in CUD handler; check that the corresponding schemas are defined in the CrudSchema`);
       }
 
-      const aat = new Map(availableAccessTypes.map((accessType) => {
+      // Build invoke helpers per access type to power both route handlers and direct calls.
+      const accessTypeEntries = new Map(availableAccessTypes.map((accessType) => {
         const adminSchemas = getSchemas("admin", operation);
         const accessSchemas = getSchemas(accessType, operation);
         const invokeList = async (invokeOptions: { params: yup.InferType<PS> | Partial<yup.InferType<PS>>, query: yup.InferType<QS>, data: unknown, auth: SmartRequestAuth }) => {
           const expectsAllParams = typedIncludes(["Read", "Update", "Delete"] as const, operation);
           const actualParamsSchema = expectsAllParams ? paramsSchema : paramsSchema.partial();
           const paramsValidated = await validate(invokeOptions.params, actualParamsSchema, invokeOptions.auth.user ?? null, "Params validation");
-
-          await options.onPrepare?.({
-            params: paramsValidated,
-            auth: invokeOptions.auth,
-            query: invokeOptions.query,
-            type: typedToLowercase(operation) as CudOperation,
-          });
 
           let result: unknown;
           if (operation === "Create") {
@@ -259,7 +252,7 @@ export function createCudHandlers<
       }));
 
       const routeHandler = createSmartRouteHandler(
-        [...aat],
+        [...accessTypeEntries],
         ([accessType, entry]) => {
           const { accessSchemas } = entry;
           const frw = routeHandlerTypeHelper({
@@ -320,61 +313,67 @@ export function createCudHandlers<
         },
       );
 
-      const directCalls = [...aat].flatMap(([accessType, entry]) => {
-        const makeInvoke = (directOperation: CudOperation) => {
-          return async ({ user, project, branchId, tenancy, data, query, allowedErrorTypes, ...params }: any) => {
-            if (tenancy) {
-              if (project || branchId) {
-                throw new StackAssertionError("Must specify either project and branchId or tenancy, not both");
-              }
-              project = tenancy.project;
-              branchId = tenancy.branchId;
-            } else if (project) {
-              if (!branchId) {
-                throw new StackAssertionError("Must specify branchId when specifying project");
-              }
-              tenancy = await getSoleTenancyFromProjectBranch(project.id, branchId);
-            } else {
-              throw new StackAssertionError("Must specify either project and branchId or tenancy");
-            }
+      const resolveInvocationContext = async (
+        { project, branchId, tenancy }: { project?: Omit<ProjectsCrud["Admin"]["Read"], "config">, branchId?: string, tenancy?: Tenancy },
+      ) => {
+        if (tenancy) {
+          if (project || branchId) {
+            throw new StackAssertionError("Must specify either project and branchId or tenancy, not both");
+          }
+          return { project: tenancy.project, branchId: tenancy.branchId, tenancy };
+        }
+        if (project) {
+          if (!branchId) {
+            throw new StackAssertionError("Must specify branchId when specifying project");
+          }
+          const resolvedTenancy = await getSoleTenancyFromProjectBranch(project.id, branchId);
+          return { project, branchId, tenancy: resolvedTenancy };
+        }
+        throw new StackAssertionError("Must specify either project and branchId or tenancy");
+      };
 
-            try {
-              return await traceSpan("invoking CUD handler programmatically", async () => {
-                const auth: SmartRequestAuth = {
-                  user,
-                  project: project ?? throwErr("Project not found in CUD handler invocation", { project, tenancy, branchId }),
-                  branchId: branchId ?? throwErr("Branch ID not found in CUD handler invocation", { project, tenancy, branchId }),
-                  tenancy: tenancy ?? throwErr("Tenancy not found in CUD handler invocation", { project, tenancy, branchId }),
-                  type: accessType,
-                };
+      const makeDirectInvoke = (entry: (typeof accessTypeEntries) extends Map<unknown, infer V> ? V : never, accessType: "client" | "server" | "admin", directOperation: CudOperation) => {
+        return async ({ user, project, branchId, tenancy, data, query, allowedErrorTypes, ...params }: any) => {
+          const resolved = await resolveInvocationContext({ project, branchId, tenancy });
 
-                if (directOperation === "read") {
-                  return await entry.invokeRead({
-                    params,
-                    query: query ?? {} as any,
-                    auth,
-                  });
-                }
+          try {
+            return await traceSpan("invoking CUD handler programmatically", async () => {
+              const auth: SmartRequestAuth = {
+                user,
+                project: resolved.project,
+                branchId: resolved.branchId,
+                tenancy: resolved.tenancy,
+                type: accessType,
+              };
 
-                return await entry.invokeList({
+              if (directOperation === "read") {
+                return await entry.invokeRead({
                   params,
                   query: query ?? {} as any,
-                  data: data as any,
                   auth,
                 });
-              });
-            } catch (error) {
-              if (allowedErrorTypes?.some((a: any) => error instanceof a) || error instanceof StackAssertionError) {
-                throw error;
               }
-              throw new CudHandlerInvocationError(error);
-            }
-          };
-        };
 
-        const directOperation = typedToLowercase(operation) as CudOperation;
+              return await entry.invokeList({
+                params,
+                query: query ?? {} as any,
+                data: data as any,
+                auth,
+              });
+            });
+          } catch (error) {
+            if (allowedErrorTypes?.some((a: any) => error instanceof a) || error instanceof StackAssertionError) {
+              throw error;
+            }
+            throw new CudHandlerInvocationError(error);
+          }
+        };
+      };
+
+      const directOperation = typedToLowercase(operation) as CudOperation;
+      const directCalls = [...accessTypeEntries].map(([accessType, entry]) => {
         const directName = `${accessType}${operation}`;
-        return [[directName, makeInvoke(directOperation)]];
+        return [directName, makeDirectInvoke(entry, accessType, directOperation)] as const;
       });
 
       return [

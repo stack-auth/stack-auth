@@ -4,13 +4,13 @@ import { createCudHandlers } from "@/route-handlers/cud-handler";
 import { Tenancy } from "@/lib/tenancies";
 import { previewTemplateSource } from "@stackframe/stack-shared/dist/helpers/emails";
 import { LightEmailTheme } from "@stackframe/stack-shared/dist/helpers/emails";
-import { CrudTypeOf } from "@stackframe/stack-shared/dist/crud";
 import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
 import { createCrud } from "@stackframe/stack-shared/dist/crud";
 import { yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 import { typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
+import type { InferType } from "yup";
 
 type ThemeItem = {
   id: string,
@@ -34,23 +34,32 @@ function getThemeOrThrow(tenancy: Tenancy, id: string) {
   return themeList[id]!;
 }
 
-const internalEmailThemesCrud = createCrud({
-  adminReadSchema: yupObject({
-    id: yupString().uuid().defined(),
-    display_name: yupString().defined(),
-    tsx_source: yupString().defined(),
-  }).defined(),
-  adminCreateSchema: yupObject({
-    id: yupString().uuid().optional(),
-    display_name: yupString().defined(),
-  }).defined(),
-  adminUpdateSchema: yupObject({
-    id: yupString().uuid().optional(),
-    tsx_source: yupString().defined(),
-  }).defined(),
-  adminDeleteSchema: yupObject({
-    id: yupString().uuid().defined(),
-  }).defined(),
+const adminReadSchema = yupObject({
+  id: yupString().uuid().defined(),
+  display_name: yupString().defined(),
+  tsx_source: yupString().defined(),
+}).defined();
+const adminCreateSchema = yupObject({
+  id: yupString().uuid().optional(),
+  display_name: yupString().defined(),
+}).defined();
+const adminUpdateSchema = yupObject({
+  id: yupString().uuid().optional(),
+  tsx_source: yupString().defined(),
+}).defined();
+const adminDeleteSchema = yupObject({
+  id: yupString().uuid().defined(),
+}).defined();
+
+type CreateTheme = InferType<typeof adminCreateSchema>;
+type UpdateTheme = InferType<typeof adminUpdateSchema>;
+type ThemeRead = InferType<typeof adminReadSchema>;
+
+export const internalEmailThemesCudHandlers = createCudHandlers(createCrud({
+  adminReadSchema,
+  adminCreateSchema,
+  adminUpdateSchema,
+  adminDeleteSchema,
   docs: {
     adminRead: { hidden: true },
     adminList: { hidden: true },
@@ -58,14 +67,7 @@ const internalEmailThemesCrud = createCrud({
     adminUpdate: { hidden: true },
     adminDelete: { hidden: true },
   },
-});
-
-type InternalEmailThemesCrudType = CrudTypeOf<typeof internalEmailThemesCrud>;
-type CreateTheme = InternalEmailThemesCrudType["Admin"]["Create"];
-type UpdateTheme = InternalEmailThemesCrudType["Admin"]["Update"];
-type ThemeRead = InternalEmailThemesCrudType["Admin"]["Read"];
-
-export const internalEmailThemesCudHandlers = createCudHandlers(internalEmailThemesCrud, {
+}), {
   paramsSchema: yupObject({
     id: yupString().uuid().defined(),
   }).defined(),
