@@ -116,19 +116,15 @@ export default function PageClient() {
         updates[methodId] = enabled ? 'on' : 'off';
       }
 
-      console.log("Saving payment method updates:", updates);
       await adminApp.updatePaymentMethodConfigs(config.configId, updates);
-      console.log("Save completed successfully");
 
       setPendingChanges({});
       try {
         await loadConfig();
-      } catch (reloadError) {
-        console.error("Failed to reload config after save:", reloadError);
+      } catch {
         toast({ title: "Saved successfully", description: "But failed to refresh. Please reload the page.", variant: "destructive" });
       }
-    } catch (error) {
-      console.error("Failed to save payment method configs:", error);
+    } catch {
       toast({ title: "Failed to save changes", variant: "destructive" });
     } finally {
       setSaving(false);
@@ -226,7 +222,6 @@ export default function PageClient() {
           )}
         </div>
 
-        {/* Categorized Payment Methods */}
         <Card>
           <CardContent>
             {controllableMethods.length === 0 ? (
@@ -273,7 +268,6 @@ export default function PageClient() {
                   );
                 })}
 
-                {/* Uncategorized methods fallback */}
                 {uncategorizedMethods.length > 0 && (
                   <AccordionItem value="other">
                     <AccordionTrigger className="hover:no-underline">
@@ -297,7 +291,6 @@ export default function PageClient() {
           </CardContent>
         </Card>
 
-        {/* Platform-Managed Methods */}
         {uncontrollableMethods.length > 0 && (
           <Card className="opacity-60">
             <CardHeader>

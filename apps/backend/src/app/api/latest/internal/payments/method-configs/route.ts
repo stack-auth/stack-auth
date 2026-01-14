@@ -61,10 +61,6 @@ export const GET = createSmartRouteHandler({
       });
     }
 
-    console.log("[method-configs] Stripe account:", project.stripeAccountId);
-    console.log("[method-configs] Using config:", defaultConfig.id, "application:", defaultConfig.application, "parent:", defaultConfig.parent);
-    console.log("[method-configs] Card display_preference:", JSON.stringify((defaultConfig as any).card?.display_preference, null, 2));
-
     const methods = Object.entries(defaultConfig)
       .filter(([key]) => !METADATA_FIELDS.has(key))
       .filter(([, value]) => value && typeof value === 'object' && 'display_preference' in value)
@@ -143,18 +139,12 @@ export const PATCH = createSmartRouteHandler({
       };
     }
 
-    console.log("[method-configs] Updating config:", body.config_id);
-    console.log("[method-configs] Stripe account:", project.stripeAccountId);
-    console.log("[method-configs] Updates:", JSON.stringify(stripeUpdates, null, 2));
-
     const stripe = getStackStripe();
-    const result = await stripe.paymentMethodConfigurations.update(
+    await stripe.paymentMethodConfigurations.update(
       body.config_id,
       stripeUpdates,
       { stripeAccount: project.stripeAccountId }
     );
-
-    console.log("[method-configs] Stripe response:", JSON.stringify(result, null, 2));
 
     return {
       statusCode: 200,
