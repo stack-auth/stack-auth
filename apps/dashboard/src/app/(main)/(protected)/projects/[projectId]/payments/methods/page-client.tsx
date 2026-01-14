@@ -2,7 +2,7 @@
 
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger, Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Switch, toast, Typography } from "@/components/ui";
 import { getPaymentMethodIcon } from "@/components/ui/payment-method-icons";
-import { BankIcon, CreditCardIcon, CurrencyCircleDollarIcon, GlobeIcon, HandCoinsIcon, LightningIcon, ReceiptIcon, WalletIcon } from "@phosphor-icons/react";
+import { BankIcon, CircleNotchIcon, CreditCardIcon, CurrencyCircleDollarIcon, GlobeIcon, HandCoinsIcon, LightningIcon, ReceiptIcon, WalletIcon } from "@phosphor-icons/react";
 import { getPaymentMethodCategory, PAYMENT_CATEGORIES, PAYMENT_METHOD_DEPENDENCIES, PaymentMethodCategory } from "@stackframe/stack-shared/dist/payments/payment-methods";
 import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
 import { useCallback, useEffect, useState } from "react";
@@ -138,7 +138,8 @@ export default function PageClient() {
   if (loading) {
     return (
       <PageLayout title="Payment Methods">
-        <div className="flex items-center justify-center h-64">
+        <div className="flex flex-col items-center justify-center h-64 space-y-4">
+          <CircleNotchIcon className="h-8 w-8 animate-spin text-primary" />
           <Typography className="text-muted-foreground">Loading payment methods...</Typography>
         </div>
       </PageLayout>
