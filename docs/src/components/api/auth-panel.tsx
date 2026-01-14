@@ -7,7 +7,7 @@ import { AlertTriangle, ChevronDown, Key, X } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { useSidebar } from '../layouts/sidebar-context';
 import { useAPIPageContext } from './api-page-wrapper';
-import { Button } from './button';
+import { Button } from '../mdx/button';
 
 type StackAuthHeaderKey =
   | 'X-Stack-Access-Type'
