@@ -876,7 +876,7 @@ describe('validatePurchaseSession - one-time purchase rules', () => {
       },
       priceId: 'price-any',
       quantity: 1,
-    })).rejects.toThrowError('Customer already has a one-time purchase in this product catalog');
+    })).rejects.toThrowError('Customer already has a one-time purchase in this product line');
   });
 
   it('allows purchase when existing one-time is in a different group', async () => {
@@ -1164,7 +1164,7 @@ describe('getSubscriptions - defaults behavior', () => {
     expect(ids).toContain('freeUngrouped');
   });
 
-  it('throws error when multiple include-by-default products exist in same catalog', async () => {
+  it('throws error when multiple include-by-default products exist in same line', async () => {
     const tenancy = createMockTenancy({
       items: {},
       productLines: { g1: { displayName: 'G1', customerType: 'user' } },
@@ -1203,6 +1203,6 @@ describe('getSubscriptions - defaults behavior', () => {
       tenancy,
       customerType: 'custom',
       customerId: 'c-1',
-    })).rejects.toThrowError('Multiple include-by-default products configured in the same catalog');
+    })).rejects.toThrowError('Multiple include-by-default products configured in the same product line');
   });
 });

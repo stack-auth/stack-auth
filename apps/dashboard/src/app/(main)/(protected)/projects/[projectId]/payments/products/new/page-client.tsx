@@ -30,6 +30,7 @@ import { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
 import { getUserSpecifiedIdErrorMessage, isValidUserSpecifiedId, sanitizeUserSpecifiedId } from "@stackframe/stack-shared/dist/schema-fields";
 import { typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
+import { useSearchParams } from "next/navigation";
 import { useLayoutEffect, useRef, useState } from "react";
 import { useAdminApp, useProjectId } from "../../../use-admin-app";
 import { CreateProductLineDialog } from "../create-product-line-dialog";
@@ -177,6 +178,7 @@ function toIdFormat(displayName: string): string {
 export default function PageClient() {
   const projectId = useProjectId();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const stackAdminApp = useAdminApp();
   const project = stackAdminApp.useProject();
   const config = project.useConfig();
@@ -190,7 +192,7 @@ export default function PageClient() {
   const [displayName, setDisplayName] = useState("");
   const [hasManuallyEditedId, setHasManuallyEditedId] = useState(false);
   const [customerType, setCustomerType] = useState<'user' | 'team' | 'custom'>('user');
-  const [productLineId, setProductLineId] = useState("");
+  const [productLineId, setProductLineId] = useState(() => searchParams.get("productLineId") ?? "");
   const [isAddOn, setIsAddOn] = useState(false);
   const [isAddOnTo, setIsAddOnTo] = useState<string[]>([]);
   const [stackable, setStackable] = useState(false);

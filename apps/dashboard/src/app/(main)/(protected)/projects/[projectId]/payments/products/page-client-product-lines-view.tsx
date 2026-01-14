@@ -48,6 +48,7 @@ import {
   type PricesObject,
   type Product
 } from "./utils";
+import { urlString } from '@stackframe/stack-shared/dist/utils/urls';
 
 // Custom error class to signal validation failures without closing edit mode
 class ValidationError extends Error {
@@ -2017,7 +2018,7 @@ function ProductLineView({ groupedProducts, groups, existingItems, onSaveProduct
           <div className="relative rounded-2xl bg-foreground/[0.04] ring-1 ring-foreground/[0.06]">
             <div className="flex gap-4 justify-start overflow-x-auto p-5 min-h-20 pr-16">
               <div className="flex max-w-max gap-4 items-stretch">
-                <Link href={`/projects/${projectId}/payments/products/new?productLineId=${id}`}>
+                <Link href={urlString`/projects/${projectId}/payments/products/new?productLineId=${id}`}>
                   <Button
                     variant="outline"
                     size="plain"

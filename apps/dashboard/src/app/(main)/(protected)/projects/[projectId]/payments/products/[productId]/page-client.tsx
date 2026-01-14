@@ -199,7 +199,7 @@ function ProductHeader({ productId, product, productLineName }: ProductHeaderPro
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => router.push(`/projects/${projectId}/payments/productLines#product-${productId}`)}>
+              <DropdownMenuItem onClick={() => router.push(`/projects/${projectId}/payments/product-lines#product-${productId}`)}>
                 View in ProductLines
               </DropdownMenuItem>
             </DropdownMenuContent>
