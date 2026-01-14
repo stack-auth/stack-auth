@@ -119,7 +119,7 @@ export const POST = createSmartRouteHandler({
 
     // Mock mode: perform simple string replacement without calling AI
     if (isMockMode) {
-      const updatedSource = `// NOTE: You haven't specified a STACK_OPENROUTER_API_KEY, so we're using a mock mode where we just replace the old text with the new text instead of calling AI.\n\n${source_code}`.replace(old_text, new_text);
+      const updatedSource = `// NOTE: You haven't specified a STACK_OPENROUTER_API_KEY, so we're using a mock mode where we just replace the old text with the new text instead of calling AI.\n\n${source_code.replace(old_text, new_text)}`;
       return {
         statusCode: 200,
         bodyType: "json",
