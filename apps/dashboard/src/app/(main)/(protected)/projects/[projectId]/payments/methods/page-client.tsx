@@ -122,7 +122,12 @@ export default function PageClient() {
       console.log("Save completed successfully");
 
       setPendingChanges({});
-      await loadConfig();
+      try {
+        await loadConfig();
+      } catch (reloadError) {
+        console.error("Failed to reload config after save:", reloadError);
+        toast({ title: "Saved successfully", description: "But failed to refresh. Please reload the page.", variant: "destructive" });
+      }
     } catch (error) {
       console.error("Failed to save payment method configs:", error);
       toast({ title: "Failed to save changes", variant: "destructive" });
@@ -203,7 +208,7 @@ export default function PageClient() {
         <div className="flex items-center justify-between">
           <div>
             <Typography variant="secondary" className="text-sm">
-              Configure which payment methods your customers can use at checkout.
+              Configure which payment methods your customers can use at checkout. Some methods only appear for customers in specific regions, currencies, or transaction types.
             </Typography>
           </div>
           {hasPendingChanges && (
@@ -220,12 +225,6 @@ export default function PageClient() {
 
         {/* Categorized Payment Methods */}
         <Card>
-          <CardHeader>
-            <CardTitle className="text-lg">Payment Methods</CardTitle>
-            <CardDescription>
-              Toggle which methods are offered at checkout. Some methods only appear for customers in specific regions, currencies, or transaction types.
-            </CardDescription>
-          </CardHeader>
           <CardContent>
             {controllableMethods.length === 0 ? (
               <Typography className="text-muted-foreground text-sm py-4">

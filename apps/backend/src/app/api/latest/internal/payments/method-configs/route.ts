@@ -122,6 +122,10 @@ export const PATCH = createSmartRouteHandler({
     }).defined(),
   }),
   handler: async ({ auth, body }) => {
+    if (Object.keys(body.updates).length === 0) {
+      return { statusCode: 200, bodyType: "json", body: { success: true } };
+    }
+
     const project = await globalPrismaClient.project.findUnique({
       where: { id: auth.project.id },
       select: { stripeAccountId: true },
