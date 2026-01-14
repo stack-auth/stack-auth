@@ -78,7 +78,7 @@ export const GET = createSmartRouteHandler({
     // If a token is provided, store it in the outer info so we can use it to link another user to the account, or to upgrade an anonymous user
     let projectUserId: string | undefined;
     if (query.token) {
-      const result = await decodeAccessToken(query.token, { allowAnonymous: true });
+      const result = await decodeAccessToken(query.token, { allowAnonymous: true, allowRestricted: true });
       if (result.status === "error") {
         throw result.error;
       }

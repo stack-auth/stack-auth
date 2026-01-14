@@ -2,6 +2,7 @@
 
 import { Button, cn } from "@/components/ui";
 import { CheckIcon, CopyIcon } from "@phosphor-icons/react";
+import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import React, { useCallback, useEffect, useState } from "react";
 import { InlineCode } from "./inline-code";
 
@@ -19,22 +20,20 @@ export const CopyableText = React.memo(function CopyableText(props: {
     return () => clearTimeout(timer);
   }, [copied]);
 
-  const handleCopy = useCallback(async () => {
-    try {
+  const handleCopy = useCallback(() => {
+    runAsynchronouslyWithAlert(async () => {
       await navigator.clipboard.writeText(props.value);
       setCopied(true);
-    } catch (err) {
-      console.error("Failed to copy:", err);
-    }
+    });
   }, [props.value]);
 
   return (
-    <div className={cn("flex items-center gap-2", props.className)}>
-      <InlineCode>{props.value}</InlineCode>
+    <div className={cn("flex items-center gap-2 min-w-0", props.className)}>
+      <InlineCode className="truncate min-w-0">{props.value}</InlineCode>
       <Button
         variant="ghost"
         size="sm"
-        className="h-6 w-6 p-0"
+        className="h-6 w-6 p-0 flex-shrink-0"
         onClick={handleCopy}
         title={copied ? "Copied!" : "Copy to clipboard"}
       >

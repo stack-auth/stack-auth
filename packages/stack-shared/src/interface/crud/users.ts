@@ -1,3 +1,4 @@
+import * as yup from "yup";
 import { CrudTypeOf, createCrud } from "../../crud";
 import * as fieldSchema from "../../schema-fields";
 import { WebhookEvent } from "../webhooks";
@@ -39,6 +40,10 @@ export const usersCrudServerReadSchema = fieldSchema.yupObject({
   server_metadata: fieldSchema.userServerMetadataSchema,
   last_active_at_millis: fieldSchema.userLastActiveAtMillisSchema.nonNullable().defined(),
   is_anonymous: fieldSchema.yupBoolean().defined(),
+  is_restricted: fieldSchema.yupBoolean().defined().meta({ openapiField: { description: 'Whether the user is in restricted state (has signed up but not completed onboarding requirements)', exampleValue: false } }),
+  restricted_reason: fieldSchema.yupObject({
+    type: fieldSchema.yupString().oneOf(fieldSchema.restrictedReasonTypes).defined(),
+  }).nullable().defined().meta({ openapiField: { description: 'The reason why the user is restricted (e.g., type: "email_not_verified" or "anonymous"), null if not restricted', exampleValue: null } }),
 
   oauth_providers: fieldSchema.yupArray(fieldSchema.yupObject({
     id: fieldSchema.yupString().defined(),
@@ -54,7 +59,10 @@ export const usersCrudServerReadSchema = fieldSchema.yupObject({
    * @deprecated
    */
   requires_totp_mfa: fieldSchema.yupBoolean().defined().meta({ openapiField: { hidden: true, description: 'Whether the user is required to use TOTP MFA to sign in', exampleValue: false } }),
-}).defined();
+}).defined().test("restricted_reason_iff_restricted", "restricted_reason must be present if and only if is_restricted is true", function(this: yup.TestContext<any>, value: any) {
+  if (value == null) return true;
+  return value.is_restricted === !!value.restricted_reason;
+});
 
 export const usersCrudServerCreateSchema = usersCrudServerUpdateSchema.omit(['selected_team_id']).concat(fieldSchema.yupObject({
   oauth_providers: fieldSchema.yupArray(fieldSchema.yupObject({
@@ -96,7 +104,7 @@ export const usersCrud = createCrud({
     serverList: {
       tags: ["Users"],
       summary: 'List users',
-      description: 'Lists all the users in the project. Anonymous users are only included if the `include_anonymous` query parameter is set to `true`.',
+      description: 'Lists all the users in the project. By default, only fully onboarded users are returned. Restricted users (those who haven\'t completed onboarding requirements like email verification) are included if `include_restricted` is set to `true`. Anonymous users are included if `include_anonymous` is set to `true` (which also includes restricted users).',
     },
   },
 });
