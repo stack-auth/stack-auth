@@ -28,14 +28,11 @@ const messageSchema = yupObject({
   content: yupMixed().defined(),
 });
 
-const aiProvider = getEnvVariable("STACK_AI_PROVIDER", "openai");
-const apiKey = aiProvider === "openrouter"
-  ? getEnvVariable("STACK_OPENROUTER_API_KEY", "mock-openrouter-api-key")
-  : getEnvVariable("STACK_OPENAI_API_KEY");
+const apiKey = getEnvVariable("STACK_OPENROUTER_API_KEY", "mock-openrouter-api-key");
 const isMockMode = apiKey === "mock-openrouter-api-key";
 const openai = createOpenAI({
   apiKey,
-  baseURL: aiProvider === "openrouter" ? "https://openrouter.ai/api/v1" : undefined,
+  baseURL: "https://openrouter.ai/api/v1",
 });
 
 export const POST = createSmartRouteHandler({
