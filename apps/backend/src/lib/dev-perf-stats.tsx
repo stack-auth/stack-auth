@@ -18,11 +18,18 @@ import { createGlobal } from "@stackframe/stack-shared/dist/utils/globals";
 // ============================================================================
 
 export type PgPoolStats = {
-  /** Total number of connections in the pool (active + idle) */
+  /** Stats per labeled pool */
+  pools: Record<string, {
+    /** Total number of connections in the pool (active + idle) */
+    total: number,
+    /** Number of idle connections available for queries */
+    idle: number,
+    /** Number of queries waiting for a connection */
+    waiting: number,
+  }>,
+  /** Aggregated stats across all pools */
   total: number,
-  /** Number of idle connections available for queries */
   idle: number,
-  /** Number of queries waiting for a connection */
   waiting: number,
 };
 
@@ -85,8 +92,9 @@ const perfHistory = createGlobal<PerformanceHistory>("dev-perf-history", () => (
   maxSnapshots: 120, // Keep last 2 minutes at 1-second intervals
 }));
 
-// Store for pg pool instances to track
-const pgPools = createGlobal<Set<import("pg").Pool>>("dev-pg-pools", () => new Set());
+// Store for pg pool instances to track, with labels
+// Using "dev-pg-pools-v2" to invalidate old cached Set from previous version
+const pgPools = createGlobal<Map<string, import("pg").Pool>>("dev-pg-pools-v2", () => new Map());
 
 // Store event loop delay histogram
 let eventLoopHistogram: import("node:perf_hooks").IntervalHistogram | null = null;
@@ -101,18 +109,21 @@ let lastELU: ReturnType<typeof import("node:perf_hooks").performance.eventLoopUt
 /**
  * Register a pg Pool instance to be tracked for stats.
  * Call this when creating a new pool connection.
+ *
+ * @param pool - The pg Pool instance
+ * @param label - A label to identify this pool (e.g., "primary", "replica")
  */
-export function registerPgPool(pool: import("pg").Pool): void {
+export function registerPgPool(pool: import("pg").Pool, label: string = "default"): void {
   if (getNodeEnvironment() !== "development") return;
-  pgPools.add(pool);
+  pgPools.set(label, pool);
 }
 
 /**
  * Unregister a pg Pool instance.
  * Call this when a pool is destroyed.
  */
-export function unregisterPgPool(pool: import("pg").Pool): void {
-  pgPools.delete(pool);
+export function unregisterPgPool(label: string): void {
+  pgPools.delete(label);
 }
 
 // ============================================================================
@@ -122,18 +133,25 @@ export function unregisterPgPool(pool: import("pg").Pool): void {
 function getPgPoolStats(): PgPoolStats | null {
   if (pgPools.size === 0) return null;
 
-  // Aggregate stats from all pools
+  // Stats per pool and aggregated totals
+  const pools: PgPoolStats["pools"] = {};
   let total = 0;
   let idle = 0;
   let waiting = 0;
 
-  for (const pool of pgPools) {
-    total += pool.totalCount;
-    idle += pool.idleCount;
-    waiting += pool.waitingCount;
+  for (const [label, pool] of pgPools) {
+    const poolStats = {
+      total: pool.totalCount,
+      idle: pool.idleCount,
+      waiting: pool.waitingCount,
+    };
+    pools[label] = poolStats;
+    total += poolStats.total;
+    idle += poolStats.idle;
+    waiting += poolStats.waiting;
   }
 
-  return { total, idle, waiting };
+  return { pools, total, idle, waiting };
 }
 
 function getEventLoopDelayStats(): EventLoopDelayStats | null {
