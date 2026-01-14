@@ -38,7 +38,7 @@ it("should return the original source when old_text equals new_text", async ({ e
         occurrenceIndex: 1,
         sourceFile: "template",
       },
-      dom_path: [{ tagName: "DIV", index: 0 }],
+      dom_path: [{ tag_name: "DIV", index: 0 }],
       html_context: "<div>Hello World!</div>",
     },
   });

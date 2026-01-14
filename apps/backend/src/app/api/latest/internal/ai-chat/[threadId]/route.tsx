@@ -31,8 +31,8 @@ const messageSchema = yupObject({
 const aiProvider = getEnvVariable("STACK_AI_PROVIDER", "openai");
 const openai = createOpenAI({
   apiKey: aiProvider === "openrouter"
-    ? getEnvVariable("STACK_OPENROUTER_API_KEY", "MISSING_OPENROUTER_API_KEY")
-    : getEnvVariable("STACK_OPENAI_API_KEY", "MISSING_OPENAI_API_KEY"),
+    ? getEnvVariable("STACK_OPENROUTER_API_KEY")
+    : getEnvVariable("STACK_OPENAI_API_KEY"),
   baseURL: aiProvider === "openrouter" ? "https://openrouter.ai/api/v1" : undefined,
 });
 

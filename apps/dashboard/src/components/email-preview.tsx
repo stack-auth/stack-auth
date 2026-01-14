@@ -4,7 +4,7 @@ import { Archive, ArrowBendUpLeft, ArrowBendUpRight, ArrowLeft, CaretDown, DotsT
 import { KnownErrors } from "@stackframe/stack-shared";
 import type { EditableMetadata } from "@stackframe/stack-shared/dist/utils/jsx-editable-transpiler";
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
-import React, { Component, Fragment, ReactNode, Suspense, useEffect, useRef, useState } from "react";
+import { Component, Fragment, ReactNode, Suspense, useEffect, useRef, useState } from "react";
 import { useDebounce } from 'use-debounce';
 import ResizableContainer from './resizable-container';
 
@@ -471,7 +471,7 @@ function EmailPreviewEditableContent({
         iframeRef.current?.contentWindow?.postMessage({
           type: 'stack_edit_error',
           id,
-          error: 'No metadata found for this editable region',
+          message: 'No metadata found for this editable region',
         }, '*');
         return;
       }
@@ -494,7 +494,7 @@ function EmailPreviewEditableContent({
           iframeRef.current?.contentWindow?.postMessage({
             type: 'stack_edit_error',
             id,
-            error: error instanceof Error ? error.message : 'Unknown error',
+            message: error instanceof Error ? error.message : 'Unknown error',
           }, '*');
         }
       });

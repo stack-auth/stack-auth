@@ -246,7 +246,8 @@ export function transpileJsxForEditing(
       if (decodedText.trim() === '') return;
 
       // Skip if node doesn't have location info
-      if (!path.node.loc || !path.node.start || !path.node.end) return;
+      // Use explicit null checks since start/end can validly be 0
+      if (!path.node.loc || path.node.start == null || path.node.end == null) return;
 
       // IMPORTANT: Use the RAW source text, not the decoded path.node.value
       // Babel's parser decodes HTML entities (e.g., &lt; -> <) in JSX text,
@@ -316,7 +317,7 @@ export function transpileJsxForEditing(
   // Find the position after all imports
   const importEndMatch = code.match(/^(import\s+[\s\S]*?from\s+['"][^'"]+['"];?\s*)+/m);
   if (importEndMatch) {
-    const insertPos = importEndMatch.index! + importEndMatch[0].length;
+    const insertPos = (importEndMatch.index ?? 0) + importEndMatch[0].length;
     code = code.slice(0, insertPos) + '\n' + EDITABLE_COMPONENT_CODE + '\n' + code.slice(insertPos);
   } else {
     // No imports found, add at the beginning

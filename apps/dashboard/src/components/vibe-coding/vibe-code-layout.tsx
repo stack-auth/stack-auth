@@ -17,7 +17,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
 import { ArrowCounterClockwise, ArrowRight, Bug, CaretDown, CaretUp, ChatsCircle, Code, DeviceMobile, DeviceTablet, FloppyDisk, Laptop, PencilSimple } from "@phosphor-icons/react";
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 export type ViewportMode = 'desktop' | 'tablet' | 'phone' | 'edit';
 
@@ -71,12 +71,16 @@ export default function VibeCodeLayout({
   editModeEnabled = false,
   wysiwygDebugInfo,
 }: VibeCodeEditorLayoutProps) {
-  // Use localStorage for isEditorOpen state
-  const [isEditorOpen, setIsEditorOpen] = useState(() => {
-    if (typeof window === 'undefined') return false;
+  // Use localStorage for isEditorOpen state - initialize with false to avoid hydration mismatch
+  const [isEditorOpen, setIsEditorOpen] = useState(false);
+
+  // Read from localStorage after hydration to avoid SSR mismatch
+  useEffect(() => {
     const stored = localStorage.getItem('vibe-code-editor-open');
-    return stored === 'true';
-  });
+    if (stored === 'true') {
+      setIsEditorOpen(true);
+    }
+  }, []);
   const [isChatOpen, setIsChatOpen] = useState(false);
   // Default to 'edit' mode when editModeEnabled is true
   const [internalViewport, setInternalViewport] = useState<ViewportMode>(

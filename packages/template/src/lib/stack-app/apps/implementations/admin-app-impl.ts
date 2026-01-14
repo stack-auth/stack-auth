@@ -588,6 +588,10 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
     return crud.html;
   }
   // END_PLATFORM
+  async getEmailPreviewWithEditableMarkers(options: { themeId?: string | null | false, themeTsxSource?: string, templateId?: string, templateTsxSource?: string }): Promise<{ html: string, editableRegions?: Record<string, unknown> }> {
+    const result = await this._interface.renderEmailPreview({ ...options, editableMarkers: true });
+    return { html: result.html, editableRegions: result.editable_regions };
+  }
   // IF_PLATFORM react-like
   useEmailPreviewWithEditableMarkers(options: { themeId?: string | null | false, themeTsxSource?: string, templateId?: string, templateTsxSource?: string }): { html: string, editableRegions?: Record<string, unknown> } {
     const crud = useAsyncCache(this._emailPreviewWithEditableMarkersCache, [options.themeId, options.themeTsxSource, options.templateId, options.templateTsxSource] as const, "adminApp.useEmailPreviewWithEditableMarkers()");

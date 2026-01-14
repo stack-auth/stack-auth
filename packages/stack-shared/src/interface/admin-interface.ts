@@ -471,7 +471,7 @@ export class StackAdminInterface extends StackServerInterface {
           old_text: options.oldText,
           new_text: options.newText,
           metadata: options.metadata,
-          dom_path: options.domPath,
+          dom_path: options.domPath.map(item => ({ tag_name: item.tagName, index: item.index })),
           html_context: options.htmlContext,
         }),
       },

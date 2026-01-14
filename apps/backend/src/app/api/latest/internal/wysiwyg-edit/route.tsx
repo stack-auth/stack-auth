@@ -56,7 +56,7 @@ const editMetadataSchema = yupObject({
 });
 
 const domPathItemSchema = yupObject({
-  tagName: yupString().defined(),
+  tag_name: yupString().defined(),
   index: yupNumber().defined(),
 });
 
@@ -146,7 +146,7 @@ ${metadata.sourceContext.after}
 \`\`\`
 
 ## Runtime DOM Path (for disambiguation)
-${dom_path.map((p, i) => `${i + 1}. <${p.tagName}> (index: ${p.index})`).join("\n")}
+${dom_path.map((p, i) => `${i + 1}. <${p.tag_name}> (index: ${p.index})`).join("\n")}
 
 ## Rendered HTML Context
 \`\`\`html
