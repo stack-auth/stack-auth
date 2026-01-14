@@ -1,5 +1,9 @@
 import {
   ActionDialog,
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
   ResizableHandle,
   ResizablePanel,
   ResizablePanelGroup,
@@ -11,9 +15,18 @@ import {
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
-import { ArrowCounterClockwise, ArrowRight, CaretDown, CaretUp, ChatsCircle, Code, DeviceMobile, DeviceTablet, FloppyDisk, Laptop } from "@phosphor-icons/react";
+import { ArrowCounterClockwise, ArrowRight, Bug, CaretDown, CaretUp, ChatsCircle, Code, DeviceMobile, DeviceTablet, FloppyDisk, Laptop, PencilSimple } from "@phosphor-icons/react";
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+
+export type ViewportMode = 'desktop' | 'tablet' | 'phone' | 'edit';
+
+export type WysiwygDebugInfo = {
+  transpiledTemplateCode?: string,
+  transpiledThemeCode?: string,
+  renderedHtml?: string,
+  editableRegions?: Record<string, unknown>,
+};
 
 type VibeCodeEditorLayoutProps = {
   previewComponent: React.ReactNode,
@@ -23,17 +36,21 @@ type VibeCodeEditorLayoutProps = {
   saveLabel?: string,
   onUndo?: () => void,
   isDirty?: boolean,
-  viewport?: 'desktop' | 'tablet' | 'phone',
-  onViewportChange?: (viewport: 'desktop' | 'tablet' | 'phone') => void,
+  viewport?: ViewportMode,
+  onViewportChange?: (viewport: ViewportMode) => void,
   previewActions?: React.ReactNode,
   editorTitle?: string,
   headerAction?: React.ReactNode,
-  defaultViewport?: 'desktop' | 'tablet' | 'phone',
+  defaultViewport?: ViewportMode,
   primaryAction?: {
     label: string,
     onClick: () => void | Promise<void>,
     disabled?: boolean,
   },
+  /** Whether edit mode is enabled (shows pencil icon in viewport switcher) */
+  editModeEnabled?: boolean,
+  /** Debug info for WYSIWYG editing (dev mode only) */
+  wysiwygDebugInfo?: WysiwygDebugInfo,
 }
 
 export default function VibeCodeLayout({
@@ -51,17 +68,39 @@ export default function VibeCodeLayout({
   headerAction,
   defaultViewport = 'desktop',
   primaryAction,
+  editModeEnabled = false,
+  wysiwygDebugInfo,
 }: VibeCodeEditorLayoutProps) {
+  // Use localStorage for isEditorOpen state - initialize with false to avoid hydration mismatch
   const [isEditorOpen, setIsEditorOpen] = useState(false);
+
+  // Read from localStorage after hydration to avoid SSR mismatch
+  useEffect(() => {
+    const stored = localStorage.getItem('vibe-code-editor-open');
+    if (stored === 'true') {
+      setIsEditorOpen(true);
+    }
+  }, []);
   const [isChatOpen, setIsChatOpen] = useState(false);
-  const [internalViewport, setInternalViewport] = useState<'desktop' | 'tablet' | 'phone'>(defaultViewport);
+  // Default to 'edit' mode when editModeEnabled is true
+  const [internalViewport, setInternalViewport] = useState<ViewportMode>(
+    editModeEnabled ? 'edit' : defaultViewport
+  );
   const [isSaving, setIsSaving] = useState(false);
   const [isPrimaryLoading, setIsPrimaryLoading] = useState(false);
   const [showUndoConfirm, setShowUndoConfirm] = useState(false);
+  const [showDebugDialog, setShowDebugDialog] = useState(false);
+
+  // Save isEditorOpen to localStorage when it changes
+  const handleSetIsEditorOpen = (open: boolean) => {
+    setIsEditorOpen(open);
+    localStorage.setItem('vibe-code-editor-open', String(open));
+  };
 
   const currentViewport = viewport ?? internalViewport;
+  const isEditMode = currentViewport === 'edit';
 
-  const handleViewportClick = (newViewport: 'desktop' | 'tablet' | 'phone') => {
+  const handleViewportClick = (newViewport: ViewportMode) => {
     if (onViewportChange) {
       onViewportChange(newViewport);
     } else {
@@ -93,6 +132,24 @@ export default function VibeCodeLayout({
             <div className="flex items-center gap-2 px-2 py-2 rounded-lg bg-background/60 dark:bg-background/40 backdrop-blur-xl shadow-sm ring-1 ring-foreground/[0.06]">
               {/* Viewport Switcher - Compact */}
               <div className="flex items-center gap-0.5 rounded-md bg-foreground/[0.04] p-0.5">
+                {/* Edit Mode - leftmost when enabled */}
+                {editModeEnabled && (
+                  <>
+                    <button
+                      onClick={() => handleViewportClick('edit')}
+                      className={cn(
+                        "p-1 rounded transition-all duration-150 hover:transition-none",
+                        currentViewport === 'edit'
+                          ? "bg-background text-foreground shadow-sm"
+                          : "text-muted-foreground"
+                      )}
+                      aria-label="Edit mode"
+                    >
+                      <PencilSimple size={14} weight={currentViewport === 'edit' ? 'fill' : 'regular'} />
+                    </button>
+                    <div className="w-px h-3 bg-foreground/10 mx-0.5" />
+                  </>
+                )}
                 <button
                   onClick={() => handleViewportClick('desktop')}
                   className={cn(
@@ -140,7 +197,7 @@ export default function VibeCodeLayout({
                   variant="ghost"
                   size="sm"
                   onClick={() => {
-                    setIsEditorOpen(!isEditorOpen);
+                    handleSetIsEditorOpen(!isEditorOpen);
                     if (!isEditorOpen) setIsChatOpen(false);
                   }}
                   className={cn(
@@ -158,7 +215,7 @@ export default function VibeCodeLayout({
                   size="sm"
                   onClick={() => {
                     setIsChatOpen(!isChatOpen);
-                    if (!isChatOpen) setIsEditorOpen(false);
+                    if (!isChatOpen) handleSetIsEditorOpen(false);
                   }}
                   className={cn(
                     "h-7 gap-1 px-2 rounded-md transition-all duration-150 hover:transition-none",
@@ -281,6 +338,28 @@ export default function VibeCodeLayout({
             <div className="flex items-center gap-3 px-4 py-2.5 rounded-xl bg-background/60 dark:bg-background/40 backdrop-blur-xl shadow-sm ring-1 ring-foreground/[0.06]">
               {/* Viewport Switcher */}
               <div className="flex items-center gap-1 rounded-lg bg-foreground/[0.04] p-1">
+                {/* Edit Mode - leftmost when enabled */}
+                {editModeEnabled && (
+                  <>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <button
+                          onClick={() => handleViewportClick('edit')}
+                          className={cn(
+                            "p-1.5 rounded-md transition-all duration-150 hover:transition-none",
+                            currentViewport === 'edit'
+                              ? "bg-background text-foreground shadow-sm ring-1 ring-foreground/[0.06]"
+                              : "text-muted-foreground hover:text-foreground hover:bg-background/50"
+                          )}
+                        >
+                          <PencilSimple size={16} weight={currentViewport === 'edit' ? 'fill' : 'regular'} />
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent side="bottom" className="text-xs">Edit Mode</TooltipContent>
+                    </Tooltip>
+                    <div className="w-px h-4 bg-foreground/10 mx-0.5" />
+                  </>
+                )}
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <button
@@ -428,6 +507,56 @@ export default function VibeCodeLayout({
             cancelButton
           />
 
+          {/* WYSIWYG Debug Dialog */}
+          {wysiwygDebugInfo && (
+            <Dialog open={showDebugDialog} onOpenChange={setShowDebugDialog}>
+              <DialogContent className="max-w-4xl max-h-[80vh] overflow-hidden flex flex-col">
+                <DialogHeader>
+                  <DialogTitle>WYSIWYG Debug Info</DialogTitle>
+                </DialogHeader>
+                <div className="flex-1 overflow-auto space-y-4">
+                  {/* Editable Regions */}
+                  <div>
+                    <h3 className="font-semibold text-sm mb-2">Editable Regions ({Object.keys(wysiwygDebugInfo.editableRegions ?? {}).length})</h3>
+                    <pre className="bg-muted p-3 rounded-lg text-xs overflow-x-auto max-h-48">
+                      {JSON.stringify(wysiwygDebugInfo.editableRegions, null, 2)}
+                    </pre>
+                  </div>
+
+                  {/* Transpiled Template Code */}
+                  {wysiwygDebugInfo.transpiledTemplateCode && (
+                    <div>
+                      <h3 className="font-semibold text-sm mb-2">Transpiled Template Code</h3>
+                      <pre className="bg-muted p-3 rounded-lg text-xs overflow-x-auto max-h-48 whitespace-pre-wrap">
+                        {wysiwygDebugInfo.transpiledTemplateCode}
+                      </pre>
+                    </div>
+                  )}
+
+                  {/* Transpiled Theme Code */}
+                  {wysiwygDebugInfo.transpiledThemeCode && (
+                    <div>
+                      <h3 className="font-semibold text-sm mb-2">Transpiled Theme Code</h3>
+                      <pre className="bg-muted p-3 rounded-lg text-xs overflow-x-auto max-h-48 whitespace-pre-wrap">
+                        {wysiwygDebugInfo.transpiledThemeCode}
+                      </pre>
+                    </div>
+                  )}
+
+                  {/* Rendered HTML */}
+                  {wysiwygDebugInfo.renderedHtml && (
+                    <div>
+                      <h3 className="font-semibold text-sm mb-2">Rendered HTML (with markers)</h3>
+                      <pre className="bg-muted p-3 rounded-lg text-xs overflow-x-auto max-h-64 whitespace-pre-wrap">
+                        {wysiwygDebugInfo.renderedHtml}
+                      </pre>
+                    </div>
+                  )}
+                </div>
+              </DialogContent>
+            </Dialog>
+          )}
+
           {/* Main Content Area */}
           <ResizablePanelGroup direction="horizontal" className="flex-1 overflow-hidden">
             {/* Left Panel - Preview & Code */}
@@ -442,7 +571,7 @@ export default function VibeCodeLayout({
                           "w-full h-full transition-all duration-200 ease-out flex items-start justify-center",
                           currentViewport === 'phone' && "max-w-[420px]",
                           currentViewport === 'tablet' && "max-w-[860px]",
-                          currentViewport === 'desktop' && "max-w-full"
+                          (currentViewport === 'desktop' || currentViewport === 'edit') && "max-w-full"
                         )}>
                           {previewComponent}
                         </div>
@@ -451,20 +580,36 @@ export default function VibeCodeLayout({
                   </ResizablePanel>
 
                   {/* Code Toggle Bar */}
-                  <button
-                    onClick={() => setIsEditorOpen(!isEditorOpen)}
-                    className="group h-10 flex items-center justify-center gap-2 bg-muted/40 dark:bg-foreground/[0.03] hover:bg-muted/60 dark:hover:bg-foreground/[0.06] transition-colors duration-150 hover:transition-none border-y border-border/30 dark:border-foreground/[0.06] cursor-pointer shrink-0"
-                  >
-                    <Code size={14} className="text-muted-foreground group-hover:text-foreground transition-colors duration-150 group-hover:transition-none" />
-                    <span className="text-xs font-medium text-muted-foreground group-hover:text-foreground transition-colors duration-150 group-hover:transition-none">
-                      {isEditorOpen ? 'Hide Code' : 'View Code'}
-                    </span>
-                    {isEditorOpen ? (
-                      <CaretDown size={12} className="text-muted-foreground group-hover:text-foreground transition-colors duration-150 group-hover:transition-none" />
-                    ) : (
-                      <CaretUp size={12} className="text-muted-foreground group-hover:text-foreground transition-colors duration-150 group-hover:transition-none" />
+                  <div className="h-10 flex items-center justify-center bg-muted/40 dark:bg-foreground/[0.03] border-y border-border/30 dark:border-foreground/[0.06] shrink-0">
+                    <button
+                      onClick={() => handleSetIsEditorOpen(!isEditorOpen)}
+                      className="group flex-1 h-full flex items-center justify-center gap-2 hover:bg-muted/60 dark:hover:bg-foreground/[0.06] transition-colors duration-150 hover:transition-none cursor-pointer"
+                    >
+                      <Code size={14} className="text-muted-foreground group-hover:text-foreground transition-colors duration-150 group-hover:transition-none" />
+                      <span className="text-xs font-medium text-muted-foreground group-hover:text-foreground transition-colors duration-150 group-hover:transition-none">
+                        {isEditorOpen ? 'Hide Code' : 'View Code'}
+                      </span>
+                      {isEditorOpen ? (
+                        <CaretDown size={12} className="text-muted-foreground group-hover:text-foreground transition-colors duration-150 group-hover:transition-none" />
+                      ) : (
+                        <CaretUp size={12} className="text-muted-foreground group-hover:text-foreground transition-colors duration-150 group-hover:transition-none" />
+                      )}
+                    </button>
+                    {/* Debug button - only in development */}
+                    {process.env.NODE_ENV === 'development' && wysiwygDebugInfo && (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <button
+                            onClick={() => setShowDebugDialog(true)}
+                            className="h-full px-3 flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted/60 dark:hover:bg-foreground/[0.06] transition-colors duration-150 hover:transition-none border-l border-border/30 dark:border-foreground/[0.06]"
+                          >
+                            <Bug size={14} />
+                          </button>
+                        </TooltipTrigger>
+                        <TooltipContent side="top" className="text-xs">WYSIWYG Debug Info</TooltipContent>
+                      </Tooltip>
                     )}
-                  </button>
+                  </div>
 
                   {/* Resize Handle - only shown when editor is open */}
                   {isEditorOpen && (

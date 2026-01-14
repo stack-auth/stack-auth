@@ -1,6 +1,6 @@
 "use client";
 
-import EmailPreview from "@/components/email-preview";
+import EmailPreview, { type OnWysiwygEditCommit } from "@/components/email-preview";
 import { EmailThemeSelector } from "@/components/email-theme-selector";
 import { useRouterConfirm } from "@/components/router";
 import { Button, Skeleton, toast } from "@/components/ui";
@@ -10,12 +10,14 @@ import {
   createChatAdapter,
   createHistoryAdapter,
   EmailTemplateUI,
-  VibeCodeLayout
+  VibeCodeLayout,
+  type ViewportMode,
+  type WysiwygDebugInfo,
 } from "@/components/vibe-coding";
 import { ToolCallContent } from "@/components/vibe-coding/chat-adapters";
 import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
 import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { AppEnabledGuard } from "../../app-enabled-guard";
 import { PageLayout } from "../../page-layout";
 import { useAdminApp } from "../../use-admin-app";
@@ -115,7 +117,23 @@ export default function PageClient(props: { templateId: string }) {
     }
   };
 
-  const [viewport, setViewport] = useState<'desktop' | 'tablet' | 'phone'>('desktop');
+  const [viewport, setViewport] = useState<ViewportMode>('edit');
+  const [wysiwygDebugInfo, setWysiwygDebugInfo] = useState<WysiwygDebugInfo | undefined>(undefined);
+
+  // Handle WYSIWYG edit commits - calls the AI endpoint to update source code
+  const handleWysiwygEditCommit: OnWysiwygEditCommit = useCallback(async (data) => {
+    const result = await stackAdminApp.applyWysiwygEdit({
+      sourceType: 'template',
+      sourceCode: currentCode,
+      oldText: data.oldText,
+      newText: data.newText,
+      metadata: data.metadata,
+      domPath: data.domPath,
+      htmlContext: data.htmlContext,
+    });
+    setCurrentCode(result.updatedSource);
+    return result.updatedSource;
+  }, [stackAdminApp, currentCode]);
 
   if (!template) {
     // Show loading state while waiting for the template (either from hook or direct fetch)
@@ -190,6 +208,8 @@ export default function PageClient(props: { templateId: string }) {
         isDirty={isDirty}
         previewActions={previewActions}
         editorTitle="Template Source Code"
+        editModeEnabled
+        wysiwygDebugInfo={wysiwygDebugInfo}
         headerAction={
           <EmailThemeSelector
             selectedThemeId={selectedThemeId}
@@ -200,7 +220,10 @@ export default function PageClient(props: { templateId: string }) {
           <EmailPreview
             themeId={selectedThemeId}
             templateTsxSource={currentCode}
-            viewport={viewport === 'desktop' ? undefined : (viewport === 'tablet' ? { id: 'tablet', name: 'Tablet', width: 820, height: 1180, type: 'tablet' } : { id: 'phone', name: 'Phone', width: 390, height: 844, type: 'phone' })}
+            editMode={viewport === 'edit'}
+            viewport={viewport === 'desktop' || viewport === 'edit' ? undefined : (viewport === 'tablet' ? { id: 'tablet', name: 'Tablet', width: 820, height: 1180, type: 'tablet' } : { id: 'phone', name: 'Phone', width: 390, height: 844, type: 'phone' })}
+            onDebugInfoChange={setWysiwygDebugInfo}
+            onWysiwygEditCommit={handleWysiwygEditCommit}
           />
         }
         editorComponent={

@@ -28,12 +28,11 @@ const messageSchema = yupObject({
   content: yupMixed().defined(),
 });
 
-const aiProvider = getEnvVariable("STACK_AI_PROVIDER", "openai");
+const apiKey = getEnvVariable("STACK_OPENROUTER_API_KEY", "mock-openrouter-api-key");
+const isMockMode = apiKey === "mock-openrouter-api-key";
 const openai = createOpenAI({
-  apiKey: aiProvider === "openrouter"
-    ? getEnvVariable("STACK_OPENROUTER_API_KEY", "MISSING_OPENROUTER_API_KEY")
-    : getEnvVariable("STACK_OPENAI_API_KEY", "MISSING_OPENAI_API_KEY"),
-  baseURL: aiProvider === "openrouter" ? "https://openrouter.ai/api/v1" : undefined,
+  apiKey,
+  baseURL: "https://openrouter.ai/api/v1",
 });
 
 export const POST = createSmartRouteHandler({
@@ -61,8 +60,22 @@ export const POST = createSmartRouteHandler({
     }).defined(),
   }),
   async handler({ body, params, auth: { tenancy } }) {
+    // Mock mode: return a simple text response without calling AI
+    if (isMockMode) {
+      return {
+        statusCode: 200,
+        bodyType: "json",
+        body: {
+          content: [{
+            type: "text",
+            text: "This is a mock AI response. Configure a real API key to enable AI features.",
+          }],
+        },
+      };
+    }
+
     const adapter = getChatAdapter(body.context_type, tenancy, params.threadId);
-    const modelName = getEnvVariable("STACK_AI_MODEL", getEnvVariable("STACK_OPENAI_MODEL", "gpt-4o"));
+    const modelName = "google/gemini-3-flash-preview";
 
     // Validate messages structure before passing to AI
     const validatedMessages = body.messages.map(msg => ({

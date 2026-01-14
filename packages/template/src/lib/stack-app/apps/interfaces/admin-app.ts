@@ -45,6 +45,7 @@ export type StackAdminApp<HasTokenStore extends boolean = boolean, ProjectId ext
   & AsyncStoreProperty<"projectPermissionDefinitions", [], AdminProjectPermissionDefinition[], true>
   & AsyncStoreProperty<"emailThemes", [], { id: string, displayName: string }[], true>
   & AsyncStoreProperty<"emailPreview", [{ themeId?: string | null | false, themeTsxSource?: string, templateId?: string, templateTsxSource?: string }], string, false>
+  & AsyncStoreProperty<"emailPreviewWithEditableMarkers", [{ themeId?: string | null | false, themeTsxSource?: string, templateId?: string, templateTsxSource?: string, editableSource?: 'template' | 'theme' | 'both' }], { html: string, editableRegions?: Record<string, unknown> }, false> // THIS_LINE_PLATFORM react-like
   & AsyncStoreProperty<"emailTemplates", [], { id: string, displayName: string, themeId?: string, tsxSource: string }[], true>
   & AsyncStoreProperty<"emailDrafts", [], { id: string, displayName: string, themeId: string | undefined | false, tsxSource: string, sentAt: Date | null }[], true>
   & AsyncStoreProperty<"stripeAccountInfo", [], { account_id: string, charges_enabled: boolean, details_submitted: boolean, payouts_enabled: boolean } | null, false>
@@ -96,6 +97,15 @@ export type StackAdminApp<HasTokenStore extends boolean = boolean, ProjectId ext
     ): Promise<{ content: ChatContent }>,
     saveChatMessage(threadId: string, message: any): Promise<void>,
     listChatMessages(threadId: string): Promise<{ messages: Array<any> }>,
+    applyWysiwygEdit(options: {
+      sourceType: "template" | "theme" | "draft",
+      sourceCode: string,
+      oldText: string,
+      newText: string,
+      metadata: any,
+      domPath: Array<{ tagName: string, index: number }>,
+      htmlContext: string,
+    }): Promise<{ updatedSource: string }>,
     updateEmailTemplate(id: string, tsxSource: string, themeId: string | null | false): Promise<{ renderedHtml: string }>,
     createEmailTemplate(displayName: string): Promise<{ id: string }>,
     deleteEmailTemplate(id: string): Promise<void>,
