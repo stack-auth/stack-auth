@@ -62,7 +62,7 @@ const formatVersion = (version: string) => {
   return version;
 };
 
-const NoteBlockquote = ({ children, ...props }: any) => {
+const NoteBlockquote = ({ children }: { children?: React.ReactNode }) => {
   return (
     <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 p-3 my-3 rounded-md">
       <div className="flex items-start gap-2">
@@ -75,7 +75,7 @@ const NoteBlockquote = ({ children, ...props }: any) => {
   );
 };
 
-const ChangelogListItem = ({ children, ...props }: any) => {
+const ChangelogListItem = ({ children }: { children?: React.ReactNode }) => {
   return (
     <li className="text-muted-foreground leading-relaxed">
       {children}
@@ -83,15 +83,18 @@ const ChangelogListItem = ({ children, ...props }: any) => {
   );
 };
 
-const ChangelogImage = ({ src, alt, ...props }: any) => {
+const ChangelogImage = ({ src, alt, title }: { src?: string, alt?: string, title?: string }) => {
+  // Only render if src is provided
+  if (!src) return null;
+
   return (
     <Image
       src={src}
-      alt={alt}
+      alt={alt || ''}
+      title={title}
       width={800}
       height={600}
       className="rounded-lg border border-border max-w-full h-auto my-4"
-      {...props}
     />
   );
 };
