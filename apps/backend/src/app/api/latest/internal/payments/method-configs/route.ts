@@ -2,39 +2,10 @@ import { getStackStripe } from "@/lib/stripe";
 import { globalPrismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@stackframe/stack-shared";
+import { getAllPaymentMethodIds, getAllPaymentMethodNames, getPaymentMethodName, isKnownPaymentMethod } from "@stackframe/stack-shared/dist/payments/payment-methods";
 import { adaptSchema, adminAuthTypeSchema, yupArray, yupBoolean, yupNumber, yupObject, yupRecord, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
-import { has } from "@stackframe/stack-shared/dist/utils/objects";
 import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
-
-const PAYMENT_METHOD_DISPLAY_NAMES: Record<string, string> = {
-  card: "Credit/Debit Card",
-  apple_pay: "Apple Pay",
-  google_pay: "Google Pay",
-  klarna: "Klarna",
-  affirm: "Affirm",
-  afterpay_clearpay: "Afterpay / Clearpay",
-  alipay: "Alipay",
-  amazon_pay: "Amazon Pay",
-  link: "Link",
-  cashapp: "Cash App",
-  acss_debit: "ACSS Debit",
-  bacs_debit: "Bacs Direct Debit",
-  bancontact: "Bancontact",
-  blik: "BLIK",
-  cartes_bancaires: "Cartes Bancaires",
-  customer_balance: "Customer Balance",
-  eps: "EPS",
-  giropay: "Giropay",
-  ideal: "iDEAL",
-  multibanco: "Multibanco",
-  p24: "Przelewy24",
-  sepa_debit: "SEPA Direct Debit",
-  sofort: "Sofort",
-  us_bank_account: "US Bank Account",
-  wechat_pay: "WeChat Pay",
-  zip: "Zip",
-};
 
 const METADATA_FIELDS = new Set([
   'id', 'object', 'active', 'application', 'is_default', 'livemode', 'name', 'parent'
@@ -58,7 +29,7 @@ export const GET = createSmartRouteHandler({
       config_id: yupString().defined(),
       methods: yupArray(yupObject({
         id: yupString().defined(),
-        name: yupString().oneOf(Object.values(PAYMENT_METHOD_DISPLAY_NAMES)).defined(),
+        name: yupString().oneOf(getAllPaymentMethodNames()).defined(),
         enabled: yupBoolean().defined(),
         available: yupBoolean().defined(),
         overridable: yupBoolean().defined(),
@@ -97,10 +68,10 @@ export const GET = createSmartRouteHandler({
     const methods = Object.entries(defaultConfig)
       .filter(([key]) => !METADATA_FIELDS.has(key))
       .filter(([, value]) => value && typeof value === 'object' && 'display_preference' in value)
-      .filter(([id]) => has(PAYMENT_METHOD_DISPLAY_NAMES, id))
+      .filter(([id]) => isKnownPaymentMethod(id))
       .map(([id, config]) => ({
         id,
-        name: PAYMENT_METHOD_DISPLAY_NAMES[id],
+        name: getPaymentMethodName(id),
         // Use 'value' (what Stripe actually shows at checkout), not 'preference' (what user requested)
         // When overridable is true, updating 'preference' will change 'value'
         // When overridable is false, 'preference' is stored but 'value' stays as platform default
@@ -138,7 +109,7 @@ export const PATCH = createSmartRouteHandler({
     body: yupObject({
       config_id: yupString().defined(),
       updates: yupRecord(
-        yupString().oneOf(Object.keys(PAYMENT_METHOD_DISPLAY_NAMES)).defined(),
+        yupString().oneOf(getAllPaymentMethodIds()).defined(),
         yupString().oneOf(['on', 'off']).defined()
       ).defined(),
     }).defined(),

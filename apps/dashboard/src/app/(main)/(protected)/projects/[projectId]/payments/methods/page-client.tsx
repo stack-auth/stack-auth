@@ -1,7 +1,8 @@
 "use client";
 
-import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Switch, toast, Typography } from "@/components/ui";
-import { Building, CreditCard, Globe, Wallet } from "@phosphor-icons/react";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger, Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Switch, toast, Typography } from "@/components/ui";
+import { Bank, CreditCard, CurrencyCircleDollar, Globe, HandCoins, Lightning, Receipt, Wallet } from "@phosphor-icons/react";
+import { getPaymentMethodCategory, PAYMENT_CATEGORIES, PAYMENT_METHOD_DEPENDENCIES, PaymentMethodCategory } from "@stackframe/stack-shared/dist/payments/payment-methods";
 import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
 import { useCallback, useEffect, useState } from "react";
 import { PageLayout } from "../../page-layout";
@@ -20,16 +21,24 @@ type PaymentMethodConfig = {
   methods: PaymentMethod[],
 };
 
-const getMethodIcon = (id: string) => {
-  if (['card', 'cartes_bancaires'].includes(id)) return CreditCard;
-  if (['apple_pay', 'google_pay', 'link', 'amazon_pay', 'cashapp'].includes(id)) return Wallet;
-  if (['us_bank_account', 'sepa_debit', 'bacs_debit', 'acss_debit'].includes(id)) return Building;
-  return Globe;
+// Category icons mapping
+const CATEGORY_ICONS: Record<PaymentMethodCategory, typeof CreditCard> = {
+  cards: CreditCard,
+  wallets: Wallet,
+  bnpl: HandCoins,
+  realtime: Lightning,
+  bank_debits: Bank,
+  bank_transfers: CurrencyCircleDollar,
+  vouchers: Receipt,
 };
 
-const PAYMENT_METHOD_DEPENDENCIES: Record<string, string[]> = {
-  apple_pay: ['card'],
-  google_pay: ['card'],
+// Payment method icons - placeholder icons for now, will be replaced with brand logos (TODO #10)
+const getMethodIcon = (methodId: string) => {
+  const category = getPaymentMethodCategory(methodId);
+  if (category) {
+    return CATEGORY_ICONS[category];
+  }
+  return Globe;
 };
 
 export default function PageClient() {
@@ -149,6 +158,45 @@ export default function PageClient() {
   const controllableMethods = config.methods.filter(m => m.overridable);
   const uncontrollableMethods = config.methods.filter(m => !m.overridable);
 
+  const methodsByCategory = PAYMENT_CATEGORIES.map(category => {
+    const methods = controllableMethods.filter(
+      m => getPaymentMethodCategory(m.id) === category.id
+    );
+    const CategoryIcon = CATEGORY_ICONS[category.id];
+    return { ...category, methods, icon: CategoryIcon };
+  });
+
+  const uncategorizedMethods = controllableMethods.filter(
+    m => !getPaymentMethodCategory(m.id)
+  );
+
+  const renderMethodRow = (method: PaymentMethod) => {
+    const isEnabled = method.id in pendingChanges ? pendingChanges[method.id] : method.enabled;
+    const hasChanged = method.id in pendingChanges;
+    const MethodIcon = getMethodIcon(method.id);
+
+    return (
+      <div
+        key={method.id}
+        className={`flex items-center justify-between p-3 rounded-lg transition-colors ${
+          hasChanged ? 'bg-blue-50 dark:bg-blue-950/30' : 'hover:bg-muted/50'
+        }`}
+      >
+        <div className="flex items-center gap-3">
+          {/* TODO #10: Replace with brand-specific icons */}
+          <MethodIcon className="h-5 w-5 text-muted-foreground" />
+          <div>
+            <Typography className="font-medium">{method.name}</Typography>
+          </div>
+        </div>
+        <Switch
+          checked={isEnabled}
+          onCheckedChange={() => handleToggle(method.id, isEnabled)}
+        />
+      </div>
+    );
+  };
+
   return (
     <PageLayout title="Payment Methods">
       <div className="space-y-6 max-w-3xl">
@@ -170,48 +218,79 @@ export default function PageClient() {
           )}
         </div>
 
-        {/* Available Payment Methods */}
+        {/* Categorized Payment Methods */}
         <Card>
           <CardHeader>
-            <CardTitle className="text-lg">Available Methods</CardTitle>
+            <CardTitle className="text-lg">Payment Methods</CardTitle>
             <CardDescription>
-              These payment methods are active and can be enabled for your customers.
+              Toggle which methods are offered at checkout. Some methods only appear for customers in specific regions, currencies, or transaction types.
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-1">
+          <CardContent>
             {controllableMethods.length === 0 ? (
               <Typography className="text-muted-foreground text-sm py-4">
                 No payment methods are currently available. Complete Stripe onboarding to enable payment methods.
               </Typography>
             ) : (
-              controllableMethods.map((method) => {
-                const Icon = getMethodIcon(method.id);
-                const isEnabled = method.id in pendingChanges ? pendingChanges[method.id] : method.enabled;
-                const hasChanged = method.id in pendingChanges;
+              <Accordion type="multiple" className="w-full">
+                {methodsByCategory.map(category => {
+                  const CategoryIcon = category.icon;
+                  const isEmpty = category.methods.length === 0;
 
-                return (
-                  <div
-                    key={method.id}
-                    className={`flex items-center justify-between p-3 rounded-lg transition-colors ${
-                      hasChanged ? 'bg-blue-50 dark:bg-blue-950/30' : 'hover:bg-muted/50'
-                    }`}
-                  >
-                    <div className="flex items-center gap-3">
-                      <Icon className="h-5 w-5 text-muted-foreground" />
-                      <div>
-                        <Typography className="font-medium">{method.name}</Typography>
-                        <Typography variant="secondary" className="text-xs">
-                          {method.id}
-                        </Typography>
+                  return (
+                    <AccordionItem
+                      key={category.id}
+                      value={category.id}
+                      className={isEmpty ? 'opacity-50' : ''}
+                      disabled={isEmpty}
+                    >
+                      <AccordionTrigger
+                        className="hover:no-underline"
+                        disabled={isEmpty}
+                      >
+                        <div className="flex items-center gap-3">
+                          <CategoryIcon className="h-5 w-5 text-muted-foreground" weight="duotone" />
+                          <span className="font-medium">{category.name}</span>
+                          <span className="text-xs text-muted-foreground">
+                            ({category.methods.length})
+                          </span>
+                        </div>
+                      </AccordionTrigger>
+                      <AccordionContent>
+                        {isEmpty ? (
+                          <Typography className="text-muted-foreground text-sm py-2">
+                            No methods available in this category.
+                          </Typography>
+                        ) : (
+                          <div className="space-y-1">
+                            {category.methods.map(renderMethodRow)}
+                          </div>
+                        )}
+                      </AccordionContent>
+                    </AccordionItem>
+                  );
+                })}
+
+                {/* Uncategorized methods fallback */}
+                {uncategorizedMethods.length > 0 && (
+                  <AccordionItem value="other">
+                    <AccordionTrigger className="hover:no-underline">
+                      <div className="flex items-center gap-3">
+                        <CreditCard className="h-5 w-5 text-muted-foreground" />
+                        <span className="font-medium">Other</span>
+                        <span className="text-xs text-muted-foreground">
+                          ({uncategorizedMethods.length})
+                        </span>
                       </div>
-                    </div>
-                    <Switch
-                      checked={isEnabled}
-                      onCheckedChange={() => handleToggle(method.id, isEnabled)}
-                    />
-                  </div>
-                );
-              })
+                    </AccordionTrigger>
+                    <AccordionContent>
+                      <div className="space-y-1">
+                        {uncategorizedMethods.map(renderMethodRow)}
+                      </div>
+                    </AccordionContent>
+                  </AccordionItem>
+                )}
+              </Accordion>
             )}
           </CardContent>
         </Card>
@@ -226,23 +305,17 @@ export default function PageClient() {
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-1">
-              {uncontrollableMethods.slice(0, 10).map((method) => {
-                const Icon = getMethodIcon(method.id);
-                return (
-                  <div
-                    key={method.id}
-                    className="flex items-center justify-between p-3 rounded-lg"
-                  >
-                    <div className="flex items-center gap-3">
-                      <Icon className="h-5 w-5 text-muted-foreground/50" />
-                      <div>
-                        <Typography className="font-medium text-muted-foreground">{method.name}</Typography>
-                      </div>
-                    </div>
-                    <Switch disabled checked={method.enabled} />
+              {uncontrollableMethods.slice(0, 10).map((method) => (
+                <div
+                  key={method.id}
+                  className="flex items-center justify-between p-3 rounded-lg"
+                >
+                  <div className="flex items-center gap-3">
+                    <Typography className="font-medium text-muted-foreground">{method.name}</Typography>
                   </div>
-                );
-              })}
+                  <Switch disabled checked={method.enabled} />
+                </div>
+              ))}
               {uncontrollableMethods.length > 10 && (
                 <Typography className="text-muted-foreground text-sm pt-2">
                   And {uncontrollableMethods.length - 10} more...
