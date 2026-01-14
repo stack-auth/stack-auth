@@ -108,6 +108,12 @@ export default function PageClient(props: { templateId: string }) {
     }
   };
 
+  const handleUndo = () => {
+    if (template) {
+      setCurrentCode(template.tsxSource);
+      setSelectedThemeId(template.themeId);
+    }
+  };
 
   const [viewport, setViewport] = useState<'desktop' | 'tablet' | 'phone'>('desktop');
 
@@ -171,6 +177,7 @@ export default function PageClient(props: { templateId: string }) {
   }
 
   const previewActions = null;
+  const isDirty = currentCode !== template.tsxSource || selectedThemeId !== template.themeId;
 
   return (
     <AppEnabledGuard appId="emails">
@@ -178,7 +185,9 @@ export default function PageClient(props: { templateId: string }) {
         viewport={viewport}
         onViewportChange={setViewport}
         onSave={handleSaveTemplate}
-        isDirty={currentCode !== template.tsxSource || selectedThemeId !== template.themeId}
+        saveLabel="Save template"
+        onUndo={handleUndo}
+        isDirty={isDirty}
         previewActions={previewActions}
         editorTitle="Template Source Code"
         headerAction={

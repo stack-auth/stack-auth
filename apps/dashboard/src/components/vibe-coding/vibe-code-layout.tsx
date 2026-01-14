@@ -1,4 +1,5 @@
 import {
+  ActionDialog,
   ResizableHandle,
   ResizablePanel,
   ResizablePanelGroup,
@@ -10,7 +11,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
-import { ChatsCircle, Code, DeviceMobile, DeviceTablet, FloppyDisk, Laptop } from "@phosphor-icons/react";
+import { ArrowCounterClockwise, ArrowRight, CaretDown, CaretUp, ChatsCircle, Code, DeviceMobile, DeviceTablet, FloppyDisk, Laptop } from "@phosphor-icons/react";
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { useState } from "react";
 
@@ -19,6 +20,8 @@ type VibeCodeEditorLayoutProps = {
   editorComponent: React.ReactNode,
   chatComponent: React.ReactNode,
   onSave?: () => void | Promise<void>,
+  saveLabel?: string,
+  onUndo?: () => void,
   isDirty?: boolean,
   viewport?: 'desktop' | 'tablet' | 'phone',
   onViewportChange?: (viewport: 'desktop' | 'tablet' | 'phone') => void,
@@ -26,6 +29,11 @@ type VibeCodeEditorLayoutProps = {
   editorTitle?: string,
   headerAction?: React.ReactNode,
   defaultViewport?: 'desktop' | 'tablet' | 'phone',
+  primaryAction?: {
+    label: string,
+    onClick: () => void | Promise<void>,
+    disabled?: boolean,
+  },
 }
 
 export default function VibeCodeLayout({
@@ -33,6 +41,8 @@ export default function VibeCodeLayout({
   editorComponent,
   chatComponent,
   onSave,
+  saveLabel = "Save",
+  onUndo,
   isDirty,
   viewport,
   onViewportChange,
@@ -40,14 +50,18 @@ export default function VibeCodeLayout({
   editorTitle = "Code",
   headerAction,
   defaultViewport = 'desktop',
+  primaryAction,
 }: VibeCodeEditorLayoutProps) {
   const [isEditorOpen, setIsEditorOpen] = useState(false);
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [internalViewport, setInternalViewport] = useState<'desktop' | 'tablet' | 'phone'>(defaultViewport);
   const [isSaving, setIsSaving] = useState(false);
+  const [isPrimaryLoading, setIsPrimaryLoading] = useState(false);
+  const [showUndoConfirm, setShowUndoConfirm] = useState(false);
 
   const currentViewport = viewport ?? internalViewport;
-  const handleViewportChange = (newViewport: 'desktop' | 'tablet' | 'phone') => {
+
+  const handleViewportClick = (newViewport: 'desktop' | 'tablet' | 'phone') => {
     if (onViewportChange) {
       onViewportChange(newViewport);
     } else {
@@ -80,7 +94,7 @@ export default function VibeCodeLayout({
               {/* Viewport Switcher - Compact */}
               <div className="flex items-center gap-0.5 rounded-md bg-foreground/[0.04] p-0.5">
                 <button
-                  onClick={() => handleViewportChange('desktop')}
+                  onClick={() => handleViewportClick('desktop')}
                   className={cn(
                     "p-1 rounded transition-all duration-150 hover:transition-none",
                     currentViewport === 'desktop'
@@ -92,7 +106,7 @@ export default function VibeCodeLayout({
                   <Laptop size={14} weight={currentViewport === 'desktop' ? 'fill' : 'regular'} />
                 </button>
                 <button
-                  onClick={() => handleViewportChange('tablet')}
+                  onClick={() => handleViewportClick('tablet')}
                   className={cn(
                     "p-1 rounded transition-all duration-150 hover:transition-none",
                     currentViewport === 'tablet'
@@ -104,7 +118,7 @@ export default function VibeCodeLayout({
                   <DeviceTablet size={14} weight={currentViewport === 'tablet' ? 'fill' : 'regular'} />
                 </button>
                 <button
-                  onClick={() => handleViewportChange('phone')}
+                  onClick={() => handleViewportClick('phone')}
                   className={cn(
                     "p-1 rounded transition-all duration-150 hover:transition-none",
                     currentViewport === 'phone'
@@ -156,11 +170,22 @@ export default function VibeCodeLayout({
                   <ChatsCircle size={14} weight={isChatOpen ? 'fill' : 'regular'} />
                   <span className="text-[10px] font-medium">Chat</span>
                 </Button>
+                {onUndo && isDirty && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setShowUndoConfirm(true)}
+                    className="h-7 gap-1 px-2 rounded-md text-muted-foreground"
+                  >
+                    <ArrowCounterClockwise size={14} />
+                  </Button>
+                )}
                 {onSave && (
                   <Button
+                    variant="secondary"
                     size="sm"
                     onClick={handleSave}
-                    disabled={!isDirty || isSaving}
+                    disabled={isSaving}
                     className="h-7 gap-1 px-2 rounded-md"
                   >
                     {isSaving ? (
@@ -171,7 +196,32 @@ export default function VibeCodeLayout({
                     ) : (
                       <>
                         <FloppyDisk size={14} />
-                        <span className="text-[10px] font-medium">Save</span>
+                        <span className="text-[10px] font-medium">{saveLabel}</span>
+                      </>
+                    )}
+                  </Button>
+                )}
+                {primaryAction && (
+                  <Button
+                    size="sm"
+                    onClick={() => {
+                      setIsPrimaryLoading(true);
+                      runAsynchronouslyWithAlert(async () => {
+                        await primaryAction.onClick();
+                        setIsPrimaryLoading(false);
+                      }, {
+                        onError: () => setIsPrimaryLoading(false),
+                      });
+                    }}
+                    disabled={primaryAction.disabled || isPrimaryLoading}
+                    className="h-7 gap-1 px-2 rounded-md"
+                  >
+                    {isPrimaryLoading ? (
+                      <Spinner size={14} />
+                    ) : (
+                      <>
+                        <span className="text-[10px] font-medium">{primaryAction.label}</span>
+                        <ArrowRight size={14} />
                       </>
                     )}
                   </Button>
@@ -234,7 +284,7 @@ export default function VibeCodeLayout({
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <button
-                      onClick={() => handleViewportChange('desktop')}
+                      onClick={() => handleViewportClick('desktop')}
                       className={cn(
                         "p-1.5 rounded-md transition-all duration-150 hover:transition-none",
                         currentViewport === 'desktop'
@@ -250,7 +300,7 @@ export default function VibeCodeLayout({
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <button
-                      onClick={() => handleViewportChange('tablet')}
+                      onClick={() => handleViewportClick('tablet')}
                       className={cn(
                         "p-1.5 rounded-md transition-all duration-150 hover:transition-none",
                         currentViewport === 'tablet'
@@ -266,7 +316,7 @@ export default function VibeCodeLayout({
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <button
-                      onClick={() => handleViewportChange('phone')}
+                      onClick={() => handleViewportClick('phone')}
                       className={cn(
                         "p-1.5 rounded-md transition-all duration-150 hover:transition-none",
                         currentViewport === 'phone'
@@ -290,32 +340,28 @@ export default function VibeCodeLayout({
               {/* Right Actions */}
               <div className="flex items-center gap-2">
                 {previewActions}
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setIsEditorOpen(!isEditorOpen)}
-                      className={cn(
-                        "h-8 gap-1.5 px-3 rounded-lg transition-all duration-150 hover:transition-none",
-                        isEditorOpen
-                          ? "bg-foreground/[0.06] text-foreground"
-                          : "text-muted-foreground hover:text-foreground"
-                      )}
-                    >
-                      <Code size={16} weight={isEditorOpen ? 'fill' : 'regular'} />
-                      <span className="text-xs font-medium">{isEditorOpen ? 'Hide Code' : 'View Code'}</span>
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent side="bottom" className="text-xs">
-                    {isEditorOpen ? 'Hide source code' : 'View and edit source code'}
-                  </TooltipContent>
-                </Tooltip>
+                {onUndo && isDirty && (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setShowUndoConfirm(true)}
+                        className="h-8 gap-1.5 px-3 rounded-lg text-muted-foreground hover:text-foreground"
+                      >
+                        <ArrowCounterClockwise size={16} />
+                        <span className="text-xs font-medium">Discard changes</span>
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom" className="text-xs">Discard all unsaved changes</TooltipContent>
+                  </Tooltip>
+                )}
                 {onSave && (
                   <Button
+                    variant="secondary"
                     size="sm"
                     onClick={handleSave}
-                    disabled={!isDirty || isSaving}
+                    disabled={isSaving}
                     className="h-8 gap-1.5 px-3 rounded-lg"
                   >
                     {isSaving ? (
@@ -326,14 +372,61 @@ export default function VibeCodeLayout({
                     ) : (
                       <>
                         <FloppyDisk size={16} />
-                        <span className="text-xs font-medium">Save</span>
+                        <span className="text-xs font-medium">{saveLabel}</span>
                       </>
                     )}
                   </Button>
                 )}
+                {primaryAction && (
+                  <>
+                    <div className="w-px h-5 bg-border/50 mx-1" />
+                    <Button
+                      size="sm"
+                      onClick={() => {
+                        setIsPrimaryLoading(true);
+                        runAsynchronouslyWithAlert(async () => {
+                          await primaryAction.onClick();
+                          setIsPrimaryLoading(false);
+                        }, {
+                          onError: () => setIsPrimaryLoading(false),
+                        });
+                      }}
+                      disabled={primaryAction.disabled || isPrimaryLoading}
+                      className="h-8 gap-1.5 px-3 rounded-lg"
+                    >
+                      {isPrimaryLoading ? (
+                        <>
+                          <Spinner size={16} />
+                          <span className="text-xs font-medium">{primaryAction.label}</span>
+                        </>
+                      ) : (
+                        <>
+                          <span className="text-xs font-medium">{primaryAction.label}</span>
+                          <ArrowRight size={16} />
+                        </>
+                      )}
+                    </Button>
+                  </>
+                )}
               </div>
             </div>
           </div>
+
+          {/* Undo Confirmation Dialog */}
+          <ActionDialog
+            open={showUndoConfirm}
+            onOpenChange={setShowUndoConfirm}
+            title="Discard changes?"
+            description="Do you really want to discard all the changes you made since saving? This action cannot be undone."
+            danger
+            okButton={{
+              label: "Discard changes",
+              onClick: async () => {
+                onUndo?.();
+              },
+            }}
+            cancelButton
+          />
 
           {/* Main Content Area */}
           <ResizablePanelGroup direction="horizontal" className="flex-1 overflow-hidden">
@@ -342,7 +435,7 @@ export default function VibeCodeLayout({
               <div className="absolute inset-0 pl-6 pr-2 pb-6 flex flex-col gap-4">
                 <ResizablePanelGroup direction="vertical" className="flex-1 rounded-2xl overflow-hidden shadow-xl ring-1 ring-foreground/[0.06] bg-background/60 dark:bg-background/40 backdrop-blur-xl">
                   {/* Preview Panel */}
-                  <ResizablePanel defaultSize={isEditorOpen ? 50 : 100} minSize={30} className="relative">
+                  <ResizablePanel defaultSize={isEditorOpen ? 50 : 100} minSize={20} className="relative">
                     <div className="absolute inset-0 bg-gradient-to-br from-muted/30 via-muted/20 to-muted/30 dark:from-foreground/[0.02] dark:via-foreground/[0.01] dark:to-foreground/[0.02]">
                       <div className="absolute inset-0 overflow-auto flex justify-center items-start p-2.5">
                         <div className={cn(
@@ -357,21 +450,37 @@ export default function VibeCodeLayout({
                     </div>
                   </ResizablePanel>
 
+                  {/* Code Toggle Bar */}
+                  <button
+                    onClick={() => setIsEditorOpen(!isEditorOpen)}
+                    className="group h-10 flex items-center justify-center gap-2 bg-muted/40 dark:bg-foreground/[0.03] hover:bg-muted/60 dark:hover:bg-foreground/[0.06] transition-colors duration-150 hover:transition-none border-y border-border/30 dark:border-foreground/[0.06] cursor-pointer shrink-0"
+                  >
+                    <Code size={14} className="text-muted-foreground group-hover:text-foreground transition-colors duration-150 group-hover:transition-none" />
+                    <span className="text-xs font-medium text-muted-foreground group-hover:text-foreground transition-colors duration-150 group-hover:transition-none">
+                      {isEditorOpen ? 'Hide Code' : 'View Code'}
+                    </span>
+                    {isEditorOpen ? (
+                      <CaretDown size={12} className="text-muted-foreground group-hover:text-foreground transition-colors duration-150 group-hover:transition-none" />
+                    ) : (
+                      <CaretUp size={12} className="text-muted-foreground group-hover:text-foreground transition-colors duration-150 group-hover:transition-none" />
+                    )}
+                  </button>
+
+                  {/* Resize Handle - only shown when editor is open */}
+                  {isEditorOpen && (
+                    <ResizableHandle className="h-1 bg-transparent hover:bg-blue-500/30 transition-colors duration-150 hover:transition-none cursor-ns-resize" />
+                  )}
+
                   {/* Code Editor Panel */}
                   {isEditorOpen && (
-                    <>
-                      <ResizableHandle className="h-px bg-border/10 dark:bg-foreground/[0.06] hover:bg-blue-500/30 hover:h-1 transition-all duration-150 hover:transition-none" />
-                      <ResizablePanel defaultSize={50} minSize={30} className="relative">
-                        <div className="absolute inset-0 flex flex-col">
-                          {/* Editor Content with integrated background */}
-                          <div className="flex-1 overflow-hidden min-h-0 relative">
-                            {/* Subtle top gradient for integration */}
-                            <div className="absolute top-0 left-0 right-0 h-8 bg-gradient-to-b from-background/40 to-transparent pointer-events-none z-10" />
-                            {editorComponent}
-                          </div>
+                    <ResizablePanel defaultSize={50} minSize={20} className="relative">
+                      <div className="absolute inset-0 flex flex-col">
+                        {/* Editor Content with integrated background */}
+                        <div className="flex-1 overflow-hidden min-h-0 relative">
+                          {editorComponent}
                         </div>
-                      </ResizablePanel>
-                    </>
+                      </div>
+                    </ResizablePanel>
                   )}
                 </ResizablePanelGroup>
               </div>

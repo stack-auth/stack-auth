@@ -47,7 +47,12 @@ export default function PageClient({ themeId }: { themeId: string }) {
     }
   };
 
+  const handleUndo = () => {
+    setCurrentCode(theme.tsxSource);
+  };
+
   const previewActions = null;
+  const isDirty = currentCode !== theme.tsxSource;
 
   return (
     <AppEnabledGuard appId="emails">
@@ -55,7 +60,9 @@ export default function PageClient({ themeId }: { themeId: string }) {
         viewport={viewport}
         onViewportChange={setViewport}
         onSave={handleSaveTheme}
-        isDirty={currentCode !== theme.tsxSource}
+        saveLabel="Save theme"
+        onUndo={handleUndo}
+        isDirty={isDirty}
         previewActions={previewActions}
         editorTitle="Theme Source Code"
         previewComponent={

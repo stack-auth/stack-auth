@@ -39,6 +39,19 @@ export default function PageClient({ draftId }: { draftId: string }) {
     setCurrentCode(toolCall.args.content);
   };
 
+  const handleSave = async () => {
+    try {
+      await stackAdminApp.updateEmailDraft(draftId, { tsxSource: currentCode, themeId: selectedThemeId });
+      toast({ title: "Draft saved", variant: "success" });
+    } catch (error) {
+      if (error instanceof KnownErrors.EmailRenderingError) {
+        toast({ title: "Failed to save draft", variant: "destructive", description: error.message });
+        return;
+      }
+      toast({ title: "Failed to save draft", variant: "destructive", description: "Unknown error" });
+    }
+  };
+
   const handleNext = async () => {
     try {
       await stackAdminApp.updateEmailDraft(draftId, { tsxSource: currentCode, themeId: selectedThemeId });
@@ -52,48 +65,60 @@ export default function PageClient({ draftId }: { draftId: string }) {
     }
   };
 
+  const handleUndo = () => {
+    if (draft) {
+      setCurrentCode(draft.tsxSource ?? "");
+      setSelectedThemeId(draft.themeId);
+    }
+  };
+
   const previewActions = null;
+  const isDirty = currentCode !== draft?.tsxSource || selectedThemeId !== draft?.themeId;
 
   return (
     <AppEnabledGuard appId="emails">
       {stage === "edit" ? (
-        <>
-          <VibeCodeLayout
-            viewport={viewport}
-            onViewportChange={setViewport}
-            onSave={handleNext}
-            isDirty={currentCode !== draft?.tsxSource || selectedThemeId !== draft.themeId}
-            previewActions={previewActions}
-            editorTitle="Draft Source Code"
-            headerAction={
-              <EmailThemeSelector
-                selectedThemeId={selectedThemeId}
-                onThemeChange={setSelectedThemeId}
-              />
-            }
-            previewComponent={
-              <EmailPreview
-                themeId={selectedThemeId}
-                templateTsxSource={currentCode}
-                viewport={viewport === 'desktop' ? undefined : (viewport === 'tablet' ? { id: 'tablet', name: 'Tablet', width: 820, height: 1180, type: 'tablet' } : { id: 'phone', name: 'Phone', width: 390, height: 844, type: 'phone' })}
-                emailSubject={draft?.displayName}
-              />
-            }
-            editorComponent={
-              <CodeEditor
-                code={currentCode}
-                onCodeChange={setCurrentCode}
-              />
-            }
-            chatComponent={
-              <AssistantChat
-                historyAdapter={createHistoryAdapter(stackAdminApp, draftId)}
-                chatAdapter={createChatAdapter(stackAdminApp, draftId, "email-draft", handleToolUpdate)}
-                toolComponents={<EmailDraftUI setCurrentCode={setCurrentCode} />}
-              />
-            }
-          />
-        </>
+        <VibeCodeLayout
+          viewport={viewport}
+          onViewportChange={setViewport}
+          onSave={handleSave}
+          saveLabel="Save draft"
+          onUndo={handleUndo}
+          isDirty={isDirty}
+          previewActions={previewActions}
+          editorTitle="Draft Source Code"
+          headerAction={
+            <EmailThemeSelector
+              selectedThemeId={selectedThemeId}
+              onThemeChange={setSelectedThemeId}
+            />
+          }
+          primaryAction={{
+            label: "Next: Recipients",
+            onClick: handleNext,
+          }}
+          previewComponent={
+            <EmailPreview
+              themeId={selectedThemeId}
+              templateTsxSource={currentCode}
+              viewport={viewport === 'desktop' ? undefined : (viewport === 'tablet' ? { id: 'tablet', name: 'Tablet', width: 820, height: 1180, type: 'tablet' } : { id: 'phone', name: 'Phone', width: 390, height: 844, type: 'phone' })}
+              emailSubject={draft?.displayName}
+            />
+          }
+          editorComponent={
+            <CodeEditor
+              code={currentCode}
+              onCodeChange={setCurrentCode}
+            />
+          }
+          chatComponent={
+            <AssistantChat
+              historyAdapter={createHistoryAdapter(stackAdminApp, draftId)}
+              chatAdapter={createChatAdapter(stackAdminApp, draftId, "email-draft", handleToolUpdate)}
+              toolComponents={<EmailDraftUI setCurrentCode={setCurrentCode} />}
+            />
+          }
+        />
       ) : (
         <SendStage draftId={draftId} />
       )}
