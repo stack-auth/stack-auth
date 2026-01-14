@@ -5,11 +5,11 @@ import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises"
 import { ActionDialog, Button, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Skeleton, toast, Typography } from "@stackframe/stack-ui";
 import { loadStripe } from "@stripe/stripe-js";
 import { CardElement, Elements, useElements, useStripe } from "@stripe/react-stripe-js";
-import React, { useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useStackApp } from "../../..";
 import { useTranslation } from "../../../lib/translations";
 import { Section } from "../section";
-import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { Result } from "@stackframe/stack-shared/dist/utils/results";
 
 type PaymentMethodSummary = {
   id: string,
@@ -386,11 +386,15 @@ function RealPaymentsPanel(props: { title?: string, customer: CustomerLike, cust
                 const toProductId = switchToProductId;
                 if (!fromProductId || !toProductId) return;
                 if (!selectedPriceId) return;
-                await props.customer.switchSubscription({
+                const result = await Result.fromThrowingAsync(() => props.customer.switchSubscription({
                   fromProductId,
                   toProductId,
                   priceId: selectedPriceId,
-                });
+                }));
+                if (result.status === "error") {
+                  handleAsyncError(result.error);
+                  return "prevent-close";
+                }
                 closeSwitchDialog();
               },
               props: {
