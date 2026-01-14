@@ -88,6 +88,7 @@ export default function PageClient({ themeId }: { themeId: string }) {
             themeTsxSource={currentCode}
             templateTsxSource={previewTemplateSource}
             editMode={viewport === 'edit'}
+            editableSource="theme"
             viewport={viewport === 'desktop' || viewport === 'edit' ? undefined : (viewport === 'tablet' ? { id: 'tablet', name: 'Tablet', width: 820, height: 1180, type: 'tablet' } : { id: 'phone', name: 'Phone', width: 390, height: 844, type: 'phone' })}
             onDebugInfoChange={setWysiwygDebugInfo}
             onWysiwygEditCommit={handleWysiwygEditCommit}

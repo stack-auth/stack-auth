@@ -78,6 +78,19 @@ function __Editable({ __id, children }) {
     </>
   );
 }
+function __ExpressionTooltip({ __expr, children }) {
+  // Only render markers if children is a primitive (string/number), not a React element
+  if (typeof children === 'object' && children !== null) {
+    return children;
+  }
+  return (
+    <>
+      {\`⟦STACK_EXPR_START:\${__expr}⟧\`}
+      {children}
+      {\`⟦STACK_EXPR_END⟧\`}
+    </>
+  );
+}
 `;
 
 /**
@@ -303,6 +316,46 @@ export function transpileJsxForEditing(
 
       path.replaceWith(editableElement);
     },
+    JSXExpressionContainer(path) {
+      const expression = path.node.expression;
+
+      // Skip empty expressions
+      if (t.isJSXEmptyExpression(expression)) return;
+
+      // Skip if parent is not a JSXElement (e.g., it's an attribute value)
+      if (!t.isJSXElement(path.parent) && !t.isJSXFragment(path.parent)) return;
+
+      // Skip JSX elements - we only want to show tooltips for text-rendering expressions
+      if (t.isJSXElement(expression) || t.isJSXFragment(expression)) return;
+
+      // Skip if no location info
+      if (path.node.start == null || path.node.end == null) return;
+
+      // Get the exact source code of the expression (including the ${} or just the expression)
+      const exprSource = source.slice(path.node.start, path.node.end);
+
+      // Base64 encode the expression to safely pass it through the marker
+      const encodedExpr = Buffer.from(exprSource).toString('base64');
+
+      // Create wrapper: <__ExpressionTooltip __expr="...">{expression}</__ExpressionTooltip>
+      const tooltipElement = t.jsxElement(
+        t.jsxOpeningElement(
+          t.jsxIdentifier('__ExpressionTooltip'),
+          [
+            t.jsxAttribute(
+              t.jsxIdentifier('__expr'),
+              t.stringLiteral(encodedExpr)
+            ),
+          ],
+          false
+        ),
+        t.jsxClosingElement(t.jsxIdentifier('__ExpressionTooltip')),
+        [t.jsxExpressionContainer(expression)],
+        false
+      );
+
+      path.replaceWith(t.jsxExpressionContainer(tooltipElement));
+    },
   });
 
   // Generate the transformed code
@@ -336,9 +389,13 @@ export function transpileJsxForEditing(
  * Converts:
  * - `⟦STACK_EDITABLE_START:<id>⟧` → `<!-- STACK_EDITABLE_START <id> -->`
  * - `⟦STACK_EDITABLE_END:<id>⟧` → `<!-- STACK_EDITABLE_END <id> -->`
+ * - `⟦STACK_EXPR_START:<base64-encoded-expr>⟧` → `<!-- STACK_EXPR_START <base64> -->`
+ * - `⟦STACK_EXPR_END⟧` → `<!-- STACK_EXPR_END -->`
  */
 export function convertSentinelTokensToComments(html: string): string {
   return html
     .replace(/⟦STACK_EDITABLE_START:([^⟧]+)⟧/g, '<!-- STACK_EDITABLE_START $1 -->')
-    .replace(/⟦STACK_EDITABLE_END:([^⟧]+)⟧/g, '<!-- STACK_EDITABLE_END $1 -->');
+    .replace(/⟦STACK_EDITABLE_END:([^⟧]+)⟧/g, '<!-- STACK_EDITABLE_END $1 -->')
+    .replace(/⟦STACK_EXPR_START:([^⟧]+)⟧/g, '<!-- STACK_EXPR_START $1 -->')
+    .replace(/⟦STACK_EXPR_END⟧/g, '<!-- STACK_EXPR_END -->');
 }

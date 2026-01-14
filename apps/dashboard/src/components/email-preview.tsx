@@ -127,9 +127,12 @@ const WYSIWYG_EDITOR_SCRIPT = `
 
   // Store editable regions: { id, startComment, endComment, textNode, originalText }
   const editableRegions = new Map();
+  // Store expression regions: { encodedExpr, startComment, endComment, textNode }
+  const expressionRegions = [];
   let currentlyEditing = null;
   let overlayContainer = null;
   let editUI = null;
+  let currentTooltip = null;
 
   // Parse editable comments and build regions
   function parseEditableRegions() {
@@ -140,7 +143,9 @@ const WYSIWYG_EDITOR_SCRIPT = `
     );
 
     const startComments = new Map();
+    const exprStartComments = new Map();
     let node;
+    let exprCounter = 0;
 
     while ((node = walker.nextNode())) {
       const text = node.textContent.trim();
@@ -173,6 +178,40 @@ const WYSIWYG_EDITOR_SCRIPT = `
               textNode,
               originalText: textNode.textContent
             });
+          }
+        }
+      } else if (text.startsWith('STACK_EXPR_START ')) {
+        const encodedExpr = text.replace('STACK_EXPR_START ', '').trim();
+        exprStartComments.set(exprCounter, { node, encodedExpr });
+        exprCounter++;
+      } else if (text === 'STACK_EXPR_END') {
+        // Find the most recent unmatched start
+        for (let i = exprCounter - 1; i >= 0; i--) {
+          const startInfo = exprStartComments.get(i);
+          if (startInfo && !startInfo.matched) {
+            startInfo.matched = true;
+
+            // Find text node between comments
+            let current = startInfo.node.nextSibling;
+            let textNode = null;
+
+            while (current && current !== node) {
+              if (current.nodeType === Node.TEXT_NODE && current.textContent.trim()) {
+                textNode = current;
+                break;
+              }
+              current = current.nextSibling;
+            }
+
+            if (textNode) {
+              expressionRegions.push({
+                encodedExpr: startInfo.encodedExpr,
+                startComment: startInfo.node,
+                endComment: node,
+                textNode
+              });
+            }
+            break;
           }
         }
       }
@@ -401,6 +440,124 @@ const WYSIWYG_EDITOR_SCRIPT = `
         createOverlay(region);
       }
     });
+    // Create expression overlays
+    expressionRegions.forEach(region => {
+      createExpressionOverlay(region);
+    });
+  }
+
+  // Create hover overlay for an expression (non-editable, just shows tooltip)
+  function createExpressionOverlay(region) {
+    const range = document.createRange();
+    range.selectNodeContents(region.textNode);
+    const rects = range.getClientRects();
+
+    const padding = 2;
+    for (const rect of rects) {
+      const overlay = document.createElement('div');
+      overlay.className = 'stack-expr-overlay';
+      overlay.style.cssText = \`
+        position:fixed;
+        left:\${rect.left - padding}px;
+        top:\${rect.top - padding}px;
+        width:\${rect.width + padding * 2}px;
+        height:\${rect.height + padding * 2}px;
+        border:1px dashed transparent;
+        border-radius:2px;
+        pointer-events:auto;
+        cursor:default;
+        box-sizing:border-box;
+        background:transparent;
+        transition:border-color 0.15s,background-color 0.15s;
+      \`;
+
+      overlay.addEventListener('mouseenter', (e) => {
+        if (!currentlyEditing) {
+          overlay.style.borderColor = '#a855f7';
+          overlay.style.backgroundColor = 'rgba(168,85,247,0.05)';
+          showExpressionTooltip(region, e.clientX, e.clientY);
+        }
+      });
+
+      overlay.addEventListener('mousemove', (e) => {
+        if (currentTooltip) {
+          positionTooltip(currentTooltip, e.clientX, e.clientY);
+        }
+      });
+
+      overlay.addEventListener('mouseleave', () => {
+        overlay.style.borderColor = 'transparent';
+        overlay.style.backgroundColor = 'transparent';
+        hideExpressionTooltip();
+      });
+
+      overlayContainer.appendChild(overlay);
+    }
+  }
+
+  // Show tooltip with expression source code
+  function showExpressionTooltip(region, x, y) {
+    hideExpressionTooltip();
+
+    // Decode the base64-encoded expression
+    let exprSource;
+    try {
+      exprSource = atob(region.encodedExpr);
+    } catch (e) {
+      exprSource = region.encodedExpr;
+    }
+
+    const tooltip = document.createElement('div');
+    tooltip.className = 'stack-expr-tooltip';
+    tooltip.style.cssText = \`
+      position:fixed;
+      z-index:10000;
+      padding:6px 10px;
+      background:#1f2937;
+      color:#e5e7eb;
+      font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace;
+      font-size:12px;
+      line-height:1.4;
+      border-radius:6px;
+      box-shadow:0 4px 12px rgba(0,0,0,0.25);
+      white-space:pre;
+      max-width:400px;
+      overflow:hidden;
+      text-overflow:ellipsis;
+      pointer-events:none;
+    \`;
+    tooltip.textContent = exprSource;
+
+    document.body.appendChild(tooltip);
+    positionTooltip(tooltip, x, y);
+    currentTooltip = tooltip;
+  }
+
+  // Position tooltip near cursor
+  function positionTooltip(tooltip, x, y) {
+    const padding = 12;
+    let left = x + padding;
+    let top = y + padding;
+
+    // Keep tooltip in viewport
+    const rect = tooltip.getBoundingClientRect();
+    if (left + rect.width > window.innerWidth) {
+      left = x - rect.width - padding;
+    }
+    if (top + rect.height > window.innerHeight) {
+      top = y - rect.height - padding;
+    }
+
+    tooltip.style.left = left + 'px';
+    tooltip.style.top = top + 'px';
+  }
+
+  // Hide expression tooltip
+  function hideExpressionTooltip() {
+    if (currentTooltip) {
+      currentTooltip.remove();
+      currentTooltip = null;
+    }
   }
 
   // Initialize
@@ -431,6 +588,7 @@ function EmailPreviewEditableContent({
   themeTsxSource,
   templateId,
   templateTsxSource,
+  editableSource,
   onDebugInfoChange,
   onWysiwygEditCommit,
 }: {
@@ -438,6 +596,7 @@ function EmailPreviewEditableContent({
   themeTsxSource?: string,
   templateId?: string,
   templateTsxSource?: string,
+  editableSource?: 'template' | 'theme' | 'both',
   onDebugInfoChange?: (info: WysiwygDebugInfo) => void,
   onWysiwygEditCommit?: OnWysiwygEditCommit,
 }) {
@@ -450,6 +609,7 @@ function EmailPreviewEditableContent({
     themeTsxSource,
     templateId,
     templateTsxSource,
+    editableSource,
   });
 
   // Update debug info when data changes - use useEffect to avoid setState during render
@@ -586,6 +746,8 @@ type EmailPreviewProps =
     senderEmail?: string,
     /** When true, renders in WYSIWYG edit mode with editable text markers */
     editMode?: boolean,
+    /** Which source to make editable: 'template' (default), 'theme', or 'both' */
+    editableSource?: 'template' | 'theme' | 'both',
     /** Callback when user commits a WYSIWYG edit. Should return updated source code. */
     onWysiwygEditCommit?: OnWysiwygEditCommit,
     /** Callback when debug info changes (edit mode only, dev mode only) */
@@ -603,6 +765,7 @@ export default function EmailPreview({
   senderName = "Acme Inc",
   senderEmail = "noreply@acme.com",
   editMode = false,
+  editableSource,
   onWysiwygEditCommit,
   onDebugInfoChange,
 }: EmailPreviewProps) {
@@ -627,6 +790,7 @@ export default function EmailPreview({
             themeTsxSource={debouncedThemeTsxSource}
             templateId={templateId}
             templateTsxSource={debouncedTemplateTsxSource}
+            editableSource={editableSource}
             onDebugInfoChange={onDebugInfoChange}
             onWysiwygEditCommit={onWysiwygEditCommit}
           />

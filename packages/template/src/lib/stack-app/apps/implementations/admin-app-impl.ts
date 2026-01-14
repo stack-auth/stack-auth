@@ -60,8 +60,8 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
   private readonly _emailPreviewCache = createCache(async ([themeId, themeTsxSource, templateId, templateTsxSource]: [string | null | false | undefined, string | undefined, string | undefined, string | undefined]) => {
     return await this._interface.renderEmailPreview({ themeId, themeTsxSource, templateId, templateTsxSource });
   });
-  private readonly _emailPreviewWithEditableMarkersCache = createCache(async ([themeId, themeTsxSource, templateId, templateTsxSource]: [string | null | false | undefined, string | undefined, string | undefined, string | undefined]) => {
-    return await this._interface.renderEmailPreview({ themeId, themeTsxSource, templateId, templateTsxSource, editableMarkers: true });
+  private readonly _emailPreviewWithEditableMarkersCache = createCache(async ([themeId, themeTsxSource, templateId, templateTsxSource, editableSource]: [string | null | false | undefined, string | undefined, string | undefined, string | undefined, 'template' | 'theme' | 'both' | undefined]) => {
+    return await this._interface.renderEmailPreview({ themeId, themeTsxSource, templateId, templateTsxSource, editableMarkers: true, editableSource });
   });
   private readonly _configOverridesCache = createCache(async () => {
     return await this._interface.getConfig();
@@ -588,13 +588,13 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
     return crud.html;
   }
   // END_PLATFORM
-  async getEmailPreviewWithEditableMarkers(options: { themeId?: string | null | false, themeTsxSource?: string, templateId?: string, templateTsxSource?: string }): Promise<{ html: string, editableRegions?: Record<string, unknown> }> {
-    const result = await this._interface.renderEmailPreview({ ...options, editableMarkers: true });
+  async getEmailPreviewWithEditableMarkers(options: { themeId?: string | null | false, themeTsxSource?: string, templateId?: string, templateTsxSource?: string, editableSource?: 'template' | 'theme' | 'both' }): Promise<{ html: string, editableRegions?: Record<string, unknown> }> {
+    const result = await this._interface.renderEmailPreview({ ...options, editableMarkers: true, editableSource: options.editableSource });
     return { html: result.html, editableRegions: result.editable_regions };
   }
   // IF_PLATFORM react-like
-  useEmailPreviewWithEditableMarkers(options: { themeId?: string | null | false, themeTsxSource?: string, templateId?: string, templateTsxSource?: string }): { html: string, editableRegions?: Record<string, unknown> } {
-    const crud = useAsyncCache(this._emailPreviewWithEditableMarkersCache, [options.themeId, options.themeTsxSource, options.templateId, options.templateTsxSource] as const, "adminApp.useEmailPreviewWithEditableMarkers()");
+  useEmailPreviewWithEditableMarkers(options: { themeId?: string | null | false, themeTsxSource?: string, templateId?: string, templateTsxSource?: string, editableSource?: 'template' | 'theme' | 'both' }): { html: string, editableRegions?: Record<string, unknown> } {
+    const crud = useAsyncCache(this._emailPreviewWithEditableMarkersCache, [options.themeId, options.themeTsxSource, options.templateId, options.templateTsxSource, options.editableSource] as const, "adminApp.useEmailPreviewWithEditableMarkers()");
     return { html: crud.html, editableRegions: crud.editable_regions };
   }
   // END_PLATFORM

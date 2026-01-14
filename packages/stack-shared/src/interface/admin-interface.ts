@@ -487,6 +487,7 @@ export class StackAdminInterface extends StackServerInterface {
     templateId?: string,
     templateTsxSource?: string,
     editableMarkers?: boolean,
+    editableSource?: 'template' | 'theme' | 'both',
   }): Promise<{ html: string, editable_regions?: Record<string, unknown> }> {
     const response = await this.sendAdminRequest(`/emails/render-email`, {
       method: "POST",
@@ -499,6 +500,7 @@ export class StackAdminInterface extends StackServerInterface {
         template_id: options.templateId,
         template_tsx_source: options.templateTsxSource,
         editable_markers: options.editableMarkers,
+        editable_source: options.editableSource,
       }),
     }, null);
     return await response.json();
