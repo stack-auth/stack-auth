@@ -144,6 +144,7 @@ const branchAuthSchema = yupObject({
 });
 
 export const branchPaymentsSchema = yupObject({
+  blockNewPurchases: yupBoolean(),
   autoPay: yupObject({
     interval: schemaFields.dayIntervalSchema,
   }).optional(),
@@ -545,6 +546,7 @@ const organizationConfigDefaults = {
   },
 
   payments: {
+    blockNewPurchases: false,
     testMode: true,
     autoPay: undefined,
     catalogs: (key: string) => ({
