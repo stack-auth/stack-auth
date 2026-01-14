@@ -30,7 +30,7 @@ const messageSchema = yupObject({
 
 const aiProvider = getEnvVariable("STACK_AI_PROVIDER", "openai");
 const apiKey = aiProvider === "openrouter"
-  ? getEnvVariable("STACK_OPENROUTER_API_KEY")
+  ? getEnvVariable("STACK_OPENROUTER_API_KEY", "mock-openrouter-api-key")
   : getEnvVariable("STACK_OPENAI_API_KEY");
 const isMockMode = apiKey === "mock-openrouter-api-key";
 const openai = createOpenAI({
