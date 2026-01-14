@@ -63,6 +63,7 @@ export async function verifyJWT(options: {
     throw new JOSEError("Invalid JWT audience");
   }
 
+  console.log({ options });
   const jwkSet = jose.createLocalJWKSet(await getPublicJwkSet(await getPrivateJwks({ audience })));
   const verified = await jose.jwtVerify(options.jwt, jwkSet, { issuer: options.allowedIssuers });
   return verified.payload;

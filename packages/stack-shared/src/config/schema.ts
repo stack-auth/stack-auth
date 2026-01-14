@@ -12,7 +12,7 @@ import { productSchema, userSpecifiedIdSchema, yupBoolean, yupDate, yupMixed, yu
 import { SUPPORTED_CURRENCIES } from "../utils/currency-constants";
 import { StackAssertionError } from "../utils/errors";
 import { allProviders } from "../utils/oauth";
-import { DeepFilterUndefined, DeepMerge, DeepRequiredOrUndefined, filterUndefined, get, has, isObjectLike, mapValues, set, typedAssign, typedEntries, typedFromEntries } from "../utils/objects";
+import { DeepFilterUndefined, DeepMerge, DeepRequiredOrUndefined, filterUndefined, get, getOrUndefined, has, isObjectLike, mapValues, set, typedAssign, typedEntries, typedFromEntries } from "../utils/objects";
 import { Result } from "../utils/results";
 import { CollapseObjectUnion, Expand, IntersectAll, IsUnion, typeAssert, typeAssertExtends, typeAssertIs } from "../utils/types";
 import { Config, NormalizationError, NormalizesTo, assertNormalized, getInvalidConfigReason, normalize } from "./format";
@@ -148,12 +148,13 @@ export const branchPaymentsSchema = yupObject({
     interval: schemaFields.dayIntervalSchema,
   }).optional(),
   testMode: yupBoolean(),
-  catalogs: yupRecord(
-    userSpecifiedIdSchema("catalogId"),
+  productLines: yupRecord(
+    userSpecifiedIdSchema("productLineId"),
     yupObject({
       displayName: yupString().optional(),
+      customerType: schemaFields.customerTypeSchema,
     }),
-  ).meta({ openapiField: { description: 'The catalogs that products can be in. All products in a catalog (besides add-ons) are mutually exclusive.', exampleValue: { "catalog-id": { displayName: "My Catalog" } } } }),
+  ).meta({ openapiField: { description: 'The product lines that products can be in. All products in a product line (besides add-ons) are mutually exclusive.', exampleValue: { "product-line-id": { displayName: "My Product Line", customerType: "user" } } } }),
   products: yupRecord(
     userSpecifiedIdSchema("productId"),
     productSchema,
@@ -165,7 +166,29 @@ export const branchPaymentsSchema = yupObject({
       customerType: schemaFields.customerTypeSchema,
     }),
   ),
-});
+}).test(
+  'product-customer-type-matches-product-line',
+  'Product customer type must match its product line customer type',
+  function(this: yup.TestContext<yup.AnyObject>, value) {
+    for (const [productId, product] of Object.entries(value.products)) {
+      if (!product.productLineId) continue;
+      const productLine = getOrUndefined(value.productLines, product.productLineId);
+      if (productLine === undefined) {
+        return this.createError({
+          message: `Product "${productId}" specifies product line ID "${product.productLineId}", but that product line does not exist`,
+          path: `${this.path}.products.${productId}.productLineId`,
+        });
+      }
+      if (product.customerType !== productLine.customerType) {
+        return this.createError({
+          message: `Product "${productId}" has customer type "${product.customerType}" but its product line "${product.productLineId}" has customer type "${productLine.customerType}"`,
+          path: `${this.path}.products.${productId}.customerType`,
+        });
+      }
+    }
+    return true;
+  }
+);
 
 const branchDomain = yupObject({
   allowLocalhost: yupBoolean(),
@@ -345,6 +368,18 @@ export function migrateConfigOverride(type: "project" | "branch" | "environment"
   if (isBranchOrHigher) {
     res = removeProperty(res, p => p[0] === "workflows");
     res = removeProperty(res, p => p[0] === "apps" && p[1] === "installed" && p[2] === "workflows");
+  }
+  // END
+
+  // BEGIN 2026-01-14: payments.catalogs is now payments.productLines
+  if (isBranchOrHigher) {
+    res = renameProperty(res, "payments.catalogs", "productLines");
+  }
+  // END
+
+  // BEGIN 2026-01-14: payments.products.*.catalogId is now payments.products.*.productLineId
+  if (isBranchOrHigher) {
+    res = renameProperty(res, (p) => p.length === 4 && p[0] === "payments" && p[1] === "products" && p[3] === "catalogId", (p) => "productLineId");
   }
   // END
 
@@ -547,12 +582,13 @@ const organizationConfigDefaults = {
   payments: {
     testMode: true,
     autoPay: undefined,
-    catalogs: (key: string) => ({
+    productLines: (key: string) => ({
       displayName: undefined,
+      customerType: undefined,
     }),
     products: (key: string) => ({
       displayName: key,
-      catalogId: undefined,
+      productLineId: undefined,
       customerType: "user",
       freeTrial: undefined,
       serverOnly: false,

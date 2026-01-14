@@ -61,8 +61,8 @@ export const POST = createSmartRouteHandler({
     if (fromProduct.customerType !== params.customer_type || toProduct.customerType !== params.customer_type) {
       throw new StatusError(400, "Product customer type does not match.");
     }
-    if (!fromProduct.catalogId || fromProduct.catalogId !== toProduct.catalogId) {
-      throw new StatusError(400, "Products must be in the same catalog to switch.");
+    if (!fromProduct.productLineId || fromProduct.productLineId !== toProduct.productLineId) {
+      throw new StatusError(400, "Products must be in the same product line to switch.");
     }
     if (body.from_product_id === body.to_product_id) {
       throw new StatusError(400, "Product is already active.");
@@ -90,12 +90,12 @@ export const POST = createSmartRouteHandler({
       customerId: params.customer_id,
       productId: body.to_product_id,
     });
-    const hasOneTimeInCatalog = existingOneTimePurchases.some((purchase) => {
+    const hasOneTimeInProductLine = existingOneTimePurchases.some((purchase) => {
       const product = purchase.product as typeof toProduct;
-      return product.catalogId === fromProduct.catalogId;
+      return product.productLineId === fromProduct.productLineId;
     });
-    if (hasOneTimeInCatalog) {
-      throw new StatusError(400, "Customer already has a one-time purchase in this product catalog");
+    if (hasOneTimeInProductLine) {
+      throw new StatusError(400, "Customer already has a one-time purchase in this product line");
     }
 
     let subscription = null;

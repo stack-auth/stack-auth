@@ -1,7 +1,7 @@
 import PageClient from "./page-client";
 
 export const metadata = {
-  title: "Catalogs",
+  title: "Product Lines",
 };
 
 export default async function Page() {

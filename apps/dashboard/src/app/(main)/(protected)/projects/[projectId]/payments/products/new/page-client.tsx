@@ -32,7 +32,7 @@ import { typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { useLayoutEffect, useRef, useState } from "react";
 import { useAdminApp, useProjectId } from "../../../use-admin-app";
-import { CreateCatalogDialog } from "../create-catalog-dialog";
+import { CreateProductLineDialog } from "../create-product-line-dialog";
 import { IncludedItemDialog } from "../included-item-dialog";
 import { PricingSection } from "../pricing-section";
 import { ProductCardPreview } from "../product-card-preview";
@@ -190,7 +190,7 @@ export default function PageClient() {
   const [displayName, setDisplayName] = useState("");
   const [hasManuallyEditedId, setHasManuallyEditedId] = useState(false);
   const [customerType, setCustomerType] = useState<'user' | 'team' | 'custom'>('user');
-  const [catalogId, setCatalogId] = useState("");
+  const [productLineId, setProductLineId] = useState("");
   const [isAddOn, setIsAddOn] = useState(false);
   const [isAddOnTo, setIsAddOnTo] = useState<string[]>([]);
   const [stackable, setStackable] = useState(false);
@@ -202,7 +202,7 @@ export default function PageClient() {
   const [freeTrial, setFreeTrial] = useState<Product['freeTrial']>(undefined);
 
   // Dialog states
-  const [showCatalogDialog, setShowCatalogDialog] = useState(false);
+  const [showProductLineDialog, setShowProductLineDialog] = useState(false);
   const [showItemDialog, setShowItemDialog] = useState(false);
   const [editingItemId, setEditingItemId] = useState<string | undefined>();
   const [showNewItemDialog, setShowNewItemDialog] = useState(false);
@@ -239,7 +239,7 @@ export default function PageClient() {
     .map(([id, product]) => ({
       id,
       displayName: product.displayName,
-      catalogId: product.catalogId,
+      productLineId: product.productLineId,
       customerType: product.customerType
     }));
 
@@ -255,7 +255,7 @@ export default function PageClient() {
   const previewProduct: Product = {
     displayName: displayName || 'New Product',
     customerType,
-    catalogId: catalogId || undefined,
+    productLineId: productLineId || undefined,
     isAddOnTo: isAddOn ? Object.fromEntries(isAddOnTo.map(id => [id, true])) : false,
     stackable,
     prices: freeByDefault ? 'include-by-default' : prices,
@@ -273,21 +273,21 @@ export default function PageClient() {
     setHasSelectedCustomerType(false);
   };
 
-  // When customer type changes via the dropdown, reset catalog-related state
+  // When customer type changes via the dropdown, reset product-line-related state
   const handleCustomerTypeChange = (newType: 'user' | 'team' | 'custom') => {
     if (newType !== customerType) {
       setCustomerType(newType);
-      // Reset catalog since catalogs are customer-type-specific
-      setCatalogId("");
+      // Reset product line since product lines are customer-type-specific
+      setProductLineId("");
       // Reset add-on selections since they may not be valid for the new type
       setIsAddOnTo([]);
     }
   };
 
-  const handleCreateCatalog = (catalog: { id: string, displayName: string }) => {
+  const handleCreateProductLine = (productLine: { id: string, displayName: string }) => {
     runAsynchronouslyWithAlert(async () => {
-      await project.updateConfig({ [`payments.catalogs.${catalog.id}`]: { displayName: catalog.displayName || null } });
-      setCatalogId(catalog.id);
+      await project.updateConfig({ [`payments.productLines.${productLine.id}`]: { displayName: productLine.displayName || null } });
+      setProductLineId(productLine.id);
     });
   };
 
@@ -311,11 +311,11 @@ export default function PageClient() {
     }
 
     if (isAddOn && isAddOnTo.length > 0) {
-      const addOnCatalogs = new Set(
-        isAddOnTo.map(pid => existingProducts.find(o => o.id === pid)?.catalogId)
+      const addOnProductLines = new Set(
+        isAddOnTo.map(pid => existingProducts.find(o => o.id === pid)?.productLineId)
       );
-      if (addOnCatalogs.size > 1) {
-        newErrors.isAddOnTo = "All selected products must be in the same catalog";
+      if (addOnProductLines.size > 1) {
+        newErrors.isAddOnTo = "All selected products must be in the same product line";
       }
     }
 
@@ -338,7 +338,7 @@ export default function PageClient() {
       const product: Product = {
         displayName,
         customerType,
-        catalogId: catalogId || undefined,
+        productLineId: productLineId || undefined,
         isAddOnTo: isAddOn ? Object.fromEntries(isAddOnTo.map(id => [id, true])) : false,
         stackable,
         prices: freeByDefault ? 'include-by-default' : prices,
@@ -378,7 +378,7 @@ export default function PageClient() {
   };
 
   const handleCancel = () => {
-    router.push(`/projects/${projectId}/payments/products`);
+    window.history.back();
   };
 
   // Show customer type selection if not selected yet
@@ -422,7 +422,7 @@ ${Object.entries(prices).map(([id, price]) => {
   id: '${productId || 'product-id'}',
   displayName: '${displayName || 'New Product'}',
   customerType: '${customerType}',
-  prices: ${pricesCode},${catalogId ? `\n  catalogId: '${catalogId}',` : ''}${stackable ? '\n  stackable: true,' : ''}${serverOnly ? '\n  serverOnly: true,' : ''}
+  prices: ${pricesCode},${productLineId ? `\n  productLineId: '${productLineId}',` : ''}${stackable ? '\n  stackable: true,' : ''}${serverOnly ? '\n  serverOnly: true,' : ''}
   isAddOnTo: ${isAddOnToCode},
   includedItems: {${Object.entries(includedItems).map(([id, item]) => {
     const repeatPart = item.repeat === 'never' ? `'never'` : `[${item.repeat[0]}, '${item.repeat[1]}']`;
@@ -459,7 +459,7 @@ ${Object.entries(prices).map(([id, price]) => {
 - Product ID: ${productId || 'product-id'}
 - Display Name: ${displayName || 'New Product'}
 - Customer Type: ${customerType}
-- Pricing: ${priceDescriptions}${catalogId ? `\n- Catalog: ${catalogId}` : ''}${stackable ? '\n- Stackable: yes' : ''}${serverOnly ? '\n- Server only: yes' : ''}${isAddOn && isAddOnTo.length > 0 ? `\n- Add-on to: ${isAddOnTo.join(', ')}` : ''}${itemDescriptions ? `\n- Included items: ${itemDescriptions}` : ''}`;
+- Pricing: ${priceDescriptions}${productLineId ? `\n- Product Line: ${productLineId}` : ''}${stackable ? '\n- Stackable: yes' : ''}${serverOnly ? '\n- Server only: yes' : ''}${isAddOn && isAddOnTo.length > 0 ? `\n- Add-on to: ${isAddOnTo.join(', ')}` : ''}${itemDescriptions ? `\n- Included items: ${itemDescriptions}` : ''}`;
   };
 
   return (
@@ -892,29 +892,29 @@ ${Object.entries(prices).map(([id, price]) => {
                   )}
                 </div>
 
-                {/* Catalog */}
+                {/* Product Line */}
                 <span className="text-sm text-foreground/70 py-2 flex items-center border-b border-border/20">Part of a mutually exclusive group?</span>
                 <div className="py-2 flex items-center border-b border-border/20">
                   <Select
-                    value={catalogId || 'no-catalog'}
+                    value={productLineId || 'no-product-line'}
                     onValueChange={(value) => {
                       if (value === 'create-new') {
-                        setShowCatalogDialog(true);
-                      } else if (value === 'no-catalog') {
-                        setCatalogId('');
+                        setShowProductLineDialog(true);
+                      } else if (value === 'no-product-line') {
+                        setProductLineId('');
                       } else {
-                        setCatalogId(value);
+                        setProductLineId(value);
                       }
                     }}
                   >
                     <SelectTrigger className="h-8 w-full max-w-[200px] rounded-lg">
-                      <SelectValue placeholder="No catalog" />
+                      <SelectValue placeholder="No product line" />
                     </SelectTrigger>
                     <SelectContent className="rounded-lg">
-                      <SelectItem value="no-catalog" className="rounded-lg">No catalog</SelectItem>
-                      {Object.entries(paymentsConfig.catalogs).map(([id, catalog]) => (
+                      <SelectItem value="no-product-line" className="rounded-lg">No product line</SelectItem>
+                      {Object.entries(paymentsConfig.productLines).map(([id, productLine]) => (
                         <SelectItem key={id} value={id} className="rounded-lg">
-                          {catalog.displayName || id}
+                          {productLine.displayName || id}
                         </SelectItem>
                       ))}
                       <SelectItem value="create-new" className="rounded-lg">
@@ -986,10 +986,10 @@ ${Object.entries(prices).map(([id, price]) => {
       </div>
 
       {/* Dialogs */}
-      <CreateCatalogDialog
-        open={showCatalogDialog}
-        onOpenChange={setShowCatalogDialog}
-        onCreate={handleCreateCatalog}
+      <CreateProductLineDialog
+        open={showProductLineDialog}
+        onOpenChange={setShowProductLineDialog}
+        onCreate={handleCreateProductLine}
       />
 
       <IncludedItemDialog
