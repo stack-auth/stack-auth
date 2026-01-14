@@ -250,12 +250,12 @@ describe("PATCH /api/v1/internal/payments/method-configs", () => {
             "details": {
               "message": deindent\`
                 Request validation failed on PATCH /api/v1/internal/payments/method-configs:
-                  - body.updates must be one of the following values: card, cartes_bancaires, apple_pay, google_pay, link, amazon_pay, cashapp, klarna, affirm, afterpay_clearpay, zip, ideal, bancontact, eps, giropay, p24, blik, sofort, alipay, wechat_pay, sepa_debit, bacs_debit, acss_debit, us_bank_account, multibanco, customer_balance
+                  - body.updates must be one of the following values: card, cartes_bancaires, apple_pay, google_pay, link, amazon_pay, cashapp, klarna, affirm, afterpay_clearpay, zip, ideal, bancontact, eps, p24, blik, alipay, wechat_pay, sepa_debit, bacs_debit, acss_debit, us_bank_account, multibanco, customer_balance
               \`,
             },
             "error": deindent\`
               Request validation failed on PATCH /api/v1/internal/payments/method-configs:
-                - body.updates must be one of the following values: card, cartes_bancaires, apple_pay, google_pay, link, amazon_pay, cashapp, klarna, affirm, afterpay_clearpay, zip, ideal, bancontact, eps, giropay, p24, blik, sofort, alipay, wechat_pay, sepa_debit, bacs_debit, acss_debit, us_bank_account, multibanco, customer_balance
+                - body.updates must be one of the following values: card, cartes_bancaires, apple_pay, google_pay, link, amazon_pay, cashapp, klarna, affirm, afterpay_clearpay, zip, ideal, bancontact, eps, p24, blik, alipay, wechat_pay, sepa_debit, bacs_debit, acss_debit, us_bank_account, multibanco, customer_balance
             \`,
           },
           "headers": Headers {

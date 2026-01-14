@@ -46,10 +46,8 @@ export const PAYMENT_METHODS: Record<string, PaymentMethodConfig> = {
   ideal: { name: 'iDEAL', category: 'realtime' },
   bancontact: { name: 'Bancontact', category: 'realtime' },
   eps: { name: 'EPS', category: 'realtime' },
-  giropay: { name: 'Giropay', category: 'realtime' },
   p24: { name: 'Przelewy24', category: 'realtime' },
   blik: { name: 'BLIK', category: 'realtime' },
-  sofort: { name: 'Sofort', category: 'realtime' },
   alipay: { name: 'Alipay', category: 'realtime' },
   wechat_pay: { name: 'WeChat Pay', category: 'realtime' },
 

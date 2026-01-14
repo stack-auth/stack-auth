@@ -1,7 +1,8 @@
 "use client";
 
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger, Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Switch, toast, Typography } from "@/components/ui";
-import { Bank, CreditCard, CurrencyCircleDollar, Globe, HandCoins, Lightning, Receipt, Wallet } from "@phosphor-icons/react";
+import { getPaymentMethodIcon } from "@/components/ui/payment-method-icons";
+import { BankIcon, CreditCardIcon, CurrencyCircleDollarIcon, GlobeIcon, HandCoinsIcon, LightningIcon, ReceiptIcon, WalletIcon } from "@phosphor-icons/react";
 import { getPaymentMethodCategory, PAYMENT_CATEGORIES, PAYMENT_METHOD_DEPENDENCIES, PaymentMethodCategory } from "@stackframe/stack-shared/dist/payments/payment-methods";
 import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
 import { useCallback, useEffect, useState } from "react";
@@ -21,24 +22,22 @@ type PaymentMethodConfig = {
   methods: PaymentMethod[],
 };
 
-// Category icons mapping
-const CATEGORY_ICONS: Record<PaymentMethodCategory, typeof CreditCard> = {
-  cards: CreditCard,
-  wallets: Wallet,
-  bnpl: HandCoins,
-  realtime: Lightning,
-  bank_debits: Bank,
-  bank_transfers: CurrencyCircleDollar,
-  vouchers: Receipt,
+const CATEGORY_ICONS: Record<PaymentMethodCategory, typeof CreditCardIcon> = {
+  cards: CreditCardIcon,
+  wallets: WalletIcon,
+  bnpl: HandCoinsIcon,
+  realtime: LightningIcon,
+  bank_debits: BankIcon,
+  bank_transfers: CurrencyCircleDollarIcon,
+  vouchers: ReceiptIcon,
 };
 
-// Payment method icons - placeholder icons for now, will be replaced with brand logos (TODO #10)
-const getMethodIcon = (methodId: string) => {
+const getCategoryFallbackIcon = (methodId: string) => {
   const category = getPaymentMethodCategory(methodId);
   if (category) {
     return CATEGORY_ICONS[category];
   }
-  return Globe;
+  return GlobeIcon;
 };
 
 export default function PageClient() {
@@ -178,7 +177,8 @@ export default function PageClient() {
   const renderMethodRow = (method: PaymentMethod) => {
     const isEnabled = method.id in pendingChanges ? pendingChanges[method.id] : method.enabled;
     const hasChanged = method.id in pendingChanges;
-    const MethodIcon = getMethodIcon(method.id);
+    const BrandIcon = getPaymentMethodIcon(method.id);
+    const FallbackIcon = getCategoryFallbackIcon(method.id);
 
     return (
       <div
@@ -188,8 +188,11 @@ export default function PageClient() {
         }`}
       >
         <div className="flex items-center gap-3">
-          {/* TODO #10: Replace with brand-specific icons */}
-          <MethodIcon className="h-5 w-5 text-muted-foreground" />
+          {BrandIcon ? (
+            <BrandIcon iconSize={20} />
+          ) : (
+            <FallbackIcon className="h-5 w-5 text-muted-foreground" />
+          )}
           <div>
             <Typography className="font-medium">{method.name}</Typography>
           </div>
@@ -275,7 +278,7 @@ export default function PageClient() {
                   <AccordionItem value="other">
                     <AccordionTrigger className="hover:no-underline">
                       <div className="flex items-center gap-3">
-                        <CreditCard className="h-5 w-5 text-muted-foreground" />
+                        <CreditCardIcon className="h-5 w-5 text-muted-foreground" />
                         <span className="font-medium">Other</span>
                         <span className="text-xs text-muted-foreground">
                           ({uncategorizedMethods.length})
