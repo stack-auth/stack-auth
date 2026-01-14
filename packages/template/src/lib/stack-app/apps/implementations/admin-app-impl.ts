@@ -60,6 +60,9 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
   private readonly _emailPreviewCache = createCache(async ([themeId, themeTsxSource, templateId, templateTsxSource]: [string | null | false | undefined, string | undefined, string | undefined, string | undefined]) => {
     return await this._interface.renderEmailPreview({ themeId, themeTsxSource, templateId, templateTsxSource });
   });
+  private readonly _emailPreviewWithEditableMarkersCache = createCache(async ([themeId, themeTsxSource, templateId, templateTsxSource]: [string | null | false | undefined, string | undefined, string | undefined, string | undefined]) => {
+    return await this._interface.renderEmailPreview({ themeId, themeTsxSource, templateId, templateTsxSource, editableMarkers: true });
+  });
   private readonly _configOverridesCache = createCache(async () => {
     return await this._interface.getConfig();
   });
@@ -558,6 +561,18 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
     return await this._interface.listChatMessages(threadId);
   }
 
+  async applyWysiwygEdit(options: {
+    sourceType: "template" | "theme" | "draft",
+    sourceCode: string,
+    oldText: string,
+    newText: string,
+    metadata: any,
+    domPath: Array<{ tagName: string, index: number }>,
+    htmlContext: string,
+  }): Promise<{ updatedSource: string }> {
+    return await this._interface.applyWysiwygEdit(options);
+  }
+
   async createEmailTheme(displayName: string): Promise<{ id: string }> {
     const result = await this._interface.createEmailTheme(displayName);
     await this._adminEmailThemesCache.refresh([]);
@@ -571,6 +586,12 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
   useEmailPreview(options: { themeId?: string | null | false, themeTsxSource?: string, templateId?: string, templateTsxSource?: string }): string {
     const crud = useAsyncCache(this._emailPreviewCache, [options.themeId, options.themeTsxSource, options.templateId, options.templateTsxSource] as const, "adminApp.useEmailPreview()");
     return crud.html;
+  }
+  // END_PLATFORM
+  // IF_PLATFORM react-like
+  useEmailPreviewWithEditableMarkers(options: { themeId?: string | null | false, themeTsxSource?: string, templateId?: string, templateTsxSource?: string }): { html: string, editableRegions?: Record<string, unknown> } {
+    const crud = useAsyncCache(this._emailPreviewWithEditableMarkersCache, [options.themeId, options.themeTsxSource, options.templateId, options.templateTsxSource] as const, "adminApp.useEmailPreviewWithEditableMarkers()");
+    return { html: crud.html, editableRegions: crud.editable_regions };
   }
   // END_PLATFORM
   // IF_PLATFORM react-like

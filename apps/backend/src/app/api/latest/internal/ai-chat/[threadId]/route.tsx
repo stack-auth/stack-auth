@@ -62,7 +62,7 @@ export const POST = createSmartRouteHandler({
   }),
   async handler({ body, params, auth: { tenancy } }) {
     const adapter = getChatAdapter(body.context_type, tenancy, params.threadId);
-    const modelName = getEnvVariable("STACK_AI_MODEL", getEnvVariable("STACK_OPENAI_MODEL", "gpt-4o"));
+    const modelName = "google/gemini-3-flash-preview";
 
     // Validate messages structure before passing to AI
     const validatedMessages = body.messages.map(msg => ({

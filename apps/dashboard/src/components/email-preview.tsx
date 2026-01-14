@@ -1,10 +1,35 @@
 import { useAdminApp } from "@/app/(main)/(protected)/projects/[projectId]/use-admin-app";
-import { KnownErrors } from "@stackframe/stack-shared";
 import { Spinner, Typography } from "@/components/ui";
-import { Archive, ArrowLeft, CaretDown, DotsThreeVertical, ArrowBendUpRight, Envelope, List, Pencil, ArrowBendUpLeft, MagnifyingGlass, Star, Trash } from "@phosphor-icons/react";
-import { Component, Fragment, ReactNode, Suspense, useEffect, useRef, useState } from "react";
+import { Archive, ArrowBendUpLeft, ArrowBendUpRight, ArrowLeft, CaretDown, DotsThreeVertical, Envelope, List, MagnifyingGlass, Pencil, Star, Trash } from "@phosphor-icons/react";
+import { KnownErrors } from "@stackframe/stack-shared";
+import type { EditableMetadata } from "@stackframe/stack-shared/dist/utils/jsx-editable-transpiler";
+import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
+import React, { Component, Fragment, ReactNode, Suspense, useEffect, useRef, useState } from "react";
 import { useDebounce } from 'use-debounce';
 import ResizableContainer from './resizable-container';
+
+export type { EditableMetadata };
+
+/**
+ * Message sent from iframe to parent when user commits an edit
+ */
+export type WysiwygEditCommitMessage = {
+  type: "stack_edit_commit",
+  id: string,
+  oldText: string,
+  newText: string,
+  domPath: Array<{ tagName: string, index: number }>,
+  htmlContext: string,
+};
+
+/**
+ * Message sent from parent to iframe on error
+ */
+export type WysiwygEditErrorMessage = {
+  type: "stack_edit_error",
+  id: string,
+  message?: string,
+};
 
 class EmailPreviewErrorBoundary extends Component<
   { children: ReactNode },
@@ -88,6 +113,427 @@ function EmailPreviewContent({
   );
 }
 
+/**
+ * The WYSIWYG editor script that gets injected into the iframe.
+ * This script:
+ * - Parses STACK_EDITABLE_START/END comments
+ * - Creates hover overlays for editable text
+ * - Handles inline editing with contenteditable
+ * - Sends postMessage to parent on commit/cancel
+ */
+const WYSIWYG_EDITOR_SCRIPT = `
+(function() {
+  'use strict';
+
+  // Store editable regions: { id, startComment, endComment, textNode, originalText }
+  const editableRegions = new Map();
+  let currentlyEditing = null;
+  let overlayContainer = null;
+  let editUI = null;
+
+  // Parse editable comments and build regions
+  function parseEditableRegions() {
+    const walker = document.createTreeWalker(
+      document.body,
+      NodeFilter.SHOW_COMMENT,
+      null
+    );
+
+    const startComments = new Map();
+    let node;
+
+    while ((node = walker.nextNode())) {
+      const text = node.textContent.trim();
+
+      if (text.startsWith('STACK_EDITABLE_START ')) {
+        const id = text.replace('STACK_EDITABLE_START ', '').trim();
+        startComments.set(id, node);
+      } else if (text.startsWith('STACK_EDITABLE_END ')) {
+        const id = text.replace('STACK_EDITABLE_END ', '').trim();
+        const startComment = startComments.get(id);
+
+        if (startComment) {
+          // Find text node between comments
+          let current = startComment.nextSibling;
+          let textNode = null;
+
+          while (current && current !== node) {
+            if (current.nodeType === Node.TEXT_NODE && current.textContent.trim()) {
+              textNode = current;
+              break;
+            }
+            current = current.nextSibling;
+          }
+
+          if (textNode) {
+            editableRegions.set(id, {
+              id,
+              startComment,
+              endComment: node,
+              textNode,
+              originalText: textNode.textContent
+            });
+          }
+        }
+      }
+    }
+  }
+
+  // Create overlay container
+  function createOverlayContainer() {
+    overlayContainer = document.createElement('div');
+    overlayContainer.id = 'stack-wysiwyg-overlays';
+    overlayContainer.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:9998;';
+    document.body.appendChild(overlayContainer);
+  }
+
+  // Create hover overlay for a text node
+  function createOverlay(region) {
+    const range = document.createRange();
+    range.selectNodeContents(region.textNode);
+    const rects = range.getClientRects();
+
+    const overlays = [];
+    const padding = 3; // Padding around the text
+    for (const rect of rects) {
+      const overlay = document.createElement('div');
+      overlay.className = 'stack-editable-overlay';
+      overlay.dataset.editId = region.id;
+      overlay.style.cssText = \`
+        position:fixed;
+        left:\${rect.left - padding}px;
+        top:\${rect.top - padding}px;
+        width:\${rect.width + padding * 2}px;
+        height:\${rect.height + padding * 2}px;
+        border:2px solid transparent;
+        border-radius:4px;
+        pointer-events:auto;
+        cursor:text;
+        box-sizing:border-box;
+        background:transparent;
+        transition:border-color 0.15s,background-color 0.15s;
+      \`;
+
+      overlay.addEventListener('mouseenter', () => {
+        if (!currentlyEditing) {
+          overlay.style.borderColor = '#3b82f6';
+          overlay.style.backgroundColor = 'rgba(59,130,246,0.08)';
+        }
+      });
+
+      overlay.addEventListener('mouseleave', () => {
+        if (!currentlyEditing) {
+          overlay.style.borderColor = 'transparent';
+          overlay.style.backgroundColor = 'transparent';
+        }
+      });
+
+      overlay.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (!currentlyEditing) {
+          enterEditMode(region);
+        }
+      });
+
+      overlayContainer.appendChild(overlay);
+      overlays.push(overlay);
+    }
+
+    return overlays;
+  }
+
+  // Enter edit mode for a region
+  function enterEditMode(region) {
+    currentlyEditing = region;
+
+    // Hide all overlays
+    overlayContainer.querySelectorAll('.stack-editable-overlay').forEach(o => {
+      o.style.display = 'none';
+    });
+
+    // Create editing span
+    const editSpan = document.createElement('span');
+    editSpan.contentEditable = 'plaintext-only';
+    editSpan.textContent = region.textNode.textContent;
+    editSpan.style.cssText = 'outline:2px solid #3b82f6;outline-offset:2px;border-radius:2px;background:rgba(59,130,246,0.05);';
+
+    // Store original text node
+    region.editSpan = editSpan;
+    region.textNode.parentNode.replaceChild(editSpan, region.textNode);
+
+    // Focus and select all
+    editSpan.focus();
+    const selection = window.getSelection();
+    const range = document.createRange();
+    range.selectNodeContents(editSpan);
+    selection.removeAllRanges();
+    selection.addRange(range);
+
+    // Show edit UI
+    showEditUI(editSpan, region);
+
+    // Handle escape key
+    editSpan.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        cancelEdit(region);
+      } else if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        commitEdit(region);
+      }
+    });
+  }
+
+  // Show checkmark/cancel buttons
+  function showEditUI(editSpan, region) {
+    if (editUI) editUI.remove();
+
+    editUI = document.createElement('div');
+    editUI.style.cssText = \`
+      position:fixed;
+      z-index:9999;
+      display:flex;
+      gap:4px;
+      padding:4px;
+      background:white;
+      border-radius:6px;
+      box-shadow:0 2px 8px rgba(0,0,0,0.15);
+    \`;
+
+    const checkBtn = document.createElement('button');
+    checkBtn.innerHTML = '✓';
+    checkBtn.style.cssText = 'width:28px;height:28px;border:none;background:#22c55e;color:white;border-radius:4px;cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;';
+    checkBtn.onclick = () => commitEdit(region);
+
+    const cancelBtn = document.createElement('button');
+    cancelBtn.innerHTML = '✕';
+    cancelBtn.style.cssText = 'width:28px;height:28px;border:none;background:#ef4444;color:white;border-radius:4px;cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;';
+    cancelBtn.onclick = () => cancelEdit(region);
+
+    editUI.appendChild(checkBtn);
+    editUI.appendChild(cancelBtn);
+    document.body.appendChild(editUI);
+
+    // Position below the edit span
+    const rect = editSpan.getBoundingClientRect();
+    editUI.style.left = rect.right - editUI.offsetWidth + 'px';
+    editUI.style.top = rect.bottom + 8 + 'px';
+  }
+
+  // Cancel edit and restore original
+  function cancelEdit(region) {
+    if (region.editSpan) {
+      region.editSpan.parentNode.replaceChild(region.textNode, region.editSpan);
+      delete region.editSpan;
+    }
+    currentlyEditing = null;
+    if (editUI) {
+      editUI.remove();
+      editUI = null;
+    }
+    // Show overlays again
+    overlayContainer.querySelectorAll('.stack-editable-overlay').forEach(o => {
+      o.style.display = '';
+    });
+  }
+
+  // Commit edit and send to parent
+  function commitEdit(region) {
+    const newText = region.editSpan.textContent;
+    const oldText = region.originalText;
+
+    if (newText === oldText) {
+      cancelEdit(region);
+      return;
+    }
+
+    // Show loading state
+    region.editSpan.style.opacity = '0.5';
+    if (editUI) {
+      editUI.querySelector('button:first-child').disabled = true;
+      editUI.querySelector('button:first-child').innerHTML = '...';
+    }
+
+    // Compute DOM path
+    const domPath = [];
+    let el = region.editSpan.parentElement;
+    while (el && el !== document.body) {
+      const siblings = Array.from(el.parentElement?.children || []);
+      const index = siblings.indexOf(el);
+      domPath.unshift({ tagName: el.tagName, index });
+      el = el.parentElement;
+    }
+
+    // Get HTML context
+    const parent = region.editSpan.parentElement;
+    const htmlContext = parent ? parent.outerHTML.slice(0, 500) : '';
+
+    // Send to parent
+    window.parent.postMessage({
+      type: 'stack_edit_commit',
+      id: region.id,
+      oldText,
+      newText,
+      domPath,
+      htmlContext
+    }, '*');
+  }
+
+  // Handle error from parent
+  window.addEventListener('message', (e) => {
+    if (e.data && e.data.type === 'stack_edit_error') {
+      const region = editableRegions.get(e.data.id);
+      if (region && region.editSpan) {
+        region.editSpan.style.opacity = '1';
+        if (editUI) {
+          editUI.querySelector('button:first-child').disabled = false;
+          editUI.querySelector('button:first-child').innerHTML = '✓';
+        }
+      }
+    }
+  });
+
+  // Update overlay positions on scroll/resize
+  function updateOverlays() {
+    overlayContainer.innerHTML = '';
+    editableRegions.forEach(region => {
+      if (!currentlyEditing || currentlyEditing.id !== region.id) {
+        createOverlay(region);
+      }
+    });
+  }
+
+  // Initialize
+  parseEditableRegions();
+  createOverlayContainer();
+  updateOverlays();
+
+  window.addEventListener('scroll', updateOverlays, true);
+  window.addEventListener('resize', updateOverlays);
+})();
+`;
+
+/**
+ * Debug info for WYSIWYG editing
+ */
+export type WysiwygDebugInfo = {
+  renderedHtml?: string,
+  editableRegions?: Record<string, unknown>,
+};
+
+/**
+ * EmailPreviewContent for edit mode with WYSIWYG support.
+ * This component fetches the preview with editable markers and sets up
+ * the postMessage communication with the iframe.
+ */
+function EmailPreviewEditableContent({
+  themeId,
+  themeTsxSource,
+  templateId,
+  templateTsxSource,
+  onDebugInfoChange,
+  onWysiwygEditCommit,
+}: {
+  themeId?: string | undefined | false,
+  themeTsxSource?: string,
+  templateId?: string,
+  templateTsxSource?: string,
+  onDebugInfoChange?: (info: WysiwygDebugInfo) => void,
+  onWysiwygEditCommit?: OnWysiwygEditCommit,
+}) {
+  const stackAdminApp = useAdminApp();
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+
+  // Fetch preview with editable markers - this will include STACK_EDITABLE comments in the HTML
+  const { html: previewHtml, editableRegions } = stackAdminApp.useEmailPreviewWithEditableMarkers({
+    themeId,
+    themeTsxSource,
+    templateId,
+    templateTsxSource,
+  });
+
+  // Update debug info when data changes - use useEffect to avoid setState during render
+  useEffect(() => {
+    onDebugInfoChange?.({ renderedHtml: previewHtml, editableRegions });
+  }, [previewHtml, editableRegions, onDebugInfoChange]);
+
+  // Listen for edit commits from the iframe
+  useEffect(() => {
+    const handleMessage = (e: MessageEvent) => {
+      if (e.data?.type !== 'stack_edit_commit') return;
+      if (!onWysiwygEditCommit || !editableRegions) return;
+
+      const { id, oldText, newText, domPath, htmlContext } = e.data;
+      const metadata = editableRegions[id] as EditableMetadata | undefined;
+
+      if (!metadata) {
+        console.error('[WYSIWYG] No metadata found for id:', id);
+        iframeRef.current?.contentWindow?.postMessage({
+          type: 'stack_edit_error',
+          id,
+          error: 'No metadata found for this editable region',
+        }, '*');
+        return;
+      }
+
+      // Handle async operation without returning a promise to the event listener
+      runAsynchronouslyWithAlert(async () => {
+        try {
+          const updatedSource = await onWysiwygEditCommit({
+            id,
+            oldText,
+            newText,
+            metadata,
+            domPath,
+            htmlContext,
+          });
+          // Success - the parent will update the source and re-render
+          console.log('[WYSIWYG] Edit committed, new source length:', updatedSource.length);
+        } catch (error) {
+          console.error('[WYSIWYG] Edit failed:', error);
+          iframeRef.current?.contentWindow?.postMessage({
+            type: 'stack_edit_error',
+            id,
+            error: error instanceof Error ? error.message : 'Unknown error',
+          }, '*');
+        }
+      });
+    };
+
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, [editableRegions, onWysiwygEditCommit]);
+
+  // Inject the WYSIWYG script into the HTML
+  const editableHtml = previewHtml ? previewHtml + `
+    <script>
+      // Prevent link clicks
+      document.addEventListener('click', function(e) {
+        var target = e.target;
+        while (target && target.tagName !== 'A') {
+          target = target.parentNode;
+        }
+        if (target && target.tagName === 'A') {
+          e.preventDefault();
+          e.stopPropagation();
+        }
+      }, true);
+
+      // WYSIWYG Editor
+      ${WYSIWYG_EDITOR_SCRIPT}
+    </script>
+  ` : previewHtml;
+
+  return (
+    <iframe
+      ref={iframeRef}
+      srcDoc={editableHtml}
+      className="w-full h-full border-0"
+      title="Email Preview (Edit Mode)"
+    />
+  );
+}
+
 export type DeviceViewport = {
   id: string,
   name: string,
@@ -101,6 +547,19 @@ export const DEVICE_VIEWPORTS: DeviceViewport[] = [
   { id: 'tablet', name: 'Tablet', width: 820, height: 1180, type: 'tablet' },
   { id: 'desktop', name: 'Desktop', width: 1200, height: 800, type: 'desktop' },
 ];
+
+/**
+ * Callback for when a WYSIWYG edit is committed.
+ * The parent component should call the WYSIWYG endpoint with this data.
+ */
+export type OnWysiwygEditCommit = (data: {
+  id: string,
+  oldText: string,
+  newText: string,
+  metadata: EditableMetadata,
+  domPath: Array<{ tagName: string, index: number }>,
+  htmlContext: string,
+}) => Promise<string>; // Returns updated source code
 
 type EmailPreviewProps =
   | ({
@@ -125,6 +584,12 @@ type EmailPreviewProps =
     emailSubject?: string,
     senderName?: string,
     senderEmail?: string,
+    /** When true, renders in WYSIWYG edit mode with editable text markers */
+    editMode?: boolean,
+    /** Callback when user commits a WYSIWYG edit. Should return updated source code. */
+    onWysiwygEditCommit?: OnWysiwygEditCommit,
+    /** Callback when debug info changes (edit mode only, dev mode only) */
+    onDebugInfoChange?: (info: WysiwygDebugInfo) => void,
   };
 
 export default function EmailPreview({
@@ -137,11 +602,15 @@ export default function EmailPreview({
   emailSubject = "Verify your email at Acme Inc",
   senderName = "Acme Inc",
   senderEmail = "noreply@acme.com",
+  editMode = false,
+  onWysiwygEditCommit,
+  onDebugInfoChange,
 }: EmailPreviewProps) {
   const [debouncedTemplateTsxSource] = useDebounce(templateTsxSource, 100);
   const [debouncedThemeTsxSource] = useDebounce(themeTsxSource, 100);
   const Container = disableResizing ? Fragment : ResizableContainer;
 
+  // Regular preview content
   const emailContent = (
     <Suspense fallback={
       <div className="flex items-center justify-center h-full bg-white rounded-xl">
@@ -151,16 +620,38 @@ export default function EmailPreview({
         </div>
       </div>
     }>
-      <EmailPreviewErrorBoundary key={`${debouncedTemplateTsxSource ?? ""}${debouncedThemeTsxSource ?? ""}`}>
-        <EmailPreviewContent
-          themeId={themeId}
-          themeTsxSource={debouncedThemeTsxSource}
-          templateId={templateId}
-          templateTsxSource={debouncedTemplateTsxSource}
-        />
+      <EmailPreviewErrorBoundary key={`${debouncedTemplateTsxSource ?? ""}${debouncedThemeTsxSource ?? ""}${editMode}`}>
+        {editMode ? (
+          <EmailPreviewEditableContent
+            themeId={themeId}
+            themeTsxSource={debouncedThemeTsxSource}
+            templateId={templateId}
+            templateTsxSource={debouncedTemplateTsxSource}
+            onDebugInfoChange={onDebugInfoChange}
+            onWysiwygEditCommit={onWysiwygEditCommit}
+          />
+        ) : (
+          <EmailPreviewContent
+            themeId={themeId}
+            themeTsxSource={debouncedThemeTsxSource}
+            templateId={templateId}
+            templateTsxSource={debouncedTemplateTsxSource}
+          />
+        )}
       </EmailPreviewErrorBoundary>
     </Suspense>
   );
+
+  // Edit mode: render full width without device frames
+  if (editMode) {
+    return (
+      <div className="w-full h-full flex flex-col">
+        <div className="flex-1 bg-white rounded-xl overflow-hidden shadow-lg">
+          {emailContent}
+        </div>
+      </div>
+    );
+  }
 
   // If viewport is provided, render in an email client frame
   if (viewport) {

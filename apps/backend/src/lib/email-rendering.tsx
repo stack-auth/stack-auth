@@ -3,10 +3,17 @@ import { emptyEmailTheme } from '@stackframe/stack-shared/dist/helpers/emails';
 import { getEnvVariable } from '@stackframe/stack-shared/dist/utils/env';
 import { captureError, StackAssertionError } from '@stackframe/stack-shared/dist/utils/errors';
 import { bundleJavaScript } from '@stackframe/stack-shared/dist/utils/esbuild';
+import {
+  transpileJsxForEditing,
+  convertSentinelTokensToComments,
+  type EditableMetadata,
+} from '@stackframe/stack-shared/dist/utils/jsx-editable-transpiler';
 import { get, has } from '@stackframe/stack-shared/dist/utils/objects';
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
 import { Tenancy } from './tenancies';
+
+export type { EditableMetadata };
 
 export function getActiveEmailTheme(tenancy: Tenancy) {
   const themeList = tenancy.config.emails.themes;
@@ -47,6 +54,17 @@ export function createTemplateComponentFromHtml(html: string) {
   `;
 }
 
+/**
+ * Result type for rendering with editable markers.
+ */
+export type RenderWithEditableMarkersResult = {
+  html: string,
+  text: string,
+  subject?: string,
+  notificationCategory?: string,
+  editableRegions: Record<string, EditableMetadata>,
+};
+
 export async function renderEmailWithTemplate(
   templateOrDraftComponent: string,
   themeComponent: string,
@@ -64,10 +82,15 @@ export async function renderEmailWithTemplate(
       },
     },
     previewMode?: boolean,
+    /** When true, transpiles JSX to include editable markers and returns editableRegions */
+    editableMarkers?: boolean,
+    /** Which source to make editable: 'template' (default), 'theme', or 'both' */
+    editableSource?: 'template' | 'theme' | 'both',
   },
-): Promise<Result<{ html: string, text: string, subject?: string, notificationCategory?: string }, string>> {
+): Promise<Result<{ html: string, text: string, subject?: string, notificationCategory?: string, editableRegions?: Record<string, EditableMetadata> }, string>> {
   const variables = options.variables ?? {};
   const previewMode = options.previewMode ?? false;
+  const editableMarkers = options.editableMarkers ?? false;
   const user = (previewMode && !options.user) ? { displayName: "John Doe" } : options.user;
   const project = (previewMode && !options.project) ? { displayName: "My Project" } : options.project;
   if (!user) {
@@ -77,10 +100,31 @@ export async function renderEmailWithTemplate(
     throw new StackAssertionError("Project is required when not in preview mode", { user, project, variables });
   }
 
+  // Optionally transpile sources to include editable markers
+  let processedTemplate = templateOrDraftComponent;
+  let processedTheme = themeComponent;
+  let allEditableRegions: Record<string, EditableMetadata> = {};
+  const editableSource = options.editableSource ?? 'template';
+
+  if (editableMarkers) {
+    // Only transpile the source that should be editable
+    if (editableSource === 'template' || editableSource === 'both') {
+      const templateTranspiled = transpileJsxForEditing(templateOrDraftComponent, { sourceFile: 'template' });
+      processedTemplate = templateTranspiled.code;
+      allEditableRegions = { ...allEditableRegions, ...templateTranspiled.editableRegions };
+    }
+
+    if (editableSource === 'theme' || editableSource === 'both') {
+      const themeTranspiled = transpileJsxForEditing(themeComponent, { sourceFile: 'theme' });
+      processedTheme = themeTranspiled.code;
+      allEditableRegions = { ...allEditableRegions, ...themeTranspiled.editableRegions };
+    }
+  }
+
   const result = await bundleJavaScript({
     "/utils.tsx": findComponentValueUtil,
-    "/theme.tsx": themeComponent,
-    "/template.tsx": templateOrDraftComponent,
+    "/theme.tsx": processedTheme,
+    "/template.tsx": processedTemplate,
     "/render.tsx": deindent`
       import { configure } from "arktype/config"
       configure({ onUndeclaredKey: "delete" })
@@ -150,7 +194,21 @@ export async function renderEmailWithTemplate(
     captureError("freestyle-no-result", noResultError);
     throw noResultError;
   }
-  return Result.ok(executeResult.data.result as { html: string, text: string, subject: string, notificationCategory: string });
+
+  const renderResult = executeResult.data.result as { html: string, text: string, subject: string, notificationCategory: string };
+
+  // Post-process HTML to convert sentinel tokens to comments when editable markers are enabled
+  if (editableMarkers) {
+    return Result.ok({
+      html: convertSentinelTokensToComments(renderResult.html),
+      text: renderResult.text,
+      subject: renderResult.subject,
+      notificationCategory: renderResult.notificationCategory,
+      editableRegions: allEditableRegions,
+    });
+  }
+
+  return Result.ok(renderResult);
 }
 
 // unused, but kept for reference & in case we need it again

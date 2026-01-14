@@ -10,7 +10,8 @@ import {
   createChatAdapter,
   createHistoryAdapter,
   EmailTemplateUI,
-  VibeCodeLayout
+  VibeCodeLayout,
+  type ViewportMode,
 } from "@/components/vibe-coding";
 import { ToolCallContent } from "@/components/vibe-coding/chat-adapters";
 import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
@@ -115,7 +116,7 @@ export default function PageClient(props: { templateId: string }) {
     }
   };
 
-  const [viewport, setViewport] = useState<'desktop' | 'tablet' | 'phone'>('desktop');
+  const [viewport, setViewport] = useState<ViewportMode>('edit');
 
   if (!template) {
     // Show loading state while waiting for the template (either from hook or direct fetch)
@@ -190,6 +191,7 @@ export default function PageClient(props: { templateId: string }) {
         isDirty={isDirty}
         previewActions={previewActions}
         editorTitle="Template Source Code"
+        editModeEnabled
         headerAction={
           <EmailThemeSelector
             selectedThemeId={selectedThemeId}
@@ -200,7 +202,8 @@ export default function PageClient(props: { templateId: string }) {
           <EmailPreview
             themeId={selectedThemeId}
             templateTsxSource={currentCode}
-            viewport={viewport === 'desktop' ? undefined : (viewport === 'tablet' ? { id: 'tablet', name: 'Tablet', width: 820, height: 1180, type: 'tablet' } : { id: 'phone', name: 'Phone', width: 390, height: 844, type: 'phone' })}
+            editMode={viewport === 'edit'}
+            viewport={viewport === 'desktop' || viewport === 'edit' ? undefined : (viewport === 'tablet' ? { id: 'tablet', name: 'Tablet', width: 820, height: 1180, type: 'tablet' } : { id: 'phone', name: 'Phone', width: 390, height: 844, type: 'phone' })}
           />
         }
         editorComponent={

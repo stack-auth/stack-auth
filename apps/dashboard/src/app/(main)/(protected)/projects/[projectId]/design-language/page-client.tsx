@@ -5,60 +5,60 @@ import { CodeBlock } from "@/components/code-block";
 import { Link } from "@/components/link";
 import { useRouter } from "@/components/router";
 import {
-    Alert,
-    AlertDescription,
-    AlertTitle,
-    Badge,
-    Button,
-    Checkbox,
-    DropdownMenu,
-    DropdownMenuContent,
-    DropdownMenuItem,
-    DropdownMenuSeparator,
-    DropdownMenuTrigger,
-    Input,
-    Label,
-    Switch,
-    Tabs,
-    TabsContent,
-    TabsList,
-    TabsTrigger,
-    Typography,
-    cn,
+  Alert,
+  AlertDescription,
+  AlertTitle,
+  Badge,
+  Button,
+  Checkbox,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+  Input,
+  Label,
+  Switch,
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+  Typography,
+  cn,
 } from "@/components/ui";
 import {
-    ArrowSquareOut,
-    BookOpenText,
-    CaretUpIcon,
-    CheckCircle,
-    Code,
-    CompassIcon,
-    Cube,
-    DotsThree,
-    DotsThreeIcon,
-    Envelope,
-    FileText,
-    GlobeIcon,
-    HardDrive,
-    MagnifyingGlassIcon,
-    Palette,
-    PencilSimple,
-    PlusIcon,
-    Sliders,
-    SquaresFourIcon,
-    Trash,
-    WarningCircle,
-    WarningCircleIcon,
-    XCircle
+  ArrowSquareOut,
+  BookOpenText,
+  CaretUpIcon,
+  CheckCircle,
+  Code,
+  CompassIcon,
+  Cube,
+  DotsThree,
+  DotsThreeIcon,
+  Envelope,
+  FileText,
+  GlobeIcon,
+  HardDrive,
+  MagnifyingGlassIcon,
+  Palette,
+  PencilSimple,
+  PlusIcon,
+  Sliders,
+  SquaresFourIcon,
+  Trash,
+  WarningCircle,
+  WarningCircleIcon,
+  XCircle
 } from "@phosphor-icons/react";
 import { useState } from "react";
 import {
-    AuthMethodDatapoint,
-    DataPoint,
-    DonutChartDisplay,
-    TabbedMetricsCard,
-    TimeRange,
-    TimeRangeToggle
+  AuthMethodDatapoint,
+  DataPoint,
+  DonutChartDisplay,
+  TabbedMetricsCard,
+  TimeRange,
+  TimeRangeToggle
 } from "../(overview)/line-chart";
 import { MetricsLoadingFallback } from "../(overview)/metrics-loading";
 import { PageLayout } from "../page-layout";
@@ -90,7 +90,7 @@ function ComponentDemo({
           )}
         </div>
       </div>
-      
+
       {/* Preview */}
       <div className="p-6 rounded-xl bg-muted/30 border border-border/50">
         {children}
@@ -563,9 +563,6 @@ function StepIndicatorDemo() {
 }
 
 
-
-
-
 function QuickAccessGridDemo() {
   const [expanded, setExpanded] = useState(false);
   const apps = expanded ? DEMO_APP_IDS : DEMO_APP_IDS.slice(0, 4);
@@ -650,7 +647,6 @@ function MetricStatCalloutDemo() {
     </div>
   );
 }
-
 
 
 // Static chart data for demos (avoids hydration issues)
@@ -1576,7 +1572,7 @@ export const stackClientApp = new StackClientApp({
           </div>
         </GlassCard>
 
-        </div>
+      </div>
     </PageLayout>
   );
 }

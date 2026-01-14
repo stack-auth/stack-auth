@@ -2,7 +2,7 @@
 
 import EmailPreview from "@/components/email-preview";
 import { useRouterConfirm } from "@/components/router";
-import { AssistantChat, CodeEditor, EmailThemeUI, VibeCodeLayout } from "@/components/vibe-coding";
+import { AssistantChat, CodeEditor, EmailThemeUI, VibeCodeLayout, type ViewportMode } from "@/components/vibe-coding";
 import {
   ToolCallContent,
   createChatAdapter,
@@ -22,7 +22,7 @@ export default function PageClient({ themeId }: { themeId: string }) {
   const theme = stackAdminApp.useEmailTheme(themeId);
   const { setNeedConfirm } = useRouterConfirm();
   const [currentCode, setCurrentCode] = useState(theme.tsxSource);
-  const [viewport, setViewport] = useState<'desktop' | 'tablet' | 'phone'>('desktop');
+  const [viewport, setViewport] = useState<ViewportMode>('edit');
 
   useEffect(() => {
     if (theme.tsxSource === currentCode) return;
@@ -65,11 +65,13 @@ export default function PageClient({ themeId }: { themeId: string }) {
         isDirty={isDirty}
         previewActions={previewActions}
         editorTitle="Theme Source Code"
+        editModeEnabled
         previewComponent={
           <EmailPreview
             themeTsxSource={currentCode}
             templateTsxSource={previewTemplateSource}
-            viewport={viewport === 'desktop' ? undefined : (viewport === 'tablet' ? { id: 'tablet', name: 'Tablet', width: 820, height: 1180, type: 'tablet' } : { id: 'phone', name: 'Phone', width: 390, height: 844, type: 'phone' })}
+            editMode={viewport === 'edit'}
+            viewport={viewport === 'desktop' || viewport === 'edit' ? undefined : (viewport === 'tablet' ? { id: 'tablet', name: 'Tablet', width: 820, height: 1180, type: 'tablet' } : { id: 'phone', name: 'Phone', width: 390, height: 844, type: 'phone' })}
           />
         }
         editorComponent={
