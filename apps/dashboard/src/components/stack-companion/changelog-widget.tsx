@@ -39,18 +39,6 @@ type ChangelogWidgetProps = {
 };
 
 
-const COLLAPSE_THRESHOLD = 220;
-
-const shouldCollapseContent = (markdown: string) => {
-  const textContent = markdown
-    .replace(/`([^`]+)`/g, '$1')
-    .replace(/\[(.*?)\]\((.*?)\)/g, '$1')
-    .replace(/[#>*_\-]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-  return textContent.length > COLLAPSE_THRESHOLD;
-};
-
 const formatVersion = (version: string) => {
   // Convert YYYY.MM.DD to YY.MM.DD format for display
   const calVerMatch = version.match(/^(\d{4})\.(\d{2})\.(\d{2})$/);
@@ -226,48 +214,44 @@ export function ChangelogWidget({ isActive, initialData }: ChangelogWidgetProps)
           </div>
         )}
 
-        {changelog.map((entry) => {
-          const collapse = shouldCollapseContent(entry.markdown);
-
-          return (
-            <div key={entry.id} className="bg-card rounded-lg border border-border">
-              <div className="px-4 py-4 flex items-center justify-between">
-                <div className="flex items-center gap-4">
-                  <h4 className="text-base font-semibold">v{formatVersion(entry.version)}</h4>
-                </div>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-7 w-7 p-0"
-                  onClick={() => toggleExpanded(entry.id)}
-                >
-                  {entry.expanded ? (
-                    <CaretUpIcon className="h-3 w-3" />
-                  ) : (
-                    <CaretDownIcon className="h-3 w-3" />
-                  )}
-                </Button>
+        {changelog.map((entry) => (
+          <div key={entry.id} className="bg-card rounded-lg border border-border">
+            <div className="px-4 py-4 flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                <h4 className="text-base font-semibold">v{formatVersion(entry.version)}</h4>
               </div>
-
-              {entry.expanded && (
-                <div className="px-4 pb-4">
-                  <div className="text-sm text-muted-foreground leading-relaxed space-y-3">
-                    <ReactMarkdown
-                      remarkPlugins={[remarkGfm]}
-                      components={{
-                        blockquote: NoteBlockquote,
-                        li: ChangelogListItem,
-                        img: ChangelogImage,
-                      }}
-                    >
-                      {entry.markdown}
-                    </ReactMarkdown>
-                  </div>
-                </div>
-              )}
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 w-7 p-0"
+                onClick={() => toggleExpanded(entry.id)}
+              >
+                {entry.expanded ? (
+                  <CaretUpIcon className="h-3 w-3" />
+                ) : (
+                  <CaretDownIcon className="h-3 w-3" />
+                )}
+              </Button>
             </div>
-          );
-        })}
+
+            {entry.expanded && (
+              <div className="px-4 pb-4">
+                <div className="text-sm text-muted-foreground leading-relaxed space-y-3">
+                  <ReactMarkdown
+                    remarkPlugins={[remarkGfm]}
+                    components={{
+                      blockquote: NoteBlockquote,
+                      li: ChangelogListItem,
+                      img: ChangelogImage,
+                    }}
+                  >
+                    {entry.markdown}
+                  </ReactMarkdown>
+                </div>
+              </div>
+            )}
+          </div>
+        ))}
       </div>
     </div>
   );
