@@ -10,8 +10,8 @@ export default function PageClient() {
     <PageLayout title="Payment Settings">
       <div className="space-y-6 max-w-3xl">
         <StripeConnectionCheck />
-        <PaymentMethods />
         <TestModeToggle />
+        <PaymentMethods />
       </div>
     </PageLayout>
   );
