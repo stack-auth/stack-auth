@@ -42,7 +42,7 @@ import { ApiKey, ApiKeyCreationOptions, ApiKeyUpdateOptions, apiKeyCreationOptio
 import { ConvexCtx, GetCurrentPartialUserOptions, GetCurrentUserOptions, HandlerUrls, OAuthScopesOnSignIn, RedirectMethod, RedirectToOptions, RequestLike, TokenStoreInit, stackAppInternalsSymbol } from "../../common";
 import { OAuthConnection } from "../../connected-accounts";
 import { ContactChannel, ContactChannelCreateOptions, ContactChannelUpdateOptions, contactChannelCreateOptionsToCrud, contactChannelUpdateOptionsToCrud } from "../../contact-channels";
-import { Customer, CustomerProductsList, CustomerProductsListOptions, CustomerProductsRequestOptions, Item } from "../../customers";
+import { Customer, CustomerBilling, CustomerDefaultPaymentMethod, CustomerPaymentMethodSetupIntent, CustomerProductsList, CustomerProductsListOptions, CustomerProductsRequestOptions, Item } from "../../customers";
 import { NotificationCategory } from "../../notification-categories";
 import { TeamPermission } from "../../permissions";
 import { AdminOwnedProject, AdminProjectUpdateOptions, Project, adminProjectCreateOptionsToCrud } from "../../projects";
@@ -266,6 +266,21 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         cursor: cursor ?? undefined,
         limit: limit ?? undefined,
       }, session);
+    }
+  );
+
+  private readonly _customerBillingCache = createCacheBySession<["user" | "team", string], {
+    has_customer: boolean,
+    default_payment_method: {
+      id: string,
+      brand: string | null,
+      last4: string | null,
+      exp_month: number | null,
+      exp_year: number | null,
+    } | null,
+  }>(
+    async (session, [customerType, customerId]) => {
+      return await this._interface.getCustomerBilling(customerType, customerId, session);
     }
   );
 
@@ -1153,8 +1168,35 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       customerType: item.product.customer_type,
       isServerOnly: item.product.server_only,
       stackable: item.product.stackable,
+      type: item.type,
+      subscription: item.subscription ? {
+        currentPeriodEnd: item.subscription.current_period_end ? new Date(item.subscription.current_period_end) : null,
+        cancelAtPeriodEnd: item.subscription.cancel_at_period_end,
+        isCancelable: item.subscription.is_cancelable,
+      } : null,
+      switchOptions: item.switch_options?.map((option) => ({
+        productId: option.product_id,
+        displayName: option.product.display_name,
+        prices: option.product.prices,
+      })),
     }));
     return Object.assign(products, { nextCursor: response.pagination.next_cursor ?? null });
+  }
+
+  protected _customerBillingFromResponse(response: {
+    has_customer: boolean,
+    default_payment_method: {
+      id: string,
+      brand: string | null,
+      last4: string | null,
+      exp_month: number | null,
+      exp_year: number | null,
+    } | null,
+  }): CustomerBilling {
+    return {
+      hasCustomer: response.has_customer,
+      defaultPaymentMethod: response.default_payment_method,
+    };
   }
 
   protected _createAuth(session: InternalSession): Auth {
@@ -1589,8 +1631,31 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
 
   protected _createCustomer(userIdOrTeamId: string, type: "user" | "team", session: InternalSession | null): Omit<Customer, "id"> {
     const app = this;
+    const effectiveSession = session ?? app._interface.createSession({ refreshToken: null });
     const customerOptions = type === "user" ? { userId: userIdOrTeamId } : { teamId: userIdOrTeamId };
     return {
+      async getBilling() {
+        const response = Result.orThrow(await app._customerBillingCache.getOrWait([effectiveSession, type, userIdOrTeamId], "write-only"));
+        return app._customerBillingFromResponse(response);
+      },
+      // IF_PLATFORM react-like
+      useBilling() {
+        const response = useAsyncCache(app._customerBillingCache, [effectiveSession, type, userIdOrTeamId] as const, "customer.useBilling()");
+        return app._customerBillingFromResponse(response);
+      },
+      // END_PLATFORM
+      async createPaymentMethodSetupIntent(): Promise<CustomerPaymentMethodSetupIntent> {
+        const body = await app._interface.createCustomerPaymentMethodSetupIntent(type, userIdOrTeamId, effectiveSession);
+        return {
+          clientSecret: body.client_secret,
+          stripeAccountId: body.stripe_account_id,
+        };
+      },
+      async setDefaultPaymentMethodFromSetupIntent(setupIntentId: string): Promise<CustomerDefaultPaymentMethod> {
+        const body = await app._interface.setDefaultCustomerPaymentMethodFromSetupIntent(type, userIdOrTeamId, setupIntentId, effectiveSession);
+        await app._customerBillingCache.refresh([effectiveSession, type, userIdOrTeamId]);
+        return body.default_payment_method;
+      },
       async getItem(itemId: string) {
         return await app.getItem({ itemId, ...customerOptions });
       },
@@ -1608,7 +1673,23 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       },
       // END_PLATFORM
       async createCheckoutUrl(options: { productId: string, returnUrl?: string }) {
-        return await app._interface.createCheckoutUrl(type, userIdOrTeamId, options.productId, session, options.returnUrl);
+        return await app._interface.createCheckoutUrl(type, userIdOrTeamId, options.productId, effectiveSession, options.returnUrl);
+      },
+      async switchSubscription(options: { fromProductId: string, toProductId: string, priceId?: string, quantity?: number }) {
+        await app._interface.switchSubscription({
+          customer_type: type,
+          customer_id: userIdOrTeamId,
+          from_product_id: options.fromProductId,
+          to_product_id: options.toProductId,
+          price_id: options.priceId,
+          quantity: options.quantity,
+        }, effectiveSession);
+        await app._customerBillingCache.refresh([effectiveSession, type, userIdOrTeamId]);
+        if (type === "user") {
+          await app._userProductsCache.invalidateWhere(([cachedSession, userId]) => cachedSession === effectiveSession && userId === userIdOrTeamId);
+        } else {
+          await app._teamProductsCache.invalidateWhere(([cachedSession, teamId]) => cachedSession === effectiveSession && teamId === userIdOrTeamId);
+        }
       },
     };
   }

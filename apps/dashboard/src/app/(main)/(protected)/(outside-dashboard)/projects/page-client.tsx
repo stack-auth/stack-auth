@@ -9,6 +9,7 @@ import { AdminOwnedProject, Team, useUser } from "@stackframe/stack";
 import { strictEmailSchema, yupObject } from "@stackframe/stack-shared/dist/schema-fields";
 import { groupBy } from "@stackframe/stack-shared/dist/utils/arrays";
 import { runAsynchronously, wait } from "@stackframe/stack-shared/dist/utils/promises";
+import { useQueryState } from "@stackframe/stack-shared/dist/utils/react";
 import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import * as yup from "yup";
@@ -124,7 +125,16 @@ const inviteFormSchema = yupObject({
 
 
 function TeamAddUserDialog(props: { team: Team }) {
-  const [open, setOpen] = useState(false);
+  const [teamSettingsId, setTeamSettingsId] = useQueryState("team_settings");
+
+  const open = teamSettingsId === props.team.id;
+  const setOpen = (isOpen: boolean) => {
+    if (isOpen) {
+      setTeamSettingsId(props.team.id);
+    } else {
+      setTeamSettingsId(null);
+    }
+  };
 
   return (
     <>

@@ -1561,6 +1561,12 @@ importers:
       '@stackframe/stack-ui':
         specifier: workspace:*
         version: link:../stack-ui
+      '@stripe/react-stripe-js':
+        specifier: ^3.8.1
+        version: 3.8.1(@stripe/stripe-js@7.7.0)(react-dom@19.2.1(react@19.2.1))(react@19.2.1)
+      '@stripe/stripe-js':
+        specifier: ^7.7.0
+        version: 7.7.0
       '@tanstack/react-table':
         specifier: ^8.20.5
         version: 8.20.5(react-dom@19.2.1(react@19.2.1))(react@19.2.1)
@@ -1685,6 +1691,12 @@ importers:
       '@stackframe/stack-ui':
         specifier: workspace:*
         version: link:../stack-ui
+      '@stripe/react-stripe-js':
+        specifier: ^3.8.1
+        version: 3.8.1(@stripe/stripe-js@7.7.0)(react-dom@19.2.1(react@19.2.1))(react@19.2.1)
+      '@stripe/stripe-js':
+        specifier: ^7.7.0
+        version: 7.7.0
       '@tanstack/react-table':
         specifier: ^8.20.5
         version: 8.20.5(react-dom@19.2.1(react@19.2.1))(react@19.2.1)
@@ -2067,6 +2079,12 @@ importers:
       '@stackframe/stack-ui':
         specifier: workspace:*
         version: link:../stack-ui
+      '@stripe/react-stripe-js':
+        specifier: ^3.8.1
+        version: 3.8.1(@stripe/stripe-js@7.7.0)(react-dom@19.2.1(react@19.2.1))(react@19.2.1)
+      '@stripe/stripe-js':
+        specifier: ^7.7.0
+        version: 7.7.0
       '@tanstack/react-table':
         specifier: ^8.20.5
         version: 8.20.5(react-dom@19.2.1(react@19.2.1))(react@19.2.1)
@@ -27221,6 +27239,13 @@ snapshots:
       '@stripe/connect-js': 3.3.27
       react: 19.2.3
       react-dom: 19.2.3(react@19.2.3)
+
+  '@stripe/react-stripe-js@3.8.1(@stripe/stripe-js@7.7.0)(react-dom@19.2.1(react@19.2.1))(react@19.2.1)':
+    dependencies:
+      '@stripe/stripe-js': 7.7.0
+      prop-types: 15.8.1
+      react: 19.2.1
+      react-dom: 19.2.1(react@19.2.1)
 
   '@stripe/react-stripe-js@3.8.1(@stripe/stripe-js@7.7.0)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)':
     dependencies:
