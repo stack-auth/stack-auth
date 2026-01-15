@@ -144,6 +144,7 @@ const branchAuthSchema = yupObject({
 });
 
 export const branchPaymentsSchema = yupObject({
+  blockNewPurchases: yupBoolean(),
   autoPay: yupObject({
     interval: schemaFields.dayIntervalSchema,
   }).optional(),
@@ -171,6 +172,10 @@ const branchDomain = yupObject({
   allowLocalhost: yupBoolean(),
 });
 
+const branchOnboardingSchema = yupObject({
+  requireEmailVerification: yupBoolean(),
+});
+
 
 export const branchConfigSchema = canNoLongerBeOverridden(projectConfigSchema, ["sourceOfTruth"]).concat(yupObject({
   rbac: branchRbacSchema,
@@ -183,6 +188,8 @@ export const branchConfigSchema = canNoLongerBeOverridden(projectConfigSchema, [
   users: yupObject({
     allowClientUserDeletion: yupBoolean(),
   }),
+
+  onboarding: branchOnboardingSchema,
 
   apiKeys: branchApiKeysSchema,
 
@@ -477,6 +484,10 @@ const organizationConfigDefaults = {
     allowClientUserDeletion: false,
   },
 
+  onboarding: {
+    requireEmailVerification: false,
+  },
+
   domains: {
     allowLocalhost: false,
     trustedDomains: (key: string) => ({
@@ -535,6 +546,7 @@ const organizationConfigDefaults = {
   },
 
   payments: {
+    blockNewPurchases: false,
     testMode: true,
     autoPay: undefined,
     catalogs: (key: string) => ({

@@ -54,6 +54,12 @@ export const ALL_APPS = {
     tags: ["auth", "security"],
     stage: "stable",
   },
+  "onboarding": {
+    displayName: "Onboarding",
+    subtitle: "Configure user onboarding requirements",
+    tags: ["auth"],
+    stage: "alpha",
+  },
   "teams": {
     displayName: "Teams",
     subtitle: "Team collaboration and management",

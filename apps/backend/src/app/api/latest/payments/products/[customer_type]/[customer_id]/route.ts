@@ -5,6 +5,7 @@ import { adaptSchema, clientOrHigherAuthTypeSchema, inlineProductSchema, serverO
 import { KnownErrors } from "@stackframe/stack-shared";
 import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 import { customerProductsListResponseSchema } from "@stackframe/stack-shared/dist/interface/crud/products";
+import { typedEntries, typedFromEntries, typedKeys } from "@stackframe/stack-shared/dist/utils/objects";
 
 export const GET = createSmartRouteHandler({
   metadata: {
@@ -45,17 +46,55 @@ export const GET = createSmartRouteHandler({
         ? ownedProducts.filter(({ product }) => !product.serverOnly)
         : ownedProducts;
 
+    const switchOptionsByCatalogId = new Map<string, Array<{ product_id: string, product: ReturnType<typeof productToInlineProduct> }>>();
+
+    const configuredProducts = auth.tenancy.config.payments.products;
+    for (const [productId, product] of typedEntries(configuredProducts)) {
+      if (product.customerType !== params.customer_type) continue;
+      if (auth.type === "client" && product.serverOnly) continue;
+      if (!product.catalogId) continue;
+      if (product.prices === "include-by-default") continue;
+      const hasIntervalPrice = typedEntries(product.prices).some(([, price]) => price.interval);
+      if (!hasIntervalPrice) continue;
+      if (product.isAddOnTo && typedKeys(product.isAddOnTo).length > 0) continue;
+
+      const inlineProduct = productToInlineProduct(product);
+      const intervalPrices = typedFromEntries(
+        typedEntries(inlineProduct.prices).filter(([, price]) => price.interval),
+      );
+      if (typedEntries(intervalPrices).length === 0) continue;
+
+      const existing = switchOptionsByCatalogId.get(product.catalogId) ?? [];
+      existing.push({ product_id: productId, product: { ...inlineProduct, prices: intervalPrices } });
+      switchOptionsByCatalogId.set(product.catalogId, existing);
+    }
+
     const sorted = visibleProducts
       .slice()
       .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
-      .map((product) => ({
-        cursor: product.sourceId,
-        item: {
-          id: product.id,
-          quantity: product.quantity,
-          product: productToInlineProduct(product.product),
-        },
-      }));
+      .map((product) => {
+        const catalogId = product.product.catalogId;
+        const switchOptions =
+          product.type === "subscription" && product.id && catalogId
+            ? (switchOptionsByCatalogId.get(catalogId) ?? []).filter((option) => option.product_id !== product.id)
+            : undefined;
+
+        return {
+          cursor: product.sourceId,
+          item: {
+            id: product.id,
+            quantity: product.quantity,
+            product: productToInlineProduct(product.product),
+            type: product.type,
+            subscription: product.subscription ? {
+              current_period_end: product.subscription.currentPeriodEnd ? product.subscription.currentPeriodEnd.toISOString() : null,
+              cancel_at_period_end: product.subscription.cancelAtPeriodEnd,
+              is_cancelable: product.subscription.isCancelable,
+            } : null,
+            switch_options: switchOptions,
+          },
+        };
+      });
 
     let startIndex = 0;
     if (query.cursor) {
@@ -82,6 +121,7 @@ export const GET = createSmartRouteHandler({
     };
   },
 });
+
 
 export const POST = createSmartRouteHandler({
   metadata: {
@@ -151,3 +191,4 @@ export const POST = createSmartRouteHandler({
     };
   },
 });
+
