@@ -385,7 +385,11 @@ export default function PageClient() {
   };
 
   const handleCancel = () => {
-    window.history.back();
+    if (window.history.length > 1) {
+      window.history.back();
+    } else {
+      router.push(`/projects/${projectId}/payments/products`);
+    }
   };
 
   // Show customer type selection if not selected yet
