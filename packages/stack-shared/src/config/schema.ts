@@ -373,40 +373,9 @@ export function migrateConfigOverride(type: "project" | "branch" | "environment"
   }
   // END
 
-  // BEGIN 2026-01-14: payments.catalogs is now payments.productLines
+  // BEGIN 2026-01-14: payments.catalogs is now payments.productLines (with customerType inferred from products) and payments.products.*.catalogId is now payments.products.*.productLineId
   if (isBranchOrHigher) {
-    res = renameProperty(res, "payments.catalogs", "productLines");
-  }
-  // END
-
-  // BEGIN 2026-01-14: payments.products.*.catalogId is now payments.products.*.productLineId
-  if (isBranchOrHigher) {
-    res = renameProperty(res, (p) => p.length === 4 && p[0] === "payments" && p[1] === "products" && p[3] === "catalogId", (p) => "productLineId");
-  }
-  // END
-
-  // BEGIN 2026-01-14: infer productLines.*.customerType from products if missing
-  if (isBranchOrHigher) {
-    // Build a map of productLineId -> customerType from products
-    const productLineCustomerTypes = new Map<string, string>();
-    for (const [key, value] of Object.entries(res)) {
-      const path = key.split(".");
-      if (path.length === 4 && path[0] === "payments" && path[1] === "products" && path[3] === "customerType") {
-        const productId = path[2];
-        const productLineIdKey = `payments.products.${productId}.productLineId`;
-        const productLineId = res[productLineIdKey];
-        if (productLineId && typeof value === "string") {
-          productLineCustomerTypes.set(productLineId, value);
-        }
-      }
-    }
-    // Apply inferred customerType to productLines that don't have one
-    for (const [productLineId, customerType] of productLineCustomerTypes) {
-      const customerTypeKey = `payments.productLines.${productLineId}.customerType`;
-      if (!(customerTypeKey in res)) {
-        res[customerTypeKey] = customerType;
-      }
-    }
+    res = migrateCatalogsToProductLines(res);
   }
   // END
 
@@ -491,6 +460,435 @@ import.meta.vitest?.test("renameProperty", ({ expect }) => {
 
   // Errors
   expect(() => renameProperty({ a: 1 }, "a", "b.c")).toThrow();
+});
+
+
+/**
+ * Migrates the old "catalogs" format to "productLines", including:
+ * 1. Renaming payments.catalogs -> payments.productLines
+ * 2. Inferring customerType for each catalog from its products (since old catalogs didn't have customerType)
+ * 3. Renaming payments.products.*.catalogId -> payments.products.*.productLineId
+ *
+ * This handles all config formats (nested objects, flat dot-notation, or mixed).
+ */
+function migrateCatalogsToProductLines(obj: Record<string, any>): Record<string, any> {
+  // Step 1: Collect catalogId -> customerType mappings from products
+  const catalogCustomerTypes = new Map<string, string>();
+  collectCatalogCustomerTypes(obj, [], catalogCustomerTypes);
+
+  // Step 2: Find all catalog IDs that exist and check if they have customerType
+  const catalogsNeedingCustomerType = new Set<string>();
+  findCatalogsNeedingCustomerType(obj, [], catalogCustomerTypes, catalogsNeedingCustomerType);
+
+  // Step 3: Add customerType keys for catalogs that need them
+  let res = { ...obj };
+  for (const catalogId of catalogsNeedingCustomerType) {
+    const customerType = catalogCustomerTypes.get(catalogId);
+    if (customerType) {
+      // Find the format used for this catalog and add customerType in the same format
+      res = addCustomerTypeToCatalog(res, catalogId, customerType);
+    }
+  }
+
+  // Step 4: Rename catalogs -> productLines
+  res = renameProperty(res, "payments.catalogs", "productLines");
+
+  // Step 5: Rename catalogId -> productLineId in products
+  res = renameProperty(res, (p) => p.length === 4 && p[0] === "payments" && p[1] === "products" && p[3] === "catalogId", () => "productLineId");
+
+  return res;
+}
+
+/**
+ * Recursively collects catalogId -> customerType mappings from products.
+ * Handles both nested and flat config formats.
+ */
+function collectCatalogCustomerTypes(
+  obj: Record<string, any>,
+  basePath: string[],
+  result: Map<string, string>
+): void {
+  for (const [key, value] of typedEntries(obj)) {
+    const keyParts = key.split(".");
+    const fullPath = [...basePath, ...keyParts];
+
+    // Check for flat format at ROOT level only: payments.products.<productId>.catalogId
+    // We check basePath.length === 0 to ensure we're at root and key contains the full path
+    if (basePath.length === 0 && fullPath.length === 4 && fullPath[0] === "payments" && fullPath[1] === "products" && fullPath[3] === "catalogId") {
+      if (typeof value === "string") {
+        const productId = fullPath[2];
+        // Look for customerType in the same flat format
+        const customerTypeKey = `payments.products.${productId}.customerType`;
+        if (customerTypeKey in obj && typeof obj[customerTypeKey] === "string") {
+          result.set(value, obj[customerTypeKey]);
+        }
+      }
+    }
+
+    // Check for nested format: payments.products.<productId> with object value
+    if (fullPath.length === 3 && fullPath[0] === "payments" && fullPath[1] === "products" && isObjectLike(value)) {
+      const catalogId = findPropertyValue(value, "catalogId");
+      const customerType = findPropertyValue(value, "customerType");
+      if (catalogId && typeof catalogId === "string" && customerType && typeof customerType === "string") {
+        result.set(catalogId, customerType);
+      }
+    }
+
+    if (isObjectLike(value)) {
+      collectCatalogCustomerTypes(value, fullPath, result);
+    }
+  }
+}
+
+/**
+ * Finds a property value in an object, handling both direct properties and dot-notation keys.
+ */
+function findPropertyValue(obj: Record<string, any>, propertyName: string): any {
+  // Direct property
+  if (propertyName in obj) {
+    return obj[propertyName];
+  }
+  // Check for dot-notation keys that end with the property name
+  for (const key of Object.keys(obj)) {
+    const parts = key.split(".");
+    if (parts[parts.length - 1] === propertyName) {
+      return obj[key];
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Finds catalogs that exist but don't have customerType set.
+ */
+function findCatalogsNeedingCustomerType(
+  obj: Record<string, any>,
+  basePath: string[],
+  catalogCustomerTypes: Map<string, string>,
+  result: Set<string>
+): void {
+  for (const [key, value] of typedEntries(obj)) {
+    const keyParts = key.split(".");
+    const fullPath = [...basePath, ...keyParts];
+
+    // Check for catalog entry at payments.catalogs.<catalogId>
+    if (fullPath.length >= 3 && fullPath[0] === "payments" && fullPath[1] === "catalogs") {
+      const catalogId = fullPath[2];
+      if (catalogCustomerTypes.has(catalogId)) {
+        // Check if this catalog already has customerType
+        if (fullPath.length === 3 && isObjectLike(value)) {
+          // Nested format: check if value has customerType
+          if (findPropertyValue(value, "customerType") === undefined) {
+            result.add(catalogId);
+          }
+        } else if (fullPath.length > 3 && fullPath[3] !== "customerType") {
+          // Flat format: we're seeing a property of the catalog
+          // Check if customerType key exists for this catalog
+          const customerTypeKey = `payments.catalogs.${catalogId}.customerType`;
+          const hasCustomerType = checkPropertyExists(obj, customerTypeKey.split("."), []);
+          if (!hasCustomerType) {
+            result.add(catalogId);
+          }
+        }
+      }
+    }
+
+    if (isObjectLike(value)) {
+      findCatalogsNeedingCustomerType(value, fullPath, catalogCustomerTypes, result);
+    }
+  }
+}
+
+/**
+ * Checks if a property exists anywhere in the object (nested or flat).
+ */
+function checkPropertyExists(obj: Record<string, any>, targetPath: string[], basePath: string[]): boolean {
+  for (const [key, value] of typedEntries(obj)) {
+    const keyParts = key.split(".");
+    const fullPath = [...basePath, ...keyParts];
+
+    if (fullPath.join(".") === targetPath.join(".")) {
+      return true;
+    }
+
+    if (isObjectLike(value) && targetPath.join(".").startsWith(fullPath.join("."))) {
+      if (checkPropertyExists(value, targetPath, fullPath)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+/**
+ * Adds customerType to a catalog in the appropriate format.
+ */
+function addCustomerTypeToCatalog(obj: Record<string, any>, catalogId: string, customerType: string): Record<string, any> {
+  // Don't process arrays - they should be copied as-is
+  if (Array.isArray(obj)) {
+    return obj;
+  }
+
+  const res: Record<string, any> = {};
+
+  // First, copy all existing properties
+  for (const [key, value] of typedEntries(obj)) {
+    if (Array.isArray(value)) {
+      // Copy arrays directly without processing
+      res[key] = value;
+    } else if (isObjectLike(value)) {
+      res[key] = addCustomerTypeToCatalog(value, catalogId, customerType);
+    } else {
+      res[key] = value;
+    }
+  }
+
+  // Check what format the catalog uses
+  // Format 1: { payments: { catalogs: { [catalogId]: { ... } } } }
+  const payments = res.payments;
+  if (payments && isObjectLike(payments) && !Array.isArray(payments) && typeof payments !== "function") {
+    const paymentsObj = payments as Record<string, any>;
+    const catalogs = paymentsObj.catalogs;
+    if (catalogs && isObjectLike(catalogs) && !Array.isArray(catalogs) && typeof catalogs !== "function") {
+      const catalogsObj = catalogs as Record<string, any>;
+      const catalog = catalogsObj[catalogId];
+      if (catalog && isObjectLike(catalog)) {
+        if (!("customerType" in catalog)) {
+          catalogsObj[catalogId] = { ...catalog, customerType };
+        }
+        return res;
+      }
+    }
+  }
+
+  // Format 2: { "payments.catalogs": { [catalogId]: { ... } } }
+  const paymentsCatalogs = res["payments.catalogs"];
+  if (paymentsCatalogs && isObjectLike(paymentsCatalogs) && !Array.isArray(paymentsCatalogs) && typeof paymentsCatalogs !== "function") {
+    const catalogs = paymentsCatalogs as Record<string, any>;
+    if (catalogId in catalogs && isObjectLike(catalogs[catalogId])) {
+      if (!("customerType" in catalogs[catalogId])) {
+        catalogs[catalogId] = { ...catalogs[catalogId], customerType };
+      }
+      return res;
+    }
+  }
+
+  // Format 3: { "payments.catalogs.[catalogId]": { ... } }
+  const catalogKey = `payments.catalogs.${catalogId}`;
+  if (catalogKey in res && isObjectLike(res[catalogKey])) {
+    if (!("customerType" in res[catalogKey])) {
+      res[catalogKey] = { ...res[catalogKey], customerType };
+    }
+    return res;
+  }
+
+  // Format 4: { "payments.catalogs.[catalogId].displayName": "..." }
+  // Need to add a new key for customerType
+  const customerTypeKey = `payments.catalogs.${catalogId}.customerType`;
+  for (const key of Object.keys(res)) {
+    if (key.startsWith(`payments.catalogs.${catalogId}.`) && key !== customerTypeKey) {
+      // Found a flat key for this catalog, add customerType in same format
+      res[customerTypeKey] = customerType;
+      return res;
+    }
+  }
+
+  return res;
+}
+
+import.meta.vitest?.test("migrateCatalogsToProductLines - basic migrations", ({ expect }) => {
+  // Basic nested format
+  expect(migrateCatalogsToProductLines({
+    payments: {
+      catalogs: {
+        myCatalog: { displayName: "My Catalog" }
+      },
+      products: {
+        myProduct: { catalogId: "myCatalog", customerType: "user", prices: {} }
+      }
+    }
+  })).toEqual({
+    payments: {
+      productLines: {
+        myCatalog: { displayName: "My Catalog", customerType: "user" }
+      },
+      products: {
+        myProduct: { productLineId: "myCatalog", customerType: "user", prices: {} }
+      }
+    }
+  });
+
+  // Flat format
+  expect(migrateCatalogsToProductLines({
+    "payments.catalogs.myCatalog": { displayName: "My Catalog" },
+    "payments.products.myProduct.catalogId": "myCatalog",
+    "payments.products.myProduct.customerType": "user",
+  })).toEqual({
+    "payments.productLines.myCatalog": { displayName: "My Catalog", customerType: "user" },
+    "payments.products.myProduct.productLineId": "myCatalog",
+    "payments.products.myProduct.customerType": "user",
+  });
+
+  // Mixed format
+  expect(migrateCatalogsToProductLines({
+    payments: {
+      catalogs: { myCatalog: { displayName: "My Catalog" } }
+    },
+    "payments.products.myProduct": { catalogId: "myCatalog", customerType: "user" }
+  })).toEqual({
+    payments: {
+      productLines: { myCatalog: { displayName: "My Catalog", customerType: "user" } }
+    },
+    "payments.products.myProduct": { productLineId: "myCatalog", customerType: "user" }
+  });
+});
+
+import.meta.vitest?.test("migrateCatalogsToProductLines - does not overwrite existing customerType", ({ expect }) => {
+  // If catalog already has customerType, don't overwrite it
+  expect(migrateCatalogsToProductLines({
+    payments: {
+      catalogs: {
+        myCatalog: { displayName: "My Catalog", customerType: "team" }
+      },
+      products: {
+        myProduct: { catalogId: "myCatalog", customerType: "user", prices: {} }
+      }
+    }
+  })).toEqual({
+    payments: {
+      productLines: {
+        myCatalog: { displayName: "My Catalog", customerType: "team" }
+      },
+      products: {
+        myProduct: { productLineId: "myCatalog", customerType: "user", prices: {} }
+      }
+    }
+  });
+});
+
+import.meta.vitest?.test("migrateCatalogsToProductLines - multiple catalogs and products", ({ expect }) => {
+  expect(migrateCatalogsToProductLines({
+    payments: {
+      catalogs: {
+        userPlans: { displayName: "User Plans" },
+        teamPlans: { displayName: "Team Plans" }
+      },
+      products: {
+        userBasic: { catalogId: "userPlans", customerType: "user", prices: {} },
+        userPro: { catalogId: "userPlans", customerType: "user", prices: {} },
+        teamBasic: { catalogId: "teamPlans", customerType: "team", prices: {} }
+      }
+    }
+  })).toEqual({
+    payments: {
+      productLines: {
+        userPlans: { displayName: "User Plans", customerType: "user" },
+        teamPlans: { displayName: "Team Plans", customerType: "team" }
+      },
+      products: {
+        userBasic: { productLineId: "userPlans", customerType: "user", prices: {} },
+        userPro: { productLineId: "userPlans", customerType: "user", prices: {} },
+        teamBasic: { productLineId: "teamPlans", customerType: "team", prices: {} }
+      }
+    }
+  });
+});
+
+import.meta.vitest?.test("migrateCatalogsToProductLines - catalog without products", ({ expect }) => {
+  // Catalog without any products should still be renamed but won't get customerType
+  expect(migrateCatalogsToProductLines({
+    payments: {
+      catalogs: {
+        emptyCatalog: { displayName: "Empty" }
+      },
+      products: {}
+    }
+  })).toEqual({
+    payments: {
+      productLines: {
+        emptyCatalog: { displayName: "Empty" }
+      },
+      products: {}
+    }
+  });
+});
+
+import.meta.vitest?.test("migrateCatalogsToProductLines - products without catalogId", ({ expect }) => {
+  // Products without catalogId should not affect catalogs
+  expect(migrateCatalogsToProductLines({
+    payments: {
+      catalogs: {
+        myCatalog: { displayName: "My Catalog" }
+      },
+      products: {
+        standalone: { customerType: "user", prices: {} }
+      }
+    }
+  })).toEqual({
+    payments: {
+      productLines: {
+        myCatalog: { displayName: "My Catalog" }
+      },
+      products: {
+        standalone: { customerType: "user", prices: {} }
+      }
+    }
+  });
+});
+
+import.meta.vitest?.test("migrateCatalogsToProductLines - deeply nested flat format", ({ expect }) => {
+  expect(migrateCatalogsToProductLines({
+    "payments.catalogs.myCatalog.displayName": "My Catalog",
+    "payments.products.myProduct.catalogId": "myCatalog",
+    "payments.products.myProduct.customerType": "user",
+    "payments.products.myProduct.prices": {},
+  })).toEqual({
+    "payments.productLines.myCatalog.displayName": "My Catalog",
+    "payments.productLines.myCatalog.customerType": "user",
+    "payments.products.myProduct.productLineId": "myCatalog",
+    "payments.products.myProduct.customerType": "user",
+    "payments.products.myProduct.prices": {},
+  });
+});
+
+import.meta.vitest?.test("migrateCatalogsToProductLines - no catalogs", ({ expect }) => {
+  // Config without catalogs should pass through unchanged (except productLineId rename)
+  expect(migrateCatalogsToProductLines({
+    payments: {
+      products: {
+        myProduct: { catalogId: "someCatalog", customerType: "user" }
+      }
+    }
+  })).toEqual({
+    payments: {
+      products: {
+        myProduct: { productLineId: "someCatalog", customerType: "user" }
+      }
+    }
+  });
+});
+
+import.meta.vitest?.test("migrateCatalogsToProductLines - already migrated (productLines)", ({ expect }) => {
+  // Already has productLines, should not change customerType
+  expect(migrateCatalogsToProductLines({
+    payments: {
+      productLines: {
+        myLine: { displayName: "My Line", customerType: "team" }
+      },
+      products: {
+        myProduct: { productLineId: "myLine", customerType: "team" }
+      }
+    }
+  })).toEqual({
+    payments: {
+      productLines: {
+        myLine: { displayName: "My Line", customerType: "team" }
+      },
+      products: {
+        myProduct: { productLineId: "myLine", customerType: "team" }
+      }
+    }
+  });
 });
 
 
