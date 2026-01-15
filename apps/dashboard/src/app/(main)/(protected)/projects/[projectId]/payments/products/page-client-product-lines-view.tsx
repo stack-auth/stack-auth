@@ -34,6 +34,7 @@ import type { DayInterval } from "@stackframe/stack-shared/dist/utils/dates";
 import { prettyPrintWithMagnitudes } from "@stackframe/stack-shared/dist/utils/numbers";
 import { typedEntries, typedFromEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
+import { urlString } from '@stackframe/stack-shared/dist/utils/urls';
 import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useAdminApp, useProjectId } from "../../use-admin-app";
 import { IntervalPopover, OrSeparator, SectionHeading } from "./components";
@@ -48,7 +49,6 @@ import {
   type PricesObject,
   type Product
 } from "./utils";
-import { urlString } from '@stackframe/stack-shared/dist/utils/urls';
 
 // Custom error class to signal validation failures without closing edit mode
 class ValidationError extends Error {
@@ -1876,7 +1876,7 @@ function ProductLineView({ groupedProducts, groups, existingItems, onSaveProduct
                   ))}
 
                   {/* Add product button */}
-                  <Link href={`/projects/${projectId}/payments/products/new`}>
+                  <Link href={productLineId ? urlString`/projects/${projectId}/payments/products/new?productLineId=${productLineId}` : urlString`/projects/${projectId}/payments/products/new`}>
                     <Button
                       variant="outline"
                       size="plain"
