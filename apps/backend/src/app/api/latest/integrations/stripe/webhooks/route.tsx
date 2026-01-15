@@ -2,6 +2,7 @@ import { sendEmailToMany, type EmailOutboxRecipient } from "@/lib/emails";
 import { listPermissions } from "@/lib/permissions";
 import { getStackStripe, getStripeForAccount, handleStripeInvoicePaid, syncStripeSubscriptions } from "@/lib/stripe";
 import { getTenancy, type Tenancy } from "@/lib/tenancies";
+import { getTelegramConfig, sendTelegramMessage } from "@/lib/telegram";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { DEFAULT_TEMPLATE_IDS } from "@stackframe/stack-shared/dist/helpers/emails";
@@ -56,6 +57,40 @@ const normalizeCustomerType = (value: string | null | undefined) => {
   }
   const normalized = value.toLowerCase();
   return typedIncludes(paymentCustomerTypes, normalized) ? normalized : null;
+};
+
+const formatStripeTimestamp = (timestampSeconds: number | null | undefined) => {
+  if (typeof timestampSeconds !== "number" || Number.isNaN(timestampSeconds)) {
+    return "Timestamp unavailable";
+  }
+  return new Date(timestampSeconds * 1000).toISOString();
+};
+
+const buildChargebackMessage = (options: {
+  accountId: string,
+  eventId: string,
+  tenancy: Tenancy,
+  dispute: Stripe.Dispute,
+}) => {
+  const chargeId = typeof options.dispute.charge === "string" ? options.dispute.charge : null;
+  const paymentIntentId = typeof options.dispute.payment_intent === "string" ? options.dispute.payment_intent : null;
+  const lines = [
+    "Stripe chargeback received",
+    `Project: ${options.tenancy.project.display_name} (${options.tenancy.project.id})`,
+    `Tenancy: ${options.tenancy.id}`,
+    `StripeAccount: ${options.accountId}`,
+    `Event: ${options.eventId}`,
+    `Dispute: ${options.dispute.id}`,
+    `Amount: ${formatAmount(options.dispute.amount, options.dispute.currency)}`,
+    `Reason: ${options.dispute.reason}`,
+    `Status: ${options.dispute.status}`,
+    chargeId ? `Charge: ${chargeId}` : null,
+    paymentIntentId ? `PaymentIntent: ${paymentIntentId}` : null,
+    `Created: ${formatStripeTimestamp(options.dispute.created)}`,
+    `LiveMode: ${options.dispute.livemode ? "true" : "false"}`,
+  ].filter((line): line is string => Boolean(line));
+
+  return lines.join("\n");
 };
 
 async function getTenancyForStripeAccountId(accountId: string, mockData?: StripeOverridesMap) {
@@ -231,6 +266,28 @@ async function processStripeWebhookEvent(event: Stripe.Event): Promise<void> {
       recipients,
       templateType: "payment_failed",
       extraVariables,
+    });
+  }
+  if (event.type === "charge.dispute.created") {
+    const telegramConfig = getTelegramConfig("chargebacks");
+    if (!telegramConfig) {
+      return;
+    }
+    const accountId = event.account;
+    if (!accountId) {
+      throw new StackAssertionError("Stripe webhook account id missing", { event });
+    }
+    const dispute = event.data.object as Stripe.Dispute;
+    const tenancy = await getTenancyForStripeAccountId(accountId, mockData);
+    const message = buildChargebackMessage({
+      accountId,
+      eventId: event.id,
+      tenancy,
+      dispute,
+    });
+    await sendTelegramMessage({
+      ...telegramConfig,
+      message,
     });
   }
   if (isSubscriptionChangedEvent(event)) {

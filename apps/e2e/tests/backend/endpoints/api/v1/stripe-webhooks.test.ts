@@ -1,3 +1,4 @@
+import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { it } from "../../../../helpers";
 import { bumpEmailAddress, niceBackendFetch, Payments, Project, User } from "../../../backend-helpers";
@@ -63,6 +64,42 @@ it("returns 400 when signature header is missing (schema validation)", async ({ 
   };
   const res = await Payments.sendStripeWebhook(payload, { omitSignature: true });
   expect(res.status).toBe(400);
+});
+
+it("accepts chargeback webhooks", async ({ expect }) => {
+  const { code } = await Payments.createPurchaseUrlAndGetCode();
+  const stackTestTenancyId = (code ?? throwErr("Missing purchase code for chargeback test.")).split("_")[0];
+
+  const accountInfo = await niceBackendFetch("/api/latest/internal/payments/stripe/account-info", {
+    accessType: "admin",
+  });
+  expect(accountInfo.status).toBe(200);
+  const accountId: string = accountInfo.body.account_id;
+
+  const payload = {
+    id: "evt_chargeback_test",
+    type: "charge.dispute.created",
+    account: accountId,
+    data: {
+      object: {
+        id: "dp_test_123",
+        amount: 1500,
+        currency: "usd",
+        reason: "fraudulent",
+        status: "needs_response",
+        charge: "ch_test_123",
+        created: 1730000000,
+        livemode: false,
+        stack_stripe_mock_data: {
+          "accounts.retrieve": { metadata: { tenancyId: stackTestTenancyId } },
+        },
+      },
+    },
+  };
+
+  const res = await Payments.sendStripeWebhook(payload);
+  expect(res.status).toBe(200);
+  expect(res.body).toMatchInlineSnapshot(`{ "received": true }`);
 });
 
 
