@@ -26,16 +26,14 @@ async function waitForNoOutboxEmail(subject: string) {
 }
 
 
-it("accepts signed mock_event.succeeded webhook", async ({ expect }) => {
+it("rejects signed mock_event.succeeded webhook", async ({ expect }) => {
   const payload = {
     id: "evt_test_1",
     type: "mock_event.succeeded",
     account: "acct_test123",
     data: { object: { customer: "cus_test123", metadata: {} } },
   };
-  const res = await Payments.sendStripeWebhook(payload);
-  expect(res.status).toBe(200);
-  expect(res.body).toEqual({ received: true });
+  await expect(Payments.sendStripeWebhook(payload)).rejects.toThrow(/Unknown stripe webhook type received/);
 });
 
 it("returns 400 on invalid signature", async ({ expect }) => {
@@ -53,6 +51,17 @@ it("returns 400 on invalid signature", async ({ expect }) => {
       "headers": Headers { <some fields may have been hidden> },
     }
   `);
+});
+
+it("returns 500 on unknown webhook type", async ({ expect }) => {
+  const payload = {
+    id: "evt_test_unknown",
+    type: "unknown.event",
+    account: "acct_test123",
+    data: { object: {} },
+  };
+
+  await expect(Payments.sendStripeWebhook(payload)).rejects.toThrow(/Unknown stripe webhook type received/);
 });
 
 it("returns 400 when signature header is missing (schema validation)", async ({ expect }) => {

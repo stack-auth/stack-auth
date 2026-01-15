@@ -229,7 +229,7 @@ async function processStripeWebhookEvent(event: Stripe.Event): Promise<void> {
       extraVariables,
     });
   }
-  if (event.type === "payment_intent.payment_failed" && event.data.object.metadata.purchaseKind === "ONE_TIME") {
+  else if (event.type === "payment_intent.payment_failed" && event.data.object.metadata.purchaseKind === "ONE_TIME") {
     const paymentIntent = event.data.object as Stripe.PaymentIntent;
     const metadata = paymentIntent.metadata;
     const accountId = event.account;
@@ -268,7 +268,7 @@ async function processStripeWebhookEvent(event: Stripe.Event): Promise<void> {
       extraVariables,
     });
   }
-  if (event.type === "charge.dispute.created") {
+  else if (event.type === "charge.dispute.created") {
     const telegramConfig = getTelegramConfig("chargebacks");
     if (!telegramConfig) {
       return;
@@ -290,7 +290,7 @@ async function processStripeWebhookEvent(event: Stripe.Event): Promise<void> {
       message,
     });
   }
-  if (isSubscriptionChangedEvent(event)) {
+  else if (isSubscriptionChangedEvent(event)) {
     const accountId = event.account;
     const customerId = event.data.object.customer;
     if (!accountId) {
@@ -388,6 +388,9 @@ async function processStripeWebhookEvent(event: Stripe.Event): Promise<void> {
         extraVariables,
       });
     }
+  }
+  else {
+    throw new StackAssertionError("Unknown stripe webhook type received", { event });
   }
 }
 
