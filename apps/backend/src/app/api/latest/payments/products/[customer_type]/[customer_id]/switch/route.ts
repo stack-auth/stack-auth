@@ -42,6 +42,9 @@ export const POST = createSmartRouteHandler({
     }).defined(),
   }),
   handler: async ({ auth, params, body }, fullReq) => {
+    if (auth.tenancy.config.payments.blockNewPurchases) {
+      throw new KnownErrors.NewPurchasesBlocked();
+    }
     if (auth.type === "client") {
       await ensureClientCanAccessCustomer({
         customerType: params.customer_type,
