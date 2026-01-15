@@ -170,6 +170,7 @@ export const branchPaymentsSchema = yupObject({
   'product-customer-type-matches-product-line',
   'Product customer type must match its product line customer type',
   function(this: yup.TestContext<yup.AnyObject>, value) {
+    if (!value) return true;
     for (const [productId, product] of Object.entries(value.products)) {
       if (!product.productLineId) continue;
       const productLine = getOrUndefined(value.productLines, product.productLineId);
@@ -380,6 +381,31 @@ export function migrateConfigOverride(type: "project" | "branch" | "environment"
   // BEGIN 2026-01-14: payments.products.*.catalogId is now payments.products.*.productLineId
   if (isBranchOrHigher) {
     res = renameProperty(res, (p) => p.length === 4 && p[0] === "payments" && p[1] === "products" && p[3] === "catalogId", (p) => "productLineId");
+  }
+  // END
+
+  // BEGIN 2026-01-14: infer productLines.*.customerType from products if missing
+  if (isBranchOrHigher) {
+    // Build a map of productLineId -> customerType from products
+    const productLineCustomerTypes = new Map<string, string>();
+    for (const [key, value] of Object.entries(res)) {
+      const path = key.split(".");
+      if (path.length === 4 && path[0] === "payments" && path[1] === "products" && path[3] === "customerType") {
+        const productId = path[2];
+        const productLineIdKey = `payments.products.${productId}.productLineId`;
+        const productLineId = res[productLineIdKey];
+        if (productLineId && typeof value === "string") {
+          productLineCustomerTypes.set(productLineId, value);
+        }
+      }
+    }
+    // Apply inferred customerType to productLines that don't have one
+    for (const [productLineId, customerType] of productLineCustomerTypes) {
+      const customerTypeKey = `payments.productLines.${productLineId}.customerType`;
+      if (!(customerTypeKey in res)) {
+        res[customerTypeKey] = customerType;
+      }
+    }
   }
   // END
 

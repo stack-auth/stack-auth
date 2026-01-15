@@ -288,7 +288,12 @@ export default function PageClient() {
 
   const handleCreateProductLine = (productLine: { id: string, displayName: string }) => {
     runAsynchronouslyWithAlert(async () => {
-      await project.updateConfig({ [`payments.productLines.${productLine.id}`]: { displayName: productLine.displayName || null } });
+      await project.updateConfig({
+        [`payments.productLines.${productLine.id}`]: {
+          displayName: productLine.displayName || null,
+          customerType,
+        },
+      });
       setProductLineId(productLine.id);
     });
   };

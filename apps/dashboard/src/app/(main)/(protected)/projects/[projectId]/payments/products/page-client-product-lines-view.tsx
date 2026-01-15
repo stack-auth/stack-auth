@@ -1502,7 +1502,7 @@ type ProductLineViewProps = {
   onCreateNewItem: (customerType?: 'user' | 'team' | 'custom', onCreated?: (itemId: string) => void) => void,
   onOpenProductDetails: (product: Product) => void,
   onSaveProductWithGroup: (productLineId: string, productId: string, product: Product) => Promise<void>,
-  onCreateProductLine: (productLineId: string, displayName: string) => Promise<void>,
+  onCreateProductLine: (productLineId: string, displayName: string, customerType: 'user' | 'team' | 'custom') => Promise<void>,
   onUpdateProductLine: (productLineId: string, displayName: string) => Promise<void>,
   onDeleteProductLine: (productLineId: string) => Promise<void>,
   createDraftRequestId?: string,
@@ -2136,8 +2136,8 @@ function ProductLineView({ groupedProducts, groups, existingItems, onSaveProduct
                   return;
                 }
 
-                // Create the productLine with display name
-                await onCreateProductLine(id, displayName);
+                // Create the productLine with display name and customer type
+                await onCreateProductLine(id, displayName, newProductLineCustomerType);
 
                 // Add a local draft so the "add product" form shows immediately
                 const draftKey = generateProductId("product");
@@ -2159,7 +2159,7 @@ function ProductLineView({ groupedProducts, groups, existingItems, onSaveProduct
                 toast({ title: "Product line created" });
               }}
             >
-              Create ProductLine
+              Create Product Line
             </Button>
           </div>
         </PopoverContent>
@@ -2437,14 +2437,13 @@ export default function PageClient({ createDraftRequestId, draftCustomerType = '
         }}
         onSaveProductWithGroup={async (productLineId, productId, product) => {
           await project.updateConfig({
-            [`payments.productLines.${productLineId}`]: {},
             [`payments.products.${productId}`]: product,
           });
           toast({ title: "Product created" });
         }}
-        onCreateProductLine={async (productLineId, displayName) => {
+        onCreateProductLine={async (productLineId, displayName, customerType) => {
           await project.updateConfig({
-            [`payments.productLines.${productLineId}`]: { displayName },
+            [`payments.productLines.${productLineId}`]: { displayName, customerType },
           });
         }}
         onUpdateProductLine={async (productLineId, displayName) => {

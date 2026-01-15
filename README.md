@@ -142,7 +142,7 @@ pnpm restart-deps
 pnpm dev
 
 # In a different terminal, run tests in watch mode
-pnpm test
+pnpm test # useful: --no-watch (disables watch mode) and --bail 1 (stops after the first failure) 
 ```
 
 You can now open the dev launchpad at [http://localhost:8100](http://localhost:8100). From there, you can navigate to the dashboard at [http://localhost:8101](http://localhost:8101), API on port 8102, demo on port 8103, docs on port 8104, Inbucket (e-mails) on port 8105, and Prisma Studio on port 8106. See the dev launchpad for a list of all running services.

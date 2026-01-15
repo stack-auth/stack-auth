@@ -200,7 +200,7 @@ function ProductHeader({ productId, product, productLineName }: ProductHeaderPro
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               <DropdownMenuItem onClick={() => router.push(`/projects/${projectId}/payments/product-lines#product-${productId}`)}>
-                View in ProductLines
+                View in Product Lines
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -344,9 +344,12 @@ function ProductDetailsSection({ productId, product, config }: ProductDetailsSec
   };
 
   const handleCreateProductLine = async (productLine: { id: string, displayName: string }) => {
-    // Create the productLine first
+    // Create the productLine first with the current product's customerType
     await project.updateConfig({
-      [`payments.productLines.${productLine.id}`]: { displayName: productLine.displayName || null },
+      [`payments.productLines.${productLine.id}`]: {
+        displayName: productLine.displayName || null,
+        customerType: product.customerType,
+      },
     });
     // Then update the product to use this productLine
     await project.updateConfig({
@@ -561,7 +564,7 @@ function ProductDetailsSection({ productId, product, config }: ProductDetailsSec
           <DialogHeader>
             <DialogTitle>Add-on Configuration</DialogTitle>
             <DialogDescription>
-              Add-ons are optional products that can only be purchased when a customer already owns one of the parent products. They&apos;re great for extras like additional seats, premium features, or one-time upgrades. A product can only be an add-on to products with the same customer type and in the same productLine.
+              Add-ons are optional products that can only be purchased when a customer already owns one of the parent products. They&apos;re great for extras like additional seats, premium features, or one-time upgrades. A product can only be an add-on to products with the same customer type and in the same product line.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
