@@ -167,7 +167,7 @@ export const branchPaymentsSchema = yupObject({
       customerType: schemaFields.customerTypeSchema,
     }),
   ),
-}).test(
+}).optional().test(
   'product-customer-type-matches-product-line',
   'Product customer type must match its product line customer type',
   function(this: yup.TestContext<yup.AnyObject>, value) {
