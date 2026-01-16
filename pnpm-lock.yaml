@@ -2104,8 +2104,8 @@ importers:
         specifier: ^4.2.3
         version: 4.2.3
       cookie:
-        specifier: ^0.6.0
-        version: 0.6.0
+        specifier: ^0.7.0
+        version: 0.7.1
       jose:
         specifier: ^5.2.2
         version: 5.6.3
