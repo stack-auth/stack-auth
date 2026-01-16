@@ -66,6 +66,28 @@ export type CustomerProductsRequestOptions =
   | ({ teamId: string } & CustomerProductsListOptions)
   | ({ customCustomerId: string } & CustomerProductsListOptions);
 
+export type CustomerInvoiceStatus = "draft" | "open" | "paid" | "uncollectible" | "void" | null;
+
+export type CustomerInvoice = {
+  createdAt: Date,
+  status: CustomerInvoiceStatus,
+  amountTotal: number,
+  hostedInvoiceUrl: string | null,
+};
+
+export type CustomerInvoicesList = CustomerInvoice[] & {
+  nextCursor: string | null,
+};
+
+export type CustomerInvoicesListOptions = {
+  cursor?: string,
+  limit?: number,
+};
+
+export type CustomerInvoicesRequestOptions =
+  | ({ userId: string } & CustomerInvoicesListOptions)
+  | ({ teamId: string } & CustomerInvoicesListOptions);
+
 export type CustomerDefaultPaymentMethod = {
   id: string,
   brand: string | null,
@@ -115,6 +137,12 @@ export type Customer<IsServer extends boolean = false> =
     "products",
     [options?: CustomerProductsListOptions],
     CustomerProductsList,
+    true
+  >
+  & AsyncStoreProperty<
+    "invoices",
+    [options?: CustomerInvoicesListOptions],
+    CustomerInvoicesList,
     true
   >
   & (IsServer extends true ? {

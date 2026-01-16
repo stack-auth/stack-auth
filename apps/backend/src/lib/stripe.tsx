@@ -140,7 +140,7 @@ export async function syncStripeSubscriptions(stripe: Stripe, stripeAccountId: s
   }
 }
 
-export async function handleStripeInvoicePaid(stripe: Stripe, stripeAccountId: string, invoice: Stripe.Invoice) {
+export async function upsertStripeInvoice(stripe: Stripe, stripeAccountId: string, invoice: Stripe.Invoice) {
   const invoiceSubscriptionIds = invoice.lines.data
     .map((line) => line.parent?.subscription_item_details?.subscription)
     .filter((subscription): subscription is string => !!subscription);
@@ -169,12 +169,18 @@ export async function handleStripeInvoicePaid(stripe: Stripe, stripeAccountId: s
     update: {
       stripeSubscriptionId,
       isSubscriptionCreationInvoice,
+      status: invoice.status,
+      amountTotal: invoice.total,
+      hostedInvoiceUrl: invoice.hosted_invoice_url,
     },
     create: {
       tenancyId: tenancy.id,
       stripeSubscriptionId,
       stripeInvoiceId: invoice.id,
       isSubscriptionCreationInvoice,
+      status: invoice.status,
+      amountTotal: invoice.total,
+      hostedInvoiceUrl: invoice.hosted_invoice_url,
     },
   });
 }

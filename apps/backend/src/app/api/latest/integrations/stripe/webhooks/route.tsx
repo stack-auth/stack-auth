@@ -1,6 +1,6 @@
 import { sendEmailToMany, type EmailOutboxRecipient } from "@/lib/emails";
 import { listPermissions } from "@/lib/permissions";
-import { getStackStripe, getStripeForAccount, handleStripeInvoicePaid, syncStripeSubscriptions } from "@/lib/stripe";
+import { getStackStripe, getStripeForAccount, syncStripeSubscriptions, upsertStripeInvoice } from "@/lib/stripe";
 import { getTenancy, type Tenancy } from "@/lib/tenancies";
 import { getTelegramConfig, sendTelegramMessage } from "@/lib/telegram";
 import { getPrismaClientForTenancy } from "@/prisma-client";
@@ -25,6 +25,10 @@ const subscriptionChangedEvents = [
   "customer.subscription.pending_update_applied",
   "customer.subscription.pending_update_expired",
   "customer.subscription.trial_will_end",
+  "invoice.created",
+  "invoice.finalized",
+  "invoice.updated",
+  "invoice.voided",
   "invoice.paid",
   "invoice.payment_failed",
   "invoice.payment_action_required",
@@ -302,9 +306,13 @@ async function processStripeWebhookEvent(event: Stripe.Event): Promise<void> {
     const stripe = await getStripeForAccount({ accountId }, mockData);
     await syncStripeSubscriptions(stripe, accountId, customerId);
 
+    if (event.type.startsWith("invoice.")) {
+      const invoice = event.data.object as Stripe.Invoice;
+      await upsertStripeInvoice(stripe, accountId, invoice);
+    }
+
     if (event.type === "invoice.payment_succeeded") {
       const invoice = event.data.object as Stripe.Invoice;
-      await handleStripeInvoicePaid(stripe, accountId, invoice);
 
       const tenancy = await getTenancyForStripeAccountId(accountId, mockData);
       const prisma = await getPrismaClientForTenancy(tenancy);
