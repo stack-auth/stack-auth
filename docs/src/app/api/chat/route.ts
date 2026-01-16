@@ -1,13 +1,13 @@
-import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
+import { createOpenRouter } from '@openrouter/ai-sdk-provider';
 import { experimental_createMCPClient as createMCPClient, streamText } from 'ai';
 
 // Allow streaming responses up to 30 seconds
 export const maxDuration = 30;
 
-// Create Google AI instance
-const google = createGoogleGenerativeAI({
-  apiKey: process.env.GOOGLE_AI_API_KEY,
+// Create OpenRouter AI instance
+const openrouter = createOpenRouter({
+  apiKey: process.env.OPENROUTER_API_KEY,
 });
 
 // Helper function to get error message
@@ -26,7 +26,7 @@ export async function POST(request: Request) {
   try {
     // Use local MCP server in development, production server in production
     const mcpUrl = process.env.NODE_ENV === 'development'
-      ? new URL('/api/internal/mcp', 'https://localhost:8104')
+      ? new URL('/api/internal/mcp', 'http://localhost:8104')
       : new URL('/api/internal/mcp', 'https://mcp.stack-auth.com');
 
     const stackAuthMcp = await createMCPClient({
@@ -135,14 +135,15 @@ Remember: You're here to help users succeed with Stack Auth. Be helpful but conc
 
   try {
     const result = streamText({
-      model: google('gemini-2.5-flash'),
+      model: openrouter('anthropic/claude-3.5-sonnet'),
       tools: {
         ...tools,
       },
       maxSteps: 50,
       system: systemPrompt,
       messages,
-      temperature: 0.3, // Slightly higher for more natural, detailed responses
+      temperature: 0.3,
+      maxTokens: 4096, // Ensure we have enough tokens for complete responses
     });
 
     return result.toDataStreamResponse({
