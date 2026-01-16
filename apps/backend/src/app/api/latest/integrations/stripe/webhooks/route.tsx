@@ -334,9 +334,10 @@ async function processStripeWebhookEvent(event: Stripe.Event): Promise<void> {
         customerType,
         customerId: stripeCustomer.metadata.customerId,
       });
-      const lineItem = invoice.lines.data[0];
-      const productName = lineItem.description ?? "Subscription";
-      const quantity = lineItem.quantity ?? 1;
+      const invoiceLines = (invoice as { lines?: { data?: Stripe.InvoiceLineItem[] } }).lines?.data ?? [];
+      const lineItem = invoiceLines.length > 0 ? invoiceLines[0] : null;
+      const productName = lineItem?.description ?? "Subscription";
+      const quantity = lineItem?.quantity ?? 1;
       const receiptLink = invoice.hosted_invoice_url ?? invoice.invoice_pdf ?? null;
       const extraVariables: Record<string, string | number> = {
         productName,
@@ -379,8 +380,9 @@ async function processStripeWebhookEvent(event: Stripe.Event): Promise<void> {
         customerType,
         customerId: stripeCustomer.metadata.customerId,
       });
-      const lineItem = invoice.lines.data[0];
-      const productName = lineItem.description ?? "Subscription";
+      const invoiceLines = (invoice as { lines?: { data?: Stripe.InvoiceLineItem[] } }).lines?.data ?? [];
+      const lineItem = invoiceLines.length > 0 ? invoiceLines[0] : null;
+      const productName = lineItem?.description ?? "Subscription";
       const invoiceUrl = invoice.hosted_invoice_url ?? null;
       const extraVariables: Record<string, string | number> = {
         productName,
