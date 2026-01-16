@@ -83,9 +83,24 @@ function createVercelSandboxEngine(): JsEngine {
 
         const runnerScript = `
           import { writeFileSync } from 'fs';
-          import fn from './code.mjs';
-          const result = await fn();
-          writeFileSync('${resultPath}', JSON.stringify(result));
+          let result;
+          let resultAsJson;
+          try {
+            const {default: fn} = await import('./code.mjs');
+            result = await fn();
+            if (result === undefined) {
+              result = { status: 'error', error: { message: 'Execution of innerCode returned undefined' } };
+            }
+            resultAsJson = JSON.stringify(result);
+          } catch (e) {
+            if(e instanceof Error) {
+              result = { status: 'error', error: { message: e.message, stack: e.stack, cause: e.cause} };
+            } else {
+              result = { status: 'error', error: { message: String(e), stack: undefined, cause: undefined} };
+            }
+            resultAsJson = JSON.stringify(result);
+          }
+          writeFileSync('${resultPath}', resultAsJson);
         `;
 
         await sandbox.writeFiles([
@@ -96,7 +111,9 @@ function createVercelSandboxEngine(): JsEngine {
         const runResult = await sandbox.runCommand('node', ['/vercel/sandbox/runner.mjs']);
 
         if (runResult.exitCode !== 0) {
-          throw new StackAssertionError("Vercel Sandbox execution failed", { exitCode: runResult.exitCode });
+          // This shouldn't happen since the runner has a try-catch wrapper.
+          // If we get here, something unexpected failed (OOM, timeout, disk error, etc.)
+          throw new StackAssertionError("Vercel Sandbox runner failed unexpectedly outside of runner safeguards. This should never happen.", { innerCode:code, innerOptions:options, exitCode: runResult.exitCode });
         }
 
         // Read the result file by catting it to stdout
@@ -112,13 +129,13 @@ function createVercelSandboxEngine(): JsEngine {
         const catResult = await sandbox.runCommand({ cmd: 'cat', args: [resultPath], stdout: stdoutStream });
 
         if (catResult.exitCode !== 0) {
-          throw new StackAssertionError("Failed to read result file from Vercel Sandbox", { exitCode: catResult.exitCode });
+          throw new StackAssertionError("Failed to read result file from Vercel Sandbox", { exitCode: catResult.exitCode, innerCode:code, innerOptions:options });
         }
 
         try {
           return JSON.parse(resultJson);
-        } catch (e) {
-          throw new StackAssertionError("Failed to parse result from Vercel Sandbox", { resultJson, cause: e });
+        } catch (e: any) {
+          throw new StackAssertionError("Failed to parse result from Vercel Sandbox", { resultJson, cause: e, innerCode:code, innerOptions:options });
         }
       } finally {
         await sandbox.stop();

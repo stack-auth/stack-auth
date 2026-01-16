@@ -69,7 +69,7 @@ const entryJs = deindent`
 type EmailRenderResult = { html: string, text: string, subject?: string, notificationCategory?: string };
 type ExecuteResult =
   | { status: "ok", data: unknown }
-  | { status: "error", error: string };
+  | { status: "error", error: unknown };
 
 async function bundleAndExecute<T>(
   files: Record<string, string> & { '/entry.js': string }
