@@ -268,7 +268,7 @@ export default function PageClient() {
 
   // Validate that the selected productLineId matches the current customerType
   // If not, treat it as "no product line" - this handles cases where URL params have mismatched types
-  const effectiveProductLineId = productLineId && paymentsConfig.productLines[productLineId]?.customerType === customerType
+  const effectiveProductLineId = productLineId && paymentsConfig.productLines[productLineId].customerType === customerType
     ? productLineId
     : "";
 
