@@ -141,7 +141,8 @@ export async function syncStripeSubscriptions(stripe: Stripe, stripeAccountId: s
 }
 
 export async function upsertStripeInvoice(stripe: Stripe, stripeAccountId: string, invoice: Stripe.Invoice) {
-  const invoiceSubscriptionIds = invoice.lines.data
+  const invoiceLines = (invoice as { lines?: { data?: Stripe.InvoiceLineItem[] } }).lines?.data ?? [];
+  const invoiceSubscriptionIds = invoiceLines
     .map((line) => line.parent?.subscription_item_details?.subscription)
     .filter((subscription): subscription is string => !!subscription);
   if (invoiceSubscriptionIds.length === 0 || !invoice.id) {
