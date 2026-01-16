@@ -2,7 +2,7 @@
 
 import { KnownErrors } from "@stackframe/stack-shared";
 import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
-import { ActionDialog, Button, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Skeleton, toast, Typography } from "@stackframe/stack-ui";
+import { ActionDialog, Button, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Separator, Skeleton, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, toast, Typography } from "@stackframe/stack-ui";
 import { loadStripe } from "@stripe/stripe-js";
 import { CardElement, Elements, useElements, useStripe } from "@stripe/react-stripe-js";
 import { useMemo, useState } from "react";
@@ -10,6 +10,7 @@ import { useStackApp } from "../../..";
 import { useTranslation } from "../../../lib/translations";
 import { Section } from "../section";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
+import type { CustomerInvoiceStatus, CustomerInvoicesList, CustomerInvoicesListOptions } from "../../../lib/stack-app/customers";
 
 type PaymentMethodSummary = {
   id: string,
@@ -27,6 +28,48 @@ function formatPaymentMethod(pm: NonNullable<PaymentMethodSummary>) {
   ].filter(Boolean);
   return details.join(" · ");
 }
+
+const formatInvoiceStatus = (status: CustomerInvoiceStatus, t: (value: string) => string) => {
+  if (!status) {
+    return t("Unknown");
+  }
+  switch (status) {
+    case "draft": {
+      return t("Draft");
+    }
+    case "open": {
+      return t("Open");
+    }
+    case "paid": {
+      return t("Paid");
+    }
+    case "uncollectible": {
+      return t("Uncollectible");
+    }
+    case "void": {
+      return t("Void");
+    }
+    default: {
+      return t("Unknown");
+    }
+  }
+};
+
+const formatInvoiceAmount = (amountTotal: number | null | undefined, t: (value: string) => string) => {
+  if (typeof amountTotal !== "number" || Number.isNaN(amountTotal)) {
+    return t("Unknown");
+  }
+  const normalized = amountTotal / 100;
+  const formatted = new Intl.NumberFormat(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(normalized);
+  return `$${formatted}`;
+};
+
+const formatInvoiceDate = (date: Date | null | undefined, t: (value: string) => string) => {
+  if (!date || Number.isNaN(date.getTime())) {
+    return t("Unknown");
+  }
+  return new Intl.DateTimeFormat(undefined, { year: "numeric", month: "short", day: "numeric" }).format(date);
+};
 
 type CustomerBilling = {
   hasCustomer: boolean,
@@ -58,6 +101,7 @@ type CustomerLike = {
       isCancelable: boolean,
     },
   }>,
+  useInvoices: (options?: CustomerInvoicesListOptions) => CustomerInvoicesList,
   createPaymentMethodSetupIntent: () => Promise<CustomerPaymentMethodSetupIntent>,
   setDefaultPaymentMethodFromSetupIntent: (setupIntentId: string) => Promise<PaymentMethodSummary>,
   switchSubscription: (options: { fromProductId: string, toProductId: string, priceId?: string, quantity?: number }) => Promise<void>,
@@ -187,6 +231,7 @@ function RealPaymentsPanel(props: { title?: string, customer: CustomerLike, cust
   const billing = props.customer.useBilling();
   const defaultPaymentMethod = billing.defaultPaymentMethod;
   const products = props.customer.useProducts();
+  const invoices = props.customer.useInvoices({ limit: 10 });
   const productsForCustomerType = products.filter(product => product.customerType === props.customerType);
 
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
@@ -432,6 +477,61 @@ function RealPaymentsPanel(props: { title?: string, customer: CustomerLike, cust
         </Section>
       )
       }
+      {invoices.length > 0 && (
+        <>
+          <Separator />
+          <div className="space-y-2">
+            <div className="space-y-1">
+              <Typography className="font-medium">{t("Invoices")}</Typography>
+              <Typography variant="secondary" type="footnote">{t("Review past invoices and receipts.")}</Typography>
+            </div>
+            <div className="border rounded-md">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-[140px]">{t("Date")}</TableHead>
+                    <TableHead className="w-[120px]">{t("Status")}</TableHead>
+                    <TableHead className="w-[120px]">{t("Amount")}</TableHead>
+                    <TableHead className="w-[120px] text-right">{t("Invoice")}</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {invoices.map((invoice, index) => {
+                    const createdAtTime = invoice.createdAt.getTime();
+                    const invoiceKey = Number.isNaN(createdAtTime) ? `invoice-${index}` : `invoice-${createdAtTime}-${index}`;
+                    return (
+                      <TableRow key={invoiceKey}>
+                        <TableCell>
+                          <Typography>{formatInvoiceDate(invoice.createdAt, t)}</Typography>
+                        </TableCell>
+                        <TableCell>
+                          <Typography>{formatInvoiceStatus(invoice.status, t)}</Typography>
+                        </TableCell>
+                        <TableCell>
+                          <Typography>{formatInvoiceAmount(invoice.amountTotal, t)}</Typography>
+                        </TableCell>
+                        <TableCell align="right">
+                          {invoice.hostedInvoiceUrl ? (
+                            <Button asChild variant="secondary" color="neutral" size="sm">
+                              <a href={invoice.hostedInvoiceUrl} target="_blank" rel="noreferrer">
+                                {t("View")}
+                              </a>
+                            </Button>
+                          ) : (
+                            <Typography variant="secondary" type="footnote">
+                              {t("Unavailable")}
+                            </Typography>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </div>
+          </div>
+        </>
+      )}
     </div >
   );
 }
