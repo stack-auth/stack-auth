@@ -184,22 +184,26 @@ export default function PageClient() {
   const config = project.useConfig();
   const paymentsConfig: CompleteConfig['payments'] = config.payments;
 
-  // Step state: null = customer type selection, otherwise = form
-  const [hasSelectedCustomerType, setHasSelectedCustomerType] = useState(false);
+  // Get URL parameters for pre-filling the form
+  const urlProductLineId = searchParams.get("productLineId");
+  const urlCustomerType = searchParams.get("customerType") as 'user' | 'team' | 'custom' | null;
+
+  // Validate productLineId exists and get its customerType
+  const validProductLineId = urlProductLineId && urlProductLineId in paymentsConfig.productLines ? urlProductLineId : null;
+  const productLineCustomerType = validProductLineId ? paymentsConfig.productLines[validProductLineId].customerType : null;
+
+  // Determine initial customer type: from product line > from URL > default 'user'
+  const initialCustomerType = productLineCustomerType ?? (urlCustomerType && ['user', 'team', 'custom'].includes(urlCustomerType) ? urlCustomerType : 'user');
+
+  // Skip customer type selection if we have a valid productLineId (which has its own customerType)
+  const [hasSelectedCustomerType, setHasSelectedCustomerType] = useState(!!validProductLineId);
 
   // Form state
   const [productId, setProductId] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [hasManuallyEditedId, setHasManuallyEditedId] = useState(false);
-  const [customerType, setCustomerType] = useState<'user' | 'team' | 'custom'>('user');
-  const [productLineId, setProductLineId] = useState(() => {
-    const urlProductLineId = searchParams.get("productLineId");
-    // Validate that the productLineId from URL exists in config
-    if (urlProductLineId && urlProductLineId in paymentsConfig.productLines) {
-      return urlProductLineId;
-    }
-    return "";
-  });
+  const [customerType, setCustomerType] = useState<'user' | 'team' | 'custom'>(initialCustomerType);
+  const [productLineId, setProductLineId] = useState(validProductLineId ?? "");
   const [isAddOn, setIsAddOn] = useState(false);
   const [isAddOnTo, setIsAddOnTo] = useState<string[]>([]);
   const [stackable, setStackable] = useState(false);

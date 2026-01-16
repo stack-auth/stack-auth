@@ -97,7 +97,7 @@ function collectCatalogCustomerTypes(
 
     // Check for nested format: payments.products.<productId> with object value
     if (fullPath.length === 3 && fullPath[0] === "payments" && fullPath[1] === "products" && isObjectLike(value)) {
-      const catalogId = findPropertyValue(value, "catalogId");
+      const catalogId = findPropertyValue(value, "catalogId") ?? findPropertyValue(value, "productLineId");
       const customerType = findPropertyValue(value, "customerType");
       if (catalogId && typeof catalogId === "string" && customerType && typeof customerType === "string") {
         result.set(catalogId, customerType);

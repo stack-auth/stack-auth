@@ -1495,7 +1495,7 @@ function ProductCard({ id, product, allProducts, existingItems, onSave, onDelete
 
 type ProductLineViewProps = {
   groupedProducts: Map<string | undefined, Array<{ id: string, product: Product }>>,
-  groups: Record<string, { displayName?: string }>,
+  groups: Record<string, { displayName?: string, customerType?: string }>,
   existingItems: Array<{ id: string, displayName: string, customerType: string }>,
   onSaveProduct: (id: string, product: Product) => Promise<void>,
   onDeleteProduct: (id: string) => Promise<void>,
@@ -1605,65 +1605,46 @@ function ProductLineView({ groupedProducts, groups, existingItems, onSaveProduct
     return id;
   };
 
-  // Build list of productLine+type combinations to render (only for named productLines)
-  const productLineTypeKeysToRender = useMemo(() => {
-    const keys: ProductLineTypeKey[] = [];
-    const seenKeyStrings = new Set<string>();
-    const productLinesWithProducts = new Set<string>();
-
-    // Add keys from existing products (only named product lines, not "No product line")
-    groupedByProductLineAndType.forEach(({ key }) => {
-      if (key.productLineId === undefined) return; // Skip "No product line" - handled separately
-      productLinesWithProducts.add(key.productLineId);
-      const keyStr = productLineTypeKeyToString(key);
-      if (!seenKeyStrings.has(keyStr)) {
-        seenKeyStrings.add(keyStr);
-        keys.push(key);
-      }
-    });
-
-    // Add keys from drafts (only named product lines)
-    drafts.forEach(d => {
-      if (d.productLineId === undefined) return; // Skip "No product line" - handled separately
-      productLinesWithProducts.add(d.productLineId);
-      const key: ProductLineTypeKey = { productLineId: d.productLineId, customerType: d.product.customerType };
-      const keyStr = productLineTypeKeyToString(key);
-      if (!seenKeyStrings.has(keyStr)) {
-        seenKeyStrings.add(keyStr);
-        keys.push(key);
-      }
+  // Build list of product lines to render directly from config
+  // Now that product lines have their own customerType, we simply iterate over them
+  const productLinesToRender = useMemo(() => {
+    const productLines = Object.entries(groups).map(([id, productLine]) => {
+      let customerType = productLine.customerType;
+      return {
+        id,
+        displayName: productLine.displayName || id,
+        customerType,
+      };
     });
 
     // Sort: by customer type priority, then by productLine name
-    const customerTypePriority = { user: 1, team: 2, custom: 3 };
-    keys.sort((a, b) => {
-      const priorityA = customerTypePriority[a.customerType];
-      const priorityB = customerTypePriority[b.customerType];
+    // Unknown customer types (undefined) go last
+    const customerTypePriority: Record<string, number> = { user: 1, team: 2, custom: 3 };
+    productLines.sort((a, b) => {
+      const priorityA = a.customerType ? (customerTypePriority[a.customerType] ?? 99) : 99;
+      const priorityB = b.customerType ? (customerTypePriority[b.customerType] ?? 99) : 99;
       if (priorityA !== priorityB) return priorityA - priorityB;
-
-      // Sort by productLine name
-      const nameA = a.productLineId ? (groups[a.productLineId].displayName || a.productLineId) : '';
-      const nameB = b.productLineId ? (groups[b.productLineId].displayName || b.productLineId) : '';
-      return stringCompare(nameA, nameB);
+      return stringCompare(a.displayName, b.displayName);
     });
 
-    return keys;
-  }, [groupedByProductLineAndType, drafts, groups]);
+    return productLines;
+  }, [groups]);
 
-  // Get empty product lines (product lines with no products)
-  const emptyProductLines = useMemo(() => {
-    const productLinesWithProducts = new Set<string>();
-    groupedByProductLineAndType.forEach(({ key }) => {
-      if (key.productLineId) productLinesWithProducts.add(key.productLineId);
+  // Get products for a specific product line
+  const getProductsForProductLine = (productLineId: string) => {
+    const products: Array<{ id: string, product: Product }> = [];
+    groupedByProductLineAndType.forEach(({ key, products: prods }) => {
+      if (key.productLineId === productLineId) {
+        products.push(...prods);
+      }
     });
-    drafts.forEach(d => {
-      if (d.productLineId) productLinesWithProducts.add(d.productLineId);
-    });
+    return products;
+  };
 
-    return Object.entries(groups)
-      .filter(([id]) => !productLinesWithProducts.has(id))
-      .map(([id, productLine]) => ({ id, displayName: productLine.displayName }));
-  }, [groups, groupedByProductLineAndType, drafts]);
+  // Get drafts for a specific product line
+  const getDraftsForProductLine = (productLineId: string) => {
+    return drafts.filter(d => d.productLineId === productLineId);
+  };
 
   // Get all "No product line" products (all customer types combined)
   const noProductLineProducts = useMemo(() => {
@@ -1691,18 +1672,16 @@ function ProductLineView({ groupedProducts, groups, existingItems, onSaveProduct
 
   return (
     <div className="space-y-8">
-      {productLineTypeKeysToRender.map((productLineTypeKey) => {
-        const keyStr = productLineTypeKeyToString(productLineTypeKey);
-        const groupData = groupedByProductLineAndType.get(keyStr);
-        const products = groupData?.products || [];
-        const productLineId = productLineTypeKey.productLineId;
-        const customerType = productLineTypeKey.customerType;
-        const groupName = productLineId ? (groups[productLineId].displayName || productLineId) : 'No product line';
+      {productLinesToRender.map((productLine) => {
+        const productLineId = productLine.id;
+        const customerType = productLine.customerType;
+        const groupName = productLine.displayName;
 
-        // Filter drafts for this productLine+type combination
-        const matchingDrafts = drafts.filter(d =>
-          d.productLineId === productLineId && d.product.customerType === customerType
-        );
+        // Get products for this product line
+        const products = getProductsForProductLine(productLineId);
+
+        // Filter drafts for this product line
+        const matchingDrafts = getDraftsForProductLine(productLineId);
 
         // Separate non-add-on and add-on products for pricing table layout
         const nonAddOnProducts = products.filter(({ product }) => product.isAddOnTo === false);
@@ -1713,51 +1692,48 @@ function ProductLineView({ groupedProducts, groups, existingItems, onSaveProduct
         const hasNonAddOns = nonAddOnProducts.length > 0 || nonAddOnDrafts.length > 0;
 
         return (
-          <div key={keyStr}>
+          <div key={productLineId}>
             <div className="mb-3 group/productLine-header">
               <div className="flex items-center gap-2">
                 <h3 className="text-base font-semibold text-foreground">{groupName}</h3>
-                {productLineId && (
-                  <div className="opacity-0 group-hover/productLine-header:opacity-100 transition-opacity flex items-center gap-1">
-                    <button
-                      onClick={() => {
-                        setEditingProductLineId(productLineId);
-                        setEditingProductLineDisplayName(groups[productLineId].displayName || '');
-                      }}
-                      className="p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-foreground/[0.05] transition-colors duration-150 hover:transition-none"
-                      aria-label="Edit product line"
-                    >
-                      <PencilSimpleIcon className="h-3.5 w-3.5" />
-                    </button>
-                    <button
-                      onClick={() => setDeletingProductLineId(productLineId)}
-                      className="p-1 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors duration-150 hover:transition-none"
-                      aria-label="Delete product line"
-                    >
-                      <TrashIcon className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
-                )}
+                <div className="opacity-0 group-hover/productLine-header:opacity-100 transition-opacity flex items-center gap-1">
+                  <button
+                    onClick={() => {
+                      setEditingProductLineId(productLineId);
+                      setEditingProductLineDisplayName(groups[productLineId].displayName || '');
+                    }}
+                    className="p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-foreground/[0.05] transition-colors duration-150 hover:transition-none"
+                    aria-label="Edit product line"
+                  >
+                    <PencilSimpleIcon className="h-3.5 w-3.5" />
+                  </button>
+                  <button
+                    onClick={() => setDeletingProductLineId(productLineId)}
+                    className="p-1 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors duration-150 hover:transition-none"
+                    aria-label="Delete product line"
+                  >
+                    <TrashIcon className="h-3.5 w-3.5" />
+                  </button>
+                </div>
               </div>
               <div className="flex items-center gap-2 mt-1">
                 <span className={cn(
                   "inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wide ring-1",
-                  CUSTOMER_TYPE_COLORS[customerType]
+                  customerType && customerType in CUSTOMER_TYPE_COLORS
+                    ? CUSTOMER_TYPE_COLORS[customerType as keyof typeof CUSTOMER_TYPE_COLORS]
+                    : "bg-gray-500/10 text-gray-500 ring-gray-500/30"
                 )}>
-                  {customerType}
+                  {customerType ?? "unknown customer type"}
                 </span>
                 <span className="text-xs text-muted-foreground">
-                  {productLineId
-                    ? "Products in this product line are mutually exclusive (except add-ons)"
-                    : "Products that are not in a product line are not mutually exclusive"}
+                  Products in this product line are mutually exclusive (except add-ons)
                 </span>
               </div>
             </div>
             <div className="relative rounded-2xl bg-foreground/[0.04] ring-1 ring-foreground/[0.06]">
               <div className="flex gap-4 justify-start overflow-x-auto p-5 min-h-20 pr-16">
                 <div className="flex max-w-max gap-4 items-stretch">
-                  {/* Non-add-on products as a pricing table (single card, multiple columns) */}
-                  {/* Only saved products go in the table - drafts are rendered separately since they're in edit mode */}
+                  {/* Non-add-on products as a pricing table */}
                   {nonAddOnProducts.length > 0 && (
                     <div className={cn(
                       "flex rounded-2xl overflow-hidden",
@@ -1876,7 +1852,7 @@ function ProductLineView({ groupedProducts, groups, existingItems, onSaveProduct
                   ))}
 
                   {/* Add product button */}
-                  <Link href={productLineId ? urlString`/projects/${projectId}/payments/products/new?productLineId=${productLineId}` : urlString`/projects/${projectId}/payments/products/new`}>
+                  <Link href={productLineId && customerType ? urlString`/projects/${projectId}/payments/products/new?productLineId=${productLineId}&customerType=${customerType}` : urlString`/projects/${projectId}/payments/products/new`}>
                     <Button
                       variant="outline"
                       size="plain"
@@ -1985,63 +1961,6 @@ function ProductLineView({ groupedProducts, groups, existingItems, onSaveProduct
         </div>
       </div>
 
-      {/* Empty productLines (rendered inline with other productLines) */}
-      {emptyProductLines.map(({ id, displayName }) => (
-        <div key={id}>
-          <div className="mb-3 group/productLine-header">
-            <div className="flex items-center gap-2">
-              <h3 className="text-base font-semibold text-foreground">{displayName || id}</h3>
-              <div className="opacity-0 group-hover/productLine-header:opacity-100 transition-opacity flex items-center gap-1">
-                <button
-                  onClick={() => {
-                    setEditingProductLineId(id);
-                    setEditingProductLineDisplayName(displayName || '');
-                  }}
-                  className="p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-foreground/[0.05] transition-colors duration-150 hover:transition-none"
-                  aria-label="Edit product line"
-                >
-                  <PencilSimpleIcon className="h-3.5 w-3.5" />
-                </button>
-                <button
-                  onClick={() => setDeletingProductLineId(id)}
-                  className="p-1 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors duration-150 hover:transition-none"
-                  aria-label="Delete product line"
-                >
-                  <TrashIcon className="h-3.5 w-3.5" />
-                </button>
-              </div>
-            </div>
-            <p className="text-xs text-muted-foreground mt-1">
-              No products yet · ID: {id}
-            </p>
-          </div>
-          <div className="relative rounded-2xl bg-foreground/[0.04] ring-1 ring-foreground/[0.06]">
-            <div className="flex gap-4 justify-start overflow-x-auto p-5 min-h-20 pr-16">
-              <div className="flex max-w-max gap-4 items-stretch">
-                <Link href={urlString`/projects/${projectId}/payments/products/new?productLineId=${id}`}>
-                  <Button
-                    variant="outline"
-                    size="plain"
-                    className={cn(
-                      "h-full min-h-[200px] w-[320px] flex flex-col items-center justify-center",
-                      "rounded-2xl border border-dashed border-foreground/[0.1]",
-                      "bg-background/40 hover:bg-foreground/[0.03]",
-                      "text-muted-foreground hover:text-foreground",
-                      "transition-all duration-150 hover:transition-none"
-                    )}
-                  >
-                    <div className="flex flex-col items-center gap-2">
-                      <PlusIcon className="h-6 w-6" />
-                      <span className="text-sm font-medium">Add product</span>
-                    </div>
-                  </Button>
-                </Link>
-              </div>
-            </div>
-          </div>
-        </div>
-      ))}
-
       {/* New product line button with customer type selector */}
       <Popover>
         <PopoverTrigger asChild>
@@ -2139,20 +2058,6 @@ function ProductLineView({ groupedProducts, groups, existingItems, onSaveProduct
                 // Create the productLine with display name and customer type
                 await onCreateProductLine(id, displayName, newProductLineCustomerType);
 
-                // Add a local draft so the "add product" form shows immediately
-                const draftKey = generateProductId("product");
-                const newProduct: Product = {
-                  displayName: 'New Product',
-                  customerType: newProductLineCustomerType,
-                  productLineId: id,
-                  isAddOnTo: false,
-                  stackable: false,
-                  prices: {},
-                  includedItems: {},
-                  serverOnly: false,
-                  freeTrial: undefined,
-                };
-                setDrafts(prev => [...prev, { key: draftKey, productLineId: id, product: newProduct }]);
                 setNewProductLineDisplayName("");
                 setNewProductLineId("");
                 setHasManuallyEditedProductLineId(false);

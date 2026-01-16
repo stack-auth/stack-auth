@@ -112,7 +112,7 @@ export async function seed() {
         }
       },
       payments: {
-        productLines: {
+        catalogs: {
           plans: {
             displayName: "Plans",
           }
@@ -905,7 +905,7 @@ function buildDummyPaymentsSetup(): PaymentsSetup {
 
   const paymentsOverride = {
     testMode: true,
-    productLines: {
+    catalogs: {
       workspace: {
         displayName: 'Workspace Plans',
       },
