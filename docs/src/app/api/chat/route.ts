@@ -7,7 +7,7 @@ export const maxDuration = 30;
 
 // Create OpenRouter AI instance
 const openrouter = createOpenRouter({
-  apiKey: process.env.OPENROUTER_API_KEY,
+  apiKey: process.env.STACK_OPENROUTER_API_KEY,
 });
 
 // Helper function to get error message
