@@ -256,30 +256,24 @@ function ProductDetailsSection({ productId, product, config }: ProductDetailsSec
   const [freeTrialPopoverOpen, setFreeTrialPopoverOpen] = useState(false);
   const [createProductLineDialogOpen, setCreateProductLineDialogOpen] = useState(false);
 
-  // Get all productLines with their customer types
+  // Get all productLines with their customer types (only show matching customer type)
   const productLineOptions = useMemo(() => {
-    const productLines = Object.entries(config.payments.productLines).map(([id, productLine]) => {
-      // Determine customer type from existing products in this productLine
-      const productsInProductLine = Object.values(config.payments.products).filter(p => (p as Product | undefined)?.productLineId === id);
-      const productLineCustomerType = productsInProductLine[0]?.customerType as 'user' | 'team' | 'custom' | undefined;
-
-      return {
+    const productLines = Object.entries(config.payments.productLines)
+      .filter(([, productLine]) => productLine.customerType === product.customerType)
+      .map(([id, productLine]) => ({
         value: id,
         label: productLine.displayName || id,
-        customerType: productLineCustomerType,
-        disabled: productLineCustomerType != null && productLineCustomerType !== product.customerType,
-        disabledReason: productLineCustomerType != null && productLineCustomerType !== product.customerType
-          ? `This product line is for ${productLineCustomerType} products`
-          : undefined,
-      };
-    });
+        customerType: productLine.customerType,
+        disabled: false,
+        disabledReason: undefined,
+      }));
 
     // Also add "No product line" option (using __none__ since Select.Item can't have empty string value)
     return [
       { value: '__none__', label: 'No product line', disabled: false, disabledReason: undefined, customerType: undefined },
       ...productLines,
     ];
-  }, [config.payments.productLines, config.payments.products, product.customerType]);
+  }, [config.payments.productLines, product.customerType]);
 
   // Add-on dialog state
   const [isAddOn, setIsAddOn] = useState(() => product.isAddOnTo !== false && typeof product.isAddOnTo === 'object');

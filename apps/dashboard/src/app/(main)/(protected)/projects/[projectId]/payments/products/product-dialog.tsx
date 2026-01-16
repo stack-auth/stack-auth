@@ -23,7 +23,7 @@ type ProductDialogProps = {
   editingProductId?: string,
   editingProduct?: Product,
   existingProducts: Array<{ id: string, displayName: string, productLineId?: string, customerType: string }>,
-  existingProductLines: Record<string, { displayName?: string }>,
+  existingProductLines: Record<string, { displayName?: string, customerType?: string }>,
   existingItems: Array<{ id: string, displayName: string, customerType: string }>,
   onCreateNewItem?: () => void,
 };
@@ -444,7 +444,11 @@ export function ProductDialog({
                   {/* Customer Type */}
                   <div className="grid gap-2">
                     <Label htmlFor="customer-type" className="text-sm font-medium">Customer Type</Label>
-                    <Select value={customerType} onValueChange={(value) => setCustomerType(value as typeof customerType)}>
+                    <Select value={customerType} onValueChange={(value) => {
+                      setCustomerType(value as typeof customerType);
+                      // Reset product line since product lines are customer-type-specific
+                      setProductLineId("");
+                    }}>
                       <SelectTrigger className={cn(
                         "h-10 rounded-xl text-sm",
                         "bg-foreground/[0.03] border-border/50 dark:border-foreground/[0.1]",
@@ -483,11 +487,13 @@ export function ProductDialog({
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="no-product-line">No product line</SelectItem>
-                        {Object.entries(existingProductLines).map(([id, productLine]) => (
-                          <SelectItem key={id} value={id}>
-                            {productLine.displayName || id}
-                          </SelectItem>
-                        ))}
+                        {Object.entries(existingProductLines)
+                          .filter(([, productLine]) => productLine.customerType === customerType)
+                          .map(([id, productLine]) => (
+                            <SelectItem key={id} value={id}>
+                              {productLine.displayName || id}
+                            </SelectItem>
+                          ))}
                         <SelectItem value="create-new">
                           <span className="text-primary">+ Create new product line</span>
                         </SelectItem>

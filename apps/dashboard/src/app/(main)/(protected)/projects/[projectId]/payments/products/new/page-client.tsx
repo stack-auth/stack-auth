@@ -364,8 +364,6 @@ export default function PageClient() {
       await project.updateConfig({ [`payments.products.${productId}`]: product });
       toast({ title: "Product created" });
       router.push(`/projects/${projectId}/payments/products`);
-    } catch (error) {
-      toast({ title: "Failed to create product", variant: "destructive" });
     } finally {
       setIsSaving(false);
     }
@@ -930,11 +928,13 @@ ${Object.entries(prices).map(([id, price]) => {
                     </SelectTrigger>
                     <SelectContent className="rounded-lg">
                       <SelectItem value="no-product-line" className="rounded-lg">No product line</SelectItem>
-                      {Object.entries(paymentsConfig.productLines).map(([id, productLine]) => (
-                        <SelectItem key={id} value={id} className="rounded-lg">
-                          {productLine.displayName || id}
-                        </SelectItem>
-                      ))}
+                      {Object.entries(paymentsConfig.productLines)
+                        .filter(([, productLine]) => productLine.customerType === customerType)
+                        .map(([id, productLine]) => (
+                          <SelectItem key={id} value={id} className="rounded-lg">
+                            {productLine.displayName || id}
+                          </SelectItem>
+                        ))}
                       <SelectItem value="create-new" className="rounded-lg">
                         <span className="text-primary">+ Create new</span>
                       </SelectItem>

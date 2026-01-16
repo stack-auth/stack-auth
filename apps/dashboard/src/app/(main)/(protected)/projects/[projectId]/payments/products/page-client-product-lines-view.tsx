@@ -2499,7 +2499,7 @@ export default function PageClient({ createDraftRequestId, draftCustomerType = '
         onSave={async (productId, product) => await handleSaveProduct(productId, product)}
         editingProduct={editingProduct ?? undefined}
         existingProducts={existingProductsList}
-        existingProductLines={Object.fromEntries(Object.entries(paymentsConfig.productLines).map(([id, g]) => [id, { displayName: g.displayName || id }]))}
+        existingProductLines={Object.fromEntries(Object.entries(paymentsConfig.productLines).map(([id, g]) => [id, { displayName: g.displayName || id, customerType: g.customerType }]))}
         existingItems={existingItemsList}
         onCreateNewItem={handleCreateItem}
       />
