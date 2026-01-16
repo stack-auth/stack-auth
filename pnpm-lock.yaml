@@ -214,7 +214,7 @@ importers:
         specifier: ^7.3.0
         version: 7.4.1
       freestyle-sandboxes:
-        specifier: ^0.1.5
+        specifier: ^0.1.6
         version: 0.1.6
       jose:
         specifier: ^6.1.3
@@ -26528,6 +26528,7 @@ snapshots:
     dependencies:
       color-name: 1.1.4
       simple-swizzle: 0.2.2
+    optional: true
 
   color-string@2.1.4:
     dependencies:
@@ -26539,6 +26540,7 @@ snapshots:
     dependencies:
       color-convert: 2.0.1
       color-string: 1.9.1
+    optional: true
 
   color@5.0.3:
     dependencies:
@@ -29484,7 +29486,8 @@ snapshots:
 
   is-arrayish@0.2.1: {}
 
-  is-arrayish@0.3.2: {}
+  is-arrayish@0.3.2:
+    optional: true
 
   is-async-function@2.0.0:
     dependencies:
@@ -33073,6 +33076,7 @@ snapshots:
   simple-swizzle@0.2.2:
     dependencies:
       is-arrayish: 0.3.2
+    optional: true
 
   simplesignal@2.1.7: {}
 
