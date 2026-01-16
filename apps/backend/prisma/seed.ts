@@ -112,15 +112,16 @@ export async function seed() {
         }
       },
       payments: {
-        catalogs: {
+        productLines: {
           plans: {
             displayName: "Plans",
-          }
+            customerType: "team",
+          },
         },
         products: {
-          team: {
+          team_plans: {
             productLineId: "plans",
-            displayName: "Team",
+            displayName: "Team Plans",
             customerType: "team",
             serverOnly: false,
             stackable: false,
@@ -905,12 +906,14 @@ function buildDummyPaymentsSetup(): PaymentsSetup {
 
   const paymentsOverride = {
     testMode: true,
-    catalogs: {
+    productLines: {
       workspace: {
         displayName: 'Workspace Plans',
+        customerType: 'team',
       },
       add_ons: {
         displayName: 'Add-ons',
+        customerType: 'team',
       },
     },
     items: {
