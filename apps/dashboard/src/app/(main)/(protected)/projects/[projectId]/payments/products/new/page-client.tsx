@@ -193,10 +193,12 @@ export default function PageClient() {
   const productLineCustomerType = validProductLineId ? paymentsConfig.productLines[validProductLineId].customerType : null;
 
   // Determine initial customer type: from product line > from URL > default 'user'
-  const initialCustomerType = productLineCustomerType ?? (urlCustomerType && ['user', 'team', 'custom'].includes(urlCustomerType) ? urlCustomerType : 'user');
+  const validUrlCustomerType = urlCustomerType && ['user', 'team', 'custom'].includes(urlCustomerType) ? urlCustomerType : null;
+  const initialCustomerType = productLineCustomerType ?? validUrlCustomerType ?? 'user';
 
-  // Skip customer type selection if we have a valid productLineId (which has its own customerType)
-  const [hasSelectedCustomerType, setHasSelectedCustomerType] = useState(!!validProductLineId);
+  // Skip customer type selection if we have a valid productLineId or a valid customerType in URL
+  const skippedCustomerTypeSelection = !!validProductLineId || !!validUrlCustomerType;
+  const [hasSelectedCustomerType, setHasSelectedCustomerType] = useState(skippedCustomerTypeSelection);
 
   // Form state
   const [productId, setProductId] = useState("");
@@ -264,11 +266,17 @@ export default function PageClient() {
 
   const isFirstProduct = existingProducts.length === 0;
 
+  // Validate that the selected productLineId matches the current customerType
+  // If not, treat it as "no product line" - this handles cases where URL params have mismatched types
+  const effectiveProductLineId = productLineId && paymentsConfig.productLines[productLineId]?.customerType === customerType
+    ? productLineId
+    : "";
+
   // Build product object for preview
   const previewProduct: Product = {
     displayName: displayName || 'New Product',
     customerType,
-    productLineId: productLineId || undefined,
+    productLineId: effectiveProductLineId || undefined,
     isAddOnTo: isAddOn ? Object.fromEntries(isAddOnTo.map(id => [id, true])) : false,
     stackable,
     prices: freeByDefault ? 'include-by-default' : prices,
@@ -282,8 +290,18 @@ export default function PageClient() {
     setHasSelectedCustomerType(true);
   };
 
-  const handleBackToCustomerTypeSelection = () => {
-    setHasSelectedCustomerType(false);
+  const handleBack = () => {
+    // If we skipped customer type selection (came from URL with customerType or productLineId),
+    // go back to the previous page instead of showing the selection screen
+    if (skippedCustomerTypeSelection) {
+      if (window.history.length > 1) {
+        window.history.back();
+      } else {
+        router.push(`/projects/${projectId}/payments/products`);
+      }
+    } else {
+      setHasSelectedCustomerType(false);
+    }
   };
 
   // When customer type changes via the dropdown, reset product-line-related state
@@ -356,7 +374,7 @@ export default function PageClient() {
       const product: Product = {
         displayName,
         customerType,
-        productLineId: productLineId || undefined,
+        productLineId: effectiveProductLineId || undefined,
         isAddOnTo: isAddOn ? Object.fromEntries(isAddOnTo.map(id => [id, true])) : false,
         stackable,
         prices: freeByDefault ? 'include-by-default' : prices,
@@ -442,7 +460,7 @@ ${Object.entries(prices).map(([id, price]) => {
   id: '${productId || 'product-id'}',
   displayName: '${displayName || 'New Product'}',
   customerType: '${customerType}',
-  prices: ${pricesCode},${productLineId ? `\n  productLineId: '${productLineId}',` : ''}${stackable ? '\n  stackable: true,' : ''}${serverOnly ? '\n  serverOnly: true,' : ''}
+  prices: ${pricesCode},${effectiveProductLineId ? `\n  productLineId: '${effectiveProductLineId}',` : ''}${stackable ? '\n  stackable: true,' : ''}${serverOnly ? '\n  serverOnly: true,' : ''}
   isAddOnTo: ${isAddOnToCode},
   includedItems: {${Object.entries(includedItems).map(([id, item]) => {
     const repeatPart = item.repeat === 'never' ? `'never'` : `[${item.repeat[0]}, '${item.repeat[1]}']`;
@@ -479,7 +497,7 @@ ${Object.entries(prices).map(([id, price]) => {
 - Product ID: ${productId || 'product-id'}
 - Display Name: ${displayName || 'New Product'}
 - Customer Type: ${customerType}
-- Pricing: ${priceDescriptions}${productLineId ? `\n- Product Line: ${productLineId}` : ''}${stackable ? '\n- Stackable: yes' : ''}${serverOnly ? '\n- Server only: yes' : ''}${isAddOn && isAddOnTo.length > 0 ? `\n- Add-on to: ${isAddOnTo.join(', ')}` : ''}${itemDescriptions ? `\n- Included items: ${itemDescriptions}` : ''}`;
+- Pricing: ${priceDescriptions}${effectiveProductLineId ? `\n- Product Line: ${effectiveProductLineId}` : ''}${stackable ? '\n- Stackable: yes' : ''}${serverOnly ? '\n- Server only: yes' : ''}${isAddOn && isAddOnTo.length > 0 ? `\n- Add-on to: ${isAddOnTo.join(', ')}` : ''}${itemDescriptions ? `\n- Included items: ${itemDescriptions}` : ''}`;
   };
 
   return (
@@ -490,7 +508,7 @@ ${Object.entries(prices).map(([id, price]) => {
           <Button
             variant="ghost"
             size="sm"
-            onClick={handleBackToCustomerTypeSelection}
+            onClick={handleBack}
             className="gap-2"
           >
             <ArrowLeftIcon className="h-4 w-4" />
@@ -916,7 +934,7 @@ ${Object.entries(prices).map(([id, price]) => {
                 <span className="text-sm text-foreground/70 py-2 flex items-center border-b border-border/20">Part of a mutually exclusive group?</span>
                 <div className="py-2 flex items-center border-b border-border/20">
                   <Select
-                    value={productLineId || 'no-product-line'}
+                    value={effectiveProductLineId || 'no-product-line'}
                     onValueChange={(value) => {
                       if (value === 'create-new') {
                         setShowProductLineDialog(true);
