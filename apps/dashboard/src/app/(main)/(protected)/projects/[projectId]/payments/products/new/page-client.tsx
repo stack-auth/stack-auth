@@ -192,7 +192,14 @@ export default function PageClient() {
   const [displayName, setDisplayName] = useState("");
   const [hasManuallyEditedId, setHasManuallyEditedId] = useState(false);
   const [customerType, setCustomerType] = useState<'user' | 'team' | 'custom'>('user');
-  const [productLineId, setProductLineId] = useState(() => searchParams.get("productLineId") ?? "");
+  const [productLineId, setProductLineId] = useState(() => {
+    const urlProductLineId = searchParams.get("productLineId");
+    // Validate that the productLineId from URL exists in config
+    if (urlProductLineId && urlProductLineId in paymentsConfig.productLines) {
+      return urlProductLineId;
+    }
+    return "";
+  });
   const [isAddOn, setIsAddOn] = useState(false);
   const [isAddOnTo, setIsAddOnTo] = useState<string[]>([]);
   const [stackable, setStackable] = useState(false);

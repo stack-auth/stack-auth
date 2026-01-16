@@ -1,5 +1,5 @@
-import { isObjectLike, set, typedEntries } from "../utils/objects";
 import { StackAssertionError } from "../utils/errors";
+import { isObjectLike, set, typedEntries } from "../utils/objects";
 
 /**
  * Renames properties in an object based on a path condition.
@@ -31,9 +31,10 @@ function renameProperty(obj: Record<string, any>, oldPath: string | ((path: stri
 
 /**
  * Migrates the old "catalogs" format to "productLines", including:
- * 1. Renaming payments.catalogs -> payments.productLines
- * 2. Inferring customerType for each catalog from its products (since old catalogs didn't have customerType)
- * 3. Renaming payments.products.*.catalogId -> payments.products.*.productLineId
+ * 1. Inferring customerType for each catalog from its products (since old catalogs didn't have customerType)
+ * 2. Removing empty catalogs (those with no products) since they can't have customerType inferred
+ * 3. Renaming payments.catalogs -> payments.productLines
+ * 4. Renaming payments.products.*.catalogId -> payments.products.*.productLineId
  *
  * This handles all config formats (nested objects, flat dot-notation, or mixed).
  */
@@ -42,17 +43,20 @@ export function migrateCatalogsToProductLines(obj: Record<string, any>): Record<
   const catalogCustomerTypes = new Map<string, string>();
   collectCatalogCustomerTypes(obj, [], catalogCustomerTypes);
 
-  // Step 2: Find all catalog IDs that exist and check if they have customerType
-  const catalogsNeedingCustomerType = new Set<string>();
-  findCatalogsNeedingCustomerType(obj, [], catalogCustomerTypes, catalogsNeedingCustomerType);
+  // Step 2: Find all catalog IDs that exist
+  const allCatalogIds = new Set<string>();
+  findAllCatalogIds(obj, [], allCatalogIds);
 
   // Step 3: Add customerType keys for catalogs that need them
   let res = { ...obj };
-  for (const catalogId of catalogsNeedingCustomerType) {
+  for (const catalogId of allCatalogIds) {
     const customerType = catalogCustomerTypes.get(catalogId);
     if (customerType) {
       // Find the format used for this catalog and add customerType in the same format
       res = addCustomerTypeToCatalog(res, catalogId, customerType);
+    } else {
+      // Empty catalog (no products) - remove it since we can't infer customerType
+      res = removeCatalog(res, catalogId);
     }
   }
 
@@ -125,12 +129,11 @@ function findPropertyValue(obj: Record<string, any>, propertyName: string): any 
 }
 
 /**
- * Finds catalogs that exist but don't have customerType set.
+ * Finds all catalog IDs that exist in the config.
  */
-function findCatalogsNeedingCustomerType(
+function findAllCatalogIds(
   obj: Record<string, any>,
   basePath: string[],
-  catalogCustomerTypes: Map<string, string>,
   result: Set<string>
 ): void {
   for (const [key, value] of typedEntries(obj)) {
@@ -140,50 +143,67 @@ function findCatalogsNeedingCustomerType(
     // Check for catalog entry at payments.catalogs.<catalogId>
     if (fullPath.length >= 3 && fullPath[0] === "payments" && fullPath[1] === "catalogs") {
       const catalogId = fullPath[2];
-      if (catalogCustomerTypes.has(catalogId)) {
-        // Check if this catalog already has customerType
-        if (fullPath.length === 3 && isObjectLike(value)) {
-          // Nested format: check if value has customerType
-          if (findPropertyValue(value, "customerType") === undefined) {
-            result.add(catalogId);
-          }
-        } else if (fullPath.length > 3 && fullPath[3] !== "customerType") {
-          // Flat format: we're seeing a property of the catalog
-          // Check if customerType key exists for this catalog
-          const customerTypeKey = `payments.catalogs.${catalogId}.customerType`;
-          const hasCustomerType = checkPropertyExists(obj, customerTypeKey.split("."), []);
-          if (!hasCustomerType) {
-            result.add(catalogId);
-          }
-        }
-      }
+      result.add(catalogId);
     }
 
     if (isObjectLike(value)) {
-      findCatalogsNeedingCustomerType(value, fullPath, catalogCustomerTypes, result);
+      findAllCatalogIds(value, fullPath, result);
     }
   }
 }
 
 /**
- * Checks if a property exists anywhere in the object (nested or flat).
+ * Removes a catalog from the config in any format (nested or flat).
  */
-function checkPropertyExists(obj: Record<string, any>, targetPath: string[], basePath: string[]): boolean {
+function removeCatalog(obj: Record<string, any>, catalogId: string): Record<string, any> {
+  // Don't process arrays - they should be copied as-is
+  if (Array.isArray(obj)) {
+    return obj;
+  }
+
+  const res: Record<string, any> = {};
+
   for (const [key, value] of typedEntries(obj)) {
     const keyParts = key.split(".");
-    const fullPath = [...basePath, ...keyParts];
 
-    if (fullPath.join(".") === targetPath.join(".")) {
-      return true;
+    // Check if this key is for the catalog we want to remove
+    // Format 4: "payments.catalogs.<catalogId>.displayName" or similar flat keys
+    if (keyParts.length >= 3 && keyParts[0] === "payments" && keyParts[1] === "catalogs" && keyParts[2] === catalogId) {
+      // Skip this key - don't copy it
+      continue;
     }
 
-    if (isObjectLike(value) && targetPath.join(".").startsWith(fullPath.join("."))) {
-      if (checkPropertyExists(value, targetPath, fullPath)) {
-        return true;
+    // Format 3: "payments.catalogs.<catalogId>" as a single key
+    if (key === `payments.catalogs.${catalogId}`) {
+      continue;
+    }
+
+    if (Array.isArray(value)) {
+      res[key] = value;
+    } else if (isObjectLike(value)) {
+      const processed = removeCatalog(value, catalogId);
+      // Check if we need to remove the catalog from nested structures
+      if (key === "payments" && isObjectLike(processed) && "catalogs" in processed) {
+        const catalogs = processed.catalogs;
+        if (isObjectLike(catalogs) && catalogId in catalogs) {
+          const { [catalogId]: _, ...rest } = catalogs as Record<string, any>;
+          res[key] = { ...processed, catalogs: rest };
+          continue;
+        }
       }
+      // Format 2: "payments.catalogs" as a key with nested catalog
+      if (key === "payments.catalogs" && isObjectLike(processed) && catalogId in processed) {
+        const { [catalogId]: _, ...rest } = processed as Record<string, any>;
+        res[key] = rest;
+        continue;
+      }
+      res[key] = processed;
+    } else {
+      res[key] = value;
     }
   }
-  return false;
+
+  return res;
 }
 
 /**
@@ -361,8 +381,8 @@ import.meta.vitest?.test("migrateCatalogsToProductLines - multiple catalogs and 
   });
 });
 
-import.meta.vitest?.test("migrateCatalogsToProductLines - catalog without products", ({ expect }) => {
-  // Catalog without any products should still be renamed but won't get customerType
+import.meta.vitest?.test("migrateCatalogsToProductLines - catalog without products is removed", ({ expect }) => {
+  // Catalog without any products should be removed since we can't infer customerType
   expect(migrateCatalogsToProductLines({
     payments: {
       catalogs: {
@@ -372,16 +392,14 @@ import.meta.vitest?.test("migrateCatalogsToProductLines - catalog without produc
     }
   })).toEqual({
     payments: {
-      productLines: {
-        emptyCatalog: { displayName: "Empty" }
-      },
+      productLines: {},
       products: {}
     }
   });
 });
 
 import.meta.vitest?.test("migrateCatalogsToProductLines - products without catalogId", ({ expect }) => {
-  // Products without catalogId should not affect catalogs
+  // Catalogs without any products referencing them should be removed
   expect(migrateCatalogsToProductLines({
     payments: {
       catalogs: {
@@ -393,9 +411,7 @@ import.meta.vitest?.test("migrateCatalogsToProductLines - products without catal
     }
   })).toEqual({
     payments: {
-      productLines: {
-        myCatalog: { displayName: "My Catalog" }
-      },
+      productLines: {},
       products: {
         standalone: { customerType: "user", prices: {} }
       }
