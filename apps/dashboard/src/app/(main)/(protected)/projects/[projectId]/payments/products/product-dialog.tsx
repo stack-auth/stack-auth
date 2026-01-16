@@ -5,6 +5,7 @@ import { Button, Card, CardDescription, CardHeader, CardTitle, Checkbox, Dialog,
 import { cn } from "@/lib/utils";
 import { ArrowLeftIcon, ArrowRightIcon, CreditCardIcon, PackageIcon, PlusIcon, RepeatIcon, TrashIcon } from "@phosphor-icons/react";
 import { getUserSpecifiedIdErrorMessage, isValidUserSpecifiedId, sanitizeUserSpecifiedId } from "@stackframe/stack-shared/dist/schema-fields";
+import { getOrUndefined } from "@stackframe/stack-shared/dist/utils/objects";
 import { useState } from "react";
 import { CreateProductLineDialog } from "./create-product-line-dialog";
 import { IncludedItemDialog } from "./included-item-dialog";
@@ -573,7 +574,7 @@ export function ProductDialog({
                                   {product.displayName} ({product.id})
                                   {product.productLineId && (
                                     <span className="text-muted-foreground ml-1">
-                                      • {existingProductLines[product.productLineId].displayName || product.productLineId}
+                                      • {getOrUndefined(existingProductLines, product.productLineId)?.displayName || product.productLineId}
                                     </span>
                                   )}
                                 </Label>

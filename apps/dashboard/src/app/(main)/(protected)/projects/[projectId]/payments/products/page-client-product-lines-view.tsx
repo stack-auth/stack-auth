@@ -2047,11 +2047,11 @@ function ProductLineView({ groupedProducts, groups, existingItems, onSaveProduct
                 const displayName = newProductLineDisplayName.trim();
                 if (!id || !displayName) return;
                 if (!isValidUserSpecifiedId(id)) {
-                  toast({ title: getUserSpecifiedIdErrorMessage("productLineId"), variant: "destructive" });
+                  alert(getUserSpecifiedIdErrorMessage("productLineId"));
                   return;
                 }
                 if (Object.prototype.hasOwnProperty.call(groups, id)) {
-                  toast({ title: "Product line ID already exists", variant: "destructive" });
+                  alert("Product line ID already exists");
                   return;
                 }
 
