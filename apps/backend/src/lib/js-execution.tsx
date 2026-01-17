@@ -42,7 +42,7 @@ function createFreestyleEngine(): JsEngine {
       });
 
       if (response.result === undefined) {
-        throw new StackAssertionError("Freestyle execution returned undefined result", { response });
+        throw new StackAssertionError("Freestyle execution returned undefined result", { response, innerCode: code, innerOptions: options });
       }
 
       return response.result;
@@ -75,7 +75,7 @@ function createVercelSandboxEngine(): JsEngine {
           const installResult = await sandbox.runCommand('npm', ['install', '--no-save', ...packages]);
 
           if (installResult.exitCode !== 0) {
-            throw new StackAssertionError("Failed to install packages in Vercel Sandbox", { exitCode: installResult.exitCode });
+            throw new StackAssertionError("Failed to install packages in Vercel Sandbox", { exitCode: installResult.exitCode, innerCode: code, innerOptions: options });
           }
         }
 
@@ -113,7 +113,7 @@ function createVercelSandboxEngine(): JsEngine {
         if (runResult.exitCode !== 0) {
           // This shouldn't happen since the runner has a try-catch wrapper.
           // If we get here, something unexpected failed (OOM, timeout, disk error, etc.)
-          throw new StackAssertionError("Vercel Sandbox runner failed unexpectedly outside of runner safeguards. This should never happen.", { innerCode:code, innerOptions:options, exitCode: runResult.exitCode });
+          throw new StackAssertionError("Vercel Sandbox runner failed unexpectedly outside of runner safeguards. This should never happen.", { innerCode: code, innerOptions: options, exitCode: runResult.exitCode });
         }
 
         // Read the result file by catting it to stdout
@@ -129,13 +129,13 @@ function createVercelSandboxEngine(): JsEngine {
         const catResult = await sandbox.runCommand({ cmd: 'cat', args: [resultPath], stdout: stdoutStream });
 
         if (catResult.exitCode !== 0) {
-          throw new StackAssertionError("Failed to read result file from Vercel Sandbox", { exitCode: catResult.exitCode, innerCode:code, innerOptions:options });
+          throw new StackAssertionError("Failed to read result file from Vercel Sandbox", { exitCode: catResult.exitCode, innerCode: code, innerOptions: options });
         }
 
         try {
           return JSON.parse(resultJson);
         } catch (e: any) {
-          throw new StackAssertionError("Failed to parse result from Vercel Sandbox", { resultJson, cause: e, innerCode:code, innerOptions:options });
+          throw new StackAssertionError("Failed to parse result from Vercel Sandbox", { resultJson, cause: e, innerCode: code, innerOptions: options });
         }
       } finally {
         await sandbox.stop();
@@ -195,7 +195,7 @@ async function runSanityTest(code: string, options: ExecuteJavascriptOptions) {
   if (failures.length > 0) {
     captureError("js-execution-sanity-test-failures", new StackAssertionError(
       `JS execution sanity test: ${failures.length} engine(s) failed`,
-      { failures, successfulEngines: results.map(r => r.engine) }
+      { failures, successfulEngines: results.map(r => r.engine), innerCode: code, innerOptions: options }
     ));
   }
 
@@ -208,7 +208,7 @@ async function runSanityTest(code: string, options: ExecuteJavascriptOptions) {
   if (!allEqual) {
     captureError("js-execution-sanity-test-mismatch", new StackAssertionError(
       "JS execution sanity test: engines returned different results",
-      { results }
+      { results, innerCode: code, innerOptions: options }
     ));
   }
 }
@@ -245,7 +245,7 @@ async function runWithFallback(code: string, options: ExecuteJavascriptOptions):
     if (i < engines.length - 1) {
       captureError(`js-execution-${engine.name}-failed`, new StackAssertionError(
         `JS execution engine '${engine.name}' failed, falling back to next engine`,
-        { error: engineError, attempts: retryResult.attempts }
+        { error: engineError, attempts: retryResult.attempts, innerCode: code, innerOptions: options }
       ));
     }
   }
