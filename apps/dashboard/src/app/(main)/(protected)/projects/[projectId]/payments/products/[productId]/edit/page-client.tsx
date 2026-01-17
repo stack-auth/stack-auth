@@ -4,15 +4,7 @@ import { ItemDialog } from "@/components/payments/item-dialog";
 import { useRouter } from "@/components/router";
 import {
   Button,
-  Card,
-  CardDescription,
-  CardHeader,
-  CardTitle,
   Checkbox,
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
   Input,
   Label,
   Select,
@@ -25,136 +17,29 @@ import {
   Typography,
 } from "@/components/ui";
 import { cn } from "@/lib/utils";
-import { ArrowLeftIcon, BuildingOfficeIcon, CaretDownIcon, ChatIcon, ClockIcon, CodeIcon, CopyIcon, GearIcon, HardDriveIcon, LightningIcon, PlusIcon, PuzzlePieceIcon, StackIcon, TrashIcon, UserIcon } from "@phosphor-icons/react";
+import { ArrowLeftIcon, ClockIcon, HardDriveIcon, PackageIcon, PlusIcon, PuzzlePieceIcon, StackIcon, TrashIcon } from "@phosphor-icons/react";
 import { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
-import { getUserSpecifiedIdErrorMessage, isValidUserSpecifiedId, sanitizeUserSpecifiedId } from "@stackframe/stack-shared/dist/schema-fields";
 import { typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
-import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
-import { useSearchParams } from "next/navigation";
-import { useLayoutEffect, useRef, useState } from "react";
-import { useAdminApp, useProjectId } from "../../../use-admin-app";
-import { CreateProductLineDialog } from "../create-product-line-dialog";
-import { IncludedItemDialog } from "../included-item-dialog";
-import { PricingSection } from "../pricing-section";
-import { ProductCardPreview } from "../product-card-preview";
+import { useState } from "react";
+import { useAdminApp, useProjectId } from "../../../../use-admin-app";
+import { CreateProductLineDialog } from "../../create-product-line-dialog";
+import { IncludedItemDialog } from "../../included-item-dialog";
+import { PricingSection } from "../../pricing-section";
+import { ProductCardPreview } from "../../product-card-preview";
 import {
   generateUniqueId,
   type Price,
   type Product,
-} from "../utils";
+} from "../../utils";
+import { Link } from "@/components/link";
 
 type IncludedItem = Product['includedItems'][string];
 
-const CUSTOMER_TYPE_OPTIONS = [
-  {
-    value: 'user' as const,
-    label: 'User',
-    description: 'The customer of this product is an individual user',
-    icon: UserIcon,
-    color: 'blue',
-  },
-  {
-    value: 'team' as const,
-    label: 'Team',
-    description: 'The customer of this product is an entire team',
-    icon: BuildingOfficeIcon,
-    color: 'emerald',
-  },
-  {
-    value: 'custom' as const,
-    label: 'Custom',
-    description: 'Products for entities you define. You can specify a custom ID to identify the customer.',
-    icon: GearIcon,
-    color: 'amber',
-  },
-] as const;
-
-function CustomerTypeSelection({
-  onSelectCustomerType,
-  onCancel,
-}: {
-  onSelectCustomerType: (type: 'user' | 'team' | 'custom') => void,
-  onCancel: () => void,
-}) {
-  return (
-    <div className="flex flex-col h-full">
-      <div className="flex items-center gap-4 px-6 py-4 border-b border-border/40">
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={onCancel}
-          className="gap-2"
-        >
-          <ArrowLeftIcon className="h-4 w-4" />
-          Back
-        </Button>
-        <Typography type="h3" className="font-semibold">Create Product</Typography>
-      </div>
-      <div className="flex-1 flex items-center justify-center p-6">
-        <div className="space-y-4 max-w-md mx-auto">
-          <div className="text-center mb-8">
-            <Typography type="h2" className="text-2xl font-semibold">Who will this product be for?</Typography>
-          </div>
-
-          <div className="grid gap-3">
-            {CUSTOMER_TYPE_OPTIONS.map((option) => {
-              const Icon = option.icon;
-              const colorClasses = {
-                blue: {
-                  hover: 'hover:border-blue-500/40 hover:shadow-[0_0_12px_rgba(59,130,246,0.1)]',
-                  bg: 'bg-blue-500/10 dark:bg-blue-500/[0.15] group-hover:bg-blue-500/20',
-                  icon: 'text-blue-600 dark:text-blue-400',
-                },
-                emerald: {
-                  hover: 'hover:border-emerald-500/40 hover:shadow-[0_0_12px_rgba(16,185,129,0.1)]',
-                  bg: 'bg-emerald-500/10 dark:bg-emerald-500/[0.15] group-hover:bg-emerald-500/20',
-                  icon: 'text-emerald-600 dark:text-emerald-400',
-                },
-                amber: {
-                  hover: 'hover:border-amber-500/40 hover:shadow-[0_0_12px_rgba(245,158,11,0.1)]',
-                  bg: 'bg-amber-500/10 dark:bg-amber-500/[0.15] group-hover:bg-amber-500/20',
-                  icon: 'text-amber-600 dark:text-amber-400',
-                },
-              }[option.color];
-
-              return (
-                <Card
-                  key={option.value}
-                  className={cn(
-                    "cursor-pointer group",
-                    "rounded-xl border border-border/50 dark:border-foreground/[0.1]",
-                    "bg-foreground/[0.02] hover:bg-foreground/[0.04]",
-                    colorClasses.hover,
-                    "transition-all duration-150 hover:transition-none"
-                  )}
-                  onClick={() => onSelectCustomerType(option.value)}
-                >
-                  <CardHeader className="p-4">
-                    <div className="flex items-center gap-3">
-                      <div className={cn(
-                        "p-2.5 rounded-xl transition-colors duration-150 group-hover:transition-none",
-                        colorClasses.bg
-                      )}>
-                        <Icon className={cn("h-5 w-5", colorClasses.icon)} />
-                      </div>
-                      <div>
-                        <CardTitle className="text-base font-semibold">{option.label}</CardTitle>
-                        <CardDescription className="text-sm mt-1 text-muted-foreground">
-                          {option.description}
-                        </CardDescription>
-                      </div>
-                    </div>
-                  </CardHeader>
-                </Card>
-              );
-            })}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
+const CUSTOMER_TYPE_COLORS = {
+  user: 'bg-blue-500/15 text-blue-600 dark:bg-blue-500/20 dark:text-blue-400 ring-blue-500/30',
+  team: 'bg-emerald-500/15 text-emerald-600 dark:bg-emerald-500/20 dark:text-emerald-400 ring-emerald-500/30',
+  custom: 'bg-amber-500/15 text-amber-600 dark:bg-amber-500/20 dark:text-amber-400 ring-amber-500/30',
+} as const;
 
 function getItemDisplay(itemId: string, item: IncludedItem, existingItems: Array<{ id: string, displayName: string, customerType: string }>) {
   const itemData = existingItems.find(i => i.id === itemId);
@@ -168,80 +53,66 @@ function getItemDisplay(itemId: string, item: IncludedItem, existingItems: Array
   return display;
 }
 
-function toIdFormat(displayName: string): string {
-  return displayName
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-') // Replace non-alphanumeric sequences with hyphens
-    .replace(/^-+|-+$/g, ''); // Trim leading/trailing hyphens
-}
-
-// Helper to get duplicate data from sessionStorage
-function getDuplicateData(key: string | null): Product | null {
-  if (!key) return null;
-  try {
-    const data = sessionStorage.getItem(key);
-    if (data) {
-      sessionStorage.removeItem(key); // Clean up after reading
-      return JSON.parse(data) as Product;
-    }
-  } catch {
-    // Ignore parsing errors
-  }
-  return null;
-}
-
-export default function PageClient() {
+export default function PageClient({ productId }: { productId: string }) {
   const projectId = useProjectId();
   const router = useRouter();
-  const searchParams = useSearchParams();
   const stackAdminApp = useAdminApp();
   const project = stackAdminApp.useProject();
   const config = project.useConfig();
   const paymentsConfig: CompleteConfig['payments'] = config.payments;
 
-  // Check for duplicate data from sessionStorage
-  const duplicateKey = searchParams.get("duplicate");
-  const [duplicateData] = useState(() => getDuplicateData(duplicateKey));
+  const existingProduct = paymentsConfig.products[productId] as Product | undefined;
 
-  // Get URL parameters for pre-filling the form
-  const urlProductLineId = duplicateData?.productLineId ?? searchParams.get("productLineId");
-  const urlCustomerType = duplicateData?.customerType ?? searchParams.get("customerType") as 'user' | 'team' | 'custom' | null;
+  // If product not found, show error
+  if (!existingProduct) {
+    return (
+      <div className="flex flex-col h-full items-center justify-center gap-4">
+        <PackageIcon className="h-12 w-12 text-muted-foreground/50" />
+        <Typography className="text-muted-foreground">Product not found</Typography>
+        <Button variant="outline" asChild>
+          <Link href={`/projects/${projectId}/payments/products`}>
+            Back to Products
+          </Link>
+        </Button>
+      </div>
+    );
+  }
 
-  // Validate productLineId exists and get its customerType
-  const validProductLineId = urlProductLineId && urlProductLineId in paymentsConfig.productLines ? urlProductLineId : null;
-  const productLineCustomerType = validProductLineId ? paymentsConfig.productLines[validProductLineId].customerType : null;
+  return <EditProductForm productId={productId} existingProduct={existingProduct} />;
+}
 
-  // Determine initial customer type: from product line > from URL/duplicate > default 'user'
-  const validUrlCustomerType = urlCustomerType && ['user', 'team', 'custom'].includes(urlCustomerType) ? urlCustomerType : null;
-  const initialCustomerType = productLineCustomerType ?? validUrlCustomerType ?? 'user';
+function EditProductForm({ productId, existingProduct }: { productId: string, existingProduct: Product }) {
+  const projectId = useProjectId();
+  const router = useRouter();
+  const stackAdminApp = useAdminApp();
+  const project = stackAdminApp.useProject();
+  const config = project.useConfig();
+  const paymentsConfig: CompleteConfig['payments'] = config.payments;
 
-  // Skip customer type selection if we have duplicate data, valid productLineId, or valid customerType in URL
-  const skippedCustomerTypeSelection = !!duplicateData || !!validProductLineId || !!validUrlCustomerType;
-  const [hasSelectedCustomerType, setHasSelectedCustomerType] = useState(skippedCustomerTypeSelection);
+  // Customer type is fixed from the existing product (cannot be changed)
+  const customerType = existingProduct.customerType;
 
-  // Parse duplicate data for form initialization
-  const duplicateIsAddOn = duplicateData?.isAddOnTo !== false && duplicateData?.isAddOnTo !== undefined;
-  const duplicateIsAddOnTo = duplicateIsAddOn && duplicateData.isAddOnTo
-    ? Object.keys(duplicateData.isAddOnTo as Record<string, boolean>)
+  // Parse existing product data
+  const existingIsAddOn = existingProduct.isAddOnTo !== false;
+  const existingIsAddOnTo = existingIsAddOn
+    ? Object.keys(existingProduct.isAddOnTo as Record<string, boolean>)
     : [];
-  const duplicatePrices = duplicateData?.prices === 'include-by-default' ? {} : (duplicateData?.prices ?? {});
-  const duplicateFreeByDefault = duplicateData?.prices === 'include-by-default';
+  const existingPrices = existingProduct.prices === 'include-by-default'
+    ? {}
+    : existingProduct.prices;
+  const existingFreeByDefault = existingProduct.prices === 'include-by-default';
 
-  // Form state - initialized from duplicate data if available
-  const [productId, setProductId] = useState("");
-  const [displayName, setDisplayName] = useState(duplicateData?.displayName ?? "");
-  const [hasManuallyEditedId, setHasManuallyEditedId] = useState(false);
-  const [customerType, setCustomerType] = useState<'user' | 'team' | 'custom'>(initialCustomerType);
-  const [productLineId, setProductLineId] = useState(validProductLineId ?? "");
-  const [isAddOn, setIsAddOn] = useState(duplicateIsAddOn);
-  const [isAddOnTo, setIsAddOnTo] = useState<string[]>(duplicateIsAddOnTo);
-  const [stackable, setStackable] = useState(duplicateData?.stackable ?? false);
-  const [serverOnly, setServerOnly] = useState(duplicateData?.serverOnly ?? false);
-  const [freeByDefault, setFreeByDefault] = useState(duplicateFreeByDefault);
-  const [isInlineProduct, setIsInlineProduct] = useState(false);
-  const [prices, setPrices] = useState<Record<string, Price>>(duplicatePrices);
-  const [includedItems, setIncludedItems] = useState<Product['includedItems']>(duplicateData?.includedItems ?? {});
-  const [freeTrial, setFreeTrial] = useState<Product['freeTrial']>(duplicateData?.freeTrial);
+  // Form state - initialized from existing product
+  const [displayName, setDisplayName] = useState(existingProduct.displayName || '');
+  const [productLineId, setProductLineId] = useState(existingProduct.productLineId || '');
+  const [isAddOn, setIsAddOn] = useState(existingIsAddOn);
+  const [isAddOnTo, setIsAddOnTo] = useState<string[]>(existingIsAddOnTo);
+  const [stackable, setStackable] = useState(existingProduct.stackable);
+  const [serverOnly, setServerOnly] = useState(existingProduct.serverOnly);
+  const [freeByDefault, setFreeByDefault] = useState(existingFreeByDefault);
+  const [prices, setPrices] = useState<Record<string, Price>>(existingPrices);
+  const [includedItems, setIncludedItems] = useState<Product['includedItems']>(existingProduct.includedItems);
+  const [freeTrial, setFreeTrial] = useState<Product['freeTrial']>(existingProduct.freeTrial);
 
   // Dialog states
   const [showProductLineDialog, setShowProductLineDialog] = useState(false);
@@ -253,31 +124,9 @@ export default function PageClient() {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isSaving, setIsSaving] = useState(false);
 
-  // Container width measurement for responsive preview
-  const mainContentRef = useRef<HTMLDivElement>(null);
-  const [showPreview, setShowPreview] = useState(true);
-
-  useLayoutEffect(() => {
-    const container = mainContentRef.current;
-    if (!container) return;
-
-    const updateShowPreview = () => {
-      setShowPreview(container.offsetWidth > 900);
-    };
-
-    const observer = new ResizeObserver(() => {
-      updateShowPreview();
-    });
-
-    observer.observe(container);
-    // Initial check
-    updateShowPreview();
-
-    return () => observer.disconnect();
-  }, [hasSelectedCustomerType]);
-
   // Computed values
   const existingProducts = typedEntries(paymentsConfig.products)
+    .filter(([id]) => id !== productId) // Exclude self
     .map(([id, product]) => ({
       id,
       displayName: product.displayName,
@@ -291,17 +140,14 @@ export default function PageClient() {
     customerType: item.customerType
   }));
 
-  const isFirstProduct = existingProducts.length === 0;
-
   // Validate that the selected productLineId matches the current customerType
-  // If not, treat it as "no product line" - this handles cases where URL params have mismatched types
   const effectiveProductLineId = productLineId && paymentsConfig.productLines[productLineId].customerType === customerType
     ? productLineId
     : "";
 
   // Build product object for preview
   const previewProduct: Product = {
-    displayName: displayName || 'New Product',
+    displayName: displayName || 'Product',
     customerType,
     productLineId: effectiveProductLineId || undefined,
     isAddOnTo: isAddOn ? Object.fromEntries(isAddOnTo.map(id => [id, true])) : false,
@@ -312,58 +158,18 @@ export default function PageClient() {
     freeTrial,
   };
 
-  const handleSelectCustomerType = (type: 'user' | 'team' | 'custom') => {
-    setCustomerType(type);
-    setHasSelectedCustomerType(true);
-  };
-
-  const handleBack = () => {
-    // If we skipped customer type selection (came from URL with customerType or productLineId),
-    // go back to the previous page instead of showing the selection screen
-    if (skippedCustomerTypeSelection) {
-      if (window.history.length > 1) {
-        window.history.back();
-      } else {
-        router.push(`/projects/${projectId}/payments/products`);
-      }
-    } else {
-      setHasSelectedCustomerType(false);
-    }
-  };
-
-  // When customer type changes via the dropdown, reset product-line-related state
-  const handleCustomerTypeChange = (newType: 'user' | 'team' | 'custom') => {
-    if (newType !== customerType) {
-      setCustomerType(newType);
-      // Reset product line since product lines are customer-type-specific
-      setProductLineId("");
-      // Reset add-on selections since they may not be valid for the new type
-      setIsAddOnTo([]);
-    }
-  };
-
-  const handleCreateProductLine = (productLine: { id: string, displayName: string }) => {
-    runAsynchronouslyWithAlert(async () => {
-      await project.updateConfig({
-        [`payments.productLines.${productLine.id}`]: {
-          displayName: productLine.displayName || null,
-          customerType,
-        },
-      });
-      setProductLineId(productLine.id);
+  const handleCreateProductLine = async (productLine: { id: string, displayName: string }) => {
+    await project.updateConfig({
+      [`payments.productLines.${productLine.id}`]: {
+        displayName: productLine.displayName || null,
+        customerType,
+      },
     });
+    setProductLineId(productLine.id);
   };
 
   const validateForm = () => {
     const newErrors: Record<string, string> = {};
-
-    if (!productId.trim()) {
-      newErrors.productId = "Product ID is required";
-    } else if (!isValidUserSpecifiedId(productId)) {
-      newErrors.productId = getUserSpecifiedIdErrorMessage("productId");
-    } else if (existingProducts.some(o => o.id === productId)) {
-      newErrors.productId = "This product ID already exists";
-    }
 
     if (!displayName.trim()) {
       newErrors.displayName = "Display name is required";
@@ -411,7 +217,7 @@ export default function PageClient() {
       };
 
       await project.updateConfig({ [`payments.products.${productId}`]: product });
-      toast({ title: "Product created" });
+      toast({ title: "Product updated" });
       router.push(`/projects/${projectId}/payments/products`);
     } finally {
       setIsSaving(false);
@@ -446,86 +252,7 @@ export default function PageClient() {
     }
   };
 
-  // Show customer type selection if not selected yet
-  if (!hasSelectedCustomerType) {
-    return (
-      <CustomerTypeSelection
-        onSelectCustomerType={handleSelectCustomerType}
-        onCancel={handleCancel}
-      />
-    );
-  }
-
-  const canSave = !!(productId.trim() && displayName.trim() && (freeByDefault || Object.keys(prices).length > 0));
-
-  // Generate inline product code for copying
-  const generateInlineProductCode = () => {
-    const pricesCode = freeByDefault
-      ? `'include-by-default'`
-      : `{
-${Object.entries(prices).map(([id, price]) => {
-  const parts = [`    '${id}': { USD: '${price.USD}'`];
-  if (price.interval) {
-    parts.push(`, interval: [${price.interval[0]}, '${price.interval[1]}']`);
-  }
-  if (price.freeTrial) {
-    parts.push(`, freeTrial: [${price.freeTrial[0]}, '${price.freeTrial[1]}']`);
-  }
-  if (price.serverOnly) {
-    parts.push(`, serverOnly: true`);
-  }
-  parts.push(` }`);
-  return parts.join('');
-}).join(',\n')}
-  }`;
-
-    const isAddOnToCode = isAddOn && isAddOnTo.length > 0
-      ? `{ ${isAddOnTo.map(id => `'${id}': true`).join(', ')} }`
-      : 'false';
-
-    return `const product = {
-  id: '${productId || 'product-id'}',
-  displayName: '${displayName || 'New Product'}',
-  customerType: '${customerType}',
-  prices: ${pricesCode},${effectiveProductLineId ? `\n  productLineId: '${effectiveProductLineId}',` : ''}${stackable ? '\n  stackable: true,' : ''}${serverOnly ? '\n  serverOnly: true,' : ''}
-  isAddOnTo: ${isAddOnToCode},
-  includedItems: {${Object.entries(includedItems).map(([id, item]) => {
-    const repeatPart = item.repeat === 'never' ? `'never'` : `[${item.repeat[0]}, '${item.repeat[1]}']`;
-    return `\n    '${id}': { quantity: ${item.quantity}, repeat: ${repeatPart} }`;
-  }).join(',')}${Object.keys(includedItems).length > 0 ? '\n  ' : ''}}
-};`;
-  };
-
-  // Generate prompt for creating inline product
-  const generateInlineProductPrompt = () => {
-    const priceDescriptions = freeByDefault
-      ? 'free and included by default for all customers'
-      : Object.entries(prices).map(([id, price]) => {
-        let desc = `$${price.USD}`;
-        if (price.interval) {
-          const [count, unit] = price.interval;
-          desc += count === 1 ? ` per ${unit}` : ` every ${count} ${unit}s`;
-        } else {
-          desc += ' one-time';
-        }
-        if (price.freeTrial) {
-          const [count, unit] = price.freeTrial;
-          desc += ` with ${count} ${unit}${count > 1 ? 's' : ''} free trial`;
-        }
-        return desc;
-      }).join(', ');
-
-    const itemDescriptions = Object.entries(includedItems).map(([itemId, item]) => {
-      const itemInfo = existingItems.find(i => i.id === itemId);
-      return `${item.quantity}x ${itemInfo?.displayName || itemId}`;
-    }).join(', ');
-
-    return `Create an inline product with the following configuration:
-- Product ID: ${productId || 'product-id'}
-- Display Name: ${displayName || 'New Product'}
-- Customer Type: ${customerType}
-- Pricing: ${priceDescriptions}${effectiveProductLineId ? `\n- Product Line: ${effectiveProductLineId}` : ''}${stackable ? '\n- Stackable: yes' : ''}${serverOnly ? '\n- Server only: yes' : ''}${isAddOn && isAddOnTo.length > 0 ? `\n- Add-on to: ${isAddOnTo.join(', ')}` : ''}${itemDescriptions ? `\n- Included items: ${itemDescriptions}` : ''}`;
-  };
+  const canSave = !!(displayName.trim() && (freeByDefault || Object.keys(prices).length > 0));
 
   return (
     <div className="flex flex-col h-full">
@@ -535,92 +262,34 @@ ${Object.entries(prices).map(([id, price]) => {
           <Button
             variant="ghost"
             size="sm"
-            onClick={handleBack}
+            onClick={handleCancel}
             className="gap-2"
           >
             <ArrowLeftIcon className="h-4 w-4" />
             Back
           </Button>
-          <Typography type="h3" className="font-semibold">Create Product</Typography>
+          <Typography type="h3" className="font-semibold">Edit Product</Typography>
         </div>
         <div className="flex items-center gap-2">
           <Button variant="outline" onClick={handleCancel}>
             Cancel
           </Button>
-          {isInlineProduct ? (
+          <SimpleTooltip
+            tooltip={!canSave ? "Fill in required fields and add at least one price" : undefined}
+            disabled={canSave}
+          >
             <Button
-              onClick={() => {
-                const prompt = generateInlineProductPrompt();
-                runAsynchronouslyWithAlert(async () => {
-                  await navigator.clipboard.writeText(prompt);
-                  toast({ title: "Prompt copied to clipboard" });
-                });
-              }}
+              onClick={handleSave}
+              disabled={!canSave || isSaving}
             >
-              <CopyIcon className="h-4 w-4 mr-2" />
-              Copy Checkout Prompt
+              {isSaving ? "Saving..." : "Save Changes"}
             </Button>
-          ) : (
-            <DropdownMenu>
-              <div className="flex items-center">
-                <SimpleTooltip
-                  tooltip={!canSave ? "Fill in required fields and add at least one price" : undefined}
-                  disabled={canSave}
-                >
-                  <Button
-                    onClick={handleSave}
-                    disabled={!canSave || isSaving}
-                    className="!rounded-r-none"
-                  >
-                    {isSaving ? "Creating..." : "Create Product"}
-                  </Button>
-                </SimpleTooltip>
-                <div className="w-px h-6 bg-primary-foreground/20" />
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    variant="default"
-                    disabled={!canSave || isSaving}
-                    className="!rounded-l-none px-2"
-                  >
-                    <CaretDownIcon className="h-4 w-4" />
-                  </Button>
-                </DropdownMenuTrigger>
-              </div>
-              <DropdownMenuContent align="end" className="min-w-[220px]">
-                <DropdownMenuItem
-                  onClick={() => {
-                    const code = generateInlineProductCode();
-                    runAsynchronouslyWithAlert(async () => {
-                      await navigator.clipboard.writeText(code);
-                      toast({ title: "Code copied to clipboard" });
-                    });
-                  }}
-                  className="flex items-center gap-2"
-                >
-                  <CodeIcon className="h-4 w-4" />
-                  <span>Copy inline product code</span>
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onClick={() => {
-                    const prompt = generateInlineProductPrompt();
-                    runAsynchronouslyWithAlert(async () => {
-                      await navigator.clipboard.writeText(prompt);
-                      toast({ title: "Prompt copied to clipboard" });
-                    });
-                  }}
-                  className="flex items-center gap-2"
-                >
-                  <ChatIcon className="h-4 w-4" />
-                  <span>Copy prompt for inline product</span>
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          )}
+          </SimpleTooltip>
         </div>
       </div>
 
       {/* Main content - form on left, preview on right */}
-      <div ref={mainContentRef} className="flex-1 flex overflow-hidden">
+      <div className="flex-1 flex overflow-hidden">
         {/* Left side - Configuration form */}
         <div className="flex-1 overflow-y-auto p-6 flex justify-center">
           <div className="w-full max-w-2xl space-y-6">
@@ -633,18 +302,11 @@ ${Object.entries(prices).map(([id, price]) => {
                   id="display-name"
                   value={displayName}
                   onChange={(e) => {
-                    const newDisplayName = e.target.value;
-                    setDisplayName(newDisplayName);
-                    if (!hasManuallyEditedId) {
-                      setProductId(toIdFormat(newDisplayName));
-                    }
-                    if (errors.displayName || (!hasManuallyEditedId && errors.productId)) {
+                    setDisplayName(e.target.value);
+                    if (errors.displayName) {
                       setErrors(prev => {
                         const newErrors = { ...prev };
                         delete newErrors.displayName;
-                        if (!hasManuallyEditedId) {
-                          delete newErrors.productId;
-                        }
                         return newErrors;
                       });
                     }
@@ -666,39 +328,20 @@ ${Object.entries(prices).map(([id, price]) => {
                 )}
               </div>
 
-              {/* Product ID */}
+              {/* Product ID - Read Only */}
               <div className="grid gap-1.5">
                 <Label htmlFor="product-id" className="text-sm font-medium">Product ID</Label>
                 <Input
                   id="product-id"
                   value={productId}
-                  onChange={(e) => {
-                    const nextValue = sanitizeUserSpecifiedId(e.target.value);
-                    setProductId(nextValue);
-                    setHasManuallyEditedId(true);
-                    if (errors.productId) {
-                      setErrors(prev => {
-                        const newErrors = { ...prev };
-                        delete newErrors.productId;
-                        return newErrors;
-                      });
-                    }
-                  }}
-                  placeholder="e.g., pro-plan"
+                  disabled
                   className={cn(
                     "h-8 rounded-lg font-mono text-sm",
-                    "bg-foreground/[0.03] border-border/50 dark:border-foreground/[0.1]",
-                    "focus:ring-1 focus:ring-cyan-500/30 focus:border-cyan-500/50",
-                    "transition-all duration-150 hover:transition-none",
-                    errors.productId && "border-destructive focus:ring-destructive/30"
+                    "bg-foreground/[0.06] border-border/50 dark:border-foreground/[0.1]",
+                    "text-foreground/60 cursor-not-allowed"
                   )}
                 />
-                <span className="text-xs text-foreground/40">Used to reference this product in code</span>
-                {errors.productId && (
-                  <Typography type="label" className="text-destructive text-xs">
-                    {errors.productId}
-                  </Typography>
-                )}
+                <span className="text-xs text-foreground/40">Product ID cannot be changed</span>
               </div>
             </div>
 
@@ -732,11 +375,9 @@ ${Object.entries(prices).map(([id, price]) => {
                 onFreeByDefaultChange={(checked) => {
                   setFreeByDefault(checked);
                   if (!checked) {
-                    // When unchecking "included by default", set a $0 price
                     const newPriceId = generateUniqueId('price');
                     setPrices({ [newPriceId]: { USD: '0.00', serverOnly: false } });
                   } else {
-                    // When checking "included by default", clear prices
                     setPrices({});
                   }
                 }}
@@ -819,6 +460,18 @@ ${Object.entries(prices).map(([id, price]) => {
               <Typography type="h4" className="font-semibold">Options</Typography>
 
               <div className="grid grid-cols-[auto,1fr] gap-x-6">
+                {/* Customer Type - Read Only */}
+                <span className="text-sm text-foreground/70 py-2 border-b border-border/20">Customer type</span>
+                <div className="py-2 flex items-center border-b border-border/20">
+                  <span className={cn(
+                    "inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wide ring-1",
+                    CUSTOMER_TYPE_COLORS[customerType]
+                  )}>
+                    {customerType}
+                  </span>
+                  <span className="text-xs text-foreground/40 ml-2">(cannot be changed)</span>
+                </div>
+
                 {/* Stackable */}
                 <span className="text-sm text-foreground/70 py-2 border-b border-border/20">Can this be purchased multiple times?</span>
                 <label className="flex items-center gap-2 cursor-pointer py-2 border-b border-border/20">
@@ -844,7 +497,7 @@ ${Object.entries(prices).map(([id, price]) => {
                 </label>
 
                 {/* Add-on */}
-                {!isFirstProduct && (
+                {existingProducts.length > 0 && (
                   <>
                     <span className="text-sm text-foreground/70 py-2 border-b border-border/20">Require another product to be purchased first?</span>
                     <div className="py-2 border-b border-border/20">
@@ -990,66 +643,26 @@ ${Object.entries(prices).map(([id, price]) => {
                     </SelectContent>
                   </Select>
                 </div>
-
-                {/* Inline Product */}
-                <span className="text-sm text-foreground/70 py-2">Create on-the-fly for each checkout?</span>
-                <label className="flex items-center gap-2 cursor-pointer py-2">
-                  <Checkbox
-                    id="inline"
-                    checked={isInlineProduct}
-                    onCheckedChange={(checked) => setIsInlineProduct(checked as boolean)}
-                  />
-                  <LightningIcon className="h-4 w-4 text-foreground/50" />
-                  <span className="text-sm font-medium">Inline</span>
-                </label>
               </div>
             </section>
           </div>
         </div>
 
-        {/* Right side - Preview or Code Snippet (shown when container too small) */}
-        {showPreview && (
-          <div className="flex w-[400px] shrink-0 flex-col items-center p-8 border-l border-border/40 bg-foreground/[0.01]">
-            <div className="text-center mb-6">
-              <span className="text-xs font-medium text-foreground/40 uppercase tracking-wider">
-                {isInlineProduct ? 'Checkout Code Snippet' : 'Preview'}
-              </span>
-            </div>
-            {isInlineProduct ? (
-              <div className="w-full flex-1 flex flex-col">
-                <pre className={cn(
-                "flex-1 overflow-auto p-4 rounded-lg text-xs font-mono",
-                "bg-foreground/[0.03] border border-border/30",
-                "text-foreground/80 whitespace-pre-wrap"
-              )}>
-                  {generateInlineProductCode()}
-                </pre>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="mt-4"
-                  onClick={() => {
-                  runAsynchronouslyWithAlert(async () => {
-                    await navigator.clipboard.writeText(generateInlineProductCode());
-                    toast({ title: "Code copied to clipboard" });
-                  });
-                  }}
-                >
-                  <CopyIcon className="h-4 w-4 mr-2" />
-                  Copy Code
-                </Button>
-              </div>
-            ) : (
-              <div className="w-[320px]">
-                <ProductCardPreview
-                  productId={productId || 'product-id'}
-                  product={previewProduct}
-                  existingItems={existingItems}
-                />
-              </div>
-            )}
+        {/* Right side - Preview */}
+        <div className="hidden lg:flex w-[400px] shrink-0 flex-col items-center p-8 border-l border-border/40 bg-foreground/[0.01]">
+          <div className="text-center mb-6">
+            <span className="text-xs font-medium text-foreground/40 uppercase tracking-wider">
+              Preview
+            </span>
           </div>
-        )}
+          <div className="w-[320px]">
+            <ProductCardPreview
+              productId={productId}
+              product={previewProduct}
+              existingItems={existingItems}
+            />
+          </div>
+        </div>
       </div>
 
       {/* Dialogs */}
