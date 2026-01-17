@@ -83,8 +83,8 @@
     "chokidar-cli": "^3.0.0",
     "dotenv": "^16.4.5",
     "dotenv-cli": "^7.3.0",
-    "freestyle-sandboxes": "^0.1.5",
-    "jose": "^5.2.2",
+    "freestyle-sandboxes": "^0.1.6",
+    "jose": "^6.1.3",
     "json-diff": "^1.0.6",
     "next": "16.1.1",
     "nodemailer": "^6.9.10",
@@ -102,7 +102,7 @@
     "svix": "^1.25.0",
     "vite": "^6.1.0",
     "yaml": "^2.4.5",
-    "yup": "^1.4.0",
+    "yup": "^1.7.1",
     "zod": "^3.23.8"
   },
   "devDependencies": {
