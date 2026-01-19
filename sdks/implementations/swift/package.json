@@ -5,7 +5,7 @@
   "description": "Stack Auth Swift SDK",
   "scripts": {
     "test": "swift test",
-    "build": "swift build",
+    "clean": "swift package clean",
     "start:mac-example": "cd Examples/StackAuthMacOS && swift run",
     "start:ios-example": "echo 'iOS example requires Xcode. Run: open Examples/StackAuthiOS/StackAuthiOS.xcodeproj'"
   }
