@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import AuthenticationServices
 import StackAuth
 
 @main
@@ -1224,15 +1225,25 @@ struct ContactChannelsView: View {
     }
 }
 
+// MARK: - OAuth Presentation Context Provider
+
+class MacOSPresentationContextProvider: NSObject, ASWebAuthenticationPresentationContextProviding {
+    func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
+        return NSApplication.shared.windows.first ?? ASPresentationAnchor()
+    }
+}
+
 // MARK: - OAuth View
 
 struct OAuthView: View {
     @Bindable var viewModel: SDKTestViewModel
     @State private var provider = "google"
+    @State private var isSigningIn = false
+    private let presentationProvider = MacOSPresentationContextProvider()
     
     var body: some View {
         Form {
-            Section("OAuth URL Generation") {
+            Section("Sign In with OAuth") {
                 TextField("Provider", text: $provider)
                 
                 HStack {
@@ -1241,13 +1252,63 @@ struct OAuthView: View {
                     Button("microsoft") { provider = "microsoft" }
                 }
                 
+                Button("signInWithOAuth(provider: \"\(provider)\")") {
+                    Task { await signInWithOAuth() }
+                }
+                .disabled(isSigningIn)
+                
+                if isSigningIn {
+                    HStack {
+                        ProgressView()
+                            .scaleEffect(0.7)
+                        Text("Waiting for OAuth...")
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+            
+            Section("OAuth URL Generation (Manual)") {
                 Button("getOAuthUrl(provider: \"\(provider)\")") {
                     Task { await getOAuthUrl() }
                 }
+                
+                Text("Returns URL, state, and codeVerifier for manual OAuth handling")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
         }
         .formStyle(.grouped)
         .navigationTitle("OAuth")
+    }
+    
+    func signInWithOAuth() async {
+        let params = "provider: \"\(provider)\""
+        viewModel.logInfo("signInWithOAuth()", message: "Opening OAuth browser...", details: params)
+        isSigningIn = true
+        
+        do {
+            try await viewModel.clientApp.signInWithOAuth(
+                provider: provider,
+                presentationContextProvider: presentationProvider
+            )
+            viewModel.logCall(
+                "signInWithOAuth(provider:)",
+                params: params,
+                result: "Success! User signed in via OAuth."
+            )
+            // Fetch user to show details
+            if let user = try await viewModel.clientApp.getUser() {
+                let dict = await serializeCurrentUser(user)
+                viewModel.logCall(
+                    "getUser() after OAuth",
+                    result: formatObject("CurrentUser", dict)
+                )
+            }
+        } catch {
+            viewModel.logCall("signInWithOAuth(provider:)", params: params, error: error)
+        }
+        
+        isSigningIn = false
     }
     
     func getOAuthUrl() async {

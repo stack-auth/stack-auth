@@ -1,4 +1,6 @@
 import SwiftUI
+import UIKit
+import AuthenticationServices
 import StackAuth
 
 @main
@@ -10,49 +12,341 @@ struct StackAuthiOSApp: App {
     }
 }
 
+// MARK: - iOS OAuth Presentation Context Provider
+
+class iOSPresentationContextProvider: NSObject, ASWebAuthenticationPresentationContextProviding {
+    func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
+        guard let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+              let window = scene.windows.first else {
+            return ASPresentationAnchor()
+        }
+        return window
+    }
+}
+
 // MARK: - Main Content View
 
 struct ContentView: View {
     @State private var viewModel = SDKTestViewModel()
+    @State private var selectedTab = 0
+    @State private var lastSeenLogCount = 0
+    
+    var unreadLogCount: Int {
+        max(0, viewModel.logs.count - lastSeenLogCount)
+    }
     
     var body: some View {
-        TabView {
-            NavigationStack {
-                AuthenticationView(viewModel: viewModel)
+        ZStack {
+            TabView(selection: $selectedTab) {
+                NavigationStack {
+                    SettingsView(viewModel: viewModel)
+                }
+                .tabItem {
+                    Label("Settings", systemImage: "gear")
+                }
+                .tag(0)
+                
+                NavigationStack {
+                    AuthenticationView(viewModel: viewModel)
+                }
+                .tabItem {
+                    Label("Auth", systemImage: "person.badge.key")
+                }
+                .tag(1)
+                
+                NavigationStack {
+                    UserManagementView(viewModel: viewModel)
+                }
+                .tabItem {
+                    Label("User", systemImage: "person.crop.circle")
+                }
+                .tag(2)
+                
+                NavigationStack {
+                    TeamsView(viewModel: viewModel)
+                }
+                .tabItem {
+                    Label("Teams", systemImage: "person.3")
+                }
+                .tag(3)
+                
+                NavigationStack {
+                    LogsView(viewModel: viewModel)
+                }
+                .tabItem {
+                    Label("Logs", systemImage: "list.bullet.rectangle")
+                }
+                .badge(unreadLogCount > 0 ? unreadLogCount : 0)
+                .tag(4)
             }
-            .tabItem {
-                Label("Auth", systemImage: "person.badge.key")
+            .onChange(of: selectedTab) { _, newTab in
+                if newTab == 4 {
+                    // User switched to Logs tab, mark all as read
+                    lastSeenLogCount = viewModel.logs.count
+                }
             }
             
-            NavigationStack {
-                UserView(viewModel: viewModel)
+            // Toast notification overlay
+            LogToastView(viewModel: viewModel, selectedTab: $selectedTab)
+        }
+    }
+}
+
+// MARK: - Log Toast View
+
+struct LogToastView: View {
+    @Bindable var viewModel: SDKTestViewModel
+    @Binding var selectedTab: Int
+    @State private var showToast = false
+    @State private var toastEntry: LogEntry?
+    @State private var lastLogId: UUID?
+    
+    var body: some View {
+        VStack {
+            if showToast, let entry = toastEntry, selectedTab != 4 {
+                HStack(spacing: 12) {
+                    Image(systemName: entry.type.icon)
+                        .foregroundStyle(entry.type.color)
+                    
+                    VStack(alignment: .leading, spacing: 2) {
+                        if let function = entry.function {
+                            Text(function)
+                                .font(.caption.bold())
+                                .lineLimit(1)
+                        }
+                        Text(entry.message)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(2)
+                    }
+                    
+                    Spacer()
+                    
+                    Button {
+                        selectedTab = 4
+                        withAnimation {
+                            showToast = false
+                        }
+                    } label: {
+                        Text("View")
+                            .font(.caption.bold())
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .buttonBorderShape(.capsule)
+                    .controlSize(.small)
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
+                .shadow(radius: 8)
+                .padding(.horizontal)
+                .transition(.move(edge: .top).combined(with: .opacity))
+                .onTapGesture {
+                    selectedTab = 4
+                    withAnimation {
+                        showToast = false
+                    }
+                }
             }
-            .tabItem {
-                Label("User", systemImage: "person.crop.circle")
+            Spacer()
+        }
+        .padding(.top, 8)
+        .onChange(of: viewModel.logs.first?.id) { _, newId in
+            guard let newId = newId, newId != lastLogId, selectedTab != 4 else { return }
+            lastLogId = newId
+            toastEntry = viewModel.logs.first
+            withAnimation(.spring(duration: 0.3)) {
+                showToast = true
             }
-            
-            NavigationStack {
-                TeamsView(viewModel: viewModel)
-            }
-            .tabItem {
-                Label("Teams", systemImage: "person.3")
-            }
-            
-            NavigationStack {
-                ServerView(viewModel: viewModel)
-            }
-            .tabItem {
-                Label("Server", systemImage: "server.rack")
-            }
-            
-            NavigationStack {
-                SettingsView(viewModel: viewModel)
-            }
-            .tabItem {
-                Label("Settings", systemImage: "gear")
+            // Auto-hide after 3 seconds
+            Task {
+                try? await Task.sleep(for: .seconds(3))
+                withAnimation {
+                    if toastEntry?.id == newId {
+                        showToast = false
+                    }
+                }
             }
         }
     }
+}
+
+// MARK: - Logs View
+
+struct LogsView: View {
+    @Bindable var viewModel: SDKTestViewModel
+    @State private var selectedLogId: UUID?
+    
+    var body: some View {
+        VStack(spacing: 0) {
+            if viewModel.logs.isEmpty {
+                VStack {
+                    Spacer()
+                    Image(systemName: "list.bullet.rectangle")
+                        .font(.system(size: 48))
+                        .foregroundStyle(.tertiary)
+                    Text("No activity yet")
+                        .foregroundStyle(.secondary)
+                    Text("Use the SDK from other tabs to see logs here")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                    Spacer()
+                }
+            } else {
+                List(viewModel.logs, selection: $selectedLogId) { entry in
+                    LogEntryView(entry: entry)
+                        .id(entry.id)
+                        .contextMenu {
+                            Button {
+                                UIPasteboard.general.string = entry.message
+                            } label: {
+                                Label("Copy Message", systemImage: "doc.on.doc")
+                            }
+                            Button {
+                                UIPasteboard.general.string = entry.fullDescription
+                            } label: {
+                                Label("Copy Full Details", systemImage: "doc.on.doc.fill")
+                            }
+                        }
+                }
+                .listStyle(.plain)
+            }
+        }
+        .navigationTitle("SDK Logs")
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                HStack {
+                    Text("\(viewModel.logs.count)")
+                        .foregroundStyle(.secondary)
+                        .font(.caption)
+                    Button("Clear") {
+                        viewModel.clearLogs()
+                    }
+                }
+            }
+        }
+        .sheet(item: $selectedLogId) { id in
+            if let entry = viewModel.logs.first(where: { $0.id == id }) {
+                LogDetailSheet(entry: entry)
+            }
+        }
+    }
+}
+
+extension UUID: @retroactive Identifiable {
+    public var id: UUID { self }
+}
+
+struct LogDetailSheet: View {
+    let entry: LogEntry
+    @Environment(\.dismiss) private var dismiss
+    
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    HStack {
+                        Image(systemName: entry.type.icon)
+                            .foregroundStyle(entry.type.color)
+                        Text(entry.type.rawValue)
+                            .font(.headline)
+                            .foregroundStyle(entry.type.color)
+                        Spacer()
+                        Text(entry.timestamp, style: .time)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    
+                    if let function = entry.function {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Function")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            Text(function)
+                                .font(.system(.body, design: .monospaced))
+                        }
+                    }
+                    
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Details")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Text(entry.fullDescription)
+                            .font(.system(.caption, design: .monospaced))
+                            .textSelection(.enabled)
+                    }
+                }
+                .padding()
+            }
+            .navigationTitle("Log Entry")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Done") {
+                        dismiss()
+                    }
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        UIPasteboard.general.string = entry.fullDescription
+                    } label: {
+                        Image(systemName: "doc.on.doc")
+                    }
+                }
+            }
+        }
+    }
+}
+
+struct LogEntryView: View {
+    let entry: LogEntry
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(alignment: .top) {
+                Image(systemName: entry.type.icon)
+                    .foregroundStyle(entry.type.color)
+                    .frame(width: 20)
+                
+                VStack(alignment: .leading, spacing: 2) {
+                    if let function = entry.function {
+                        Text(function)
+                            .font(.system(.caption, design: .monospaced).bold())
+                            .foregroundStyle(.primary)
+                    }
+                    
+                    Text(entry.message)
+                        .font(.system(.caption, design: .monospaced))
+                        .foregroundStyle(entry.type.color)
+                        .lineLimit(3)
+                    
+                    Text(entry.timestamp, style: .time)
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                }
+                
+                Spacer()
+            }
+        }
+        .padding(.vertical, 4)
+    }
+}
+
+// MARK: - Test Sections
+
+enum TestSection: String, CaseIterable, Identifiable {
+    case settings
+    case authentication
+    case userManagement
+    case teams
+    case contactChannels
+    case oauth
+    case tokens
+    case serverUsers
+    case serverTeams
+    case sessions
+    
+    var id: String { rawValue }
 }
 
 // MARK: - View Model
@@ -66,7 +360,9 @@ class SDKTestViewModel {
     var secretServerKey = "this-secret-server-key-is-for-local-development-only"
     
     // State
+    var selectedSection: TestSection = .settings
     var logs: [LogEntry] = []
+    var isLoading = false
     
     // Apps (lazy initialized)
     private var _clientApp: StackClientApp?
@@ -100,14 +396,54 @@ class SDKTestViewModel {
     func resetApps() {
         _clientApp = nil
         _serverApp = nil
-        log("Apps reset with new configuration", type: .info)
+        logCall("resetApps()", result: "Apps reset with new configuration")
     }
     
-    func log(_ message: String, type: LogType = .info) {
-        let entry = LogEntry(message: message, type: type, timestamp: Date())
+    // Enhanced logging
+    func logCall(_ function: String, params: String? = nil, result: String) {
+        let message = result
+        let details = params.map { "Parameters:\n\($0)\n\nResult:\n\(result)" } ?? "Result:\n\(result)"
+        let entry = LogEntry(
+            function: function,
+            message: message,
+            details: details,
+            type: .success,
+            timestamp: Date()
+        )
         logs.insert(entry, at: 0)
-        if logs.count > 50 {
-            logs.removeLast()
+        trimLogs()
+    }
+    
+    func logCall(_ function: String, params: String? = nil, error: Error) {
+        let errorStr = String(describing: error)
+        let message = errorStr
+        let details = params.map { "Parameters:\n\($0)\n\nError:\n\(errorStr)" } ?? "Error:\n\(errorStr)"
+        let entry = LogEntry(
+            function: function,
+            message: message,
+            details: details,
+            type: .error,
+            timestamp: Date()
+        )
+        logs.insert(entry, at: 0)
+        trimLogs()
+    }
+    
+    func logInfo(_ function: String, message: String, details: String? = nil) {
+        let entry = LogEntry(
+            function: function,
+            message: message,
+            details: details ?? message,
+            type: .info,
+            timestamp: Date()
+        )
+        logs.insert(entry, at: 0)
+        trimLogs()
+    }
+    
+    private func trimLogs() {
+        if logs.count > 200 {
+            logs.removeLast(logs.count - 200)
         }
     }
     
@@ -118,13 +454,31 @@ class SDKTestViewModel {
 
 struct LogEntry: Identifiable {
     let id = UUID()
+    let function: String?
     let message: String
+    let details: String?
     let type: LogType
     let timestamp: Date
+    
+    var fullDescription: String {
+        var parts: [String] = []
+        parts.append("Time: \(timestamp.formatted(date: .omitted, time: .standard))")
+        if let function = function {
+            parts.append("Function: \(function)")
+        }
+        parts.append("Status: \(type.rawValue)")
+        parts.append("Message: \(message)")
+        if let details = details {
+            parts.append("\nDetails:\n\(details)")
+        }
+        return parts.joined(separator: "\n")
+    }
 }
 
-enum LogType {
-    case info, success, error
+enum LogType: String {
+    case info = "INFO"
+    case success = "SUCCESS"
+    case error = "ERROR"
     
     var color: Color {
         switch self {
@@ -133,6 +487,174 @@ enum LogType {
         case .error: return .red
         }
     }
+    
+    var icon: String {
+        switch self {
+        case .info: return "info.circle"
+        case .success: return "checkmark.circle.fill"
+        case .error: return "xmark.circle.fill"
+        }
+    }
+}
+
+// MARK: - Object Serialization Helpers
+
+func formatValue(_ value: Any?, indent: Int = 0) -> String {
+    let spaces = String(repeating: "  ", count: indent)
+    
+    guard let value = value else { return "nil" }
+    
+    switch value {
+    case let str as String:
+        return "\"\(str)\""
+    case let bool as Bool:
+        return bool ? "true" : "false"
+    case let num as NSNumber:
+        return "\(num)"
+    case let date as Date:
+        return "\"\(date.formatted())\""
+    case let url as URL:
+        return "\"\(url.absoluteString)\""
+    case let dict as [String: Any]:
+        if dict.isEmpty { return "{}" }
+        var lines = ["{"]
+        for (key, val) in dict.sorted(by: { $0.key < $1.key }) {
+            lines.append("\(spaces)  \(key): \(formatValue(val, indent: indent + 1))")
+        }
+        lines.append("\(spaces)}")
+        return lines.joined(separator: "\n")
+    case let arr as [Any]:
+        if arr.isEmpty { return "[]" }
+        var lines = ["["]
+        for item in arr {
+            lines.append("\(spaces)  \(formatValue(item, indent: indent + 1)),")
+        }
+        lines.append("\(spaces)]")
+        return lines.joined(separator: "\n")
+    default:
+        return String(describing: value)
+    }
+}
+
+func serializeCurrentUser(_ user: CurrentUser) async -> [String: Any] {
+    var dict: [String: Any] = [:]
+    dict["id"] = await user.id
+    dict["displayName"] = await user.displayName
+    dict["primaryEmail"] = await user.primaryEmail
+    dict["primaryEmailVerified"] = await user.primaryEmailVerified
+    dict["profileImageUrl"] = await user.profileImageUrl
+    dict["signedUpAt"] = await user.signedUpAt.formatted()
+    dict["clientMetadata"] = await user.clientMetadata
+    dict["clientReadOnlyMetadata"] = await user.clientReadOnlyMetadata
+    dict["hasPassword"] = await user.hasPassword
+    dict["emailAuthEnabled"] = await user.emailAuthEnabled
+    dict["otpAuthEnabled"] = await user.otpAuthEnabled
+    dict["passkeyAuthEnabled"] = await user.passkeyAuthEnabled
+    dict["isMultiFactorRequired"] = await user.isMultiFactorRequired
+    dict["isAnonymous"] = await user.isAnonymous
+    dict["isRestricted"] = await user.isRestricted
+    if let reason = await user.restrictedReason {
+        dict["restrictedReason"] = String(describing: reason)
+    }
+    let providers = await user.oauthProviders
+    if !providers.isEmpty {
+        dict["oauthProviders"] = providers.map { ["id": $0.id] }
+    }
+    if let team = await user.selectedTeam {
+        dict["selectedTeam"] = ["id": team.id, "displayName": await team.displayName]
+    }
+    return dict
+}
+
+func serializeServerUser(_ user: ServerUser) async -> [String: Any] {
+    var dict: [String: Any] = [:]
+    dict["id"] = user.id
+    dict["displayName"] = await user.displayName
+    dict["primaryEmail"] = await user.primaryEmail
+    dict["primaryEmailVerified"] = await user.primaryEmailVerified
+    dict["profileImageUrl"] = await user.profileImageUrl
+    dict["signedUpAt"] = await user.signedUpAt.formatted()
+    if let lastActiveAt = await user.lastActiveAt {
+        dict["lastActiveAt"] = lastActiveAt.formatted()
+    }
+    dict["clientMetadata"] = await user.clientMetadata
+    dict["clientReadOnlyMetadata"] = await user.clientReadOnlyMetadata
+    dict["serverMetadata"] = await user.serverMetadata
+    dict["hasPassword"] = await user.hasPassword
+    dict["emailAuthEnabled"] = await user.emailAuthEnabled
+    dict["otpAuthEnabled"] = await user.otpAuthEnabled
+    dict["passkeyAuthEnabled"] = await user.passkeyAuthEnabled
+    dict["isMultiFactorRequired"] = await user.isMultiFactorRequired
+    return dict
+}
+
+func serializeTeam(_ team: Team) async -> [String: Any] {
+    var dict: [String: Any] = [:]
+    dict["id"] = team.id
+    dict["displayName"] = await team.displayName
+    dict["profileImageUrl"] = await team.profileImageUrl
+    dict["clientMetadata"] = await team.clientMetadata
+    dict["clientReadOnlyMetadata"] = await team.clientReadOnlyMetadata
+    return dict
+}
+
+func serializeServerTeam(_ team: ServerTeam) async -> [String: Any] {
+    var dict: [String: Any] = [:]
+    dict["id"] = team.id
+    dict["displayName"] = await team.displayName
+    dict["profileImageUrl"] = await team.profileImageUrl
+    dict["clientMetadata"] = await team.clientMetadata
+    dict["clientReadOnlyMetadata"] = await team.clientReadOnlyMetadata
+    dict["serverMetadata"] = await team.serverMetadata
+    dict["createdAt"] = await team.createdAt.formatted()
+    return dict
+}
+
+func serializeContactChannel(_ channel: ContactChannel) async -> [String: Any] {
+    var dict: [String: Any] = [:]
+    dict["id"] = channel.id
+    dict["type"] = await channel.type
+    dict["value"] = await channel.value
+    dict["isPrimary"] = await channel.isPrimary
+    dict["isVerified"] = await channel.isVerified
+    dict["usedForAuth"] = await channel.usedForAuth
+    return dict
+}
+
+func serializeTeamUser(_ user: TeamUser) -> [String: Any] {
+    var dict: [String: Any] = [:]
+    dict["id"] = user.id
+    dict["teamProfile"] = [
+        "displayName": user.teamProfile.displayName as Any,
+        "profileImageUrl": user.teamProfile.profileImageUrl as Any
+    ]
+    return dict
+}
+
+func formatObject(_ name: String, _ dict: [String: Any]) -> String {
+    var lines = ["\(name) {"]
+    for (key, value) in dict.sorted(by: { $0.key < $1.key }) {
+        lines.append("  \(key): \(formatValue(value, indent: 1))")
+    }
+    lines.append("}")
+    return lines.joined(separator: "\n")
+}
+
+func formatObjectArray(_ name: String, _ items: [[String: Any]]) -> String {
+    if items.isEmpty {
+        return "\(name) []"
+    }
+    var lines = ["\(name) ["]
+    for (index, item) in items.enumerated() {
+        lines.append("  [\(index)] {")
+        for (key, value) in item.sorted(by: { $0.key < $1.key }) {
+            lines.append("    \(key): \(formatValue(value, indent: 2))")
+        }
+        lines.append("  }")
+    }
+    lines.append("]")
+    lines.append("Total: \(items.count) items")
+    return lines.joined(separator: "\n")
 }
 
 // MARK: - Settings View
@@ -141,42 +663,64 @@ struct SettingsView: View {
     @Bindable var viewModel: SDKTestViewModel
     
     var body: some View {
-        List {
+        Form {
             Section("API Configuration") {
                 TextField("Base URL", text: $viewModel.baseUrl)
                     .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
+                    .keyboardType(.URL)
                 TextField("Project ID", text: $viewModel.projectId)
                     .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
                 TextField("Publishable Client Key", text: $viewModel.publishableClientKey)
                     .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
                 SecureField("Secret Server Key", text: $viewModel.secretServerKey)
                 
                 Button("Apply Configuration") {
                     viewModel.resetApps()
                 }
+                .buttonStyle(.borderedProminent)
             }
             
-            Section("Logs (\(viewModel.logs.count))") {
-                Button("Clear Logs") {
-                    viewModel.clearLogs()
+            Section("Quick Actions") {
+                Button("Test Connection") {
+                    Task { await testConnection() }
                 }
-                
-                ForEach(viewModel.logs) { entry in
-                    VStack(alignment: .leading) {
-                        Text(entry.timestamp, style: .time)
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                        Text(entry.message)
-                            .font(.system(.caption, design: .monospaced))
-                            .foregroundStyle(entry.type.color)
-                    }
+            }
+            
+            Section("More Functions") {
+                NavigationLink("Contact Channels") {
+                    ContactChannelsView(viewModel: viewModel)
+                }
+                NavigationLink("OAuth") {
+                    OAuthView(viewModel: viewModel)
+                }
+                NavigationLink("Tokens") {
+                    TokensView(viewModel: viewModel)
+                }
+                NavigationLink("Server Users") {
+                    ServerUsersView(viewModel: viewModel)
+                }
+                NavigationLink("Server Teams") {
+                    ServerTeamsView(viewModel: viewModel)
+                }
+                NavigationLink("Sessions") {
+                    SessionsView(viewModel: viewModel)
                 }
             }
         }
         .navigationTitle("Settings")
+    }
+    
+    func testConnection() async {
+        viewModel.logInfo("testConnection()", message: "Testing connection to \(viewModel.baseUrl)...")
+        do {
+            let project = try await viewModel.clientApp.getProject()
+            viewModel.logCall(
+                "getProject()",
+                result: "Connected! Project ID: \(project.id)"
+            )
+        } catch {
+            viewModel.logCall("getProject()", error: error)
+        }
     }
 }
 
@@ -186,193 +730,191 @@ struct AuthenticationView: View {
     @Bindable var viewModel: SDKTestViewModel
     @State private var email = ""
     @State private var password = "TestPassword123!"
-    @State private var currentUserEmail: String?
-    @State private var currentUserId: String?
+    @State private var currentUser: String?
     
     var body: some View {
-        List {
+        Form {
             Section("Credentials") {
                 TextField("Email", text: $email)
                     .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
                     .keyboardType(.emailAddress)
                 SecureField("Password", text: $password)
                 
                 Button("Generate Random Email") {
-                    email = "test-\(UUID().uuidString.lowercased().prefix(8))@example.com"
+                    email = "test-\(UUID().uuidString.lowercased())@example.com"
+                    viewModel.logInfo("generateEmail()", message: "Generated: \(email)")
                 }
             }
             
-            Section("Actions") {
-                Button("Sign Up") {
+            Section("Sign Up") {
+                Button("signUpWithCredential(email, password)") {
                     Task { await signUp() }
                 }
                 .disabled(email.isEmpty || password.isEmpty)
-                
-                Button("Sign In") {
+            }
+            
+            Section("Sign In") {
+                Button("signInWithCredential(email, password)") {
                     Task { await signIn() }
                 }
                 .disabled(email.isEmpty || password.isEmpty)
                 
-                Button("Sign In (Wrong Password)") {
+                Button("signInWithCredential(email, WRONG_PASSWORD)") {
                     Task { await signInWrongPassword() }
                 }
                 .disabled(email.isEmpty)
-                
-                Button("Sign Out") {
+            }
+            
+            Section("Sign Out") {
+                Button("signOut()") {
                     Task { await signOut() }
                 }
             }
             
             Section("Current User") {
-                Button("Refresh User") {
+                Button("getUser()") {
                     Task { await getUser() }
                 }
                 
-                if let email = currentUserEmail, let id = currentUserId {
-                    Text("Email: \(email)")
-                    Text("ID: \(id)")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                } else {
-                    Text("Not signed in")
-                        .foregroundStyle(.secondary)
-                }
-            }
-            
-            Section("OAuth") {
-                Button("Get Google OAuth URL") {
-                    Task { await getOAuthUrl("google") }
-                }
-                Button("Get GitHub OAuth URL") {
-                    Task { await getOAuthUrl("github") }
-                }
-                Button("Get Microsoft OAuth URL") {
-                    Task { await getOAuthUrl("microsoft") }
-                }
-            }
-            
-            Section("Error Testing") {
-                Button("Get User (or throw)") {
+                Button("getUser(or: .throw)") {
                     Task { await getUserOrThrow() }
+                }
+                
+                if let user = currentUser {
+                    Text(user)
+                        .font(.system(.body, design: .monospaced))
+                        .foregroundStyle(.secondary)
                 }
             }
         }
         .navigationTitle("Authentication")
-        .onAppear {
-            Task { await getUser() }
-        }
     }
     
     func signUp() async {
+        let params = "email: \"\(email)\"\npassword: \"\(password)\""
+        viewModel.logInfo("signUpWithCredential()", message: "Calling...", details: params)
+        
         do {
-            viewModel.log("Signing up: \(email)")
             try await viewModel.clientApp.signUpWithCredential(email: email, password: password)
-            viewModel.log("Sign up successful!", type: .success)
+            viewModel.logCall(
+                "signUpWithCredential(email, password)",
+                params: params,
+                result: "Success! User signed up."
+            )
             await getUser()
         } catch {
-            viewModel.log("Sign up failed: \(error)", type: .error)
+            viewModel.logCall("signUpWithCredential(email, password)", params: params, error: error)
         }
     }
     
     func signIn() async {
+        let params = "email: \"\(email)\"\npassword: \"\(password)\""
+        viewModel.logInfo("signInWithCredential()", message: "Calling...", details: params)
+        
         do {
-            viewModel.log("Signing in: \(email)")
             try await viewModel.clientApp.signInWithCredential(email: email, password: password)
-            viewModel.log("Sign in successful!", type: .success)
+            viewModel.logCall(
+                "signInWithCredential(email, password)",
+                params: params,
+                result: "Success! User signed in."
+            )
             await getUser()
         } catch {
-            viewModel.log("Sign in failed: \(error)", type: .error)
+            viewModel.logCall("signInWithCredential(email, password)", params: params, error: error)
         }
     }
     
     func signInWrongPassword() async {
+        let params = "email: \"\(email)\"\npassword: \"WrongPassword!\""
+        viewModel.logInfo("signInWithCredential()", message: "Calling with wrong password...", details: params)
+        
         do {
-            viewModel.log("Signing in with wrong password...")
             try await viewModel.clientApp.signInWithCredential(email: email, password: "WrongPassword!")
-            viewModel.log("Sign in succeeded (unexpected)", type: .error)
+            viewModel.logCall(
+                "signInWithCredential(email, WRONG)",
+                params: params,
+                result: "Unexpected success (should have failed)"
+            )
         } catch let error as EmailPasswordMismatchError {
-            viewModel.log("Got EmailPasswordMismatchError: \(error.message)", type: .success)
+            viewModel.logCall(
+                "signInWithCredential(email, WRONG)",
+                params: params,
+                result: "Expected error caught!\nType: EmailPasswordMismatchError\nCode: \(error.code)\nMessage: \(error.message)"
+            )
         } catch {
-            viewModel.log("Unexpected error: \(error)", type: .error)
+            viewModel.logCall("signInWithCredential(email, WRONG)", params: params, error: error)
         }
     }
     
     func signOut() async {
+        viewModel.logInfo("signOut()", message: "Calling...")
+        
         do {
-            viewModel.log("Signing out...")
             try await viewModel.clientApp.signOut()
-            viewModel.log("Sign out successful!", type: .success)
-            currentUserEmail = nil
-            currentUserId = nil
+            viewModel.logCall("signOut()", result: "Success! User signed out.")
+            currentUser = nil
         } catch {
-            viewModel.log("Sign out failed: \(error)", type: .error)
+            viewModel.logCall("signOut()", error: error)
         }
     }
     
     func getUser() async {
+        viewModel.logInfo("getUser()", message: "Calling...")
+        
         do {
             let user = try await viewModel.clientApp.getUser()
             if let user = user {
-                currentUserEmail = await user.primaryEmail
-                currentUserId = await user.id
-                viewModel.log("Got user: \(currentUserEmail ?? "nil")", type: .success)
+                let dict = await serializeCurrentUser(user)
+                currentUser = "ID: \(dict["id"] ?? "")\nEmail: \(dict["primaryEmail"] ?? "nil")"
+                viewModel.logCall(
+                    "getUser()",
+                    result: formatObject("CurrentUser", dict)
+                )
             } else {
-                currentUserEmail = nil
-                currentUserId = nil
-                viewModel.log("No user signed in", type: .info)
+                currentUser = nil
+                viewModel.logCall("getUser()", result: "nil (no user signed in)")
             }
         } catch {
-            viewModel.log("Get user failed: \(error)", type: .error)
+            viewModel.logCall("getUser()", error: error)
         }
     }
     
     func getUserOrThrow() async {
+        viewModel.logInfo("getUser(or: .throw)", message: "Calling...")
+        
         do {
-            viewModel.log("Getting user (or throw)...")
             let user = try await viewModel.clientApp.getUser(or: .throw)
             if let user = user {
-                let email = await user.primaryEmail
-                viewModel.log("Got user: \(email ?? "nil")", type: .success)
+                let dict = await serializeCurrentUser(user)
+                viewModel.logCall("getUser(or: .throw)", result: formatObject("CurrentUser", dict))
             } else {
-                viewModel.log("No user (unexpected with .throw)", type: .error)
+                viewModel.logCall("getUser(or: .throw)", result: "nil (unexpected)")
             }
         } catch let error as UserNotSignedInError {
-            viewModel.log("Got UserNotSignedInError: \(error.message)", type: .success)
+            viewModel.logCall(
+                "getUser(or: .throw)",
+                result: "Expected error caught!\nType: UserNotSignedInError\nCode: \(error.code)\nMessage: \(error.message)"
+            )
         } catch {
-            viewModel.log("Unexpected error: \(error)", type: .error)
-        }
-    }
-    
-    func getOAuthUrl(_ provider: String) async {
-        do {
-            viewModel.log("Getting OAuth URL for \(provider)...")
-            let result = try await viewModel.clientApp.getOAuthUrl(provider: provider)
-            viewModel.log("URL: \(result.url)", type: .success)
-            viewModel.log("State: \(result.state.prefix(20))...", type: .info)
-        } catch {
-            viewModel.log("Get OAuth URL failed: \(error)", type: .error)
+            viewModel.logCall("getUser(or: .throw)", error: error)
         }
     }
 }
 
-// MARK: - User View
+// MARK: - User Management View
 
-struct UserView: View {
+struct UserManagementView: View {
     @Bindable var viewModel: SDKTestViewModel
     @State private var displayName = ""
     @State private var metadataKey = "theme"
     @State private var metadataValue = "dark"
-    @State private var oldPassword = "TestPassword123!"
-    @State private var newPassword = "NewPassword456!"
-    @State private var channels: [(id: String, value: String, isPrimary: Bool)] = []
     
     var body: some View {
-        List {
+        Form {
             Section("Display Name") {
                 TextField("Display Name", text: $displayName)
                 
-                Button("Set Display Name") {
+                Button("user.setDisplayName(displayName)") {
                     Task { await setDisplayName() }
                 }
                 .disabled(displayName.isEmpty)
@@ -382,41 +924,276 @@ struct UserView: View {
                 TextField("Key", text: $metadataKey)
                 TextField("Value", text: $metadataValue)
                 
-                Button("Update Metadata") {
+                Button("user.update(clientMetadata: {key: value})") {
                     Task { await updateMetadata() }
                 }
             }
             
-            Section("Password") {
-                SecureField("Old Password", text: $oldPassword)
-                SecureField("New Password", text: $newPassword)
-                
-                Button("Update Password") {
-                    Task { await updatePassword() }
-                }
-                
-                Button("Update (Wrong Old Password)") {
-                    Task { await updatePasswordWrong() }
-                }
-            }
-            
-            Section("Tokens") {
-                Button("Get Access Token") {
+            Section("Token Info") {
+                Button("getAccessToken()") {
                     Task { await getAccessToken() }
                 }
-                Button("Get Refresh Token") {
+                
+                Button("getRefreshToken()") {
                     Task { await getRefreshToken() }
                 }
-                Button("Get Auth Headers") {
+                
+                Button("getAuthHeaders()") {
                     Task { await getAuthHeaders() }
                 }
-                Button("Get Partial User") {
-                    Task { await getPartialUser() }
+            }
+        }
+        .navigationTitle("User Management")
+    }
+    
+    func setDisplayName() async {
+        let params = "displayName: \"\(displayName)\""
+        viewModel.logInfo("setDisplayName()", message: "Calling...", details: params)
+        
+        do {
+            guard let user = try await viewModel.clientApp.getUser() else {
+                viewModel.logCall("setDisplayName()", result: "Error: No user signed in")
+                return
+            }
+            try await user.setDisplayName(displayName)
+            let dict = await serializeCurrentUser(user)
+            viewModel.logCall(
+                "user.setDisplayName(displayName)",
+                params: params,
+                result: "Success!\n\n" + formatObject("CurrentUser (updated)", dict)
+            )
+        } catch {
+            viewModel.logCall("user.setDisplayName(displayName)", params: params, error: error)
+        }
+    }
+    
+    func updateMetadata() async {
+        let params = "clientMetadata: {\"\(metadataKey)\": \"\(metadataValue)\"}"
+        viewModel.logInfo("update(clientMetadata:)", message: "Calling...", details: params)
+        
+        do {
+            guard let user = try await viewModel.clientApp.getUser() else {
+                viewModel.logCall("update(clientMetadata:)", result: "Error: No user signed in")
+                return
+            }
+            try await user.update(clientMetadata: [metadataKey: metadataValue])
+            let dict = await serializeCurrentUser(user)
+            viewModel.logCall(
+                "user.update(clientMetadata:)",
+                params: params,
+                result: "Success!\n\n" + formatObject("CurrentUser (updated)", dict)
+            )
+        } catch {
+            viewModel.logCall("user.update(clientMetadata:)", params: params, error: error)
+        }
+    }
+    
+    func getAccessToken() async {
+        viewModel.logInfo("getAccessToken()", message: "Calling...")
+        
+        let token = await viewModel.clientApp.getAccessToken()
+        if let token = token {
+            let parts = token.split(separator: ".")
+            viewModel.logCall(
+                "getAccessToken()",
+                result: "JWT Token (\(parts.count) parts, \(token.count) chars):\n\(token)"
+            )
+        } else {
+            viewModel.logCall("getAccessToken()", result: "nil (not signed in)")
+        }
+    }
+    
+    func getRefreshToken() async {
+        viewModel.logInfo("getRefreshToken()", message: "Calling...")
+        
+        let token = await viewModel.clientApp.getRefreshToken()
+        if let token = token {
+            viewModel.logCall(
+                "getRefreshToken()",
+                result: "Refresh Token (\(token.count) chars):\n\(token)"
+            )
+        } else {
+            viewModel.logCall("getRefreshToken()", result: "nil (not signed in)")
+        }
+    }
+    
+    func getAuthHeaders() async {
+        viewModel.logInfo("getAuthHeaders()", message: "Calling...")
+        
+        let headers = await viewModel.clientApp.getAuthHeaders()
+        var result = "Headers:\n"
+        for (key, value) in headers {
+            result += "  \(key): \(value)\n"
+        }
+        viewModel.logCall("getAuthHeaders()", result: result)
+    }
+}
+
+// MARK: - Teams View
+
+struct TeamsView: View {
+    @Bindable var viewModel: SDKTestViewModel
+    @State private var teamName = ""
+    @State private var teams: [(id: String, name: String)] = []
+    @State private var selectedTeamId = ""
+    
+    var body: some View {
+        Form {
+            Section("Create Team") {
+                TextField("Team Name", text: $teamName)
+                
+                Button("Generate Random Name") {
+                    teamName = "Team \(UUID().uuidString.prefix(8))"
+                    viewModel.logInfo("generateTeamName()", message: "Generated: \(teamName)")
+                }
+                
+                Button("user.createTeam(displayName: teamName)") {
+                    Task { await createTeam() }
+                }
+                .disabled(teamName.isEmpty)
+            }
+            
+            Section("List Teams") {
+                Button("user.listTeams()") {
+                    Task { await listTeams() }
+                }
+                
+                ForEach(teams, id: \.id) { team in
+                    HStack {
+                        Text(team.name)
+                        Spacer()
+                        Text(team.id.prefix(8) + "...")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Button("Select") {
+                            selectedTeamId = team.id
+                            viewModel.logInfo("selectTeam()", message: "Selected team: \(team.id)")
+                        }
+                        .buttonStyle(.borderless)
+                    }
                 }
             }
             
+            Section("Team Operations") {
+                TextField("Team ID", text: $selectedTeamId)
+                    .textInputAutocapitalization(.never)
+                
+                Button("user.getTeam(id: teamId)") {
+                    Task { await getTeam() }
+                }
+                .disabled(selectedTeamId.isEmpty)
+                
+                Button("team.listUsers()") {
+                    Task { await listTeamMembers() }
+                }
+                .disabled(selectedTeamId.isEmpty)
+            }
+        }
+        .navigationTitle("Teams")
+    }
+    
+    func createTeam() async {
+        let params = "displayName: \"\(teamName)\""
+        viewModel.logInfo("createTeam()", message: "Calling...", details: params)
+        
+        do {
+            guard let user = try await viewModel.clientApp.getUser() else {
+                viewModel.logCall("createTeam()", result: "Error: No user signed in")
+                return
+            }
+            let team = try await user.createTeam(displayName: teamName)
+            let dict = await serializeTeam(team)
+            viewModel.logCall(
+                "user.createTeam(displayName:)",
+                params: params,
+                result: formatObject("Team", dict)
+            )
+            await listTeams()
+        } catch {
+            viewModel.logCall("user.createTeam(displayName:)", params: params, error: error)
+        }
+    }
+    
+    func listTeams() async {
+        viewModel.logInfo("listTeams()", message: "Calling...")
+        
+        do {
+            guard let user = try await viewModel.clientApp.getUser() else {
+                viewModel.logCall("listTeams()", result: "Error: No user signed in")
+                return
+            }
+            let teamsList = try await user.listTeams()
+            var results: [(id: String, name: String)] = []
+            var dicts: [[String: Any]] = []
+            for team in teamsList {
+                let dict = await serializeTeam(team)
+                dicts.append(dict)
+                results.append((id: team.id, name: dict["displayName"] as? String ?? ""))
+            }
+            teams = results
+            viewModel.logCall("user.listTeams()", result: formatObjectArray("Team", dicts))
+        } catch {
+            viewModel.logCall("user.listTeams()", error: error)
+        }
+    }
+    
+    func getTeam() async {
+        let params = "id: \"\(selectedTeamId)\""
+        viewModel.logInfo("getTeam()", message: "Calling...", details: params)
+        
+        do {
+            guard let user = try await viewModel.clientApp.getUser() else {
+                viewModel.logCall("getTeam()", result: "Error: No user signed in")
+                return
+            }
+            let team = try await user.getTeam(id: selectedTeamId)
+            if let team = team {
+                let dict = await serializeTeam(team)
+                viewModel.logCall(
+                    "user.getTeam(id:)",
+                    params: params,
+                    result: formatObject("Team", dict)
+                )
+            } else {
+                viewModel.logCall("user.getTeam(id:)", params: params, result: "nil (team not found or not a member)")
+            }
+        } catch {
+            viewModel.logCall("user.getTeam(id:)", params: params, error: error)
+        }
+    }
+    
+    func listTeamMembers() async {
+        let params = "teamId: \"\(selectedTeamId)\""
+        viewModel.logInfo("team.listUsers()", message: "Calling...", details: params)
+        
+        do {
+            guard let user = try await viewModel.clientApp.getUser() else {
+                viewModel.logCall("team.listUsers()", result: "Error: No user signed in")
+                return
+            }
+            guard let team = try await user.getTeam(id: selectedTeamId) else {
+                viewModel.logCall("team.listUsers()", params: params, result: "Error: Team not found")
+                return
+            }
+            let members = try await team.listUsers()
+            let dicts = members.map { serializeTeamUser($0) }
+            viewModel.logCall("team.listUsers()", params: params, result: formatObjectArray("TeamUser", dicts))
+        } catch {
+            viewModel.logCall("team.listUsers()", params: params, error: error)
+        }
+    }
+}
+
+// MARK: - Contact Channels View
+
+struct ContactChannelsView: View {
+    @Bindable var viewModel: SDKTestViewModel
+    @State private var channels: [(id: String, value: String, isPrimary: Bool, isVerified: Bool)] = []
+    
+    var body: some View {
+        Form {
             Section("Contact Channels") {
-                Button("List Contact Channels") {
+                Button("user.listContactChannels()") {
                     Task { await listChannels() }
                 }
                 
@@ -429,322 +1206,318 @@ struct UserView: View {
                                 .font(.caption)
                                 .foregroundStyle(.blue)
                         }
+                        if channel.isVerified {
+                            Text("Verified")
+                                .font(.caption)
+                                .foregroundStyle(.green)
+                        }
                     }
                 }
             }
         }
-        .navigationTitle("User")
+        .navigationTitle("Contact Channels")
     }
     
-    func setDisplayName() async {
+    func listChannels() async {
+        viewModel.logInfo("listContactChannels()", message: "Calling...")
+        
         do {
             guard let user = try await viewModel.clientApp.getUser() else {
-                viewModel.log("No user signed in", type: .error)
+                viewModel.logCall("listContactChannels()", result: "Error: No user signed in")
                 return
             }
-            viewModel.log("Setting display name: \(displayName)")
-            try await user.setDisplayName(displayName)
-            viewModel.log("Display name set!", type: .success)
+            let channelsList = try await user.listContactChannels()
+            var results: [(id: String, value: String, isPrimary: Bool, isVerified: Bool)] = []
+            var dicts: [[String: Any]] = []
+            for channel in channelsList {
+                let dict = await serializeContactChannel(channel)
+                dicts.append(dict)
+                results.append((
+                    id: channel.id,
+                    value: dict["value"] as? String ?? "",
+                    isPrimary: dict["isPrimary"] as? Bool ?? false,
+                    isVerified: dict["isVerified"] as? Bool ?? false
+                ))
+            }
+            channels = results
+            viewModel.logCall("user.listContactChannels()", result: formatObjectArray("ContactChannel", dicts))
         } catch {
-            viewModel.log("Set display name failed: \(error)", type: .error)
+            viewModel.logCall("user.listContactChannels()", error: error)
         }
     }
+}
+
+// MARK: - OAuth View
+
+struct OAuthView: View {
+    @Bindable var viewModel: SDKTestViewModel
+    @State private var provider = "google"
+    @State private var isSigningIn = false
+    private let presentationProvider = iOSPresentationContextProvider()
     
-    func updateMetadata() async {
-        do {
-            guard let user = try await viewModel.clientApp.getUser() else {
-                viewModel.log("No user signed in", type: .error)
-                return
+    var body: some View {
+        Form {
+            Section("Sign In with OAuth") {
+                TextField("Provider", text: $provider)
+                    .textInputAutocapitalization(.never)
+                
+                HStack {
+                    Button("google") { provider = "google" }
+                    Button("github") { provider = "github" }
+                    Button("microsoft") { provider = "microsoft" }
+                }
+                .buttonStyle(.bordered)
+                
+                Button {
+                    Task { await signInWithOAuth() }
+                } label: {
+                    HStack {
+                        if isSigningIn {
+                            ProgressView()
+                                .scaleEffect(0.8)
+                        }
+                        Text("signInWithOAuth(provider: \"\(provider)\")")
+                    }
+                }
+                .disabled(isSigningIn)
             }
-            viewModel.log("Updating metadata: \(metadataKey)=\(metadataValue)")
-            try await user.update(clientMetadata: [metadataKey: metadataValue])
-            viewModel.log("Metadata updated!", type: .success)
-        } catch {
-            viewModel.log("Update metadata failed: \(error)", type: .error)
+            
+            Section("OAuth URL Generation (Manual)") {
+                Button("getOAuthUrl(provider: \"\(provider)\")") {
+                    Task { await getOAuthUrl() }
+                }
+                
+                Text("Returns URL, state, and codeVerifier for manual OAuth handling")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
         }
+        .navigationTitle("OAuth")
     }
     
-    func updatePassword() async {
+    func signInWithOAuth() async {
+        let params = "provider: \"\(provider)\""
+        viewModel.logInfo("signInWithOAuth()", message: "Opening OAuth browser...", details: params)
+        isSigningIn = true
+        
         do {
-            guard let user = try await viewModel.clientApp.getUser() else {
-                viewModel.log("No user signed in", type: .error)
-                return
+            try await viewModel.clientApp.signInWithOAuth(
+                provider: provider,
+                presentationContextProvider: presentationProvider
+            )
+            viewModel.logCall(
+                "signInWithOAuth(provider:)",
+                params: params,
+                result: "Success! User signed in via OAuth."
+            )
+            // Fetch user to show details
+            if let user = try await viewModel.clientApp.getUser() {
+                let dict = await serializeCurrentUser(user)
+                viewModel.logCall(
+                    "getUser() after OAuth",
+                    result: formatObject("CurrentUser", dict)
+                )
             }
-            viewModel.log("Updating password...")
-            try await user.updatePassword(oldPassword: oldPassword, newPassword: newPassword)
-            viewModel.log("Password updated!", type: .success)
         } catch {
-            viewModel.log("Update password failed: \(error)", type: .error)
+            viewModel.logCall("signInWithOAuth(provider:)", params: params, error: error)
         }
+        
+        isSigningIn = false
     }
     
-    func updatePasswordWrong() async {
+    func getOAuthUrl() async {
+        let params = "provider: \"\(provider)\""
+        viewModel.logInfo("getOAuthUrl()", message: "Calling...", details: params)
+        
         do {
-            guard let user = try await viewModel.clientApp.getUser() else {
-                viewModel.log("No user signed in", type: .error)
-                return
-            }
-            viewModel.log("Updating password with wrong old...")
-            try await user.updatePassword(oldPassword: "WrongPassword!", newPassword: newPassword)
-            viewModel.log("Password updated (unexpected)", type: .error)
-        } catch let error as PasswordConfirmationMismatchError {
-            viewModel.log("Got PasswordConfirmationMismatchError", type: .success)
+            let result = try await viewModel.clientApp.getOAuthUrl(provider: provider)
+            viewModel.logCall(
+                "getOAuthUrl(provider:)",
+                params: params,
+                result: "OAuthUrlResult {\n  url: \"\(result.url)\"\n  state: \"\(result.state)\"\n  codeVerifier: \"\(result.codeVerifier)\"\n}"
+            )
         } catch {
-            viewModel.log("Unexpected error: \(error)", type: .error)
+            viewModel.logCall("getOAuthUrl(provider:)", params: params, error: error)
         }
+    }
+}
+
+// MARK: - Tokens View
+
+struct TokensView: View {
+    @Bindable var viewModel: SDKTestViewModel
+    
+    var body: some View {
+        Form {
+            Section("Token Operations") {
+                Button("getAccessToken()") {
+                    Task { await getAccessToken() }
+                }
+                
+                Button("getRefreshToken()") {
+                    Task { await getRefreshToken() }
+                }
+                
+                Button("getAuthHeaders()") {
+                    Task { await getAuthHeaders() }
+                }
+            }
+            
+            Section("Token Store Types") {
+                Button("Test Memory Store") {
+                    Task { await testMemoryStore() }
+                }
+                
+                Button("Test Explicit Store") {
+                    Task { await testExplicitStore() }
+                }
+            }
+        }
+        .navigationTitle("Tokens")
     }
     
     func getAccessToken() async {
+        viewModel.logInfo("getAccessToken()", message: "Calling...")
+        
         let token = await viewModel.clientApp.getAccessToken()
         if let token = token {
-            viewModel.log("Access token: \(token.prefix(40))...", type: .success)
+            let parts = token.split(separator: ".")
+            viewModel.logCall(
+                "getAccessToken()",
+                result: "JWT Token:\n  Parts: \(parts.count)\n  Length: \(token.count) chars\n  Token: \(token)"
+            )
         } else {
-            viewModel.log("No access token", type: .info)
+            viewModel.logCall("getAccessToken()", result: "nil")
         }
     }
     
     func getRefreshToken() async {
+        viewModel.logInfo("getRefreshToken()", message: "Calling...")
+        
         let token = await viewModel.clientApp.getRefreshToken()
         if let token = token {
-            viewModel.log("Refresh token: \(token.prefix(20))...", type: .success)
+            viewModel.logCall(
+                "getRefreshToken()",
+                result: "Refresh Token:\n  Length: \(token.count) chars\n  Token: \(token)"
+            )
         } else {
-            viewModel.log("No refresh token", type: .info)
+            viewModel.logCall("getRefreshToken()", result: "nil")
         }
     }
     
     func getAuthHeaders() async {
+        viewModel.logInfo("getAuthHeaders()", message: "Calling...")
+        
         let headers = await viewModel.clientApp.getAuthHeaders()
-        viewModel.log("Auth headers: \(headers.keys.joined(separator: ", "))", type: .success)
-    }
-    
-    func getPartialUser() async {
-        let user = await viewModel.clientApp.getPartialUser()
-        if let user = user {
-            viewModel.log("Partial user: \(user.primaryEmail ?? "nil")", type: .success)
-        } else {
-            viewModel.log("No partial user", type: .info)
+        var result = "Headers {\n"
+        for (key, value) in headers {
+            result += "  \"\(key)\": \"\(value)\"\n"
         }
+        result += "}"
+        viewModel.logCall("getAuthHeaders()", result: result)
     }
     
-    func listChannels() async {
+    func testMemoryStore() async {
+        viewModel.logInfo("StackClientApp(tokenStore: .memory)", message: "Creating app with memory store...")
+        
+        let app = StackClientApp(
+            projectId: viewModel.projectId,
+            publishableClientKey: viewModel.publishableClientKey,
+            baseUrl: viewModel.baseUrl,
+            tokenStore: .memory,
+            noAutomaticPrefetch: true
+        )
+        let token = await app.getAccessToken()
+        viewModel.logCall(
+            "StackClientApp(tokenStore: .memory)",
+            result: "Created app with memory store\ngetAccessToken() = \(token == nil ? "nil" : "present")"
+        )
+    }
+    
+    func testExplicitStore() async {
+        viewModel.logInfo("Testing explicit token store...", message: "Getting tokens from current app...")
+        
+        let accessToken = await viewModel.clientApp.getAccessToken()
+        let refreshToken = await viewModel.clientApp.getRefreshToken()
+        
+        guard let at = accessToken, let rt = refreshToken else {
+            viewModel.logCall("testExplicitStore()", result: "Error: No tokens available. Sign in first.")
+            return
+        }
+        
+        let app = StackClientApp(
+            projectId: viewModel.projectId,
+            publishableClientKey: viewModel.publishableClientKey,
+            baseUrl: viewModel.baseUrl,
+            tokenStore: .explicit(accessToken: at, refreshToken: rt),
+            noAutomaticPrefetch: true
+        )
+        
         do {
-            guard let user = try await viewModel.clientApp.getUser() else {
-                viewModel.log("No user signed in", type: .error)
-                return
+            let user = try await app.getUser()
+            if let user = user {
+                let email = await user.primaryEmail
+                viewModel.logCall(
+                    "StackClientApp(tokenStore: .explicit(...))",
+                    result: "Success! Created app with explicit tokens\ngetUser() returned: \(email ?? "no email")"
+                )
+            } else {
+                viewModel.logCall(
+                    "StackClientApp(tokenStore: .explicit(...))",
+                    result: "App created but getUser() returned nil"
+                )
             }
-            viewModel.log("Listing contact channels...")
-            let channelsList = try await user.listContactChannels()
-            var results: [(id: String, value: String, isPrimary: Bool)] = []
-            for channel in channelsList {
-                let value = await channel.value
-                let isPrimary = await channel.isPrimary
-                results.append((id: channel.id, value: value, isPrimary: isPrimary))
-            }
-            channels = results
-            viewModel.log("Found \(channels.count) channels", type: .success)
         } catch {
-            viewModel.log("List channels failed: \(error)", type: .error)
+            viewModel.logCall("StackClientApp(tokenStore: .explicit(...))", error: error)
         }
     }
 }
 
-// MARK: - Teams View
+// MARK: - Server Users View
 
-struct TeamsView: View {
-    @Bindable var viewModel: SDKTestViewModel
-    @State private var teamName = ""
-    @State private var teams: [(id: String, name: String)] = []
-    @State private var selectedTeamId = ""
-    @State private var teamMembers: [String] = []
-    
-    var body: some View {
-        List {
-            Section("Create Team") {
-                TextField("Team Name", text: $teamName)
-                
-                Button("Generate Random Name") {
-                    teamName = "Team \(UUID().uuidString.prefix(8))"
-                }
-                
-                Button("Create Team") {
-                    Task { await createTeam() }
-                }
-                .disabled(teamName.isEmpty)
-            }
-            
-            Section("My Teams") {
-                Button("Refresh Teams") {
-                    Task { await listTeams() }
-                }
-                
-                ForEach(teams, id: \.id) { team in
-                    Button {
-                        selectedTeamId = team.id
-                        Task { await listTeamMembers() }
-                    } label: {
-                        HStack {
-                            Text(team.name)
-                            Spacer()
-                            if team.id == selectedTeamId {
-                                Image(systemName: "checkmark")
-                            }
-                        }
-                    }
-                }
-            }
-            
-            if !selectedTeamId.isEmpty {
-                Section("Team Members (\(selectedTeamId.prefix(8))...)") {
-                    Button("Refresh Members") {
-                        Task { await listTeamMembers() }
-                    }
-                    
-                    ForEach(teamMembers, id: \.self) { userId in
-                        Text(userId)
-                            .font(.caption)
-                    }
-                }
-                
-                Section("Team Actions") {
-                    Button("Update Team Name") {
-                        Task { await updateTeamName() }
-                    }
-                    .disabled(teamName.isEmpty)
-                }
-            }
-        }
-        .navigationTitle("Teams")
-        .onAppear {
-            Task { await listTeams() }
-        }
-    }
-    
-    func createTeam() async {
-        do {
-            guard let user = try await viewModel.clientApp.getUser() else {
-                viewModel.log("No user signed in", type: .error)
-                return
-            }
-            viewModel.log("Creating team: \(teamName)")
-            let team = try await user.createTeam(displayName: teamName)
-            viewModel.log("Team created: \(team.id)", type: .success)
-            await listTeams()
-        } catch {
-            viewModel.log("Create team failed: \(error)", type: .error)
-        }
-    }
-    
-    func listTeams() async {
-        do {
-            guard let user = try await viewModel.clientApp.getUser() else {
-                viewModel.log("No user signed in", type: .error)
-                return
-            }
-            viewModel.log("Listing teams...")
-            let teamsList = try await user.listTeams()
-            var results: [(id: String, name: String)] = []
-            for team in teamsList {
-                let name = await team.displayName
-                results.append((id: team.id, name: name))
-            }
-            teams = results
-            viewModel.log("Found \(teams.count) teams", type: .success)
-        } catch {
-            viewModel.log("List teams failed: \(error)", type: .error)
-        }
-    }
-    
-    func listTeamMembers() async {
-        do {
-            guard let user = try await viewModel.clientApp.getUser() else {
-                viewModel.log("No user signed in", type: .error)
-                return
-            }
-            guard let team = try await user.getTeam(id: selectedTeamId) else {
-                viewModel.log("Team not found", type: .error)
-                return
-            }
-            viewModel.log("Listing team members...")
-            let members = try await team.listUsers()
-            teamMembers = members.map { $0.id }
-            viewModel.log("Found \(members.count) members", type: .success)
-        } catch {
-            viewModel.log("List members failed: \(error)", type: .error)
-        }
-    }
-    
-    func updateTeamName() async {
-        do {
-            guard let user = try await viewModel.clientApp.getUser() else {
-                viewModel.log("No user signed in", type: .error)
-                return
-            }
-            guard let team = try await user.getTeam(id: selectedTeamId) else {
-                viewModel.log("Team not found", type: .error)
-                return
-            }
-            viewModel.log("Updating team name: \(teamName)")
-            try await team.update(displayName: teamName)
-            viewModel.log("Team updated!", type: .success)
-            await listTeams()
-        } catch {
-            viewModel.log("Update team failed: \(error)", type: .error)
-        }
-    }
-}
-
-// MARK: - Server View
-
-struct ServerView: View {
+struct ServerUsersView: View {
     @Bindable var viewModel: SDKTestViewModel
     @State private var email = ""
     @State private var displayName = ""
     @State private var userId = ""
-    @State private var teamName = ""
-    @State private var teamId = ""
     @State private var users: [(id: String, email: String?)] = []
-    @State private var teams: [(id: String, name: String)] = []
     
     var body: some View {
-        List {
+        Form {
             Section("Create User") {
                 TextField("Email", text: $email)
                     .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
                     .keyboardType(.emailAddress)
-                TextField("Display Name", text: $displayName)
+                TextField("Display Name (optional)", text: $displayName)
                 
                 Button("Generate Random Email") {
-                    email = "test-\(UUID().uuidString.lowercased().prefix(8))@example.com"
+                    email = "test-\(UUID().uuidString.lowercased())@example.com"
+                    viewModel.logInfo("generateEmail()", message: "Generated: \(email)")
                 }
                 
-                Button("Create User") {
+                Button("serverApp.createUser(email: email)") {
                     Task { await createUser() }
-                }
-                .disabled(email.isEmpty)
-                
-                Button("Create User (All Options)") {
-                    Task { await createUserWithOptions() }
                 }
                 .disabled(email.isEmpty)
             }
             
-            Section("Users") {
-                Button("List Users") {
+            Section("List Users") {
+                Button("serverApp.listUsers(limit: 5)") {
                     Task { await listUsers() }
                 }
                 
                 ForEach(users, id: \.id) { user in
-                    Button {
-                        userId = user.id
-                    } label: {
-                        HStack {
-                            Text(user.email ?? "no email")
-                            Spacer()
-                            if user.id == userId {
-                                Image(systemName: "checkmark")
-                            }
+                    HStack {
+                        Text(user.email ?? "no email")
+                        Spacer()
+                        Text(user.id.prefix(8) + "...")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Button("Select") {
+                            userId = user.id
+                            viewModel.logInfo("selectUser()", message: "Selected: \(user.id)")
                         }
+                        .buttonStyle(.borderless)
                     }
                 }
             }
@@ -752,261 +1525,343 @@ struct ServerView: View {
             Section("User Operations") {
                 TextField("User ID", text: $userId)
                     .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
                 
-                Button("Get User") {
+                Button("serverApp.getUser(id: userId)") {
                     Task { await getUser() }
                 }
                 .disabled(userId.isEmpty)
                 
-                Button("Delete User") {
+                Button("user.delete()") {
                     Task { await deleteUser() }
                 }
                 .disabled(userId.isEmpty)
-                
-                Button("Create Session (Impersonate)") {
-                    Task { await createSession() }
-                }
-                .disabled(userId.isEmpty)
             }
-            
+        }
+        .navigationTitle("Server Users")
+    }
+    
+    func createUser() async {
+        let params = "email: \"\(email)\""
+        viewModel.logInfo("createUser()", message: "Calling...", details: params)
+        
+        do {
+            let user = try await viewModel.serverApp.createUser(email: email)
+            let dict = await serializeServerUser(user)
+            viewModel.logCall(
+                "serverApp.createUser(email:)",
+                params: params,
+                result: formatObject("ServerUser", dict)
+            )
+            userId = user.id
+            await listUsers()
+        } catch {
+            viewModel.logCall("serverApp.createUser(email:)", params: params, error: error)
+        }
+    }
+    
+    func listUsers() async {
+        let params = "limit: 5"
+        viewModel.logInfo("listUsers()", message: "Calling...", details: params)
+        
+        do {
+            let result = try await viewModel.serverApp.listUsers(limit: 5)
+            var usersList: [(id: String, email: String?)] = []
+            var dicts: [[String: Any]] = []
+            for user in result.items {
+                let dict = await serializeServerUser(user)
+                dicts.append(dict)
+                usersList.append((id: user.id, email: dict["primaryEmail"] as? String))
+            }
+            users = usersList
+            viewModel.logCall("serverApp.listUsers(limit:)", params: params, result: formatObjectArray("ServerUser", dicts))
+        } catch {
+            viewModel.logCall("serverApp.listUsers(limit:)", params: params, error: error)
+        }
+    }
+    
+    func getUser() async {
+        let params = "id: \"\(userId)\""
+        viewModel.logInfo("getUser()", message: "Calling...", details: params)
+        
+        do {
+            let user = try await viewModel.serverApp.getUser(id: userId)
+            if let user = user {
+                let dict = await serializeServerUser(user)
+                viewModel.logCall(
+                    "serverApp.getUser(id:)",
+                    params: params,
+                    result: formatObject("ServerUser", dict)
+                )
+            } else {
+                viewModel.logCall("serverApp.getUser(id:)", params: params, result: "nil (user not found)")
+            }
+        } catch {
+            viewModel.logCall("serverApp.getUser(id:)", params: params, error: error)
+        }
+    }
+    
+    func deleteUser() async {
+        let params = "userId: \"\(userId)\""
+        viewModel.logInfo("user.delete()", message: "Calling...", details: params)
+        
+        do {
+            guard let user = try await viewModel.serverApp.getUser(id: userId) else {
+                viewModel.logCall("user.delete()", params: params, result: "Error: User not found")
+                return
+            }
+            try await user.delete()
+            viewModel.logCall("user.delete()", params: params, result: "Success! User deleted.")
+            userId = ""
+            await listUsers()
+        } catch {
+            viewModel.logCall("user.delete()", params: params, error: error)
+        }
+    }
+}
+
+// MARK: - Server Teams View
+
+struct ServerTeamsView: View {
+    @Bindable var viewModel: SDKTestViewModel
+    @State private var teamName = ""
+    @State private var teamId = ""
+    @State private var userIdToAdd = ""
+    @State private var teams: [(id: String, name: String)] = []
+    
+    var body: some View {
+        Form {
             Section("Create Team") {
                 TextField("Team Name", text: $teamName)
                 
                 Button("Generate Random Name") {
                     teamName = "Team \(UUID().uuidString.prefix(8))"
+                    viewModel.logInfo("generateTeamName()", message: "Generated: \(teamName)")
                 }
                 
-                Button("Create Team") {
+                Button("serverApp.createTeam(displayName: teamName)") {
                     Task { await createTeam() }
                 }
                 .disabled(teamName.isEmpty)
             }
             
-            Section("Teams") {
-                Button("List Teams") {
+            Section("List Teams") {
+                Button("serverApp.listTeams()") {
                     Task { await listTeams() }
                 }
                 
                 ForEach(teams, id: \.id) { team in
-                    Button {
-                        teamId = team.id
-                    } label: {
-                        HStack {
-                            Text(team.name)
-                            Spacer()
-                            if team.id == teamId {
-                                Image(systemName: "checkmark")
-                            }
+                    HStack {
+                        Text(team.name)
+                        Spacer()
+                        Text(team.id.prefix(8) + "...")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Button("Select") {
+                            teamId = team.id
+                            viewModel.logInfo("selectTeam()", message: "Selected: \(team.id)")
                         }
+                        .buttonStyle(.borderless)
                     }
                 }
             }
             
-            Section("Team Operations") {
+            Section("Team Membership") {
                 TextField("Team ID", text: $teamId)
                     .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
+                TextField("User ID", text: $userIdToAdd)
+                    .textInputAutocapitalization(.never)
                 
-                Button("Add User to Team") {
+                Button("team.addUser(id: userId)") {
                     Task { await addUserToTeam() }
                 }
-                .disabled(teamId.isEmpty || userId.isEmpty)
+                .disabled(teamId.isEmpty || userIdToAdd.isEmpty)
                 
-                Button("Remove User from Team") {
+                Button("team.removeUser(id: userId)") {
                     Task { await removeUserFromTeam() }
                 }
-                .disabled(teamId.isEmpty || userId.isEmpty)
-                
-                Button("List Team Users") {
-                    Task { await listTeamUsers() }
-                }
-                .disabled(teamId.isEmpty)
-                
-                Button("Delete Team") {
-                    Task { await deleteTeam() }
-                }
-                .disabled(teamId.isEmpty)
+                .disabled(teamId.isEmpty || userIdToAdd.isEmpty)
             }
         }
-        .navigationTitle("Server")
-    }
-    
-    func createUser() async {
-        do {
-            viewModel.log("Creating user: \(email)")
-            let user = try await viewModel.serverApp.createUser(email: email)
-            viewModel.log("User created: \(user.id)", type: .success)
-            userId = user.id
-            await listUsers()
-        } catch {
-            viewModel.log("Create user failed: \(error)", type: .error)
-        }
-    }
-    
-    func createUserWithOptions() async {
-        do {
-            viewModel.log("Creating user with options: \(email)")
-            let user = try await viewModel.serverApp.createUser(
-                email: email,
-                password: "TestPassword123!",
-                displayName: displayName.isEmpty ? nil : displayName,
-                primaryEmailVerified: true,
-                clientMetadata: ["source": "iOS-example"],
-                serverMetadata: ["created_via": "example-app"]
-            )
-            viewModel.log("User created: \(user.id)", type: .success)
-            userId = user.id
-            await listUsers()
-        } catch {
-            viewModel.log("Create user failed: \(error)", type: .error)
-        }
-    }
-    
-    func listUsers() async {
-        do {
-            viewModel.log("Listing users...")
-            let result = try await viewModel.serverApp.listUsers(limit: 5)
-            var usersList: [(id: String, email: String?)] = []
-            for user in result.items {
-                let email = await user.primaryEmail
-                usersList.append((id: user.id, email: email))
-            }
-            users = usersList
-            viewModel.log("Found \(users.count) users", type: .success)
-        } catch {
-            viewModel.log("List users failed: \(error)", type: .error)
-        }
-    }
-    
-    func getUser() async {
-        do {
-            viewModel.log("Getting user: \(userId)")
-            let user = try await viewModel.serverApp.getUser(id: userId)
-            if let user = user {
-                let email = await user.primaryEmail
-                viewModel.log("User: \(email ?? "nil")", type: .success)
-            } else {
-                viewModel.log("User not found", type: .info)
-            }
-        } catch {
-            viewModel.log("Get user failed: \(error)", type: .error)
-        }
-    }
-    
-    func deleteUser() async {
-        do {
-            viewModel.log("Deleting user: \(userId)")
-            guard let user = try await viewModel.serverApp.getUser(id: userId) else {
-                viewModel.log("User not found", type: .error)
-                return
-            }
-            try await user.delete()
-            viewModel.log("User deleted!", type: .success)
-            userId = ""
-            await listUsers()
-        } catch {
-            viewModel.log("Delete user failed: \(error)", type: .error)
-        }
-    }
-    
-    func createSession() async {
-        do {
-            viewModel.log("Creating session for: \(userId)")
-            let tokens = try await viewModel.serverApp.createSession(userId: userId)
-            viewModel.log("Session created!", type: .success)
-            viewModel.log("Access token: \(tokens.accessToken.prefix(30))...", type: .info)
-        } catch {
-            viewModel.log("Create session failed: \(error)", type: .error)
-        }
+        .navigationTitle("Server Teams")
     }
     
     func createTeam() async {
+        let params = "displayName: \"\(teamName)\""
+        viewModel.logInfo("createTeam()", message: "Calling...", details: params)
+        
         do {
-            viewModel.log("Creating team: \(teamName)")
             let team = try await viewModel.serverApp.createTeam(displayName: teamName)
-            viewModel.log("Team created: \(team.id)", type: .success)
+            let dict = await serializeServerTeam(team)
+            viewModel.logCall(
+                "serverApp.createTeam(displayName:)",
+                params: params,
+                result: formatObject("ServerTeam", dict)
+            )
             teamId = team.id
             await listTeams()
         } catch {
-            viewModel.log("Create team failed: \(error)", type: .error)
+            viewModel.logCall("serverApp.createTeam(displayName:)", params: params, error: error)
         }
     }
     
     func listTeams() async {
+        viewModel.logInfo("listTeams()", message: "Calling...")
+        
         do {
-            viewModel.log("Listing teams...")
             let teamsList = try await viewModel.serverApp.listTeams()
             var results: [(id: String, name: String)] = []
+            var dicts: [[String: Any]] = []
             for team in teamsList {
-                let name = await team.displayName
-                results.append((id: team.id, name: name))
+                let dict = await serializeServerTeam(team)
+                dicts.append(dict)
+                results.append((id: team.id, name: dict["displayName"] as? String ?? ""))
             }
             teams = results
-            viewModel.log("Found \(teams.count) teams", type: .success)
+            viewModel.logCall("serverApp.listTeams()", result: formatObjectArray("ServerTeam", dicts))
         } catch {
-            viewModel.log("List teams failed: \(error)", type: .error)
+            viewModel.logCall("serverApp.listTeams()", error: error)
         }
     }
     
     func addUserToTeam() async {
+        let params = "teamId: \"\(teamId)\"\nuserId: \"\(userIdToAdd)\""
+        viewModel.logInfo("team.addUser()", message: "Calling...", details: params)
+        
         do {
-            viewModel.log("Adding user to team...")
             guard let team = try await viewModel.serverApp.getTeam(id: teamId) else {
-                viewModel.log("Team not found", type: .error)
+                viewModel.logCall("team.addUser()", params: params, result: "Error: Team not found")
                 return
             }
-            try await team.addUser(id: userId)
-            viewModel.log("User added to team!", type: .success)
+            try await team.addUser(id: userIdToAdd)
+            let dict = await serializeServerTeam(team)
+            viewModel.logCall("team.addUser(id:)", params: params, result: "Success! User added to team.\n\n" + formatObject("ServerTeam", dict))
         } catch {
-            viewModel.log("Add user failed: \(error)", type: .error)
+            viewModel.logCall("team.addUser(id:)", params: params, error: error)
         }
     }
     
     func removeUserFromTeam() async {
+        let params = "teamId: \"\(teamId)\"\nuserId: \"\(userIdToAdd)\""
+        viewModel.logInfo("team.removeUser()", message: "Calling...", details: params)
+        
         do {
-            viewModel.log("Removing user from team...")
             guard let team = try await viewModel.serverApp.getTeam(id: teamId) else {
-                viewModel.log("Team not found", type: .error)
+                viewModel.logCall("team.removeUser()", params: params, result: "Error: Team not found")
                 return
             }
-            try await team.removeUser(id: userId)
-            viewModel.log("User removed from team!", type: .success)
+            try await team.removeUser(id: userIdToAdd)
+            let dict = await serializeServerTeam(team)
+            viewModel.logCall("team.removeUser(id:)", params: params, result: "Success! User removed from team.\n\n" + formatObject("ServerTeam", dict))
         } catch {
-            viewModel.log("Remove user failed: \(error)", type: .error)
+            viewModel.logCall("team.removeUser(id:)", params: params, error: error)
+        }
+    }
+}
+
+// MARK: - Sessions View
+
+struct SessionsView: View {
+    @Bindable var viewModel: SDKTestViewModel
+    @State private var userId = ""
+    @State private var accessToken = ""
+    @State private var refreshToken = ""
+    
+    var body: some View {
+        Form {
+            Section("Create Session (Impersonation)") {
+                TextField("User ID", text: $userId)
+                    .textInputAutocapitalization(.never)
+                
+                Button("serverApp.createSession(userId: userId)") {
+                    Task { await createSession() }
+                }
+                .disabled(userId.isEmpty)
+            }
+            
+            if !accessToken.isEmpty {
+                Section("Session Tokens") {
+                    VStack(alignment: .leading) {
+                        Text("Access Token:")
+                            .font(.headline)
+                        Text(accessToken.prefix(100) + "...")
+                            .font(.system(.caption, design: .monospaced))
+                    }
+                    
+                    VStack(alignment: .leading) {
+                        Text("Refresh Token:")
+                            .font(.headline)
+                        Text(refreshToken.prefix(50) + "...")
+                            .font(.system(.caption, design: .monospaced))
+                    }
+                    
+                    Button("Copy Access Token") {
+                        UIPasteboard.general.string = accessToken
+                    }
+                    
+                    Button("Copy Refresh Token") {
+                        UIPasteboard.general.string = refreshToken
+                    }
+                }
+                
+                Section("Use Session") {
+                    Button("Create Client with Session Tokens") {
+                        Task { await useSessionTokens() }
+                    }
+                }
+            }
+        }
+        .navigationTitle("Sessions")
+    }
+    
+    func createSession() async {
+        let params = "userId: \"\(userId)\""
+        viewModel.logInfo("createSession()", message: "Calling...", details: params)
+        
+        do {
+            let tokens = try await viewModel.serverApp.createSession(userId: userId)
+            accessToken = tokens.accessToken
+            refreshToken = tokens.refreshToken
+            viewModel.logCall(
+                "serverApp.createSession(userId:)",
+                params: params,
+                result: """
+                SessionTokens {
+                  accessToken: "\(tokens.accessToken.prefix(50))..."
+                  refreshToken: "\(tokens.refreshToken.prefix(30))..."
+                }
+                """
+            )
+        } catch {
+            viewModel.logCall("serverApp.createSession(userId:)", params: params, error: error)
         }
     }
     
-    func listTeamUsers() async {
+    func useSessionTokens() async {
+        viewModel.logInfo("StackClientApp(tokenStore: .explicit(...))", message: "Creating client with session tokens...")
+        
         do {
-            viewModel.log("Listing team users...")
-            guard let team = try await viewModel.serverApp.getTeam(id: teamId) else {
-                viewModel.log("Team not found", type: .error)
-                return
-            }
-            let users = try await team.listUsers()
-            viewModel.log("Found \(users.count) users", type: .success)
-            for user in users {
-                viewModel.log("  - \(user.id)", type: .info)
+            let client = StackClientApp(
+                projectId: viewModel.projectId,
+                publishableClientKey: viewModel.publishableClientKey,
+                baseUrl: viewModel.baseUrl,
+                tokenStore: .explicit(accessToken: accessToken, refreshToken: refreshToken),
+                noAutomaticPrefetch: true
+            )
+            let user = try await client.getUser()
+            if let user = user {
+                let dict = await serializeCurrentUser(user)
+                viewModel.logCall(
+                    "clientWithTokens.getUser()",
+                    result: "Success! Authenticated user:\n\n" + formatObject("CurrentUser", dict)
+                )
+            } else {
+                viewModel.logCall(
+                    "clientWithTokens.getUser()",
+                    result: "nil (tokens may be invalid)"
+                )
             }
         } catch {
-            viewModel.log("List team users failed: \(error)", type: .error)
-        }
-    }
-    
-    func deleteTeam() async {
-        do {
-            viewModel.log("Deleting team: \(teamId)")
-            guard let team = try await viewModel.serverApp.getTeam(id: teamId) else {
-                viewModel.log("Team not found", type: .error)
-                return
-            }
-            try await team.delete()
-            viewModel.log("Team deleted!", type: .success)
-            teamId = ""
-            await listTeams()
-        } catch {
-            viewModel.log("Delete team failed: \(error)", type: .error)
+            viewModel.logCall("clientWithTokens.getUser()", error: error)
         }
     }
 }

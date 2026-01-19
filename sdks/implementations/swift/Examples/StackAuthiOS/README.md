@@ -1,107 +1,103 @@
 # Stack Auth iOS Example
 
-A comprehensive iOS SwiftUI application for testing all Stack Auth SDK functions interactively.
+An interactive iOS application for testing all Stack Auth Swift SDK functions.
 
 ## Prerequisites
 
-- iOS 17.0+
-- Swift 5.9+
-- Xcode 15.0+
-- A running Stack Auth backend accessible from the iOS device/simulator
+- Xcode 15.0 or later
+- iOS 17.0+ Simulator or device
+- Running Stack Auth backend (default: `http://localhost:8102`)
 
 ## Running the Example
 
-1. Start the Stack Auth backend:
+### Option 1: Xcode
+
+1. Open the project in Xcode:
    ```bash
-   cd /path/to/stack-2
-   pnpm run dev
+   open StackAuthiOS.xcodeproj
    ```
 
-2. Open in Xcode:
-   ```bash
-   cd Examples/StackAuthiOS
-   open Package.swift
-   ```
+2. Select an iOS Simulator (e.g., "iPhone 17 Pro") as the destination
 
-3. Select an iOS simulator or device and run.
+3. Press ⌘R to build and run
 
-**Note**: When testing on a physical device, update the base URL in Settings to point to your machine's IP address (e.g., `http://192.168.1.x:8102`).
+### Option 2: Command Line
+
+```bash
+# Build
+xcodebuild -scheme StackAuthiOS -destination 'platform=iOS Simulator,name=iPhone 17 Pro' build
+
+# Build and run (opens simulator)
+xcodebuild -scheme StackAuthiOS -destination 'platform=iOS Simulator,name=iPhone 17 Pro' run
+```
 
 ## Features
 
-The example app uses a tab-based navigation with the following sections:
+The app uses a tab-based interface optimized for mobile:
 
-### Auth Tab
-- Sign up with email/password
-- Sign in with credentials
-- Sign in with wrong password (error testing)
-- Sign out
-- Get current user
-- Get user (or throw)
-- Generate OAuth URLs (Google, GitHub, Microsoft)
+- **Settings**: Configure API endpoint, project ID, and keys
+- **Auth**: Sign up, sign in, sign out, get current user
+- **User**: Update display name, metadata, view tokens
+- **Teams**: Create, list, and manage teams
+- **Logs**: View all SDK calls with full details (tap for more, long-press to copy)
 
-### User Tab
-- Set display name
-- Update client metadata
-- Update password (correct and wrong old password)
-- Get access/refresh tokens
-- Get auth headers
-- Get partial user from token
-- List contact channels
-
-### Teams Tab
-- Create team
-- List user's teams
-- Select and view team details
-- List team members
-- Update team name
-
-### Server Tab
-- **Users**
-  - Create user (basic and with all options)
-  - List users
-  - Get/delete user by ID
-  - Create session (impersonation)
-
-- **Teams**
-  - Create team
-  - List all teams
-  - Add/remove users from teams
-  - List team users
-  - Delete team
-
-### Settings Tab
-- Configure API base URL
-- Configure project ID and API keys
-- View operation logs
-
-## Default Configuration
-
-The example is pre-configured for local development:
-- Base URL: `http://localhost:8102`
-- Project ID: `internal`
-- Publishable Key: `this-publishable-client-key-is-for-local-development-only`
-- Secret Key: `this-secret-server-key-is-for-local-development-only`
-
-## Simulator Network Notes
-
-When running in the iOS Simulator, `localhost` will connect to your Mac's localhost. For physical devices, use your Mac's local IP address.
+Additional functions are accessible via navigation links in Settings:
+- Contact Channels
+- OAuth URL generation
+- Token operations
+- Server Users (admin)
+- Server Teams (admin)
+- Sessions (impersonation)
 
 ## SDK Functions Covered
 
-| Category | Functions |
-|----------|-----------|
-| Auth | signUpWithCredential, signInWithCredential, signOut, getUser, getOAuthUrl |
-| User | setDisplayName, update (metadata), updatePassword, getAccessToken, getRefreshToken, getAuthHeaders, getPartialUser |
-| Teams | createTeam, listTeams, getTeam, listUsers (team members), update |
-| Contact | listContactChannels |
-| Server Users | createUser, listUsers, getUser, delete, createSession |
-| Server Teams | createTeam, listTeams, getTeam, addUser, removeUser, listUsers, delete |
-| Errors | EmailPasswordMismatchError, UserNotSignedInError, PasswordConfirmationMismatchError |
+### Client App
+- `signUpWithCredential(email:password:)`
+- `signInWithCredential(email:password:)`
+- `signOut()`
+- `getUser()` / `getUser(or:)`
+- `getAccessToken()` / `getRefreshToken()`
+- `getAuthHeaders()`
+- `getOAuthUrl(provider:)`
 
-## Testing Edge Cases
+### Current User
+- `setDisplayName(_:)`
+- `update(clientMetadata:)`
+- `listTeams()` / `getTeam(id:)`
+- `createTeam(displayName:)`
+- `listContactChannels()`
 
-The app includes buttons specifically for testing error scenarios:
-- "Sign In (Wrong Password)" - triggers EmailPasswordMismatchError
-- "Get User (or throw)" - triggers UserNotSignedInError when not signed in
-- "Update (Wrong Old Password)" - triggers PasswordConfirmationMismatchError
+### Server App
+- `createUser(email:password:...)`
+- `listUsers(limit:)`
+- `getUser(id:)`
+- `createTeam(displayName:)`
+- `listTeams()`
+- `createSession(userId:)`
+
+## Logging
+
+The Logs tab shows all SDK activity in real-time:
+- **Green checkmark**: Successful calls with full response data
+- **Red X**: Errors with details
+- **Blue info**: In-progress calls
+
+Tap any log entry to see full details. Long-press to copy to clipboard.
+
+## Network Configuration
+
+For iOS Simulator to connect to your local backend:
+
+1. The default `localhost:8102` should work in the simulator
+2. For a real device, use your computer's local IP address instead
+
+## Troubleshooting
+
+### "Could not connect to server"
+- Ensure your Stack Auth backend is running
+- Check the Base URL in Settings tab
+- For real devices, use your computer's IP instead of localhost
+
+### Build errors
+- Make sure you have Xcode 15+ installed
+- Try cleaning: Product → Clean Build Folder (⇧⌘K)
