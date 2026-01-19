@@ -165,6 +165,7 @@ export class StackClientInterface {
     };
 
     const clientAuthentication = oauth.ClientSecretPost(this.options.publishableClientKey);
+    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
     const allowInsecure = (process.env.NODE_ENV?.includes("dev") || process.env.NODE_ENV === 'test') && tokenEndpoint.startsWith('http://');
 
     const response = await this._networkRetryException(async () => {
@@ -1041,6 +1042,7 @@ export class StackClientInterface {
     };
     const clientAuthentication = oauth.ClientSecretPost(this.options.publishableClientKey);
     // Allow insecure HTTP requests only in test environment (for localhost testing)
+    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
     const allowInsecure = (process.env.NODE_ENV?.includes("dev") || process.env.NODE_ENV === 'test') && tokenEndpoint.startsWith('http://');
 
     let params: URLSearchParams;
