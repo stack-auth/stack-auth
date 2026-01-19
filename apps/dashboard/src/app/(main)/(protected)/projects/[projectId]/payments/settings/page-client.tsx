@@ -3,6 +3,7 @@
 import { SettingSwitch } from "@/components/settings";
 import { PageLayout } from "../../page-layout";
 import { useAdminApp } from "../../use-admin-app";
+import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 
 export default function PageClient() {
   const adminApp = useAdminApp();
@@ -18,7 +19,9 @@ export default function PageClient() {
         label="Block new purchases"
         checked={paymentsConfig.blockNewPurchases}
         onCheckedChange={async (checked) => {
-          await project.updateConfig({ "payments.blockNewPurchases": checked });
+          runAsynchronouslyWithAlert(
+            project.updateConfig({ "payments.blockNewPurchases": checked })
+          );
         }}
         hint="Stops new checkouts while keeping existing subscriptions active."
       />
