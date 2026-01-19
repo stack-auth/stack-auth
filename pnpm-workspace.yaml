@@ -3,5 +3,6 @@ packages:
   - apps/*
   - examples/*
   - docs
+  - sdks/*
 
 minimumReleaseAge: 2880

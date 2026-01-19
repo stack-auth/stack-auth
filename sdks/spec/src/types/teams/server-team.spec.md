@@ -27,7 +27,7 @@ options: {
   serverMetadata?: json,
 }
 
-PATCH /teams/{teamId} [server-only]
+PATCH /api/v1/teams/{teamId} [server-only]
 Body: { display_name, profile_image_url, client_metadata, client_read_only_metadata, server_metadata }
 Route: apps/backend/src/app/api/latest/teams/[teamId]/route.ts
 
@@ -38,7 +38,7 @@ Does not error.
 
 Returns: ServerTeamUser[]
 
-GET /teams/{teamId}/users [server-only]
+GET /api/v1/teams/{teamId}/users [server-only]
 Route: apps/backend/src/app/api/latest/teams/[teamId]/users/route.ts
 
 ServerTeamUser extends ServerUser with:
@@ -51,7 +51,7 @@ Does not error.
 
 userId: string
 
-POST /teams/{teamId}/users { user_id } [server-only]
+POST /api/v1/teams/{teamId}/users { user_id } [server-only]
 
 Directly adds a user to the team without invitation.
 
@@ -62,7 +62,7 @@ Does not error.
 
 userId: string
 
-DELETE /teams/{teamId}/users/{userId} [server-only]
+DELETE /api/v1/teams/{teamId}/users/{userId} [server-only]
 
 Does not error.
 
@@ -72,13 +72,13 @@ Does not error.
 options.email: string
 options.callbackUrl: string?
 
-POST /teams/{teamId}/invitations { email, callback_url } [server-only]
+POST /api/v1/team-invitations/send-code { email, team_id, callback_url } [server-only]
 
 Does not error.
 
 
 ### delete()
 
-DELETE /teams/{teamId} [server-only]
+DELETE /api/v1/teams/{teamId} [server-only]
 
 Does not error.

@@ -32,7 +32,7 @@ options: {
   clientMetadata?: json,
 }
 
-PATCH /teams/{teamId} [authenticated]
+PATCH /api/v1/teams/{teamId} [authenticated]
 Body: { display_name, profile_image_url, client_metadata }
 Route: apps/backend/src/app/api/latest/teams/[teamId]/route.ts
 
@@ -41,7 +41,7 @@ Does not error.
 
 ### delete()
 
-DELETE /teams/{teamId} [authenticated]
+DELETE /api/v1/teams/{teamId} [authenticated]
 Route: apps/backend/src/app/api/latest/teams/[teamId]/route.ts
 
 Does not error.
@@ -52,7 +52,7 @@ Does not error.
 options.email: string
 options.callbackUrl: string?
 
-POST /teams/{teamId}/invitations { email, callback_url } [authenticated]
+POST /api/v1/team-invitations/send-code { email, team_id, callback_url } [authenticated]
 
 Sends invitation email to the specified address.
 
@@ -63,7 +63,7 @@ Does not error.
 
 Returns: TeamUser[]
 
-GET /teams/{teamId}/users [authenticated]
+GET /api/v1/teams/{teamId}/users [authenticated]
 Route: apps/backend/src/app/api/latest/teams/[teamId]/users/route.ts
 
 TeamUser has:
@@ -81,7 +81,7 @@ Does not error.
 
 Returns: TeamInvitation[]
 
-GET /teams/{teamId}/invitations [authenticated]
+GET /api/v1/teams/{teamId}/invitations [authenticated]
 
 TeamInvitation has:
   id: string
@@ -100,7 +100,7 @@ options.scope: string?
 
 Returns: TeamApiKeyFirstView
 
-POST /teams/{teamId}/api-keys { description, expires_at, scope } [authenticated]
+POST /api/v1/teams/{teamId}/api-keys { description, expires_at, scope } [authenticated]
 
 TeamApiKeyFirstView extends TeamApiKey with:
   apiKey: string - the actual key value (only shown once)
@@ -112,7 +112,7 @@ Does not error.
 
 Returns: TeamApiKey[]
 
-GET /teams/{teamId}/api-keys [authenticated]
+GET /api/v1/teams/{teamId}/api-keys [authenticated]
 
 TeamApiKey has:
   id: string

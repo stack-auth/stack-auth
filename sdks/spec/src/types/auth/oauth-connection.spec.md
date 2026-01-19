@@ -16,7 +16,7 @@ id: string
 
 Returns: string
 
-POST /connected-accounts/{id}/access-token {} [authenticated]
+POST /api/v1/connected-accounts/{id}/access-token {} [authenticated]
 Route: apps/backend/src/app/api/latest/connected-accounts/[provider]/access-token/route.ts
 
 Returns a fresh OAuth access token for the connected account.
@@ -71,7 +71,7 @@ options: {
 
 Returns: Result<void, OAuthProviderAccountIdAlreadyUsedForSignIn>
 
-PATCH /users/me/oauth-providers/{id} { allow_sign_in, allow_connected_accounts } [authenticated]
+PATCH /api/v1/users/me/oauth-providers/{id} { allow_sign_in, allow_connected_accounts } [authenticated]
 Route: apps/backend/src/app/api/latest/users/me/oauth-providers/[id]/route.ts
 
 Errors (in Result):
@@ -82,7 +82,7 @@ Errors (in Result):
 
 ### delete()
 
-DELETE /users/me/oauth-providers/{id} [authenticated]
+DELETE /api/v1/users/me/oauth-providers/{id} [authenticated]
 Route: apps/backend/src/app/api/latest/users/me/oauth-providers/[id]/route.ts
 
 Does not error.
@@ -113,7 +113,7 @@ options: {
 
 Returns: Result<void, OAuthProviderAccountIdAlreadyUsedForSignIn>
 
-PATCH /users/{userId}/oauth-providers/{id} [server-only]
+PATCH /api/v1/users/{userId}/oauth-providers/{id} [server-only]
 Body: { account_id, email, allow_sign_in, allow_connected_accounts }
 
 Errors (in Result):
@@ -124,6 +124,6 @@ Errors (in Result):
 
 ### delete()
 
-DELETE /users/{userId}/oauth-providers/{id} [server-only]
+DELETE /api/v1/users/{userId}/oauth-providers/{id} [server-only]
 
 Does not error.

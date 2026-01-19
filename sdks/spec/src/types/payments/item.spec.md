@@ -51,7 +51,7 @@ Extends: Item
 
 amount: number (positive)
 
-POST /internal/items/quantity-changes {
+POST /api/v1/internal/items/quantity-changes {
   user_id | team_id | custom_customer_id,
   item_id,
   quantity: amount
@@ -66,7 +66,7 @@ Does not error.
 
 amount: number (positive)
 
-POST /internal/items/quantity-changes {
+POST /api/v1/internal/items/quantity-changes {
   user_id | team_id | custom_customer_id,
   item_id,
   quantity: -amount
@@ -85,7 +85,7 @@ amount: number (positive)
 
 Returns: bool
 
-POST /internal/items/try-decrease {
+POST /api/v1/internal/items/try-decrease {
   user_id | team_id | custom_customer_id,
   item_id,
   amount

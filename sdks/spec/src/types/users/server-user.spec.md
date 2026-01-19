@@ -36,7 +36,7 @@ options: {
   totpMultiFactorSecret?: bytes | null,
 }
 
-PATCH /users/{userId} [server-only]
+PATCH /api/v1/users/{userId} [server-only]
 Body: only include provided fields, convert to snake_case
 Route: apps/backend/src/app/api/latest/users/[userId]/route.ts
 
@@ -81,7 +81,7 @@ options.profileImageUrl: string?
 
 Returns: ServerTeam
 
-POST /teams { display_name, profile_image_url, creator_user_id: thisUser.id } [server-only]
+POST /api/v1/teams { display_name, profile_image_url, creator_user_id: thisUser.id } [server-only]
 
 Does not error.
 
@@ -90,7 +90,7 @@ Does not error.
 
 Returns: ServerTeam[]
 
-GET /users/{userId}/teams [server-only]
+GET /api/v1/users/{userId}/teams [server-only]
 
 Does not error.
 
@@ -113,7 +113,7 @@ Does not error.
 
 Returns: ServerContactChannel[]
 
-GET /users/{userId}/contact-channels [server-only]
+GET /api/v1/users/{userId}/contact-channels [server-only]
 
 ServerContactChannel extends ContactChannel with:
   update(data: ServerContactChannelUpdateOptions): Promise<void>
@@ -134,7 +134,7 @@ options.isVerified: bool?
 
 Returns: ServerContactChannel
 
-POST /contact-channels { type, value, used_for_auth, is_primary, is_verified, user_id } [server-only]
+POST /api/v1/contact-channels { type, value, used_for_auth, is_primary, is_verified, user_id } [server-only]
 
 Does not error.
 
@@ -147,7 +147,7 @@ Does not error.
 scope: Team? - if omitted, grants project-level permission
 permissionId: string
 
-POST /users/{userId}/permissions { team_id, permission_id } [server-only]
+POST /api/v1/users/{userId}/permissions { team_id, permission_id } [server-only]
 
 Does not error.
 
@@ -157,7 +157,7 @@ Does not error.
 scope: Team?
 permissionId: string
 
-DELETE /users/{userId}/permissions/{permissionId}?team_id={teamId} [server-only]
+DELETE /api/v1/users/{userId}/permissions/{permissionId}?team_id={teamId} [server-only]
 
 Does not error.
 
@@ -169,7 +169,7 @@ permissionId: string
 
 Returns: bool
 
-GET /users/{userId}/permissions?team_id={teamId}&permission_id={permissionId} [server-only]
+GET /api/v1/users/{userId}/permissions?team_id={teamId}&permission_id={permissionId} [server-only]
 
 Does not error.
 
@@ -189,9 +189,9 @@ Does not error.
 scope: Team?
 options.direct: bool? - only directly assigned, not inherited
 
-Returns: AdminTeamPermission[]
+Returns: TeamPermission[]
 
-GET /users/{userId}/permissions?team_id={teamId}&direct={direct} [server-only]
+GET /api/v1/users/{userId}/permissions?team_id={teamId}&direct={direct} [server-only]
 
 Does not error.
 
@@ -203,7 +203,7 @@ Does not error.
 
 Returns: ServerOAuthProvider[]
 
-GET /users/{userId}/oauth-providers [server-only]
+GET /api/v1/users/{userId}/oauth-providers [server-only]
 
 ServerOAuthProvider extends OAuthProvider with:
   accountId: string (always present, not optional)
@@ -231,7 +231,7 @@ options.isImpersonation: bool? - mark as impersonation session
 
 Returns: { getTokens(): Promise<{ accessToken, refreshToken }> }
 
-POST /users/{userId}/sessions { expires_in_millis, is_impersonation } [server-only]
+POST /api/v1/users/{userId}/sessions { expires_in_millis, is_impersonation } [server-only]
 
 Creates a new session for this user. Can be used to impersonate them.
 
@@ -262,7 +262,7 @@ Also includes all methods from CurrentUser that are applicable:
 - listPermissions(scope?, options?)
 - getActiveSessions()
 - revokeSession(sessionId)
-- registerPasskey(options?) [BROWSER-ONLY]
+- registerPasskey(options?) [BROWSER-LIKE]
 - listApiKeys()
 - createApiKey(options)
 - listNotificationCategories()

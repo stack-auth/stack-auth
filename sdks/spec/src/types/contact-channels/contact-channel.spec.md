@@ -31,7 +31,7 @@ usedForAuth: bool
 
 options.callbackUrl: string? - URL to redirect after verification
 
-POST /contact-channels/{id}/send-verification-email { callback_url } [authenticated]
+POST /api/v1/contact-channels/{id}/send-verification-email { callback_url } [authenticated]
 Route: apps/backend/src/app/api/latest/contact-channels/[id]/send-verification-email/route.ts
 
 Sends a verification email to this contact channel.
@@ -47,7 +47,7 @@ options: {
   isPrimary?: bool,
 }
 
-PATCH /contact-channels/{id} { value, used_for_auth, is_primary } [authenticated]
+PATCH /api/v1/contact-channels/{id} { value, used_for_auth, is_primary } [authenticated]
 Route: apps/backend/src/app/api/latest/contact-channels/[id]/route.ts
 
 Does not error.
@@ -55,7 +55,7 @@ Does not error.
 
 ### delete()
 
-DELETE /contact-channels/{id} [authenticated]
+DELETE /api/v1/contact-channels/{id} [authenticated]
 Route: apps/backend/src/app/api/latest/contact-channels/[id]/route.ts
 
 Does not error.
@@ -82,7 +82,7 @@ options: {
   isVerified?: bool,  // Server can directly set verification status
 }
 
-PATCH /contact-channels/{id} [server-only]
+PATCH /api/v1/contact-channels/{id} [server-only]
 Body: { value, used_for_auth, is_primary, is_verified }
 
 Does not error.

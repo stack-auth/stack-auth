@@ -36,7 +36,7 @@ options: {
   totpMultiFactorSecret?: bytes | null,
 }
 
-PATCH /users/me [authenticated]
+PATCH /api/v1/users/me [authenticated]
 Body: only include provided fields, convert to snake_case
 Route: apps/backend/src/app/api/latest/users/me/route.ts
 
@@ -47,7 +47,7 @@ Does not error.
 
 ## delete()
 
-DELETE /users/me [authenticated]
+DELETE /api/v1/users/me [authenticated]
 Route: apps/backend/src/app/api/latest/users/me/route.ts
 
 Clear stored tokens after success.
@@ -78,7 +78,9 @@ Does not error.
 options.oldPassword: string
 options.newPassword: string
 
-PATCH /users/me { old_password, new_password } [authenticated]
+Returns: void
+
+POST /api/v1/auth/password/update { old_password, new_password } [authenticated]
 
 Errors:
   PasswordConfirmationMismatch
@@ -94,7 +96,9 @@ Errors:
 
 options.password: string
 
-POST /users/me/password { password } [authenticated]
+Returns: void
+
+POST /api/v1/auth/password/set { password } [authenticated]
 
 For users without existing password (OAuth-only, anonymous).
 
@@ -111,7 +115,7 @@ Errors:
 
 Returns: Team[]
 
-GET /users/me/teams [authenticated]
+GET /api/v1/users/me/teams [authenticated]
 Route: apps/backend/src/app/api/latest/users/me/teams/route.ts
 
 Construct Team for each item.
@@ -137,7 +141,7 @@ options.profileImageUrl: string?
 
 Returns: Team
 
-POST /teams { display_name, profile_image_url, creator_user_id: "me" } [authenticated]
+POST /api/v1/teams { display_name, profile_image_url, creator_user_id: "me" } [authenticated]
 Route: apps/backend/src/app/api/latest/teams/route.ts
 
 Then select the new team via update({ selectedTeamId: newTeam.id }).
@@ -158,7 +162,7 @@ Does not error.
 
 team: Team
 
-DELETE /teams/{teamId}/users/me [authenticated]
+DELETE /api/v1/teams/{teamId}/users/me [authenticated]
 
 Does not error.
 
@@ -169,7 +173,7 @@ team: Team
 
 Returns: EditableTeamMemberProfile
 
-GET /teams/{teamId}/users/me/profile [authenticated]
+GET /api/v1/teams/{teamId}/users/me/profile [authenticated]
 
 EditableTeamMemberProfile has:
   displayName: string | null
@@ -186,7 +190,7 @@ Does not error.
 
 Returns: ContactChannel[]
 
-GET /contact-channels [authenticated]
+GET /api/v1/contact-channels [authenticated]
 Route: apps/backend/src/app/api/latest/contact-channels/route.ts
 
 Does not error.
@@ -201,7 +205,7 @@ options.isPrimary: bool?
 
 Returns: ContactChannel
 
-POST /contact-channels { type, value, used_for_auth, is_primary, user_id: "me" } [authenticated]
+POST /api/v1/contact-channels { type, value, used_for_auth, is_primary, user_id: "me" } [authenticated]
 
 Does not error.
 
@@ -213,7 +217,7 @@ Does not error.
 
 Returns: OAuthProvider[]
 
-GET /users/me/oauth-providers [authenticated]
+GET /api/v1/users/me/oauth-providers [authenticated]
 Route: apps/backend/src/app/api/latest/users/me/oauth-providers/route.ts
 
 OAuthProvider has:
@@ -224,7 +228,11 @@ OAuthProvider has:
   email: string?
   allowSignIn: bool
   allowConnectedAccounts: bool
-  update(data): Promise<Result<void, OAuthProviderAccountIdAlreadyUsedForSignIn>>
+  update(data): Promise<void>
+    Errors:
+      OAuthProviderAccountIdAlreadyUsedForSignIn
+        code: "oauth_provider_account_id_already_used_for_sign_in"
+        message: "This OAuth account is already linked to another user."
   delete(): Promise<void>
 
 Does not error.
@@ -246,22 +254,39 @@ Does not error.
 
 ### getConnectedAccount(providerId, options?)
 
+Get access to a connected OAuth account for API calls to third-party services.
+For example, get a Google access token to call Google APIs on behalf of the user.
+
 providerId: string (e.g., "google", "github")
-options.scopes: string[]? - required OAuth scopes
+options.scopes: string[]? - required OAuth scopes for the access token
 options.or: "redirect" | "throw" | "return-null"
   Default: "return-null"
 
 Returns: OAuthConnection | null
 
-POST /connected-accounts/{providerId}/access-token { scope: scopes.join(" ") } [authenticated]
-Route: apps/backend/src/app/api/latest/connected-accounts/[provider]/access-token/route.ts
+Implementation:
+1. Check if user has the OAuth provider connected:
+   Look for providerId in user.oauthProviders
+   If not found and or="redirect": go to step 4
+   If not found otherwise: handle as "not connected" (see below)
 
-On success: return OAuthConnection with { id, getAccessToken() }
+2. Request an access token with the required scopes:
+   POST /api/v1/connected-accounts/{providerId}/access-token { scope: scopes.join(" ") } [authenticated]
+   Route: apps/backend/src/app/api/latest/connected-accounts/[provider]/access-token/route.ts
 
-On error "oauth_scope_not_granted" or "oauth_connection_not_connected":
-  - or="redirect": redirect to OAuth flow with additional scopes [BROWSER-ONLY]
-  - or="throw": throw the error
-  - or="return-null": return null
+3. On success: return OAuthConnection { id: providerId, getAccessToken() }
+   The getAccessToken() method returns the token from step 2 (cached, refreshed as needed)
+
+4. On error "oauth_scope_not_granted" or "oauth_connection_not_connected":
+   - or="redirect" [BROWSER-LIKE]:
+     Start OAuth flow to connect/add scopes:
+     - Use same PKCE flow as signInWithOAuth
+     - Set type="link" instead of "authenticate"
+     - Include afterCallbackRedirectUrl = current page URL
+     - Merge requested scopes with any scopes from oauthScopesOnSignIn config
+     - Never returns (browser redirects)
+   - or="throw": throw the error
+   - or="return-null": return null
 
 Errors (only when or="throw"):
   OAuthConnectionNotConnectedToUser
@@ -283,7 +308,7 @@ permissionId: string
 
 Returns: bool
 
-GET /users/me/permissions?team_id={teamId}&permission_id={permissionId} [authenticated]
+GET /api/v1/users/me/permissions?team_id={teamId}&permission_id={permissionId} [authenticated]
 
 Does not error.
 
@@ -307,7 +332,7 @@ options.recursive: bool? - include inherited permissions
 
 Returns: TeamPermission[]
 
-GET /users/me/permissions?team_id={teamId}&recursive={recursive} [authenticated]
+GET /api/v1/users/me/permissions?team_id={teamId}&recursive={recursive} [authenticated]
 
 Does not error.
 
@@ -319,7 +344,7 @@ Does not error.
 
 Returns: ActiveSession[]
 
-GET /users/me/sessions [authenticated]
+GET /api/v1/users/me/sessions [authenticated]
 
 ActiveSession has:
   id: string
@@ -337,7 +362,7 @@ Does not error.
 
 sessionId: string
 
-DELETE /users/me/sessions/{sessionId} [authenticated]
+DELETE /api/v1/users/me/sessions/{sessionId} [authenticated]
 
 Does not error.
 
@@ -345,20 +370,20 @@ Does not error.
 ## Passkey Methods
 
 
-### registerPasskey(options?)  [BROWSER-ONLY]
+### registerPasskey(options?)  [BROWSER-LIKE]
 
 options.hostname: string?
 
-Returns: Result<void, PasskeyRegistrationFailed | PasskeyWebAuthnError>
+Returns: void
 
 Implementation:
-1. POST /auth/passkey/register/initiate {} [authenticated]
+1. POST /api/v1/auth/passkey/initiate-passkey-registration {} [authenticated]
    Response: { options_json, code }
 2. Replace options_json.rp.id with actual hostname
 3. Call WebAuthn startRegistration(options_json)
-4. POST /auth/passkey/register { credential, code } [authenticated]
+4. POST /api/v1/auth/passkey/register { credential, code } [authenticated]
 
-Errors (in Result):
+Errors:
   PasskeyRegistrationFailed
     code: "passkey_registration_failed"
     message: "Failed to register passkey. Please try again."
@@ -375,7 +400,7 @@ Errors (in Result):
 
 Returns: UserApiKey[]
 
-GET /users/me/api-keys [authenticated]
+GET /api/v1/users/me/api-keys [authenticated]
 
 Does not error.
 
@@ -389,7 +414,7 @@ options.teamId: string? - for team-scoped keys
 
 Returns: UserApiKeyFirstView
 
-POST /users/me/api-keys { description, expires_at, scope, team_id } [authenticated]
+POST /api/v1/users/me/api-keys { description, expires_at, scope, team_id } [authenticated]
 
 UserApiKeyFirstView extends UserApiKey with:
   apiKey: string - the actual key value (only shown once)
@@ -404,7 +429,7 @@ Does not error.
 
 Returns: NotificationCategory[]
 
-GET /notification-categories [authenticated]
+GET /api/v1/notification-categories [authenticated]
 
 Does not error.
 

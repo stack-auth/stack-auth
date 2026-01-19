@@ -18,12 +18,16 @@ creating users, and accessing server metadata.
 
 ## getUser(id)
 
-id: string - user ID to look up
+Arguments:
+  id: string - user ID to look up
 
 Returns: ServerUser | null
 
-GET /users/{id} [server-only]
-Route: apps/backend/src/app/api/latest/users/[userId]/route.ts
+Request:
+  GET /api/v1/users/{id} [server-only]
+
+Response:
+  ServerUserCrud object or 404 if not found
 
 Construct ServerUser object (types/users/server-user.spec.md).
 
@@ -32,46 +36,81 @@ Does not error.
 
 ## getUser(options: { apiKey })
 
-options.apiKey: string - API key to authenticate with
-options.or: "return-null" | "anonymous"?
+Arguments:
+  options.apiKey: string - API key to authenticate with
+  options.or: "return-null" | "anonymous"?
 
 Returns: ServerUser | null
 
-POST /api-keys/check { api_key } [server-only]
+Request:
+  POST /api/v1/api-keys/check [server-only]
+  Body: { api_key: string }
+
+Response:
+  { user_id?: string, team_id?: string, ... }
+
 Returns user associated with the API key.
 
 Does not error.
 
 
-## getUser(options: { from: "convex", ctx })
+## getUser(options: { from: "convex", ctx })  [JS-ONLY]
 
-options.from: "convex"
-options.ctx: ConvexQueryContext - Convex query context
-options.or: "return-null" | "anonymous"?
+Arguments:
+  options.from: "convex"
+  options.ctx: ConvexQueryContext - Convex query context
+  options.or: "return-null" | "anonymous"?
 
 Returns: ServerUser | null
 
 Extract token from Convex context, validate, and return user.
-For Convex integration.
+For Convex integration (JS SDK only).
+
+Does not error.
+
+
+## getPartialUser(options)
+
+Get minimal user info without a full API call.
+Same as StackClientApp.getPartialUser but returns server user info.
+
+Arguments:
+  options.from: "token" | "convex"
+    - "token": Extract user info from the stored access token
+    - "convex": Extract user info from Convex auth context [JS-ONLY]
+  
+  For "convex" [JS-ONLY]:
+    options.ctx: ConvexQueryContext - the Convex query context
+
+Returns: TokenPartialUser | null
+
+See StackClientApp.getPartialUser for implementation details.
 
 Does not error.
 
 
 ## listUsers(options?)
 
-options.cursor: string? - pagination cursor
-options.limit: number? - max results (default 100)
-options.orderBy: "signedUpAt"? - sort field
-options.desc: bool? - descending order
-options.query: string? - search query
-options.includeRestricted: bool? - include users who haven't completed onboarding
-options.includeAnonymous: bool? - include anonymous users
+Arguments:
+  options.cursor: string? - pagination cursor
+  options.limit: number? - max results (default 100)
+  options.orderBy: "signedUpAt"? - sort field
+  options.desc: bool? - descending order
+  options.query: string? - search query (searches email, display name)
+  options.includeRestricted: bool? - include users who haven't completed onboarding
+  options.includeAnonymous: bool? - include anonymous users
 
 Returns: ServerUser[] & { nextCursor: string | null }
 
-GET /users [server-only]
-Query params: cursor, limit, order_by, desc, query, include_restricted, include_anonymous
-Route: apps/backend/src/app/api/latest/users/route.ts
+Request:
+  GET /api/v1/users [server-only]
+  Query params: cursor, limit, order_by, desc, query, include_restricted, include_anonymous
+
+Response:
+  {
+    items: [ServerUserCrud, ...],
+    pagination: { next_cursor?: string }
+  }
 
 Construct ServerUser for each item.
 
@@ -80,32 +119,51 @@ Does not error.
 
 ## createUser(options)
 
-options.primaryEmail: string?
-options.primaryEmailAuthEnabled: bool?
-options.password: string?
-options.otpAuthEnabled: bool?
-options.displayName: string?
-options.primaryEmailVerified: bool?
-options.clientMetadata: json?
-options.clientReadOnlyMetadata: json?
-options.serverMetadata: json?
+Arguments:
+  options.primaryEmail: string?
+  options.primaryEmailAuthEnabled: bool?
+  options.password: string?
+  options.otpAuthEnabled: bool?
+  options.displayName: string?
+  options.primaryEmailVerified: bool?
+  options.clientMetadata: json?
+  options.clientReadOnlyMetadata: json?
+  options.serverMetadata: json?
 
 Returns: ServerUser
 
-POST /users { ... } [server-only]
-Route: apps/backend/src/app/api/latest/users/route.ts
+Request:
+  POST /api/v1/users [server-only]
+  Body: {
+    primary_email?: string,
+    primary_email_auth_enabled?: bool,
+    password?: string,
+    otp_auth_enabled?: bool,
+    display_name?: string,
+    primary_email_verified?: bool,
+    client_metadata?: json,
+    client_read_only_metadata?: json,
+    server_metadata?: json
+  }
+
+Response:
+  ServerUserCrud object
 
 Does not error.
 
 
 ## getTeam(id)
 
-id: string - team ID
+Arguments:
+  id: string - team ID
 
 Returns: ServerTeam | null
 
-GET /teams/{id} [server-only]
-Route: apps/backend/src/app/api/latest/teams/[teamId]/route.ts
+Request:
+  GET /api/v1/teams/{id} [server-only]
+
+Response:
+  ServerTeamCrud object or 404 if not found
 
 Construct ServerTeam object (types/teams/server-team.spec.md).
 
@@ -114,11 +172,18 @@ Does not error.
 
 ## getTeam(options: { apiKey })
 
-options.apiKey: string - team API key
+Arguments:
+  options.apiKey: string - team API key
 
 Returns: ServerTeam | null
 
-POST /api-keys/check { api_key } [server-only]
+Request:
+  POST /api/v1/api-keys/check [server-only]
+  Body: { api_key: string }
+
+Response:
+  { team_id?: string, ... }
+
 Returns team associated with the API key.
 
 Does not error.
@@ -128,54 +193,83 @@ Does not error.
 
 Returns: ServerTeam[]
 
-GET /teams [server-only]
-Route: apps/backend/src/app/api/latest/teams/route.ts
+Request:
+  GET /api/v1/teams [server-only]
+
+Response:
+  { items: [ServerTeamCrud, ...] }
 
 Does not error.
 
 
 ## createTeam(options)
 
-options.displayName: string
-options.profileImageUrl: string?
-options.creatorUserId: string? - user to add as creator/member
+Arguments:
+  options.displayName: string
+  options.profileImageUrl: string?
+  options.creatorUserId: string? - user to add as creator/member
 
 Returns: ServerTeam
 
-POST /teams { display_name, profile_image_url, creator_user_id } [server-only]
-Route: apps/backend/src/app/api/latest/teams/route.ts
+Request:
+  POST /api/v1/teams [server-only]
+  Body: { 
+    display_name: string, 
+    profile_image_url?: string, 
+    creator_user_id?: string 
+  }
+
+Response:
+  ServerTeamCrud object
 
 Does not error.
 
 
 ## grantProduct(options)
 
-Customer identification (one of):
-  options.userId: string
-  options.teamId: string
-  options.customCustomerId: string
+Arguments:
+  Customer identification (one of):
+    options.userId: string
+    options.teamId: string
+    options.customCustomerId: string
+  
+  Product identification (one of):
+    options.productId: string - existing product ID
+    options.product: InlineProduct - inline product definition
+  
+  options.quantity: number? - default 1
 
-Product identification (one of):
-  options.productId: string - existing product ID
-  options.product: InlineProduct - inline product definition
+Returns: void
 
-options.quantity: number? - default 1
-
-POST /customers/{type}/{id}/products { product_id | product, quantity } [server-only]
-Route: apps/backend/src/app/api/latest/customers/[...]/products/route.ts
+Request:
+  POST /api/v1/customers/{customer_type}/{customer_id}/products [server-only]
+  Body: { 
+    product_id?: string,
+    product?: { name, description, ... },
+    quantity?: number 
+  }
 
 Does not error.
 
 
 ## sendEmail(options)
 
-options.to: string | string[] - recipient email(s)
-options.subject: string
-options.html: string? - HTML body
-options.text: string? - plain text body
+Arguments:
+  options.to: string | string[] - recipient email(s)
+  options.subject: string
+  options.html: string? - HTML body
+  options.text: string? - plain text body
 
-POST /emails { to, subject, html, text } [server-only]
-Route: apps/backend/src/app/api/latest/emails/route.ts
+Returns: void
+
+Request:
+  POST /api/v1/emails [server-only]
+  Body: { 
+    to: string | string[], 
+    subject: string, 
+    html?: string, 
+    text?: string 
+  }
 
 Does not error.
 
@@ -184,32 +278,41 @@ Does not error.
 
 Returns: EmailDeliveryInfo
 
-GET /emails/delivery-stats [server-only]
-Route: apps/backend/src/app/api/latest/emails/delivery-stats/route.ts
+Request:
+  GET /api/v1/emails/delivery-stats [server-only]
 
-Returns: {
-  delivered: number,
-  bounced: number,
-  complained: number,
-  total: number,
-}
+Response:
+  {
+    delivered: number,
+    bounced: number,
+    complained: number,
+    total: number
+  }
 
 Does not error.
 
 
 ## createOAuthProvider(options)
 
-options.userId: string
-options.accountId: string
-options.providerConfigId: string
-options.email: string
-options.allowSignIn: bool
-options.allowConnectedAccounts: bool
+Arguments:
+  options.userId: string
+  options.accountId: string
+  options.providerConfigId: string
+  options.email: string
+  options.allowSignIn: bool
+  options.allowConnectedAccounts: bool
 
-Returns: Result<ServerOAuthProvider, OAuthProviderAccountIdAlreadyUsedForSignIn>
+Returns: ServerOAuthProvider (on success)
 
-POST /users/{userId}/oauth-providers { ... } [server-only]
-Route: apps/backend/src/app/api/latest/users/[userId]/oauth-providers/route.ts
+Request:
+  POST /api/v1/users/{userId}/oauth-providers [server-only]
+  Body: {
+    account_id: string,
+    provider_config_id: string,
+    email: string,
+    allow_sign_in: bool,
+    allow_connected_accounts: bool
+  }
 
 Errors:
   OAuthProviderAccountIdAlreadyUsedForSignIn
@@ -219,47 +322,65 @@ Errors:
 
 ## getDataVaultStore(id)
 
-id: string - data vault store ID
+Arguments:
+  id: string - data vault store ID
 
 Returns: DataVaultStore
 
-GET /data-vault/stores/{id} [server-only]
-
-DataVaultStore has:
+DataVaultStore has methods:
   get(key: string): Promise<string | null>
+    GET /api/v1/data-vault/stores/{storeId}/items/{key} [server-only]
+    
   set(key: string, value: string): Promise<void>
+    PUT /api/v1/data-vault/stores/{storeId}/items/{key} [server-only]
+    Body: { value: string }
+    
   delete(key: string): Promise<void>
+    DELETE /api/v1/data-vault/stores/{storeId}/items/{key} [server-only]
 
 Does not error.
 
 
 ## getItem(options)
 
-Customer identification (one of):
-  options.userId: string
-  options.teamId: string
-  options.customCustomerId: string
-
-options.itemId: string
+Arguments:
+  Customer identification (one of):
+    options.userId: string
+    options.teamId: string
+    options.customCustomerId: string
+  options.itemId: string
 
 Returns: ServerItem
 
-GET /customers/{type}/{id}/items/{itemId} [server-only]
-Route: apps/backend/src/app/api/latest/customers/[...]/items/[itemId]/route.ts
+Request:
+  GET /api/v1/customers/{customer_type}/{customer_id}/items/{itemId} [server-only]
 
-ServerItem has:
-  id: string
-  quantity: number
+Response:
+  { id: string, quantity: number }
 
 Does not error.
 
 
 ## listProducts(options)
 
-options: CustomerProductsRequestOptions
+Arguments:
+  Customer identification (one of):
+    options.userId: string
+    options.teamId: string
+    options.customCustomerId: string
+  options.cursor: string? - pagination cursor
+  options.limit: number? - max results
 
 Returns: CustomerProductsList
 
-GET /customers/{type}/{id}/products [server-only]
+Request:
+  GET /api/v1/customers/{customer_type}/{customer_id}/products [server-only]
+  Query params: cursor?, limit?
+
+Response:
+  { 
+    items: [{ id, name, quantity, ... }],
+    pagination: { next_cursor?: string }
+  }
 
 Does not error.

@@ -19,7 +19,7 @@ options.returnUrl: string? - URL to redirect after checkout
 
 Returns: string (checkout URL)
 
-POST /customers/{type}/{id}/checkout { product_id, return_url } [authenticated]
+POST /api/v1/customers/{type}/{id}/checkout { product_id, return_url } [authenticated]
 Route: apps/backend/src/app/api/latest/customers/[...]/checkout/route.ts
 
 Returns a Stripe checkout URL for purchasing the product.
@@ -31,7 +31,7 @@ Does not error.
 
 Returns: CustomerBilling
 
-GET /customers/{type}/{id}/billing [authenticated]
+GET /api/v1/customers/{type}/{id}/billing [authenticated]
 Route: apps/backend/src/app/api/latest/customers/[...]/billing/route.ts
 
 CustomerBilling has:
@@ -52,7 +52,7 @@ Does not error.
 
 Returns: CustomerPaymentMethodSetupIntent
 
-POST /customers/{type}/{id}/payment-method-setup-intent [authenticated]
+POST /api/v1/customers/{type}/{id}/payment-method-setup-intent [authenticated]
 
 CustomerPaymentMethodSetupIntent has:
   clientSecret: string - for Stripe.js to confirm setup
@@ -67,7 +67,7 @@ setupIntentId: string
 
 Returns: CustomerDefaultPaymentMethod
 
-POST /customers/{type}/{id}/default-payment-method { setup_intent_id } [authenticated]
+POST /api/v1/customers/{type}/{id}/default-payment-method { setup_intent_id } [authenticated]
 
 After user completes payment method setup via Stripe.js,
 call this to set it as default.
@@ -81,7 +81,7 @@ itemId: string
 
 Returns: Item
 
-GET /customers/{type}/{id}/items/{itemId} [authenticated]
+GET /api/v1/customers/{type}/{id}/items/{itemId} [authenticated]
 
 Item has:
   displayName: string
@@ -95,7 +95,7 @@ Does not error.
 
 Returns: Item[]
 
-GET /customers/{type}/{id}/items [authenticated]
+GET /api/v1/customers/{type}/{id}/items [authenticated]
 
 Does not error.
 
@@ -129,7 +129,7 @@ options.limit: number?
 
 Returns: CustomerProductsList
 
-GET /customers/{type}/{id}/products [authenticated]
+GET /api/v1/customers/{type}/{id}/products [authenticated]
 Route: apps/backend/src/app/api/latest/customers/[...]/products/route.ts
 
 CustomerProductsList is CustomerProduct[] with:
@@ -145,7 +145,7 @@ options.toProductId: string - target subscription product ID
 options.priceId: string? - specific price of target product
 options.quantity: number?
 
-POST /customers/{type}/{id}/switch-subscription { from_product_id, to_product_id, price_id, quantity } [authenticated]
+POST /api/v1/customers/{type}/{id}/switch-subscription { from_product_id, to_product_id, price_id, quantity } [authenticated]
 
 For switching between subscription plans.
 
@@ -224,7 +224,7 @@ Extends: Item
 
 amount: number (positive)
 
-POST /customers/{type}/{id}/items/{itemId}/quantity { change: amount } [server-only]
+POST /api/v1/customers/{type}/{id}/items/{itemId}/quantity { change: amount } [server-only]
 
 Does not error.
 
@@ -233,7 +233,7 @@ Does not error.
 
 amount: number (positive)
 
-POST /customers/{type}/{id}/items/{itemId}/quantity { change: -amount } [server-only]
+POST /api/v1/customers/{type}/{id}/items/{itemId}/quantity { change: -amount } [server-only]
 
 Note: Quantity may go negative. Use tryDecreaseQuantity for atomic decrement-if-positive.
 
@@ -246,7 +246,7 @@ amount: number (positive)
 
 Returns: bool
 
-POST /customers/{type}/{id}/items/{itemId}/try-decrease { amount } [server-only]
+POST /api/v1/customers/{type}/{id}/items/{itemId}/try-decrease { amount } [server-only]
 
 Returns true if quantity was >= amount and was decreased.
 Returns false if quantity would go negative (no change made).
