@@ -27,13 +27,15 @@ import {
   toast
 } from "@/components/ui";
 import { cn } from "@/lib/utils";
-import { CaretUpDownIcon, CodeIcon, CopyIcon, DotsThreeVerticalIcon, EyeIcon, FileTextIcon, GiftIcon, HardDriveIcon, InfoIcon, PencilSimpleIcon, PlusIcon, PuzzlePieceIcon, StackIcon, TrashIcon, XIcon } from "@phosphor-icons/react";
+import { DndContext, DragOverlay, useDraggable, useDroppable, type DragEndEvent, type DragStartEvent } from '@dnd-kit/core';
+import { CaretUpDownIcon, CircleNotchIcon, CodeIcon, CopyIcon, DotsThreeVerticalIcon, DotsSixVerticalIcon, EyeIcon, FileTextIcon, GiftIcon, HardDriveIcon, InfoIcon, PencilSimpleIcon, PlusIcon, PuzzlePieceIcon, StackIcon, TrashIcon, XIcon } from "@phosphor-icons/react";
 import { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
 import { getUserSpecifiedIdErrorMessage, isValidUserSpecifiedId } from "@stackframe/stack-shared/dist/schema-fields";
 import type { DayInterval } from "@stackframe/stack-shared/dist/utils/dates";
 import { prettyPrintWithMagnitudes } from "@stackframe/stack-shared/dist/utils/numbers";
 import { typedEntries, typedFromEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
+import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
 import { urlString } from '@stackframe/stack-shared/dist/utils/urls';
 import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useAdminApp, useProjectId } from "../../use-admin-app";
@@ -446,7 +448,85 @@ type ProductCardProps = {
   isColumnInTable?: boolean,
   isFirstColumn?: boolean,
   isLastColumn?: boolean,
+  // Drag handle props
+  isDragging?: boolean,
+  dragHandleProps?: {
+    attributes: ReturnType<typeof useDraggable>['attributes'],
+    listeners: ReturnType<typeof useDraggable>['listeners'],
+  },
 };
+
+// Wrapper component that makes ProductCard draggable
+function DraggableProductCard(props: Omit<ProductCardProps, 'isDragging' | 'dragHandleProps'>) {
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
+    id: props.id,
+    data: {
+      productId: props.id,
+      customerType: props.product.customerType,
+      productLineId: props.product.productLineId,
+    },
+  });
+
+  // When using DragOverlay, the original element stays in place but becomes semi-transparent
+  // The DragOverlay component renders the visual preview that follows the cursor
+  return (
+    <div ref={setNodeRef} style={{ opacity: isDragging ? 0.4 : undefined }}>
+      <ProductCard
+        {...props}
+        isDragging={isDragging}
+        dragHandleProps={{ attributes, listeners }}
+      />
+    </div>
+  );
+}
+
+// Droppable zone for product lines
+type DroppableProductLineZoneProps = {
+  productLineId: string | undefined, // undefined means "No product line"
+  customerType: 'user' | 'team' | 'custom' | undefined,
+  children: ReactNode,
+  activeDragCustomerType: 'user' | 'team' | 'custom' | null,
+};
+
+function DroppableProductLineZone({ productLineId, customerType, children, activeDragCustomerType }: DroppableProductLineZoneProps) {
+  const { setNodeRef, isOver, active } = useDroppable({
+    id: productLineId ?? "no-product-line",
+    data: {
+      productLineId,
+      customerType,
+    },
+  });
+
+  // Check if this drop zone is valid for the currently dragged product
+  const isDraggedProductCompatible = activeDragCustomerType
+    ? (productLineId === undefined || customerType === activeDragCustomerType)
+    : false;
+
+  const isActiveDrag = !!active;
+  const showCompatibleIndicator = isActiveDrag && isDraggedProductCompatible;
+  const showIncompatibleIndicator = isActiveDrag && !isDraggedProductCompatible && activeDragCustomerType;
+
+  return (
+    <div
+      ref={setNodeRef}
+      className={cn(
+        "relative rounded-2xl transition-all duration-150",
+        showCompatibleIndicator && "ring-2 ring-primary/50 ring-offset-2 ring-offset-background",
+        isOver && isDraggedProductCompatible && "ring-primary bg-primary/5",
+        isOver && showIncompatibleIndicator && "ring-destructive/50 bg-destructive/5"
+      )}
+    >
+      {children}
+      {isOver && showIncompatibleIndicator && (
+        <div className="absolute inset-0 rounded-2xl bg-destructive/10 flex items-center justify-center pointer-events-none">
+          <span className="text-xs text-destructive font-medium px-2 py-1 bg-background/90 rounded">
+            Incompatible customer type
+          </span>
+        </div>
+      )}
+    </div>
+  );
+}
 
 // Customer type badge colors
 const CUSTOMER_TYPE_COLORS = {
@@ -455,7 +535,7 @@ const CUSTOMER_TYPE_COLORS = {
   custom: 'bg-amber-500/15 text-amber-600 dark:bg-amber-500/20 dark:text-amber-400 ring-amber-500/30',
 } as const;
 
-function ProductCard({ id, product, allProducts, existingItems, onSave, onDelete, onCreateNewItem, onOpenDetails, isColumnInTable, isFirstColumn, isLastColumn }: ProductCardProps) {
+function ProductCard({ id, product, allProducts, existingItems, onSave, onDelete, onCreateNewItem, onOpenDetails, isColumnInTable, isFirstColumn, isLastColumn, isDragging, dragHandleProps }: ProductCardProps) {
   const projectId = useProjectId();
   const router = useRouter();
   const customerType = product.customerType;
@@ -870,6 +950,22 @@ function ProductCard({ id, product, allProducts, existingItems, onSave, onDelete
             {product.displayName || "Untitled Product"}
           </h3>
 
+          {/* Drag handle - appears on hover */}
+          {dragHandleProps && (
+            <div
+              className="absolute left-3 top-3 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-hover:transition-none"
+              {...dragHandleProps.attributes}
+              {...dragHandleProps.listeners}
+            >
+              <button
+                className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-foreground/[0.05] transition-colors duration-150 hover:transition-none cursor-grab active:cursor-grabbing"
+                aria-label="Drag to move"
+              >
+                <DotsSixVerticalIcon className="h-4 w-4" />
+              </button>
+            </div>
+          )}
+
           {/* Action menu - appears on hover */}
           <div className="absolute right-3 top-3 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-hover:transition-none">
             <DropdownMenu>
@@ -1035,7 +1131,7 @@ function ProductCard({ id, product, allProducts, existingItems, onSave, onDelete
 
 type ProductLineViewProps = {
   groupedProducts: Map<string | undefined, Array<{ id: string, product: Product }>>,
-  groups: Record<string, { displayName?: string, customerType?: string }>,
+  groups: Record<string, { displayName?: string, customerType?: 'user' | 'team' | 'custom' }>,
   existingItems: Array<{ id: string, displayName: string, customerType: string }>,
   onSaveProduct: (id: string, product: Product) => Promise<void>,
   onDeleteProduct: (id: string) => Promise<void>,
@@ -1048,6 +1144,9 @@ type ProductLineViewProps = {
   createDraftRequestId?: string,
   draftCustomerType: 'user' | 'team' | 'custom',
   onDraftHandled?: () => void,
+  // Drag and drop support
+  paymentsConfig: CompleteConfig['payments'],
+  onMoveProduct: (productId: string, targetProductLineId: string | undefined) => Promise<void>,
 };
 
 // Combined key for productLine + customer type grouping
@@ -1060,7 +1159,7 @@ function productLineTypeKeyToString(key: ProductLineTypeKey): string {
   return `${key.productLineId ?? '__none__'}::${key.customerType}`;
 }
 
-function ProductLineView({ groupedProducts, groups, existingItems, onSaveProduct, onDeleteProduct, onCreateNewItem, onOpenProductDetails, onSaveProductWithGroup, onCreateProductLine, onUpdateProductLine, onDeleteProductLine, createDraftRequestId, draftCustomerType, onDraftHandled }: ProductLineViewProps) {
+function ProductLineView({ groupedProducts, groups, existingItems, onSaveProduct, onDeleteProduct, onCreateNewItem, onOpenProductDetails, onSaveProductWithGroup, onCreateProductLine, onUpdateProductLine, onDeleteProductLine, createDraftRequestId, draftCustomerType, onDraftHandled, paymentsConfig, onMoveProduct }: ProductLineViewProps) {
   const projectId = useProjectId();
   const [drafts, setDrafts] = useState<Array<{ key: string, productLineId: string | undefined, product: Product }>>([]);
   const [creatingGroupKey, setCreatingGroupKey] = useState<string | undefined>(undefined);
@@ -1210,79 +1309,167 @@ function ProductLineView({ groupedProducts, groups, existingItems, onSaveProduct
     return drafts.filter(d => d.productLineId === undefined);
   }, [drafts]);
 
+  // Drag and drop state
+  const [activeDragId, setActiveDragId] = useState<string | null>(null);
+  const [isMovingProduct, setIsMovingProduct] = useState(false);
+  const activeDragProduct = activeDragId ? paymentsConfig.products[activeDragId] : null;
+
+  const handleDragStart = (event: DragStartEvent) => {
+    setActiveDragId(event.active.id as string);
+  };
+
+  const handleDragEnd = async (event: DragEndEvent) => {
+    setActiveDragId(null);
+
+    const { active, over } = event;
+    if (!over) return;
+
+    const draggedProductId = active.id as string;
+    const draggedProduct = paymentsConfig.products[draggedProductId] as Product | undefined;
+    if (!draggedProduct) return;
+
+    // Parse the drop target - it's either a productLineId or "no-product-line"
+    const targetProductLineId = over.id === "no-product-line" ? undefined : (over.id as string);
+
+    // Normalize productLineId values for comparison (treat null, undefined, and empty string as "no product line")
+    const currentProductLineId = draggedProduct.productLineId || undefined;
+    const normalizedTargetProductLineId = targetProductLineId || undefined;
+
+    // Don't do anything if dropped on the same product line
+    if (normalizedTargetProductLineId === currentProductLineId) return;
+
+    // Get the target product line's customer type
+    const targetCustomerType = targetProductLineId
+      ? paymentsConfig.productLines[targetProductLineId].customerType
+      : undefined;
+
+    // Validate customer type compatibility:
+    // - Can always drop to "No product line"
+    // - Can drop to a product line if it has the same customer type as the product
+    if (targetProductLineId && targetCustomerType !== draggedProduct.customerType) {
+      toast({
+        title: "Cannot move product",
+        description: `This product has customer type "${draggedProduct.customerType}" but the target product line is for "${targetCustomerType}" customers.`,
+      });
+      return;
+    }
+
+    // Show loading state and update the product's productLineId
+    setIsMovingProduct(true);
+    try {
+      await onMoveProduct(draggedProductId, targetProductLineId);
+
+      toast({
+        title: "Product moved",
+        description: targetProductLineId
+          ? `Moved to "${paymentsConfig.productLines[targetProductLineId].displayName || targetProductLineId}"`
+          : "Removed from product line",
+      });
+    } finally {
+      setIsMovingProduct(false);
+    }
+  };
+
   return (
-    <div className="space-y-8">
-      {productLinesToRender.map((productLine) => {
-        const productLineId = productLine.id;
-        const customerType = productLine.customerType;
-        const groupName = productLine.displayName;
+    <DndContext onDragStart={handleDragStart} onDragEnd={(event) => runAsynchronously(handleDragEnd(event))}>
+      <div className="space-y-8">
+        {productLinesToRender.map((productLine) => {
+          const productLineId = productLine.id;
+          const customerType = productLine.customerType;
+          const groupName = productLine.displayName;
 
-        // Get products for this product line
-        const products = getProductsForProductLine(productLineId);
+          // Get products for this product line
+          const products = getProductsForProductLine(productLineId);
 
-        // Filter drafts for this product line
-        const matchingDrafts = getDraftsForProductLine(productLineId);
+          // Filter drafts for this product line
+          const matchingDrafts = getDraftsForProductLine(productLineId);
 
-        // Separate non-add-on and add-on products for pricing table layout
-        const nonAddOnProducts = products.filter(({ product }) => product.isAddOnTo === false);
-        const addOnProducts = products.filter(({ product }) => product.isAddOnTo !== false);
-        const nonAddOnDrafts = matchingDrafts.filter(d => d.product.isAddOnTo === false);
-        const addOnDrafts = matchingDrafts.filter(d => d.product.isAddOnTo !== false);
+          // Separate non-add-on and add-on products for pricing table layout
+          const nonAddOnProducts = products.filter(({ product }) => product.isAddOnTo === false);
+          const addOnProducts = products.filter(({ product }) => product.isAddOnTo !== false);
+          const nonAddOnDrafts = matchingDrafts.filter(d => d.product.isAddOnTo === false);
+          const addOnDrafts = matchingDrafts.filter(d => d.product.isAddOnTo !== false);
 
-        const hasNonAddOns = nonAddOnProducts.length > 0 || nonAddOnDrafts.length > 0;
+          const hasNonAddOns = nonAddOnProducts.length > 0 || nonAddOnDrafts.length > 0;
 
-        return (
-          <div key={productLineId}>
-            <div className="mb-3 group/productLine-header">
-              <div className="flex items-center gap-2">
-                <h3 className="text-base font-semibold text-foreground">{groupName}</h3>
-                <div className="opacity-0 group-hover/productLine-header:opacity-100 transition-opacity flex items-center gap-1">
-                  <button
-                    onClick={() => {
+          return (
+            <div key={productLineId}>
+              <div className="mb-3 group/productLine-header">
+                <div className="flex items-center gap-2">
+                  <h3 className="text-base font-semibold text-foreground">{groupName}</h3>
+                  <div className="opacity-0 group-hover/productLine-header:opacity-100 transition-opacity flex items-center gap-1">
+                    <button
+                      onClick={() => {
                       setEditingProductLineId(productLineId);
                       setEditingProductLineDisplayName(groups[productLineId].displayName || '');
-                    }}
-                    className="p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-foreground/[0.05] transition-colors duration-150 hover:transition-none"
-                    aria-label="Edit product line"
-                  >
-                    <PencilSimpleIcon className="h-3.5 w-3.5" />
-                  </button>
-                  <button
-                    onClick={() => setDeletingProductLineId(productLineId)}
-                    className="p-1 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors duration-150 hover:transition-none"
-                    aria-label="Delete product line"
-                  >
-                    <TrashIcon className="h-3.5 w-3.5" />
-                  </button>
+                      }}
+                      className="p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-foreground/[0.05] transition-colors duration-150 hover:transition-none"
+                      aria-label="Edit product line"
+                    >
+                      <PencilSimpleIcon className="h-3.5 w-3.5" />
+                    </button>
+                    <button
+                      onClick={() => setDeletingProductLineId(productLineId)}
+                      className="p-1 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors duration-150 hover:transition-none"
+                      aria-label="Delete product line"
+                    >
+                      <TrashIcon className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
                 </div>
-              </div>
-              <div className="flex items-center gap-2 mt-1">
-                <span className={cn(
+                <div className="flex items-center gap-2 mt-1">
+                  <span className={cn(
                   "inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wide ring-1",
                   customerType && customerType in CUSTOMER_TYPE_COLORS
                     ? CUSTOMER_TYPE_COLORS[customerType as keyof typeof CUSTOMER_TYPE_COLORS]
                     : "bg-gray-500/10 text-gray-500 ring-gray-500/30"
                 )}>
-                  {customerType ?? "unknown customer type"}
-                </span>
-                <span className="text-xs text-muted-foreground">
-                  Products in this product line are mutually exclusive (except add-ons)
-                </span>
+                    {customerType ?? "unknown customer type"}
+                  </span>
+                  <span className="text-xs text-muted-foreground">
+                    Products in this product line are mutually exclusive (except add-ons)
+                  </span>
+                </div>
               </div>
-            </div>
-            <div className="relative rounded-2xl bg-foreground/[0.04] ring-1 ring-foreground/[0.06]">
-              <div className="flex gap-4 justify-start overflow-x-auto p-5 min-h-20 pr-16">
-                <div className="flex max-w-max gap-4 items-stretch">
-                  {/* Non-add-on products as a pricing table */}
-                  {nonAddOnProducts.length > 0 && (
-                    <div className={cn(
-                      "flex rounded-2xl overflow-hidden",
-                      "bg-gray-200/80 dark:bg-[hsl(240,10%,5.5%)]",
-                      "border border-border/50 dark:border-foreground/[0.12]",
-                      "shadow-sm"
-                    )}>
-                      {nonAddOnProducts.map(({ id, product }, index) => (
-                        <ProductCard
+              <DroppableProductLineZone
+                productLineId={productLineId}
+                customerType={customerType}
+                activeDragCustomerType={activeDragProduct?.customerType ?? null}
+              >
+                <div className="relative rounded-2xl bg-foreground/[0.04] ring-1 ring-foreground/[0.06]">
+                  <div className="flex gap-4 justify-start overflow-x-auto p-5 min-h-20 pr-16">
+                    <div className="flex max-w-max gap-4 items-stretch">
+                      {/* Non-add-on products as a pricing table */}
+                      {nonAddOnProducts.length > 0 && (
+                        <div className={cn(
+                        "flex rounded-2xl overflow-hidden",
+                        "bg-gray-200/80 dark:bg-[hsl(240,10%,5.5%)]",
+                        "border border-border/50 dark:border-foreground/[0.12]",
+                        "shadow-sm"
+                      )}>
+                          {nonAddOnProducts.map(({ id, product }, index) => (
+                            <DraggableProductCard
+                              key={id}
+                              id={id}
+                              product={product}
+                              allProducts={products}
+                              existingItems={existingItems}
+                              onSave={onSaveProduct}
+                              onDelete={onDeleteProduct}
+                              onCreateNewItem={onCreateNewItem}
+                              onOpenDetails={(o) => onOpenProductDetails(o)}
+                              isColumnInTable
+                              isFirstColumn={index === 0}
+                              isLastColumn={index === nonAddOnProducts.length - 1}
+                            />
+                          ))}
+                        </div>
+                      )}
+
+
+                      {/* Add-on products as separate cards */}
+                      {addOnProducts.map(({ id, product }) => (
+                        <DraggableProductCard
                           key={id}
                           id={id}
                           product={product}
@@ -1292,22 +1479,58 @@ function ProductLineView({ groupedProducts, groups, existingItems, onSaveProduct
                           onDelete={onDeleteProduct}
                           onCreateNewItem={onCreateNewItem}
                           onOpenDetails={(o) => onOpenProductDetails(o)}
-                          isColumnInTable
-                          isFirstColumn={index === 0}
-                          isLastColumn={index === nonAddOnProducts.length - 1}
                         />
                       ))}
+
+                      {/* Add product button */}
+                      <Link href={productLineId && customerType ? urlString`/projects/${projectId}/payments/products/new?productLineId=${productLineId}&customerType=${customerType}` : urlString`/projects/${projectId}/payments/products/new`}>
+                        <Button
+                          variant="outline"
+                          size="plain"
+                          className={cn(
+                          "h-full min-h-[200px] w-[320px] flex flex-col items-center justify-center",
+                          "rounded-2xl border border-dashed border-foreground/[0.1]",
+                          "bg-background/40 hover:bg-foreground/[0.03]",
+                          "text-muted-foreground hover:text-foreground",
+                          "transition-all duration-150 hover:transition-none"
+                        )}
+                        >
+                          <div className="flex flex-col items-center gap-2">
+                            <PlusIcon className="h-6 w-6" />
+                            <span className="text-sm font-medium">Add product</span>
+                          </div>
+                        </Button>
+                      </Link>
                     </div>
-                  )}
+                  </div>
+                </div>
+              </DroppableProductLineZone>
+            </div>
+          );
+        })}
 
-
-                  {/* Add-on products as separate cards */}
-                  {addOnProducts.map(({ id, product }) => (
-                    <ProductCard
+        {/* No product line section - shows all products without a productLine, regardless of customer type */}
+        <div>
+          <div className="mb-3">
+            <h3 className="text-base font-semibold text-foreground">No product line</h3>
+            <p className="text-xs text-muted-foreground mt-1">
+              Products that are not in a product line are not mutually exclusive
+            </p>
+          </div>
+          <DroppableProductLineZone
+            productLineId={undefined}
+            customerType={undefined}
+            activeDragCustomerType={activeDragProduct?.customerType ?? null}
+          >
+            <div className="relative rounded-2xl bg-foreground/[0.04] ring-1 ring-foreground/[0.06]">
+              <div className="flex gap-4 justify-start overflow-x-auto p-5 min-h-20 pr-16">
+                <div className="flex max-w-max gap-4 items-stretch">
+                  {noProductLineProducts.map(({ id, product }) => (
+                    <DraggableProductCard
                       key={id}
                       id={id}
                       product={product}
-                      allProducts={products}
+                      allProducts={noProductLineProducts}
                       existingItems={existingItems}
                       onSave={onSaveProduct}
                       onDelete={onDeleteProduct}
@@ -1315,19 +1538,17 @@ function ProductLineView({ groupedProducts, groups, existingItems, onSaveProduct
                       onOpenDetails={(o) => onOpenProductDetails(o)}
                     />
                   ))}
-
-                  {/* Add product button */}
-                  <Link href={productLineId && customerType ? urlString`/projects/${projectId}/payments/products/new?productLineId=${productLineId}&customerType=${customerType}` : urlString`/projects/${projectId}/payments/products/new`}>
+                  <Link href={`/projects/${projectId}/payments/products/new`}>
                     <Button
                       variant="outline"
                       size="plain"
                       className={cn(
-                        "h-full min-h-[200px] w-[320px] flex flex-col items-center justify-center",
-                        "rounded-2xl border border-dashed border-foreground/[0.1]",
-                        "bg-background/40 hover:bg-foreground/[0.03]",
-                        "text-muted-foreground hover:text-foreground",
-                        "transition-all duration-150 hover:transition-none"
-                      )}
+                      "h-full min-h-[200px] w-[320px] flex flex-col items-center justify-center",
+                      "rounded-2xl border border-dashed border-foreground/[0.1]",
+                      "bg-background/40 hover:bg-foreground/[0.03]",
+                      "text-muted-foreground hover:text-foreground",
+                      "transition-all duration-150 hover:transition-none"
+                    )}
                     >
                       <div className="flex flex-col items-center gap-2">
                         <PlusIcon className="h-6 w-6" />
@@ -1338,226 +1559,215 @@ function ProductLineView({ groupedProducts, groups, existingItems, onSaveProduct
                 </div>
               </div>
             </div>
-          </div>
-        );
-      })}
-
-      {/* No product line section - shows all products without a productLine, regardless of customer type */}
-      <div>
-        <div className="mb-3">
-          <h3 className="text-base font-semibold text-foreground">No product line</h3>
-          <p className="text-xs text-muted-foreground mt-1">
-            Products that are not in a product line are not mutually exclusive
-          </p>
+          </DroppableProductLineZone>
         </div>
-        <div className="relative rounded-2xl bg-foreground/[0.04] ring-1 ring-foreground/[0.06]">
-          <div className="flex gap-4 justify-start overflow-x-auto p-5 min-h-20 pr-16">
-            <div className="flex max-w-max gap-4 items-stretch">
-              {noProductLineProducts.map(({ id, product }) => (
-                <ProductCard
-                  key={id}
-                  id={id}
-                  product={product}
-                  allProducts={noProductLineProducts}
-                  existingItems={existingItems}
-                  onSave={onSaveProduct}
-                  onDelete={onDeleteProduct}
-                  onCreateNewItem={onCreateNewItem}
-                  onOpenDetails={(o) => onOpenProductDetails(o)}
-                />
-              ))}
-              <Link href={`/projects/${projectId}/payments/products/new`}>
-                <Button
-                  variant="outline"
-                  size="plain"
-                  className={cn(
-                    "h-full min-h-[200px] w-[320px] flex flex-col items-center justify-center",
-                    "rounded-2xl border border-dashed border-foreground/[0.1]",
-                    "bg-background/40 hover:bg-foreground/[0.03]",
-                    "text-muted-foreground hover:text-foreground",
-                    "transition-all duration-150 hover:transition-none"
-                  )}
-                >
-                  <div className="flex flex-col items-center gap-2">
-                    <PlusIcon className="h-6 w-6" />
-                    <span className="text-sm font-medium">Add product</span>
-                  </div>
-                </Button>
-              </Link>
-            </div>
-          </div>
-        </div>
-      </div>
 
-      {/* New product line button with customer type selector */}
-      <Popover>
-        <PopoverTrigger asChild>
-          <Button
-            variant="outline"
-            size="plain"
-            className={cn(
+        {/* New product line button with customer type selector */}
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button
+              variant="outline"
+              size="plain"
+              className={cn(
               "w-full h-32 flex items-center justify-center",
               "rounded-2xl border border-dashed border-foreground/[0.1]",
               "bg-background/40 hover:bg-foreground/[0.03]",
               "text-muted-foreground hover:text-foreground",
               "transition-all duration-150 hover:transition-none"
             )}
-          >
-            <div className="flex flex-col items-center gap-2">
-              <PlusIcon className="h-6 w-6" />
-              <span className="text-sm font-medium">New product line</span>
-            </div>
-          </Button>
-        </PopoverTrigger>
-        <PopoverContent className="w-80 p-4">
-          <div className="space-y-4">
-            <div>
-              <p className="text-xs text-muted-foreground mb-3">
-                A product line groups products that are mutually exclusive — besides add-ons, customers can only have one active product from each product line at a time.
-              </p>
-            </div>
-            <div>
-              <Label className="text-xs font-medium text-muted-foreground mb-1.5 block">Display Name</Label>
-              <Input
-                ref={newGroupInputRef}
-                value={newProductLineDisplayName}
-                onChange={(e) => {
-                  const value = e.target.value;
+            >
+              <div className="flex flex-col items-center gap-2">
+                <PlusIcon className="h-6 w-6" />
+                <span className="text-sm font-medium">New product line</span>
+              </div>
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-80 p-4">
+            <div className="space-y-4">
+              <div>
+                <p className="text-xs text-muted-foreground mb-3">
+                  A product line groups products that are mutually exclusive — besides add-ons, customers can only have one active product from each product line at a time.
+                </p>
+              </div>
+              <div>
+                <Label className="text-xs font-medium text-muted-foreground mb-1.5 block">Display Name</Label>
+                <Input
+                  ref={newGroupInputRef}
+                  value={newProductLineDisplayName}
+                  onChange={(e) => {
+                    const value = e.target.value;
                   setNewProductLineDisplayName(value);
                   // Auto-generate ID from display name if not manually edited
                   if (!hasManuallyEditedProductLineId) {
                     setNewProductLineId(toIdFormat(value));
                   }
-                }}
-                placeholder="e.g., Pricing Plans"
-                className="h-9"
-              />
-            </div>
-            <div>
-              <Label className="text-xs font-medium text-muted-foreground mb-1.5 block">Product Line ID</Label>
-              <Input
-                value={newProductLineId}
-                onChange={(e) => {
-                  const value = e.target.value.toLowerCase().replace(/[^a-z0-9_\-]/g, '-');
+                  }}
+                  placeholder="e.g., Pricing Plans"
+                  className="h-9"
+                />
+              </div>
+              <div>
+                <Label className="text-xs font-medium text-muted-foreground mb-1.5 block">Product Line ID</Label>
+                <Input
+                  value={newProductLineId}
+                  onChange={(e) => {
+                    const value = e.target.value.toLowerCase().replace(/[^a-z0-9_\-]/g, '-');
                   setNewProductLineId(value);
                   setHasManuallyEditedProductLineId(true);
-                }}
-                placeholder="e.g., pricing-plans"
-                className="h-9 font-mono text-sm"
-              />
-            </div>
-            <div>
-              <Label className="text-xs font-medium text-muted-foreground mb-1.5 block">Customer Type</Label>
-              <div className="flex gap-1.5">
-                {(['user', 'team', 'custom'] as const).map((type) => (
-                  <button
-                    key={type}
-                    onClick={() => setNewProductLineCustomerType(type)}
-                    className={cn(
+                  }}
+                  placeholder="e.g., pricing-plans"
+                  className="h-9 font-mono text-sm"
+                />
+              </div>
+              <div>
+                <Label className="text-xs font-medium text-muted-foreground mb-1.5 block">Customer Type</Label>
+                <div className="flex gap-1.5">
+                  {(['user', 'team', 'custom'] as const).map((type) => (
+                    <button
+                      key={type}
+                      onClick={() => setNewProductLineCustomerType(type)}
+                      className={cn(
                       "flex-1 px-2 py-1.5 rounded-lg text-xs font-medium capitalize",
                       "transition-colors duration-150 hover:transition-none",
                       newProductLineCustomerType === type
                         ? cn("ring-1", CUSTOMER_TYPE_COLORS[type])
                         : "bg-foreground/[0.04] text-muted-foreground hover:bg-foreground/[0.08]"
                     )}
-                  >
-                    {type}
-                  </button>
-                ))}
+                    >
+                      {type}
+                    </button>
+                  ))}
+                </div>
               </div>
-            </div>
-            <Button
-              size="sm"
-              className="w-full"
-              disabled={!newProductLineId.trim() || !newProductLineDisplayName.trim()}
-              onClick={async () => {
-                const id = newProductLineId.trim();
-                const displayName = newProductLineDisplayName.trim();
-                if (!id || !displayName) return;
-                if (!isValidUserSpecifiedId(id)) {
+              <Button
+                size="sm"
+                className="w-full"
+                disabled={!newProductLineId.trim() || !newProductLineDisplayName.trim()}
+                onClick={async () => {
+                  const id = newProductLineId.trim();
+                  const displayName = newProductLineDisplayName.trim();
+                  if (!id || !displayName) return;
+                  if (!isValidUserSpecifiedId(id)) {
                   alert(getUserSpecifiedIdErrorMessage("productLineId"));
                   return;
-                }
-                if (Object.prototype.hasOwnProperty.call(groups, id)) {
+                  }
+                  if (Object.prototype.hasOwnProperty.call(groups, id)) {
                   alert("Product line ID already exists");
                   return;
-                }
+                  }
 
-                // Create the productLine with display name and customer type
-                await onCreateProductLine(id, displayName, newProductLineCustomerType);
+                  // Create the productLine with display name and customer type
+                  await onCreateProductLine(id, displayName, newProductLineCustomerType);
 
                 setNewProductLineDisplayName("");
                 setNewProductLineId("");
                 setHasManuallyEditedProductLineId(false);
                 toast({ title: "Product line created" });
-              }}
-            >
-              Create Product Line
-            </Button>
-          </div>
-        </PopoverContent>
-      </Popover>
-
-      {/* Edit productLine dialog */}
-      <Dialog open={editingProductLineId !== null} onOpenChange={(open) => !open && setEditingProductLineId(null)}>
-        <DialogContent className="sm:max-w-[400px]">
-          <DialogHeader>
-            <DialogTitle>Edit Product Line</DialogTitle>
-            <DialogDescription>
-              Update the display name for this product line.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-4 py-4">
-            <div className="grid gap-2">
-              <Label>Display Name</Label>
-              <Input
-                value={editingProductLineDisplayName}
-                onChange={(e) => setEditingProductLineDisplayName(e.target.value)}
-                placeholder="e.g., Pricing Plans"
-              />
+                }}
+              >
+                Create Product Line
+              </Button>
             </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setEditingProductLineId(null)}>
-              Cancel
-            </Button>
-            <Button
-              onClick={async () => {
-                if (editingProductLineId && editingProductLineDisplayName.trim()) {
-                  await onUpdateProductLine(editingProductLineId, editingProductLineDisplayName.trim());
+          </PopoverContent>
+        </Popover>
+
+        {/* Edit productLine dialog */}
+        <Dialog open={editingProductLineId !== null} onOpenChange={(open) => !open && setEditingProductLineId(null)}>
+          <DialogContent className="sm:max-w-[400px]">
+            <DialogHeader>
+              <DialogTitle>Edit Product Line</DialogTitle>
+              <DialogDescription>
+                Update the display name for this product line.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-4 py-4">
+              <div className="grid gap-2">
+                <Label>Display Name</Label>
+                <Input
+                  value={editingProductLineDisplayName}
+                  onChange={(e) => setEditingProductLineDisplayName(e.target.value)}
+                  placeholder="e.g., Pricing Plans"
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setEditingProductLineId(null)}>
+                Cancel
+              </Button>
+              <Button
+                onClick={async () => {
+                  if (editingProductLineId && editingProductLineDisplayName.trim()) {
+                    await onUpdateProductLine(editingProductLineId, editingProductLineDisplayName.trim());
                   toast({ title: "Product line updated" });
                   setEditingProductLineId(null);
-                }
-              }}
-              disabled={!editingProductLineDisplayName.trim()}
-            >
-              Save
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+                  }
+                }}
+                disabled={!editingProductLineDisplayName.trim()}
+              >
+                Save
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
-      {/* Delete productLine confirmation dialog */}
-      <ActionDialog
-        open={deletingProductLineId !== null}
-        onOpenChange={(open) => !open && setDeletingProductLineId(null)}
-        title="Delete Product Line"
-        danger
-        okButton={{
-          label: "Delete",
-          onClick: async () => {
-            if (deletingProductLineId) {
-              await onDeleteProductLine(deletingProductLineId);
+        {/* Delete productLine confirmation dialog */}
+        <ActionDialog
+          open={deletingProductLineId !== null}
+          onOpenChange={(open) => !open && setDeletingProductLineId(null)}
+          title="Delete Product Line"
+          danger
+          okButton={{
+            label: "Delete",
+            onClick: async () => {
+              if (deletingProductLineId) {
+                await onDeleteProductLine(deletingProductLineId);
               toast({ title: "Product line deleted" });
               setDeletingProductLineId(null);
+              }
             }
-          }
-        }}
-        cancelButton
-      >
-        Are you sure you want to delete this product line? All products in this product line will be moved to &quot;No product line&quot;.
-      </ActionDialog>
-    </div>
+          }}
+          cancelButton
+        >
+          Are you sure you want to delete this product line? All products in this product line will be moved to &quot;No product line&quot;.
+        </ActionDialog>
+
+        {/* Drag overlay for visual feedback */}
+        <DragOverlay>
+          {activeDragId && activeDragProduct ? (
+            <div className="opacity-90 rotate-3 scale-105">
+              <div className={cn(
+              "w-[260px] p-4 rounded-2xl",
+              "bg-gray-200/95 dark:bg-[hsl(240,10%,8%)]",
+              "border-2 border-primary",
+              "shadow-2xl"
+            )}>
+                <div className="text-center">
+                  <span className={cn(
+                  "inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wide ring-1 mb-2",
+                  CUSTOMER_TYPE_COLORS[activeDragProduct.customerType]
+                )}>
+                    {activeDragProduct.customerType}
+                  </span>
+                  <h3 className="text-lg font-semibold">
+                    {activeDragProduct.displayName || activeDragId}
+                  </h3>
+                </div>
+              </div>
+            </div>
+          ) : null}
+        </DragOverlay>
+
+        {/* Loading overlay when moving product */}
+        {isMovingProduct && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/50 backdrop-blur-sm">
+            <div className="flex items-center gap-3 px-4 py-3 bg-background border rounded-lg shadow-lg">
+              <CircleNotchIcon className="h-5 w-5 animate-spin text-primary" />
+              <span className="text-sm font-medium">Moving product...</span>
+            </div>
+          </div>
+        )}
+      </div>
+    </DndContext>
   );
 }
 
@@ -1812,6 +2022,19 @@ export default function PageClient({ createDraftRequestId, draftCustomerType = '
         createDraftRequestId={createDraftRequestId}
         draftCustomerType={draftCustomerType}
         onDraftHandled={onDraftHandled}
+        paymentsConfig={paymentsConfig}
+        onMoveProduct={async (productId, targetProductLineId) => {
+          const currentProduct = paymentsConfig.products[productId];
+
+          // Update the entire product object with the new productLineId
+          // Using undefined instead of null to properly clear the value
+          await project.updateConfig({
+            [`payments.products.${productId}`]: {
+              ...currentProduct,
+              productLineId: targetProductLineId ?? undefined,
+            },
+          });
+        }}
       />
     </div>
   );
