@@ -5,7 +5,6 @@ import { KnownError, KnownErrors } from '../known-errors';
 import { inlineProductSchema } from '../schema-fields';
 import { AccessToken, InternalSession, RefreshToken } from '../sessions';
 import { generateSecureRandomString } from '../utils/crypto';
-import { getNodeEnvironment } from '../utils/env';
 import { StackAssertionError, throwErr } from '../utils/errors';
 import { globalVar } from '../utils/globals';
 import { HTTP_METHODS, HttpMethod } from '../utils/http';
@@ -166,7 +165,7 @@ export class StackClientInterface {
     };
 
     const clientAuthentication = oauth.ClientSecretPost(this.options.publishableClientKey);
-    const allowInsecure = getNodeEnvironment() === 'test' && tokenEndpoint.startsWith('http://');
+    const allowInsecure = (process.env.NODE_ENV === 'test' || process.env.NODE_ENV === 'development') && tokenEndpoint.startsWith('http://');
 
     const response = await this._networkRetryException(async () => {
       const rawResponse = await oauth.refreshTokenGrantRequest(
@@ -1041,8 +1040,7 @@ export class StackClientInterface {
       client_secret: this.options.publishableClientKey,
     };
     const clientAuthentication = oauth.ClientSecretPost(this.options.publishableClientKey);
-    // Allow insecure HTTP requests only in test environment (for localhost testing)
-    const allowInsecure = getNodeEnvironment() === 'test' && tokenEndpoint.startsWith('http://');
+    const allowInsecure = (process.env.NODE_ENV === 'test' || process.env.NODE_ENV === 'development') && tokenEndpoint.startsWith('http://');
 
     let params: URLSearchParams;
     try {
