@@ -403,7 +403,6 @@ async function renderTenancyEmails(workerId: string, tenancyId: string, group: E
 
     const result = await renderEmailsForTenancyBatched(requests);
     if (result.status === "error") {
-      captureError("email-rendering-failed", result.error);
       for (const row of rowsWithKnownCategory) {
         await markRenderError(row, result.error);
       }
@@ -423,7 +422,6 @@ async function renderTenancyEmails(workerId: string, tenancyId: string, group: E
     const firstPassResult = await renderEmailsForTenancyBatched(firstPassRequests);
 
     if (firstPassResult.status === "error") {
-      captureError("email-rendering-failed", firstPassResult.error);
       for (const row of rowsWithUnknownCategory) {
         await markRenderError(row, firstPassResult.error);
       }
@@ -462,7 +460,6 @@ async function renderTenancyEmails(workerId: string, tenancyId: string, group: E
 
       const secondPassResult = await renderEmailsForTenancyBatched(secondPassRequests);
       if (secondPassResult.status === "error") {
-        captureError("email-rendering-failed-second-pass", secondPassResult.error);
         for (const { row } of needsSecondPass) {
           await markRenderError(row, secondPassResult.error);
         }
