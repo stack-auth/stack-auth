@@ -86,6 +86,10 @@ To see all development ports, refer to the index.html of `apps/dev-launchpad/pub
 - Code defensively. Prefer `?? throwErr(...)` over non-null assertions, with good error messages explicitly stating the assumption that must've been violated for the error to be thrown.
 - Try to avoid the `any` type. Whenever you need to use `any`, leave a comment explaining why you're using it (optimally it explains why the type system fails here, and how you can be certain that any errors in that code path would still be flagged at compile-, test-, or runtime).
 - Don't use Date.now() for measuring elapsed (real) time, instead use `performance.now()`
+- Use urlString`` or encodeURIComponent() instead of normal string interpolation for URLs, for consistency even if it's not strictly necessary.
+- When making config updates, use path notation (`{ "path.to.field": my-value }`) to avoid overwriting sibling properties
+- IMPORTANT: Any assumption you make should either be validated through type system (preferred), assertions, or tests. Optimally, two out of three.
+- If there is an external browser tool connected, use it to test changes you make to the frontend when possible.
 
 ### Code-related
 - Use ES6 maps instead of records wherever you can.

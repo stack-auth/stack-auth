@@ -877,5 +877,5 @@ it("should block one-time purchase in same group after prior one-time purchase i
     body: { full_code: codeB, price_id: "one", quantity: 1 },
   });
   expect(resB.status).toBe(400);
-  expect(String(resB.body)).toContain("one-time purchase in this product catalog");
+  expect(String(resB.body)).toContain("one-time purchase in this product line");
 });

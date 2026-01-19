@@ -5,6 +5,7 @@ import { KnownError, KnownErrors } from '../known-errors';
 import { inlineProductSchema } from '../schema-fields';
 import { AccessToken, InternalSession, RefreshToken } from '../sessions';
 import { generateSecureRandomString } from '../utils/crypto';
+import { getNodeEnvironment } from '../utils/env';
 import { StackAssertionError, throwErr } from '../utils/errors';
 import { globalVar } from '../utils/globals';
 import { HTTP_METHODS, HttpMethod } from '../utils/http';
@@ -153,22 +154,27 @@ export class StackClientInterface {
       throw new Error("Admin session token is currently not supported for fetching new access token. Did you try to log in on a StackApp initiated with the admin session?");
     }
 
+    const tokenEndpoint = this.getApiUrl() + '/auth/oauth/token';
     const as = {
       issuer: this.options.getBaseUrl(),
       algorithm: 'oauth2',
-      token_endpoint: this.getApiUrl() + '/auth/oauth/token',
+      token_endpoint: tokenEndpoint,
     };
     const client: oauth.Client = {
       client_id: this.projectId,
       client_secret: this.options.publishableClientKey,
-      token_endpoint_auth_method: 'client_secret_post',
     };
+
+    const clientAuthentication = oauth.ClientSecretPost(this.options.publishableClientKey);
+    const allowInsecure = getNodeEnvironment() === 'test' && tokenEndpoint.startsWith('http://');
 
     const response = await this._networkRetryException(async () => {
       const rawResponse = await oauth.refreshTokenGrantRequest(
         as,
         client,
+        clientAuthentication,
         refreshToken.token,
+        allowInsecure ? { [oauth.allowInsecureRequests]: true } : undefined,
       );
 
       const response = await this._processResponse(rawResponse);
@@ -190,10 +196,18 @@ export class StackClientInterface {
     });
     if (!response) return null;
 
-    const result = await oauth.processRefreshTokenResponse(as, client, response);
-    if (oauth.isOAuth2Error(result)) {
-      // TODO Handle OAuth 2.0 response body error
-      throw new StackAssertionError("OAuth error", { result });
+    let result: oauth.TokenEndpointResponse;
+    try {
+      result = await oauth.processRefreshTokenResponse(as, client, response);
+    } catch (e){
+      if (e instanceof oauth.ResponseBodyError) {
+        throw new StackAssertionError("ResponseBodyError when processing refresh token response", {
+          cause: e.cause,
+          code: e.code,
+          error: e.error,
+        });
+      }
+      throw new StackAssertionError("Unexpected error when processing refresh token response", { cause: e });
     }
 
     if (!result.access_token) {
@@ -201,6 +215,7 @@ export class StackClientInterface {
     }
 
     return AccessToken.createIfValid(result.access_token) ?? throwErr("Access token in fetchNewAccessToken is invalid, looks like the backend is returning an invalid token!", { result });
+
   }
 
   public async sendClientRequest(
@@ -1015,37 +1030,60 @@ export class StackClientInterface {
       // TODO fix
       throw new Error("Admin session token is currently not supported for OAuth");
     }
+    const tokenEndpoint = this.getApiUrl() + '/auth/oauth/token';
     const as = {
       issuer: this.options.getBaseUrl(),
       algorithm: 'oauth2',
-      token_endpoint: this.getApiUrl() + '/auth/oauth/token',
+      token_endpoint: tokenEndpoint,
     };
     const client: oauth.Client = {
       client_id: this.projectId,
       client_secret: this.options.publishableClientKey,
-      token_endpoint_auth_method: 'client_secret_post',
     };
-    const params = await this._networkRetryException(
-      async () => oauth.validateAuthResponse(as, client, options.oauthParams, options.state),
-    );
-    if (oauth.isOAuth2Error(params)) {
-      throw new StackAssertionError("Error validating outer OAuth response", { params }); // Handle OAuth 2.0 redirect error
+    const clientAuthentication = oauth.ClientSecretPost(this.options.publishableClientKey);
+    // Allow insecure HTTP requests only in test environment (for localhost testing)
+    const allowInsecure = getNodeEnvironment() === 'test' && tokenEndpoint.startsWith('http://');
+
+    let params: URLSearchParams;
+    try {
+      params = oauth.validateAuthResponse(as, client, options.oauthParams, options.state);
+    } catch (e) {
+      if (e instanceof oauth.AuthorizationResponseError) {
+        throw new StackAssertionError("Authorization response error when validating outer OAuth response", {
+          //cause is a URLSearchParams object for this error, so we need to serialize it better
+          cause: Object.fromEntries(e.cause),
+          code: e.code,
+          error: e.error,
+        });
+      }
+      throw new StackAssertionError("Unexpected error when validating outer OAuth response", { cause: e });
     }
     const response = await oauth.authorizationCodeGrantRequest(
       as,
       client,
+      clientAuthentication,
       params,
       options.redirectUri,
       options.codeVerifier,
+      allowInsecure ? { [oauth.allowInsecureRequests]: true } : undefined,
     );
 
-    const result = await oauth.processAuthorizationCodeOAuth2Response(as, client, response);
-    if (oauth.isOAuth2Error(result)) {
-      if ("code" in result && result.code === "MULTI_FACTOR_AUTHENTICATION_REQUIRED") {
-        throw new KnownErrors.MultiFactorAuthenticationRequired((result as any).details.attempt_code);
+    let result;
+    try {
+      result = await oauth.processAuthorizationCodeResponse(as, client, response);
+    } catch (e) {
+      if (e instanceof oauth.ResponseBodyError) {
+        if ((e.cause as any).code === "MULTI_FACTOR_AUTHENTICATION_REQUIRED") {
+          throw new KnownErrors.MultiFactorAuthenticationRequired((e.cause as any).details.attempt_code);
+        }
+        // TODO Handle OAuth 2.0 response body error
+        throw new StackAssertionError("Outer OAuth error during authorization code response", {
+          cause: e.cause,
+          code: e.code,
+          error: e.error,
+        });
       }
-      // TODO Handle OAuth 2.0 response body error
-      throw new StackAssertionError("Outer OAuth error during authorization code response", { result });
+      throw new StackAssertionError("Unexpected error when processing authorization code response", { cause: e });
     }
     return {
       newUser: result.is_new_user as boolean,

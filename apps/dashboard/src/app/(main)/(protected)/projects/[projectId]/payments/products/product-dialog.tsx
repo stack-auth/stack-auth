@@ -5,8 +5,9 @@ import { Button, Card, CardDescription, CardHeader, CardTitle, Checkbox, Dialog,
 import { cn } from "@/lib/utils";
 import { ArrowLeftIcon, ArrowRightIcon, CreditCardIcon, PackageIcon, PlusIcon, RepeatIcon, TrashIcon } from "@phosphor-icons/react";
 import { getUserSpecifiedIdErrorMessage, isValidUserSpecifiedId, sanitizeUserSpecifiedId } from "@stackframe/stack-shared/dist/schema-fields";
+import { getOrUndefined } from "@stackframe/stack-shared/dist/utils/objects";
 import { useState } from "react";
-import { CreateCatalogDialog } from "./create-catalog-dialog";
+import { CreateProductLineDialog } from "./create-product-line-dialog";
 import { IncludedItemDialog } from "./included-item-dialog";
 import { ListSection } from "./list-section";
 import { PricingSection } from "./pricing-section";
@@ -22,8 +23,8 @@ type ProductDialogProps = {
   onSave: (productId: string, product: Product) => Promise<void>,
   editingProductId?: string,
   editingProduct?: Product,
-  existingProducts: Array<{ id: string, displayName: string, catalogId?: string, customerType: string }>,
-  existingCatalogs: Record<string, { displayName?: string }>,
+  existingProducts: Array<{ id: string, displayName: string, productLineId?: string, customerType: string }>,
+  existingProductLines: Record<string, { displayName?: string, customerType?: string }>,
   existingItems: Array<{ id: string, displayName: string, customerType: string }>,
   onCreateNewItem?: () => void,
 };
@@ -52,7 +53,7 @@ export function ProductDialog({
   editingProductId,
   editingProduct,
   existingProducts,
-  existingCatalogs,
+  existingProductLines,
   existingItems,
   onCreateNewItem
 }: ProductDialogProps) {
@@ -62,7 +63,7 @@ export function ProductDialog({
   const [productId, setProductId] = useState(editingProductId ?? "");
   const [displayName, setDisplayName] = useState(editingProduct?.displayName || "");
   const [customerType, setCustomerType] = useState<'user' | 'team' | 'custom'>(editingProduct?.customerType || 'user');
-  const [catalogId, setCatalogId] = useState(editingProduct?.catalogId || "");
+  const [productLineId, setProductLineId] = useState(editingProduct?.productLineId || "");
   const [isAddOn, setIsAddOn] = useState(!!editingProduct?.isAddOnTo);
   const [isAddOnTo, setIsAddOnTo] = useState<string[]>(editingProduct?.isAddOnTo !== false ? Object.keys(editingProduct?.isAddOnTo || {}) : []);
   const [stackable, setStackable] = useState(editingProduct?.stackable || false);
@@ -73,7 +74,7 @@ export function ProductDialog({
   const [serverOnly, setServerOnly] = useState(editingProduct?.serverOnly || false);
 
   // Dialog states
-  const [showCatalogDialog, setShowCatalogDialog] = useState(false);
+  const [showProductLineDialog, setShowProductLineDialog] = useState(false);
   const [showItemDialog, setShowItemDialog] = useState(false);
   const [editingItemId, setEditingItemId] = useState<string | undefined>();
 
@@ -132,11 +133,11 @@ export function ProductDialog({
     }
 
     if (isAddOn && isAddOnTo.length > 0) {
-      const addOnCatalogs = new Set(
-        isAddOnTo.map(productId => existingProducts.find(o => o.id === productId)?.catalogId)
+      const addOnProductLines = new Set(
+        isAddOnTo.map(productId => existingProducts.find(o => o.id === productId)?.productLineId)
       );
-      if (addOnCatalogs.size > 1) {
-        newErrors.isAddOnTo = "All selected products must be in the same catalog";
+      if (addOnProductLines.size > 1) {
+        newErrors.isAddOnTo = "All selected products must be in the same product line";
       }
     }
 
@@ -164,7 +165,7 @@ export function ProductDialog({
     const product: Product = {
       displayName,
       customerType,
-      catalogId: catalogId || undefined,
+      productLineId: productLineId || undefined,
       isAddOnTo: isAddOn ? Object.fromEntries(isAddOnTo.map(id => [id, true])) : false,
       stackable,
       prices: freeByDefault ? "include-by-default" : prices,
@@ -184,7 +185,7 @@ export function ProductDialog({
       setProductId("");
       setDisplayName("");
       setCustomerType('user');
-      setCatalogId("");
+      setProductLineId("");
       setIsAddOn(false);
       setIsAddOnTo([]);
       setStackable(false);
@@ -444,7 +445,11 @@ export function ProductDialog({
                   {/* Customer Type */}
                   <div className="grid gap-2">
                     <Label htmlFor="customer-type" className="text-sm font-medium">Customer Type</Label>
-                    <Select value={customerType} onValueChange={(value) => setCustomerType(value as typeof customerType)}>
+                    <Select value={customerType} onValueChange={(value) => {
+                      setCustomerType(value as typeof customerType);
+                      // Reset product line since product lines are customer-type-specific
+                      setProductLineId("");
+                    }}>
                       <SelectTrigger className={cn(
                         "h-10 rounded-xl text-sm",
                         "bg-foreground/[0.03] border-border/50 dark:border-foreground/[0.1]",
@@ -463,38 +468,40 @@ export function ProductDialog({
                     </Typography>
                   </div>
 
-                  {/* Catalog */}
+                  {/* Product Line */}
                   <div className="grid gap-2">
-                    <Label htmlFor="catalog">Product Catalog (Optional)</Label>
+                    <Label htmlFor="productLine">Product Line (Optional)</Label>
                     <Select
-                      value={catalogId || 'no-catalog'}
+                      value={productLineId || 'no-product-line'}
                       onValueChange={(value) => {
                         if (value === 'create-new') {
-                          setShowCatalogDialog(true);
-                        } else if (value === 'no-catalog') {
-                          setCatalogId('');
+                          setShowProductLineDialog(true);
+                        } else if (value === 'no-product-line') {
+                          setProductLineId('');
                         } else {
-                          setCatalogId(value);
+                          setProductLineId(value);
                         }
                       }}
                     >
                       <SelectTrigger>
-                        <SelectValue placeholder="No catalog" />
+                        <SelectValue placeholder="No product line" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="no-catalog">No catalog</SelectItem>
-                        {Object.entries(existingCatalogs).map(([id, catalog]) => (
-                          <SelectItem key={id} value={id}>
-                            {catalog.displayName || id}
-                          </SelectItem>
-                        ))}
+                        <SelectItem value="no-product-line">No product line</SelectItem>
+                        {Object.entries(existingProductLines)
+                          .filter(([, productLine]) => productLine.customerType === customerType)
+                          .map(([id, productLine]) => (
+                            <SelectItem key={id} value={id}>
+                              {productLine.displayName || id}
+                            </SelectItem>
+                          ))}
                         <SelectItem value="create-new">
-                          <span className="text-primary">+ Create new catalog</span>
+                          <span className="text-primary">+ Create new product line</span>
                         </SelectItem>
                       </SelectContent>
                     </Select>
                     <Typography type="label" className="text-muted-foreground">
-                      Customers can only have one active product per catalog (except add-ons)
+                      Customers can only have one active product per product line (except add-ons)
                     </Typography>
                   </div>
 
@@ -565,9 +572,9 @@ export function ProductDialog({
                                 />
                                 <Label htmlFor={`addon-to-${product.id}`} className="cursor-pointer text-sm">
                                   {product.displayName} ({product.id})
-                                  {product.catalogId && (
+                                  {product.productLineId && (
                                     <span className="text-muted-foreground ml-1">
-                                      • {existingCatalogs[product.catalogId].displayName || product.catalogId}
+                                      • {getOrUndefined(existingProductLines, product.productLineId)?.displayName || product.productLineId}
                                     </span>
                                   )}
                                 </Label>
@@ -667,7 +674,7 @@ export function ProductDialog({
                         {Object.entries(includedItems).map(([itemId, item]) => (
                           <div
                             key={itemId}
-                            className="px-3 py-3 hover:bg-muted/50 flex items-center justify-between catalog transition-colors"
+                            className="px-3 py-3 hover:bg-muted/50 flex items-center justify-between transition-colors"
                           >
                             <div>
                               <div className="font-medium">{getItemDisplay(itemId, item)}</div>
@@ -767,13 +774,13 @@ export function ProductDialog({
       </Dialog>
 
       {/* Sub-dialogs */}
-      <CreateCatalogDialog
-        open={showCatalogDialog}
-        onOpenChange={setShowCatalogDialog}
-        onCreate={(catalog) => {
-          // In a real app, you'd save the catalog to the backend
-          setCatalogId(catalog.id);
-          setShowCatalogDialog(false);
+      <CreateProductLineDialog
+        open={showProductLineDialog}
+        onOpenChange={setShowProductLineDialog}
+        onCreate={(productLine) => {
+          // In a real app, you'd save the product line to the backend
+          setProductLineId(productLine.id);
+          setShowProductLineDialog(false);
         }}
       />
 
