@@ -115,6 +115,36 @@ Call callOAuthCallback() on the callback page/handler to complete the flow.
 Does not error (redirects before any error can occur).
 
 
+## getOAuthUrl(provider, options?)
+
+Returns the OAuth authorization URL without performing the redirect.
+Useful for non-browser environments or custom OAuth handling.
+
+Arguments:
+  provider: string - OAuth provider ID (e.g., "google", "github", "microsoft")
+  options.redirectUrl: string? - custom callback URL (default: urls.oauthCallback)
+  options.state: string? - custom state parameter (default: auto-generated)
+  options.codeVerifier: string? - custom PKCE verifier (default: auto-generated)
+
+Returns: { url: string, state: string, codeVerifier: string }
+  url: The full authorization URL to open in a browser
+  state: The state parameter (for CSRF verification)
+  codeVerifier: The PKCE code verifier (store for token exchange)
+
+Implementation:
+1. Generate or use provided state and codeVerifier
+2. Compute code challenge: base64url(sha256(codeVerifier))
+3. Build authorization URL (same as signInWithOAuth step 5)
+4. Return { url, state, codeVerifier } without redirecting
+
+The caller is responsible for:
+- Opening the URL in a browser/webview
+- Storing the state and codeVerifier
+- Calling callOAuthCallback() with the callback URL
+
+Does not error.
+
+
 ## signInWithCredential(options)
 
 Arguments:
@@ -824,14 +854,15 @@ Returns: string - the access token for Convex HTTP requests
 Does not error.
 
 
-## Redirect Methods
+## Redirect Methods  [BROWSER-ONLY]
+
+These methods are only available in browser environments (JavaScript SDK).
+Non-browser SDKs (Swift, Python, etc.) should NOT expose these methods.
 
 All redirect methods take optional options:
 
 Options:
   replace: bool? - if true, replace current history entry instead of pushing
-    - Browser: use location.replace() instead of location.assign()
-    - Mobile: affects navigation stack behavior
   noRedirectBack: bool? - if true, don't set after_auth_return_to param
 
 Methods:
@@ -869,5 +900,4 @@ Implementation:
    - "none": don't redirect (for headless/API use)
    - Custom navigate function: call it with the URL
 
-All require browser or framework-specific redirect capability.
 Do not error.

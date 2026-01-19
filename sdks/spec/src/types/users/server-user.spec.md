@@ -71,6 +71,18 @@ Shorthand for update({ clientReadOnlyMetadata: metadata }).
 Does not error.
 
 
+### setPassword(password)
+
+password: string
+
+Server-side password setting. Shorthand for update({ password: password }).
+
+Note: Unlike client-side setPassword (which uses POST /auth/password/set),
+server-side password setting is done via the user update endpoint.
+
+Does not error.
+
+
 ## Team Methods
 
 
@@ -90,7 +102,7 @@ Does not error.
 
 Returns: ServerTeam[]
 
-GET /api/v1/users/{userId}/teams [server-only]
+GET /api/v1/teams?user_id={userId} [server-only]
 
 Does not error.
 
@@ -113,7 +125,7 @@ Does not error.
 
 Returns: ServerContactChannel[]
 
-GET /api/v1/users/{userId}/contact-channels [server-only]
+GET /api/v1/contact-channels?user_id={userId} [server-only]
 
 ServerContactChannel extends ContactChannel with:
   update(data: ServerContactChannelUpdateOptions): Promise<void>

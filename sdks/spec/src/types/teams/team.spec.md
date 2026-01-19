@@ -63,11 +63,12 @@ Does not error.
 
 Returns: TeamUser[]
 
-GET /api/v1/teams/{teamId}/users [authenticated]
-Route: apps/backend/src/app/api/latest/teams/[teamId]/users/route.ts
+GET /api/v1/team-member-profiles?team_id={teamId} [authenticated]
+
+Returns all members of the team with their team profiles.
 
 TeamUser:
-  id: string - user ID
+  id: string - user ID (from user_id field in response)
   teamProfile: TeamMemberProfile - user's profile within this team
 
 See types/teams/team-member-profile.spec.md for TeamMemberProfile.

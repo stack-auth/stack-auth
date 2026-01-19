@@ -189,12 +189,19 @@ Returns team associated with the API key.
 Does not error.
 
 
-## listTeams()
+## listTeams(options?)
+
+Arguments:
+  options.userId: string? - filter by user membership
 
 Returns: ServerTeam[]
 
 Request:
   GET /api/v1/teams [server-only]
+  Query params: user_id?
+
+Note: This endpoint does NOT support pagination parameters like limit/cursor.
+Use optional user_id filter to get teams a specific user belongs to.
 
 Response:
   { items: [ServerTeamCrud, ...] }

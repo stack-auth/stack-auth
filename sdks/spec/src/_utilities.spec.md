@@ -91,6 +91,14 @@ For rate limiting (429 response):
 3. If no Retry-After header: retry immediately with backoff
 
 
+### Request Body
+
+POST, PATCH, and PUT requests MUST include a JSON body, even if empty.
+If no body data is needed, send an empty object: {}
+
+Set Content-Type: application/json for all requests with a body.
+
+
 ### Response Processing
 
 1. Check x-stack-actual-status header for real status code
@@ -129,9 +137,15 @@ See packages/stack-shared/src/known-errors.ts for all error types.
 The base error type for all Stack Auth API errors.
 
 Properties:
-  code: string - error code from API (e.g., "user_not_found")
+  code: string - error code from API, UPPERCASE_WITH_UNDERSCORES (e.g., "USER_NOT_FOUND")
   message: string - human-readable error message
   details: object? - optional additional details
+
+Error codes are always UPPERCASE_WITH_UNDERSCORES format.
+Examples: EMAIL_PASSWORD_MISMATCH, USER_NOT_FOUND, PASSWORD_REQUIREMENTS_NOT_MET, PASSWORD_TOO_SHORT
+
+Note: PASSWORD_TOO_SHORT is returned when a password doesn't meet minimum length requirements.
+PASSWORD_REQUIREMENTS_NOT_MET is a more general error for other password policy violations.
 
 All function-specific errors (like PasswordResetCodeInvalid, EmailPasswordMismatch, etc.) 
 should extend or be instances of StackAuthApiError.

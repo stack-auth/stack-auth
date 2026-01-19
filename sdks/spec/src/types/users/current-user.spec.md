@@ -115,8 +115,7 @@ Errors:
 
 Returns: Team[]
 
-GET /api/v1/users/me/teams [authenticated]
-Route: apps/backend/src/app/api/latest/users/me/teams/route.ts
+GET /api/v1/teams?user_id=me [authenticated]
 
 Construct Team for each item.
 
@@ -187,8 +186,7 @@ Does not error.
 
 Returns: ContactChannel[]
 
-GET /api/v1/contact-channels [authenticated]
-Route: apps/backend/src/app/api/latest/contact-channels/route.ts
+GET /api/v1/contact-channels?user_id=me [authenticated]
 
 Does not error.
 

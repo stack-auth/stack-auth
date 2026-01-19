@@ -38,8 +38,9 @@ Does not error.
 
 Returns: ServerTeamUser[]
 
-GET /api/v1/teams/{teamId}/users [server-only]
-Route: apps/backend/src/app/api/latest/teams/[teamId]/users/route.ts
+GET /api/v1/users?team_id={teamId} [server-only]
+
+Returns all users who are members of the specified team.
 
 ServerTeamUser:
   Extends ServerUser with:
@@ -54,7 +55,7 @@ Does not error.
 
 userId: string
 
-POST /api/v1/teams/{teamId}/users { user_id } [server-only]
+POST /api/v1/team-memberships/{teamId}/{userId} [server-only]
 
 Directly adds a user to the team without invitation.
 
@@ -65,7 +66,7 @@ Does not error.
 
 userId: string
 
-DELETE /api/v1/teams/{teamId}/users/{userId} [server-only]
+DELETE /api/v1/team-memberships/{teamId}/{userId} [server-only]
 
 Does not error.
 
