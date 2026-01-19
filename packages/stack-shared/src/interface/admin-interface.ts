@@ -10,6 +10,7 @@ import { SvixTokenCrud } from "./crud/svix-token";
 import { TeamPermissionDefinitionsCrud } from "./crud/team-permissions";
 import type { Transaction, TransactionType } from "./crud/transactions";
 import { ServerAuthApplicationOptions, StackServerInterface } from "./server-interface";
+import type { MoneyAmount } from "../utils/currency-constants";
 
 
 export type ChatContent = Array<
@@ -609,7 +610,7 @@ export class StackAdminInterface extends StackServerInterface {
     return { transactions: json.transactions, nextCursor: json.next_cursor };
   }
 
-  async refundTransaction(options: { type: "subscription" | "one-time-purchase", id: string }): Promise<{ success: boolean }> {
+  async refundTransaction(options: { type: "subscription" | "one-time-purchase", id: string, amountUsd?: MoneyAmount }): Promise<{ success: boolean }> {
     const response = await this.sendAdminRequest(
       "/internal/payments/transactions/refund",
       {
@@ -617,7 +618,11 @@ export class StackAdminInterface extends StackServerInterface {
         headers: {
           "content-type": "application/json",
         },
-        body: JSON.stringify(options),
+        body: JSON.stringify({
+          type: options.type,
+          id: options.id,
+          amount_usd: options.amountUsd,
+        }),
       },
       null,
     );

@@ -77,6 +77,65 @@ async function createTestModeTransaction(productId: string, priceId: string) {
   return { transactionId: transaction.id, userId };
 }
 
+async function createLiveModeOneTimePurchaseTransaction() {
+  const config = await setupProjectWithPaymentsConfig({ testMode: false });
+  const { userId } = await User.create();
+
+  const accountInfo = await niceBackendFetch("/api/latest/internal/payments/stripe/account-info", {
+    accessType: "admin",
+  });
+  expect(accountInfo.status).toBe(200);
+  const accountId: string = accountInfo.body.account_id;
+
+  const code = await createPurchaseCode({ userId, productId: "otp-product" });
+  const stackTestTenancyId = code.split("_")[0];
+  const product = config.payments.products["otp-product"];
+
+  const idSuffix = randomUUID().replace(/-/g, "");
+  const eventId = `evt_otp_refund_${idSuffix}`;
+  const paymentIntentId = `pi_otp_refund_${idSuffix}`;
+  const paymentIntentPayload = {
+    id: eventId,
+    type: "payment_intent.succeeded",
+    account: accountId,
+    data: {
+      object: {
+        id: paymentIntentId,
+        customer: userId,
+        stack_stripe_mock_data: {
+          "accounts.retrieve": { metadata: { tenancyId: stackTestTenancyId } },
+          "customers.retrieve": { metadata: { customerId: userId, customerType: "USER" } },
+          "subscriptions.list": { data: [] },
+        },
+        metadata: {
+          productId: "otp-product",
+          product: JSON.stringify(product),
+          customerId: userId,
+          customerType: "user",
+          purchaseQuantity: "1",
+          purchaseKind: "ONE_TIME",
+          priceId: "single",
+        },
+      },
+    },
+  };
+
+  const webhookSecret = process.env.STACK_STRIPE_WEBHOOK_SECRET ?? "mock_stripe_webhook_secret";
+  const webhookRes = await Payments.sendStripeWebhook(paymentIntentPayload, { secret: webhookSecret });
+  expect(webhookRes.status).toBe(200);
+  expect(webhookRes.body).toEqual({ received: true });
+
+  const transactionsRes = await niceBackendFetch("/api/latest/internal/payments/transactions", {
+    accessType: "admin",
+  });
+  expect(transactionsRes.status).toBe(200);
+
+  const purchaseTransaction = transactionsRes.body.transactions.find((tx: any) => tx.type === "purchase");
+  expect(purchaseTransaction).toBeDefined();
+
+  return { userId, transactionsRes, purchaseTransaction };
+}
+
 it("returns TestModePurchaseNonRefundable when refunding test mode one-time purchases", async () => {
   await setupProjectWithPaymentsConfig();
   const { transactionId, userId } = await createTestModeTransaction("otp-product", "single");
@@ -135,49 +194,7 @@ it("returns SubscriptionInvoiceNotFound when id does not exist", async () => {
 });
 
 it("refunds non-test mode one-time purchases created via Stripe webhooks", async () => {
-  const config = await setupProjectWithPaymentsConfig({ testMode: false });
-  const { userId } = await User.create();
-
-  const accountInfo = await niceBackendFetch("/api/latest/internal/payments/stripe/account-info", {
-    accessType: "admin",
-  });
-  expect(accountInfo.status).toBe(200);
-  const accountId: string = accountInfo.body.account_id;
-
-  const code = await createPurchaseCode({ userId, productId: "otp-product" });
-  const stackTestTenancyId = code.split("_")[0];
-  const product = config.payments.products["otp-product"];
-
-  const paymentIntentPayload = {
-    id: "evt_otp_refund_success",
-    type: "payment_intent.succeeded",
-    account: accountId,
-    data: {
-      object: {
-        id: "pi_otp_refund_success",
-        customer: userId,
-        stack_stripe_mock_data: {
-          "accounts.retrieve": { metadata: { tenancyId: stackTestTenancyId } },
-          "customers.retrieve": { metadata: { customerId: userId, customerType: "USER" } },
-          "subscriptions.list": { data: [] },
-        },
-        metadata: {
-          productId: "otp-product",
-          product: JSON.stringify(product),
-          customerId: userId,
-          customerType: "user",
-          purchaseQuantity: "1",
-          purchaseKind: "ONE_TIME",
-          priceId: "single",
-        },
-      },
-    },
-  };
-
-  const webhookRes = await Payments.sendStripeWebhook(paymentIntentPayload);
-  expect(webhookRes.status).toBe(200);
-  expect(webhookRes.body).toEqual({ received: true });
-
+  const { userId, transactionsRes, purchaseTransaction } = await createLiveModeOneTimePurchaseTransaction();
   const productsRes = await niceBackendFetch(`/api/v1/payments/products/user/${userId}`, {
     accessType: "client",
   });
@@ -185,9 +202,6 @@ it("refunds non-test mode one-time purchases created via Stripe webhooks", async
   expect(productsRes.body.items).toHaveLength(1);
   expect(productsRes.body.items[0].id).toBe("otp-product");
 
-  const transactionsRes = await niceBackendFetch("/api/latest/internal/payments/transactions", {
-    accessType: "admin",
-  });
   expect(transactionsRes.body).toMatchInlineSnapshot(`
     {
       "next_cursor": null,
@@ -237,7 +251,6 @@ it("refunds non-test mode one-time purchases created via Stripe webhooks", async
     }
   `);
 
-  const purchaseTransaction = transactionsRes.body.transactions.find((tx: any) => tx.type === "purchase");
   const refundRes = await niceBackendFetch("/api/latest/internal/payments/transactions/refund", {
     accessType: "admin",
     method: "POST",
@@ -287,4 +300,32 @@ it("refunds non-test mode one-time purchases created via Stripe webhooks", async
       "pagination": { "next_cursor": null },
     }
   `);
+});
+
+it("refunds partial amounts for non-test mode one-time purchases", async () => {
+  const { userId, purchaseTransaction } = await createLiveModeOneTimePurchaseTransaction();
+
+  const refundRes = await niceBackendFetch("/api/latest/internal/payments/transactions/refund", {
+    accessType: "admin",
+    method: "POST",
+    body: { type: "one-time-purchase", id: purchaseTransaction.id, amount_usd: "1250" },
+  });
+  expect(refundRes.status).toBe(200);
+  expect(refundRes.body).toEqual({ success: true });
+
+  const transactionsAfterRefund = await niceBackendFetch("/api/latest/internal/payments/transactions", {
+    accessType: "admin",
+  });
+  const refundedTransaction = transactionsAfterRefund.body.transactions.find((tx: any) => tx.id === purchaseTransaction.id);
+  expect(refundedTransaction?.adjusted_by).toEqual([
+    {
+      entry_index: 0,
+      transaction_id: expect.stringContaining(`${purchaseTransaction.id}:refund`),
+    },
+  ]);
+
+  const productsAfterRes = await niceBackendFetch(`/api/v1/payments/products/user/${userId}`, {
+    accessType: "client",
+  });
+  expect(productsAfterRes.body.items).toHaveLength(0);
 });

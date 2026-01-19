@@ -2,9 +2,28 @@ import { getStripeForAccount } from "@/lib/stripe";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
-import { adaptSchema, adminAuthTypeSchema, yupBoolean, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { adaptSchema, adminAuthTypeSchema, moneyAmountSchema, productSchema, yupBoolean, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { SubscriptionStatus } from "@/generated/prisma/client";
+import { SUPPORTED_CURRENCIES, type MoneyAmount } from "@stackframe/stack-shared/dist/utils/currency-constants";
+import { moneyAmountToStripeUnits } from "@stackframe/stack-shared/dist/utils/currencies";
+import { resolveSelectedPriceFromProduct } from "@/app/api/latest/internal/payments/transactions/transaction-builder";
+import { InferType } from "yup";
+
+const USD_CURRENCY = SUPPORTED_CURRENCIES.find((currency) => currency.code === "USD")
+  ?? throwErr("USD currency configuration missing in SUPPORTED_CURRENCIES");
+
+function getTotalUsdStripeUnits(options: { product: InferType<typeof productSchema>, priceId: string | null, quantity: number }) {
+  const selectedPrice = resolveSelectedPriceFromProduct(options.product, options.priceId ?? null);
+  const usdPrice = selectedPrice?.USD;
+  if (typeof usdPrice !== "string") {
+    throw new KnownErrors.SchemaError("Refund amounts can only be specified for USD-priced purchases.");
+  }
+  if (!Number.isFinite(options.quantity) || Math.trunc(options.quantity) !== options.quantity) {
+    throw new StackAssertionError("Purchase quantity is not an integer", { quantity: options.quantity });
+  }
+  return moneyAmountToStripeUnits(usdPrice as MoneyAmount, USD_CURRENCY) * options.quantity;
+}
 
 export const POST = createSmartRouteHandler({
   metadata: {
@@ -19,6 +38,7 @@ export const POST = createSmartRouteHandler({
     body: yupObject({
       type: yupString().oneOf(["subscription", "one-time-purchase"]).defined(),
       id: yupString().defined(),
+      amount_usd: moneyAmountSchema(USD_CURRENCY).optional(),
     }).defined()
   }),
   response: yupObject({
@@ -30,10 +50,16 @@ export const POST = createSmartRouteHandler({
   }),
   handler: async ({ auth, body }) => {
     const prisma = await getPrismaClientForTenancy(auth.tenancy);
+    const refundAmountUsd = body.amount_usd ?? null;
     if (body.type === "subscription") {
       const subscription = await prisma.subscription.findUnique({
         where: { tenancyId_id: { tenancyId: auth.tenancy.id, id: body.id } },
-        select: { refundedAt: true },
+        select: {
+          refundedAt: true,
+          product: true,
+          priceId: true,
+          quantity: true,
+        },
       });
       if (!subscription) {
         throw new KnownErrors.SubscriptionInvoiceNotFound(body.id);
@@ -72,7 +98,25 @@ export const POST = createSmartRouteHandler({
       if (!paymentIntentId || typeof paymentIntentId !== "string") {
         throw new StackAssertionError("Payment has no payment intent", { invoiceId: subscriptionInvoice.stripeInvoiceId });
       }
-      await stripe.refunds.create({ payment_intent: paymentIntentId });
+      let refundAmountStripeUnits: number | null = null;
+      if (refundAmountUsd) {
+        const totalStripeUnits = getTotalUsdStripeUnits({
+          product: subscription.product as InferType<typeof productSchema>,
+          priceId: subscription.priceId ?? null,
+          quantity: subscription.quantity,
+        });
+        refundAmountStripeUnits = moneyAmountToStripeUnits(refundAmountUsd as MoneyAmount, USD_CURRENCY);
+        if (refundAmountStripeUnits <= 0) {
+          throw new KnownErrors.SchemaError("Refund amount must be greater than zero.");
+        }
+        if (refundAmountStripeUnits > totalStripeUnits) {
+          throw new KnownErrors.SchemaError("Refund amount cannot exceed the charged amount.");
+        }
+      }
+      await stripe.refunds.create({
+        payment_intent: paymentIntentId,
+        ...(refundAmountStripeUnits !== null ? { amount: refundAmountStripeUnits } : {}),
+      });
       await prisma.subscription.update({
         where: { tenancyId_id: { tenancyId: auth.tenancy.id, id: body.id } },
         data: {
@@ -99,8 +143,24 @@ export const POST = createSmartRouteHandler({
       if (!purchase.stripePaymentIntentId) {
         throw new KnownErrors.OneTimePurchaseNotFound(body.id);
       }
+      let refundAmountStripeUnits: number | null = null;
+      if (refundAmountUsd) {
+        const totalStripeUnits = getTotalUsdStripeUnits({
+          product: purchase.product as InferType<typeof productSchema>,
+          priceId: purchase.priceId ?? null,
+          quantity: purchase.quantity,
+        });
+        refundAmountStripeUnits = moneyAmountToStripeUnits(refundAmountUsd as MoneyAmount, USD_CURRENCY);
+        if (refundAmountStripeUnits <= 0) {
+          throw new KnownErrors.SchemaError("Refund amount must be greater than zero.");
+        }
+        if (refundAmountStripeUnits > totalStripeUnits) {
+          throw new KnownErrors.SchemaError("Refund amount cannot exceed the charged amount.");
+        }
+      }
       await stripe.refunds.create({
         payment_intent: purchase.stripePaymentIntentId,
+        ...(refundAmountStripeUnits !== null ? { amount: refundAmountStripeUnits } : {}),
         metadata: {
           tenancyId: auth.tenancy.id,
           purchaseId: purchase.id,

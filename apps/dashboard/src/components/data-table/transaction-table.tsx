@@ -1,11 +1,15 @@
 'use client';
 
 import { useAdminApp } from '@/app/(main)/(protected)/projects/[projectId]/use-admin-app';
-import { ActionCell, ActionDialog, AvatarCell, Badge, DataTableColumnHeader, DataTableManualPagination, DateCell, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, TextCell, Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui';
+import { ActionCell, ActionDialog, Alert, AlertDescription, AvatarCell, Badge, DataTableColumnHeader, DataTableManualPagination, DateCell, Input, Label, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, TextCell, Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui';
 import type { Icon as PhosphorIcon } from '@phosphor-icons/react';
 import { ArrowClockwiseIcon, ArrowCounterClockwiseIcon, GearIcon, ProhibitIcon, QuestionIcon, ShoppingCartIcon, ShuffleIcon } from '@phosphor-icons/react';
 import type { Transaction, TransactionEntry, TransactionType } from '@stackframe/stack-shared/dist/interface/crud/transactions';
 import { TRANSACTION_TYPES } from '@stackframe/stack-shared/dist/interface/crud/transactions';
+import type { MoneyAmount } from '@stackframe/stack-shared/dist/utils/currency-constants';
+import { SUPPORTED_CURRENCIES } from '@stackframe/stack-shared/dist/utils/currency-constants';
+import { moneyAmountToStripeUnits } from '@stackframe/stack-shared/dist/utils/currencies';
+import { moneyAmountSchema } from '@stackframe/stack-shared/dist/schema-fields';
 import { deepPlainEquals } from '@stackframe/stack-shared/dist/utils/objects';
 import type { ColumnDef, ColumnFiltersState, SortingState } from '@tanstack/react-table';
 import React, { useCallback } from 'react';
@@ -34,6 +38,7 @@ type MoneyTransferEntry = Extract<TransactionEntry, { type: 'money_transfer' }>;
 type ProductGrantEntry = Extract<TransactionEntry, { type: 'product_grant' }>;
 type ItemQuantityChangeEntry = Extract<TransactionEntry, { type: 'item_quantity_change' }>;
 type RefundTarget = { type: 'subscription' | 'one-time-purchase', id: string };
+const USD_CURRENCY = SUPPORTED_CURRENCIES.find((currency) => currency.code === 'USD');
 
 function isEntryWithCustomer(entry: TransactionEntry): entry is EntryWithCustomer {
   return 'customer_type' in entry && 'customer_id' in entry;
@@ -191,10 +196,41 @@ function getTransactionSummary(transaction: Transaction): TransactionSummary {
 function RefundActionCell({ transaction, refundTarget }: { transaction: Transaction, refundTarget: RefundTarget | null }) {
   const app = useAdminApp();
   const [isDialogOpen, setIsDialogOpen] = React.useState(false);
+  const [refundAmountUsd, setRefundAmountUsd] = React.useState<string>('');
   const target = transaction.type === 'purchase' ? refundTarget : null;
   const alreadyRefunded = transaction.adjusted_by.length > 0;
   const productEntry = transaction.entries.find(isProductGrantEntry);
   const canRefund = !!target && !transaction.test_mode && !alreadyRefunded && productEntry?.price_id;
+  const moneyTransferEntry = transaction.entries.find(isMoneyTransferEntry);
+  const chargedAmountUsd = moneyTransferEntry ? (moneyTransferEntry.charged_amount.USD ?? null) : null;
+
+  React.useEffect(() => {
+    if (isDialogOpen) {
+      setRefundAmountUsd(chargedAmountUsd ?? '');
+    }
+  }, [chargedAmountUsd, isDialogOpen]);
+
+  const refundValidation = React.useMemo(() => {
+    if (!chargedAmountUsd || !USD_CURRENCY) {
+      return { canSubmit: true, error: null, amountUsd: undefined };
+    }
+    if (!refundAmountUsd) {
+      return { canSubmit: false, error: "Enter a refund amount.", amountUsd: undefined };
+    }
+    const isValid = moneyAmountSchema(USD_CURRENCY).defined().isValidSync(refundAmountUsd);
+    if (!isValid) {
+      return { canSubmit: false, error: "Refund amount must be a valid USD amount.", amountUsd: undefined };
+    }
+    const refundUnits = moneyAmountToStripeUnits(refundAmountUsd as MoneyAmount, USD_CURRENCY);
+    const maxUnits = moneyAmountToStripeUnits(chargedAmountUsd as MoneyAmount, USD_CURRENCY);
+    if (refundUnits <= 0) {
+      return { canSubmit: false, error: "Refund amount must be greater than zero.", amountUsd: undefined };
+    }
+    if (refundUnits > maxUnits) {
+      return { canSubmit: false, error: `Refund amount cannot exceed $${chargedAmountUsd}.`, amountUsd: undefined };
+    }
+    return { canSubmit: true, error: null, amountUsd: refundAmountUsd as MoneyAmount };
+  }, [chargedAmountUsd, refundAmountUsd]);
 
   return (
     <>
@@ -208,13 +244,41 @@ function RefundActionCell({ transaction, refundTarget }: { transaction: Transact
           okButton={{
             label: "Refund",
             onClick: async () => {
-              await app.refundTransaction(target);
-              setIsDialogOpen(false);
+              if (chargedAmountUsd && !refundValidation.canSubmit) {
+                return "prevent-close";
+              }
+              await app.refundTransaction({ ...target, amountUsd: refundValidation.amountUsd });
             },
+            props: chargedAmountUsd ? { disabled: !refundValidation.canSubmit } : undefined,
           }}
           confirmText="Refunds cannot be undone and will revoke access to the purchased product."
         >
-          {`Refund this ${target.type === 'subscription' ? 'subscription' : 'one-time purchase'} transaction?`}
+          <div className="space-y-4">
+            <p>{`Refund this ${target.type === 'subscription' ? 'subscription' : 'one-time purchase'} transaction?`}</p>
+            {chargedAmountUsd ? (
+              <div className="space-y-2">
+                <Label htmlFor={`refund-amount-${transaction.id}`}>Refund amount (USD)</Label>
+                <Input
+                  id={`refund-amount-${transaction.id}`}
+                  inputMode="decimal"
+                  placeholder={chargedAmountUsd}
+                  value={refundAmountUsd}
+                  onChange={(event) => setRefundAmountUsd(event.target.value)}
+                />
+                {refundValidation.error ? (
+                  <Alert variant="destructive">
+                    <AlertDescription>{refundValidation.error}</AlertDescription>
+                  </Alert>
+                ) : null}
+              </div>
+            ) : (
+              <Alert>
+                <AlertDescription>
+                  Partial refunds are only available for USD charges. This will issue a full refund.
+                </AlertDescription>
+              </Alert>
+            )}
+          </div>
         </ActionDialog>
       ) : null}
       <ActionCell

@@ -1,6 +1,7 @@
 import { ChatContent } from "@stackframe/stack-shared/dist/interface/admin-interface";
 import type { Transaction, TransactionType } from "@stackframe/stack-shared/dist/interface/crud/transactions";
 import { InternalSession } from "@stackframe/stack-shared/dist/sessions";
+import type { MoneyAmount } from "@stackframe/stack-shared/dist/utils/currency-constants";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { AsyncStoreProperty, EmailConfig } from "../../common";
 import { AdminEmailOutbox, AdminSentEmail } from "../../email";
@@ -107,7 +108,7 @@ export type StackAdminApp<HasTokenStore extends boolean = boolean, ProjectId ext
       { teamId: string, itemId: string, quantity: number, expiresAt?: string, description?: string } |
       { customCustomerId: string, itemId: string, quantity: number, expiresAt?: string, description?: string }
     )): Promise<void>,
-    refundTransaction(options: { type: "subscription" | "one-time-purchase", id: string }): Promise<void>,
+    refundTransaction(options: { type: "subscription" | "one-time-purchase", id: string, amountUsd?: MoneyAmount }): Promise<void>,
 
     // Email Outbox methods
     listOutboxEmails(options?: EmailOutboxListOptions): Promise<EmailOutboxListResult>,

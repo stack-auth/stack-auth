@@ -8,6 +8,7 @@ import type { Transaction, TransactionType } from "@stackframe/stack-shared/dist
 import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { pick } from "@stackframe/stack-shared/dist/utils/objects";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
+import type { MoneyAmount } from "@stackframe/stack-shared/dist/utils/currency-constants";
 import { useMemo } from "react"; // THIS_LINE_PLATFORM react-like
 import { AdminEmailOutbox, AdminSentEmail } from "../..";
 import { EmailConfig, stackAppInternalsSymbol } from "../../common";
@@ -600,8 +601,8 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
     );
   }
 
-  async refundTransaction(options: { type: "subscription" | "one-time-purchase", id: string }): Promise<void> {
-    await this._interface.refundTransaction({ type: options.type, id: options.id });
+  async refundTransaction(options: { type: "subscription" | "one-time-purchase", id: string, amountUsd?: MoneyAmount }): Promise<void> {
+    await this._interface.refundTransaction({ type: options.type, id: options.id, amountUsd: options.amountUsd });
     await this._transactionsCache.invalidateWhere(() => true);
   }
 
