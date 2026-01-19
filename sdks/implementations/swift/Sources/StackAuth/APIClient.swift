@@ -35,7 +35,9 @@ actor APIClient {
         authenticated: Bool = false,
         serverOnly: Bool = false
     ) async throws -> (Data, HTTPURLResponse) {
-        let url = URL(string: "\(baseUrl)/api/v1\(path)")!
+        guard let url = URL(string: "\(baseUrl)/api/v1\(path)") else {
+            throw StackAuthError(code: "INVALID_URL", message: "Failed to construct request URL from base: \(baseUrl) and path: \(path)")
+        }
         var request = URLRequest(url: url)
         request.httpMethod = method
         request.cachePolicy = .reloadIgnoringLocalCacheData
@@ -119,13 +121,23 @@ actor APIClient {
                 }
             }
             
-            // Handle rate limiting
-            if actualStatus == 429 {
+            // Handle rate limiting (max 5 retries)
+            if actualStatus == 429 && attempt < 5 {
                 if let retryAfter = httpResponse.value(forHTTPHeaderField: "Retry-After"),
                    let seconds = Double(retryAfter) {
+                    // Use Retry-After header if provided
                     try await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
-                    return try await sendWithRetry(request: request, authenticated: authenticated, attempt: attempt + 1)
+                } else {
+                    // No Retry-After header: use exponential backoff (1s, 2s, 4s, 8s, 16s)
+                    let delayMs = 1000.0 * pow(2.0, Double(attempt))
+                    try await Task.sleep(nanoseconds: UInt64(delayMs * 1_000_000))
                 }
+                return try await sendWithRetry(request: request, authenticated: authenticated, attempt: attempt + 1)
+            }
+            
+            // Rate limit exhausted after max retries
+            if actualStatus == 429 {
+                throw StackAuthError(code: "RATE_LIMITED", message: "Too many requests, please try again later")
             }
             
             // Check for known error

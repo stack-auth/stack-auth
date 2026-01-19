@@ -13,7 +13,7 @@ Add to your `Package.swift`:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/stack-auth/stack-swift", from: "1.0.0")
+    .package(url: "https://github.com/stack-auth/swift-sdk-prerelease", from: <version>)
 ]
 ```
 
@@ -36,7 +36,7 @@ if let user = try await stack.getUser() {
 }
 
 // Sign out
-try await user.signOut()
+try await stack.signOut()
 ```
 
 ## Design Decisions
@@ -126,7 +126,6 @@ Task {
 | OAuth | Browser redirect | ASWebAuthenticationSession |
 | Redirect methods | Available | Not available (browser-only) |
 | React hooks | `useUser()` etc. | Not applicable |
-| Error handling | Result types | `throws` |
 
 ### Not Available in Swift
 

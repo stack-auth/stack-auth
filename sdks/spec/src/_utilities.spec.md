@@ -215,7 +215,7 @@ Use getAuthHeaders() to generate this header value.
 Several sign-in methods may return MultiFactorAuthenticationRequired error when MFA is enabled.
 
 Error format:
-  code: "multi_factor_authentication_required"
+  code: "MULTI_FACTOR_AUTHENTICATION_REQUIRED"
   message: "Multi-factor authentication is required."
   details: { attempt_code: string }
 

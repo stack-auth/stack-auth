@@ -38,7 +38,7 @@ Does not error.
 options.description: string?
 options.expiresAt: Date | null?
 
-PATCH /api/v1/api-keys/{id} { description, expires_at } [authenticated]
+PATCH /api/v1/api-keys/{id} { description, expires_at_millis } [authenticated]
 
 Does not error.
 

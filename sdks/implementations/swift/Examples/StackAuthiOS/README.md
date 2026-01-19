@@ -17,18 +17,18 @@ An interactive iOS application for testing all Stack Auth Swift SDK functions.
    open StackAuthiOS.xcodeproj
    ```
 
-2. Select an iOS Simulator (e.g., "iPhone 17 Pro") as the destination
+2. Select an iOS Simulator (e.g., "iPhone 15 Pro" or any available device) as the destination
 
 3. Press ⌘R to build and run
 
 ### Option 2: Command Line
 
 ```bash
-# Build
-xcodebuild -scheme StackAuthiOS -destination 'platform=iOS Simulator,name=iPhone 17 Pro' build
+# Build (replace device name with an available simulator on your system)
+xcodebuild -scheme StackAuthiOS -destination 'platform=iOS Simulator,name=iPhone 15 Pro' build
 
 # Build and run (opens simulator)
-xcodebuild -scheme StackAuthiOS -destination 'platform=iOS Simulator,name=iPhone 17 Pro' run
+xcodebuild -scheme StackAuthiOS -destination 'platform=iOS Simulator,name=iPhone 15 Pro' run
 ```
 
 ## Features

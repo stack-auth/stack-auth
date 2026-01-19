@@ -336,7 +336,7 @@ public actor CurrentUser {
     ) async throws -> UserApiKeyFirstView {
         var body: [String: Any] = ["description": description]
         if let expiresAt = expiresAt {
-            body["expires_at"] = Int64(expiresAt.timeIntervalSince1970 * 1000)
+            body["expires_at_millis"] = Int64(expiresAt.timeIntervalSince1970 * 1000)
         }
         if let scope = scope { body["scope"] = scope }
         if let teamId = teamId { body["team_id"] = teamId }

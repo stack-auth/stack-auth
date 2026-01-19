@@ -102,7 +102,7 @@ options.scope: string?
 
 Returns: TeamApiKeyFirstView
 
-POST /api/v1/teams/{teamId}/api-keys { description, expires_at, scope } [authenticated]
+POST /api/v1/teams/{teamId}/api-keys { description, expires_at_millis, scope } [authenticated]
 
 See types/common/api-keys.spec.md for TeamApiKeyFirstView.
 The apiKey property is only returned once at creation time.

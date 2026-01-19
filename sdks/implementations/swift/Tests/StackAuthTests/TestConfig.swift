@@ -25,7 +25,7 @@ struct TestConfig {
         do {
             let (_, response) = try await URLSession.shared.data(from: url)
             if let httpResponse = response as? HTTPURLResponse {
-                return httpResponse.statusCode < 500
+                return (200..<300).contains(httpResponse.statusCode)
             }
             return false
         } catch {

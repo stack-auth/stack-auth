@@ -5,8 +5,8 @@ The authenticated user with methods to modify their own data.
 Extends: User (base-user.spec.md)
 
 Also includes:
-  - Auth methods (signOut, getAccessToken, etc.)
-  - Customer methods (payments/customer.spec.md)
+- Auth methods (signOut, getAccessToken, etc.)
+- Customer methods (payments/customer.spec.md)
 
 
 ## Additional Properties
@@ -404,7 +404,7 @@ options.teamId: string? - for team-scoped keys
 
 Returns: UserApiKeyFirstView
 
-POST /api/v1/users/me/api-keys { description, expires_at, scope, team_id } [authenticated]
+POST /api/v1/users/me/api-keys { description, expires_at_millis, scope, team_id } [authenticated]
 
 See types/common/api-keys.spec.md for UserApiKeyFirstView.
 The apiKey property is only returned once at creation time.

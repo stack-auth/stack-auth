@@ -14,13 +14,14 @@ public struct ActiveSession: Sendable {
         self.id = json["id"] as? String ?? ""
         self.userId = json["user_id"] as? String ?? ""
         
-        let createdMillis = json["created_at"] as? Int64 ?? json["created_at_millis"] as? Int64 ?? 0
-        self.createdAt = Date(timeIntervalSince1970: Double(createdMillis) / 1000.0)
+        // JSONSerialization returns NSNumber for numeric values, use doubleValue for reliable parsing
+        let createdMillis = (json["created_at"] as? NSNumber)?.doubleValue ?? 0
+        self.createdAt = Date(timeIntervalSince1970: createdMillis / 1000.0)
         
         self.isImpersonation = json["is_impersonation"] as? Bool ?? false
         
-        if let lastUsedMillis = json["last_used_at"] as? Int64 ?? json["last_used_at_millis"] as? Int64 {
-            self.lastUsedAt = Date(timeIntervalSince1970: Double(lastUsedMillis) / 1000.0)
+        if let lastUsedRaw = json["last_used_at"] as? NSNumber {
+            self.lastUsedAt = Date(timeIntervalSince1970: lastUsedRaw.doubleValue / 1000.0)
         } else {
             self.lastUsedAt = nil
         }
