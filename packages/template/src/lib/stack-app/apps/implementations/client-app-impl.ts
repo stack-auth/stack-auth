@@ -390,6 +390,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         projectId,
         clientVersion,
         publishableClientKey: resolvedOptions.publishableClientKey ?? getDefaultPublishableClientKey(),
+        dangerouslyAllowInsecureHttp: resolvedOptions.dangerouslyAllowInsecureHttp ?? false,
         prepareRequest: async () => {
           await cookies?.(); // THIS_LINE_PLATFORM next
         }

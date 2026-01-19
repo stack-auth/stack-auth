@@ -8,6 +8,7 @@ import { generateSecureRandomString } from '../utils/crypto';
 import { StackAssertionError, throwErr } from '../utils/errors';
 import { globalVar } from '../utils/globals';
 import { HTTP_METHODS, HttpMethod } from '../utils/http';
+import { shouldAllowInsecureRequest } from '../utils/http-security';
 import { ReadonlyJson } from '../utils/json';
 import { filterUndefined, filterUndefinedOrNull } from '../utils/objects';
 import { AuthenticationResponseJSON, PublicKeyCredentialCreationOptionsJSON, PublicKeyCredentialRequestOptionsJSON, RegistrationResponseJSON } from '../utils/passkey';
@@ -38,6 +39,12 @@ export type ClientInterfaceOptions = {
   extraRequestHeaders: Record<string, string>,
   projectId: string,
   prepareRequest?: () => Promise<void>,
+  /**
+   * Allows HTTP (non-HTTPS) requests to non-localhost servers.
+   * WARNING: Only use this for testing environments. Never enable in production.
+   * @default false
+   */
+  dangerouslyAllowInsecureHttp?: boolean,
 } & ({
   publishableClientKey: string,
 } | {
@@ -165,8 +172,7 @@ export class StackClientInterface {
     };
 
     const clientAuthentication = oauth.ClientSecretPost(this.options.publishableClientKey);
-    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-    const allowInsecure = (process.env.NODE_ENV?.includes("dev") || process.env.NODE_ENV === 'test') && tokenEndpoint.startsWith('http://');
+    const allowInsecure = shouldAllowInsecureRequest(tokenEndpoint, this.options.dangerouslyAllowInsecureHttp);
 
     const response = await this._networkRetryException(async () => {
       const rawResponse = await oauth.refreshTokenGrantRequest(
@@ -1041,9 +1047,7 @@ export class StackClientInterface {
       client_secret: this.options.publishableClientKey,
     };
     const clientAuthentication = oauth.ClientSecretPost(this.options.publishableClientKey);
-    // Allow insecure HTTP requests only in test environment (for localhost testing)
-    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-    const allowInsecure = (process.env.NODE_ENV?.includes("dev") || process.env.NODE_ENV === 'test') && tokenEndpoint.startsWith('http://');
+    const allowInsecure = shouldAllowInsecureRequest(tokenEndpoint, this.options.dangerouslyAllowInsecureHttp);
 
     let params: URLSearchParams;
     try {

@@ -24,6 +24,13 @@ export type StackClientAppConstructorOptions<HasTokenStore extends boolean, Proj
    * the app is never used or disposed of immediately. To disable this behavior, set this option to true.
    */
   noAutomaticPrefetch?: boolean,
+
+  /**
+   * Allows HTTP (non-HTTPS) requests to non-localhost servers.
+   * WARNING: Only use this for testing environments. Never enable in production.
+   * @default false
+   */
+  dangerouslyAllowInsecureHttp?: boolean,
 } & (
   { tokenStore: TokenStoreInit<HasTokenStore> } | { tokenStore?: undefined, inheritsFrom: StackClientApp<HasTokenStore, any> }
 ) & (
