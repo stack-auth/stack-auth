@@ -136,6 +136,34 @@ The following are browser-only and not exposed:
 - Cookie-based token storage
 - `redirectMethod` constructor option
 
+## Examples
+
+Interactive example apps are available for testing all SDK functions:
+
+### macOS Example
+
+```bash
+cd Examples/StackAuthMacOS
+swift run
+```
+
+Features a sidebar-based UI for testing authentication, user management, teams, OAuth, tokens, and server-side operations.
+
+### iOS Example
+
+```bash
+cd Examples/StackAuthiOS
+open Package.swift  # Opens in Xcode
+```
+
+Features a tab-based UI optimized for iOS with the same comprehensive SDK coverage.
+
+Both examples include:
+- Configurable API endpoints
+- Real-time operation logs
+- Error testing scenarios (wrong password, unauthorized access, etc.)
+- Client and server app operations
+
 ## Testing
 
 Tests use Swift Testing framework against a running backend.

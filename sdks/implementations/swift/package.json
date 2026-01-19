@@ -1,0 +1,12 @@
+{
+  "name": "@stackframe/swift-sdk",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Stack Auth Swift SDK",
+  "scripts": {
+    "test": "swift test",
+    "build": "swift build",
+    "start:mac-example": "cd Examples/StackAuthMacOS && swift run",
+    "start:ios-example": "echo 'iOS example requires Xcode. Run: open Examples/StackAuthiOS/Package.swift'"
+  }
+}

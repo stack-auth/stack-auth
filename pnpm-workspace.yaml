@@ -4,5 +4,6 @@ packages:
   - examples/*
   - docs
   - sdks/*
+  - sdks/implementations/*
 
 minimumReleaseAge: 2880
