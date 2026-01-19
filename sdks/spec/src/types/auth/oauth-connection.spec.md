@@ -69,12 +69,12 @@ options: {
   allowConnectedAccounts?: bool,
 }
 
-Returns: Result<void, OAuthProviderAccountIdAlreadyUsedForSignIn>
+Returns: void
 
 PATCH /api/v1/users/me/oauth-providers/{id} { allow_sign_in, allow_connected_accounts } [authenticated]
 Route: apps/backend/src/app/api/latest/users/me/oauth-providers/[id]/route.ts
 
-Errors (in Result):
+Errors:
   OAuthProviderAccountIdAlreadyUsedForSignIn
     code: "oauth_provider_account_id_already_used_for_sign_in"
     message: "This OAuth account is already linked to another user for sign-in."
@@ -111,12 +111,12 @@ options: {
   allowConnectedAccounts?: bool,
 }
 
-Returns: Result<void, OAuthProviderAccountIdAlreadyUsedForSignIn>
+Returns: void
 
 PATCH /api/v1/users/{userId}/oauth-providers/{id} [server-only]
 Body: { account_id, email, allow_sign_in, allow_connected_accounts }
 
-Errors (in Result):
+Errors:
   OAuthProviderAccountIdAlreadyUsedForSignIn
     code: "oauth_provider_account_id_already_used_for_sign_in"
     message: "This OAuth account is already linked to another user for sign-in."

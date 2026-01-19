@@ -289,6 +289,12 @@ Response:
     total: number
   }
 
+EmailDeliveryInfo:
+  delivered: number - emails successfully delivered
+  bounced: number - emails that bounced (hard or soft)
+  complained: number - emails marked as spam by recipients
+  total: number - total emails sent
+
 Does not error.
 
 
@@ -327,16 +333,28 @@ Arguments:
 
 Returns: DataVaultStore
 
-DataVaultStore has methods:
+The Data Vault is a simple key-value store for storing sensitive data server-side.
+Each store is isolated and identified by its ID.
+
+DataVaultStore:
+  id: string - the store ID
+
   get(key: string): Promise<string | null>
     GET /api/v1/data-vault/stores/{storeId}/items/{key} [server-only]
+    Returns the value for the key, or null if not found.
     
   set(key: string, value: string): Promise<void>
     PUT /api/v1/data-vault/stores/{storeId}/items/{key} [server-only]
     Body: { value: string }
+    Sets or updates the value for the key.
     
   delete(key: string): Promise<void>
     DELETE /api/v1/data-vault/stores/{storeId}/items/{key} [server-only]
+    Deletes the key-value pair. No error if key doesn't exist.
+    
+  list(): Promise<string[]>
+    GET /api/v1/data-vault/stores/{storeId}/items [server-only]
+    Returns all keys in the store.
 
 Does not error.
 

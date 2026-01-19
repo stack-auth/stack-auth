@@ -66,13 +66,11 @@ Returns: TeamUser[]
 GET /api/v1/teams/{teamId}/users [authenticated]
 Route: apps/backend/src/app/api/latest/teams/[teamId]/users/route.ts
 
-TeamUser has:
-  id: string
-  teamProfile: TeamMemberProfile
+TeamUser:
+  id: string - user ID
+  teamProfile: TeamMemberProfile - user's profile within this team
 
-TeamMemberProfile has:
-  displayName: string | null
-  profileImageUrl: string | null
+See types/teams/team-member-profile.spec.md for TeamMemberProfile.
 
 Does not error.
 
@@ -83,11 +81,14 @@ Returns: TeamInvitation[]
 
 GET /api/v1/teams/{teamId}/invitations [authenticated]
 
-TeamInvitation has:
-  id: string
-  recipientEmail: string | null
-  expiresAt: Date
+TeamInvitation:
+  id: string - invitation ID
+  recipientEmail: string | null - email the invitation was sent to
+  expiresAt: Date - when the invitation expires
+  
   revoke(): Promise<void>
+    DELETE /api/v1/teams/{teamId}/invitations/{id} [authenticated]
+    Revokes the invitation so it can no longer be accepted.
 
 Does not error.
 
@@ -102,8 +103,8 @@ Returns: TeamApiKeyFirstView
 
 POST /api/v1/teams/{teamId}/api-keys { description, expires_at, scope } [authenticated]
 
-TeamApiKeyFirstView extends TeamApiKey with:
-  apiKey: string - the actual key value (only shown once)
+See types/common/api-keys.spec.md for TeamApiKeyFirstView.
+The apiKey property is only returned once at creation time.
 
 Does not error.
 
@@ -114,11 +115,7 @@ Returns: TeamApiKey[]
 
 GET /api/v1/teams/{teamId}/api-keys [authenticated]
 
-TeamApiKey has:
-  id: string
-  description: string
-  expiresAt: Date | null
-  createdAt: Date
+See types/common/api-keys.spec.md for TeamApiKey.
 
 Does not error.
 

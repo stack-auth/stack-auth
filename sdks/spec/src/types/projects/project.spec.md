@@ -38,10 +38,16 @@ passkeyEnabled: bool
 
 oauthProviders: OAuthProviderConfig[]
   List of enabled OAuth providers.
-  Each has: id: string, type: "google" | "github" | "microsoft" | etc.
+  Each has: id: string
 
 clientTeamCreationEnabled: bool
   Whether clients can create teams.
 
 clientUserDeletionEnabled: bool
   Whether clients can delete their own accounts.
+
+allowUserApiKeys: bool
+  Whether users can create API keys.
+
+allowTeamApiKeys: bool
+  Whether teams can create API keys.

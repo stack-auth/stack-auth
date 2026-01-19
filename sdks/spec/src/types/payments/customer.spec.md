@@ -210,6 +210,31 @@ prices: Price[]
 
 ---
 
+# Price
+
+A price point for a product.
+
+
+## Properties
+
+id: string
+  Unique price identifier.
+
+amount: number
+  Price amount in the smallest currency unit (e.g., cents for USD).
+
+currency: string
+  Three-letter currency code (e.g., "usd", "eur").
+
+interval: "month" | "year" | null
+  Billing interval for subscriptions, or null for one-time purchases.
+
+intervalCount: number | null
+  Number of intervals between billings (e.g., 1 for monthly, 3 for quarterly).
+
+
+---
+
 # ServerItem (server-only)
 
 Server-side item with modification methods.

@@ -41,8 +41,11 @@ Returns: ServerTeamUser[]
 GET /api/v1/teams/{teamId}/users [server-only]
 Route: apps/backend/src/app/api/latest/teams/[teamId]/users/route.ts
 
-ServerTeamUser extends ServerUser with:
+ServerTeamUser:
+  Extends ServerUser with:
   teamProfile: ServerTeamMemberProfile
+
+See types/teams/team-member-profile.spec.md for ServerTeamMemberProfile.
 
 Does not error.
 

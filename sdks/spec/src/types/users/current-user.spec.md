@@ -175,10 +175,7 @@ Returns: EditableTeamMemberProfile
 
 GET /api/v1/teams/{teamId}/users/me/profile [authenticated]
 
-EditableTeamMemberProfile has:
-  displayName: string | null
-  profileImageUrl: string | null
-  update(options): Promise<void>
+See types/teams/team-member-profile.spec.md for EditableTeamMemberProfile.
 
 Does not error.
 
@@ -346,14 +343,7 @@ Returns: ActiveSession[]
 
 GET /api/v1/users/me/sessions [authenticated]
 
-ActiveSession has:
-  id: string
-  userId: string
-  createdAt: Date
-  isImpersonation: bool
-  lastUsedAt: Date | null
-  isCurrentSession: bool
-  geoInfo: GeoInfo?
+See types/common/sessions.spec.md for ActiveSession and GeoInfo.
 
 Does not error.
 
@@ -402,6 +392,8 @@ Returns: UserApiKey[]
 
 GET /api/v1/users/me/api-keys [authenticated]
 
+See types/common/api-keys.spec.md for UserApiKey.
+
 Does not error.
 
 
@@ -416,8 +408,8 @@ Returns: UserApiKeyFirstView
 
 POST /api/v1/users/me/api-keys { description, expires_at, scope, team_id } [authenticated]
 
-UserApiKeyFirstView extends UserApiKey with:
-  apiKey: string - the actual key value (only shown once)
+See types/common/api-keys.spec.md for UserApiKeyFirstView.
+The apiKey property is only returned once at creation time.
 
 Does not error.
 
@@ -431,22 +423,69 @@ Returns: NotificationCategory[]
 
 GET /api/v1/notification-categories [authenticated]
 
+See types/notifications/notification-category.spec.md for NotificationCategory.
+
 Does not error.
 
 
-## Auth Methods (from StackClientApp)
+## Auth Methods
 
-signOut(options?)
-  Same as StackClientApp.signOut()
+These methods are available on the CurrentUser object for convenience.
+They operate on the user's current session.
 
-getAccessToken()
-  Same as StackClientApp.getAccessToken()
 
-getRefreshToken()
-  Same as StackClientApp.getRefreshToken()
+### signOut(options?)
 
-getAuthHeaders()
-  Same as StackClientApp.getAuthHeaders()
+options.redirectUrl: string? - where to redirect after sign out
+
+Signs out the current user by invalidating their session.
+
+Implementation:
+1. DELETE /api/v1/auth/sessions/current [authenticated]
+   (Ignore errors - session may already be invalid)
+2. Clear stored tokens
+3. Redirect to redirectUrl or afterSignOut URL
+
+Does not error.
+
+
+### getAccessToken()
+
+Returns: string | null
+
+Returns the current access token, refreshing if needed.
+Returns null if not authenticated.
+
+Does not error.
+
+
+### getRefreshToken()
+
+Returns: string | null
+
+Returns the current refresh token.
+Returns null if not authenticated.
+
+Does not error.
+
+
+### getAuthHeaders()
+
+Returns: { "x-stack-auth": string }
+
+Returns headers for cross-origin authenticated requests.
+The value is JSON: { "accessToken": "<token>", "refreshToken": "<token>" }
+
+Does not error.
+
+
+### getAuthJson()
+
+Returns: { accessToken: string | null, refreshToken: string | null }
+
+Returns the current tokens as an object.
+
+Does not error.
 
 
 ## Deprecated Methods

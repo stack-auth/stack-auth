@@ -22,12 +22,24 @@ Optional:
     "cookie" is JS-only due to complexity. See _utilities.spec.md for details.
     
   urls: object
-    Override handler URLs. Defaults under "/handler":
+    Override handler URLs. Defaults:
+      home: "/"
       signIn: "/handler/sign-in"
       signUp: "/handler/sign-up"
+      signOut: "/handler/sign-out"
       afterSignIn: "/"
       afterSignUp: "/"
-      ... see apps/backend for full list
+      afterSignOut: "/"
+      emailVerification: "/handler/email-verification"
+      passwordReset: "/handler/password-reset"
+      forgotPassword: "/handler/forgot-password"
+      magicLinkCallback: "/handler/magic-link-callback"
+      oauthCallback: "/handler/oauth-callback"
+      accountSettings: "/handler/account-settings"
+      onboarding: "/handler/onboarding"
+      teamInvitation: "/handler/team-invitation"
+      mfa: "/handler/mfa"
+      error: "/handler/error"
       
   oauthScopesOnSignIn: object
     Additional OAuth scopes to request during sign-in for each provider.
@@ -264,10 +276,11 @@ Response:
       credential_enabled: bool,
       magic_link_enabled: bool,
       passkey_enabled: bool,
-      oauth_providers: [{ id: string, type: string }],
+      oauth_providers: [{ id: string }],
       client_team_creation_enabled: bool,
       client_user_deletion_enabled: bool,
-      domains: [{ domain: string, handler_path: string }]
+      allow_user_api_keys: bool,
+      allow_team_api_keys: bool
     }
   }
 
@@ -813,32 +826,48 @@ Does not error.
 
 ## Redirect Methods
 
-All redirect methods take optional { replace?: bool, noRedirectBack?: bool }.
+All redirect methods take optional options:
 
-redirectToSignIn()         - redirect to signIn URL
-redirectToSignUp()         - redirect to signUp URL
-redirectToSignOut()        - redirect to signOut URL
-redirectToAfterSignIn()    - redirect to afterSignIn URL
-redirectToAfterSignUp()    - redirect to afterSignUp URL
-redirectToAfterSignOut()   - redirect to afterSignOut URL
-redirectToHome()           - redirect to home URL
-redirectToAccountSettings() - redirect to accountSettings URL
-redirectToForgotPassword() - redirect to forgotPassword URL
-redirectToPasswordReset()  - redirect to passwordReset URL
-redirectToEmailVerification() - redirect to emailVerification URL
-redirectToOnboarding()     - redirect to onboarding URL
-redirectToError()          - redirect to error URL
-redirectToMfa()            - redirect to mfa URL
-redirectToTeamInvitation() - redirect to teamInvitation URL
-redirectToOAuthCallback()  - redirect to oauthCallback URL
-redirectToMagicLinkCallback() - redirect to magicLinkCallback URL
+Options:
+  replace: bool? - if true, replace current history entry instead of pushing
+    - Browser: use location.replace() instead of location.assign()
+    - Mobile: affects navigation stack behavior
+  noRedirectBack: bool? - if true, don't set after_auth_return_to param
 
-Special behavior for signIn/signUp/onboarding:
-- If URL has after_auth_return_to query param, preserve it
-- Otherwise, set after_auth_return_to to current URL (for redirect after auth)
+Methods:
+  redirectToSignIn()         - redirect to signIn URL
+  redirectToSignUp()         - redirect to signUp URL
+  redirectToSignOut()        - redirect to signOut URL
+  redirectToAfterSignIn()    - redirect to afterSignIn URL
+  redirectToAfterSignUp()    - redirect to afterSignUp URL
+  redirectToAfterSignOut()   - redirect to afterSignOut URL
+  redirectToHome()           - redirect to home URL
+  redirectToAccountSettings() - redirect to accountSettings URL
+  redirectToForgotPassword() - redirect to forgotPassword URL
+  redirectToPasswordReset()  - redirect to passwordReset URL
+  redirectToEmailVerification() - redirect to emailVerification URL
+  redirectToOnboarding()     - redirect to onboarding URL
+  redirectToError()          - redirect to error URL
+  redirectToMfa()            - redirect to mfa URL
+  redirectToTeamInvitation() - redirect to teamInvitation URL
+  redirectToOAuthCallback()  - redirect to oauthCallback URL
+  redirectToMagicLinkCallback() - redirect to magicLinkCallback URL
 
-Special behavior for afterSignIn/afterSignUp:
-- Check URL for after_auth_return_to query param and redirect there instead
+Implementation:
+
+1. Get the target URL from the urls config
+2. For signIn/signUp/onboarding (unless noRedirectBack=true):
+   - Check if current URL has after_auth_return_to query param
+   - If yes: preserve it in the target URL
+   - If no: set after_auth_return_to to current page URL
+3. For afterSignIn/afterSignUp:
+   - Check current URL for after_auth_return_to query param
+   - If present: redirect to that URL instead of the default
+4. Perform redirect based on redirectMethod config:
+   - "browser": window.location.assign() or .replace()
+   - "nextjs": Next.js redirect() function [JS-ONLY]
+   - "none": don't redirect (for headless/API use)
+   - Custom navigate function: call it with the URL
 
 All require browser or framework-specific redirect capability.
 Do not error.

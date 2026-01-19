@@ -48,7 +48,11 @@ On 401 response with code="invalid_access_token":
 
 ### Token Refresh
 
-Use OAuth2 refresh_token grant to get new access token:
+Use OAuth2 refresh_token grant to get new access token.
+
+Concurrency: Token refresh must be serialized. Only one refresh request should be in-flight at a time.
+If a refresh is already in progress, wait for it to complete rather than starting another.
+Use a mutex/lock to ensure this (or, if preferred in that framework, some kind of asynchronous mechanism that doesn't block the main thread).
 
 POST /api/v1/auth/oauth/token
 Content-Type: application/x-www-form-urlencoded
@@ -62,7 +66,8 @@ Body (form-encoded):
 Response on success:
   { access_token: string, refresh_token?: string, ... }
 
-On error (e.g., refresh_token_error): clear tokens, user is signed out.
+On success: store new access_token. If refresh_token is returned, store it too.
+On error (e.g., refresh_token_error): clear all tokens, user is signed out.
 
 Use an OAuth library (e.g., oauth4webapi) for proper OAuth2 handling.
 
@@ -140,6 +145,19 @@ Store access_token and refresh_token. The tokenStore constructor option determin
 
 Many functions also accept a tokenStore parameter to override storage for that call.
 
+### TokenStoreInit Type
+
+TokenStoreInit is a union type representing the different ways to provide token storage:
+
+```
+TokenStoreInit = 
+  | "cookie"                              // [JS-ONLY] Browser cookies
+  | "memory"                              // In-memory storage
+  | { accessToken: string, refreshToken: string }  // Explicit tokens
+  | RequestLike                           // Extract from request headers
+  | null                                  // No storage
+```
+
 ### Token Store Types
 
 "cookie": [JS-ONLY]
@@ -155,8 +173,19 @@ Many functions also accept a tokenStore parameter to override storage for that c
   Use explicit token values directly.
   For custom token management scenarios.
 
+RequestLike object:
+  An object that conforms to whatever the requests look like in common backend frameworks. For example, in JavaScript, these often have the shape `{ headers: { get(name: string): string | null } }`, but in other languages this may drastically differ (and may not even be an interface and instead rather just be an abstract class, or not exist at all).
+
+  This exists as a simplified way to support common backend frameworks in a more accessible way than the `{ accessToken: string, refreshToken: string }` one.
+  
+  Extract tokens from the x-stack-auth header:
+  1. Get header value: headers.get("x-stack-auth")
+  2. Parse as JSON: { accessToken: string, refreshToken: string }
+  3. Use those tokens for authentication
+
 null:
-  No token storage. SDK methods requiring authentication will fail. Most useful for backends, as you can still specify the token store per-request.
+  No token storage. SDK methods requiring authentication will fail.
+  Most useful for backends, as you can still specify the token store per-request.
 
 
 ### x-stack-auth Header Format
@@ -188,4 +217,33 @@ Methods that can return this error:
 - signInWithPasskey
 - callOAuthCallback
 
-The attempt_code is short-lived and single-use.
+The attempt_code is short-lived (a few minutes) and single-use.
+
+
+## JWT Access Token Claims
+
+The access token is a JWT with these claims:
+
+| Claim | Maps to | Type |
+|-------|---------|------|
+| sub | id | string |
+| name | displayName | string or null |
+| email | primaryEmail | string or null |
+| email_verified | primaryEmailVerified | boolean |
+| is_anonymous | isAnonymous | boolean |
+| is_restricted | isRestricted | boolean |
+| restricted_reason | restrictedReason | object or null |
+| exp | expiresAt | number (Unix timestamp) |
+| iat | issuedAt | number (Unix timestamp) |
+
+To decode: split by ".", base64url-decode the second segment, parse as JSON.
+
+
+## Unknown Errors
+
+If an API returns an error code not listed in the spec:
+1. Create a generic StackAuthApiError with the code and message
+2. Log the unknown error for debugging
+3. Treat it as a general API error
+
+This ensures forward compatibility when new error codes are added.
