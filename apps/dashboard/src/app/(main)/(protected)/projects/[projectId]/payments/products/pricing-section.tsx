@@ -94,7 +94,7 @@ export function PricingSection({
             {Object.entries(prices).map(([id, price]) => (
               <div
                 key={id}
-                className="px-3 py-3 hover:bg-muted/50 flex items-center justify-between catalog transition-colors"
+                className="px-3 py-3 hover:bg-muted/50 flex items-center justify-between transition-colors"
               >
                 <div>
                   <div className="font-medium">{formatPriceDisplay(price)}</div>
