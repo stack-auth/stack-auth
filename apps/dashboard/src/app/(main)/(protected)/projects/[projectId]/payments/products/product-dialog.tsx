@@ -550,7 +550,7 @@ export function ProductDialog({
                         <div className="grid gap-2">
                           <Label>Add-on to products</Label>
                           <div className="space-y-2 max-h-40 overflow-y-auto border rounded-lg p-2">
-                            {existingProducts.filter(o => !o.id.startsWith('addon')).map(product => (
+                            {existingProducts.map(product => (
                               <div key={product.id} className="flex items-center space-x-2">
                                 <Checkbox
                                   id={`addon-to-${product.id}`}

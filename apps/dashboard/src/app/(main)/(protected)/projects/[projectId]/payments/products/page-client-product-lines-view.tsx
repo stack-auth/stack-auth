@@ -13,7 +13,6 @@ import {
   DialogHeader,
   DialogTitle,
   DropdownMenu,
-  DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
@@ -27,17 +26,19 @@ import {
   toast
 } from "@/components/ui";
 import { cn } from "@/lib/utils";
-import { CaretUpDownIcon, CodeIcon, CopyIcon, DotsThreeVerticalIcon, EyeIcon, FileTextIcon, GiftIcon, HardDriveIcon, InfoIcon, PencilSimpleIcon, PlusIcon, PuzzlePieceIcon, StackIcon, TrashIcon, XIcon } from "@phosphor-icons/react";
+import { DndContext, DragOverlay, useDraggable, useDroppable, type DragEndEvent, type DragStartEvent } from '@dnd-kit/core';
+import { CaretUpDownIcon, CircleNotchIcon, CodeIcon, CopyIcon, DotsSixVerticalIcon, DotsThreeVerticalIcon, EyeIcon, FileTextIcon, HardDriveIcon, InfoIcon, PencilSimpleIcon, PlusIcon, PuzzlePieceIcon, StackIcon, TrashIcon, XIcon } from "@phosphor-icons/react";
 import { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
 import { getUserSpecifiedIdErrorMessage, isValidUserSpecifiedId } from "@stackframe/stack-shared/dist/schema-fields";
 import type { DayInterval } from "@stackframe/stack-shared/dist/utils/dates";
 import { prettyPrintWithMagnitudes } from "@stackframe/stack-shared/dist/utils/numbers";
 import { typedEntries, typedFromEntries } from "@stackframe/stack-shared/dist/utils/objects";
+import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
 import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
 import { urlString } from '@stackframe/stack-shared/dist/utils/urls';
 import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useAdminApp, useProjectId } from "../../use-admin-app";
-import { IntervalPopover, OrSeparator, SectionHeading } from "./components";
+import { IntervalPopover, OrSeparator } from "./components";
 import { ProductDialog } from "./product-dialog";
 import { ProductPriceRow } from "./product-price-row";
 import {
@@ -45,7 +46,6 @@ import {
   getPricesObject,
   intervalLabel,
   shortIntervalLabel,
-  type Price,
   type PricesObject,
   type Product
 } from "./utils";
@@ -440,16 +440,91 @@ type ProductCardProps = {
   existingItems: Array<{ id: string, displayName: string, customerType: string }>,
   onSave: (id: string, product: Product) => Promise<void>,
   onDelete: (id: string) => Promise<void>,
-  onDuplicate: (product: Product) => void,
   onCreateNewItem: (customerType?: 'user' | 'team' | 'custom') => void,
   onOpenDetails: (product: Product) => void,
-  isDraft?: boolean,
-  onCancelDraft?: () => void,
   // Table mode props - when part of a pricing table
   isColumnInTable?: boolean,
   isFirstColumn?: boolean,
   isLastColumn?: boolean,
+  // Drag handle props
+  isDragging?: boolean,
+  dragHandleProps?: {
+    attributes: ReturnType<typeof useDraggable>['attributes'],
+    listeners: ReturnType<typeof useDraggable>['listeners'],
+  },
 };
+
+// Wrapper component that makes ProductCard draggable
+function DraggableProductCard(props: Omit<ProductCardProps, 'isDragging' | 'dragHandleProps'>) {
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
+    id: props.id,
+    data: {
+      productId: props.id,
+      customerType: props.product.customerType,
+      productLineId: props.product.productLineId,
+    },
+  });
+
+  // When using DragOverlay, the original element stays in place but becomes semi-transparent
+  // The DragOverlay component renders the visual preview that follows the cursor
+  return (
+    <div ref={setNodeRef} style={{ opacity: isDragging ? 0.4 : undefined }}>
+      <ProductCard
+        {...props}
+        isDragging={isDragging}
+        dragHandleProps={{ attributes, listeners }}
+      />
+    </div>
+  );
+}
+
+// Droppable zone for product lines
+type DroppableProductLineZoneProps = {
+  productLineId: string | undefined, // undefined means "No product line"
+  customerType: 'user' | 'team' | 'custom' | undefined,
+  children: ReactNode,
+  activeDragCustomerType: 'user' | 'team' | 'custom' | null,
+};
+
+function DroppableProductLineZone({ productLineId, customerType, children, activeDragCustomerType }: DroppableProductLineZoneProps) {
+  const { setNodeRef, isOver, active } = useDroppable({
+    id: productLineId ?? "no-product-line",
+    data: {
+      productLineId,
+      customerType,
+    },
+  });
+
+  // Check if this drop zone is valid for the currently dragged product
+  const isDraggedProductCompatible = activeDragCustomerType
+    ? (productLineId === undefined || customerType === activeDragCustomerType)
+    : false;
+
+  const isActiveDrag = !!active;
+  const showCompatibleIndicator = isActiveDrag && isDraggedProductCompatible;
+  const showIncompatibleIndicator = isActiveDrag && !isDraggedProductCompatible && activeDragCustomerType;
+
+  return (
+    <div
+      ref={setNodeRef}
+      className={cn(
+        "relative rounded-2xl transition-all duration-150",
+        showCompatibleIndicator && "ring-2 ring-primary/50 ring-offset-2 ring-offset-background",
+        isOver && isDraggedProductCompatible && "ring-primary bg-primary/5",
+        isOver && showIncompatibleIndicator && "ring-destructive/50 bg-destructive/5"
+      )}
+    >
+      {children}
+      {isOver && showIncompatibleIndicator && (
+        <div className="absolute inset-0 rounded-2xl bg-destructive/10 flex items-center justify-center pointer-events-none">
+          <span className="text-xs text-destructive font-medium px-2 py-1 bg-background/90 rounded">
+            Incompatible customer type
+          </span>
+        </div>
+      )}
+    </div>
+  );
+}
 
 // Customer type badge colors
 const CUSTOMER_TYPE_COLORS = {
@@ -458,37 +533,14 @@ const CUSTOMER_TYPE_COLORS = {
   custom: 'bg-amber-500/15 text-amber-600 dark:bg-amber-500/20 dark:text-amber-400 ring-amber-500/30',
 } as const;
 
-function ProductCard({ id, product, allProducts, existingItems, onSave, onDelete, onDuplicate, onCreateNewItem, onOpenDetails, isDraft, onCancelDraft, isColumnInTable, isFirstColumn, isLastColumn }: ProductCardProps) {
+function ProductCard({ id, product, allProducts, existingItems, onSave, onDelete, onCreateNewItem, onOpenDetails, isColumnInTable, isFirstColumn, isLastColumn, isDragging, dragHandleProps }: ProductCardProps) {
   const projectId = useProjectId();
   const router = useRouter();
   const customerType = product.customerType;
-  const [isEditing, setIsEditing] = useState(!!isDraft);
-  const [draft, setDraft] = useState<Product>(product);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
-  const [editingPriceId, setEditingPriceId] = useState<string | undefined>(undefined);
-  const [editingPricesIsFreeMode, setEditingPricesIsFreeMode] = useState(false);
-  const cardRef = useRef<HTMLDivElement | null>(null);
-  const [hasAutoScrolled, setHasAutoScrolled] = useState(false);
-  const [localProductId, setLocalProductId] = useState<string>(id);
   const [currentHash, setCurrentHash] = useState<string | null>(null);
   const hashAnchor = `#product-${id}`;
   const isHashTarget = currentHash === hashAnchor;
-
-  useEffect(() => {
-    // Only sync draft with product prop when not actively editing
-    // This prevents losing unsaved changes when other parts of the config update
-    if (!isEditing) {
-      setDraft(product);
-      setLocalProductId(id);
-    }
-  }, [product, id, isEditing]);
-
-  useEffect(() => {
-    if (isDraft && !hasAutoScrolled && cardRef.current) {
-      cardRef.current.scrollIntoView({ behavior: 'auto', block: 'nearest', inline: 'center' });
-      setHasAutoScrolled(true);
-    }
-  }, [isDraft, hasAutoScrolled]);
 
   useEffect(() => {
     const updateFromHash = () => {
@@ -511,71 +563,35 @@ function ProductCard({ id, product, allProducts, existingItems, onSave, onDelete
     };
   }, [hashAnchor, isHashTarget, currentHash]);
 
-  const pricesObject: PricesObject = getPricesObject(draft);
+  const pricesObject: PricesObject = getPricesObject(product);
   const priceCount = Object.keys(pricesObject).length;
-  const hasExistingPrices = priceCount > 0;
-
-  useEffect(() => {
-    setEditingPricesIsFreeMode(hasExistingPrices && (editingPricesIsFreeMode || draft.prices === 'include-by-default'));
-  }, [editingPricesIsFreeMode, draft.prices, hasExistingPrices]);
-
-  const canSaveProduct = draft.prices === 'include-by-default' || (typeof draft.prices === 'object' && hasExistingPrices);
-  const saveDisabledReason = canSaveProduct ? undefined : "Add at least one price or set Include by default";
-
-  const handleRemovePrice = (priceId: string) => {
-    setDraft(prev => {
-      const nextPrices: PricesObject = typeof prev.prices !== 'object' ? {} : { ...prev.prices };
-      delete nextPrices[priceId];
-      return { ...prev, prices: nextPrices };
-    });
-    if (editingPriceId === priceId) setEditingPriceId(undefined);
-  };
-
-  const handleAddOrEditIncludedItem = (itemId: string, item: Product['includedItems'][string]) => {
-    setDraft(prev => ({
-      ...prev,
-      includedItems: {
-        ...prev.includedItems,
-        [itemId]: item,
-      },
-    }));
-  };
-
-  const handleRemoveIncludedItem = (itemId: string) => {
-    setDraft(prev => {
-      const next: Product['includedItems'] = { ...prev.includedItems };
-      delete next[itemId];
-      return { ...prev, includedItems: next };
-    });
-  };
 
   const generateComprehensivePrompt = (): string => {
-    const pricesObj = getPricesObject(draft);
-    const priceEntries = typedEntries(pricesObj);
+    const priceEntries = typedEntries(pricesObject);
 
-    let prompt = `# Product Implementation Guide: ${draft.displayName || localProductId}\n\n`;
+    let prompt = `# Product Implementation Guide: ${product.displayName || id}\n\n`;
 
     prompt += `## Product Overview\n`;
-    prompt += `- **Product ID**: \`${localProductId}\`\n`;
-    prompt += `- **Display Name**: ${draft.displayName || 'Untitled Product'}\n`;
-    prompt += `- **Customer Type**: ${draft.customerType}\n`;
-    if (draft.freeTrial) {
-      const [count, unit] = draft.freeTrial;
+    prompt += `- **Product ID**: \`${id}\`\n`;
+    prompt += `- **Display Name**: ${product.displayName || 'Untitled Product'}\n`;
+    prompt += `- **Customer Type**: ${product.customerType}\n`;
+    if (product.freeTrial) {
+      const [count, unit] = product.freeTrial;
       prompt += `- **Free Trial**: ${count} ${count === 1 ? unit : unit + 's'}\n`;
     }
-    prompt += `- **Server Only**: ${draft.serverOnly ? 'Yes' : 'No'}\n`;
-    prompt += `- **Stackable**: ${draft.stackable ? 'Yes' : 'No'}\n`;
-    if (draft.isAddOnTo && typeof draft.isAddOnTo === 'object') {
-      const addOnProductIds = Object.keys(draft.isAddOnTo);
+    prompt += `- **Server Only**: ${product.serverOnly ? 'Yes' : 'No'}\n`;
+    prompt += `- **Stackable**: ${product.stackable ? 'Yes' : 'No'}\n`;
+    if (product.isAddOnTo && typeof product.isAddOnTo === 'object') {
+      const addOnProductIds = Object.keys(product.isAddOnTo);
       prompt += `- **Add-on To**: ${addOnProductIds.join(', ')}\n`;
     }
-    if (draft.productLineId) {
-      prompt += `- **Product Line ID**: ${draft.productLineId}\n`;
+    if (product.productLineId) {
+      prompt += `- **Product Line ID**: ${product.productLineId}\n`;
     }
     prompt += `\n`;
 
     prompt += `## Pricing Structure\n`;
-    if (draft.prices === 'include-by-default') {
+    if (product.prices === 'include-by-default') {
       prompt += `This product is included by default (free).\n\n`;
     } else if (priceEntries.length === 0) {
       prompt += `No prices configured.\n\n`;
@@ -615,7 +631,7 @@ function ProductCard({ id, product, allProducts, existingItems, onSave, onDelete
       });
     }
 
-    const itemsList = Object.entries(draft.includedItems);
+    const itemsList = Object.entries(product.includedItems);
     if (itemsList.length > 0) {
       prompt += `## Included Items\n`;
       itemsList.forEach(([itemId, item]) => {
@@ -640,21 +656,21 @@ function ProductCard({ id, product, allProducts, existingItems, onSave, onDelete
     prompt += `## Implementation Code\n\n`;
     prompt += `To create a checkout URL for this product:\n\n`;
     prompt += `\`\`\`typescript\n`;
-    prompt += `const url = await ${draft.customerType}.createCheckoutUrl({ productId: "${localProductId}" });\n`;
+    prompt += `const url = await ${product.customerType}.createCheckoutUrl({ productId: "${id}" });\n`;
     prompt += `window.open(url, "_blank");\n`;
     prompt += `\`\`\`\n\n`;
 
     prompt += `## Implementation Notes\n\n`;
-    if (draft.serverOnly) {
+    if (product.serverOnly) {
       prompt += `- This product can only be purchased from server-side code. Use \`stackServerApp\` instead of \`stackClientApp\`.\n`;
     }
-    if (draft.stackable) {
+    if (product.stackable) {
       prompt += `- This product is stackable, meaning customers can purchase it multiple times and quantities will accumulate.\n`;
     }
-    if (draft.isAddOnTo && typeof draft.isAddOnTo === 'object') {
+    if (product.isAddOnTo && typeof product.isAddOnTo === 'object') {
       prompt += `- This is an add-on product. Customers must already have one of the base products to purchase this.\n`;
     }
-    if (draft.freeTrial) {
+    if (product.freeTrial) {
       prompt += `- This product includes a free trial period. Customers will not be charged until the trial ends.\n`;
     }
     if (itemsList.length > 0) {
@@ -668,13 +684,13 @@ function ProductCard({ id, product, allProducts, existingItems, onSave, onDelete
       prompt += `### Getting Item Quantities\n\n`;
       prompt += `**Server-side (recommended)**:\n\n`;
       prompt += `\`\`\`typescript\n`;
-      if (draft.customerType === 'user') {
+      if (product.customerType === 'user') {
         prompt += `// Get a user and their item\n`;
         prompt += `const user = await stackServerApp.getUser({ userId: "user_123" });\n`;
         prompt += `const item = await user.getItem("${itemsList[0][0]}");\n`;
         prompt += `console.log(\`Current quantity: \${item.quantity}\`);\n`;
         prompt += `console.log(\`Display name: \${item.displayName}\`);\n`;
-      } else if (draft.customerType === 'team') {
+      } else if (product.customerType === 'team') {
         prompt += `// Get a team and their item\n`;
         prompt += `const team = await stackServerApp.getTeam({ teamId: "team_123" });\n`;
         prompt += `const item = await team.getItem("${itemsList[0][0]}");\n`;
@@ -691,7 +707,7 @@ function ProductCard({ id, product, allProducts, existingItems, onSave, onDelete
 
       prompt += `**Client-side (React)**:\n\n`;
       prompt += `\`\`\`typescript\n`;
-      if (draft.customerType === 'user') {
+      if (product.customerType === 'user') {
         prompt += `// In a React component\n`;
         prompt += `const user = useUser();\n`;
         prompt += `const item = user?.useItem("${itemsList[0][0]}");\n`;
@@ -700,7 +716,7 @@ function ProductCard({ id, product, allProducts, existingItems, onSave, onDelete
         prompt += `  // Use item.nonNegativeQuantity for display (clamps to 0)\n`;
         prompt += `  console.log(\`Available: \${item.nonNegativeQuantity}\`);\n`;
         prompt += `}\n`;
-      } else if (draft.customerType === 'team') {
+      } else if (product.customerType === 'team') {
         prompt += `// In a React component with team context\n`;
         prompt += `const team = useTeam();\n`;
         prompt += `const item = team?.useItem("${itemsList[0][0]}");\n`;
@@ -714,12 +730,12 @@ function ProductCard({ id, product, allProducts, existingItems, onSave, onDelete
       prompt += `### Modifying Item Quantities (Server-side only)\n\n`;
       prompt += `**Increase quantity** (add credits/resources):\n\n`;
       prompt += `\`\`\`typescript\n`;
-      if (draft.customerType === 'user') {
+      if (product.customerType === 'user') {
         prompt += `const user = await stackServerApp.getUser({ userId: "user_123" });\n`;
         prompt += `const item = await user.getItem("${itemsList[0][0]}");\n`;
         prompt += `// Add 100 units\n`;
         prompt += `await item.increaseQuantity(100);\n`;
-      } else if (draft.customerType === 'team') {
+      } else if (product.customerType === 'team') {
         prompt += `const team = await stackServerApp.getTeam({ teamId: "team_123" });\n`;
         prompt += `const item = await team.getItem("${itemsList[0][0]}");\n`;
         prompt += `// Add 100 units\n`;
@@ -734,7 +750,7 @@ function ProductCard({ id, product, allProducts, existingItems, onSave, onDelete
 
       prompt += `**Decrease quantity** (consume credits/resources):\n\n`;
       prompt += `\`\`\`typescript\n`;
-      if (draft.customerType === 'user') {
+      if (product.customerType === 'user') {
         prompt += `const user = await stackServerApp.getUser({ userId: "user_123" });\n`;
         prompt += `const item = await user.getItem("${itemsList[0][0]}");\n`;
         prompt += `// Consume 50 units (allows negative balance)\n`;
@@ -746,7 +762,7 @@ function ProductCard({ id, product, allProducts, existingItems, onSave, onDelete
         prompt += `  // Insufficient quantity - handle accordingly\n`;
         prompt += `  throw new Error("Insufficient credits");\n`;
         prompt += `}\n`;
-      } else if (draft.customerType === 'team') {
+      } else if (product.customerType === 'team') {
         prompt += `const team = await stackServerApp.getTeam({ teamId: "team_123" });\n`;
         prompt += `const item = await team.getItem("${itemsList[0][0]}");\n`;
         prompt += `// Consume 50 units\n`;
@@ -795,497 +811,91 @@ function ProductCard({ id, product, allProducts, existingItems, onSave, onDelete
     return prompt;
   };
 
-  const renderPrimaryPrices = (mode: 'editing' | 'view') => {
+  const renderPrimaryPrices = () => {
     const entries = Object.entries(pricesObject);
     if (entries.length === 0) {
       return null;
     }
     return (
-      <div className={cn(
-        "shrink-0",
-        mode === 'view' ? "space-y-3 text-center" : "flex flex-col gap-3"
-      )}>
+      <div className="shrink-0 space-y-3 text-center">
         {entries.map(([pid, price], index) => (
           <Fragment key={pid}>
             <ProductPriceRow
               priceId={pid}
               price={price}
-              isFree={editingPricesIsFreeMode}
-              includeByDefault={draft.prices === 'include-by-default'}
-              readOnly={mode !== 'editing'}
-              startEditing={mode === 'editing'}
+              isFree={false}
+              includeByDefault={product.prices === 'include-by-default'}
+              readOnly={true}
+              startEditing={false}
               existingPriceIds={entries.map(([k]) => k).filter(k => k !== pid)}
-              onSave={(newId, newPrice) => {
-                const finalId = newId || pid;
-                setDraft(prev => {
-                  if (newPrice === 'include-by-default') {
-                    return { ...prev, prices: 'include-by-default' };
-                  }
-                  const prevPrices: PricesObject = getPricesObject(prev);
-                  const nextPrices: PricesObject = { ...prevPrices };
-                  if (newId && newId !== pid) {
-                    if (Object.prototype.hasOwnProperty.call(nextPrices, newId)) {
-                      toast({ title: "Price ID already exists" });
-                      return prev; // Do not change state
-                    }
-                    delete nextPrices[pid];
-                  }
-                  nextPrices[finalId] = newPrice;
-                  return { ...prev, prices: nextPrices };
-                });
-                if (editingPriceId && finalId === editingPriceId) {
-                  setEditingPriceId(undefined);
-                }
-              }}
-              onRemove={() => handleRemovePrice(pid)}
+              onSave={() => { /* no-op in view mode */ }}
+              onRemove={() => { /* no-op in view mode */ }}
             />
-            {((mode !== "view" && !editingPricesIsFreeMode) || index < entries.length - 1) && <OrSeparator />}
+            {index < entries.length - 1 && <OrSeparator />}
           </Fragment>
         ))}
       </div>
     );
   };
 
-  const itemsList = Object.entries(draft.includedItems);
+  const itemsList = Object.entries(product.includedItems);
 
-  const couldBeAddOnTo = allProducts.filter(o => o.product.productLineId === draft.productLineId && o.id !== id);
-  const isAddOnTo = allProducts.filter(o => draft.isAddOnTo && o.id in draft.isAddOnTo);
+  const isAddOnTo = allProducts.filter(o => product.isAddOnTo && o.id in product.isAddOnTo);
 
   const PRODUCT_TOGGLE_OPTIONS = [{
     key: 'serverOnly' as const,
     label: 'Server only',
     shortLabel: 'Server only',
     description: "Restricts this product to only be purchased from server-side calls. Use this for backend-initiated purchases.",
-    active: !!draft.serverOnly,
+    active: !!product.serverOnly,
     visible: true,
     icon: <HardDriveIcon size={14} />,
-    onToggle: () => setDraft(prev => ({ ...prev, serverOnly: !prev.serverOnly })),
-    wrapButton: (button: ReactNode) => button,
   }, {
     key: 'stackable' as const,
     label: 'Stackable',
     shortLabel: 'Stackable',
     description: "Allows customers to purchase this product multiple times. Each purchase adds to their existing quantity.",
-    active: !!draft.stackable,
+    active: !!product.stackable,
     visible: true,
     icon: <StackIcon size={14} />,
-    onToggle: () => setDraft(prev => ({ ...prev, stackable: !prev.stackable })),
-    wrapButton: (button: ReactNode) => button,
   }, {
     key: 'addon' as const,
     label: 'Add-on',
     shortLabel: 'Add-on',
     description: "Makes this an optional extra that customers can purchase alongside a main product.",
-    visible: draft.isAddOnTo !== false || couldBeAddOnTo.length > 0,
-    active: draft.isAddOnTo !== false,
+    visible: product.isAddOnTo !== false,
+    active: product.isAddOnTo !== false,
     icon: <PuzzlePieceIcon size={14} />,
-    onToggle: isAddOnTo.length === 0 && draft.isAddOnTo !== false ? () => setDraft(prev => ({ ...prev, isAddOnTo: false })) : undefined,
-    wrapButton: (button: ReactNode) => isAddOnTo.length === 0 && draft.isAddOnTo !== false ? button : (
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          {button}
-        </DropdownMenuTrigger>
-        <DropdownMenuContent>
-          {couldBeAddOnTo.map(product => (
-            <DropdownMenuCheckboxItem
-              checked={isAddOnTo.some(o => o.id === product.id)}
-              key={product.id}
-              onCheckedChange={(checked) => setDraft(prev => {
-                const newIsAddOnTo = { ...prev.isAddOnTo || {} };
-                if (checked) {
-                  newIsAddOnTo[product.id] = true;
-                } else {
-                  delete newIsAddOnTo[product.id];
-                }
-                return { ...prev, isAddOnTo: Object.keys(newIsAddOnTo).length > 0 ? newIsAddOnTo : false };
-              })}
-              className="cursor-pointer"
-            >
-              {product.product.displayName} ({product.id})
-            </DropdownMenuCheckboxItem>
-          ))}
-        </DropdownMenuContent>
-      </DropdownMenu>
-    ),
   }] as const;
 
-  const handleCancelEdit = () => {
-    if (isDraft && onCancelDraft) {
-      onCancelDraft();
-      return;
-    }
-    setIsEditing(false);
-    setDraft(product);
-    setLocalProductId(id);
-    setEditingPriceId(undefined);
-  };
-
-  const handleSaveEdit = async () => {
-    const trimmed = localProductId.trim();
-    const validId = trimmed && isValidUserSpecifiedId(trimmed) ? trimmed : id;
-    try {
-      if (validId !== id) {
-        await onSave(validId, draft);
-        await onDelete(id);
-      } else {
-        await onSave(id, draft);
-      }
-      setIsEditing(false);
-      setEditingPriceId(undefined);
-    } catch (e) {
-      // Validation error - don't close edit mode
-      if (e instanceof ValidationError) {
-        return;
-      }
-      throw e;
-    }
-  };
-
-  const renderToggleButtons = (mode: 'editing' | 'view') => {
-    const getLabel = (b: typeof PRODUCT_TOGGLE_OPTIONS[number], editing: boolean) => {
+  const renderToggleButtons = () => {
+    const getLabel = (b: typeof PRODUCT_TOGGLE_OPTIONS[number]) => {
       if (b.key === "addon" && isAddOnTo.length > 0) {
         return <span key={b.key}>
           Add-on to {isAddOnTo.map((o, i) => (
             <Fragment key={o.id}>
               {i > 0 && ", "}
-              {editing ? o.product.displayName : (
-                <Link className="underline hover:text-foreground transition-colors" href={`#product-${o.id}`}>
-                  {o.product.displayName}
-                </Link>
-              )}
+              <Link className="underline hover:text-foreground transition-colors" href={`#product-${o.id}`}>
+                {o.product.displayName}
+              </Link>
             </Fragment>
           ))}
         </span>;
       }
       return b.shortLabel;
     };
-    return mode === 'editing' ? (
-      PRODUCT_TOGGLE_OPTIONS
-        .filter(b => b.visible !== false)
-        .map((b) => {
-          const wrap = b.wrapButton;
-          return (
-            <SimpleTooltip tooltip={b.description} key={b.key}>
-              {wrap(
-                <button
-                  className={cn(
-                    "flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors duration-150 hover:transition-none",
-                    b.active
-                      ? "border-primary/40 bg-primary/10 text-primary"
-                      : "border-border bg-background/80 text-muted-foreground line-through"
-                  )}
-                  onClick={b.onToggle}
-                >
-                  {b.icon}
-                  {getLabel(b, true)}
-                </button>
-              )}
-            </SimpleTooltip>
-          );
-        })
-    ) : (
-      PRODUCT_TOGGLE_OPTIONS
-        .filter(b => b.visible !== false)
-        .filter(b => b.active)
-        .map((b) => {
-          return (
-            <SimpleTooltip tooltip={b.description} key={b.key}>
-              <span className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-help">
-                {b.icon}
-                {getLabel(b, false)}
-              </span>
-            </SimpleTooltip>
-          );
-        })
-    );
+    return PRODUCT_TOGGLE_OPTIONS
+      .filter(b => b.visible !== false)
+      .filter(b => b.active)
+      .map((b) => (
+        <SimpleTooltip tooltip={b.description} key={b.key}>
+          <span className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-help">
+            {b.icon}
+            {getLabel(b)}
+          </span>
+        </SimpleTooltip>
+      ));
   };
-
-  const editingContent = (
-    <div className={cn(
-      "flex h-full flex-col rounded-2xl overflow-hidden",
-      "bg-gray-200/80 dark:bg-[hsl(240,10%,5.5%)]",
-      "border border-border/50 dark:border-foreground/[0.12]",
-      "shadow-lg transition-colors duration-150",
-      isHashTarget && "border-primary shadow-[0_0_0_1px_rgba(59,130,246,0.35)]"
-    )}>
-      {/* Header */}
-      <div className="px-5 pt-5 pb-4 border-b border-border/20 dark:border-foreground/[0.06]">
-        <h2 className="text-lg font-semibold tracking-tight text-center">
-          {isDraft ? "New product" : "Edit product"}
-        </h2>
-      </div>
-
-      {/* Content */}
-      <div className="flex-1 overflow-y-auto">
-        <div className="flex flex-col gap-5 p-5">
-          {/* Name, ID & Type Fields */}
-          <div className="grid gap-4 sm:grid-cols-3">
-            <div className="flex flex-col gap-1.5">
-              <LabelWithInfo tooltip="The display name shown to customers on checkout pages and invoices">
-                Offer Name
-              </LabelWithInfo>
-              <Input
-                className="h-10 rounded-xl border border-border/60 dark:border-foreground/[0.1] bg-background dark:bg-[hsl(240,10%,8%)] px-3 text-sm"
-                value={draft.displayName || ""}
-                onChange={(event) => {
-                  const value = event.target.value;
-                  setDraft(prev => ({ ...prev, displayName: value }));
-                }}
-                placeholder="e.g., Pro Plan"
-              />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <LabelWithInfo tooltip="A unique identifier used in your code to reference this product. Use lowercase letters, numbers, and hyphens only.">
-                Offer ID
-              </LabelWithInfo>
-              <SimpleTooltip tooltip={isDraft ? undefined : "Offer IDs cannot be changed after creation"}>
-                <Input
-                  className="h-10 rounded-xl border border-border/60 dark:border-foreground/[0.1] bg-background dark:bg-[hsl(240,10%,8%)] px-3 text-sm font-mono"
-                  value={localProductId}
-                  onChange={(event) => {
-                    const value = event.target.value.toLowerCase().replace(/[^a-z0-9_\-]/g, '-');
-                    setLocalProductId(value);
-                  }}
-                  placeholder="e.g., pro-plan"
-                  disabled={!isDraft}
-                />
-              </SimpleTooltip>
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <LabelWithInfo tooltip="Who can purchase this product: individual users, teams, or custom customers managed via server-side code">
-                Customer Type
-              </LabelWithInfo>
-              <Popover>
-                <PopoverTrigger asChild>
-                  <button className={cn(
-                    "flex h-10 w-full items-center justify-between px-3 text-sm font-medium",
-                    "rounded-xl border border-border/60 dark:border-foreground/[0.1]",
-                    "bg-background dark:bg-[hsl(240,10%,8%)]",
-                    "transition-colors duration-150 hover:transition-none hover:bg-foreground/[0.03]"
-                  )}>
-                    <span className={cn(
-                      "inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wide ring-1",
-                      CUSTOMER_TYPE_COLORS[draft.customerType]
-                    )}>
-                      {draft.customerType}
-                    </span>
-                    <CaretUpDownIcon className="h-4 w-4 text-muted-foreground" />
-                  </button>
-                </PopoverTrigger>
-                <PopoverContent align="start" className="w-64 p-0 overflow-hidden">
-                  <div className="flex flex-col p-1">
-                    {(['user', 'team', 'custom'] as const).map((type) => {
-                      const isSelected = draft.customerType === type;
-                      const descriptions = {
-                        user: 'For individual users',
-                        team: 'For teams or organizations',
-                        custom: 'Server-side managed customers',
-                      };
-                      return (
-                        <button
-                          key={type}
-                          className={cn(
-                            "flex items-center gap-3 w-full px-3 py-2.5 rounded-lg text-left",
-                            "transition-colors duration-150 hover:transition-none",
-                            isSelected
-                              ? "bg-foreground/[0.08] text-foreground"
-                              : "hover:bg-foreground/[0.04] text-foreground"
-                          )}
-                          onClick={() => {
-                            setDraft(prev => ({ ...prev, customerType: type, includedItems: {} }));
-                          }}
-                        >
-                          <span className={cn(
-                            "inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wide ring-1",
-                            CUSTOMER_TYPE_COLORS[type]
-                          )}>
-                            {type}
-                          </span>
-                          <span className="text-xs text-muted-foreground">{descriptions[type]}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </PopoverContent>
-              </Popover>
-            </div>
-          </div>
-
-          {/* Toggle Options */}
-          <div className="flex flex-wrap gap-2">
-            {renderToggleButtons('editing')}
-          </div>
-
-          {/* Prices Section */}
-          <SectionHeading label="Prices" />
-          <div className="flex flex-col gap-3">
-            {renderPrimaryPrices('editing')}
-            {!editingPricesIsFreeMode && (
-              <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center">
-                <Button
-                  variant="outline"
-                  className={cn(
-                    "flex h-10 flex-1 items-center justify-center gap-2",
-                    "rounded-xl border border-dashed border-foreground/[0.1]",
-                    "bg-background/40 dark:bg-[hsl(240,10%,8%)]/50 hover:bg-foreground/[0.03]",
-                    "text-sm font-medium text-muted-foreground hover:text-foreground",
-                    "transition-all duration-150 hover:transition-none"
-                  )}
-                  onClick={() => {
-                    const tempId = `price-${Date.now().toString(36).slice(2, 8)}`;
-                    const newPrice: Price = { USD: '0.00', serverOnly: false };
-                    setDraft(prev => {
-                      const nextPrices: PricesObject = {
-                        ...getPricesObject(prev),
-                        [tempId]: newPrice,
-                      };
-                      return { ...prev, prices: nextPrices };
-                    });
-                    setEditingPriceId(tempId);
-                  }}
-                >
-                  <PlusIcon className="h-4 w-4" />
-                  {hasExistingPrices ? "Add alternative price" : "Add price"}
-                </Button>
-                {!hasExistingPrices && (
-                  <>
-                    <span className="text-[10px] font-medium text-muted-foreground/60 uppercase tracking-wider text-center">or</span>
-                    <Button
-                      variant="outline"
-                      className={cn(
-                        "flex h-10 flex-1 items-center justify-center gap-2",
-                        "rounded-xl border border-dashed border-foreground/[0.1]",
-                        "bg-background/40 dark:bg-[hsl(240,10%,8%)]/50 hover:bg-foreground/[0.03]",
-                        "text-sm font-medium text-muted-foreground hover:text-foreground",
-                        "transition-all duration-150 hover:transition-none"
-                      )}
-                      onClick={() => {
-                        setDraft(prev => ({ ...prev, prices: { free: { USD: '0.00', serverOnly: false } } }));
-                        setEditingPricesIsFreeMode(true);
-                      }}
-                    >
-                      <GiftIcon className="h-4 w-4" />
-                      Make free
-                    </Button>
-                  </>
-                )}
-              </div>
-            )}
-          </div>
-
-          {/* Includes Section */}
-          <SectionHeading label="Includes" />
-          {itemsList.length === 0 ? (
-            <div className={cn(
-              "rounded-2xl border border-dashed border-foreground/[0.1]",
-              "bg-background/40 dark:bg-[hsl(240,10%,8%)]/50",
-              "py-8 text-center text-sm text-muted-foreground"
-            )}>
-              No items yet
-            </div>
-          ) : (
-            <div className="flex flex-col gap-3">
-              {itemsList.map(([itemId, item]) => {
-                const itemMeta = existingItems.find(i => i.id === itemId);
-                const itemLabel = itemMeta ? itemMeta.displayName : 'Select item';
-                return (
-                  <ProductItemRow
-                    key={itemId}
-                    activeType={customerType}
-                    itemId={itemId}
-                    item={item}
-                    itemDisplayName={itemLabel}
-                    allItems={existingItems}
-                    existingIncludedItemIds={Object.keys(draft.includedItems).filter(id => id !== itemId)}
-                    startEditing={true}
-                    readOnly={false}
-                    onSave={(id, updated) => handleAddOrEditIncludedItem(id, updated)}
-                    onChangeItemId={(newItemId) => {
-                      setDraft(prev => {
-                        if (Object.prototype.hasOwnProperty.call(prev.includedItems, newItemId)) {
-                          toast({ title: "Item already included" });
-                          return prev;
-                        }
-                        const next: Product['includedItems'] = { ...prev.includedItems };
-                        const value = next[itemId];
-                        delete next[itemId];
-                        next[newItemId] = value;
-                        return { ...prev, includedItems: next };
-                      });
-                    }}
-                    onRemove={() => handleRemoveIncludedItem(itemId)}
-                    onCreateNewItem={onCreateNewItem}
-                  />
-                );
-              })}
-            </div>
-          )}
-          <Button
-            variant="outline"
-            className={cn(
-              "flex h-10 w-full items-center justify-center gap-2",
-              "rounded-xl border border-dashed border-foreground/[0.1]",
-              "bg-background/40 dark:bg-[hsl(240,10%,8%)]/50 hover:bg-foreground/[0.03]",
-              "text-sm font-medium text-muted-foreground hover:text-foreground",
-              "transition-all duration-150 hover:transition-none"
-            )}
-            onClick={() => {
-              const available = existingItems.find(i => !Object.prototype.hasOwnProperty.call(draft.includedItems, i.id));
-              const newItemId = available?.id || `__new_item__${Date.now().toString(36).slice(2, 8)}`;
-              const newItem: Product['includedItems'][string] = { quantity: 1, repeat: 'never', expires: 'never' };
-              setDraft(prev => ({
-                ...prev,
-                includedItems: {
-                  ...prev.includedItems,
-                  [newItemId]: newItem,
-                }
-              }));
-            }}
-          >
-            <PlusIcon className="h-4 w-4" />
-            Add Item
-          </Button>
-        </div>
-      </div>
-
-      {/* Footer */}
-      <div className="px-5 py-4 border-t border-border/20 dark:border-foreground/[0.06] flex items-center justify-between gap-3">
-        <button
-          className="flex h-9 w-9 items-center justify-center rounded-lg text-destructive transition-colors duration-150 hover:transition-none hover:bg-destructive/10"
-          onClick={() => {
-            if (isDraft && onCancelDraft) {
-              onCancelDraft();
-            } else {
-              setShowDeleteDialog(true);
-            }
-          }}
-          aria-label="Delete offer"
-        >
-          <TrashIcon className="h-4 w-4" />
-        </button>
-        <div className="ml-auto flex items-center gap-2">
-          <Button
-            variant="ghost"
-            size="sm"
-            className="rounded-lg px-4 text-muted-foreground hover:text-foreground"
-            onClick={handleCancelEdit}
-          >
-            Cancel
-          </Button>
-          <SimpleTooltip tooltip={saveDisabledReason} disabled={canSaveProduct}>
-            <Button
-              size="sm"
-              className="h-9 rounded-lg px-5 bg-foreground text-background hover:bg-foreground/90"
-              disabled={!canSaveProduct}
-              onClick={async () => { await handleSaveEdit(); }}
-            >
-              Save
-            </Button>
-          </SimpleTooltip>
-        </div>
-      </div>
-    </div>
-  );
 
   const handleCardClick = (e: React.MouseEvent) => {
     // Don't navigate if clicking on interactive elements
@@ -1329,14 +939,30 @@ function ProductCard({ id, product, allProducts, existingItems, onSave, onDelete
               {customerType}
             </span>
             <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-mono text-muted-foreground bg-foreground/[0.04] ring-1 ring-foreground/[0.06]">
-              ID: {localProductId}
+              ID: {id}
             </span>
           </div>
           {/* Product name */}
           <h3 className="text-lg font-semibold text-center tracking-tight flex items-center justify-center gap-1.5">
-            {draft.isAddOnTo !== false && <PuzzlePieceIcon className="h-4 w-4 text-muted-foreground shrink-0" />}
-            {draft.displayName || "Untitled Product"}
+            {product.isAddOnTo !== false && <PuzzlePieceIcon className="h-4 w-4 text-muted-foreground shrink-0" />}
+            {product.displayName || "Untitled Product"}
           </h3>
+
+          {/* Drag handle - appears on hover */}
+          {dragHandleProps && (
+            <div
+              className="absolute left-3 top-3 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-hover:transition-none"
+              {...dragHandleProps.attributes}
+              {...dragHandleProps.listeners}
+            >
+              <button
+                className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-foreground/[0.05] transition-colors duration-150 hover:transition-none cursor-grab active:cursor-grabbing"
+                aria-label="Drag to move"
+              >
+                <DotsSixVerticalIcon className="h-4 w-4" />
+              </button>
+            </div>
+          )}
 
           {/* Action menu - appears on hover */}
           <div className="absolute right-3 top-3 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-hover:transition-none">
@@ -1354,13 +980,25 @@ function ProductCard({ id, product, allProducts, existingItems, onSave, onDelete
                   View Details
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem icon={<PencilSimpleIcon className="h-4 w-4" />} onClick={() => {
-                  setIsEditing(true);
-                  setDraft(product);
-                }}>
+                <DropdownMenuItem
+                  icon={<PencilSimpleIcon className="h-4 w-4" />}
+                  onClick={() => router.push(`/projects/${projectId}/payments/products/${id}/edit`)}
+                >
                   Edit
                 </DropdownMenuItem>
-                <DropdownMenuItem icon={<CopyIcon className="h-4 w-4" />} onClick={() => { onDuplicate(product); }}>
+                <DropdownMenuItem
+                  icon={<CopyIcon className="h-4 w-4" />}
+                  onClick={() => {
+                    // Store product data for duplication and navigate to create page
+                    const duplicateKey = `duplicate-${Date.now()}`;
+                    const duplicateData = {
+                      ...product,
+                      displayName: `${product.displayName || id} Copy`,
+                    };
+                    sessionStorage.setItem(duplicateKey, JSON.stringify(duplicateData));
+                    router.push(`/projects/${projectId}/payments/products/new?duplicate=${duplicateKey}`);
+                  }}
+                >
                   Duplicate
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
@@ -1379,7 +1017,7 @@ function ProductCard({ id, product, allProducts, existingItems, onSave, onDelete
         {/* Toggle badges */}
         {PRODUCT_TOGGLE_OPTIONS.some(b => b.visible !== false && b.active) && (
           <div className="flex flex-col items-center gap-1.5 px-4 pb-3">
-            {renderToggleButtons('view')}
+            {renderToggleButtons()}
           </div>
         )}
 
@@ -1388,7 +1026,7 @@ function ProductCard({ id, product, allProducts, existingItems, onSave, onDelete
           "border-t border-border/20 dark:border-foreground/[0.06] px-5 py-4",
           itemsList.length === 0 && "flex-1"
         )}>
-          {renderPrimaryPrices('view')}
+          {renderPrimaryPrices()}
         </div>
 
         {/* Items section - grows to fill available space */}
@@ -1462,16 +1100,13 @@ function ProductCard({ id, product, allProducts, existingItems, onSave, onDelete
 
   return (
     <div
-      ref={cardRef}
       id={`product-${id}`}
       className={cn(
         "shrink-0 transition-all h-full",
-        isColumnInTable
-          ? (isEditing ? "w-[420px]" : "w-[260px]")
-          : (isEditing ? "w-[420px]" : "w-[320px]")
+        isColumnInTable ? "w-[260px]" : "w-[320px]"
       )}
     >
-      {isEditing ? editingContent : viewingContent}
+      {viewingContent}
 
       <ActionDialog
         open={showDeleteDialog}
@@ -1482,7 +1117,6 @@ function ProductCard({ id, product, allProducts, existingItems, onSave, onDelete
           label: "Delete",
           onClick: async () => {
             await onDelete(id);
-            setIsEditing(false);
           }
         }}
         cancelButton
@@ -1495,7 +1129,7 @@ function ProductCard({ id, product, allProducts, existingItems, onSave, onDelete
 
 type ProductLineViewProps = {
   groupedProducts: Map<string | undefined, Array<{ id: string, product: Product }>>,
-  groups: Record<string, { displayName?: string, customerType?: string }>,
+  groups: Record<string, { displayName?: string, customerType?: 'user' | 'team' | 'custom' }>,
   existingItems: Array<{ id: string, displayName: string, customerType: string }>,
   onSaveProduct: (id: string, product: Product) => Promise<void>,
   onDeleteProduct: (id: string) => Promise<void>,
@@ -1508,6 +1142,9 @@ type ProductLineViewProps = {
   createDraftRequestId?: string,
   draftCustomerType: 'user' | 'team' | 'custom',
   onDraftHandled?: () => void,
+  // Drag and drop support
+  paymentsConfig: CompleteConfig['payments'],
+  onMoveProduct: (productId: string, targetProductLineId: string | undefined) => Promise<void>,
 };
 
 // Combined key for productLine + customer type grouping
@@ -1520,7 +1157,7 @@ function productLineTypeKeyToString(key: ProductLineTypeKey): string {
   return `${key.productLineId ?? '__none__'}::${key.customerType}`;
 }
 
-function ProductLineView({ groupedProducts, groups, existingItems, onSaveProduct, onDeleteProduct, onCreateNewItem, onOpenProductDetails, onSaveProductWithGroup, onCreateProductLine, onUpdateProductLine, onDeleteProductLine, createDraftRequestId, draftCustomerType, onDraftHandled }: ProductLineViewProps) {
+function ProductLineView({ groupedProducts, groups, existingItems, onSaveProduct, onDeleteProduct, onCreateNewItem, onOpenProductDetails, onSaveProductWithGroup, onCreateProductLine, onUpdateProductLine, onDeleteProductLine, createDraftRequestId, draftCustomerType, onDraftHandled, paymentsConfig, onMoveProduct }: ProductLineViewProps) {
   const projectId = useProjectId();
   const [drafts, setDrafts] = useState<Array<{ key: string, productLineId: string | undefined, product: Product }>>([]);
   const [creatingGroupKey, setCreatingGroupKey] = useState<string | undefined>(undefined);
@@ -1670,79 +1307,167 @@ function ProductLineView({ groupedProducts, groups, existingItems, onSaveProduct
     return drafts.filter(d => d.productLineId === undefined);
   }, [drafts]);
 
+  // Drag and drop state
+  const [activeDragId, setActiveDragId] = useState<string | null>(null);
+  const [isMovingProduct, setIsMovingProduct] = useState(false);
+  const activeDragProduct = activeDragId ? paymentsConfig.products[activeDragId] : null;
+
+  const handleDragStart = (event: DragStartEvent) => {
+    setActiveDragId(event.active.id as string);
+  };
+
+  const handleDragEnd = async (event: DragEndEvent) => {
+    setActiveDragId(null);
+
+    const { active, over } = event;
+    if (!over) return;
+
+    const draggedProductId = active.id as string;
+    const draggedProduct = paymentsConfig.products[draggedProductId] as Product | undefined;
+    if (!draggedProduct) return;
+
+    // Parse the drop target - it's either a productLineId or "no-product-line"
+    const targetProductLineId = over.id === "no-product-line" ? undefined : (over.id as string);
+
+    // Normalize productLineId values for comparison (treat null, undefined, and empty string as "no product line")
+    const currentProductLineId = draggedProduct.productLineId || undefined;
+    const normalizedTargetProductLineId = targetProductLineId || undefined;
+
+    // Don't do anything if dropped on the same product line
+    if (normalizedTargetProductLineId === currentProductLineId) return;
+
+    // Get the target product line's customer type
+    const targetCustomerType = targetProductLineId
+      ? paymentsConfig.productLines[targetProductLineId].customerType
+      : undefined;
+
+    // Validate customer type compatibility:
+    // - Can always drop to "No product line"
+    // - Can drop to a product line if it has the same customer type as the product
+    if (targetProductLineId && targetCustomerType !== draggedProduct.customerType) {
+      toast({
+        title: "Cannot move product",
+        description: `This product has customer type "${draggedProduct.customerType}" but the target product line is for "${targetCustomerType}" customers.`,
+      });
+      return;
+    }
+
+    // Show loading state and update the product's productLineId
+    setIsMovingProduct(true);
+    try {
+      await onMoveProduct(draggedProductId, targetProductLineId);
+
+      toast({
+        title: "Product moved",
+        description: targetProductLineId
+          ? `Moved to "${paymentsConfig.productLines[targetProductLineId].displayName || targetProductLineId}"`
+          : "Removed from product line",
+      });
+    } finally {
+      setIsMovingProduct(false);
+    }
+  };
+
   return (
-    <div className="space-y-8">
-      {productLinesToRender.map((productLine) => {
-        const productLineId = productLine.id;
-        const customerType = productLine.customerType;
-        const groupName = productLine.displayName;
+    <DndContext onDragStart={handleDragStart} onDragEnd={(event) => runAsynchronously(handleDragEnd(event))}>
+      <div className="space-y-8">
+        {productLinesToRender.map((productLine) => {
+          const productLineId = productLine.id;
+          const customerType = productLine.customerType;
+          const groupName = productLine.displayName;
 
-        // Get products for this product line
-        const products = getProductsForProductLine(productLineId);
+          // Get products for this product line
+          const products = getProductsForProductLine(productLineId);
 
-        // Filter drafts for this product line
-        const matchingDrafts = getDraftsForProductLine(productLineId);
+          // Filter drafts for this product line
+          const matchingDrafts = getDraftsForProductLine(productLineId);
 
-        // Separate non-add-on and add-on products for pricing table layout
-        const nonAddOnProducts = products.filter(({ product }) => product.isAddOnTo === false);
-        const addOnProducts = products.filter(({ product }) => product.isAddOnTo !== false);
-        const nonAddOnDrafts = matchingDrafts.filter(d => d.product.isAddOnTo === false);
-        const addOnDrafts = matchingDrafts.filter(d => d.product.isAddOnTo !== false);
+          // Separate non-add-on and add-on products for pricing table layout
+          const nonAddOnProducts = products.filter(({ product }) => product.isAddOnTo === false);
+          const addOnProducts = products.filter(({ product }) => product.isAddOnTo !== false);
+          const nonAddOnDrafts = matchingDrafts.filter(d => d.product.isAddOnTo === false);
+          const addOnDrafts = matchingDrafts.filter(d => d.product.isAddOnTo !== false);
 
-        const hasNonAddOns = nonAddOnProducts.length > 0 || nonAddOnDrafts.length > 0;
+          const hasNonAddOns = nonAddOnProducts.length > 0 || nonAddOnDrafts.length > 0;
 
-        return (
-          <div key={productLineId}>
-            <div className="mb-3 group/productLine-header">
-              <div className="flex items-center gap-2">
-                <h3 className="text-base font-semibold text-foreground">{groupName}</h3>
-                <div className="opacity-0 group-hover/productLine-header:opacity-100 transition-opacity flex items-center gap-1">
-                  <button
-                    onClick={() => {
+          return (
+            <div key={productLineId}>
+              <div className="mb-3 group/productLine-header">
+                <div className="flex items-center gap-2">
+                  <h3 className="text-base font-semibold text-foreground">{groupName}</h3>
+                  <div className="opacity-0 group-hover/productLine-header:opacity-100 transition-opacity flex items-center gap-1">
+                    <button
+                      onClick={() => {
                       setEditingProductLineId(productLineId);
                       setEditingProductLineDisplayName(groups[productLineId].displayName || '');
-                    }}
-                    className="p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-foreground/[0.05] transition-colors duration-150 hover:transition-none"
-                    aria-label="Edit product line"
-                  >
-                    <PencilSimpleIcon className="h-3.5 w-3.5" />
-                  </button>
-                  <button
-                    onClick={() => setDeletingProductLineId(productLineId)}
-                    className="p-1 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors duration-150 hover:transition-none"
-                    aria-label="Delete product line"
-                  >
-                    <TrashIcon className="h-3.5 w-3.5" />
-                  </button>
+                      }}
+                      className="p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-foreground/[0.05] transition-colors duration-150 hover:transition-none"
+                      aria-label="Edit product line"
+                    >
+                      <PencilSimpleIcon className="h-3.5 w-3.5" />
+                    </button>
+                    <button
+                      onClick={() => setDeletingProductLineId(productLineId)}
+                      className="p-1 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors duration-150 hover:transition-none"
+                      aria-label="Delete product line"
+                    >
+                      <TrashIcon className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
                 </div>
-              </div>
-              <div className="flex items-center gap-2 mt-1">
-                <span className={cn(
+                <div className="flex items-center gap-2 mt-1">
+                  <span className={cn(
                   "inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wide ring-1",
                   customerType && customerType in CUSTOMER_TYPE_COLORS
                     ? CUSTOMER_TYPE_COLORS[customerType as keyof typeof CUSTOMER_TYPE_COLORS]
                     : "bg-gray-500/10 text-gray-500 ring-gray-500/30"
                 )}>
-                  {customerType ?? "unknown customer type"}
-                </span>
-                <span className="text-xs text-muted-foreground">
-                  Products in this product line are mutually exclusive (except add-ons)
-                </span>
+                    {customerType ?? "unknown customer type"}
+                  </span>
+                  <span className="text-xs text-muted-foreground">
+                    Products in this product line are mutually exclusive (except add-ons)
+                  </span>
+                </div>
               </div>
-            </div>
-            <div className="relative rounded-2xl bg-foreground/[0.04] ring-1 ring-foreground/[0.06]">
-              <div className="flex gap-4 justify-start overflow-x-auto p-5 min-h-20 pr-16">
-                <div className="flex max-w-max gap-4 items-stretch">
-                  {/* Non-add-on products as a pricing table */}
-                  {nonAddOnProducts.length > 0 && (
-                    <div className={cn(
-                      "flex rounded-2xl overflow-hidden",
-                      "bg-gray-200/80 dark:bg-[hsl(240,10%,5.5%)]",
-                      "border border-border/50 dark:border-foreground/[0.12]",
-                      "shadow-sm"
-                    )}>
-                      {nonAddOnProducts.map(({ id, product }, index) => (
-                        <ProductCard
+              <DroppableProductLineZone
+                productLineId={productLineId}
+                customerType={customerType}
+                activeDragCustomerType={activeDragProduct?.customerType ?? null}
+              >
+                <div className="relative rounded-2xl bg-foreground/[0.04] ring-1 ring-foreground/[0.06]">
+                  <div className="flex gap-4 justify-start overflow-x-auto p-5 min-h-20 pr-16">
+                    <div className="flex max-w-max gap-4 items-stretch">
+                      {/* Non-add-on products as a pricing table */}
+                      {nonAddOnProducts.length > 0 && (
+                        <div className={cn(
+                        "flex rounded-2xl overflow-hidden",
+                        "bg-gray-200/80 dark:bg-[hsl(240,10%,5.5%)]",
+                        "border border-border/50 dark:border-foreground/[0.12]",
+                        "shadow-sm"
+                      )}>
+                          {nonAddOnProducts.map(({ id, product }, index) => (
+                            <DraggableProductCard
+                              key={id}
+                              id={id}
+                              product={product}
+                              allProducts={products}
+                              existingItems={existingItems}
+                              onSave={onSaveProduct}
+                              onDelete={onDeleteProduct}
+                              onCreateNewItem={onCreateNewItem}
+                              onOpenDetails={(o) => onOpenProductDetails(o)}
+                              isColumnInTable
+                              isFirstColumn={index === 0}
+                              isLastColumn={index === nonAddOnProducts.length - 1}
+                            />
+                          ))}
+                        </div>
+                      )}
+
+
+                      {/* Add-on products as separate cards */}
+                      {addOnProducts.map(({ id, product }) => (
+                        <DraggableProductCard
                           key={id}
                           id={id}
                           product={product}
@@ -1750,119 +1475,78 @@ function ProductLineView({ groupedProducts, groups, existingItems, onSaveProduct
                           existingItems={existingItems}
                           onSave={onSaveProduct}
                           onDelete={onDeleteProduct}
-                          onDuplicate={(srcProduct) => {
-                            const key = generateProductId("product");
-                            const duplicated: Product = {
-                              ...srcProduct,
-                              displayName: `${srcProduct.displayName || id} Copy`,
-                            };
-                            setDrafts(prev => [...prev, { key, productLineId, product: duplicated }]);
-                          }}
                           onCreateNewItem={onCreateNewItem}
                           onOpenDetails={(o) => onOpenProductDetails(o)}
-                          isColumnInTable
-                          isFirstColumn={index === 0}
-                          isLastColumn={index === nonAddOnProducts.length - 1}
                         />
                       ))}
+
+                      {/* Add product button */}
+                      <Link href={productLineId && customerType ? urlString`/projects/${projectId}/payments/products/new?productLineId=${productLineId}&customerType=${customerType}` : urlString`/projects/${projectId}/payments/products/new`}>
+                        <Button
+                          variant="outline"
+                          size="plain"
+                          className={cn(
+                          "h-full min-h-[200px] w-[320px] flex flex-col items-center justify-center",
+                          "rounded-2xl border border-dashed border-foreground/[0.1]",
+                          "bg-background/40 hover:bg-foreground/[0.03]",
+                          "text-muted-foreground hover:text-foreground",
+                          "transition-all duration-150 hover:transition-none"
+                        )}
+                        >
+                          <div className="flex flex-col items-center gap-2">
+                            <PlusIcon className="h-6 w-6" />
+                            <span className="text-sm font-medium">Add product</span>
+                          </div>
+                        </Button>
+                      </Link>
                     </div>
-                  )}
+                  </div>
+                </div>
+              </DroppableProductLineZone>
+            </div>
+          );
+        })}
 
-                  {/* Non-add-on drafts as separate cards (since they're always in edit mode) */}
-                  {nonAddOnDrafts.map((d) => (
-                    <ProductCard
-                      key={d.key}
-                      id={d.key}
-                      product={d.product}
-                      allProducts={products}
-                      existingItems={existingItems}
-                      isDraft
-                      onSave={async (specifiedId, product) => {
-                        const newId = specifiedId && specifiedId.trim() && isValidUserSpecifiedId(specifiedId.trim()) && !usedIds.has(specifiedId.trim())
-                          ? specifiedId.trim()
-                          : generateProductId('product');
-                        await onSaveProduct(newId, product);
-                        setDrafts(prev => prev.filter(x => x.key !== d.key));
-                      }}
-                      onDelete={async () => {
-                        setDrafts(prev => prev.filter(x => x.key !== d.key));
-                      }}
-                      onDuplicate={() => {
-                        const cloneKey = `${d.key}-copy`;
-                        setDrafts(prev => ([...prev, { key: cloneKey, productLineId: d.productLineId, product: { ...d.product, displayName: `${d.product.displayName} Copy` } }]));
-                      }}
-                      onCreateNewItem={onCreateNewItem}
-                      onOpenDetails={(o) => onOpenProductDetails(o)}
-                      onCancelDraft={() => {
-                        setDrafts(prev => prev.filter(x => x.key !== d.key));
-                      }}
-                    />
-                  ))}
-
-                  {/* Add-on products as separate cards */}
-                  {addOnProducts.map(({ id, product }) => (
-                    <ProductCard
+        {/* No product line section - shows all products without a productLine, regardless of customer type */}
+        <div>
+          <div className="mb-3">
+            <h3 className="text-base font-semibold text-foreground">No product line</h3>
+            <p className="text-xs text-muted-foreground mt-1">
+              Products that are not in a product line are not mutually exclusive
+            </p>
+          </div>
+          <DroppableProductLineZone
+            productLineId={undefined}
+            customerType={undefined}
+            activeDragCustomerType={activeDragProduct?.customerType ?? null}
+          >
+            <div className="relative rounded-2xl bg-foreground/[0.04] ring-1 ring-foreground/[0.06]">
+              <div className="flex gap-4 justify-start overflow-x-auto p-5 min-h-20 pr-16">
+                <div className="flex max-w-max gap-4 items-stretch">
+                  {noProductLineProducts.map(({ id, product }) => (
+                    <DraggableProductCard
                       key={id}
                       id={id}
                       product={product}
-                      allProducts={products}
+                      allProducts={noProductLineProducts}
                       existingItems={existingItems}
                       onSave={onSaveProduct}
                       onDelete={onDeleteProduct}
-                      onDuplicate={(srcProduct) => {
-                        const key = generateProductId("product");
-                        const duplicated: Product = {
-                          ...srcProduct,
-                          displayName: `${srcProduct.displayName || id} Copy`,
-                        };
-                        setDrafts(prev => [...prev, { key, productLineId, product: duplicated }]);
-                      }}
                       onCreateNewItem={onCreateNewItem}
                       onOpenDetails={(o) => onOpenProductDetails(o)}
                     />
                   ))}
-                  {addOnDrafts.map((d) => (
-                    <ProductCard
-                      key={d.key}
-                      id={d.key}
-                      product={d.product}
-                      allProducts={products}
-                      existingItems={existingItems}
-                      isDraft
-                      onSave={async (specifiedId, product) => {
-                        const newId = specifiedId && specifiedId.trim() && isValidUserSpecifiedId(specifiedId.trim()) && !usedIds.has(specifiedId.trim())
-                          ? specifiedId.trim()
-                          : generateProductId('product');
-                        await onSaveProduct(newId, product);
-                        setDrafts(prev => prev.filter(x => x.key !== d.key));
-                      }}
-                      onDelete={async () => {
-                        setDrafts(prev => prev.filter(x => x.key !== d.key));
-                      }}
-                      onDuplicate={() => {
-                        const cloneKey = `${d.key}-copy`;
-                        setDrafts(prev => ([...prev, { key: cloneKey, productLineId: d.productLineId, product: { ...d.product, displayName: `${d.product.displayName} Copy` } }]));
-                      }}
-                      onCreateNewItem={onCreateNewItem}
-                      onOpenDetails={(o) => onOpenProductDetails(o)}
-                      onCancelDraft={() => {
-                        setDrafts(prev => prev.filter(x => x.key !== d.key));
-                      }}
-                    />
-                  ))}
-
-                  {/* Add product button */}
-                  <Link href={productLineId && customerType ? urlString`/projects/${projectId}/payments/products/new?productLineId=${productLineId}&customerType=${customerType}` : urlString`/projects/${projectId}/payments/products/new`}>
+                  <Link href={`/projects/${projectId}/payments/products/new`}>
                     <Button
                       variant="outline"
                       size="plain"
                       className={cn(
-                        "h-full min-h-[200px] w-[320px] flex flex-col items-center justify-center",
-                        "rounded-2xl border border-dashed border-foreground/[0.1]",
-                        "bg-background/40 hover:bg-foreground/[0.03]",
-                        "text-muted-foreground hover:text-foreground",
-                        "transition-all duration-150 hover:transition-none"
-                      )}
+                      "h-full min-h-[200px] w-[320px] flex flex-col items-center justify-center",
+                      "rounded-2xl border border-dashed border-foreground/[0.1]",
+                      "bg-background/40 hover:bg-foreground/[0.03]",
+                      "text-muted-foreground hover:text-foreground",
+                      "transition-all duration-150 hover:transition-none"
+                    )}
                     >
                       <div className="flex flex-col items-center gap-2">
                         <PlusIcon className="h-6 w-6" />
@@ -1873,263 +1557,215 @@ function ProductLineView({ groupedProducts, groups, existingItems, onSaveProduct
                 </div>
               </div>
             </div>
-          </div>
-        );
-      })}
-
-      {/* No product line section - shows all products without a productLine, regardless of customer type */}
-      <div>
-        <div className="mb-3">
-          <h3 className="text-base font-semibold text-foreground">No product line</h3>
-          <p className="text-xs text-muted-foreground mt-1">
-            Products that are not in a product line are not mutually exclusive
-          </p>
+          </DroppableProductLineZone>
         </div>
-        <div className="relative rounded-2xl bg-foreground/[0.04] ring-1 ring-foreground/[0.06]">
-          <div className="flex gap-4 justify-start overflow-x-auto p-5 min-h-20 pr-16">
-            <div className="flex max-w-max gap-4 items-stretch">
-              {noProductLineProducts.map(({ id, product }) => (
-                <ProductCard
-                  key={id}
-                  id={id}
-                  product={product}
-                  allProducts={noProductLineProducts}
-                  existingItems={existingItems}
-                  onSave={onSaveProduct}
-                  onDelete={onDeleteProduct}
-                  onDuplicate={(srcProduct) => {
-                    const key = generateProductId("product");
-                    const duplicated: Product = {
-                      ...srcProduct,
-                      displayName: `${srcProduct.displayName || id} Copy`,
-                    };
-                    setDrafts(prev => [...prev, { key, productLineId: undefined, product: duplicated }]);
-                  }}
-                  onCreateNewItem={onCreateNewItem}
-                  onOpenDetails={(o) => onOpenProductDetails(o)}
-                />
-              ))}
-              {noProductLineDrafts.map((d) => (
-                <ProductCard
-                  key={d.key}
-                  id={d.key}
-                  product={d.product}
-                  allProducts={noProductLineProducts}
-                  existingItems={existingItems}
-                  isDraft
-                  onSave={async (specifiedId, product) => {
-                    const newId = specifiedId && specifiedId.trim() && isValidUserSpecifiedId(specifiedId.trim()) && !usedIds.has(specifiedId.trim())
-                      ? specifiedId.trim()
-                      : generateProductId('product');
-                    await onSaveProduct(newId, product);
-                    setDrafts(prev => prev.filter(x => x.key !== d.key));
-                  }}
-                  onDelete={async () => {
-                    setDrafts(prev => prev.filter(x => x.key !== d.key));
-                  }}
-                  onDuplicate={() => {
-                    const cloneKey = `${d.key}-copy`;
-                    setDrafts(prev => ([...prev, { key: cloneKey, productLineId: undefined, product: { ...d.product, displayName: `${d.product.displayName} Copy` } }]));
-                  }}
-                  onCreateNewItem={onCreateNewItem}
-                  onOpenDetails={(o) => onOpenProductDetails(o)}
-                  onCancelDraft={() => {
-                    setDrafts(prev => prev.filter(x => x.key !== d.key));
-                  }}
-                />
-              ))}
-              <Link href={`/projects/${projectId}/payments/products/new`}>
-                <Button
-                  variant="outline"
-                  size="plain"
-                  className={cn(
-                    "h-full min-h-[200px] w-[320px] flex flex-col items-center justify-center",
-                    "rounded-2xl border border-dashed border-foreground/[0.1]",
-                    "bg-background/40 hover:bg-foreground/[0.03]",
-                    "text-muted-foreground hover:text-foreground",
-                    "transition-all duration-150 hover:transition-none"
-                  )}
-                >
-                  <div className="flex flex-col items-center gap-2">
-                    <PlusIcon className="h-6 w-6" />
-                    <span className="text-sm font-medium">Add product</span>
-                  </div>
-                </Button>
-              </Link>
-            </div>
-          </div>
-        </div>
-      </div>
 
-      {/* New product line button with customer type selector */}
-      <Popover>
-        <PopoverTrigger asChild>
-          <Button
-            variant="outline"
-            size="plain"
-            className={cn(
+        {/* New product line button with customer type selector */}
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button
+              variant="outline"
+              size="plain"
+              className={cn(
               "w-full h-32 flex items-center justify-center",
               "rounded-2xl border border-dashed border-foreground/[0.1]",
               "bg-background/40 hover:bg-foreground/[0.03]",
               "text-muted-foreground hover:text-foreground",
               "transition-all duration-150 hover:transition-none"
             )}
-          >
-            <div className="flex flex-col items-center gap-2">
-              <PlusIcon className="h-6 w-6" />
-              <span className="text-sm font-medium">New product line</span>
-            </div>
-          </Button>
-        </PopoverTrigger>
-        <PopoverContent className="w-80 p-4">
-          <div className="space-y-4">
-            <div>
-              <p className="text-xs text-muted-foreground mb-3">
-                A product line groups products that are mutually exclusive — besides add-ons, customers can only have one active product from each product line at a time.
-              </p>
-            </div>
-            <div>
-              <Label className="text-xs font-medium text-muted-foreground mb-1.5 block">Display Name</Label>
-              <Input
-                ref={newGroupInputRef}
-                value={newProductLineDisplayName}
-                onChange={(e) => {
-                  const value = e.target.value;
+            >
+              <div className="flex flex-col items-center gap-2">
+                <PlusIcon className="h-6 w-6" />
+                <span className="text-sm font-medium">New product line</span>
+              </div>
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-80 p-4">
+            <div className="space-y-4">
+              <div>
+                <p className="text-xs text-muted-foreground mb-3">
+                  A product line groups products that are mutually exclusive — besides add-ons, customers can only have one active product from each product line at a time.
+                </p>
+              </div>
+              <div>
+                <Label className="text-xs font-medium text-muted-foreground mb-1.5 block">Display Name</Label>
+                <Input
+                  ref={newGroupInputRef}
+                  value={newProductLineDisplayName}
+                  onChange={(e) => {
+                    const value = e.target.value;
                   setNewProductLineDisplayName(value);
                   // Auto-generate ID from display name if not manually edited
                   if (!hasManuallyEditedProductLineId) {
                     setNewProductLineId(toIdFormat(value));
                   }
-                }}
-                placeholder="e.g., Pricing Plans"
-                className="h-9"
-              />
-            </div>
-            <div>
-              <Label className="text-xs font-medium text-muted-foreground mb-1.5 block">Product Line ID</Label>
-              <Input
-                value={newProductLineId}
-                onChange={(e) => {
-                  const value = e.target.value.toLowerCase().replace(/[^a-z0-9_\-]/g, '-');
+                  }}
+                  placeholder="e.g., Pricing Plans"
+                  className="h-9"
+                />
+              </div>
+              <div>
+                <Label className="text-xs font-medium text-muted-foreground mb-1.5 block">Product Line ID</Label>
+                <Input
+                  value={newProductLineId}
+                  onChange={(e) => {
+                    const value = e.target.value.toLowerCase().replace(/[^a-z0-9_\-]/g, '-');
                   setNewProductLineId(value);
                   setHasManuallyEditedProductLineId(true);
-                }}
-                placeholder="e.g., pricing-plans"
-                className="h-9 font-mono text-sm"
-              />
-            </div>
-            <div>
-              <Label className="text-xs font-medium text-muted-foreground mb-1.5 block">Customer Type</Label>
-              <div className="flex gap-1.5">
-                {(['user', 'team', 'custom'] as const).map((type) => (
-                  <button
-                    key={type}
-                    onClick={() => setNewProductLineCustomerType(type)}
-                    className={cn(
+                  }}
+                  placeholder="e.g., pricing-plans"
+                  className="h-9 font-mono text-sm"
+                />
+              </div>
+              <div>
+                <Label className="text-xs font-medium text-muted-foreground mb-1.5 block">Customer Type</Label>
+                <div className="flex gap-1.5">
+                  {(['user', 'team', 'custom'] as const).map((type) => (
+                    <button
+                      key={type}
+                      onClick={() => setNewProductLineCustomerType(type)}
+                      className={cn(
                       "flex-1 px-2 py-1.5 rounded-lg text-xs font-medium capitalize",
                       "transition-colors duration-150 hover:transition-none",
                       newProductLineCustomerType === type
                         ? cn("ring-1", CUSTOMER_TYPE_COLORS[type])
                         : "bg-foreground/[0.04] text-muted-foreground hover:bg-foreground/[0.08]"
                     )}
-                  >
-                    {type}
-                  </button>
-                ))}
+                    >
+                      {type}
+                    </button>
+                  ))}
+                </div>
               </div>
-            </div>
-            <Button
-              size="sm"
-              className="w-full"
-              disabled={!newProductLineId.trim() || !newProductLineDisplayName.trim()}
-              onClick={async () => {
-                const id = newProductLineId.trim();
-                const displayName = newProductLineDisplayName.trim();
-                if (!id || !displayName) return;
-                if (!isValidUserSpecifiedId(id)) {
+              <Button
+                size="sm"
+                className="w-full"
+                disabled={!newProductLineId.trim() || !newProductLineDisplayName.trim()}
+                onClick={async () => {
+                  const id = newProductLineId.trim();
+                  const displayName = newProductLineDisplayName.trim();
+                  if (!id || !displayName) return;
+                  if (!isValidUserSpecifiedId(id)) {
                   alert(getUserSpecifiedIdErrorMessage("productLineId"));
                   return;
-                }
-                if (Object.prototype.hasOwnProperty.call(groups, id)) {
+                  }
+                  if (Object.prototype.hasOwnProperty.call(groups, id)) {
                   alert("Product line ID already exists");
                   return;
-                }
+                  }
 
-                // Create the productLine with display name and customer type
-                await onCreateProductLine(id, displayName, newProductLineCustomerType);
+                  // Create the productLine with display name and customer type
+                  await onCreateProductLine(id, displayName, newProductLineCustomerType);
 
                 setNewProductLineDisplayName("");
                 setNewProductLineId("");
                 setHasManuallyEditedProductLineId(false);
                 toast({ title: "Product line created" });
-              }}
-            >
-              Create Product Line
-            </Button>
-          </div>
-        </PopoverContent>
-      </Popover>
-
-      {/* Edit productLine dialog */}
-      <Dialog open={editingProductLineId !== null} onOpenChange={(open) => !open && setEditingProductLineId(null)}>
-        <DialogContent className="sm:max-w-[400px]">
-          <DialogHeader>
-            <DialogTitle>Edit Product Line</DialogTitle>
-            <DialogDescription>
-              Update the display name for this product line.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-4 py-4">
-            <div className="grid gap-2">
-              <Label>Display Name</Label>
-              <Input
-                value={editingProductLineDisplayName}
-                onChange={(e) => setEditingProductLineDisplayName(e.target.value)}
-                placeholder="e.g., Pricing Plans"
-              />
+                }}
+              >
+                Create Product Line
+              </Button>
             </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setEditingProductLineId(null)}>
-              Cancel
-            </Button>
-            <Button
-              onClick={async () => {
-                if (editingProductLineId && editingProductLineDisplayName.trim()) {
-                  await onUpdateProductLine(editingProductLineId, editingProductLineDisplayName.trim());
+          </PopoverContent>
+        </Popover>
+
+        {/* Edit productLine dialog */}
+        <Dialog open={editingProductLineId !== null} onOpenChange={(open) => !open && setEditingProductLineId(null)}>
+          <DialogContent className="sm:max-w-[400px]">
+            <DialogHeader>
+              <DialogTitle>Edit Product Line</DialogTitle>
+              <DialogDescription>
+                Update the display name for this product line.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-4 py-4">
+              <div className="grid gap-2">
+                <Label>Display Name</Label>
+                <Input
+                  value={editingProductLineDisplayName}
+                  onChange={(e) => setEditingProductLineDisplayName(e.target.value)}
+                  placeholder="e.g., Pricing Plans"
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setEditingProductLineId(null)}>
+                Cancel
+              </Button>
+              <Button
+                onClick={async () => {
+                  if (editingProductLineId && editingProductLineDisplayName.trim()) {
+                    await onUpdateProductLine(editingProductLineId, editingProductLineDisplayName.trim());
                   toast({ title: "Product line updated" });
                   setEditingProductLineId(null);
-                }
-              }}
-              disabled={!editingProductLineDisplayName.trim()}
-            >
-              Save
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+                  }
+                }}
+                disabled={!editingProductLineDisplayName.trim()}
+              >
+                Save
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
-      {/* Delete productLine confirmation dialog */}
-      <ActionDialog
-        open={deletingProductLineId !== null}
-        onOpenChange={(open) => !open && setDeletingProductLineId(null)}
-        title="Delete Product Line"
-        danger
-        okButton={{
-          label: "Delete",
-          onClick: async () => {
-            if (deletingProductLineId) {
-              await onDeleteProductLine(deletingProductLineId);
+        {/* Delete productLine confirmation dialog */}
+        <ActionDialog
+          open={deletingProductLineId !== null}
+          onOpenChange={(open) => !open && setDeletingProductLineId(null)}
+          title="Delete Product Line"
+          danger
+          okButton={{
+            label: "Delete",
+            onClick: async () => {
+              if (deletingProductLineId) {
+                await onDeleteProductLine(deletingProductLineId);
               toast({ title: "Product line deleted" });
               setDeletingProductLineId(null);
+              }
             }
-          }
-        }}
-        cancelButton
-      >
-        Are you sure you want to delete this product line? All products in this product line will be moved to &quot;No product line&quot;.
-      </ActionDialog>
-    </div>
+          }}
+          cancelButton
+        >
+          Are you sure you want to delete this product line? All products in this product line will be moved to &quot;No product line&quot;.
+        </ActionDialog>
+
+        {/* Drag overlay for visual feedback */}
+        <DragOverlay>
+          {activeDragId && activeDragProduct ? (
+            <div className="opacity-90 rotate-3 scale-105">
+              <div className={cn(
+              "w-[260px] p-4 rounded-2xl",
+              "bg-gray-200/95 dark:bg-[hsl(240,10%,8%)]",
+              "border-2 border-primary",
+              "shadow-2xl"
+            )}>
+                <div className="text-center">
+                  <span className={cn(
+                  "inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wide ring-1 mb-2",
+                  CUSTOMER_TYPE_COLORS[activeDragProduct.customerType]
+                )}>
+                    {activeDragProduct.customerType}
+                  </span>
+                  <h3 className="text-lg font-semibold">
+                    {activeDragProduct.displayName || activeDragId}
+                  </h3>
+                </div>
+              </div>
+            </div>
+          ) : null}
+        </DragOverlay>
+
+        {/* Loading overlay when moving product */}
+        {isMovingProduct && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/50 backdrop-blur-sm">
+            <div className="flex items-center gap-3 px-4 py-3 bg-background border rounded-lg shadow-lg">
+              <CircleNotchIcon className="h-5 w-5 animate-spin text-primary" />
+              <span className="text-sm font-medium">Moving product...</span>
+            </div>
+          </div>
+        )}
+      </div>
+    </DndContext>
   );
 }
 
@@ -2384,6 +2020,19 @@ export default function PageClient({ createDraftRequestId, draftCustomerType = '
         createDraftRequestId={createDraftRequestId}
         draftCustomerType={draftCustomerType}
         onDraftHandled={onDraftHandled}
+        paymentsConfig={paymentsConfig}
+        onMoveProduct={async (productId, targetProductLineId) => {
+          const currentProduct = paymentsConfig.products[productId];
+
+          // Update the entire product object with the new productLineId
+          // Using undefined instead of null to properly clear the value
+          await project.updateConfig({
+            [`payments.products.${productId}`]: {
+              ...currentProduct,
+              productLineId: targetProductLineId ?? undefined,
+            },
+          });
+        }}
       />
     </div>
   );
