@@ -83,24 +83,9 @@ function createVercelSandboxEngine(): JsEngine {
 
         const runnerScript = `
           import { writeFileSync } from 'fs';
-          let result;
-          let resultAsJson;
-          try {
-            const {default: fn} = await import('./code.mjs');
-            result = await fn();
-            if (result === undefined) {
-              result = { status: 'error', error: { message: 'Execution of innerCode returned undefined' } };
-            }
-            resultAsJson = JSON.stringify(result);
-          } catch (e) {
-            if(e instanceof Error) {
-              result = { status: 'error', error: { message: e.message, stack: e.stack, cause: e.cause} };
-            } else {
-              result = { status: 'error', error: { message: String(e), stack: undefined, cause: undefined} };
-            }
-            resultAsJson = JSON.stringify(result);
-          }
-          writeFileSync('${resultPath}', resultAsJson);
+          import fn from './code.mjs';
+          const result = await fn();
+          writeFileSync(${JSON.stringify(resultPath)}, JSON.stringify(result));
         `;
 
         await sandbox.writeFiles([
@@ -111,26 +96,14 @@ function createVercelSandboxEngine(): JsEngine {
         const runResult = await sandbox.runCommand('node', ['/vercel/sandbox/runner.mjs']);
 
         if (runResult.exitCode !== 0) {
-          // This shouldn't happen since the runner has a try-catch wrapper.
-          // If we get here, something unexpected failed (OOM, timeout, disk error, etc.)
-          throw new StackAssertionError("Vercel Sandbox runner failed unexpectedly outside of runner safeguards. This should never happen.", { innerCode: code, innerOptions: options, exitCode: runResult.exitCode });
+          throw new StackAssertionError("Vercel Sandbox runner exited with non-zero code", { innerCode: code, innerOptions: options, exitCode: runResult.exitCode });
         }
 
-        // Read the result file by catting it to stdout
-        let resultJson = '';
-        const { Writable } = await import('stream');
-        const stdoutStream = new Writable({
-          write(chunk, _encoding, callback) {
-            resultJson += chunk.toString();
-            callback();
-          },
-        });
-
-        const catResult = await sandbox.runCommand({ cmd: 'cat', args: [resultPath], stdout: stdoutStream });
-
-        if (catResult.exitCode !== 0) {
-          throw new StackAssertionError("Failed to read result file from Vercel Sandbox", { exitCode: catResult.exitCode, innerCode: code, innerOptions: options });
+        const resultBuffer = await sandbox.readFileToBuffer({ path: resultPath });
+        if (resultBuffer === null) {
+          throw new StackAssertionError("Result file not found in Vercel Sandbox", { resultPath, innerCode: code, innerOptions: options });
         }
+        const resultJson = resultBuffer.toString();
 
         try {
           return JSON.parse(resultJson);
@@ -151,6 +124,11 @@ const engineMap = new Map<string, JsEngine>([
 
 const engines: JsEngine[] = Array.from(engineMap.values());
 
+/**
+ * Executes the given code with the given options. Returns the result of the code execution
+ * if it is JSON-serializable. Has undefined behavior if it is not JSON-serializable or if
+ * the code throws an error.
+ */
 export async function executeJavascript(code: string, options: ExecuteJavascriptOptions = {}): Promise<unknown> {
   return await traceSpan({
     description: 'js-execution.executeJavascript',
