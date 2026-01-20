@@ -704,11 +704,6 @@ enum EmailOutboxCreatedWith {
   PROGRAMMATIC_CALL
 }
 
-// In most displays, the way emails in the outbox should be ordered is:
-// - by finishedSendingAt, descending (null comes first)
-// - by scheduledAtIfNotYetQueued, descending (null comes last)
-// - by priority, ascending
-// - by id, ascending
 model EmailOutbox {
   tenancyId String @db.Uuid
 

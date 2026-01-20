@@ -6,7 +6,7 @@ import { useMemo, useState } from "react";
 import { IllustratedInfo } from "../../../../../../../components/illustrated-info";
 import { PageLayout } from "../../page-layout";
 import { useAdminApp } from "../../use-admin-app";
-import PageClientCatalogsView from "../products/page-client-catalogs-view";
+import PageClientProductLinesView from "../products/page-client-product-lines-view";
 
 function generateTriggerId() {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
@@ -14,7 +14,7 @@ function generateTriggerId() {
 
 function WelcomeScreen({ onCreateProduct }: { onCreateProduct: () => void }) {
   return (
-    <PageLayout title="Catalogs" description="Set up your pricing table by creating catalogs and products.">
+    <PageLayout title="Product Lines" description="Set up your pricing table by creating product lines and products.">
       <div className="flex flex-col items-center justify-center h-full px-4 py-12 max-w-3xl mx-auto">
         <IllustratedInfo
           illustration={(
@@ -48,9 +48,9 @@ function WelcomeScreen({ onCreateProduct }: { onCreateProduct: () => void }) {
               </div>
             </div>
           )}
-          title="Welcome to Catalogs!"
+          title="Welcome to Product Lines!"
           description={[
-            <>Catalogs group products that are mutually exclusive — customers can only have one active product from each catalog at a time.</>,
+            <>Product lines group products that are mutually exclusive — customers can only have one active product from each product line at a time.</>,
             <>Products are what customers buy — the columns in your pricing table. Each product has one or more prices.</>,
             <>Items are what customers receive — the rows in your pricing table. They unlock features, limits, or usage metering.</>,
             <>Create your first product to get started!</>,
@@ -97,8 +97,8 @@ export default function PageClient() {
   }
 
   return (
-    <PageLayout title='Catalogs' description="Mutually exclusive sets of products. Customers can purchase one product of each catalog.">
-      <PageClientCatalogsView
+    <PageLayout title='Product Lines' description="Mutually exclusive sets of products. Customers can purchase one product of each product line.">
+      <PageClientProductLinesView
         createDraftRequestId={draftRequestId}
         draftCustomerType={draftCustomerType}
         onDraftHandled={handleDraftHandled}

@@ -38,9 +38,7 @@ function createFreestyleEngine(): JsEngine {
 
       const response = await freestyle.serverless.runs.create({
         code,
-        config: {
-          nodeModules: options.nodeModules ?? {},
-        },
+        nodeModules: options.nodeModules ?? {},
       });
 
       if (response.result === undefined) {
@@ -60,22 +58,14 @@ function createVercelSandboxEngine(): JsEngine {
       const projectId = getEnvVariable("STACK_VERCEL_SANDBOX_PROJECT_ID", "");
       const token = getEnvVariable("STACK_VERCEL_SANDBOX_TOKEN", "");
 
-      if (!teamId || !projectId || !token) {
-        throw new StackAssertionError(
-          "Vercel Sandbox requires STACK_VERCEL_SANDBOX_TEAM_ID, STACK_VERCEL_SANDBOX_PROJECT_ID, and STACK_VERCEL_SANDBOX_TOKEN to be set."
-        );
-      }
-
-      const sandboxCreateParams = {
+      const sandbox = await Sandbox.create({
         resources: { vcpus: 2 },
         timeout: 30000,
         runtime: 'node24' as const,
-        teamId,
-        projectId,
-        token,
-      };
-
-      const sandbox = await Sandbox.create(sandboxCreateParams);
+        teamId: teamId || undefined,
+        projectId: projectId || undefined,
+        token: token || undefined,
+      });
 
       try {
         if (options.nodeModules && Object.keys(options.nodeModules).length > 0) {
