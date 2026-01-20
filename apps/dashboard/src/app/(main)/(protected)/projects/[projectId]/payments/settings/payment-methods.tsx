@@ -113,9 +113,8 @@ export function PaymentMethods() {
       }
 
       await adminApp.updatePaymentMethodConfigs(config.configId, updates);
-
-      setPendingChanges({});
       await loadConfig();
+      setPendingChanges({});
     } finally {
       setSaving(false);
     }
