@@ -51,6 +51,7 @@ import type { DayInterval } from "@stackframe/stack-shared/dist/utils/dates";
 import { fromNow } from "@stackframe/stack-shared/dist/utils/dates";
 import { prettyPrintWithMagnitudes } from "@stackframe/stack-shared/dist/utils/numbers";
 import { typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
+import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { Suspense, useMemo, useState } from "react";
 import { PageLayout } from "../../../page-layout";
 import { useAdminApp, useProjectId } from "../../../use-admin-app";
@@ -276,6 +277,84 @@ function ProductDetailsSection({ productId, product, config }: ProductDetailsSec
   const [freeTrialPopoverOpen, setFreeTrialPopoverOpen] = useState(false);
   const [createProductLineDialogOpen, setCreateProductLineDialogOpen] = useState(false);
 
+  // ===== LOCAL STATE FOR DEFERRED SAVE =====
+  // Track all pending changes. undefined means "use original value"
+  const [pendingChanges, setPendingChanges] = useState<PendingProductChanges>({});
+
+  // Computed local values (pending change or original)
+  const localDisplayName = pendingChanges.displayName !== undefined ? pendingChanges.displayName : (product.displayName || '');
+  const localStackable = pendingChanges.stackable !== undefined ? !!pendingChanges.stackable : !!product.stackable;
+  const localServerOnly = pendingChanges.serverOnly !== undefined ? !!pendingChanges.serverOnly : !!product.serverOnly;
+  const localFreeTrial = pendingChanges.freeTrial !== undefined ? pendingChanges.freeTrial : (product.freeTrial || null);
+  const localIsAddOnTo = pendingChanges.isAddOnTo !== undefined
+    ? pendingChanges.isAddOnTo
+    : (product.isAddOnTo !== false && typeof product.isAddOnTo === 'object' ? product.isAddOnTo : null);
+  const localPrices = pendingChanges.prices !== undefined ? pendingChanges.prices : product.prices;
+  const localIncludedItems = pendingChanges.includedItems !== undefined ? pendingChanges.includedItems : product.includedItems;
+
+  // Check if there are any pending changes
+  const hasChanges = Object.keys(pendingChanges).length > 0;
+
+  // Compute which item keys are modified (for visual indicator)
+  const externalModifiedKeys = useMemo(() => {
+    const keys = new Set<string>();
+    if (pendingChanges.displayName !== undefined) keys.add('displayName');
+    if (pendingChanges.stackable !== undefined) keys.add('stackable');
+    if (pendingChanges.serverOnly !== undefined) keys.add('serverOnly');
+    if (pendingChanges.freeTrial !== undefined) keys.add('freeTrial');
+    if (pendingChanges.isAddOnTo !== undefined) keys.add('isAddOnTo');
+    if (pendingChanges.prices !== undefined) keys.add('prices');
+    if (pendingChanges.includedItems !== undefined) keys.add('includedItems');
+    return keys;
+  }, [pendingChanges]);
+
+  // Discard all pending changes
+  const handleDiscard = () => {
+    setPendingChanges({});
+    // Reset add-on dialog state
+    setIsAddOn(product.isAddOnTo !== false && typeof product.isAddOnTo === 'object');
+    setSelectedAddOnProducts(
+      product.isAddOnTo !== false && typeof product.isAddOnTo === 'object'
+        ? new Set(Object.keys(product.isAddOnTo))
+        : new Set()
+    );
+  };
+
+  // Save all pending changes
+  const handleSave = async () => {
+    const configUpdate: Record<string, any> = {};
+
+    // Apply product changes
+    if (pendingChanges.displayName !== undefined) {
+      configUpdate[`payments.products.${productId}.displayName`] = pendingChanges.displayName || null;
+    }
+    if (pendingChanges.stackable !== undefined) {
+      configUpdate[`payments.products.${productId}.stackable`] = pendingChanges.stackable || null;
+    }
+    if (pendingChanges.serverOnly !== undefined) {
+      configUpdate[`payments.products.${productId}.serverOnly`] = pendingChanges.serverOnly || null;
+    }
+    if (pendingChanges.freeTrial !== undefined) {
+      configUpdate[`payments.products.${productId}.freeTrial`] = pendingChanges.freeTrial;
+    }
+    if (pendingChanges.isAddOnTo !== undefined) {
+      configUpdate[`payments.products.${productId}.isAddOnTo`] = pendingChanges.isAddOnTo;
+    }
+    if (pendingChanges.prices !== undefined) {
+      configUpdate[`payments.products.${productId}.prices`] = pendingChanges.prices;
+    }
+    if (pendingChanges.includedItems !== undefined) {
+      configUpdate[`payments.products.${productId}.includedItems`] = Object.keys(pendingChanges.includedItems).length > 0 ? pendingChanges.includedItems : null;
+    }
+
+    const success = await updateConfig({ adminApp, configUpdate, pushable: true });
+    if (success) {
+      setPendingChanges({});
+      toast({ title: "Changes saved" });
+    }
+    // If cancelled (success === false), keep pending changes as-is
+  };
+
   // Get all productLines with their customer types (only show matching customer type)
   const productLineOptions = useMemo(() => {
     const productLines = Object.entries(config.payments.productLines)
@@ -303,8 +382,8 @@ function ProductDetailsSection({ productId, product, config }: ProductDetailsSec
   });
 
   // Free trial popover state
-  const [freeTrialCount, setFreeTrialCount] = useState(() => localFreeTrial ? localFreeTrial[0] : 7);
-  const [freeTrialUnit, setFreeTrialUnit] = useState<DayInterval[1]>(() => localFreeTrial ? localFreeTrial[1] : 'day');
+  const [freeTrialCount, setFreeTrialCount] = useState(() => product.freeTrial ? product.freeTrial[0] : 7);
+  const [freeTrialUnit, setFreeTrialUnit] = useState<DayInterval[1]>(() => product.freeTrial ? product.freeTrial[1] : 'day');
 
   // Computed: add-on parent products from local state
   const localAddOnParents = useMemo(() => {
@@ -317,7 +396,6 @@ function ProductDetailsSection({ productId, product, config }: ProductDetailsSec
 
   // Get all available products for add-on selection (same customer type and productLine, excluding this product)
   const availableProducts = useMemo(() => {
-    const currentCatalogId = localCatalogId;
     return Object.entries(config.payments.products)
       .filter(([id, p]) =>
         id !== productId &&
@@ -491,7 +569,7 @@ function ProductDetailsSection({ productId, product, config }: ProductDetailsSec
       tooltip: "Product lines group products together. Customers can only have one active product per product line.",
       value: product.productLineId || '__none__',
       options: productLineOptions,
-      onUpdate: handleProductLineUpdate,
+      onChange: (value) => runAsynchronouslyWithAlert(handleProductLineUpdate(value)),
       extraAction: {
         label: "+ Create new product line",
         onClick: () => setCreateProductLineDialogOpen(true),
