@@ -22,7 +22,11 @@ export const POST = createSmartRouteHandler({
     body: yupString().defined(),
   }),
   handler: async (req) => {
-    captureError("check-feature-support", new StackAssertionError(`${req.auth?.user?.primaryEmail || "User"} tried to check support of unsupported feature: ${JSON.stringify(req.body, null, 2)}`, { req }));
+    const featureName = req.body?.name as unknown;
+    const expectedUnsupportedFeatures = ["rsc-handler-signIn"];
+    if (!expectedUnsupportedFeatures.includes(featureName)) {
+      captureError("check-feature-support", new StackAssertionError(`${req.auth?.user?.primaryEmail || "User"} tried to check support of unsupported feature: ${JSON.stringify(req.body, null, 2)}`, { req }));
+    }
     return {
       statusCode: 200,
       bodyType: "text",

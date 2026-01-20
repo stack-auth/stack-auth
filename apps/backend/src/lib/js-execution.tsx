@@ -38,9 +38,7 @@ function createFreestyleEngine(): JsEngine {
 
       const response = await freestyle.serverless.runs.create({
         code,
-        config: {
-          nodeModules: options.nodeModules ?? {},
-        },
+        nodeModules: options.nodeModules ?? {},
       });
 
       if (response.result === undefined) {
