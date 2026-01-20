@@ -163,7 +163,7 @@ Many functions also accept a tokenStore parameter to override storage for that c
 
 TokenStoreInit is a union type representing the different ways to provide token storage:
 
-```
+```ts
 TokenStoreInit = 
   | "cookie"                              // [JS-ONLY] Browser cookies
   | "memory"                              // In-memory storage
