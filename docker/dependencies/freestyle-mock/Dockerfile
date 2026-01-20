@@ -39,7 +39,8 @@ serve({
   port: 8080,
   async fetch(req) {
     const url = new URL(req.url);
-    if (!(req.method === "POST" && url.pathname === "/execute/v1/script")) {
+    const isValidEndpoint = req.method === "POST" && (url.pathname === "/execute/v1/script" || url.pathname === "/execute/v2/script");
+    if (!isValidEndpoint) {
       return new Response("Not found", { status: 404 });
     }
 

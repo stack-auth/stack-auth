@@ -6,6 +6,12 @@ import { useRouter } from "@/components/router";
 import {
   ActionDialog,
   Button,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
   DropdownMenu,
   DropdownMenuCheckboxItem,
   DropdownMenuContent,
@@ -28,6 +34,7 @@ import type { DayInterval } from "@stackframe/stack-shared/dist/utils/dates";
 import { prettyPrintWithMagnitudes } from "@stackframe/stack-shared/dist/utils/numbers";
 import { typedEntries, typedFromEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
+import { urlString } from '@stackframe/stack-shared/dist/utils/urls';
 import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useAdminApp, useProjectId } from "../../use-admin-app";
 import { IntervalPopover, OrSeparator, SectionHeading } from "./components";
@@ -49,6 +56,14 @@ class ValidationError extends Error {
     super(message);
     this.name = 'ValidationError';
   }
+}
+
+// Helper to convert display name to ID format
+function toIdFormat(displayName: string): string {
+  return displayName
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
 }
 
 // ============================================================================
@@ -554,8 +569,8 @@ function ProductCard({ id, product, allProducts, existingItems, onSave, onDelete
       const addOnProductIds = Object.keys(draft.isAddOnTo);
       prompt += `- **Add-on To**: ${addOnProductIds.join(', ')}\n`;
     }
-    if (draft.catalogId) {
-      prompt += `- **Catalog ID**: ${draft.catalogId}\n`;
+    if (draft.productLineId) {
+      prompt += `- **Product Line ID**: ${draft.productLineId}\n`;
     }
     prompt += `\n`;
 
@@ -833,7 +848,7 @@ function ProductCard({ id, product, allProducts, existingItems, onSave, onDelete
 
   const itemsList = Object.entries(draft.includedItems);
 
-  const couldBeAddOnTo = allProducts.filter(o => o.product.catalogId === draft.catalogId && o.id !== id);
+  const couldBeAddOnTo = allProducts.filter(o => o.product.productLineId === draft.productLineId && o.id !== id);
   const isAddOnTo = allProducts.filter(o => draft.isAddOnTo && o.id in draft.isAddOnTo);
 
   const PRODUCT_TOGGLE_OPTIONS = [{
@@ -1478,47 +1493,56 @@ function ProductCard({ id, product, allProducts, existingItems, onSave, onDelete
   );
 }
 
-type CatalogViewProps = {
+type ProductLineViewProps = {
   groupedProducts: Map<string | undefined, Array<{ id: string, product: Product }>>,
-  groups: Record<string, { displayName?: string }>,
+  groups: Record<string, { displayName?: string, customerType?: string }>,
   existingItems: Array<{ id: string, displayName: string, customerType: string }>,
   onSaveProduct: (id: string, product: Product) => Promise<void>,
   onDeleteProduct: (id: string) => Promise<void>,
   onCreateNewItem: (customerType?: 'user' | 'team' | 'custom', onCreated?: (itemId: string) => void) => void,
   onOpenProductDetails: (product: Product) => void,
-  onSaveProductWithGroup: (catalogId: string, productId: string, product: Product) => Promise<void>,
-  onCreateCatalog: (catalogId: string) => Promise<void>,
+  onSaveProductWithGroup: (productLineId: string, productId: string, product: Product) => Promise<void>,
+  onCreateProductLine: (productLineId: string, displayName: string, customerType: 'user' | 'team' | 'custom') => Promise<void>,
+  onUpdateProductLine: (productLineId: string, displayName: string) => Promise<void>,
+  onDeleteProductLine: (productLineId: string) => Promise<void>,
   createDraftRequestId?: string,
   draftCustomerType: 'user' | 'team' | 'custom',
   onDraftHandled?: () => void,
 };
 
-// Combined key for catalog + customer type grouping
-type CatalogTypeKey = {
-  catalogId: string | undefined,
+// Combined key for productLine + customer type grouping
+type ProductLineTypeKey = {
+  productLineId: string | undefined,
   customerType: 'user' | 'team' | 'custom',
 };
 
-function catalogTypeKeyToString(key: CatalogTypeKey): string {
-  return `${key.catalogId ?? '__none__'}::${key.customerType}`;
+function productLineTypeKeyToString(key: ProductLineTypeKey): string {
+  return `${key.productLineId ?? '__none__'}::${key.customerType}`;
 }
 
-function CatalogView({ groupedProducts, groups, existingItems, onSaveProduct, onDeleteProduct, onCreateNewItem, onOpenProductDetails, onSaveProductWithGroup, onCreateCatalog, createDraftRequestId, draftCustomerType, onDraftHandled }: CatalogViewProps) {
+function ProductLineView({ groupedProducts, groups, existingItems, onSaveProduct, onDeleteProduct, onCreateNewItem, onOpenProductDetails, onSaveProductWithGroup, onCreateProductLine, onUpdateProductLine, onDeleteProductLine, createDraftRequestId, draftCustomerType, onDraftHandled }: ProductLineViewProps) {
   const projectId = useProjectId();
-  const [drafts, setDrafts] = useState<Array<{ key: string, catalogId: string | undefined, product: Product }>>([]);
+  const [drafts, setDrafts] = useState<Array<{ key: string, productLineId: string | undefined, product: Product }>>([]);
   const [creatingGroupKey, setCreatingGroupKey] = useState<string | undefined>(undefined);
-  const [newCatalogId, setNewCatalogId] = useState("");
-  const [newCatalogCustomerType, setNewCatalogCustomerType] = useState<'user' | 'team' | 'custom'>('user');
+  const [newProductLineDisplayName, setNewProductLineDisplayName] = useState("");
+  const [newProductLineId, setNewProductLineId] = useState("");
+  const [hasManuallyEditedProductLineId, setHasManuallyEditedProductLineId] = useState(false);
+  const [newProductLineCustomerType, setNewProductLineCustomerType] = useState<'user' | 'team' | 'custom'>('user');
   const newGroupInputRef = useRef<HTMLInputElement | null>(null);
 
-  // Regroup products by both catalogId AND customerType
-  const groupedByCatalogAndType = useMemo(() => {
-    const result = new Map<string, { key: CatalogTypeKey, products: Array<{ id: string, product: Product }> }>();
+  // Product line edit/delete state
+  const [editingProductLineId, setEditingProductLineId] = useState<string | null>(null);
+  const [editingProductLineDisplayName, setEditingProductLineDisplayName] = useState("");
+  const [deletingProductLineId, setDeletingProductLineId] = useState<string | null>(null);
 
-    groupedProducts.forEach((products, _catalogId) => {
+  // Regroup products by both productLineId AND customerType
+  const groupedByProductLineAndType = useMemo(() => {
+    const result = new Map<string, { key: ProductLineTypeKey, products: Array<{ id: string, product: Product }> }>();
+
+    groupedProducts.forEach((products, _productLineId) => {
       products.forEach(({ id, product }) => {
-        const key: CatalogTypeKey = { catalogId: product.catalogId, customerType: product.customerType };
-        const keyStr = catalogTypeKeyToString(key);
+        const key: ProductLineTypeKey = { productLineId: product.productLineId, customerType: product.customerType };
+        const keyStr = productLineTypeKeyToString(key);
 
         if (!result.has(keyStr)) {
           result.set(keyStr, { key, products: [] });
@@ -1561,7 +1585,7 @@ function CatalogView({ groupedProducts, groups, existingItems, onSaveProduct, on
     const newProduct: Product = {
       displayName: 'New Product',
       customerType: draftCustomerType,
-      catalogId: undefined,
+      productLineId: undefined,
       isAddOnTo: false,
       stackable: false,
       prices: {},
@@ -1570,7 +1594,7 @@ function CatalogView({ groupedProducts, groups, existingItems, onSaveProduct, on
       freeTrial: undefined,
     };
 
-    setDrafts((prev) => [...prev, { key: candidate, catalogId: undefined, product: newProduct }]);
+    setDrafts((prev) => [...prev, { key: candidate, productLineId: undefined, product: newProduct }]);
     onDraftHandled?.();
   }, [createDraftRequestId, draftCustomerType, onDraftHandled, usedIds]);
 
@@ -1581,53 +1605,52 @@ function CatalogView({ groupedProducts, groups, existingItems, onSaveProduct, on
     return id;
   };
 
-  // Build list of catalog+type combinations to render (only for named catalogs)
-  const catalogTypeKeysToRender = useMemo(() => {
-    const keys: CatalogTypeKey[] = [];
-    const seenKeyStrings = new Set<string>();
-
-    // Add keys from existing products (only named catalogs, not "No catalog")
-    groupedByCatalogAndType.forEach(({ key }) => {
-      if (key.catalogId === undefined) return; // Skip "No catalog" - handled separately
-      const keyStr = catalogTypeKeyToString(key);
-      if (!seenKeyStrings.has(keyStr)) {
-        seenKeyStrings.add(keyStr);
-        keys.push(key);
-      }
+  // Build list of product lines to render directly from config
+  // Now that product lines have their own customerType, we simply iterate over them
+  const productLinesToRender = useMemo(() => {
+    const productLines = Object.entries(groups).map(([id, productLine]) => {
+      let customerType = productLine.customerType;
+      return {
+        id,
+        displayName: productLine.displayName || id,
+        customerType,
+      };
     });
 
-    // Add keys from drafts (only named catalogs)
-    drafts.forEach(d => {
-      if (d.catalogId === undefined) return; // Skip "No catalog" - handled separately
-      const key: CatalogTypeKey = { catalogId: d.catalogId, customerType: d.product.customerType };
-      const keyStr = catalogTypeKeyToString(key);
-      if (!seenKeyStrings.has(keyStr)) {
-        seenKeyStrings.add(keyStr);
-        keys.push(key);
-      }
-    });
-
-    // Sort: by customer type priority, then by catalog name
-    const customerTypePriority = { user: 1, team: 2, custom: 3 };
-    keys.sort((a, b) => {
-      const priorityA = customerTypePriority[a.customerType];
-      const priorityB = customerTypePriority[b.customerType];
+    // Sort: by customer type priority, then by productLine name
+    // Unknown customer types (undefined) go last
+    const customerTypePriority: Record<string, number> = { user: 1, team: 2, custom: 3 };
+    productLines.sort((a, b) => {
+      const priorityA = a.customerType ? (customerTypePriority[a.customerType] ?? 99) : 99;
+      const priorityB = b.customerType ? (customerTypePriority[b.customerType] ?? 99) : 99;
       if (priorityA !== priorityB) return priorityA - priorityB;
-
-      // Sort by catalog name
-      const nameA = a.catalogId ? (groups[a.catalogId].displayName || a.catalogId) : '';
-      const nameB = b.catalogId ? (groups[b.catalogId].displayName || b.catalogId) : '';
-      return stringCompare(nameA, nameB);
+      return stringCompare(a.displayName, b.displayName);
     });
 
-    return keys;
-  }, [groupedByCatalogAndType, drafts, groups]);
+    return productLines;
+  }, [groups]);
 
-  // Get all "No catalog" products (all customer types combined)
-  const noCatalogProducts = useMemo(() => {
+  // Get products for a specific product line
+  const getProductsForProductLine = (productLineId: string) => {
     const products: Array<{ id: string, product: Product }> = [];
-    groupedByCatalogAndType.forEach(({ key, products: prods }) => {
-      if (key.catalogId === undefined) {
+    groupedByProductLineAndType.forEach(({ key, products: prods }) => {
+      if (key.productLineId === productLineId) {
+        products.push(...prods);
+      }
+    });
+    return products;
+  };
+
+  // Get drafts for a specific product line
+  const getDraftsForProductLine = (productLineId: string) => {
+    return drafts.filter(d => d.productLineId === productLineId);
+  };
+
+  // Get all "No product line" products (all customer types combined)
+  const noProductLineProducts = useMemo(() => {
+    const products: Array<{ id: string, product: Product }> = [];
+    groupedByProductLineAndType.forEach(({ key, products: prods }) => {
+      if (key.productLineId === undefined) {
         products.push(...prods);
       }
     });
@@ -1640,27 +1663,25 @@ function CatalogView({ groupedProducts, groups, existingItems, onSaveProduct, on
       return stringCompare(a.id, b.id);
     });
     return products;
-  }, [groupedByCatalogAndType]);
+  }, [groupedByProductLineAndType]);
 
-  // Get drafts for "No catalog"
-  const noCatalogDrafts = useMemo(() => {
-    return drafts.filter(d => d.catalogId === undefined);
+  // Get drafts for "No product line"
+  const noProductLineDrafts = useMemo(() => {
+    return drafts.filter(d => d.productLineId === undefined);
   }, [drafts]);
 
   return (
     <div className="space-y-8">
-      {catalogTypeKeysToRender.map((catalogTypeKey) => {
-        const keyStr = catalogTypeKeyToString(catalogTypeKey);
-        const groupData = groupedByCatalogAndType.get(keyStr);
-        const products = groupData?.products || [];
-        const catalogId = catalogTypeKey.catalogId;
-        const customerType = catalogTypeKey.customerType;
-        const groupName = catalogId ? (groups[catalogId].displayName || catalogId) : 'No catalog';
+      {productLinesToRender.map((productLine) => {
+        const productLineId = productLine.id;
+        const customerType = productLine.customerType;
+        const groupName = productLine.displayName;
 
-        // Filter drafts for this catalog+type combination
-        const matchingDrafts = drafts.filter(d =>
-          d.catalogId === catalogId && d.product.customerType === customerType
-        );
+        // Get products for this product line
+        const products = getProductsForProductLine(productLineId);
+
+        // Filter drafts for this product line
+        const matchingDrafts = getDraftsForProductLine(productLineId);
 
         // Separate non-add-on and add-on products for pricing table layout
         const nonAddOnProducts = products.filter(({ product }) => product.isAddOnTo === false);
@@ -1671,28 +1692,48 @@ function CatalogView({ groupedProducts, groups, existingItems, onSaveProduct, on
         const hasNonAddOns = nonAddOnProducts.length > 0 || nonAddOnDrafts.length > 0;
 
         return (
-          <div key={keyStr}>
-            <div className="mb-3">
+          <div key={productLineId}>
+            <div className="mb-3 group/productLine-header">
               <div className="flex items-center gap-2">
                 <h3 className="text-base font-semibold text-foreground">{groupName}</h3>
+                <div className="opacity-0 group-hover/productLine-header:opacity-100 transition-opacity flex items-center gap-1">
+                  <button
+                    onClick={() => {
+                      setEditingProductLineId(productLineId);
+                      setEditingProductLineDisplayName(groups[productLineId].displayName || '');
+                    }}
+                    className="p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-foreground/[0.05] transition-colors duration-150 hover:transition-none"
+                    aria-label="Edit product line"
+                  >
+                    <PencilSimpleIcon className="h-3.5 w-3.5" />
+                  </button>
+                  <button
+                    onClick={() => setDeletingProductLineId(productLineId)}
+                    className="p-1 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors duration-150 hover:transition-none"
+                    aria-label="Delete product line"
+                  >
+                    <TrashIcon className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 mt-1">
                 <span className={cn(
                   "inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wide ring-1",
-                  CUSTOMER_TYPE_COLORS[customerType]
+                  customerType && customerType in CUSTOMER_TYPE_COLORS
+                    ? CUSTOMER_TYPE_COLORS[customerType as keyof typeof CUSTOMER_TYPE_COLORS]
+                    : "bg-gray-500/10 text-gray-500 ring-gray-500/30"
                 )}>
-                  {customerType}
+                  {customerType ?? "unknown customer type"}
+                </span>
+                <span className="text-xs text-muted-foreground">
+                  Products in this product line are mutually exclusive (except add-ons)
                 </span>
               </div>
-              <p className="text-xs text-muted-foreground mt-1">
-                {catalogId
-                  ? "Products in this catalog are mutually exclusive (except add-ons)"
-                  : "Products that are not in a catalog are not mutually exclusive"}
-              </p>
             </div>
             <div className="relative rounded-2xl bg-foreground/[0.04] ring-1 ring-foreground/[0.06]">
               <div className="flex gap-4 justify-start overflow-x-auto p-5 min-h-20 pr-16">
                 <div className="flex max-w-max gap-4 items-stretch">
-                  {/* Non-add-on products as a pricing table (single card, multiple columns) */}
-                  {/* Only saved products go in the table - drafts are rendered separately since they're in edit mode */}
+                  {/* Non-add-on products as a pricing table */}
                   {nonAddOnProducts.length > 0 && (
                     <div className={cn(
                       "flex rounded-2xl overflow-hidden",
@@ -1715,7 +1756,7 @@ function CatalogView({ groupedProducts, groups, existingItems, onSaveProduct, on
                               ...srcProduct,
                               displayName: `${srcProduct.displayName || id} Copy`,
                             };
-                            setDrafts(prev => [...prev, { key, catalogId, product: duplicated }]);
+                            setDrafts(prev => [...prev, { key, productLineId, product: duplicated }]);
                           }}
                           onCreateNewItem={onCreateNewItem}
                           onOpenDetails={(o) => onOpenProductDetails(o)}
@@ -1748,7 +1789,7 @@ function CatalogView({ groupedProducts, groups, existingItems, onSaveProduct, on
                       }}
                       onDuplicate={() => {
                         const cloneKey = `${d.key}-copy`;
-                        setDrafts(prev => ([...prev, { key: cloneKey, catalogId: d.catalogId, product: { ...d.product, displayName: `${d.product.displayName} Copy` } }]));
+                        setDrafts(prev => ([...prev, { key: cloneKey, productLineId: d.productLineId, product: { ...d.product, displayName: `${d.product.displayName} Copy` } }]));
                       }}
                       onCreateNewItem={onCreateNewItem}
                       onOpenDetails={(o) => onOpenProductDetails(o)}
@@ -1774,7 +1815,7 @@ function CatalogView({ groupedProducts, groups, existingItems, onSaveProduct, on
                           ...srcProduct,
                           displayName: `${srcProduct.displayName || id} Copy`,
                         };
-                        setDrafts(prev => [...prev, { key, catalogId, product: duplicated }]);
+                        setDrafts(prev => [...prev, { key, productLineId, product: duplicated }]);
                       }}
                       onCreateNewItem={onCreateNewItem}
                       onOpenDetails={(o) => onOpenProductDetails(o)}
@@ -1800,7 +1841,7 @@ function CatalogView({ groupedProducts, groups, existingItems, onSaveProduct, on
                       }}
                       onDuplicate={() => {
                         const cloneKey = `${d.key}-copy`;
-                        setDrafts(prev => ([...prev, { key: cloneKey, catalogId: d.catalogId, product: { ...d.product, displayName: `${d.product.displayName} Copy` } }]));
+                        setDrafts(prev => ([...prev, { key: cloneKey, productLineId: d.productLineId, product: { ...d.product, displayName: `${d.product.displayName} Copy` } }]));
                       }}
                       onCreateNewItem={onCreateNewItem}
                       onOpenDetails={(o) => onOpenProductDetails(o)}
@@ -1811,7 +1852,7 @@ function CatalogView({ groupedProducts, groups, existingItems, onSaveProduct, on
                   ))}
 
                   {/* Add product button */}
-                  <Link href={`/projects/${projectId}/payments/products/new`}>
+                  <Link href={productLineId && customerType ? urlString`/projects/${projectId}/payments/products/new?productLineId=${productLineId}&customerType=${customerType}` : urlString`/projects/${projectId}/payments/products/new`}>
                     <Button
                       variant="outline"
                       size="plain"
@@ -1836,23 +1877,23 @@ function CatalogView({ groupedProducts, groups, existingItems, onSaveProduct, on
         );
       })}
 
-      {/* No catalog section - shows all products without a catalog, regardless of customer type */}
+      {/* No product line section - shows all products without a productLine, regardless of customer type */}
       <div>
         <div className="mb-3">
-          <h3 className="text-base font-semibold text-foreground">No catalog</h3>
+          <h3 className="text-base font-semibold text-foreground">No product line</h3>
           <p className="text-xs text-muted-foreground mt-1">
-            Products that are not in a catalog are not mutually exclusive
+            Products that are not in a product line are not mutually exclusive
           </p>
         </div>
         <div className="relative rounded-2xl bg-foreground/[0.04] ring-1 ring-foreground/[0.06]">
           <div className="flex gap-4 justify-start overflow-x-auto p-5 min-h-20 pr-16">
             <div className="flex max-w-max gap-4 items-stretch">
-              {noCatalogProducts.map(({ id, product }) => (
+              {noProductLineProducts.map(({ id, product }) => (
                 <ProductCard
                   key={id}
                   id={id}
                   product={product}
-                  allProducts={noCatalogProducts}
+                  allProducts={noProductLineProducts}
                   existingItems={existingItems}
                   onSave={onSaveProduct}
                   onDelete={onDeleteProduct}
@@ -1862,18 +1903,18 @@ function CatalogView({ groupedProducts, groups, existingItems, onSaveProduct, on
                       ...srcProduct,
                       displayName: `${srcProduct.displayName || id} Copy`,
                     };
-                    setDrafts(prev => [...prev, { key, catalogId: undefined, product: duplicated }]);
+                    setDrafts(prev => [...prev, { key, productLineId: undefined, product: duplicated }]);
                   }}
                   onCreateNewItem={onCreateNewItem}
                   onOpenDetails={(o) => onOpenProductDetails(o)}
                 />
               ))}
-              {noCatalogDrafts.map((d) => (
+              {noProductLineDrafts.map((d) => (
                 <ProductCard
                   key={d.key}
                   id={d.key}
                   product={d.product}
-                  allProducts={noCatalogProducts}
+                  allProducts={noProductLineProducts}
                   existingItems={existingItems}
                   isDraft
                   onSave={async (specifiedId, product) => {
@@ -1888,7 +1929,7 @@ function CatalogView({ groupedProducts, groups, existingItems, onSaveProduct, on
                   }}
                   onDuplicate={() => {
                     const cloneKey = `${d.key}-copy`;
-                    setDrafts(prev => ([...prev, { key: cloneKey, catalogId: undefined, product: { ...d.product, displayName: `${d.product.displayName} Copy` } }]));
+                    setDrafts(prev => ([...prev, { key: cloneKey, productLineId: undefined, product: { ...d.product, displayName: `${d.product.displayName} Copy` } }]));
                   }}
                   onCreateNewItem={onCreateNewItem}
                   onOpenDetails={(o) => onOpenProductDetails(o)}
@@ -1920,7 +1961,7 @@ function CatalogView({ groupedProducts, groups, existingItems, onSaveProduct, on
         </div>
       </div>
 
-      {/* New catalog button with customer type selector */}
+      {/* New product line button with customer type selector */}
       <Popover>
         <PopoverTrigger asChild>
           <Button
@@ -1936,7 +1977,7 @@ function CatalogView({ groupedProducts, groups, existingItems, onSaveProduct, on
           >
             <div className="flex flex-col items-center gap-2">
               <PlusIcon className="h-6 w-6" />
-              <span className="text-sm font-medium">New catalog</span>
+              <span className="text-sm font-medium">New product line</span>
             </div>
           </Button>
         </PopoverTrigger>
@@ -1944,20 +1985,37 @@ function CatalogView({ groupedProducts, groups, existingItems, onSaveProduct, on
           <div className="space-y-4">
             <div>
               <p className="text-xs text-muted-foreground mb-3">
-                A catalog groups products that are mutually exclusive — besides add-ons, customers can only have one active product from each catalog at a time.
+                A product line groups products that are mutually exclusive — besides add-ons, customers can only have one active product from each product line at a time.
               </p>
             </div>
             <div>
-              <Label className="text-xs font-medium text-muted-foreground mb-1.5 block">Catalog ID</Label>
+              <Label className="text-xs font-medium text-muted-foreground mb-1.5 block">Display Name</Label>
               <Input
                 ref={newGroupInputRef}
-                value={newCatalogId}
+                value={newProductLineDisplayName}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  setNewProductLineDisplayName(value);
+                  // Auto-generate ID from display name if not manually edited
+                  if (!hasManuallyEditedProductLineId) {
+                    setNewProductLineId(toIdFormat(value));
+                  }
+                }}
+                placeholder="e.g., Pricing Plans"
+                className="h-9"
+              />
+            </div>
+            <div>
+              <Label className="text-xs font-medium text-muted-foreground mb-1.5 block">Product Line ID</Label>
+              <Input
+                value={newProductLineId}
                 onChange={(e) => {
                   const value = e.target.value.toLowerCase().replace(/[^a-z0-9_\-]/g, '-');
-                  setNewCatalogId(value);
+                  setNewProductLineId(value);
+                  setHasManuallyEditedProductLineId(true);
                 }}
                 placeholder="e.g., pricing-plans"
-                className="h-9"
+                className="h-9 font-mono text-sm"
               />
             </div>
             <div>
@@ -1966,11 +2024,11 @@ function CatalogView({ groupedProducts, groups, existingItems, onSaveProduct, on
                 {(['user', 'team', 'custom'] as const).map((type) => (
                   <button
                     key={type}
-                    onClick={() => setNewCatalogCustomerType(type)}
+                    onClick={() => setNewProductLineCustomerType(type)}
                     className={cn(
                       "flex-1 px-2 py-1.5 rounded-lg text-xs font-medium capitalize",
                       "transition-colors duration-150 hover:transition-none",
-                      newCatalogCustomerType === type
+                      newProductLineCustomerType === type
                         ? cn("ring-1", CUSTOMER_TYPE_COLORS[type])
                         : "bg-foreground/[0.04] text-muted-foreground hover:bg-foreground/[0.08]"
                     )}
@@ -1983,56 +2041,105 @@ function CatalogView({ groupedProducts, groups, existingItems, onSaveProduct, on
             <Button
               size="sm"
               className="w-full"
-              disabled={!newCatalogId.trim()}
+              disabled={!newProductLineId.trim() || !newProductLineDisplayName.trim()}
               onClick={async () => {
-                const id = newCatalogId.trim();
-                if (!id) return;
+                const id = newProductLineId.trim();
+                const displayName = newProductLineDisplayName.trim();
+                if (!id || !displayName) return;
                 if (!isValidUserSpecifiedId(id)) {
-                  toast({ title: getUserSpecifiedIdErrorMessage("catalogId"), variant: "destructive" });
+                  alert(getUserSpecifiedIdErrorMessage("productLineId"));
                   return;
                 }
                 if (Object.prototype.hasOwnProperty.call(groups, id)) {
-                  toast({ title: "Catalog ID already exists", variant: "destructive" });
+                  alert("Product line ID already exists");
                   return;
                 }
 
-                // Create the catalog (no product yet)
-                await onCreateCatalog(id);
+                // Create the productLine with display name and customer type
+                await onCreateProductLine(id, displayName, newProductLineCustomerType);
 
-                // Add a local draft so the "add product" form shows immediately
-                const draftKey = generateProductId("product");
-                const newProduct: Product = {
-                  displayName: 'New Product',
-                  customerType: newCatalogCustomerType,
-                  catalogId: id,
-                  isAddOnTo: false,
-                  stackable: false,
-                  prices: {},
-                  includedItems: {},
-                  serverOnly: false,
-                  freeTrial: undefined,
-                };
-                setDrafts(prev => [...prev, { key: draftKey, catalogId: id, product: newProduct }]);
-                setNewCatalogId("");
-                toast({ title: "Catalog created" });
+                setNewProductLineDisplayName("");
+                setNewProductLineId("");
+                setHasManuallyEditedProductLineId(false);
+                toast({ title: "Product line created" });
               }}
             >
-              Create Catalog
+              Create Product Line
             </Button>
           </div>
         </PopoverContent>
       </Popover>
+
+      {/* Edit productLine dialog */}
+      <Dialog open={editingProductLineId !== null} onOpenChange={(open) => !open && setEditingProductLineId(null)}>
+        <DialogContent className="sm:max-w-[400px]">
+          <DialogHeader>
+            <DialogTitle>Edit Product Line</DialogTitle>
+            <DialogDescription>
+              Update the display name for this product line.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid gap-2">
+              <Label>Display Name</Label>
+              <Input
+                value={editingProductLineDisplayName}
+                onChange={(e) => setEditingProductLineDisplayName(e.target.value)}
+                placeholder="e.g., Pricing Plans"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditingProductLineId(null)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={async () => {
+                if (editingProductLineId && editingProductLineDisplayName.trim()) {
+                  await onUpdateProductLine(editingProductLineId, editingProductLineDisplayName.trim());
+                  toast({ title: "Product line updated" });
+                  setEditingProductLineId(null);
+                }
+              }}
+              disabled={!editingProductLineDisplayName.trim()}
+            >
+              Save
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete productLine confirmation dialog */}
+      <ActionDialog
+        open={deletingProductLineId !== null}
+        onOpenChange={(open) => !open && setDeletingProductLineId(null)}
+        title="Delete Product Line"
+        danger
+        okButton={{
+          label: "Delete",
+          onClick: async () => {
+            if (deletingProductLineId) {
+              await onDeleteProductLine(deletingProductLineId);
+              toast({ title: "Product line deleted" });
+              setDeletingProductLineId(null);
+            }
+          }
+        }}
+        cancelButton
+      >
+        Are you sure you want to delete this product line? All products in this product line will be moved to &quot;No product line&quot;.
+      </ActionDialog>
     </div>
   );
 }
 
-type CatalogViewPageProps = {
+type ProductLineViewPageProps = {
   createDraftRequestId?: string,
   draftCustomerType?: 'user' | 'team' | 'custom',
   onDraftHandled?: () => void,
 };
 
-export default function PageClient({ createDraftRequestId, draftCustomerType = 'user', onDraftHandled }: CatalogViewPageProps) {
+export default function PageClient({ createDraftRequestId, draftCustomerType = 'user', onDraftHandled }: ProductLineViewPageProps) {
   const [showProductDialog, setShowProductDialog] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [showItemDialog, setShowItemDialog] = useState(false);
@@ -2050,17 +2157,17 @@ export default function PageClient({ createDraftRequestId, draftCustomerType = '
     .sort()
     .join(',');
 
-  // Group products by catalogId and sort by customer type priority
+  // Group products by productLineId and sort by customer type priority
   const groupedProducts = useMemo(() => {
     const groups = new Map<string | undefined, Array<{ id: string, product: Product }>>();
 
     // Group products
     for (const [id, product] of typedEntries(paymentsConfig.products)) {
-      const catalogId = product.catalogId;
-      if (!groups.has(catalogId)) {
-        groups.set(catalogId, []);
+      const productLineId = product.productLineId;
+      if (!groups.has(productLineId)) {
+        groups.set(productLineId, []);
       }
-      groups.get(catalogId)!.push({ id, product });
+      groups.get(productLineId)!.push({ id, product });
     }
 
     // Sort products within each group by customer type, then by ID
@@ -2096,10 +2203,10 @@ export default function PageClient({ createDraftRequestId, draftCustomerType = '
     const sortedGroups = new Map<string | undefined, Array<{ id: string, product: Product }>>();
 
     // Helper to get group priority
-    const getGroupPriority = (catalogId: string | undefined) => {
-      if (!catalogId) return 999; // Ungrouped always last
+    const getGroupPriority = (productLineId: string | undefined) => {
+      if (!productLineId) return 999; // Ungrouped always last
 
-      const products = groups.get(catalogId) || [];
+      const products = groups.get(productLineId) || [];
       if (products.length === 0) return 999;
 
       // Get the most common customer type in the group
@@ -2124,8 +2231,8 @@ export default function PageClient({ createDraftRequestId, draftCustomerType = '
     });
 
     // Rebuild map in sorted order
-    sortedEntries.forEach(([catalogId, products]) => {
-      sortedGroups.set(catalogId, products);
+    sortedEntries.forEach(([productLineId, products]) => {
+      sortedGroups.set(productLineId, products);
     });
 
     return sortedGroups;
@@ -2166,7 +2273,7 @@ export default function PageClient({ createDraftRequestId, draftCustomerType = '
     .map(([id, product]) => ({
       id,
       displayName: product.displayName,
-      catalogId: product.catalogId,
+      productLineId: product.productLineId,
       customerType: product.customerType
     }));
 
@@ -2182,15 +2289,15 @@ export default function PageClient({ createDraftRequestId, draftCustomerType = '
   };
 
   const handleDeleteProduct = async (productId: string) => {
-    // Get the product's catalog before deleting
+    // Get the product's productLine before deleting
     const product = paymentsConfig.products[productId];
-    const catalogId = product.catalogId;
+    const productLineId = product.productLineId;
 
-    // Count products in the same catalog (before deletion)
-    const productsInCatalog = catalogId
-      ? Object.entries(paymentsConfig.products).filter(([, p]) => p.catalogId === catalogId)
+    // Count products in the same productLine (before deletion)
+    const productsInProductLine = productLineId
+      ? Object.entries(paymentsConfig.products).filter(([, p]) => p.productLineId === productLineId)
       : [];
-    const isLastProductInCatalog = catalogId && productsInCatalog.length === 1;
+    const isLastProductInProductLine = productLineId && productsInProductLine.length === 1;
 
     // Rebuild the products object without the deleted product
     // This is the correct way to delete - rebuild the object instead of setting to null
@@ -2199,18 +2306,18 @@ export default function PageClient({ createDraftRequestId, draftCustomerType = '
         .filter(([id]) => id !== productId)
     );
 
-    // Delete the product (and catalog if it will be empty)
-    if (isLastProductInCatalog) {
-      // Also rebuild catalogs without the empty catalog
-      const updatedCatalogs = typedFromEntries(
-        typedEntries(paymentsConfig.catalogs)
-          .filter(([id]) => id !== catalogId)
+    // Delete the product (and productLine if it will be empty)
+    if (isLastProductInProductLine) {
+      // Also rebuild productLines without the empty productLine
+      const updatedProductLines = typedFromEntries(
+        typedEntries(paymentsConfig.productLines)
+          .filter(([id]) => id !== productLineId)
       );
       await project.updateConfig({
         "payments.products": updatedProducts,
-        "payments.catalogs": updatedCatalogs,
+        "payments.productLines": updatedProductLines,
       });
-      toast({ title: "Product and empty catalog deleted" });
+      toast({ title: "Product and empty product line deleted" });
     } else {
       await project.updateConfig({ "payments.products": updatedProducts });
       toast({ title: "Product deleted" });
@@ -2222,9 +2329,9 @@ export default function PageClient({ createDraftRequestId, draftCustomerType = '
 
   const innerContent = (
     <div className="flex-1" key={`${productIds}-${refreshKey}`}>
-      <CatalogView
+      <ProductLineView
         groupedProducts={groupedProducts}
-        groups={paymentsConfig.catalogs}
+        groups={paymentsConfig.productLines}
         existingItems={existingItemsList}
         onSaveProduct={handleInlineSaveProduct}
         onDeleteProduct={handleDeleteProduct}
@@ -2233,17 +2340,46 @@ export default function PageClient({ createDraftRequestId, draftCustomerType = '
           setEditingProduct(product);
           setShowProductDialog(true);
         }}
-        onSaveProductWithGroup={async (catalogId, productId, product) => {
+        onSaveProductWithGroup={async (productLineId, productId, product) => {
           await project.updateConfig({
-            [`payments.catalogs.${catalogId}`]: {},
             [`payments.products.${productId}`]: product,
           });
           toast({ title: "Product created" });
         }}
-        onCreateCatalog={async (catalogId) => {
+        onCreateProductLine={async (productLineId, displayName, customerType) => {
           await project.updateConfig({
-            [`payments.catalogs.${catalogId}`]: {},
+            [`payments.productLines.${productLineId}`]: { displayName, customerType },
           });
+        }}
+        onUpdateProductLine={async (productLineId, displayName) => {
+          await project.updateConfig({
+            [`payments.productLines.${productLineId}.displayName`]: displayName,
+          });
+        }}
+        onDeleteProductLine={async (productLineId) => {
+          // Move all products from this productLine to "No product line"
+          const productsToUpdate = typedEntries(paymentsConfig.products)
+            .filter(([, product]) => product.productLineId === productLineId)
+            .map(([id, product]) => [id, { ...product, productLineId: undefined }] as const);
+
+          // Rebuild productLines without the deleted productLine
+          const updatedProductLines = typedFromEntries(
+            typedEntries(paymentsConfig.productLines)
+              .filter(([id]) => id !== productLineId)
+          );
+
+          // Build the update object
+          // Using `as any` because we're building a dynamic config update that TypeScript can't statically verify
+          const updateConfig: Record<string, unknown> = {
+            "payments.productLines": updatedProductLines,
+          };
+
+          // Update each product to remove productLineId
+          for (const [productId, product] of productsToUpdate) {
+            updateConfig[`payments.products.${productId}`] = product;
+          }
+
+          await project.updateConfig(updateConfig as any);
         }}
         createDraftRequestId={createDraftRequestId}
         draftCustomerType={draftCustomerType}
@@ -2268,7 +2404,7 @@ export default function PageClient({ createDraftRequestId, draftCustomerType = '
         onSave={async (productId, product) => await handleSaveProduct(productId, product)}
         editingProduct={editingProduct ?? undefined}
         existingProducts={existingProductsList}
-        existingCatalogs={Object.fromEntries(Object.entries(paymentsConfig.catalogs).map(([id, g]) => [id, { displayName: g.displayName || id }]))}
+        existingProductLines={Object.fromEntries(Object.entries(paymentsConfig.productLines).map(([id, g]) => [id, { displayName: g.displayName || id, customerType: g.customerType }]))}
         existingItems={existingItemsList}
         onCreateNewItem={handleCreateItem}
       />
