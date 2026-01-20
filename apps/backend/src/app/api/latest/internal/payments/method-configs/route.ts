@@ -1,0 +1,157 @@
+import { getStackStripe } from "@/lib/stripe";
+import { globalPrismaClient } from "@/prisma-client";
+import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
+import { KnownErrors } from "@stackframe/stack-shared";
+import { getAllPaymentMethodIds, getAllPaymentMethodNames, getPaymentMethodName, isKnownPaymentMethod } from "@stackframe/stack-shared/dist/payments/payment-methods";
+import { adaptSchema, adminAuthTypeSchema, yupArray, yupBoolean, yupNumber, yupObject, yupRecord, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
+
+const METADATA_FIELDS = new Set([
+  'id', 'object', 'active', 'application', 'is_default', 'livemode', 'name', 'parent'
+]);
+
+export const GET = createSmartRouteHandler({
+  metadata: {
+    hidden: true,
+  },
+  request: yupObject({
+    auth: yupObject({
+      type: adminAuthTypeSchema.defined(),
+      project: adaptSchema.defined(),
+      tenancy: adaptSchema.defined(),
+    }).defined(),
+  }),
+  response: yupObject({
+    statusCode: yupNumber().oneOf([200]).defined(),
+    bodyType: yupString().oneOf(["json"]).defined(),
+    body: yupObject({
+      config_id: yupString().defined(),
+      methods: yupArray(yupObject({
+        id: yupString().defined(),
+        name: yupString().oneOf(getAllPaymentMethodNames()).defined(),
+        enabled: yupBoolean().defined(),
+        available: yupBoolean().defined(),
+        overridable: yupBoolean().defined(),
+      })).defined(),
+    }).defined(),
+  }),
+  handler: async ({ auth }) => {
+    const project = await globalPrismaClient.project.findUnique({
+      where: { id: auth.project.id },
+      select: { stripeAccountId: true },
+    });
+
+    if (!project?.stripeAccountId) {
+      throw new KnownErrors.StripeAccountInfoNotFound();
+    }
+
+    const stripe = getStackStripe();
+    const configs = await stripe.paymentMethodConfigurations.list({}, {
+      stripeAccount: project.stripeAccountId,
+    });
+
+
+    const platformConfig = configs.data.find(c => c.application || c.parent);
+    const defaultConfig = platformConfig || configs.data.find(c => c.is_default);
+    if (!defaultConfig) {
+      throw new StackAssertionError("No payment method configuration found for Stripe account", {
+        stripeAccountId: project.stripeAccountId,
+        configCount: configs.data.length,
+      });
+    }
+
+    const methods = Object.entries(defaultConfig)
+      .filter(([key]) => !METADATA_FIELDS.has(key))
+      .filter(([, value]) => value && typeof value === 'object' && 'display_preference' in value)
+      .filter(([id]) => isKnownPaymentMethod(id))
+      .map(([id, config]) => ({
+        id,
+        name: getPaymentMethodName(id),
+        // Use 'value' (what Stripe actually shows at checkout), not 'preference' (what user requested)
+        // When overridable is true, updating 'preference' will change 'value'
+        // When overridable is false, 'preference' is stored but 'value' stays as platform default
+        enabled: (config as any).display_preference?.value === 'on',
+        available: (config as any).available || false,
+        // When overridable is true, toggles actually work. When false, they're ignored by Stripe.
+        overridable: (config as any).display_preference?.overridable ?? false,
+      }))
+      .sort((a, b) => {
+        if (a.available !== b.available) return b.available ? 1 : -1;
+        return stringCompare(a.name, b.name);
+      });
+
+    return {
+      statusCode: 200,
+      bodyType: "json",
+      body: {
+        config_id: defaultConfig.id,
+        methods,
+      },
+    };
+  },
+});
+
+export const PATCH = createSmartRouteHandler({
+  metadata: {
+    hidden: true,
+  },
+  request: yupObject({
+    auth: yupObject({
+      type: adminAuthTypeSchema.defined(),
+      project: adaptSchema.defined(),
+      tenancy: adaptSchema.defined(),
+    }).defined(),
+    body: yupObject({
+      config_id: yupString().defined(),
+      updates: yupRecord(
+        yupString().oneOf(getAllPaymentMethodIds()).defined(),
+        yupString().oneOf(['on', 'off']).defined()
+      ).defined(),
+    }).defined(),
+  }),
+  response: yupObject({
+    statusCode: yupNumber().oneOf([200]).defined(),
+    bodyType: yupString().oneOf(["json"]).defined(),
+    body: yupObject({
+      success: yupBoolean().defined(),
+    }).defined(),
+  }),
+  handler: async ({ auth, body }) => {
+    if (Object.keys(body.updates).length === 0) {
+      return { statusCode: 200, bodyType: "json", body: { success: true } };
+    }
+
+    const project = await globalPrismaClient.project.findUnique({
+      where: { id: auth.project.id },
+      select: { stripeAccountId: true },
+    });
+
+    if (!project?.stripeAccountId) {
+      throw new KnownErrors.StripeAccountInfoNotFound();
+    }
+
+    const stripeUpdates: Record<string, { display_preference: { preference: 'on' | 'off' } }> = {};
+
+    for (const [methodId, preference] of Object.entries(body.updates)) {
+      stripeUpdates[methodId] = {
+        display_preference: { preference: preference as 'on' | 'off' },
+      };
+    }
+
+    const stripe = getStackStripe();
+    await stripe.paymentMethodConfigurations.update(
+      body.config_id,
+      stripeUpdates,
+      { stripeAccount: project.stripeAccountId }
+    );
+
+    return {
+      statusCode: 200,
+      bodyType: "json",
+      body: {
+        success: true,
+      },
+    };
+  },
+});
