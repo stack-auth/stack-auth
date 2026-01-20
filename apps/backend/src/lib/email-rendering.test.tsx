@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { renderEmailsForTenancyBatched, type RenderEmailRequestForTenancy } from './email-rendering';
+import { renderEmailsForTenancyBatched, renderEmailWithTemplate, type RenderEmailRequestForTenancy } from './email-rendering';
 
 describe('renderEmailsForTenancyBatched', () => {
   const createSimpleTemplateSource = (content: string) => `
@@ -498,5 +498,57 @@ describe('renderEmailsForTenancyBatched', () => {
         });
       }
     }, 30000); // Extended timeout for large batch
+  });
+});
+
+describe('renderEmailWithTemplate', () => {
+  const simpleTemplate = `
+    export const variablesSchema = (v: any) => v;
+    export function EmailTemplate({ user, project }: any) {
+      return (
+        <div>
+          <span className="user">{user.displayName}</span>
+          <span className="project">{project.displayName}</span>
+        </div>
+      );
+    }
+  `;
+
+  const simpleTheme = `
+    export function EmailTheme({ children }: any) {
+      return <div className="theme">{children}</div>;
+    }
+  `;
+
+  it('preview mode: uses default user and project when not provided', async () => {
+    const result = await renderEmailWithTemplate(simpleTemplate, simpleTheme, {
+      previewMode: true,
+    });
+
+    expect(result.status).toBe('ok');
+    if (result.status === 'ok') {
+      expect(result.data.html).toContain('John Doe');
+      expect(result.data.html).toContain('My Project');
+    }
+  });
+
+  it('preview mode: merges PreviewVariables from template', async () => {
+    const templateWithPreviewVars = `
+      import { type } from "arktype";
+      export const variablesSchema = type({ greeting: "string" });
+      export function EmailTemplate({ variables }: any) {
+        return <div className="greeting">{variables.greeting}</div>;
+      }
+      EmailTemplate.PreviewVariables = { greeting: "Hello from preview!" };
+    `;
+
+    const result = await renderEmailWithTemplate(templateWithPreviewVars, simpleTheme, {
+      previewMode: true,
+    });
+
+    expect(result.status).toBe('ok');
+    if (result.status === 'ok') {
+      expect(result.data.html).toContain('Hello from preview!');
+    }
   });
 });
