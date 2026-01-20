@@ -45,7 +45,8 @@ export function ActionDialog(props: ActionDialogProps) {
   const [confirmed, setConfirmed] = React.useState(false);
   const confirmId = useId();
   const [invalidationCount, setInvalidationCount] = React.useState(0);
-  const { disabled: okButtonDisabledProp, ...okButtonProps } = okButton?.props ?? {};
+  const okButtonExtraProps = okButton && typeof okButton === "object" ? okButton.props : undefined;
+  const { disabled: okButtonDisabledProp, ...okButtonProps } = okButtonExtraProps ?? {};
   const okButtonDisabled = (!!props.confirmText && !confirmed) || !!okButtonDisabledProp;
 
   const onOpenChange = (open: boolean) => {
