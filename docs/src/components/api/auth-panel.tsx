@@ -3,8 +3,8 @@
 import { AdminOwnedProject, CurrentInternalUser, useUser } from '@stackframe/stack';
 import { runAsynchronously } from '@stackframe/stack-shared/dist/utils/promises';
 import { stringCompare } from '@stackframe/stack-shared/dist/utils/strings';
-import { ChevronDown, X } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { AlertTriangle, Check, ChevronDown, X } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useSidebar } from '../layouts/sidebar-context';
 import { useAPIPageContext } from './api-page-wrapper';
 import { Button } from './button';
@@ -61,6 +61,20 @@ export function AuthPanel() {
   // State for project selection and tabs
   const [selectedProjectId, setSelectedProjectId] = useState<string>('');
   const [activeTab, setActiveTab] = useState<AuthTab>('select-project');
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setIsDropdownOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   // Use default functions if sidebar context is not available
   const { isAuthOpen, toggleAuth } = sidebarContext || {
@@ -211,7 +225,7 @@ export function AuthPanel() {
         {/* Tabs */}
         <div className="flex border-b border-fd-border">
           <button
-            onClick={() => setActiveTab('select-project')}
+            onClick={() => { setActiveTab('select-project'); setIsDropdownOpen(false); }}
             className={`flex-1 px-4 py-3 text-sm font-medium transition-colors hover:transition-none ${
               activeTab === 'select-project'
                 ? 'text-fd-foreground border-b-2 border-fd-foreground'
@@ -221,7 +235,7 @@ export function AuthPanel() {
             Select Project
           </button>
           <button
-            onClick={() => setActiveTab('manual')}
+            onClick={() => { setActiveTab('manual'); setIsDropdownOpen(false); }}
             className={`flex-1 px-4 py-3 text-sm font-medium transition-colors hover:transition-none ${
               activeTab === 'manual'
                 ? 'text-fd-foreground border-b-2 border-fd-foreground'
@@ -232,30 +246,68 @@ export function AuthPanel() {
           </button>
         </div>
 
+        {/* Error Banner */}
+        {highlightMissingHeaders && lastError && (
+          <div className="mx-4 mt-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 text-red-600 dark:text-red-400 flex-shrink-0" />
+              <span className="text-sm font-medium text-red-800 dark:text-red-300">
+                {lastError.status} Error - Authentication required
+              </span>
+            </div>
+            {missingRequiredHeaders.length > 0 && (
+              <p className="text-sm text-red-600 dark:text-red-400 mt-1.5 ml-6">
+                Missing: {missingRequiredHeaders.map(h => h.label).join(', ')}
+              </p>
+            )}
+          </div>
+        )}
+
         {/* Content */}
         <div className="flex-1 min-h-0 overflow-y-auto">
           {activeTab === 'select-project' ? (
             <div className="p-4 space-y-4">
               {hasOwnedProjects && projects.length > 0 ? (
                 <>
-                  <div className="space-y-2">
+                  <div className="space-y-2" ref={dropdownRef}>
                     <label className="text-sm font-medium text-fd-foreground">
                       Select Project
                     </label>
                     <div className="relative">
-                      <select
-                        value={selectedProjectId}
-                        onChange={(e) => handleProjectSelect(e.target.value)}
-                        className="w-full px-3 py-2.5 pr-10 border rounded-lg text-sm bg-fd-muted/50 text-fd-foreground focus:outline-none focus:ring-2 focus:ring-fd-primary focus:border-fd-primary border-fd-border appearance-none cursor-pointer"
+                      <button
+                        type="button"
+                        onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+                        className="w-full px-3 py-2.5 pr-10 border rounded-lg text-sm bg-fd-muted/50 text-fd-foreground focus:outline-none focus:ring-2 focus:ring-fd-primary focus:border-fd-primary border-fd-border text-left flex items-center justify-between"
                       >
-                        <option value="">Select a project...</option>
-                        {sortedProjects.map((project) => (
-                          <option key={project.id} value={project.id}>
-                            {project.displayName}
-                          </option>
-                        ))}
-                      </select>
-                      <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-fd-muted-foreground pointer-events-none" />
+                        <span className={selectedProjectId ? 'text-fd-foreground' : 'text-fd-muted-foreground'}>
+                          {selectedProjectId
+                            ? sortedProjects.find(p => p.id === selectedProjectId)?.displayName
+                            : 'Select a project...'}
+                        </span>
+                        <ChevronDown className={`w-4 h-4 text-fd-muted-foreground transition-transform ${isDropdownOpen ? 'rotate-180' : ''}`} />
+                      </button>
+
+                      {/* Dropdown Menu */}
+                      {isDropdownOpen && (
+                        <div className="absolute top-full left-0 right-0 mt-1 bg-fd-background border border-fd-border rounded-lg shadow-lg z-50 max-h-60 overflow-y-auto">
+                          {sortedProjects.map((project) => (
+                            <button
+                              key={project.id}
+                              type="button"
+                              onClick={() => {
+                                handleProjectSelect(project.id);
+                                setIsDropdownOpen(false);
+                              }}
+                              className="w-full px-3 py-2.5 text-sm text-left hover:bg-fd-muted/50 flex items-center justify-between transition-colors hover:transition-none"
+                            >
+                              <span className="text-fd-foreground">{project.displayName}</span>
+                              {selectedProjectId === project.id && (
+                                <Check className="w-4 h-4 text-green-500" />
+                              )}
+                            </button>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   </div>
 
@@ -288,18 +340,34 @@ export function AuthPanel() {
             <div className="p-4 space-y-4">
               {stackAuthHeaders.map((header) => {
                 const value = headers[header.key] ?? '';
+                const isMissing = highlightMissingHeaders && header.required && !value.trim();
 
                 return (
                   <div key={header.key} className="space-y-2">
-                    <label className="text-sm font-medium text-fd-foreground">
+                    <label className={`text-sm font-medium flex items-center gap-2 ${
+                      isMissing ? 'text-red-600 dark:text-red-400' : 'text-fd-foreground'
+                    }`}>
                       {header.label}
+                      {header.required && (
+                        <span className={`text-xs px-1.5 py-0.5 rounded ${
+                          isMissing
+                            ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300'
+                            : 'bg-fd-muted text-fd-muted-foreground'
+                        }`}>
+                          required
+                        </span>
+                      )}
                     </label>
                     <input
                       type="text"
                       placeholder={header.placeholder}
                       value={value}
                       onChange={(e) => updateSharedHeaders({ ...headers, [header.key]: e.target.value })}
-                      className="w-full px-3 py-2.5 border rounded-lg text-sm bg-fd-muted/50 text-fd-foreground placeholder:text-fd-muted-foreground focus:outline-none focus:ring-2 focus:ring-fd-primary focus:border-fd-primary border-fd-border"
+                      className={`w-full px-3 py-2.5 border rounded-lg text-sm bg-fd-muted/50 text-fd-foreground placeholder:text-fd-muted-foreground focus:outline-none focus:ring-2 ${
+                        isMissing
+                          ? 'border-red-300 dark:border-red-700 focus:ring-red-500'
+                          : 'border-fd-border focus:ring-fd-primary focus:border-fd-primary'
+                      }`}
                     />
                   </div>
                 );
@@ -352,7 +420,7 @@ export function AuthPanel() {
         {/* Mobile Tabs */}
         <div className="flex border-b border-fd-border">
           <button
-            onClick={() => setActiveTab('select-project')}
+            onClick={() => { setActiveTab('select-project'); setIsDropdownOpen(false); }}
             className={`flex-1 px-4 py-3 text-sm font-medium transition-colors hover:transition-none ${
               activeTab === 'select-project'
                 ? 'text-fd-foreground border-b-2 border-fd-foreground'
@@ -362,7 +430,7 @@ export function AuthPanel() {
             Select Project
           </button>
           <button
-            onClick={() => setActiveTab('manual')}
+            onClick={() => { setActiveTab('manual'); setIsDropdownOpen(false); }}
             className={`flex-1 px-4 py-3 text-sm font-medium transition-colors hover:transition-none ${
               activeTab === 'manual'
                 ? 'text-fd-foreground border-b-2 border-fd-foreground'
@@ -372,6 +440,23 @@ export function AuthPanel() {
             Manual
           </button>
         </div>
+
+        {/* Mobile Error Banner */}
+        {highlightMissingHeaders && lastError && (
+          <div className="mx-4 mt-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 text-red-600 dark:text-red-400 flex-shrink-0" />
+              <span className="text-sm font-medium text-red-800 dark:text-red-300">
+                {lastError.status} Error - Authentication required
+              </span>
+            </div>
+            {missingRequiredHeaders.length > 0 && (
+              <p className="text-sm text-red-600 dark:text-red-400 mt-1.5 ml-6">
+                Missing: {missingRequiredHeaders.map(h => h.label).join(', ')}
+              </p>
+            )}
+          </div>
+        )}
 
         {/* Mobile Content */}
         <div className="flex-1 min-h-0 overflow-y-auto">
@@ -384,19 +469,40 @@ export function AuthPanel() {
                       Select Project
                     </label>
                     <div className="relative">
-                      <select
-                        value={selectedProjectId}
-                        onChange={(e) => handleProjectSelect(e.target.value)}
-                        className="w-full px-3 py-3 pr-10 border rounded-lg text-base bg-fd-muted/50 text-fd-foreground focus:outline-none focus:ring-2 focus:ring-fd-primary focus:border-fd-primary border-fd-border appearance-none cursor-pointer"
+                      <button
+                        type="button"
+                        onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+                        className="w-full px-3 py-3 pr-10 border rounded-lg text-base bg-fd-muted/50 text-fd-foreground focus:outline-none focus:ring-2 focus:ring-fd-primary focus:border-fd-primary border-fd-border text-left flex items-center justify-between"
                       >
-                        <option value="">Select a project...</option>
-                        {sortedProjects.map((project) => (
-                          <option key={project.id} value={project.id}>
-                            {project.displayName}
-                          </option>
-                        ))}
-                      </select>
-                      <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-fd-muted-foreground pointer-events-none" />
+                        <span className={selectedProjectId ? 'text-fd-foreground' : 'text-fd-muted-foreground'}>
+                          {selectedProjectId
+                            ? sortedProjects.find(p => p.id === selectedProjectId)?.displayName
+                            : 'Select a project...'}
+                        </span>
+                        <ChevronDown className={`w-5 h-5 text-fd-muted-foreground transition-transform ${isDropdownOpen ? 'rotate-180' : ''}`} />
+                      </button>
+
+                      {/* Dropdown Menu */}
+                      {isDropdownOpen && (
+                        <div className="absolute top-full left-0 right-0 mt-1 bg-fd-background border border-fd-border rounded-lg shadow-lg z-50 max-h-60 overflow-y-auto">
+                          {sortedProjects.map((project) => (
+                            <button
+                              key={project.id}
+                              type="button"
+                              onClick={() => {
+                                handleProjectSelect(project.id);
+                                setIsDropdownOpen(false);
+                              }}
+                              className="w-full px-3 py-3 text-base text-left hover:bg-fd-muted/50 flex items-center justify-between transition-colors hover:transition-none"
+                            >
+                              <span className="text-fd-foreground">{project.displayName}</span>
+                              {selectedProjectId === project.id && (
+                                <Check className="w-5 h-5 text-green-500" />
+                              )}
+                            </button>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   </div>
 
@@ -429,18 +535,34 @@ export function AuthPanel() {
             <div className="p-4 space-y-4">
               {stackAuthHeaders.map((header) => {
                 const value = headers[header.key] ?? '';
+                const isMissing = highlightMissingHeaders && header.required && !value.trim();
 
                 return (
                   <div key={header.key} className="space-y-2">
-                    <label className="text-sm font-medium text-fd-foreground">
+                    <label className={`text-sm font-medium flex items-center gap-2 ${
+                      isMissing ? 'text-red-600 dark:text-red-400' : 'text-fd-foreground'
+                    }`}>
                       {header.label}
+                      {header.required && (
+                        <span className={`text-xs px-1.5 py-0.5 rounded ${
+                          isMissing
+                            ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300'
+                            : 'bg-fd-muted text-fd-muted-foreground'
+                        }`}>
+                          required
+                        </span>
+                      )}
                     </label>
                     <input
                       type="text"
                       placeholder={header.placeholder}
                       value={value}
                       onChange={(e) => updateSharedHeaders({ ...headers, [header.key]: e.target.value })}
-                      className="w-full px-3 py-3 border rounded-lg text-base bg-fd-muted/50 text-fd-foreground placeholder:text-fd-muted-foreground focus:outline-none focus:ring-2 focus:ring-fd-primary focus:border-fd-primary border-fd-border"
+                      className={`w-full px-3 py-3 border rounded-lg text-base bg-fd-muted/50 text-fd-foreground placeholder:text-fd-muted-foreground focus:outline-none focus:ring-2 ${
+                        isMissing
+                          ? 'border-red-300 dark:border-red-700 focus:ring-red-500'
+                          : 'border-fd-border focus:ring-fd-primary focus:border-fd-primary'
+                      }`}
                     />
                   </div>
                 );
