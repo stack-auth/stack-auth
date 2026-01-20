@@ -27,6 +27,11 @@ type RequestState = {
     headers?: Record<string, string>,
     loading: boolean,
     error?: string,
+    errorDetails?: {
+      url?: string,
+      method?: string,
+      type?: 'network' | 'cors' | 'timeout' | 'unknown',
+    },
     timestamp?: number,
     duration?: number,
   },
@@ -262,19 +267,18 @@ export function EnhancedAPIPage({ document, operations, description }: EnhancedA
       };
 
       // Build request body from individual fields
-      if (['POST', 'PUT', 'PATCH'].includes(method.toUpperCase()) && Object.keys(requestState.bodyFields).length > 0) {
+      // Always send a body for POST/PUT/PATCH if the operation has a requestBody defined
+      if (['POST', 'PUT', 'PATCH'].includes(method.toUpperCase()) && operation.requestBody) {
         // Filter out empty values and build JSON body
         const bodyData = Object.fromEntries(
           Object.entries(requestState.bodyFields).filter(([, value]) => value !== '' && value !== undefined)
         );
-        if (Object.keys(bodyData).length > 0) {
-          requestOptions.body = JSON.stringify(bodyData);
-          // Add Content-Type header when sending JSON body
-          requestOptions.headers = {
-            ...filteredHeaders,
-            'Content-Type': 'application/json',
-          };
-        }
+        // Always send at least {} if the operation expects a body
+        requestOptions.body = JSON.stringify(bodyData);
+        requestOptions.headers = {
+          ...filteredHeaders,
+          'Content-Type': 'application/json',
+        };
       }
 
       const response = await fetch(url, requestOptions);
@@ -298,16 +302,35 @@ export function EnhancedAPIPage({ document, operations, description }: EnhancedA
         }
       }));
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Request failed';
+      const rawMessage = err instanceof Error ? err.message : 'Request failed';
+
+      // Determine error type and create helpful message
+      let errorType: 'network' | 'cors' | 'timeout' | 'unknown' = 'unknown';
+      let errorMessage = rawMessage;
+
+      if (rawMessage === 'Failed to fetch' || rawMessage.includes('NetworkError')) {
+        errorType = 'network';
+        errorMessage = 'Network error: Unable to reach the API server.\n\nThis could be due to:\n• CORS policy blocking the request\n• The API server being unreachable\n• A network connectivity issue';
+      } else if (rawMessage.includes('CORS') || rawMessage.includes('cross-origin')) {
+        errorType = 'cors';
+        errorMessage = 'CORS error: The API server rejected this cross-origin request.\n\nThe API may not allow requests from this domain.';
+      } else if (rawMessage.includes('timeout') || rawMessage.includes('Timeout')) {
+        errorType = 'timeout';
+        errorMessage = 'Request timed out: The API server took too long to respond.';
+      }
 
       // Report network errors as well
-      reportError(0, { message: errorMessage });
+      reportError(0, { message: rawMessage });
 
       setRequestState(prev => ({
         ...prev,
         response: {
           loading: false,
           error: errorMessage,
+          errorDetails: {
+            method: method.toUpperCase(),
+            type: errorType,
+          },
           timestamp: startTime,
           duration: Date.now() - startTime,
         }
@@ -452,13 +475,13 @@ function ModernAPIPlayground({
     });
 
     // Add body for POST/PUT/PATCH - build from fields
-    if (['POST', 'PUT', 'PATCH'].includes(method) && Object.keys(requestState.bodyFields).length > 0) {
+    // Always include body if the operation expects a requestBody
+    if (['POST', 'PUT', 'PATCH'].includes(method) && operation.requestBody) {
       const bodyData = Object.fromEntries(
         Object.entries(requestState.bodyFields).filter(([, value]) => value !== '' && value !== undefined)
       );
-      if (Object.keys(bodyData).length > 0) {
-        curlCommand += ` \\\n  -d '${JSON.stringify(bodyData)}'`;
-      }
+      curlCommand += ` \\\n  -H "Content-Type: application/json"`;
+      curlCommand += ` \\\n  -d '${JSON.stringify(bodyData)}'`;
     }
 
     return curlCommand;
@@ -503,13 +526,17 @@ function ModernAPIPlayground({
     }
 
     // Add body for POST/PUT/PATCH - build from fields
-    if (['POST', 'PUT', 'PATCH'].includes(method) && Object.keys(requestState.bodyFields).length > 0) {
+    // Always include body if the operation expects a requestBody
+    if (['POST', 'PUT', 'PATCH'].includes(method) && operation.requestBody) {
       const bodyData = Object.fromEntries(
         Object.entries(requestState.bodyFields).filter(([, value]) => value !== '' && value !== undefined)
       );
-      if (Object.keys(bodyData).length > 0) {
-        jsCode += `,\n  body: ${JSON.stringify(bodyData, null, 2)}`;
-      }
+      // Add Content-Type header for JSON body
+      const headersWithContentType = { ...headers, 'Content-Type': 'application/json' };
+      // Re-add headers with Content-Type
+      jsCode = `const response = await fetch("${url}", {\n  method: "${method}"`;
+      jsCode += `,\n  headers: ${JSON.stringify(headersWithContentType, null, 4).replace(/^/gm, '  ')}`;
+      jsCode += `,\n  body: JSON.stringify(${JSON.stringify(bodyData, null, 2)})`;
     }
 
     jsCode += `\n});\n\nconst data = await response.json();\nconsole.log(data);`;
@@ -558,16 +585,13 @@ function ModernAPIPlayground({
     }
 
     // Add body for POST/PUT/PATCH - build from fields
-    if (['POST', 'PUT', 'PATCH'].includes(method) && Object.keys(requestState.bodyFields).length > 0) {
+    // Always include body if the operation expects a requestBody
+    if (['POST', 'PUT', 'PATCH'].includes(method) && operation.requestBody) {
       const bodyData = Object.fromEntries(
         Object.entries(requestState.bodyFields).filter(([, value]) => value !== '' && value !== undefined)
       );
-      if (Object.keys(bodyData).length > 0) {
-        pythonCode += `data = ${JSON.stringify(bodyData)}\n\n`;
-        pythonCode += `response = requests.${method.toLowerCase()}(url${Object.keys(headers).length > 0 ? ', headers=headers' : ''}, json=data)\n`;
-      } else {
-        pythonCode += `\nresponse = requests.${method.toLowerCase()}(url${Object.keys(headers).length > 0 ? ', headers=headers' : ''})\n`;
-      }
+      pythonCode += `data = ${JSON.stringify(bodyData)}\n\n`;
+      pythonCode += `response = requests.${method.toLowerCase()}(url${Object.keys(headers).length > 0 ? ', headers=headers' : ''}, json=data)\n`;
     } else {
       pythonCode += `\nresponse = requests.${method.toLowerCase()}(url${Object.keys(headers).length > 0 ? ', headers=headers' : ''})\n`;
     }
@@ -1236,9 +1260,21 @@ function ResponsePanel({
                 <p className="text-fd-muted-foreground text-sm text-center leading-relaxed m-0">Sending request...</p>
               </div>
             ) : response.error ? (
-              <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4">
-                <p className="text-red-800 dark:text-red-300 font-medium mb-2 leading-none">Request Failed</p>
+              <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4 space-y-3">
+                <div className="flex items-center gap-2">
+                  <span className="text-red-800 dark:text-red-300 font-medium leading-none">Request Failed</span>
+                  {response.errorDetails?.type && response.errorDetails.type !== 'unknown' && (
+                    <span className="text-xs bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 px-2 py-0.5 rounded font-mono uppercase">
+                      {response.errorDetails.type}
+                    </span>
+                  )}
+                </div>
                 <p className="text-red-600 dark:text-red-400 text-sm whitespace-pre-wrap break-words leading-relaxed m-0">{response.error}</p>
+                {response.duration && (
+                  <p className="text-red-500/70 dark:text-red-400/70 text-xs m-0">
+                    Failed after {response.duration}ms
+                  </p>
+                )}
               </div>
             ) : response.status ? (
               <div className="space-y-4">
