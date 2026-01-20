@@ -1,12 +1,13 @@
 import { BooleanTrue, Prisma } from "@/generated/prisma/client";
-import { getRenderedProjectConfigQuery } from "@/lib/config";
+import { getRenderedOrganizationConfigQuery, getRenderedProjectConfigQuery } from "@/lib/config";
+import { demoteAllContactChannelsToNonPrimary, setContactChannelAsPrimaryByValue } from "@/lib/contact-channel";
 import { normalizeEmail } from "@/lib/emails";
 import { grantDefaultProjectPermissions } from "@/lib/permissions";
 import { ensureTeamMembershipExists, ensureUserExists } from "@/lib/request-checks";
-import { Tenancy, getSoleTenancyFromProjectBranch } from "@/lib/tenancies";
+import { Tenancy } from "@/lib/tenancies";
 import { PrismaTransaction } from "@/lib/types";
 import { sendTeamMembershipDeletedWebhook, sendUserCreatedWebhook, sendUserDeletedWebhook, sendUserUpdatedWebhook } from "@/lib/webhooks";
-import { PrismaClientTransaction, RawQuery, getPrismaClientForSourceOfTruth, getPrismaClientForTenancy, getPrismaSchemaForSourceOfTruth, getPrismaSchemaForTenancy, globalPrismaClient, rawQuery, retryTransaction, sqlQuoteIdent } from "@/prisma-client";
+import { PrismaClientTransaction, RawQuery, getPrismaClientForSourceOfTruth, getPrismaClientForTenancy, getPrismaSchemaForSourceOfTruth, globalPrismaClient, rawQuery, retryTransaction, sqlQuoteIdent } from "@/prisma-client";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
 import { uploadAndGetUrl } from "@/s3";
 import { log } from "@/utils/telemetry";
@@ -83,10 +84,47 @@ async function createPersonalTeamIfEnabled(prisma: PrismaClientTransaction, tena
   }
 }
 
+type OnboardingConfig = {
+  onboarding: {
+    requireEmailVerification?: boolean,
+  },
+};
+
+/**
+ * Computes the restricted status and reason for a user based on their data and config.
+ * A user is "restricted" if they've signed up but haven't completed onboarding requirements.
+ *
+ * The config parameter accepts any object with an optional `onboarding.requireEmailVerification` property.
+ * This allows passing various config types (EnvironmentRenderedConfig, CompleteConfig, etc.) without type errors.
+ */
+export function computeRestrictedStatus<T extends OnboardingConfig>(
+  isAnonymous: boolean,
+  primaryEmailVerified: boolean,
+  config: T,
+): { isRestricted: false, restrictedReason: null } | { isRestricted: true, restrictedReason: { type: "anonymous" | "email_not_verified" } } {
+  // note: when you implement this function, make sure to also update the filter in the list users endpoint
+
+  // Anonymous users are always restricted (they need to sign up first)
+  if (isAnonymous) {
+    return { isRestricted: true, restrictedReason: { type: "anonymous" } };
+  }
+
+  // Check email verification requirement (default to false if not configured)
+  if (config.onboarding.requireEmailVerification && !primaryEmailVerified) {
+    return { isRestricted: true, restrictedReason: { type: "email_not_verified" } };
+  }
+
+  // EXTENSIBILITY: Add more conditions here in the future
+  // e.g., phone verification, manual approval, etc.
+
+  return { isRestricted: false, restrictedReason: null };
+}
+
 export const userPrismaToCrud = (
   prisma: Prisma.ProjectUserGetPayload<{ include: typeof userFullInclude }>,
-  lastActiveAtMillis: number,
+  config: OnboardingConfig,
 ): UsersCrud["Admin"]["Read"] => {
+  const lastActiveAtMillis = prisma.lastActiveAt.getTime();
   const selectedTeamMembers = prisma.teamMembers;
   if (selectedTeamMembers.length > 1) {
     throw new StackAssertionError("User cannot have more than one selected team; this should never happen");
@@ -98,11 +136,18 @@ export const userPrismaToCrud = (
   const otpAuth = prisma.authMethods.find((m) => m.otpAuthMethod);
   const passkeyAuth = prisma.authMethods.find((m) => m.passkeyAuthMethod);
 
+  const primaryEmailVerified = !!primaryEmailContactChannel?.isVerified;
+  const { isRestricted, restrictedReason } = computeRestrictedStatus(
+    prisma.isAnonymous,
+    primaryEmailVerified,
+    config,
+  );
+
   const result = {
     id: prisma.projectUserId,
     display_name: prisma.displayName || null,
     primary_email: primaryEmailContactChannel?.value || null,
-    primary_email_verified: !!primaryEmailContactChannel?.isVerified,
+    primary_email_verified: primaryEmailVerified,
     primary_email_auth_enabled: !!primaryEmailContactChannel?.usedForAuth,
     profile_image_url: prisma.profileImageUrl,
     signed_up_at_millis: prisma.createdAt.getTime(),
@@ -123,6 +168,8 @@ export const userPrismaToCrud = (
     selected_team: selectedTeamMembers[0] ? teamPrismaToCrud(selectedTeamMembers[0]?.team) : null,
     last_active_at_millis: lastActiveAtMillis,
     is_anonymous: prisma.isAnonymous,
+    is_restricted: isRestricted,
+    restricted_reason: restrictedReason,
   };
   return result;
 };
@@ -185,77 +232,16 @@ async function checkAuthData(
   }
 }
 
-export const getUserLastActiveAtMillis = async (projectId: string, branchId: string, userId: string): Promise<number | null> => {
-  const res = (await getUsersLastActiveAtMillis(projectId, branchId, [userId], [0]))[0];
-  if (res === 0) {
-    return null;
-  }
-  return res;
-};
-
-const mapUserLastActiveAtMillis = (
-  events: Array<{ userId: string, lastActiveAt: Date }>,
-  userIds: string[],
-  userSignedUpAtMillis: (number | Date)[],
-): number[] => {
-  const eventsByUserId = new Map<string, number>();
-  for (const event of events) {
-    eventsByUserId.set(event.userId, event.lastActiveAt.getTime());
-  }
-
-  return userIds.map((userId, index) => {
-    const lastActiveAt = eventsByUserId.get(userId);
-    if (lastActiveAt !== undefined) {
-      return lastActiveAt;
-    }
-
-    const signedUpAt = userSignedUpAtMillis[index];
-    return typeof signedUpAt === "number" ? signedUpAt : signedUpAt.getTime();
-  });
-};
-
-/**
- * Same as userIds.map(userId => getUserLastActiveAtMillis(tenancyId, userId)), but uses a single query
- */
-export const getUsersLastActiveAtMillis = async (projectId: string, branchId: string, userIds: string[], userSignedUpAtMillis: (number | Date)[]): Promise<number[]> => {
-  if (userIds.length === 0) {
-    // Prisma.join throws an error if the array is empty, so we need to handle that case
-    return [];
-  }
-
-  // Get the tenancy first to determine the source of truth
-  const tenancy = await getSoleTenancyFromProjectBranch(projectId, branchId);
-
-  const prisma = await getPrismaClientForTenancy(tenancy);
-  const schema = await getPrismaSchemaForTenancy(tenancy);
-  const events = await prisma.$queryRaw<Array<{ userId: string, lastActiveAt: Date }>>`
-    SELECT data->>'userId' as "userId", MAX("eventStartedAt") as "lastActiveAt"
-    FROM ${sqlQuoteIdent(schema)}."Event"
-    WHERE data->>'userId' = ANY(${Prisma.sql`ARRAY[${Prisma.join(userIds)}]`})
-      AND data->>'projectId' = ${projectId}
-      AND COALESCE("data"->>'branchId', 'main') = ${branchId}
-      AND "systemEventTypeIds" @> '{"$user-activity"}'
-    GROUP BY data->>'userId'
-  `;
-
-  return mapUserLastActiveAtMillis(events, userIds, userSignedUpAtMillis);
-
-};
-
-export function getUserQuery(projectId: string, branchId: string, userId: string, schema: string): RawQuery<UsersCrud["Admin"]["Read"] | null> {
+export function getUserQuery(projectId: string, branchId: string, userId: string, schema: string, config: OnboardingConfig): RawQuery<UsersCrud["Admin"]["Read"] | null> {
   return {
     supportedPrismaClients: ["source-of-truth"],
+    readOnlyQuery: true,
     sql: Prisma.sql`
       SELECT to_json(
         (
           SELECT (
             to_jsonb("ProjectUser".*) ||
             jsonb_build_object(
-              'lastActiveAt', (
-                SELECT MAX("eventStartedAt") as "lastActiveAt"
-                FROM ${sqlQuoteIdent(schema)}."Event"
-                WHERE data->>'projectId' = ("ProjectUser"."mirroredProjectId") AND COALESCE("data"->>'branchId', 'main') = ("ProjectUser"."mirroredBranchId") AND "data"->>'userId' = ("ProjectUser"."projectUserId")::text AND "systemEventTypeIds" @> '{"$user-activity"}'
-              ),
               'ContactChannels', (
                 SELECT COALESCE(ARRAY_AGG(
                   to_jsonb("ContactChannel") ||
@@ -357,6 +343,12 @@ export function getUserQuery(projectId: string, branchId: string, userId: string
         row.SelectedTeamMember = null;
       }
 
+      const restrictedStatus = computeRestrictedStatus(
+        row.isAnonymous,
+        primaryEmailContactChannel?.isVerified || false,
+        config,
+      );
+
       return {
         id: row.projectUserId,
         display_name: row.displayName || null,
@@ -388,8 +380,10 @@ export function getUserQuery(projectId: string, branchId: string, userId: string
           client_read_only_metadata: row.SelectedTeamMember.Team.clientReadOnlyMetadata,
           server_metadata: row.SelectedTeamMember.Team.serverMetadata,
         } : null,
-        last_active_at_millis: row.lastActiveAt ? new Date(row.lastActiveAt + "Z").getTime() : new Date(row.createdAt + "Z").getTime(),
+        last_active_at_millis: new Date(row.lastActiveAt + "Z").getTime(),
         is_anonymous: row.isAnonymous,
+        is_restricted: restrictedStatus.isRestricted,
+        restricted_reason: restrictedStatus.restrictedReason,
       };
     },
   };
@@ -398,29 +392,59 @@ export function getUserQuery(projectId: string, branchId: string, userId: string
 /**
  * Returns the user object if the source-of-truth is the same as the global Prisma client, otherwise an unspecified value is returned.
  */
-export function getUserIfOnGlobalPrismaClientQuery(projectId: string, branchId: string, userId: string): RawQuery<UsersCrud["Admin"]["Read"] | null> {
-  return {
-    ...getUserQuery(projectId, branchId, userId, "public"),
+export function getUserIfOnGlobalPrismaClientQuery(
+  projectId: string,
+  branchId: string,
+  userId: string,
+): RawQuery<Promise<UsersCrud["Admin"]["Read"] | null>> {
+  // HACK: Fetch both the user data (with a placeholder config) and the real environment config
+  // Then combine them to compute the correct restricted fields
+  // This is faster than fetching them sequentially
+  const userQueryWithPlaceholderConfig: RawQuery<UsersCrud["Admin"]["Read"] | null> = {
+    ...getUserQuery(projectId, branchId, userId, "public", { onboarding: { requireEmailVerification: false } }),
     supportedPrismaClients: ["global"],
   };
+  const configQuery = getRenderedOrganizationConfigQuery({ projectId, branchId, forUserId: userId });
+
+  return RawQuery.then(
+    RawQuery.all([userQueryWithPlaceholderConfig, configQuery] as const),
+    async ([user, configPromise]) => {
+      if (!user) {
+        return null;
+      }
+      const config = await configPromise;
+      const { isRestricted, restrictedReason } = computeRestrictedStatus(
+        user.is_anonymous,
+        user.primary_email_verified,
+        config,
+      );
+      return {
+        ...user,
+        is_restricted: isRestricted,
+        restricted_reason: restrictedReason,
+      };
+    },
+  );
 }
 
 export async function getUser(options: { userId: string } & ({ projectId: string, branchId: string } | { tenancy: Tenancy })) {
-  let projectId, branchId, sourceOfTruth;
+  let projectId, branchId, sourceOfTruth, config;
   if ("tenancy" in options) {
     projectId = options.tenancy.project.id;
     branchId = options.tenancy.branchId;
     sourceOfTruth = options.tenancy.config.sourceOfTruth;
+    config = options.tenancy.config;
   } else {
     projectId = options.projectId;
     branchId = options.branchId;
     const projectConfig = await rawQuery(globalPrismaClient, getRenderedProjectConfigQuery({ projectId }));
     sourceOfTruth = projectConfig.sourceOfTruth;
+    config = await rawQuery(globalPrismaClient, getRenderedOrganizationConfigQuery({ projectId, branchId, forUserId: options.userId }));
   }
 
   const prisma = await getPrismaClientForSourceOfTruth(sourceOfTruth, branchId);
   const schema = await getPrismaSchemaForSourceOfTruth(sourceOfTruth, branchId);
-  const result = await rawQuery(prisma, getUserQuery(projectId, branchId, options.userId, schema));
+  const result = await rawQuery(prisma, getUserQuery(projectId, branchId, options.userId, schema, config));
   return result;
 }
 
@@ -436,7 +460,8 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
     order_by: yupString().oneOf(['signed_up_at']).optional().meta({ openapiField: { onlyShowInOperations: [ 'List' ], description: "The field to sort the results by. Defaults to signed_up_at" } }),
     desc: yupString().oneOf(["true", "false"]).optional().meta({ openapiField: { onlyShowInOperations: [ 'List' ], description: "Whether to sort the results in descending order. Defaults to false" } }),
     query: yupString().optional().meta({ openapiField: { onlyShowInOperations: [ 'List' ], description: "A search query to filter the results by. This is a free-text search that is applied to the user's id (exact-match only), display name and primary email." } }),
-    include_anonymous: yupString().oneOf(["true", "false"]).optional().meta({ openapiField: { onlyShowInOperations: [ 'List' ], description: "Whether to include anonymous users in the results. Defaults to false" } }),
+    include_anonymous: yupString().oneOf(["true", "false"]).optional().meta({ openapiField: { onlyShowInOperations: [ 'List' ], description: "Whether to include anonymous users in the results. When true, also includes restricted users. Defaults to false" } }),
+    include_restricted: yupString().oneOf(["true", "false"]).optional().meta({ openapiField: { onlyShowInOperations: [ 'List' ], description: "Whether to include restricted users in the results. Defaults to false" } }),
   }),
   onRead: async ({ auth, params, query }) => {
     const user = await getUser({ tenancy: auth.tenancy, userId: params.user_id });
@@ -449,6 +474,17 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
     const queryWithoutSpecialChars = query.query?.replace(/[^a-zA-Z0-9\-_.]/g, '');
     const prisma = await getPrismaClientForTenancy(auth.tenancy);
 
+    // Filtering hierarchy:
+    // - No flags: only Normal users (not anonymous, not restricted)
+    // - include_restricted=true: Restricted + Normal users (not anonymous)
+    // - include_anonymous=true: Anonymous + Restricted + Normal users (everything)
+    const includeAnonymous = query.include_anonymous === "true";
+    const includeRestricted = query.include_restricted === "true" || includeAnonymous; // include_anonymous also includes restricted
+
+    // Compute whether we need to filter out restricted users based on email verification
+    // TODO: Instead of hardcoding this, we should use computeRestrictedStatus
+    const shouldFilterRestrictedByEmail = !includeRestricted && auth.tenancy.config.onboarding.requireEmailVerification;
+
     const where = {
       tenancyId: auth.tenancy.id,
       ...query.team_id ? {
@@ -458,10 +494,21 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
           },
         },
       } : {},
-      ...query.include_anonymous === "true" ? {} : {
+      ...includeAnonymous ? {} : {
         // Don't return anonymous users unless explicitly requested
         isAnonymous: false,
       },
+      // Filter out restricted users if needed (restricted = signed up but email not verified)
+      ...shouldFilterRestrictedByEmail ? {
+        // User must have a verified primary email to not be restricted
+        contactChannels: {
+          some: {
+            type: 'EMAIL' as const,
+            isPrimary: 'TRUE' as const,
+            isVerified: true,
+          },
+        },
+      } : {},
       ...query.query ? {
         OR: [
           ...isUuid(queryWithoutSpecialChars!) ? [{
@@ -509,10 +556,9 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
       } : {},
     });
 
-    const lastActiveAtMillis = await getUsersLastActiveAtMillis(auth.project.id, auth.branchId, db.map(user => user.projectUserId), db.map(user => user.createdAt));
     return {
       // remove the last item because it's the next cursor
-      items: db.map((user, index) => userPrismaToCrud(user, lastActiveAtMillis[index])).slice(0, query.limit),
+      items: db.map((user) => userPrismaToCrud(user, auth.tenancy.config)).slice(0, query.limit),
       is_paginated: true,
       pagination: {
         // if result is not full length, there is no next cursor
@@ -661,7 +707,7 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
         throw new StackAssertionError("User was created but not found", newUser);
       }
 
-      return userPrismaToCrud(user, await getUserLastActiveAtMillis(auth.project.id, auth.branchId, user.projectUserId) ?? user.createdAt.getTime());
+      return userPrismaToCrud(user, auth.tenancy.config);
     });
 
     await createPersonalTeamIfEnabled(prisma, auth.tenancy, result);
@@ -754,63 +800,91 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
       const passwordAuth = oldUser.authMethods.find((m) => m.passwordAuthMethod)?.passwordAuthMethod;
       const passkeyAuth = oldUser.authMethods.find((m) => m.passkeyAuthMethod)?.passkeyAuthMethod;
 
-      const primaryEmailAuthEnabled = data.primary_email_auth_enabled ?? !!primaryEmailContactChannel?.usedForAuth;
-      const primaryEmailVerified = data.primary_email_verified || !!primaryEmailContactChannel?.isVerified;
+      // Use the explicitly provided primaryEmail if set (even if null), otherwise fall back to existing
+      const effectivePrimaryEmail = primaryEmail !== undefined ? primaryEmail : (primaryEmailContactChannel?.value ?? null);
+      // If email is being explicitly removed (set to null), force verified and auth enabled to false
+      const isRemovingEmail = primaryEmail === null;
+      const primaryEmailAuthEnabled = isRemovingEmail
+        ? false
+        : (data.primary_email_auth_enabled ?? !!primaryEmailContactChannel?.usedForAuth);
+      const primaryEmailVerified = isRemovingEmail
+        ? false
+        : (data.primary_email_verified ?? !!primaryEmailContactChannel?.isVerified);
       await checkAuthData(tx, {
         tenancyId: auth.tenancy.id,
         oldPrimaryEmail: primaryEmailContactChannel?.value,
-        primaryEmail: primaryEmail || primaryEmailContactChannel?.value,
+        primaryEmail: effectivePrimaryEmail,
         primaryEmailVerified,
         primaryEmailAuthEnabled,
       });
 
       // if there is a new primary email
-      // - create a new primary email contact channel if it doesn't exist
-      // - update the primary email contact channel if it exists
+      // - if the email already exists as a contact channel for this user, upgrade it to primary
+      // - if it doesn't exist, create a new primary email contact channel
+      // - demote the old primary email to non-primary (if different from the new one)
       // if the primary email is null
-      // - delete the primary email contact channel if it exists (note that this will also delete the related auth methods)
+      // - demote the primary email contact channel to non-primary (does NOT delete it)
       if (primaryEmail !== undefined) {
         if (primaryEmail === null) {
-          await tx.contactChannel.delete({
-            where: {
-              tenancyId_projectUserId_type_isPrimary: {
-                tenancyId: auth.tenancy.id,
-                projectUserId: params.user_id,
-                type: 'EMAIL',
-                isPrimary: "TRUE",
-              },
-            },
+          // Setting primary email to null - demote the primary contact channel to non-primary
+          await demoteAllContactChannelsToNonPrimary(tx, {
+            tenancyId: auth.tenancy.id,
+            projectUserId: params.user_id,
+            type: 'EMAIL',
           });
         } else {
-          await tx.contactChannel.upsert({
+          // Check if a contact channel with this email already exists for this user
+          const existingChannel = await tx.contactChannel.findFirst({
             where: {
-              tenancyId_projectUserId_type_isPrimary: {
-                tenancyId: auth.tenancy.id,
-                projectUserId: params.user_id,
-                type: 'EMAIL' as const,
-                isPrimary: "TRUE",
-              },
-            },
-            create: {
-              projectUserId: params.user_id,
               tenancyId: auth.tenancy.id,
-              type: 'EMAIL' as const,
+              projectUserId: params.user_id,
+              type: 'EMAIL',
               value: primaryEmail,
-              isVerified: false,
-              isPrimary: "TRUE",
-              usedForAuth: primaryEmailAuthEnabled ? BooleanTrue.TRUE : null,
             },
-            update: {
-              value: primaryEmail,
-              usedForAuth: primaryEmailAuthEnabled ? BooleanTrue.TRUE : null,
-            }
           });
+
+          if (existingChannel) {
+            // Email already exists as a contact channel - upgrade it to primary
+            // Include isVerified in additionalUpdates if primary_email_verified was specified
+            await setContactChannelAsPrimaryByValue(tx, {
+              tenancyId: auth.tenancy.id,
+              projectUserId: params.user_id,
+              type: 'EMAIL',
+              value: primaryEmail,
+              additionalUpdates: {
+                usedForAuth: primaryEmailAuthEnabled ? BooleanTrue.TRUE : null,
+                ...(data.primary_email_verified !== undefined && { isVerified: data.primary_email_verified }),
+              },
+            });
+          } else {
+            // Email doesn't exist as a contact channel - demote old primary and create new
+            await demoteAllContactChannelsToNonPrimary(tx, {
+              tenancyId: auth.tenancy.id,
+              projectUserId: params.user_id,
+              type: 'EMAIL',
+            });
+
+            // Create the new primary email contact channel
+            // Use primary_email_verified if specified, otherwise default to false
+            await tx.contactChannel.create({
+              data: {
+                projectUserId: params.user_id,
+                tenancyId: auth.tenancy.id,
+                type: 'EMAIL' as const,
+                value: primaryEmail,
+                isVerified: data.primary_email_verified ?? false,
+                isPrimary: "TRUE",
+                usedForAuth: primaryEmailAuthEnabled ? BooleanTrue.TRUE : null,
+              },
+            });
+          }
         }
       }
 
-      // if there is a new primary email verified
+      // if there is a new primary email verified (and we didn't just create/upgrade the primary email)
       // - update the primary email contact channel if it exists
-      if (data.primary_email_verified !== undefined) {
+      // Note: if primaryEmail was set, the verification status was already handled above
+      if (data.primary_email_verified !== undefined && primaryEmail === undefined && primaryEmailContactChannel) {
         await tx.contactChannel.update({
           where: {
             tenancyId_projectUserId_type_isPrimary: {
@@ -828,7 +902,7 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
 
       // if primary_email_auth_enabled is being updated without changing the email
       // - update the primary email contact channel's usedForAuth field
-      if (data.primary_email_auth_enabled !== undefined && primaryEmail === undefined) {
+      if (data.primary_email_auth_enabled !== undefined && primaryEmail === undefined && primaryEmailContactChannel) {
         await tx.contactChannel.update({
           where: {
             tenancyId_projectUserId_type_isPrimary: {
@@ -1005,7 +1079,7 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
         include: userFullInclude,
       });
 
-      const user = userPrismaToCrud(db, await getUserLastActiveAtMillis(auth.project.id, auth.branchId, params.user_id) ?? db.createdAt.getTime());
+      const user = userPrismaToCrud(db, auth.tenancy.config);
       return {
         user,
       };

@@ -1,9 +1,13 @@
-import { PrismaClientTransaction } from "@/prisma-client";
+import { getPrismaClientForTenancy, PrismaClientTransaction } from "@/prisma-client";
+import { ensureUserTeamPermissionExists } from "@/lib/request-checks";
 import { PurchaseCreationSource, SubscriptionStatus } from "@/generated/prisma/client";
+import { CustomerType } from "@/generated/prisma/client";
 import { KnownErrors } from "@stackframe/stack-shared";
+import type { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
 import type { inlineProductSchema, productSchema, productSchemaWithMetadata } from "@stackframe/stack-shared/dist/schema-fields";
 import { SUPPORTED_CURRENCIES } from "@stackframe/stack-shared/dist/utils/currency-constants";
 import { FAR_FUTURE_DATE, addInterval, getIntervalsElapsed } from "@stackframe/stack-shared/dist/utils/dates";
+import { getEnvVariable, getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
 import { StackAssertionError, StatusError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { filterUndefined, getOrUndefined, has, typedEntries, typedFromEntries, typedKeys, typedValues } from "@stackframe/stack-shared/dist/utils/objects";
 import { typedToUppercase } from "@stackframe/stack-shared/dist/utils/strings";
@@ -14,10 +18,41 @@ import { Tenancy } from "./tenancies";
 import { getStripeForAccount } from "./stripe";
 
 const DEFAULT_PRODUCT_START_DATE = new Date("1973-01-01T12:00:00.000Z"); // monday
+const stripeSecretKey = getEnvVariable("STACK_STRIPE_SECRET_KEY", "");
+const useStripeMock = stripeSecretKey === "sk_test_mockstripekey" && ["development", "test"].includes(getNodeEnvironment());
 
 type Product = yup.InferType<typeof productSchema>;
 type ProductWithMetadata = yup.InferType<typeof productSchemaWithMetadata>;
 type SelectedPrice = Exclude<Product["prices"], "include-by-default">[string];
+
+export async function ensureClientCanAccessCustomer(options: {
+  customerType: "user" | "team",
+  customerId: string,
+  user: UsersCrud["Admin"]["Read"] | undefined,
+  tenancy: Tenancy,
+  forbiddenMessage: string,
+}): Promise<void> {
+  const currentUser = options.user;
+  if (!currentUser) {
+    throw new KnownErrors.UserAuthenticationRequired();
+  }
+  if (options.customerType === "user") {
+    if (options.customerId !== currentUser.id) {
+      throw new StatusError(StatusError.Forbidden, options.forbiddenMessage);
+    }
+    return;
+  }
+
+  const prisma = await getPrismaClientForTenancy(options.tenancy);
+  await ensureUserTeamPermissionExists(prisma, {
+    tenancy: options.tenancy,
+    teamId: options.customerId,
+    userId: currentUser.id,
+    permissionId: "team_admin",
+    errorType: "required",
+    recursive: true,
+  });
+}
 
 export async function ensureProductIdOrInlineProduct(
   tenancy: Tenancy,
@@ -49,7 +84,7 @@ export async function ensureProductIdOrInlineProduct(
       throw new StackAssertionError("Inline product does not exist, this should never happen", { inlineProduct, productId });
     }
     return {
-      catalogId: undefined,
+      productLineId: undefined,
       isAddOnTo: false,
       displayName: inlineProduct.display_name,
       customerType: inlineProduct.customer_type,
@@ -258,13 +293,14 @@ type Subscription = {
    */
   productId: string | null,
   /**
-   * `null` for test mode purchases and catalog default products
+   * `null` for test mode purchases and product line default products
    */
   stripeSubscriptionId: string | null,
   product: yup.InferType<typeof productSchema>,
   quantity: number,
   currentPeriodStart: Date,
   currentPeriodEnd: Date | null,
+  cancelAtPeriodEnd: boolean,
   status: SubscriptionStatus,
   createdAt: Date,
 };
@@ -279,7 +315,7 @@ export async function getSubscriptions(options: {
   customerType: "user" | "team" | "custom",
   customerId: string,
 }) {
-  const catalogs = options.tenancy.config.payments.catalogs;
+  const productLines = options.tenancy.config.payments.productLines;
   const products = options.tenancy.config.payments.products;
   const subscriptions: Subscription[] = [];
   const dbSubscriptions = await options.prisma.subscription.findMany({
@@ -290,7 +326,7 @@ export async function getSubscriptions(options: {
     },
   });
 
-  const catalogsWithDbSubscriptions = new Set<string>();
+  const productLinesWithDbSubscriptions = new Set<string>();
   for (const s of dbSubscriptions) {
     const product = s.productId ? getOrUndefined(products, s.productId) : s.product as yup.InferType<typeof productSchema>;
     if (!product) continue;
@@ -301,27 +337,28 @@ export async function getSubscriptions(options: {
       quantity: s.quantity,
       currentPeriodStart: s.currentPeriodStart,
       currentPeriodEnd: s.currentPeriodEnd,
+      cancelAtPeriodEnd: s.cancelAtPeriodEnd,
       status: s.status,
       createdAt: s.createdAt,
       stripeSubscriptionId: s.stripeSubscriptionId,
     });
-    if (product.catalogId !== undefined) {
-      catalogsWithDbSubscriptions.add(product.catalogId);
+    if (product.productLineId !== undefined) {
+      productLinesWithDbSubscriptions.add(product.productLineId);
     }
   }
 
-  for (const catalogId of Object.keys(catalogs)) {
-    if (catalogsWithDbSubscriptions.has(catalogId)) continue;
-    const productsInCatalog = typedEntries(products).filter(([_, product]) => product.catalogId === catalogId);
-    const defaultCatalogProducts = productsInCatalog.filter(([_, product]) => product.prices === "include-by-default");
-    if (defaultCatalogProducts.length > 1) {
+  for (const productLineId of Object.keys(productLines)) {
+    if (productLinesWithDbSubscriptions.has(productLineId)) continue;
+    const productsInProductLine = typedEntries(products).filter(([_, product]) => product.productLineId === productLineId);
+    const defaultProductLineProducts = productsInProductLine.filter(([_, product]) => product.prices === "include-by-default");
+    if (defaultProductLineProducts.length > 1) {
       throw new StackAssertionError(
-        "Multiple include-by-default products configured in the same catalog",
-        { catalogId, productIds: defaultCatalogProducts.map(([id]) => id) },
+        "Multiple include-by-default products configured in the same product line",
+        { productLineId, productIds: defaultProductLineProducts.map(([id]) => id) },
       );
     }
-    if (defaultCatalogProducts.length > 0) {
-      const product = defaultCatalogProducts[0];
+    if (defaultProductLineProducts.length > 0) {
+      const product = defaultProductLineProducts[0];
       subscriptions.push({
         id: null,
         productId: product[0],
@@ -329,6 +366,7 @@ export async function getSubscriptions(options: {
         quantity: 1,
         currentPeriodStart: DEFAULT_PRODUCT_START_DATE,
         currentPeriodEnd: null,
+        cancelAtPeriodEnd: false,
         status: SubscriptionStatus.active,
         createdAt: DEFAULT_PRODUCT_START_DATE,
         stripeSubscriptionId: null,
@@ -337,7 +375,7 @@ export async function getSubscriptions(options: {
   }
 
   const ungroupedDefaults = typedEntries(products).filter(([id, product]) => (
-    product.catalogId === undefined && product.prices === "include-by-default" && !subscriptions.some((s) => s.productId === id)
+    product.productLineId === undefined && product.prices === "include-by-default" && !subscriptions.some((s) => s.productId === id)
   ));
   for (const [productId, product] of ungroupedDefaults) {
     subscriptions.push({
@@ -347,6 +385,7 @@ export async function getSubscriptions(options: {
       quantity: 1,
       currentPeriodStart: DEFAULT_PRODUCT_START_DATE,
       currentPeriodEnd: null,
+      cancelAtPeriodEnd: false,
       status: SubscriptionStatus.active,
       createdAt: DEFAULT_PRODUCT_START_DATE,
       stripeSubscriptionId: null,
@@ -424,6 +463,120 @@ export async function ensureCustomerExists(options: {
   }
 }
 
+function customerTypeToStripeCustomerType(customerType: "user" | "team") {
+  return customerType === "user" ? CustomerType.USER : CustomerType.TEAM;
+}
+
+export async function getStripeCustomerForCustomerOrNull(options: {
+  stripe: Stripe,
+  prisma: PrismaClientTransaction,
+  tenancyId: string,
+  customerType: "user" | "team",
+  customerId: string,
+}): Promise<Stripe.Customer | null> {
+  await ensureCustomerExists({
+    prisma: options.prisma,
+    tenancyId: options.tenancyId,
+    customerType: options.customerType,
+    customerId: options.customerId,
+  });
+
+  const stripeCustomerType = customerTypeToStripeCustomerType(options.customerType);
+  const matchesCustomer = (customer: Stripe.Customer) => {
+    const storedType = customer.metadata.customerType;
+    if (!storedType) return true;
+    return storedType === stripeCustomerType;
+  };
+
+  const stripeCustomerSearch = await options.stripe.customers.search({
+    query: `metadata['customerId']:'${options.customerId}'`,
+  });
+  let matches = stripeCustomerSearch.data.filter(matchesCustomer);
+
+  if (matches.length === 0) {
+    // Stripe's search is eventually consistent; fall back to listing to ensure we can find a newly created customer.
+    let startingAfter: string | undefined = undefined;
+    for (let i = 0; i < 10; i++) {
+      const page: Stripe.ApiList<Stripe.Customer> = await options.stripe.customers.list({
+        limit: 100,
+        ...startingAfter ? { starting_after: startingAfter } : {},
+      });
+      const exactMatches = page.data.filter((customer) => (
+        customer.metadata.customerId === options.customerId && matchesCustomer(customer)
+      ));
+      if (exactMatches.length > 0) {
+        matches = exactMatches;
+        break;
+      }
+      if (useStripeMock && page.data.length > 0) {
+        matches = [page.data[0]];
+        break;
+      }
+      if (!page.has_more || page.data.length === 0) {
+        break;
+      }
+      startingAfter = page.data[page.data.length - 1].id;
+    }
+  }
+
+  if (matches.length > 1) {
+    throw new StackAssertionError("Multiple Stripe customers found for customerId; customerType filtering was ambiguous", {
+      customerId: options.customerId,
+      customerType: options.customerType,
+      stripeCustomerIds: matches.map((c) => c.id),
+    });
+  }
+  return matches[0] ?? null;
+}
+
+export async function ensureStripeCustomerForCustomer(options: {
+  stripe: Stripe,
+  prisma: PrismaClientTransaction,
+  tenancyId: string,
+  customerType: "user" | "team",
+  customerId: string,
+}): Promise<Stripe.Customer> {
+  const existing = await getStripeCustomerForCustomerOrNull(options);
+  if (existing) {
+    return existing;
+  }
+  const stripeCustomerType = customerTypeToStripeCustomerType(options.customerType);
+  return await options.stripe.customers.create({
+    metadata: {
+      customerId: options.customerId,
+      customerType: stripeCustomerType,
+    },
+  });
+}
+
+export type StripeCardPaymentMethodSummary = {
+  id: string,
+  brand: string | null,
+  last4: string | null,
+  exp_month: number | null,
+  exp_year: number | null,
+};
+
+export async function getDefaultCardPaymentMethodSummary(options: {
+  stripe: Stripe,
+  stripeCustomer: Stripe.Customer,
+}): Promise<StripeCardPaymentMethodSummary | null> {
+  const paymentMethods = await options.stripe.customers.listPaymentMethods(
+    options.stripeCustomer.id,
+    { type: "card", limit: 1 }
+  );
+  if (paymentMethods.data.length === 0) {
+    return null;
+  }
+  return {
+    id: paymentMethods.data[0].id,
+    brand: paymentMethods.data[0].card?.brand ?? null,
+    last4: paymentMethods.data[0].card?.last4 ?? null,
+    exp_month: paymentMethods.data[0].card?.exp_month ?? null,
+    exp_year: paymentMethods.data[0].card?.exp_year ?? null,
+  };
+}
+
 export function productToInlineProduct(product: ProductWithMetadata): yup.InferType<typeof inlineProductSchema> {
   return {
     display_name: product.displayName ?? "Product",
@@ -455,9 +608,9 @@ export async function validatePurchaseSession(options: {
   quantity: number,
 }): Promise<{
   selectedPrice: SelectedPrice | undefined,
-  catalogId: string | undefined,
+  productLineId: string | undefined,
   subscriptions: Subscription[],
-  conflictingCatalogSubscriptions: Subscription[],
+  conflictingProductLineSubscriptions: Subscription[],
 }> {
   const { prisma, tenancy, codeData, priceId, quantity } = options;
   const product = codeData.product;
@@ -499,33 +652,33 @@ export async function validatePurchaseSession(options: {
     throw new StatusError(400, "This product is an add-on to a product that the customer does not have");
   }
 
-  const catalogs = tenancy.config.payments.catalogs;
-  const catalogId = typedKeys(catalogs).find((g) => product.catalogId === g);
+  const productLines = tenancy.config.payments.productLines;
+  const productLineId = typedKeys(productLines).find((g) => product.productLineId === g);
 
-  // Block purchasing any product in the same catalog if a one-time purchase exists in that catalog
-  if (catalogId) {
-    const hasOneTimeInCatalog = existingOneTimePurchases.some((p) => {
+  // Block purchasing any product in the same product line if a one-time purchase exists in that product line
+  if (productLineId) {
+    const hasOneTimeInProductLine = existingOneTimePurchases.some((p) => {
       const product = p.product as yup.InferType<typeof productSchema>;
-      return product.catalogId === catalogId;
+      return product.productLineId === productLineId;
     });
-    if (hasOneTimeInCatalog) {
-      throw new StatusError(400, "Customer already has a one-time purchase in this product catalog");
+    if (hasOneTimeInProductLine) {
+      throw new StatusError(400, "Customer already has a one-time purchase in this product line");
     }
   }
 
-  let conflictingCatalogSubscriptions: Subscription[] = [];
-  if (catalogId) {
-    conflictingCatalogSubscriptions = subscriptions.filter((subscription) => (
+  let conflictingProductLineSubscriptions: Subscription[] = [];
+  if (productLineId) {
+    conflictingProductLineSubscriptions = subscriptions.filter((subscription) => (
       subscription.id &&
       subscription.productId &&
-      subscription.product.catalogId === catalogId &&
+      subscription.product.productLineId === productLineId &&
       isActiveSubscription(subscription) &&
       subscription.product.prices !== "include-by-default" &&
       (!product.isAddOnTo || !addOnProductIds.includes(subscription.productId))
     ));
   }
 
-  return { selectedPrice, catalogId, subscriptions, conflictingCatalogSubscriptions };
+  return { selectedPrice, productLineId, subscriptions, conflictingProductLineSubscriptions };
 }
 
 export function getClientSecretFromStripeSubscription(subscription: Stripe.Subscription): string {
@@ -566,7 +719,7 @@ export async function grantProductToCustomer(options: {
   creationSource: PurchaseCreationSource,
 }): Promise<GrantProductResult> {
   const { prisma, tenancy, customerId, customerType, product, productId, priceId, quantity, creationSource } = options;
-  const { selectedPrice, conflictingCatalogSubscriptions } = await validatePurchaseSession({
+  const { selectedPrice, conflictingProductLineSubscriptions } = await validatePurchaseSession({
     prisma,
     tenancy,
     codeData: {
@@ -579,8 +732,8 @@ export async function grantProductToCustomer(options: {
     quantity,
   });
 
-  if (conflictingCatalogSubscriptions.length > 0) {
-    const conflicting = conflictingCatalogSubscriptions[0];
+  if (conflictingProductLineSubscriptions.length > 0) {
+    const conflicting = conflictingProductLineSubscriptions[0];
     if (conflicting.stripeSubscriptionId) {
       const stripe = await getStripeForAccount({ tenancy });
       await stripe.subscriptions.cancel(conflicting.stripeSubscriptionId);
@@ -648,6 +801,11 @@ export type OwnedProduct = {
   product: Product,
   createdAt: Date,
   sourceId: string,
+  subscription: null | {
+    currentPeriodEnd: Date | null,
+    cancelAtPeriodEnd: boolean,
+    isCancelable: boolean,
+  },
 };
 
 export async function getOwnedProductsForCustomer(options: {
@@ -695,6 +853,11 @@ export async function getOwnedProductsForCustomer(options: {
       product: subscription.product,
       createdAt: subscription.createdAt,
       sourceId,
+      subscription: {
+        currentPeriodEnd: subscription.currentPeriodEnd,
+        cancelAtPeriodEnd: subscription.cancelAtPeriodEnd,
+        isCancelable: subscription.id !== null && subscription.productId !== null,
+      },
     });
   }
 
@@ -707,6 +870,7 @@ export async function getOwnedProductsForCustomer(options: {
       product,
       createdAt: purchase.createdAt,
       sourceId: purchase.id,
+      subscription: null,
     });
   }
 

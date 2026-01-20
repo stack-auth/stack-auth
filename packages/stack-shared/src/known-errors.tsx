@@ -131,7 +131,7 @@ function createKnownErrorConstructor<ErrorCode extends string, Super extends Abs
     public readonly constructorArgs: Args;
 
     constructor(...args: Args) {
-      // @ts-expect-error
+      // @ts-expect-error legendary ts-expect-error, may never be removed https://x.com/konstiwohlwend/status/1998543556567617780
       super(...createFn(...args));
       this.constructorArgs = args;
     }
@@ -650,6 +650,18 @@ const UserNotFound = createKnownErrorConstructor(
   () => [] as const,
 );
 
+const RestrictedUserNotAllowed = createKnownErrorConstructor(
+  KnownError,
+  "RESTRICTED_USER_NOT_ALLOWED",
+  (restrictedReason: { type: "anonymous" | "email_not_verified" }) => [
+    403,
+    `The user in the access token is in restricted state. Reason: ${restrictedReason.type}. Please pass the X-Stack-Allow-Restricted-User header if this is intended.`,
+    {
+      restricted_reason: restrictedReason,
+    },
+  ] as const,
+  (json: any) => [json.restricted_reason ?? { type: "anonymous" }] as const,
+);
 
 const ProjectNotFound = createKnownErrorConstructor(
   KnownError,
@@ -1046,6 +1058,19 @@ const TeamMembershipNotFound = createKnownErrorConstructor(
     },
   ] as const,
   (json: any) => [json.team_id, json.user_id] as const,
+);
+
+const TeamInvitationRestrictedUserNotAllowed = createKnownErrorConstructor(
+  KnownError,
+  "TEAM_INVITATION_RESTRICTED_USER_NOT_ALLOWED",
+  (restrictedReason: { type: "anonymous" | "email_not_verified" }) => [
+    403,
+    `Restricted users cannot accept team invitations. Reason: ${restrictedReason.type}. Please complete the onboarding process before accepting team invitations.`,
+    {
+      restricted_reason: restrictedReason,
+    },
+  ] as const,
+  (json: any) => [json.restricted_reason ?? { type: "anonymous" }] as const,
 );
 
 
@@ -1454,6 +1479,20 @@ const RequiresCustomEmailServer = createKnownErrorConstructor(
   () => [] as const,
 );
 
+const EmailNotEditable = createKnownErrorConstructor(
+  KnownError,
+  "EMAIL_NOT_EDITABLE",
+  (emailId: string, status: string) => [
+    400,
+    `Email with ID "${emailId}" cannot be edited because it is in status "${status}". Only emails in PAUSED, PREPARING, RENDERING, RENDER_ERROR, SCHEDULED, QUEUED, or SERVER_ERROR status can be edited.`,
+    {
+      email_id: emailId,
+      status,
+    },
+  ] as const,
+  (json: any) => [json.email_id, json.status] as const,
+);
+
 const ItemNotFound = createKnownErrorConstructor(
   KnownError,
   "ITEM_NOT_FOUND",
@@ -1633,6 +1672,30 @@ const StripeAccountInfoNotFound = createKnownErrorConstructor(
   () => [] as const,
 );
 
+const DefaultPaymentMethodRequired = createKnownErrorConstructor(
+  KnownError,
+  "DEFAULT_PAYMENT_METHOD_REQUIRED",
+  (customerType: "user" | "team", customerId: string) => [
+    400,
+    "No default payment method is set for this customer.",
+    {
+      customer_type: customerType,
+      customer_id: customerId,
+    },
+  ] as const,
+  (json) => [json.customer_type, json.customer_id] as const,
+);
+
+const NewPurchasesBlocked = createKnownErrorConstructor(
+  KnownError,
+  "NEW_PURCHASES_BLOCKED",
+  () => [
+    403,
+    "New purchases are currently blocked for this project. Please contact support for more information.",
+  ] as const,
+  () => [] as const,
+);
+
 export type KnownErrors = {
   [K in keyof typeof KnownErrors]: InstanceType<typeof KnownErrors[K]>;
 };
@@ -1684,6 +1747,7 @@ export const KnownErrors = {
   EmailNotVerified,
   UserIdDoesNotExist,
   UserNotFound,
+  RestrictedUserNotAllowed,
   ApiKeyNotFound,
   PublicApiKeyCannotBeRevoked,
   ProjectNotFound,
@@ -1717,6 +1781,7 @@ export const KnownErrors = {
   ContainedPermissionNotFound,
   TeamNotFound,
   TeamMembershipNotFound,
+  TeamInvitationRestrictedUserNotAllowed,
   EmailTemplateAlreadyExists,
   OAuthConnectionNotConnectedToUser,
   OAuthConnectionAlreadyConnectedToAnotherUser,
@@ -1748,6 +1813,7 @@ export const KnownErrors = {
   WrongApiKeyType,
   EmailRenderingError,
   RequiresCustomEmailServer,
+  EmailNotEditable,
   ItemNotFound,
   ItemCustomerTypeDoesNotMatch,
   CustomerDoesNotExist,
@@ -1761,6 +1827,8 @@ export const KnownErrors = {
   TestModePurchaseNonRefundable,
   ItemQuantityInsufficientAmount,
   StripeAccountInfoNotFound,
+  DefaultPaymentMethodRequired,
+  NewPurchasesBlocked,
   DataVaultStoreDoesNotExist,
   DataVaultStoreHashedKeyDoesNotExist,
 } satisfies Record<string, KnownErrorConstructor<any, any>>;

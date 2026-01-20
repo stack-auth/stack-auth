@@ -25,6 +25,7 @@ export function checkApiKeySetQuery(projectId: string, key: KeyType): RawQuery<b
 
   return {
     supportedPrismaClients: ["global"],
+    readOnlyQuery: true,
     sql: Prisma.sql`
       SELECT 't' AS "result"
       FROM "ApiKeySet"

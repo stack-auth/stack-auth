@@ -1,11 +1,12 @@
 "use client";
 
+import { EmailVerificationSetting } from "@/components/email-verification-setting";
 import { InlineSaveDiscard } from "@/components/inline-save-discard";
 import { SettingCard, SettingSelect, SettingSwitch } from "@/components/settings";
 import { ActionDialog, Badge, BrandIcons, BrowserFrame, Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, Input, SelectItem, SimpleTooltip, Typography } from "@/components/ui";
 import { useUpdateConfig } from "@/lib/config-update";
 import { AsteriskIcon, DotsThreeIcon, KeyIcon, LinkIcon, PlusCircleIcon } from "@phosphor-icons/react";
-import { AdminOAuthProviderConfig, AuthPage, OAuthProviderConfig } from "@stackframe/stack";
+import { AdminProject, AuthPage } from "@stackframe/stack";
 import type { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
 import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { allProviders } from "@stackframe/stack-shared/dist/utils/oauth";
@@ -15,6 +16,8 @@ import { AppEnabledGuard } from "../app-enabled-guard";
 import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";
 import { ProviderIcon, ProviderSettingDialog, ProviderSettingSwitch, TurnOffProviderDialog } from "./providers";
+
+type AdminOAuthProviderConfig = AdminProject['config']['oauthProviders'][number];
 
 type OAuthAccountMergeStrategy = 'link_method' | 'raise_error' | 'allow_duplicates';
 
@@ -106,7 +109,7 @@ function DisabledProvidersDialog({ open, onOpenChange }: { open?: boolean, onOpe
   const [providerSearch, setProviderSearch] = useState("");
   const filteredProviders = allProviders
     .filter((id) => id.toLowerCase().includes(providerSearch.toLowerCase()))
-    .map((id) => [id, oauthProviders.find((provider) => provider.id === id)] as const)
+    .map((id) => [id, oauthProviders.find((provider: AdminOAuthProviderConfig) => provider.id === id)] as const)
     .filter(([, provider]) => {
       return !provider;
     });
@@ -164,7 +167,7 @@ function OAuthActionCell({ config }: { config: AdminOAuthProviderConfig }) {
   const [turnOffProviderDialogOpen, setTurnOffProviderDialogOpen] = useState(false);
   const [providerSettingDialogOpen, setProviderSettingDialogOpen] = useState(false);
 
-  const updateProvider = async (provider: AdminOAuthProviderConfig & OAuthProviderConfig) => {
+  const updateProvider = async (provider: AdminOAuthProviderConfig) => {
     await updateConfig({
       adminApp: stackAdminApp,
       configUpdate: {
@@ -363,7 +366,7 @@ export default function PageClient() {
   };
 
   const enabledProviders = allProviders
-    .map((id) => [id, oauthProviders.find((provider) => provider.id === id)] as const)
+    .map((id) => [id, oauthProviders.find((provider: AdminOAuthProviderConfig) => provider.id === id)] as const)
     .filter(([, provider]) => !!provider);
 
   return (
@@ -498,6 +501,10 @@ export default function PageClient() {
               }
             }}
             hint="Existing users can still sign in when sign-up is disabled. You can always create new accounts manually via the dashboard."
+          />
+          <EmailVerificationSetting
+            showIcon
+            hint="Users must verify their primary email before they can use your application. Unverified users will be restricted. Requires SDK version >=2.8.57."
           />
           <SettingSelect
             label="Sign-up mode when logging in with same email on multiple providers"

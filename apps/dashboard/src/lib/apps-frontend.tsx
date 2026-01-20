@@ -1,5 +1,5 @@
 import { Link } from "@/components/link";
-import { CreditCardIcon, EnvelopeSimpleIcon, FingerprintSimpleIcon, KeyIcon, MailboxIcon, RocketIcon, SparkleIcon, TelevisionSimpleIcon, TriangleIcon, UserGearIcon, UsersIcon, VaultIcon, WebhooksLogoIcon } from "@phosphor-icons/react";
+import { ClipboardTextIcon, CreditCardIcon, EnvelopeSimpleIcon, FingerprintSimpleIcon, KeyIcon, MailboxIcon, RocketIcon, SparkleIcon, TelevisionSimpleIcon, TriangleIcon, UserGearIcon, UsersIcon, VaultIcon, WebhooksLogoIcon } from "@phosphor-icons/react";
 import { StackAdminApp } from "@stackframe/stack";
 import { ALL_APPS } from "@stackframe/stack-shared/dist/apps/apps-config";
 import { getRelativePart, isChildUrl } from "@stackframe/stack-shared/dist/utils/urls";
@@ -85,6 +85,21 @@ export const ALL_APPS_FRONTEND = {
       </>
     ),
   },
+  onboarding: {
+    icon: ClipboardTextIcon,
+    href: "onboarding",
+    navigationItems: [
+      { displayName: "Onboarding", href: "." },
+    ],
+    screenshots: [],
+    storeDescription: (
+      <>
+        <p>Onboarding lets you define requirements users must complete before gaining full access.</p>
+        <p>Configure email verification and other onboarding steps to ensure users are properly validated.</p>
+        <p>Users who haven&apos;t completed onboarding are filtered from normal API responses until they finish the required steps.</p>
+      </>
+    ),
+  },
   teams: {
     icon: UsersIcon,
     href: "teams",
@@ -136,16 +151,18 @@ export const ALL_APPS_FRONTEND = {
     icon: CreditCardIcon,
     href: "payments",
     navigationItems: [
-      { displayName: "Catalogs", href: "./catalogs" },
+      { displayName: "Product Lines", href: "./product-lines" },
       { displayName: "Products & Items", href: "./products" },
       { displayName: "Customers", href: "./customers" },
       { displayName: "Transactions", href: "./transactions" },
+      { displayName: "Payouts", href: "./payouts" },
+      { displayName: "Settings", href: "./settings" },
     ],
     screenshots: getScreenshots('payments', 7),
     storeDescription: (
       <>
         <p>Payments brings Stack&apos;s product-first pricing model into the dashboard.</p>
-        <p>Design catalogs of products, prices, and entitlements, segment user or team customers, and generate checkout URLs with the right guardrails.</p>
+        <p>Design product lines with products, prices, and entitlements, segment user or team customers, and generate checkout URLs with the right guardrails.</p>
         <p>Purchase history and transactions stay visible without leaving the console.</p>
       </>
     ),

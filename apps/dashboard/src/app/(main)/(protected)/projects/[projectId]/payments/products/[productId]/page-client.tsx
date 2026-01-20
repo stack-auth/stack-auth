@@ -54,7 +54,7 @@ import { typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import { Suspense, useMemo, useState } from "react";
 import { PageLayout } from "../../../page-layout";
 import { useAdminApp, useProjectId } from "../../../use-admin-app";
-import { CreateCatalogDialog } from "../create-catalog-dialog";
+import { CreateProductLineDialog } from "../create-product-line-dialog";
 import {
   createNewEditingPrice,
   editingPriceToPrice,
@@ -104,8 +104,8 @@ type ProductPageProps = {
 
 function ProductPage({ productId, product, config }: ProductPageProps) {
   const router = useRouter();
-  const catalogId = product.catalogId;
-  const catalogName = catalogId && catalogId in config.payments.catalogs ? config.payments.catalogs[catalogId].displayName || catalogId : null;
+  const productLineId = product.productLineId;
+  const productLineName = productLineId && productLineId in config.payments.productLines ? config.payments.productLines[productLineId].displayName || productLineId : null;
   const canGoBack = typeof window !== 'undefined' && window.history.length > 1;
 
   return (
@@ -122,7 +122,7 @@ function ProductPage({ productId, product, config }: ProductPageProps) {
             Back
           </Button>
         )}
-        <ProductHeader productId={productId} product={product} catalogName={catalogName} />
+        <ProductHeader productId={productId} product={product} productLineName={productLineName} />
         <Separator />
         <ProductDetailsSection productId={productId} product={product} config={config} />
         <Separator />
@@ -137,10 +137,10 @@ function ProductPage({ productId, product, config }: ProductPageProps) {
 type ProductHeaderProps = {
   productId: string,
   product: Product,
-  catalogName: string | null,
+  productLineName: string | null,
 };
 
-function ProductHeader({ productId, product, catalogName }: ProductHeaderProps) {
+function ProductHeader({ productId, product, productLineName }: ProductHeaderProps) {
   const projectId = useProjectId();
   const adminApp = useAdminApp();
   const project = adminApp.useProject();
@@ -189,12 +189,15 @@ function ProductHeader({ productId, product, catalogName }: ProductHeaderProps) 
               }}
             />
           </div>
-          {isAddOn && (
-            <Badge variant="outline" className="text-xs shrink-0">Add-on</Badge>
-          )}
-          {product.stackable && (
-            <Badge variant="outline" className="text-xs shrink-0">Stackable</Badge>
-          )}
+          <Button
+            variant="outline"
+            size="sm"
+            className="shrink-0 gap-1.5"
+            onClick={() => router.push(`/projects/${projectId}/payments/products/${productId}/edit`)}
+          >
+            <PencilSimpleIcon className="h-4 w-4" />
+            Edit
+          </Button>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" size="icon" className="shrink-0">
@@ -202,8 +205,8 @@ function ProductHeader({ productId, product, catalogName }: ProductHeaderProps) 
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => router.push(`/projects/${projectId}/payments/catalogs#product-${productId}`)}>
-                View in Catalogs
+              <DropdownMenuItem onClick={() => router.push(`/projects/${projectId}/payments/product-lines#product-${productId}`)}>
+                View in Product Lines
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -216,10 +219,10 @@ function ProductHeader({ productId, product, catalogName }: ProductHeaderProps) 
             {product.customerType}
           </span>
           <span className="font-mono text-xs bg-muted px-2 py-0.5 rounded">ID: {productId}</span>
-          {catalogName && (
+          {productLineName && (
             <>
               <span>•</span>
-              <span>Catalog: {catalogName}</span>
+              <span>Product Line: {productLineName}</span>
             </>
           )}
           {addOnParents.length > 0 && (
@@ -271,128 +274,26 @@ function ProductDetailsSection({ productId, product, config }: ProductDetailsSec
   // Dialog states
   const [addOnDialogOpen, setAddOnDialogOpen] = useState(false);
   const [freeTrialPopoverOpen, setFreeTrialPopoverOpen] = useState(false);
-  const [createCatalogDialogOpen, setCreateCatalogDialogOpen] = useState(false);
+  const [createProductLineDialogOpen, setCreateProductLineDialogOpen] = useState(false);
 
-  // ===== LOCAL STATE FOR DEFERRED SAVE =====
-  // Track all pending changes. undefined means "use original value"
-  const [pendingChanges, setPendingChanges] = useState<PendingProductChanges>({});
-
-  // Computed local values (pending change or original)
-  const localDisplayName = pendingChanges.displayName !== undefined ? pendingChanges.displayName : (product.displayName || '');
-  const localCatalogId = pendingChanges.catalogId !== undefined ? pendingChanges.catalogId : (product.catalogId || null);
-  const localStackable = pendingChanges.stackable !== undefined ? !!pendingChanges.stackable : !!product.stackable;
-  const localServerOnly = pendingChanges.serverOnly !== undefined ? !!pendingChanges.serverOnly : !!product.serverOnly;
-  const localFreeTrial = pendingChanges.freeTrial !== undefined ? pendingChanges.freeTrial : (product.freeTrial || null);
-  const localIsAddOnTo = pendingChanges.isAddOnTo !== undefined
-    ? pendingChanges.isAddOnTo
-    : (product.isAddOnTo !== false && typeof product.isAddOnTo === 'object' ? product.isAddOnTo : null);
-  const localPrices = pendingChanges.prices !== undefined ? pendingChanges.prices : product.prices;
-  const localIncludedItems = pendingChanges.includedItems !== undefined ? pendingChanges.includedItems : product.includedItems;
-
-  // Check if there are any pending changes
-  const hasChanges = Object.keys(pendingChanges).length > 0;
-
-  // Compute which item keys are modified (for visual indicator)
-  const externalModifiedKeys = useMemo(() => {
-    const keys = new Set<string>();
-    if (pendingChanges.displayName !== undefined) keys.add('displayName');
-    if (pendingChanges.catalogId !== undefined || pendingChanges.newCatalogs) keys.add('catalogId');
-    if (pendingChanges.stackable !== undefined) keys.add('stackable');
-    if (pendingChanges.serverOnly !== undefined) keys.add('serverOnly');
-    if (pendingChanges.freeTrial !== undefined) keys.add('freeTrial');
-    if (pendingChanges.isAddOnTo !== undefined) keys.add('isAddOnTo');
-    if (pendingChanges.prices !== undefined) keys.add('prices');
-    if (pendingChanges.includedItems !== undefined) keys.add('includedItems');
-    return keys;
-  }, [pendingChanges]);
-
-  // Discard all pending changes
-  const handleDiscard = () => {
-    setPendingChanges({});
-    // Reset add-on dialog state
-    setIsAddOn(product.isAddOnTo !== false && typeof product.isAddOnTo === 'object');
-    setSelectedAddOnProducts(
-      product.isAddOnTo !== false && typeof product.isAddOnTo === 'object'
-        ? new Set(Object.keys(product.isAddOnTo))
-        : new Set()
-    );
-  };
-
-  // Save all pending changes
-  const handleSave = async () => {
-    const configUpdate: Record<string, any> = {};
-
-    // First, create any new catalogs
-    if (pendingChanges.newCatalogs) {
-      for (const [catalogId, catalog] of Object.entries(pendingChanges.newCatalogs)) {
-        configUpdate[`payments.catalogs.${catalogId}`] = catalog;
-      }
-    }
-
-    // Then apply product changes
-    if (pendingChanges.displayName !== undefined) {
-      configUpdate[`payments.products.${productId}.displayName`] = pendingChanges.displayName || null;
-    }
-    if (pendingChanges.catalogId !== undefined) {
-      configUpdate[`payments.products.${productId}.catalogId`] = pendingChanges.catalogId || null;
-    }
-    if (pendingChanges.stackable !== undefined) {
-      configUpdate[`payments.products.${productId}.stackable`] = pendingChanges.stackable || null;
-    }
-    if (pendingChanges.serverOnly !== undefined) {
-      configUpdate[`payments.products.${productId}.serverOnly`] = pendingChanges.serverOnly || null;
-    }
-    if (pendingChanges.freeTrial !== undefined) {
-      configUpdate[`payments.products.${productId}.freeTrial`] = pendingChanges.freeTrial;
-    }
-    if (pendingChanges.isAddOnTo !== undefined) {
-      configUpdate[`payments.products.${productId}.isAddOnTo`] = pendingChanges.isAddOnTo;
-    }
-    if (pendingChanges.prices !== undefined) {
-      configUpdate[`payments.products.${productId}.prices`] = pendingChanges.prices;
-    }
-    if (pendingChanges.includedItems !== undefined) {
-      configUpdate[`payments.products.${productId}.includedItems`] = Object.keys(pendingChanges.includedItems).length > 0 ? pendingChanges.includedItems : null;
-    }
-
-    await updateConfig({ adminApp, configUpdate, pushable: true });
-    setPendingChanges({});
-    toast({ title: "Changes saved" });
-  };
-
-  // Get all catalogs with their customer types (including pending new catalogs)
-  const catalogOptions = useMemo(() => {
-    const allCatalogs = { ...config.payments.catalogs };
-
-    // Add pending new catalogs
-    if (pendingChanges.newCatalogs) {
-      for (const [id, catalog] of Object.entries(pendingChanges.newCatalogs)) {
-        allCatalogs[id] = catalog;
-      }
-    }
-
-    const catalogs = Object.entries(allCatalogs).map(([id, catalog]) => {
-      // Determine customer type from existing products in this catalog
-      const productsInCatalog = Object.values(config.payments.products).filter(p => (p as Product | undefined)?.catalogId === id);
-      const catalogCustomerType = productsInCatalog[0]?.customerType as 'user' | 'team' | 'custom' | undefined;
-
-      return {
+  // Get all productLines with their customer types (only show matching customer type)
+  const productLineOptions = useMemo(() => {
+    const productLines = Object.entries(config.payments.productLines)
+      .filter(([, productLine]) => productLine.customerType === product.customerType)
+      .map(([id, productLine]) => ({
         value: id,
-        label: catalog.displayName || id,
-        customerType: catalogCustomerType,
-        disabled: catalogCustomerType != null && catalogCustomerType !== product.customerType,
-        disabledReason: catalogCustomerType != null && catalogCustomerType !== product.customerType
-          ? `This catalog is for ${catalogCustomerType} products`
-          : undefined,
-      };
-    });
+        label: productLine.displayName || id,
+        customerType: productLine.customerType,
+        disabled: false,
+        disabledReason: undefined,
+      }));
 
-    // Also add "No catalog" option (using __none__ since Select.Item can't have empty string value)
+    // Also add "No product line" option (using __none__ since Select.Item can't have empty string value)
     return [
-      { value: '__none__', label: 'No catalog', disabled: false, disabledReason: undefined, customerType: undefined },
-      ...catalogs,
+      { value: '__none__', label: 'No product line', disabled: false, disabledReason: undefined, customerType: undefined },
+      ...productLines,
     ];
-  }, [config.payments.catalogs, config.payments.products, product.customerType, pendingChanges.newCatalogs]);
+  }, [config.payments.productLines, product.customerType]);
 
   // Add-on dialog state (temporary state for the dialog, applied on dialog save)
   const [isAddOn, setIsAddOn] = useState(() => product.isAddOnTo !== false && typeof product.isAddOnTo === 'object');
@@ -414,20 +315,20 @@ function ProductDetailsSection({ productId, product, config }: ProductDetailsSec
     }));
   }, [localIsAddOnTo, config.payments.products]);
 
-  // Get all available products for add-on selection (same customer type and catalog, excluding this product)
+  // Get all available products for add-on selection (same customer type and productLine, excluding this product)
   const availableProducts = useMemo(() => {
     const currentCatalogId = localCatalogId;
     return Object.entries(config.payments.products)
       .filter(([id, p]) =>
         id !== productId &&
         p.customerType === product.customerType &&
-        p.catalogId === currentCatalogId
+        p.productLineId === product.productLineId
       )
       .map(([id, p]) => ({
         id,
         displayName: p.displayName || id,
       }));
-  }, [config.payments.products, productId, product.customerType, localCatalogId]);
+  }, [config.payments.products, productId, product.customerType, product.productLineId]);
 
   const localFreeTrialDisplayText = useMemo(() => {
     if (!localFreeTrial) return 'None';
@@ -447,28 +348,33 @@ function ProductDetailsSection({ productId, product, config }: ProductDetailsSec
     }
   };
 
-  const handleCatalogChange = (catalogId: string) => {
-    const actualCatalogId = catalogId === '__none__' ? null : catalogId;
-    const originalValue = product.catalogId || null;
-    if (actualCatalogId === originalValue) {
-      const { catalogId: _, ...rest } = pendingChanges;
-      setPendingChanges(rest);
-    } else {
-      setPendingChanges({ ...pendingChanges, catalogId: actualCatalogId });
-    }
+  const handleProductLineUpdate = async (productLineId: string) => {
+    const actualProductLineId = productLineId === '__none__' ? null : productLineId;
+    await updateConfig({
+      adminApp,
+      configUpdate: {
+        [`payments.products.${productId}.productLineId`]: actualProductLineId,
+      },
+      pushable: true,
+    });
+    toast({ title: actualProductLineId ? "Product moved to product line" : "Product removed from product line" });
   };
 
-  const handleCreateCatalog = (catalog: { id: string, displayName: string }) => {
-    // Add to pending new catalogs and set as current catalog
-    setPendingChanges({
-      ...pendingChanges,
-      newCatalogs: {
-        ...pendingChanges.newCatalogs,
-        [catalog.id]: { displayName: catalog.displayName || undefined },
+  const handleCreateProductLine = async (productLine: { id: string, displayName: string }) => {
+    // Create the productLine first with the current product's customerType
+    await updateConfig({
+      adminApp,
+      configUpdate: {
+        [`payments.productLines.${productLine.id}`]: {
+          displayName: productLine.displayName || null,
+          customerType: product.customerType,
+        },
+        [`payments.products.${productId}.productLineId`]: productLine.id,
       },
-      catalogId: catalog.id,
+      pushable: true,
     });
-    setCreateCatalogDialogOpen(false);
+    setCreateProductLineDialogOpen(false);
+    toast({ title: "Product line created and product moved" });
   };
 
   const handleStackableChange = (value: boolean) => {
@@ -579,16 +485,16 @@ function ProductDetailsSection({ productId, product, config }: ProductDetailsSec
     },
     {
       type: 'dropdown',
-      itemKey: 'catalogId',
+      itemKey: 'productLineId',
       icon: <FolderOpenIcon size={16} />,
-      name: "Catalog",
-      tooltip: "Catalogs group products together. Customers can only have one active product per catalog.",
-      value: localCatalogId || '__none__',
-      options: catalogOptions,
-      onChange: handleCatalogChange,
+      name: "Product Line",
+      tooltip: "Product lines group products together. Customers can only have one active product per product line.",
+      value: product.productLineId || '__none__',
+      options: productLineOptions,
+      onUpdate: handleProductLineUpdate,
       extraAction: {
-        label: "+ Create new catalog",
-        onClick: () => setCreateCatalogDialogOpen(true),
+        label: "+ Create new product line",
+        onClick: () => setCreateProductLineDialogOpen(true),
       },
     },
     {
@@ -753,7 +659,7 @@ function ProductDetailsSection({ productId, product, config }: ProductDetailsSec
           <DialogHeader>
             <DialogTitle>Add-on Configuration</DialogTitle>
             <DialogDescription>
-              Add-ons are optional products that can only be purchased when a customer already owns one of the parent products. They&apos;re great for extras like additional seats, premium features, or one-time upgrades. A product can only be an add-on to products with the same customer type and in the same catalog.
+              Add-ons are optional products that can only be purchased when a customer already owns one of the parent products. They&apos;re great for extras like additional seats, premium features, or one-time upgrades. A product can only be an add-on to products with the same customer type and in the same product line.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
@@ -778,7 +684,7 @@ function ProductDetailsSection({ productId, product, config }: ProductDetailsSec
                 </Label>
                 <div className="max-h-48 overflow-y-auto space-y-2 rounded-md border p-3">
                   {availableProducts.length === 0 ? (
-                    <p className="text-sm text-muted-foreground">No other products with the same customer type and catalog</p>
+                    <p className="text-sm text-muted-foreground">No other products with the same customer type and productLine</p>
                   ) : (
                     availableProducts.map((p) => (
                       <div key={p.id} className="flex items-center gap-2">
@@ -816,11 +722,11 @@ function ProductDetailsSection({ productId, product, config }: ProductDetailsSec
         </DialogContent>
       </Dialog>
 
-      {/* Create Catalog Dialog */}
-      <CreateCatalogDialog
-        open={createCatalogDialogOpen}
-        onOpenChange={setCreateCatalogDialogOpen}
-        onCreate={handleCreateCatalog}
+      {/* Create Product Line Dialog */}
+      <CreateProductLineDialog
+        open={createProductLineDialogOpen}
+        onOpenChange={setCreateProductLineDialogOpen}
+        onCreate={handleCreateProductLine}
       />
     </>
   );

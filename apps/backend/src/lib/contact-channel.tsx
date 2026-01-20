@@ -1,4 +1,5 @@
-import { ContactChannelType } from "@/generated/prisma/client";
+import { BooleanTrue, ContactChannelType } from "@/generated/prisma/client";
+import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { normalizeEmail } from "./emails";
 import { PrismaTransaction } from "./types";
 
@@ -14,6 +15,138 @@ const fullContactChannelInclude = {
     }
   }
 };
+
+/**
+ * Demotes all contact channels of a given type for a user to non-primary.
+ */
+export async function demoteAllContactChannelsToNonPrimary(
+  tx: PrismaTransaction,
+  options: {
+    tenancyId: string,
+    projectUserId: string,
+    type: ContactChannelType,
+  }
+) {
+  await tx.contactChannel.updateMany({
+    where: {
+      tenancyId: options.tenancyId,
+      projectUserId: options.projectUserId,
+      type: options.type,
+      isPrimary: BooleanTrue.TRUE,
+    },
+    data: {
+      isPrimary: null,
+    },
+  });
+}
+
+/**
+ * Sets a contact channel as primary, demoting all other contact channels of the same type.
+ * The contact channel is identified by its ID.
+ */
+export async function setContactChannelAsPrimaryById(
+  tx: PrismaTransaction,
+  options: {
+    tenancyId: string,
+    projectUserId: string,
+    contactChannelId: string,
+    type: ContactChannelType,
+    /** Additional fields to update on the contact channel */
+    additionalUpdates?: {
+      usedForAuth?: typeof BooleanTrue.TRUE | null,
+      isVerified?: boolean,
+    },
+  }
+) {
+  // First, validate that the target contact channel exists and has the correct type
+  const targetChannel = await tx.contactChannel.findUnique({
+    where: {
+      tenancyId_projectUserId_id: {
+        tenancyId: options.tenancyId,
+        projectUserId: options.projectUserId,
+        id: options.contactChannelId,
+      },
+    },
+  });
+
+  if (!targetChannel) {
+    throw new StackAssertionError(
+      `Contact channel not found with id ${options.contactChannelId} for user ${options.projectUserId} in tenancy ${options.tenancyId}`,
+      { options }
+    );
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+  if (targetChannel.type !== options.type) {
+    throw new StackAssertionError(
+      `Contact channel type mismatch: expected ${options.type}, got ${targetChannel.type}`,
+      { options, actualType: targetChannel.type }
+    );
+  }
+
+  // Demote all other contact channels of this type
+  await demoteAllContactChannelsToNonPrimary(tx, {
+    tenancyId: options.tenancyId,
+    projectUserId: options.projectUserId,
+    type: options.type,
+  });
+
+  // Promote the target contact channel to primary
+  await tx.contactChannel.update({
+    where: {
+      tenancyId_projectUserId_id: {
+        tenancyId: options.tenancyId,
+        projectUserId: options.projectUserId,
+        id: options.contactChannelId,
+      },
+    },
+    data: {
+      isPrimary: BooleanTrue.TRUE,
+      ...options.additionalUpdates,
+    },
+  });
+}
+
+/**
+ * Sets a contact channel as primary by its value, demoting all other contact channels of the same type.
+ */
+export async function setContactChannelAsPrimaryByValue(
+  tx: PrismaTransaction,
+  options: {
+    tenancyId: string,
+    projectUserId: string,
+    type: ContactChannelType,
+    value: string,
+    /** Additional fields to update on the contact channel */
+    additionalUpdates?: {
+      usedForAuth?: typeof BooleanTrue.TRUE | null,
+      isVerified?: boolean,
+    },
+  }
+) {
+  // Demote all other contact channels of this type
+  await demoteAllContactChannelsToNonPrimary(tx, {
+    tenancyId: options.tenancyId,
+    projectUserId: options.projectUserId,
+    type: options.type,
+  });
+
+  // Promote the target contact channel to primary
+  await tx.contactChannel.update({
+    where: {
+      tenancyId_projectUserId_type_value: {
+        tenancyId: options.tenancyId,
+        projectUserId: options.projectUserId,
+        type: options.type,
+        value: options.value,
+      },
+    },
+    data: {
+      isPrimary: BooleanTrue.TRUE,
+      ...options.additionalUpdates,
+    },
+  });
+}
 
 async function getAuthContactChannel(
   tx: PrismaTransaction,

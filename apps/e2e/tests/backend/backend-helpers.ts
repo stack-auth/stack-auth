@@ -97,7 +97,7 @@ function expectSnakeCase(obj: unknown, path: string): void {
       if (key.match(/[a-z0-9][A-Z][a-z0-9]+/) && !key.includes("_") && !["newUser", "afterCallbackRedirectUrl"].includes(key)) {
         throw new StackAssertionError(`Object has camelCase key (expected snake_case): ${path}.${key}`);
       }
-      if (["client_metadata", "server_metadata", "options_json", "credential", "authentication_response", "metadata"].includes(key)) continue;
+      if (["client_metadata", "server_metadata", "options_json", "credential", "authentication_response", "metadata", "variables", "skipped_details"].includes(key)) continue;
       // because email templates
       if (path === "req.body.content.root") continue;
       if (path === "res.body.content.root") continue;
@@ -240,6 +240,8 @@ export namespace Auth {
         "email_verified": expect.any(Boolean),
         "selected_team_id": expect.toSatisfy(() => true),
         "is_anonymous": expect.any(Boolean),
+        "is_restricted": expect.any(Boolean),
+        "restricted_reason": expect.toSatisfy(() => true),
         "project_id": payload.aud
       });
     }

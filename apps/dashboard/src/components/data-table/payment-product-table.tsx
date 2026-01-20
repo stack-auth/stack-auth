@@ -9,9 +9,11 @@ import { ColumnDef } from "@tanstack/react-table";
 import { useState } from "react";
 import * as yup from "yup";
 
+type BranchPayments = NonNullable<yup.InferType<typeof branchPaymentsSchema>>;
+
 type PaymentProduct = {
   id: string,
-} & yup.InferType<typeof branchPaymentsSchema>["products"][string];
+} & BranchPayments["products"][string];
 
 const columns: ColumnDef<PaymentProduct>[] = [
   {
@@ -50,7 +52,7 @@ const columns: ColumnDef<PaymentProduct>[] = [
   }
 ];
 
-export function PaymentProductTable({ products }: { products: Record<string, yup.InferType<typeof branchPaymentsSchema>["products"][string]> }) {
+export function PaymentProductTable({ products }: { products: Record<string, BranchPayments["products"][string]> }) {
   const data: PaymentProduct[] = Object.entries(products)
     .map(([id, product]) => ({
       id,
