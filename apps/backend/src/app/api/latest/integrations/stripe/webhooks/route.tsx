@@ -1,7 +1,8 @@
 import { sendEmailToMany, type EmailOutboxRecipient } from "@/lib/emails";
 import { listPermissions } from "@/lib/permissions";
-import { getStackStripe, getStripeForAccount, handleStripeInvoicePaid, syncStripeSubscriptions } from "@/lib/stripe";
+import { getStackStripe, getStripeForAccount, syncStripeSubscriptions, upsertStripeInvoice } from "@/lib/stripe";
 import { getTenancy, type Tenancy } from "@/lib/tenancies";
+import { getTelegramConfig, sendTelegramMessage } from "@/lib/telegram";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { DEFAULT_TEMPLATE_IDS } from "@stackframe/stack-shared/dist/helpers/emails";
@@ -24,6 +25,10 @@ const subscriptionChangedEvents = [
   "customer.subscription.pending_update_applied",
   "customer.subscription.pending_update_expired",
   "customer.subscription.trial_will_end",
+  "invoice.created",
+  "invoice.finalized",
+  "invoice.updated",
+  "invoice.voided",
   "invoice.paid",
   "invoice.payment_failed",
   "invoice.payment_action_required",
@@ -56,6 +61,40 @@ const normalizeCustomerType = (value: string | null | undefined) => {
   }
   const normalized = value.toLowerCase();
   return typedIncludes(paymentCustomerTypes, normalized) ? normalized : null;
+};
+
+const formatStripeTimestamp = (timestampSeconds: number | null | undefined) => {
+  if (typeof timestampSeconds !== "number" || Number.isNaN(timestampSeconds)) {
+    return "Timestamp unavailable";
+  }
+  return new Date(timestampSeconds * 1000).toISOString();
+};
+
+const buildChargebackMessage = (options: {
+  accountId: string,
+  eventId: string,
+  tenancy: Tenancy,
+  dispute: Stripe.Dispute,
+}) => {
+  const chargeId = typeof options.dispute.charge === "string" ? options.dispute.charge : null;
+  const paymentIntentId = typeof options.dispute.payment_intent === "string" ? options.dispute.payment_intent : null;
+  const lines = [
+    "Stripe chargeback received",
+    `Project: ${options.tenancy.project.display_name} (${options.tenancy.project.id})`,
+    `Tenancy: ${options.tenancy.id}`,
+    `StripeAccount: ${options.accountId}`,
+    `Event: ${options.eventId}`,
+    `Dispute: ${options.dispute.id}`,
+    `Amount: ${formatAmount(options.dispute.amount, options.dispute.currency)}`,
+    `Reason: ${options.dispute.reason}`,
+    `Status: ${options.dispute.status}`,
+    chargeId ? `Charge: ${chargeId}` : null,
+    paymentIntentId ? `PaymentIntent: ${paymentIntentId}` : null,
+    `Created: ${formatStripeTimestamp(options.dispute.created)}`,
+    `LiveMode: ${options.dispute.livemode ? "true" : "false"}`,
+  ].filter((line): line is string => Boolean(line));
+
+  return lines.join("\n");
 };
 
 async function getTenancyForStripeAccountId(accountId: string, mockData?: StripeOverridesMap) {
@@ -194,7 +233,7 @@ async function processStripeWebhookEvent(event: Stripe.Event): Promise<void> {
       extraVariables,
     });
   }
-  if (event.type === "payment_intent.payment_failed" && event.data.object.metadata.purchaseKind === "ONE_TIME") {
+  else if (event.type === "payment_intent.payment_failed" && event.data.object.metadata.purchaseKind === "ONE_TIME") {
     const paymentIntent = event.data.object as Stripe.PaymentIntent;
     const metadata = paymentIntent.metadata;
     const accountId = event.account;
@@ -233,7 +272,29 @@ async function processStripeWebhookEvent(event: Stripe.Event): Promise<void> {
       extraVariables,
     });
   }
-  if (isSubscriptionChangedEvent(event)) {
+  else if (event.type === "charge.dispute.created") {
+    const telegramConfig = getTelegramConfig("chargebacks");
+    if (!telegramConfig) {
+      return;
+    }
+    const accountId = event.account;
+    if (!accountId) {
+      throw new StackAssertionError("Stripe webhook account id missing", { event });
+    }
+    const dispute = event.data.object as Stripe.Dispute;
+    const tenancy = await getTenancyForStripeAccountId(accountId, mockData);
+    const message = buildChargebackMessage({
+      accountId,
+      eventId: event.id,
+      tenancy,
+      dispute,
+    });
+    await sendTelegramMessage({
+      ...telegramConfig,
+      message,
+    });
+  }
+  else if (isSubscriptionChangedEvent(event)) {
     const accountId = event.account;
     const customerId = event.data.object.customer;
     if (!accountId) {
@@ -245,9 +306,13 @@ async function processStripeWebhookEvent(event: Stripe.Event): Promise<void> {
     const stripe = await getStripeForAccount({ accountId }, mockData);
     await syncStripeSubscriptions(stripe, accountId, customerId);
 
+    if (event.type.startsWith("invoice.")) {
+      const invoice = event.data.object as Stripe.Invoice;
+      await upsertStripeInvoice(stripe, accountId, invoice);
+    }
+
     if (event.type === "invoice.payment_succeeded") {
       const invoice = event.data.object as Stripe.Invoice;
-      await handleStripeInvoicePaid(stripe, accountId, invoice);
 
       const tenancy = await getTenancyForStripeAccountId(accountId, mockData);
       const prisma = await getPrismaClientForTenancy(tenancy);
@@ -269,9 +334,10 @@ async function processStripeWebhookEvent(event: Stripe.Event): Promise<void> {
         customerType,
         customerId: stripeCustomer.metadata.customerId,
       });
-      const lineItem = invoice.lines.data[0];
-      const productName = lineItem.description ?? "Subscription";
-      const quantity = lineItem.quantity ?? 1;
+      const invoiceLines = (invoice as { lines?: { data?: Stripe.InvoiceLineItem[] } }).lines?.data ?? [];
+      const lineItem = invoiceLines.length > 0 ? invoiceLines[0] : null;
+      const productName = lineItem?.description ?? "Subscription";
+      const quantity = lineItem?.quantity ?? 1;
       const receiptLink = invoice.hosted_invoice_url ?? invoice.invoice_pdf ?? null;
       const extraVariables: Record<string, string | number> = {
         productName,
@@ -314,8 +380,9 @@ async function processStripeWebhookEvent(event: Stripe.Event): Promise<void> {
         customerType,
         customerId: stripeCustomer.metadata.customerId,
       });
-      const lineItem = invoice.lines.data[0];
-      const productName = lineItem.description ?? "Subscription";
+      const invoiceLines = (invoice as { lines?: { data?: Stripe.InvoiceLineItem[] } }).lines?.data ?? [];
+      const lineItem = invoiceLines.length > 0 ? invoiceLines[0] : null;
+      const productName = lineItem?.description ?? "Subscription";
       const invoiceUrl = invoice.hosted_invoice_url ?? null;
       const extraVariables: Record<string, string | number> = {
         productName,
@@ -331,6 +398,9 @@ async function processStripeWebhookEvent(event: Stripe.Event): Promise<void> {
         extraVariables,
       });
     }
+  }
+  else {
+    throw new StackAssertionError("Unknown stripe webhook type received", { event });
   }
 }
 
