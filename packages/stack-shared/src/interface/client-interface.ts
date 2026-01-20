@@ -166,7 +166,7 @@ export class StackClientInterface {
 
     const clientAuthentication = oauth.ClientSecretPost(this.options.publishableClientKey);
     // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-    const allowInsecure = (process.env.NODE_ENV?.includes("dev") || process.env.NODE_ENV === 'test') && tokenEndpoint.startsWith('http://');
+    const allowInsecure = tokenEndpoint.startsWith('http://');
 
     const response = await this._networkRetryException(async () => {
       const rawResponse = await oauth.refreshTokenGrantRequest(
@@ -1043,7 +1043,7 @@ export class StackClientInterface {
     const clientAuthentication = oauth.ClientSecretPost(this.options.publishableClientKey);
     // Allow insecure HTTP requests only in test environment (for localhost testing)
     // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-    const allowInsecure = (process.env.NODE_ENV?.includes("dev") || process.env.NODE_ENV === 'test') && tokenEndpoint.startsWith('http://');
+    const allowInsecure = tokenEndpoint.startsWith('http://');
 
     let params: URLSearchParams;
     try {
