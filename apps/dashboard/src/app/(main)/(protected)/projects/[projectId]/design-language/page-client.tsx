@@ -5,6 +5,9 @@ import {
     AlertDescription,
     AlertTitle,
     Button,
+    DataTable,
+    DataTableColumnHeader,
+    DataTableViewOptions,
     DropdownMenu,
     DropdownMenuCheckboxItem,
     DropdownMenuContent,
@@ -32,7 +35,8 @@ import {
   WarningCircle,
   XCircle
 } from "@phosphor-icons/react";
-import { useState } from "react";
+import { ColumnDef, Table as TableType } from "@tanstack/react-table";
+import { useMemo, useState } from "react";
 import {
     TimeRange,
     TimeRangeToggle
@@ -248,6 +252,13 @@ function DesignSection({
 type StatusBadgeColor = "blue" | "cyan" | "purple" | "green" | "orange" | "red";
 type StatusBadgeSize = "sm" | "md";
 type ColumnKey = "recipient" | "subject" | "sentAt" | "status";
+type DemoEmailRow = {
+  id: string,
+  recipient: string,
+  subject: string,
+  sentAt: number,
+  status: "sent" | "failed" | "scheduled",
+};
 
 const STATUS_BADGE_STYLES: Record<StatusBadgeColor, string> = {
   blue: "text-blue-600 dark:text-blue-400 bg-blue-500/10 ring-1 ring-blue-500/20",
@@ -256,6 +267,12 @@ const STATUS_BADGE_STYLES: Record<StatusBadgeColor, string> = {
   green: "text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 ring-1 ring-emerald-500/20",
   orange: "text-orange-600 dark:text-orange-400 bg-orange-500/10 ring-1 ring-orange-500/20",
   red: "text-red-600 dark:text-red-400 bg-red-500/10 ring-1 ring-red-500/20",
+};
+
+const DEMO_STATUS_MAP: Record<DemoEmailRow["status"], { label: string, color: StatusBadgeColor }> = {
+  sent: { label: "Sent", color: "green" },
+  failed: { label: "Failed", color: "red" },
+  scheduled: { label: "Scheduled", color: "orange" },
 };
 
 function StatusBadge({
@@ -499,6 +516,8 @@ export default function PageClient() {
   const [timeRange, setTimeRange] = useState<TimeRange>("30d");
   const [listAction, setListAction] = useState<"edit" | "delete" | null>(null);
   const [selectedMenuFilter, setSelectedMenuFilter] = useState("all");
+  const [tableDemo, setTableDemo] = useState<TableType<DemoEmailRow> | null>(null);
+  const [tableDemoVisibility, setTableDemoVisibility] = useState({});
   const [visibleColumns, setVisibleColumns] = useState<Record<ColumnKey, boolean>>({
     recipient: true,
     subject: true,
@@ -531,6 +550,61 @@ export default function PageClient() {
     { id: "active", label: "Active" },
     { id: "drafts", label: "Drafts" },
   ];
+
+  const demoDateFormatter = useMemo(() => new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  }), []);
+
+  const demoEmailRows: DemoEmailRow[] = [
+    { id: "em_01", recipient: "jordan@stack.dev", subject: "Reset your password", sentAt: 1726516800000, status: "sent" },
+    { id: "em_02", recipient: "ops@stack.dev", subject: "Weekly usage summary", sentAt: 1726257600000, status: "scheduled" },
+    { id: "em_03", recipient: "pat@stack.dev", subject: "Verify your email", sentAt: 1725998400000, status: "failed" },
+    { id: "em_04", recipient: "team@stack.dev", subject: "Invite to Stack Auth", sentAt: 1725739200000, status: "sent" },
+  ];
+
+  const demoTableColumns = useMemo<ColumnDef<DemoEmailRow>[]>(() => [
+    {
+      accessorKey: "recipient",
+      header: ({ column }) => <DataTableColumnHeader column={column} columnTitle="Recipient" />,
+      cell: ({ row }) => (
+        <span className="text-sm font-medium text-foreground">
+          {row.getValue("recipient")}
+        </span>
+      ),
+    },
+    {
+      accessorKey: "subject",
+      header: ({ column }) => <DataTableColumnHeader column={column} columnTitle="Subject" />,
+      cell: ({ row }) => (
+        <span className="text-sm text-muted-foreground">
+          {row.getValue("subject")}
+        </span>
+      ),
+    },
+    {
+      accessorKey: "sentAt",
+      header: ({ column }) => <DataTableColumnHeader column={column} columnTitle="Sent At" />,
+      cell: ({ row }) => {
+        const value = row.getValue("sentAt") as number;
+        return (
+          <span className="text-xs text-muted-foreground">
+            {demoDateFormatter.format(new Date(value))}
+          </span>
+        );
+      },
+    },
+    {
+      accessorKey: "status",
+      header: ({ column }) => <DataTableColumnHeader column={column} columnTitle="Status" />,
+      cell: ({ row }) => {
+        const status = row.getValue("status") as DemoEmailRow["status"];
+        const config = DEMO_STATUS_MAP[status];
+        return <StatusBadge label={config.label} color={config.color} size="sm" />;
+      },
+    },
+  ], [demoDateFormatter]);
 
   return (
     <PageLayout>
@@ -789,25 +863,105 @@ export default function PageClient() {
         </DesignSection>
 
         {/* ============================================================ */}
+        {/* TABLES */}
+        {/* ============================================================ */}
+        <DesignSection
+          id="tables"
+          icon={FileText}
+          title="Tables"
+          description="Use for dense datasets with sorting and column visibility controls."
+        >
+          <ComponentDemo
+            title="Data Table"
+            description="Matches the email log table styling and layout."
+          >
+            <GlassCard gradientColor="default" className="overflow-hidden">
+              <div className="p-5">
+                <div className="flex w-full items-start justify-between gap-4">
+                  <div className="flex-1 min-w-0">
+                    <SectionHeader icon={Envelope} title="Email Log" />
+                    <Typography variant="secondary" className="text-sm mt-1">
+                      Recent delivery activity with quick filters
+                    </Typography>
+                  </div>
+                  {tableDemo && (
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      <DataTableViewOptions
+                        key={JSON.stringify(tableDemoVisibility)}
+                        table={tableDemo}
+                      />
+                    </div>
+                  )}
+                </div>
+              </div>
+              <div className="border-t border-foreground/[0.05] px-5 pb-5 [&_div.rounded-md.border]:border-0 [&_div.rounded-md.border]:shadow-none">
+                <DataTable
+                  data={demoEmailRows}
+                  columns={demoTableColumns}
+                  defaultColumnFilters={[]}
+                  defaultSorting={[{ id: "sentAt", desc: true }]}
+                  showDefaultToolbar={false}
+                  showResetFilters={false}
+                  toolbarRender={(tableInstance) => {
+                    if (tableDemo !== tableInstance) {
+                      setTableDemo(tableInstance);
+                    }
+                    const currentVisibility = tableInstance.getState().columnVisibility;
+                    if (JSON.stringify(currentVisibility) !== JSON.stringify(tableDemoVisibility)) {
+                      setTableDemoVisibility(currentVisibility);
+                    }
+                    return null;
+                  }}
+                />
+              </div>
+            </GlassCard>
+          </ComponentDemo>
+
+          <div className="pt-4 border-t border-foreground/[0.05]">
+            <Typography type="label" className="font-semibold mb-3">Props</Typography>
+            <PropsTable props={[
+              { name: "columns", type: "ColumnDef[]", description: "Column definitions for headers and cells." },
+              { name: "data", type: "Array<Record<string, unknown>>", description: "Row data to render in the table." },
+              { name: "defaultSorting", type: "SortingState", description: "Initial sort order for the table." },
+              { name: "showDefaultToolbar", type: "boolean", default: "true", description: "Toggle the built-in toolbar." },
+              { name: "viewOptions", type: "boolean", default: "false", description: "Use DataTableViewOptions for column toggles." },
+              { name: "onRowClick", type: "(row) => void", description: "Optional row click handler for navigation." },
+            ]} />
+          </div>
+        </DesignSection>
+
+        {/* ============================================================ */}
         {/* BUTTONS */}
         {/* ============================================================ */}
         <DesignSection
           id="buttons"
           icon={CheckCircle}
           title="Buttons"
-          description="Use for primary actions, secondary actions, and simple controls."
+          description="Use for primary actions, secondary controls, and lightweight links."
         >
           <ComponentDemo
             title="Variants"
             description="Pair variants with action importance and context."
           >
             <div className="flex flex-wrap gap-2">
-              <Button variant="default">Primary</Button>
-              <Button variant="ghost">Ghost</Button>
-              <Button variant="secondary">Secondary</Button>
-              <Button variant="outline">Outline</Button>
-              <Button variant="destructive">Delete</Button>
-              <Button variant="link">Learn more</Button>
+              <Button variant="default" className="transition-all duration-150 hover:transition-none">
+                Primary
+              </Button>
+              <Button variant="ghost" className="transition-all duration-150 hover:transition-none">
+                Ghost
+              </Button>
+              <Button variant="secondary" className="transition-all duration-150 hover:transition-none">
+                Secondary
+              </Button>
+              <Button variant="outline" className="transition-all duration-150 hover:transition-none">
+                Outline
+              </Button>
+              <Button variant="destructive" className="transition-all duration-150 hover:transition-none">
+                Delete
+              </Button>
+              <Button variant="link" className="transition-colors duration-150 hover:transition-none">
+                Learn more
+              </Button>
               <Button
                 variant="plain"
                 className="bg-foreground/10 text-foreground shadow-sm ring-1 ring-foreground/5 transition-all duration-150 hover:transition-none"
@@ -822,9 +976,15 @@ export default function PageClient() {
             description="Use size for density, not prominence."
           >
             <div className="flex flex-wrap items-center gap-2">
-              <Button size="sm">Small</Button>
-              <Button>Default</Button>
-              <Button size="lg">Large</Button>
+              <Button size="sm" className="transition-all duration-150 hover:transition-none">
+                Small
+              </Button>
+              <Button className="transition-all duration-150 hover:transition-none">
+                Default
+              </Button>
+              <Button size="lg" className="transition-all duration-150 hover:transition-none">
+                Large
+              </Button>
               <Button
                 size="plain"
                 variant="plain"
