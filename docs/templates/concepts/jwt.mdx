@@ -48,6 +48,8 @@ Stack Auth JWTs contain standardized headers and claims that power authenticatio
 - **`email_verified`**: Whether the user's email has been verified
 - **`selected_team_id`**: The currently selected team ID (nullable)
 - **`is_anonymous`**: Whether this is an anonymous user session
+- **`is_restricted`**: Whether this is a restricted user session
+- **`restricted_reason`**: The reason the user is restricted (nullable if the user is not restricted)
 
 ## Example JWT Payload
 
