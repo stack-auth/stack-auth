@@ -1,5 +1,5 @@
 import Foundation
-import CryptoKit
+import Crypto
 #if canImport(AuthenticationServices)
 import AuthenticationServices
 #endif
