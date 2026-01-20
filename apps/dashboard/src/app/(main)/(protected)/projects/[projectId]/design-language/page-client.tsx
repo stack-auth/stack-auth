@@ -10,6 +10,8 @@ import {
     DropdownMenuContent,
     DropdownMenuItem,
     DropdownMenuLabel,
+    DropdownMenuRadioGroup,
+    DropdownMenuRadioItem,
     DropdownMenuSeparator,
     DropdownMenuTrigger,
     Typography,
@@ -496,6 +498,7 @@ export default function PageClient() {
   const [selectedViewport, setSelectedViewport] = useState("phone");
   const [timeRange, setTimeRange] = useState<TimeRange>("30d");
   const [listAction, setListAction] = useState<"edit" | "delete" | null>(null);
+  const [selectedMenuFilter, setSelectedMenuFilter] = useState("all");
   const [visibleColumns, setVisibleColumns] = useState<Record<ColumnKey, boolean>>({
     recipient: true,
     subject: true,
@@ -521,6 +524,12 @@ export default function PageClient() {
     { id: "subject", label: "Subject" },
     { id: "sentAt", label: "Sent At" },
     { id: "status", label: "Status" },
+  ];
+
+  const menuFilterOptions = [
+    { id: "all", label: "All messages" },
+    { id: "active", label: "Active" },
+    { id: "drafts", label: "Drafts" },
   ];
 
   return (
@@ -705,6 +714,35 @@ export default function PageClient() {
           </ComponentDemo>
 
           <ComponentDemo
+            title="Selector Menu"
+            description="Use radio items to switch between a small set of options."
+          >
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm" className="h-9 px-3">
+                  {menuFilterOptions.find((option) => option.id === selectedMenuFilter)?.label ?? "Select"}
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="min-w-[200px]">
+                <DropdownMenuLabel className="text-[11px] uppercase tracking-wider text-muted-foreground">
+                  Filter
+                </DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuRadioGroup
+                  value={selectedMenuFilter}
+                  onValueChange={setSelectedMenuFilter}
+                >
+                  {menuFilterOptions.map((option) => (
+                    <DropdownMenuRadioItem key={option.id} value={option.id}>
+                      {option.label}
+                    </DropdownMenuRadioItem>
+                  ))}
+                </DropdownMenuRadioGroup>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </ComponentDemo>
+
+          <ComponentDemo
             title="Column Toggles"
             description="Use checkbox items for on/off configuration."
           >
@@ -746,6 +784,84 @@ export default function PageClient() {
               { name: "itemVariant", type: "'default' | 'destructive' | 'checkbox'", default: "'default'", description: "Item style for actions or toggles." },
               { name: "withIcons", type: "boolean", default: "false", description: "Adds leading icons for action menus." },
               { name: "onClick", type: "(event) => void | Promise<void>", description: "Return a Promise to keep the menu open with a spinner until complete." },
+            ]} />
+          </div>
+        </DesignSection>
+
+        {/* ============================================================ */}
+        {/* BUTTONS */}
+        {/* ============================================================ */}
+        <DesignSection
+          id="buttons"
+          icon={CheckCircle}
+          title="Buttons"
+          description="Use for primary actions, secondary actions, and simple controls."
+        >
+          <ComponentDemo
+            title="Variants"
+            description="Pair variants with action importance and context."
+          >
+            <div className="flex flex-wrap gap-2">
+              <Button variant="default">Primary</Button>
+              <Button variant="ghost">Ghost</Button>
+              <Button variant="secondary">Secondary</Button>
+              <Button variant="outline">Outline</Button>
+              <Button variant="destructive">Delete</Button>
+              <Button variant="link">Learn more</Button>
+              <Button
+                variant="plain"
+                className="bg-foreground/10 text-foreground shadow-sm ring-1 ring-foreground/5 transition-all duration-150 hover:transition-none"
+              >
+                Active
+              </Button>
+            </div>
+          </ComponentDemo>
+
+          <ComponentDemo
+            title="Sizes"
+            description="Use size for density, not prominence."
+          >
+            <div className="flex flex-wrap items-center gap-2">
+              <Button size="sm">Small</Button>
+              <Button>Default</Button>
+              <Button size="lg">Large</Button>
+              <Button
+                size="plain"
+                variant="plain"
+                className="h-9 w-9 p-0 rounded-lg text-muted-foreground hover:text-foreground hover:bg-background/60 transition-all duration-150 hover:transition-none"
+                aria-label="Send email"
+              >
+                <Envelope className="h-4 w-4" />
+              </Button>
+            </div>
+          </ComponentDemo>
+
+          <ComponentDemo
+            title="Loading States"
+            description="Buttons show a spinner while async actions run."
+          >
+            <div className="flex flex-wrap items-center gap-2">
+              <Button loading>Saving</Button>
+              <Button
+                variant="secondary"
+                onClick={() => new Promise<void>((resolve) => {
+                  setTimeout(() => resolve(), 1500);
+                })}
+              >
+                Async Action
+              </Button>
+            </div>
+          </ComponentDemo>
+
+          <div className="pt-4 border-t border-foreground/[0.05]">
+            <Typography type="label" className="font-semibold mb-3">Props</Typography>
+            <PropsTable props={[
+              { name: "variant", type: "'default' | 'secondary' | 'outline' | 'ghost' | 'destructive' | 'link' | 'plain'", default: "'default'", description: "Visual style for the button." },
+              { name: "size", type: "'default' | 'sm' | 'lg' | 'icon' | 'plain'", default: "'default'", description: "Controls padding and button height." },
+              { name: "loading", type: "boolean", default: "false", description: "Shows a spinner and disables the button." },
+              { name: "loadingStyle", type: "'spinner' | 'disabled'", default: "'spinner'", description: "Spinner overlay or disabled-only state." },
+              { name: "asChild", type: "boolean", default: "false", description: "Renders a child component instead of a native button." },
+              { name: "onClick", type: "(event) => void | Promise<void>", description: "Async handlers show loading automatically." },
             ]} />
           </div>
         </DesignSection>
