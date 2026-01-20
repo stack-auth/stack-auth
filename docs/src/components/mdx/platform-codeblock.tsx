@@ -124,6 +124,11 @@ export type PlatformCodeblockProps = {
    * Additional CSS classes
    */
   className?: string,
+  /**
+   * Hide the platform/framework selector dropdown
+   * Useful for single-platform examples like shell commands
+   */
+  hidePlatformSelector?: boolean,
 }
 
 type VariantConfig = {
@@ -239,7 +244,8 @@ export function PlatformCodeblock({
   document: documentPath,
   examples: exampleNames,
   title,
-  className
+  className,
+  hidePlatformSelector = false
 }: PlatformCodeblockProps) {
   // Load and convert examples from the centralized code-examples.ts file
   const allExamples: CodeExample[] = [];
@@ -258,8 +264,11 @@ export function PlatformCodeblock({
     ? convertExamplesToPlatforms(allExamples)
     : { platforms: {}, defaultPlatform: '', defaultFrameworks: {}, defaultVariants: {}, variantKeys: {} };
 
-  const platformNames = Object.keys(platforms);
-  const firstPlatform = defaultPlatform || platformNames[0];
+  // Get all platform names but filter out Shell - it's only used internally for shell commands
+  // and shouldn't be shown as a user-selectable option in the platform dropdown
+  const allPlatformNames = Object.keys(platforms);
+  const platformNames = allPlatformNames.filter(p => p !== 'Shell');
+  const firstPlatform = defaultPlatform || platformNames[0] || allPlatformNames[0];
 
   // Initialize with global platform or default
   // Important: This must return the same value on server and client for hydration
@@ -526,7 +535,8 @@ export function PlatformCodeblock({
     }));
   };
 
-  if (platformNames.length === 0) {
+  // Check if there are ANY platforms (including Shell) - not just user-selectable ones
+  if (allPlatformNames.length === 0) {
     return <div className="text-fd-muted-foreground">No platforms configured</div>;
   }
 
@@ -540,92 +550,95 @@ export function PlatformCodeblock({
         title={title}
         filename={currentCodeConfig?.filename}
         headerContent={
-          <div className="relative ml-auto">
-            <button
-              onClick={toggleDropdown}
-              className={cn(
+          // Hide selector when explicitly requested, when there's only one platform with one framework, or when there are no user-selectable platforms (Shell-only)
+          hidePlatformSelector || platformNames.length === 0 || (platformNames.length === 1 && currentFrameworks.length === 1) ? undefined : (
+            <div className="relative ml-auto">
+              <button
+                onClick={toggleDropdown}
+                className={cn(
                 "inline-flex items-center gap-2 rounded-lg border border-fd-border/70 bg-fd-background/80 px-3 py-1.5 text-sm font-medium text-fd-foreground shadow-sm transition-all duration-150",
                 "hover:border-fd-primary/50 hover:bg-fd-primary/5 hover:shadow-md"
               )}
-            >
-              <span className="flex items-center gap-1">
-                {selectedPlatform} / {currentFramework}
-              </span>
-              <ChevronDown
-                className={cn(
+              >
+                <span className="flex items-center gap-1">
+                  {selectedPlatform} / {currentFramework}
+                </span>
+                <ChevronDown
+                  className={cn(
                   "h-3 w-3 text-fd-muted-foreground transition-transform duration-200",
                   isDropdownOpen && "rotate-180"
                 )}
-              />
-            </button>
+                />
+              </button>
 
-            {isDropdownOpen && (
-              <div className="absolute right-0 top-full z-[200] mt-1 min-w-[220px] rounded-lg border border-fd-border/70 bg-fd-background shadow-lg">
-                {dropdownView === 'platform' ? (
-                  <div className="py-1">
-                    <div className="px-3 py-2 text-xs font-semibold uppercase tracking-wide text-fd-muted-foreground">
-                      Choose Platform
-                    </div>
-                    {platformNames.map((platform) => (
-                      <button
-                        key={platform}
-                        onClick={(e) => {
+              {isDropdownOpen && (
+                <div className="absolute right-0 top-full z-[200] mt-1 min-w-[220px] rounded-lg border border-fd-border/70 bg-fd-background shadow-lg">
+                  {dropdownView === 'platform' ? (
+                    <div className="py-1">
+                      <div className="px-3 py-2 text-xs font-semibold uppercase tracking-wide text-fd-muted-foreground">
+                        Choose Platform
+                      </div>
+                      {platformNames.map((platform) => (
+                        <button
+                          key={platform}
+                          onClick={(e) => {
                           e.stopPropagation();
                           handlePlatformSelect(platform);
-                        }}
-                        className={cn(
+                          }}
+                          className={cn(
                           "flex w-full items-center justify-between px-3 py-1.5 text-sm transition-all duration-150",
                           "hover:bg-fd-primary/10 hover:text-fd-primary hover:font-medium",
                           selectedPlatform === platform
                             ? "bg-fd-primary/15 text-fd-primary font-semibold"
                             : "text-fd-muted-foreground"
                         )}
-                      >
-                        <span>{platform}</span>
-                        <ChevronDown className="h-3 w-3 -rotate-90 text-fd-muted-foreground/80" />
-                      </button>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="py-1">
-                    <div className="flex items-center px-3 py-2 text-xs font-semibold uppercase tracking-wide text-fd-muted-foreground">
-                      <button
-                        onClick={() => setDropdownView('platform')}
-                        className="mr-2 flex items-center gap-1 text-xs font-semibold uppercase tracking-wide text-fd-muted-foreground hover:text-fd-primary"
-                      >
-                        <ChevronDown className="h-3 w-3 rotate-90" />
-                        Back
-                      </button>
-                      <span>Select {selectedPlatform} framework</span>
+                        >
+                          <span>{platform}</span>
+                          <ChevronDown className="h-3 w-3 -rotate-90 text-fd-muted-foreground/80" />
+                        </button>
+                      ))}
                     </div>
-                    {currentFrameworks.map((framework) => (
-                      <button
-                        key={framework}
-                        onClick={(e) => {
+                  ) : (
+                    <div className="py-1">
+                      <div className="flex items-center px-3 py-2 text-xs font-semibold uppercase tracking-wide text-fd-muted-foreground">
+                        <button
+                          onClick={() => setDropdownView('platform')}
+                          className="mr-2 flex items-center gap-1 text-xs font-semibold uppercase tracking-wide text-fd-muted-foreground hover:text-fd-primary"
+                        >
+                          <ChevronDown className="h-3 w-3 rotate-90" />
+                          Back
+                        </button>
+                        <span>Select {selectedPlatform} framework</span>
+                      </div>
+                      {currentFrameworks.map((framework) => (
+                        <button
+                          key={framework}
+                          onClick={(e) => {
                           e.stopPropagation();
                           handleFrameworkSelect(framework);
-                        }}
-                        className={cn(
+                          }}
+                          className={cn(
                           "w-full px-3 py-1.5 text-sm text-left",
                           "hover:bg-fd-primary/10 hover:text-fd-primary hover:font-medium",
                           currentFramework === framework
                             ? "bg-fd-primary/15 text-fd-primary font-semibold"
                             : "text-fd-muted-foreground"
                         )}
-                      >
-                        <span className="flex items-center gap-2">
-                          {framework}
-                          {currentFramework === framework && (
-                            <span className="text-[10px] text-fd-primary/70 font-medium">current</span>
-                          )}
-                        </span>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
+                        >
+                          <span className="flex items-center gap-2">
+                            {framework}
+                            {currentFramework === framework && (
+                              <span className="text-[10px] text-fd-primary/70 font-medium">current</span>
+                            )}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )
         }
         beforeCodeContent={
           hasVariants(selectedPlatform, currentFramework) ? (
