@@ -2,6 +2,9 @@
 
 ---
 
+## 2026.01.19
+- Updated package dependencies to their newest versions.
+
 ## 2025.12.19
 - Introduces new changelog and deprecates all older changelogs. 
 - Moved away from semantic versioning in favor of CalVer.
