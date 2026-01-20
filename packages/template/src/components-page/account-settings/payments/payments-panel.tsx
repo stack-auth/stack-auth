@@ -2,14 +2,14 @@
 
 import { KnownErrors } from "@stackframe/stack-shared";
 import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
+import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { ActionDialog, Button, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Skeleton, toast, Typography } from "@stackframe/stack-ui";
-import { loadStripe } from "@stripe/stripe-js";
 import { CardElement, Elements, useElements, useStripe } from "@stripe/react-stripe-js";
+import { loadStripe } from "@stripe/stripe-js";
 import { useMemo, useState } from "react";
 import { useStackApp } from "../../..";
 import { useTranslation } from "../../../lib/translations";
 import { Section } from "../section";
-import { Result } from "@stackframe/stack-shared/dist/utils/results";
 
 type PaymentMethodSummary = {
   id: string,
@@ -377,7 +377,7 @@ function RealPaymentsPanel(props: { title?: string, customer: CustomerLike, cust
               if (!open) closeSwitchDialog();
             }}
             title={t("Change plan")}
-            description={t("Select a new plan from the same catalog.")}
+            description={t("Select a new plan from the same product line.")}
             cancelButton
             okButton={{
               label: t("Switch plan"),

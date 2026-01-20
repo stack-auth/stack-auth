@@ -46,13 +46,13 @@ export const GET = createSmartRouteHandler({
         ? ownedProducts.filter(({ product }) => !product.serverOnly)
         : ownedProducts;
 
-    const switchOptionsByCatalogId = new Map<string, Array<{ product_id: string, product: ReturnType<typeof productToInlineProduct> }>>();
+    const switchOptionsByProductLineId = new Map<string, Array<{ product_id: string, product: ReturnType<typeof productToInlineProduct> }>>();
 
     const configuredProducts = auth.tenancy.config.payments.products;
     for (const [productId, product] of typedEntries(configuredProducts)) {
       if (product.customerType !== params.customer_type) continue;
       if (auth.type === "client" && product.serverOnly) continue;
-      if (!product.catalogId) continue;
+      if (!product.productLineId) continue;
       if (product.prices === "include-by-default") continue;
       const hasIntervalPrice = typedEntries(product.prices).some(([, price]) => price.interval);
       if (!hasIntervalPrice) continue;
@@ -64,19 +64,19 @@ export const GET = createSmartRouteHandler({
       );
       if (typedEntries(intervalPrices).length === 0) continue;
 
-      const existing = switchOptionsByCatalogId.get(product.catalogId) ?? [];
+      const existing = switchOptionsByProductLineId.get(product.productLineId) ?? [];
       existing.push({ product_id: productId, product: { ...inlineProduct, prices: intervalPrices } });
-      switchOptionsByCatalogId.set(product.catalogId, existing);
+      switchOptionsByProductLineId.set(product.productLineId, existing);
     }
 
     const sorted = visibleProducts
       .slice()
       .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
       .map((product) => {
-        const catalogId = product.product.catalogId;
+        const productLineId = product.product.productLineId;
         const switchOptions =
-          product.type === "subscription" && product.id && catalogId
-            ? (switchOptionsByCatalogId.get(catalogId) ?? []).filter((option) => option.product_id !== product.id)
+          product.type === "subscription" && product.id && productLineId
+            ? (switchOptionsByProductLineId.get(productLineId) ?? []).filter((option) => option.product_id !== product.id)
             : undefined;
 
         return {

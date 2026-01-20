@@ -30,9 +30,10 @@ import { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
 import { getUserSpecifiedIdErrorMessage, isValidUserSpecifiedId, sanitizeUserSpecifiedId } from "@stackframe/stack-shared/dist/schema-fields";
 import { typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
+import { useSearchParams } from "next/navigation";
 import { useLayoutEffect, useRef, useState } from "react";
 import { useAdminApp, useProjectId } from "../../../use-admin-app";
-import { CreateCatalogDialog } from "../create-catalog-dialog";
+import { CreateProductLineDialog } from "../create-product-line-dialog";
 import { IncludedItemDialog } from "../included-item-dialog";
 import { PricingSection } from "../pricing-section";
 import { ProductCardPreview } from "../product-card-preview";
@@ -174,35 +175,76 @@ function toIdFormat(displayName: string): string {
     .replace(/^-+|-+$/g, ''); // Trim leading/trailing hyphens
 }
 
+// Helper to get duplicate data from sessionStorage
+function getDuplicateData(key: string | null): Product | null {
+  if (!key) return null;
+  try {
+    const data = sessionStorage.getItem(key);
+    if (data) {
+      sessionStorage.removeItem(key); // Clean up after reading
+      return JSON.parse(data) as Product;
+    }
+  } catch {
+    // Ignore parsing errors
+  }
+  return null;
+}
+
 export default function PageClient() {
   const projectId = useProjectId();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const stackAdminApp = useAdminApp();
   const project = stackAdminApp.useProject();
   const config = project.useConfig();
   const paymentsConfig: CompleteConfig['payments'] = config.payments;
 
-  // Step state: null = customer type selection, otherwise = form
-  const [hasSelectedCustomerType, setHasSelectedCustomerType] = useState(false);
+  // Check for duplicate data from sessionStorage
+  const duplicateKey = searchParams.get("duplicate");
+  const [duplicateData] = useState(() => getDuplicateData(duplicateKey));
 
-  // Form state
+  // Get URL parameters for pre-filling the form
+  const urlProductLineId = duplicateData?.productLineId ?? searchParams.get("productLineId");
+  const urlCustomerType = duplicateData?.customerType ?? searchParams.get("customerType") as 'user' | 'team' | 'custom' | null;
+
+  // Validate productLineId exists and get its customerType
+  const validProductLineId = urlProductLineId && urlProductLineId in paymentsConfig.productLines ? urlProductLineId : null;
+  const productLineCustomerType = validProductLineId ? paymentsConfig.productLines[validProductLineId].customerType : null;
+
+  // Determine initial customer type: from product line > from URL/duplicate > default 'user'
+  const validUrlCustomerType = urlCustomerType && ['user', 'team', 'custom'].includes(urlCustomerType) ? urlCustomerType : null;
+  const initialCustomerType = productLineCustomerType ?? validUrlCustomerType ?? 'user';
+
+  // Skip customer type selection if we have duplicate data, valid productLineId, or valid customerType in URL
+  const skippedCustomerTypeSelection = !!duplicateData || !!validProductLineId || !!validUrlCustomerType;
+  const [hasSelectedCustomerType, setHasSelectedCustomerType] = useState(skippedCustomerTypeSelection);
+
+  // Parse duplicate data for form initialization
+  const duplicateIsAddOn = duplicateData?.isAddOnTo !== false && duplicateData?.isAddOnTo !== undefined;
+  const duplicateIsAddOnTo = duplicateIsAddOn && duplicateData.isAddOnTo
+    ? Object.keys(duplicateData.isAddOnTo as Record<string, boolean>)
+    : [];
+  const duplicatePrices = duplicateData?.prices === 'include-by-default' ? {} : (duplicateData?.prices ?? {});
+  const duplicateFreeByDefault = duplicateData?.prices === 'include-by-default';
+
+  // Form state - initialized from duplicate data if available
   const [productId, setProductId] = useState("");
-  const [displayName, setDisplayName] = useState("");
+  const [displayName, setDisplayName] = useState(duplicateData?.displayName ?? "");
   const [hasManuallyEditedId, setHasManuallyEditedId] = useState(false);
-  const [customerType, setCustomerType] = useState<'user' | 'team' | 'custom'>('user');
-  const [catalogId, setCatalogId] = useState("");
-  const [isAddOn, setIsAddOn] = useState(false);
-  const [isAddOnTo, setIsAddOnTo] = useState<string[]>([]);
-  const [stackable, setStackable] = useState(false);
-  const [serverOnly, setServerOnly] = useState(false);
-  const [freeByDefault, setFreeByDefault] = useState(false);
+  const [customerType, setCustomerType] = useState<'user' | 'team' | 'custom'>(initialCustomerType);
+  const [productLineId, setProductLineId] = useState(validProductLineId ?? "");
+  const [isAddOn, setIsAddOn] = useState(duplicateIsAddOn);
+  const [isAddOnTo, setIsAddOnTo] = useState<string[]>(duplicateIsAddOnTo);
+  const [stackable, setStackable] = useState(duplicateData?.stackable ?? false);
+  const [serverOnly, setServerOnly] = useState(duplicateData?.serverOnly ?? false);
+  const [freeByDefault, setFreeByDefault] = useState(duplicateFreeByDefault);
   const [isInlineProduct, setIsInlineProduct] = useState(false);
-  const [prices, setPrices] = useState<Record<string, Price>>({});
-  const [includedItems, setIncludedItems] = useState<Product['includedItems']>({});
-  const [freeTrial, setFreeTrial] = useState<Product['freeTrial']>(undefined);
+  const [prices, setPrices] = useState<Record<string, Price>>(duplicatePrices);
+  const [includedItems, setIncludedItems] = useState<Product['includedItems']>(duplicateData?.includedItems ?? {});
+  const [freeTrial, setFreeTrial] = useState<Product['freeTrial']>(duplicateData?.freeTrial);
 
   // Dialog states
-  const [showCatalogDialog, setShowCatalogDialog] = useState(false);
+  const [showProductLineDialog, setShowProductLineDialog] = useState(false);
   const [showItemDialog, setShowItemDialog] = useState(false);
   const [editingItemId, setEditingItemId] = useState<string | undefined>();
   const [showNewItemDialog, setShowNewItemDialog] = useState(false);
@@ -239,7 +281,7 @@ export default function PageClient() {
     .map(([id, product]) => ({
       id,
       displayName: product.displayName,
-      catalogId: product.catalogId,
+      productLineId: product.productLineId,
       customerType: product.customerType
     }));
 
@@ -251,11 +293,17 @@ export default function PageClient() {
 
   const isFirstProduct = existingProducts.length === 0;
 
+  // Validate that the selected productLineId matches the current customerType
+  // If not, treat it as "no product line" - this handles cases where URL params have mismatched types
+  const effectiveProductLineId = productLineId && paymentsConfig.productLines[productLineId].customerType === customerType
+    ? productLineId
+    : "";
+
   // Build product object for preview
   const previewProduct: Product = {
     displayName: displayName || 'New Product',
     customerType,
-    catalogId: catalogId || undefined,
+    productLineId: effectiveProductLineId || undefined,
     isAddOnTo: isAddOn ? Object.fromEntries(isAddOnTo.map(id => [id, true])) : false,
     stackable,
     prices: freeByDefault ? 'include-by-default' : prices,
@@ -269,25 +317,40 @@ export default function PageClient() {
     setHasSelectedCustomerType(true);
   };
 
-  const handleBackToCustomerTypeSelection = () => {
-    setHasSelectedCustomerType(false);
+  const handleBack = () => {
+    // If we skipped customer type selection (came from URL with customerType or productLineId),
+    // go back to the previous page instead of showing the selection screen
+    if (skippedCustomerTypeSelection) {
+      if (window.history.length > 1) {
+        window.history.back();
+      } else {
+        router.push(`/projects/${projectId}/payments/products`);
+      }
+    } else {
+      setHasSelectedCustomerType(false);
+    }
   };
 
-  // When customer type changes via the dropdown, reset catalog-related state
+  // When customer type changes via the dropdown, reset product-line-related state
   const handleCustomerTypeChange = (newType: 'user' | 'team' | 'custom') => {
     if (newType !== customerType) {
       setCustomerType(newType);
-      // Reset catalog since catalogs are customer-type-specific
-      setCatalogId("");
+      // Reset product line since product lines are customer-type-specific
+      setProductLineId("");
       // Reset add-on selections since they may not be valid for the new type
       setIsAddOnTo([]);
     }
   };
 
-  const handleCreateCatalog = (catalog: { id: string, displayName: string }) => {
+  const handleCreateProductLine = (productLine: { id: string, displayName: string }) => {
     runAsynchronouslyWithAlert(async () => {
-      await project.updateConfig({ [`payments.catalogs.${catalog.id}`]: { displayName: catalog.displayName || null } });
-      setCatalogId(catalog.id);
+      await project.updateConfig({
+        [`payments.productLines.${productLine.id}`]: {
+          displayName: productLine.displayName || null,
+          customerType,
+        },
+      });
+      setProductLineId(productLine.id);
     });
   };
 
@@ -311,11 +374,11 @@ export default function PageClient() {
     }
 
     if (isAddOn && isAddOnTo.length > 0) {
-      const addOnCatalogs = new Set(
-        isAddOnTo.map(pid => existingProducts.find(o => o.id === pid)?.catalogId)
+      const addOnProductLines = new Set(
+        isAddOnTo.map(pid => existingProducts.find(o => o.id === pid)?.productLineId)
       );
-      if (addOnCatalogs.size > 1) {
-        newErrors.isAddOnTo = "All selected products must be in the same catalog";
+      if (addOnProductLines.size > 1) {
+        newErrors.isAddOnTo = "All selected products must be in the same product line";
       }
     }
 
@@ -338,7 +401,7 @@ export default function PageClient() {
       const product: Product = {
         displayName,
         customerType,
-        catalogId: catalogId || undefined,
+        productLineId: effectiveProductLineId || undefined,
         isAddOnTo: isAddOn ? Object.fromEntries(isAddOnTo.map(id => [id, true])) : false,
         stackable,
         prices: freeByDefault ? 'include-by-default' : prices,
@@ -350,8 +413,6 @@ export default function PageClient() {
       await project.updateConfig({ [`payments.products.${productId}`]: product });
       toast({ title: "Product created" });
       router.push(`/projects/${projectId}/payments/products`);
-    } catch (error) {
-      toast({ title: "Failed to create product", variant: "destructive" });
     } finally {
       setIsSaving(false);
     }
@@ -378,7 +439,11 @@ export default function PageClient() {
   };
 
   const handleCancel = () => {
-    router.push(`/projects/${projectId}/payments/products`);
+    if (window.history.length > 1) {
+      window.history.back();
+    } else {
+      router.push(`/projects/${projectId}/payments/products`);
+    }
   };
 
   // Show customer type selection if not selected yet
@@ -422,7 +487,7 @@ ${Object.entries(prices).map(([id, price]) => {
   id: '${productId || 'product-id'}',
   displayName: '${displayName || 'New Product'}',
   customerType: '${customerType}',
-  prices: ${pricesCode},${catalogId ? `\n  catalogId: '${catalogId}',` : ''}${stackable ? '\n  stackable: true,' : ''}${serverOnly ? '\n  serverOnly: true,' : ''}
+  prices: ${pricesCode},${effectiveProductLineId ? `\n  productLineId: '${effectiveProductLineId}',` : ''}${stackable ? '\n  stackable: true,' : ''}${serverOnly ? '\n  serverOnly: true,' : ''}
   isAddOnTo: ${isAddOnToCode},
   includedItems: {${Object.entries(includedItems).map(([id, item]) => {
     const repeatPart = item.repeat === 'never' ? `'never'` : `[${item.repeat[0]}, '${item.repeat[1]}']`;
@@ -459,7 +524,7 @@ ${Object.entries(prices).map(([id, price]) => {
 - Product ID: ${productId || 'product-id'}
 - Display Name: ${displayName || 'New Product'}
 - Customer Type: ${customerType}
-- Pricing: ${priceDescriptions}${catalogId ? `\n- Catalog: ${catalogId}` : ''}${stackable ? '\n- Stackable: yes' : ''}${serverOnly ? '\n- Server only: yes' : ''}${isAddOn && isAddOnTo.length > 0 ? `\n- Add-on to: ${isAddOnTo.join(', ')}` : ''}${itemDescriptions ? `\n- Included items: ${itemDescriptions}` : ''}`;
+- Pricing: ${priceDescriptions}${effectiveProductLineId ? `\n- Product Line: ${effectiveProductLineId}` : ''}${stackable ? '\n- Stackable: yes' : ''}${serverOnly ? '\n- Server only: yes' : ''}${isAddOn && isAddOnTo.length > 0 ? `\n- Add-on to: ${isAddOnTo.join(', ')}` : ''}${itemDescriptions ? `\n- Included items: ${itemDescriptions}` : ''}`;
   };
 
   return (
@@ -470,7 +535,7 @@ ${Object.entries(prices).map(([id, price]) => {
           <Button
             variant="ghost"
             size="sm"
-            onClick={handleBackToCustomerTypeSelection}
+            onClick={handleBack}
             className="gap-2"
           >
             <ArrowLeftIcon className="h-4 w-4" />
@@ -809,7 +874,7 @@ ${Object.entries(prices).map(([id, price]) => {
                         <div className="mt-1.5 mb-0.5 space-y-1 p-2 rounded-lg bg-foreground/[0.02] border border-border/30">
                           <span className="text-xs text-foreground/50">Add-on to:</span>
                           <div className="space-y-1 max-h-24 overflow-y-auto">
-                            {existingProducts.filter(o => !o.id.startsWith('addon')).map(product => (
+                            {existingProducts.map(product => (
                               <label key={product.id} className="flex items-center gap-2 cursor-pointer">
                                 <Checkbox
                                   id={`addon-to-${product.id}`}
@@ -892,31 +957,33 @@ ${Object.entries(prices).map(([id, price]) => {
                   )}
                 </div>
 
-                {/* Catalog */}
+                {/* Product Line */}
                 <span className="text-sm text-foreground/70 py-2 flex items-center border-b border-border/20">Part of a mutually exclusive group?</span>
                 <div className="py-2 flex items-center border-b border-border/20">
                   <Select
-                    value={catalogId || 'no-catalog'}
+                    value={effectiveProductLineId || 'no-product-line'}
                     onValueChange={(value) => {
                       if (value === 'create-new') {
-                        setShowCatalogDialog(true);
-                      } else if (value === 'no-catalog') {
-                        setCatalogId('');
+                        setShowProductLineDialog(true);
+                      } else if (value === 'no-product-line') {
+                        setProductLineId('');
                       } else {
-                        setCatalogId(value);
+                        setProductLineId(value);
                       }
                     }}
                   >
                     <SelectTrigger className="h-8 w-full max-w-[200px] rounded-lg">
-                      <SelectValue placeholder="No catalog" />
+                      <SelectValue placeholder="No product line" />
                     </SelectTrigger>
                     <SelectContent className="rounded-lg">
-                      <SelectItem value="no-catalog" className="rounded-lg">No catalog</SelectItem>
-                      {Object.entries(paymentsConfig.catalogs).map(([id, catalog]) => (
-                        <SelectItem key={id} value={id} className="rounded-lg">
-                          {catalog.displayName || id}
-                        </SelectItem>
-                      ))}
+                      <SelectItem value="no-product-line" className="rounded-lg">No product line</SelectItem>
+                      {Object.entries(paymentsConfig.productLines)
+                        .filter(([, productLine]) => productLine.customerType === customerType)
+                        .map(([id, productLine]) => (
+                          <SelectItem key={id} value={id} className="rounded-lg">
+                            {productLine.displayName || id}
+                          </SelectItem>
+                        ))}
                       <SelectItem value="create-new" className="rounded-lg">
                         <span className="text-primary">+ Create new</span>
                       </SelectItem>
@@ -986,10 +1053,10 @@ ${Object.entries(prices).map(([id, price]) => {
       </div>
 
       {/* Dialogs */}
-      <CreateCatalogDialog
-        open={showCatalogDialog}
-        onOpenChange={setShowCatalogDialog}
-        onCreate={handleCreateCatalog}
+      <CreateProductLineDialog
+        open={showProductLineDialog}
+        onOpenChange={setShowProductLineDialog}
+        onCreate={handleCreateProductLine}
       />
 
       <IncludedItemDialog

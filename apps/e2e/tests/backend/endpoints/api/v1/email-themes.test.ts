@@ -90,6 +90,7 @@ describe("get email theme", () => {
         "status": 200,
         "body": {
           "display_name": "Default Light",
+          "id": "<stripped UUID>",
           "tsx_source": deindent\`
             import { Html, Head, Tailwind, Body, Container, Link } from '@react-email/components';
             import { ThemeProps, ProjectLogo } from "@stackframe/emails";
@@ -233,6 +234,7 @@ describe("update email theme", () => {
         "status": 200,
         "body": {
           "display_name": "Default Light",
+          "id": "<stripped UUID>",
           "tsx_source": deindent\`
             import { Html, Tailwind, Body } from '@react-email/components';
             export function EmailTheme({ children }: { children: React.ReactNode }) {
@@ -363,6 +365,7 @@ describe("create, patch, and get email theme", () => {
         "status": 200,
         "body": {
           "display_name": "Custom Theme",
+          "id": "<stripped UUID>",
           "tsx_source": deindent\`
             import { Html, Tailwind, Body } from '@react-email/components';
             export function EmailTheme({ children }: { children: React.ReactNode }) {
@@ -385,5 +388,4 @@ describe("create, patch, and get email theme", () => {
     `);
   });
 });
-
 

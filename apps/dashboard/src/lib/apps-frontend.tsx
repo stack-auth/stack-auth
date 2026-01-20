@@ -151,17 +151,18 @@ export const ALL_APPS_FRONTEND = {
     icon: CreditCardIcon,
     href: "payments",
     navigationItems: [
-      { displayName: "Catalogs", href: "./catalogs" },
+      { displayName: "Product Lines", href: "./product-lines" },
       { displayName: "Products & Items", href: "./products" },
       { displayName: "Customers", href: "./customers" },
       { displayName: "Transactions", href: "./transactions" },
       { displayName: "Payouts", href: "./payouts" },
+      { displayName: "Settings", href: "./settings" },
     ],
     screenshots: getScreenshots('payments', 7),
     storeDescription: (
       <>
         <p>Payments brings Stack&apos;s product-first pricing model into the dashboard.</p>
-        <p>Design catalogs of products, prices, and entitlements, segment user or team customers, and generate checkout URLs with the right guardrails.</p>
+        <p>Design product lines with products, prices, and entitlements, segment user or team customers, and generate checkout URLs with the right guardrails.</p>
         <p>Purchase history and transactions stay visible without leaving the console.</p>
       </>
     ),

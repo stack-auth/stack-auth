@@ -1,26 +1,26 @@
 import { it } from "../../../../../helpers";
 import { Auth, Payments, Project, Team, niceBackendFetch } from "../../../../backend-helpers";
 
-async function setupProducts(products: Record<string, any>, catalogs?: Record<string, any>) {
+async function setupProducts(products: Record<string, any>, productLines?: Record<string, any>) {
   await Project.createAndSwitch();
   await Payments.setup();
   await Project.updateConfig({
     payments: {
-      catalogs,
+      productLines,
       products,
     },
   });
 }
 
 
-it("rejects switches across different catalogs", async ({ expect }) => {
+it("rejects switches across different product lines", async ({ expect }) => {
   await setupProducts({
     planA: {
       displayName: "Plan A",
       customerType: "user",
       serverOnly: false,
       stackable: false,
-      catalogId: "catalogA",
+      productLineId: "catalogA",
       prices: "include-by-default",
       includedItems: {},
     },
@@ -29,7 +29,7 @@ it("rejects switches across different catalogs", async ({ expect }) => {
       customerType: "user",
       serverOnly: false,
       stackable: false,
-      catalogId: "catalogB",
+      productLineId: "catalogB",
       prices: {
         monthly: {
           USD: "2000",
@@ -56,7 +56,7 @@ it("rejects switches across different catalogs", async ({ expect }) => {
   expect(switchResponse).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 400,
-      "body": "Products must be in the same catalog to switch.",
+      "body": "Products must be in the same product line to switch.",
       "headers": Headers { <some fields may have been hidden> },
     }
   `);
@@ -69,7 +69,7 @@ it("rejects switching to include-by-default plans", async ({ expect }) => {
       customerType: "user",
       serverOnly: false,
       stackable: false,
-      catalogId: "catalog",
+      productLineId: "catalog",
       prices: "include-by-default",
       includedItems: {},
     },
@@ -78,7 +78,7 @@ it("rejects switching to include-by-default plans", async ({ expect }) => {
       customerType: "user",
       serverOnly: false,
       stackable: false,
-      catalogId: "catalog",
+      productLineId: "catalog",
       prices: "include-by-default",
       includedItems: {},
     },
