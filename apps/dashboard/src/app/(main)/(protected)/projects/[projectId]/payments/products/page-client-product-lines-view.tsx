@@ -13,7 +13,6 @@ import {
   DialogHeader,
   DialogTitle,
   DropdownMenu,
-  DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
@@ -28,18 +27,18 @@ import {
 } from "@/components/ui";
 import { cn } from "@/lib/utils";
 import { DndContext, DragOverlay, useDraggable, useDroppable, type DragEndEvent, type DragStartEvent } from '@dnd-kit/core';
-import { CaretUpDownIcon, CircleNotchIcon, CodeIcon, CopyIcon, DotsThreeVerticalIcon, DotsSixVerticalIcon, EyeIcon, FileTextIcon, GiftIcon, HardDriveIcon, InfoIcon, PencilSimpleIcon, PlusIcon, PuzzlePieceIcon, StackIcon, TrashIcon, XIcon } from "@phosphor-icons/react";
+import { CaretUpDownIcon, CircleNotchIcon, CodeIcon, CopyIcon, DotsSixVerticalIcon, DotsThreeVerticalIcon, EyeIcon, FileTextIcon, HardDriveIcon, InfoIcon, PencilSimpleIcon, PlusIcon, PuzzlePieceIcon, StackIcon, TrashIcon, XIcon } from "@phosphor-icons/react";
 import { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
 import { getUserSpecifiedIdErrorMessage, isValidUserSpecifiedId } from "@stackframe/stack-shared/dist/schema-fields";
 import type { DayInterval } from "@stackframe/stack-shared/dist/utils/dates";
 import { prettyPrintWithMagnitudes } from "@stackframe/stack-shared/dist/utils/numbers";
 import { typedEntries, typedFromEntries } from "@stackframe/stack-shared/dist/utils/objects";
-import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
 import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
+import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
 import { urlString } from '@stackframe/stack-shared/dist/utils/urls';
 import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useAdminApp, useProjectId } from "../../use-admin-app";
-import { IntervalPopover, OrSeparator, SectionHeading } from "./components";
+import { IntervalPopover, OrSeparator } from "./components";
 import { ProductDialog } from "./product-dialog";
 import { ProductPriceRow } from "./product-price-row";
 import {
@@ -47,7 +46,6 @@ import {
   getPricesObject,
   intervalLabel,
   shortIntervalLabel,
-  type Price,
   type PricesObject,
   type Product
 } from "./utils";
