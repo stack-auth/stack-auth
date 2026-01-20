@@ -1,5 +1,6 @@
 "use client";
 
+import { Link } from "@/components/link";
 import { ItemDialog } from "@/components/payments/item-dialog";
 import { useRouter } from "@/components/router";
 import {
@@ -31,7 +32,6 @@ import {
   type Price,
   type Product,
 } from "../../utils";
-import { Link } from "@/components/link";
 
 type IncludedItem = Product['includedItems'][string];
 
