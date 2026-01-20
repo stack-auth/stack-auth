@@ -83,25 +83,34 @@ export const PAYMENT_CATEGORIES: { id: PaymentMethodCategory, name: string }[] =
 
 /**
  * Get display name for a payment method ID.
- * Returns the ID itself if not found (fallback).
+ * Returns the ID itself if not found (fallback for unknown methods).
  */
 export function getPaymentMethodName(methodId: string): string {
+  if (!isKnownPaymentMethod(methodId)) {
+    return methodId;
+  }
   return PAYMENT_METHODS[methodId].name;
 }
 
 /**
  * Get category for a payment method ID.
- * Returns undefined if not found.
+ * Returns undefined if method is not known.
  */
 export function getPaymentMethodCategory(methodId: string): PaymentMethodCategory | undefined {
+  if (!isKnownPaymentMethod(methodId)) {
+    return undefined;
+  }
   return PAYMENT_METHODS[methodId].category;
 }
 
 /**
  * Get dependencies for a payment method ID.
- * Returns empty array if none.
+ * Returns empty array if method is not known or has no dependencies.
  */
 export function getPaymentMethodDependencies(methodId: string): string[] {
+  if (!isKnownPaymentMethod(methodId)) {
+    return [];
+  }
   return PAYMENT_METHODS[methodId].dependencies ?? [];
 }
 
