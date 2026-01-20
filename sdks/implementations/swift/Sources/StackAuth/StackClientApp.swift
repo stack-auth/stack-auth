@@ -86,6 +86,7 @@ public actor StackClientApp {
     let client: APIClient
     private let baseUrl: String
     
+    #if canImport(Security)
     public init(
         projectId: String,
         publishableClientKey: String,
@@ -126,6 +127,46 @@ public actor StackClientApp {
             }
         }
     }
+    #else
+    public init(
+        projectId: String,
+        publishableClientKey: String,
+        baseUrl: String = "https://api.stack-auth.com",
+        tokenStore: TokenStore = .memory,
+        urls: HandlerUrls = HandlerUrls(),
+        noAutomaticPrefetch: Bool = false
+    ) {
+        self.projectId = projectId
+        self.baseUrl = baseUrl
+        self.urls = urls
+        
+        let store: any TokenStoreProtocol
+        switch tokenStore {
+        case .memory:
+            store = MemoryTokenStore()
+        case .explicit(let accessToken, let refreshToken):
+            store = ExplicitTokenStore(accessToken: accessToken, refreshToken: refreshToken)
+        case .none:
+            store = NullTokenStore()
+        case .custom(let customStore):
+            store = customStore
+        }
+        
+        self.client = APIClient(
+            baseUrl: baseUrl,
+            projectId: projectId,
+            publishableClientKey: publishableClientKey,
+            tokenStore: store
+        )
+        
+        // Prefetch project info
+        if !noAutomaticPrefetch {
+            Task {
+                _ = try? await self.getProject()
+            }
+        }
+    }
+    #endif
     
     // MARK: - OAuth
     

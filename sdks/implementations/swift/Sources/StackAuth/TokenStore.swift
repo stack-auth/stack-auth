@@ -1,5 +1,7 @@
 import Foundation
+#if canImport(Security)
 import Security
+#endif
 
 /// Protocol for custom token storage implementations
 public protocol TokenStoreProtocol: Sendable {
@@ -11,8 +13,11 @@ public protocol TokenStoreProtocol: Sendable {
 
 /// Token storage configuration
 public enum TokenStore: Sendable {
+    #if canImport(Security)
     /// Store tokens in Keychain (default, secure, persists across launches)
+    /// Only available on Apple platforms (iOS, macOS, etc.)
     case keychain
+    #endif
     
     /// Store tokens in memory (lost on app restart)
     case memory
@@ -27,8 +32,9 @@ public enum TokenStore: Sendable {
     case custom(any TokenStoreProtocol)
 }
 
-// MARK: - Keychain Token Store
+// MARK: - Keychain Token Store (Apple platforms only)
 
+#if canImport(Security)
 actor KeychainTokenStore: TokenStoreProtocol {
     private let projectId: String
     private let accessTokenKey: String
@@ -126,6 +132,7 @@ actor KeychainTokenStore: TokenStoreProtocol {
         SecItemDelete(query as CFDictionary)
     }
 }
+#endif
 
 // MARK: - Memory Token Store
 
