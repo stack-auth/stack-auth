@@ -1,10 +1,10 @@
 "use client";
 
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger, Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Switch, toast, Typography } from "@/components/ui";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger, Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Switch, Typography } from "@/components/ui";
 import { getPaymentMethodIcon } from "@/components/ui/payment-method-icons";
 import { BankIcon, CircleNotchIcon, CreditCardIcon, CurrencyCircleDollarIcon, GlobeIcon, HandCoinsIcon, LightningIcon, ReceiptIcon, WalletIcon } from "@phosphor-icons/react";
 import { getPaymentMethodCategory, PAYMENT_CATEGORIES, PAYMENT_METHOD_DEPENDENCIES, PaymentMethodCategory } from "@stackframe/stack-shared/dist/payments/payment-methods";
-import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
+import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { useCallback, useEffect, useState } from "react";
 import { useAdminApp } from "../../use-admin-app";
 
@@ -52,15 +52,13 @@ export function PaymentMethods() {
       if (result) {
         setConfig(result as PaymentMethodConfig);
       }
-    } catch (error) {
-      console.error("Failed to load payment method configs:", error);
     } finally {
       setLoading(false);
     }
   }, [adminApp]);
 
   useEffect(() => {
-    runAsynchronously(loadConfig);
+    runAsynchronouslyWithAlert(loadConfig);
   }, [loadConfig]);
 
   const handleToggle = (methodId: string, currentEnabled: boolean) => {
@@ -103,7 +101,7 @@ export function PaymentMethods() {
 
     const validationError = validatePaymentMethodDependencies();
     if (validationError) {
-      toast({ title: "Invalid configuration", description: validationError, variant: "destructive" });
+      alert(validationError);
       return;
     }
 
@@ -117,13 +115,7 @@ export function PaymentMethods() {
       await adminApp.updatePaymentMethodConfigs(config.configId, updates);
 
       setPendingChanges({});
-      try {
-        await loadConfig();
-      } catch {
-        toast({ title: "Saved successfully", description: "But failed to refresh. Please reload the page.", variant: "destructive" });
-      }
-    } catch {
-      toast({ title: "Failed to save changes", variant: "destructive" });
+      await loadConfig();
     } finally {
       setSaving(false);
     }
@@ -232,7 +224,7 @@ export function PaymentMethods() {
                 <Button variant="secondary" onClick={handleCancel} disabled={saving}>
                   Cancel
                 </Button>
-                <Button onClick={handleSave} disabled={saving}>
+                <Button onClick={() => runAsynchronouslyWithAlert(handleSave)} disabled={saving}>
                   {saving ? "Saving..." : "Save Changes"}
                 </Button>
               </div>
