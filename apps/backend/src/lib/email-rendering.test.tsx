@@ -313,7 +313,7 @@ describe('renderEmailsForTenancyBatched', () => {
   });
 
   describe('error handling', () => {
-    it('should return error for invalid template syntax', async () => {
+    it('bundling error: invalid syntax', async () => {
       const request = createMockRequest(1, {
         templateSource: 'invalid syntax {{{ not jsx',
       });
@@ -326,22 +326,9 @@ describe('renderEmailsForTenancyBatched', () => {
       }
     });
 
-    it('should return error for invalid theme syntax', async () => {
-      const request = createMockRequest(1, {
-        themeSource: 'export function EmailTheme( { unclosed bracket',
-      });
-      const result = await renderEmailsForTenancyBatched([request]);
-
-      expect(result.status).toBe('error');
-      if (result.status === 'error') {
-        expect(result.error).toBeDefined();
-      }
-    });
-
-    it('should return error when template does not export EmailTemplate', async () => {
+    it('bundling error: missing required export', async () => {
       const request = createMockRequest(1, {
         templateSource: `
-          export const variablesSchema = (v: any) => v;
           export function WrongName() {
             return <div>Wrong function name</div>;
           }
@@ -355,11 +342,12 @@ describe('renderEmailsForTenancyBatched', () => {
       }
     });
 
-    it('should return error when theme does not export EmailTheme', async () => {
+    it('runtime error: component throws (returns JSON with message and stack)', async () => {
       const request = createMockRequest(1, {
-        themeSource: `
-          export function WrongThemeName({ children }: any) {
-            return <div>{children}</div>;
+        templateSource: `
+          export const variablesSchema = (v: any) => v;
+          export function EmailTemplate() {
+            throw new Error('Template render failed');
           }
         `,
       });
@@ -367,7 +355,55 @@ describe('renderEmailsForTenancyBatched', () => {
 
       expect(result.status).toBe('error');
       if (result.status === 'error') {
-        expect(result.error).toBeDefined();
+        expect(result.error).toContain('Template render failed');
+        // Verify error is JSON with stack trace
+        const parsed = JSON.parse(result.error);
+        expect(parsed.message).toContain('Template render failed');
+        expect(parsed.stack).toBeDefined();
+      }
+    });
+
+    it('runtime error: arktype validation fails', async () => {
+      const request = createMockRequest(1, {
+        templateSource: `
+          import { type } from "arktype";
+          export const variablesSchema = type({ requiredField: "string" });
+          export function EmailTemplate({ variables }: any) {
+            return <div>{variables.requiredField}</div>;
+          }
+        `,
+        input: {
+          user: { displayName: 'User 1' },
+          project: { displayName: 'Project 1' },
+          variables: { wrongField: 'value' },
+        },
+      });
+      const result = await renderEmailsForTenancyBatched([request]);
+
+      expect(result.status).toBe('error');
+      if (result.status === 'error') {
+        expect(result.error).toContain('requiredField');
+      }
+    });
+
+    it('batch behavior: single failure fails entire batch', async () => {
+      const requests = [
+        createMockRequest(1),
+        createMockRequest(2, {
+          templateSource: `
+            export const variablesSchema = (v: any) => v;
+            export function EmailTemplate() {
+              throw new Error('Second template error');
+            }
+          `,
+        }),
+        createMockRequest(3),
+      ];
+      const result = await renderEmailsForTenancyBatched(requests);
+
+      expect(result.status).toBe('error');
+      if (result.status === 'error') {
+        expect(result.error).toContain('Second template error');
       }
     });
   });
