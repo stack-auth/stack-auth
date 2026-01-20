@@ -874,7 +874,7 @@ ${Object.entries(prices).map(([id, price]) => {
                         <div className="mt-1.5 mb-0.5 space-y-1 p-2 rounded-lg bg-foreground/[0.02] border border-border/30">
                           <span className="text-xs text-foreground/50">Add-on to:</span>
                           <div className="space-y-1 max-h-24 overflow-y-auto">
-                            {existingProducts.filter(o => !o.id.startsWith('addon')).map(product => (
+                            {existingProducts.map(product => (
                               <label key={product.id} className="flex items-center gap-2 cursor-pointer">
                                 <Checkbox
                                   id={`addon-to-${product.id}`}
