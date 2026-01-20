@@ -1,39 +1,39 @@
 "use client";
 
 import {
-  Alert,
-  AlertDescription,
-  AlertTitle,
-  Button,
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
-  Typography,
-  cn,
+    Alert,
+    AlertDescription,
+    AlertTitle,
+    Button,
+    DropdownMenu,
+    DropdownMenuCheckboxItem,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuLabel,
+    DropdownMenuSeparator,
+    DropdownMenuTrigger,
+    Typography,
+    cn,
 } from "@/components/ui";
 import {
   CheckCircle,
-  CompassIcon,
   Cube,
   DotsThree,
   Envelope,
   FileText,
   HardDrive,
   Palette,
+  PencilSimple,
   Sliders,
   SquaresFourIcon,
+  Trash,
   WarningCircle,
   XCircle
 } from "@phosphor-icons/react";
 import { useState } from "react";
 import {
-  TimeRange,
-  TimeRangeToggle
+    TimeRange,
+    TimeRangeToggle
 } from "../(overview)/line-chart";
 import { PageLayout } from "../page-layout";
 
@@ -245,6 +245,7 @@ function DesignSection({
 // =============================================================================
 type StatusBadgeColor = "blue" | "cyan" | "purple" | "green" | "orange" | "red";
 type StatusBadgeSize = "sm" | "md";
+type ColumnKey = "recipient" | "subject" | "sentAt" | "status";
 
 const STATUS_BADGE_STYLES: Record<StatusBadgeColor, string> = {
   blue: "text-blue-600 dark:text-blue-400 bg-blue-500/10 ring-1 ring-blue-500/20",
@@ -495,6 +496,12 @@ export default function PageClient() {
   const [selectedViewport, setSelectedViewport] = useState("phone");
   const [timeRange, setTimeRange] = useState<TimeRange>("30d");
   const [listAction, setListAction] = useState<"edit" | "delete" | null>(null);
+  const [visibleColumns, setVisibleColumns] = useState<Record<ColumnKey, boolean>>({
+    recipient: true,
+    subject: true,
+    sentAt: true,
+    status: true,
+  });
 
   const categories = [
     { id: "all", label: "All Items", count: 24 },
@@ -509,100 +516,16 @@ export default function PageClient() {
     { id: "desktop", label: "Desktop", icon: HardDrive },
   ];
 
-  const sectionItems = [
-    { id: "global-props", label: "Global Props" },
-    { id: "cards", label: "Cards" },
-    { id: "tabs", label: "Tabs" },
-    { id: "pill-toggle", label: "Pill Toggle" },
-    { id: "alert", label: "Alert" },
-    { id: "badge", label: "Badge" },
-    { id: "list-components", label: "List Components" },
+  const columnOptions: Array<{ id: ColumnKey, label: string }> = [
+    { id: "recipient", label: "Recipient" },
+    { id: "subject", label: "Subject" },
+    { id: "sentAt", label: "Sent At" },
+    { id: "status", label: "Status" },
   ];
 
-  const handleSectionJump = (id: string) => {
-    const section = document.getElementById(id);
-    if (!section) {
-      return;
-    }
-    section.scrollIntoView({ behavior: "smooth", block: "start" });
-  };
-
   return (
-    <PageLayout
-      title="Design System"
-      description="Component library documentation with variants, props, and usage examples"
-    >
+    <PageLayout>
       <div className="flex flex-col gap-12">
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <div className="space-y-1">
-            <Typography type="label" className="text-xs uppercase tracking-wide text-muted-foreground">
-              On this page
-            </Typography>
-            <Typography variant="secondary" className="text-sm">
-              Jump to a specific section
-            </Typography>
-          </div>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" className="gap-2">
-                <CompassIcon className="h-4 w-4" />
-                Jump to section
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="min-w-[220px]">
-              {sectionItems.map((section) => (
-                <DropdownMenuItem
-                  key={section.id}
-                  onClick={() => handleSectionJump(section.id)}
-                  className="cursor-pointer"
-                >
-                  {section.label}
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
-
-        {/* ============================================================ */}
-        {/* GLOBAL PROPS */}
-        {/* ============================================================ */}
-        <DesignSection
-          id="global-props"
-          icon={Sliders}
-          title="Global Props"
-          description="Shared props most components should support"
-        >
-          <ComponentDemo
-            title="Core Interface"
-            description="Implement when needed; throw an error when provided but unsupported."
-          >
-            <div className="space-y-4">
-              <Typography variant="secondary" className="text-sm">
-                These props are shared across the component library. If a component does not
-                yet implement one of them, throw an error to keep behavior explicit.
-              </Typography>
-              <PropsTable props={[
-                {
-                  name: "glassmorphic",
-                  type: "boolean",
-                  default: "true",
-                  description: "Use glassmorphic styling. Typically true when outside a card.",
-                },
-                {
-                  name: "size",
-                  type: "'sm' | 'md' | 'lg' | ...",
-                  default: "'md'",
-                  description: "Default size is medium. Some components add extra sizes.",
-                },
-                {
-                  name: "gradient",
-                  type: "'blue' | 'purple' | 'green' | 'orange' | 'default' | 'cyan' | ...",
-                  description: "Optional. Some components apply it only when glassmorphic is true.",
-                },
-              ]} />
-            </div>
-          </ComponentDemo>
-        </DesignSection>
 
         {/* ============================================================ */}
         {/* CARDS */}
@@ -640,19 +563,14 @@ export default function PageClient() {
             title="Compact Header"
             description="Small header row with an optional icon"
           >
-            <GlassCard gradientColor="cyan">
-              <div className="p-5 flex items-center justify-between gap-4 border-b border-foreground/[0.05]">
-                <div className="flex items-center gap-2">
-                  <div className="p-1.5 rounded-lg bg-foreground/[0.04]">
-                    <HardDrive className="h-3.5 w-3.5 text-muted-foreground" />
-                  </div>
-                  <span className="text-xs font-semibold text-foreground uppercase tracking-wider">
-                    Preview
-                  </span>
+            <GlassCard gradientColor="default">
+              <div className="p-5 flex items-center gap-2 border-b border-foreground/[0.05]">
+                <div className="p-1.5 rounded-lg bg-foreground/[0.04]">
+                  <HardDrive className="h-3.5 w-3.5 text-muted-foreground" />
                 </div>
-                <Typography variant="secondary" className="text-xs">
-                  390 × 844
-                </Typography>
+                <span className="text-xs font-semibold text-foreground uppercase tracking-wider">
+                  Preview
+                </span>
               </div>
               <div className="px-5 py-4">
                 <Typography variant="secondary" className="text-sm">
@@ -666,7 +584,7 @@ export default function PageClient() {
             title="Body Only"
             description="Use for simple content blocks without a header"
           >
-            <GlassCard gradientColor="purple">
+            <GlassCard gradientColor="default">
               <div className="p-5">
                 <Typography variant="secondary" className="text-sm">
                   Placeholder content for the card body.
@@ -717,36 +635,6 @@ export default function PageClient() {
           description="Use to switch between related sections without leaving the page."
         >
             <ComponentDemo
-              title="Standard Tabs"
-              description="Default tab component"
-              code={`<Tabs defaultValue="tab1">
-  <TabsList>
-    <TabsTrigger value="tab1">Tab 1</TabsTrigger>
-    <TabsTrigger value="tab2">Tab 2</TabsTrigger>
-  </TabsList>
-  <TabsContent value="tab1">Content 1</TabsContent>
-  <TabsContent value="tab2">Content 2</TabsContent>
-</Tabs>`}
-            >
-              <Tabs defaultValue="tab1">
-                <TabsList>
-                  <TabsTrigger value="tab1">Overview</TabsTrigger>
-                  <TabsTrigger value="tab2">Settings</TabsTrigger>
-                  <TabsTrigger value="tab3">Advanced</TabsTrigger>
-                </TabsList>
-                <TabsContent value="tab1" className="p-4 bg-muted/50 rounded-lg mt-2">
-                  <Typography variant="secondary">Overview content goes here</Typography>
-                </TabsContent>
-                <TabsContent value="tab2" className="p-4 bg-muted/50 rounded-lg mt-2">
-                  <Typography variant="secondary">Settings content goes here</Typography>
-                </TabsContent>
-                <TabsContent value="tab3" className="p-4 bg-muted/50 rounded-lg mt-2">
-                  <Typography variant="secondary">Advanced content goes here</Typography>
-                </TabsContent>
-              </Tabs>
-            </ComponentDemo>
-
-            <ComponentDemo
               title="Category Tabs"
               description="Use for segmented lists with counts."
             >
@@ -767,16 +655,99 @@ export default function PageClient() {
             <div className="pt-4 border-t border-foreground/[0.05]">
               <Typography type="label" className="font-semibold mb-3">Props</Typography>
               <PropsTable props={[
-                { name: "variant", type: "'standard' | 'category' | 'underline'", default: "'standard'", description: "Visual style of the tabs." },
-                { name: "defaultValue", type: "string", description: "Initial active tab when uncontrolled." },
-                { name: "value", type: "string", description: "Controlled active tab value." },
-                { name: "onValueChange", type: "(value: string) => void", description: "Change handler for controlled usage." },
-                { name: "items", type: "Array<{ id: string, label: string, count?: number }>", description: "Tab items. Counts used by category variant." },
+                { name: "categories", type: "Array<{ id: string, label: string, count: number }>", description: "Tab items with counts for category tabs." },
+                { name: "selectedCategory", type: "string", description: "Currently selected category id." },
+                { name: "onSelect", type: "(id: string) => void", description: "Selection handler for category tabs." },
                 { name: "size", type: "'sm' | 'md' | 'lg' | ...", default: "'md'", description: "Controls padding and density." },
                 { name: "glassmorphic", type: "boolean", default: "true", description: "Enable when tabs are outside a card." },
                 { name: "gradient", type: "'blue' | 'cyan' | 'purple' | 'green' | 'orange' | 'default'", description: "Optional accent when glassmorphic is true." },
               ]} />
             </div>
+        </DesignSection>
+
+        {/* ============================================================ */}
+        {/* DROPDOWNS */}
+        {/* ============================================================ */}
+        <DesignSection
+          id="dropdowns"
+          icon={DotsThree}
+          title="Menus"
+        >
+          <ComponentDemo
+            title="Action Menu"
+            description="Standard action list with icons and a destructive row."
+          >
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm" className="h-9 px-3">
+                  Open Menu
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="min-w-[200px]">
+                <DropdownMenuItem icon={<PencilSimple className="h-4 w-4" />}>
+                  Edit
+                </DropdownMenuItem>
+                <DropdownMenuItem icon={<Envelope className="h-4 w-4" />}>
+                  Send email
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  className="text-red-600 dark:text-red-400 focus:bg-red-500/10"
+                  icon={<Trash className="h-4 w-4" />}
+                  onClick={() => new Promise<void>((resolve) => {
+                    setTimeout(() => resolve(), 5000);
+                  })}
+                >
+                  Delete
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </ComponentDemo>
+
+          <ComponentDemo
+            title="Column Toggles"
+            description="Use checkbox items for on/off configuration."
+          >
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm" className="h-9 px-3">
+                  Toggle columns
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="min-w-[200px]">
+                <DropdownMenuLabel className="text-[11px] uppercase tracking-wider text-muted-foreground">
+                  Toggle columns
+                </DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                {columnOptions.map((column) => (
+                  <DropdownMenuCheckboxItem
+                    key={column.id}
+                    checked={visibleColumns[column.id]}
+                    onCheckedChange={(checked) => {
+                      setVisibleColumns((prev) => ({
+                        ...prev,
+                        [column.id]: !!checked,
+                      }));
+                    }}
+                  >
+                    {column.label}
+                  </DropdownMenuCheckboxItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </ComponentDemo>
+
+          <div className="pt-4 border-t border-foreground/[0.05]">
+            <Typography type="label" className="font-semibold mb-3">Props</Typography>
+            <PropsTable props={[
+              { name: "variant", type: "'actions' | 'toggles'", default: "'actions'", description: "Selects action list vs checkbox settings menu." },
+              { name: "trigger", type: "'button' | 'icon'", default: "'button'", description: "Trigger presentation for the menu." },
+              { name: "label", type: "string", description: "Optional section label for grouped items." },
+              { name: "itemVariant", type: "'default' | 'destructive' | 'checkbox'", default: "'default'", description: "Item style for actions or toggles." },
+              { name: "withIcons", type: "boolean", default: "false", description: "Adds leading icons for action menus." },
+              { name: "onClick", type: "(event) => void | Promise<void>", description: "Return a Promise to keep the menu open with a spinner until complete." },
+            ]} />
+          </div>
         </DesignSection>
 
         {/* ============================================================ */}

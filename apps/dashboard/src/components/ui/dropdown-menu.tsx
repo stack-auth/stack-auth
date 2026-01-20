@@ -5,7 +5,6 @@ import { CheckIcon, ChevronRightIcon, DotFilledIcon } from "@radix-ui/react-icon
 import { forwardRefIfNeeded } from "@stackframe/stack-shared/dist/utils/react";
 import React from "react";
 
-import { useAsyncCallback } from "@stackframe/stack-shared/dist/hooks/use-async-callback";
 import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { cn } from "@/lib/utils";
@@ -119,10 +118,7 @@ const DropdownMenuItem = forwardRefIfNeeded<
   }
 >(({ className, inset, icon, ...props }, ref) => {
   const { setOpen } = React.useContext(DropdownMenuContext) ?? throwErr("No DropdownMenuContext found");
-  const [handleClick, isLoading] = useAsyncCallback(async (e: React.MouseEvent<HTMLDivElement, MouseEvent>) => {
-    await props.onClick?.(e);
-    setOpen(false);
-  }, [props.onClick]);
+  const [isLoading, setIsLoading] = React.useState(false);
 
   return <DropdownMenuPrimitive.Item
     ref={ref}
@@ -133,10 +129,24 @@ const DropdownMenuItem = forwardRefIfNeeded<
     )}
     {...props}
     disabled={isLoading || props.disabled}
+    onSelect={props.onClick ? (event) => {
+      event.preventDefault();
+    } : undefined}
     onClick={props.onClick ? (e) => {
       e.preventDefault();
       e.stopPropagation();
-      runAsynchronouslyWithAlert(handleClick(e));
+      const result = props.onClick?.(e);
+      if (result && typeof (result as Promise<void>).then === "function") {
+        setIsLoading(true);
+        runAsynchronouslyWithAlert(
+          Promise.resolve(result).finally(() => {
+            setIsLoading(false);
+            setOpen(false);
+          })
+        );
+      } else {
+        setOpen(false);
+      }
     } : undefined}
   >
     <div style={{ visibility: isLoading ? "visible" : "hidden", position: "absolute", inset: 0, display: "flex", justifyContent: "center", alignItems: "center" }}>
