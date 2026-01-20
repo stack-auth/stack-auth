@@ -1,4 +1,21 @@
 import Foundation
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
+
+/// Character set for form-urlencoded values.
+/// Only unreserved characters (RFC 3986) are allowed; everything else must be percent-encoded.
+/// This is stricter than urlQueryAllowed which incorrectly allows &, =, + etc.
+private let formURLEncodedAllowedCharacters: CharacterSet = {
+    var allowed = CharacterSet.alphanumerics
+    allowed.insert(charactersIn: "-._~")
+    return allowed
+}()
+
+/// Percent-encode a string for use in application/x-www-form-urlencoded data
+func formURLEncode(_ string: String) -> String {
+    return string.addingPercentEncoding(withAllowedCharacters: formURLEncodedAllowedCharacters) ?? string
+}
 
 /// Internal API client for making HTTP requests to Stack Auth
 actor APIClient {
@@ -202,9 +219,9 @@ actor APIClient {
         
         let body = [
             "grant_type=refresh_token",
-            "refresh_token=\(refreshToken.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? refreshToken)",
-            "client_id=\(projectId)",
-            "client_secret=\(publishableClientKey)"
+            "refresh_token=\(formURLEncode(refreshToken))",
+            "client_id=\(formURLEncode(projectId))",
+            "client_secret=\(formURLEncode(publishableClientKey))"
         ].joined(separator: "&")
         
         request.httpBody = body.data(using: .utf8)

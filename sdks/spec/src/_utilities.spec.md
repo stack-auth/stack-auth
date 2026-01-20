@@ -166,25 +166,48 @@ TokenStoreInit is a union type representing the different ways to provide token 
 ```ts
 TokenStoreInit = 
   | "cookie"                              // [JS-ONLY] Browser cookies
+  | "keychain"                            // [APPLE-ONLY] Secure Keychain storage
   | "memory"                              // In-memory storage
   | { accessToken: string, refreshToken: string }  // Explicit tokens
   | RequestLike                           // Extract from request headers
   | null                                  // No storage
 ```
 
+### Token Store Refresh Behavior
+
+IMPORTANT: ALL token stores (except "memory" and "cookie" which handle this naturally)
+MUST save refreshed tokens in memory after initialization. When the access token expires
+and gets refreshed, the new tokens must be stored and returned on subsequent calls.
+Otherwise, the old expired token would still be returned, causing an infinite refresh loop.
+
+This applies to:
+- Explicit tokens ({ accessToken, refreshToken })
+- RequestLike objects
+- null (if tokens are set via refresh)
+
+These stores should behave like "memory" after initialization, just with pre-populated
+(or empty) initial values.
+
 ### Token Store Types
 
 "cookie": [JS-ONLY]
   Store tokens in browser cookies. Requires browser environment.
   Due to cookie complexity (Secure flags, SameSite, Partitioned/CHIPS, HTTPS detection),
-  this is only implemented in the JS SDK. Other SDKs should use "memory" or explicit tokens.
+  this is only implemented in the JS SDK. Other SDKs should use "memory", "keychain",
+  or explicit tokens.
+
+"keychain": [APPLE-ONLY]
+  Store tokens in the system Keychain (iOS, macOS, watchOS, tvOS, visionOS).
+  Tokens persist securely across app launches and are protected by the OS.
+  Only available on Apple platforms via the Security framework.
+  This is the recommended default for iOS/macOS apps.
   
 "memory":
   Store tokens in runtime memory. Lost on page refresh or process restart.
   Useful for short-lived sessions, CLI tools, or server-side scripts.
 
 { accessToken, refreshToken } object:
-  Use explicit token values directly.
+  Initialize with explicit token values.
   For custom token management scenarios.
 
 RequestLike object:

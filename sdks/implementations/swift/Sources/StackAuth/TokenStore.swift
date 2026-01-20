@@ -161,9 +161,12 @@ actor MemoryTokenStore: TokenStoreProtocol {
 
 // MARK: - Explicit Token Store
 
+/// Token store initialized with explicit tokens.
+/// Starts with the provided tokens, but stores any refreshed tokens in memory
+/// to avoid infinite refresh loops when access tokens expire.
 actor ExplicitTokenStore: TokenStoreProtocol {
-    private let accessToken: String
-    private let refreshToken: String
+    private var accessToken: String?
+    private var refreshToken: String?
     
     init(accessToken: String, refreshToken: String) {
         self.accessToken = accessToken
@@ -179,19 +182,49 @@ actor ExplicitTokenStore: TokenStoreProtocol {
     }
     
     func setTokens(accessToken: String?, refreshToken: String?) async {
-        // Explicit tokens are immutable
+        // Store refreshed tokens in memory to prevent infinite refresh loops
+        if let accessToken = accessToken {
+            self.accessToken = accessToken
+        }
+        if let refreshToken = refreshToken {
+            self.refreshToken = refreshToken
+        }
     }
     
     func clearTokens() async {
-        // Explicit tokens are immutable
+        self.accessToken = nil
+        self.refreshToken = nil
     }
 }
 
 // MARK: - Null Token Store
 
+/// Token store with no initial tokens.
+/// Still stores any refreshed tokens in memory to prevent infinite refresh loops.
 actor NullTokenStore: TokenStoreProtocol {
-    func getAccessToken() async -> String? { nil }
-    func getRefreshToken() async -> String? { nil }
-    func setTokens(accessToken: String?, refreshToken: String?) async {}
-    func clearTokens() async {}
+    private var accessToken: String?
+    private var refreshToken: String?
+    
+    func getAccessToken() async -> String? {
+        return accessToken
+    }
+    
+    func getRefreshToken() async -> String? {
+        return refreshToken
+    }
+    
+    func setTokens(accessToken: String?, refreshToken: String?) async {
+        // Store refreshed tokens in memory to prevent infinite refresh loops
+        if let accessToken = accessToken {
+            self.accessToken = accessToken
+        }
+        if let refreshToken = refreshToken {
+            self.refreshToken = refreshToken
+        }
+    }
+    
+    func clearTokens() async {
+        self.accessToken = nil
+        self.refreshToken = nil
+    }
 }

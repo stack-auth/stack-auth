@@ -259,10 +259,15 @@ public actor CurrentUser {
         let accessToken = await client.getAccessToken()
         let refreshToken = await client.getRefreshToken()
         
-        let json: [String: Any?] = [
-            "accessToken": accessToken,
-            "refreshToken": refreshToken
-        ]
+        // Build JSON object with only non-nil values
+        // JSONSerialization cannot serialize nil, so we must filter them out
+        var json: [String: Any] = [:]
+        if let accessToken = accessToken {
+            json["accessToken"] = accessToken
+        }
+        if let refreshToken = refreshToken {
+            json["refreshToken"] = refreshToken
+        }
         
         if let data = try? JSONSerialization.data(withJSONObject: json),
            let string = String(data: data, encoding: .utf8) {
