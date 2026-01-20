@@ -1,6 +1,6 @@
 import { Button, Input } from "@/components/ui";
 import { cn } from "@/lib/utils";
-import { CheckIcon, XIcon } from "@phosphor-icons/react";
+import { Check, X } from "@phosphor-icons/react";
 import { useAsyncCallback } from "@stackframe/stack-shared/dist/hooks/use-async-callback";
 import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { useRef, useState } from "react";
@@ -40,7 +40,10 @@ export function EditableInput({
     await onUpdate?.(value);
   }, [onUpdate]);
 
+  const containerRef = useRef<HTMLDivElement>(null);
+
   return <div
+    ref={containerRef}
     className="flex items-center relative w-full"
     onFocus={() => {
       if (!readOnly) {
@@ -63,7 +66,10 @@ export function EditableInput({
       }
     }}
     onMouseDown={(ev) => {
-      // prevent blur from happening
+      // Allow direct input focus, prevent blur for outer clicks.
+      if (containerRef.current?.contains(ev.target as Node)) {
+        return;
+      }
       ev.preventDefault();
       return false;
     }}
@@ -75,10 +81,11 @@ export function EditableInput({
       disabled={isLoading}
       placeholder={placeholder}
       tabIndex={readOnly ? -1 : undefined}
+      size="sm"
       className={cn(
-        "w-full px-1 py-0 h-[unset] border-transparent",
-        /* Hover */ !readOnly && "hover:ring-1 hover:ring-slate-300 dark:hover:ring-gray-500 hover:bg-slate-50 dark:hover:bg-gray-800 hover:cursor-pointer",
-        /* Focus */ !readOnly && "focus:cursor-[unset] focus-visible:ring-slate-500 dark:focus-visible:ring-gray-50 focus-visible:bg-slate-100 dark:focus-visible:bg-gray-800",
+        "w-full px-3 h-8",
+        /* Hover */ !readOnly && "hover:cursor-pointer",
+        /* Focus */ !readOnly && "focus:cursor-[unset]",
         readOnly && "focus-visible:ring-0 cursor-default text-muted-foreground",
         shiftTextToLeft && "ml-[-7px]",
         inputClassName,
@@ -102,7 +109,7 @@ export function EditableInput({
         ev.stopPropagation();
       }}
     />
-    <div className="flex gap-2" style={{
+    <div className="flex gap-1" style={{
       overflow: "hidden",
       width: editing ? "4rem" : 0,
       marginLeft: editing ? "0.5rem" : 0,
@@ -118,8 +125,10 @@ export function EditableInput({
           variant="plain"
           size="plain"
           className={cn(
-            "min-h-5 min-w-5 h-5 w-5 rounded-full flex items-center justify-center",
-            action === "accept" ? "bg-green-500 active:bg-green-600" : "bg-red-500 active:bg-red-600"
+            "h-7 w-7 rounded-lg flex items-center justify-center transition-all duration-150 hover:transition-none backdrop-blur-sm",
+            action === "accept" 
+              ? "bg-emerald-500/[0.08] text-emerald-600 dark:text-emerald-400 ring-1 ring-emerald-500/20 hover:bg-emerald-500/[0.15] hover:ring-emerald-500/30" 
+              : "bg-red-500/[0.08] text-red-600 dark:text-red-400 ring-1 ring-red-500/20 hover:bg-red-500/[0.15] hover:ring-red-500/30"
           )}
           onClick={async () => {
             try {
@@ -136,8 +145,8 @@ export function EditableInput({
           }}
         >
           {action === "accept" ?
-            <CheckIcon size={15} className="text-white dark:text-black" /> :
-            <XIcon size={15} className="text-white dark:text-black" />}
+            <Check weight="bold" className="h-3.5 w-3.5" /> :
+            <X weight="bold" className="h-3.5 w-3.5" />}
         </Button>
       ))}
     </div>

@@ -1,25 +1,32 @@
 "use client";
 
 import {
-    Alert,
-    AlertDescription,
-    AlertTitle,
-    Button,
-    DataTable,
-    DataTableColumnHeader,
-    DataTableViewOptions,
-    DropdownMenu,
-    DropdownMenuCheckboxItem,
-    DropdownMenuContent,
-    DropdownMenuItem,
-    DropdownMenuLabel,
-    DropdownMenuRadioGroup,
-    DropdownMenuRadioItem,
-    DropdownMenuSeparator,
-    DropdownMenuTrigger,
-    Typography,
-    cn,
+  Alert,
+  AlertDescription,
+  AlertTitle,
+  Button,
+  DataTable,
+  DataTableColumnHeader,
+  DataTableViewOptions,
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+  Input,
+  Typography,
+  cn,
 } from "@/components/ui";
+import { EditableGrid, type EditableGridItem } from "@/components/editable-grid";
 import {
   CheckCircle,
   Cube,
@@ -27,10 +34,13 @@ import {
   Envelope,
   FileText,
   HardDrive,
+  MagnifyingGlassIcon,
   Palette,
   PencilSimple,
+  StackSimple,
   Sliders,
   SquaresFourIcon,
+  Tag,
   Trash,
   WarningCircle,
   XCircle
@@ -38,8 +48,8 @@ import {
 import { ColumnDef, Table as TableType } from "@tanstack/react-table";
 import { useMemo, useState } from "react";
 import {
-    TimeRange,
-    TimeRangeToggle
+  TimeRange,
+  TimeRangeToggle
 } from "../(overview)/line-chart";
 import { PageLayout } from "../page-layout";
 
@@ -516,6 +526,7 @@ export default function PageClient() {
   const [timeRange, setTimeRange] = useState<TimeRange>("30d");
   const [listAction, setListAction] = useState<"edit" | "delete" | null>(null);
   const [selectedMenuFilter, setSelectedMenuFilter] = useState("all");
+  const [selectedSelectorValue, setSelectedSelectorValue] = useState("no");
   const [tableDemo, setTableDemo] = useState<TableType<DemoEmailRow> | null>(null);
   const [tableDemoVisibility, setTableDemoVisibility] = useState({});
   const [visibleColumns, setVisibleColumns] = useState<Record<ColumnKey, boolean>>({
@@ -549,6 +560,11 @@ export default function PageClient() {
     { id: "all", label: "All messages" },
     { id: "active", label: "Active" },
     { id: "drafts", label: "Drafts" },
+  ];
+
+  const selectorOptions = [
+    { value: "no", label: "No" },
+    { value: "yes", label: "Yes" },
   ];
 
   const demoDateFormatter = useMemo(() => new Intl.DateTimeFormat("en-US", {
@@ -605,6 +621,97 @@ export default function PageClient() {
       },
     },
   ], [demoDateFormatter]);
+
+  const editableGridItems = useMemo<EditableGridItem[]>(() => [
+    {
+      type: "text",
+      icon: <FileText className="h-4 w-4" />,
+      name: "Display Name",
+      value: "Catalog Workspace Plans",
+      readOnly: false,
+      onUpdate: async (val) => {
+        console.log("Updated to:", val);
+        await new Promise((resolve) => setTimeout(resolve, 500));
+      },
+    },
+    {
+      type: "boolean",
+      icon: <StackSimple className="h-4 w-4" />,
+      name: "Stackable",
+      value: false,
+      readOnly: false,
+      trueLabel: "Yes",
+      falseLabel: "No",
+      onUpdate: async (val) => {
+        console.log("Stackable updated to:", val);
+        await new Promise((resolve) => setTimeout(resolve, 500));
+      },
+    },
+    {
+      type: "boolean",
+      icon: <Tag className="h-4 w-4" />,
+      name: "Add-on",
+      value: false,
+      readOnly: false,
+      trueLabel: "Yes",
+      falseLabel: "No",
+      onUpdate: async (val) => {
+        console.log("Add-on updated to:", val);
+        await new Promise((resolve) => setTimeout(resolve, 500));
+      },
+    },
+    {
+      type: "dropdown",
+      icon: <Sliders className="h-4 w-4" />,
+      name: "Free Trial",
+      value: "2 weeks",
+      options: [
+        { value: "none", label: "No trial" },
+        { value: "2 weeks", label: "2 weeks" },
+        { value: "1 month", label: "1 month" },
+      ],
+      readOnly: false,
+      onUpdate: async (val) => {
+        console.log("Free Trial updated to:", val);
+        await new Promise((resolve) => setTimeout(resolve, 500));
+      },
+    },
+    {
+      type: "boolean",
+      icon: <HardDrive className="h-4 w-4" />,
+      name: "Server Only",
+      value: false,
+      readOnly: false,
+      trueLabel: "Yes",
+      falseLabel: "No",
+      onUpdate: async (val) => {
+        console.log("Server Only updated to:", val);
+        await new Promise((resolve) => setTimeout(resolve, 500));
+      },
+    },
+    {
+      type: "custom",
+      icon: <Envelope className="h-4 w-4" />,
+      name: "Prices",
+      children: (
+        <div className="flex flex-wrap items-center gap-2 text-sm">
+          <span className="text-foreground">$39 monthly</span>
+          <span className="text-muted-foreground">2 week trial</span>
+        </div>
+      ),
+    },
+    {
+      type: "custom",
+      icon: <Cube className="h-4 w-4" />,
+      name: "Included Items",
+      children: (
+        <div className="flex flex-col text-sm text-muted-foreground">
+          <span>5× Studio Seats /mo</span>
+          <span>50× Review Credits /mo</span>
+        </div>
+      ),
+    },
+  ], []);
 
   return (
     <PageLayout>
@@ -717,35 +824,35 @@ export default function PageClient() {
           title="Tabs"
           description="Use to switch between related sections without leaving the page."
         >
-            <ComponentDemo
-              title="Category Tabs"
-              description="Use for segmented lists with counts."
-            >
-              <CategoryTabs
-                categories={categories}
-                selectedCategory={selectedCategory}
-                onSelect={setSelectedCategory}
-              />
-            </ComponentDemo>
+          <ComponentDemo
+            title="Category Tabs"
+            description="Use for segmented lists with counts."
+          >
+            <CategoryTabs
+              categories={categories}
+              selectedCategory={selectedCategory}
+              onSelect={setSelectedCategory}
+            />
+          </ComponentDemo>
 
-            <ComponentDemo
-              title="Underline Tabs"
-              description="Use for lightweight view switches."
-            >
-              <UnderlineTabsDemo />
-            </ComponentDemo>
+          <ComponentDemo
+            title="Underline Tabs"
+            description="Use for lightweight view switches."
+          >
+            <UnderlineTabsDemo />
+          </ComponentDemo>
 
-            <div className="pt-4 border-t border-foreground/[0.05]">
-              <Typography type="label" className="font-semibold mb-3">Props</Typography>
-              <PropsTable props={[
-                { name: "categories", type: "Array<{ id: string, label: string, count: number }>", description: "Tab items with counts for category tabs." },
-                { name: "selectedCategory", type: "string", description: "Currently selected category id." },
-                { name: "onSelect", type: "(id: string) => void", description: "Selection handler for category tabs." },
-                { name: "size", type: "'sm' | 'md' | 'lg' | ...", default: "'md'", description: "Controls padding and density." },
-                { name: "glassmorphic", type: "boolean", default: "true", description: "Enable when tabs are outside a card." },
-                { name: "gradient", type: "'blue' | 'cyan' | 'purple' | 'green' | 'orange' | 'default'", description: "Optional accent when glassmorphic is true." },
-              ]} />
-            </div>
+          <div className="pt-4 border-t border-foreground/[0.05]">
+            <Typography type="label" className="font-semibold mb-3">Props</Typography>
+            <PropsTable props={[
+              { name: "categories", type: "Array<{ id: string, label: string, count: number }>", description: "Tab items with counts for category tabs." },
+              { name: "selectedCategory", type: "string", description: "Currently selected category id." },
+              { name: "onSelect", type: "(id: string) => void", description: "Selection handler for category tabs." },
+              { name: "size", type: "'sm' | 'md' | 'lg' | ...", default: "'md'", description: "Controls padding and density." },
+              { name: "glassmorphic", type: "boolean", default: "true", description: "Enable when tabs are outside a card." },
+              { name: "gradient", type: "'blue' | 'cyan' | 'purple' | 'green' | 'orange' | 'default'", description: "Optional accent when glassmorphic is true." },
+            ]} />
+          </div>
         </DesignSection>
 
         {/* ============================================================ */}
@@ -762,7 +869,7 @@ export default function PageClient() {
           >
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="sm" className="h-9 px-3">
+                <Button variant="outline" size="sm" className="h-8 px-3 rounded-lg">
                   Open Menu
                 </Button>
               </DropdownMenuTrigger>
@@ -788,12 +895,32 @@ export default function PageClient() {
           </ComponentDemo>
 
           <ComponentDemo
+            title="Selector Dropdown"
+            description="Use select triggers for compact yes/no or single-choice menus."
+          >
+            <div className="max-w-xs">
+              <Select value={selectedSelectorValue} onValueChange={setSelectedSelectorValue}>
+                <SelectTrigger className="h-8 px-3 text-xs rounded-lg">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {selectorOptions.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </ComponentDemo>
+
+          <ComponentDemo
             title="Selector Menu"
             description="Use radio items to switch between a small set of options."
           >
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="sm" className="h-9 px-3">
+                <Button variant="outline" size="sm" className="h-8 px-3 rounded-lg">
                   {menuFilterOptions.find((option) => option.id === selectedMenuFilter)?.label ?? "Select"}
                 </Button>
               </DropdownMenuTrigger>
@@ -822,7 +949,7 @@ export default function PageClient() {
           >
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="sm" className="h-9 px-3">
+                <Button variant="outline" size="sm" className="h-8 px-3 rounded-lg">
                   Toggle columns
                 </Button>
               </DropdownMenuTrigger>
@@ -852,7 +979,7 @@ export default function PageClient() {
           <div className="pt-4 border-t border-foreground/[0.05]">
             <Typography type="label" className="font-semibold mb-3">Props</Typography>
             <PropsTable props={[
-              { name: "variant", type: "'actions' | 'toggles'", default: "'actions'", description: "Selects action list vs checkbox settings menu." },
+              { name: "variant", type: "'actions' | 'selector' | 'toggles'", default: "'actions'", description: "Selects action list, select trigger, or checkbox settings menu." },
               { name: "trigger", type: "'button' | 'icon'", default: "'button'", description: "Trigger presentation for the menu." },
               { name: "label", type: "string", description: "Optional section label for grouped items." },
               { name: "itemVariant", type: "'default' | 'destructive' | 'checkbox'", default: "'default'", description: "Item style for actions or toggles." },
@@ -931,6 +1058,82 @@ export default function PageClient() {
         </DesignSection>
 
         {/* ============================================================ */}
+        {/* INPUTS */}
+        {/* ============================================================ */}
+        <DesignSection
+          id="inputs"
+          icon={FileText}
+          title="Inputs"
+          description="Use a single input component for text and search states."
+        >
+          <ComponentDemo
+            title="Standard Input"
+            description="Default input for forms and settings."
+          >
+            <div className="max-w-sm">
+              <Input placeholder="Enter a value" />
+            </div>
+          </ComponentDemo>
+
+          <ComponentDemo
+            title="Search Input (Small)"
+            description="Use size sm with a leading icon for compact search."
+          >
+            <div className="max-w-xs">
+              <Input
+                size="sm"
+                leadingIcon={<MagnifyingGlassIcon className="h-3 w-3" />}
+                placeholder="Search products..."
+              />
+            </div>
+          </ComponentDemo>
+
+          <div className="pt-4 border-t border-foreground/[0.05]">
+            <Typography type="label" className="font-semibold mb-3">Props</Typography>
+            <PropsTable props={[
+              { name: "size", type: "'sm' | 'md' | 'lg'", default: "'md'", description: "Controls input height and text size." },
+              { name: "leadingIcon", type: "ReactElement", description: "Optional icon rendered inside the input." },
+              { name: "prefixItem", type: "ReactElement", description: "Optional leading segment for grouped inputs." },
+              { name: "placeholder", type: "string", description: "Placeholder text for empty states." },
+              { name: "onChange", type: "(event) => void", description: "Change handler for input updates." },
+            ]} />
+          </div>
+        </DesignSection>
+
+        {/* ============================================================ */}
+        {/* EDITABLE GRID */}
+        {/* ============================================================ */}
+        <DesignSection
+          id="editable-grid"
+          icon={Sliders}
+          title="Editable Grid"
+          description="Use for compact, editable settings in two-column layouts."
+        >
+          <ComponentDemo
+            title="Product Attribute Grid"
+            description="Editable rows with inline select and dropdown fields."
+          >
+            <div className="relative rounded-2xl overflow-hidden bg-gray-200/80 dark:bg-[hsl(240,10%,5.5%)] border border-border/50 dark:border-foreground/[0.12] shadow-sm">
+              <div className="absolute inset-0 bg-gradient-to-br from-foreground/[0.03] to-transparent pointer-events-none" />
+              <div className="relative p-5">
+                <EditableGrid items={editableGridItems} columns={2} className="gap-x-6 gap-y-3" />
+              </div>
+            </div>
+          </ComponentDemo>
+
+          <div className="pt-4 border-t border-foreground/[0.05]">
+            <Typography type="label" className="font-semibold mb-3">Props</Typography>
+            <PropsTable props={[
+              { name: "items", type: "EditableGridItem[]", description: "Defines editable rows and their input types." },
+              { name: "columns", type: "1 | 2", default: "2", description: "Number of columns in the grid." },
+              { name: "type", type: "'text' | 'boolean' | 'dropdown' | 'custom'", description: "Row type that controls the editor." },
+              { name: "readOnly", type: "boolean", default: "false", description: "Disables editing for the row." },
+              { name: "onUpdate", type: "(value) => Promise<void>", description: "Async handler for updates." },
+            ]} />
+          </div>
+        </DesignSection>
+
+        {/* ============================================================ */}
         {/* BUTTONS */}
         {/* ============================================================ */}
         <DesignSection
@@ -944,27 +1147,27 @@ export default function PageClient() {
             description="Pair variants with action importance and context."
           >
             <div className="flex flex-wrap gap-2">
-              <Button variant="default" className="transition-all duration-150 hover:transition-none">
+              <Button variant="default" className="rounded-lg transition-all duration-150 hover:transition-none">
                 Primary
               </Button>
-              <Button variant="ghost" className="transition-all duration-150 hover:transition-none">
+              <Button variant="ghost" className="rounded-lg transition-all duration-150 hover:transition-none">
                 Ghost
               </Button>
-              <Button variant="secondary" className="transition-all duration-150 hover:transition-none">
+              <Button variant="secondary" className="rounded-lg transition-all duration-150 hover:transition-none">
                 Secondary
               </Button>
-              <Button variant="outline" className="transition-all duration-150 hover:transition-none">
+              <Button variant="outline" className="rounded-lg transition-all duration-150 hover:transition-none">
                 Outline
               </Button>
-              <Button variant="destructive" className="transition-all duration-150 hover:transition-none">
+              <Button variant="destructive" className="rounded-lg transition-all duration-150 hover:transition-none">
                 Delete
               </Button>
-              <Button variant="link" className="transition-colors duration-150 hover:transition-none">
+              <Button variant="link" className="rounded-lg transition-colors duration-150 hover:transition-none">
                 Learn more
               </Button>
               <Button
                 variant="plain"
-                className="bg-foreground/10 text-foreground shadow-sm ring-1 ring-foreground/5 transition-all duration-150 hover:transition-none"
+                className="rounded-lg bg-foreground/10 text-foreground shadow-sm ring-1 ring-foreground/5 transition-all duration-150 hover:transition-none"
               >
                 Active
               </Button>
@@ -976,13 +1179,13 @@ export default function PageClient() {
             description="Use size for density, not prominence."
           >
             <div className="flex flex-wrap items-center gap-2">
-              <Button size="sm" className="transition-all duration-150 hover:transition-none">
+              <Button size="sm" className="rounded-lg transition-all duration-150 hover:transition-none">
                 Small
               </Button>
-              <Button className="transition-all duration-150 hover:transition-none">
+              <Button className="rounded-lg transition-all duration-150 hover:transition-none">
                 Default
               </Button>
-              <Button size="lg" className="transition-all duration-150 hover:transition-none">
+              <Button size="lg" className="rounded-lg transition-all duration-150 hover:transition-none">
                 Large
               </Button>
               <Button
@@ -1001,9 +1204,12 @@ export default function PageClient() {
             description="Buttons show a spinner while async actions run."
           >
             <div className="flex flex-wrap items-center gap-2">
-              <Button loading>Saving</Button>
+              <Button loading className="rounded-lg transition-all duration-150 hover:transition-none">
+                Saving
+              </Button>
               <Button
                 variant="secondary"
+                className="rounded-lg transition-all duration-150 hover:transition-none"
                 onClick={() => new Promise<void>((resolve) => {
                   setTimeout(() => resolve(), 1500);
                 })}
@@ -1035,10 +1241,10 @@ export default function PageClient() {
           title="Pill Toggle"
           description="Use for quick mode switches with a small set of options."
         >
-            <ComponentDemo
-              title="Standard Pill Toggle"
-              description="Default segmented control"
-              code={`<ViewportSelector
+          <ComponentDemo
+            title="Standard Pill Toggle"
+            description="Default segmented control"
+            code={`<ViewportSelector
   options={[
     { id: "phone", label: "Phone", icon: Envelope },
     { id: "desktop", label: "Desktop", icon: HardDrive }
@@ -1046,28 +1252,28 @@ export default function PageClient() {
   selected={selected}
   onSelect={setSelected}
 />`}
-            >
-              <ViewportSelector options={viewportOptions} selected={selectedViewport} onSelect={setSelectedViewport} />
-            </ComponentDemo>
+          >
+            <ViewportSelector options={viewportOptions} selected={selectedViewport} onSelect={setSelectedViewport} />
+          </ComponentDemo>
 
-            <ComponentDemo
-              title="Glassmorphic Variant"
-              description="Time range pill toggle with glassmorphic enabled"
-            >
-              <TimeRangeToggle timeRange={timeRange} onTimeRangeChange={setTimeRange} />
-            </ComponentDemo>
+          <ComponentDemo
+            title="Glassmorphic Variant"
+            description="Time range pill toggle with glassmorphic enabled"
+          >
+            <TimeRangeToggle timeRange={timeRange} onTimeRangeChange={setTimeRange} />
+          </ComponentDemo>
 
-            <div className="pt-4 border-t border-foreground/[0.05]">
-              <Typography type="label" className="font-semibold mb-3">Props</Typography>
-              <PropsTable props={[
-                { name: "options", type: "Array<{ id: string, label: string, icon?: ReactElement }>", description: "Available toggle options." },
-                { name: "selected", type: "string", description: "Currently selected option id." },
-                { name: "onSelect", type: "(id: string) => void", description: "Selection handler." },
-                { name: "size", type: "'sm' | 'md' | 'lg' | ...", default: "'md'", description: "Controls pill sizing." },
-                { name: "glassmorphic", type: "boolean", default: "false", description: "Enable for glass surfaces (e.g., time range toggle)." },
-                { name: "gradient", type: "'blue' | 'cyan' | 'purple' | 'green' | 'orange' | 'default'", description: "Optional accent when glassmorphic is true." },
-              ]} />
-            </div>
+          <div className="pt-4 border-t border-foreground/[0.05]">
+            <Typography type="label" className="font-semibold mb-3">Props</Typography>
+            <PropsTable props={[
+              { name: "options", type: "Array<{ id: string, label: string, icon?: ReactElement }>", description: "Available toggle options." },
+              { name: "selected", type: "string", description: "Currently selected option id." },
+              { name: "onSelect", type: "(id: string) => void", description: "Selection handler." },
+              { name: "size", type: "'sm' | 'md' | 'lg' | ...", default: "'md'", description: "Controls pill sizing." },
+              { name: "glassmorphic", type: "boolean", default: "false", description: "Enable for glass surfaces (e.g., time range toggle)." },
+              { name: "gradient", type: "'blue' | 'cyan' | 'purple' | 'green' | 'orange' | 'default'", description: "Optional accent when glassmorphic is true." },
+            ]} />
+          </div>
         </DesignSection>
 
         {/* ============================================================ */}
@@ -1079,57 +1285,57 @@ export default function PageClient() {
           title="Alert"
           description="Use for high-signal feedback that needs attention."
         >
-            <ComponentDemo
-              title="Success Alert"
-              description="Use for successful operations"
-            >
-              <Alert className="bg-green-500/5 border-green-500/20">
-                <CheckCircle className="h-4 w-4 text-green-500" />
-                <AlertTitle className="text-green-600 dark:text-green-400">Success</AlertTitle>
-                <AlertDescription>Your changes have been saved successfully.</AlertDescription>
-              </Alert>
-            </ComponentDemo>
+          <ComponentDemo
+            title="Success Alert"
+            description="Use for successful operations"
+          >
+            <Alert className="bg-green-500/5 border-green-500/20">
+              <CheckCircle className="h-4 w-4 text-green-500" />
+              <AlertTitle className="text-green-600 dark:text-green-400">Success</AlertTitle>
+              <AlertDescription>Your changes have been saved successfully.</AlertDescription>
+            </Alert>
+          </ComponentDemo>
 
-            <ComponentDemo
-              title="Error Alert"
-              description="Use for errors and failures"
-            >
-              <Alert className="bg-red-500/5 border-red-500/20">
-                <XCircle className="h-4 w-4 text-red-500" />
-                <AlertTitle className="text-red-600 dark:text-red-400">Error</AlertTitle>
-                <AlertDescription>An error occurred while processing your request.</AlertDescription>
-              </Alert>
-            </ComponentDemo>
+          <ComponentDemo
+            title="Error Alert"
+            description="Use for errors and failures"
+          >
+            <Alert className="bg-red-500/5 border-red-500/20">
+              <XCircle className="h-4 w-4 text-red-500" />
+              <AlertTitle className="text-red-600 dark:text-red-400">Error</AlertTitle>
+              <AlertDescription>An error occurred while processing your request.</AlertDescription>
+            </Alert>
+          </ComponentDemo>
 
-            <ComponentDemo
-              title="Warning Alert"
-              description="Use for warnings that need attention"
-            >
-              <Alert className="bg-orange-500/5 border-orange-500/20">
-                <WarningCircle className="h-4 w-4 text-orange-500" />
-                <AlertTitle className="text-orange-600 dark:text-orange-400">Warning</AlertTitle>
-                <AlertDescription>You are using a shared email server. Configure a custom SMTP server to customize email templates.</AlertDescription>
-              </Alert>
-            </ComponentDemo>
+          <ComponentDemo
+            title="Warning Alert"
+            description="Use for warnings that need attention"
+          >
+            <Alert className="bg-orange-500/5 border-orange-500/20">
+              <WarningCircle className="h-4 w-4 text-orange-500" />
+              <AlertTitle className="text-orange-600 dark:text-orange-400">Warning</AlertTitle>
+              <AlertDescription>You are using a shared email server. Configure a custom SMTP server to customize email templates.</AlertDescription>
+            </Alert>
+          </ComponentDemo>
 
-            <ComponentDemo
-              title="Info Alert"
-              description="Use for informational messages without a title"
-            >
-              <Alert className="bg-amber-500/5 border-amber-500/20">
-                <AlertDescription>Configure a custom SMTP server to send manual emails. You can still create and edit drafts.</AlertDescription>
-              </Alert>
-            </ComponentDemo>
+          <ComponentDemo
+            title="Info Alert"
+            description="Use for informational messages without a title"
+          >
+            <Alert className="bg-amber-500/5 border-amber-500/20">
+              <AlertDescription>Configure a custom SMTP server to send manual emails. You can still create and edit drafts.</AlertDescription>
+            </Alert>
+          </ComponentDemo>
 
-            <div className="pt-4 border-t border-foreground/[0.05]">
-              <Typography type="label" className="font-semibold mb-3">Props</Typography>
-              <PropsTable props={[
-                { name: "variant", type: "'success' | 'error' | 'warning' | 'info'", description: "Visual style. Use className for color overrides." },
-                { name: "title", type: "ReactNode", description: "Optional. Use AlertTitle when needed." },
-                { name: "icon", type: "ReactElement", description: "Optional icon displayed before content." },
-                { name: "glassmorphic", type: "boolean", default: "false", description: "Only enable if used on glass surfaces." },
-              ]} />
-            </div>
+          <div className="pt-4 border-t border-foreground/[0.05]">
+            <Typography type="label" className="font-semibold mb-3">Props</Typography>
+            <PropsTable props={[
+              { name: "variant", type: "'success' | 'error' | 'warning' | 'info'", description: "Visual style. Use className for color overrides." },
+              { name: "title", type: "ReactNode", description: "Optional. Use AlertTitle when needed." },
+              { name: "icon", type: "ReactElement", description: "Optional icon displayed before content." },
+              { name: "glassmorphic", type: "boolean", default: "false", description: "Only enable if used on glass surfaces." },
+            ]} />
+          </div>
         </DesignSection>
 
         {/* ============================================================ */}
@@ -1141,33 +1347,33 @@ export default function PageClient() {
           title="Badge"
           description="Use for statuses, tags, and lightweight labels."
         >
-            <ComponentDemo
-              title="Status Badges"
-              description="Gradient status colors with optional icons"
-              code={`<StatusBadge label="Success" color="green" icon={CheckCircle} />
+          <ComponentDemo
+            title="Status Badges"
+            description="Gradient status colors with optional icons"
+            code={`<StatusBadge label="Success" color="green" icon={CheckCircle} />
 <StatusBadge label="Warning" color="orange" />
 <StatusBadge label="Error" color="red" icon={XCircle} />`}
-            >
-              <div className="flex flex-wrap gap-2">
-                <StatusBadge label="Success" color="green" icon={CheckCircle} />
-                <StatusBadge label="Warning" color="orange" />
-                <StatusBadge label="Error" color="red" icon={XCircle} />
-                <StatusBadge label="Info" color="blue" />
-                <StatusBadge label="New" color="purple" size="sm" />
-                <StatusBadge label="Syncing" color="cyan" icon={DotsThree} size="sm" />
-              </div>
-            </ComponentDemo>
-
-            <div className="pt-4 border-t border-foreground/[0.05]">
-              <Typography type="label" className="font-semibold mb-3">Props</Typography>
-              <PropsTable props={[
-                { name: "label", type: "string", description: "Text for the badge" },
-                { name: "color", type: "'blue' | 'cyan' | 'purple' | 'green' | 'orange' | 'red'", description: "Gradient color theme" },
-                { name: "icon", type: "ReactElement", description: "Optional icon displayed before text" },
-                { name: "size", type: "'sm' | 'md'", default: "'md'", description: "Badge size" },
-                { name: "glassmorphic", type: "boolean", default: "false", description: "Enable only when badges sit on glass." },
-              ]} />
+          >
+            <div className="flex flex-wrap gap-2">
+              <StatusBadge label="Success" color="green" icon={CheckCircle} />
+              <StatusBadge label="Warning" color="orange" />
+              <StatusBadge label="Error" color="red" icon={XCircle} />
+              <StatusBadge label="Info" color="blue" />
+              <StatusBadge label="New" color="purple" size="sm" />
+              <StatusBadge label="Syncing" color="cyan" icon={DotsThree} size="sm" />
             </div>
+          </ComponentDemo>
+
+          <div className="pt-4 border-t border-foreground/[0.05]">
+            <Typography type="label" className="font-semibold mb-3">Props</Typography>
+            <PropsTable props={[
+              { name: "label", type: "string", description: "Text for the badge" },
+              { name: "color", type: "'blue' | 'cyan' | 'purple' | 'green' | 'orange' | 'red'", description: "Gradient color theme" },
+              { name: "icon", type: "ReactElement", description: "Optional icon displayed before text" },
+              { name: "size", type: "'sm' | 'md'", default: "'md'", description: "Badge size" },
+              { name: "glassmorphic", type: "boolean", default: "false", description: "Enable only when badges sit on glass." },
+            ]} />
+          </div>
         </DesignSection>
 
         {/* ============================================================ */}
@@ -1179,44 +1385,44 @@ export default function PageClient() {
           title="List Components"
           description="Use for repeated rows. Variants differ by icon, avatar, and density."
         >
-            <ComponentDemo
-              title="List Item Row"
-              description="Icon row with inline actions and overflow menu"
-            >
-              <div className="space-y-3">
-                <ListItemRow
-                  icon={FileText}
-                  title="Transactional Templates"
-                  onEdit={() => setListAction("edit")}
-                  onDelete={() => setListAction("delete")}
-                />
-                <Typography variant="secondary" className="text-xs">
-                  {listAction ? `Last action: ${listAction}` : "Click edit or delete to preview actions."}
-                </Typography>
-              </div>
-            </ComponentDemo>
-
-            <ComponentDemo
-              title="User List Item"
-              description="Clickable user row with avatar and accent hover"
-            >
-              <UserListItemDemo />
-            </ComponentDemo>
-
-            <div className="pt-4 border-t border-foreground/[0.05]">
-              <Typography type="label" className="font-semibold mb-3">Props</Typography>
-              <PropsTable props={[
-                { name: "icon", type: "ReactElement", description: "Optional leading icon for list rows." },
-                { name: "title", type: "string", description: "Primary row label." },
-                { name: "subtitle", type: "string", description: "Optional supporting text." },
-                { name: "onClick", type: "() => void", description: "Row click handler." },
-                { name: "onEdit", type: "() => void", description: "Optional edit action for row variants." },
-                { name: "onDelete", type: "() => void", description: "Optional delete action for row variants." },
-                { name: "size", type: "'sm' | 'md' | 'lg' | ...", default: "'md'", description: "Controls row padding and density." },
-                { name: "glassmorphic", type: "boolean", default: "true", description: "Use when list is outside a parent card." },
-                { name: "gradient", type: "'blue' | 'cyan' | 'purple' | 'green' | 'orange' | 'default'", description: "Optional accent on hover." },
-              ]} />
+          <ComponentDemo
+            title="List Item Row"
+            description="Icon row with inline actions and overflow menu"
+          >
+            <div className="space-y-3">
+              <ListItemRow
+                icon={FileText}
+                title="Transactional Templates"
+                onEdit={() => setListAction("edit")}
+                onDelete={() => setListAction("delete")}
+              />
+              <Typography variant="secondary" className="text-xs">
+                {listAction ? `Last action: ${listAction}` : "Click edit or delete to preview actions."}
+              </Typography>
             </div>
+          </ComponentDemo>
+
+          <ComponentDemo
+            title="User List Item"
+            description="Clickable user row with avatar and accent hover"
+          >
+            <UserListItemDemo />
+          </ComponentDemo>
+
+          <div className="pt-4 border-t border-foreground/[0.05]">
+            <Typography type="label" className="font-semibold mb-3">Props</Typography>
+            <PropsTable props={[
+              { name: "icon", type: "ReactElement", description: "Optional leading icon for list rows." },
+              { name: "title", type: "string", description: "Primary row label." },
+              { name: "subtitle", type: "string", description: "Optional supporting text." },
+              { name: "onClick", type: "() => void", description: "Row click handler." },
+              { name: "onEdit", type: "() => void", description: "Optional edit action for row variants." },
+              { name: "onDelete", type: "() => void", description: "Optional delete action for row variants." },
+              { name: "size", type: "'sm' | 'md' | 'lg' | ...", default: "'md'", description: "Controls row padding and density." },
+              { name: "glassmorphic", type: "boolean", default: "true", description: "Use when list is outside a parent card." },
+              { name: "gradient", type: "'blue' | 'cyan' | 'purple' | 'green' | 'orange' | 'default'", description: "Optional accent on hover." },
+            ]} />
+          </div>
         </DesignSection>
 
       </div>

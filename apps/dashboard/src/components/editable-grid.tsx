@@ -100,9 +100,11 @@ type EditableGridProps = {
 // Reusable label component
 function GridLabel({ icon, name, tooltip }: { icon: React.ReactNode, name: string, tooltip?: string }) {
   const label = (
-    <span className="flex gap-2 items-center">
-      <span className="opacity-75">{icon}</span>
-      <span className="font-semibold whitespace-nowrap mr-2">{name}</span>
+    <span className="flex gap-2 items-center text-xs font-semibold text-foreground">
+      <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-foreground/[0.04] text-muted-foreground">
+        {icon}
+      </span>
+      <span className="whitespace-nowrap mr-2">{name}</span>
     </span>
   );
 
@@ -145,7 +147,7 @@ function EditableBooleanField({
 
   if (readOnly) {
     return (
-      <span className="px-1 text-muted-foreground">
+      <span className="inline-flex h-8 items-center rounded-xl bg-background/60 dark:bg-foreground/[0.03] border border-border/10 dark:border-foreground/[0.06] px-3 text-sm text-muted-foreground shadow-sm ring-1 ring-foreground/[0.06]">
         {value ? trueLabel : falseLabel}
       </span>
     );
@@ -159,9 +161,10 @@ function EditableBooleanField({
     >
       <SelectTrigger
         className={cn(
-          "w-full px-1 py-0 h-[unset] border-transparent text-foreground font-normal",
-          "hover:ring-1 hover:ring-slate-300 dark:hover:ring-gray-500 hover:bg-slate-50 dark:hover:bg-gray-800",
-          "focus:ring-1 focus:ring-slate-500 dark:focus:ring-gray-50",
+          "h-8 w-full rounded-xl px-3 text-sm text-foreground",
+          "bg-background/60 dark:bg-foreground/[0.03] border border-border/10 dark:border-foreground/[0.06]",
+          "shadow-sm ring-1 ring-foreground/[0.06]",
+          "hover:text-foreground hover:bg-background dark:hover:bg-foreground/[0.06]",
           "transition-colors duration-150 hover:transition-none",
           "[&>svg]:h-3.5 [&>svg]:w-3.5 [&>svg]:opacity-50"
         )}
@@ -206,7 +209,7 @@ function EditableDropdownField({
 
   if (readOnly) {
     return (
-      <span className="px-1 text-muted-foreground">
+      <span className="inline-flex h-8 items-center rounded-xl bg-background/60 dark:bg-foreground/[0.03] border border-border/10 dark:border-foreground/[0.06] px-3 text-sm text-muted-foreground shadow-sm ring-1 ring-foreground/[0.06]">
         {selectedOption?.label ?? value}
       </span>
     );
@@ -220,9 +223,10 @@ function EditableDropdownField({
     >
       <SelectTrigger
         className={cn(
-          "w-full px-1 py-0 h-[unset] border-transparent text-foreground font-normal",
-          "hover:ring-1 hover:ring-slate-300 dark:hover:ring-gray-500 hover:bg-slate-50 dark:hover:bg-gray-800",
-          "focus:ring-1 focus:ring-slate-500 dark:focus:ring-gray-50",
+          "h-8 w-full rounded-xl px-3 text-sm text-foreground",
+          "bg-background/60 dark:bg-foreground/[0.03] border border-border/10 dark:border-foreground/[0.06]",
+          "shadow-sm ring-1 ring-foreground/[0.06]",
+          "hover:text-foreground hover:bg-background dark:hover:bg-foreground/[0.06]",
           "transition-colors duration-150 hover:transition-none",
           "[&>svg]:h-3.5 [&>svg]:w-3.5 [&>svg]:opacity-50"
         )}
@@ -285,9 +289,11 @@ function CustomButtonField({
       onClick={onClick}
       disabled={disabled}
       className={cn(
-        "w-full px-1 py-0 h-[unset] border-transparent rounded text-left text-foreground",
-        !disabled && "hover:ring-1 hover:ring-slate-300 dark:hover:ring-gray-500 hover:bg-slate-50 dark:hover:bg-gray-800 hover:cursor-pointer",
-        "focus:outline-none focus-visible:ring-1 focus-visible:ring-slate-500 dark:focus-visible:ring-gray-50",
+        "h-8 w-full rounded-xl px-3 text-left text-sm text-foreground",
+        "bg-background/60 dark:bg-foreground/[0.03] border border-border/10 dark:border-foreground/[0.06]",
+        "shadow-sm ring-1 ring-foreground/[0.06]",
+        !disabled && "hover:text-foreground hover:bg-background dark:hover:bg-foreground/[0.06] hover:cursor-pointer",
+        "focus:outline-none focus-visible:ring-1 focus-visible:ring-foreground/[0.1]",
         "transition-colors duration-150 hover:transition-none",
         disabled && "opacity-50 cursor-not-allowed"
       )}
@@ -309,9 +315,11 @@ function CustomDropdownField({
     <button
       disabled={disabled}
       className={cn(
-        "w-full px-1 py-0 h-[unset] border-transparent rounded text-left text-foreground",
-        !disabled && "hover:ring-1 hover:ring-slate-300 dark:hover:ring-gray-500 hover:bg-slate-50 dark:hover:bg-gray-800 hover:cursor-pointer",
-        "focus:outline-none focus-visible:ring-1 focus-visible:ring-slate-500 dark:focus-visible:ring-gray-50",
+        "h-8 w-full rounded-xl px-3 text-left text-sm text-foreground",
+        "bg-background/60 dark:bg-foreground/[0.03] border border-border/10 dark:border-foreground/[0.06]",
+        "shadow-sm ring-1 ring-foreground/[0.06]",
+        !disabled && "hover:text-foreground hover:bg-background dark:hover:bg-foreground/[0.06] hover:cursor-pointer",
+        "focus:outline-none focus-visible:ring-1 focus-visible:ring-foreground/[0.1]",
         "transition-colors duration-150 hover:transition-none",
         disabled && "opacity-50 cursor-not-allowed"
       )}
@@ -392,7 +400,7 @@ export function EditableGrid({ items, columns = 2, className }: EditableGridProp
 
   return (
     <div className={cn(
-      "grid gap-x-4 gap-y-2 text-sm items-start",
+      "grid gap-x-6 gap-y-3 text-sm items-start",
       gridCols,
       className
     )}>
