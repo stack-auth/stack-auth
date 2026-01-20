@@ -186,12 +186,15 @@ function ProductHeader({ productId, product, productLineName }: ProductHeaderPro
               }}
             />
           </div>
-          {isAddOn && (
-            <Badge variant="outline" className="text-xs shrink-0">Add-on</Badge>
-          )}
-          {product.stackable && (
-            <Badge variant="outline" className="text-xs shrink-0">Stackable</Badge>
-          )}
+          <Button
+            variant="outline"
+            size="sm"
+            className="shrink-0 gap-1.5"
+            onClick={() => router.push(`/projects/${projectId}/payments/products/${productId}/edit`)}
+          >
+            <PencilSimpleIcon className="h-4 w-4" />
+            Edit
+          </Button>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" size="icon" className="shrink-0">
