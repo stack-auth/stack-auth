@@ -23,7 +23,7 @@ export const POST = createSmartRouteHandler({
   }),
   handler: async (req) => {
     const featureName = req.body?.name as unknown;
-    const expectedUnsupportedFeatures = ["rsc-handler-signIn"];
+    const expectedUnsupportedFeatures: unknown[] = ["rsc-handler-signIn"];
     if (!expectedUnsupportedFeatures.includes(featureName)) {
       captureError("check-feature-support", new StackAssertionError(`${req.auth?.user?.primaryEmail || "User"} tried to check support of unsupported feature: ${JSON.stringify(req.body, null, 2)}`, { req }));
     }
