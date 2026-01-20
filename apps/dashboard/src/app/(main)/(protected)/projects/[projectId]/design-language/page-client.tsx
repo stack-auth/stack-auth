@@ -1,24 +1,14 @@
 "use client";
 
-import { AppIcon } from "@/components/app-square";
-import { CodeBlock } from "@/components/code-block";
-import { Link } from "@/components/link";
-import { useRouter } from "@/components/router";
 import {
   Alert,
   AlertDescription,
   AlertTitle,
-  Badge,
   Button,
-  Checkbox,
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
-  Input,
-  Label,
-  Switch,
   Tabs,
   TabsContent,
   TabsList,
@@ -27,43 +17,25 @@ import {
   cn,
 } from "@/components/ui";
 import {
-  ArrowSquareOut,
-  BookOpenText,
-  CaretUpIcon,
   CheckCircle,
-  Code,
   CompassIcon,
   Cube,
   DotsThree,
-  DotsThreeIcon,
   Envelope,
   FileText,
-  GlobeIcon,
   HardDrive,
-  MagnifyingGlassIcon,
   Palette,
-  PencilSimple,
-  PlusIcon,
   Sliders,
   SquaresFourIcon,
-  Trash,
   WarningCircle,
-  WarningCircleIcon,
   XCircle
 } from "@phosphor-icons/react";
 import { useState } from "react";
 import {
-  AuthMethodDatapoint,
-  DataPoint,
-  DonutChartDisplay,
-  TabbedMetricsCard,
   TimeRange,
   TimeRangeToggle
 } from "../(overview)/line-chart";
-import { MetricsLoadingFallback } from "../(overview)/metrics-loading";
 import { PageLayout } from "../page-layout";
-
-import { ALL_APPS, type AppId } from "@stackframe/stack-shared/dist/apps/apps-config";
 
 // =============================================================================
 // COMPONENT DISPLAY WRAPPER
@@ -91,8 +63,7 @@ function ComponentDemo({
         </div>
       </div>
 
-      {/* Preview */}
-      <div className="p-6 rounded-xl bg-muted/30 border border-border/50">
+      <div className="space-y-4">
         {children}
       </div>
     </div>
@@ -141,23 +112,36 @@ function PropsTable({
 // Key CSS: bg-background/60 backdrop-blur-xl ring-1 ring-foreground/[0.06]
 // CRITICAL: Always use "transition-all duration-150 hover:transition-none"
 // =============================================================================
-// Main section card - NO hover tints (to avoid affecting nested components)
 function GlassCard({
   children,
   className,
+  gradientColor = "blue",
 }: {
   children: React.ReactNode,
   className?: string,
-  gradientColor?: "blue" | "purple" | "green" | "orange" | "slate" | "cyan", // kept for API compatibility
+  gradientColor?: "blue" | "purple" | "green" | "orange" | "default" | "cyan",
 }) {
+  const hoverTints: Record<string, string> = {
+    blue: "group-hover:bg-blue-500/[0.03]",
+    purple: "group-hover:bg-purple-500/[0.03]",
+    green: "group-hover:bg-emerald-500/[0.03]",
+    orange: "group-hover:bg-orange-500/[0.03]",
+    default: "group-hover:bg-slate-500/[0.02]",
+    cyan: "group-hover:bg-cyan-500/[0.03]",
+  };
+
   return (
     <div className={cn(
-      "relative rounded-2xl bg-background/60 backdrop-blur-xl",
-      "ring-1 ring-foreground/[0.06]",
-      "shadow-sm",
+      "group relative rounded-2xl bg-background/60 backdrop-blur-xl transition-all duration-150 hover:transition-none",
+      "ring-1 ring-foreground/[0.06] hover:ring-foreground/[0.1]",
+      "shadow-sm hover:shadow-md",
       className
     )}>
       <div className="absolute inset-0 bg-gradient-to-br from-foreground/[0.02] to-transparent pointer-events-none rounded-2xl overflow-hidden" />
+      <div className={cn(
+        "absolute inset-0 transition-colors duration-150 group-hover:transition-none pointer-events-none rounded-2xl overflow-hidden",
+        hoverTints[gradientColor]
+      )} />
       <div className="relative">
         {children}
       </div>
@@ -169,18 +153,18 @@ function GlassCard({
 function GlassCardWithTint({
   children,
   className,
-  gradientColor = "slate",
+  gradientColor = "default",
 }: {
   children: React.ReactNode,
   className?: string,
-  gradientColor: "blue" | "purple" | "green" | "orange" | "slate" | "cyan",
+  gradientColor: "blue" | "purple" | "green" | "orange" | "default" | "cyan",
 }) {
   const hoverTints: Record<string, string> = {
     blue: "group-hover/tint:bg-blue-500/[0.02]",
     purple: "group-hover/tint:bg-purple-500/[0.02]",
     green: "group-hover/tint:bg-emerald-500/[0.02]",
     orange: "group-hover/tint:bg-orange-500/[0.02]",
-    slate: "group-hover/tint:bg-slate-500/[0.015]",
+    default: "group-hover/tint:bg-slate-500/[0.015]",
     cyan: "group-hover/tint:bg-cyan-500/[0.02]",
   };
 
@@ -222,33 +206,79 @@ function SectionHeader({ icon: Icon, title }: { icon: React.ElementType, title: 
   );
 }
 
+function DesignSection({
+  id,
+  icon: Icon,
+  title,
+  description,
+  children,
+}: {
+  id: string,
+  icon: React.ElementType,
+  title: string,
+  description?: string,
+  children: React.ReactNode,
+}) {
+  return (
+    <section
+      id={id}
+      className="space-y-6 border-b border-foreground/[0.06] pb-12 last:border-b-0 last:pb-0 scroll-mt-24"
+    >
+      <div className="space-y-2">
+        <SectionHeader icon={Icon} title={title} />
+        {description && (
+          <Typography variant="secondary" className="text-sm">
+            {description}
+          </Typography>
+        )}
+      </div>
+      <div className="space-y-8">
+        {children}
+      </div>
+    </section>
+  );
+}
+
 // =============================================================================
 // STATUS BADGE COMPONENT
-// From: emails/page-client.tsx - StatusBadge component
-// Used for: Email status, operation results, health indicators
-// Colors: emerald (sent), amber (pending), red (failed) with /10 bg and /20 ring
+// Gradient-based status pills with optional icons and size variants
 // =============================================================================
-function StatusBadge({ status }: { status: 'sent' | 'failed' | 'pending' }) {
-  if (status === 'sent') {
-    return (
-      <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 ring-1 ring-emerald-500/20">
-        <CheckCircle className="h-3 w-3" />
-        Sent
-      </div>
-    );
-  }
-  if (status === 'pending') {
-    return (
-      <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium text-amber-600 dark:text-amber-400 bg-amber-500/10 ring-1 ring-amber-500/20">
-        <span className="h-2 w-2 rounded-full bg-current animate-pulse" />
-        Pending
-      </div>
-    );
-  }
+type StatusBadgeColor = "blue" | "cyan" | "purple" | "green" | "orange" | "red";
+type StatusBadgeSize = "sm" | "md";
+
+const STATUS_BADGE_STYLES: Record<StatusBadgeColor, string> = {
+  blue: "text-blue-600 dark:text-blue-400 bg-blue-500/10 ring-1 ring-blue-500/20",
+  cyan: "text-cyan-600 dark:text-cyan-400 bg-cyan-500/10 ring-1 ring-cyan-500/20",
+  purple: "text-purple-600 dark:text-purple-400 bg-purple-500/10 ring-1 ring-purple-500/20",
+  green: "text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 ring-1 ring-emerald-500/20",
+  orange: "text-orange-600 dark:text-orange-400 bg-orange-500/10 ring-1 ring-orange-500/20",
+  red: "text-red-600 dark:text-red-400 bg-red-500/10 ring-1 ring-red-500/20",
+};
+
+function StatusBadge({
+  label,
+  color,
+  icon,
+  size = "md",
+}: {
+  label: string,
+  color: StatusBadgeColor,
+  icon?: React.ElementType,
+  size?: StatusBadgeSize,
+}) {
+  const Icon = icon;
+  const sizeClasses = size === "sm"
+    ? "px-2 py-0.5 text-[10px]"
+    : "px-2.5 py-1 text-[11px]";
+
   return (
-    <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium text-red-600 dark:text-red-400 bg-red-500/10 ring-1 ring-red-500/20">
-      <XCircle className="h-3 w-3" />
-      Failed
+    <div className={cn(
+      "inline-flex items-center gap-1.5 rounded-full font-medium",
+      STATUS_BADGE_STYLES[color],
+      sizeClasses
+    )}>
+      {Icon && <Icon className="h-3 w-3" />}
+      {label}
     </div>
   );
 }
@@ -257,7 +287,6 @@ function StatusBadge({ status }: { status: 'sent' | 'failed' | 'pending' }) {
 // CATEGORY TABS (UNDERLINE STYLE)
 // From: apps/page-client.tsx - Category tabs with counts and underline indicator
 // Used for: Filtering lists, category navigation
-// Features: Count badges, underline indicator for active, horizontal scroll
 // =============================================================================
 function CategoryTabs({
   categories,
@@ -299,6 +328,36 @@ function CategoryTabs({
           </button>
         );
       })}
+    </div>
+  );
+}
+
+// =============================================================================
+// UNDERLINE TABS
+// Used for: Small view switchers (charts, lists)
+// =============================================================================
+function UnderlineTabsDemo() {
+  const [activeTab, setActiveTab] = useState<"chart" | "list">("chart");
+  return (
+    <div className="flex items-center gap-1 border-b border-foreground/[0.05]">
+      {[
+        { id: "chart", label: "Daily Active Users" },
+        { id: "list", label: "Recently Active" },
+      ].map((tab) => (
+        <button
+          key={tab.id}
+          onClick={() => setActiveTab(tab.id as "chart" | "list")}
+          className={cn(
+            "relative px-3 py-3.5 text-xs font-medium transition-all duration-150 hover:transition-none rounded-t-lg",
+            activeTab === tab.id ? "text-foreground" : "text-muted-foreground hover:text-foreground"
+          )}
+        >
+          {tab.label}
+          {activeTab === tab.id && (
+            <div className="absolute bottom-0 left-3 right-3 h-0.5 rounded-full bg-cyan-500 dark:bg-[hsl(200,91%,70%)]" />
+          )}
+        </button>
+      ))}
     </div>
   );
 }
@@ -403,32 +462,6 @@ function ListItemRow({
 // DEMO COMPONENTS (for showcasing overview page patterns)
 // =============================================================================
 
-function UnderlineTabsDemo() {
-  const [activeTab, setActiveTab] = useState<'chart' | 'list'>('chart');
-  return (
-    <div className="flex items-center gap-1 border-b border-foreground/[0.05]">
-      {[
-        { id: 'chart', label: 'Daily Active Users' },
-        { id: 'list', label: 'Recently Active' },
-      ].map((tab) => (
-        <button
-          key={tab.id}
-          onClick={() => setActiveTab(tab.id as 'chart' | 'list')}
-          className={cn(
-            "relative px-3 py-3.5 text-xs font-medium transition-all duration-150 hover:transition-none rounded-t-lg",
-            activeTab === tab.id ? "text-foreground" : "text-muted-foreground hover:text-foreground"
-          )}
-        >
-          {tab.label}
-          {activeTab === tab.id && (
-            <div className="absolute bottom-0 left-3 right-3 h-0.5 rounded-full bg-cyan-500 dark:bg-[hsl(200,91%,70%)]" />
-          )}
-        </button>
-      ))}
-    </div>
-  );
-}
-
 function UserListItemDemo() {
   const users = [
     { name: "John Doe", email: "john@example.com", time: "Active 2h ago", color: "cyan" },
@@ -457,233 +490,10 @@ function UserListItemDemo() {
   );
 }
 
-function ChartTooltipDemo() {
-  return (
-    <div className="rounded-xl bg-background/95 px-3.5 py-2.5 shadow-lg backdrop-blur-xl ring-1 ring-foreground/[0.08] w-fit">
-      <div className="flex flex-col gap-2">
-        <span className="text-[11px] font-medium text-muted-foreground tracking-wide">
-          Jan 15, 2024
-        </span>
-        <div className="flex items-center gap-2.5">
-          <span className="h-2 w-2 rounded-full ring-2 ring-white/20 bg-cyan-500" />
-          <span className="text-[11px] text-muted-foreground">Activity</span>
-          <span className="ml-auto font-mono text-xs font-semibold tabular-nums text-foreground">1,234</span>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function LegendPillsDemo() {
-  const items = [
-    { label: "Google", color: "#DB4437", percentage: 45 },
-    { label: "GitHub", color: "#181717", percentage: 30 },
-    { label: "Email", color: "#F59E0B", percentage: 25 },
-  ];
-  return (
-    <div className="flex flex-wrap gap-2">
-      {items.map((item) => (
-        <div
-          key={item.label}
-          className="flex items-center gap-1.5 rounded-full bg-foreground/[0.03] ring-1 ring-foreground/[0.06] transition-colors duration-150 hover:transition-none hover:bg-foreground/[0.05] px-3 py-1.5 text-xs cursor-pointer"
-        >
-          <span className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: item.color }} />
-          <span className="font-medium text-foreground">{item.label}</span>
-          <span className="text-muted-foreground">{item.percentage}%</span>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function LoadingStateDemo() {
-  return (
-    <div className="flex flex-col items-center justify-center py-8 space-y-4">
-      <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-      <div className="text-center space-y-1">
-        <p className="text-sm font-medium">Recalculating metrics...</p>
-        <p className="text-xs text-muted-foreground">Please check back later</p>
-      </div>
-    </div>
-  );
-}
-
-function FrameworkSelectorDemo() {
-  const [selected, setSelected] = useState<string>('nextjs');
-  const frameworks = [
-    { id: 'nextjs', name: 'Next.js', icon: '▲' },
-    { id: 'react', name: 'React', icon: '⚛' },
-    { id: 'js', name: 'JavaScript', icon: 'JS' },
-    { id: 'python', name: 'Python', icon: '🐍' },
-  ];
-  return (
-    <div className="flex gap-4 flex-wrap">
-      {frameworks.map((fw) => (
-        <Button
-          key={fw.id}
-          variant={selected === fw.id ? 'secondary' : 'ghost'}
-          className="h-24 w-24 flex flex-col items-center justify-center gap-2"
-          onClick={() => setSelected(fw.id)}
-        >
-          <span className="text-2xl">{fw.icon}</span>
-          <Typography type="label">{fw.name}</Typography>
-        </Button>
-      ))}
-    </div>
-  );
-}
-
-function StepIndicatorDemo() {
-  const steps = [
-    { step: 1, title: "Select framework", done: true },
-    { step: 2, title: "Install dependencies", done: true },
-    { step: 3, title: "Configure keys", done: false },
-  ];
-  return (
-    <ol className="relative text-gray-500 border-s border-gray-200 dark:border-gray-700 ml-4">
-      {steps.map((item) => (
-        <li key={item.step} className="ms-6 mb-8 last:mb-0">
-          <span className={cn(
-            "absolute flex items-center justify-center w-8 h-8 rounded-full -start-4 ring-4 ring-white dark:ring-gray-900",
-            item.done ? "bg-green-500 text-white" : "bg-gray-100 dark:bg-gray-700"
-          )}>
-            {item.done ? (
-              <CheckCircle className="w-4 h-4" weight="bold" />
-            ) : (
-              <span className="text-gray-500 dark:text-gray-400 font-medium text-sm">{item.step}</span>
-            )}
-          </span>
-          <h3 className={cn("font-medium leading-tight", item.done ? "text-foreground" : "text-muted-foreground")}>
-            {item.title}
-          </h3>
-        </li>
-      ))}
-    </ol>
-  );
-}
-
-
-function QuickAccessGridDemo() {
-  const [expanded, setExpanded] = useState(false);
-  const apps = expanded ? DEMO_APP_IDS : DEMO_APP_IDS.slice(0, 4);
-
-  return (
-    <div className="shrink-0">
-      <div className="grid grid-cols-[repeat(auto-fill,minmax(90px,1fr))] gap-2">
-        {apps.map((appId) => (
-          <Link
-            key={appId}
-            href="#"
-            className="group flex flex-col items-center gap-2.5 pt-3 pb-2 rounded-xl hover:bg-foreground/[0.03] transition-all duration-750 hover:transition-none"
-            title={ALL_APPS[appId].displayName}
-          >
-            <div className="relative transition-transform duration-750 group-hover:transition-none group-hover:scale-105">
-              <AppIcon
-                appId={appId}
-                variant="installed"
-                className="shadow-sm group-hover:shadow-[0_0_20px_rgba(59,130,246,0.45)] group-hover:brightness-110 group-hover:saturate-110 transition-all duration-750 group-hover:transition-none"
-              />
-            </div>
-            <span
-              className="text-[11px] font-medium text-center group-hover:text-foreground transition-colors duration-750 group-hover:transition-none leading-tight w-full"
-              title={ALL_APPS[appId].displayName}
-            >
-              {ALL_APPS[appId].displayName}
-            </span>
-          </Link>
-        ))}
-        <Link
-          href="#"
-          className="group flex flex-col items-center gap-2.5 pt-3 pb-2 rounded-xl hover:bg-foreground/[0.03] transition-all duration-750 hover:transition-none"
-          title="Explore all apps"
-        >
-          <div className="relative transition-transform duration-750 group-hover:transition-none group-hover:scale-105">
-            <div className="flex items-center justify-center w-[72px] h-[72px]">
-              <CompassIcon className="w-[30px] h-[30px] text-muted-foreground group-hover:text-foreground transition-colors duration-750 group-hover:transition-none" />
-            </div>
-          </div>
-          <span className="text-[11px] font-medium text-center text-muted-foreground group-hover:text-foreground transition-colors duration-750 group-hover:transition-none leading-tight w-full">
-            Explore
-          </span>
-        </Link>
-        <button
-          type="button"
-          onClick={() => setExpanded((prev) => !prev)}
-          className="group flex flex-col items-center gap-2.5 pt-3 pb-2 rounded-xl hover:bg-foreground/[0.03] transition-all duration-750 hover:transition-none"
-          title={expanded ? "Show less" : "See all"}
-        >
-          <div className="relative transition-transform duration-750 group-hover:transition-none group-hover:scale-105">
-            <div className="flex items-center justify-center w-[72px] h-[72px]">
-              {expanded ? (
-                <CaretUpIcon className="w-[30px] h-[30px] text-muted-foreground group-hover:text-foreground transition-colors duration-750 group-hover:transition-none" />
-              ) : (
-                <DotsThreeIcon className="w-[30px] h-[30px] text-muted-foreground group-hover:text-foreground transition-colors duration-750 group-hover:transition-none" />
-              )}
-            </div>
-          </div>
-          <span className="text-[11px] font-medium text-center text-muted-foreground group-hover:text-foreground transition-colors duration-750 group-hover:transition-none leading-tight w-full">
-            {expanded ? "Less" : "See all"}
-          </span>
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function MetricStatCalloutDemo() {
-  return (
-    <div>
-      <div className="flex items-center gap-2 mb-2">
-        <div className="p-1.5 rounded-lg bg-foreground/[0.04]">
-          <GlobeIcon className="h-3.5 w-3.5 text-muted-foreground" />
-        </div>
-        <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-          Total Users
-        </span>
-      </div>
-      <div className="text-4xl font-bold tracking-tight text-foreground pl-0.5">
-        128,456
-      </div>
-    </div>
-  );
-}
-
-
-// Static chart data for demos (avoids hydration issues)
-const DEMO_CHART_DATA: DataPoint[] = [
-  { date: "2024-01-01", activity: 120 },
-  { date: "2024-01-02", activity: 150 },
-  { date: "2024-01-03", activity: 90 },
-  { date: "2024-01-04", activity: 180 },
-  { date: "2024-01-05", activity: 60 },
-  { date: "2024-01-06", activity: 45 },
-  { date: "2024-01-07", activity: 200 },
-  { date: "2024-01-08", activity: 170 },
-  { date: "2024-01-09", activity: 130 },
-  { date: "2024-01-10", activity: 160 },
-  { date: "2024-01-11", activity: 140 },
-  { date: "2024-01-12", activity: 110 },
-  { date: "2024-01-13", activity: 55 },
-  { date: "2024-01-14", activity: 190 },
-];
-
-const DEMO_AUTH_DATA: AuthMethodDatapoint[] = [
-  { method: "google", count: 450 },
-  { method: "github", count: 300 },
-  { method: "email", count: 250 },
-  { method: "microsoft", count: 120 },
-];
-
-const DEMO_APP_IDS = (Object.keys(ALL_APPS) as AppId[]).slice(0, 6);
-
 export default function PageClient() {
-  const router = useRouter();
-
   const [selectedCategory, setSelectedCategory] = useState("all");
   const [selectedViewport, setSelectedViewport] = useState("phone");
   const [timeRange, setTimeRange] = useState<TimeRange>("30d");
-  const [switchChecked, setSwitchChecked] = useState(false);
-  const [checkboxChecked, setCheckboxChecked] = useState(false);
   const [listAction, setListAction] = useState<"edit" | "delete" | null>(null);
 
   const categories = [
@@ -699,453 +509,213 @@ export default function PageClient() {
     { id: "desktop", label: "Desktop", icon: HardDrive },
   ];
 
+  const sectionItems = [
+    { id: "global-props", label: "Global Props" },
+    { id: "cards", label: "Cards" },
+    { id: "tabs", label: "Tabs" },
+    { id: "pill-toggle", label: "Pill Toggle" },
+    { id: "alert", label: "Alert" },
+    { id: "badge", label: "Badge" },
+    { id: "list-components", label: "List Components" },
+  ];
+
+  const handleSectionJump = (id: string) => {
+    const section = document.getElementById(id);
+    if (!section) {
+      return;
+    }
+    section.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+
   return (
     <PageLayout
       title="Design System"
       description="Component library documentation with variants, props, and usage examples"
     >
       <div className="flex flex-col gap-12">
-
-        {/* ============================================================ */}
-        {/* TYPOGRAPHY */}
-        {/* ============================================================ */}
-        <GlassCard gradientColor="slate">
-          <div className="p-6 border-b border-foreground/[0.05]">
-            <SectionHeader icon={BookOpenText} title="Typography" />
-            <Typography variant="secondary" className="text-sm mt-2">
-              Text styles and hierarchy using Geist Sans
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div className="space-y-1">
+            <Typography type="label" className="text-xs uppercase tracking-wide text-muted-foreground">
+              On this page
+            </Typography>
+            <Typography variant="secondary" className="text-sm">
+              Jump to a specific section
             </Typography>
           </div>
-          <div className="p-6 space-y-8">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" className="gap-2">
+                <CompassIcon className="h-4 w-4" />
+                Jump to section
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="min-w-[220px]">
+              {sectionItems.map((section) => (
+                <DropdownMenuItem
+                  key={section.id}
+                  onClick={() => handleSectionJump(section.id)}
+                  className="cursor-pointer"
+                >
+                  {section.label}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
 
-            <ComponentDemo
-              title="Heading Levels"
-              description="Different heading sizes"
-            >
-              <div className="space-y-3">
-                <Typography type="h1">Heading 1 - Largest</Typography>
-                <Typography type="h2">Heading 2 - Large</Typography>
-                <Typography type="h3">Heading 3 - Medium</Typography>
-                <Typography type="h4">Heading 4 - Small</Typography>
-              </div>
-            </ComponentDemo>
-
-            <ComponentDemo
-              title="Body Text"
-              description="Paragraph, label, and footnote styles"
-            >
-              <div className="space-y-3">
-                <Typography type="p">Paragraph text for body content.</Typography>
-                <Typography type="label">Label text for form fields</Typography>
-                <Typography type="footnote">Footnote text for small print</Typography>
-              </div>
-            </ComponentDemo>
-
-            <ComponentDemo
-              title="Color Variants"
-              description="Text color variations"
-              code={`<Typography variant="primary">Primary text</Typography>
-<Typography variant="secondary">Secondary text</Typography>
-<Typography variant="destructive">Error text</Typography>
-<Typography variant="success">Success text</Typography>`}
-            >
-              <div className="flex flex-wrap gap-4">
-                <Typography variant="primary">Primary</Typography>
-                <Typography variant="secondary">Secondary</Typography>
-                <Typography variant="destructive">Destructive</Typography>
-                <Typography variant="success">Success</Typography>
-              </div>
-            </ComponentDemo>
-
-            <div className="pt-4 border-t border-foreground/[0.05]">
-              <Typography type="label" className="font-semibold mb-3">Props</Typography>
+        {/* ============================================================ */}
+        {/* GLOBAL PROPS */}
+        {/* ============================================================ */}
+        <DesignSection
+          id="global-props"
+          icon={Sliders}
+          title="Global Props"
+          description="Shared props most components should support"
+        >
+          <ComponentDemo
+            title="Core Interface"
+            description="Implement when needed; throw an error when provided but unsupported."
+          >
+            <div className="space-y-4">
+              <Typography variant="secondary" className="text-sm">
+                These props are shared across the component library. If a component does not
+                yet implement one of them, throw an error to keep behavior explicit.
+              </Typography>
               <PropsTable props={[
-                { name: "type", type: "'h1' | 'h2' | 'h3' | 'h4' | 'p' | 'label' | 'footnote'", default: "'p'", description: "Text style and size" },
-                { name: "variant", type: "'primary' | 'secondary' | 'destructive' | 'success'", default: "'primary'", description: "Text color" },
+                {
+                  name: "glassmorphic",
+                  type: "boolean",
+                  default: "true",
+                  description: "Use glassmorphic styling. Typically true when outside a card.",
+                },
+                {
+                  name: "size",
+                  type: "'sm' | 'md' | 'lg' | ...",
+                  default: "'md'",
+                  description: "Default size is medium. Some components add extra sizes.",
+                },
+                {
+                  name: "gradient",
+                  type: "'blue' | 'purple' | 'green' | 'orange' | 'default' | 'cyan' | ...",
+                  description: "Optional. Some components apply it only when glassmorphic is true.",
+                },
               ]} />
             </div>
-          </div>
-        </GlassCard>
+          </ComponentDemo>
+        </DesignSection>
 
         {/* ============================================================ */}
-        {/* DESIGN TOKENS */}
+        {/* CARDS */}
         {/* ============================================================ */}
-        <GlassCard>
-          <div className="p-6 border-b border-foreground/[0.05]">
-            <SectionHeader icon={Palette} title="Design Tokens" />
-            <Typography variant="secondary" className="text-sm mt-2">
-              Core design values: colors, spacing, and transitions
-            </Typography>
-          </div>
-          <div className="p-6 space-y-8">
-
-            <div className="space-y-4">
-              <Typography type="label" className="font-semibold">Opacity Layers</Typography>
-              <Typography variant="secondary" className="text-sm">
-                Foreground-based opacity values for consistent light/dark mode
-              </Typography>
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                {[
-                  { opacity: "0.02", label: "Gradient overlay", usage: "Card gradients" },
-                  { opacity: "0.03", label: "Subtle hover", usage: "Hover backgrounds" },
-                  { opacity: "0.04", label: "Icon backgrounds", usage: "Icon containers" },
-                  { opacity: "0.05", label: "More visible", usage: "Borders, dividers" },
-                  { opacity: "0.06", label: "Active/ring", usage: "Focus rings, active states" },
-                  { opacity: "0.10", label: "Prominent", usage: "Strong backgrounds" },
-                ].map(({ opacity, label, usage }) => (
-                  <div key={opacity} className="flex items-center gap-3 p-3 rounded-lg bg-foreground/[0.04]">
-                    <div className="w-10 h-10 rounded shrink-0" style={{ backgroundColor: `hsl(var(--foreground) / ${opacity})` }} />
-                    <div className="min-w-0">
-                      <div className="text-xs font-mono text-foreground font-semibold">{opacity}</div>
-                      <div className="text-[10px] text-muted-foreground truncate">{usage}</div>
-                    </div>
+        <DesignSection
+          id="cards"
+          icon={SquaresFourIcon}
+          title="Cards"
+          description="Use to group related settings or actions in a focused container."
+        >
+          <ComponentDemo
+            title="Icon + Title + Subtitle"
+            description="Header with supporting copy and a simple content area"
+          >
+            <GlassCard gradientColor="default">
+              <div className="p-5">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex-1 min-w-0">
+                    <SectionHeader icon={Envelope} title="Email Drafts" />
+                    <Typography variant="secondary" className="text-sm mt-1">
+                      Create, edit, and send email drafts
+                    </Typography>
                   </div>
-                ))}
-              </div>
-            </div>
-
-            <div className="pt-4 border-t border-foreground/[0.05] space-y-4">
-              <Typography type="label" className="font-semibold">Accent Colors</Typography>
-              <div className="flex flex-wrap gap-2">
-                <div className="px-3 py-2 rounded-lg bg-blue-500/20 text-blue-600 dark:text-blue-400 text-xs font-medium">Blue (Primary)</div>
-                <div className="px-3 py-2 rounded-lg bg-cyan-500/20 text-cyan-600 dark:text-cyan-400 text-xs font-medium">Cyan (DAU)</div>
-                <div className="px-3 py-2 rounded-lg bg-purple-500/20 text-purple-600 dark:text-purple-400 text-xs font-medium">Purple (Features)</div>
-                <div className="px-3 py-2 rounded-lg bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-xs font-medium">Green (Success)</div>
-                <div className="px-3 py-2 rounded-lg bg-orange-500/20 text-orange-600 dark:text-orange-400 text-xs font-medium">Orange (Warning)</div>
-              </div>
-            </div>
-
-            <div className="pt-4 border-t border-foreground/[0.05] space-y-4">
-              <Typography type="label" className="font-semibold">⚡ Transition Guidelines</Typography>
-              <Alert className="bg-green-500/5 border-green-500/20">
-                <CheckCircle className="h-4 w-4 text-green-500" />
-                <AlertTitle className="text-green-600 dark:text-green-400">✓ CORRECT Pattern</AlertTitle>
-                <AlertDescription>
-                  <code className="text-xs block mt-1">transition-all duration-150 hover:transition-none</code>
-                  <Typography variant="secondary" className="text-xs mt-1">Instant on hover-in, smooth on hover-out</Typography>
-                </AlertDescription>
-              </Alert>
-              <Alert className="bg-red-500/5 border-red-500/20">
-                <XCircle className="h-4 w-4 text-red-500" />
-                <AlertTitle className="text-red-600 dark:text-red-400">✗ WRONG Pattern</AlertTitle>
-                <AlertDescription>
-                  <code className="text-xs block mt-1">transition-all duration-300</code>
-                  <Typography variant="secondary" className="text-xs mt-1">Causes sluggish UI with hover-in delays</Typography>
-                </AlertDescription>
-              </Alert>
-              <div className="p-4 bg-muted/30 rounded-xl">
-                <Typography type="label" className="font-semibold mb-2">Duration Values:</Typography>
-                <div className="space-y-1 text-xs text-muted-foreground">
-                  <div><code className="text-foreground">duration-150</code> — Standard interactions (buttons, cards)</div>
-                  <div><code className="text-foreground">duration-200</code> — Layout changes (sidebar, drawers)</div>
-                  <div><code className="text-foreground">duration-750</code> — Ambient effects (icon glows)</div>
                 </div>
               </div>
+              <div className="border-t border-foreground/[0.05] px-5 py-4">
+                <Typography variant="secondary" className="text-sm">
+                  Placeholder content for the card body.
+                </Typography>
+              </div>
+            </GlassCard>
+          </ComponentDemo>
+
+          <ComponentDemo
+            title="Compact Header"
+            description="Small header row with an optional icon"
+          >
+            <GlassCard gradientColor="cyan">
+              <div className="p-5 flex items-center justify-between gap-4 border-b border-foreground/[0.05]">
+                <div className="flex items-center gap-2">
+                  <div className="p-1.5 rounded-lg bg-foreground/[0.04]">
+                    <HardDrive className="h-3.5 w-3.5 text-muted-foreground" />
+                  </div>
+                  <span className="text-xs font-semibold text-foreground uppercase tracking-wider">
+                    Preview
+                  </span>
+                </div>
+                <Typography variant="secondary" className="text-xs">
+                  390 × 844
+                </Typography>
+              </div>
+              <div className="px-5 py-4">
+                <Typography variant="secondary" className="text-sm">
+                  Placeholder content for the card body.
+                </Typography>
+              </div>
+            </GlassCard>
+          </ComponentDemo>
+
+          <ComponentDemo
+            title="Body Only"
+            description="Use for simple content blocks without a header"
+          >
+            <GlassCard gradientColor="purple">
+              <div className="p-5">
+                <Typography variant="secondary" className="text-sm">
+                  Placeholder content for the card body.
+                </Typography>
+              </div>
+            </GlassCard>
+          </ComponentDemo>
+
+          <ComponentDemo
+            title="Glassmorphic Tint Variants"
+            description="Use when the card needs a tinted glass surface."
+          >
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+              {(["blue", "cyan", "purple", "green", "orange", "default"] as const).map((color) => (
+                <GlassCardWithTint key={color} gradientColor={color}>
+                  <div className="p-4">
+                    <SectionHeader icon={Cube} title={color} />
+                    <Typography variant="secondary" className="text-xs mt-2">
+                      Hover to see {color} tint
+                    </Typography>
+                  </div>
+                </GlassCardWithTint>
+              ))}
             </div>
+          </ComponentDemo>
+
+          <div className="pt-4 border-t border-foreground/[0.05]">
+            <Typography type="label" className="font-semibold mb-3">Props</Typography>
+            <PropsTable props={[
+              { name: "variant", type: "'header' | 'compact' | 'bodyOnly' | 'glassmorphic'", default: "'header'", description: "Layout style for the card header." },
+              { name: "title", type: "string", description: "Primary title when a header is present." },
+              { name: "subtitle", type: "string", description: "Optional supporting text under the title." },
+              { name: "icon", type: "ReactElement", description: "Optional leading icon in the header." },
+              { name: "glassmorphic", type: "boolean", default: "true", description: "Use glass styling when outside another card." },
+              { name: "size", type: "'sm' | 'md' | 'lg' | ...", default: "'md'", description: "Controls padding and density." },
+              { name: "gradient", type: "'blue' | 'cyan' | 'purple' | 'green' | 'orange' | 'default'", description: "Tint for glassmorphic cards." },
+            ]} />
           </div>
-        </GlassCard>
-
-        {/* ============================================================ */}
-        {/* CODE BLOCK */}
-        {/* ============================================================ */}
-        <GlassCard gradientColor="slate">
-          <div className="p-6 border-b border-foreground/[0.05]">
-            <SectionHeader icon={Code} title="Code Block" />
-            <Typography variant="secondary" className="text-sm mt-2">
-              Syntax-highlighted code display with copy button
-            </Typography>
-          </div>
-          <div className="p-6 space-y-8">
-
-            <ComponentDemo
-              title="Terminal Command"
-              description="Bash/shell commands"
-            >
-              <CodeBlock
-                language="bash"
-                content="npx @stackframe/init-stack@latest"
-                title="Terminal"
-                icon="terminal"
-              />
-            </ComponentDemo>
-
-            <ComponentDemo
-              title="TypeScript Code"
-              description="Code file with syntax highlighting"
-            >
-              <CodeBlock
-                language="typescript"
-                content={`import { StackClientApp } from "@stackframe/react";
-
-export const stackClientApp = new StackClientApp({
-  projectId: "your-project-id",
-  publishableClientKey: "pk_test_...",
-  tokenStore: "cookie",
-});`}
-                title="stack/client.ts"
-                icon="code"
-              />
-            </ComponentDemo>
-          </div>
-        </GlassCard>
-
-        {/* ============================================================ */}
-        {/* GLASSCARD COMPONENT */}
-        {/* ============================================================ */}
-        <GlassCard gradientColor="purple">
-          <div className="p-6 border-b border-foreground/[0.05]">
-            <SectionHeader icon={Palette} title="GlassCard" />
-            <Typography variant="secondary" className="text-sm mt-2">
-              Glassmorphic card with backdrop blur and accent hover tints
-            </Typography>
-          </div>
-          <div className="p-6 space-y-8">
-
-            <ComponentDemo
-              title="Gradient Colors"
-              description="Different accent colors that appear on hover"
-              code={`<GlassCard gradientColor="blue">
-  <div className="p-4">
-    <Typography>Blue accent</Typography>
-  </div>
-</GlassCard>`}
-            >
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-                {(["blue", "cyan", "purple", "green", "orange", "slate"] as const).map((color) => (
-                  <GlassCardWithTint key={color} gradientColor={color}>
-                    <div className="p-4">
-                      <SectionHeader icon={Cube} title={color} />
-                      <Typography variant="secondary" className="text-xs mt-2">
-                        Hover to see {color} tint
-                      </Typography>
-                    </div>
-                  </GlassCardWithTint>
-                ))}
-              </div>
-            </ComponentDemo>
-
-            <div className="pt-4 border-t border-foreground/[0.05]">
-              <Typography type="label" className="font-semibold mb-3">Key Features</Typography>
-              <ul className="space-y-2 text-sm text-muted-foreground">
-                <li>• <code className="text-xs">bg-background/60 backdrop-blur-xl</code> for glass effect</li>
-                <li>• <code className="text-xs">ring-1 ring-foreground/[0.06]</code> for soft border</li>
-                <li>• Gradient overlay <code className="text-xs">from-foreground/[0.02]</code> for depth</li>
-                <li>• Accent hover tints based on gradientColor prop</li>
-                <li>• Hover-exit transitions only (<code className="text-xs">hover:transition-none</code>)</li>
-              </ul>
-            </div>
-
-            <div className="pt-4 border-t border-foreground/[0.05]">
-              <Typography type="label" className="font-semibold mb-3">Props</Typography>
-              <PropsTable props={[
-                { name: "gradientColor", type: "'blue' | 'cyan' | 'purple' | 'green' | 'orange' | 'slate'", default: "'slate'", description: "Accent color that appears on hover" },
-                { name: "children", type: "ReactNode", description: "Content of the card" },
-                { name: "className", type: "string", description: "Additional CSS classes" },
-              ]} />
-            </div>
-          </div>
-        </GlassCard>
-
-        {/* ============================================================ */}
-        {/* BUTTON COMPONENT */}
-        {/* ============================================================ */}
-        <GlassCard gradientColor="blue">
-          <div className="p-6 border-b border-foreground/[0.05]">
-            <SectionHeader icon={Sliders} title="Button" />
-            <Typography variant="secondary" className="text-sm mt-2">
-              Interactive button component with multiple variants and sizes
-            </Typography>
-          </div>
-          <div className="p-6 space-y-8">
-
-            <ComponentDemo
-              title="Variants"
-              description="Different visual styles for various contexts"
-              code={`<Button variant="default">Default</Button>
-<Button variant="secondary">Secondary</Button>
-<Button variant="outline">Outline</Button>
-<Button variant="ghost">Ghost</Button>
-<Button variant="link">Link</Button>
-<Button variant="destructive">Destructive</Button>`}
-            >
-              <div className="flex flex-wrap gap-3">
-                <Button variant="default">Default</Button>
-                <Button variant="secondary">Secondary</Button>
-                <Button variant="outline">Outline</Button>
-                <Button variant="ghost">Ghost</Button>
-                <Button variant="link">Link</Button>
-                <Button variant="destructive">Destructive</Button>
-              </div>
-            </ComponentDemo>
-
-            <ComponentDemo
-              title="Sizes"
-              description="Different button sizes"
-              code={`<Button size="lg">Large</Button>
-<Button size="default">Default</Button>
-<Button size="sm">Small</Button>
-<Button size="icon"><PlusIcon /></Button>`}
-            >
-              <div className="flex flex-wrap items-center gap-3">
-                <Button size="lg">Large</Button>
-                <Button size="default">Default</Button>
-                <Button size="sm">Small</Button>
-                <Button size="icon"><PlusIcon className="h-4 w-4" /></Button>
-              </div>
-            </ComponentDemo>
-
-            <ComponentDemo
-              title="With Icons"
-              description="Buttons with leading or trailing icons"
-              code={`<Button>
-  <PlusIcon className="h-4 w-4 mr-2" />
-  Add Item
-</Button>`}
-            >
-              <div className="flex flex-wrap gap-3">
-                <Button><PlusIcon className="h-4 w-4 mr-2" />Add Item</Button>
-                <Button variant="secondary"><ArrowSquareOut className="h-4 w-4 mr-2" />Open</Button>
-                <Button variant="outline"><Trash className="h-4 w-4 mr-2" />Delete</Button>
-              </div>
-            </ComponentDemo>
-
-            <ComponentDemo
-              title="Loading State"
-              description="Show loading spinner"
-              code={`<Button loading>Loading...</Button>`}
-            >
-              <div className="flex flex-wrap gap-3">
-                <Button loading>Loading...</Button>
-                <Button variant="secondary" loading>Loading...</Button>
-              </div>
-            </ComponentDemo>
-
-            <div className="pt-4 border-t border-foreground/[0.05]">
-              <Typography type="label" className="font-semibold mb-3">Props</Typography>
-              <PropsTable props={[
-                { name: "variant", type: "'default' | 'secondary' | 'outline' | 'ghost' | 'link' | 'destructive'", default: "'default'", description: "Visual style of the button" },
-                { name: "size", type: "'default' | 'sm' | 'lg' | 'icon'", default: "'default'", description: "Size of the button" },
-                { name: "loading", type: "boolean", default: "false", description: "Show loading spinner" },
-                { name: "disabled", type: "boolean", default: "false", description: "Disable the button" },
-              ]} />
-            </div>
-          </div>
-        </GlassCard>
-
-        {/* ============================================================ */}
-        {/* INPUT COMPONENT */}
-        {/* ============================================================ */}
-        <GlassCard gradientColor="slate">
-          <div className="p-6 border-b border-foreground/[0.05]">
-            <SectionHeader icon={PencilSimple} title="Input" />
-            <Typography variant="secondary" className="text-sm mt-2">
-              Text input fields with various configurations
-            </Typography>
-          </div>
-          <div className="p-6 space-y-8">
-
-            <ComponentDemo
-              title="Basic Input"
-              description="Standard text input"
-              code={`<Label>Email</Label>
-<Input placeholder="Enter your email..." />`}
-            >
-              <div className="max-w-md space-y-2">
-                <Label>Email</Label>
-                <Input placeholder="Enter your email..." />
-              </div>
-            </ComponentDemo>
-
-            <ComponentDemo
-              title="Search Input"
-              description="Input with search icon"
-              code={`<div className="relative">
-  <MagnifyingGlassIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-  <input className="w-full pl-10 pr-4 py-2.5..." placeholder="Search..." />
-</div>`}
-            >
-              <div className="max-w-md relative">
-                <MagnifyingGlassIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-                <input
-                  type="text"
-                  placeholder="Search..."
-                  className="w-full pl-10 pr-4 py-2.5 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl text-sm placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
-                />
-              </div>
-            </ComponentDemo>
-
-            <div className="pt-4 border-t border-foreground/[0.05]">
-              <Typography type="label" className="font-semibold mb-3">Props</Typography>
-              <PropsTable props={[
-                { name: "prefixItem", type: "string", description: "Text to display before the input" },
-                { name: "placeholder", type: "string", description: "Placeholder text" },
-                { name: "disabled", type: "boolean", default: "false", description: "Disable the input" },
-              ]} />
-            </div>
-          </div>
-        </GlassCard>
-
-        {/* ============================================================ */}
-        {/* TOGGLE CONTROLS */}
-        {/* ============================================================ */}
-        <GlassCard gradientColor="blue">
-          <div className="p-6 border-b border-foreground/[0.05]">
-            <SectionHeader icon={Sliders} title="Toggle Controls" />
-            <Typography variant="secondary" className="text-sm mt-2">
-              Switch and checkbox components
-            </Typography>
-          </div>
-          <div className="p-6 space-y-8">
-
-            <ComponentDemo
-              title="Switch"
-              description="Toggle switch for boolean values"
-              code={`const [checked, setChecked] = useState(false);
-
-<Switch checked={checked} onCheckedChange={setChecked} />
-<Label>Enable notifications</Label>`}
-            >
-              <div className="flex items-center gap-3">
-                <Switch checked={switchChecked} onCheckedChange={setSwitchChecked} />
-                <Label>{switchChecked ? "Enabled" : "Disabled"}</Label>
-              </div>
-            </ComponentDemo>
-
-            <ComponentDemo
-              title="Checkbox"
-              description="Checkbox for multiple selections"
-              code={`const [checked, setChecked] = useState(false);
-
-<Checkbox checked={checked} onCheckedChange={setChecked} />
-<Label>I agree to the terms</Label>`}
-            >
-              <div className="flex items-center gap-3">
-                <Checkbox checked={checkboxChecked} onCheckedChange={(c) => setCheckboxChecked(!!c)} />
-                <Label>{checkboxChecked ? "Checked" : "Unchecked"}</Label>
-              </div>
-            </ComponentDemo>
-
-            <ComponentDemo
-              title="Time Range Toggle"
-              description="Pill-style toggle for time range selection"
-            >
-              <TimeRangeToggle timeRange={timeRange} onTimeRangeChange={setTimeRange} />
-            </ComponentDemo>
-          </div>
-        </GlassCard>
+        </DesignSection>
 
         {/* ============================================================ */}
         {/* TABS COMPONENT */}
         {/* ============================================================ */}
-        <GlassCard gradientColor="cyan">
-          <div className="p-6 border-b border-foreground/[0.05]">
-            <SectionHeader icon={Sliders} title="Tabs" />
-            <Typography variant="secondary" className="text-sm mt-2">
-              Tabbed navigation components
-            </Typography>
-          </div>
-          <div className="p-6 space-y-8">
-
+        <DesignSection
+          id="tabs"
+          icon={Sliders}
+          title="Tabs"
+          description="Use to switch between related sections without leaving the page."
+        >
             <ComponentDemo
               title="Standard Tabs"
               description="Default tab component"
@@ -1178,22 +748,50 @@ export const stackClientApp = new StackClientApp({
 
             <ComponentDemo
               title="Category Tabs"
-              description="Tabs with count badges and underline indicator"
+              description="Use for segmented lists with counts."
             >
-              <CategoryTabs categories={categories} selectedCategory={selectedCategory} onSelect={setSelectedCategory} />
+              <CategoryTabs
+                categories={categories}
+                selectedCategory={selectedCategory}
+                onSelect={setSelectedCategory}
+              />
             </ComponentDemo>
 
             <ComponentDemo
-              title="Underline Tabs (Metrics)"
-              description="Chart view tabs with colored underline indicator"
+              title="Underline Tabs"
+              description="Use for lightweight view switches."
             >
               <UnderlineTabsDemo />
             </ComponentDemo>
 
+            <div className="pt-4 border-t border-foreground/[0.05]">
+              <Typography type="label" className="font-semibold mb-3">Props</Typography>
+              <PropsTable props={[
+                { name: "variant", type: "'standard' | 'category' | 'underline'", default: "'standard'", description: "Visual style of the tabs." },
+                { name: "defaultValue", type: "string", description: "Initial active tab when uncontrolled." },
+                { name: "value", type: "string", description: "Controlled active tab value." },
+                { name: "onValueChange", type: "(value: string) => void", description: "Change handler for controlled usage." },
+                { name: "items", type: "Array<{ id: string, label: string, count?: number }>", description: "Tab items. Counts used by category variant." },
+                { name: "size", type: "'sm' | 'md' | 'lg' | ...", default: "'md'", description: "Controls padding and density." },
+                { name: "glassmorphic", type: "boolean", default: "true", description: "Enable when tabs are outside a card." },
+                { name: "gradient", type: "'blue' | 'cyan' | 'purple' | 'green' | 'orange' | 'default'", description: "Optional accent when glassmorphic is true." },
+              ]} />
+            </div>
+        </DesignSection>
+
+        {/* ============================================================ */}
+        {/* PILL TOGGLE */}
+        {/* ============================================================ */}
+        <DesignSection
+          id="pill-toggle"
+          icon={Sliders}
+          title="Pill Toggle"
+          description="Use for quick mode switches with a small set of options."
+        >
             <ComponentDemo
-              title="Pill Toggle"
-              description="Segmented control style toggle"
-              code={`<ViewportSelector 
+              title="Standard Pill Toggle"
+              description="Default segmented control"
+              code={`<ViewportSelector
   options={[
     { id: "phone", label: "Phone", icon: Envelope },
     { id: "desktop", label: "Desktop", icon: HardDrive }
@@ -1204,242 +802,136 @@ export const stackClientApp = new StackClientApp({
             >
               <ViewportSelector options={viewportOptions} selected={selectedViewport} onSelect={setSelectedViewport} />
             </ComponentDemo>
-          </div>
-        </GlassCard>
-
-        {/* ============================================================ */}
-        {/* DROPDOWN MENU */}
-        {/* ============================================================ */}
-        <GlassCard gradientColor="purple">
-          <div className="p-6 border-b border-foreground/[0.05]">
-            <SectionHeader icon={DotsThree} title="Dropdown Menu" />
-            <Typography variant="secondary" className="text-sm mt-2">
-              Context menus and action dropdowns
-            </Typography>
-          </div>
-          <div className="p-6 space-y-8">
 
             <ComponentDemo
-              title="Basic Dropdown"
-              description="Menu with icons and separators"
-              code={`<DropdownMenu>
-  <DropdownMenuTrigger asChild>
-    <Button variant="outline">Open Menu</Button>
-  </DropdownMenuTrigger>
-  <DropdownMenuContent>
-    <DropdownMenuItem icon={<PencilSimple />}>Edit</DropdownMenuItem>
-    <DropdownMenuSeparator />
-    <DropdownMenuItem className="text-destructive">Delete</DropdownMenuItem>
-  </DropdownMenuContent>
-</DropdownMenu>`}
+              title="Glassmorphic Variant"
+              description="Time range pill toggle with glassmorphic enabled"
             >
-              <div className="flex flex-wrap gap-4">
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="outline">Actions Menu</Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="start" className="min-w-[180px]">
-                    <DropdownMenuItem icon={<PencilSimple className="h-4 w-4" />}>Edit</DropdownMenuItem>
-                    <DropdownMenuItem icon={<Envelope className="h-4 w-4" />}>Send Email</DropdownMenuItem>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem className="text-red-600 dark:text-red-400 focus:bg-red-500/10" icon={<Trash className="h-4 w-4" />}>Delete</DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" size="icon">
-                      <DotsThree className="h-5 w-5" weight="bold" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                    <DropdownMenuItem>View</DropdownMenuItem>
-                    <DropdownMenuItem>Edit</DropdownMenuItem>
-                    <DropdownMenuItem>Duplicate</DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </div>
+              <TimeRangeToggle timeRange={timeRange} onTimeRangeChange={setTimeRange} />
             </ComponentDemo>
-          </div>
-        </GlassCard>
+
+            <div className="pt-4 border-t border-foreground/[0.05]">
+              <Typography type="label" className="font-semibold mb-3">Props</Typography>
+              <PropsTable props={[
+                { name: "options", type: "Array<{ id: string, label: string, icon?: ReactElement }>", description: "Available toggle options." },
+                { name: "selected", type: "string", description: "Currently selected option id." },
+                { name: "onSelect", type: "(id: string) => void", description: "Selection handler." },
+                { name: "size", type: "'sm' | 'md' | 'lg' | ...", default: "'md'", description: "Controls pill sizing." },
+                { name: "glassmorphic", type: "boolean", default: "false", description: "Enable for glass surfaces (e.g., time range toggle)." },
+                { name: "gradient", type: "'blue' | 'cyan' | 'purple' | 'green' | 'orange' | 'default'", description: "Optional accent when glassmorphic is true." },
+              ]} />
+            </div>
+        </DesignSection>
 
         {/* ============================================================ */}
         {/* ALERT COMPONENT */}
         {/* ============================================================ */}
-        <GlassCard gradientColor="orange">
-          <div className="p-6 border-b border-foreground/[0.05]">
-            <SectionHeader icon={WarningCircle} title="Alert" />
-            <Typography variant="secondary" className="text-sm mt-2">
-              Contextual feedback messages for typical user actions
-            </Typography>
-          </div>
-          <div className="p-6 space-y-8">
-
+        <DesignSection
+          id="alert"
+          icon={WarningCircle}
+          title="Alert"
+          description="Use for high-signal feedback that needs attention."
+        >
             <ComponentDemo
-              title="Variants"
-              description="Different alert styles for various message types"
-              code={`<Alert>
-  <AlertTitle>Default Alert</AlertTitle>
-  <AlertDescription>This is a default alert message.</AlertDescription>
-</Alert>
-
-<Alert variant="destructive">
-  <WarningCircleIcon className="h-4 w-4" />
-  <AlertTitle>Error</AlertTitle>
-  <AlertDescription>Something went wrong.</AlertDescription>
-</Alert>`}
+              title="Success Alert"
+              description="Use for successful operations"
             >
-              <div className="space-y-3">
-                <Alert>
-                  <AlertTitle>Default Alert</AlertTitle>
-                  <AlertDescription>This is a default informational message.</AlertDescription>
-                </Alert>
-                <Alert variant="destructive">
-                  <WarningCircleIcon className="h-4 w-4" />
-                  <AlertTitle>Error</AlertTitle>
-                  <AlertDescription>An error occurred while processing your request.</AlertDescription>
-                </Alert>
-                <Alert variant="success">
-                  <CheckCircle className="h-4 w-4" />
-                  <AlertTitle>Success</AlertTitle>
-                  <AlertDescription>Your changes have been saved successfully.</AlertDescription>
-                </Alert>
-              </div>
+              <Alert className="bg-green-500/5 border-green-500/20">
+                <CheckCircle className="h-4 w-4 text-green-500" />
+                <AlertTitle className="text-green-600 dark:text-green-400">Success</AlertTitle>
+                <AlertDescription>Your changes have been saved successfully.</AlertDescription>
+              </Alert>
             </ComponentDemo>
 
             <ComponentDemo
-              title="Custom Colors"
-              description="Alerts with custom background and border colors"
-              code={`<Alert className="bg-blue-500/5 border-blue-500/20">
-  <AlertDescription>Custom blue alert</AlertDescription>
-</Alert>`}
+              title="Error Alert"
+              description="Use for errors and failures"
             >
-              <div className="space-y-3">
-                <Alert className="bg-blue-500/5 border-blue-500/20">
-                  <AlertDescription><Typography variant="secondary" className="text-sm"><strong>Info:</strong> This is an informational message.</Typography></AlertDescription>
-                </Alert>
-                <Alert className="bg-amber-500/5 border-amber-500/20">
-                  <WarningCircle className="h-4 w-4 text-amber-500" />
-                  <AlertTitle className="text-amber-600 dark:text-amber-400">Warning</AlertTitle>
-                  <AlertDescription className="text-muted-foreground">Please review before proceeding.</AlertDescription>
-                </Alert>
-              </div>
+              <Alert className="bg-red-500/5 border-red-500/20">
+                <XCircle className="h-4 w-4 text-red-500" />
+                <AlertTitle className="text-red-600 dark:text-red-400">Error</AlertTitle>
+                <AlertDescription>An error occurred while processing your request.</AlertDescription>
+              </Alert>
+            </ComponentDemo>
+
+            <ComponentDemo
+              title="Warning Alert"
+              description="Use for warnings that need attention"
+            >
+              <Alert className="bg-orange-500/5 border-orange-500/20">
+                <WarningCircle className="h-4 w-4 text-orange-500" />
+                <AlertTitle className="text-orange-600 dark:text-orange-400">Warning</AlertTitle>
+                <AlertDescription>You are using a shared email server. Configure a custom SMTP server to customize email templates.</AlertDescription>
+              </Alert>
+            </ComponentDemo>
+
+            <ComponentDemo
+              title="Info Alert"
+              description="Use for informational messages without a title"
+            >
+              <Alert className="bg-amber-500/5 border-amber-500/20">
+                <AlertDescription>Configure a custom SMTP server to send manual emails. You can still create and edit drafts.</AlertDescription>
+              </Alert>
             </ComponentDemo>
 
             <div className="pt-4 border-t border-foreground/[0.05]">
               <Typography type="label" className="font-semibold mb-3">Props</Typography>
               <PropsTable props={[
-                { name: "variant", type: "'default' | 'destructive' | 'success'", default: "'default'", description: "Visual style of the alert" },
-                { name: "className", type: "string", description: "Additional CSS classes for custom styling" },
+                { name: "variant", type: "'success' | 'error' | 'warning' | 'info'", description: "Visual style. Use className for color overrides." },
+                { name: "title", type: "ReactNode", description: "Optional. Use AlertTitle when needed." },
+                { name: "icon", type: "ReactElement", description: "Optional icon displayed before content." },
+                { name: "glassmorphic", type: "boolean", default: "false", description: "Only enable if used on glass surfaces." },
               ]} />
             </div>
-          </div>
-        </GlassCard>
+        </DesignSection>
 
         {/* ============================================================ */}
         {/* BADGE COMPONENT */}
         {/* ============================================================ */}
-        <GlassCard gradientColor="green">
-          <div className="p-6 border-b border-foreground/[0.05]">
-            <SectionHeader icon={CheckCircle} title="Badge" />
-            <Typography variant="secondary" className="text-sm mt-2">
-              Small status indicators and labels
-            </Typography>
-          </div>
-          <div className="p-6 space-y-8">
-
-            <ComponentDemo
-              title="Variants"
-              description="Different badge styles"
-              code={`<Badge variant="default">Default</Badge>
-<Badge variant="secondary">Secondary</Badge>
-<Badge variant="outline">Outline</Badge>
-<Badge variant="destructive">Destructive</Badge>`}
-            >
-              <div className="flex flex-wrap gap-2">
-                <Badge variant="default">Default</Badge>
-                <Badge variant="secondary">Secondary</Badge>
-                <Badge variant="outline">Outline</Badge>
-                <Badge variant="destructive">Destructive</Badge>
-              </div>
-            </ComponentDemo>
-
+        <DesignSection
+          id="badge"
+          icon={CheckCircle}
+          title="Badge"
+          description="Use for statuses, tags, and lightweight labels."
+        >
             <ComponentDemo
               title="Status Badges"
-              description="Custom status badges with icons"
-              code={`<div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 ring-1 ring-emerald-500/20">
-  <CheckCircle className="h-3 w-3" />
-  Sent
-</div>`}
-            >
-              <div className="flex flex-wrap gap-3">
-                <StatusBadge status="sent" />
-                <StatusBadge status="pending" />
-                <StatusBadge status="failed" />
-              </div>
-            </ComponentDemo>
-
-            <ComponentDemo
-              title="Stage Badges"
-              description="Development stage indicators"
+              description="Gradient status colors with optional icons"
+              code={`<StatusBadge label="Success" color="green" icon={CheckCircle} />
+<StatusBadge label="Warning" color="orange" />
+<StatusBadge label="Error" color="red" icon={XCircle} />`}
             >
               <div className="flex flex-wrap gap-2">
-                <div className="px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wide border bg-orange-500/10 text-orange-500 border-orange-500/50">Alpha</div>
-                <div className="px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wide border bg-blue-500/10 text-blue-500 border-blue-500/50">Beta</div>
-                <div className="px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wide border bg-green-500/10 text-green-500 border-green-500/50">Stable</div>
+                <StatusBadge label="Success" color="green" icon={CheckCircle} />
+                <StatusBadge label="Warning" color="orange" />
+                <StatusBadge label="Error" color="red" icon={XCircle} />
+                <StatusBadge label="Info" color="blue" />
+                <StatusBadge label="New" color="purple" size="sm" />
+                <StatusBadge label="Syncing" color="cyan" icon={DotsThree} size="sm" />
               </div>
             </ComponentDemo>
 
             <div className="pt-4 border-t border-foreground/[0.05]">
               <Typography type="label" className="font-semibold mb-3">Props</Typography>
               <PropsTable props={[
-                { name: "variant", type: "'default' | 'secondary' | 'outline' | 'destructive'", default: "'default'", description: "Visual style of the badge" },
+                { name: "label", type: "string", description: "Text for the badge" },
+                { name: "color", type: "'blue' | 'cyan' | 'purple' | 'green' | 'orange' | 'red'", description: "Gradient color theme" },
+                { name: "icon", type: "ReactElement", description: "Optional icon displayed before text" },
+                { name: "size", type: "'sm' | 'md'", default: "'md'", description: "Badge size" },
+                { name: "glassmorphic", type: "boolean", default: "false", description: "Enable only when badges sit on glass." },
               ]} />
             </div>
-          </div>
-        </GlassCard>
-
-        {/* ============================================================ */}
-        {/* STATE INDICATORS */}
-        {/* ============================================================ */}
-        <GlassCard gradientColor="green">
-          <div className="p-6 border-b border-foreground/[0.05]">
-            <SectionHeader icon={CheckCircle} title="State Indicators" />
-            <Typography variant="secondary" className="text-sm mt-2">
-              Loading states, step indicators, and status displays
-            </Typography>
-          </div>
-          <div className="p-6 space-y-8">
-
-            <ComponentDemo
-              title="Metrics Loading Card"
-              description="Card-based loading state used for overview metrics"
-            >
-              <MetricsLoadingFallback />
-            </ComponentDemo>
-
-            <ComponentDemo
-              title="Step Indicator"
-              description="Timeline-style numbered steps with completion states"
-            >
-              <StepIndicatorDemo />
-            </ComponentDemo>
-
-          </div>
-        </GlassCard>
+        </DesignSection>
 
         {/* ============================================================ */}
         {/* LIST COMPONENTS */}
         {/* ============================================================ */}
-        <GlassCard gradientColor="orange">
-          <div className="p-6 border-b border-foreground/[0.05]">
-            <SectionHeader icon={HardDrive} title="List Components" />
-            <Typography variant="secondary" className="text-sm mt-2">
-              List items, rows, and data display components
-            </Typography>
-          </div>
-          <div className="p-6 space-y-8">
-
+        <DesignSection
+          id="list-components"
+          icon={HardDrive}
+          title="List Components"
+          description="Use for repeated rows. Variants differ by icon, avatar, and density."
+        >
             <ComponentDemo
               title="List Item Row"
               description="Icon row with inline actions and overflow menu"
@@ -1464,113 +956,21 @@ export const stackClientApp = new StackClientApp({
               <UserListItemDemo />
             </ComponentDemo>
 
-            <ComponentDemo
-              title="Chart Tooltip"
-              description="Glassmorphic tooltip for displaying chart data"
-            >
-              <ChartTooltipDemo />
-            </ComponentDemo>
-
-            <ComponentDemo
-              title="Legend Pills"
-              description="Interactive pill-shaped legend items with colors"
-            >
-              <LegendPillsDemo />
-            </ComponentDemo>
-
-          </div>
-        </GlassCard>
-
-        {/* ============================================================ */}
-        {/* OVERVIEW WIDGETS */}
-        {/* ============================================================ */}
-        <GlassCard gradientColor="slate">
-          <div className="p-6 border-b border-foreground/[0.05]">
-            <SectionHeader icon={CompassIcon} title="Overview Widgets" />
-            <Typography variant="secondary" className="text-sm mt-2">
-              Dashboard widgets and quick access patterns from the overview page
-            </Typography>
-          </div>
-          <div className="p-6 space-y-8">
-
-            <ComponentDemo
-              title="Quick Access Grid"
-              description="App icon grid with expand/collapse affordance"
-            >
-              <QuickAccessGridDemo />
-            </ComponentDemo>
-
-            <ComponentDemo
-              title="Metric Callout"
-              description="Icon label with a primary stat value"
-            >
-              <MetricStatCalloutDemo />
-            </ComponentDemo>
-
-          </div>
-        </GlassCard>
-
-        {/* ============================================================ */}
-        {/* CHARTS */}
-        {/* ============================================================ */}
-        <GlassCard gradientColor="cyan">
-          <div className="p-6 border-b border-foreground/[0.05]">
-            <SectionHeader icon={SquaresFourIcon} title="Charts" />
-            <Typography variant="secondary" className="text-sm mt-2">
-              Chart components for data visualization
-            </Typography>
-          </div>
-          <div className="p-6 space-y-8">
-
-            <ComponentDemo
-              title="Donut Chart"
-              description="Pie/donut chart for authentication method distribution"
-            >
-              <DonutChartDisplay
-                className="h-[420px]"
-                datapoints={DEMO_AUTH_DATA}
-                gradientColor="purple"
-                height={240}
-              />
-            </ComponentDemo>
-
-            <ComponentDemo
-              title="Tabbed Chart Card"
-              description="Chart card with tab switching between chart and list views"
-            >
-              <div className="h-[350px]">
-                <TabbedMetricsCard
-                  config={{
-                    name: "Sign Ups",
-                    chart: {
-                      activity: {
-                        label: "Activity",
-                        theme: {
-                          light: "hsl(221, 83%, 53%)",
-                          dark: "hsl(240, 71%, 70%)",
-                        }
-                      }
-                    }
-                  }}
-                  chartData={DEMO_CHART_DATA}
-                  listData={[
-                    { id: "1", display_name: "Alice", primary_email: "alice@example.com", signed_up_at_millis: 1704067200000 },
-                    { id: "2", display_name: "Bob", primary_email: "bob@example.com", signed_up_at_millis: 1704063600000 },
-                    { id: "3", display_name: "Charlie", primary_email: "charlie@example.com", signed_up_at_millis: 1704060000000 },
-                  ]}
-                  listTitle="Recent Signups"
-                  projectId="demo"
-                  router={router}
-                  timeRange="all"
-                  gradientColor="cyan"
-                  height={220}
-                  compact
-                />
-              </div>
-            </ComponentDemo>
-
-          </div>
-        </GlassCard>
+            <div className="pt-4 border-t border-foreground/[0.05]">
+              <Typography type="label" className="font-semibold mb-3">Props</Typography>
+              <PropsTable props={[
+                { name: "icon", type: "ReactElement", description: "Optional leading icon for list rows." },
+                { name: "title", type: "string", description: "Primary row label." },
+                { name: "subtitle", type: "string", description: "Optional supporting text." },
+                { name: "onClick", type: "() => void", description: "Row click handler." },
+                { name: "onEdit", type: "() => void", description: "Optional edit action for row variants." },
+                { name: "onDelete", type: "() => void", description: "Optional delete action for row variants." },
+                { name: "size", type: "'sm' | 'md' | 'lg' | ...", default: "'md'", description: "Controls row padding and density." },
+                { name: "glassmorphic", type: "boolean", default: "true", description: "Use when list is outside a parent card." },
+                { name: "gradient", type: "'blue' | 'cyan' | 'purple' | 'green' | 'orange' | 'default'", description: "Optional accent on hover." },
+              ]} />
+            </div>
+        </DesignSection>
 
       </div>
     </PageLayout>
