@@ -150,7 +150,6 @@ export const branchPaymentsSchema = yupObject({
   autoPay: yupObject({
     interval: schemaFields.dayIntervalSchema,
   }).optional(),
-  testMode: yupBoolean(),
   productLines: yupRecord(
     userSpecifiedIdSchema("productLineId"),
     yupObject({

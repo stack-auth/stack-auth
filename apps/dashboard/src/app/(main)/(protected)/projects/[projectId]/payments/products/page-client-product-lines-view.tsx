@@ -1888,21 +1888,25 @@ export default function PageClient({ createDraftRequestId, draftCustomerType = '
 
   // Handler for saving product
   const handleSaveProduct = async (productId: string, product: Product) => {
-    await updateConfig({ adminApp: stackAdminApp, configUpdate: { [`payments.products.${productId}`]: product }, pushable: true });
-    setShowProductDialog(false);
-    toast({ title: editingProduct ? "Product updated" : "Product created" });
+    const success = await updateConfig({ adminApp: stackAdminApp, configUpdate: { [`payments.products.${productId}`]: product }, pushable: true });
+    if (success) {
+      setShowProductDialog(false);
+      toast({ title: editingProduct ? "Product updated" : "Product created" });
+    }
   };
 
   // Handler for saving item
   const handleSaveItem = async (item: { id: string, displayName: string, customerType: 'user' | 'team' | 'custom' }) => {
-    await updateConfig({ adminApp: stackAdminApp, configUpdate: { [`payments.items.${item.id}`]: { displayName: item.displayName, customerType: item.customerType } }, pushable: true });
-    setShowItemDialog(false);
-    setEditingItem(null);
-    toast({ title: editingItem ? "Item updated" : "Item created" });
-    // Call the callback to auto-select the newly created item
-    if (onItemCreatedCallback && !editingItem) {
-      onItemCreatedCallback(item.id);
-      setOnItemCreatedCallback(undefined);
+    const success = await updateConfig({ adminApp: stackAdminApp, configUpdate: { [`payments.items.${item.id}`]: { displayName: item.displayName, customerType: item.customerType } }, pushable: true });
+    if (success) {
+      setShowItemDialog(false);
+      setEditingItem(null);
+      toast({ title: editingItem ? "Item updated" : "Item created" });
+      // Call the callback to auto-select the newly created item
+      if (onItemCreatedCallback && !editingItem) {
+        onItemCreatedCallback(item.id);
+        setOnItemCreatedCallback(undefined);
+      }
     }
   };
 
@@ -1922,8 +1926,10 @@ export default function PageClient({ createDraftRequestId, draftCustomerType = '
   }));
 
   const handleInlineSaveProduct = async (productId: string, product: Product) => {
-    await updateConfig({ adminApp: stackAdminApp, configUpdate: { [`payments.products.${productId}`]: product }, pushable: true });
-    toast({ title: "Product updated" });
+    const success = await updateConfig({ adminApp: stackAdminApp, configUpdate: { [`payments.products.${productId}`]: product }, pushable: true });
+    if (success) {
+      toast({ title: "Product updated" });
+    }
   };
 
   const handleDeleteProduct = async (productId: string) => {
@@ -1945,24 +1951,31 @@ export default function PageClient({ createDraftRequestId, draftCustomerType = '
     );
 
     // Delete the product (and productLine if it will be empty)
+    let success: boolean;
     if (isLastProductInProductLine) {
       // Also rebuild productLines without the empty productLine
       const updatedProductLines = typedFromEntries(
         typedEntries(paymentsConfig.productLines)
           .filter(([id]) => id !== productLineId)
       );
-      await updateConfig({ adminApp: stackAdminApp, configUpdate: {
+      success = await updateConfig({ adminApp: stackAdminApp, configUpdate: {
         "payments.products": updatedProducts,
         "payments.productLines": updatedProductLines,
       }, pushable: true });
-      toast({ title: "Product and empty product line deleted" });
+      if (success) {
+        toast({ title: "Product and empty product line deleted" });
+      }
     } else {
-      await updateConfig({ adminApp: stackAdminApp, configUpdate: { "payments.products": updatedProducts }, pushable: true });
-      toast({ title: "Product deleted" });
+      success = await updateConfig({ adminApp: stackAdminApp, configUpdate: { "payments.products": updatedProducts }, pushable: true });
+      if (success) {
+        toast({ title: "Product deleted" });
+      }
     }
 
-    // Force a re-render by updating the refresh key
-    setRefreshKey(prev => prev + 1);
+    if (success) {
+      // Force a re-render by updating the refresh key
+      setRefreshKey(prev => prev + 1);
+    }
   };
 
   const innerContent = (
@@ -1979,10 +1992,12 @@ export default function PageClient({ createDraftRequestId, draftCustomerType = '
           setShowProductDialog(true);
         }}
         onSaveProductWithGroup={async (productLineId, productId, product) => {
-          await updateConfig({ adminApp: stackAdminApp, configUpdate: {
+          const success = await updateConfig({ adminApp: stackAdminApp, configUpdate: {
             [`payments.products.${productId}`]: product,
           }, pushable: true });
-          toast({ title: "Product created" });
+          if (success) {
+            toast({ title: "Product created" });
+          }
         }}
         onCreateProductLine={async (productLineId, displayName, customerType) => {
           await updateConfig({ adminApp: stackAdminApp, configUpdate: {

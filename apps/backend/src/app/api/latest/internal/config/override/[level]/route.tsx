@@ -124,7 +124,7 @@ async function parseAndValidateConfig(
     throw new StatusError(StatusError.BadRequest, overrideError.error);
   }
 
-  return parsedConfig;
+  return migratedConfig;
 }
 
 export const PUT = createSmartRouteHandler({

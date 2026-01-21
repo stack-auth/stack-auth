@@ -1390,7 +1390,8 @@ describe("branch config source", () => {
 
       expect(response.status).toBe(200);
       expect(response.body.source.type).toBe("pushed-from-github");
-      expect(response.body.source.repo).toBe("custom-org/custom-repo");
+      expect(response.body.source.owner).toBe("custom-org");
+      expect(response.body.source.repo).toBe("custom-repo");
       expect(response.body.source.branch).toBe("feature-branch");
       expect(response.body.source.commit_hash).toBe("1234567890abcdef");
       expect(response.body.source.config_file_path).toBe("config/stack.config.ts");

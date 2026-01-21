@@ -94,12 +94,24 @@ export default function PageClient() {
   }, [customerType]);
 
   const handleSaveItem = async (item: { id: string, displayName: string, customerType: "user" | "team" | "custom" }) => {
-    await updateConfig({
-      adminApp,
-      configUpdate: { [`payments.items.${item.id}`]: { displayName: item.displayName, customerType: item.customerType } },
-      pushable: true,
-    });
-    setShowItemDialog(false);
+    try {
+      const success = await updateConfig({
+        adminApp,
+        configUpdate: { [`payments.items.${item.id}`]: { displayName: item.displayName, customerType: item.customerType } },
+        pushable: true,
+      });
+      if (success) {
+        setShowItemDialog(false);
+      }
+      // If success is false (user cancelled), keep dialog open without error
+    } catch (error) {
+      toast({
+        title: "Failed to save item",
+        description: error instanceof Error ? error.message : "An unexpected error occurred",
+        variant: "destructive",
+      });
+      // Keep dialog open so user can retry
+    }
   };
 
   useEffect(() => {

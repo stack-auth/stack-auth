@@ -161,7 +161,7 @@ function EditProductForm({ productId, existingProduct }: { productId: string, ex
   };
 
   const handleCreateProductLine = async (productLine: { id: string, displayName: string }) => {
-    await updateConfig({
+    const success = await updateConfig({
       adminApp: stackAdminApp,
       configUpdate: {
         [`payments.productLines.${productLine.id}`]: {
@@ -171,7 +171,9 @@ function EditProductForm({ productId, existingProduct }: { productId: string, ex
       },
       pushable: true,
     });
-    setProductLineId(productLine.id);
+    if (success) {
+      setProductLineId(productLine.id);
+    }
   };
 
   const validateForm = () => {
@@ -222,13 +224,15 @@ function EditProductForm({ productId, existingProduct }: { productId: string, ex
         freeTrial,
       };
 
-      await updateConfig({
+      const success = await updateConfig({
         adminApp: stackAdminApp,
         configUpdate: { [`payments.products.${productId}`]: product },
         pushable: true,
       });
-      toast({ title: "Product updated" });
-      router.push(`/projects/${projectId}/payments/products`);
+      if (success) {
+        toast({ title: "Product updated" });
+        router.push(`/projects/${projectId}/payments/products`);
+      }
     } finally {
       setIsSaving(false);
     }
@@ -703,12 +707,17 @@ function EditProductForm({ productId, existingProduct }: { productId: string, ex
         open={showNewItemDialog}
         onOpenChange={setShowNewItemDialog}
         onSave={async (item) => {
-          await updateConfig({
+          const success = await updateConfig({
             adminApp: stackAdminApp,
             configUpdate: { [`payments.items.${item.id}`]: { displayName: item.displayName, customerType: item.customerType } },
             pushable: true,
           });
-          toast({ title: "Item created" });
+          if (success) {
+            toast({ title: "Item created" });
+          } else {
+            // User cancelled - throw to keep dialog open
+            throw new Error("Operation cancelled");
+          }
         }}
         existingItemIds={Object.keys(paymentsConfig.items)}
         forceCustomerType={customerType}

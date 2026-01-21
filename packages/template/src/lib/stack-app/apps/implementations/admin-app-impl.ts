@@ -238,6 +238,7 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
       },
       async unlinkPushedConfigSource(): Promise<void> {
         await app._interface.unlinkPushedConfigSource();
+        await app._configOverridesCache.refresh([]);
       },
       async update(update: AdminProjectUpdateOptions) {
         const updateOptions = adminProjectUpdateOptionsToCrud(update);

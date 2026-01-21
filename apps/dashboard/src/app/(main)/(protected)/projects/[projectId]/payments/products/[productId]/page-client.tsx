@@ -461,7 +461,7 @@ function ProductDetailsSection({ productId, product, config }: ProductDetailsSec
       const { stackable: _, ...rest } = pendingChanges;
       setPendingChanges(rest);
     } else {
-      setPendingChanges({ ...pendingChanges, stackable: value || null });
+      setPendingChanges({ ...pendingChanges, stackable: value });
     }
   };
 
@@ -471,7 +471,7 @@ function ProductDetailsSection({ productId, product, config }: ProductDetailsSec
       const { serverOnly: _, ...rest } = pendingChanges;
       setPendingChanges(rest);
     } else {
-      setPendingChanges({ ...pendingChanges, serverOnly: value || null });
+      setPendingChanges({ ...pendingChanges, serverOnly: value });
     }
   };
 

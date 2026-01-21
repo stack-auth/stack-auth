@@ -1090,12 +1090,30 @@ ${Object.entries(prices).map(([id, price]) => {
         open={showNewItemDialog}
         onOpenChange={setShowNewItemDialog}
         onSave={async (item) => {
-          await updateConfig({
-            adminApp: stackAdminApp,
-            configUpdate: { [`payments.items.${item.id}`]: { displayName: item.displayName, customerType: item.customerType } },
-            pushable: true,
-          });
-          toast({ title: "Item created" });
+          try {
+            const success = await updateConfig({
+              adminApp: stackAdminApp,
+              configUpdate: { [`payments.items.${item.id}`]: { displayName: item.displayName, customerType: item.customerType } },
+              pushable: true,
+            });
+            if (success) {
+              toast({ title: "Item created" });
+            } else {
+              // User cancelled the confirmation dialog - throw to keep dialog open
+              throw new Error("Operation cancelled");
+            }
+          } catch (error) {
+            // Show error toast for actual failures (not cancellations)
+            if (error instanceof Error && error.message !== "Operation cancelled") {
+              toast({
+                title: "Failed to create item",
+                description: error.message,
+                variant: "destructive",
+              });
+            }
+            // Re-throw to prevent ItemDialog from closing
+            throw error;
+          }
         }}
         existingItemIds={Object.keys(paymentsConfig.items)}
         forceCustomerType={customerType}
