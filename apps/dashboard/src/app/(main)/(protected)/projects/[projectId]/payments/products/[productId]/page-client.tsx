@@ -329,10 +329,10 @@ function ProductDetailsSection({ productId, product, config }: ProductDetailsSec
       configUpdate[`payments.products.${productId}.displayName`] = pendingChanges.displayName || null;
     }
     if (pendingChanges.stackable !== undefined) {
-      configUpdate[`payments.products.${productId}.stackable`] = pendingChanges.stackable || null;
+      configUpdate[`payments.products.${productId}.stackable`] = pendingChanges.stackable;
     }
     if (pendingChanges.serverOnly !== undefined) {
-      configUpdate[`payments.products.${productId}.serverOnly`] = pendingChanges.serverOnly || null;
+      configUpdate[`payments.products.${productId}.serverOnly`] = pendingChanges.serverOnly;
     }
     if (pendingChanges.freeTrial !== undefined) {
       configUpdate[`payments.products.${productId}.freeTrial`] = pendingChanges.freeTrial;

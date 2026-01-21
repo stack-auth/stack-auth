@@ -70,6 +70,7 @@ function ConfirmSignUpDisabledDialog(props: {
 }
 
 function adminProviderToConfigProvider(provider: AdminOAuthProviderConfig): CompleteConfig['auth']['oauth']['providers'][string] {
+  // TODO: Remove this function (and the AdminOAuthProviderConfig type) and use the new config everywhere instead. Then we can also make allowSignIn and allowConnectedAccounts configurable
   switch (provider.type) {
     case 'shared': {
       return {
