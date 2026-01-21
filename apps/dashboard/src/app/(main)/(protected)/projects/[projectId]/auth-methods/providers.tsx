@@ -44,6 +44,7 @@ function toTitle(id: string) {
     linkedin: "LinkedIn",
     twitch: "Twitch",
     x: "X",
+    okta: "Okta"
   }[id];
 }
 
@@ -63,6 +64,7 @@ export const providerFormSchema = yupObject({
     }),
   facebookConfigId: yupString().optional(),
   microsoftTenantId: yupString().optional(),
+  oktaDomain: yupString().optional()
 });
 
 export type ProviderFormValues = yup.InferType<typeof providerFormSchema>
@@ -75,6 +77,7 @@ export function ProviderSettingDialog(props: Props & { open: boolean, onClose: (
     clientSecret: (props.provider as any)?.clientSecret ?? "",
     facebookConfigId: (props.provider as any)?.facebookConfigId ?? "",
     microsoftTenantId: (props.provider as any)?.microsoftTenantId ?? "",
+    oktaDomain:(props.provider as any)?.oktaDomain?? "",
   };
 
   const onSubmit = async (values: ProviderFormValues) => {
@@ -88,6 +91,7 @@ export function ProviderSettingDialog(props: Props & { open: boolean, onClose: (
         clientSecret: values.clientSecret || "",
         facebookConfigId: values.facebookConfigId,
         microsoftTenantId: values.microsoftTenantId,
+        oktaDomain: values.oktaDomain,
       });
     }
   };
@@ -164,6 +168,15 @@ export function ProviderSettingDialog(props: Props & { open: boolean, onClose: (
                   name="microsoftTenantId"
                   label="Tenant ID (required if you are using the organizational directory)"
                   placeholder="Tenant ID"
+                />
+              )}
+
+              {props.id === 'Okta' && (
+                <InputField
+                  control={form.control}
+                  name="oktaDomain"
+                  label="Okta Domain (required if you are using Okta)"
+                  placeholder="oktaDomain"
                 />
               )}
             </>
