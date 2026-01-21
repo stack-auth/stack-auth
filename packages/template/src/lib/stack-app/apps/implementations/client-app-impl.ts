@@ -2690,12 +2690,12 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
   protected async _refreshUser(session: InternalSession) {
     // TODO this should take a user ID instead of a session, and automatically refresh all sessions with that user ID
     await this._refreshSession(session);
-    // Suggest updating the access token so it contains the updated user data
-    session.suggestAccessTokenExpired();
   }
 
   protected async _refreshSession(session: InternalSession) {
     await this._currentUserCache.refresh([session]);
+    // Suggest updating the access token so it contains the updated user/session data
+    session.suggestAccessTokenExpired();
   }
 
   protected async _refreshUsers() {
