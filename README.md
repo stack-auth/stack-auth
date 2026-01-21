@@ -34,8 +34,6 @@ We support Next.js, React, and JavaScript frontends, along with any backend that
   - [Requirements](#requirements)
   - [Setup](#setup)
   - [Useful commands](#useful-commands)
-  - [Chat with the codebase](#chat-with-the-codebase)
-  - [Architecture overview](#architecture-overview)
 - [❤ Contributors](#-contributors)
 
 <!-- END doctoc generated TOC please keep comment here to allow auto update -->
