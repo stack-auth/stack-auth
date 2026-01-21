@@ -189,6 +189,7 @@ export async function createOrUpdateProjectWithLegacyConfig(
             clientSecret: provider.client_secret,
             facebookConfigId: provider.facebook_config_id,
             microsoftTenantId: provider.microsoft_tenant_id,
+            netsuiteAccountId: provider.netsuite_account_id,
             allowSignIn: true,
             allowConnectedAccounts: true,
           } satisfies CompleteConfig['auth']['oauth']['providers'][string]

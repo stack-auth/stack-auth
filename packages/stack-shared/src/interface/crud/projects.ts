@@ -22,6 +22,7 @@ const oauthProviderReadSchema = yupObject({
   // extra params
   facebook_config_id: schemaFields.oauthFacebookConfigIdSchema.optional(),
   microsoft_tenant_id: schemaFields.oauthMicrosoftTenantIdSchema.optional(),
+  netsuite_account_id: schemaFields.oauthNetSuiteAccountIdSchema.optional(),
 });
 
 const oauthProviderWriteSchema = oauthProviderReadSchema.omit(['provider_config_id']);

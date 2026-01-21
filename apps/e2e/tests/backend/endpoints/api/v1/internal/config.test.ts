@@ -375,7 +375,7 @@ it("returns an error when the oauth config is misconfigured", async ({ expect })
   expect(invalidTypeResponse).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 400,
-      "body": "auth.oauth.providers.invalid.type must be one of the following values: google, github, microsoft, spotify, facebook, discord, gitlab, bitbucket, linkedin, apple, x, twitch",
+      "body": "auth.oauth.providers.invalid.type must be one of the following values: google, github, microsoft, spotify, facebook, discord, gitlab, bitbucket, linkedin, apple, x, twitch, netsuite",
       "headers": Headers { <some fields may have been hidden> },
     }
   `);
