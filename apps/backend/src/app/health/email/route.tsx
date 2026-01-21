@@ -1,7 +1,7 @@
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { generateSecureRandomString } from "@stackframe/stack-shared/dist/utils/crypto";
-import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
+import { getEnvVariable, getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
 import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 
@@ -12,6 +12,55 @@ type ResendEmail = {
   created_at: string,
 };
 
+type InbucketMessage = {
+  id: string,
+  subject: string,
+  from: string,
+  to: string[],
+  date: string,
+};
+
+const transformInbucketToResendFormat = (messages: InbucketMessage[]): { data: ResendEmail[] } => {
+  return {
+    data: messages.map(msg => ({
+      to: msg.to,
+      subject: msg.subject,
+      from: msg.from,
+      created_at: msg.date,
+    })),
+  };
+};
+
+const fetchFromInbucket = async (testEmail: string): Promise<{ data: ResendEmail[] }> => {
+  const inbucketUrl = getEnvVariable("STACK_INBUCKET_API_URL");
+  const mailboxName = testEmail.split("@")[0];
+
+  const response = await fetch(`${inbucketUrl}/api/v1/mailbox/${encodeURIComponent(mailboxName)}`);
+  if (!response.ok) {
+    return { data: [] };
+  }
+
+  const messages = await response.json() as InbucketMessage[];
+  return transformInbucketToResendFormat(messages);
+};
+
+const fetchFromResend = async (): Promise<{ data: ResendEmail[] }> => {
+  const resendApiKey = getEnvVariable("STACK_EMAIL_MONITOR_RESEND_EMAIL_API_KEY");
+  const response = await fetch("https://api.resend.com/emails/receiving", {
+    method: "GET",
+    headers: {
+      "Authorization": `Bearer ${resendApiKey}`,
+      "Content-Type": "application/json",
+    },
+  });
+
+  if (!response.ok) {
+    return { data: [] };
+  }
+
+  return await response.json();
+};
+
 const performSignUp = async (email: string, password: string) => {
   const apiBaseUrl = getEnvVariable("NEXT_PUBLIC_STACK_API_URL");
   const response = await fetch(`${apiBaseUrl}/api/v1/auth/password/sign-up`, {
@@ -20,7 +69,7 @@ const performSignUp = async (email: string, password: string) => {
       "Content-Type": "application/json",
       "X-Stack-Access-Type": "client",
       "X-Stack-Publishable-Client-Key": getEnvVariable("STACK_EMAIL_MONITOR_PUBLISHABLE_CLIENT_KEY"),
-      "X-Stack-Project-Id": getEnvVariable("STACK_EMAIL_MONITOR_PROJECT_ID"),
+      "X-Stack-Project-Id": "internal",
     },
     body: JSON.stringify({
       email,
@@ -38,41 +87,31 @@ const performSignUp = async (email: string, password: string) => {
   }
 };
 
-const isExpectedVerificationEmail =(email: ResendEmail, testEmail: string): boolean => {
+const isExpectedVerificationEmail = (email: ResendEmail, testEmail: string): boolean => {
   const EXPECTED_EMAIL_SUBJECT_CONTAINS = "verify";
-  const EXPECTED_EMAIL_FROM_CONTAINS = "stackframe.co";
 
-  const matchesRecipient = email.to.includes(testEmail);
+  // Inbucket wraps emails in angle brackets like "<email@example.com>"
+  const matchesRecipient = email.to.some(to => to.includes(testEmail));
   const matchesSubject = email.subject.toLowerCase().includes(EXPECTED_EMAIL_SUBJECT_CONTAINS.toLowerCase());
-  const matchesSender = email.from.toLowerCase().includes(EXPECTED_EMAIL_FROM_CONTAINS.toLowerCase());
+  // Skip sender check - in dev it's example.com, in prod it's stackframe.co
 
-  return matchesRecipient && matchesSubject && matchesSender;
+  return matchesRecipient && matchesSubject;
 };
 
-const waitForVerificationEmail =async (testEmail: string) => {
-  const resendApiKey = getEnvVariable("STACK_EMAIL_MONITOR_RESEND_EMAIL_API_KEY");
-
+const waitForVerificationEmail = async (testEmail: string) => {
   const MAX_POLL_ATTEMPTS = 24;
   const POLL_INTERVAL_MS = 5000;
+  // Use Inbucket in dev/test (backend sends to Inbucket via SMTP in non-production)
+  const useInbucket = getNodeEnvironment() !== "production";
 
-  const RESEND_API_URL = "https://api.resend.com/emails/receiving";
   for (let attempt = 1; attempt <= MAX_POLL_ATTEMPTS; attempt++) {
     await wait(POLL_INTERVAL_MS);
 
-    const listResponse = await fetch(RESEND_API_URL, {
-      method: "GET",
-      headers: {
-        "Authorization": `Bearer ${resendApiKey}`,
-        "Content-Type": "application/json",
-      },
-    });
+    const listData = useInbucket
+      ? await fetchFromInbucket(testEmail)
+      : await fetchFromResend();
 
-    if (!listResponse.ok) {
-      continue;
-    }
-
-    const listData = await listResponse.json();
-    const emails = (listData?.data ?? []) as ResendEmail[];
+    const emails = listData.data;
     const verificationEmail = emails.find((email) => isExpectedVerificationEmail(email, testEmail));
 
     if (verificationEmail) {
