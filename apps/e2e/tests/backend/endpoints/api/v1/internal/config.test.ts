@@ -1535,7 +1535,7 @@ describe("branch config source", () => {
       });
 
       expect(response.status).toBe(400);
-      expect(response.body.error).toContain("source is required");
+      expect(response.body).toContain("source is required");
     });
 
     it("does not require source parameter for environment PUT", async ({ expect }) => {
@@ -1594,14 +1594,16 @@ describe("branch config source", () => {
 
       const firstSource = await Project.getConfigSource();
       expect(firstSource.type).toBe("pushed-from-github");
-      expect((firstSource as any).repo).toBe("org/repo1");
+      expect((firstSource as any).owner).toBe("org");
+      expect((firstSource as any).repo).toBe("repo1");
 
       // Push again with different GitHub source
       await Project.pushConfig({ 'teams.allowClientTeamCreation': false }, createGitHubSource({ owner: "org", repo: "repo2" }));
 
       const secondSource = await Project.getConfigSource();
       expect(secondSource.type).toBe("pushed-from-github");
-      expect((secondSource as any).repo).toBe("org/repo2");
+      expect((secondSource as any).owner).toBe("org");
+      expect((secondSource as any).repo).toBe("repo2");
 
       // Push with unknown source
       await Project.pushConfig({ 'teams.allowClientTeamCreation': true }, createUnknownSource());

@@ -164,9 +164,7 @@ const branchSchemaFuzzerConfig = [{
       }] as const,
     }],
   }],
-  domains: [{
-    allowLocalhost: [true, false],
-  }],
+  domains: [{}],
   apps: [{
     installed: [typedFromEntries(typedEntries(ALL_APPS).map(([key, value]) => [key, [{
       enabled: [true, false],
@@ -194,7 +192,7 @@ const environmentSchemaFuzzerConfig = [{
     }],
   }],
   domains: [{
-    ...branchSchemaFuzzerConfig[0].domains[0],
+    allowLocalhost: [true, false],
     trustedDomains: [{
       "some-domain-id": [{
         baseUrl: ["https://example.com/something-here"],
