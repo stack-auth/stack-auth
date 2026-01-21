@@ -9,6 +9,7 @@ it("should list anonymous users when includeAnonymous is true", async ({ expect 
     primaryEmail: "regular@test.com",
     password: "password",
     primaryEmailAuthEnabled: true,
+    primaryEmailVerified: true,
   });
 
   // Create anonymous users
@@ -37,6 +38,7 @@ it("should default to excluding anonymous users when includeAnonymous is not spe
     primaryEmail: "regular2@test.com",
     password: "password",
     primaryEmailAuthEnabled: true,
+    primaryEmailVerified: true,
   });
 
   // Create an anonymous user

@@ -1,5 +1,5 @@
 import { Button } from "@/components/ui";
-import { MoonIcon, SunIcon } from "lucide-react";
+import { MoonIcon, SunIcon } from "@phosphor-icons/react";
 import { useTheme } from "next-themes";
 
 export default function ThemeToggle() {

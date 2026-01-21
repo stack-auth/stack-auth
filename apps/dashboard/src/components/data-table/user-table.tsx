@@ -2,10 +2,6 @@
 
 import { useAdminApp } from "@/app/(main)/(protected)/projects/[projectId]/use-admin-app";
 import { useRouter } from "@/components/router";
-import type { ServerUser } from "@stackframe/stack";
-import { fromNow } from "@stackframe/stack-shared/dist/utils/dates";
-import { runAsynchronously, runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
-import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
 import {
   Avatar,
   AvatarFallback,
@@ -27,13 +23,17 @@ import {
   Skeleton,
   toast,
 } from "@/components/ui";
+import { ArrowDownIcon, ArrowUpIcon, CaretLeftIcon, CaretRightIcon, CheckCircleIcon, CopyIcon, DotsThreeIcon, MagnifyingGlassIcon, XCircleIcon, XIcon } from "@phosphor-icons/react";
+import type { ServerUser } from "@stackframe/stack";
+import { fromNow } from "@stackframe/stack-shared/dist/utils/dates";
+import { runAsynchronously, runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
+import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
 import {
   ColumnDef,
   createColumnHelper,
   getCoreRowModel,
   useReactTable,
 } from "@tanstack/react-table";
-import { ArrowDown, ArrowUp, CheckCircle2, ChevronLeft, ChevronRight, Copy, MoreHorizontal, Search, X, XCircle } from "lucide-react";
 import { Suspense, useEffect, useMemo, useState } from "react";
 import * as yup from "yup";
 import { Link } from "../link";
@@ -52,6 +52,7 @@ import { useUrlQueryState } from "./common/url-query-state";
 
 type QueryState = {
   search?: string,
+  includeRestricted: boolean,
   includeAnonymous: boolean,
   page: number,
   pageSize: number,
@@ -111,6 +112,7 @@ const COLUMN_LAYOUT: ColumnLayoutMap = {
 };
 
 const DEFAULT_QUERY_STATE: QueryState = {
+  includeRestricted: true,
   includeAnonymous: false,
   page: 1,
   pageSize: DEFAULT_PAGE_SIZE,
@@ -145,6 +147,10 @@ const querySchema = yup.object({
     .string()
     .transform((_, originalValue) => optionalStringTransform(originalValue))
     .optional(),
+  includeRestricted: yup
+    .boolean()
+    .transform((_, originalValue) => (originalValue === "true" ? true : originalValue === "false" ? false : undefined))
+    .optional(),
   includeAnonymous: yup
     .boolean()
     .transform((_, originalValue) => (originalValue === "true" ? true : undefined))
@@ -174,7 +180,7 @@ const querySchema = yup.object({
 const columnHelper = createColumnHelper<ExtendedServerUser>();
 
 export function UserTable(props?: {
-  onFilterChange?: (filters: { search?: string, includeAnonymous: boolean }) => void,
+  onFilterChange?: (filters: { search?: string, includeRestricted: boolean, includeAnonymous: boolean }) => void,
 }) {
   const { query, setQuery } = useUserTableQueryState();
   const [searchInput, setSearchInput] = useState(query.search ?? "");
@@ -203,7 +209,7 @@ export function UserTable(props?: {
 
   useEffect(() => {
     cursorPaginationCache.resetCache();
-  }, [cursorPaginationCache, query.search, query.includeAnonymous, query.pageSize, query.signedUpOrder]);
+  }, [cursorPaginationCache, query.search, query.includeRestricted, query.includeAnonymous, query.pageSize, query.signedUpOrder]);
 
   useEffect(() => {
     if (query.page > 1 && !query.cursor) {
@@ -216,15 +222,20 @@ export function UserTable(props?: {
   useEffect(() => {
     onFilterChange?.({
       search: query.search,
+      includeRestricted: query.includeRestricted,
       includeAnonymous: query.includeAnonymous,
     });
-  }, [query.search, query.includeAnonymous, onFilterChange]);
+  }, [query.search, query.includeRestricted, query.includeAnonymous, onFilterChange]);
 
   return (
     <section className="space-y-2">
       <UserTableHeader
         searchValue={searchInput}
         onSearchChange={setSearchInput}
+        includeRestricted={query.includeRestricted}
+        onIncludeRestrictedChange={(value) =>
+          setQuery((prev) => ({ ...prev, includeRestricted: value, page: 1, cursor: undefined }))
+        }
         includeAnonymous={query.includeAnonymous}
         onIncludeAnonymousChange={(value) =>
           setQuery((prev) => ({ ...prev, includeAnonymous: value, page: 1, cursor: undefined }))
@@ -246,10 +257,31 @@ export function UserTable(props?: {
 function UserTableHeader(props: {
   searchValue: string,
   onSearchChange: (value: string) => void,
+  includeRestricted: boolean,
+  onIncludeRestrictedChange: (value: boolean) => void,
   includeAnonymous: boolean,
   onIncludeAnonymousChange: (value: boolean) => void,
 }) {
-  const { searchValue, onSearchChange, includeAnonymous, onIncludeAnonymousChange } = props;
+  const { searchValue, onSearchChange, includeRestricted, onIncludeRestrictedChange, includeAnonymous, onIncludeAnonymousChange } = props;
+
+  // Determine the current filter state
+  // "standard" = only fully onboarded users
+  // "restricted" = include restricted users
+  // "anonymous" = include anonymous users (which also includes restricted)
+  const filterValue = includeAnonymous ? "anonymous" : includeRestricted ? "restricted" : "standard";
+
+  const handleFilterChange = (value: string) => {
+    if (value === "anonymous") {
+      onIncludeAnonymousChange(true);
+      onIncludeRestrictedChange(true); // anonymous also includes restricted
+    } else if (value === "restricted") {
+      onIncludeAnonymousChange(false);
+      onIncludeRestrictedChange(true);
+    } else {
+      onIncludeAnonymousChange(false);
+      onIncludeRestrictedChange(false);
+    }
+  };
 
   return (
     <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
@@ -262,7 +294,7 @@ function UserTableHeader(props: {
             className="!px-8"
             autoComplete="off"
           />
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <MagnifyingGlassIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           {searchValue.length > 0 && (
             <button
               type="button"
@@ -270,21 +302,22 @@ function UserTableHeader(props: {
               className="absolute right-2 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full text-muted-foreground transition hover:bg-muted/60 hover:text-foreground"
               aria-label="Clear search"
             >
-              <X className="h-4 w-4" />
+              <XIcon className="h-4 w-4" />
             </button>
           )}
         </div>
         <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
           <Select
-            value={includeAnonymous ? "include" : "standard"}
-            onValueChange={(value) => onIncludeAnonymousChange(value === "include")}
+            value={filterValue}
+            onValueChange={handleFilterChange}
           >
-            <SelectTrigger className="w-[180px]" aria-label="User list filter">
-              <SelectValue placeholder="Exclude Anonymous" />
+            <SelectTrigger className="w-[210px]" aria-label="User list filter">
+              <SelectValue placeholder="Signups" />
             </SelectTrigger>
             <SelectContent align="start">
-              <SelectItem value="standard">Exclude Anonymous</SelectItem>
-              <SelectItem value="include">Include Anonymous</SelectItem>
+              <SelectItem value="standard">Exclude restricted users</SelectItem>
+              <SelectItem value="restricted">Signups</SelectItem>
+              <SelectItem value="anonymous">Signups & anonymous users</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -314,9 +347,10 @@ function UserTableBody(props: {
       orderBy: "signedUpAt" as const,
       desc: query.signedUpOrder === "desc",
       query: query.search,
+      includeRestricted: query.includeRestricted,
       includeAnonymous: query.includeAnonymous,
     }),
-    [query.pageSize, query.search, query.includeAnonymous, query.signedUpOrder],
+    [query.pageSize, query.search, query.includeRestricted, query.includeAnonymous, query.signedUpOrder],
   );
 
   const storedCursor = readCursorForPage(query.page);
@@ -384,7 +418,7 @@ function UserTableBody(props: {
         renderEmptyState={() => (
           <div className="mx-auto flex max-w-md flex-col items-center gap-4">
             <div className="flex h-12 w-12 items-center justify-center rounded-full bg-muted">
-              <Search className="h-6 w-6 text-muted-foreground" />
+              <MagnifyingGlassIcon className="h-6 w-6 text-muted-foreground" />
             </div>
             <div className="text-base font-medium text-foreground">No users found</div>
             <p className="text-sm text-muted-foreground">
@@ -394,7 +428,7 @@ function UserTableBody(props: {
               variant="outline"
               onClick={() => {
                 resetCache();
-                setQuery({ search: undefined, includeAnonymous: false, page: 1, cursor: undefined });
+                setQuery({ search: undefined, includeRestricted: true, includeAnonymous: false, page: 1, cursor: undefined });
               }}
             >
               Reset filters
@@ -513,7 +547,7 @@ function UserTableSkeleton(props: { pageSize: number }) {
         </div>
         <div className="flex items-center gap-2">
           <Button variant="ghost" size="sm" disabled>
-            <ChevronLeft className="mr-1 h-4 w-4" />
+            <CaretLeftIcon className="mr-1 h-4 w-4" />
             Previous
           </Button>
           <span className="rounded-md border border-border px-3 py-1 text-xs font-medium text-muted-foreground">
@@ -521,7 +555,7 @@ function UserTableSkeleton(props: { pageSize: number }) {
           </span>
           <Button variant="ghost" size="sm" disabled>
             Next
-            <ChevronRight className="ml-1 h-4 w-4" />
+            <CaretRightIcon className="ml-1 h-4 w-4" />
           </Button>
         </div>
       </div>
@@ -565,7 +599,7 @@ function createUserColumns(
           aria-label={`Sort by signed up (${isSignedUpDesc ? "newest first" : "oldest first"})`}
         >
           <span>Signed up</span>
-          {isSignedUpDesc ? <ArrowDown className="h-3 w-3" /> : <ArrowUp className="h-3 w-3" />}
+          {isSignedUpDesc ? <ArrowDownIcon className="h-3 w-3" /> : <ArrowUpIcon className="h-3 w-3" />}
         </button>
       ),
       cell: ({ row }) => <DateMetaCell value={row.original.signedUpAt} emptyLabel="Unknown" />,
@@ -598,7 +632,7 @@ function UserActions(props: { user: ExtendedServerUser }) {
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button variant="ghost" size="icon" className="h-8 w-8" aria-label="User actions">
-            <MoreHorizontal className="h-4 w-4" />
+            <DotsThreeIcon className="h-4 w-4" />
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-56">
@@ -683,19 +717,25 @@ function normalizeDateValue(value: Date | string | null | undefined) {
 function sanitizeQueryState(state: Partial<QueryState>): QueryState {
   const search = state.search?.trim() ? state.search.trim() : undefined;
   const includeAnonymous = Boolean(state.includeAnonymous);
+  // Default to including restricted users; also enforce that anonymous implies restricted
+  const includeRestricted = includeAnonymous || (state.includeRestricted ?? true);
   const candidatePageSize = state.pageSize ?? DEFAULT_PAGE_SIZE;
   const pageSize = PAGE_SIZE_OPTIONS.includes(candidatePageSize) ? candidatePageSize : DEFAULT_PAGE_SIZE;
   const candidatePage = state.page ?? 1;
   const page = Number.isFinite(candidatePage) ? Math.max(1, Math.floor(candidatePage)) : 1;
   const cursor = page > 1 && state.cursor ? state.cursor : undefined;
   const signedUpOrder = state.signedUpOrder === "asc" ? "asc" : "desc";
-  return { search, includeAnonymous, page, pageSize, cursor, signedUpOrder };
+  return { search, includeRestricted, includeAnonymous, page, pageSize, cursor, signedUpOrder };
 }
 
 function serializeQueryState(state: QueryState) {
   const params = new URLSearchParams();
   if (state.search) {
     params.set("search", state.search);
+  }
+  // Only write to URL if NOT including restricted (since true is the default)
+  if (!state.includeRestricted) {
+    params.set("includeRestricted", "false");
   }
   if (state.includeAnonymous) {
     params.set("includeAnonymous", "true");
@@ -862,7 +902,7 @@ function UserIdCell(props: { user: ExtendedServerUser }) {
         title={user.id}
       >
         <span className="truncate">{idLabel}</span>
-        <Copy className="h-3 w-3" />
+        <CopyIcon className="h-3 w-3" />
       </Button>
     </SimpleTooltip>
   );
@@ -885,9 +925,9 @@ function EmailStatusCell(props: { user: ExtendedServerUser }) {
   return (
     <div className="flex items-center justify-start">
       {isVerified ? (
-        <CheckCircle2 className="h-4 w-4 text-success" aria-label="Email verified" />
+        <CheckCircleIcon className="h-4 w-4 text-success" aria-label="Email verified" />
       ) : (
-        <XCircle className="h-4 w-4 text-amber-500" aria-label="Email unverified" />
+        <XCircleIcon className="h-4 w-4 text-amber-500" aria-label="Email unverified" />
       )}
     </div>
   );

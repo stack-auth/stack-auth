@@ -3,12 +3,12 @@ import { FormDialog } from "@/components/form-dialog";
 import { InputField, SwitchField } from "@/components/form-fields";
 import { Link } from "@/components/link";
 import { getPublicEnvVar } from '@/lib/env';
+import { ArrowRightIcon } from "@phosphor-icons/react";
 import { AdminProject } from "@stackframe/stack";
 import { yupBoolean, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { sharedProviders } from "@stackframe/stack-shared/dist/utils/oauth";
 import { ActionDialog, Badge, BrandIcons, InlineCode, Label, SimpleTooltip, Typography, buttonVariants, cn } from "@/components/ui";
 import clsx from "clsx";
-import { ArrowRight } from "lucide-react";
 import { useState } from "react";
 import * as yup from "yup";
 
@@ -181,7 +181,7 @@ export function ProviderSettingDialog(props: Props & { open: boolean, onClose: (
             target="_blank"
           >
             See full documentation
-            <ArrowRight size={16} />
+            <ArrowRightIcon size={16} />
           </Link>
 
         </>

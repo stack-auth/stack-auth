@@ -1,8 +1,8 @@
 "use client";
 
-import { cn } from "@/lib/utils";
 import { Button, SimpleTooltip } from "@/components/ui";
-import { Plus, Search } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { MagnifyingGlassIcon, PlusIcon } from "@phosphor-icons/react";
 import React, { ReactNode, useState } from "react";
 
 export type ListSectionProps = {
@@ -54,7 +54,7 @@ export function ListSection({
                 isSearchFocused ? "w-[160px]" : "w-[140px]"
               )}>
                 <div className="absolute left-2.5 flex items-center justify-center pointer-events-none z-10">
-                  <Search className="h-3 w-3 text-foreground/50" />
+                  <MagnifyingGlassIcon className="h-3 w-3 text-foreground/50" />
                 </div>
                 <input
                   type="text"
@@ -90,7 +90,7 @@ export function ListSection({
               )}
               onClick={onAddClick}
             >
-              <Plus className="h-3.5 w-3.5" />
+              <PlusIcon className="h-4 w-4" />
             </Button>
           )}
         </div>

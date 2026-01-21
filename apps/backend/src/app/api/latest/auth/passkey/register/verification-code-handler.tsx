@@ -1,7 +1,7 @@
 import { validateRedirectUrl } from "@/lib/redirect-urls";
 import { getPrismaClientForTenancy, retryTransaction } from "@/prisma-client";
 import { createVerificationCodeHandler } from "@/route-handlers/verification-code-handler";
-import { VerificationCodeType } from "@prisma/client";
+import { VerificationCodeType } from "@/generated/prisma/client";
 import { verifyRegistrationResponse } from "@simplewebauthn/server";
 import { decodeClientDataJSON } from "@simplewebauthn/server/helpers";
 import { KnownErrors } from "@stackframe/stack-shared";

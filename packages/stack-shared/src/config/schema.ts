@@ -12,10 +12,11 @@ import { productSchema, userSpecifiedIdSchema, yupBoolean, yupDate, yupMixed, yu
 import { SUPPORTED_CURRENCIES } from "../utils/currency-constants";
 import { StackAssertionError } from "../utils/errors";
 import { allProviders } from "../utils/oauth";
-import { DeepFilterUndefined, DeepMerge, DeepRequiredOrUndefined, filterUndefined, get, has, isObjectLike, mapValues, set, typedAssign, typedEntries, typedFromEntries } from "../utils/objects";
+import { DeepFilterUndefined, DeepMerge, DeepRequiredOrUndefined, filterUndefined, get, getOrUndefined, has, isObjectLike, mapValues, set, typedAssign, typedEntries, typedFromEntries } from "../utils/objects";
 import { Result } from "../utils/results";
 import { CollapseObjectUnion, Expand, IntersectAll, IsUnion, typeAssert, typeAssertExtends, typeAssertIs } from "../utils/types";
 import { Config, NormalizationError, NormalizesTo, assertNormalized, getInvalidConfigReason, normalize } from "./format";
+import { migrateCatalogsToProductLines } from "./migrate-catalogs-to-product-lines";
 
 export const configLevels = ['project', 'branch', 'environment', 'organization'] as const;
 export type ConfigLevel = typeof configLevels[number];
@@ -144,16 +145,18 @@ const branchAuthSchema = yupObject({
 });
 
 export const branchPaymentsSchema = yupObject({
+  blockNewPurchases: yupBoolean(),
   autoPay: yupObject({
     interval: schemaFields.dayIntervalSchema,
   }).optional(),
   testMode: yupBoolean(),
-  catalogs: yupRecord(
-    userSpecifiedIdSchema("catalogId"),
+  productLines: yupRecord(
+    userSpecifiedIdSchema("productLineId"),
     yupObject({
       displayName: yupString().optional(),
+      customerType: schemaFields.customerTypeSchema,
     }),
-  ).meta({ openapiField: { description: 'The catalogs that products can be in. All products in a catalog (besides add-ons) are mutually exclusive.', exampleValue: { "catalog-id": { displayName: "My Catalog" } } } }),
+  ).meta({ openapiField: { description: 'The product lines that products can be in. All products in a product line (besides add-ons) are mutually exclusive.', exampleValue: { "product-line-id": { displayName: "My Product Line", customerType: "user" } } } }),
   products: yupRecord(
     userSpecifiedIdSchema("productId"),
     productSchema,
@@ -165,10 +168,37 @@ export const branchPaymentsSchema = yupObject({
       customerType: schemaFields.customerTypeSchema,
     }),
   ),
-});
+}).optional().test(
+  'product-customer-type-matches-product-line',
+  'Product customer type must match its product line customer type',
+  function(this: yup.TestContext<yup.AnyObject>, value) {
+    if (!value) return true;
+    for (const [productId, product] of Object.entries(value.products)) {
+      if (!product.productLineId) continue;
+      const productLine = getOrUndefined(value.productLines, product.productLineId);
+      if (productLine === undefined) {
+        return this.createError({
+          message: `Product "${productId}" specifies product line ID "${product.productLineId}", but that product line does not exist`,
+          path: `${this.path}.products.${productId}.productLineId`,
+        });
+      }
+      if (product.customerType !== productLine.customerType) {
+        return this.createError({
+          message: `Product "${productId}" has customer type "${product.customerType}" but its product line "${product.productLineId}" has customer type "${productLine.customerType}"`,
+          path: `${this.path}.products.${productId}.customerType`,
+        });
+      }
+    }
+    return true;
+  }
+);
 
 const branchDomain = yupObject({
   allowLocalhost: yupBoolean(),
+});
+
+const branchOnboardingSchema = yupObject({
+  requireEmailVerification: yupBoolean(),
 });
 
 
@@ -183,6 +213,8 @@ export const branchConfigSchema = canNoLongerBeOverridden(projectConfigSchema, [
   users: yupObject({
     allowClientUserDeletion: yupBoolean(),
   }),
+
+  onboarding: branchOnboardingSchema,
 
   apiKeys: branchApiKeysSchema,
 
@@ -342,6 +374,12 @@ export function migrateConfigOverride(type: "project" | "branch" | "environment"
   }
   // END
 
+  // BEGIN 2026-01-14: payments.catalogs is now payments.productLines (with customerType inferred from products) and payments.products.*.catalogId is now payments.products.*.productLineId
+  if (isBranchOrHigher) {
+    res = migrateCatalogsToProductLines(res);
+  }
+  // END
+
   // return the result
   return res;
 };
@@ -477,6 +515,10 @@ const organizationConfigDefaults = {
     allowClientUserDeletion: false,
   },
 
+  onboarding: {
+    requireEmailVerification: false,
+  },
+
   domains: {
     allowLocalhost: false,
     trustedDomains: (key: string) => ({
@@ -535,14 +577,16 @@ const organizationConfigDefaults = {
   },
 
   payments: {
+    blockNewPurchases: false,
     testMode: true,
     autoPay: undefined,
-    catalogs: (key: string) => ({
+    productLines: (key: string) => ({
       displayName: undefined,
+      customerType: undefined,
     }),
     products: (key: string) => ({
       displayName: key,
-      catalogId: undefined,
+      productLineId: undefined,
       customerType: "user",
       freeTrial: undefined,
       serverOnly: false,

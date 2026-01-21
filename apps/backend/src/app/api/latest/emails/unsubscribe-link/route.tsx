@@ -1,6 +1,6 @@
 import { getSoleTenancyFromProjectBranch } from "@/lib/tenancies";
 import { getPrismaClientForTenancy, globalPrismaClient } from "@/prisma-client";
-import { VerificationCodeType } from "@prisma/client";
+import { VerificationCodeType } from "@/generated/prisma/client";
 import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
 import { NextRequest } from "next/server";
 

@@ -2,6 +2,7 @@ import { WebAuthnError, startAuthentication, startRegistration } from "@simplewe
 import { KnownErrors, StackClientInterface } from "@stackframe/stack-shared";
 import { ContactChannelsCrud } from "@stackframe/stack-shared/dist/interface/crud/contact-channels";
 import { CurrentUserCrud } from "@stackframe/stack-shared/dist/interface/crud/current-user";
+import type { CustomerInvoicesListResponse } from "@stackframe/stack-shared/dist/interface/crud/invoices";
 import { ItemCrud } from "@stackframe/stack-shared/dist/interface/crud/items";
 import { NotificationPreferenceCrud } from "@stackframe/stack-shared/dist/interface/crud/notification-preferences";
 import { OAuthProviderCrud } from "@stackframe/stack-shared/dist/interface/crud/oauth-providers";
@@ -42,12 +43,12 @@ import { ApiKey, ApiKeyCreationOptions, ApiKeyUpdateOptions, apiKeyCreationOptio
 import { ConvexCtx, GetCurrentPartialUserOptions, GetCurrentUserOptions, HandlerUrls, OAuthScopesOnSignIn, RedirectMethod, RedirectToOptions, RequestLike, TokenStoreInit, stackAppInternalsSymbol } from "../../common";
 import { OAuthConnection } from "../../connected-accounts";
 import { ContactChannel, ContactChannelCreateOptions, ContactChannelUpdateOptions, contactChannelCreateOptionsToCrud, contactChannelUpdateOptionsToCrud } from "../../contact-channels";
-import { Customer, CustomerProductsList, CustomerProductsListOptions, CustomerProductsRequestOptions, Item } from "../../customers";
+import { Customer, CustomerBilling, CustomerDefaultPaymentMethod, CustomerInvoiceStatus, CustomerInvoicesList, CustomerInvoicesListOptions, CustomerInvoicesRequestOptions, CustomerPaymentMethodSetupIntent, CustomerProductsList, CustomerProductsListOptions, CustomerProductsRequestOptions, Item } from "../../customers";
 import { NotificationCategory } from "../../notification-categories";
 import { TeamPermission } from "../../permissions";
 import { AdminOwnedProject, AdminProjectUpdateOptions, Project, adminProjectCreateOptionsToCrud } from "../../projects";
 import { EditableTeamMemberProfile, Team, TeamCreateOptions, TeamInvitation, TeamUpdateOptions, TeamUser, teamCreateOptionsToCrud, teamUpdateOptionsToCrud } from "../../teams";
-import { ActiveSession, Auth, BaseUser, CurrentUser, InternalUserExtra, OAuthProvider, ProjectCurrentUser, SyncedPartialUser, TokenPartialUser, UserExtra, UserUpdateOptions, attachUserDestructureGuard, userUpdateOptionsToCrud } from "../../users";
+import { ActiveSession, Auth, BaseUser, CurrentUser, InternalUserExtra, OAuthProvider, ProjectCurrentUser, SyncedPartialUser, TokenPartialUser, UserExtra, UserUpdateOptions, userUpdateOptionsToCrud, withUserDestructureGuard } from "../../users";
 import { StackClientApp, StackClientAppConstructorOptions, StackClientAppJson } from "../interfaces/client-app";
 import { _StackAdminAppImplIncomplete } from "./admin-app-impl";
 import { TokenObject, clientVersion, createCache, createCacheBySession, createEmptyTokenStore, getBaseUrl, getDefaultExtraRequestHeaders, getDefaultProjectId, getDefaultPublishableClientKey, getUrls, resolveConstructorOptions } from "./common";
@@ -269,6 +270,43 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     }
   );
 
+  private readonly _userInvoicesCache = createCacheBySession<[string, string | null, number | null], CustomerInvoicesListResponse>(
+    async (session, [userId, cursor, limit]) => {
+      return await this._interface.listInvoices({
+        customer_type: "user",
+        customer_id: userId,
+        cursor: cursor ?? undefined,
+        limit: limit ?? undefined,
+      }, session);
+    }
+  );
+
+  private readonly _teamInvoicesCache = createCacheBySession<[string, string | null, number | null], CustomerInvoicesListResponse>(
+    async (session, [teamId, cursor, limit]) => {
+      return await this._interface.listInvoices({
+        customer_type: "team",
+        customer_id: teamId,
+        cursor: cursor ?? undefined,
+        limit: limit ?? undefined,
+      }, session);
+    }
+  );
+
+  private readonly _customerBillingCache = createCacheBySession<["user" | "team", string], {
+    has_customer: boolean,
+    default_payment_method: {
+      id: string,
+      brand: string | null,
+      last4: string | null,
+      exp_month: number | null,
+      exp_year: number | null,
+    } | null,
+  }>(
+    async (session, [customerType, customerId]) => {
+      return await this._interface.getCustomerBilling(customerType, customerId, session);
+    }
+  );
+
   private readonly _convexPartialUserCache = createCache<[unknown], TokenPartialUser | null>(
     async ([ctx]) => await this._getPartialUserFromConvex(ctx as any)
   );
@@ -452,7 +490,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
   private _formatAccessCookieValue(refreshToken: string | null, accessToken: string | null): string | null {
     return refreshToken && accessToken ? JSON.stringify([refreshToken, accessToken]) : null;
   }
-  private _parseStructuredRefreshCookie(value: string | null): { refreshToken: string, updatedAt: number | null } | null {
+  private _parseStructuredRefreshCookie(value: string | undefined): { refreshToken: string, updatedAt: number | null } | null {
     if (!value) {
       return null;
     }
@@ -474,7 +512,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     };
 
   }
-  private _extractRefreshTokenFromCookieMap(cookies: Record<string, string>): { refreshToken: string | null, updatedAt: number | null } {
+  private _extractRefreshTokenFromCookieMap(cookies: cookie.Cookies): { refreshToken: string | null, updatedAt: number | null } {
     const { legacyNames, structuredPrefixes } = this._getRefreshTokenCookieNamePatterns();
     for (const name of legacyNames) {
       const value = cookies[name];
@@ -504,7 +542,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       updatedAt: selected.updatedAt ?? null,
     };
   }
-  protected _getTokensFromCookies(cookies: Record<string, string>): TokenObject {
+  protected _getTokensFromCookies(cookies: cookie.Cookies): TokenObject {
     const { refreshToken } = this._extractRefreshTokenFromCookieMap(cookies);
     const accessTokenCookie = cookies[this._accessTokenCookieName] ?? null;
     let accessToken: string | null = null;
@@ -538,11 +576,11 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     // the access token on page reload.
     return `stack-access`;
   }
-  private _getAllBrowserCookies(): Record<string, string> {
+  private _getAllBrowserCookies(): cookie.Cookies {
     if (!isBrowserLike()) {
       throw new StackAssertionError("Cannot get browser cookies on the server!");
     }
-    return cookie.parse(document.cookie || "");
+    return cookie.parseCookie(document.cookie || "");
   }
   private _getRefreshTokenCookieNamePatterns(): { legacyNames: string[], structuredPrefixes: string[] } {
     return {
@@ -553,7 +591,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       ],
     };
   }
-  private _collectRefreshTokenCookieNames(cookies: Record<string, string>): Set<string> {
+  private _collectRefreshTokenCookieNames(cookies: cookie.Cookies): Set<string> {
     const { legacyNames, structuredPrefixes } = this._getRefreshTokenCookieNamePatterns();
     const names = new Set<string>();
     for (const name of legacyNames) {
@@ -569,7 +607,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     return names;
   }
   private _prepareRefreshCookieUpdate(
-    existingCookies: Record<string, string>,
+    existingCookies: cookie.Cookies,
     refreshToken: string | null,
     accessToken: string | null,
     defaultCookieName: string,
@@ -774,7 +812,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
 
           // read from cookies
           const cookieHeader = tokenStoreInit.headers.get("cookie");
-          const parsed = cookie.parse(cookieHeader || "");
+          const parsed = cookie.parseCookie(cookieHeader || "");
           const res = new Store<TokenObject>(this._getTokensFromCookies(parsed));
           this._requestTokenStores.set(tokenStoreInit, res);
           return res;
@@ -1153,8 +1191,45 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       customerType: item.product.customer_type,
       isServerOnly: item.product.server_only,
       stackable: item.product.stackable,
+      type: item.type,
+      subscription: item.subscription ? {
+        currentPeriodEnd: item.subscription.current_period_end ? new Date(item.subscription.current_period_end) : null,
+        cancelAtPeriodEnd: item.subscription.cancel_at_period_end,
+        isCancelable: item.subscription.is_cancelable,
+      } : null,
+      switchOptions: item.switch_options?.map((option) => ({
+        productId: option.product_id,
+        displayName: option.product.display_name,
+        prices: option.product.prices,
+      })),
     }));
     return Object.assign(products, { nextCursor: response.pagination.next_cursor ?? null });
+  }
+
+  protected _customerInvoicesFromResponse(response: CustomerInvoicesListResponse): CustomerInvoicesList {
+    const invoices = response.items.map((item) => ({
+      status: item.status as CustomerInvoiceStatus,
+      amountTotal: item.amount_total,
+      hostedInvoiceUrl: item.hosted_invoice_url,
+      createdAt: new Date(item.created_at_millis),
+    }));
+    return Object.assign(invoices, { nextCursor: response.pagination.next_cursor ?? null });
+  }
+
+  protected _customerBillingFromResponse(response: {
+    has_customer: boolean,
+    default_payment_method: {
+      id: string,
+      brand: string | null,
+      last4: string | null,
+      exp_month: number | null,
+      exp_year: number | null,
+    } | null,
+  }): CustomerBilling {
+    return {
+      hasCustomer: response.has_customer,
+      defaultPaymentMethod: response.default_payment_method,
+    };
   }
 
   protected _createAuth(session: InternalSession): Auth {
@@ -1276,6 +1351,8 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       passkeyAuthEnabled: crud.passkey_auth_enabled,
       isMultiFactorRequired: crud.requires_totp_mfa,
       isAnonymous: crud.is_anonymous,
+      isRestricted: crud.is_restricted,
+      restrictedReason: crud.restricted_reason,
       toClientJson(): CurrentUserCrud['Client']['Read'] {
         return crud;
       }
@@ -1307,14 +1384,14 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       async revokeSession(sessionId: string) {
         await app._interface.deleteSession(sessionId, session);
       },
-      setDisplayName(displayName: string) {
+      setDisplayName(displayName: string | null) {
         return this.update({ displayName });
       },
       setClientMetadata(metadata: Record<string, any>) {
         return this.update({ clientMetadata: metadata });
       },
-      async setSelectedTeam(team: Team | null) {
-        await this.update({ selectedTeamId: team?.id ?? null });
+      async setSelectedTeam(team: Team | string | null) {
+        await this.update({ selectedTeamId: typeof team === 'string' ? team : team?.id ?? null });
       },
       getConnectedAccount,
       useConnectedAccount, // THIS_LINE_PLATFORM react-like
@@ -1587,8 +1664,31 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
 
   protected _createCustomer(userIdOrTeamId: string, type: "user" | "team", session: InternalSession | null): Omit<Customer, "id"> {
     const app = this;
+    const effectiveSession = session ?? app._interface.createSession({ refreshToken: null });
     const customerOptions = type === "user" ? { userId: userIdOrTeamId } : { teamId: userIdOrTeamId };
     return {
+      async getBilling() {
+        const response = Result.orThrow(await app._customerBillingCache.getOrWait([effectiveSession, type, userIdOrTeamId], "write-only"));
+        return app._customerBillingFromResponse(response);
+      },
+      // IF_PLATFORM react-like
+      useBilling() {
+        const response = useAsyncCache(app._customerBillingCache, [effectiveSession, type, userIdOrTeamId] as const, "customer.useBilling()");
+        return app._customerBillingFromResponse(response);
+      },
+      // END_PLATFORM
+      async createPaymentMethodSetupIntent(): Promise<CustomerPaymentMethodSetupIntent> {
+        const body = await app._interface.createCustomerPaymentMethodSetupIntent(type, userIdOrTeamId, effectiveSession);
+        return {
+          clientSecret: body.client_secret,
+          stripeAccountId: body.stripe_account_id,
+        };
+      },
+      async setDefaultPaymentMethodFromSetupIntent(setupIntentId: string): Promise<CustomerDefaultPaymentMethod> {
+        const body = await app._interface.setDefaultCustomerPaymentMethodFromSetupIntent(type, userIdOrTeamId, setupIntentId, effectiveSession);
+        await app._customerBillingCache.refresh([effectiveSession, type, userIdOrTeamId]);
+        return body.default_payment_method;
+      },
       async getItem(itemId: string) {
         return await app.getItem({ itemId, ...customerOptions });
       },
@@ -1605,8 +1705,32 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         return app.useProducts({ ...options, ...customerOptions });
       },
       // END_PLATFORM
+      async listInvoices(options?: CustomerInvoicesListOptions) {
+        return await app.listInvoices({ ...options, ...customerOptions });
+      },
+      // IF_PLATFORM react-like
+      useInvoices(options?: CustomerInvoicesListOptions) {
+        return app.useInvoices({ ...options, ...customerOptions });
+      },
+      // END_PLATFORM
       async createCheckoutUrl(options: { productId: string, returnUrl?: string }) {
-        return await app._interface.createCheckoutUrl(type, userIdOrTeamId, options.productId, session, options.returnUrl);
+        return await app._interface.createCheckoutUrl(type, userIdOrTeamId, options.productId, effectiveSession, options.returnUrl);
+      },
+      async switchSubscription(options: { fromProductId: string, toProductId: string, priceId?: string, quantity?: number }) {
+        await app._interface.switchSubscription({
+          customer_type: type,
+          customer_id: userIdOrTeamId,
+          from_product_id: options.fromProductId,
+          to_product_id: options.toProductId,
+          price_id: options.priceId,
+          quantity: options.quantity,
+        }, effectiveSession);
+        await app._customerBillingCache.refresh([effectiveSession, type, userIdOrTeamId]);
+        if (type === "user") {
+          await app._userProductsCache.invalidateWhere(([cachedSession, userId]) => cachedSession === effectiveSession && userId === userIdOrTeamId);
+        } else {
+          await app._teamProductsCache.invalidateWhere(([cachedSession, teamId]) => cachedSession === effectiveSession && teamId === userIdOrTeamId);
+        }
       },
     };
   }
@@ -1648,6 +1772,35 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     return this._customerProductsFromResponse(response);
   }
 
+  async listInvoices(options: CustomerInvoicesRequestOptions): Promise<CustomerInvoicesList> {
+    const session = await this._getSession();
+    if ("userId" in options) {
+      const response = Result.orThrow(await this._userInvoicesCache.getOrWait([session, options.userId, options.cursor ?? null, options.limit ?? null], "write-only"));
+      return this._customerInvoicesFromResponse(response);
+    }
+    const response = Result.orThrow(await this._teamInvoicesCache.getOrWait([session, options.teamId, options.cursor ?? null, options.limit ?? null], "write-only"));
+    return this._customerInvoicesFromResponse(response);
+  }
+
+  async cancelSubscription(options: { productId: string } | { productId: string, teamId: string }): Promise<void> {
+    const session = await this._getSession();
+    const user = await this.getUser();
+    if (!user) {
+      throw new KnownErrors.UserAuthenticationRequired();
+    }
+    const customerType = "teamId" in options ? "team" : "user";
+    const customerId = "teamId" in options ? options.teamId : user.id;
+    await this._interface.cancelSubscription({
+      customer_type: customerType,
+      customer_id: customerId,
+      product_id: options.productId,
+    }, session);
+    if (customerType === "user") {
+      await this._userProductsCache.invalidateWhere(([cachedSession, userId]) => cachedSession === session && userId === customerId);
+    } else {
+      await this._teamProductsCache.invalidateWhere(([cachedSession, teamId]) => cachedSession === session && teamId === customerId);
+    }
+  }
   // IF_PLATFORM react-like
   useProducts(options: CustomerProductsRequestOptions): CustomerProductsList {
     const session = this._useSession();
@@ -1658,18 +1811,25 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     return this._customerProductsFromResponse(response);
   }
   // END_PLATFORM
+  // IF_PLATFORM react-like
+  useInvoices(options: CustomerInvoicesRequestOptions): CustomerInvoicesList {
+    const session = this._useSession();
+    const cache = "userId" in options ? this._userInvoicesCache : this._teamInvoicesCache;
+    const debugLabel = "clientApp.useInvoices()";
+    const customerId = "userId" in options ? options.userId : options.teamId;
+    const response = useAsyncCache(cache, [session, customerId, options.cursor ?? null, options.limit ?? null] as const, debugLabel);
+    return this._customerInvoicesFromResponse(response);
+  }
+  // END_PLATFORM
 
   protected _currentUserFromCrud(crud: NonNullable<CurrentUserCrud['Client']['Read']>, session: InternalSession): ProjectCurrentUser<ProjectId> {
-    const currentUser = {
+    const currentUser = withUserDestructureGuard({
       ...this._createBaseUser(crud),
       ...this._createAuth(session),
       ...this._createUserExtraFromCurrent(crud, session),
       ...this._isInternalProject() ? this._createInternalUserExtra(session) : {},
       ...this._createCustomer(crud.id, "user", session),
-    } satisfies CurrentUser;
-
-    attachUserDestructureGuard(currentUser);
-    Object.freeze(currentUser);
+    } satisfies CurrentUser);
     return currentUser as ProjectCurrentUser<ProjectId>;
   }
   protected _clientSessionFromCrud(crud: SessionsCrud['Client']['Read']): ActiveSession {
@@ -1773,7 +1933,8 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
           const queryParams = new URLSearchParams(window.location.search);
           url = queryParams.get("after_auth_return_to") || url;
         }
-      } else if (handlerName === "signIn" || handlerName === "signUp") {
+      } else if (handlerName === "signIn" || handlerName === "signUp" || handlerName === "onboarding") {
+        // For signIn, signUp, and onboarding, preserve the return URL so user can be redirected back after completing the flow
         if (isReactServer || typeof window === "undefined") {
           // TODO implement this
         } else {
@@ -1803,6 +1964,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
   async redirectToMagicLinkCallback(options?: RedirectToOptions) { return await this._redirectToHandler("magicLinkCallback", options); }
   async redirectToAfterSignIn(options?: RedirectToOptions) { return await this._redirectToHandler("afterSignIn", options); }
   async redirectToAfterSignUp(options?: RedirectToOptions) { return await this._redirectToHandler("afterSignUp", options); }
+  async redirectToOnboarding(options?: RedirectToOptions) { return await this._redirectToHandler("onboarding", options); }
   async redirectToAfterSignOut(options?: RedirectToOptions) { return await this._redirectToHandler("afterSignOut", options); }
   async redirectToAccountSettings(options?: RedirectToOptions) { return await this._redirectToHandler("accountSettings", options); }
   async redirectToError(options?: RedirectToOptions) { return await this._redirectToHandler("error", options); }
@@ -1873,17 +2035,26 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
   async getUser(options: GetCurrentUserOptions<HasTokenStore> & { or: 'anonymous' }): Promise<ProjectCurrentUser<ProjectId>>;
   async getUser(options?: GetCurrentUserOptions<HasTokenStore>): Promise<ProjectCurrentUser<ProjectId> | null>;
   async getUser(options?: GetCurrentUserOptions<HasTokenStore>): Promise<ProjectCurrentUser<ProjectId> | null> {
+    // Validate that includeRestricted: false and or: 'anonymous' are mutually exclusive
+    if (options?.or === 'anonymous' && options.includeRestricted === false) {
+      throw new Error("Cannot use { or: 'anonymous' } with { includeRestricted: false }. Anonymous users implicitly include restricted users.");
+    }
+
     this._ensurePersistentTokenStore(options?.tokenStore);
     const session = await this._getSession(options?.tokenStore);
     let crud = Result.orThrow(await this._currentUserCache.getOrWait([session], "write-only"));
-    if (crud?.is_anonymous && options?.or !== "anonymous" && options?.or !== "anonymous-if-exists[deprecated]") {
-      crud = null;
-    }
+    const includeAnonymous = options?.or === "anonymous" || options?.or === "anonymous-if-exists[deprecated]";
+    const includeRestricted = options?.includeRestricted === true || includeAnonymous;
 
-    if (crud === null) {
+    if (crud === null || (crud.is_anonymous && !includeAnonymous) || (crud.is_restricted && !includeRestricted)) {
       switch (options?.or) {
         case 'redirect': {
-          await this.redirectToSignIn({ replace: true });
+          if (!crud?.is_anonymous && crud?.is_restricted) {
+            await this.redirectToOnboarding({ replace: true });
+          } else {
+            await this.redirectToSignIn({ replace: true });
+          }
+          // TODO: We should probably `await neverResolve()` here instead of returning null. I (Konsti) wanna do it in a release with few changes though because I'm not sure if it'll break anything
           break;
         }
         case 'throw': {
@@ -1891,7 +2062,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         }
         case 'anonymous': {
           const tokens = await this._signUpAnonymously();
-          return await this.getUser({ tokenStore: tokens, or: "anonymous-if-exists[deprecated]" }) ?? throwErr("Something went wrong while signing up anonymously");
+          return await this.getUser({ tokenStore: tokens, or: "anonymous-if-exists[deprecated]", includeRestricted: true }) ?? throwErr("Something went wrong while signing up anonymously");
         }
         case undefined:
         case "anonymous-if-exists[deprecated]":
@@ -1910,18 +2081,26 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
   useUser(options: GetCurrentUserOptions<HasTokenStore> & { or: 'anonymous' }): ProjectCurrentUser<ProjectId>;
   useUser(options?: GetCurrentUserOptions<HasTokenStore>): ProjectCurrentUser<ProjectId> | null;
   useUser(options?: GetCurrentUserOptions<HasTokenStore>): ProjectCurrentUser<ProjectId> | null {
+    // Validate that includeRestricted: false and or: 'anonymous' are mutually exclusive
+    if (options?.or === 'anonymous' && options.includeRestricted === false) {
+      throw new Error("Cannot use { or: 'anonymous' } with { includeRestricted: false }. Anonymous users implicitly include restricted users.");
+    }
+
     this._ensurePersistentTokenStore(options?.tokenStore);
 
     const session = this._useSession(options?.tokenStore);
     let crud = useAsyncCache(this._currentUserCache, [session] as const, "clientApp.useUser()");
-    if (crud?.is_anonymous && options?.or !== "anonymous" && options?.or !== "anonymous-if-exists[deprecated]") {
-      crud = null;
-    }
+    const includeAnonymous = options?.or === "anonymous" || options?.or === "anonymous-if-exists[deprecated]";
+    const includeRestricted = options?.includeRestricted === true || includeAnonymous;
 
-    if (crud === null) {
+    if (crud === null || (crud.is_anonymous && !includeAnonymous) || (crud.is_restricted && !includeRestricted)) {
       switch (options?.or) {
         case 'redirect': {
-          runAsynchronously(this.redirectToSignIn({ replace: true }));
+          if (!crud?.is_anonymous && crud?.is_restricted) {
+            runAsynchronously(this.redirectToOnboarding({ replace: true }));
+          } else {
+            runAsynchronously(this.redirectToSignIn({ replace: true }));
+          }
           suspend();
           throw new StackAssertionError("suspend should never return");
         }
@@ -1969,6 +2148,8 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       displayName: accessToken.payload.name,
       primaryEmailVerified: accessToken.payload.email_verified,
       isAnonymous,
+      isRestricted: accessToken.payload.is_restricted,
+      restrictedReason: accessToken.payload.restricted_reason,
     } satisfies TokenPartialUser;
   }
 
@@ -1983,6 +2164,8 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       primaryEmail: auth.email ?? null,
       primaryEmailVerified: auth.email_verified as boolean,
       isAnonymous: auth.is_anonymous as boolean,
+      isRestricted: auth.is_restricted as boolean,
+      restrictedReason: (auth.restricted_reason as { type: "anonymous" | "email_not_verified" } | null) ?? null,
     };
   }
 
@@ -2571,6 +2754,8 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
 
   protected async _refreshSession(session: InternalSession) {
     await this._currentUserCache.refresh([session]);
+    // Suggest updating the access token so it contains the updated user/session data
+    session.suggestAccessTokenExpired();
   }
 
   protected async _refreshUsers() {

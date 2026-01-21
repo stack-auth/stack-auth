@@ -1,7 +1,9 @@
-import { TooltipPortal } from "@radix-ui/react-tooltip";
-import { CircleAlert, Info } from "lucide-react";
-import { Tooltip, TooltipContent, TooltipTrigger } from "./tooltip";
+"use client";
+
 import { cn } from "@/lib/utils";
+import { InfoIcon, WarningCircleIcon } from "@phosphor-icons/react/dist/ssr";
+import { TooltipPortal } from "@radix-ui/react-tooltip";
+import { Tooltip, TooltipContent, TooltipTrigger } from "./tooltip";
 
 export function SimpleTooltip(props: {
   tooltip: React.ReactNode,
@@ -13,9 +15,9 @@ export function SimpleTooltip(props: {
 }) {
   const iconClassName = cn("w-4 h-4 text-muted-foreground", props.inline && "inline");
   const icon = props.type === 'warning' ?
-    <CircleAlert className={iconClassName} /> :
+    <WarningCircleIcon className={iconClassName} /> :
     props.type === 'info' ?
-      <Info className={iconClassName} /> :
+      <InfoIcon className={iconClassName} /> :
       null;
 
   const trigger = (

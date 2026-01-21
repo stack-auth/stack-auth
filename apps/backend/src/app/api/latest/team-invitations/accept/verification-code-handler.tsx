@@ -4,7 +4,7 @@ import { getItemQuantityForCustomer } from "@/lib/payments";
 import { getSoleTenancyFromProjectBranch } from "@/lib/tenancies";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createVerificationCodeHandler } from "@/route-handlers/verification-code-handler";
-import { VerificationCodeType } from "@prisma/client";
+import { VerificationCodeType } from "@/generated/prisma/client";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { emailSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { teamsCrudHandlers } from "../../teams/crud";
@@ -70,6 +70,9 @@ export const teamInvitationCodeHandler = createVerificationCodeHandler({
   },
   async handler(tenancy, {}, data, body, user) {
     if (!user) throw new KnownErrors.UserAuthenticationRequired;
+    if (user.restricted_reason) {
+      throw new KnownErrors.TeamInvitationRestrictedUserNotAllowed(user.restricted_reason);
+    }
     const prisma = await getPrismaClientForTenancy(tenancy);
 
     if (tenancy.project.id === "internal") {
@@ -123,6 +126,9 @@ export const teamInvitationCodeHandler = createVerificationCodeHandler({
   },
   async details(tenancy, {}, data, body, user) {
     if (!user) throw new KnownErrors.UserAuthenticationRequired;
+    if (user.restricted_reason) {
+      throw new KnownErrors.TeamInvitationRestrictedUserNotAllowed(user.restricted_reason);
+    }
 
     const team = await teamsCrudHandlers.adminRead({
       tenancy,

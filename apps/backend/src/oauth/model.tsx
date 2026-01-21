@@ -6,7 +6,8 @@ import { getSoleTenancyFromProjectBranch, getTenancy } from "@/lib/tenancies";
 import { createRefreshTokenObj, decodeAccessToken, generateAccessTokenFromRefreshTokenIfValid, isRefreshTokenValid } from "@/lib/tokens";
 import { getPrismaClientForTenancy, globalPrismaClient } from "@/prisma-client";
 import { AuthorizationCode, AuthorizationCodeModel, Client, Falsey, RefreshToken, Token, User } from "@node-oauth/oauth2-server";
-import { PrismaClientKnownRequestError } from "@prisma/client/runtime/library";
+import { Prisma } from "@/generated/prisma/client";
+const PrismaClientKnownRequestError = Prisma.PrismaClientKnownRequestError;
 import { KnownErrors } from "@stackframe/stack-shared";
 import { captureError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { getProjectBranchFromClientId } from ".";
@@ -201,7 +202,7 @@ export class OAuthModel implements AuthorizationCodeModel {
   }
 
   async getAccessToken(accessToken: string): Promise<Token | Falsey> {
-    const result = await decodeAccessToken(accessToken, { allowAnonymous: true });
+    const result = await decodeAccessToken(accessToken, { allowAnonymous: true, allowRestricted: true });
     if (result.status === "error") {
       captureError("getAccessToken", result.error);
       return false;

@@ -3,7 +3,7 @@ import { validateRedirectUrl } from "@/lib/redirect-urls";
 import { getStackStripe, getStripeForAccount } from "@/lib/stripe";
 import { getPrismaClientForTenancy, globalPrismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { CustomerType } from "@prisma/client";
+import { CustomerType } from "@/generated/prisma/client";
 import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
 import { adaptSchema, clientOrHigherAuthTypeSchema, inlineProductSchema, urlSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
@@ -68,6 +68,9 @@ export const POST = createSmartRouteHandler({
   }),
   handler: async (req) => {
     const { tenancy } = req.auth;
+    if (tenancy.config.payments.blockNewPurchases) {
+      throw new KnownErrors.NewPurchasesBlocked();
+    }
     const stripe = await getStripeForAccount({ tenancy });
     const productConfig = await ensureProductIdOrInlineProduct(tenancy, req.auth.type, req.body.product_id, req.body.product_inline);
     const customerType = productConfig.customerType;

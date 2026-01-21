@@ -4,9 +4,9 @@ import { stackAppInternalsSymbol } from "@/app/(main)/integrations/transfer-conf
 import { UserTable } from "@/components/data-table/user-table";
 import { ExportUsersDialog } from "@/components/export-users-dialog";
 import { StyledLink } from "@/components/link";
-import { UserDialog } from "@/components/user-dialog";
 import { Alert, Button, Skeleton } from "@/components/ui";
-import { Download } from "lucide-react";
+import { UserDialog } from "@/components/user-dialog";
+import { DownloadSimpleIcon } from "@phosphor-icons/react";
 import { Suspense, useState } from "react";
 import { AppEnabledGuard } from "../app-enabled-guard";
 import { PageLayout } from "../page-layout";
@@ -36,8 +36,9 @@ export default function PageClient() {
   const firstUser = (stackAdminApp as any).useUsers({ limit: 1 });
   const [exportOptions, setExportOptions] = useState<{
     search?: string,
+    includeRestricted: boolean,
     includeAnonymous: boolean,
-  }>({ includeAnonymous: false });
+  }>({ includeRestricted: false, includeAnonymous: false });
 
   return (
     <AppEnabledGuard appId="authentication">
@@ -54,7 +55,7 @@ export default function PageClient() {
             <ExportUsersDialog
               trigger={
                 <Button variant="outline">
-                  <Download className="mr-2 h-4 w-4" />
+                  <DownloadSimpleIcon className="mr-2 h-4 w-4" />
                   Export
                 </Button>
               }

@@ -1,13 +1,13 @@
 'use client';
 
+import { Button } from '@/components/ui';
 import { getPublicEnvVar } from '@/lib/env';
 import { cn } from '@/lib/utils';
+import { CaretUpIcon, CircleNotchIcon, LightbulbIcon, PaperPlaneTiltIcon, PlusIcon, XIcon } from '@phosphor-icons/react';
 import { useUser } from '@stackframe/stack';
 import { StackAssertionError } from '@stackframe/stack-shared/dist/utils/errors';
 import { htmlToText } from '@stackframe/stack-shared/dist/utils/html';
 import { runAsynchronously } from '@stackframe/stack-shared/dist/utils/promises';
-import { Button } from '@/components/ui';
-import { ChevronUp, Lightbulb, Loader2, Plus, Send, X } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 
 type FeatureRequestBoardProps = {
@@ -267,7 +267,7 @@ export function FeatureRequestBoard({}: FeatureRequestBoardProps) {
     <div className="flex flex-col h-full">
       {submitStatus === 'success' ? (
         <div className="bg-green-50 dark:bg-green-900/20 rounded-lg p-4 text-center border border-green-200 dark:border-green-800">
-          <Lightbulb className="h-6 w-6 mx-auto mb-2 text-green-600" />
+          <LightbulbIcon className="h-6 w-6 mx-auto mb-2 text-green-600" />
           <p className="text-sm text-green-800 dark:text-green-200 font-medium">
             Feature request submitted successfully!
           </p>
@@ -279,7 +279,7 @@ export function FeatureRequestBoard({}: FeatureRequestBoardProps) {
         <div className="bg-card rounded-lg border border-border p-4 shadow-sm animate-in slide-in-from-top-2 duration-200">
           <div className="flex items-center justify-between gap-2 mb-3">
             <div className="flex items-center gap-2">
-              <Lightbulb className="h-5 w-5 text-purple-600" />
+              <LightbulbIcon className="h-5 w-5 text-purple-600" />
               <h4 className="text-sm font-semibold text-foreground">Submit Feature Request</h4>
             </div>
             <Button
@@ -289,7 +289,7 @@ export function FeatureRequestBoard({}: FeatureRequestBoardProps) {
               className="h-6 w-6 p-0 hover:bg-muted rounded-md"
               title="Cancel"
             >
-              <X className="h-3 w-3" />
+              <XIcon className="h-3 w-3" />
             </Button>
           </div>
 
@@ -334,12 +334,12 @@ export function FeatureRequestBoard({}: FeatureRequestBoardProps) {
           >
             {isSubmitting ? (
               <>
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                <CircleNotchIcon className="h-4 w-4 mr-2 animate-spin" />
                 Submitting...
               </>
             ) : (
               <>
-                <Send className="h-4 w-4 mr-2" />
+                <PaperPlaneTiltIcon className="h-4 w-4 mr-2" />
                 Submit Request
               </>
             )}
@@ -358,7 +358,7 @@ export function FeatureRequestBoard({}: FeatureRequestBoardProps) {
           className="w-full mb-4 min-h-[36px] flex-shrink-0 animate-in fade-in-0 duration-200"
           size="sm"
         >
-          <Plus className="h-4 w-4 mr-2 flex-shrink-0" />
+          <PlusIcon className="h-4 w-4 mr-2 flex-shrink-0" />
           <span className="flex-1">Submit New Feature Request</span>
         </Button>
       )}
@@ -380,7 +380,7 @@ export function FeatureRequestBoard({}: FeatureRequestBoardProps) {
 
         {isLoadingRequests ? (
           <div className="bg-card rounded-lg border border-border p-6 text-center">
-            <Loader2 className="h-5 w-5 mx-auto mb-2 animate-spin text-muted-foreground" />
+            <CircleNotchIcon className="h-5 w-5 mx-auto mb-2 animate-spin text-muted-foreground" />
             <p className="text-sm text-muted-foreground">Loading feature requests...</p>
           </div>
         ) : existingRequests.length > 0 ? (
@@ -430,7 +430,7 @@ export function FeatureRequestBoard({}: FeatureRequestBoardProps) {
                       }}
                       className="h-6 w-6 p-0 rounded-md"
                     >
-                      <ChevronUp className="h-2.5 w-2.5" />
+                      <CaretUpIcon className="h-2.5 w-2.5" />
                     </Button>
                     <span className="text-[10px] text-muted-foreground font-medium">
                       {request.upvotes || 0}
@@ -476,7 +476,7 @@ export function FeatureRequestBoard({}: FeatureRequestBoardProps) {
           </div>
         ) : (
           <div className="bg-card rounded-lg border border-border p-6 text-center">
-            <Lightbulb className="h-8 w-8 mx-auto mb-2 text-muted-foreground" />
+            <LightbulbIcon className="h-8 w-8 mx-auto mb-2 text-muted-foreground" />
             <p className="text-sm text-muted-foreground">No feature requests yet.</p>
             <p className="text-xs text-muted-foreground mt-1">Be the first to submit one!</p>
           </div>

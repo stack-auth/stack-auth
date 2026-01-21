@@ -1,6 +1,7 @@
 "use client";
 
 import { useAdminApp } from "@/app/(main)/(protected)/projects/[projectId]/use-admin-app";
+import { DownloadSimpleIcon } from "@phosphor-icons/react";
 import type { ServerUser } from "@stackframe/stack";
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import {
@@ -22,7 +23,6 @@ import {
   toast,
 } from "@/components/ui";
 import { download, generateCsv, mkConfig } from "export-to-csv";
-import { Download } from "lucide-react";
 import { useState } from "react";
 
 type ExportFormat = "csv" | "json";
@@ -249,7 +249,7 @@ export function ExportUsersDialog(props: {
                 Cancel
               </Button>
               <Button onClick={() => runAsynchronouslyWithAlert(handleExport)} disabled={isExporting}>
-                <Download className="mr-2 h-4 w-4" />
+                <DownloadSimpleIcon className="mr-2 h-4 w-4" />
                 {isExporting ? "Exporting..." : "Export Users"}
               </Button>
             </div>

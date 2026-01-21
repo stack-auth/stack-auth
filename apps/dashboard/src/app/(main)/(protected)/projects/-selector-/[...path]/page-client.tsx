@@ -2,7 +2,6 @@
 
 import { ProjectAvatar } from "@/components/project-switcher";
 import { useRouter } from "@/components/router";
-import { useUser } from "@stackframe/stack";
 import {
   Button,
   Card,
@@ -16,7 +15,8 @@ import {
   SelectTrigger,
   SelectValue
 } from "@/components/ui";
-import { PlusIcon } from "lucide-react";
+import { PlusIcon } from "@phosphor-icons/react";
+import { useUser } from "@stackframe/stack";
 import { useEffect, useState } from "react";
 
 export function ProjectSelectorPageClient(props: { deepPath: string }) {

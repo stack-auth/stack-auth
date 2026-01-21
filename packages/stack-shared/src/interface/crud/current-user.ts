@@ -11,6 +11,7 @@ const clientUpdateSchema = usersCrudServerUpdateSchema.pick([
   "totp_secret_base64",
   "otp_auth_enabled",
   "passkey_auth_enabled",
+  "primary_email",
 ]).defined();
 
 const serverUpdateSchema = usersCrudServerUpdateSchema;
@@ -32,6 +33,8 @@ const clientReadSchema = usersCrudServerReadSchema.pick([
   "otp_auth_enabled",
   "passkey_auth_enabled",
   "is_anonymous",
+  "is_restricted",
+  "restricted_reason",
 ]).concat(yupObject({
   selected_team: teamsCrudClientReadSchema.nullable().defined(),
 })).defined();

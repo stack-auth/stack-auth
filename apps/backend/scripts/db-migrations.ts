@@ -2,7 +2,7 @@ import { applyMigrations } from "@/auto-migrations";
 import { MIGRATION_FILES_DIR, getMigrationFiles } from "@/auto-migrations/utils";
 import { clickhouseAdminClient, createClickhouseClient } from "@/lib/clickhouse";
 import { globalPrismaClient, globalPrismaSchema, sqlQuoteIdent } from "@/prisma-client";
-import { Prisma } from "@prisma/client";
+import { Prisma } from "@/generated/prisma/client";
 import { spawnSync } from "child_process";
 import fs from "fs";
 import path from "path";
@@ -80,7 +80,7 @@ const generateMigrationFile = async () => {
   const folderName = `${timestampPrefix()}_${migrationName}`;
   const migrationDir = path.join(MIGRATION_FILES_DIR, folderName);
   const migrationSqlPath = path.join(migrationDir, 'migration.sql');
-  const diffUrl = getEnvVariable('STACK_DIRECT_DATABASE_CONNECTION_STRING');
+  const diffUrl = getEnvVariable('STACK_DATABASE_CONNECTION_STRING');
 
   console.log(`Generating migration ${folderName}...`);
   const diffResult = spawnSync(

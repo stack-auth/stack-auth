@@ -1,6 +1,7 @@
 {
   "name": "@stackframe/example-middleware-demo",
-  "version": "2.8.57",
+  "version": "2.8.60",
+  "repository": "https://github.com/stack-auth/stack-auth",
   "private": true,
   "scripts": {
     "dev": "next dev --port ${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}12",

@@ -1,3 +1,4 @@
+import { cn } from "@/lib/utils";
 import {
   ActionBarPrimitive,
   BranchPickerPrimitive,
@@ -6,22 +7,12 @@ import {
   MessagePrimitive,
   ThreadPrimitive,
 } from "@assistant-ui/react";
+import { ArrowClockwiseIcon, ArrowDownIcon, CaretLeftIcon, CaretRightIcon, CheckIcon, CopyIcon, PaperPlaneRightIcon, PencilSimpleIcon } from "@phosphor-icons/react";
 import type { FC } from "react";
-import {
-  ArrowDownIcon,
-  CheckIcon,
-  ChevronLeftIcon,
-  ChevronRightIcon,
-  CopyIcon,
-  PencilIcon,
-  RefreshCwIcon,
-  SendHorizontalIcon,
-} from "lucide-react";
-import { cn } from "@/lib/utils";
 
-import { Button } from "@/components/ui";
 import { MarkdownText } from "@/components/assistant-ui/markdown-text";
 import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button";
+import { Button } from "@/components/ui";
 
 export const Thread: FC = () => {
   return (
@@ -135,7 +126,7 @@ const ComposerAction: FC = () => {
             variant="default"
             className="my-2.5 size-8 p-2 transition-opacity ease-in"
           >
-            <SendHorizontalIcon />
+            <PaperPlaneRightIcon />
           </TooltipIconButton>
         </ComposerPrimitive.Send>
       </ThreadPrimitive.If>
@@ -177,7 +168,7 @@ const UserActionBar: FC = () => {
     >
       <ActionBarPrimitive.Edit asChild>
         <TooltipIconButton tooltip="Edit">
-          <PencilIcon />
+          <PencilSimpleIcon />
         </TooltipIconButton>
       </ActionBarPrimitive.Edit>
     </ActionBarPrimitive.Root>
@@ -246,7 +237,7 @@ const AssistantActionBar: FC = () => {
       </ActionBarPrimitive.Copy>
       <ActionBarPrimitive.Reload asChild>
         <TooltipIconButton tooltip="Refresh">
-          <RefreshCwIcon />
+          <ArrowClockwiseIcon />
         </TooltipIconButton>
       </ActionBarPrimitive.Reload>
     </ActionBarPrimitive.Root>
@@ -265,7 +256,7 @@ const BranchPicker: FC<BranchPickerPrimitive.Root.Props> = ({
     >
       <BranchPickerPrimitive.Previous asChild>
         <TooltipIconButton tooltip="Previous">
-          <ChevronLeftIcon />
+          <CaretLeftIcon />
         </TooltipIconButton>
       </BranchPickerPrimitive.Previous>
       <span className="font-medium">
@@ -273,7 +264,7 @@ const BranchPicker: FC<BranchPickerPrimitive.Root.Props> = ({
       </span>
       <BranchPickerPrimitive.Next asChild>
         <TooltipIconButton tooltip="Next">
-          <ChevronRightIcon />
+          <CaretRightIcon />
         </TooltipIconButton>
       </BranchPickerPrimitive.Next>
     </BranchPickerPrimitive.Root>

@@ -1,17 +1,17 @@
 "use client";
 
 import { Stepper, StepperPage } from "@/components/stepper";
-import { cn } from "@/lib/utils";
-import { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
-import { getUserSpecifiedIdErrorMessage, isValidUserSpecifiedId, sanitizeUserSpecifiedId } from "@stackframe/stack-shared/dist/schema-fields";
 import { Button, Card, CardDescription, CardHeader, CardTitle, Checkbox, Dialog, DialogContent, DialogFooter, DialogTitle, Input, Label, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Typography } from "@/components/ui";
-import { ArrowLeft, ArrowRight, CreditCard, Package, Plus, Repeat, Trash2 } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { ArrowLeftIcon, ArrowRightIcon, CreditCardIcon, PackageIcon, PlusIcon, RepeatIcon, TrashIcon } from "@phosphor-icons/react";
+import { getUserSpecifiedIdErrorMessage, isValidUserSpecifiedId, sanitizeUserSpecifiedId } from "@stackframe/stack-shared/dist/schema-fields";
+import { getOrUndefined } from "@stackframe/stack-shared/dist/utils/objects";
 import { useState } from "react";
-import { CreateCatalogDialog } from "./create-catalog-dialog";
+import { CreateProductLineDialog } from "./create-product-line-dialog";
 import { IncludedItemDialog } from "./included-item-dialog";
 import { ListSection } from "./list-section";
 import { PricingSection } from "./pricing-section";
-import { type Product, type Price } from "./utils";
+import { type Price, type Product } from "./utils";
 
 type Template = 'one-time' | 'subscription' | 'addon' | 'scratch';
 
@@ -23,8 +23,8 @@ type ProductDialogProps = {
   onSave: (productId: string, product: Product) => Promise<void>,
   editingProductId?: string,
   editingProduct?: Product,
-  existingProducts: Array<{ id: string, displayName: string, catalogId?: string, customerType: string }>,
-  existingCatalogs: Record<string, { displayName?: string }>,
+  existingProducts: Array<{ id: string, displayName: string, productLineId?: string, customerType: string }>,
+  existingProductLines: Record<string, { displayName?: string, customerType?: string }>,
   existingItems: Array<{ id: string, displayName: string, customerType: string }>,
   onCreateNewItem?: () => void,
 };
@@ -53,7 +53,7 @@ export function ProductDialog({
   editingProductId,
   editingProduct,
   existingProducts,
-  existingCatalogs,
+  existingProductLines,
   existingItems,
   onCreateNewItem
 }: ProductDialogProps) {
@@ -63,7 +63,7 @@ export function ProductDialog({
   const [productId, setProductId] = useState(editingProductId ?? "");
   const [displayName, setDisplayName] = useState(editingProduct?.displayName || "");
   const [customerType, setCustomerType] = useState<'user' | 'team' | 'custom'>(editingProduct?.customerType || 'user');
-  const [catalogId, setCatalogId] = useState(editingProduct?.catalogId || "");
+  const [productLineId, setProductLineId] = useState(editingProduct?.productLineId || "");
   const [isAddOn, setIsAddOn] = useState(!!editingProduct?.isAddOnTo);
   const [isAddOnTo, setIsAddOnTo] = useState<string[]>(editingProduct?.isAddOnTo !== false ? Object.keys(editingProduct?.isAddOnTo || {}) : []);
   const [stackable, setStackable] = useState(editingProduct?.stackable || false);
@@ -74,7 +74,7 @@ export function ProductDialog({
   const [serverOnly, setServerOnly] = useState(editingProduct?.serverOnly || false);
 
   // Dialog states
-  const [showCatalogDialog, setShowCatalogDialog] = useState(false);
+  const [showProductLineDialog, setShowProductLineDialog] = useState(false);
   const [showItemDialog, setShowItemDialog] = useState(false);
   const [editingItemId, setEditingItemId] = useState<string | undefined>();
 
@@ -133,11 +133,11 @@ export function ProductDialog({
     }
 
     if (isAddOn && isAddOnTo.length > 0) {
-      const addOnCatalogs = new Set(
-        isAddOnTo.map(productId => existingProducts.find(o => o.id === productId)?.catalogId)
+      const addOnProductLines = new Set(
+        isAddOnTo.map(productId => existingProducts.find(o => o.id === productId)?.productLineId)
       );
-      if (addOnCatalogs.size > 1) {
-        newErrors.isAddOnTo = "All selected products must be in the same catalog";
+      if (addOnProductLines.size > 1) {
+        newErrors.isAddOnTo = "All selected products must be in the same product line";
       }
     }
 
@@ -165,7 +165,7 @@ export function ProductDialog({
     const product: Product = {
       displayName,
       customerType,
-      catalogId: catalogId || undefined,
+      productLineId: productLineId || undefined,
       isAddOnTo: isAddOn ? Object.fromEntries(isAddOnTo.map(id => [id, true])) : false,
       stackable,
       prices: freeByDefault ? "include-by-default" : prices,
@@ -185,7 +185,7 @@ export function ProductDialog({
       setProductId("");
       setDisplayName("");
       setCustomerType('user');
-      setCatalogId("");
+      setProductLineId("");
       setIsAddOn(false);
       setIsAddOnTo([]);
       setStackable(false);
@@ -266,7 +266,7 @@ export function ProductDialog({
                       <CardHeader className="pb-3">
                         <div className="flex items-center gap-3">
                           <div className="p-2.5 rounded-xl bg-cyan-500/10 dark:bg-cyan-500/[0.15] group-hover:bg-cyan-500/20 transition-colors duration-150 group-hover:transition-none">
-                            <CreditCard className="h-5 w-5 text-cyan-600 dark:text-cyan-400" />
+                            <CreditCardIcon className="h-5 w-5 text-cyan-600 dark:text-cyan-400" />
                           </div>
                           <div>
                             <CardTitle className="text-base font-semibold">One-time Purchase</CardTitle>
@@ -291,7 +291,7 @@ export function ProductDialog({
                       <CardHeader className="pb-3">
                         <div className="flex items-center gap-3">
                           <div className="p-2.5 rounded-xl bg-purple-500/10 dark:bg-purple-500/[0.15] group-hover:bg-purple-500/20 transition-colors duration-150 group-hover:transition-none">
-                            <Repeat className="h-5 w-5 text-purple-600 dark:text-purple-400" />
+                            <RepeatIcon className="h-5 w-5 text-purple-600 dark:text-purple-400" />
                           </div>
                           <div>
                             <CardTitle className="text-base font-semibold">Subscription</CardTitle>
@@ -316,7 +316,7 @@ export function ProductDialog({
                       <CardHeader className="pb-3">
                         <div className="flex items-center gap-3">
                           <div className="p-2.5 rounded-xl bg-emerald-500/10 dark:bg-emerald-500/[0.15] group-hover:bg-emerald-500/20 transition-colors duration-150 group-hover:transition-none">
-                            <Package className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+                            <PackageIcon className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
                           </div>
                           <div>
                             <CardTitle className="text-base font-semibold">Add-on</CardTitle>
@@ -341,7 +341,7 @@ export function ProductDialog({
                       <CardHeader className="pb-3">
                         <div className="flex items-center gap-3">
                           <div className="p-2.5 rounded-xl bg-foreground/[0.05] group-hover:bg-foreground/[0.08] transition-colors duration-150 group-hover:transition-none">
-                            <Plus className="h-5 w-5 text-muted-foreground" />
+                            <PlusIcon className="h-5 w-5 text-muted-foreground" />
                           </div>
                           <div>
                             <CardTitle className="text-base font-semibold">Create from Scratch</CardTitle>
@@ -445,7 +445,11 @@ export function ProductDialog({
                   {/* Customer Type */}
                   <div className="grid gap-2">
                     <Label htmlFor="customer-type" className="text-sm font-medium">Customer Type</Label>
-                    <Select value={customerType} onValueChange={(value) => setCustomerType(value as typeof customerType)}>
+                    <Select value={customerType} onValueChange={(value) => {
+                      setCustomerType(value as typeof customerType);
+                      // Reset product line since product lines are customer-type-specific
+                      setProductLineId("");
+                    }}>
                       <SelectTrigger className={cn(
                         "h-10 rounded-xl text-sm",
                         "bg-foreground/[0.03] border-border/50 dark:border-foreground/[0.1]",
@@ -464,38 +468,40 @@ export function ProductDialog({
                     </Typography>
                   </div>
 
-                  {/* Catalog */}
+                  {/* Product Line */}
                   <div className="grid gap-2">
-                    <Label htmlFor="catalog">Product Catalog (Optional)</Label>
+                    <Label htmlFor="productLine">Product Line (Optional)</Label>
                     <Select
-                      value={catalogId || 'no-catalog'}
+                      value={productLineId || 'no-product-line'}
                       onValueChange={(value) => {
                         if (value === 'create-new') {
-                          setShowCatalogDialog(true);
-                        } else if (value === 'no-catalog') {
-                          setCatalogId('');
+                          setShowProductLineDialog(true);
+                        } else if (value === 'no-product-line') {
+                          setProductLineId('');
                         } else {
-                          setCatalogId(value);
+                          setProductLineId(value);
                         }
                       }}
                     >
                       <SelectTrigger>
-                        <SelectValue placeholder="No catalog" />
+                        <SelectValue placeholder="No product line" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="no-catalog">No catalog</SelectItem>
-                        {Object.entries(existingCatalogs).map(([id, catalog]) => (
-                          <SelectItem key={id} value={id}>
-                            {catalog.displayName || id}
-                          </SelectItem>
-                        ))}
+                        <SelectItem value="no-product-line">No product line</SelectItem>
+                        {Object.entries(existingProductLines)
+                          .filter(([, productLine]) => productLine.customerType === customerType)
+                          .map(([id, productLine]) => (
+                            <SelectItem key={id} value={id}>
+                              {productLine.displayName || id}
+                            </SelectItem>
+                          ))}
                         <SelectItem value="create-new">
-                          <span className="text-primary">+ Create new catalog</span>
+                          <span className="text-primary">+ Create new product line</span>
                         </SelectItem>
                       </SelectContent>
                     </Select>
                     <Typography type="label" className="text-muted-foreground">
-                      Customers can only have one active product per catalog (except add-ons)
+                      Customers can only have one active product per product line (except add-ons)
                     </Typography>
                   </div>
 
@@ -544,7 +550,7 @@ export function ProductDialog({
                         <div className="grid gap-2">
                           <Label>Add-on to products</Label>
                           <div className="space-y-2 max-h-40 overflow-y-auto border rounded-lg p-2">
-                            {existingProducts.filter(o => !o.id.startsWith('addon')).map(product => (
+                            {existingProducts.map(product => (
                               <div key={product.id} className="flex items-center space-x-2">
                                 <Checkbox
                                   id={`addon-to-${product.id}`}
@@ -566,9 +572,9 @@ export function ProductDialog({
                                 />
                                 <Label htmlFor={`addon-to-${product.id}`} className="cursor-pointer text-sm">
                                   {product.displayName} ({product.id})
-                                  {product.catalogId && (
+                                  {product.productLineId && (
                                     <span className="text-muted-foreground ml-1">
-                                      • {existingCatalogs[product.catalogId].displayName || product.catalogId}
+                                      • {getOrUndefined(existingProductLines, product.productLineId)?.displayName || product.productLineId}
                                     </span>
                                   )}
                                 </Label>
@@ -668,7 +674,7 @@ export function ProductDialog({
                         {Object.entries(includedItems).map(([itemId, item]) => (
                           <div
                             key={itemId}
-                            className="px-3 py-3 hover:bg-muted/50 flex items-center justify-between catalog transition-colors"
+                            className="px-3 py-3 hover:bg-muted/50 flex items-center justify-between transition-colors"
                           >
                             <div>
                               <div className="font-medium">{getItemDisplay(itemId, item)}</div>
@@ -692,7 +698,7 @@ export function ProductDialog({
                                 size="sm"
                                 onClick={() => removeIncludedItem(itemId)}
                               >
-                                <Trash2 className="h-4 w-4 text-destructive" />
+                                <TrashIcon className="h-4 w-4 text-destructive" />
                               </Button>
                             </div>
                           </div>
@@ -718,7 +724,7 @@ export function ProductDialog({
                     "transition-all duration-150 hover:transition-none"
                   )}
                 >
-                  <ArrowLeft className="h-4 w-4 mr-2" />
+                  <ArrowLeftIcon className="h-4 w-4 mr-2" />
                   Back
                 </Button>
               )}
@@ -747,7 +753,7 @@ export function ProductDialog({
                   )}
                 >
                   Next
-                  <ArrowRight className="h-4 w-4 ml-2" />
+                  <ArrowRightIcon className="h-4 w-4 ml-2" />
                 </Button>
               ) : (
                 <Button
@@ -768,13 +774,13 @@ export function ProductDialog({
       </Dialog>
 
       {/* Sub-dialogs */}
-      <CreateCatalogDialog
-        open={showCatalogDialog}
-        onOpenChange={setShowCatalogDialog}
-        onCreate={(catalog) => {
-          // In a real app, you'd save the catalog to the backend
-          setCatalogId(catalog.id);
-          setShowCatalogDialog(false);
+      <CreateProductLineDialog
+        open={showProductLineDialog}
+        onOpenChange={setShowProductLineDialog}
+        onCreate={(productLine) => {
+          // In a real app, you'd save the product line to the backend
+          setProductLineId(productLine.id);
+          setShowProductLineDialog(false);
         }}
       />
 

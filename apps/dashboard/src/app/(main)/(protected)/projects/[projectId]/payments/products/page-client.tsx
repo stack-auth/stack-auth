@@ -2,7 +2,7 @@
 
 import { Link } from "@/components/link";
 import { Button } from "@/components/ui";
-import { Plus } from "lucide-react";
+import { PlusIcon } from "@phosphor-icons/react";
 import { useMemo } from "react";
 import { IllustratedInfo } from "../../../../../../../components/illustrated-info";
 import { PageLayout } from "../../page-layout";
@@ -54,7 +54,7 @@ function WelcomeScreen({ projectId }: { projectId: string }) {
         />
         <Link href={`/projects/${projectId}/payments/products/new`}>
           <Button className="mt-8">
-            <Plus className="h-4 w-4 mr-2" />
+            <PlusIcon className="h-4 w-4 mr-2" />
             Create Your First Product
           </Button>
         </Link>

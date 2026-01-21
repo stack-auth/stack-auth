@@ -18,6 +18,7 @@ import { urlString } from '../utils/urls';
 import { ConnectedAccountAccessTokenCrud } from './crud/connected-accounts';
 import { ContactChannelsCrud } from './crud/contact-channels';
 import { CurrentUserCrud } from './crud/current-user';
+import { CustomerInvoicesListResponse, ListCustomerInvoicesOptions } from './crud/invoices';
 import { ItemCrud } from './crud/items';
 import { NotificationPreferenceCrud } from './crud/notification-preferences';
 import { OAuthProviderCrud } from './crud/oauth-providers';
@@ -153,22 +154,28 @@ export class StackClientInterface {
       throw new Error("Admin session token is currently not supported for fetching new access token. Did you try to log in on a StackApp initiated with the admin session?");
     }
 
+    const tokenEndpoint = this.getApiUrl() + '/auth/oauth/token';
     const as = {
       issuer: this.options.getBaseUrl(),
       algorithm: 'oauth2',
-      token_endpoint: this.getApiUrl() + '/auth/oauth/token',
+      token_endpoint: tokenEndpoint,
     };
     const client: oauth.Client = {
       client_id: this.projectId,
       client_secret: this.options.publishableClientKey,
-      token_endpoint_auth_method: 'client_secret_post',
     };
+
+    const clientAuthentication = oauth.ClientSecretPost(this.options.publishableClientKey);
+    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+    const allowInsecure = tokenEndpoint.startsWith('http://');
 
     const response = await this._networkRetryException(async () => {
       const rawResponse = await oauth.refreshTokenGrantRequest(
         as,
         client,
+        clientAuthentication,
         refreshToken.token,
+        allowInsecure ? { [oauth.allowInsecureRequests]: true } : undefined,
       );
 
       const response = await this._processResponse(rawResponse);
@@ -190,10 +197,18 @@ export class StackClientInterface {
     });
     if (!response) return null;
 
-    const result = await oauth.processRefreshTokenResponse(as, client, response);
-    if (oauth.isOAuth2Error(result)) {
-      // TODO Handle OAuth 2.0 response body error
-      throw new StackAssertionError("OAuth error", { result });
+    let result: oauth.TokenEndpointResponse;
+    try {
+      result = await oauth.processRefreshTokenResponse(as, client, response);
+    } catch (e){
+      if (e instanceof oauth.ResponseBodyError) {
+        throw new StackAssertionError("ResponseBodyError when processing refresh token response", {
+          cause: e.cause,
+          code: e.code,
+          error: e.error,
+        });
+      }
+      throw new StackAssertionError("Unexpected error when processing refresh token response", { cause: e });
     }
 
     if (!result.access_token) {
@@ -201,6 +216,7 @@ export class StackClientInterface {
     }
 
     return AccessToken.createIfValid(result.access_token) ?? throwErr("Access token in fetchNewAccessToken is invalid, looks like the backend is returning an invalid token!", { result });
+
   }
 
   public async sendClientRequest(
@@ -1015,37 +1031,61 @@ export class StackClientInterface {
       // TODO fix
       throw new Error("Admin session token is currently not supported for OAuth");
     }
+    const tokenEndpoint = this.getApiUrl() + '/auth/oauth/token';
     const as = {
       issuer: this.options.getBaseUrl(),
       algorithm: 'oauth2',
-      token_endpoint: this.getApiUrl() + '/auth/oauth/token',
+      token_endpoint: tokenEndpoint,
     };
     const client: oauth.Client = {
       client_id: this.projectId,
       client_secret: this.options.publishableClientKey,
-      token_endpoint_auth_method: 'client_secret_post',
     };
-    const params = await this._networkRetryException(
-      async () => oauth.validateAuthResponse(as, client, options.oauthParams, options.state),
-    );
-    if (oauth.isOAuth2Error(params)) {
-      throw new StackAssertionError("Error validating outer OAuth response", { params }); // Handle OAuth 2.0 redirect error
+    const clientAuthentication = oauth.ClientSecretPost(this.options.publishableClientKey);
+    // Allow insecure HTTP requests only in test environment (for localhost testing)
+    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+    const allowInsecure = tokenEndpoint.startsWith('http://');
+
+    let params: URLSearchParams;
+    try {
+      params = oauth.validateAuthResponse(as, client, options.oauthParams, options.state);
+    } catch (e) {
+      if (e instanceof oauth.AuthorizationResponseError) {
+        throw new StackAssertionError("Authorization response error when validating outer OAuth response", {
+          //cause is a URLSearchParams object for this error, so we need to serialize it better
+          cause: Object.fromEntries(e.cause),
+          code: e.code,
+          error: e.error,
+        });
+      }
+      throw new StackAssertionError("Unexpected error when validating outer OAuth response", { cause: e });
     }
     const response = await oauth.authorizationCodeGrantRequest(
       as,
       client,
+      clientAuthentication,
       params,
       options.redirectUri,
       options.codeVerifier,
+      allowInsecure ? { [oauth.allowInsecureRequests]: true } : undefined,
     );
 
-    const result = await oauth.processAuthorizationCodeOAuth2Response(as, client, response);
-    if (oauth.isOAuth2Error(result)) {
-      if ("code" in result && result.code === "MULTI_FACTOR_AUTHENTICATION_REQUIRED") {
-        throw new KnownErrors.MultiFactorAuthenticationRequired((result as any).details.attempt_code);
+    let result;
+    try {
+      result = await oauth.processAuthorizationCodeResponse(as, client, response);
+    } catch (e) {
+      if (e instanceof oauth.ResponseBodyError) {
+        if ((e.cause as any).code === "MULTI_FACTOR_AUTHENTICATION_REQUIRED") {
+          throw new KnownErrors.MultiFactorAuthenticationRequired((e.cause as any).details.attempt_code);
+        }
+        // TODO Handle OAuth 2.0 response body error
+        throw new StackAssertionError("Outer OAuth error during authorization code response", {
+          cause: e.cause,
+          code: e.code,
+          error: e.error,
+        });
       }
-      // TODO Handle OAuth 2.0 response body error
-      throw new StackAssertionError("Outer OAuth error during authorization code response", { result });
+      throw new StackAssertionError("Unexpected error when processing authorization code response", { cause: e });
     }
     return {
       newUser: result.is_new_user as boolean,
@@ -1806,6 +1846,69 @@ export class StackClientInterface {
     return await response.json();
   }
 
+  async listInvoices(
+    options: ListCustomerInvoicesOptions,
+    session: InternalSession | null,
+  ): Promise<CustomerInvoicesListResponse> {
+    const queryParams = new URLSearchParams(filterUndefined({
+      cursor: options.cursor,
+      limit: options.limit !== undefined ? options.limit.toString() : undefined,
+    }));
+    const path = urlString`/payments/invoices/${options.customer_type}/${options.customer_id}`;
+    const response = await this.sendClientRequest(
+      `${path}${queryParams.toString() ? `?${queryParams.toString()}` : ''}`,
+      {},
+      session,
+    );
+    return await response.json();
+  }
+
+  async cancelSubscription(
+    options: {
+      customer_type: "user" | "team" | "custom",
+      customer_id: string,
+      product_id: string,
+    },
+    session: InternalSession | null,
+  ): Promise<void> {
+    await this.sendClientRequest(
+      urlString`/payments/products/${options.customer_type}/${options.customer_id}/${options.product_id}`,
+      {
+        method: "DELETE",
+      },
+      session,
+    );
+  }
+
+  async switchSubscription(
+    options: {
+      customer_type: "user" | "team",
+      customer_id: string,
+      from_product_id: string,
+      to_product_id: string,
+      price_id?: string,
+      quantity?: number,
+    },
+    session: InternalSession | null,
+  ): Promise<void> {
+    await this.sendClientRequest(
+      urlString`/payments/products/${options.customer_type}/${options.customer_id}/switch`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          from_product_id: options.from_product_id,
+          to_product_id: options.to_product_id,
+          price_id: options.price_id,
+          quantity: options.quantity,
+        }),
+      },
+      session,
+    );
+  }
+
   async createCheckoutUrl(
     customer_type: "user" | "team" | "custom",
     customer_id: string,
@@ -1829,6 +1932,80 @@ export class StackClientInterface {
     );
     const { url } = await response.json() as { url: string };
     return url;
+  }
+
+  async getCustomerBilling(
+    customerType: "user" | "team",
+    customerId: string,
+    session: InternalSession | null,
+  ): Promise<{
+    has_customer: boolean,
+    default_payment_method: {
+      id: string,
+      brand: string | null,
+      last4: string | null,
+      exp_month: number | null,
+      exp_year: number | null,
+    } | null,
+  }> {
+    const response = await this.sendClientRequest(
+      urlString`/payments/billing/${customerType}/${customerId}`,
+      {},
+      session,
+    );
+    return await response.json();
+  }
+
+  async createCustomerPaymentMethodSetupIntent(
+    customerType: "user" | "team",
+    customerId: string,
+    session: InternalSession | null,
+  ): Promise<{
+    client_secret: string,
+    stripe_account_id: string,
+  }> {
+    const response = await this.sendClientRequest(
+      urlString`/payments/payment-method/${customerType}/${customerId}/setup-intent`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({}),
+      },
+      session,
+    );
+    return await response.json();
+  }
+
+  async setDefaultCustomerPaymentMethodFromSetupIntent(
+    customerType: "user" | "team",
+    customerId: string,
+    setupIntentId: string,
+    session: InternalSession | null,
+  ): Promise<{
+    default_payment_method: {
+      id: string,
+      brand: string | null,
+      last4: string | null,
+      exp_month: number | null,
+      exp_year: number | null,
+    },
+  }> {
+    const response = await this.sendClientRequest(
+      urlString`/payments/payment-method/${customerType}/${customerId}/set-default`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          setup_intent_id: setupIntentId,
+        }),
+      },
+      session,
+    );
+    return await response.json();
   }
 
   async transferProject(internalProjectSession: InternalSession, projectIdToTransfer: string, newTeamId: string): Promise<void> {

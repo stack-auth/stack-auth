@@ -122,6 +122,7 @@
 
       const backgroundServices = [
         { suffix: "28", label: "PostgreSQL" },
+        { suffix: "34", label: "PostgreSQL Replica (with replication lag)" },
         { suffix: "29", label: "Inbucket SMTP" },
         { suffix: "30", label: "Inbucket POP3" },
         { suffix: "31", label: "OTel collector" },
@@ -269,6 +270,15 @@
           img: "https://pghero.dokkuapp.com/assets/pghero-88a0d052.png",
         },
         {
+          name: "PgHero (Replica)",
+          portSuffix: "35",
+          description: [
+            "For replica database performance analysis",
+          ],
+          importance: 1,
+          img: "https://pghero.dokkuapp.com/assets/pghero-88a0d052.png",
+        },
+        {
           name: "PgAdmin",
           portSuffix: "17",
           description: [
@@ -289,7 +299,7 @@
         },
         {
           name: "Drizzle Gateway",
-          portSuffix: "35",
+          portSuffix: "33",
           description: [
             "Manage Drizzle configs",
           ],
@@ -311,7 +321,7 @@
         },
         {
           name: "ClickHouse HTTP",
-          portSuffix: "33",
+          portSuffix: "36",
           description: [
             "ClickHouse",
           ],

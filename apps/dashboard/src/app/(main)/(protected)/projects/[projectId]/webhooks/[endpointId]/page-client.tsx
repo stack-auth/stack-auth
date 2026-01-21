@@ -1,9 +1,9 @@
 "use client";
 
 import { SettingCard } from "@/components/settings";
-import { getPublicEnvVar } from '@/lib/env';
 import { Alert, Badge, Button, CopyButton, Label, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, Typography } from "@/components/ui";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { getPublicEnvVar } from '@/lib/env';
+import { CaretLeftIcon, CaretRightIcon } from "@phosphor-icons/react";
 import { useMemo, useState } from "react";
 import { SvixProvider, useEndpoint, useEndpointMessageAttempts, useEndpointSecret } from "svix-react";
 import { AppEnabledGuard } from "../../app-enabled-guard";
@@ -93,11 +93,11 @@ function MessageTable(props: { endpointId: string }) {
 
       <div className="flex justify-end gap-4">
         <Button size='icon' variant={'outline'} disabled={!messages.hasPrevPage} onClick={messages.prevPage}>
-          <ChevronLeft />
+          <CaretLeftIcon />
         </Button>
 
         <Button size='icon' variant={'outline'} disabled={!messages.hasNextPage} onClick={messages.nextPage}>
-          <ChevronRight />
+          <CaretRightIcon />
         </Button>
       </div>
     </div>

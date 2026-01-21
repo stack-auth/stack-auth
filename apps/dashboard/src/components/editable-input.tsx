@@ -1,8 +1,8 @@
+import { Button, Input } from "@/components/ui";
 import { cn } from "@/lib/utils";
+import { CheckIcon, XIcon } from "@phosphor-icons/react";
 import { useAsyncCallback } from "@stackframe/stack-shared/dist/hooks/use-async-callback";
 import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
-import { Button, Input } from "@/components/ui";
-import { Check, X } from "lucide-react";
 import { useRef, useState } from "react";
 
 
@@ -136,8 +136,8 @@ export function EditableInput({
           }}
         >
           {action === "accept" ?
-            <Check size={15} className="text-white dark:text-black" /> :
-            <X size={15} className="text-white dark:text-black" />}
+            <CheckIcon size={15} className="text-white dark:text-black" /> :
+            <XIcon size={15} className="text-white dark:text-black" />}
         </Button>
       ))}
     </div>

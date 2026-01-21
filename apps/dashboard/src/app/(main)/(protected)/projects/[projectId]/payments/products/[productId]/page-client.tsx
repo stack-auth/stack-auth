@@ -43,17 +43,17 @@ import {
   toast,
   Typography,
 } from "@/components/ui";
+import { ArrowLeftIcon, ClockIcon, CopyIcon, CurrencyDollarIcon, DotsThreeIcon, FolderOpenIcon, GiftIcon, HardDriveIcon, PackageIcon, PencilSimpleIcon, PlusIcon, PuzzlePieceIcon, StackIcon, TagIcon, TrashIcon, UsersIcon, XIcon } from "@phosphor-icons/react";
 import type { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
 import type { Transaction, TransactionEntry } from "@stackframe/stack-shared/dist/interface/crud/transactions";
 import type { DayInterval } from "@stackframe/stack-shared/dist/utils/dates";
 import { fromNow } from "@stackframe/stack-shared/dist/utils/dates";
 import { prettyPrintWithMagnitudes } from "@stackframe/stack-shared/dist/utils/numbers";
 import { typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
-import { ArrowLeft, Clock, Copy, DollarSign, FolderOpen, Gift, Layers, MoreHorizontal, Package, Pencil, Plus, Puzzle, Server, Tag, Trash2, Users, X } from "lucide-react";
 import { Suspense, useMemo, useState } from "react";
 import { PageLayout } from "../../../page-layout";
 import { useAdminApp, useProjectId } from "../../../use-admin-app";
-import { CreateCatalogDialog } from "../create-catalog-dialog";
+import { CreateProductLineDialog } from "../create-product-line-dialog";
 import {
   createNewEditingPrice,
   editingPriceToPrice,
@@ -79,7 +79,7 @@ export default function PageClient({ productId }: { productId: string }) {
     return (
       <PageLayout title="Product Not Found">
         <div className="flex flex-col items-center justify-center py-12 gap-4">
-          <Package className="h-12 w-12 text-muted-foreground/50" />
+          <PackageIcon className="h-12 w-12 text-muted-foreground/50" />
           <Typography className="text-muted-foreground">Product not found</Typography>
           <Button variant="outline" asChild>
             <Link href={`/projects/${adminApp.projectId}/payments/products`}>
@@ -102,8 +102,8 @@ type ProductPageProps = {
 
 function ProductPage({ productId, product, config }: ProductPageProps) {
   const router = useRouter();
-  const catalogId = product.catalogId;
-  const catalogName = catalogId && catalogId in config.payments.catalogs ? config.payments.catalogs[catalogId].displayName || catalogId : null;
+  const productLineId = product.productLineId;
+  const productLineName = productLineId && productLineId in config.payments.productLines ? config.payments.productLines[productLineId].displayName || productLineId : null;
   const canGoBack = typeof window !== 'undefined' && window.history.length > 1;
 
   return (
@@ -116,11 +116,11 @@ function ProductPage({ productId, product, config }: ProductPageProps) {
             className="w-fit -ml-2 text-muted-foreground hover:text-foreground"
             onClick={() => router.back()}
           >
-            <ArrowLeft className="h-4 w-4 mr-1" />
+            <ArrowLeftIcon className="h-4 w-4 mr-1" />
             Back
           </Button>
         )}
-        <ProductHeader productId={productId} product={product} catalogName={catalogName} />
+        <ProductHeader productId={productId} product={product} productLineName={productLineName} />
         <Separator />
         <ProductDetailsSection productId={productId} product={product} config={config} />
         <Separator />
@@ -135,10 +135,10 @@ function ProductPage({ productId, product, config }: ProductPageProps) {
 type ProductHeaderProps = {
   productId: string,
   product: Product,
-  catalogName: string | null,
+  productLineName: string | null,
 };
 
-function ProductHeader({ productId, product, catalogName }: ProductHeaderProps) {
+function ProductHeader({ productId, product, productLineName }: ProductHeaderProps) {
   const projectId = useProjectId();
   const adminApp = useAdminApp();
   const project = adminApp.useProject();
@@ -164,9 +164,9 @@ function ProductHeader({ productId, product, catalogName }: ProductHeaderProps) 
         "border border-primary/20"
       )}>
         {isAddOn ? (
-          <Puzzle className="h-8 w-8 text-primary" />
+          <PuzzlePieceIcon className="h-8 w-8 text-primary" />
         ) : (
-          <Package className="h-8 w-8 text-primary" />
+          <PackageIcon className="h-8 w-8 text-primary" />
         )}
       </div>
       <div className="flex-grow min-w-0 flex flex-col">
@@ -186,21 +186,24 @@ function ProductHeader({ productId, product, catalogName }: ProductHeaderProps) 
               }}
             />
           </div>
-          {isAddOn && (
-            <Badge variant="outline" className="text-xs shrink-0">Add-on</Badge>
-          )}
-          {product.stackable && (
-            <Badge variant="outline" className="text-xs shrink-0">Stackable</Badge>
-          )}
+          <Button
+            variant="outline"
+            size="sm"
+            className="shrink-0 gap-1.5"
+            onClick={() => router.push(`/projects/${projectId}/payments/products/${productId}/edit`)}
+          >
+            <PencilSimpleIcon className="h-4 w-4" />
+            Edit
+          </Button>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" size="icon" className="shrink-0">
-                <MoreHorizontal className="h-5 w-5" />
+                <DotsThreeIcon className="h-5 w-5" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => router.push(`/projects/${projectId}/payments/catalogs#product-${productId}`)}>
-                View in Catalogs
+              <DropdownMenuItem onClick={() => router.push(`/projects/${projectId}/payments/product-lines#product-${productId}`)}>
+                View in Product Lines
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -213,10 +216,10 @@ function ProductHeader({ productId, product, catalogName }: ProductHeaderProps) 
             {product.customerType}
           </span>
           <span className="font-mono text-xs bg-muted px-2 py-0.5 rounded">ID: {productId}</span>
-          {catalogName && (
+          {productLineName && (
             <>
               <span>•</span>
-              <span>Catalog: {catalogName}</span>
+              <span>Product Line: {productLineName}</span>
             </>
           )}
           {addOnParents.length > 0 && (
@@ -254,32 +257,26 @@ function ProductDetailsSection({ productId, product, config }: ProductDetailsSec
   // Dialog states
   const [addOnDialogOpen, setAddOnDialogOpen] = useState(false);
   const [freeTrialPopoverOpen, setFreeTrialPopoverOpen] = useState(false);
-  const [createCatalogDialogOpen, setCreateCatalogDialogOpen] = useState(false);
+  const [createProductLineDialogOpen, setCreateProductLineDialogOpen] = useState(false);
 
-  // Get all catalogs with their customer types
-  const catalogOptions = useMemo(() => {
-    const catalogs = Object.entries(config.payments.catalogs).map(([id, catalog]) => {
-      // Determine customer type from existing products in this catalog
-      const productsInCatalog = Object.values(config.payments.products).filter(p => (p as Product | undefined)?.catalogId === id);
-      const catalogCustomerType = productsInCatalog[0]?.customerType as 'user' | 'team' | 'custom' | undefined;
-
-      return {
+  // Get all productLines with their customer types (only show matching customer type)
+  const productLineOptions = useMemo(() => {
+    const productLines = Object.entries(config.payments.productLines)
+      .filter(([, productLine]) => productLine.customerType === product.customerType)
+      .map(([id, productLine]) => ({
         value: id,
-        label: catalog.displayName || id,
-        customerType: catalogCustomerType,
-        disabled: catalogCustomerType != null && catalogCustomerType !== product.customerType,
-        disabledReason: catalogCustomerType != null && catalogCustomerType !== product.customerType
-          ? `This catalog is for ${catalogCustomerType} products`
-          : undefined,
-      };
-    });
+        label: productLine.displayName || id,
+        customerType: productLine.customerType,
+        disabled: false,
+        disabledReason: undefined,
+      }));
 
-    // Also add "No catalog" option (using __none__ since Select.Item can't have empty string value)
+    // Also add "No product line" option (using __none__ since Select.Item can't have empty string value)
     return [
-      { value: '__none__', label: 'No catalog', disabled: false, disabledReason: undefined, customerType: undefined },
-      ...catalogs,
+      { value: '__none__', label: 'No product line', disabled: false, disabledReason: undefined, customerType: undefined },
+      ...productLines,
     ];
-  }, [config.payments.catalogs, config.payments.products, product.customerType]);
+  }, [config.payments.productLines, product.customerType]);
 
   // Add-on dialog state
   const [isAddOn, setIsAddOn] = useState(() => product.isAddOnTo !== false && typeof product.isAddOnTo === 'object');
@@ -301,19 +298,19 @@ function ProductDetailsSection({ productId, product, config }: ProductDetailsSec
     }));
   }, [product.isAddOnTo, config.payments.products]);
 
-  // Get all available products for add-on selection (same customer type and catalog, excluding this product)
+  // Get all available products for add-on selection (same customer type and productLine, excluding this product)
   const availableProducts = useMemo(() => {
     return Object.entries(config.payments.products)
       .filter(([id, p]) =>
         id !== productId &&
         p.customerType === product.customerType &&
-        p.catalogId === product.catalogId
+        p.productLineId === product.productLineId
       )
       .map(([id, p]) => ({
         id,
         displayName: p.displayName || id,
       }));
-  }, [config.payments.products, productId, product.customerType, product.catalogId]);
+  }, [config.payments.products, productId, product.customerType, product.productLineId]);
 
   // Get product-level free trial
   const freeTrialInfo = product.freeTrial || null;
@@ -335,25 +332,28 @@ function ProductDetailsSection({ productId, product, config }: ProductDetailsSec
     toast({ title: "Display name updated" });
   };
 
-  const handleCatalogUpdate = async (catalogId: string) => {
-    const actualCatalogId = catalogId === '__none__' ? null : catalogId;
+  const handleProductLineUpdate = async (productLineId: string) => {
+    const actualProductLineId = productLineId === '__none__' ? null : productLineId;
     await project.updateConfig({
-      [`payments.products.${productId}.catalogId`]: actualCatalogId,
+      [`payments.products.${productId}.productLineId`]: actualProductLineId,
     });
-    toast({ title: actualCatalogId ? "Product moved to catalog" : "Product removed from catalog" });
+    toast({ title: actualProductLineId ? "Product moved to product line" : "Product removed from product line" });
   };
 
-  const handleCreateCatalog = async (catalog: { id: string, displayName: string }) => {
-    // Create the catalog first
+  const handleCreateProductLine = async (productLine: { id: string, displayName: string }) => {
+    // Create the productLine first with the current product's customerType
     await project.updateConfig({
-      [`payments.catalogs.${catalog.id}`]: { displayName: catalog.displayName || null },
+      [`payments.productLines.${productLine.id}`]: {
+        displayName: productLine.displayName || null,
+        customerType: product.customerType,
+      },
     });
-    // Then update the product to use this catalog
+    // Then update the product to use this productLine
     await project.updateConfig({
-      [`payments.products.${productId}.catalogId`]: catalog.id,
+      [`payments.products.${productId}.productLineId`]: productLine.id,
     });
-    setCreateCatalogDialogOpen(false);
-    toast({ title: "Catalog created and product moved" });
+    setCreateProductLineDialogOpen(false);
+    toast({ title: "Product line created and product moved" });
   };
 
   const handleStackableUpdate = async (value: boolean) => {
@@ -407,7 +407,7 @@ function ProductDetailsSection({ productId, product, config }: ProductDetailsSec
   const gridItems: EditableGridItem[] = [
     {
       type: 'text',
-      icon: <Tag size={16} />,
+      icon: <TagIcon size={16} />,
       name: "Display Name",
       tooltip: "The name shown to customers. Leave empty to use the product ID.",
       value: product.displayName || '',
@@ -416,20 +416,20 @@ function ProductDetailsSection({ productId, product, config }: ProductDetailsSec
     },
     {
       type: 'dropdown',
-      icon: <FolderOpen size={16} />,
-      name: "Catalog",
-      tooltip: "Catalogs group products together. Customers can only have one active product per catalog.",
-      value: product.catalogId || '__none__',
-      options: catalogOptions,
-      onUpdate: handleCatalogUpdate,
+      icon: <FolderOpenIcon size={16} />,
+      name: "Product Line",
+      tooltip: "Product lines group products together. Customers can only have one active product per product line.",
+      value: product.productLineId || '__none__',
+      options: productLineOptions,
+      onUpdate: handleProductLineUpdate,
       extraAction: {
-        label: "+ Create new catalog",
-        onClick: () => setCreateCatalogDialogOpen(true),
+        label: "+ Create new product line",
+        onClick: () => setCreateProductLineDialogOpen(true),
       },
     },
     {
       type: 'boolean',
-      icon: <Layers size={16} />,
+      icon: <StackIcon size={16} />,
       name: "Stackable",
       tooltip: "Stackable products can be purchased multiple times by the same customer.",
       value: !!product.stackable,
@@ -437,7 +437,7 @@ function ProductDetailsSection({ productId, product, config }: ProductDetailsSec
     },
     {
       type: 'custom-button',
-      icon: <Puzzle size={16} />,
+      icon: <PuzzlePieceIcon size={16} />,
       name: "Add-on",
       tooltip: "Add-ons are optional extras that can only be purchased alongside a parent product.",
       onClick: () => {
@@ -464,7 +464,7 @@ function ProductDetailsSection({ productId, product, config }: ProductDetailsSec
     },
     {
       type: 'custom',
-      icon: <Clock size={16} />,
+      icon: <ClockIcon size={16} />,
       name: "Free Trial",
       tooltip: "Free trial period before billing starts. Customers won't be charged during this period.",
       children: (
@@ -529,7 +529,7 @@ function ProductDetailsSection({ productId, product, config }: ProductDetailsSec
     },
     {
       type: 'boolean',
-      icon: <Server size={16} />,
+      icon: <HardDriveIcon size={16} />,
       name: "Server Only",
       tooltip: "Server-only products are only available through checkout sessions created by server-side APIs.",
       value: isServerOnly,
@@ -537,14 +537,14 @@ function ProductDetailsSection({ productId, product, config }: ProductDetailsSec
     },
     {
       type: 'custom',
-      icon: <DollarSign size={16} />,
+      icon: <CurrencyDollarIcon size={16} />,
       name: "Prices",
       tooltip: "Pricing options for this product. Multiple prices allow different billing intervals or pricing tiers.",
       children: <ProductPricesSection productId={productId} product={product} inline />,
     },
     {
       type: 'custom',
-      icon: <Package size={16} />,
+      icon: <PackageIcon size={16} />,
       name: "Included Items",
       tooltip: "Items that customers receive when they purchase this product.",
       children: <ProductItemsSection productId={productId} product={product} config={config} inline />,
@@ -561,7 +561,7 @@ function ProductDetailsSection({ productId, product, config }: ProductDetailsSec
           <DialogHeader>
             <DialogTitle>Add-on Configuration</DialogTitle>
             <DialogDescription>
-              Add-ons are optional products that can only be purchased when a customer already owns one of the parent products. They&apos;re great for extras like additional seats, premium features, or one-time upgrades. A product can only be an add-on to products with the same customer type and in the same catalog.
+              Add-ons are optional products that can only be purchased when a customer already owns one of the parent products. They&apos;re great for extras like additional seats, premium features, or one-time upgrades. A product can only be an add-on to products with the same customer type and in the same product line.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
@@ -586,7 +586,7 @@ function ProductDetailsSection({ productId, product, config }: ProductDetailsSec
                 </Label>
                 <div className="max-h-48 overflow-y-auto space-y-2 rounded-md border p-3">
                   {availableProducts.length === 0 ? (
-                    <p className="text-sm text-muted-foreground">No other products with the same customer type and catalog</p>
+                    <p className="text-sm text-muted-foreground">No other products with the same customer type and productLine</p>
                   ) : (
                     availableProducts.map((p) => (
                       <div key={p.id} className="flex items-center gap-2">
@@ -624,11 +624,11 @@ function ProductDetailsSection({ productId, product, config }: ProductDetailsSec
         </DialogContent>
       </Dialog>
 
-      {/* Create Catalog Dialog */}
-      <CreateCatalogDialog
-        open={createCatalogDialogOpen}
-        onOpenChange={setCreateCatalogDialogOpen}
-        onCreate={handleCreateCatalog}
+      {/* Create Product Line Dialog */}
+      <CreateProductLineDialog
+        open={createProductLineDialogOpen}
+        onOpenChange={setCreateProductLineDialogOpen}
+        onCreate={handleCreateProductLine}
       />
     </>
   );
@@ -758,7 +758,7 @@ function ProductPricesSection({ productId, product, inline = false }: ProductPri
                 toast({ title: "Product is no longer free" });
               }}
             >
-              <DollarSign className="h-3 w-3 mr-1" />
+              <CurrencyDollarIcon className="h-3 w-3 mr-1" />
               Make paid
             </Button>
             {isIncludeByDefault ? (
@@ -768,7 +768,7 @@ function ProductPricesSection({ productId, product, inline = false }: ProductPri
                 className="w-fit h-6 px-1 text-xs text-muted-foreground hover:text-foreground"
                 onClick={handleSetFreeNotIncluded}
               >
-                <X className="h-3 w-3 mr-1" />
+                <XIcon className="h-3 w-3 mr-1" />
                 {"Don't include by default"}
               </Button>
             ) : (
@@ -778,7 +778,7 @@ function ProductPricesSection({ productId, product, inline = false }: ProductPri
                 className="w-fit h-6 px-1 text-xs text-muted-foreground hover:text-foreground"
                 onClick={handleSetIncludeByDefault}
               >
-                <Gift className="h-3 w-3 mr-1" />
+                <GiftIcon className="h-3 w-3 mr-1" />
                 Include by default
               </Button>
             )}
@@ -795,7 +795,7 @@ function ProductPricesSection({ productId, product, inline = false }: ProductPri
               className="w-fit h-6 px-1 text-xs text-muted-foreground hover:text-foreground"
               onClick={openAddDialog}
             >
-              <Plus className="h-3 w-3 mr-1" />
+              <PlusIcon className="h-3 w-3 mr-1" />
               Add price option
             </Button>
             <span className="text-[10px] font-medium text-muted-foreground/60 uppercase tracking-wider">or</span>
@@ -805,7 +805,7 @@ function ProductPricesSection({ productId, product, inline = false }: ProductPri
               className="w-fit h-6 px-1 text-xs text-muted-foreground hover:text-foreground"
               onClick={handleSetIncludeByDefault}
             >
-              <Gift className="h-3 w-3 mr-1" />
+              <GiftIcon className="h-3 w-3 mr-1" />
               Make free
             </Button>
           </div>
@@ -837,7 +837,7 @@ function ProductPricesSection({ productId, product, inline = false }: ProductPri
                       onClick={() => openEditDialog(priceId, price)}
                       disabled={isDeleting}
                     >
-                      <Pencil className="h-3 w-3" />
+                      <PencilSimpleIcon className="h-3 w-3" />
                     </Button>
                   </SimpleTooltip>
                   <SimpleTooltip tooltip="Delete">
@@ -848,7 +848,7 @@ function ProductPricesSection({ productId, product, inline = false }: ProductPri
                       onClick={() => handleDeletePrice(priceId)}
                       disabled={isDeleting}
                     >
-                      <Trash2 className={cn("h-3 w-3", isDeleting && "animate-pulse")} />
+                      <TrashIcon className={cn("h-3 w-3", isDeleting && "animate-pulse")} />
                     </Button>
                   </SimpleTooltip>
                 </div>
@@ -862,7 +862,7 @@ function ProductPricesSection({ productId, product, inline = false }: ProductPri
               className="w-fit h-6 px-1 text-xs text-muted-foreground hover:text-foreground"
               onClick={openAddDialog}
             >
-              <Plus className="h-3 w-3 mr-1" />
+              <PlusIcon className="h-3 w-3 mr-1" />
               Add price option
             </Button>
             <span className="text-[10px] font-medium text-muted-foreground/60 uppercase tracking-wider">or</span>
@@ -872,7 +872,7 @@ function ProductPricesSection({ productId, product, inline = false }: ProductPri
               className="w-fit h-6 px-1 text-xs text-muted-foreground hover:text-foreground"
               onClick={handleSetIncludeByDefault}
             >
-              <Gift className="h-3 w-3 mr-1" />
+              <GiftIcon className="h-3 w-3 mr-1" />
               Make free
             </Button>
           </div>
@@ -1074,7 +1074,7 @@ function ProductItemsSection({ productId, product, config, inline = false }: Pro
                       onClick={() => handleCopyPrompt(itemId, displayName)}
                       disabled={isDeleting}
                     >
-                      <Copy className="h-3 w-3" />
+                      <CopyIcon className="h-3 w-3" />
                     </Button>
                   </SimpleTooltip>
                   <SimpleTooltip tooltip="Edit">
@@ -1085,7 +1085,7 @@ function ProductItemsSection({ productId, product, config, inline = false }: Pro
                       onClick={() => openEditDialog(itemId, item)}
                       disabled={isDeleting}
                     >
-                      <Pencil className="h-3 w-3" />
+                      <PencilSimpleIcon className="h-3 w-3" />
                     </Button>
                   </SimpleTooltip>
                   <SimpleTooltip tooltip="Delete">
@@ -1096,7 +1096,7 @@ function ProductItemsSection({ productId, product, config, inline = false }: Pro
                       onClick={() => handleDeleteItem(itemId)}
                       disabled={isDeleting}
                     >
-                      <Trash2 className={cn("h-3 w-3", isDeleting && "animate-pulse")} />
+                      <TrashIcon className={cn("h-3 w-3", isDeleting && "animate-pulse")} />
                     </Button>
                   </SimpleTooltip>
                 </div>
@@ -1112,7 +1112,7 @@ function ProductItemsSection({ productId, product, config, inline = false }: Pro
           className="w-fit h-6 px-1 text-xs text-muted-foreground hover:text-foreground"
           onClick={openAddDialog}
         >
-          <Plus className="h-3 w-3 mr-1" />
+          <PlusIcon className="h-3 w-3 mr-1" />
           Add included item
         </Button>
       </div>
@@ -1137,7 +1137,7 @@ function ProductItemsSection({ productId, product, config, inline = false }: Pro
         </DialogHeader>
         {editingItem && availableItems.length === 0 && isAddingItem ? (
           <div className="flex flex-col items-center gap-3 py-8">
-            <Package className="h-10 w-10 text-muted-foreground/50" />
+            <PackageIcon className="h-10 w-10 text-muted-foreground/50" />
             <p className="text-sm text-muted-foreground text-center">
               No items available for this customer type.
             </p>
@@ -1379,7 +1379,7 @@ function ProductCustomersSection({ productId, product }: ProductCustomersSection
       <div className="px-5 pb-5">
         {customersWithTransactions.length === 0 ? (
           <div className="flex flex-col items-center gap-2 p-8 rounded-xl bg-foreground/[0.02]">
-            <Users className="h-8 w-8 text-muted-foreground/50" />
+            <UsersIcon className="h-8 w-8 text-muted-foreground/50" />
             <p className="text-sm text-muted-foreground text-center">
               No customers have purchased this product yet
             </p>
