@@ -17,6 +17,7 @@ import {
   toast,
   Typography,
 } from "@/components/ui";
+import { useUpdateConfig } from "@/lib/config-update";
 import { cn } from "@/lib/utils";
 import { ArrowLeftIcon, ClockIcon, HardDriveIcon, PackageIcon, PlusIcon, PuzzlePieceIcon, StackIcon, TrashIcon } from "@phosphor-icons/react";
 import { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
@@ -88,6 +89,7 @@ function EditProductForm({ productId, existingProduct }: { productId: string, ex
   const project = stackAdminApp.useProject();
   const config = project.useConfig();
   const paymentsConfig: CompleteConfig['payments'] = config.payments;
+  const updateConfig = useUpdateConfig();
 
   // Customer type is fixed from the existing product (cannot be changed)
   const customerType = existingProduct.customerType;
@@ -159,11 +161,15 @@ function EditProductForm({ productId, existingProduct }: { productId: string, ex
   };
 
   const handleCreateProductLine = async (productLine: { id: string, displayName: string }) => {
-    await project.updateConfig({
-      [`payments.productLines.${productLine.id}`]: {
-        displayName: productLine.displayName || null,
-        customerType,
+    await updateConfig({
+      adminApp: stackAdminApp,
+      configUpdate: {
+        [`payments.productLines.${productLine.id}`]: {
+          displayName: productLine.displayName || null,
+          customerType,
+        },
       },
+      pushable: true,
     });
     setProductLineId(productLine.id);
   };
@@ -216,7 +222,11 @@ function EditProductForm({ productId, existingProduct }: { productId: string, ex
         freeTrial,
       };
 
-      await project.updateConfig({ [`payments.products.${productId}`]: product });
+      await updateConfig({
+        adminApp: stackAdminApp,
+        configUpdate: { [`payments.products.${productId}`]: product },
+        pushable: true,
+      });
       toast({ title: "Product updated" });
       router.push(`/projects/${projectId}/payments/products`);
     } finally {
@@ -693,7 +703,11 @@ function EditProductForm({ productId, existingProduct }: { productId: string, ex
         open={showNewItemDialog}
         onOpenChange={setShowNewItemDialog}
         onSave={async (item) => {
-          await project.updateConfig({ [`payments.items.${item.id}`]: { displayName: item.displayName, customerType: item.customerType } });
+          await updateConfig({
+            adminApp: stackAdminApp,
+            configUpdate: { [`payments.items.${item.id}`]: { displayName: item.displayName, customerType: item.customerType } },
+            pushable: true,
+          });
           toast({ title: "Item created" });
         }}
         existingItemIds={Object.keys(paymentsConfig.items)}

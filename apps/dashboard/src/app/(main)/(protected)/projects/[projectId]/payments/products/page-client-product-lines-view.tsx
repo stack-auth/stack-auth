@@ -1990,8 +1990,10 @@ export default function PageClient({ createDraftRequestId, draftCustomerType = '
           }, pushable: true });
         }}
         onUpdateProductLine={async (productLineId, displayName) => {
-          await project.updateConfig({
-            [`payments.productLines.${productLineId}.displayName`]: displayName,
+          await updateConfig({
+            adminApp: stackAdminApp,
+            configUpdate: { [`payments.productLines.${productLineId}.displayName`]: displayName },
+            pushable: true,
           });
         }}
         onDeleteProductLine={async (productLineId) => {
@@ -2008,16 +2010,20 @@ export default function PageClient({ createDraftRequestId, draftCustomerType = '
 
           // Build the update object
           // Using `as any` because we're building a dynamic config update that TypeScript can't statically verify
-          const updateConfig: Record<string, unknown> = {
+          const configUpdateObj: Record<string, unknown> = {
             "payments.productLines": updatedProductLines,
           };
 
           // Update each product to remove productLineId
           for (const [productId, product] of productsToUpdate) {
-            updateConfig[`payments.products.${productId}`] = product;
+            configUpdateObj[`payments.products.${productId}`] = product;
           }
 
-          await project.updateConfig(updateConfig as any);
+          await updateConfig({
+            adminApp: stackAdminApp,
+            configUpdate: configUpdateObj as any,
+            pushable: true,
+          });
         }}
         createDraftRequestId={createDraftRequestId}
         draftCustomerType={draftCustomerType}
@@ -2028,11 +2034,15 @@ export default function PageClient({ createDraftRequestId, draftCustomerType = '
 
           // Update the entire product object with the new productLineId
           // Using undefined instead of null to properly clear the value
-          await project.updateConfig({
-            [`payments.products.${productId}`]: {
-              ...currentProduct,
-              productLineId: targetProductLineId ?? undefined,
+          await updateConfig({
+            adminApp: stackAdminApp,
+            configUpdate: {
+              [`payments.products.${productId}`]: {
+                ...currentProduct,
+                productLineId: targetProductLineId ?? undefined,
+              },
             },
+            pushable: true,
           });
         }}
       />

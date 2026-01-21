@@ -267,6 +267,7 @@ export function useUpdateConfig() {
       // Update environment config directly
       const project = await adminApp.getProject();
       // Cast to any because the strict type guard prevents direct usage
+      // eslint-disable-next-line no-restricted-syntax -- this is the hook implementation itself
       await project.updateConfig(configUpdate as any);
       return true;
     }
